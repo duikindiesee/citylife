@@ -36,6 +36,7 @@ export function ColonyApp() {
     const el = hostRef.current
     if (!el) return
     runtime.start(el)
+    requestAnimationFrame(() => runtime.resize()) // re-measure after first layout
     const ro = new ResizeObserver(() => runtime.resize())
     ro.observe(el)
     return () => {

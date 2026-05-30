@@ -8,9 +8,9 @@
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; height: 100%; background: #05070f; color: var(--text); font: 14px/1.4 'Segoe UI', system-ui, sans-serif; overflow: hidden; }
 
-.colony { position: relative; height: 100vh; }
+.colony { position: fixed; inset: 0; }
 .canvas-host { position: absolute; inset: 0; }
-.canvas-host canvas { display: block; }
+.canvas-host canvas { display: block; width: 100% !important; height: 100% !important; }
 
 .topbar {
   position: absolute; top: 0; left: 0; right: 0;
