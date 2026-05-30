@@ -2,11 +2,11 @@
 
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
-**Goal:** Add a gated Phase 1 CityLife flow where an operator can add a safe fictional newcomer household, bootstrap a low-cost Hermes bot without Telegram, inspect its chat/task trail inside the web UI, and manually progress the newcomer until a house is built.
+**Goal:** Add a gated Phase 1 CityLife flow where an authenticated operator can add a safe fictional newcomer household, bootstrap a low-cost Hermes bot without Telegram, inspect its chat/task trail inside the web UI, and manually progress the newcomer until a house is built; after the house is built, the household can drive commercial/industrial growth and migration requests through an operator-approved queue.
 
-**Architecture:** CityLife remains an outside observation surface over the ecosystem. The game UI requests newcomer creation through a narrow backend API; the backend creates a generated household identity, starts a Hermes profile/bot with no Telegram platform, creates an initial triage task, and exposes read-only chat/task history to the UI. Simulation state changes still enter through explicit game APIs and schema-validated actions, not arbitrary model-authored code.
+**Architecture:** CityLife remains an outside observation surface over the ecosystem. The browser talks only to a forkable `citylife-backend` over Basic Auth + JWT-protected APIs; the backend creates a generated household identity, starts a Hermes profile/bot with no Telegram platform, creates an initial triage task, and exposes read-only chat/task history to the UI. Simulation state changes still enter through explicit game APIs and schema-validated actions, not arbitrary model-authored code.
 
-**Tech Stack:** TypeScript/Vite/React/three.js for CityLife, Hermes Agent profiles + SessionDB/Kanban for bot state, a small backend adapter/API for bot lifecycle and chat/session retrieval, GitHub branch protection and public-repo safety rules.
+**Tech Stack:** TypeScript/Vite/React/three.js for CityLife, a forkable `citylife-backend` API service, Basic Auth login bootstrap + short-lived JWT API sessions, Hermes Agent profiles + SessionDB/Kanban for bot state, a backend adapter/API for bot lifecycle and chat/session retrieval, GitHub branch protection and public-repo safety rules.
 
 ---
 
@@ -20,6 +20,9 @@
 - Every newcomer starts with an initial **triage task** so lifecycle, communication, and audit have a durable anchor from the first run.
 - All interactions must be retrievable: generated background, bootstrap prompt, triage task, chat/session messages, operator decisions, and game-state milestones.
 - Manual operator gates are required before the household becomes active in the city and before a house is considered built.
+- Every backend API used by the game UI must require Basic Auth login plus JWT authorization. No unauthenticated game/backend endpoints.
+- Keep bot lifecycle, chat retrieval, migration queues, and simulation mutation APIs in a reusable/forkable `citylife-backend` boundary so the whole mechanic can be copied into future games.
+- New migration candidates are queued messages/requests that an operator can accept or decline; generation is allowed, automatic admission is not.
 
 ---
 
@@ -57,7 +60,15 @@
    - plot purchased
    - house planned
    - house built
-8. Later phases allow bots/households/businesses to communicate with each other through controlled, logged interfaces.
+8. Once a household reaches `house built`, the backend can unlock requests to develop commercial or industrial activity:
+   - commercial requests need population/foot-traffic justification
+   - industrial requests need zoning/distance/happiness checks
+   - approved businesses add jobs and can generate further migration demand
+9. Migration demand creates a queue of generated candidate household messages:
+   - operator can accept, hold, or decline each candidate
+   - accepted candidates enter the same Border Control flow
+   - declined candidates stay logged but do not create bots or plots
+10. Later phases allow bots/households/businesses to communicate with each other through controlled, logged interfaces.
 
 ---
 
@@ -97,13 +108,75 @@ Fields:
 - Commercial growth depends on population and foot traffic.
 - Businesses can be planned by household/bot later, with a small generated mini-site/app concept only after operator approval.
 
+### Migration request
+
+Fields:
+- `id`
+- `source`: `commercial_jobs | industrial_jobs | operator_generated | story_event`
+- `candidateHousehold`: generated preview profile, not yet an active bot
+- `reason`: public-safe message explaining why this household wants to migrate
+- `status`: `queued | accepted | held | declined | expired`
+- `linkedBusinessId?`
+- `createdAt`, `decidedAt?`
+
+### Backend auth/session
+
+Fields:
+- `operatorId`: public operator alias only
+- `basicAuthRealm`: configured realm name; no credentials in repo
+- `jwtSubject`: operator alias or service account alias
+- `jwtExpiresAt`
+- `scopes`: e.g. `newcomer:create`, `chat:read`, `migration:decide`, `simulation:mutate`
+
+### citylife-backend forkability boundary
+
+The backend owns:
+- Basic Auth credential verification and JWT issuing
+- Hermes profile/bot lifecycle
+- Kanban triage task creation
+- sanitized chat/session retrieval
+- migration request queues
+- operator audit logs
+- all secret-bearing configuration
+
+The browser/game repo owns:
+- login screen and token storage policy
+- API client interfaces
+- CityLife rendering and simulation UI
+- public-safe type definitions and mocks
+
 ---
 
 ## Backend/API contracts
 
+All endpoints below require an authenticated JWT. The login endpoint itself is protected by Basic Auth and returns a short-lived JWT for subsequent UI API calls.
+
+### `POST /api/auth/login`
+
+Authenticates an operator via Basic Auth and returns a JWT. The frontend shows a login screen before loading operator controls.
+
+Request headers:
+```http
+Authorization: Basic <base64 operator-login>
+```
+
+Response:
+```json
+{
+  "token": "jwt-redacted",
+  "expiresAt": "ISO timestamp",
+  "operator": { "id": "operator-public-alias", "scopes": ["newcomer:create"] }
+}
+```
+
+Rules:
+- Credentials are never stored in this repo.
+- JWT signing secret is backend-only environment config.
+- UI stores JWT only for the current operator session and clears it on logout/expiry.
+
 ### `POST /api/citylife/newcomers`
 
-Creates a generated household and starts triage.
+Creates a generated household and starts triage. Requires JWT scope `newcomer:create`.
 
 Request:
 ```json
@@ -129,11 +202,11 @@ Response:
 
 ### `GET /api/citylife/newcomers/:id`
 
-Returns the safe public household view plus operator-visible audit state.
+Returns the safe public household view plus operator-visible audit state. Requires JWT scope `newcomer:read`.
 
 ### `GET /api/citylife/newcomers/:id/chat`
 
-Returns sanitized chat/session events for display in the CityLife UI.
+Returns sanitized chat/session events for display in the CityLife UI. Requires JWT scope `chat:read`.
 
 Rules:
 - Redact secrets and internal paths.
@@ -142,7 +215,33 @@ Rules:
 
 ### `POST /api/citylife/newcomers/:id/milestones`
 
-Operator advances a manual milestone. The backend appends an audit event and, where needed, creates/updates Kanban tasks.
+Operator advances a manual milestone. The backend appends an audit event and, where needed, creates/updates Kanban tasks. Requires JWT scope `simulation:mutate`.
+
+
+### `GET /api/citylife/migration-requests`
+
+Returns queued generated migration candidates and their public-safe messages. Requires JWT scope `migration:read`.
+
+### `POST /api/citylife/migration-requests/:id/decision`
+
+Operator accepts, holds, or declines a migration request. Accepted requests enter the normal newcomer flow; declined requests are logged only. Requires JWT scope `migration:decide`.
+
+Request:
+```json
+{
+  "decision": "accepted | held | declined",
+  "operatorNote": "optional public-safe note"
+}
+```
+
+### `POST /api/citylife/development-requests`
+
+Creates a commercial or industrial development request after at least one household has a built house. Requires JWT scope `development:create`.
+
+Rules:
+- Commercial development must reference current population/foot traffic.
+- Industrial development must pass zoning distance/happiness checks or be held for operator review.
+- Approved development can create jobs, which can create migration requests.
 
 ---
 
@@ -163,7 +262,39 @@ Operator advances a manual milestone. The backend appends an audit event and, wh
 3. Add an AGENTS.md section: no secrets/internal namespaces/real PII in public commits.
 4. Verify with `npm test`, `npm run typecheck`, `npm run build`.
 
-### Slice 2: Newcomer domain model and deterministic generator
+### Slice 2: Auth shell and API client contract
+
+**Objective:** Require login before any CityLife backend interaction.
+
+**Files:**
+- Create: `src/colony/authClient.ts`
+- Create: `tests/auth-client.test.ts`
+- Modify: `src/ui/App.tsx`
+- Modify: `src/ui/styles.css`
+
+**Steps:**
+1. Write tests for Basic Auth login request construction without logging credentials.
+2. Write tests for JWT expiry/logout behavior.
+3. Implement an API client that attaches a redacted `Authorization: Bearer <jwt>` header to backend calls.
+4. Add a login screen that gates Border Control/operator controls until authenticated.
+5. Verify no credentials, JWTs, or private URLs are rendered in snapshots or console output.
+
+### Slice 3: Forkable `citylife-backend` contract package/runbook
+
+**Objective:** Keep bot maintenance and API state behind a reusable backend boundary.
+
+**Files:**
+- Create: `docs/plans/citylife-backend-contract.md`
+- Create: `src/colony/backendTypes.ts`
+- Create: `tests/backend-types.test.ts`
+
+**Steps:**
+1. Define public DTOs shared between UI and backend.
+2. Document backend-owned responsibilities: auth, JWT, Hermes profiles, Kanban, chat/session retrieval, migration queue, audit logs, secrets.
+3. Document forkability requirements so the backend can be copied into new game mechanics.
+4. Add tests ensuring DTOs expose only public aliases and opaque references.
+
+### Slice 4: Newcomer domain model and deterministic generator
 
 **Objective:** Generate safe fictional household profiles without touching Hermes yet.
 
@@ -177,7 +308,7 @@ Operator advances a manual milestone. The backend appends an audit event and, wh
 3. Implement generator using existing seeded RNG patterns.
 4. Expose household draft objects with `generated=true` and `publicSafe=true` metadata.
 
-### Slice 3: Border Control UI shell
+### Slice 5: Border Control UI shell
 
 **Objective:** Add the operator-facing gated flow without backend side effects.
 
@@ -192,7 +323,7 @@ Operator advances a manual milestone. The backend appends an audit event and, wh
 3. Show manual milestone checklist.
 4. Keep all data local/mock until Slice 4.
 
-### Slice 4: Backend adapter contract for Hermes-without-Telegram bot bootstrap
+### Slice 6: Backend adapter contract for Hermes-without-Telegram bot bootstrap
 
 **Objective:** Define the safe adapter boundary CityLife calls.
 
@@ -206,7 +337,7 @@ Operator advances a manual milestone. The backend appends an audit event and, wh
 3. Add validation that adapter never exposes internal profile names, secrets, or raw file paths.
 4. Document real backend implementation expectations.
 
-### Slice 5: Kanban triage task creation
+### Slice 7: Kanban triage task creation
 
 **Objective:** Make every newcomer begin with a durable task.
 
@@ -219,7 +350,7 @@ Operator advances a manual milestone. The backend appends an audit event and, wh
 3. Store `triageTaskId` on household state.
 4. Show triage state in UI.
 
-### Slice 6: Chat/session embed viewer
+### Slice 8: Chat/session embed viewer
 
 **Objective:** Let the web UI observe bot conversations without Telegram.
 
@@ -234,7 +365,7 @@ Operator advances a manual milestone. The backend appends an audit event and, wh
 3. Add empty/loading/error states.
 4. Verify no raw internal paths or secrets render.
 
-### Slice 7: Land surveyor zoning + plot purchase planning
+### Slice 9: Land surveyor zoning + plot purchase planning
 
 **Objective:** Encode the land-surveyor story into testable zoning/plot mechanics.
 
@@ -248,7 +379,25 @@ Operator advances a manual milestone. The backend appends an audit event and, wh
 3. Gate commercial growth by population.
 4. Add plot purchase + house planned/built milestone hooks.
 
-### Slice 8: Operator preview/deploy proof
+### Slice 10: Post-house development and migration request queue
+
+**Objective:** Unlock commercial/industrial development and controlled migration after a house is built.
+
+**Files:**
+- Create: `src/colony/migrationQueue.ts`
+- Create: `tests/migration-queue.test.ts`
+- Modify: `src/colony/land.ts`
+- Modify: `src/ui/App.tsx`
+
+**Steps:**
+1. Write tests that no development request can be approved before at least one household has `houseBuilt`.
+2. Write tests that commercial requests require population/foot-traffic thresholds.
+3. Write tests that industrial requests calculate nearby happiness impact and can be held.
+4. Implement migration candidate generation as queued messages, not automatic admission.
+5. Add accept/hold/decline decisions and audit events.
+6. Render the queue in the operator UI.
+
+### Slice 11: Operator preview/deploy proof
 
 **Objective:** Make review quick without leaking private hostnames in public docs.
 
@@ -272,5 +421,8 @@ Operator advances a manual milestone. The backend appends an audit event and, wh
 - CityLife can show sanitized chat/session history in the web UI.
 - Operator can manually progress a newcomer until a house is built.
 - Land/zoning mechanics represent industrial distance, residential happiness, commercial population dependency, land cost, and development cost.
-- Tests cover generation safety, redaction, adapter contract, zoning constraints, and milestone progression.
+- Tests cover generation safety, auth/JWT client behavior, redaction, adapter contract, zoning constraints, migration queue decisions, and milestone progression.
+- Every UI-to-backend API is behind Basic Auth login plus JWT authorization.
+- `citylife-backend` responsibilities are documented as a forkable boundary for future game mechanics.
+- After house-built, commercial/industrial development can create jobs and queued migration requests; operators can accept or decline generated candidates.
 

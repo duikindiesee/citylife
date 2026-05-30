@@ -27,3 +27,5 @@ Read [`docs/TECH-SPEC.md`](docs/TECH-SPEC.md) first. It is the source of truth f
 - Newcomer/household identities must be fictional, generated, and redaction-checked before being persisted or displayed.
 - Store only public aliases and opaque backend references in CityLife. Internal Hermes profile names, raw SessionDB paths, and credentials stay server-side/operator-side.
 - Bot communication for Phase 1 must support no-Telegram profiles; web/CLI observation should use sanitized chat/session events.
+- All game-to-backend APIs must stay behind Basic Auth login plus JWT authorization; the public repo may document config keys and scopes, but never actual credentials, signing secrets, or private backend URLs.
+- Keep bot lifecycle and migration mechanics behind a forkable `citylife-backend` boundary so future games can copy the pattern without copying private operator state.
