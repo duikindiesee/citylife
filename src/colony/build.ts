@@ -6,6 +6,8 @@
 import { RNG } from '../engine/rng'
 import { COLONY } from './config'
 import type { ColonyState } from './sim'
+import { gridOrigin } from './grid'
+import { roadPath } from './traffic'
 
 export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar'
 
@@ -32,6 +34,7 @@ export interface ConstructionJob {
   y: number
   artifact: Artifact
   progress: number
+  path: number[] // road-cell indices (caravan -> site) the crew truck drives
 }
 export interface ColonyBuilding {
   id: number
@@ -56,10 +59,10 @@ function caravan(state: ColonyState) {
 }
 const mod = (v: number, m: number) => ((v % m) + m) % m
 
-/** True if (x,y) lies on a grid road line (block boundary), relative to the caravan. */
+/** True if (x,y) lies on a grid road line (block boundary). */
 function isRoadLine(state: ColonyState, x: number, y: number): boolean {
-  const c = caravan(state)
-  return mod(x - c.x, B) === 0 || mod(y - c.y, B) === 0
+  const g = gridOrigin(state)
+  return mod(x - g.x, B) === 0 || mod(y - g.y, B) === 0
 }
 
 export function initBuild(state: ColonyState): void {
@@ -90,16 +93,16 @@ function blockKey(bx: number, by: number) {
 
 /** Build the road frame of block (bx,by). Returns the number of new road cells laid. */
 function developBlock(state: ColonyState, bx: number, by: number): number {
-  const c = caravan(state)
+  const g = gridOrigin(state)
   const t = state.terrain
-  const x0 = c.x + bx * B
-  const y0 = c.y + by * B
+  const x0 = g.x + bx * B
+  const y0 = g.y + by * B
   const x1 = x0 + B
   const y1 = y0 + B
   let added = 0
   const lay = (x: number, y: number) => {
     if (!t.inBounds(x, y)) return
-    if (t.buildable[t.idx(x, y)] === 0) return // skip water / steep
+    if (t.isWater(x, y)) return // roads stop at water (bridges later); steep land drapes fine
     const k = key(x, y)
     if (state.roadSet.has(k)) return
     state.roadSet.add(k)
@@ -122,11 +125,11 @@ function developBlock(state: ColonyState, bx: number, by: number): number {
 function nextBlock(state: ColonyState): { bx: number; by: number } | null {
   let best: { bx: number; by: number } | null = null
   let bestD = Infinity
-  const c = caravan(state)
+  const g = gridOrigin(state)
   const t = state.terrain
   const hasLand = (bx: number, by: number) => {
-    const x = c.x + bx * B + (B >> 1)
-    const y = c.y + by * B + (B >> 1)
+    const x = g.x + bx * B + (B >> 1)
+    const y = g.y + by * B + (B >> 1)
     return t.inBounds(x, y) && t.buildable[t.idx(x, y)] !== 0
   }
   for (const dk of state.developedBlocks) {
@@ -150,7 +153,7 @@ function nextBlock(state: ColonyState): { bx: number; by: number } | null {
 
 /** A buildable, road-served, unoccupied lot inside a developed block (or null). */
 function availableLot(state: ColonyState, rng: RNG): { x: number; y: number } | null {
-  const c = caravan(state)
+  const g = gridOrigin(state)
   const t = state.terrain
   const blocks = [...state.developedBlocks]
   for (let tries = 0; tries < blocks.length + 4; tries++) {
@@ -163,8 +166,8 @@ function availableLot(state: ColonyState, rng: RNG): { x: number; y: number } | 
     for (let i = 0; i < (B - 1) * (B - 1); i++) {
       const lx = 1 + ((ox - 1 + (i % (B - 1))) % (B - 1))
       const ly = 1 + ((oy - 1 + Math.floor(i / (B - 1))) % (B - 1))
-      const x = c.x + bx * B + lx
-      const y = c.y + by * B + ly
+      const x = g.x + bx * B + lx
+      const y = g.y + by * B + ly
       if (!t.inBounds(x, y)) continue
       if (t.buildable[t.idx(x, y)] === 0) continue
       const k = key(x, y)
@@ -216,10 +219,11 @@ export function autoGrow(state: ColonyState, rng: RNG): boolean {
   const artifact = chooseArtifact(state, rng)
   if (state.treasury < artifact.cost + 600) return false
 
+  const c = caravan(state)
   state.parcels.push({ id: state.buildIds++, x: lot.x, y: lot.y })
   state.occupied.add(key(lot.x, lot.y))
   state.treasury -= artifact.cost
-  state.jobs.push({ id: state.buildIds++, x: lot.x, y: lot.y, artifact, progress: 0 })
+  state.jobs.push({ id: state.buildIds++, x: lot.x, y: lot.y, artifact, progress: 0, path: roadPath(state, c.x, c.y, lot.x, lot.y) })
   return true
 }
 

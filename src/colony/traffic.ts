@@ -4,6 +4,7 @@
 import { RNG } from '../engine/rng'
 import { COLONY } from './config'
 import type { ColonyState } from './sim'
+import { gridOrigin } from './grid'
 
 export interface Car {
   id: number
@@ -42,7 +43,7 @@ function getTraffic(state: ColonyState): TrafficData {
   if (cached && cached.roadCount === state.roads.length) return cached
 
   const W = state.terrain.size
-  const c = state.structures.find((s) => s.kind === 'caravan')!
+  const g = gridOrigin(state)
   const B = COLONY.build.block
   const rs = state.roadSet
   const graph = new Map<number, number[]>()
@@ -54,7 +55,7 @@ function getTraffic(state: ColonyState): TrafficData {
       if (rs.has(r.x + dx + ',' + (r.y + dy))) ns.push((r.y + dy) * W + (r.x + dx))
     }
     graph.set(id, ns)
-    if (mod(r.x - c.x, B) === 0 && mod(r.y - c.y, B) === 0) intersections.add(id)
+    if (mod(r.x - g.x, B) === 0 && mod(r.y - g.y, B) === 0) intersections.add(id)
   }
   // graph changed -> drop stale reservations and held refs
   for (const car of state.cars) car.held = -1
@@ -114,6 +115,14 @@ function routeTo(state: ColonyState, td: TrafficData, car: Car, dest: { x: numbe
   const from = nearestRoadCell(state, Math.round(car.x), Math.round(car.y))
   const to = nearestRoadCell(state, dest.x, dest.y)
   car.path = bfs(td.graph, from, to)
+}
+
+/** BFS road path (world cell indices) between two lots — used by the construction crew truck. */
+export function roadPath(state: ColonyState, ax: number, ay: number, bx: number, by: number): number[] {
+  const td = getTraffic(state)
+  const from = nearestRoadCell(state, Math.round(ax), Math.round(ay))
+  const to = nearestRoadCell(state, Math.round(bx), Math.round(by))
+  return bfs(td.graph, from, to)
 }
 
 function spawnCars(state: ColonyState, rng: RNG, td: TrafficData): void {

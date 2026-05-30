@@ -67,12 +67,13 @@ export class ColonySim {
     const terrain = new Terrain(this.rng)
     const { x: lx, y: ly } = terrain.landing
 
-    // Place the seed structures on nearby buildable land.
+    // Base structures, spaced inside the landing block (block 0,0 is centred on the caravan) so
+    // they don't overlap each other and no road runs under them.
     const structures: SeedStructure[] = [
       { kind: 'caravan', x: lx, y: ly },
-      this.place(terrain, 'solar', lx + 2, ly),
-      this.place(terrain, 'battery', lx - 2, ly),
-      this.place(terrain, 'rocket', lx, ly + 3),
+      this.place(terrain, 'rocket', lx + 2, ly + 2),
+      this.place(terrain, 'solar', lx - 1, ly + 2),
+      this.place(terrain, 'battery', lx + 2, ly - 1),
     ]
 
     this.state = {

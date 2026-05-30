@@ -11,6 +11,7 @@ import { COLONY } from '../config'
 import { BIOME_COLOR, Biome } from '../terrain'
 import type { ColonySim, SeedStructure } from '../sim'
 import type { HouseSpec } from '../house'
+import { gridOrigin } from '../grid'
 
 export type ViewMode = 'biome' | 'buildable' | 'elevation'
 export type CameraPreset = 'street' | 'district' | 'planet'
@@ -442,7 +443,7 @@ export class PlanetRenderer {
   // Rebuild road geometry: asphalt quads draped on the terrain + dashed centre lines.
   private rebuildRoads() {
     const s = this.sim.state
-    const car = s.structures.find((st) => st.kind === 'caravan')
+    const g = gridOrigin(s)
     const B = COLONY.build.block
     const LIFT = 0.05
     const surf: number[] = []
@@ -453,9 +454,8 @@ export class PlanetRenderer {
     for (const r of s.roads) {
       const x = r.x, y = r.y
       quad(surf, corner(x, y), corner(x + 1, y), corner(x, y + 1), corner(x + 1, y + 1))
-      if (!car) continue
-      const onV = ((((x - car.x) % B) + B) % B) === 0 // on a north-south grid line
-      const onH = ((((y - car.y) % B) + B) % B) === 0 // on an east-west grid line
+      const onV = ((((x - g.x) % B) + B) % B) === 0 // on a north-south grid line
+      const onH = ((((y - g.y) % B) + B) % B) === 0 // on an east-west grid line
       if (onV === onH) continue // intersection or off-grid fill -> no centre dash
       const h = this.smoothRoadY(x, y) + LIFT + 0.03
       const wx = this.wx(x), wz = this.wz(y)
@@ -512,13 +512,29 @@ export class PlanetRenderer {
         this.bldgMesh.setColorAt(bi, col)
         bi++
       }
-      // crew truck drives caravan -> site over the first quarter, then parks on site
+      // crew truck drives caravan -> site ALONG THE ROADS over the first quarter, then parks
       if (ci < cap) {
         const drive = Math.min(1, j.progress / 0.25)
-        const cx = car.x + (j.x - car.x) * drive
-        const cy = car.y + (j.y - car.y) * drive
-        const heading = Math.atan2(j.y - car.y, j.x - car.x)
-        this.dummy.position.set(this.wx(cx), t.worldY(Math.round(cx), Math.round(cy)) + 0.18, this.wz(cy))
+        let cx: number, cy: number, heading: number
+        const path = j.path
+        if (path && path.length > 0) {
+          const W = t.size
+          const fpos = drive * path.length
+          const i0 = Math.min(path.length - 1, Math.floor(fpos))
+          const a = path[i0]!
+          const b = path[Math.min(path.length - 1, i0 + 1)]!
+          const frac = fpos - i0
+          const ax = (a % W) + 0.5, ay = ((a / W) | 0) + 0.5
+          const bx = (b % W) + 0.5, by = ((b / W) | 0) + 0.5
+          cx = ax + (bx - ax) * frac
+          cy = ay + (by - ay) * frac
+          heading = Math.hypot(bx - ax, by - ay) > 1e-4 ? Math.atan2(by - ay, bx - ax) : 0
+        } else {
+          cx = car.x + (j.x - car.x) * drive
+          cy = car.y + (j.y - car.y) * drive
+          heading = Math.atan2(j.y - car.y, j.x - car.x)
+        }
+        this.dummy.position.set(this.wx(cx), this.smoothRoadY(Math.round(cx), Math.round(cy)) + 0.18, this.wz(cy))
         this.dummy.scale.set(1, 1, 1)
         this.dummy.rotation.set(0, -heading, 0)
         this.dummy.updateMatrix()
@@ -534,11 +550,12 @@ export class PlanetRenderer {
 
     // street lights at grid intersections (where both road lines cross)
     const B = COLONY.build.block
+    const g = gridOrigin(s)
     let li = 0
     for (let i = 0; i < rn; i++) {
       if (li >= 360) break
       const r = s.roads[i]!
-      if (((((r.x - car.x) % B) + B) % B) !== 0 || ((((r.y - car.y) % B) + B) % B) !== 0) continue
+      if (((((r.x - g.x) % B) + B) % B) !== 0 || ((((r.y - g.y) % B) + B) % B) !== 0) continue
       this.dummy.position.set(this.wx(r.x) + 0.45, this.smoothRoadY(r.x, r.y), this.wz(r.y) + 0.45)
       this.dummy.scale.set(1, 1, 1)
       this.dummy.rotation.set(0, 0, 0)

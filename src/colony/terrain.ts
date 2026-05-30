@@ -69,6 +69,13 @@ export class Terrain {
     return x >= 0 && x < this.size && y >= 0 && y < this.size
   }
 
+  /** True for sea, shallows, and rivers. Roads stop at water (a bridge spans it later); steep land
+   *  is not water, so roads may cross it and drape over the slope. */
+  isWater(x: number, y: number): boolean {
+    const i = this.idx(x, y)
+    return this.water[i] === 1 || this.elev[i]! < COLONY.world.seaLevel
+  }
+
   private generateElevation(noise: Noise, moistNoise: Noise): void {
     const n = this.size
     const cfg = COLONY.world.noise
