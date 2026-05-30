@@ -92,6 +92,7 @@ export function ColonyApp() {
         <div className="row"><span>Site</span><b>{ui.biome}</b></div>
         <div className="row"><span>Colonists</span><b>{ui.colonists}</b></div>
         <div className="row"><span>Jobs</span><b>{ui.colony.jobs} · {ui.colony.employed}% empl.</b></div>
+        <div className="row"><span>Pollution</span><b style={{ color: ui.colony.pollution > 60 ? '#e0584d' : ui.colony.pollution > 25 ? '#e6c84d' : undefined }}>{ui.colony.pollution}</b></div>
         <div className="row"><span>Treasury</span><b>${ui.colony.treasury.toLocaleString()}</b></div>
         <div className="row"><span>Buildings</span><b>{ui.colony.buildings}</b></div>
         <div className="row"><span>Building</span><b>{ui.colony.building}</b></div>

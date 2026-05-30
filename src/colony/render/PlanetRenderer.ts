@@ -31,6 +31,8 @@ export class PlanetRenderer {
   private roadsMesh!: THREE.InstancedMesh
   private bldgMesh!: THREE.InstancedMesh
   private crewMesh!: THREE.InstancedMesh
+  private streetPostMesh!: THREE.InstancedMesh
+  private streetHeadMesh!: THREE.InstancedMesh
   private dummy = new THREE.Object3D()
   private clock = new THREE.Clock()
   private view: ViewMode = 'biome'
@@ -323,6 +325,27 @@ export class PlanetRenderer {
     this.crewMesh.castShadow = true
     this.crewMesh.frustumCulled = false
     this.scene.add(this.crewMesh)
+
+    // street lights at grid intersections
+    const lightCap = 360
+    const postGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.9, 5)
+    postGeo.translate(0, 0.45, 0)
+    this.streetPostMesh = new THREE.InstancedMesh(postGeo, new THREE.MeshStandardMaterial({ color: 0x2a2a30 }), lightCap)
+    this.streetPostMesh.count = 0
+    this.streetPostMesh.frustumCulled = false
+    this.scene.add(this.streetPostMesh)
+    const headGeo = new THREE.BoxGeometry(0.16, 0.12, 0.16)
+    headGeo.translate(0, 0.93, 0)
+    this.streetHeadMesh = new THREE.InstancedMesh(headGeo, new THREE.MeshStandardMaterial({ color: 0xfff0c0, emissive: 0xffd58a, emissiveIntensity: 0.4 }), lightCap)
+    this.streetHeadMesh.count = 0
+    this.streetHeadMesh.frustumCulled = false
+    this.scene.add(this.streetHeadMesh)
+  }
+
+  private smoothRoadY(x: number, y: number): number {
+    const t = this.sim.state.terrain
+    const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v))
+    return (t.worldY(x, y) + t.worldY(cl(x + 1), y) + t.worldY(cl(x - 1), y) + t.worldY(x, cl(y + 1)) + t.worldY(x, cl(y - 1))) / 5
   }
 
   private updateColonyLayer() {
@@ -332,7 +355,8 @@ export class PlanetRenderer {
     this.roadsMesh.count = rn
     for (let i = 0; i < rn; i++) {
       const r = s.roads[i]!
-      this.dummy.position.set(this.wx(r.x), t.worldY(r.x, r.y) + 0.05, this.wz(r.y))
+      // smoothed height ramps roads over slopes instead of stair-stepping per cell
+      this.dummy.position.set(this.wx(r.x), this.smoothRoadY(r.x, r.y) + 0.03, this.wz(r.y))
       this.dummy.scale.set(1, 1, 1)
       this.dummy.rotation.set(0, 0, 0)
       this.dummy.updateMatrix()
@@ -387,6 +411,33 @@ export class PlanetRenderer {
     if (this.bldgMesh.instanceColor) this.bldgMesh.instanceColor.needsUpdate = true
     this.crewMesh.count = ci
     this.crewMesh.instanceMatrix.needsUpdate = true
+
+    // street lights at grid intersections (where both road lines cross)
+    const B = COLONY.build.block
+    let li = 0
+    for (let i = 0; i < rn; i++) {
+      if (li >= 360) break
+      const r = s.roads[i]!
+      if (((((r.x - car.x) % B) + B) % B) !== 0 || ((((r.y - car.y) % B) + B) % B) !== 0) continue
+      this.dummy.position.set(this.wx(r.x) + 0.45, this.smoothRoadY(r.x, r.y), this.wz(r.y) + 0.45)
+      this.dummy.scale.set(1, 1, 1)
+      this.dummy.rotation.set(0, 0, 0)
+      this.dummy.updateMatrix()
+      this.streetPostMesh.setMatrixAt(li, this.dummy.matrix)
+      this.streetHeadMesh.setMatrixAt(li, this.dummy.matrix)
+      li++
+    }
+    this.streetPostMesh.count = li
+    this.streetHeadMesh.count = li
+    this.streetPostMesh.instanceMatrix.needsUpdate = true
+    this.streetHeadMesh.instanceMatrix.needsUpdate = true
+
+    // day/night emissive: lamps glow and building windows light up after dark
+    const night = 1 - s.clock.daylight
+    ;(this.streetHeadMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.2 + night * 1.4
+    const bmat = this.bldgMesh.material as THREE.MeshStandardMaterial
+    bmat.emissive.setHex(0xffd9a0)
+    bmat.emissiveIntensity = night * 0.4
   }
 
   frame() {

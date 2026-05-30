@@ -54,12 +54,16 @@ export const COLONY = {
     industrialLoad: 0.9,
     workplaceBuildHours: 5,
     jobDeficitThreshold: 5, // build a workplace when unemployment exceeds this
+    block: 5, // grid block size — roads run on the block boundaries (no parallel roads)
+    maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
+    pollutionPerIndustrial: 3,
   },
 
   economy: {
     incomePerColonistPerDay: 150,
     buildingUpkeepPerDay: 14,
     roadUpkeepPerDay: 0.4,
+    pollutionPenaltyScale: 320, // income is dragged down as pollution rises (capped)
   },
 
   render: {

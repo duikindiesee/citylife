@@ -42,6 +42,8 @@ export interface ColonyState {
   powerGen: number
   lastIncomeDay: number
   totalJobs: number
+  developedBlocks: Set<string>
+  pollution: number
 }
 
 function daylightAt(hour: number, minute: number): number {
@@ -91,6 +93,8 @@ export class ColonySim {
       powerGen: 0,
       lastIncomeDay: 0,
       totalJobs: 0,
+      developedBlocks: new Set(),
+      pollution: 0,
     }
     initBuild(this.state)
   }
