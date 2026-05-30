@@ -31,13 +31,13 @@ export function ColonyApp() {
   const runtime = useRuntime()
   const hostRef = useRef<HTMLDivElement>(null)
   const ui: ColonyUiState = runtime.getUiState()
-  const [immig, setImmig] = useState<{ open: boolean; name: string; busy: boolean; card: { id: number; name: string } | null; error: string | null }>({ open: false, name: '', busy: false, card: null, error: null })
-  const openImmig = () => setImmig({ open: true, name: runtime.rollName(), busy: false, card: null, error: null })
+  const [immig, setImmig] = useState<{ open: boolean; name: string; busy: boolean; reg: { card: { id: number; name: string }; holdings: number; settlement: number } | null; error: string | null }>({ open: false, name: '', busy: false, reg: null, error: null })
+  const openImmig = () => setImmig({ open: true, name: runtime.rollName(), busy: false, reg: null, error: null })
   const doRegister = async () => {
     setImmig((s) => ({ ...s, busy: true, error: null }))
     try {
-      const card = await runtime.registerSettler(immig.name.trim() || runtime.rollName())
-      setImmig((s) => ({ ...s, busy: false, card }))
+      const reg = await runtime.registerSettler(immig.name.trim() || runtime.rollName())
+      setImmig((s) => ({ ...s, busy: false, reg }))
     } catch (e) {
       setImmig((s) => ({ ...s, busy: false, error: String((e as Error)?.message ?? e) }))
     }
@@ -113,12 +113,18 @@ export function ColonyApp() {
           <div className="batt-head"><span>Battery</span><b>{pct}%</b></div>
           <div className="bar"><div style={{ width: `${pct}%`, background: battColor }} /></div>
         </div>
-        <button className="buildbtn" onClick={() => runtime.buildNow()}>+ Build habitat</button>
         <div className="row" style={{ marginTop: 10 }}><span>Settlers</span><b>{ui.settlers.count}</b></div>
         {ui.settlers.recent.length > 0 && (
           <div className="settler-list">{ui.settlers.recent.map((s) => <span key={s.id} className="chip">#{s.id} {s.name}</span>)}</div>
         )}
-        <button className="immigbtn" onClick={openImmig}>🛸 Welcome a settler</button>
+        <button className="immigbtn" onClick={openImmig}>🛂 Border security — welcome a settler</button>
+
+        <h2 style={{ marginTop: 18 }}>Kookerverse Bank</h2>
+        <div className="row"><span>Deposits</span><b>{ui.bank.currency}{ui.bank.deposits.toLocaleString()}</b></div>
+        <div className="row"><span>Accounts</span><b>{ui.bank.accounts}</b></div>
+        {ui.bank.recent.length > 0 && (
+          <div className="ledger">{ui.bank.recent.map((tx) => <div key={tx.id} className="ledger-row">{tx.memo}</div>)}</div>
+        )}
       </aside>
 
       <div className="hint">
@@ -129,7 +135,7 @@ export function ColonyApp() {
       {immig.open && (
         <div className="modal-overlay" onClick={() => setImmig((s) => ({ ...s, open: false }))}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            {!immig.card ? (
+            {!immig.reg ? (
               <>
                 <h3>A settler wants to move to {ui.name} 🛸</h3>
                 <p>They'll register for a <b>KOOKER card</b> in your real kooker system, and we'll build them a unique home.</p>
@@ -145,13 +151,13 @@ export function ColonyApp() {
               </>
             ) : (
               <>
-                <h3>Welcome, {immig.card.name}! 🎉</h3>
+                <h3>Welcome to {ui.name}, {immig.reg.card.name}! 🎉</h3>
                 <div className="kcard">
                   <div className="kcard-label">KOOKER CARD</div>
-                  <div className="kcard-id">#{immig.card.id}</div>
-                  <div className="kcard-name">{immig.card.name}</div>
+                  <div className="kcard-id">#{immig.reg.card.id}</div>
+                  <div className="kcard-name">{immig.reg.card.name}</div>
                 </div>
-                <p>Registered in kooker. Their unique home has been built in {ui.name}.</p>
+                <p>Registered in kooker. Deposited <b>{ui.bank.currency}{immig.reg.holdings.toLocaleString()}</b> into the Kookerverse Bank, and paid <b>{ui.bank.currency}{immig.reg.settlement.toLocaleString()}</b> into the colony for their house.</p>
                 <div className="modal-actions">
                   <button onClick={openImmig}>Welcome another</button>
                   <button className="primary" onClick={() => setImmig((s) => ({ ...s, open: false }))}>Done</button>

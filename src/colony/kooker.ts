@@ -42,16 +42,6 @@ export async function registerSettler(name: string): Promise<KookerCard> {
   return { id: u.id, name: u.name ?? name, username: u.username ?? username, email: u.email ?? email }
 }
 
-/** All existing CityLife settlers already registered in kooker (so they persist across reloads). */
-export async function listSettlers(): Promise<KookerCard[]> {
-  try {
-    const res = await fetch('/kooker/api/users')
-    if (!res.ok) return []
-    const us: any[] = await res.json()
-    return us
-      .filter((u) => typeof u.email === 'string' && u.email.endsWith('@citylife.local'))
-      .map((u) => ({ id: u.id, name: u.name, username: u.username, email: u.email }))
-  } catch {
-    return []
-  }
-}
+// NOTE: we deliberately do NOT GET /api/users from the browser. Pulling the full user list would
+// leak everyone's logins into the client. Settlers are tracked locally (see settlers.ts); the
+// game only ever POSTs its own registration. Locking down that public endpoint is an infra task.

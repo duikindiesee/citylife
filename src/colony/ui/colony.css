@@ -32,10 +32,13 @@ html, body, #root { margin: 0; height: 100%; background: #05070f; color: var(--t
 .group button.on { background: var(--accent); color: #04231f; font-weight: 600; }
 
 .hud {
-  position: absolute; top: 64px; right: 16px; width: 210px;
+  position: absolute; top: 64px; right: 16px; width: 226px;
+  max-height: calc(100vh - 88px); overflow-y: auto;
   background: var(--panel); border: 1px solid var(--brd); border-radius: 14px;
   padding: 14px; backdrop-filter: blur(10px);
 }
+.ledger { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.ledger-row { font-size: 11px; color: var(--muted); border-left: 2px solid var(--accent); padding-left: 7px; line-height: 1.45; }
 .hud h2 { margin: 0 0 10px; font-size: 15px; }
 .hud .row { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; color: var(--muted); }
 .hud .row b { color: var(--text); font-variant-numeric: tabular-nums; }

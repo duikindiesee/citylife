@@ -16,7 +16,7 @@ export const COLONY = {
     },
   },
   time: {
-    stepsPerSec: 15,
+    stepsPerSec: 6, // slow, watchable Kookerverse pace (~80 real sec/sim-day at 1x; use 2x/5x)
     simMinPerStep: 3,
     dayStartHour: 6,
     dayEndHour: 20,
@@ -36,7 +36,7 @@ export const COLONY = {
     habitatCost: 1500,
     roadCostPerCell: 35,
     buildTimeHours: 5, // sim-hours to construct one habitat
-    growIntervalHours: 3, // colony starts a new build this often
+    growIntervalHours: 4, // colony starts a new build this often (gentler with the slower clock)
     maxBuildings: 60,
     residentsPerHabitat: 3,
     powerLoadPerHabitat: 0.5,

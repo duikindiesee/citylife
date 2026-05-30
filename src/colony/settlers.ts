@@ -1,11 +1,13 @@
-// Settlers: named, KOOKER-carded residents with a unique home. Placement on the grid + local
-// persistence (their lot positions) so they remain across refresh. Identity lives in kooker;
-// each house is regenerated deterministically from the KOOKER id.
+// Settlers: named, KOOKER-carded residents with a unique home and a Kookerverse bank account.
+// Arriving at border security, they deposit their Earth holdings (double-entry) and pay a house
+// + settlement fee into the colony economy. Lot positions + ledger persist locally so the
+// Kookerverse remains across refresh; identity lives in kooker; houses regenerate from the id.
 import { RNG } from '../engine/rng'
 import { claimLot } from './build'
 import { designHouse, type HouseSpec } from './house'
 import type { KookerCard } from './kooker'
 import type { ColonyState } from './sim'
+import { post } from './ledger'
 
 export interface Settler {
   kookerId: number
@@ -15,33 +17,57 @@ export interface Settler {
   house: HouseSpec
 }
 
-/** Place a registered settler on a fresh lot with their unique home. */
-export function addSettler(state: ColonyState, rng: RNG, card: KookerCard): Settler | null {
+export interface SettlerResult {
+  settler: Settler
+  holdings: number
+  settlement: number
+}
+
+/** Place a settler with a unique home and inject their holdings into the economy. */
+export function addSettler(state: ColonyState, rng: RNG, card: KookerCard): SettlerResult | null {
   const lot = claimLot(state, rng)
   if (!lot) return null
   const settler: Settler = { kookerId: card.id, name: card.name, x: lot.x, y: lot.y, house: designHouse(card.id) }
   state.settlers.push(settler)
-  state.colonists += 2 // the settler + their household
-  return settler
+  state.colonists += 2
+
+  // double-entry: holdings flow from Earth into the settler's Kookerverse bank account...
+  const holdings = rng.int(8000, 60000)
+  post(state.ledger, `Border: ${card.name} deposits Earth holdings`, [
+    { account: 'earth', amount: -holdings },
+    { account: `settler:${card.id}`, amount: holdings },
+  ])
+  // ...then they pay a house + settlement fee into the colony treasury.
+  const settlement = Math.round(holdings * (0.25 + rng.next() * 0.3))
+  post(state.ledger, `House & settlement: ${card.name}`, [
+    { account: `settler:${card.id}`, amount: -settlement },
+    { account: 'treasury', amount: settlement },
+  ])
+  state.treasury += settlement // injected into the live colony economy
+
+  return { settler, holdings, settlement }
 }
 
-const LS_KEY = 'citylife.settlers.v1'
+const LS_SETTLERS = 'citylife.settlers.v1'
+const LS_LEDGER = 'citylife.ledger.v1'
 
-export function saveSettlers(state: ColonyState): void {
+export function saveColony(state: ColonyState): void {
   try {
     const slim = state.settlers.map((s) => ({ kookerId: s.kookerId, name: s.name, x: s.x, y: s.y }))
-    localStorage.setItem(LS_KEY, JSON.stringify(slim))
+    localStorage.setItem(LS_SETTLERS, JSON.stringify(slim))
+    localStorage.setItem(LS_LEDGER, JSON.stringify(state.ledger))
   } catch {
-    /* no storage (tests / private mode) */
+    /* no storage */
   }
 }
 
-/** Re-place previously-registered settlers at their saved lots (homes regenerate from the id). */
-export function restoreSettlers(state: ColonyState): number {
+/** Re-place previously-registered settlers and restore the ledger (no re-injection). */
+export function restoreColony(state: ColonyState): number {
   let saved: { kookerId: number; name: string; x: number; y: number }[] = []
   try {
-    const raw = localStorage.getItem(LS_KEY)
-    saved = raw ? JSON.parse(raw) : []
+    saved = JSON.parse(localStorage.getItem(LS_SETTLERS) ?? '[]')
+    const ledger = JSON.parse(localStorage.getItem(LS_LEDGER) ?? 'null')
+    if (ledger && ledger.accounts) state.ledger = ledger
   } catch {
     return 0
   }

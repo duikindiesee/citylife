@@ -5,7 +5,8 @@ import { PlanetRenderer, type CameraPreset, type ViewMode } from './render/Plane
 import { Biome } from './terrain'
 import { autoGrow } from './build'
 import { registerSettler as kookerRegister, generateName as randomSettlerName, type KookerCard } from './kooker'
-import { addSettler, saveSettlers, restoreSettlers } from './settlers'
+import { addSettler, saveColony, restoreColony } from './settlers'
+import { bankDeposits, CURRENCY } from './ledger'
 
 const BIOME_LABEL: Record<number, string> = {
   [Biome.Ocean]: 'Ocean',
@@ -28,6 +29,7 @@ export interface ColonyUiState {
   colonists: number
   colony: { treasury: number; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
   settlers: { count: number; recent: { id: number; name: string }[] }
+  bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
   name: string
   biome: string
   view: ViewMode
@@ -50,7 +52,7 @@ export class ColonyRuntime {
 
   constructor(seed: number = COLONY.render.seed) {
     this.sim = new ColonySim(seed)
-    restoreSettlers(this.sim.state) // re-place previously-registered KOOKER settlers
+    restoreColony(this.sim.state) // re-place settlers + restore the Kookerverse ledger
   }
 
   /** Roll a fresh playful settler name for the immigration dialog. */
@@ -58,13 +60,13 @@ export class ColonyRuntime {
     return randomSettlerName(this.sim.rng)
   }
 
-  /** Register a settler with the real kooker user service, place them with a unique home. */
-  async registerSettler(name: string): Promise<KookerCard> {
+  /** Register a settler with the real kooker user service, place them, inject their holdings. */
+  async registerSettler(name: string): Promise<{ card: KookerCard; holdings: number; settlement: number }> {
     const card = await kookerRegister(name)
-    addSettler(this.sim.state, this.sim.rng, card)
-    saveSettlers(this.sim.state)
+    const res = addSettler(this.sim.state, this.sim.rng, card)
+    saveColony(this.sim.state)
     this.emit()
-    return card
+    return { card, holdings: res?.holdings ?? 0, settlement: res?.settlement ?? 0 }
   }
 
   start(container: HTMLElement) {
@@ -160,6 +162,12 @@ export class ColonyRuntime {
         pollution: Math.round(s.pollution),
       },
       settlers: { count: s.settlers.length, recent: s.settlers.slice(-6).reverse().map((x) => ({ id: x.kookerId, name: x.name })) },
+      bank: {
+        currency: CURRENCY,
+        deposits: Math.round(bankDeposits(s.ledger)),
+        accounts: s.settlers.length,
+        recent: s.ledger.txns.slice(0, 6).map((tx) => ({ id: tx.id, memo: tx.memo })),
+      },
       name: s.name,
       biome: BIOME_LABEL[s.terrain.biome[li]!] ?? 'Unknown',
       view: this.view,
