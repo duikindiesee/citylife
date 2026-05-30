@@ -29,7 +29,9 @@ export class PlanetRenderer {
   private hemi: THREE.HemisphereLight
   private terrainMesh!: THREE.Mesh
   private terrainGeo!: THREE.BufferGeometry
-  private roadsMesh!: THREE.InstancedMesh
+  private roadSurfaceMesh!: THREE.Mesh
+  private roadLineMesh!: THREE.Mesh
+  private lastRoadCount = -1
   private bldgMesh!: THREE.InstancedMesh
   private crewMesh!: THREE.InstancedMesh
   private streetPostMesh!: THREE.InstancedMesh
@@ -309,11 +311,20 @@ export class PlanetRenderer {
   }
 
   private buildColonyLayer() {
-    const roadGeo = new THREE.BoxGeometry(1, 0.07, 1)
-    this.roadsMesh = new THREE.InstancedMesh(roadGeo, new THREE.MeshStandardMaterial({ color: 0x3c3c44, roughness: 1, metalness: 0 }), 3200)
-    this.roadsMesh.count = 0
-    this.roadsMesh.frustumCulled = false
-    this.scene.add(this.roadsMesh)
+    // Roads drape on the terrain (elevation-compatible): a continuous asphalt ribbon with a
+    // dashed centre line, rebuilt as the network grows. Shared corner heights => no stair-steps.
+    this.roadSurfaceMesh = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0x2e2e34, roughness: 1, metalness: 0, side: THREE.DoubleSide }),
+    )
+    this.roadSurfaceMesh.frustumCulled = false
+    this.scene.add(this.roadSurfaceMesh)
+    this.roadLineMesh = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0xd8c879, roughness: 0.8, metalness: 0, emissive: 0x2a2410, emissiveIntensity: 0.3, side: THREE.DoubleSide }),
+    )
+    this.roadLineMesh.frustumCulled = false
+    this.scene.add(this.roadLineMesh)
 
     const bGeo = new THREE.BoxGeometry(0.82, 1, 0.82)
     bGeo.translate(0, 0.5, 0)
@@ -420,6 +431,45 @@ export class PlanetRenderer {
     return (t.worldY(x, y) + t.worldY(cl(x + 1), y) + t.worldY(cl(x - 1), y) + t.worldY(x, cl(y + 1)) + t.worldY(x, cl(y - 1))) / 5
   }
 
+  // Terrain height at a grid corner = mean of the 4 cells meeting there. Adjacent road cells
+  // share corners, so the draped ribbon stays continuous (no stair-steps) and ramps over slopes.
+  private cornerY(gx: number, gy: number): number {
+    const t = this.sim.state.terrain
+    const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v))
+    return (t.worldY(cl(gx - 1), cl(gy - 1)) + t.worldY(cl(gx), cl(gy - 1)) + t.worldY(cl(gx - 1), cl(gy)) + t.worldY(cl(gx), cl(gy))) / 4
+  }
+
+  // Rebuild road geometry: asphalt quads draped on the terrain + dashed centre lines.
+  private rebuildRoads() {
+    const s = this.sim.state
+    const car = s.structures.find((st) => st.kind === 'caravan')
+    const B = COLONY.build.block
+    const LIFT = 0.05
+    const surf: number[] = []
+    const line: number[] = []
+    const tri = (arr: number[], a: number[], b: number[], c: number[]) => arr.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!)
+    const quad = (arr: number[], a: number[], b: number[], c: number[], d: number[]) => { tri(arr, a, c, b); tri(arr, b, c, d) }
+    const corner = (gx: number, gy: number): number[] => [this.wx(gx) - 0.5, this.cornerY(gx, gy) + LIFT, this.wz(gy) - 0.5]
+    for (const r of s.roads) {
+      const x = r.x, y = r.y
+      quad(surf, corner(x, y), corner(x + 1, y), corner(x, y + 1), corner(x + 1, y + 1))
+      if (!car) continue
+      const onV = ((((x - car.x) % B) + B) % B) === 0 // on a north-south grid line
+      const onH = ((((y - car.y) % B) + B) % B) === 0 // on an east-west grid line
+      if (onV === onH) continue // intersection or off-grid fill -> no centre dash
+      const h = this.smoothRoadY(x, y) + LIFT + 0.03
+      const wx = this.wx(x), wz = this.wz(y)
+      if (onV) quad(line, [wx - 0.05, h, wz - 0.3], [wx + 0.05, h, wz - 0.3], [wx - 0.05, h, wz + 0.3], [wx + 0.05, h, wz + 0.3])
+      else quad(line, [wx - 0.3, h, wz - 0.05], [wx + 0.3, h, wz - 0.05], [wx - 0.3, h, wz + 0.05], [wx + 0.3, h, wz + 0.05])
+    }
+    const sg = this.roadSurfaceMesh.geometry as THREE.BufferGeometry
+    sg.setAttribute('position', new THREE.Float32BufferAttribute(surf, 3))
+    sg.computeVertexNormals()
+    const lg = this.roadLineMesh.geometry as THREE.BufferGeometry
+    lg.setAttribute('position', new THREE.Float32BufferAttribute(line, 3))
+    lg.computeVertexNormals()
+  }
+
   private updateColonyLayer() {
     const s = this.sim.state
     const t = s.terrain
@@ -427,19 +477,12 @@ export class PlanetRenderer {
       this.rebuildSettlerHomes()
       this.lastSettlerCount = s.settlers.length
     }
-    const rn = Math.min(s.roads.length, 3200)
-    this.roadsMesh.count = rn
-    for (let i = 0; i < rn; i++) {
-      const r = s.roads[i]!
-      // smoothed height ramps roads over slopes; oversized tiles overlap so the road
-      // reads as one continuous ribbon instead of separate tiles
-      this.dummy.position.set(this.wx(r.x), this.smoothRoadY(r.x, r.y) + 0.03, this.wz(r.y))
-      this.dummy.scale.set(1.14, 1, 1.14)
-      this.dummy.rotation.set(0, 0, 0)
-      this.dummy.updateMatrix()
-      this.roadsMesh.setMatrixAt(i, this.dummy.matrix)
+    // roads drape on the terrain; rebuild the ribbon only when the network grows
+    if (s.roads.length !== this.lastRoadCount) {
+      this.rebuildRoads()
+      this.lastRoadCount = s.roads.length
     }
-    this.roadsMesh.instanceMatrix.needsUpdate = true
+    const rn = s.roads.length
 
     const col = new THREE.Color()
     const cap = COLONY.build.maxBuildings + 8
