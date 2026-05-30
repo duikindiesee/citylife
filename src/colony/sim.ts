@@ -4,6 +4,8 @@ import { COLONY } from './config'
 import { Terrain } from './terrain'
 import { initBuild, stepBuild } from './build'
 import type { ColonyBuilding, ConstructionJob, Parcel, RoadCell } from './build'
+import { updateTraffic } from './traffic'
+import type { Car } from './traffic'
 
 export type StructureKind = 'caravan' | 'solar' | 'battery' | 'rocket'
 export interface SeedStructure {
@@ -44,6 +46,7 @@ export interface ColonyState {
   totalJobs: number
   developedBlocks: Set<string>
   pollution: number
+  cars: Car[]
 }
 
 function daylightAt(hour: number, minute: number): number {
@@ -95,6 +98,7 @@ export class ColonySim {
       totalJobs: 0,
       developedBlocks: new Set(),
       pollution: 0,
+      cars: [],
     }
     initBuild(this.state)
   }
@@ -141,5 +145,6 @@ export class ColonySim {
     p.batteryWh = Math.max(0, Math.min(p.batteryCapWh, p.batteryWh + (p.solarW - p.loadW) * dtHours))
 
     stepBuild(s, this.rng, dt)
+    updateTraffic(s, this.rng, dt)
   }
 }

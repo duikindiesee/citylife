@@ -33,6 +33,7 @@ export class PlanetRenderer {
   private crewMesh!: THREE.InstancedMesh
   private streetPostMesh!: THREE.InstancedMesh
   private streetHeadMesh!: THREE.InstancedMesh
+  private carsMesh!: THREE.InstancedMesh
   private dummy = new THREE.Object3D()
   private clock = new THREE.Clock()
   private view: ViewMode = 'biome'
@@ -305,8 +306,8 @@ export class PlanetRenderer {
   }
 
   private buildColonyLayer() {
-    const roadGeo = new THREE.BoxGeometry(1, 0.08, 1)
-    this.roadsMesh = new THREE.InstancedMesh(roadGeo, new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.95 }), 3200)
+    const roadGeo = new THREE.BoxGeometry(1, 0.07, 1)
+    this.roadsMesh = new THREE.InstancedMesh(roadGeo, new THREE.MeshStandardMaterial({ color: 0x3c3c44, roughness: 1, metalness: 0 }), 3200)
     this.roadsMesh.count = 0
     this.roadsMesh.frustumCulled = false
     this.scene.add(this.roadsMesh)
@@ -340,6 +341,13 @@ export class PlanetRenderer {
     this.streetHeadMesh.count = 0
     this.streetHeadMesh.frustumCulled = false
     this.scene.add(this.streetHeadMesh)
+
+    const carGeo = new THREE.BoxGeometry(0.36, 0.16, 0.2) // length along +X
+    this.carsMesh = new THREE.InstancedMesh(carGeo, new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.25 }), COLONY.traffic.maxCars + 4)
+    this.carsMesh.count = 0
+    this.carsMesh.castShadow = true
+    this.carsMesh.frustumCulled = false
+    this.scene.add(this.carsMesh)
   }
 
   private smoothRoadY(x: number, y: number): number {
@@ -355,9 +363,10 @@ export class PlanetRenderer {
     this.roadsMesh.count = rn
     for (let i = 0; i < rn; i++) {
       const r = s.roads[i]!
-      // smoothed height ramps roads over slopes instead of stair-stepping per cell
+      // smoothed height ramps roads over slopes; oversized tiles overlap so the road
+      // reads as one continuous ribbon instead of separate tiles
       this.dummy.position.set(this.wx(r.x), this.smoothRoadY(r.x, r.y) + 0.03, this.wz(r.y))
-      this.dummy.scale.set(1, 1, 1)
+      this.dummy.scale.set(1.14, 1, 1.14)
       this.dummy.rotation.set(0, 0, 0)
       this.dummy.updateMatrix()
       this.roadsMesh.setMatrixAt(i, this.dummy.matrix)
@@ -431,6 +440,26 @@ export class PlanetRenderer {
     this.streetHeadMesh.count = li
     this.streetPostMesh.instanceMatrix.needsUpdate = true
     this.streetHeadMesh.instanceMatrix.needsUpdate = true
+
+    // cars — drawn offset to the LEFT of their heading (left-lane driving)
+    const carCol = new THREE.Color()
+    const off = COLONY.traffic.laneOffset
+    const cn = Math.min(s.cars.length, COLONY.traffic.maxCars + 4)
+    this.carsMesh.count = cn
+    for (let i = 0; i < cn; i++) {
+      const v = s.cars[i]!
+      const lx = v.x - Math.sin(v.heading) * off
+      const ly = v.y + Math.cos(v.heading) * off
+      this.dummy.position.set(this.wx(lx), this.smoothRoadY(Math.round(v.x), Math.round(v.y)) + 0.12, this.wz(ly))
+      this.dummy.rotation.set(0, -v.heading, 0)
+      this.dummy.scale.set(1, 1, 1)
+      this.dummy.updateMatrix()
+      this.carsMesh.setMatrixAt(i, this.dummy.matrix)
+      carCol.setHex(v.color)
+      this.carsMesh.setColorAt(i, carCol)
+    }
+    this.carsMesh.instanceMatrix.needsUpdate = true
+    if (this.carsMesh.instanceColor) this.carsMesh.instanceColor.needsUpdate = true
 
     // day/night emissive: lamps glow and building windows light up after dark
     const night = 1 - s.clock.daylight

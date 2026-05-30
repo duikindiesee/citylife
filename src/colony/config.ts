@@ -66,6 +66,13 @@ export const COLONY = {
     pollutionPenaltyScale: 320, // income is dragged down as pollution rises (capped)
   },
 
+  traffic: {
+    maxCars: 22,
+    carSpeed: 14, // lots per sim-hour
+    laneOffset: 0.22, // how far cars sit to the LEFT of their travel direction
+    maxWaitSteps: 50, // failsafe so a jammed car eventually proceeds (no deadlock)
+  },
+
   render: {
     seed: 4242,
   },
