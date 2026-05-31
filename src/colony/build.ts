@@ -103,6 +103,9 @@ function developBlock(state: ColonyState, bx: number, by: number): number {
   const lay = (x: number, y: number) => {
     if (!t.inBounds(x, y)) return
     if (t.isWater(x, y)) return // roads stop at water (bridges later); steep land drapes fine
+    // Belt-and-suspenders: never lay a road on top of a base structure cell, even if `nearbyInterior`
+    // got displaced. Keeps the rocket / solar / battery clear of the road frame.
+    for (const s of state.structures) if (s.x === x && s.y === y) return
     const k = key(x, y)
     if (state.roadSet.has(k)) return
     state.roadSet.add(k)
