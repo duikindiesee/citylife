@@ -77,16 +77,31 @@ export class KookerInferenceBotAdapter implements BotAdapter {
       ...history.map((m) => ({ role: m.role === 'bot' ? 'assistant' : 'user', content: m.text })),
       { role: 'user', content: question },
     ]
-    const res = await fetch(this.url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', Authorization: `Bearer ${this.token}`, 'X-Kooker-Tier': 'external' },
-      body: JSON.stringify({ model: this.model, messages, max_tokens: 220, temperature: 0.8 }),
-    })
-    if (!res.ok) throw new Error(`inference HTTP ${res.status}`)
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
-    const content = data?.choices?.[0]?.message?.content
-    if (typeof content !== 'string' || !content.trim()) throw new Error('empty inference response')
-    return content.trim()
+    const body = JSON.stringify({ model: this.model, messages, max_tokens: 220, temperature: 0.8 })
+    let lastErr = 'unknown error'
+    // Retry transient 5xx (502/503/504): the kooker inference/gateway flaps under the cluster's RAM pressure.
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        const res = await fetch(this.url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', Authorization: `Bearer ${this.token}`, 'X-Kooker-Tier': 'external' },
+          body,
+        })
+        if (res.ok) {
+          const data = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+          const content = data?.choices?.[0]?.message?.content
+          if (typeof content === 'string' && content.trim()) return content.trim()
+          lastErr = 'empty response'
+        } else {
+          lastErr = `HTTP ${res.status}`
+          if (res.status < 500) break // a real 4xx — don't retry
+        }
+      } catch (e) {
+        lastErr = (e as Error).message || 'network error'
+      }
+      if (attempt < 4) await new Promise((r) => setTimeout(r, 600 * attempt)) // backoff
+    }
+    throw new Error(`inference ${lastErr}`)
   }
 }
 
