@@ -10,6 +10,7 @@ import { bankDeposits, CURRENCY } from './ledger'
 import { MockBackend, type CityLifeBackend, type Decision } from './backend'
 import type { Household } from './newcomers'
 import { BotService, defaultBotAdapter, type Bot } from './bots'
+import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
 
 const BIOME_LABEL: Record<number, string> = {
   [Biome.Ocean]: 'Ocean',
@@ -33,7 +34,7 @@ export interface ColonyUiState {
   colony: { treasury: number; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
   settlers: { count: number; recent: { id: number; name: string }[] }
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
-  border: { households: Household[]; bots: Bot[]; botSource: string }
+  border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
   name: string
   biome: string
   view: ViewMode
@@ -57,10 +58,14 @@ export class ColonyRuntime {
   private backend: CityLifeBackend = new MockBackend((Date.now() & 0x7fffffff) >>> 0)
   // Newcomer bots: REAL Hermes replies via kooker inference when VITE_CITYLIFE_PAT is set, else mock.
   private botService = new BotService(defaultBotAdapter())
+  // The surveyed city plan the Border Patrol bot uses to allocate plots.
+  private cityPlan!: CityPlan
 
   constructor(seed: number = COLONY.render.seed) {
     this.sim = new ColonySim(seed)
     restoreColony(this.sim.state) // re-place settlers + restore the Kookerverse ledger
+    this.cityPlan = makeCityPlan(this.sim.state.terrain)
+    this.botService.setCityPlan(this.cityPlan)
   }
 
   /** Roll a fresh playful settler name for the immigration dialog. */
@@ -203,7 +208,7 @@ export class ColonyRuntime {
         accounts: s.settlers.length,
         recent: s.ledger.txns.slice(0, 6).map((tx) => ({ id: tx.id, memo: tx.memo })),
       },
-      border: { households: this.backend.households(), bots: this.botService.bots, botSource: this.botService.source },
+      border: { households: this.backend.households(), bots: this.botService.bots, botSource: this.botService.source, plots: this.cityPlan.plots },
       name: s.name,
       biome: BIOME_LABEL[s.terrain.biome[li]!] ?? 'Unknown',
       view: this.view,

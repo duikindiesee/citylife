@@ -437,7 +437,11 @@ export class PlanetRenderer {
   private cornerY(gx: number, gy: number): number {
     const t = this.sim.state.terrain
     const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v))
-    return (t.worldY(cl(gx - 1), cl(gy - 1)) + t.worldY(cl(gx), cl(gy - 1)) + t.worldY(cl(gx - 1), cl(gy)) + t.worldY(cl(gx), cl(gy))) / 4
+    const avg =
+      (t.worldY(cl(gx - 1), cl(gy - 1)) + t.worldY(cl(gx), cl(gy - 1)) + t.worldY(cl(gx - 1), cl(gy)) + t.worldY(cl(gx), cl(gy))) / 4
+    // Clamp to the sea plane: at the coast some of the 4 corner cells are below sea level (ocean),
+    // which would otherwise pull the road corner into the water visually.
+    return Math.max(0, avg)
   }
 
   // Rebuild road geometry: asphalt quads draped on the terrain + dashed centre lines.
@@ -489,7 +493,7 @@ export class PlanetRenderer {
     let bi = 0
     for (const b of s.buildings) {
       if (bi >= cap) break
-      this.dummy.position.set(this.wx(b.x), t.worldY(b.x, b.y), this.wz(b.y))
+      this.dummy.position.set(this.wx(b.x), Math.max(0, t.worldY(b.x, b.y)), this.wz(b.y))
       this.dummy.scale.set(1, Math.max(0.15, b.artifact.height), 1)
       this.dummy.rotation.set(0, 0, 0)
       this.dummy.updateMatrix()
@@ -503,7 +507,7 @@ export class PlanetRenderer {
     for (const j of s.jobs) {
       if (bi < cap) {
         const phase = Math.max(0, (j.progress - 0.25) / 0.75) // rises only after the crew arrives
-        this.dummy.position.set(this.wx(j.x), t.worldY(j.x, j.y), this.wz(j.y))
+        this.dummy.position.set(this.wx(j.x), Math.max(0, t.worldY(j.x, j.y)), this.wz(j.y))
         this.dummy.scale.set(1, Math.max(0.04, j.artifact.height * phase), 1)
         this.dummy.rotation.set(0, 0, 0)
         this.dummy.updateMatrix()

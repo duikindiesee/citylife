@@ -131,7 +131,21 @@ export function ColonyApp() {
             <p>The border is the only way onto the planet. Review each family and decide who may settle.</p>
             {ui.border.botSource === 'mock'
               ? <p className="border-note">🤖 Bot replies are <b>mock stand-ins</b> — set <code>VITE_CITYLIFE_PAT</code> in <code>.env.local</code> for true Hermes responses.</p>
-              : <p className="border-note">🤖 Bot replies are <b>live from kooker inference</b> ({ui.border.botSource}).</p>}
+              : <p className="border-note">🧠 <b>Border Patrol Bot</b> (the city brain) and the newcomers are live from kooker inference ({ui.border.botSource}).</p>}
+            {ui.border.plots.length > 0 && (
+              <details className="plan-panel">
+                <summary>📐 City Plan — {ui.border.plots.filter((p) => !p.assignedTo).length} of {ui.border.plots.length} plots available</summary>
+                <div className="plan-list">
+                  {ui.border.plots.map((p) => (
+                    <div key={p.id} className={`plan-row plan-${p.assignedTo ? 'taken' : 'free'}`}>
+                      <b>{p.name}</b> <span className="plan-vibe">{p.vibe}</span>
+                      <span className="plan-desc">{p.description}</span>
+                      <span className="plan-status">{p.assignedTo ? 'allocated' : 'available'}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
             <button className="primary border-add" onClick={addNewcomer}>+ A family arrives at the border</button>
             {ui.border.households.length === 0 && <div className="border-empty">No arrivals yet — receive a family to begin.</div>}
             <div className="border-list">
@@ -156,12 +170,21 @@ export function ColonyApp() {
                         <div className="bot-head">🤖 {bot.name} <span className="bot-src">{bot.source}</span> <span className="bot-st">{bot.status}</span></div>
                         {bot.status === 'booting' && <div className="bot-booting">booting bot &amp; injecting life history…</div>}
                         <div className="bot-thread">
-                          {bot.messages.map((m, i) => (
-                            <div key={i} className={`bot-msg bot-${m.role}`}>
-                              <b>{m.role === 'patrol' ? '🛂 Patrol' : `🤖 ${bot.name}`}</b> {m.text}
-                            </div>
-                          ))}
+                          {bot.messages.map((m, i) => {
+                            if (m.speaker === 'narrator') return <div key={i} className="bot-narrator">{m.text}</div>
+                            const isPatrol = m.speaker === 'patrol'
+                            return (
+                              <div key={i} className={`bot-msg bot-${m.speaker}`}>
+                                <b>{isPatrol ? '🛂 Border Patrol' : `🤖 ${bot.name}`}</b> {m.text}
+                              </div>
+                            )
+                          })}
                         </div>
+                        {bot.plotId && (() => {
+                          const plot = ui.border.plots.find((p) => p.id === bot.plotId)
+                          if (!plot) return null
+                          return <div className="bot-plot">🏷️ Plot: <b>{plot.name}</b> · <i>{plot.vibe}</i> · {plot.description}</div>
+                        })()}
                         {bot.status === 'error' && <div className="bot-err">⚠ {bot.error}</div>}
                         {(bot.status === 'awake' || bot.status === 'error') && (
                           <div className="bot-asks">

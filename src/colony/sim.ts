@@ -67,13 +67,21 @@ export class ColonySim {
     const terrain = new Terrain(this.rng)
     const { x: lx, y: ly } = terrain.landing
 
-    // Base structures, spaced inside the landing block (block 0,0 is centred on the caravan) so
-    // they don't overlap each other and no road runs under them.
+    // Base structures, spread inside the landing block (block 0,0 centred on the caravan; block=7
+    // gives a 6×6 interior so the base is no longer cramped). Footprints reflect mesh widths so
+    // wide structures (caravan 3-wide, solar 2.6-wide, rocket cylinder) don't dip into water.
+    // Block boundaries become roads, so placement skips them; later structures avoid earlier ones.
+    const used: { x: number; y: number }[] = [{ x: lx, y: ly }]
+    const placeAvoid = (kind: StructureKind, x: number, y: number, footprint: number): SeedStructure => {
+      const p = this.nearbyInterior(terrain, x, y, footprint, used, lx, ly)
+      used.push(p)
+      return { kind, x: p.x, y: p.y }
+    }
     const structures: SeedStructure[] = [
       { kind: 'caravan', x: lx, y: ly },
-      this.place(terrain, 'rocket', lx + 2, ly + 2),
-      this.place(terrain, 'solar', lx - 1, ly + 2),
-      this.place(terrain, 'battery', lx + 2, ly - 1),
+      placeAvoid('rocket', lx + 3, ly + 2, 1),
+      placeAvoid('solar', lx - 2, ly + 2, 1),
+      placeAvoid('battery', lx + 2, ly - 2, 1),
     ]
 
     this.state = {
@@ -110,22 +118,66 @@ export class ColonySim {
     initBuild(this.state)
   }
 
-  private place(terrain: Terrain, kind: StructureKind, x: number, y: number): SeedStructure {
-    const p = this.nearbyFlat(terrain, x, y)
-    return { kind, x: p.x, y: p.y }
-  }
+  /** Find a cell that fits a structure: not water, not on a future road (block boundary), with a
+   *  buffer of land around it so multi-cell meshes don't stick into the sea, and not on top of
+   *  another structure. Falls back gracefully if the ideal can't be found. */
+  private nearbyInterior(
+    terrain: Terrain,
+    x: number,
+    y: number,
+    footprint: number,
+    used: { x: number; y: number }[],
+    cx: number,
+    cy: number,
+  ): { x: number; y: number } {
+    const B = COLONY.build.block
+    const HALF = B >> 1
+    const onRoadFrame = (px: number, py: number): boolean => {
+      const mx = ((px - (cx - HALF)) % B + B) % B
+      const my = ((py - (cy - HALF)) % B + B) % B
+      return mx === 0 || my === 0
+    }
+    const footprintClear = (px: number, py: number): boolean => {
+      for (let dy = -footprint; dy <= footprint; dy++) {
+        for (let dx = -footprint; dx <= footprint; dx++) {
+          const nx = px + dx, ny = py + dy
+          if (!terrain.inBounds(nx, ny)) return false
+          if (terrain.isWater(nx, ny)) return false
+          // Keep the WHOLE mesh footprint off the road frame, not just the centre
+          // cell: wide structures (rocket cylinder r~1.1, solar panel) otherwise
+          // sit one cell off-frame but visually spill onto the adjacent road.
+          if (onRoadFrame(nx, ny)) return false
+        }
+      }
+      return true
+    }
+    const usedSet = new Set(used.map((p) => `${p.x},${p.y}`))
+    const isUsed = (px: number, py: number): boolean => usedSet.has(`${px},${py}`)
 
-  /** Find the closest land cell to (x,y) (small spiral) so seed props don't land in water. */
-  private nearbyFlat(terrain: Terrain, x: number, y: number): { x: number; y: number } {
-    for (let r = 0; r <= 5; r++) {
+    // Pass 1 (best): footprint clear, interior of block, not used.
+    for (let r = 0; r <= 6; r++) {
       for (let dy = -r; dy <= r; dy++) {
         for (let dx = -r; dx <= r; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
-          const nx = x + dx
-          const ny = y + dy
-          if (terrain.inBounds(nx, ny) && terrain.buildable[terrain.idx(nx, ny)] !== 0) {
-            return { x: nx, y: ny }
-          }
+          const nx = x + dx, ny = y + dy
+          if (onRoadFrame(nx, ny)) continue
+          if (isUsed(nx, ny)) continue
+          if (footprintClear(nx, ny)) return { x: nx, y: ny }
+        }
+      }
+    }
+    // Pass 2 (fallback): any non-water buildable cell that's not used and not on a road frame.
+    for (let r = 0; r <= 8; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+          const nx = x + dx, ny = y + dy
+          if (onRoadFrame(nx, ny)) continue
+          if (isUsed(nx, ny)) continue
+          if (!terrain.inBounds(nx, ny)) continue
+          if (terrain.isWater(nx, ny)) continue
+          if (terrain.buildable[terrain.idx(nx, ny)] === 0) continue
+          return { x: nx, y: ny }
         }
       }
     }

@@ -54,7 +54,7 @@ export const COLONY = {
     industrialLoad: 0.9,
     workplaceBuildHours: 5,
     jobDeficitThreshold: 5, // build a workplace when unemployment exceeds this
-    block: 5, // grid block size — roads run on the block boundaries (no parallel roads)
+    block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,
   },
