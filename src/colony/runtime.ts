@@ -5,7 +5,7 @@ import { PlanetRenderer, type CameraPreset, type ViewMode } from './render/Plane
 import { Biome } from './terrain'
 import { autoGrow } from './build'
 import { registerSettler as kookerRegister, generateName as randomSettlerName, type KookerCard } from './kooker'
-import { addSettler, saveColony, restoreColony } from './settlers'
+import { addSettler, saveColony, restoreColony, clearColony } from './settlers'
 import { bankDeposits, CURRENCY } from './ledger'
 import { MockBackend, type CityLifeBackend, type Decision } from './backend'
 import type { Household } from './newcomers'
@@ -97,6 +97,11 @@ export class ColonyRuntime {
   async askBot(botId: string, question: string): Promise<void> {
     await this.botService.ask(botId, question)
     this.emit()
+  }
+
+  /** Reset the Kookerverse: clear saved settlers + ledger so the game starts fresh (caller reloads). */
+  reset(): void {
+    clearColony()
   }
 
   start(container: HTMLElement) {

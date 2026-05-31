@@ -176,7 +176,10 @@ export function ColonyApp() {
                 </div>
               ))}
             </div>
-            <div className="modal-actions"><button className="primary" onClick={() => setBorderOpen(false)}>Close</button></div>
+            <div className="modal-actions">
+              <button className="hh-decline" onClick={() => { if (window.confirm('Reset the Kookerverse? This clears all settlers, the bank, and bots, and starts fresh.')) { runtime.reset(); window.location.reload() } }}>↺ Reset game</button>
+              <button className="primary" onClick={() => setBorderOpen(false)}>Close</button>
+            </div>
           </div>
         </div>
       )}
