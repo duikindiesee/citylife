@@ -11,6 +11,7 @@ import { MockBackend, type CityLifeBackend, type Decision } from './backend'
 import type { Household } from './newcomers'
 import { BotService, defaultBotAdapter, type Bot } from './bots'
 import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
+import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 
 const BIOME_LABEL: Record<number, string> = {
   [Biome.Ocean]: 'Ocean',
@@ -35,6 +36,8 @@ export interface ColonyUiState {
   settlers: { count: number; recent: { id: number; name: string }[] }
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
+  radio: RadioState
+  tv: boolean
   name: string
   biome: string
   view: ViewMode
@@ -60,6 +63,11 @@ export class ColonyRuntime {
   private botService = new BotService(defaultBotAdapter())
   // The surveyed city plan the Border Patrol bot uses to allocate plots.
   private cityPlan!: CityPlan
+  // Low Power Radio — CityLife's heartbeat. YouTube embed handles licensing; in-game ads queue up.
+  private radio: RadioState = createRadio()
+  // TV mode hides the operator UI so you can put the city on any screen and just watch.
+  private tv = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tv') === '1'
+  private adInterval: ReturnType<typeof setInterval> | null = null
 
   constructor(seed: number = COLONY.render.seed) {
     this.sim = new ColonySim(seed)
@@ -108,6 +116,48 @@ export class ColonyRuntime {
   /** Reset the Kookerverse: clear saved settlers + ledger so the game starts fresh (caller reloads). */
   reset(): void {
     clearColony()
+  }
+
+  // ── Low Power Radio ──────────────────────────────────────────────────────────
+  /** Turn the radio on or off. First on picks the first configured channel. */
+  toggleRadio(): void {
+    this.radio = radioToggleOn(this.radio)
+    if (this.radio.on) this.startAdLoop()
+    else this.stopAdLoop()
+    this.emit()
+  }
+  /** Tune to a channel by id. */
+  tuneRadio(channelId: string): void {
+    this.radio = tuneTo(this.radio, channelId)
+    this.startAdLoop()
+    this.emit()
+  }
+  toggleRadioMuted(): void {
+    this.radio = radioToggleMuted(this.radio)
+    this.emit()
+  }
+  /** Drop into TV mode — hides operator UI, leaves the city + radio on. */
+  setTv(on: boolean): void {
+    this.tv = on
+    if (typeof document !== 'undefined') document.body.classList.toggle('tv-mode', on)
+    this.emit()
+  }
+  toggleTv(): void {
+    this.setTv(!this.tv)
+  }
+  private startAdLoop() {
+    if (this.adInterval) return
+    // One sponsor / house ad every 90 seconds — the demo of the ad-revenue surface.
+    this.adInterval = setInterval(() => {
+      this.radio = spinHouseAd(this.radio, Date.now())
+      this.emit()
+    }, 90_000)
+    // First ad immediately so the panel is never empty.
+    this.radio = spinHouseAd(this.radio, Date.now())
+  }
+  private stopAdLoop() {
+    if (this.adInterval) clearInterval(this.adInterval)
+    this.adInterval = null
   }
 
   start(container: HTMLElement) {
@@ -210,6 +260,8 @@ export class ColonyRuntime {
         recent: s.ledger.txns.slice(0, 6).map((tx) => ({ id: tx.id, memo: tx.memo })),
       },
       border: { households: this.backend.households(), bots: this.botService.bots, botSource: this.botService.source, plots: this.cityPlan.plots },
+      radio: this.radio,
+      tv: this.tv,
       name: s.name,
       biome: BIOME_LABEL[s.terrain.biome[li]!] ?? 'Unknown',
       view: this.view,
