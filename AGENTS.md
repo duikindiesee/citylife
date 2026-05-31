@@ -21,3 +21,11 @@ Read [`docs/TECH-SPEC.md`](docs/TECH-SPEC.md) first. It is the source of truth f
 - Determinism: all randomness goes through the seeded `RNG`. Tests rely on it.
 - Add engine/governor behaviour with a matching test in `tests/`.
 - Don't introduce React-Three-Fiber/drei unless you deliberately accept the three/fiber/drei version-matrix; the renderer is intentionally plain three.js for now.
+
+## Public repository safety
+- This repository is public-facing. Never commit secrets, tokens, private namespaces, internal hostnames, private preview URLs, or real personal data.
+- Newcomer/household identities must be fictional, generated, and redaction-checked before being persisted or displayed.
+- Store only public aliases and opaque backend references in CityLife. Internal Hermes profile names, raw SessionDB paths, and credentials stay server-side/operator-side.
+- Bot communication for Phase 1 must support no-Telegram profiles; web/CLI observation should use sanitized chat/session events.
+- All game-to-backend APIs must stay behind Basic Auth login plus JWT authorization; the public repo may document config keys and scopes, but never actual credentials, signing secrets, or private backend URLs.
+- Keep bot lifecycle and migration mechanics behind a forkable `citylife-backend` boundary so future games can copy the pattern without copying private operator state.
