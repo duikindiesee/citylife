@@ -7,6 +7,8 @@ import { autoGrow } from './build'
 import { registerSettler as kookerRegister, generateName as randomSettlerName, type KookerCard } from './kooker'
 import { addSettler, saveColony, restoreColony } from './settlers'
 import { bankDeposits, CURRENCY } from './ledger'
+import { MockBackend, type CityLifeBackend, type Decision } from './backend'
+import type { Household } from './newcomers'
 
 const BIOME_LABEL: Record<number, string> = {
   [Biome.Ocean]: 'Ocean',
@@ -30,6 +32,7 @@ export interface ColonyUiState {
   colony: { treasury: number; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
   settlers: { count: number; recent: { id: number; name: string }[] }
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
+  border: { households: Household[] }
   name: string
   biome: string
   view: ViewMode
@@ -49,6 +52,8 @@ export class ColonyRuntime {
   private view: ViewMode = 'biome'
   private preset: CameraPreset = 'district'
   private listeners = new Set<() => void>()
+  // The forkable backend boundary — mock for dev, the real portable citylife-backend later.
+  private backend: CityLifeBackend = new MockBackend((Date.now() & 0x7fffffff) >>> 0)
 
   constructor(seed: number = COLONY.render.seed) {
     this.sim = new ColonySim(seed)
@@ -67,6 +72,18 @@ export class ColonyRuntime {
     saveColony(this.sim.state)
     this.emit()
     return { card, holdings: res?.holdings ?? 0, settlement: res?.settlement ?? 0 }
+  }
+
+  /** Border Control: generate the next candidate family at the border (status: triage). */
+  async addNewcomer(): Promise<Household> {
+    const h = await this.backend.addNewcomer()
+    this.emit()
+    return h
+  }
+  /** Operator decision on a border candidate (approve / hold / decline). */
+  async decideNewcomer(id: string, decision: Decision): Promise<void> {
+    await this.backend.decide(id, decision)
+    this.emit()
   }
 
   start(container: HTMLElement) {
@@ -168,6 +185,7 @@ export class ColonyRuntime {
         accounts: s.settlers.length,
         recent: s.ledger.txns.slice(0, 6).map((tx) => ({ id: tx.id, memo: tx.memo })),
       },
+      border: { households: this.backend.households() },
       name: s.name,
       biome: BIOME_LABEL[s.terrain.biome[li]!] ?? 'Unknown',
       view: this.view,

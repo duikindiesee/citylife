@@ -31,17 +31,9 @@ export function ColonyApp() {
   const runtime = useRuntime()
   const hostRef = useRef<HTMLDivElement>(null)
   const ui: ColonyUiState = runtime.getUiState()
-  const [immig, setImmig] = useState<{ open: boolean; name: string; busy: boolean; reg: { card: { id: number; name: string }; holdings: number; settlement: number } | null; error: string | null }>({ open: false, name: '', busy: false, reg: null, error: null })
-  const openImmig = () => setImmig({ open: true, name: runtime.rollName(), busy: false, reg: null, error: null })
-  const doRegister = async () => {
-    setImmig((s) => ({ ...s, busy: true, error: null }))
-    try {
-      const reg = await runtime.registerSettler(immig.name.trim() || runtime.rollName())
-      setImmig((s) => ({ ...s, busy: false, reg }))
-    } catch (e) {
-      setImmig((s) => ({ ...s, busy: false, error: String((e as Error)?.message ?? e) }))
-    }
-  }
+  const [borderOpen, setBorderOpen] = useState(false)
+  const addNewcomer = () => { void runtime.addNewcomer() }
+  const decide = (id: string, d: 'approve' | 'hold' | 'decline') => { void runtime.decideNewcomer(id, d) }
 
   useEffect(() => {
     const el = hostRef.current
@@ -117,7 +109,7 @@ export function ColonyApp() {
         {ui.settlers.recent.length > 0 && (
           <div className="settler-list">{ui.settlers.recent.map((s) => <span key={s.id} className="chip">#{s.id} {s.name}</span>)}</div>
         )}
-        <button className="immigbtn" onClick={openImmig}>🛂 Border security — welcome a settler</button>
+        <button className="immigbtn" onClick={() => setBorderOpen(true)}>🛂 Border Control</button>
 
         <h2 style={{ marginTop: 18 }}>Kookerverse Bank</h2>
         <div className="row"><span>Deposits</span><b>{ui.bank.currency}{ui.bank.deposits.toLocaleString()}</b></div>
@@ -132,38 +124,31 @@ export function ColonyApp() {
         Use <b>Planet / District / Street</b> to zoom, and the view toggles to read the land.
       </div>
 
-      {immig.open && (
-        <div className="modal-overlay" onClick={() => setImmig((s) => ({ ...s, open: false }))}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            {!immig.reg ? (
-              <>
-                <h3>A settler wants to move to {ui.name} 🛸</h3>
-                <p>They'll register for a <b>KOOKER card</b> in your real kooker system, and we'll build them a unique home.</p>
-                <div className="name-row">
-                  <input value={immig.name} onChange={(e) => setImmig((s) => ({ ...s, name: e.target.value }))} disabled={immig.busy} placeholder="settler name" />
-                  <button title="roll a name" onClick={() => setImmig((s) => ({ ...s, name: runtime.rollName() }))} disabled={immig.busy}>🎲</button>
+      {borderOpen && (
+        <div className="modal-overlay" onClick={() => setBorderOpen(false)}>
+          <div className="modal border-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>🛂 Border Control — {ui.name}</h3>
+            <p>The border is the only way onto the planet. Review each family and decide who may settle.</p>
+            <button className="primary border-add" onClick={addNewcomer}>+ A family arrives at the border</button>
+            {ui.border.households.length === 0 && <div className="border-empty">No arrivals yet — receive a family to begin.</div>}
+            <div className="border-list">
+              {[...ui.border.households].reverse().map((h) => (
+                <div key={h.id} className={`hh-card hh-${h.status}`}>
+                  <div className="hh-head"><b>{h.displayName}</b><span className={`hh-status hh-status-${h.status}`}>{h.status}</span></div>
+                  <div className="hh-meta">{h.membersSummary} · from {h.originLocation} · brings <b>{ui.bank.currency}{h.holdings.toLocaleString()}</b></div>
+                  <div className="hh-members">{h.members.map((m, i) => <span key={i} className="hh-chip">{m.name} · {m.age} · {m.occupation}</span>)}</div>
+                  <div className="hh-lead">“{h.lead.migrationMotivation}.”</div>
+                  {(h.status === 'triage' || h.status === 'held') && (
+                    <div className="hh-actions">
+                      <button className="hh-approve" onClick={() => decide(h.id, 'approve')}>✅ Approve</button>
+                      <button className="hh-hold" onClick={() => decide(h.id, 'hold')}>⏸ Hold</button>
+                      <button className="hh-decline" onClick={() => decide(h.id, 'decline')}>⛔ Decline</button>
+                    </div>
+                  )}
                 </div>
-                {immig.error && <div className="err">⚠ {immig.error}</div>}
-                <div className="modal-actions">
-                  <button onClick={() => setImmig((s) => ({ ...s, open: false }))} disabled={immig.busy}>Cancel</button>
-                  <button className="primary" onClick={doRegister} disabled={immig.busy || !immig.name.trim()}>{immig.busy ? '…registering' : 'Issue KOOKER card & build home'}</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <h3>Welcome to {ui.name}, {immig.reg.card.name}! 🎉</h3>
-                <div className="kcard">
-                  <div className="kcard-label">KOOKER CARD</div>
-                  <div className="kcard-id">#{immig.reg.card.id}</div>
-                  <div className="kcard-name">{immig.reg.card.name}</div>
-                </div>
-                <p>Registered in kooker. Deposited <b>{ui.bank.currency}{immig.reg.holdings.toLocaleString()}</b> into the Kookerverse Bank, and paid <b>{ui.bank.currency}{immig.reg.settlement.toLocaleString()}</b> into the colony for their house.</p>
-                <div className="modal-actions">
-                  <button onClick={openImmig}>Welcome another</button>
-                  <button className="primary" onClick={() => setImmig((s) => ({ ...s, open: false }))}>Done</button>
-                </div>
-              </>
-            )}
+              ))}
+            </div>
+            <div className="modal-actions"><button className="primary" onClick={() => setBorderOpen(false)}>Close</button></div>
           </div>
         </div>
       )}

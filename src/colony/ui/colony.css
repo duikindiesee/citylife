@@ -92,3 +92,29 @@ html, body, #root { margin: 0; height: 100%; background: #05070f; color: var(--t
 .login-err { color: #e0584d; font-size: 13px; }
 .login-hint { color: var(--muted); font-size: 11px; margin-top: 2px; }
 .login-hint code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; }
+
+/* Border Control */
+.border-modal { width: 470px; max-width: 94vw; max-height: 86vh; overflow-y: auto; }
+.border-add { width: 100%; margin: 6px 0 12px; }
+.border-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 14px; }
+.border-list { display: flex; flex-direction: column; gap: 10px; }
+.hh-card { border: 1px solid var(--brd); border-radius: 12px; padding: 12px 13px; background: rgba(255,255,255,0.03); }
+.hh-card.hh-approved { border-color: rgba(57,211,83,0.5); }
+.hh-card.hh-held { border-color: rgba(230,200,77,0.5); }
+.hh-card.hh-rejected { opacity: 0.5; }
+.hh-head { display: flex; justify-content: space-between; align-items: center; font-size: 15px; }
+.hh-status { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; padding: 2px 8px; border-radius: 20px; background: rgba(255,255,255,0.08); color: var(--muted); }
+.hh-status-triage { background: rgba(87,209,196,0.15); color: var(--accent); }
+.hh-status-approved { background: rgba(57,211,83,0.18); color: #7ee59a; }
+.hh-status-held { background: rgba(230,200,77,0.18); color: #e6d27a; }
+.hh-status-rejected { background: rgba(224,88,77,0.18); color: #e98b83; }
+.hh-meta { color: var(--muted); font-size: 12px; margin: 5px 0; }
+.hh-meta b { color: var(--text); }
+.hh-members { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0; }
+.hh-chip { font-size: 11px; background: rgba(255,255,255,0.05); border: 1px solid var(--brd); border-radius: 8px; padding: 3px 8px; color: var(--text); }
+.hh-lead { color: var(--muted); font-size: 12px; font-style: italic; margin: 4px 0 8px; }
+.hh-actions { display: flex; gap: 6px; }
+.hh-actions button { flex: 1; border: 1px solid var(--brd); background: rgba(255,255,255,0.06); color: var(--text); border-radius: 8px; padding: 7px; cursor: pointer; font-size: 13px; }
+.hh-approve:hover { background: rgba(57,211,83,0.18); }
+.hh-hold:hover { background: rgba(230,200,77,0.18); }
+.hh-decline:hover { background: rgba(224,88,77,0.18); }
