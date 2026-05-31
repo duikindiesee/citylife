@@ -12,6 +12,7 @@ import { BIOME_COLOR, Biome } from '../terrain'
 import type { ColonySim, SeedStructure } from '../sim'
 import type { HouseSpec } from '../house'
 import { gridOrigin } from '../grid'
+import { cellZone, ZONE_COLOR, VIBE_COLOR, type Plot } from '../cityPlan'
 
 export type ViewMode = 'biome' | 'buildable' | 'elevation'
 export type CameraPreset = 'street' | 'district' | 'planet'
@@ -40,6 +41,13 @@ export class PlanetRenderer {
   private carsMesh!: THREE.InstancedMesh
   private settlerGroup = new THREE.Group()
   private lastSettlerCount = -1
+  // City plan paint — translucent zone tints (residential / commercial / industrial / civic)
+  // and named flag-pole markers at every plot. Both are built once from the terrain; the markers
+  // dim and re-label as plots get allocated.
+  private zoneTintMesh: THREE.Mesh | null = null
+  private plotMarkers = new THREE.Group()
+  private plotMeshes = new Map<string, { pole: THREE.Mesh; flag: THREE.Mesh; flagMat: THREE.MeshStandardMaterial }>()
+  private lastPlotSig = ''
   private dummy = new THREE.Object3D()
   private clock = new THREE.Clock()
   private view: ViewMode = 'biome'
@@ -365,6 +373,112 @@ export class PlanetRenderer {
     this.scene.add(this.carsMesh)
 
     this.scene.add(this.settlerGroup) // unique KOOKER-settler homes live here
+    this.scene.add(this.plotMarkers) // city-plan flag poles, one per plot
+
+    // Zone tint: paint each land cell within the city's reach with its surveyed zone colour. The
+    // residential arc (north + west), commercial arc (east), industrial arc (south), and civic
+    // centre become visible as soft, translucent ground colour, so the patrol bot's allocations
+    // and the player's first-person walk both have a *visible* city plan to land on.
+    this.buildZoneTint()
+  }
+
+  /** One-time: build the translucent zone-tint mesh from the terrain. Cells off the plan get no quad. */
+  private buildZoneTint() {
+    const t = this.sim.state.terrain
+    const landing = t.landing
+    const positions: number[] = []
+    const colors: number[] = []
+    const tri = (a: number[], b: number[], c: number[], col: THREE.Color) => {
+      positions.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!)
+      for (let i = 0; i < 3; i++) colors.push(col.r, col.g, col.b)
+    }
+    const col = new THREE.Color()
+    const LIFT = 0.03 // just above the terrain, just below the road
+    for (let y = 0; y < t.size; y++) {
+      for (let x = 0; x < t.size; x++) {
+        if (t.isWater(x, y)) continue
+        const z = cellZone(landing, x, y)
+        if (!z) continue
+        col.setHex(ZONE_COLOR[z])
+        // Quad covering the cell footprint, draped on the terrain by sampling corner heights.
+        const cornerH = (gx: number, gy: number) => {
+          const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v))
+          return Math.max(
+            0,
+            (t.worldY(cl(gx - 1), cl(gy - 1)) +
+              t.worldY(cl(gx), cl(gy - 1)) +
+              t.worldY(cl(gx - 1), cl(gy)) +
+              t.worldY(cl(gx), cl(gy))) /
+              4,
+          )
+        }
+        const wx = (gx: number) => gx - t.size / 2
+        const wz = (gy: number) => gy - t.size / 2
+        const A = [wx(x) - 0.5, cornerH(x, y) + LIFT, wz(y) - 0.5]
+        const B = [wx(x) + 0.5, cornerH(x + 1, y) + LIFT, wz(y) - 0.5]
+        const C = [wx(x) - 0.5, cornerH(x, y + 1) + LIFT, wz(y) + 0.5]
+        const D = [wx(x) + 0.5, cornerH(x + 1, y + 1) + LIFT, wz(y) + 0.5]
+        tri(A, C, B, col)
+        tri(B, C, D, col)
+      }
+    }
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+    geo.computeVertexNormals()
+    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })
+    this.zoneTintMesh = new THREE.Mesh(geo, mat)
+    this.zoneTintMesh.frustumCulled = false
+    this.scene.add(this.zoneTintMesh)
+  }
+
+  /** Per-frame: ensure each plot has a flag-pole marker; allocated plots dim + collapse. */
+  private syncPlotMarkers(plots: Plot[]) {
+    const sig = plots.map((p) => `${p.id}:${p.assignedTo || ''}`).join('|')
+    if (sig === this.lastPlotSig) return
+    this.lastPlotSig = sig
+    const t = this.sim.state.terrain
+    const have = new Set<string>()
+    for (const p of plots) {
+      have.add(p.id)
+      let entry = this.plotMeshes.get(p.id)
+      if (!entry) {
+        const poleGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.2, 6)
+        poleGeo.translate(0, 0.6, 0)
+        const poleMat = new THREE.MeshStandardMaterial({ color: 0xd6d6dc, roughness: 0.6 })
+        const pole = new THREE.Mesh(poleGeo, poleMat)
+        const flagGeo = new THREE.BoxGeometry(0.45, 0.28, 0.04)
+        flagGeo.translate(0.2, 1.05, 0)
+        const flagMat = new THREE.MeshStandardMaterial({ color: VIBE_COLOR[p.vibe], roughness: 0.5, emissive: VIBE_COLOR[p.vibe], emissiveIntensity: 0.35 })
+        const flag = new THREE.Mesh(flagGeo, flagMat)
+        const group = new THREE.Group()
+        group.add(pole)
+        group.add(flag)
+        const wx = p.x - t.size / 2
+        const wz = p.y - t.size / 2
+        const wy = Math.max(0, t.worldY(p.x, p.y))
+        group.position.set(wx, wy, wz)
+        this.plotMarkers.add(group)
+        entry = { pole, flag, flagMat }
+        this.plotMeshes.set(p.id, entry)
+      }
+      // Allocated plots: dim flag, drop emissive, half-height pole effect via scale.
+      const taken = !!p.assignedTo
+      entry.flagMat.color.setHex(VIBE_COLOR[p.vibe])
+      entry.flagMat.emissiveIntensity = taken ? 0.05 : 0.35
+      entry.flagMat.opacity = taken ? 0.55 : 1
+      entry.flagMat.transparent = taken
+      entry.flag.scale.set(taken ? 0.6 : 1, taken ? 0.6 : 1, taken ? 0.6 : 1)
+      entry.pole.scale.set(1, taken ? 0.55 : 1, 1)
+    }
+    // Drop markers whose plot is gone (game reset).
+    for (const [id, entry] of this.plotMeshes) {
+      if (!have.has(id)) {
+        const group = entry.pole.parent
+        if (group && group.parent) group.parent.remove(group)
+        this.plotMeshes.delete(id)
+      }
+    }
   }
 
   /** Rebuild the unique settler homes (cheap; only on a new registration). */
@@ -487,6 +601,8 @@ export class PlanetRenderer {
       this.lastRoadCount = s.roads.length
     }
     const rn = s.roads.length
+    // plot markers reflect allocation changes (allocated → dim flag, lowered pole)
+    if (s.cityPlan) this.syncPlotMarkers(s.cityPlan.plots)
 
     const col = new THREE.Color()
     const cap = COLONY.build.maxBuildings + 8

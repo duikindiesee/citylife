@@ -10,6 +10,38 @@ import { Biome } from './terrain'
 export type Zone = 'residential' | 'commercial' | 'industrial' | 'civic'
 export type Vibe = 'beach' | 'hillside' | 'riverside' | 'plains' | 'forest-edge'
 
+/** Brand colours for the zone tint on the ground (matches the patrol-bot system prompt's geography). */
+export const ZONE_COLOR: Record<Zone, number> = {
+  civic: 0xe6c84d, // amber centre — school, clinic, fire post
+  residential: 0x57d1c4, // teal arc — north & west, family homes
+  commercial: 0x7fbfff, // soft blue — east, near the harbour
+  industrial: 0xcf8b54, // ochre — south, downwind
+}
+
+/** Vibe → flag colour for plot markers. Stays distinct from zone tints so plots pop against zones. */
+export const VIBE_COLOR: Record<Vibe, number> = {
+  beach: 0xf0d9a6,
+  hillside: 0xc77d3a,
+  riverside: 0x39b6d8,
+  plains: 0x8fd16f,
+  'forest-edge': 0x9b6ad6,
+}
+
+/** Compute the surveyed zone for any land cell within the city's reach. Returns null off-plan.
+ *  Civic anchors the centre near the caravan; the outer arcs split by compass direction:
+ *  east → commercial (harbour), south → industrial (downwind), north + west → residential. */
+export function cellZone(landing: { x: number; y: number }, x: number, y: number): Zone | null {
+  const dx = x - landing.x, dy = y - landing.y
+  const d = Math.hypot(dx, dy)
+  if (d > 38) return null
+  if (d < 4) return 'civic'
+  // Atan2 in cell coords: +y = south. East is small angle, south = +PI/2, west = ±PI, north = -PI/2.
+  const a = Math.atan2(dy, dx)
+  if (a > -Math.PI / 4 && a < Math.PI / 4) return 'commercial' // east
+  if (a >= Math.PI / 4 && a <= 3 * Math.PI / 4) return 'industrial' // south
+  return 'residential' // north arc (-3π/4..-π/4) AND west arc (>3π/4 or <-3π/4)
+}
+
 export interface Plot {
   id: string
   name: string

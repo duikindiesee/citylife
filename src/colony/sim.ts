@@ -8,6 +8,7 @@ import { updateTraffic } from './traffic'
 import type { Car } from './traffic'
 import type { Settler } from './settlers'
 import { createLedger, type Ledger } from './ledger'
+import type { CityPlan } from './cityPlan'
 
 export type StructureKind = 'caravan' | 'solar' | 'battery' | 'rocket'
 export interface SeedStructure {
@@ -51,6 +52,7 @@ export interface ColonyState {
   cars: Car[]
   settlers: Settler[]
   ledger: Ledger
+  cityPlan: CityPlan | null // attached by the runtime after construction so the renderer can paint zones
 }
 
 function daylightAt(hour: number, minute: number): number {
@@ -114,6 +116,7 @@ export class ColonySim {
       cars: [],
       settlers: [],
       ledger: createLedger(),
+      cityPlan: null,
     }
     initBuild(this.state)
   }

@@ -65,6 +65,7 @@ export class ColonyRuntime {
     this.sim = new ColonySim(seed)
     restoreColony(this.sim.state) // re-place settlers + restore the Kookerverse ledger
     this.cityPlan = makeCityPlan(this.sim.state.terrain)
+    this.sim.state.cityPlan = this.cityPlan // expose to the renderer for the zone tint + plot markers
     this.botService.setCityPlan(this.cityPlan)
   }
 
