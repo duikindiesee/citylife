@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { ColonyRuntime, type ColonyUiState } from '../runtime'
 import type { CameraPreset, ViewMode } from '../render/PlanetRenderer'
+import { RadioPanel } from './RadioPanel'
 import './colony.css'
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -123,6 +124,8 @@ export function ColonyApp() {
         Phase A · A dropship has landed. Solar + lithium battery are your only power.
         Use <b>Planet / District / Street</b> to zoom, and the view toggles to read the land.
       </div>
+
+      <RadioPanel runtime={runtime} radio={ui.radio} tv={ui.tv} />
 
       {borderOpen && (
         <div className="modal-overlay" onClick={() => setBorderOpen(false)}>
