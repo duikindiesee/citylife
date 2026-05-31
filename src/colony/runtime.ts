@@ -9,6 +9,7 @@ import { addSettler, saveColony, restoreColony } from './settlers'
 import { bankDeposits, CURRENCY } from './ledger'
 import { MockBackend, type CityLifeBackend, type Decision } from './backend'
 import type { Household } from './newcomers'
+import { BotService, defaultBotAdapter, type Bot } from './bots'
 
 const BIOME_LABEL: Record<number, string> = {
   [Biome.Ocean]: 'Ocean',
@@ -32,7 +33,7 @@ export interface ColonyUiState {
   colony: { treasury: number; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
   settlers: { count: number; recent: { id: number; name: string }[] }
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
-  border: { households: Household[] }
+  border: { households: Household[]; bots: Bot[]; botSource: string }
   name: string
   biome: string
   view: ViewMode
@@ -54,6 +55,8 @@ export class ColonyRuntime {
   private listeners = new Set<() => void>()
   // The forkable backend boundary — mock for dev, the real portable citylife-backend later.
   private backend: CityLifeBackend = new MockBackend((Date.now() & 0x7fffffff) >>> 0)
+  // Newcomer bots: REAL Hermes replies via kooker inference when VITE_CITYLIFE_PAT is set, else mock.
+  private botService = new BotService(defaultBotAdapter())
 
   constructor(seed: number = COLONY.render.seed) {
     this.sim = new ColonySim(seed)
@@ -80,9 +83,19 @@ export class ColonyRuntime {
     this.emit()
     return h
   }
-  /** Operator decision on a border candidate (approve / hold / decline). */
+  /** Operator decision on a border candidate (approve / hold / decline). Approve boots a bot. */
   async decideNewcomer(id: string, decision: Decision): Promise<void> {
-    await this.backend.decide(id, decision)
+    const h = await this.backend.decide(id, decision)
+    this.emit() // reflect approved/held/rejected immediately
+    if (h && decision === 'approve' && h.status === 'approved') {
+      await this.botService.create(h) // boot a bot, inject its life history, get its first reply
+      this.emit()
+    }
+  }
+
+  /** Border patrol asks an approved household's bot another question (the reply is the bot's own). */
+  async askBot(botId: string, question: string): Promise<void> {
+    await this.botService.ask(botId, question)
     this.emit()
   }
 
@@ -185,7 +198,7 @@ export class ColonyRuntime {
         accounts: s.settlers.length,
         recent: s.ledger.txns.slice(0, 6).map((tx) => ({ id: tx.id, memo: tx.memo })),
       },
-      border: { households: this.backend.households() },
+      border: { households: this.backend.households(), bots: this.botService.bots, botSource: this.botService.source },
       name: s.name,
       biome: BIOME_LABEL[s.terrain.biome[li]!] ?? 'Unknown',
       view: this.view,

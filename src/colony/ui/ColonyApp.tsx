@@ -129,6 +129,9 @@ export function ColonyApp() {
           <div className="modal border-modal" onClick={(e) => e.stopPropagation()}>
             <h3>🛂 Border Control — {ui.name}</h3>
             <p>The border is the only way onto the planet. Review each family and decide who may settle.</p>
+            {ui.border.botSource === 'mock'
+              ? <p className="border-note">🤖 Bot replies are <b>mock stand-ins</b> — set <code>VITE_CITYLIFE_PAT</code> in <code>.env.local</code> for true Hermes responses.</p>
+              : <p className="border-note">🤖 Bot replies are <b>live from kooker inference</b> ({ui.border.botSource}).</p>}
             <button className="primary border-add" onClick={addNewcomer}>+ A family arrives at the border</button>
             {ui.border.households.length === 0 && <div className="border-empty">No arrivals yet — receive a family to begin.</div>}
             <div className="border-list">
@@ -145,6 +148,31 @@ export function ColonyApp() {
                       <button className="hh-decline" onClick={() => decide(h.id, 'decline')}>⛔ Decline</button>
                     </div>
                   )}
+                  {h.status === 'approved' && (() => {
+                    const bot = ui.border.bots.find((b) => b.householdId === h.id)
+                    if (!bot) return null
+                    return (
+                      <div className="bot-chat">
+                        <div className="bot-head">🤖 {bot.name} <span className="bot-src">{bot.source}</span> <span className="bot-st">{bot.status}</span></div>
+                        {bot.status === 'booting' && <div className="bot-booting">booting bot &amp; injecting life history…</div>}
+                        <div className="bot-thread">
+                          {bot.messages.map((m, i) => (
+                            <div key={i} className={`bot-msg bot-${m.role}`}>
+                              <b>{m.role === 'patrol' ? '🛂 Patrol' : `🤖 ${bot.name}`}</b> {m.text}
+                            </div>
+                          ))}
+                        </div>
+                        {bot.status === 'error' && <div className="bot-err">⚠ {bot.error}</div>}
+                        {(bot.status === 'awake' || bot.status === 'error') && (
+                          <div className="bot-asks">
+                            {['Why have you come to our colony?', 'What work can your family do here?', 'Will you follow our colony rules?'].map((q) => (
+                              <button key={q} className="bot-ask" onClick={() => runtime.askBot(bot.id, q)}>{q}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               ))}
             </div>
