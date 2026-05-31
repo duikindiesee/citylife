@@ -78,3 +78,13 @@ export function restoreColony(state: ColonyState): number {
   }
   return saved.length
 }
+
+/** Reset: forget all settlers and the ledger so the Kookerverse starts fresh on the next load. */
+export function clearColony(): void {
+  try {
+    localStorage.removeItem(LS_SETTLERS)
+    localStorage.removeItem(LS_LEDGER)
+  } catch {
+    /* no storage */
+  }
+}
