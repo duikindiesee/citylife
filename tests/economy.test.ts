@@ -235,3 +235,78 @@ describe('Spec 005 — Water Hub waters habitats and speeds immigration', () => 
     expect(run(true)).toBeGreaterThan(run(false))
   })
 })
+
+describe('Spec 007 — Skyfarm Greenhouse grows food; colonists eat; hunger slows immigration', () => {
+  const greenhouse = (x: number, y: number) => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: { id: 1, kind: 'greenhouse' as const, color: 0x4f9d52, height: 0.6, residents: 0, jobs: 2, powerLoad: 0.5, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0, componentsCost: 0 },
+  })
+  const waterHub = (x: number, y: number) => ({
+    id: x * 1000 + y + 7,
+    x,
+    y,
+    artifact: { id: 2, kind: 'water' as const, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 },
+  })
+  const habitat = (x: number, y: number, residents: number) => ({
+    id: x * 1000 + y + 3,
+    x,
+    y,
+    artifact: { id: 3, kind: 'habitat' as const, color: 0, height: 1, residents, jobs: 0, powerLoad: 0.5, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 },
+  })
+
+  it('a staffed greenhouse raises food over sim time', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.food = 0
+    s.buildings.push(greenhouse(s.terrain.landing.x + 5, s.terrain.landing.y))
+    s.totalJobs = 2
+    s.colonists = 2 // fully staffed → free labour 0, no autoGrow interference
+    for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+    expect(s.food).toBeGreaterThan(0)
+  })
+
+  it('a greenhouse near a Water Hub out-produces one with no water (irrigation boost)', () => {
+    const run = (withHub: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.food = 0
+      const lx = s.terrain.landing.x + 5
+      const ly = s.terrain.landing.y
+      s.buildings.push(greenhouse(lx, ly))
+      if (withHub) s.buildings.push(waterHub(lx + 1, ly))
+      s.totalJobs = 2
+      s.colonists = 2
+      for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+      return s.food
+    }
+    expect(run(true)).toBeGreaterThan(run(false))
+  })
+
+  it('colonists consume food — with no greenhouse the stockpile drains', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.food = 100
+    s.colonists = 10
+    s.totalJobs = 10 // fully staffed → free labour 0, no autoGrow interference
+    for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+    expect(s.food).toBeLessThan(100)
+  })
+
+  it('immigration is slower when the colony is hungry (food 0) than when fed', () => {
+    const run = (fed: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.buildings.push(habitat(50, 50, 20)) // capacity 22
+      s.power.batteryWh = s.power.batteryCapWh
+      s.power.solarW = 5
+      s.materials = 0 // disable autoGrow so this isolates immigration
+      s.food = fed ? 1000 : 0
+      const col0 = s.colonists
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.colonists - col0
+    }
+    expect(run(true)).toBeGreaterThan(run(false))
+  })
+})

@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse'
 
 export interface Parcel {
   id: number
@@ -58,6 +58,7 @@ const SOLAR_COLOR = 0x18406a
 const MINE_COLOR = 0x6b5a4a // rocky brown extraction site
 const WORKSHOP_COLOR = 0x8a7f3a // ochre workshop / fabricator
 const WATER_COLOR = 0x3aa6c8 // cyan water / life-support hub
+const GREENHOUSE_COLOR = 0x4f9d52 // green skyfarm greenhouse
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -76,6 +77,7 @@ export function initBuild(state: ColonyState): void {
   state.treasury = COLONY.build.treasuryStart
   state.materials = COLONY.build.materialsStart // spec 001 — dropship build-supply stockpile
   state.components = 0 // spec 003 — refined goods, produced by workshops
+  state.food = 0 // spec 007 — grown by greenhouses; colonists subsist on dropship rations until then
   state.parcels = []
   state.jobs = []
   state.buildings = []
@@ -225,6 +227,10 @@ function designWaterHub(state: ColonyState): Artifact {
   // Spec 005 — first service: waters habitats in range; costs components to build (the first sink).
   return { id: state.buildIds++, kind: 'water', color: WATER_COLOR, height: 0.8, residents: 0, jobs: COLONY.build.waterHubWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.waterHubCost, materialsCost: COLONY.build.matWaterHub, crew: COLONY.build.crewWaterHub, materialsGen: 0, componentsCost: COLONY.build.compWaterHub }
 }
+function designGreenhouse(state: ColonyState): Artifact {
+  // Spec 007 — food production; output boosted when within a Water Hub radius (irrigated trays).
+  return { id: state.buildIds++, kind: 'greenhouse', color: GREENHOUSE_COLOR, height: 0.6, residents: 0, jobs: COLONY.build.greenhouseWorkers, powerLoad: 0.5, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.greenhouseCost, materialsCost: COLONY.build.matGreenhouse, crew: COLONY.build.crewGreenhouse, materialsGen: 0, componentsCost: COLONY.build.compGreenhouse }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -245,6 +251,11 @@ export function wateredFraction(state: ColonyState): number {
   return served / habs.length
 }
 
+/** Spec 007 — is (x,y) within range of a Water Hub? (greenhouses get an irrigation boost). */
+function nearWater(state: ColonyState, x: number, y: number): boolean {
+  return state.buildings.some((b) => b.artifact.kind === 'water' && Math.hypot(b.x - x, b.y - y) <= COLONY.build.waterHubRadius)
+}
+
 function peakSupply(state: ColonyState): number {
   return COLONY.power.solarPeakW + state.powerGen
 }
@@ -256,6 +267,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (countKind(state, 'mine') > 0 && state.materials > COLONY.build.materialsSurplus && countKind(state, 'workshop') < countKind(state, 'mine') * 2) return designWorkshop(state)
   // Spec 005 — service the homes: thirsty habitats + components on hand → raise a Water Hub (~1 per 4 homes).
   if (countKind(state, 'habitat') > 0 && wateredFraction(state) < 0.9 && state.components >= COLONY.build.compWaterHub && countKind(state, 'water') < Math.ceil(countKind(state, 'habitat') / 4)) return designWaterHub(state)
+  // Spec 007 — feed the colony: a hungry stockpile + components on hand → raise a Skyfarm Greenhouse (~1 per 12 colonists).
+  if (state.colonists > 4 && state.food < state.colonists * COLONY.build.foodPerColonistPerDay && state.components >= COLONY.build.compGreenhouse && countKind(state, 'greenhouse') < Math.ceil(state.colonists / 12)) return designGreenhouse(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom) return designSolarFarm(state)
   const pendingJobs = state.jobs.reduce((g, j) => g + j.artifact.jobs, 0)
@@ -370,8 +383,9 @@ function immigration(state: ColonyState, dtMin: number): void {
     return
   }
   const cap = housingCapacity(state)
-  // Spec 005 — thirsty colonies grow slowly: immigration scales with how many homes are watered.
-  const desirability = Math.max(0.25, wateredFraction(state))
+  // Spec 005/007 — thirsty OR hungry colonies grow slowly: immigration scales with watered homes AND food.
+  const fedFactor = state.food > 0 ? 1 : 0.4 // dropship rations sustain a trickle until a greenhouse feeds them
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * perDay)
 }
 
@@ -382,10 +396,25 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
 }
 
+/** Spec 007 — staffed greenhouses grow food (boosted near a Water Hub); colonists eat a little each day. */
+function foodStep(state: ColonyState, dtMin: number): void {
+  const day = 24 * 60
+  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  let grown = 0
+  for (const b of state.buildings) {
+    if (b.artifact.kind !== 'greenhouse') continue
+    const boost = nearWater(state, b.x, b.y) ? COLONY.build.greenhouseWaterBoost : 1
+    grown += COLONY.build.greenhouseFoodPerDay * boost * staffing
+  }
+  state.food += grown * (dtMin / day)
+  state.food = Math.max(0, state.food - state.colonists * COLONY.build.foodPerColonistPerDay * (dtMin / day))
+}
+
 export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   produceMaterials(state, dtMin)
   produceComponents(state, dtMin)
   serviceUpkeep(state, dtMin)
+  foodStep(state, dtMin)
   immigration(state, dtMin)
   for (let i = state.jobs.length - 1; i >= 0; i--) {
     const j = state.jobs[i]!

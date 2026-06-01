@@ -1,5 +1,5 @@
 # Spec 007 — Skyfarm Greenhouse: food production
-- status: proposed
+- status: built
 - proposed-by: **Mara Venn, workshop quartermaster** — live Hermes citizen (model hermes-codex-gpt-5.5), her 2nd accepted proposal
 - date: 2026-06-01
 - depends-on: 005

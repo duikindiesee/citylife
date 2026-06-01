@@ -92,6 +92,15 @@ export const COLONY = {
     waterHubWorkers: 1,
     waterHubRadius: 7, // cells; habitats within this of a hub are watered
     waterHubMaintCompPerDay: 0.5, // ongoing component maintenance
+    // Skyfarm Greenhouse (spec 007): food production; output boosted near a Water Hub.
+    matGreenhouse: 14,
+    compGreenhouse: 12,
+    crewGreenhouse: 3,
+    greenhouseCost: 1800,
+    greenhouseWorkers: 2,
+    greenhouseFoodPerDay: 6, // food/day at full staffing
+    greenhouseWaterBoost: 1.5, // x output when within a Water Hub radius
+    foodPerColonistPerDay: 0.4, // each colonist eats this much per day
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,
