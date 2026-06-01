@@ -3,7 +3,7 @@ import { COLONY } from './config'
 import { ColonySim } from './sim'
 import { PlanetRenderer, type CameraPreset, type ViewMode } from './render/PlanetRenderer'
 import { Biome } from './terrain'
-import { autoGrow, freeLabour, housingCapacity, wateredFraction, provisionedFraction, housingTierCounts } from './build'
+import { autoGrow, freeLabour, housingCapacity, wateredFraction, provisionedFraction, housingTierCounts, healthFraction } from './build'
 import { registerSettler as kookerRegister, generateName as randomSettlerName, type KookerCard } from './kooker'
 import { addSettler, saveColony, restoreColony, clearColony } from './settlers'
 import { bankDeposits, CURRENCY } from './ledger'
@@ -33,7 +33,7 @@ export interface ColonyUiState {
   clock: { day: number; hour: number; minute: number; isDay: boolean }
   power: { solarW: number; loadW: number; batteryWh: number; batteryCapWh: number; pct: number }
   colonists: number
-  colony: { treasury: number; materials: number; components: number; food: number; freeLabour: number; capacity: number; watered: number; provisioned: number; tiers: [number, number, number]; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
+  colony: { treasury: number; materials: number; components: number; food: number; freeLabour: number; capacity: number; watered: number; provisioned: number; health: number; tiers: [number, number, number]; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
   settlers: { count: number; recent: { id: number; name: string }[] }
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
@@ -304,6 +304,7 @@ export class ColonyRuntime {
         capacity: housingCapacity(s),
         watered: Math.round(wateredFraction(s) * 100),
         provisioned: Math.round(provisionedFraction(s) * 100),
+        health: Math.round(healthFraction(s) * 100),
         tiers: housingTierCounts(s),
         buildings: s.buildings.length,
         building: s.jobs.length,

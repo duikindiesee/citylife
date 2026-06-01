@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic'
 
 export interface Parcel {
   id: number
@@ -62,6 +62,7 @@ const WORKSHOP_COLOR = 0x8a7f3a // ochre workshop / fabricator
 const WATER_COLOR = 0x3aa6c8 // cyan water / life-support hub
 const GREENHOUSE_COLOR = 0x4f9d52 // green skyfarm greenhouse
 const DEPOT_COLOR = 0xc88a3a // amber ration depot
+const CLINIC_COLOR = 0xe3ebf0 // clinical white first-aid clinic
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -238,6 +239,10 @@ function designDepot(state: ColonyState): Artifact {
   // Spec 008 — distribution: carries food from the stockpile to provision nearby homes.
   return { id: state.buildIds++, kind: 'depot', color: DEPOT_COLOR, height: 0.8, residents: 0, jobs: COLONY.build.depotWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.depotCost, materialsCost: COLONY.build.matDepot, crew: COLONY.build.crewDepot, materialsGen: 0, componentsCost: COLONY.build.compDepot }
 }
+function designClinic(state: ColonyState): Artifact {
+  // Spec 009 — health service; keeps nearby homes healthy so their workers stay productive.
+  return { id: state.buildIds++, kind: 'clinic', color: CLINIC_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.clinicWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.clinicCost, materialsCost: COLONY.build.matClinic, crew: COLONY.build.crewClinic, materialsGen: 0, componentsCost: COLONY.build.compClinic }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -277,6 +282,22 @@ export function provisionedFraction(state: ColonyState): number {
   return Math.min(inRange, capacity) / habs.length
 }
 
+/** Spec 009 — fraction of habitats kept healthy by a First Aid Clinic in range (no homes → fully healthy). */
+export function healthFraction(state: ColonyState): number {
+  const habs = state.buildings.filter((b) => b.artifact.kind === 'habitat')
+  if (!habs.length) return 1
+  const clinics = state.buildings.filter((b) => b.artifact.kind === 'clinic')
+  if (!clinics.length) return 0
+  let served = 0
+  for (const h of habs) if (clinics.some((c) => Math.hypot(c.x - h.x, c.y - h.y) <= COLONY.build.clinicRadius)) served++
+  return served / habs.length
+}
+
+/** Spec 009 — sick workers in uncovered homes work slower: production scales 0.6 (none) → 1.0 (full health). */
+function healthFactor(state: ColonyState): number {
+  return 0.6 + 0.4 * healthFraction(state)
+}
+
 function peakSupply(state: ColonyState): number {
   return COLONY.power.solarPeakW + state.powerGen
 }
@@ -292,6 +313,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 4 && state.food < state.colonists * COLONY.build.foodPerColonistPerDay && state.components >= COLONY.build.compGreenhouse && countKind(state, 'greenhouse') < Math.ceil(state.colonists / 12)) return designGreenhouse(state)
   // Spec 008 — get the food to the homes: built homes + food on hand + components → raise a Ration Depot.
   if (countKind(state, 'habitat') > 0 && state.food > 0 && provisionedFraction(state) < 0.9 && state.components >= COLONY.build.compDepot && countKind(state, 'depot') < Math.ceil(countKind(state, 'habitat') / COLONY.build.rationDepotHomes)) return designDepot(state)
+  // Spec 009 — keep the workers well: homes exist + low health coverage + components → raise a First Aid Clinic.
+  if (countKind(state, 'habitat') > 0 && healthFraction(state) < 0.9 && state.components >= COLONY.build.compClinic && countKind(state, 'clinic') < Math.ceil(countKind(state, 'habitat') / 6)) return designClinic(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom) return designSolarFarm(state)
   const pendingJobs = state.jobs.reduce((g, j) => g + j.artifact.jobs, 0)
@@ -370,22 +393,22 @@ function produceMaterials(state: ColonyState, dtMin: number): void {
   for (const b of state.buildings) if (b.artifact.kind === 'mine') gen += b.artifact.materialsGen
   if (gen <= 0) return
   const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
-  state.materials += gen * staffing * (dtMin / (24 * 60))
+  state.materials += gen * staffing * healthFactor(state) * (dtMin / (24 * 60)) // spec 009 — sick miners dig less
 }
 
 /** Spec 003 — staffed workshops consume materials and produce components (2:1); halt when materials run out. */
 function produceComponents(state: ColonyState, dtMin: number): void {
-  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
-  if (staffing <= 0) return
+  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) // spec 009 — sick workers refine less
+  if (eff <= 0) return
   const day = 24 * 60
   for (const b of state.buildings) {
     if (b.artifact.kind !== 'workshop') continue
-    const need = COLONY.build.workshopMaterialsIn * staffing * (dtMin / day)
+    const need = COLONY.build.workshopMaterialsIn * eff * (dtMin / day)
     if (need <= 0) continue
     const consume = Math.min(state.materials, need)
     if (consume <= 0) continue
     state.materials -= consume
-    state.components += COLONY.build.workshopComponentsOut * staffing * (dtMin / day) * (consume / need)
+    state.components += COLONY.build.workshopComponentsOut * eff * (dtMin / day) * (consume / need)
   }
 }
 
@@ -470,6 +493,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
   for (const b of state.buildings) {
     if (b.artifact.kind === 'water') upkeep += COLONY.build.waterHubMaintCompPerDay
     else if (b.artifact.kind === 'depot') upkeep += COLONY.build.depotMaintCompPerDay
+    else if (b.artifact.kind === 'clinic') upkeep += COLONY.build.clinicMaintCompPerDay
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
 }
@@ -477,7 +501,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
 /** Spec 007 — staffed greenhouses grow food (boosted near a Water Hub); colonists eat a little each day. */
 function foodStep(state: ColonyState, dtMin: number): void {
   const day = 24 * 60
-  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const staffing = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) // spec 009 — sick growers tend less
   let grown = 0
   for (const b of state.buildings) {
     if (b.artifact.kind !== 'greenhouse') continue

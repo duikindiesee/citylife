@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -429,5 +429,48 @@ describe('Spec 006 — housing evolution: homes upgrade when watered + supplied,
     for (let i = 0; i < 60; i++) stepBuild(s, sim.rng, 60)
     expect(h.tier!).toBeLessThan(3)
     expect(housingCapacity(s)).toBeLessThan(cap0)
+  })
+})
+
+describe('Spec 009 — First Aid Clinic: health keeps the workers productive', () => {
+  const mk = (kind: 'habitat' | 'clinic' | 'mine', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('a clinic keeps the homes within reach healthy', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('habitat', 50, 50, { residents: 3 }))
+    expect(healthFraction(s)).toBe(0) // a home, no clinic
+    s.buildings.push(mk('clinic', 52, 50)) // within radius 8
+    expect(healthFraction(s)).toBe(1)
+  })
+
+  it('a clinic out of reach does not cover the home', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('habitat', 50, 50, { residents: 3 }))
+    s.buildings.push(mk('clinic', 80, 80)) // far beyond radius 8
+    expect(healthFraction(s)).toBe(0)
+  })
+
+  it('a colony with clinic coverage out-produces an unhealthy one (sick workers dig slower)', () => {
+    const run = (withClinic: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.materials = 10
+      s.buildings.push(mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6, materialsGen: 5 }))
+      s.buildings.push(mk('habitat', 50, 50, { residents: 3 })) // a home → worker health now matters
+      if (withClinic) s.buildings.push(mk('clinic', 51, 50)) // covers the home
+      s.totalJobs = 6
+      s.colonists = 6 // fully staff the mine; no free labour, so autoGrow stays idle
+      const m0 = s.materials
+      for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+      return s.materials - m0
+    }
+    expect(run(true)).toBeGreaterThan(run(false))
   })
 })

@@ -115,6 +115,14 @@ export const COLONY = {
     housingUpgradeCost: 3, // components consumed per tier-up — the 2nd component sink
     housingUpgradeIntervalHours: 12, // a watered, supplied home upgrades at most this often
     housingDevolveGraceHours: 24, // an unwatered home steps down a tier after this long dry
+    // First Aid Clinic (spec 009): health service — sick workers in uncovered homes produce less.
+    matClinic: 14,
+    compClinic: 10,
+    crewClinic: 3,
+    clinicCost: 1600,
+    clinicWorkers: 2,
+    clinicRadius: 8, // cells; habitats within this of a clinic are kept healthy
+    clinicMaintCompPerDay: 1, // ongoing component (medicine) maintenance
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

@@ -1,5 +1,5 @@
 # Spec 009 — First Aid Clinic: health keeps the workers working
-- status: proposed
+- status: built
 - proposed-by: **Mara Venn, quartermaster of Block 7** — live Hermes citizen (model hermes-codex-gpt-5.5), her 4th accepted proposal (Water Hub 005, Skyfarm Greenhouse 007, Ration Depot 008, now health)
 - date: 2026-06-01
 - depends-on: 005
