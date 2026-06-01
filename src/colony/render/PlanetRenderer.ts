@@ -42,6 +42,10 @@ export class PlanetRenderer {
   private streetPostMesh!: THREE.InstancedMesh
   private streetHeadMesh!: THREE.InstancedMesh
   private carsMesh!: THREE.InstancedMesh
+  // Ambient pedestrians — renderer-only wandering figures near the settled ground; no sim impact.
+  private pedMesh!: THREE.InstancedMesh
+  private peds: { x: number; y: number; tx: number; ty: number; spd: number; phase: number }[] = []
+  private lastPedT = 0
   private settlerGroup = new THREE.Group()
   private lastSettlerCount = -1
   // City plan paint — translucent zone tints (residential / commercial / industrial / civic)
@@ -406,6 +410,15 @@ export class PlanetRenderer {
     this.crewMesh.castShadow = true
     this.crewMesh.frustumCulled = false
     this.scene.add(this.crewMesh)
+
+    // Ambient pedestrians strolling the settled ground near the landing — the colony feels lived-in.
+    const pedGeo = new THREE.CapsuleGeometry(0.13, 0.34, 3, 6)
+    pedGeo.translate(0, 0.33, 0)
+    this.pedMesh = new THREE.InstancedMesh(pedGeo, new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.05 }), 28)
+    this.pedMesh.castShadow = true
+    this.pedMesh.frustumCulled = false
+    this.scene.add(this.pedMesh)
+    this.initPedestrians()
 
     // street lights at grid intersections
     const lightCap = 360
@@ -809,6 +822,7 @@ export class PlanetRenderer {
     if (this.disposed) return
     this.updateDayNight()
     this.updateColonyLayer()
+    this.updatePedestrians()
     if (this.cinematic) this.updateCinematic()
     this.controls.update()
     this.composer.render()
@@ -826,6 +840,83 @@ export class PlanetRenderer {
   capturePNG(): string {
     this.composer.render()
     return this.renderer.domElement.toDataURL('image/png')
+  }
+
+  private pedOnLand(x: number, y: number): boolean {
+    const t = this.sim.state.terrain
+    const ix = Math.round(x), iy = Math.round(y)
+    if (ix < 0 || iy < 0 || ix >= t.size || iy >= t.size) return false
+    return !t.isWater(ix, iy)
+  }
+
+  /** Seed ~16 wandering pedestrians on land within walking distance of the landing site. */
+  private initPedestrians() {
+    const t = this.sim.state.terrain
+    const lx = t.landing.x, ly = t.landing.y
+    const PED_COLORS = [0xe06a4d, 0x4d8fe0, 0xe6c84d, 0x57b86a, 0xc9c2b6, 0xb47ad6]
+    const col = new THREE.Color()
+    this.peds = []
+    let guard = 0
+    while (this.peds.length < 16 && guard++ < 500) {
+      const a = Math.random() * Math.PI * 2
+      const r = 2 + Math.random() * 14
+      const x = lx + Math.cos(a) * r
+      const y = ly + Math.sin(a) * r
+      if (!this.pedOnLand(x, y)) continue
+      this.peds.push({ x, y, tx: x, ty: y, spd: 0.5 + Math.random() * 0.7, phase: Math.random() * Math.PI * 2 })
+    }
+    this.peds.forEach((_, idx) => {
+      col.setHex(PED_COLORS[idx % PED_COLORS.length]!)
+      this.pedMesh.setColorAt(idx, col)
+    })
+    this.pedMesh.count = this.peds.length
+    if (this.pedMesh.instanceColor) this.pedMesh.instanceColor.needsUpdate = true
+  }
+
+  /** Per-frame: stroll each pedestrian toward a nearby land target, picking a new one on arrival. */
+  private updatePedestrians() {
+    if (!this.pedMesh || this.peds.length === 0) return
+    const t = this.sim.state.terrain
+    const lx = t.landing.x, ly = t.landing.y
+    const now = performance.now()
+    const dt = this.lastPedT ? Math.min(0.05, (now - this.lastPedT) / 1000) : 1 / 60
+    this.lastPedT = now
+    for (let i = 0; i < this.peds.length; i++) {
+      const p = this.peds[i]!
+      let dx = p.tx - p.x, dy = p.ty - p.y
+      let d = Math.hypot(dx, dy)
+      if (d < 0.4) {
+        for (let tries = 0; tries < 8; tries++) {
+          const ang = Math.atan2(ly - p.y, lx - p.x) + (Math.random() - 0.5) * Math.PI * 1.6
+          const step = 3 + Math.random() * 6
+          const nx = p.x + Math.cos(ang) * step
+          const ny = p.y + Math.sin(ang) * step
+          if (this.pedOnLand(nx, ny) && Math.hypot(nx - lx, ny - ly) < 18) {
+            p.tx = nx
+            p.ty = ny
+            break
+          }
+        }
+        dx = p.tx - p.x
+        dy = p.ty - p.y
+        d = Math.hypot(dx, dy)
+      }
+      if (d > 1e-3) {
+        const move = Math.min(d, p.spd * dt)
+        p.x += (dx / d) * move
+        p.y += (dy / d) * move
+        p.phase += dt * 8
+      }
+      const heading = Math.atan2(dy, dx)
+      const bob = Math.abs(Math.sin(p.phase)) * 0.05
+      const wy = Math.max(0, t.worldY(Math.round(p.x), Math.round(p.y)))
+      this.dummy.position.set(this.wx(p.x), wy + bob, this.wz(p.y))
+      this.dummy.rotation.set(0, -heading + Math.PI / 2, 0)
+      this.dummy.scale.set(1, 1, 1)
+      this.dummy.updateMatrix()
+      this.pedMesh.setMatrixAt(i, this.dummy.matrix)
+    }
+    this.pedMesh.instanceMatrix.needsUpdate = true
   }
 
   private updateCinematic() {
