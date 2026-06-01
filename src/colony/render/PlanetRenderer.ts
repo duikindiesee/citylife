@@ -166,28 +166,32 @@ export class PlanetRenderer {
     rim.position.set(0, -0.7, 0)
     this.scene.add(rim)
 
-    // Starfield — a deterministic Fibonacci shell, fog-disabled so the void always reads as deep
-    // space. Sits beyond the camera's max orbit distance so you never fly through it.
-    const starCount = 1500
+    // Starfield — two deterministic Fibonacci shells (fine dust + sparse bright stars), fog-disabled
+    // so the void always reads as deep space. Both sit beyond the camera's max orbit distance, so you
+    // never fly through them. Two layers give the void real depth instead of a flat scatter.
     const golden = Math.PI * (3 - Math.sqrt(5))
-    const sg = new THREE.BufferGeometry()
-    const pos = new Float32Array(starCount * 3)
-    for (let i = 0; i < starCount; i++) {
-      const y = 1 - (i / (starCount - 1)) * 2
-      const rad = Math.sqrt(Math.max(0, 1 - y * y))
-      const theta = golden * i
-      const r = 5200 + ((i * 131) % 1600)
-      pos[i * 3] = Math.cos(theta) * rad * r
-      pos[i * 3 + 1] = y * r
-      pos[i * 3 + 2] = Math.sin(theta) * rad * r
+    const makeStars = (count: number, seed: number, rMin: number, rSpan: number, color: number, size: number, opacity: number) => {
+      const sg = new THREE.BufferGeometry()
+      const pos = new Float32Array(count * 3)
+      for (let i = 0; i < count; i++) {
+        const y = 1 - ((i + 0.5) / count) * 2
+        const rad = Math.sqrt(Math.max(0, 1 - y * y))
+        const theta = golden * (i + seed)
+        const r = rMin + ((i * 131 + seed * 977) % rSpan)
+        pos[i * 3] = Math.cos(theta) * rad * r
+        pos[i * 3 + 1] = y * r
+        pos[i * 3 + 2] = Math.sin(theta) * rad * r
+      }
+      sg.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      const points = new THREE.Points(
+        sg,
+        new THREE.PointsMaterial({ color, size, sizeAttenuation: true, fog: false, transparent: true, opacity, depthWrite: false }),
+      )
+      points.matrixAutoUpdate = false
+      this.scene.add(points)
     }
-    sg.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    const stars = new THREE.Points(
-      sg,
-      new THREE.PointsMaterial({ color: 0xcdd6ff, size: 7, sizeAttenuation: true, fog: false, transparent: true, opacity: 0.92 }),
-    )
-    stars.matrixAutoUpdate = false
-    this.scene.add(stars)
+    makeStars(2800, 0, 5000, 1700, 0x8d99c8, 4, 0.7) // fine dust
+    makeStars(380, 7, 5200, 1500, 0xeef2ff, 11, 0.95) // sparse bright stars
   }
 
   private buildOcean() {
