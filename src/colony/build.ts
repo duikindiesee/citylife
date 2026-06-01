@@ -81,7 +81,17 @@ export function initBuild(state: ColonyState): void {
   state.powerGen = 0
   state.totalJobs = 0
   state.pollution = 0
-  for (const s of state.structures) state.occupied.add(key(s.x, s.y))
+  // Reserve each base structure's cell AND a one-cell halo around it. The rocket (radius 1.1) and the
+  // solar panel (2.6 wide) meshes are wider than a single cell, so a home placed in an adjacent cell
+  // would visually intrude on them — reserving the halo keeps the dropship a clear landing plaza and
+  // prevents the "rocket inside a house" overlap.
+  for (const s of state.structures) {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        state.occupied.add(key(s.x + dx, s.y + dy))
+      }
+    }
+  }
   developBlock(state, 0, 0) // the landing block
 }
 

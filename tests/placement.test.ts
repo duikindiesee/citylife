@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
 import { COLONY } from '../src/colony/config'
+import { addSettler } from '../src/colony/settlers'
+import { autoGrow } from '../src/colony/build'
+import type { KookerCard } from '../src/colony/kooker'
 
 describe('Base placement (rocket / solar / battery / caravan)', () => {
   const seeds = [1, 7, 42, 99, 123, 314, 777, 2026]
@@ -49,6 +52,42 @@ describe('Base placement (rocket / solar / battery / caravan)', () => {
           expect(s.roadSet.has(`${st.x},${st.y}`)).toBe(false)
         }
       })
+    })
+  }
+})
+
+describe('Homes + buildings keep clear of the base structures (no rocket-in-house)', () => {
+  for (const seed of [1, 42, 777, 2026]) {
+    it(`seed ${seed}: nothing is placed within one cell of rocket / solar / battery`, () => {
+      const sim = new ColonySim(seed)
+      const s = sim.state
+      const seeds = s.structures.filter((st) => st.kind !== 'caravan')
+      // Populate the colony: a dozen settler homes + a run of auto-grown buildings.
+      for (let i = 0; i < 12; i++) addSettler(s, sim.rng, { id: 5000 + i, name: `T${i}` } as unknown as KookerCard)
+      for (let i = 0; i < 30; i++) autoGrow(s, sim.rng)
+
+      const occupants = [
+        ...s.settlers.map((h) => ({ x: h.x, y: h.y, what: 'home' })),
+        ...s.buildings.map((b) => ({ x: b.x, y: b.y, what: 'building' })),
+        ...s.jobs.map((j) => ({ x: j.x, y: j.y, what: 'job' })),
+      ]
+      expect(occupants.length).toBeGreaterThan(0) // sanity: placement actually happened
+
+      // Chebyshev distance from every occupant to every base structure must exceed 1 (no shared cell,
+      // no adjacent cell where the wide rocket/solar meshes would intrude).
+      for (const o of occupants) {
+        for (const st of seeds) {
+          const cheb = Math.max(Math.abs(o.x - st.x), Math.abs(o.y - st.y))
+          expect(cheb, `${o.what} at ${o.x},${o.y} too close to ${st.kind} at ${st.x},${st.y}`).toBeGreaterThan(1)
+        }
+      }
+      // And no two things (occupant or structure) ever share a cell.
+      const cells = new Set<string>()
+      for (const o of [...occupants, ...s.structures]) {
+        const k = `${o.x},${o.y}`
+        expect(cells.has(k), `cell collision at ${k}`).toBe(false)
+        cells.add(k)
+      }
     })
   }
 })
