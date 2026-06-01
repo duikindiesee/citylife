@@ -208,6 +208,22 @@ export const COLONY = {
     transitBaseCapacity: 8, // workers the founders' walkways carry before any depots
     transitPerDepot: 10, // commute capacity each Transit Depot adds
     transitCongestedFloor: 0.6, // production floor when fully congested
+    // Maintenance Sheds (spec 022): working buildings wear as they run; a staffed shed repairs those in
+    // range. Past the healthy threshold a worn building loses output — the first mechanic where neglect
+    // degrades what you already built. Wear is PER-BUILDING (unlike the colony-wide factors).
+    matMaintShed: 12,
+    compMaintShed: 8,
+    crewMaintShed: 3,
+    maintShedCost: 1600,
+    maintShedWorkers: 2,
+    maintRadius: 8, // cells; a staffed shed repairs every working building within this
+    maintShedMaintCompPerDay: 1, // spare-parts upkeep (components)
+    wearPerDay: 0.06, // wear a working building accrues per day (fresh → fully worn in ~16 days unserved)
+    repairPerDay: 0.5, // wear a covered building sheds per day (net stays pinned near 0 under a shed)
+    wearHealthyThreshold: 0.5, // below this a building runs at full output (grace period; new machines)
+    maintFloor: 0.25, // most-worn output floor — a worn-out building barely limps until repaired
+    wearBuildThreshold: 0.35, // raise a shed once a working building wears past this (before the penalty bites)
+    maintShedCovers: 6, // cap: at most ~1 shed per this many working buildings
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

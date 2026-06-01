@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed'
 
 export interface Parcel {
   id: number
@@ -48,6 +48,7 @@ export interface ColonyBuilding {
   artifact: Artifact
   tier?: number // spec 006 — habitats evolve 1..3 (more capacity + desirability); undefined = tier 1
   dryMin?: number // spec 006 — sim-minutes a habitat has gone without water (drives devolution)
+  wear?: number // spec 022 — 0..1 mechanical wear on a working building; repaired by a Maintenance Shed
 }
 export interface RoadCell {
   x: number
@@ -73,6 +74,7 @@ const BATTERY_COLOR = 0x4fd07a // green battery shed (grid buffer)
 const SCRUBBER_COLOR = 0x9acd32 // yellow-green air scrubber garden
 const ACADEMY_COLOR = 0x3ab0a0 // teal skillhouse academy
 const TRANSIT_COLOR = 0x4aa0e0 // sky-blue skybridge transit depot
+const MAINTSHED_COLOR = 0x8d9aa6 // steel-grey maintenance shed (repair crews)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -291,6 +293,10 @@ function designTransit(state: ColonyState): Artifact {
   // Spec 021 — Skybridge Transit Depot; raises the colony's commute capacity to keep workers flowing.
   return { id: state.buildIds++, kind: 'transit', color: TRANSIT_COLOR, height: 0.8, residents: 0, jobs: COLONY.build.transitWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.transitCost, materialsCost: COLONY.build.matTransit, crew: COLONY.build.crewTransit, materialsGen: 0, componentsCost: COLONY.build.compTransit }
 }
+function designMaintShed(state: ColonyState): Artifact {
+  // Spec 022 — Maintenance Shed; staffed fitters repair the wear on every working building in range.
+  return { id: state.buildIds++, kind: 'maintshed', color: MAINTSHED_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.maintShedWorkers, powerLoad: 0.3, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.maintShedCost, materialsCost: COLONY.build.matMaintShed, crew: COLONY.build.crewMaintShed, materialsGen: 0, componentsCost: COLONY.build.compMaintShed }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -490,6 +496,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (countKind(state, 'workshop') + countKind(state, 'foundry') > 0 && state.skilled < (countKind(state, 'workshop') + countKind(state, 'foundry')) * COLONY.build.skilledPerAdvanced && state.components >= COLONY.build.compAcademy && countKind(state, 'academy') < 2) return designAcademy(state)
   // Spec 016 — once the colony is a real town, raise a Broadcast Mast so the Kookerverse Courier can speak.
   if (state.colonists > 12 && countKind(state, 'mast') < 1 && state.components >= COLONY.build.compMast) return designMast(state)
+  // Spec 022 — keep the machinery running: a working building worn past the build line with no shed in reach → raise a Maintenance Shed.
+  if (maintenanceUncovered(state) && state.components >= COLONY.build.compMaintShed && countKind(state, 'maintshed') < Math.ceil(state.buildings.filter(isWorking).length / COLONY.build.maintShedCovers)) return designMaintShed(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   // Spec 018 — buffer the grid first when brownout-prone and reels are spare: a Battery Shed (capped vs solar so solar still leads).
   if (inBrownout(state) && state.reels >= COLONY.build.reelBattery && state.components >= COLONY.build.compBattery && countKind(state, 'battery') < countKind(state, 'solar') + 1) return designBattery(state)
@@ -571,7 +579,7 @@ export function claimLot(state: ColonyState, rng: RNG): { x: number; y: number }
 /** Spec 002 — staffed mines extract materials into the stockpile; output scales with global staffing. */
 function produceMaterials(state: ColonyState, dtMin: number): void {
   let gen = 0
-  for (const b of state.buildings) if (b.artifact.kind === 'mine') gen += b.artifact.materialsGen
+  for (const b of state.buildings) if (b.artifact.kind === 'mine') gen += b.artifact.materialsGen * maintFactor(b) // spec 022 — a worn mine digs less
   if (gen <= 0) return
   const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
   state.materials += gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * (dtMin / (24 * 60)) // spec 009/017/021 — sick, brownout or congested mines dig less
@@ -599,6 +607,56 @@ export function commute(state: ColonyState): { demand: number; capacity: number;
   return { demand, capacity, congested: demand > capacity }
 }
 
+/** Spec 022 — only working buildings (anything that employs a crew) wear; homes and passive kit don't. */
+function isWorking(b: ColonyBuilding): boolean {
+  return b.artifact.jobs > 0
+}
+
+/** Spec 022 — a worn building's own output multiplier: 1 until the healthy threshold, ramping to the floor at full wear. */
+function maintFactor(b: ColonyBuilding): number {
+  const wear = b.wear ?? 0
+  const th = COLONY.build.wearHealthyThreshold
+  if (wear <= th) return 1
+  const t = (wear - th) / (1 - th) // 0 at the threshold → 1 at fully worn
+  return Math.max(COLONY.build.maintFloor, 1 - t * (1 - COLONY.build.maintFloor))
+}
+
+/** Spec 022 — every working building accrues wear as it runs; a staffed Maintenance Shed in range repairs it. */
+function maintenanceStep(state: ColonyState, dtMin: number): void {
+  const frac = dtMin / (24 * 60)
+  const sheds = state.buildings.filter((b) => b.artifact.kind === 'maintshed')
+  const staffed = sheds.length > 0 && (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+  for (const b of state.buildings) {
+    if (!isWorking(b)) continue
+    let wear = (b.wear ?? 0) + COLONY.build.wearPerDay * frac
+    if (staffed && sheds.some((s) => Math.hypot(s.x - b.x, s.y - b.y) <= COLONY.build.maintRadius)) {
+      wear -= COLONY.build.repairPerDay * frac
+    }
+    b.wear = Math.max(0, Math.min(1, wear))
+  }
+}
+
+/** Spec 022 — upkeep readout for the HUD: worst wear across working buildings + how many need a fitter. */
+export function maintenanceStatus(state: ColonyState): { worstWear: number; needing: number; sheds: number } {
+  let worstWear = 0
+  let needing = 0
+  for (const b of state.buildings) {
+    if (!isWorking(b)) continue
+    const w = b.wear ?? 0
+    if (w > worstWear) worstWear = w
+    if (w > COLONY.build.wearHealthyThreshold) needing++
+  }
+  return { worstWear, needing, sheds: countKind(state, 'maintshed') }
+}
+
+/** Spec 022 — true when some working building has worn past the build threshold and no shed covers it yet. */
+function maintenanceUncovered(state: ColonyState): boolean {
+  const sheds = state.buildings.filter((b) => b.artifact.kind === 'maintshed')
+  return state.buildings.some(
+    (b) => isWorking(b) && (b.wear ?? 0) > COLONY.build.wearBuildThreshold && !sheds.some((s) => Math.hypot(s.x - b.x, s.y - b.y) <= COLONY.build.maintRadius),
+  )
+}
+
 /** Spec 020 — staffed Skillhouse Academies train colonists into skilled workers, capped at the population. */
 function academyStep(state: ColonyState, dtMin: number): void {
   const academies = countKind(state, 'academy')
@@ -615,12 +673,13 @@ function produceComponents(state: ColonyState, dtMin: number): void {
   const day = 24 * 60
   for (const b of state.buildings) {
     if (b.artifact.kind !== 'workshop') continue
-    const need = COLONY.build.workshopMaterialsIn * eff * (dtMin / day)
+    const mf = maintFactor(b) // spec 022 — a worn workshop refines less
+    const need = COLONY.build.workshopMaterialsIn * eff * mf * (dtMin / day)
     if (need <= 0) continue
     const consume = Math.min(state.materials, need)
     if (consume <= 0) continue
     state.materials -= consume
-    state.components += COLONY.build.workshopComponentsOut * eff * (dtMin / day) * (consume / need)
+    state.components += COLONY.build.workshopComponentsOut * eff * mf * (dtMin / day) * (consume / need)
   }
 }
 
@@ -631,12 +690,13 @@ function produceReels(state: ColonyState, dtMin: number): void {
   const day = 24 * 60
   for (const b of state.buildings) {
     if (b.artifact.kind !== 'foundry') continue
-    const need = COLONY.build.foundryComponentsIn * eff * (dtMin / day)
+    const mf = maintFactor(b) // spec 022 — a worn foundry weaves less
+    const need = COLONY.build.foundryComponentsIn * eff * mf * (dtMin / day)
     if (need <= 0) continue
     const consume = Math.min(state.components, need)
     if (consume <= 0) continue
     state.components -= consume
-    state.reels += COLONY.build.foundryReelsOut * eff * (dtMin / day) * (consume / need)
+    state.reels += COLONY.build.foundryReelsOut * eff * mf * (dtMin / day) * (consume / need)
   }
 }
 
@@ -753,6 +813,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
     } else if (b.artifact.kind === 'survey') matUpkeep += COLONY.build.surveyMaintMatPerDay
     else if (b.artifact.kind === 'battery') upkeep += COLONY.build.batteryMaintCompPerDay
     else if (b.artifact.kind === 'scrubber') upkeep += COLONY.build.scrubberMaintCompPerDay
+    else if (b.artifact.kind === 'maintshed') upkeep += COLONY.build.maintShedMaintCompPerDay // spec 022 — spare parts
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))
@@ -767,7 +828,7 @@ function foodStep(state: ColonyState, dtMin: number): void {
   for (const b of state.buildings) {
     if (b.artifact.kind !== 'greenhouse') continue
     const boost = nearWater(state, b.x, b.y) ? COLONY.build.greenhouseWaterBoost : 1
-    grown += COLONY.build.greenhouseFoodPerDay * boost * staffing
+    grown += COLONY.build.greenhouseFoodPerDay * boost * staffing * maintFactor(b) // spec 022 — a worn greenhouse grows less
   }
   state.food += grown * (dtMin / day)
   state.food = Math.max(0, state.food - state.colonists * COLONY.build.foodPerColonistPerDay * (dtMin / day))
@@ -811,6 +872,7 @@ export function tradeExportRate(state: ColonyState): number {
 }
 
 export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
+  maintenanceStep(state, dtMin) // spec 022 — accrue/repair wear first so producers read current condition
   produceMaterials(state, dtMin)
   academyStep(state, dtMin)
   produceComponents(state, dtMin)

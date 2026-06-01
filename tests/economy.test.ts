@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -1037,5 +1037,70 @@ describe('Spec 021 — Skybridge Transit Depots: congestion slows production', (
       return s.materials - m0
     }
     expect(run(3)).toBeGreaterThan(run(0)) // depots clear the congestion → more mined
+  })
+})
+
+describe('Spec 022 — Maintenance Sheds: working buildings wear and need upkeep', () => {
+  const mk = (kind: 'mine' | 'maintshed', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('a fresh building under the healthy threshold pays no penalty', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 6
+    s.totalJobs = 6
+    s.materials = 5
+    s.buildings.push(mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6, materialsGen: 5 }))
+    const m0 = s.materials
+    for (let i = 0; i < 50; i++) stepBuild(s, sim.rng, 10) // ~0.35 day → wear ~0.02, well under the threshold
+    expect(maintenanceStatus(s).worstWear).toBeLessThan(COLONY.build.wearHealthyThreshold)
+    expect(s.materials - m0).toBeGreaterThan(1.5) // full-rate mining: 5/day × ~0.35 day ≈ 1.74
+  })
+
+  it('an uncovered mine wears down and produces less than one kept under a Maintenance Shed', () => {
+    const run = (shed: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.colonists = 6
+      s.totalJobs = 6
+      s.materials = 5
+      const mx = s.terrain.landing.x + 3
+      const my = s.terrain.landing.y
+      s.buildings.push(mk('mine', mx, my, { jobs: 6, materialsGen: 5 }))
+      if (shed) s.buildings.push(mk('maintshed', mx + 1, my, { jobs: COLONY.build.maintShedWorkers }))
+      s.buildings[0]!.wear = 0.9 // already worn — the penalty is active from the first step
+      const m0 = s.materials
+      for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 10) // ~1.4 day
+      return s.materials - m0
+    }
+    expect(run(true)).toBeGreaterThan(run(false)) // the shed repairs the mine → it digs more
+  })
+
+  it('a Maintenance Shed repairs a worn building back below the healthy threshold', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 6
+    s.totalJobs = 6
+    const mx = s.terrain.landing.x + 3
+    const my = s.terrain.landing.y
+    s.buildings.push(mk('mine', mx, my, { jobs: 6, materialsGen: 5 }))
+    s.buildings.push(mk('maintshed', mx + 1, my, { jobs: COLONY.build.maintShedWorkers }))
+    s.buildings[0]!.wear = 0.9
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 10)
+    expect(s.buildings[0]!.wear!).toBeLessThan(COLONY.build.wearHealthyThreshold) // repaired back to healthy
+
+    // ...and a mine with no shed only wears further toward fully worn.
+    const sim2 = new ColonySim(7)
+    const s2 = sim2.state
+    s2.colonists = 6
+    s2.totalJobs = 6
+    s2.buildings.push(mk('mine', mx, my, { jobs: 6, materialsGen: 5 }))
+    s2.buildings[0]!.wear = 0.9
+    for (let i = 0; i < 200; i++) stepBuild(s2, sim2.rng, 10)
+    expect(s2.buildings[0]!.wear!).toBeGreaterThan(0.9) // no fitters → it rusts further
   })
 })
