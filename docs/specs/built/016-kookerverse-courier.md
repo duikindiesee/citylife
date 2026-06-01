@@ -1,5 +1,5 @@
 # Spec 016 — The Kookerverse Courier: the colony speaks
-- status: proposed
+- status: built
 - proposed-by: **Echo Marlow, signal-herald** — live Hermes returned empty (upstream still dark), written in-character. Straight from the scrolls under the rocky mountain (`docs/research/2026-06-01-the-scrolls-citizen-news-radio.md`), logged by the operator.
 - date: 2026-06-01
 - depends-on: 011

@@ -3,7 +3,7 @@ import { COLONY } from './config'
 import { ColonySim } from './sim'
 import { PlanetRenderer, type CameraPreset, type ViewMode } from './render/PlanetRenderer'
 import { Biome } from './terrain'
-import { autoGrow, freeLabour, housingCapacity, wateredFraction, provisionedFraction, housingTierCounts, healthFraction, cultureFraction, colonyLiveability, surveyAvailable, tradeExportRate, cultureFuelFactor } from './build'
+import { autoGrow, freeLabour, housingCapacity, wateredFraction, provisionedFraction, housingTierCounts, healthFraction, cultureFraction, colonyLiveability, surveyAvailable, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines } from './build'
 import { registerSettler as kookerRegister, generateName as randomSettlerName, type KookerCard } from './kooker'
 import { addSettler, saveColony, restoreColony, clearColony } from './settlers'
 import { bankDeposits, CURRENCY } from './ledger'
@@ -38,6 +38,7 @@ export interface ColonyUiState {
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
   radio: RadioState
+  courier: { on: boolean; headline: string } // spec 016 — the colony's own news, when a Broadcast Mast is up
   tv: boolean
   zonesVisible: boolean
   name: string
@@ -331,6 +332,12 @@ export class ColonyRuntime {
       },
       border: { households: this.backend.households(), bots: this.botService.bots, botSource: this.botService.source, plots: this.cityPlan.plots },
       radio: this.radio,
+      courier: (() => {
+        // Spec 016 — the Kookerverse Courier: rotate through the colony's currently-true headlines.
+        const on = courierAvailable(s)
+        const lines = on ? colonyHeadlines(s) : []
+        return { on, headline: lines.length ? lines[Math.floor(s.clock.totalMinutes / 15) % lines.length]! : '' }
+      })(),
       tv: this.tv,
       zonesVisible: this.zonesVisible,
       name: s.name,

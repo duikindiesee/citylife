@@ -132,6 +132,9 @@ export function ColonyApp() {
 
       <aside className="hud">
         <h2>{ui.name}</h2>
+        {ui.courier.on && ui.courier.headline && (
+          <div className="courier-ticker" title="The Kookerverse Courier — the colony's own news, from the Broadcast Mast" style={{ fontSize: 12, color: '#6fd0ff', fontStyle: 'italic', lineHeight: 1.35, margin: '2px 0 10px', borderLeft: '2px solid #6fd0ff', paddingLeft: 8 }}>📻 {ui.courier.headline}</div>
+        )}
         <div className="row"><span>Site</span><b>{ui.biome}</b></div>
         <div className="row"><span>Colonists</span><b>{ui.colonists} / {ui.colony.capacity}</b></div>
         <div className="row"><span>Homes watered</span><b style={{ color: ui.colony.watered < 60 ? '#e6c84d' : undefined }}>{ui.colony.watered}%</b></div>

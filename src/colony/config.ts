@@ -164,6 +164,12 @@ export const COLONY = {
     reelReserve: 2, // keep at least this many reels before exporting
     reelPrice: 120, // $ earned per exported reel (vs $40 for a raw component)
     reelCapPerDay: 6, // max reels one staffed exchange ships per day
+    // Broadcast Mast / Kookerverse Courier (spec 016): the colony's own news radio.
+    matMast: 16,
+    compMast: 12,
+    crewMast: 3,
+    mastCost: 1800,
+    mastWorkers: 2,
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

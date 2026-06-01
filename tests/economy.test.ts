@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -777,5 +777,49 @@ describe('Spec 015 — the full-service top tier: grand homes demand the whole s
     for (let i = 0; i < 60; i++) stepBuild(s, sim.rng, 60)
     expect(h.tier!).toBeLessThan(3)
     expect(housingCapacity(s)).toBeLessThan(cap0)
+  })
+})
+
+describe('Spec 016 — the Kookerverse Courier broadcasts the colony news', () => {
+  const mk = (kind: 'mast' | 'water' | 'habitat' | 'theatre', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('the Courier is available only from a built, staffed mast', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 10
+    expect(courierAvailable(s)).toBe(false) // no mast
+    s.buildings.push(mk('mast', 50, 50))
+    expect(courierAvailable(s)).toBe(true)
+    s.colonists = 0
+    expect(courierAvailable(s)).toBe(false) // nobody to operate it
+  })
+
+  it('headlines reflect real state — a T3 district, reels out, and a named citizen', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('water', 40, 40)) // Mara's hub
+    const h = mk('habitat', 50, 50, { residents: 3 })
+    h.tier = 3
+    s.buildings.push(h)
+    s.buildings.push(mk('theatre', 60, 60))
+    s.reels = 0
+    const lines = colonyHeadlines(s)
+    expect(lines.some((l) => /Tier 3/i.test(l))).toBe(true)
+    expect(lines.some((l) => /reels run dry/i.test(l))).toBe(true)
+    expect(lines.some((l) => /Mara Venn/i.test(l))).toBe(true)
+  })
+
+  it('reports the reels gleaming when there is stock and no shortage', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.reels = 10 // no theatre, plenty of reels
+    const lines = colonyHeadlines(s)
+    expect(lines.some((l) => /reels gleam/i.test(l))).toBe(true)
+    expect(lines.some((l) => /reels run dry/i.test(l))).toBe(false)
   })
 })

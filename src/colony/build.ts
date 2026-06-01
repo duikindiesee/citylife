@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast'
 
 export interface Parcel {
   id: number
@@ -67,6 +67,7 @@ const THEATRE_COLOR = 0x9a4fd0 // magenta holo-theatre
 const SURVEY_COLOR = 0x4a78b8 // civic blue survey office
 const EXCHANGE_COLOR = 0xc9a227 // gold skybridge exchange (trade)
 const FOUNDRY_COLOR = 0x6a5acd // indigo reel foundry (luxury good)
+const MAST_COLOR = 0x6fd0ff // signal-blue broadcast mast (the Courier)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -264,6 +265,10 @@ function designFoundry(state: ColonyState): Artifact {
   // Spec 013 — refines components into reels (a luxury good) while staffed.
   return { id: state.buildIds++, kind: 'foundry', color: FOUNDRY_COLOR, height: 1.1, residents: 0, jobs: COLONY.build.foundryWorkers, powerLoad: 0.7, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.foundryCost, materialsCost: COLONY.build.matFoundry, crew: COLONY.build.crewFoundry, materialsGen: 0, componentsCost: COLONY.build.compFoundry }
 }
+function designMast(state: ColonyState): Artifact {
+  // Spec 016 — Broadcast Mast; once built + staffed, the Kookerverse Courier reads the colony's own news.
+  return { id: state.buildIds++, kind: 'mast', color: MAST_COLOR, height: 1.6, residents: 0, jobs: COLONY.build.mastWorkers, powerLoad: 0.5, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.mastCost, materialsCost: COLONY.build.matMast, crew: COLONY.build.crewMast, materialsGen: 0, componentsCost: COLONY.build.compMast }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -367,6 +372,31 @@ export function surveyAvailable(state: ColonyState): boolean {
   return countKind(state, 'survey') > 0 && state.colonists > 0
 }
 
+/** Spec 016 — the Kookerverse Courier broadcasts only from a built + staffed Broadcast Mast. */
+export function courierAvailable(state: ColonyState): boolean {
+  return countKind(state, 'mast') > 0 && state.colonists > 0
+}
+
+/** Spec 016 — the colony's own news, read deterministically from live state + the citizens who built it. */
+export function colonyHeadlines(state: ColonyState): string[] {
+  const h: string[] = []
+  const tiers = housingTierCounts(state)
+  if (tiers[2] > 0) h.push('A district reaches Tier 3 — a home that wants for nothing.')
+  if (countKind(state, 'theatre') > 0 && state.reels <= 0) h.push('The reels run dry; the Holo-Theatres dim until the foundry catches up.')
+  else if (state.reels > 0) h.push("The foundry's reels gleam — luxury bound for the Skybridge.")
+  h.push(`Population ${Math.round(state.colonists)}, and the border stays busy.`)
+  h.push(`${state.buildings.length} structures stand on the island tonight.`)
+  if (state.treasury > 0) h.push(`The Exchange is paying: the treasury holds $${Math.round(state.treasury).toLocaleString()}.`)
+  // the council's voices — each citizen and what they raised
+  if (countKind(state, 'water') > 0) h.push("Mara Venn's Water Hubs keep the far homes flowing.")
+  if (countKind(state, 'depot') > 0) h.push("Ration depots carry food to every door — Mara Venn's doing.")
+  if (countKind(state, 'clinic') > 0) h.push('The clinics keep the work crews on their feet.')
+  if (countKind(state, 'exchange') > 0) h.push("Bram Teel's Skybridge Exchange ships the colony's surplus to the dark.")
+  if (countKind(state, 'foundry') > 0) h.push("Niko Vance's foundry weaves components into luxury reels.")
+  if (countKind(state, 'survey') > 0) h.push('The Civic Pulse is read — the colony can see where it thrives.')
+  return h
+}
+
 /** Spec 011 — tint a liveability score 0..1 from amber (starved) to cyan (thriving). Plain RGB lerp, no THREE. */
 export function liveabilityTint(score: number): number {
   const s = Math.max(0, Math.min(1, score))
@@ -403,6 +433,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 8 && countKind(state, 'exchange') < 1 && state.components > COLONY.build.tradeComponentReserve && state.components >= COLONY.build.compExchange) return designExchange(state)
   // Spec 013 — with components plentiful and an Exchange to sell through, raise a Reel Foundry to refine luxury reels.
   if (state.colonists > 10 && countKind(state, 'foundry') < 1 && state.components > 40 && state.components >= COLONY.build.compFoundry) return designFoundry(state)
+  // Spec 016 — once the colony is a real town, raise a Broadcast Mast so the Kookerverse Courier can speak.
+  if (state.colonists > 12 && countKind(state, 'mast') < 1 && state.components >= COLONY.build.compMast) return designMast(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom) return designSolarFarm(state)
   const pendingJobs = state.jobs.reduce((g, j) => g + j.artifact.jobs, 0)
