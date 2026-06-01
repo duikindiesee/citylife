@@ -12,6 +12,7 @@ import type { Household } from './newcomers'
 import { BotService, defaultBotAdapter, type Bot } from './bots'
 import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
+import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
 const BIOME_LABEL: Record<number, string> = {
   [Biome.Ocean]: 'Ocean',
@@ -158,6 +159,42 @@ export class ColonyRuntime {
   /** Capture the current view as a PNG data URL (HUD snapshot button); null before the renderer starts. */
   snapshot(): string | null {
     return this.renderer?.capturePNG() ?? null
+  }
+  /** Compose a shareable "poster" of the colony over the current view, mounted as a fixed overlay.
+   *  Returns false if the renderer has not started (no hero to capture). Driven by the morning routine. */
+  shareCard(info?: { headline?: string; tagline?: string; sol?: number; specTitle?: string; format?: CardFormat }): boolean {
+    const hero = this.snapshot()
+    if (!hero || typeof document === 'undefined') return false
+    const ui = this.getUiState()
+    document.getElementById(CARD_ID)?.remove()
+    document.body.appendChild(
+      buildShareCard({
+        hero,
+        sol: info?.sol ?? ui.clock.day,
+        headline: info?.headline ?? headlineFor(info?.specTitle),
+        tagline: info?.tagline ?? DEFAULT_TAGLINE,
+        stats: shareStats(ui),
+        site: siteLabel(ui),
+        format: info?.format ?? 'wide',
+      }),
+    )
+    // Hide everything else (live canvas + HUD) so the poster is clean — the hero is already frozen into the card.
+    for (const ch of Array.from(document.body.children)) {
+      if (!(ch instanceof HTMLElement) || ch.id === CARD_ID) continue
+      ch.dataset.kvPrevDisplay = ch.style.display || '∅'
+      ch.style.display = 'none'
+    }
+    return true
+  }
+  /** Remove the share-card overlay and restore the normal game view. */
+  clearShareCard(): void {
+    if (typeof document === 'undefined') return
+    document.getElementById(CARD_ID)?.remove()
+    for (const ch of Array.from(document.body.children)) {
+      if (!(ch instanceof HTMLElement) || !ch.dataset.kvPrevDisplay) continue
+      ch.style.display = ch.dataset.kvPrevDisplay === '∅' ? '' : ch.dataset.kvPrevDisplay
+      delete ch.dataset.kvPrevDisplay
+    }
   }
   private startAdLoop() {
     if (this.adInterval) return
