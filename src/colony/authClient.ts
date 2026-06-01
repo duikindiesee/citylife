@@ -33,6 +33,23 @@ function envPasscode(): string | undefined {
   }
 }
 
+function envOperatorName(): string | undefined {
+  try {
+    return (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_OPERATOR_NAME
+  } catch {
+    return undefined
+  }
+}
+
+/** True only under a Vite dev server — auto-login is never available in a production bundle. */
+function isDevBuild(): boolean {
+  try {
+    return !!(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV
+  } catch {
+    return false
+  }
+}
+
 export class AuthClient {
   private session: OperatorSession | null = null
   private readonly expected: string | undefined
@@ -67,6 +84,17 @@ export class AuthClient {
     this.session = { token: this.mintDevToken(id, expiresAt), expiresAt, operator: { id, scopes: SCOPES } }
     this.persist()
     return { ok: true }
+  }
+
+  /** Dev-only convenience for the local test run: if VITE_OPERATOR_NAME and VITE_OPERATOR_PASSCODE are
+   *  both set in the gitignored .env.local, authenticate automatically so the operator gate never
+   *  blocks local testing. No-op (returns false) in a production build or if either var is missing. */
+  tryAutoLogin(): boolean {
+    if (this.isAuthenticated) return true
+    if (!isDevBuild()) return false
+    const name = envOperatorName()
+    if (!name || !this.expected) return false
+    return this.login(name, this.expected).ok
   }
 
   logout(): void {
