@@ -79,7 +79,18 @@ html, body, #root { margin: 0; height: 100%; background: #05070f; color: var(--t
 .hint b { color: var(--text); }
 
 /* Border Authority login gate */
-.login { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(1200px 800px at 50% -10%, #0c1630, #05070f 72%); }
+/* Dark City starfield behind the gate — three tiled star layers over the deep-space gradient. */
+.login {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background-color: #05070f;
+  background-image:
+    radial-gradient(1px 1px at 15px 25px, rgba(255,255,255,0.75) 50%, transparent 51%),
+    radial-gradient(1px 1px at 55px 70px, rgba(205,214,255,0.6) 50%, transparent 51%),
+    radial-gradient(1.6px 1.6px at 95px 40px, rgba(255,255,255,0.85) 50%, transparent 51%),
+    radial-gradient(1200px 800px at 50% -10%, #0c1630, #05070f 72%);
+  background-size: 140px 140px, 210px 210px, 270px 270px, 100% 100%;
+  background-repeat: repeat, repeat, repeat, no-repeat;
+}
 .login-card { width: 344px; max-width: 92vw; background: var(--panel); border: 1px solid var(--brd); border-radius: 16px; padding: 26px 24px; backdrop-filter: blur(10px); display: flex; flex-direction: column; gap: 10px; box-shadow: 0 24px 60px rgba(0,0,0,0.45); }
 .login-brand { font-size: 30px; font-weight: 800; letter-spacing: 0.4px; }
 .login-brand span { color: var(--accent); }
