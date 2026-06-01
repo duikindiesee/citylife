@@ -54,6 +54,16 @@ export const COLONY = {
     industrialLoad: 0.9,
     workplaceBuildHours: 5,
     jobDeficitThreshold: 5, // build a workplace when unemployment exceeds this
+    // Materials + labour economy (spec 001): construction consumes materials and reserves a crew of
+    // free colonists. No build starts without both — so buildings no longer pop up on a bare timer.
+    materialsStart: 40, // dropship stockpile; later produced by extraction (quarry/mine)
+    matHabitat: 6,
+    matCommercial: 8,
+    matIndustrial: 10,
+    matSolar: 5,
+    crewHabitat: 2,
+    crewWork: 3,
+    crewSolar: 2,
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

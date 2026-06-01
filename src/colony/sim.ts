@@ -35,6 +35,7 @@ export interface ColonyState {
   colonists: number
   // Phase B — construction
   treasury: number
+  materials: number // spec 001 — build supplies; construction consumes these
   parcels: Parcel[]
   jobs: ConstructionJob[]
   buildings: ColonyBuilding[]
@@ -99,6 +100,7 @@ export class ColonySim {
       },
       colonists: COLONY.seed.colonists,
       treasury: 0,
+      materials: 0, // set by initBuild → materialsStart
       parcels: [],
       jobs: [],
       buildings: [],

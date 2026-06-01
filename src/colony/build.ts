@@ -27,6 +27,8 @@ export interface Artifact {
   powerGen: number
   buildTimeMin: number
   cost: number
+  materialsCost: number // spec 001: materials consumed to construct
+  crew: number // spec 001: free colonists reserved for the build duration
 }
 export interface ConstructionJob {
   id: number
@@ -67,6 +69,7 @@ function isRoadLine(state: ColonyState, x: number, y: number): boolean {
 
 export function initBuild(state: ColonyState): void {
   state.treasury = COLONY.build.treasuryStart
+  state.materials = COLONY.build.materialsStart // spec 001 — dropship build-supply stockpile
   state.parcels = []
   state.jobs = []
   state.buildings = []
@@ -194,14 +197,14 @@ function availableLot(state: ColonyState, rng: RNG): { x: number; y: number } | 
 // ── architect ──
 
 function designHabitat(state: ColonyState, rng: RNG): Artifact {
-  return { id: state.buildIds++, kind: 'habitat', color: HAB_COLORS[rng.int(0, HAB_COLORS.length - 1)]!, height: rng.range(0.8, 1.6), residents: COLONY.build.residentsPerHabitat, jobs: 0, powerLoad: COLONY.build.powerLoadPerHabitat, powerGen: 0, buildTimeMin: COLONY.build.buildTimeHours * 60, cost: COLONY.build.habitatCost }
+  return { id: state.buildIds++, kind: 'habitat', color: HAB_COLORS[rng.int(0, HAB_COLORS.length - 1)]!, height: rng.range(0.8, 1.6), residents: COLONY.build.residentsPerHabitat, jobs: 0, powerLoad: COLONY.build.powerLoadPerHabitat, powerGen: 0, buildTimeMin: COLONY.build.buildTimeHours * 60, cost: COLONY.build.habitatCost, materialsCost: COLONY.build.matHabitat, crew: COLONY.build.crewHabitat }
 }
 function designWorkplace(state: ColonyState, rng: RNG): Artifact {
   const ind = rng.chance(0.45)
-  return { id: state.buildIds++, kind: ind ? 'industrial' : 'commercial', color: ind ? INDUSTRIAL_COLOR : COMMERCIAL_COLOR, height: ind ? rng.range(0.9, 1.5) : rng.range(1.0, 1.8), residents: 0, jobs: ind ? COLONY.build.jobsPerIndustrial : COLONY.build.jobsPerCommercial, powerLoad: ind ? COLONY.build.industrialLoad : COLONY.build.commercialLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: ind ? COLONY.build.industrialCost : COLONY.build.commercialCost }
+  return { id: state.buildIds++, kind: ind ? 'industrial' : 'commercial', color: ind ? INDUSTRIAL_COLOR : COMMERCIAL_COLOR, height: ind ? rng.range(0.9, 1.5) : rng.range(1.0, 1.8), residents: 0, jobs: ind ? COLONY.build.jobsPerIndustrial : COLONY.build.jobsPerCommercial, powerLoad: ind ? COLONY.build.industrialLoad : COLONY.build.commercialLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: ind ? COLONY.build.industrialCost : COLONY.build.commercialCost, materialsCost: ind ? COLONY.build.matIndustrial : COLONY.build.matCommercial, crew: COLONY.build.crewWork }
 }
 function designSolarFarm(state: ColonyState): Artifact {
-  return { id: state.buildIds++, kind: 'solar', color: SOLAR_COLOR, height: 0.35, residents: 0, jobs: 0, powerLoad: 0, powerGen: COLONY.build.solarFarmOutput, buildTimeMin: COLONY.build.solarFarmBuildHours * 60, cost: COLONY.build.solarFarmCost }
+  return { id: state.buildIds++, kind: 'solar', color: SOLAR_COLOR, height: 0.35, residents: 0, jobs: 0, powerLoad: 0, powerGen: COLONY.build.solarFarmOutput, buildTimeMin: COLONY.build.solarFarmBuildHours * 60, cost: COLONY.build.solarFarmCost, materialsCost: COLONY.build.matSolar, crew: COLONY.build.crewSolar }
 }
 
 function peakSupply(state: ColonyState): number {
@@ -216,8 +219,26 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
 }
 
 /** Plan + pay for one build. Develops a new block (road frame) when the current ones are full. */
+/** Colonists currently tied up on active build crews (one crew per in-progress construction job). */
+function reservedCrew(state: ColonyState): number {
+  let n = 0
+  for (const j of state.jobs) n += j.artifact.crew
+  return n
+}
+
+/** Spec 001 — free colonists available to crew a new build: not employed, not already building. */
+export function freeLabour(state: ColonyState): number {
+  const employed = Math.min(state.colonists, state.totalJobs)
+  return Math.max(0, state.colonists - employed - reservedCrew(state))
+}
+
 export function autoGrow(state: ColonyState, rng: RNG): boolean {
   if (state.buildings.length + state.jobs.length >= COLONY.build.maxBuildings) return false
+
+  // Spec 001 — labour + materials gate. A build needs free hands and supplies; bail early (before
+  // developing a block) if we can't even afford the cheapest build. No more timer pop-ups.
+  const free = freeLabour(state)
+  if (free < COLONY.build.crewSolar || state.materials < COLONY.build.matSolar) return false
 
   let lot = availableLot(state, rng)
   if (!lot) {
@@ -231,11 +252,14 @@ export function autoGrow(state: ColonyState, rng: RNG): boolean {
 
   const artifact = chooseArtifact(state, rng)
   if (state.treasury < artifact.cost + 600) return false
+  if (state.materials < artifact.materialsCost) return false // not enough supplies
+  if (free < artifact.crew) return false // not enough hands to raise it
 
   const c = caravan(state)
   state.parcels.push({ id: state.buildIds++, x: lot.x, y: lot.y })
   state.occupied.add(key(lot.x, lot.y))
   state.treasury -= artifact.cost
+  state.materials -= artifact.materialsCost // consumed up front; crew reserved via the job until done
   state.jobs.push({ id: state.buildIds++, x: lot.x, y: lot.y, artifact, progress: 0, path: roadPath(state, c.x, c.y, lot.x, lot.y) })
   return true
 }
