@@ -124,6 +124,7 @@ export class PlanetRenderer {
     this.buildPlanet()
     this.buildOcean()
     this.buildTerrain()
+    this.buildFoliage()
     this.buildStructures()
     this.buildColonyLayer()
     this.setupComposer()
@@ -203,6 +204,53 @@ export class PlanetRenderer {
     }
     makeStars(2800, 0, 5000, 1700, 0x8d99c8, 4, 0.7) // fine dust
     makeStars(380, 7, 5200, 1500, 0xeef2ff, 11, 0.95) // sparse bright stars
+  }
+
+  /** Scatter instanced foliage cones across the wooded land (dense in forest, sparse on plains), so
+   *  the island reads as living terrain rather than flat colour. Deterministic placement (stable per
+   *  seed); pure decoration with no sim or gameplay impact. */
+  private buildFoliage() {
+    const t = this.sim.state.terrain
+    const N = t.size
+    const hash = (n: number) => ((n * 2654435761) >>> 0) / 4294967296
+    const TREE_COLORS = [0x3f6b4a, 0x4f7d5a, 0x5b4a7d, 0x35633f]
+    const cells: number[] = []
+    for (let i = 0; i < N * N; i++) {
+      const b = t.biome[i]
+      if (b !== Biome.Forest && b !== Biome.Plains) continue
+      const x = i % N
+      const y = (i / N) | 0
+      if (t.isWater(x, y)) continue
+      const p = b === Biome.Forest ? 0.5 : 0.08
+      if (hash(i + 1) < p) cells.push(i)
+    }
+    const cap = Math.min(cells.length, 1400)
+    const geo = new THREE.ConeGeometry(0.42, 1.1, 6)
+    geo.translate(0, 0.55, 0)
+    const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, flatShading: true }), cap)
+    mesh.castShadow = true
+    mesh.frustumCulled = false
+    const col = new THREE.Color()
+    let n = 0
+    for (let k = 0; k < cells.length && n < cap; k++) {
+      const i = cells[k]!
+      const x = i % N
+      const y = (i / N) | 0
+      const h1 = hash(i * 7 + 3)
+      const h2 = hash(i * 13 + 5)
+      const wy = Math.max(0, t.worldY(x, y))
+      const s = 0.7 + h1 * 0.7
+      this.dummy.position.set(this.wx(x) + (h1 - 0.5) * 0.7, wy, this.wz(y) + (h2 - 0.5) * 0.7)
+      this.dummy.scale.set(s, s + h2 * 0.6, s)
+      this.dummy.rotation.set(0, h2 * Math.PI, 0)
+      this.dummy.updateMatrix()
+      mesh.setMatrixAt(n, this.dummy.matrix)
+      col.setHex(TREE_COLORS[(i + x) % TREE_COLORS.length]!)
+      mesh.setColorAt(n, col)
+      n++
+    }
+    mesh.count = n
+    this.scene.add(mesh)
   }
 
   private buildOcean() {
