@@ -150,6 +150,7 @@ export function ColonyApp() {
         <div className="row"><span>Pollution</span><b style={{ color: ui.colony.pollution > 60 ? '#e0584d' : ui.colony.pollution > 25 ? '#e6c84d' : undefined }}>{ui.colony.pollution}</b></div>
         <div className="row"><span>Treasury</span><b>${ui.colony.treasury.toLocaleString()}</b></div>
         {ui.colony.trade > 0 && <div className="row"><span>Trade</span><b style={{ color: '#5fd0a0' }}>+${ui.colony.trade.toLocaleString()}/day</b></div>}
+        {ui.colony.storage.fill >= 50 && <div className="row"><span>Storage</span><b style={{ color: ui.colony.storage.full ? '#e0584d' : ui.colony.storage.fill >= 90 ? '#e0844d' : undefined }} title={ui.colony.storage.full ? `Storage full (${ui.colony.storage.tightest}) — overflow is lost overboard. Build a Storehouse Platform.` : `Fullest store: ${ui.colony.storage.tightest} at ${ui.colony.storage.fill}% of cap`}>{ui.colony.storage.fill}% full{ui.colony.storage.full ? ' ⚠' : ''}</b></div>}
         <div className="row"><span>Materials</span><b style={{ color: ui.colony.materials < 6 ? '#e0584d' : undefined }}>{ui.colony.materials}</b></div>
         <div className="row"><span>Components</span><b>{ui.colony.components}</b></div>
         <div className="row"><span>Food</span><b style={{ color: ui.colony.food === 0 ? '#e6c84d' : undefined }}>{ui.colony.food}</b></div>

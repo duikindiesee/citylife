@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -1037,6 +1037,65 @@ describe('Spec 021 — Skybridge Transit Depots: congestion slows production', (
       return s.materials - m0
     }
     expect(run(3)).toBeGreaterThan(run(0)) // depots clear the congestion → more mined
+  })
+})
+
+describe('Spec 023 — Storehouse Platforms: finite storage, the surplus goes overboard', () => {
+  const mk = (kind: 'storehouse' | 'mine', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('storage caps grow with each Storehouse Platform', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const base = storageCaps(s)
+    expect(base.materials).toBe(COLONY.build.storeBaseMaterials)
+    expect(base.reels).toBe(COLONY.build.storeBaseReels)
+    s.buildings.push(mk('storehouse', 50, 50, { jobs: COLONY.build.storehouseWorkers }))
+    const one = storageCaps(s)
+    expect(one.materials).toBe(COLONY.build.storeBaseMaterials + COLONY.build.storePerMaterials)
+    expect(one.components).toBe(COLONY.build.storeBaseComponents + COLONY.build.storePerComponents)
+  })
+
+  it('a resource is clamped to its cap and the overflow is discarded', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const cap = storageCaps(s).materials
+    s.materials = cap + 500 // way over the founders' hold
+    s.colonists = 4
+    s.totalJobs = 4
+    stepBuild(s, sim.rng, 10)
+    expect(s.materials).toBe(cap) // overflow lost, pinned at the cap (no consumers here)
+    expect(storageStatus(s).full).toBe(true)
+  })
+
+  it('a Storehouse Platform lets the colony hold more than the base cap', () => {
+    const run = (store: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      if (store) s.buildings.push(mk('storehouse', 50, 50, { jobs: COLONY.build.storehouseWorkers }))
+      s.materials = 100000 // try to hoard everything
+      stepBuild(s, sim.rng, 10)
+      return s.materials
+    }
+    expect(run(false)).toBe(COLONY.build.storeBaseMaterials) // base hold without a platform
+    expect(run(true)).toBe(COLONY.build.storeBaseMaterials + COLONY.build.storePerMaterials) // one platform → higher ceiling
+    expect(run(true)).toBeGreaterThan(run(false))
+  })
+
+  it('the founding economy stays well under cap (no clamping in normal early play)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6, materialsGen: 5 }))
+    s.colonists = 6
+    s.totalJobs = 6
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 10) // ~1.4 days of a small mining colony
+    const cap = storageCaps(s)
+    expect(s.materials).toBeLessThan(cap.materials) // never touches the ceiling in early play
+    expect(storageStatus(s).full).toBe(false)
   })
 })
 

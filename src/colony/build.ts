@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse'
 
 export interface Parcel {
   id: number
@@ -75,6 +75,7 @@ const SCRUBBER_COLOR = 0x9acd32 // yellow-green air scrubber garden
 const ACADEMY_COLOR = 0x3ab0a0 // teal skillhouse academy
 const TRANSIT_COLOR = 0x4aa0e0 // sky-blue skybridge transit depot
 const MAINTSHED_COLOR = 0x8d9aa6 // steel-grey maintenance shed (repair crews)
+const STOREHOUSE_COLOR = 0xb0a06a // khaki crate-stacked storehouse platform
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -297,6 +298,10 @@ function designMaintShed(state: ColonyState): Artifact {
   // Spec 022 — Maintenance Shed; staffed fitters repair the wear on every working building in range.
   return { id: state.buildIds++, kind: 'maintshed', color: MAINTSHED_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.maintShedWorkers, powerLoad: 0.3, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.maintShedCost, materialsCost: COLONY.build.matMaintShed, crew: COLONY.build.crewMaintShed, materialsGen: 0, componentsCost: COLONY.build.compMaintShed }
 }
+function designStorehouse(state: ColonyState): Artifact {
+  // Spec 023 — Storehouse Platform; raises the colony's storage cap for every resource.
+  return { id: state.buildIds++, kind: 'storehouse', color: STOREHOUSE_COLOR, height: 0.6, residents: 0, jobs: COLONY.build.storehouseWorkers, powerLoad: 0.3, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.storehouseCost, materialsCost: COLONY.build.matStorehouse, crew: COLONY.build.crewStorehouse, materialsGen: 0, componentsCost: COLONY.build.compStorehouse }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -498,6 +503,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 12 && countKind(state, 'mast') < 1 && state.components >= COLONY.build.compMast) return designMast(state)
   // Spec 022 — keep the machinery running: a working building worn past the build line with no shed in reach → raise a Maintenance Shed.
   if (maintenanceUncovered(state) && state.components >= COLONY.build.compMaintShed && countKind(state, 'maintshed') < Math.ceil(state.buildings.filter(isWorking).length / COLONY.build.maintShedCovers)) return designMaintShed(state)
+  // Spec 023 — make room before the surplus spills: a stockpile near its cap + components on hand → raise a Storehouse Platform.
+  if (storageNearCap(state) && state.components >= COLONY.build.compStorehouse && countKind(state, 'storehouse') < COLONY.build.maxStorehouses) return designStorehouse(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   // Spec 018 — buffer the grid first when brownout-prone and reels are spare: a Battery Shed (capped vs solar so solar still leads).
   if (inBrownout(state) && state.reels >= COLONY.build.reelBattery && state.components >= COLONY.build.compBattery && countKind(state, 'battery') < countKind(state, 'solar') + 1) return designBattery(state)
@@ -657,6 +664,54 @@ function maintenanceUncovered(state: ColonyState): boolean {
   )
 }
 
+/** Spec 023 — per-resource storage cap = the founders' hold + what each Storehouse Platform adds. */
+export function storageCaps(state: ColonyState): { materials: number; components: number; food: number; reels: number } {
+  const n = countKind(state, 'storehouse')
+  return {
+    materials: COLONY.build.storeBaseMaterials + n * COLONY.build.storePerMaterials,
+    components: COLONY.build.storeBaseComponents + n * COLONY.build.storePerComponents,
+    food: COLONY.build.storeBaseFood + n * COLONY.build.storePerFood,
+    reels: COLONY.build.storeBaseReels + n * COLONY.build.storePerReels,
+  }
+}
+
+/** Spec 023 — clamp every stockpile to its cap; the overflow is lost (spilled, spoiled, written off). */
+function clampStorage(state: ColonyState): void {
+  const cap = storageCaps(state)
+  if (state.materials > cap.materials) state.materials = cap.materials
+  if (state.components > cap.components) state.components = cap.components
+  if (state.food > cap.food) state.food = cap.food
+  if (state.reels > cap.reels) state.reels = cap.reels
+}
+
+/** Spec 023 — storage readout for the HUD: fullest stockpile (0..1), whether it's overflowing, and which. */
+export function storageStatus(state: ColonyState): { fill: number; full: boolean; tightest: string } {
+  const cap = storageCaps(state)
+  const items: [string, number, number][] = [
+    ['materials', state.materials, cap.materials],
+    ['components', state.components, cap.components],
+    ['food', state.food, cap.food],
+    ['reels', state.reels, cap.reels],
+  ]
+  let fill = 0
+  let tightest = 'materials'
+  for (const [name, v, c] of items) {
+    const f = c > 0 ? v / c : 0
+    if (f > fill) {
+      fill = f
+      tightest = name
+    }
+  }
+  return { fill, full: fill >= 0.999, tightest }
+}
+
+/** Spec 023 — true when any stockpile has climbed past the build threshold of its cap (time for a platform). */
+function storageNearCap(state: ColonyState): boolean {
+  const cap = storageCaps(state)
+  const th = COLONY.build.storeBuildThreshold
+  return state.materials > cap.materials * th || state.components > cap.components * th || state.food > cap.food * th || state.reels > cap.reels * th
+}
+
 /** Spec 020 — staffed Skillhouse Academies train colonists into skilled workers, capped at the population. */
 function academyStep(state: ColonyState, dtMin: number): void {
   const academies = countKind(state, 'academy')
@@ -814,6 +869,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
     else if (b.artifact.kind === 'battery') upkeep += COLONY.build.batteryMaintCompPerDay
     else if (b.artifact.kind === 'scrubber') upkeep += COLONY.build.scrubberMaintCompPerDay
     else if (b.artifact.kind === 'maintshed') upkeep += COLONY.build.maintShedMaintCompPerDay // spec 022 — spare parts
+    else if (b.artifact.kind === 'storehouse') upkeep += COLONY.build.storehouseMaintCompPerDay // spec 023 — logistics
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))
@@ -882,6 +938,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   housingStep(state, dtMin)
   immigration(state, dtMin)
   tradeStep(state, dtMin)
+  clampStorage(state) // spec 023 — finite storage: production past a cap is lost (after all goods are produced/sold)
   for (let i = state.jobs.length - 1; i >= 0; i--) {
     const j = state.jobs[i]!
     j.progress += dtMin / j.artifact.buildTimeMin

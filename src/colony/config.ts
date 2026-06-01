@@ -224,6 +224,26 @@ export const COLONY = {
     maintFloor: 0.25, // most-worn output floor — a worn-out building barely limps until repaired
     wearBuildThreshold: 0.35, // raise a shed once a working building wears past this (before the penalty bites)
     maintShedCovers: 6, // cap: at most ~1 shed per this many working buildings
+    // Storehouse Platforms (spec 023): finite storage. Each resource has a cap = a generous founders' hold +
+    // what the Storehouse Platforms add; production/trade past a cap is clamped and the overflow is LOST.
+    // Bases are deliberately generous so the founding economy is never strangled — the cap bites only at a
+    // genuine industrial surplus (e.g. a brownout stalls the workshops while the mines keep digging).
+    storeBaseMaterials: 220,
+    storeBaseComponents: 150,
+    storeBaseFood: 160,
+    storeBaseReels: 70,
+    storePerMaterials: 120, // capacity one Storehouse Platform adds, per resource
+    storePerComponents: 90,
+    storePerFood: 90,
+    storePerReels: 50,
+    matStorehouse: 18,
+    compStorehouse: 10,
+    crewStorehouse: 3,
+    storehouseCost: 1800,
+    storehouseWorkers: 2, // stock-keepers: log, stack, guard, rotate
+    storehouseMaintCompPerDay: 0.5, // logistics upkeep
+    storeBuildThreshold: 0.85, // raise a platform once any stockpile passes this fraction of its cap
+    maxStorehouses: 6,
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,
