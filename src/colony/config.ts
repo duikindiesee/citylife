@@ -199,6 +199,15 @@ export const COLONY = {
     academyWorkers: 2,
     academyTrainPerDay: 2, // skilled workers trained per day per staffed academy
     skilledPerAdvanced: 3, // skilled workers one workshop/foundry wants for full output
+    // Skybridge Transit Depot (spec 021): commute capacity; a congested colony slows ALL its production.
+    matTransit: 16,
+    compTransit: 10,
+    crewTransit: 3,
+    transitCost: 1800,
+    transitWorkers: 2,
+    transitBaseCapacity: 8, // workers the founders' walkways carry before any depots
+    transitPerDepot: 10, // commute capacity each Transit Depot adds
+    transitCongestedFloor: 0.6, // production floor when fully congested
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

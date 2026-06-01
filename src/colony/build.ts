@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit'
 
 export interface Parcel {
   id: number
@@ -72,6 +72,7 @@ const MAST_COLOR = 0x6fd0ff // signal-blue broadcast mast (the Courier)
 const BATTERY_COLOR = 0x4fd07a // green battery shed (grid buffer)
 const SCRUBBER_COLOR = 0x9acd32 // yellow-green air scrubber garden
 const ACADEMY_COLOR = 0x3ab0a0 // teal skillhouse academy
+const TRANSIT_COLOR = 0x4aa0e0 // sky-blue skybridge transit depot
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -286,6 +287,10 @@ function designAcademy(state: ColonyState): Artifact {
   // Spec 020 — Skillhouse Academy; while staffed, trains the colony's people into skilled workers.
   return { id: state.buildIds++, kind: 'academy', color: ACADEMY_COLOR, height: 1.0, residents: 0, jobs: COLONY.build.academyWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.academyCost, materialsCost: COLONY.build.matAcademy, crew: COLONY.build.crewAcademy, materialsGen: 0, componentsCost: COLONY.build.compAcademy }
 }
+function designTransit(state: ColonyState): Artifact {
+  // Spec 021 — Skybridge Transit Depot; raises the colony's commute capacity to keep workers flowing.
+  return { id: state.buildIds++, kind: 'transit', color: TRANSIT_COLOR, height: 0.8, residents: 0, jobs: COLONY.build.transitWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.transitCost, materialsCost: COLONY.build.matTransit, crew: COLONY.build.crewTransit, materialsGen: 0, componentsCost: COLONY.build.compTransit }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -488,6 +493,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   // Spec 018 — buffer the grid first when brownout-prone and reels are spare: a Battery Shed (capped vs solar so solar still leads).
   if (inBrownout(state) && state.reels >= COLONY.build.reelBattery && state.components >= COLONY.build.compBattery && countKind(state, 'battery') < countKind(state, 'solar') + 1) return designBattery(state)
+  // Spec 021 — keep the workers moving: when commute demand outruns capacity, raise a Skybridge Transit Depot.
+  if (Math.min(state.colonists, state.totalJobs) > COLONY.build.transitBaseCapacity + countKind(state, 'transit') * COLONY.build.transitPerDepot && state.components >= COLONY.build.compTransit && countKind(state, 'transit') < 5) return designTransit(state)
   if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom) return designSolarFarm(state)
   const pendingJobs = state.jobs.reduce((g, j) => g + j.artifact.jobs, 0)
   if (state.colonists - (state.totalJobs + pendingJobs) > COLONY.build.jobDeficitThreshold) return designWorkplace(state, rng)
@@ -567,7 +574,7 @@ function produceMaterials(state: ColonyState, dtMin: number): void {
   for (const b of state.buildings) if (b.artifact.kind === 'mine') gen += b.artifact.materialsGen
   if (gen <= 0) return
   const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
-  state.materials += gen * staffing * healthFactor(state) * powerFactor(state) * (dtMin / (24 * 60)) // spec 009/017 — sick or brownout-hit mines dig less
+  state.materials += gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * (dtMin / (24 * 60)) // spec 009/017/021 — sick, brownout or congested mines dig less
 }
 
 /** Spec 020 — how well the advanced trades are staffed by skilled workers: full at the cap, 0.6 floor when untrained. */
@@ -575,6 +582,21 @@ function skillFactor(state: ColonyState): number {
   const advancedNeed = (countKind(state, 'workshop') + countKind(state, 'foundry')) * COLONY.build.skilledPerAdvanced
   if (advancedNeed <= 0) return 1
   return 0.6 + 0.4 * Math.min(1, Math.min(state.colonists, state.skilled) / advancedNeed)
+}
+
+/** Spec 021 — commute: a congested colony (more workers than transit can carry) slows ALL its production. */
+function transitFactor(state: ColonyState): number {
+  const capacity = COLONY.build.transitBaseCapacity + countKind(state, 'transit') * COLONY.build.transitPerDepot
+  const demand = Math.min(state.colonists, state.totalJobs)
+  if (demand <= capacity) return 1
+  return Math.max(COLONY.build.transitCongestedFloor, capacity / demand)
+}
+
+/** Spec 021 — commute demand (workers) vs capacity (base + Transit Depots), for the HUD. */
+export function commute(state: ColonyState): { demand: number; capacity: number; congested: boolean } {
+  const capacity = COLONY.build.transitBaseCapacity + countKind(state, 'transit') * COLONY.build.transitPerDepot
+  const demand = Math.min(state.colonists, state.totalJobs)
+  return { demand, capacity, congested: demand > capacity }
 }
 
 /** Spec 020 — staffed Skillhouse Academies train colonists into skilled workers, capped at the population. */
@@ -588,7 +610,7 @@ function academyStep(state: ColonyState, dtMin: number): void {
 
 /** Spec 003 — staffed workshops consume materials and produce components (2:1); halt when materials run out. */
 function produceComponents(state: ColonyState, dtMin: number): void {
-  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * skillFactor(state) // spec 009/017/020 — sick, brownout or unskilled workshops refine less
+  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * skillFactor(state) * transitFactor(state) // spec 009/017/020/021 — sick, brownout, unskilled or congested workshops refine less
   if (eff <= 0) return
   const day = 24 * 60
   for (const b of state.buildings) {
@@ -604,7 +626,7 @@ function produceComponents(state: ColonyState, dtMin: number): void {
 
 /** Spec 013 — staffed reel foundries consume components and produce reels (2:1); halt when components run out. */
 function produceReels(state: ColonyState, dtMin: number): void {
-  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * skillFactor(state) // spec 009/017/020 — sick, brownout or unskilled foundries weave less
+  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * skillFactor(state) * transitFactor(state) // spec 009/017/020/021 — sick, brownout, unskilled or congested foundries weave less
   if (eff <= 0) return
   const day = 24 * 60
   for (const b of state.buildings) {
@@ -740,7 +762,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
 /** Spec 007 — staffed greenhouses grow food (boosted near a Water Hub); colonists eat a little each day. */
 function foodStep(state: ColonyState, dtMin: number): void {
   const day = 24 * 60
-  const staffing = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) // spec 009/017 — sick or brownout greenhouses grow less
+  const staffing = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * transitFactor(state) // spec 009/017/021 — sick, brownout or congested greenhouses grow less
   let grown = 0
   for (const b of state.buildings) {
     if (b.artifact.kind !== 'greenhouse') continue

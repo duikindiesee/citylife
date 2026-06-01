@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -998,5 +998,44 @@ describe('Spec 020 — the Skillhouse Academy: skilled workers speed the advance
       return s.materials - m0
     }
     expect(run(true)).toBe(run(false)) // mining doesn't need the academy
+  })
+})
+
+describe('Spec 021 — Skybridge Transit Depots: congestion slows production', () => {
+  const mk = (kind: 'mine' | 'transit', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('a small colony is not congested; a packed one is — until depots carry the crush', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 5
+    s.totalJobs = 5
+    expect(commute(s).congested).toBe(false) // 5 workers under the base capacity
+    s.colonists = 20
+    s.totalJobs = 20
+    expect(commute(s).congested).toBe(true) // packed in beyond capacity
+    s.buildings.push(mk('transit', 50, 50))
+    s.buildings.push(mk('transit', 51, 50))
+    expect(commute(s).congested).toBe(false) // two depots carry the 20
+  })
+
+  it('a congested colony mines less than the same colony with enough Transit Depots', () => {
+    const run = (depots: number) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.materials = 10
+      s.buildings.push(mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 30, materialsGen: 5 }))
+      s.totalJobs = 30
+      s.colonists = 30 // demand 30 well over the base capacity → congested
+      for (let i = 0; i < depots; i++) s.buildings.push(mk('transit', 60 + i, 60))
+      const m0 = s.materials
+      for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+      return s.materials - m0
+    }
+    expect(run(3)).toBeGreaterThan(run(0)) // depots clear the congestion → more mined
   })
 })

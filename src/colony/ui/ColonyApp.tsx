@@ -145,6 +145,7 @@ export function ColonyApp() {
         <div className="row"><span>Liveability</span><b style={{ color: ui.colony.liveability < 40 ? '#e6c84d' : undefined }}>{ui.colony.surveyed ? `${ui.colony.liveability}%` : '— locked'}</b></div>
         <div className="row"><span>Free labour</span><b style={{ color: ui.colony.freeLabour === 0 ? '#e6c84d' : undefined }}>{ui.colony.freeLabour}</b></div>
         <div className="row"><span>Jobs</span><b>{ui.colony.jobs} · {ui.colony.employed}% empl.</b></div>
+        {ui.colony.commute.demand > 0 && <div className="row"><span>Commute</span><b style={{ color: ui.colony.commute.congested ? '#e0844d' : undefined }} title={ui.colony.commute.congested ? 'Congested — workers arrive late, all production slows. Build a Skybridge Transit Depot.' : 'Commute capacity: workers vs transit'}>{ui.colony.commute.demand}/{ui.colony.commute.capacity}{ui.colony.commute.congested ? ' ⚠' : ''}</b></div>}
         <div className="row"><span>Pollution</span><b style={{ color: ui.colony.pollution > 60 ? '#e0584d' : ui.colony.pollution > 25 ? '#e6c84d' : undefined }}>{ui.colony.pollution}</b></div>
         <div className="row"><span>Treasury</span><b>${ui.colony.treasury.toLocaleString()}</b></div>
         {ui.colony.trade > 0 && <div className="row"><span>Trade</span><b style={{ color: '#5fd0a0' }}>+${ui.colony.trade.toLocaleString()}/day</b></div>}
