@@ -615,3 +615,55 @@ describe('Spec 012 — Skybridge Exchange trades surplus for treasury', () => {
     expect(s.components).toBe(c0)
   })
 })
+
+describe('Spec 013 — Reel Foundry refines components into luxury reels', () => {
+  const mk = (kind: 'foundry' | 'exchange', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('a staffed foundry turns components into reels', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('foundry', 50, 50, { jobs: 2 }))
+    s.components = 50
+    s.reels = 0
+    s.totalJobs = 2
+    s.colonists = 2 // fully staffed
+    for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+    expect(s.reels).toBeGreaterThan(0)
+    expect(s.components).toBeLessThan(50) // components consumed to weave the reels
+  })
+
+  it('a foundry with no components makes no reels', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('foundry', 50, 50, { jobs: 2 }))
+    s.components = 0
+    s.reels = 0
+    s.totalJobs = 2
+    s.colonists = 2
+    for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+    expect(s.reels).toBe(0)
+  })
+
+  it('the Exchange exports surplus reels above the reserve, earning the premium', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('exchange', 50, 50, { jobs: 2 }))
+    s.reels = 20
+    s.components = 0
+    s.food = 0
+    s.totalJobs = 2
+    s.colonists = 2
+    s.treasury = 1000
+    const r0 = s.reels
+    const t0 = s.treasury
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 10)
+    expect(s.reels).toBeLessThan(r0) // reels shipped out
+    expect(s.reels).toBeGreaterThanOrEqual(COLONY.build.reelReserve) // never below the reserve
+    expect(s.treasury).toBeGreaterThan(t0) // the premium earned
+  })
+})

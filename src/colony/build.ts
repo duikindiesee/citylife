@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry'
 
 export interface Parcel {
   id: number
@@ -66,6 +66,7 @@ const CLINIC_COLOR = 0xe3ebf0 // clinical white first-aid clinic
 const THEATRE_COLOR = 0x9a4fd0 // magenta holo-theatre
 const SURVEY_COLOR = 0x4a78b8 // civic blue survey office
 const EXCHANGE_COLOR = 0xc9a227 // gold skybridge exchange (trade)
+const FOUNDRY_COLOR = 0x6a5acd // indigo reel foundry (luxury good)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -85,6 +86,7 @@ export function initBuild(state: ColonyState): void {
   state.materials = COLONY.build.materialsStart // spec 001 — dropship build-supply stockpile
   state.components = 0 // spec 003 — refined goods, produced by workshops
   state.food = 0 // spec 007 — grown by greenhouses; colonists subsist on dropship rations until then
+  state.reels = 0 // spec 013 — luxury good, refined by foundries from components
   state.parcels = []
   state.jobs = []
   state.buildings = []
@@ -258,6 +260,10 @@ function designExchange(state: ColonyState): Artifact {
   // Spec 012 — trade post; once built + staffed, exports the colony's surplus goods for treasury.
   return { id: state.buildIds++, kind: 'exchange', color: EXCHANGE_COLOR, height: 1.0, residents: 0, jobs: COLONY.build.exchangeWorkers, powerLoad: 0.5, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.exchangeCost, materialsCost: COLONY.build.matExchange, crew: COLONY.build.crewExchange, materialsGen: 0, componentsCost: COLONY.build.compExchange }
 }
+function designFoundry(state: ColonyState): Artifact {
+  // Spec 013 — refines components into reels (a luxury good) while staffed.
+  return { id: state.buildIds++, kind: 'foundry', color: FOUNDRY_COLOR, height: 1.1, residents: 0, jobs: COLONY.build.foundryWorkers, powerLoad: 0.7, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.foundryCost, materialsCost: COLONY.build.matFoundry, crew: COLONY.build.crewFoundry, materialsGen: 0, componentsCost: COLONY.build.compFoundry }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -389,6 +395,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 8 && countKind(state, 'survey') < 1 && state.components >= COLONY.build.compSurvey) return designSurvey(state)
   // Spec 012 — when components pile up past the trade reserve, raise a Skybridge Exchange to sell the surplus.
   if (state.colonists > 8 && countKind(state, 'exchange') < 1 && state.components > COLONY.build.tradeComponentReserve && state.components >= COLONY.build.compExchange) return designExchange(state)
+  // Spec 013 — with components plentiful and an Exchange to sell through, raise a Reel Foundry to refine luxury reels.
+  if (state.colonists > 10 && countKind(state, 'foundry') < 1 && state.components > 40 && state.components >= COLONY.build.compFoundry) return designFoundry(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom) return designSolarFarm(state)
   const pendingJobs = state.jobs.reduce((g, j) => g + j.artifact.jobs, 0)
@@ -483,6 +491,22 @@ function produceComponents(state: ColonyState, dtMin: number): void {
     if (consume <= 0) continue
     state.materials -= consume
     state.components += COLONY.build.workshopComponentsOut * eff * (dtMin / day) * (consume / need)
+  }
+}
+
+/** Spec 013 — staffed reel foundries consume components and produce reels (2:1); halt when components run out. */
+function produceReels(state: ColonyState, dtMin: number): void {
+  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) // spec 009 — sick refiners weave less
+  if (eff <= 0) return
+  const day = 24 * 60
+  for (const b of state.buildings) {
+    if (b.artifact.kind !== 'foundry') continue
+    const need = COLONY.build.foundryComponentsIn * eff * (dtMin / day)
+    if (need <= 0) continue
+    const consume = Math.min(state.components, need)
+    if (consume <= 0) continue
+    state.components -= consume
+    state.reels += COLONY.build.foundryReelsOut * eff * (dtMin / day) * (consume / need)
   }
 }
 
@@ -609,6 +633,12 @@ function tradeStep(state: ColonyState, dtMin: number): void {
     state.food -= foodSell
     state.treasury += foodSell * COLONY.build.tradeFoodPrice
   }
+  // Spec 013 — luxury reels are the premium export.
+  const reelSell = Math.min(Math.max(0, state.reels - COLONY.build.reelReserve), exchanges * COLONY.build.reelCapPerDay * staffing * frac)
+  if (reelSell > 0) {
+    state.reels -= reelSell
+    state.treasury += reelSell * COLONY.build.reelPrice
+  }
 }
 
 /** Spec 012 — current export income rate ($/day) the Exchanges would earn at this surplus + staffing (HUD). */
@@ -619,12 +649,14 @@ export function tradeExportRate(state: ColonyState): number {
   if (staffing <= 0) return 0
   const compSell = Math.min(Math.max(0, state.components - COLONY.build.tradeComponentReserve), exchanges * COLONY.build.tradeComponentCapPerDay * staffing)
   const foodSell = Math.min(Math.max(0, state.food - COLONY.build.tradeFoodReserve), exchanges * COLONY.build.tradeFoodCapPerDay * staffing)
-  return compSell * COLONY.build.tradeComponentPrice + foodSell * COLONY.build.tradeFoodPrice
+  const reelSell = Math.min(Math.max(0, state.reels - COLONY.build.reelReserve), exchanges * COLONY.build.reelCapPerDay * staffing)
+  return compSell * COLONY.build.tradeComponentPrice + foodSell * COLONY.build.tradeFoodPrice + reelSell * COLONY.build.reelPrice
 }
 
 export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   produceMaterials(state, dtMin)
   produceComponents(state, dtMin)
+  produceReels(state, dtMin)
   serviceUpkeep(state, dtMin)
   foodStep(state, dtMin)
   housingStep(state, dtMin)

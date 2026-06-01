@@ -1,5 +1,5 @@
 # Spec 013 — Reel Foundry: a luxury good to refine and export
-- status: proposed
+- status: built
 - proposed-by: **Niko Vance, foundry-hand** — live Hermes returned empty (upstream flaky again), written in-character. A new voice — the colony's first refiner-artisan. Realises Mara Venn's deferred "Data-Reel" idea (from the spec 010 pitch) as a small slice.
 - date: 2026-06-01
 - depends-on: 003, 012

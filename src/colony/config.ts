@@ -151,6 +151,17 @@ export const COLONY = {
     tradeFoodReserve: 30,
     tradeFoodPrice: 12,
     tradeFoodCapPerDay: 15,
+    // Reel Foundry (spec 013): refine components into reels, a luxury good the Exchange exports at a premium.
+    matFoundry: 16,
+    compFoundry: 12,
+    crewFoundry: 3,
+    foundryCost: 2200,
+    foundryWorkers: 2,
+    foundryComponentsIn: 2, // components/day consumed at full staffing
+    foundryReelsOut: 1, // reels/day produced at full staffing (2:1)
+    reelReserve: 2, // keep at least this many reels before exporting
+    reelPrice: 120, // $ earned per exported reel (vs $40 for a raw component)
+    reelCapPerDay: 6, // max reels one staffed exchange ships per day
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

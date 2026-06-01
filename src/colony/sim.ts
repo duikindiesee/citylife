@@ -38,6 +38,7 @@ export interface ColonyState {
   materials: number // spec 001 — build supplies; construction consumes these
   components: number // spec 003 — refined goods produced by workshops from materials
   food: number // spec 007 — grown by Skyfarm Greenhouses, eaten by colonists daily
+  reels: number // spec 013 — luxury good refined from components by Reel Foundries, exported for treasury
   parcels: Parcel[]
   jobs: ConstructionJob[]
   buildings: ColonyBuilding[]
@@ -106,6 +107,7 @@ export class ColonySim {
       materials: 0, // set by initBuild → materialsStart
       components: 0,
       food: 0, // spec 007 — set/grown by greenhouses
+      reels: 0, // spec 013 — refined by foundries
       parcels: [],
       jobs: [],
       buildings: [],
