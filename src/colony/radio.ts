@@ -117,6 +117,9 @@ export function channelEmbedUrl(channel: RadioChannel, opts: { autoplay?: boolea
     modestbranding: '1',
     enablejsapi: '1',
   })
+  // origin= is the YouTube IFrame Player API's recommended security param. We only know it in the
+  // browser; in tests/SSR (no `window`) we skip it — YouTube still accepts commands without it.
+  if (typeof window !== 'undefined' && window.location?.origin) params.set('origin', window.location.origin)
   if (listId) {
     params.set('listType', 'playlist')
     params.set('list', listId)

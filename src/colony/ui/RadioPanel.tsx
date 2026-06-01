@@ -9,90 +9,117 @@ function sendYT(iframe: HTMLIFrameElement | null, func: string, args: unknown[] 
   iframe.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args }), '*')
 }
 
-/** Low Power Radio tray — bottom-right toggle that expands to a Now Playing panel.
- *  The iframe starts MUTED so YouTube + Chrome allow autoplay; the operator's first Sound click
- *  flips it via postMessage (no iframe reload, no track restart). */
+/** YouTube error codes that mean the CURRENT video can't play but the playlist might continue. */
+const SKIPPABLE_YT_ERRORS = new Set([2, 5, 100, 101, 150])
+
+/** Low Power Radio — a single compact strip at the TOP-LEFT (off the HUD). The micro-player sits
+ *  next to the strip when open so the operator can directly click play if autoplay was blocked.
+ *  In TV mode the strip and player tuck into the corner so the city + cinematic fly-around dominate. */
 export function RadioPanel({ runtime, radio, tv }: { runtime: ColonyRuntime; radio: RadioState; tv: boolean }) {
   const [open, setOpen] = useState(false)
+  const [embedError, setEmbedError] = useState<number | null>(null)
+  const [skipped, setSkipped] = useState(0)
   const iframeRef = useRef<HTMLIFrameElement | null>(null)
   const ch = currentChannel(radio)
-  // ALWAYS load the iframe muted so YouTube autoplay isn't blocked; we unmute via the JS API on
-  // the operator's first Sound click. The iframe URL stays constant per channel so it never reloads.
+  // Iframe loads muted so YouTube + Chrome allow autoplay; unmute is sent via postMessage.
   const url = ch ? channelEmbedUrl(ch, { autoplay: true, muted: true }) : ''
   const wired = anyConfigured(radio)
 
-  // React to radio.muted state: send the YouTube IFrame API command, don't rebuild the iframe.
+  // YouTube IFrame Player API event listener — auto-skip blocked tracks, clear errors on play.
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== 'https://www.youtube.com' || typeof e.data !== 'string') return
+      try {
+        const m = JSON.parse(e.data)
+        if (m.event === 'onError' && SKIPPABLE_YT_ERRORS.has(m.info)) {
+          setEmbedError(m.info)
+          setSkipped((n) => n + 1)
+          sendYT(iframeRef.current, 'nextVideo')
+          sendYT(iframeRef.current, 'unMute')
+          sendYT(iframeRef.current, 'playVideo')
+        }
+        if (m.event === 'onStateChange' && m.info === 1) setEmbedError(null)
+      } catch {
+        /* non-JSON message — ignore */
+      }
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
   useEffect(() => {
     if (!iframeRef.current || !radio.on) return
     sendYT(iframeRef.current, radio.muted ? 'mute' : 'unMute')
     if (!radio.muted) sendYT(iframeRef.current, 'playVideo')
   }, [radio.muted, radio.on, radio.channelId])
 
-  // React to radio.on: pause/resume without reloading.
   useEffect(() => {
     if (!iframeRef.current) return
     sendYT(iframeRef.current, radio.on ? 'playVideo' : 'pauseVideo')
   }, [radio.on])
 
+  useEffect(() => {
+    if (!iframeRef.current || !radio.on) return
+    const iframe = iframeRef.current
+    const handshake = () => {
+      iframe.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 'citylife', channel: 'widget' }), '*')
+    }
+    iframe.addEventListener('load', handshake)
+    handshake()
+    return () => iframe.removeEventListener('load', handshake)
+  }, [radio.on, radio.channelId])
+
+  const tunedLabel = radio.on && ch ? ch.name : 'Radio'
+
   return (
     <>
-      <div className={`radio-tray ${open ? 'is-open' : ''} ${tv ? 'is-tv' : ''}`}>
-        <button className="radio-toggle" onClick={() => setOpen((v) => !v)} title="Low Power Radio">
-          {radio.on ? '📻' : '📻 ̲'}
-          <span className="radio-toggle-label">{radio.on && ch ? ch.name : 'Radio'}</span>
+      {/* TOP-LEFT compact strip — off the HUD entirely */}
+      <div className={`radio-strip ${tv ? 'is-tv' : ''} ${open ? 'is-open' : ''}`}>
+        <button className="radio-pill" onClick={() => setOpen((v) => !v)} title="Low Power Radio">
+          📻 {tunedLabel}
         </button>
         {open && (
-          <div className="radio-panel">
-            <div className="radio-head">
-              <b>📻 Low Power Radio</b>
-              <span className="radio-sub">a tiny always-on station on the roof</span>
-            </div>
-
-            {!wired && (
-              <div className="radio-note">
-                Set <code>VITE_RADIO_PLAYLIST_DRIVE</code> (and friends) in <code>.env.local</code> to a YouTube playlist id to start broadcasting. YouTube handles licensing for embedded playback — see <code>docs/research/2026-05-31-low-power-radio.md</code>.
-              </div>
-            )}
-
-            <div className="radio-channels">
+          <div className="radio-pop">
+            <div className="radio-pop-channels">
               {radio.channels.map((c) => (
-                <button key={c.id} className={`radio-channel ${radio.channelId === c.id ? 'on' : ''} ${c.ref ? '' : 'empty'}`} onClick={() => runtime.tuneRadio(c.id)} disabled={!c.ref} title={c.ref ? c.vibe : 'no playlist configured'}>
-                  <b>{c.name}</b>
-                  <span>{c.vibe}</span>
+                <button
+                  key={c.id}
+                  className={`radio-chip ${radio.channelId === c.id ? 'on' : ''} ${c.ref ? '' : 'empty'}`}
+                  onClick={() => runtime.tuneRadio(c.id)}
+                  disabled={!c.ref}
+                  title={c.ref ? c.vibe : 'no playlist configured'}
+                >
+                  {c.name}
                 </button>
               ))}
             </div>
-
-            <div className="radio-controls">
-              <button onClick={() => runtime.toggleRadio()}>{radio.on ? '⏸ Pause' : '▶ Play'}</button>
-              <button onClick={() => runtime.toggleRadioMuted()}>{radio.muted ? '🔇 Unmute' : '🔈 Mute'}</button>
-              <button onClick={() => runtime.toggleTv()}>{tv ? '📺 Exit TV' : '📺 TV mode'}</button>
+            <div className="radio-pop-controls">
+              <button onClick={() => runtime.toggleRadio()}>{radio.on ? '⏸' : '▶'}</button>
+              <button onClick={() => runtime.toggleRadioMuted()}>{radio.muted ? '🔇' : '🔈'}</button>
+              <button onClick={() => runtime.toggleTv()}>{tv ? '📺 Exit' : '📺 TV'}</button>
             </div>
-
-            {radio.on && radio.muted && (
-              <div className="radio-note">
-                YouTube blocks autoplay-with-sound on first paint. Click <b>🔇 Unmute</b> once and the sound stays on.
+            {radio.on && !wired && (
+              <div className="radio-pop-note">
+                Set <code>VITE_RADIO_PLAYLIST_DRIVE</code> in <code>.env.local</code> to a YouTube playlist id.
               </div>
             )}
-
-            {radio.ads.length > 0 && (
-              <div className="radio-ads">
-                <div className="radio-ads-head">📣 Sponsor reads (in-game ad market)</div>
-                {radio.ads.slice(0, 4).map((a) => (
-                  <div key={a.id} className="radio-ad">
-                    <b>{a.sponsor}</b> — {a.copy}
-                  </div>
-                ))}
+            {radio.on && radio.muted && (
+              <div className="radio-pop-note">Click 🔇 once and sound stays on.</div>
+            )}
+            {radio.on && embedError !== null && (
+              <div className="radio-pop-err">
+                ⚠ YouTube error {embedError} — skipped to next track ({skipped} so far).
               </div>
             )}
           </div>
         )}
       </div>
 
+      {/* YouTube micro-player — visible when the panel is open OR in TV mode */}
       {radio.on && url && (
         <iframe
           ref={iframeRef}
-          className="radio-iframe"
+          className={`radio-iframe ${open || tv ? 'is-visible' : ''} ${tv ? 'is-tv' : ''}`}
           src={url}
           allow="autoplay; encrypted-media; picture-in-picture"
           referrerPolicy="origin-when-cross-origin"
@@ -100,9 +127,10 @@ export function RadioPanel({ runtime, radio, tv }: { runtime: ColonyRuntime; rad
         />
       )}
 
+      {/* TV-mode now-playing card — bottom centre, doesn't compete with the radio strip */}
       {tv && ch && radio.on && (
         <div className="tv-now-playing">
-          <span className="tv-tag">LOW POWER RADIO</span>
+          <span className="tv-tag">LOW POWER RADIO · CINEMATIC</span>
           <b>{ch.name}</b>
           <span>{ch.vibe}</span>
         </div>

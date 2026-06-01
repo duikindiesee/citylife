@@ -52,6 +52,11 @@ export class PlanetRenderer {
   private clock = new THREE.Clock()
   private view: ViewMode = 'biome'
   private disposed = false
+  // TV-mode cinematic fly-around — when on, the camera slowly orbits the landing site, drifts up
+  // to look at the whole island, dives back to street level, and so on, in a 60-second loop.
+  // Reads-only the wall-clock so it stays smooth even if the sim is paused.
+  private cinematic = false
+  private cinematicT0 = 0
 
   private N: number
   private R: number
@@ -722,8 +727,32 @@ export class PlanetRenderer {
     if (this.disposed) return
     this.updateDayNight()
     this.updateColonyLayer()
+    if (this.cinematic) this.updateCinematic()
     this.controls.update()
     this.composer.render()
+  }
+
+  /** Toggle the TV-mode cinematic fly-around. Camera slowly orbits + breathes around the landing
+   *  site so the city + landscape become a moving postcard while music plays. */
+  setCinematic(on: boolean): void {
+    if (on === this.cinematic) return
+    this.cinematic = on
+    if (on) this.cinematicT0 = performance.now()
+  }
+
+  private updateCinematic() {
+    const t = this.sim.state.terrain
+    const cx = this.wx(t.landing.x)
+    const cz = this.wz(t.landing.y)
+    const cy = Math.max(0, t.worldY(t.landing.x, t.landing.y))
+    // 90 sec loop: angle drifts continuously; radius + height breathe with two slow sines.
+    const T = (performance.now() - this.cinematicT0) / 1000
+    const angle = (T / 90) * Math.PI * 2
+    const radiusBase = 30
+    const radius = radiusBase + Math.sin(T / 28) * 22 // 8..52 ish
+    const height = 14 + Math.sin(T / 17) * 11 // 3..25
+    this.camera.position.set(cx + Math.cos(angle) * radius, cy + height, cz + Math.sin(angle) * radius)
+    this.controls.target.set(cx, cy + 1.2, cz)
   }
 
   private onResize = () => this.resize()

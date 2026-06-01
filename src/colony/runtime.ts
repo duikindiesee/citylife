@@ -136,10 +136,11 @@ export class ColonyRuntime {
     this.radio = radioToggleMuted(this.radio)
     this.emit()
   }
-  /** Drop into TV mode — hides operator UI, leaves the city + radio on. */
+  /** Drop into TV mode — hides operator UI, kicks off the cinematic fly-around, keeps the radio on. */
   setTv(on: boolean): void {
     this.tv = on
     if (typeof document !== 'undefined') document.body.classList.toggle('tv-mode', on)
+    this.renderer?.setCinematic(on)
     this.emit()
   }
   toggleTv(): void {
