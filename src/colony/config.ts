@@ -101,6 +101,15 @@ export const COLONY = {
     greenhouseFoodPerDay: 6, // food/day at full staffing
     greenhouseWaterBoost: 1.5, // x output when within a Water Hub radius
     foodPerColonistPerDay: 0.4, // each colonist eats this much per day
+    // Ration Depot (spec 008): distribution — carries food from the stockpile to homes in reach.
+    matDepot: 12,
+    compDepot: 10,
+    crewDepot: 3,
+    depotCost: 1500,
+    depotWorkers: 2,
+    rationDepotRadius: 8, // cells; habitats within this of a depot are provisioned
+    rationDepotHomes: 8, // max homes one depot can serve
+    depotMaintCompPerDay: 1, // ongoing component maintenance
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

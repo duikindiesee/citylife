@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -303,6 +303,61 @@ describe('Spec 007 — Skyfarm Greenhouse grows food; colonists eat; hunger slow
       s.power.solarW = 5
       s.materials = 0 // disable autoGrow so this isolates immigration
       s.food = fed ? 1000 : 0
+      const col0 = s.colonists
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.colonists - col0
+    }
+    expect(run(true)).toBeGreaterThan(run(false))
+  })
+})
+
+describe('Spec 008 — Ration Depot delivers food to the homes in reach', () => {
+  const mk = (kind: 'habitat' | 'depot' | 'water', x: number, y: number, residents = 0) => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: { id: 1, kind, color: 0, height: 1, residents, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 },
+  })
+
+  it('a depot provisions habitats within reach when the stockpile has food', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.food = 50
+    s.buildings.push(mk('habitat', 50, 50, 3))
+    expect(provisionedFraction(s)).toBe(0) // a home, no depot
+    s.buildings.push(mk('depot', 52, 50)) // within radius 8
+    expect(provisionedFraction(s)).toBe(1)
+  })
+
+  it('a depot out of reach does not provision the home', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.food = 50
+    s.buildings.push(mk('habitat', 50, 50, 3))
+    s.buildings.push(mk('depot', 80, 80)) // far beyond radius 8
+    expect(provisionedFraction(s)).toBe(0)
+  })
+
+  it('no provisioning when the stockpile is empty — a depot cannot hand out what is not there', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.food = 0
+    s.buildings.push(mk('habitat', 50, 50, 3))
+    s.buildings.push(mk('depot', 52, 50))
+    expect(provisionedFraction(s)).toBe(0)
+  })
+
+  it('immigration is faster when homes are provisioned by a depot than when food sits undelivered', () => {
+    const run = (withDepot: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.buildings.push(mk('habitat', 50, 50, 20)) // capacity 22
+      s.buildings.push(mk('water', 51, 50)) // watered, so this isolates delivery
+      if (withDepot) s.buildings.push(mk('depot', 52, 50))
+      s.power.batteryWh = s.power.batteryCapWh
+      s.power.solarW = 5
+      s.food = 1000 // food in stock either way — the difference is whether it reaches the homes
+      s.materials = 0 // disable autoGrow so this isolates immigration
       const col0 = s.colonists
       for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
       return s.colonists - col0

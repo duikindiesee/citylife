@@ -1,5 +1,5 @@
 # Spec 008 — Ration Depot: food distribution reaches the homes
-- status: proposed
+- status: built
 - proposed-by: **Mara Venn, quartermaster of Dock-Ring 3** — live Hermes citizen (model hermes-codex-gpt-5.5), her 3rd accepted proposal (after the Water Hub 005 and the Skyfarm Greenhouse 007)
 - date: 2026-06-01
 - depends-on: 007

@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot'
 
 export interface Parcel {
   id: number
@@ -59,6 +59,7 @@ const MINE_COLOR = 0x6b5a4a // rocky brown extraction site
 const WORKSHOP_COLOR = 0x8a7f3a // ochre workshop / fabricator
 const WATER_COLOR = 0x3aa6c8 // cyan water / life-support hub
 const GREENHOUSE_COLOR = 0x4f9d52 // green skyfarm greenhouse
+const DEPOT_COLOR = 0xc88a3a // amber ration depot
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -231,6 +232,10 @@ function designGreenhouse(state: ColonyState): Artifact {
   // Spec 007 — food production; output boosted when within a Water Hub radius (irrigated trays).
   return { id: state.buildIds++, kind: 'greenhouse', color: GREENHOUSE_COLOR, height: 0.6, residents: 0, jobs: COLONY.build.greenhouseWorkers, powerLoad: 0.5, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.greenhouseCost, materialsCost: COLONY.build.matGreenhouse, crew: COLONY.build.crewGreenhouse, materialsGen: 0, componentsCost: COLONY.build.compGreenhouse }
 }
+function designDepot(state: ColonyState): Artifact {
+  // Spec 008 — distribution: carries food from the stockpile to provision nearby homes.
+  return { id: state.buildIds++, kind: 'depot', color: DEPOT_COLOR, height: 0.8, residents: 0, jobs: COLONY.build.depotWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.depotCost, materialsCost: COLONY.build.matDepot, crew: COLONY.build.crewDepot, materialsGen: 0, componentsCost: COLONY.build.compDepot }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -256,6 +261,20 @@ function nearWater(state: ColonyState, x: number, y: number): boolean {
   return state.buildings.some((b) => b.artifact.kind === 'water' && Math.hypot(b.x - x, b.y - y) <= COLONY.build.waterHubRadius)
 }
 
+/** Spec 008 — fraction of habitats a Ration Depot can actually feed: homes in a depot's reach, capped by
+ *  depot coverage, and gated on the stockpile (a depot can't hand out food the colony hasn't grown). */
+export function provisionedFraction(state: ColonyState): number {
+  const habs = state.buildings.filter((b) => b.artifact.kind === 'habitat')
+  if (!habs.length) return 1
+  if (state.food <= 0) return 0
+  const depots = state.buildings.filter((b) => b.artifact.kind === 'depot')
+  if (!depots.length) return 0
+  let inRange = 0
+  for (const h of habs) if (depots.some((d) => Math.hypot(d.x - h.x, d.y - h.y) <= COLONY.build.rationDepotRadius)) inRange++
+  const capacity = depots.length * COLONY.build.rationDepotHomes
+  return Math.min(inRange, capacity) / habs.length
+}
+
 function peakSupply(state: ColonyState): number {
   return COLONY.power.solarPeakW + state.powerGen
 }
@@ -269,6 +288,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (countKind(state, 'habitat') > 0 && wateredFraction(state) < 0.9 && state.components >= COLONY.build.compWaterHub && countKind(state, 'water') < Math.ceil(countKind(state, 'habitat') / 4)) return designWaterHub(state)
   // Spec 007 — feed the colony: a hungry stockpile + components on hand → raise a Skyfarm Greenhouse (~1 per 12 colonists).
   if (state.colonists > 4 && state.food < state.colonists * COLONY.build.foodPerColonistPerDay && state.components >= COLONY.build.compGreenhouse && countKind(state, 'greenhouse') < Math.ceil(state.colonists / 12)) return designGreenhouse(state)
+  // Spec 008 — get the food to the homes: built homes + food on hand + components → raise a Ration Depot.
+  if (countKind(state, 'habitat') > 0 && state.food > 0 && provisionedFraction(state) < 0.9 && state.components >= COLONY.build.compDepot && countKind(state, 'depot') < Math.ceil(countKind(state, 'habitat') / COLONY.build.rationDepotHomes)) return designDepot(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom) return designSolarFarm(state)
   const pendingJobs = state.jobs.reduce((g, j) => g + j.artifact.jobs, 0)
@@ -383,8 +404,11 @@ function immigration(state: ColonyState, dtMin: number): void {
     return
   }
   const cap = housingCapacity(state)
-  // Spec 005/007 — thirsty OR hungry colonies grow slowly: immigration scales with watered homes AND food.
-  const fedFactor = state.food > 0 ? 1 : 0.4 // dropship rations sustain a trickle until a greenhouse feeds them
+  // Spec 005/007/008 — homes grow only when watered AND fed by DELIVERY. Distribution matters: food in
+  // the stockpile reaches homes only as far as a Ration Depot can carry it (0.5 hand-carry credit until one
+  // is built; 0.4 dropship-ration floor when truly hungry).
+  const reach = countKind(state, 'depot') > 0 ? provisionedFraction(state) : state.food > 0 ? 0.5 : 0
+  const fedFactor = 0.4 + 0.6 * reach
   const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * perDay)
 }
@@ -392,7 +416,10 @@ function immigration(state: ColonyState, dtMin: number): void {
 /** Spec 005 — services (water hubs) consume a trickle of components to run. */
 function serviceUpkeep(state: ColonyState, dtMin: number): void {
   let upkeep = 0
-  for (const b of state.buildings) if (b.artifact.kind === 'water') upkeep += COLONY.build.waterHubMaintCompPerDay
+  for (const b of state.buildings) {
+    if (b.artifact.kind === 'water') upkeep += COLONY.build.waterHubMaintCompPerDay
+    else if (b.artifact.kind === 'depot') upkeep += COLONY.build.depotMaintCompPerDay
+  }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
 }
 
