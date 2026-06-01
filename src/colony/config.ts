@@ -73,6 +73,14 @@ export const COLONY = {
     mineOutputPerDay: 5, // materials/day at full staffing
     mineBuildHours: 5,
     materialsLowThreshold: 16, // build a mine when the stockpile drops below this
+    // Workshops (spec 003): refine surplus materials into components (2:1) while staffed.
+    matWorkshop: 10,
+    crewWorkshop: 3,
+    workshopCost: 1600,
+    workshopWorkers: 5,
+    workshopMaterialsIn: 4, // materials/day consumed at full staffing
+    workshopComponentsOut: 2, // components/day produced at full staffing (2:1 ratio)
+    materialsSurplus: 30, // raise a workshop to refine once the stockpile exceeds this
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

@@ -95,3 +95,51 @@ describe('Spec 002 — extraction: staffed mines produce materials', () => {
     expect(run(6)).toBeGreaterThan(run(3))
   })
 })
+
+describe('Spec 003 — workshops refine materials into components', () => {
+  const workshopArtifact = () => ({
+    id: 1, kind: 'workshop' as const, color: 0x8a7f3a, height: 1.0, residents: 0, jobs: 5,
+    powerLoad: 0.6, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0,
+  })
+
+  it('a staffed workshop turns materials into components', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.materials = 100
+    s.components = 0
+    s.buildings.push({ id: 1, x: s.terrain.landing.x + 4, y: s.terrain.landing.y, artifact: workshopArtifact() })
+    s.totalJobs = 5
+    s.colonists = 5 // fully staffed → free labour 0, no autoGrow interference
+    const m0 = s.materials
+    for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+    expect(s.components).toBeGreaterThan(0)
+    expect(s.materials).toBeLessThan(m0)
+  })
+
+  it('a workshop with no materials produces no components', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.materials = 0
+    s.components = 0
+    s.buildings.push({ id: 1, x: s.terrain.landing.x + 4, y: s.terrain.landing.y, artifact: workshopArtifact() })
+    s.totalJobs = 5
+    s.colonists = 5
+    for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+    expect(s.components).toBe(0)
+  })
+
+  it('an understaffed workshop produces fewer components', () => {
+    const run = (colonists: number) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.materials = 100
+      s.components = 0
+      s.buildings.push({ id: 1, x: s.terrain.landing.x + 4, y: s.terrain.landing.y, artifact: workshopArtifact() })
+      s.totalJobs = 5
+      s.colonists = colonists
+      for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+      return s.components
+    }
+    expect(run(5)).toBeGreaterThan(run(2))
+  })
+})

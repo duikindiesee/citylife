@@ -32,7 +32,7 @@ export interface ColonyUiState {
   clock: { day: number; hour: number; minute: number; isDay: boolean }
   power: { solarW: number; loadW: number; batteryWh: number; batteryCapWh: number; pct: number }
   colonists: number
-  colony: { treasury: number; materials: number; freeLabour: number; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
+  colony: { treasury: number; materials: number; components: number; freeLabour: number; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
   settlers: { count: number; recent: { id: number; name: string }[] }
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
@@ -261,6 +261,7 @@ export class ColonyRuntime {
       colony: {
         treasury: Math.round(s.treasury),
         materials: Math.round(s.materials),
+        components: Math.round(s.components),
         freeLabour: freeLabour(s),
         buildings: s.buildings.length,
         building: s.jobs.length,

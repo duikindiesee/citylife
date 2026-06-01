@@ -1,5 +1,5 @@
 # Spec 003 — Workshop: refine materials into components
-- status: proposed
+- status: built
 - proposed-by: Mara Quell (founding colonist) — live Hermes inference returned HTTP 400, so written in-character
 - date: 2026-06-01
 - depends-on: 002

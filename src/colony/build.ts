@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop'
 
 export interface Parcel {
   id: number
@@ -55,6 +55,7 @@ const COMMERCIAL_COLOR = 0x5fb6d8
 const INDUSTRIAL_COLOR = 0xcf8b54
 const SOLAR_COLOR = 0x18406a
 const MINE_COLOR = 0x6b5a4a // rocky brown extraction site
+const WORKSHOP_COLOR = 0x8a7f3a // ochre workshop / fabricator
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -72,6 +73,7 @@ function isRoadLine(state: ColonyState, x: number, y: number): boolean {
 export function initBuild(state: ColonyState): void {
   state.treasury = COLONY.build.treasuryStart
   state.materials = COLONY.build.materialsStart // spec 001 — dropship build-supply stockpile
+  state.components = 0 // spec 003 — refined goods, produced by workshops
   state.parcels = []
   state.jobs = []
   state.buildings = []
@@ -213,6 +215,18 @@ function designMine(state: ColonyState): Artifact {
   // can still raise the mine that restores its own supply.
   return { id: state.buildIds++, kind: 'mine', color: MINE_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.mineWorkers, powerLoad: 0.3, powerGen: 0, buildTimeMin: COLONY.build.mineBuildHours * 60, cost: COLONY.build.mineCost, materialsCost: COLONY.build.matMine, crew: COLONY.build.crewMine, materialsGen: COLONY.build.mineOutputPerDay }
 }
+function designWorkshop(state: ColonyState): Artifact {
+  // Spec 003 — refines materials into components while staffed (rates read from config per workshop).
+  return { id: state.buildIds++, kind: 'workshop', color: WORKSHOP_COLOR, height: 1.0, residents: 0, jobs: COLONY.build.workshopWorkers, powerLoad: 0.6, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.workshopCost, materialsCost: COLONY.build.matWorkshop, crew: COLONY.build.crewWorkshop, materialsGen: 0 }
+}
+
+/** Count buildings + queued jobs of a given kind (so we don't over-queue). */
+function countKind(state: ColonyState, kind: BuildKind): number {
+  let n = 0
+  for (const b of state.buildings) if (b.artifact.kind === kind) n++
+  for (const j of state.jobs) if (j.artifact.kind === kind) n++
+  return n
+}
 
 function peakSupply(state: ColonyState): number {
   return COLONY.power.solarPeakW + state.powerGen
@@ -220,6 +234,9 @@ function peakSupply(state: ColonyState): number {
 function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   // Spec 002 — supplies first: when the materials stockpile runs low, raise a mine to replenish it.
   if (state.materials < COLONY.build.materialsLowThreshold) return designMine(state)
+  // Spec 003 — refine surplus into components: with a mine feeding us and supplies plentiful, raise
+  // workshops up to ~2 per mine to turn materials into components.
+  if (countKind(state, 'mine') > 0 && state.materials > COLONY.build.materialsSurplus && countKind(state, 'workshop') < countKind(state, 'mine') * 2) return designWorkshop(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom) return designSolarFarm(state)
   const pendingJobs = state.jobs.reduce((g, j) => g + j.artifact.jobs, 0)
@@ -299,8 +316,25 @@ function produceMaterials(state: ColonyState, dtMin: number): void {
   state.materials += gen * staffing * (dtMin / (24 * 60))
 }
 
+/** Spec 003 — staffed workshops consume materials and produce components (2:1); halt when materials run out. */
+function produceComponents(state: ColonyState, dtMin: number): void {
+  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  if (staffing <= 0) return
+  const day = 24 * 60
+  for (const b of state.buildings) {
+    if (b.artifact.kind !== 'workshop') continue
+    const need = COLONY.build.workshopMaterialsIn * staffing * (dtMin / day)
+    if (need <= 0) continue
+    const consume = Math.min(state.materials, need)
+    if (consume <= 0) continue
+    state.materials -= consume
+    state.components += COLONY.build.workshopComponentsOut * staffing * (dtMin / day) * (consume / need)
+  }
+}
+
 export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   produceMaterials(state, dtMin)
+  produceComponents(state, dtMin)
   for (let i = state.jobs.length - 1; i >= 0; i--) {
     const j = state.jobs[i]!
     j.progress += dtMin / j.artifact.buildTimeMin
