@@ -879,6 +879,10 @@ export class PlanetRenderer {
     const bmat = this.bldgMesh.material as THREE.MeshStandardMaterial
     bmat.emissive.setHex(0xffd9a0)
     bmat.emissiveIntensity = night * 0.4
+    // Cars glow softly after dark so night traffic reads as moving lights flowing along the roads.
+    const cmat = this.carsMesh.material as THREE.MeshStandardMaterial
+    cmat.emissive.setHex(0xfff0d0)
+    cmat.emissiveIntensity = night * 0.5
   }
 
   frame() {
