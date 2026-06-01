@@ -20,12 +20,19 @@ The AI decides *what* to build or change; the review routine decides *how* and v
 Standing items the routines should fold into their work as the world matures (the Design Council can
 turn any of these into a spec; Review & Build can implement it):
 
-- **Zoning overlay — redesign or retire.** The old static city-plan zone tints are ugly and never
-  helped planning, and the economy (specs 001–010) now drives how the city evolves. The overlay is
-  already **off by default**; districts should instead *emerge from the built economy*, or the overlay
-  should visualise the new liveability signals (watered / fed / healthy / cultured / tier), or be
-  removed. Tasteful, toned palette; stays off by default. See
-  `docs/research/2026-06-01-zoning-redesign.md`.
+- **Zoning overlay — redesign or retire.** ✅ *Done* — built as the Civic Pulse Survey Office +
+  liveability map (spec 011). Kept here as the worked example: a viewer flagged it, it was logged here,
+  the Council proposed it, Review & Build shipped it. See `docs/research/2026-06-01-zoning-redesign.md`.
+
+- **Citizen News Radio (the "Kookerverse Courier").** From the scrolls under the rocky mountain
+  (`docs/research/2026-06-01-the-scrolls-citizen-news-radio.md`): a station the colony **builds and
+  staffs** that broadcasts *news about its own citizens and events* — who proposed what, who arrived at
+  the border, which district hit Tier 3, when the reels run dry — instead of only the sponsor ads the Low
+  Power Radio plays today. Turns the existing radio surface from *advertising at* the colony to
+  *reporting on* it. **Full version depends on the memory-keeping Hermes citizens** (persistent bots, so
+  Mara / Bram / Niko / Lys / Ravi accumulate a story to tell). A **deterministic v1** can ship sooner,
+  read from the spec queue + live `ColonyState` events. Cost: build + staff a Broadcast Mast (materials +
+  components + a crew). Off until built.
 
 ## Spec queue location
 
