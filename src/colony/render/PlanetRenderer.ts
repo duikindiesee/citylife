@@ -205,7 +205,7 @@ export class PlanetRenderer {
     // Water pooled on the slab — a disc meeting the rocky rim, not an endless sea to a horizon.
     const ocean = new THREE.Mesh(
       new THREE.CircleGeometry(this.N * 0.66, 72),
-      new THREE.MeshStandardMaterial({ color: 0x14506a, roughness: 0.15, metalness: 0.45, transparent: true, opacity: 0.92 }),
+      new THREE.MeshStandardMaterial({ color: 0x17566f, roughness: 0.15, metalness: 0.45, transparent: true, opacity: 0.92 }),
     )
     ocean.rotation.x = -Math.PI / 2
     ocean.position.y = -0.05
