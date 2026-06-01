@@ -7,6 +7,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { COLONY } from '../config'
 import { BIOME_COLOR, Biome } from '../terrain'
 import type { ColonySim, SeedStructure } from '../sim'
@@ -466,9 +467,15 @@ export class PlanetRenderer {
     this.roadLineMesh.frustumCulled = false
     this.scene.add(this.roadLineMesh)
 
-    const bGeo = new THREE.BoxGeometry(0.82, 1, 0.82)
-    bGeo.translate(0, 0.5, 0)
-    this.bldgMesh = new THREE.InstancedMesh(bGeo, new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.03 }), COLONY.build.maxBuildings + 8)
+    // Building = body box + a low hipped roof merged into one geometry, so each instance reads as a
+    // structure with a roof instead of a plain block. The roof scales with the building height.
+    const bBody = new THREE.BoxGeometry(0.82, 1, 0.82)
+    bBody.translate(0, 0.5, 0)
+    const bRoof = new THREE.ConeGeometry(0.64, 0.4, 4)
+    bRoof.rotateY(Math.PI / 4)
+    bRoof.translate(0, 1.2, 0)
+    const bGeo = mergeGeometries([bBody, bRoof])!
+    this.bldgMesh = new THREE.InstancedMesh(bGeo, new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.03, flatShading: true }), COLONY.build.maxBuildings + 8)
     this.bldgMesh.count = 0
     this.bldgMesh.castShadow = true
     this.bldgMesh.frustumCulled = false
