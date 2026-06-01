@@ -18,8 +18,8 @@ export enum Biome {
 
 // Alien palette (teal seas, violet flora, ochre rock, pale crystal peaks).
 export const BIOME_COLOR: Record<Biome, number> = {
-  [Biome.Ocean]: 0x143a4a,
-  [Biome.Shallows]: 0x1f6f86,
+  [Biome.Ocean]: 0x17566f,
+  [Biome.Shallows]: 0x2c8aa4,
   [Biome.Beach]: 0xcdbf9e,
   [Biome.Plains]: 0x6f9d6a,
   [Biome.Forest]: 0x4f7d5a,

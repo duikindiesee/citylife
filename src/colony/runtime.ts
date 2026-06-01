@@ -38,6 +38,7 @@ export interface ColonyUiState {
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
   radio: RadioState
   tv: boolean
+  zonesVisible: boolean
   name: string
   biome: string
   view: ViewMode
@@ -67,6 +68,8 @@ export class ColonyRuntime {
   private radio: RadioState = createRadio()
   // TV mode hides the operator UI so you can put the city on any screen and just watch.
   private tv = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('tv') === '1'
+  // City-plan zoning overlay (tints + plot flags) visible by default; toggled from the HUD.
+  private zonesVisible = true
   private adInterval: ReturnType<typeof setInterval> | null = null
 
   constructor(seed: number = COLONY.render.seed) {
@@ -146,6 +149,16 @@ export class ColonyRuntime {
   toggleTv(): void {
     this.setTv(!this.tv)
   }
+  /** Toggle the city-plan zoning overlay (zone tints + plot flags). */
+  toggleZones(): void {
+    this.zonesVisible = !this.zonesVisible
+    this.renderer?.setZonesVisible(this.zonesVisible)
+    this.emit()
+  }
+  /** Capture the current view as a PNG data URL (HUD snapshot button); null before the renderer starts. */
+  snapshot(): string | null {
+    return this.renderer?.capturePNG() ?? null
+  }
   private startAdLoop() {
     if (this.adInterval) return
     // One sponsor / house ad every 90 seconds — the demo of the ad-revenue surface.
@@ -164,6 +177,7 @@ export class ColonyRuntime {
   start(container: HTMLElement) {
     if (this.running) return
     this.renderer = new PlanetRenderer(container, this.sim)
+    this.renderer.setZonesVisible(this.zonesVisible)
     this.running = true
     this.lastFrame = performance.now()
     this.lastUi = this.lastFrame
@@ -263,6 +277,7 @@ export class ColonyRuntime {
       border: { households: this.backend.households(), bots: this.botService.bots, botSource: this.botService.source, plots: this.cityPlan.plots },
       radio: this.radio,
       tv: this.tv,
+      zonesVisible: this.zonesVisible,
       name: s.name,
       biome: BIOME_LABEL[s.terrain.biome[li]!] ?? 'Unknown',
       view: this.view,

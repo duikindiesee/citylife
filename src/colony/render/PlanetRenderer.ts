@@ -17,9 +17,12 @@ import { cellZone, ZONE_COLOR, VIBE_COLOR, type Plot } from '../cityPlan'
 export type ViewMode = 'biome' | 'buildable' | 'elevation'
 export type CameraPreset = 'street' | 'district' | 'planet'
 
-const SKY_DAY = new THREE.Color(0x9ec3d6)
-const SKY_NIGHT = new THREE.Color(0x080b1e)
+// Dark City: the colony floats on a slab of rock adrift in deep space. The "sky" is the void —
+// dark even at midday — while a local sun still sweeps light across the island for day/night.
+const SKY_DAY = new THREE.Color(0x0b1022)
+const SKY_NIGHT = new THREE.Color(0x03040a)
 const OCEAN = 0x143a4a
+const SLAB_ROCK = 0x24242f
 
 export class PlanetRenderer {
   private scene = new THREE.Scene()
@@ -39,6 +42,10 @@ export class PlanetRenderer {
   private streetPostMesh!: THREE.InstancedMesh
   private streetHeadMesh!: THREE.InstancedMesh
   private carsMesh!: THREE.InstancedMesh
+  // Ambient pedestrians — renderer-only wandering figures near the settled ground; no sim impact.
+  private pedMesh!: THREE.InstancedMesh
+  private peds: { x: number; y: number; tx: number; ty: number; spd: number; phase: number }[] = []
+  private lastPedT = 0
   private settlerGroup = new THREE.Group()
   private lastSettlerCount = -1
   // City plan paint — translucent zone tints (residential / commercial / industrial / civic)
@@ -57,6 +64,10 @@ export class PlanetRenderer {
   // Reads-only the wall-clock so it stays smooth even if the sim is paused.
   private cinematic = false
   private cinematicT0 = 0
+  // Per-car smoothed render state (position + heading), so cars glide between the 6 Hz sim steps
+  // and ease through turns instead of snapping their heading — and lane offset — at each corner.
+  private carRender = new Map<number, { x: number; y: number; h: number }>()
+  private lastCarT = 0
 
   private N: number
   private R: number
@@ -75,7 +86,7 @@ export class PlanetRenderer {
     this.N = sim.state.terrain.size
     this.R = COLONY.world.planetRadius
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true })
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
     this.renderer.setPixelRatio(1)
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
@@ -91,7 +102,7 @@ export class PlanetRenderer {
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement)
     this.controls.enableDamping = true
-    this.controls.maxPolarAngle = Math.PI * 0.495
+    this.controls.maxPolarAngle = Math.PI * 0.62
     this.controls.minDistance = 4
     this.controls.maxDistance = this.R * 2.6
     this.controls.target.set(0, 5, 0)
@@ -139,31 +150,70 @@ export class PlanetRenderer {
   }
 
   private buildPlanet() {
-    // The ball: a big sphere whose apex is at the origin, where the flat region sits.
-    const planet = new THREE.Mesh(
-      new THREE.SphereGeometry(this.R, 72, 54),
-      new THREE.MeshStandardMaterial({ color: OCEAN, roughness: 0.85, metalness: 0.05 }),
+    // Dark City: a tapered slab of rock drops from just under the waterline into the void, so the
+    // island clearly floats in space instead of sitting on a planet.
+    const top = this.N * 0.72
+    const base = this.N * 0.34
+    const height = this.N * 1.05
+    const rock = new THREE.Mesh(
+      new THREE.CylinderGeometry(top, base, height, 9, 1),
+      new THREE.MeshStandardMaterial({ color: SLAB_ROCK, roughness: 0.95, metalness: 0.08, flatShading: true }),
     )
-    planet.position.set(0, -this.R, 0)
-    planet.receiveShadow = false
-    this.scene.add(planet)
+    rock.position.set(0, -height / 2 - 0.4, 0)
+    this.scene.add(rock)
 
-    // Atmosphere glow.
-    const atmo = new THREE.Mesh(
-      new THREE.SphereGeometry(this.R * 1.05, 40, 28),
-      new THREE.MeshBasicMaterial({ color: 0x8fcfff, transparent: true, opacity: 0.1, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false }),
+    // Additive glow at the waterline so the island reads as a lit slab adrift in the dark — a tight
+    // bright rim plus a taller, fainter halo that bleeds up into the void (Dark City energy).
+    const rim = new THREE.Mesh(
+      new THREE.CylinderGeometry(top * 1.01, top * 0.9, this.N * 0.06, 9, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x3aa6c8, transparent: true, opacity: 0.32, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }),
     )
-    atmo.position.set(0, -this.R, 0)
-    this.scene.add(atmo)
+    rim.position.set(0, -0.6, 0)
+    this.scene.add(rim)
+    const rimHalo = new THREE.Mesh(
+      new THREE.CylinderGeometry(top * 1.09, top * 0.98, this.N * 0.17, 9, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0x256b8a, transparent: true, opacity: 0.11, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }),
+    )
+    rimHalo.position.set(0, -0.36, 0)
+    this.scene.add(rimHalo)
+
+    // Starfield — two deterministic Fibonacci shells (fine dust + sparse bright stars), fog-disabled
+    // so the void always reads as deep space. Both sit beyond the camera's max orbit distance, so you
+    // never fly through them. Two layers give the void real depth instead of a flat scatter.
+    const golden = Math.PI * (3 - Math.sqrt(5))
+    const makeStars = (count: number, seed: number, rMin: number, rSpan: number, color: number, size: number, opacity: number) => {
+      const sg = new THREE.BufferGeometry()
+      const pos = new Float32Array(count * 3)
+      for (let i = 0; i < count; i++) {
+        const y = 1 - ((i + 0.5) / count) * 2
+        const rad = Math.sqrt(Math.max(0, 1 - y * y))
+        const theta = golden * (i + seed)
+        const r = rMin + ((i * 131 + seed * 977) % rSpan)
+        pos[i * 3] = Math.cos(theta) * rad * r
+        pos[i * 3 + 1] = y * r
+        pos[i * 3 + 2] = Math.sin(theta) * rad * r
+      }
+      sg.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      const points = new THREE.Points(
+        sg,
+        new THREE.PointsMaterial({ color, size, sizeAttenuation: true, fog: false, transparent: true, opacity, depthWrite: false }),
+      )
+      points.matrixAutoUpdate = false
+      this.scene.add(points)
+    }
+    makeStars(2800, 0, 5000, 1700, 0x8d99c8, 4, 0.7) // fine dust
+    makeStars(380, 7, 5200, 1500, 0xeef2ff, 11, 0.95) // sparse bright stars
   }
 
   private buildOcean() {
+    // Water pooled on the slab — a disc meeting the rocky rim, not an endless sea to a horizon.
     const ocean = new THREE.Mesh(
-      new THREE.PlaneGeometry(this.N * 1.04, this.N * 1.04),
-      new THREE.MeshStandardMaterial({ color: 0x1c6a82, roughness: 0.12, metalness: 0.4, transparent: true, opacity: 0.9 }),
+      new THREE.CircleGeometry(this.N * 0.66, 72),
+      new THREE.MeshStandardMaterial({ color: 0x17566f, roughness: 0.15, metalness: 0.45, transparent: true, opacity: 0.92 }),
     )
     ocean.rotation.x = -Math.PI / 2
-    ocean.position.y = 0
+    ocean.position.y = -0.05
+    ocean.receiveShadow = true
     this.scene.add(ocean)
   }
 
@@ -232,6 +282,12 @@ export class PlanetRenderer {
       colorAttr.setXYZ(i, col.r, col.g, col.b)
     }
     colorAttr.needsUpdate = true
+  }
+
+  /** Show or hide the city-plan overlay (zone tints + plot flag-poles). */
+  setZonesVisible(v: boolean) {
+    if (this.zoneTintMesh) this.zoneTintMesh.visible = v
+    this.plotMarkers.visible = v
   }
 
   private buildStructures() {
@@ -355,6 +411,15 @@ export class PlanetRenderer {
     this.crewMesh.frustumCulled = false
     this.scene.add(this.crewMesh)
 
+    // Ambient pedestrians strolling the settled ground near the landing — the colony feels lived-in.
+    const pedGeo = new THREE.CapsuleGeometry(0.13, 0.34, 3, 6)
+    pedGeo.translate(0, 0.33, 0)
+    this.pedMesh = new THREE.InstancedMesh(pedGeo, new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.05 }), 28)
+    this.pedMesh.castShadow = true
+    this.pedMesh.frustumCulled = false
+    this.scene.add(this.pedMesh)
+    this.initPedestrians()
+
     // street lights at grid intersections
     const lightCap = 360
     const postGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.9, 5)
@@ -431,7 +496,7 @@ export class PlanetRenderer {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
     geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
     geo.computeVertexNormals()
-    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })
+    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.36, side: THREE.DoubleSide, depthWrite: false })
     this.zoneTintMesh = new THREE.Mesh(geo, mat)
     this.zoneTintMesh.frustumCulled = false
     this.scene.add(this.zoneTintMesh)
@@ -696,21 +761,51 @@ export class PlanetRenderer {
 
     // cars — South African rules: keep LEFT. Driver's-left of heading h is (sin h, -cos h)
     // in lot coords, so a car heading south (+y) sits on the east (+x) side, i.e. its left.
+    // The sim ticks at 6 Hz; we exponentially smooth each car's position + heading toward the
+    // sim state every frame so motion is fluid at 60 fps and turns (with the lane offset) ease
+    // instead of snapping a car sideways across the road at every corner.
     const carCol = new THREE.Color()
     const off = COLONY.traffic.laneOffset
     const cn = Math.min(s.cars.length, COLONY.traffic.maxCars + 4)
     this.carsMesh.count = cn
+    const carNow = performance.now()
+    const carDt = this.lastCarT ? Math.min(0.05, (carNow - this.lastCarT) / 1000) : 1 / 60
+    this.lastCarT = carNow
+    const aPos = 1 - Math.exp(-carDt * 16) // position catch-up (fast, ~1 frame lag)
+    const aHed = 1 - Math.exp(-carDt * 9) // heading ease (slower, smooth turns)
+    const liveCars = new Set<number>()
     for (let i = 0; i < cn; i++) {
       const v = s.cars[i]!
-      const lx = v.x + Math.sin(v.heading) * off
-      const ly = v.y - Math.cos(v.heading) * off
-      this.dummy.position.set(this.wx(lx), this.smoothRoadY(Math.round(v.x), Math.round(v.y)) + 0.12, this.wz(ly))
-      this.dummy.rotation.set(0, -v.heading, 0)
+      liveCars.add(v.id)
+      let e = this.carRender.get(v.id)
+      if (!e) {
+        e = { x: v.x, y: v.y, h: v.heading }
+        this.carRender.set(v.id, e)
+      }
+      // A re-route can jump a car a long way; snap rather than glide it across the map.
+      if (Math.hypot(v.x - e.x, v.y - e.y) > 3) {
+        e.x = v.x
+        e.y = v.y
+        e.h = v.heading
+      }
+      e.x += (v.x - e.x) * aPos
+      e.y += (v.y - e.y) * aPos
+      let dh = v.heading - e.h
+      dh -= Math.round(dh / (Math.PI * 2)) * (Math.PI * 2) // wrap to [-PI, PI]
+      e.h += dh * aHed
+      const lx = e.x + Math.sin(e.h) * off
+      const ly = e.y - Math.cos(e.h) * off
+      this.dummy.position.set(this.wx(lx), this.smoothRoadY(Math.round(e.x), Math.round(e.y)) + 0.12, this.wz(ly))
+      this.dummy.rotation.set(0, -e.h, 0)
       this.dummy.scale.set(1, 1, 1)
       this.dummy.updateMatrix()
       this.carsMesh.setMatrixAt(i, this.dummy.matrix)
       carCol.setHex(v.color)
       this.carsMesh.setColorAt(i, carCol)
+    }
+    // Drop smoothing state for any car that is no longer present.
+    if (this.carRender.size > cn) {
+      for (const id of this.carRender.keys()) if (!liveCars.has(id)) this.carRender.delete(id)
     }
     this.carsMesh.instanceMatrix.needsUpdate = true
     if (this.carsMesh.instanceColor) this.carsMesh.instanceColor.needsUpdate = true
@@ -727,6 +822,7 @@ export class PlanetRenderer {
     if (this.disposed) return
     this.updateDayNight()
     this.updateColonyLayer()
+    this.updatePedestrians()
     if (this.cinematic) this.updateCinematic()
     this.controls.update()
     this.composer.render()
@@ -738,6 +834,89 @@ export class PlanetRenderer {
     if (on === this.cinematic) return
     this.cinematic = on
     if (on) this.cinematicT0 = performance.now()
+  }
+
+  /** Render a fresh frame and return it as a PNG data URL — used by the HUD snapshot button. */
+  capturePNG(): string {
+    this.composer.render()
+    return this.renderer.domElement.toDataURL('image/png')
+  }
+
+  private pedOnLand(x: number, y: number): boolean {
+    const t = this.sim.state.terrain
+    const ix = Math.round(x), iy = Math.round(y)
+    if (ix < 0 || iy < 0 || ix >= t.size || iy >= t.size) return false
+    return !t.isWater(ix, iy)
+  }
+
+  /** Seed ~16 wandering pedestrians on land within walking distance of the landing site. */
+  private initPedestrians() {
+    const t = this.sim.state.terrain
+    const lx = t.landing.x, ly = t.landing.y
+    const PED_COLORS = [0xe06a4d, 0x4d8fe0, 0xe6c84d, 0x57b86a, 0xc9c2b6, 0xb47ad6]
+    const col = new THREE.Color()
+    this.peds = []
+    let guard = 0
+    while (this.peds.length < 16 && guard++ < 500) {
+      const a = Math.random() * Math.PI * 2
+      const r = 2 + Math.random() * 14
+      const x = lx + Math.cos(a) * r
+      const y = ly + Math.sin(a) * r
+      if (!this.pedOnLand(x, y)) continue
+      this.peds.push({ x, y, tx: x, ty: y, spd: 0.5 + Math.random() * 0.7, phase: Math.random() * Math.PI * 2 })
+    }
+    this.peds.forEach((_, idx) => {
+      col.setHex(PED_COLORS[idx % PED_COLORS.length]!)
+      this.pedMesh.setColorAt(idx, col)
+    })
+    this.pedMesh.count = this.peds.length
+    if (this.pedMesh.instanceColor) this.pedMesh.instanceColor.needsUpdate = true
+  }
+
+  /** Per-frame: stroll each pedestrian toward a nearby land target, picking a new one on arrival. */
+  private updatePedestrians() {
+    if (!this.pedMesh || this.peds.length === 0) return
+    const t = this.sim.state.terrain
+    const lx = t.landing.x, ly = t.landing.y
+    const now = performance.now()
+    const dt = this.lastPedT ? Math.min(0.05, (now - this.lastPedT) / 1000) : 1 / 60
+    this.lastPedT = now
+    for (let i = 0; i < this.peds.length; i++) {
+      const p = this.peds[i]!
+      let dx = p.tx - p.x, dy = p.ty - p.y
+      let d = Math.hypot(dx, dy)
+      if (d < 0.4) {
+        for (let tries = 0; tries < 8; tries++) {
+          const ang = Math.atan2(ly - p.y, lx - p.x) + (Math.random() - 0.5) * Math.PI * 1.6
+          const step = 3 + Math.random() * 6
+          const nx = p.x + Math.cos(ang) * step
+          const ny = p.y + Math.sin(ang) * step
+          if (this.pedOnLand(nx, ny) && Math.hypot(nx - lx, ny - ly) < 18) {
+            p.tx = nx
+            p.ty = ny
+            break
+          }
+        }
+        dx = p.tx - p.x
+        dy = p.ty - p.y
+        d = Math.hypot(dx, dy)
+      }
+      if (d > 1e-3) {
+        const move = Math.min(d, p.spd * dt)
+        p.x += (dx / d) * move
+        p.y += (dy / d) * move
+        p.phase += dt * 8
+      }
+      const heading = Math.atan2(dy, dx)
+      const bob = Math.abs(Math.sin(p.phase)) * 0.05
+      const wy = Math.max(0, t.worldY(Math.round(p.x), Math.round(p.y)))
+      this.dummy.position.set(this.wx(p.x), wy + bob, this.wz(p.y))
+      this.dummy.rotation.set(0, -heading + Math.PI / 2, 0)
+      this.dummy.scale.set(1, 1, 1)
+      this.dummy.updateMatrix()
+      this.pedMesh.setMatrixAt(i, this.dummy.matrix)
+    }
+    this.pedMesh.instanceMatrix.needsUpdate = true
   }
 
   private updateCinematic() {
