@@ -132,6 +132,13 @@ export const COLONY = {
     theatreRadius: 8, // cells; habitats within this of a theatre are cultured
     theatreMaintCompPerDay: 1.5, // ongoing component (media) maintenance — the steepest sink
     cultureDesirabilityBonus: 0.4, // up to +40% immigration at full culture coverage
+    // Civic Pulse Survey Office (spec 011): build + staff to unlock the liveability overlay.
+    matSurvey: 18,
+    compSurvey: 12,
+    crewSurvey: 3,
+    surveyCost: 2400,
+    surveyWorkers: 2,
+    surveyMaintMatPerDay: 1, // sensor / survey-crew upkeep (materials)
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

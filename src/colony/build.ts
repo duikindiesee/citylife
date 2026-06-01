@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey'
 
 export interface Parcel {
   id: number
@@ -64,6 +64,7 @@ const GREENHOUSE_COLOR = 0x4f9d52 // green skyfarm greenhouse
 const DEPOT_COLOR = 0xc88a3a // amber ration depot
 const CLINIC_COLOR = 0xe3ebf0 // clinical white first-aid clinic
 const THEATRE_COLOR = 0x9a4fd0 // magenta holo-theatre
+const SURVEY_COLOR = 0x4a78b8 // civic blue survey office
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -248,6 +249,10 @@ function designTheatre(state: ColonyState): Artifact {
   // Spec 010 — culture service; covers nearby homes and makes the colony more desirable to settlers.
   return { id: state.buildIds++, kind: 'theatre', color: THEATRE_COLOR, height: 1.1, residents: 0, jobs: COLONY.build.theatreWorkers, powerLoad: 0.6, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.theatreCost, materialsCost: COLONY.build.matTheatre, crew: COLONY.build.crewTheatre, materialsGen: 0, componentsCost: COLONY.build.compTheatre }
 }
+function designSurvey(state: ColonyState): Artifact {
+  // Spec 011 — civic survey office; once built + staffed, unlocks the liveability overlay.
+  return { id: state.buildIds++, kind: 'survey', color: SURVEY_COLOR, height: 1.2, residents: 0, jobs: COLONY.build.surveyWorkers, powerLoad: 0.5, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.surveyCost, materialsCost: COLONY.build.matSurvey, crew: COLONY.build.crewSurvey, materialsGen: 0, componentsCost: COLONY.build.compSurvey }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -314,6 +319,48 @@ export function cultureFraction(state: ColonyState): number {
   return served / habs.length
 }
 
+/** Spec 011 — is a building of `kind` within `radius` of this home? (per-home service coverage). */
+function nearBuildingKind(state: ColonyState, home: ColonyBuilding, kind: BuildKind, radius: number): boolean {
+  return state.buildings.some((b) => b.artifact.kind === kind && Math.hypot(b.x - home.x, b.y - home.y) <= radius)
+}
+
+/** Spec 011 — a single home's liveability 0..1: how well it's served (water/food/health/culture) + its tier. */
+export function homeLiveability(state: ColonyState, home: ColonyBuilding): number {
+  if (home.artifact.kind !== 'habitat') return 0
+  const watered = nearBuildingKind(state, home, 'water', COLONY.build.waterHubRadius) ? 1 : 0
+  const provisioned = state.food > 0 && nearBuildingKind(state, home, 'depot', COLONY.build.rationDepotRadius) ? 1 : 0
+  const healthy = nearBuildingKind(state, home, 'clinic', COLONY.build.clinicRadius) ? 1 : 0
+  const cultured = nearBuildingKind(state, home, 'theatre', COLONY.build.theatreRadius) ? 1 : 0
+  const services = (watered + provisioned + healthy + cultured) / 4
+  const tierTerm = (Math.max(1, Math.min(3, home.tier ?? 1)) - 1) / 2
+  return 0.7 * services + 0.3 * tierTerm
+}
+
+/** Spec 011 — mean liveability across all homes (0 if none), for the HUD readout. */
+export function colonyLiveability(state: ColonyState): number {
+  const habs = state.buildings.filter((b) => b.artifact.kind === 'habitat')
+  if (!habs.length) return 0
+  let sum = 0
+  for (const h of habs) sum += homeLiveability(state, h)
+  return sum / habs.length
+}
+
+/** Spec 011 — the liveability overlay is available only once a Survey Office is built AND the colony is peopled. */
+export function surveyAvailable(state: ColonyState): boolean {
+  return countKind(state, 'survey') > 0 && state.colonists > 0
+}
+
+/** Spec 011 — tint a liveability score 0..1 from amber (starved) to cyan (thriving). Plain RGB lerp, no THREE. */
+export function liveabilityTint(score: number): number {
+  const s = Math.max(0, Math.min(1, score))
+  const ar = 0xe6, ag = 0x8a, ab = 0x3a // amber — starved
+  const cr = 0x3a, cg = 0xd1, cb = 0xc8 // cyan — thriving
+  const r = Math.round(ar + (cr - ar) * s)
+  const g = Math.round(ag + (cg - ag) * s)
+  const b = Math.round(ab + (cb - ab) * s)
+  return (r << 16) | (g << 8) | b
+}
+
 function peakSupply(state: ColonyState): number {
   return COLONY.power.solarPeakW + state.powerGen
 }
@@ -333,6 +380,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (countKind(state, 'habitat') > 0 && healthFraction(state) < 0.9 && state.components >= COLONY.build.compClinic && countKind(state, 'clinic') < Math.ceil(countKind(state, 'habitat') / 6)) return designClinic(state)
   // Spec 010 — culture for a thriving colony: homes exist + low culture coverage + components → raise a Holo-Theatre.
   if (countKind(state, 'habitat') > 0 && cultureFraction(state) < 0.9 && state.components >= COLONY.build.compTheatre && countKind(state, 'theatre') < Math.ceil(countKind(state, 'habitat') / 8)) return designTheatre(state)
+  // Spec 011 — once the colony is established, raise a Civic Pulse Survey Office to unlock the liveability map.
+  if (state.colonists > 8 && countKind(state, 'survey') < 1 && state.components >= COLONY.build.compSurvey) return designSurvey(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom) return designSolarFarm(state)
   const pendingJobs = state.jobs.reduce((g, j) => g + j.artifact.jobs, 0)
@@ -509,14 +558,17 @@ function immigration(state: ColonyState, dtMin: number): void {
 
 /** Spec 005 — services (water hubs) consume a trickle of components to run. */
 function serviceUpkeep(state: ColonyState, dtMin: number): void {
-  let upkeep = 0
+  let upkeep = 0 // components (water/depot/clinic/theatre)
+  let matUpkeep = 0 // materials (spec 011 — the survey office burns sensors/supplies)
   for (const b of state.buildings) {
     if (b.artifact.kind === 'water') upkeep += COLONY.build.waterHubMaintCompPerDay
     else if (b.artifact.kind === 'depot') upkeep += COLONY.build.depotMaintCompPerDay
     else if (b.artifact.kind === 'clinic') upkeep += COLONY.build.clinicMaintCompPerDay
     else if (b.artifact.kind === 'theatre') upkeep += COLONY.build.theatreMaintCompPerDay
+    else if (b.artifact.kind === 'survey') matUpkeep += COLONY.build.surveyMaintMatPerDay
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
+  if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))
 }
 
 /** Spec 007 — staffed greenhouses grow food (boosted near a Water Hub); colonists eat a little each day. */

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -516,5 +516,49 @@ describe('Spec 010 — Holo-Theatre: culture draws the skilled settlers', () => 
       return s.colonists - col0
     }
     expect(run(true)).toBeGreaterThan(run(false))
+  })
+})
+
+describe('Spec 011 — Civic Pulse Survey Office + the liveability map', () => {
+  const mk = (kind: 'habitat' | 'water' | 'depot' | 'clinic' | 'theatre' | 'survey', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('a bare home scores near zero; a fully-served tier-3 home scores near one', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const home = mk('habitat', 50, 50, { residents: 3 })
+    s.buildings.push(home)
+    expect(homeLiveability(s, home)).toBeLessThan(0.1) // unserved, tier 1
+    // surround it with every service, stock food, raise its tier
+    s.food = 100
+    s.buildings.push(mk('water', 51, 50))
+    s.buildings.push(mk('depot', 51, 51))
+    s.buildings.push(mk('clinic', 49, 50))
+    s.buildings.push(mk('theatre', 50, 51))
+    home.tier = 3
+    expect(homeLiveability(s, home)).toBeGreaterThan(0.9)
+    expect(colonyLiveability(s)).toBeGreaterThan(0.9) // the only home, so the colony mean matches
+  })
+
+  it('the overlay is available only once a survey office is built and the colony is peopled', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 10
+    expect(surveyAvailable(s)).toBe(false) // no office yet
+    s.buildings.push(mk('survey', 50, 50))
+    expect(surveyAvailable(s)).toBe(true)
+    s.colonists = 0
+    expect(surveyAvailable(s)).toBe(false) // no one to staff it
+  })
+
+  it('the tint runs amber (starved) to cyan (thriving)', () => {
+    const red = (h: number) => (h >> 16) & 0xff
+    const blue = (h: number) => h & 0xff
+    expect(red(liveabilityTint(0))).toBeGreaterThan(red(liveabilityTint(1))) // amber is redder
+    expect(blue(liveabilityTint(1))).toBeGreaterThan(blue(liveabilityTint(0))) // cyan is bluer
   })
 })

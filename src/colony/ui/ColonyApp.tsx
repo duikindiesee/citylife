@@ -109,8 +109,8 @@ export function ColonyApp() {
           ))}
         </div>
         <div className="group">
-          <button className={ui.zonesVisible ? 'on' : ''} onClick={() => runtime.toggleZones()} title="Show or hide the city-plan zoning overlay">
-            Zones
+          <button className={ui.zonesVisible ? 'on' : ''} disabled={!ui.colony.surveyed} onClick={() => runtime.toggleZones()} title={ui.colony.surveyed ? 'Liveability map — tint homes cyan (thriving) to amber (starved)' : 'Build a Civic Pulse Survey Office to unlock the liveability map'}>
+            Liveability
           </button>
         </div>
         <div className="group">
@@ -138,6 +138,7 @@ export function ColonyApp() {
         <div className="row"><span>Homes fed</span><b style={{ color: ui.colony.provisioned < 60 ? '#e6c84d' : undefined }}>{ui.colony.provisioned}%</b></div>
         <div className="row"><span>Homes healthy</span><b style={{ color: ui.colony.health < 60 ? '#e6c84d' : undefined }}>{ui.colony.health}%</b></div>
         <div className="row"><span>Homes cultured</span><b style={{ color: ui.colony.culture < 40 ? '#e6c84d' : undefined }}>{ui.colony.culture}%</b></div>
+        <div className="row"><span>Liveability</span><b style={{ color: ui.colony.liveability < 40 ? '#e6c84d' : undefined }}>{ui.colony.surveyed ? `${ui.colony.liveability}%` : '— locked'}</b></div>
         <div className="row"><span>Free labour</span><b style={{ color: ui.colony.freeLabour === 0 ? '#e6c84d' : undefined }}>{ui.colony.freeLabour}</b></div>
         <div className="row"><span>Jobs</span><b>{ui.colony.jobs} · {ui.colony.employed}% empl.</b></div>
         <div className="row"><span>Pollution</span><b style={{ color: ui.colony.pollution > 60 ? '#e0584d' : ui.colony.pollution > 25 ? '#e6c84d' : undefined }}>{ui.colony.pollution}</b></div>

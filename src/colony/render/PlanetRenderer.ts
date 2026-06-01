@@ -14,6 +14,7 @@ import type { ColonySim, SeedStructure } from '../sim'
 import type { HouseSpec } from '../house'
 import { gridOrigin } from '../grid'
 import { cellZone, ZONE_COLOR, VIBE_COLOR, type Plot } from '../cityPlan'
+import { homeLiveability, surveyAvailable, liveabilityTint } from '../build'
 
 export type ViewMode = 'biome' | 'buildable' | 'elevation'
 export type CameraPreset = 'street' | 'district' | 'planet'
@@ -53,6 +54,7 @@ export class PlanetRenderer {
   // and named flag-pole markers at every plot. Both are built once from the terrain; the markers
   // dim and re-label as plots get allocated.
   private zoneTintMesh: THREE.Mesh | null = null
+  private liveabilityOn = false // spec 011 — the overlay toggle now drives the liveability map
   private plotMarkers = new THREE.Group()
   private plotMeshes = new Map<string, { pole: THREE.Mesh; flag: THREE.Mesh; flagMat: THREE.MeshStandardMaterial }>()
   private lastPlotSig = ''
@@ -352,8 +354,11 @@ export class PlanetRenderer {
 
   /** Show or hide the city-plan overlay (zone tints + plot flag-poles). */
   setZonesVisible(v: boolean) {
-    if (this.zoneTintMesh) this.zoneTintMesh.visible = v
-    this.plotMarkers.visible = v
+    // Spec 011 — repurposed: drives the liveability overlay (homes tinted by wellbeing). The old static
+    // zone tints + named-plot flags are retired, so they stay hidden regardless of the toggle.
+    this.liveabilityOn = v
+    if (this.zoneTintMesh) this.zoneTintMesh.visible = false
+    this.plotMarkers.visible = false
   }
 
   private buildStructures() {
@@ -753,6 +758,8 @@ export class PlanetRenderer {
 
     const col = new THREE.Color()
     const cap = COLONY.build.maxBuildings + 8
+    // Spec 011 — when the liveability overlay is on AND a survey office is up, tint homes by wellbeing.
+    const liveOn = this.liveabilityOn && surveyAvailable(s)
     let bi = 0
     for (const b of s.buildings) {
       if (bi >= cap) break
@@ -761,7 +768,8 @@ export class PlanetRenderer {
       this.dummy.rotation.set(0, 0, 0)
       this.dummy.updateMatrix()
       this.bldgMesh.setMatrixAt(bi, this.dummy.matrix)
-      col.setHex(b.artifact.color)
+      if (liveOn && b.artifact.kind === 'habitat') col.setHex(liveabilityTint(homeLiveability(s, b)))
+      else col.setHex(b.artifact.color)
       this.bldgMesh.setColorAt(bi, col)
       bi++
     }

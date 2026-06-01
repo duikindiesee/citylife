@@ -1,5 +1,5 @@
 # Spec 011 — Civic Pulse Survey Office: the liveability map
-- status: proposed
+- status: built
 - proposed-by: **Mara Venn, neighbourhood auditor** — live Hermes citizen (model hermes-codex-gpt-5.5), her 6th accepted proposal (Water Hub 005, Greenhouse 007, Ration Depot 008, Clinic 009, Theatre 010, now the survey)
 - date: 2026-06-01
 - depends-on: 010
