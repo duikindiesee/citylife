@@ -152,6 +152,7 @@ export function ColonyApp() {
         <div className="row"><span>Components</span><b>{ui.colony.components}</b></div>
         <div className="row"><span>Food</span><b style={{ color: ui.colony.food === 0 ? '#e6c84d' : undefined }}>{ui.colony.food}</b></div>
         {ui.colony.reels > 0 && <div className="row"><span>Reels</span><b style={{ color: '#9a8fe0' }}>{ui.colony.reels}</b></div>}
+        {ui.colony.skilled > 0 && <div className="row"><span>Skilled</span><b style={{ color: '#5fd0c0' }} title="Skilled workers trained by Skillhouse Academies — the advanced trades run faster with them">{ui.colony.skilled}</b></div>}
         <div className="row"><span>Homes</span><b>{`T1×${ui.colony.tiers[0]} · T2×${ui.colony.tiers[1]} · T3×${ui.colony.tiers[2]}`}</b></div>
         <div className="row"><span>Buildings</span><b>{ui.colony.buildings}</b></div>
         <div className="row"><span>Building</span><b>{ui.colony.building}</b></div>

@@ -191,6 +191,14 @@ export const COLONY = {
     scrubberCost: 1600,
     scrubberWorkers: 2,
     scrubberMaintCompPerDay: 1,
+    // Skillhouse Academy (spec 020): trains skilled workers; the advanced trades need them.
+    matAcademy: 16,
+    compAcademy: 10,
+    crewAcademy: 3,
+    academyCost: 1800,
+    academyWorkers: 2,
+    academyTrainPerDay: 2, // skilled workers trained per day per staffed academy
+    skilledPerAdvanced: 3, // skilled workers one workshop/foundry wants for full output
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

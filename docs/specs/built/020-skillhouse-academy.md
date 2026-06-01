@@ -1,5 +1,5 @@
 # Spec 020 — The Skillhouse Academy: skilled workers, not just more bodies
-- status: proposed
+- status: built
 - proposed-by: **Mara Venn, apprentice forecaster (Skybridge Exchange)** — **LIVE Hermes** (model hermes-codex-gpt-5.5), her 9th accepted proposal and the 4th live spec in a row. The inference is steady; the council is humming.
 - date: 2026-06-02
 - depends-on: 003, 013

@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy'
 
 export interface Parcel {
   id: number
@@ -71,6 +71,7 @@ const FOUNDRY_COLOR = 0x6a5acd // indigo reel foundry (luxury good)
 const MAST_COLOR = 0x6fd0ff // signal-blue broadcast mast (the Courier)
 const BATTERY_COLOR = 0x4fd07a // green battery shed (grid buffer)
 const SCRUBBER_COLOR = 0x9acd32 // yellow-green air scrubber garden
+const ACADEMY_COLOR = 0x3ab0a0 // teal skillhouse academy
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -91,6 +92,7 @@ export function initBuild(state: ColonyState): void {
   state.components = 0 // spec 003 — refined goods, produced by workshops
   state.food = 0 // spec 007 — grown by greenhouses; colonists subsist on dropship rations until then
   state.reels = 0 // spec 013 — luxury good, refined by foundries from components
+  state.skilled = 0 // spec 020 — skilled workers, trained by academies
   state.parcels = []
   state.jobs = []
   state.buildings = []
@@ -279,6 +281,10 @@ function designBattery(state: ColonyState): Artifact {
 function designScrubber(state: ColonyState): Artifact {
   // Spec 019 — Air Scrubber Garden; a green filter that clears smog from the homes within its radius.
   return { id: state.buildIds++, kind: 'scrubber', color: SCRUBBER_COLOR, height: 0.45, residents: 0, jobs: COLONY.build.scrubberWorkers, powerLoad: 0.3, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.scrubberCost, materialsCost: COLONY.build.matScrubber, crew: COLONY.build.crewScrubber, materialsGen: 0, componentsCost: COLONY.build.compScrubber }
+}
+function designAcademy(state: ColonyState): Artifact {
+  // Spec 020 — Skillhouse Academy; while staffed, trains the colony's people into skilled workers.
+  return { id: state.buildIds++, kind: 'academy', color: ACADEMY_COLOR, height: 1.0, residents: 0, jobs: COLONY.build.academyWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.academyCost, materialsCost: COLONY.build.matAcademy, crew: COLONY.build.crewAcademy, materialsGen: 0, componentsCost: COLONY.build.compAcademy }
 }
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
@@ -475,6 +481,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 8 && countKind(state, 'exchange') < 1 && state.components > COLONY.build.tradeComponentReserve && state.components >= COLONY.build.compExchange) return designExchange(state)
   // Spec 013 — with components plentiful and an Exchange to sell through, raise a Reel Foundry to refine luxury reels.
   if (state.colonists > 10 && countKind(state, 'foundry') < 1 && state.components > 40 && state.components >= COLONY.build.compFoundry) return designFoundry(state)
+  // Spec 020 — train the advanced trades: workshops/foundries up but skilled workers short → raise a Skillhouse Academy.
+  if (countKind(state, 'workshop') + countKind(state, 'foundry') > 0 && state.skilled < (countKind(state, 'workshop') + countKind(state, 'foundry')) * COLONY.build.skilledPerAdvanced && state.components >= COLONY.build.compAcademy && countKind(state, 'academy') < 2) return designAcademy(state)
   // Spec 016 — once the colony is a real town, raise a Broadcast Mast so the Kookerverse Courier can speak.
   if (state.colonists > 12 && countKind(state, 'mast') < 1 && state.components >= COLONY.build.compMast) return designMast(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
@@ -562,9 +570,25 @@ function produceMaterials(state: ColonyState, dtMin: number): void {
   state.materials += gen * staffing * healthFactor(state) * powerFactor(state) * (dtMin / (24 * 60)) // spec 009/017 — sick or brownout-hit mines dig less
 }
 
+/** Spec 020 — how well the advanced trades are staffed by skilled workers: full at the cap, 0.6 floor when untrained. */
+function skillFactor(state: ColonyState): number {
+  const advancedNeed = (countKind(state, 'workshop') + countKind(state, 'foundry')) * COLONY.build.skilledPerAdvanced
+  if (advancedNeed <= 0) return 1
+  return 0.6 + 0.4 * Math.min(1, Math.min(state.colonists, state.skilled) / advancedNeed)
+}
+
+/** Spec 020 — staffed Skillhouse Academies train colonists into skilled workers, capped at the population. */
+function academyStep(state: ColonyState, dtMin: number): void {
+  const academies = countKind(state, 'academy')
+  if (academies === 0) return
+  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  if (staffing <= 0) return
+  state.skilled = Math.min(state.colonists, state.skilled + academies * COLONY.build.academyTrainPerDay * staffing * (dtMin / (24 * 60)))
+}
+
 /** Spec 003 — staffed workshops consume materials and produce components (2:1); halt when materials run out. */
 function produceComponents(state: ColonyState, dtMin: number): void {
-  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) // spec 009/017 — sick or brownout workshops refine less
+  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * skillFactor(state) // spec 009/017/020 — sick, brownout or unskilled workshops refine less
   if (eff <= 0) return
   const day = 24 * 60
   for (const b of state.buildings) {
@@ -580,7 +604,7 @@ function produceComponents(state: ColonyState, dtMin: number): void {
 
 /** Spec 013 — staffed reel foundries consume components and produce reels (2:1); halt when components run out. */
 function produceReels(state: ColonyState, dtMin: number): void {
-  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) // spec 009/017 — sick or brownout foundries weave less
+  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * skillFactor(state) // spec 009/017/020 — sick, brownout or unskilled foundries weave less
   if (eff <= 0) return
   const day = 24 * 60
   for (const b of state.buildings) {
@@ -766,6 +790,7 @@ export function tradeExportRate(state: ColonyState): number {
 
 export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   produceMaterials(state, dtMin)
+  academyStep(state, dtMin)
   produceComponents(state, dtMin)
   produceReels(state, dtMin)
   serviceUpkeep(state, dtMin)

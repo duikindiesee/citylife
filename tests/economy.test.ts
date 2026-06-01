@@ -947,3 +947,56 @@ describe('Spec 019 — Smog Drift + Air Scrubber Gardens', () => {
     expect(h.tier!).toBe(3) // now it can climb to the top
   })
 })
+
+describe('Spec 020 — the Skillhouse Academy: skilled workers speed the advanced trades', () => {
+  const mk = (kind: 'academy' | 'workshop' | 'mine', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('a staffed Skillhouse Academy trains skilled workers over time', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('academy', 50, 50, { jobs: 2 }))
+    s.totalJobs = 2
+    s.colonists = 10
+    s.skilled = 0
+    s.materials = 0
+    for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+    expect(s.skilled).toBeGreaterThan(0)
+  })
+
+  it('a workshop refines faster with skilled workers than without', () => {
+    const run = (trained: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.materials = 200
+      s.components = 0
+      s.buildings.push(mk('workshop', 50, 50, { jobs: 5 }))
+      s.totalJobs = 5
+      s.colonists = 5
+      s.skilled = trained ? 5 : 0 // trained enough to cover the trade vs none
+      for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+      return s.components
+    }
+    expect(run(true)).toBeGreaterThan(run(false))
+  })
+
+  it('basic production (a mine) is unaffected by skill', () => {
+    const run = (trained: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.materials = 10
+      s.buildings.push(mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6, materialsGen: 5 }))
+      s.totalJobs = 6
+      s.colonists = 6
+      s.skilled = trained ? 100 : 0
+      const m0 = s.materials
+      for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 10)
+      return s.materials - m0
+    }
+    expect(run(true)).toBe(run(false)) // mining doesn't need the academy
+  })
+})
