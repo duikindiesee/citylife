@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, hygieneLevel, bathhouseStatus, bathStep, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, reclaimStatus, waterTankCap, festivalStatus, festBoardActive, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, hygieneLevel, bathhouseStatus, bathStep, hygieneDesirabilityFactor, hygieneEvolutionFactor, immigration, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, reclaimStatus, waterTankCap, festivalStatus, festBoardActive, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -5012,5 +5012,85 @@ describe('Spec 069 — The Steam Bathhouse: hygiene the colony can wash in', () 
     s.outbreak = 0
     for (let i = 0; i < 50; i++) { s.colonists = 20; s.totalJobs = 5 * COLONY.build.bathWorkers; s.water = 1000; stepBuild(s, sim.rng, 60) }
     expect(s.outbreak ?? 0).toBeGreaterThanOrEqual(0) // the damped spread never drives it below zero
+  })
+})
+
+describe('Spec 070 — The Clean-Home Standing: a washed colony draws settlers and lifts its homes', () => {
+  const mk = (kind: 'bathhouse' | 'habitat', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('inert without a Bathhouse — both factors are exactly 1 and the standing is nil', () => {
+    const sim = new ColonySim(41)
+    const s = sim.state
+    s.colonists = 20; s.totalJobs = 6; s.water = 100; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    expect(bathhouseStatus(s).baths).toBe(0)
+    expect(hygieneDesirabilityFactor(s)).toBe(1) // no Bathhouse → no draw lift
+    expect(hygieneEvolutionFactor(s)).toBe(1) // ...and no climb speed-up
+    expect(bathhouseStatus(s).drawBonus).toBe(0)
+    expect(bathhouseStatus(s).climbBonus).toBe(0)
+  })
+
+  it('a clean colony lifts the settler draw and speeds the housing climb', () => {
+    const sim = new ColonySim(41)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('bathhouse', lx, ly, { jobs: COLONY.build.bathWorkers }))
+    s.colonists = 20; s.totalJobs = COLONY.build.bathWorkers; s.water = 100; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    expect(hygieneLevel(s)).toBeCloseTo(1, 5) // full hygiene
+    expect(hygieneDesirabilityFactor(s)).toBeGreaterThan(1) // draws better
+    expect(hygieneEvolutionFactor(s)).toBeLessThan(1) // shorter upgrade interval → climbs sooner
+    const st = bathhouseStatus(s)
+    expect(st.drawBonus).toBeGreaterThan(0)
+    expect(st.climbBonus).toBeGreaterThan(0)
+  })
+
+  it('the clean-home draw pulls more settlers in a day than a grimy colony', () => {
+    const draw = (withBath: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      const L = s.terrain.landing
+      for (let h = 0; h < 20; h++) { const b = mk('habitat', L.x + (h % 10), L.y + Math.floor(h / 10), { residents: 4 }); b.tier = 1; s.buildings.push(b) } // plenty of vacant housing in both
+      if (withBath) s.buildings.push(mk('bathhouse', L.x, L.y + 4, { jobs: COLONY.build.bathWorkers }))
+      s.colonists = 10; s.totalJobs = withBath ? COLONY.build.bathWorkers : 0
+      s.food = 500; s.water = 100; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh; s.power.solarW = 50
+      immigration(s, 24 * 60) // one day of arrivals
+      return s.colonists
+    }
+    const clean = draw(true), grimy = draw(false)
+    expect(clean).toBeGreaterThan(10) // settlers did arrive
+    expect(clean).toBeGreaterThan(grimy) // ...and the clean colony drew more of them
+  })
+
+  it('the standing fades when hygiene lapses — dry tanks shrink it, no baths zero it', () => {
+    const sim = new ColonySim(41)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('bathhouse', lx, ly, { jobs: COLONY.build.bathWorkers }))
+    s.colonists = 20; s.totalJobs = COLONY.build.bathWorkers; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    s.water = 100
+    const wetDraw = hygieneDesirabilityFactor(s)
+    s.water = 0
+    const dryDraw = hygieneDesirabilityFactor(s)
+    expect(dryDraw).toBeLessThan(wetDraw) // empty tanks shrink the standing
+    expect(dryDraw).toBeGreaterThanOrEqual(1) // ...but never below the no-effect floor
+    // pull the baths entirely — the standing goes to nothing
+    s.buildings = s.buildings.filter((b) => b.artifact.kind !== 'bathhouse')
+    expect(hygieneDesirabilityFactor(s)).toBe(1)
+    expect(hygieneEvolutionFactor(s)).toBe(1)
+  })
+
+  it('both factors are bounded by their small ceilings however high hygiene climbs', () => {
+    const sim = new ColonySim(41)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    for (let i = 0; i < 5; i++) s.buildings.push(mk('bathhouse', lx + i, ly, { jobs: COLONY.build.bathWorkers })) // five baths cover 250 >> 20
+    s.colonists = 20; s.totalJobs = 5 * COLONY.build.bathWorkers; s.water = 1000; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    expect(hygieneLevel(s)).toBeCloseTo(1, 5)
+    expect(hygieneDesirabilityFactor(s)).toBeCloseTo(1 + COLONY.build.hygieneDesirabilityGain, 5) // exactly the ceiling, not beyond
+    expect(hygieneEvolutionFactor(s)).toBeCloseTo(1 - COLONY.build.hygieneEvolutionGain, 5)
   })
 })

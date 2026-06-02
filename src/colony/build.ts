@@ -1809,9 +1809,24 @@ export function bathStep(state: ColonyState, dtMin: number): void {
   state.water = Math.max(0, (state.water ?? 0) - COLONY.build.bathWaterPerDay * baths * frac) // the bathhouse draw on the tanks
 }
 
-/** Spec 069 — Bathhouse readout for the HUD: the hygiene level (0..1) and the bath count. */
-export function bathhouseStatus(state: ColonyState): { hygiene: number; baths: number } {
-  return { hygiene: hygieneLevel(state), baths: countKind(state, 'bathhouse') }
+/** Spec 070 — the Clean-Home Standing: a clean colony (hygiene, spec 069) is a touch more desirable, lifting the settler draw the
+ *  same way a Planter Square in Bloom (063) and a Varied Diet (060) do. Purely positive: exactly 1 with no Bathhouse (hygiene 0),
+ *  so the immigration math is unchanged until a Bathhouse stands. */
+export function hygieneDesirabilityFactor(state: ColonyState): number {
+  return 1 + COLONY.build.hygieneDesirabilityGain * hygieneLevel(state)
+}
+
+/** Spec 070 — the housing-evolution speed-up from a clean colony, as a multiplier on the upgrade interval (<= 1 shortens it):
+ *  1 (no effect) with no Bathhouse, down to 1 - hygieneEvolutionGain at full hygiene. Homes still need every other requirement;
+ *  this only speeds the climb, it never forces, blocks or demotes a tier. */
+export function hygieneEvolutionFactor(state: ColonyState): number {
+  return 1 - COLONY.build.hygieneEvolutionGain * hygieneLevel(state)
+}
+
+/** Spec 069/070 — Bathhouse readout for the HUD: the hygiene level (0..1), the bath count, and the Clean-Home Standing it earns
+ *  (the settler-draw lift and the housing-climb speed-up, both 0 with no Bathhouse). */
+export function bathhouseStatus(state: ColonyState): { hygiene: number; baths: number; drawBonus: number; climbBonus: number } {
+  return { hygiene: hygieneLevel(state), baths: countKind(state, 'bathhouse'), drawBonus: hygieneDesirabilityFactor(state) - 1, climbBonus: 1 - hygieneEvolutionFactor(state) }
 }
 
 /** Spec 028 — a Ward Post keeps order only while a built, staffed post stands. */
@@ -2498,8 +2513,8 @@ export function housewaresFraction(state: ColonyState): number {
  *  current tier requires, after a grace period. */
 function housingStep(state: ColonyState, dtMin: number): void {
   state.housingTimer += dtMin
-  // Spec 060 — a Varied Diet shortens the upgrade interval a touch, so served homes climb sooner (factor is 1 with no counter, so inert by default).
-  if (state.housingTimer < COLONY.build.housingUpgradeIntervalHours * 60 * varietyEvolutionFactor(state)) return
+  // Spec 060/070 — a Varied Diet AND a clean colony (hygiene) each shorten the upgrade interval a touch, so served homes climb sooner (both factors are 1 with no counter / no Bathhouse, so inert by default).
+  if (state.housingTimer < COLONY.build.housingUpgradeIntervalHours * 60 * varietyEvolutionFactor(state) * hygieneEvolutionFactor(state)) return
   const elapsed = state.housingTimer
   state.housingTimer = 0
   for (const b of state.buildings) {
@@ -2584,7 +2599,7 @@ export function departureStatus(state: ColonyState): { pressure: number; atRisk:
 
 /** Spec 004 — settlers immigrate to fill vacant housing while the colony is liveable; if power is
  *  fully dead they drift away, down to the founding crew. */
-function immigration(state: ColonyState, dtMin: number): void {
+export function immigration(state: ColonyState, dtMin: number): void {
   const perDay = dtMin / (24 * 60)
   const powerDead = state.power.batteryWh <= 0 && state.power.solarW <= 0
   if (powerDead) {
@@ -2602,7 +2617,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) * (1 + COLONY.build.solaceDesirabilityBonus * solaceCoverage(state)) * (arrearsStrain(state) ? COLONY.build.arrearsStrainDesirabilityFactor : 1) * (1 + COLONY.build.educationDesirabilityBonus * educationFraction(state)) * prosperityDesirabilityFactor(state) * ((state.rimfish ?? 0) > 0 ? 1 + COLONY.build.rimfishDesirabilityBonus : 1) * wasteDesirabilityFactor(state) * varietyDesirabilityFactor(state) * planterDesirabilityFactor(state) // spec 025/026/027/028/029/030/032/033/035/037/039/042/040/056/058/060/063 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, named founders, a consoled colony, a colony deep in arrears, a schooled colony, a high-Prosperity colony, a varied table (rimfish), a colony that minds its drains, and a colony whose Variety Ration Counter keeps a Varied Diet all pull on who comes and stays
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) * (1 + COLONY.build.solaceDesirabilityBonus * solaceCoverage(state)) * (arrearsStrain(state) ? COLONY.build.arrearsStrainDesirabilityFactor : 1) * (1 + COLONY.build.educationDesirabilityBonus * educationFraction(state)) * prosperityDesirabilityFactor(state) * ((state.rimfish ?? 0) > 0 ? 1 + COLONY.build.rimfishDesirabilityBonus : 1) * wasteDesirabilityFactor(state) * varietyDesirabilityFactor(state) * planterDesirabilityFactor(state) * hygieneDesirabilityFactor(state) // spec 025/026/027/028/029/030/032/033/035/037/039/042/040/056/058/060/063/070 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, named founders, a consoled colony, a colony deep in arrears, a schooled colony, a high-Prosperity colony, a varied table (rimfish), a colony that minds its drains, a colony whose Variety Ration Counter keeps a Varied Diet, and a clean colony (hygiene) all pull on who comes and stays
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * confidenceImmigrationFactor(state) * perDay) // spec 049 — arrivals also follow the colony's Settler Confidence (a healthy colony sits at the plateau, so this is 1; deep distress slows it, terrible distress halts it)
 }
 

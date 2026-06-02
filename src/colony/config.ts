@@ -949,6 +949,10 @@ export const COLONY = {
     bathHygieneRelief: 0.4, // at full hygiene the fever-risk buildup runs this much slower (40 percent)
     bathDryFloor: 0.25, // a dry bathhouse (empty tanks) only reaches this hygiene fraction
     bathPowerFloor: 0.5, // even a brownout leaves the boilers throwing this fraction of heat
+    // The Clean-Home Standing (spec 070): the bathhouse hygiene (069) becomes two gentle positive levers, tuned in line with the
+    // Planter (063, 0.08 draw) and Variety (060, 0.04 draw / 0.05 evolution) levers. Purely positive: both are 0 effect with no Bathhouse.
+    hygieneDesirabilityGain: 0.10, // at full hygiene, +10 percent to the settler-draw desirability (a clean colony is more inviting)
+    hygieneEvolutionGain: 0.08, // at full hygiene, served homes climb up to 8 percent faster (shortens the housing-upgrade interval)
     pollutionPerIndustrial: 3,
   },
 
