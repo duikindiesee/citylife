@@ -1,5 +1,5 @@
 # Spec 066 — The Greywater Reclaimer: get some of our own water back
-- status: proposed
+- status: built — slice 61 (mechanics/dev, PR #26). A staffed, powered Greywater Reclaimer treats a per-capita greywater pool back into Stored Water at a 2:1 loss (up to 40/day per plant), halved in a brownout and again without linen filters, capped by tank headroom, idling above 95% full. Inert by default and water-only (it reads linen as a soft filter gate but consumes none, so it touches no stockpile but the tanks and only ever adds). Engine in src/colony with five economy tests.
 - proposed-by: Talla Venn, pipewright on the lower utility decks (kooker-codex, via the kooker choke point)
 - date: 2026-06-02
 - depends-on: 046 (Stored Water — the tanks this refills), 017 (Brownout Grid — it draws power and halves in a brownout), 062 (Labour Registry — the crew it must be staffed from), 065 (Deck Fires — the Fire-Watch barrels are one more draw on the tanks this eases)
