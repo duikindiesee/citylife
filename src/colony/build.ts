@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall'
 
 export interface Parcel {
   id: number
@@ -116,6 +116,7 @@ const RATIONVAR_COLOR = 0xd98c5f // warm amber-coral — the Variety Ration Coun
 const DRYRACK_COLOR = 0x9fb4a0 // pale weathered sage — the Rimfish Drying Rack (slatted drying lines)
 const REGISTRY_COLOR = 0x8a93b8 // slate-indigo — the Labour Registry Desk (clerks, boards, ledgers)
 const PLANTER_COLOR = 0x6fae5a // fresh planted green — the Planter Square (raised beds, a bench)
+const STALL_COLOR = 0xc6713e // warm terracotta — the Market Stall (awning + counter)
 const SANITATION_COLOR = 0x6f8f6a // drain-green — the Sanitation Post (clears household waste before it sickens the colony)
 const WATCHNOOK_COLOR = 0xb0a04a // lamp-brass — the Watch Nook (keeps petty theft off a rich colony's coffers)
 const key = (x: number, y: number) => x + ',' + y
@@ -511,6 +512,10 @@ function designRegistry(state: ColonyState): Artifact {
 function designPlanter(state: ColonyState): Artifact {
   // Spec 063 — Planter Square; a staffed (Civic groundskeeper), watered beautification tile that Blooms and lifts nearby home desirability. No power.
   return { id: state.buildIds++, kind: 'planter', color: PLANTER_COLOR, height: 0.35, residents: 0, jobs: COLONY.build.planterWorkers, powerLoad: 0, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.planterCost, materialsCost: COLONY.build.matPlanter, crew: COLONY.build.crewPlanter, materialsGen: 0, componentsCost: COLONY.build.compPlanter, toolsCost: COLONY.build.toolPlanter }
+}
+function designStall(state: ColonyState): Artifact {
+  // Spec 064 — Market Stall; a staffed Trade stall that sells surplus linen/folios to paid colonists for a little treasury margin. Costs a tool-kit + linen to build.
+  return { id: state.buildIds++, kind: 'stall', color: STALL_COLOR, height: 0.5, residents: 0, jobs: COLONY.build.stallWorkers, powerLoad: 0, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.stallCost, materialsCost: COLONY.build.matStall, crew: COLONY.build.crewStall, materialsGen: 0, componentsCost: COLONY.build.compStall, toolsCost: COLONY.build.toolStall, linenCost: COLONY.build.linenStall }
 }
 
 /** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
@@ -1105,6 +1110,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists >= COLONY.build.theftPopFloor && state.treasury > COLONY.build.theftTreasuryFloor * 1.2 && countKind(state, 'watchnook') < 2 && state.components >= COLONY.build.compWatchNook && state.materials >= COLONY.build.matWatchNook) return designWatchNook(state)
   // Spec 036 — once trade is established (an Exchange stands) and the bank is flush, raise an Import Office to buy shortages.
   if (state.colonists > 12 && countKind(state, 'import') < 1 && countKind(state, 'exchange') > 0 && state.components >= COLONY.build.compImportOffice && state.treasury > COLONY.build.importOfficeCost) return designImportOffice(state)
+  // Spec 064 — once wages are paid and finished wares pile up past the stall reserve, raise a Market Stall (one per ~stallServedCap colonists) to sell the surplus to the home market.
+  if (state.colonists > 12 && countKind(state, 'payoffice') > 0 && ((state.linen ?? 0) > COLONY.build.stallReserve + 10 || (state.folios ?? 0) > COLONY.build.stallReserve + 10) && countKind(state, 'stall') < Math.max(1, Math.ceil(state.colonists / COLONY.build.stallServedCap)) && state.components >= COLONY.build.compStall && state.materials >= COLONY.build.matStall && (state.tools ?? 0) >= COLONY.build.toolStall && (state.linen ?? 0) >= COLONY.build.linenStall) return designStall(state)
   // Spec 039 — a mature colony raises a Comptroller's Office so the treasury can ride a hard stretch on managed debt.
   if (state.colonists > 14 && countKind(state, 'comptroller') < 1 && state.components >= COLONY.build.compComptroller && state.treasury > COLONY.build.comptrollerCost) return designComptroller(state)
   // Spec 038 — a mature colony raises a Roster Office so the council can prioritise scarce labour by sector.
@@ -1218,7 +1225,7 @@ const SECTOR_OF: Record<BuildKind, Sector> = {
   mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry', dryrack: 'industry',
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety', watchnook: 'safety',
-  exchange: 'trade', import: 'trade',
+  exchange: 'trade', import: 'trade', stall: 'trade',
   levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', census: 'civic', habitat: 'civic', calendar: 'civic', hallofnames: 'civic', registry: 'civic', planter: 'civic',
 }
 // Spec 038 — priority orders the Roster Office fills under a shortage. 'balanced' uses the uniform split (no order).
@@ -2864,6 +2871,56 @@ export function tradeExportRate(state: ColonyState): number {
   return compSell * COLONY.build.tradeComponentPrice + foodSell * COLONY.build.tradeFoodPrice + reelSell * COLONY.build.reelPrice + folioSell * COLONY.build.folioPrice
 }
 
+/** Spec 064 — the Market Stall's wage gate: 1 (full) while the colony is solvent and paying its people; 0.5 (custom halves) once the
+ *  treasury slips into arrears; 0 (closed — nobody shops on an empty purse) under deep, sustained arrears strain (spec 039). */
+function stallWageFactor(state: ColonyState): number {
+  if (arrearsStrain(state)) return 0
+  return colonyDebt(state) > 0 ? 0.5 : 1
+}
+
+/** Spec 064 — a staffed Market Stall sells the colony's SURPLUS linen/folios (above the reserve) to its own paid colonists for a small
+ *  treasury margin: one sale per 20 served colonists per day, +stallCoinPerSale each, from whichever ware sits more above the reserve.
+ *  It never sells below the reserve and only sells while wages are paid. Inert with no stall — pure revenue, touching only treasury + ware. */
+function stallStep(state: ColonyState, dtMin: number): void {
+  const stalls = countKind(state, 'stall')
+  if (stalls === 0) return
+  const staffing = sectorStaffing(state, 'trade') // the stall shares Trade-sector labour with the Exchange (spec 038)
+  const wage = stallWageFactor(state)
+  if (staffing <= 0 || wage <= 0) return
+  const served = Math.min(COLONY.build.stallServedCap * stalls * staffing, state.colonists)
+  const salesPerDay = Math.floor(served / COLONY.build.stallServedPerSale) * wage // one sale per 20 served; halved in arrears
+  if (salesPerDay <= 0) return
+  let remaining = salesPerDay * (dtMin / (24 * 60))
+  const reserve = COLONY.build.stallReserve
+  const order: ('linen' | 'folios')[] = Math.max(0, (state.linen ?? 0) - reserve) >= Math.max(0, (state.folios ?? 0) - reserve) ? ['linen', 'folios'] : ['folios', 'linen']
+  let sold = 0
+  for (const ware of order) {
+    if (remaining <= 0) break
+    const stock = ware === 'linen' ? state.linen ?? 0 : state.folios ?? 0
+    const take = Math.min(remaining, Math.max(0, stock - reserve)) // never dip below the reserve
+    if (take <= 0) continue
+    if (ware === 'linen') state.linen = (state.linen ?? 0) - take
+    else state.folios = (state.folios ?? 0) - take
+    sold += take
+    remaining -= take
+  }
+  if (sold > 0) state.treasury += sold * COLONY.build.stallCoinPerSale
+}
+
+/** Spec 064 — Market Stall readout for the HUD: stalls built, whether they are open (staffed, wages paid, and a surplus to sell), and
+ *  the coin/day they would earn at the current served custom + surplus on hand. */
+export function stallStatus(state: ColonyState): { stalls: number; open: boolean; coinPerDay: number } {
+  const stalls = countKind(state, 'stall')
+  if (stalls === 0) return { stalls: 0, open: false, coinPerDay: 0 }
+  const staffing = sectorStaffing(state, 'trade')
+  const wage = stallWageFactor(state)
+  const reserve = COLONY.build.stallReserve
+  const surplus = Math.max(0, (state.linen ?? 0) - reserve) + Math.max(0, (state.folios ?? 0) - reserve)
+  const served = Math.min(COLONY.build.stallServedCap * stalls * staffing, state.colonists)
+  const sales = Math.min(Math.floor(served / COLONY.build.stallServedPerSale) * wage, surplus)
+  return { stalls, open: staffing > 0 && wage > 0 && sales > 0, coinPerDay: Math.round(sales * COLONY.build.stallCoinPerSale) }
+}
+
 export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   const popAtStepStart = state.colonists // spec 055 — snapshot before the population steps, to measure this step's renewal
   toolStep(state, dtMin) // spec 047 — make/draw tool-kits first so every tooled producer + the fitters read this step's rack
@@ -2901,6 +2958,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   calendarStep(state) // spec 053 — mark the turning of the colony's years; a staffed Calendar Office gives a Founders' Day lift
   ledgerStep(state) // spec 055 — on the year-turn, a long-settled colony sees a gentle, capped natural turnover (inert below the onset span)
   tradeStep(state, dtMin)
+  stallStep(state, dtMin) // spec 064 — Market Stalls sell surplus linen/folios to paid colonists for a little treasury margin (runs with the trade income)
   theftStep(state, dtMin) // spec 059 — a rich, populous, unguarded colony bleeds a slow, capped trickle of treasury to petty theft (inert below the floors and in any crisis)
   importStep(state, dtMin) // spec 036 — the buying side: spend treasury to land the order good (capped by storage headroom below)
   clampStorage(state) // spec 023 — finite storage: production past a cap is lost (after all goods are produced/sold)

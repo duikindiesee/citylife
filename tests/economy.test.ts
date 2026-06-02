@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -4537,5 +4537,77 @@ describe('Spec 063 — The Planter Square: a deliberate patch of beauty', () => 
     expect(planterDesirabilityFactor(s)).toBeGreaterThan(1) // a cared-for colony draws settlers a touch faster
     planter.tend = 0 // untended → no Bloom
     expect(planterDesirabilityFactor(s)).toBe(1) // ...and neutral again, never below 1
+  })
+})
+
+describe('Spec 064 — The Market Stall: local custom returns a little coin', () => {
+  const mk = (kind: 'stall' | 'comptroller', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('inert without a stall — surplus wares earn no extra coin', () => {
+    const sim = new ColonySim(23)
+    const s = sim.state
+    s.colonists = 40; s.totalJobs = 8; s.treasury = 1000; s.linen = 100; s.folios = 100; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    const t0 = s.treasury, l0 = s.linen
+    for (let i = 0; i < 5; i++) { s.colonists = 40; s.totalJobs = 8; stepBuild(s, sim.rng, 24 * 60) }
+    expect(stallStatus(s).stalls).toBe(0)
+    expect(s.treasury).toBe(t0) // no stall → the treasury earns exactly as before
+    expect(s.linen).toBe(l0) // ...and no ware is consumed
+  })
+
+  it('a staffed stall sells surplus wares to paid colonists for coin', () => {
+    const sim = new ColonySim(23)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('stall', lx, ly, { jobs: 2 }))
+    s.colonists = 40; s.totalJobs = 8; s.treasury = 1000; s.linen = 100; s.folios = 5 // folios below the reserve → it sells linen
+    const t0 = s.treasury, l0 = s.linen
+    for (let i = 0; i < 2; i++) { s.colonists = 40; s.totalJobs = 8; stepBuild(s, sim.rng, 24 * 60) }
+    expect(s.treasury).toBeGreaterThan(t0) // coin came back to the public box
+    expect(s.linen).toBeLessThan(l0) // ...from selling surplus linen
+    expect(s.treasury - t0).toBe((l0 - s.linen) * COLONY.build.stallCoinPerSale) // every coin matches a ware sold at the set price
+  })
+
+  it('the stall never sells linen or folios below the reserve', () => {
+    const sim = new ColonySim(23)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('stall', lx, ly, { jobs: 2 }))
+    s.colonists = 40; s.totalJobs = 8; s.treasury = 1000
+    s.linen = COLONY.build.stallReserve; s.folios = COLONY.build.stallReserve // exactly at the reserve → nothing to sell
+    const t0 = s.treasury
+    for (let i = 0; i < 10; i++) { s.colonists = 40; s.totalJobs = 8; stepBuild(s, sim.rng, 24 * 60) }
+    expect(s.linen).toBe(COLONY.build.stallReserve) // never dipped below the reserve
+    expect(s.treasury).toBe(t0) // and earned nothing (no surplus)
+    s.linen = COLONY.build.stallReserve + 6 // a small surplus
+    for (let i = 0; i < 60; i++) { s.colonists = 40; s.totalJobs = 8; stepBuild(s, sim.rng, 24 * 60) }
+    expect(s.linen).toBe(COLONY.build.stallReserve) // drew the surplus down to exactly the reserve, no further
+  })
+
+  it('wages in deep arrears close the stalls; solvency reopens them', () => {
+    const sim = new ColonySim(23)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('stall', lx, ly, { jobs: 2 }), mk('comptroller', lx + 1, ly, { jobs: 2 })) // a Comptroller lets the treasury run negative
+    s.colonists = 40; s.totalJobs = 8; s.linen = 100
+    for (let i = 0; i < 3; i++) { s.colonists = 40; s.totalJobs = 8; s.treasury = -COLONY.build.debtCeiling; stepBuild(s, sim.rng, 24 * 60) } // deep arrears strain
+    expect(s.linen).toBe(100) // nobody shops on an empty purse → nothing sold
+    s.treasury = 1000 // wages paid again
+    for (let i = 0; i < 2; i++) { s.colonists = 40; s.totalJobs = 8; stepBuild(s, sim.rng, 24 * 60) }
+    expect(s.linen).toBeLessThan(100) // custom returns → the stall sells again
+  })
+
+  it('the stall only ever adds coin — the treasury never falls from selling', () => {
+    const sim = new ColonySim(23)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('stall', lx, ly, { jobs: 2 }))
+    s.colonists = 40; s.totalJobs = 8; s.treasury = 1000; s.linen = 100; s.folios = 100 // food left at 0 so no other treasury effect stirs
+    for (let i = 0; i < 10; i++) { s.colonists = 40; s.totalJobs = 8; const before = s.treasury; stepBuild(s, sim.rng, 24 * 60); expect(s.treasury).toBeGreaterThanOrEqual(before) }
+    expect(s.treasury).toBeGreaterThan(1000) // ...and it did earn a margin
   })
 })

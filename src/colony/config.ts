@@ -828,6 +828,20 @@ export const COLONY = {
     planterImmigrationBonus: 0.08, // immigration desirability lift at full Bloom coverage (a colony that looks cared for draws settlers)
     planterBloomDays: 7, // a Planter Blooms once tended at least this many of the trailing days
     planterBloomCap: 10, // the tended-day counter saturates here (so a 7-of-10 window gives a few days of grace before a Bloom fades)
+    // The Market Stall (spec 064): the colony's first DOMESTIC revenue — a staffed Trade stall that sells SURPLUS linen/folios (above a
+    // reserve) to its own paid colonists for a little treasury margin. Inert by default: no stall earns exactly as today; it only ever adds
+    // coin from genuine surplus, never below the reserve, and only while wages are paid (custom dries up as the treasury sinks into arrears).
+    matStall: 10, // materials to build
+    compStall: 2, // components to build
+    toolStall: 1, // tool-kits to build (spec 047)
+    linenStall: 2, // linen to build (awning + counter cloth, spec 031)
+    crewStall: 3, // builders reserved for the construction job
+    stallCost: 350, // treasury to build
+    stallWorkers: 2, // run crew (Trade clerks): full at 2, half at 1, closed at 0
+    stallServedCap: 60, // housed colonists one fully-staffed stall serves
+    stallServedPerSale: 20, // one sale per this many served colonists per day (60 served → 3 sales/day)
+    stallCoinPerSale: 4, // treasury margin per sale
+    stallReserve: 10, // the stall never sells linen or folios below this (protects the Exchange's export stock + the top homes)
     pollutionPerIndustrial: 3,
   },
 
