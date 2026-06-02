@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast'
 
 export interface Parcel {
   id: number
@@ -84,6 +84,7 @@ const FEVERWATCH_COLOR = 0xe85d9c // pink-magenta fever watch post (public healt
 const MARKET_COLOR = 0xe39a3c // marigold housewares market (goods to homes)
 const WARD_COLOR = 0x4060c0 // deep-blue ward post (wardens keep order)
 const PAYOFFICE_COLOR = 0x7c6fce // violet pay office (payroll counter)
+const FEAST_COLOR = 0xf0b840 // festival-gold feast deck (lanterns + cook-tables)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -334,6 +335,10 @@ function designPayOffice(state: ColonyState): Artifact {
   // Spec 029 — Pay Office; a staffed payroll counter that lets the council set the colony-wide wage rate.
   return { id: state.buildIds++, kind: 'payoffice', color: PAYOFFICE_COLOR, height: 1.2, residents: 0, jobs: COLONY.build.payOfficeWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.payOfficeCost, materialsCost: COLONY.build.matPayOffice, crew: COLONY.build.crewPayOffice, materialsGen: 0, componentsCost: COLONY.build.compPayOffice, reelsCost: COLONY.build.reelPayOffice }
 }
+function designFeast(state: ColonyState): Artifact {
+  // Spec 030 — Feast Deck; a staffed venue where the council funds a Civic Feast to lift morale.
+  return { id: state.buildIds++, kind: 'feast', color: FEAST_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.feastWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.feastDeckCost, materialsCost: COLONY.build.matFeast, crew: COLONY.build.crewFeast, materialsGen: 0, componentsCost: COLONY.build.compFeast, reelsCost: COLONY.build.reelFeast }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -539,6 +544,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 10 && countKind(state, 'levy') < 1 && state.components >= COLONY.build.compLevy && state.reels >= COLONY.build.reelLevy) return designLevy(state)
   // Spec 029 — pay the hands: an established colony with reels on hand raises a Pay Office (the wage stays standard until the council sets it).
   if (state.colonists > 10 && countKind(state, 'payoffice') < 1 && state.components >= COLONY.build.compPayOffice && state.reels >= COLONY.build.reelPayOffice) return designPayOffice(state)
+  // Spec 030 — a place to gather: a real town with reels on hand raises a Feast Deck so the council can fund a Civic Feast.
+  if (state.colonists > 12 && countKind(state, 'feast') < 1 && state.components >= COLONY.build.compFeast && state.reels >= COLONY.build.reelFeast) return designFeast(state)
   // Spec 026 — answer an outbreak: when fever climbs past the build line and no post contains it → raise a Fever Watch Post.
   if (state.outbreak > COLONY.build.feverBuildThreshold && state.components >= COLONY.build.compFeverWatch && countKind(state, 'feverwatch') < COLONY.build.maxFeverWatch) return designFeverWatch(state)
   // Spec 028 — keep the peace: when unrest climbs past the build line and no post patrols → raise a Ward Post.
@@ -946,6 +953,7 @@ function unrestStep(state: ColonyState, dtMin: number): void {
     u -= COLONY.build.unrestRecoverPerDay * frac // some natural calming
     if (generousWage(state)) u -= COLONY.build.wageGenerousCalmPerDay * frac // spec 029 — generous wages buy loyalty
   }
+  if (feasting(state)) u -= COLONY.build.feastUnrestReliefPerDay * frac // spec 030 — a feast lifts spirits, easing unrest even mid-squeeze
   state.unrest = Math.max(0, Math.min(COLONY.build.unrestMax, u))
 }
 
@@ -1002,6 +1010,61 @@ function generousWage(state: ColonyState): boolean {
 /** Spec 029 — wage readout for the HUD: whether it's in force, the rate, and the current daily payroll. */
 export function wageStatus(state: ColonyState): { active: boolean; rate: 'low' | 'standard' | 'generous'; payroll: number } {
   return { active: payOfficeActive(state), rate: state.wageRate, payroll: Math.round(payrollPerDay(state)) }
+}
+
+/** Spec 030 — a Feast Deck can only host while it is built and staffed. */
+export function feastDeckActive(state: ColonyState): boolean {
+  if (countKind(state, 'feast') === 0) return false
+  return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+/** Spec 030 — true while a Civic Feast is running. */
+export function feasting(state: ColonyState): boolean {
+  return (state.feastTimer ?? 0) > 0
+}
+
+/** Spec 030 — could the council call a feast right now? (staffed deck, none running, treasury + supplies on hand). */
+export function canCallFeast(state: ColonyState): boolean {
+  return (
+    !feasting(state) &&
+    feastDeckActive(state) &&
+    state.treasury >= COLONY.build.feastTreasuryCost &&
+    state.food >= COLONY.build.feastFoodCost &&
+    state.components >= COLONY.build.feastWaresCost
+  )
+}
+
+/** Spec 030 — fund a Founding Feast: spend treasury + rations + housewares up front and start the morale window. */
+export function callFeast(state: ColonyState): boolean {
+  if (!canCallFeast(state)) return false
+  state.treasury -= COLONY.build.feastTreasuryCost
+  state.food -= COLONY.build.feastFoodCost
+  state.components -= COLONY.build.feastWaresCost
+  state.feastTimer = COLONY.build.feastDurationDays * 24 * 60
+  return true
+}
+
+/** Spec 030 — run the feast clock: count down an active feast, or auto-throw one for a wealthy, restless colony. */
+function feastStep(state: ColonyState, dtMin: number): void {
+  if (feasting(state)) {
+    state.feastTimer = Math.max(0, (state.feastTimer ?? 0) - dtMin)
+    return
+  }
+  // Auto-call: a staffed deck + a treasury comfortably above the cost + restless people → the colony feasts itself.
+  if (
+    feastDeckActive(state) &&
+    (state.unrest ?? 0) > COLONY.build.feastAutoUnrestThreshold &&
+    state.treasury > COLONY.build.feastTreasuryCost * COLONY.build.feastAutoTreasuryMargin &&
+    state.food >= COLONY.build.feastFoodCost &&
+    state.components >= COLONY.build.feastWaresCost
+  ) {
+    callFeast(state)
+  }
+}
+
+/** Spec 030 — feast readout for the HUD: whether one runs, days left, and whether the council could call one. */
+export function feastStatus(state: ColonyState): { active: boolean; daysLeft: number; canCall: boolean } {
+  return { active: feasting(state), daysLeft: Math.ceil((state.feastTimer ?? 0) / (24 * 60)), canCall: canCallFeast(state) }
 }
 
 /** Spec 020 — staffed Skillhouse Academies train colonists into skilled workers, capped at the population. */
@@ -1165,7 +1228,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) // spec 025/026/027/028/029 — levy, outbreak, stocked homes, unrest, and wages all pull on who comes and stays
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) // spec 025/026/027/028/029/030 — levy, outbreak, stocked homes, unrest, wages, and a feast all pull on who comes and stays
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * perDay)
 }
 
@@ -1194,6 +1257,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
       reelUpkeep += COLONY.build.marketLuxuryReelsPerDay // spec 027 — luxury wares delivered (reels)
     } else if (b.artifact.kind === 'ward') upkeep += COLONY.build.wardMaintCompPerDay // spec 028 — patrol supply
     else if (b.artifact.kind === 'payoffice') upkeep += COLONY.build.payOfficeMaintCompPerDay // spec 029 — ledger supply
+    else if (b.artifact.kind === 'feast') upkeep += COLONY.build.feastDeckMaintCompPerDay // spec 030 — deck upkeep
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))
@@ -1256,6 +1320,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   incidentStep(state, dtMin) // spec 024 — crises strike, get answered, or hit their consequence (paused buildings won't produce below)
   feverStep(state, dtMin) // spec 026 — the outbreak spreads or is contained; producers below read the current fever
   unrestStep(state, dtMin) // spec 028 — unrest rises or is calmed; producers + income below read the current order
+  feastStep(state, dtMin) // spec 030 — count down an active feast, or auto-throw one for a wealthy, restless colony
   produceMaterials(state, dtMin)
   academyStep(state, dtMin)
   produceComponents(state, dtMin)

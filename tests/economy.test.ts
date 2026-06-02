@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -1617,6 +1617,119 @@ describe('Spec 029 — The Pay Office: the colony pays the hands that hold it up
       return s.colonists - col0
     }
     expect(immigrationUnder('generous')).toBeGreaterThan(immigrationUnder('low')) // better pay draws people
+  })
+})
+
+describe('Spec 030 — The Civic Feast: the council buys one honest cheer', () => {
+  const mk = (kind: 'feast' | 'habitat', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('a feast can only be hosted from a built, staffed Feast Deck', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(feastDeckActive(s)).toBe(false) // no deck
+    s.buildings.push(mk('feast', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.totalJobs = 2
+    s.colonists = 0
+    expect(feastDeckActive(s)).toBe(false) // deck, but no stewards
+    s.colonists = 6
+    expect(feastDeckActive(s)).toBe(true) // built + staffed
+  })
+
+  it('calling a feast spends treasury + food + components and starts the window', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.treasury = 1000
+    s.food = 100
+    s.components = 100
+    expect(callFeast(s)).toBe(false) // no Feast Deck → cannot call
+    s.buildings.push(mk('feast', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.totalJobs = 2
+    s.colonists = 6
+    expect(canCallFeast(s)).toBe(true)
+    const t0 = s.treasury
+    const f0 = s.food
+    const c0 = s.components
+    expect(callFeast(s)).toBe(true)
+    expect(s.treasury).toBe(t0 - COLONY.build.feastTreasuryCost)
+    expect(s.food).toBe(f0 - COLONY.build.feastFoodCost)
+    expect(s.components).toBe(c0 - COLONY.build.feastWaresCost)
+    expect(feasting(s)).toBe(true)
+    expect(callFeast(s)).toBe(false) // one feast at a time
+  })
+
+  it("a feast can't be called without the treasury to fund it", () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('feast', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.totalJobs = 2
+    s.colonists = 6
+    s.treasury = 10 // far short of the feast cost
+    s.food = 100
+    s.components = 100
+    expect(canCallFeast(s)).toBe(false)
+    expect(callFeast(s)).toBe(false)
+  })
+
+  it('a feast eases unrest faster while it runs', () => {
+    const run = (withFeast: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.buildings.push(mk('feast', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+      s.colonists = 6
+      s.totalJobs = 6
+      s.unrest = 0.5
+      if (withFeast) {
+        s.treasury = 1000
+        s.food = 100
+        s.components = 100
+        callFeast(s)
+      }
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.unrest
+    }
+    expect(run(true)).toBeLessThan(run(false)) // the feast cheers the colony down faster
+  })
+
+  it('a feast draws more settlers while it runs', () => {
+    const run = (withFeast: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.buildings.push(mk('feast', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+      s.buildings.push(mk('habitat', s.terrain.landing.x + 4, s.terrain.landing.y, { residents: 9 }))
+      s.colonists = 4
+      s.totalJobs = 2
+      s.food = 100
+      s.components = 100
+      s.treasury = 1000
+      s.power.batteryWh = s.power.batteryCapWh
+      s.power.solarW = 5
+      if (withFeast) callFeast(s)
+      const col0 = s.colonists
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.colonists - col0
+    }
+    expect(run(true)).toBeGreaterThan(run(false)) // good cheer draws settlers
+  })
+
+  it('a feast lapses after its window', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('feast', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.colonists = 6
+    s.totalJobs = 6
+    s.treasury = 1000
+    s.food = 100
+    s.components = 100
+    callFeast(s)
+    expect(feasting(s)).toBe(true)
+    s.food = 0 // so it can't auto-throw another once this one ends
+    for (let i = 0; i < 500; i++) stepBuild(s, sim.rng, 60) // ~20 days, well past the feast window
+    expect(feasting(s)).toBe(false) // the cheer fades
   })
 })
 

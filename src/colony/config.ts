@@ -347,6 +347,25 @@ export const COLONY = {
     wageDesireLow: 0.85, // immigration desirability multiplier at a low wage
     wageDesireGenerous: 1.2, // immigration desirability multiplier at a generous wage
     wageGenerousCalmPerDay: 0.2, // extra unrest recovery per day at a generous wage (loyal workers)
+    // Civic Feast (spec 030): the colony's first POSITIVE timed event. A staffed Feast Deck lets the council fund a
+    // Founding Feast — spend treasury + rations + housewares up front, then for a window of days unrest eases and
+    // immigration rises. Inert until a deck is built and a feast is called, so existing play is unaffected.
+    matFeast: 12,
+    compFeast: 8,
+    reelFeast: 2,
+    crewFeast: 3,
+    feastDeckCost: 2000,
+    feastWorkers: 2, // stewards
+    feastDeckMaintCompPerDay: 0.5,
+    feastTreasuryCost: 300, // credits a Founding Feast spends up front
+    feastFoodCost: 20, // rations a feast spends
+    feastWaresCost: 6, // housewares (components) a feast spends
+    feastDurationDays: 3, // how long a feast's lift lasts
+    feastUnrestReliefPerDay: 0.3, // extra unrest calming per day while a feast runs
+    feastDesirabilityBonus: 0.25, // +25% immigration desirability while a feast runs
+    feastAutoTreasuryMargin: 3, // the colony auto-throws a feast only when treasury exceeds the cost by this much
+    feastAutoUnrestThreshold: 0.1, // ...and the people are at least this restless
+    maxFeastDeck: 2,
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,
