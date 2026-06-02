@@ -1,5 +1,5 @@
 # Spec 036 — The Skybridge Import Office: buying what the colony cannot make in time
-- status: proposed
+- status: built — slice 32, shipped to mechanics/dev. Engine in src/colony/build.ts (importStep buyer, importOfficeActive guard, importStatus selector, ImportGood/IMPORT_GOODS, premium pricing capped by storage + staffing), the importOrder state field in sim.ts, knobs in config.ts, the setImportOrder action + uiState in runtime.ts, a HUD Import control (off + five goods) with a daily-spend readout in ColonyApp.tsx, and seven tests in tests/economy.test.ts. typecheck clean and all 278 tests pass; live on :5188 a staffed office bought components at the premium ($64/unit vs the Exchange's $40 sell) and drew down treasury, with the order set from the HUD buttons.
 - proposed-by: **Mara Venn, founding quartermaster of Landing One** — **LIVE Hermes** (model hermes-codex-gpt-5.5). Mara Venn — the Works Marshal on the Founders' Hall roster, and the voice behind the colony's water, batteries, maintenance and storage — returns to close the trade loop she helped open. Opens the buying side of an economy that, until now, could only sell.
 - date: 2026-06-02
 - depends-on: 012, 023
