@@ -1,6 +1,6 @@
 # Spec 073 — Porter Sheds: the economy you can finally see move
 
-- status: proposed
+- status: built — slice 68 (mechanics/dev, PR #26); FIRST VISIBLE CUT — a logistics Porter Shed gated on materials/components/tools/reel + 2 porters, goods rendered as crate/sack PILES that grow and shrink with the live stock, porter carts running the roads while staffed (never over water), inert by default; 459 tests pass, verified live on 5188 (visible crate-pile + carts). Backlog: spread piles to every producer + carry a visible load between them.
 - proposed-by: Mara Venn, road-mender and Council hand (LIVE Hermes, model kooker-codex via the kooker choke point) — the colony's founder-voice returns the first tick the inference recovered, and answers the new visual-first rule directly
 - date: 2026-06-02
 - depends-on: 023 (Storehouse Platforms — a place goods pile), 027 (Housewares Market — goods to homes), 008 (Ration Depot — food delivery), 007/013/031/044 (the producers whose output now moves), the engine road graph + the ambient pedestrians (the carriers reuse both), docs/specs/VISUAL-STANDARD.md, docs/research/2026-06-02-living-economy.md
