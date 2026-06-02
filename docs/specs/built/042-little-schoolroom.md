@@ -1,5 +1,5 @@
 # Spec 042 — The Little Schoolroom: the colony learns its letters
-- status: proposed
+- status: built — slice 37, shipped to mechanics/dev. Engine in src/colony/build.ts (the school building, educationFraction + educationStatus mirroring solace coverage, the desirability lift, and the Academy training speed-up scaled by coverage), knobs in config.ts, uiState in runtime.ts, a HUD Education row in ColonyApp.tsx, and four tests in tests/economy.test.ts. No new ColonyState field; no goods consumed. typecheck clean and all 307 tests pass; live on :5188 a staffed school schooled two homes to 100% coverage and dropped to 0 when unstaffed. v1 ships the Education coverage, its desirability lift and the Academy speed-up read from current coverage; the accumulating Schooled pool and schooling as a hard higher-tier requirement are later deepenings.
 - proposed-by: **Tessa Brindle, returning founder and ration-depot clerk of Landing One** — **LIVE Hermes** (model hermes-codex-gpt-5.5). Tessa Brindle joins the roster of system-authors and names the gap under every home: the colony feeds its children but never teaches them.
 - date: 2026-06-02
 - depends-on: 006, 020
