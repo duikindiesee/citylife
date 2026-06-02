@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -1096,6 +1096,91 @@ describe('Spec 023 — Storehouse Platforms: finite storage, the surplus goes ov
     const cap = storageCaps(s)
     expect(s.materials).toBeLessThan(cap.materials) // never touches the ceiling in early play
     expect(storageStatus(s).full).toBe(false)
+  })
+})
+
+describe('Spec 024 — Emergency Bellhouse: incidents strike, get answered, or hit a consequence', () => {
+  const mk = (kind: 'mine' | 'bellhouse', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('a building with an active incident produces nothing', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 6
+    s.totalJobs = 6
+    s.materials = 5
+    const mine = mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6, materialsGen: 5 })
+    s.buildings.push(mine)
+    mine.incident = { timer: 100000 } // a long-running emergency — the mine stays paused
+    const m0 = s.materials
+    for (let i = 0; i < 50; i++) stepBuild(s, sim.rng, 10)
+    expect(s.materials - m0).toBeLessThan(0.001) // paused → no mining
+    expect(incidentStatus(s).active).toBe(1)
+  })
+
+  it('a staffed Emergency Bellhouse resolves an incident and the building recovers', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 8
+    s.totalJobs = 8
+    s.materials = 5
+    const mine = mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6, materialsGen: 5 })
+    s.buildings.push(mine, mk('bellhouse', s.terrain.landing.x + 4, s.terrain.landing.y, { jobs: COLONY.build.bellhouseWorkers }))
+    mine.incident = { timer: COLONY.build.incidentMin }
+    const steps = Math.ceil(COLONY.build.incidentMin / 10) + 5
+    for (let i = 0; i < steps; i++) stepBuild(s, sim.rng, 10)
+    expect(mine.incident).toBeUndefined() // a crew answered in time
+    expect(mine.wear ?? 0).toBeLessThan(1) // resolved, not destroyed
+    const m1 = s.materials
+    for (let i = 0; i < 50; i++) stepBuild(s, sim.rng, 10)
+    expect(s.materials - m1).toBeGreaterThan(0) // mining resumed
+  })
+
+  it('an unanswered incident times out: the building is worn out and stored goods are lost', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 6
+    s.totalJobs = 6
+    s.materials = 100
+    const mine = mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6, materialsGen: 5 })
+    s.buildings.push(mine) // no Bellhouse → nobody answers
+    mine.wear = 0.3
+    mine.incident = { timer: COLONY.build.incidentMin }
+    const steps = Math.ceil(COLONY.build.incidentMin / 10) + 2
+    for (let i = 0; i < steps; i++) stepBuild(s, sim.rng, 10)
+    expect(mine.incident).toBeUndefined() // the incident is over
+    expect(mine.wear).toBe(1) // left worn-out by the disaster
+    expect(s.materials).toBeLessThanOrEqual(80) // a chunk of materials destroyed (cave-in), ~25% of 100
+  })
+
+  it('a healthy colony in normal play sees no incidents', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6, materialsGen: 5 }))
+    s.colonists = 6
+    s.totalJobs = 6
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 10)
+    expect(s.buildings.every((b) => !b.incident)).toBe(true) // calm, well-kept colony — nothing catches
+  })
+
+  it('a worn building under colony stress eventually suffers an incident', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const mine = mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6, materialsGen: 5 })
+    s.buildings.push(mine)
+    mine.wear = 0.95 // badly worn
+    s.colonists = 30
+    s.totalJobs = 30 // congested (demand 30 over capacity 8) → stressed
+    let fired = false
+    for (let i = 0; i < 1500 && !fired; i++) {
+      stepBuild(s, sim.rng, 10)
+      if (mine.incident) fired = true
+    }
+    expect(fired).toBe(true) // sustained worn + stressed → it goes up
   })
 })
 

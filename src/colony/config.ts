@@ -244,6 +244,24 @@ export const COLONY = {
     storehouseMaintCompPerDay: 0.5, // logistics upkeep
     storeBuildThreshold: 0.85, // raise a platform once any stockpile passes this fraction of its cap
     maxStorehouses: 6,
+    // Emergency Bellhouse (spec 024): a worn, stressed building can suffer a sudden incident that pauses it; a
+    // staffed Bellhouse dispatches crews to resolve it, or the building is left damaged and stored goods are lost.
+    // Hazard is gated on wear AND colony stress (brownout/congestion) so normal play stays incident-free.
+    matBellhouse: 16,
+    compBellhouse: 12,
+    reelBellhouse: 2,
+    crewBellhouse: 3,
+    bellhouseCost: 2200,
+    bellhouseWorkers: 2,
+    bellhouseCrews: 2, // concurrent incidents one staffed Bellhouse can answer
+    bellhouseMaintCompPerDay: 0.5, // foam/alarm-drone upkeep
+    maxBellhouses: 3,
+    hazardWearThreshold: 0.7, // only buildings worn past this can catch — keeps the founding economy incident-free
+    hazardBasePerDay: 0.6, // hazard units/day at full wear while the colony is stressed
+    hazardTrigger: 1.0, // hazard a building accumulates before an incident strikes (~2 days of sustained worn+stress)
+    incidentMin: 240, // sim-minutes an incident runs before it resolves (crew in time) or hits its consequence
+    incidentResolveWearBump: 0.05, // wear a resolved building carries away from the scare
+    incidentGoodsLoss: 0.25, // fraction of a stored resource destroyed when an incident goes unanswered
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

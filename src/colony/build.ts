@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse'
 
 export interface Parcel {
   id: number
@@ -49,6 +49,8 @@ export interface ColonyBuilding {
   tier?: number // spec 006 — habitats evolve 1..3 (more capacity + desirability); undefined = tier 1
   dryMin?: number // spec 006 — sim-minutes a habitat has gone without water (drives devolution)
   wear?: number // spec 022 — 0..1 mechanical wear on a working building; repaired by a Maintenance Shed
+  incident?: { timer: number } // spec 024 — an active emergency; the building is paused while timer (sim-min) runs
+  hazardAccum?: number // spec 024 — accumulated hazard toward the next incident (deterministic, sustained-condition)
 }
 export interface RoadCell {
   x: number
@@ -76,6 +78,7 @@ const ACADEMY_COLOR = 0x3ab0a0 // teal skillhouse academy
 const TRANSIT_COLOR = 0x4aa0e0 // sky-blue skybridge transit depot
 const MAINTSHED_COLOR = 0x8d9aa6 // steel-grey maintenance shed (repair crews)
 const STOREHOUSE_COLOR = 0xb0a06a // khaki crate-stacked storehouse platform
+const BELLHOUSE_COLOR = 0xd2452f // emergency-red bellhouse (response crews)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -302,6 +305,10 @@ function designStorehouse(state: ColonyState): Artifact {
   // Spec 023 — Storehouse Platform; raises the colony's storage cap for every resource.
   return { id: state.buildIds++, kind: 'storehouse', color: STOREHOUSE_COLOR, height: 0.6, residents: 0, jobs: COLONY.build.storehouseWorkers, powerLoad: 0.3, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.storehouseCost, materialsCost: COLONY.build.matStorehouse, crew: COLONY.build.crewStorehouse, materialsGen: 0, componentsCost: COLONY.build.compStorehouse }
 }
+function designBellhouse(state: ColonyState): Artifact {
+  // Spec 024 — Emergency Bellhouse; staffed response crews answer sudden incidents on stricken buildings.
+  return { id: state.buildIds++, kind: 'bellhouse', color: BELLHOUSE_COLOR, height: 1.1, residents: 0, jobs: COLONY.build.bellhouseWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.bellhouseCost, materialsCost: COLONY.build.matBellhouse, crew: COLONY.build.crewBellhouse, materialsGen: 0, componentsCost: COLONY.build.compBellhouse, reelsCost: COLONY.build.reelBellhouse }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -505,6 +512,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (maintenanceUncovered(state) && state.components >= COLONY.build.compMaintShed && countKind(state, 'maintshed') < Math.ceil(state.buildings.filter(isWorking).length / COLONY.build.maintShedCovers)) return designMaintShed(state)
   // Spec 023 — make room before the surplus spills: a stockpile near its cap + components on hand → raise a Storehouse Platform.
   if (storageNearCap(state) && state.components >= COLONY.build.compStorehouse && countKind(state, 'storehouse') < COLONY.build.maxStorehouses) return designStorehouse(state)
+  // Spec 024 — answer the bell: a building on fire/at-risk with too little response cover → raise an Emergency Bellhouse.
+  if (colonyAtRisk(state) && state.components >= COLONY.build.compBellhouse && state.reels >= COLONY.build.reelBellhouse && countKind(state, 'bellhouse') < COLONY.build.maxBellhouses) return designBellhouse(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   // Spec 018 — buffer the grid first when brownout-prone and reels are spare: a Battery Shed (capped vs solar so solar still leads).
   if (inBrownout(state) && state.reels >= COLONY.build.reelBattery && state.components >= COLONY.build.compBattery && countKind(state, 'battery') < countKind(state, 'solar') + 1) return designBattery(state)
@@ -586,7 +595,7 @@ export function claimLot(state: ColonyState, rng: RNG): { x: number; y: number }
 /** Spec 002 — staffed mines extract materials into the stockpile; output scales with global staffing. */
 function produceMaterials(state: ColonyState, dtMin: number): void {
   let gen = 0
-  for (const b of state.buildings) if (b.artifact.kind === 'mine') gen += b.artifact.materialsGen * maintFactor(b) // spec 022 — a worn mine digs less
+  for (const b of state.buildings) if (b.artifact.kind === 'mine' && !b.incident) gen += b.artifact.materialsGen * maintFactor(b) // spec 022/024 — a worn mine digs less; one mid-incident digs nothing
   if (gen <= 0) return
   const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
   state.materials += gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * (dtMin / (24 * 60)) // spec 009/017/021 — sick, brownout or congested mines dig less
@@ -712,6 +721,88 @@ function storageNearCap(state: ColonyState): boolean {
   return state.materials > cap.materials * th || state.components > cap.components * th || state.food > cap.food * th || state.reels > cap.reels * th
 }
 
+/** Spec 024 — a building's incident hazard (per day). Zero unless it is BOTH worn past the threshold AND the
+ *  colony is stressed (brownout or congestion) — so a healthy, calm colony is incident-free. */
+function buildingHazard(state: ColonyState, b: ColonyBuilding): number {
+  const wear = b.wear ?? 0
+  if (wear < COLONY.build.hazardWearThreshold) return 0
+  if (!inBrownout(state) && !commute(state).congested) return 0
+  return COLONY.build.hazardBasePerDay * ((wear - COLONY.build.hazardWearThreshold) / (1 - COLONY.build.hazardWearThreshold))
+}
+
+/** Spec 024 — concurrent incidents the colony's staffed Emergency Bellhouses can answer at once. */
+function bellhouseCapacity(state: ColonyState): number {
+  const bells = countKind(state, 'bellhouse')
+  if (bells === 0) return 0
+  const staffed = (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+  return staffed ? bells * COLONY.build.bellhouseCrews : 0
+}
+
+/** Spec 024 — which stockpile a building's incident destroys (a mine cave-in spills materials, a workshop fire components, …). */
+function incidentResource(kind: BuildKind): 'materials' | 'components' | 'food' | 'reels' {
+  if (kind === 'mine') return 'materials'
+  if (kind === 'foundry') return 'reels'
+  if (kind === 'greenhouse') return 'food'
+  return 'components' // workshops and the goods-handling services
+}
+
+/** Spec 024 — incidents strike worn, stressed buildings; staffed Bellhouses resolve them, or they hit a
+ *  consequence: the building is left worn-out and a chunk of one stockpile is destroyed. */
+function incidentStep(state: ColonyState, dtMin: number): void {
+  // 1) advance the active incidents; the first `capacity` (by build order) are attended, the rest are not.
+  const active = state.buildings.filter((b) => b.incident)
+  if (active.length > 0) {
+    const capacity = bellhouseCapacity(state)
+    active.forEach((b, i) => {
+      const inc = b.incident!
+      inc.timer -= dtMin
+      if (inc.timer > 0) return
+      if (i < capacity) {
+        // a crew reached it in time — the building recovers, carrying a little wear from the scare
+        b.wear = Math.min(1, (b.wear ?? 0) + COLONY.build.incidentResolveWearBump)
+      } else {
+        // nobody answered — severe damage and lost goods
+        b.wear = 1
+        const loss = COLONY.build.incidentGoodsLoss
+        const res = incidentResource(b.artifact.kind)
+        if (res === 'materials') state.materials = Math.max(0, state.materials - state.materials * loss)
+        else if (res === 'components') state.components = Math.max(0, state.components - state.components * loss)
+        else if (res === 'food') state.food = Math.max(0, state.food - state.food * loss)
+        else state.reels = Math.max(0, state.reels - state.reels * loss)
+      }
+      b.incident = undefined
+      b.hazardAccum = 0
+    })
+  }
+  // 2) accumulate hazard on worn, stressed buildings; strike a new incident when it crosses the trigger.
+  const frac = dtMin / (24 * 60)
+  for (const b of state.buildings) {
+    if (!isWorking(b) || b.incident) continue
+    const hz = buildingHazard(state, b)
+    if (hz <= 0) {
+      b.hazardAccum = 0
+      continue
+    }
+    b.hazardAccum = (b.hazardAccum ?? 0) + hz * frac
+    if (b.hazardAccum >= COLONY.build.hazardTrigger) {
+      b.incident = { timer: COLONY.build.incidentMin }
+      b.hazardAccum = 0
+    }
+  }
+}
+
+/** Spec 024 — incident readout for the HUD: how many crises are active vs the colony's response capacity. */
+export function incidentStatus(state: ColonyState): { active: number; capacity: number } {
+  let active = 0
+  for (const b of state.buildings) if (b.incident) active++
+  return { active, capacity: bellhouseCapacity(state) }
+}
+
+/** Spec 024 — true when a building is on fire/collapsing or is a worn, stressed tinderbox (time for a Bellhouse). */
+function colonyAtRisk(state: ColonyState): boolean {
+  return state.buildings.some((b) => b.incident || (isWorking(b) && buildingHazard(state, b) > 0))
+}
+
 /** Spec 020 — staffed Skillhouse Academies train colonists into skilled workers, capped at the population. */
 function academyStep(state: ColonyState, dtMin: number): void {
   const academies = countKind(state, 'academy')
@@ -727,7 +818,7 @@ function produceComponents(state: ColonyState, dtMin: number): void {
   if (eff <= 0) return
   const day = 24 * 60
   for (const b of state.buildings) {
-    if (b.artifact.kind !== 'workshop') continue
+    if (b.artifact.kind !== 'workshop' || b.incident) continue // spec 024 — a workshop on fire refines nothing
     const mf = maintFactor(b) // spec 022 — a worn workshop refines less
     const need = COLONY.build.workshopMaterialsIn * eff * mf * (dtMin / day)
     if (need <= 0) continue
@@ -744,7 +835,7 @@ function produceReels(state: ColonyState, dtMin: number): void {
   if (eff <= 0) return
   const day = 24 * 60
   for (const b of state.buildings) {
-    if (b.artifact.kind !== 'foundry') continue
+    if (b.artifact.kind !== 'foundry' || b.incident) continue // spec 024 — a foundry mid-incident weaves nothing
     const mf = maintFactor(b) // spec 022 — a worn foundry weaves less
     const need = COLONY.build.foundryComponentsIn * eff * mf * (dtMin / day)
     if (need <= 0) continue
@@ -870,6 +961,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
     else if (b.artifact.kind === 'scrubber') upkeep += COLONY.build.scrubberMaintCompPerDay
     else if (b.artifact.kind === 'maintshed') upkeep += COLONY.build.maintShedMaintCompPerDay // spec 022 — spare parts
     else if (b.artifact.kind === 'storehouse') upkeep += COLONY.build.storehouseMaintCompPerDay // spec 023 — logistics
+    else if (b.artifact.kind === 'bellhouse') upkeep += COLONY.build.bellhouseMaintCompPerDay // spec 024 — foam/alarm upkeep
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))
@@ -882,7 +974,7 @@ function foodStep(state: ColonyState, dtMin: number): void {
   const staffing = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * transitFactor(state) // spec 009/017/021 — sick, brownout or congested greenhouses grow less
   let grown = 0
   for (const b of state.buildings) {
-    if (b.artifact.kind !== 'greenhouse') continue
+    if (b.artifact.kind !== 'greenhouse' || b.incident) continue // spec 024 — a blighted greenhouse grows nothing
     const boost = nearWater(state, b.x, b.y) ? COLONY.build.greenhouseWaterBoost : 1
     grown += COLONY.build.greenhouseFoodPerDay * boost * staffing * maintFactor(b) // spec 022 — a worn greenhouse grows less
   }
@@ -929,6 +1021,7 @@ export function tradeExportRate(state: ColonyState): number {
 
 export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   maintenanceStep(state, dtMin) // spec 022 — accrue/repair wear first so producers read current condition
+  incidentStep(state, dtMin) // spec 024 — crises strike, get answered, or hit their consequence (paused buildings won't produce below)
   produceMaterials(state, dtMin)
   academyStep(state, dtMin)
   produceComponents(state, dtMin)
