@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock'
 
 export interface Parcel {
   id: number
@@ -31,6 +31,7 @@ export interface Artifact {
   crew: number // spec 001: free colonists reserved for the build duration
   materialsGen: number // spec 002: materials/day produced when fully staffed (mines); 0 otherwise
   fibreGen?: number // spec 031: skyflax fibre/day produced when fully staffed (Skimmer Docks); defaults to 0
+  rimfishGen?: number // spec 056: rimfish/day netted when fully staffed (Cloudsea Net Docks); defaults to 0
   componentsCost?: number // spec 005: components consumed to construct (services); defaults to 0
   reelsCost?: number // spec 018: reels (luxury good) consumed to construct (battery sheds); defaults to 0
 }
@@ -106,6 +107,7 @@ const SEEDLOFT_COLOR = 0x7fae57 // seed-green — the Seed Loft (saved harvest b
 const SURVEYCAMP_COLOR = 0xc8a25a // surveyor-ochre — the Survey Camp (claims new ground for the colony)
 const CALENDAR_COLOR = 0xd9c089 // parchment-gold — the Calendar Office (the colony counts its years)
 const HALLOFNAMES_COLOR = 0x9a8fb0 // dusk-violet — the Hall of Names (the colony remembers its elders)
+const NETDOCK_COLOR = 0x4fb0a6 // cloudsea-teal — the Cloudsea Net Dock (nets rimfish, the colony's second food)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -141,6 +143,7 @@ export function initBuild(state: ColonyState): void {
   state.renewalThisYear = 0 // spec 055
   state.renewalLastYear = 0 // spec 055
   state.lastPassings = 0 // spec 055
+  state.rimfish = 0 // spec 056 — no rimfish until a Cloudsea Net Dock stands
   state.standing = COLONY.build.standingStart // spec 032 — neutral Kookerverse Standing
   state.request = null // spec 032 — no open Civic Request
   state.requestCooldown = 0 // spec 032
@@ -460,6 +463,10 @@ function designCalendarOffice(state: ColonyState): Artifact {
 function designHallOfNames(state: ColonyState): Artifact {
   // Spec 055 — Hall of Names; a staffed civic room of remembrance that keeps the Long Ledger and comforts the colony after a loss.
   return { id: state.buildIds++, kind: 'hallofnames', color: HALLOFNAMES_COLOR, height: 1.0, residents: 0, jobs: COLONY.build.hallOfNamesWorkers, powerLoad: COLONY.build.hallOfNamesPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.hallOfNamesCost, materialsCost: COLONY.build.matHallOfNames, crew: COLONY.build.crewHallOfNames, materialsGen: 0, componentsCost: COLONY.build.compHallOfNames }
+}
+function designNetDock(state: ColonyState): Artifact {
+  // Spec 056 — Cloudsea Net Dock; a staffed rim gatherer that nets rimfish, the colony's second food (not subject to skyfarm seasons).
+  return { id: state.buildIds++, kind: 'netdock', color: NETDOCK_COLOR, height: 0.6, residents: 0, jobs: COLONY.build.netDockWorkers, powerLoad: COLONY.build.netDockPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.netDockCost, materialsCost: COLONY.build.matNetDock, crew: COLONY.build.crewNetDock, materialsGen: 0, componentsCost: COLONY.build.compNetDock, rimfishGen: COLONY.build.rimfishPerDay }
 }
 
 /** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
@@ -928,6 +935,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 18 && countKind(state, 'calendar') < 1 && state.components >= COLONY.build.compCalendar && state.reels >= COLONY.build.reelCalendar && state.materials >= COLONY.build.matCalendar) return designCalendarOffice(state)
   // Spec 055 — a settled colony that already keeps a calendar raises a Hall of Names to remember its elders and comfort the colony when a life ends.
   if (state.colonists > 20 && countKind(state, 'calendar') > 0 && countKind(state, 'hallofnames') < 1 && state.components >= COLONY.build.compHallOfNames && state.materials >= COLONY.build.matHallOfNames) return designHallOfNames(state)
+  // Spec 056 — a sizeable colony with skyfarms to its name nets a second food: raise a Cloudsea Net Dock (one per ~3 skyfarms) for dietary resilience and a richer table.
+  if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'greenhouse') > 0 && countKind(state, 'netdock') < Math.max(1, Math.ceil(countKind(state, 'greenhouse') / 3)) && state.components >= COLONY.build.compNetDock && state.materials >= COLONY.build.matNetDock + COLONY.build.rimfishSurplus) return designNetDock(state)
   // Spec 036 — once trade is established (an Exchange stands) and the bank is flush, raise an Import Office to buy shortages.
   if (state.colonists > 12 && countKind(state, 'import') < 1 && countKind(state, 'exchange') > 0 && state.components >= COLONY.build.compImportOffice && state.treasury > COLONY.build.importOfficeCost) return designImportOffice(state)
   // Spec 039 — a mature colony raises a Comptroller's Office so the treasury can ride a hard stretch on managed debt.
@@ -1028,7 +1037,7 @@ export function claimLot(state: ColonyState, rng: RNG): { x: number; y: number }
 /** Spec 038 — the colony's labour sectors; every workplace kind belongs to exactly one. */
 export type Sector = 'food' | 'services' | 'industry' | 'logistics' | 'safety' | 'trade' | 'civic'
 const SECTOR_OF: Record<BuildKind, Sector> = {
-  greenhouse: 'food', depot: 'food', water: 'food', cistern: 'food', seedloft: 'food',
+  greenhouse: 'food', depot: 'food', water: 'food', cistern: 'food', seedloft: 'food', netdock: 'food',
   clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services',
   mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry',
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics',
@@ -1185,7 +1194,7 @@ function maintenanceUncovered(state: ColonyState): boolean {
 }
 
 /** Spec 023 — per-resource storage cap = the founders' hold + what each Storehouse Platform adds. */
-export function storageCaps(state: ColonyState): { materials: number; components: number; food: number; reels: number; fibre: number; linen: number; folios: number } {
+export function storageCaps(state: ColonyState): { materials: number; components: number; food: number; reels: number; fibre: number; linen: number; folios: number; rimfish: number } {
   const n = countKind(state, 'storehouse')
   return {
     materials: COLONY.build.storeBaseMaterials + n * COLONY.build.storePerMaterials,
@@ -1195,6 +1204,7 @@ export function storageCaps(state: ColonyState): { materials: number; components
     fibre: COLONY.build.storeBaseFibre + n * COLONY.build.storePerFibre, // spec 031
     linen: COLONY.build.storeBaseLinen + n * COLONY.build.storePerLinen, // spec 031
     folios: COLONY.build.storeBaseFolios + n * COLONY.build.storePerFolios, // spec 044
+    rimfish: COLONY.build.storeBaseRimfish + n * COLONY.build.storePerRimfish, // spec 056
   }
 }
 
@@ -1208,6 +1218,7 @@ function clampStorage(state: ColonyState): void {
   if ((state.fibre ?? 0) > cap.fibre) state.fibre = cap.fibre // spec 031
   if ((state.linen ?? 0) > cap.linen) state.linen = cap.linen // spec 031
   if ((state.folios ?? 0) > cap.folios) state.folios = cap.folios // spec 044
+  if ((state.rimfish ?? 0) > cap.rimfish) state.rimfish = cap.rimfish // spec 056
 }
 
 /** Spec 023 — storage readout for the HUD: fullest stockpile (0..1), whether it's overflowing, and which. */
@@ -1840,6 +1851,22 @@ function produceFibre(state: ColonyState, dtMin: number): void {
   state.fibre += gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) * (dtMin / (24 * 60))
 }
 
+/** Spec 056 — staffed Cloudsea Net Docks net rimfish from the rim (the colony's second food). NOT subject to the skyfarm seasons
+ *  (054) — the rim has no growing season, which is exactly what makes rimfish a buffer. Inert with no Net Dock. */
+function produceRimfish(state: ColonyState, dtMin: number): void {
+  let gen = 0
+  for (const b of state.buildings) if (b.artifact.kind === 'netdock' && !b.incident) gen += (b.artifact.rimfishGen ?? 0) * maintFactor(b)
+  if (gen <= 0) return
+  const staffing = sectorStaffing(state, 'food') // a food gatherer — competes with the skyfarms for food-sector labour
+  const cap = storageCaps(state).rimfish
+  state.rimfish = Math.min(cap, (state.rimfish ?? 0) + gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) * (dtMin / (24 * 60)))
+}
+
+/** Spec 056 — Rimfish readout for the HUD: the stock, the dock count, and whether the colony is offering a varied table. */
+export function rimfishStatus(state: ColonyState): { stock: number; docks: number; varied: boolean } {
+  return { stock: Math.round(state.rimfish ?? 0), docks: countKind(state, 'netdock'), varied: (state.rimfish ?? 0) > 0 }
+}
+
 /** Spec 031 — staffed Weaveries weave fibre into linen bolts (2:1); halt when fibre runs out. */
 function produceLinen(state: ColonyState, dtMin: number): void {
   const eff = sectorStaffing(state, 'industry') * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 038 — sick, brownout, congested, fevered, restless or sector-deprioritised weaveries weave less
@@ -2051,7 +2078,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) * (1 + COLONY.build.solaceDesirabilityBonus * solaceCoverage(state)) * (arrearsStrain(state) ? COLONY.build.arrearsStrainDesirabilityFactor : 1) * (1 + COLONY.build.educationDesirabilityBonus * educationFraction(state)) * prosperityDesirabilityFactor(state) // spec 025/026/027/028/029/030/032/033/035/037/039/042/040 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, named founders, a consoled colony, a colony deep in arrears, a schooled colony, and a high-Prosperity colony all pull on who comes and stays
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) * (1 + COLONY.build.solaceDesirabilityBonus * solaceCoverage(state)) * (arrearsStrain(state) ? COLONY.build.arrearsStrainDesirabilityFactor : 1) * (1 + COLONY.build.educationDesirabilityBonus * educationFraction(state)) * prosperityDesirabilityFactor(state) * ((state.rimfish ?? 0) > 0 ? 1 + COLONY.build.rimfishDesirabilityBonus : 1) // spec 025/026/027/028/029/030/032/033/035/037/039/042/040/056 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, named founders, a consoled colony, a colony deep in arrears, a schooled colony, a high-Prosperity colony, and a varied table (rimfish) all pull on who comes and stays
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * confidenceImmigrationFactor(state) * perDay) // spec 049 — arrivals also follow the colony's Settler Confidence (a healthy colony sits at the plateau, so this is 1; deep distress slows it, terrible distress halts it)
 }
 
@@ -2321,7 +2348,12 @@ function foodStep(state: ColonyState, dtMin: number): void {
     grown += COLONY.build.greenhouseFoodPerDay * boost * staffing * maintFactor(b) // spec 022 — a worn greenhouse grows less
   }
   state.food += grown * (dtMin / day)
-  state.food = Math.max(0, state.food - (state.colonists + (state.children ?? 0) * COLONY.build.childDependentLoad) * COLONY.build.foodPerColonistPerDay * (dtMin / day)) // spec 050 — children are extra mouths (half a ration each) before they are hands
+  // Spec 050/056 — the day's meals: children are extra mouths (half a ration each); rimfish, when on hand, covers a portion of the
+  // meals and spares skygrain, so the grain lasts longer (inert — exactly the old skygrain eat-down when rimfish is 0).
+  const consumption = (state.colonists + (state.children ?? 0) * COLONY.build.childDependentLoad) * COLONY.build.foodPerColonistPerDay * (dtMin / day)
+  const fishMeals = Math.min(state.rimfish ?? 0, consumption * COLONY.build.rimfishMealFraction)
+  if (fishMeals > 0) state.rimfish = Math.max(0, (state.rimfish ?? 0) - fishMeals)
+  state.food = Math.max(0, state.food - (consumption - fishMeals))
 }
 
 /** Spec 012 — a staffed Skybridge Exchange exports SURPLUS goods (above a reserve) for treasury each day. */
@@ -2468,6 +2500,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   frontStep(state, dtMin) // spec 034 — count down to the next Cloudsea Front; strike (braced or not) at impact
   produceMaterials(state, dtMin)
   produceFibre(state, dtMin) // spec 031 — gather skyflax fibre (the second extractor)
+  produceRimfish(state, dtMin) // spec 056 — net rimfish from the rim (the second food); runs before foodStep so the day's catch can spare skygrain
   academyStep(state, dtMin)
   produceComponents(state, dtMin)
   produceReels(state, dtMin)

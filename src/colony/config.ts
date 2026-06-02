@@ -700,6 +700,21 @@ export const COLONY = {
     hallOfNamesWorkers: 2, // two attendants keep the Long Ledger
     hallOfNamesPowerLoad: 0.3,
     remembranceRelief: 0.05, // a staffed Hall of Names eases unrest by this after a year that takes someone
+    // Rimfish (spec 056): a second food netted from the cloudsea rim, stored separately. Inert with no Cloudsea Net Dock. When on
+    // hand, rimfish spares skygrain (colonists take a portion of their meals from it, so the grain lasts longer through a lean
+    // season), and the varied table draws settlers a little faster. It is not subject to the skyfarm seasons — that is the buffer.
+    matNetDock: 16,
+    compNetDock: 5,
+    crewNetDock: 6,
+    netDockCost: 1400,
+    netDockWorkers: 6, // the netters
+    netDockPowerLoad: 0.4, // winches
+    rimfishPerDay: 6, // rimfish a fully-staffed dock nets per day (modest — supplements, not replaces, skygrain)
+    rimfishMealFraction: 0.35, // up to this fraction of a colonist's meals come from rimfish when it is on hand (sparing skygrain)
+    rimfishDesirabilityBonus: 0.06, // a varied table (rimfish on offer) draws settlers a little faster
+    storeBaseRimfish: 100, // storage cap (spec 023) for rimfish
+    storePerRimfish: 70,
+    rimfishSurplus: 30, // raise a Net Dock once the colony is large and could feed a varied table
     pollutionPerIndustrial: 3,
   },
 

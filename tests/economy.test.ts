@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, ledgerStep, ledgerStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, ledgerStep, ledgerStatus, rimfishStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -3888,5 +3888,90 @@ describe('Spec 055 — The Long Ledger: a life has a span, and the colony renews
     }
     expect(relief(true)).toBeGreaterThan(relief(false)) // remembrance comforts the colony; without a Hall there is no comfort
     expect(relief(false)).toBe(0)
+  })
+})
+
+describe('Spec 056 — Rimfish: a second food from the cloudsea rim', () => {
+  const mk = (kind: 'netdock' | 'habitat' | 'water', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('with no Net Dock there is no rimfish and the food economy is unchanged (inert)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 20
+    s.food = 1000
+    s.rimfish = 0
+    for (let i = 0; i < 30; i++) stepBuild(s, sim.rng, 60)
+    expect(s.rimfish).toBe(0) // no dock → no rimfish ever
+    expect(rimfishStatus(s).docks).toBe(0)
+    expect(rimfishStatus(s).varied).toBe(false)
+    expect(s.food).toBeLessThan(1000) // skygrain eaten exactly as today
+  })
+
+  it('a staffed Cloudsea Net Dock nets rimfish over several days, capped at storage', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('netdock', s.terrain.landing.x + 4, s.terrain.landing.y, { jobs: COLONY.build.netDockWorkers, rimfishGen: COLONY.build.rimfishPerDay }))
+    s.colonists = 6
+    s.totalJobs = COLONY.build.netDockWorkers
+    s.powerGen = 100
+    s.power.batteryWh = s.power.batteryCapWh
+    s.rimfish = 0
+    s.food = 1000
+    for (let i = 0; i < 600; i++) stepBuild(s, sim.rng, 60)
+    expect(s.rimfish).toBeGreaterThan(0) // the nets brought in rimfish
+    expect(s.rimfish).toBeLessThanOrEqual(storageCaps(s).rimfish) // never past its store
+    expect(rimfishStatus(s).docks).toBe(1)
+  })
+
+  it('rimfish spares skygrain — the grain falls more slowly with it than without', () => {
+    const skygrainAfter = (withRimfish: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.colonists = 20
+      s.food = 1000 // no greenhouse, so food only drains
+      s.rimfish = withRimfish ? 100 : 0
+      for (let i = 0; i < 20; i++) stepBuild(s, sim.rng, 60)
+      return s.food
+    }
+    expect(skygrainAfter(true)).toBeGreaterThan(skygrainAfter(false)) // rimfish covered a portion of the meals
+  })
+
+  it('rimfish only ever spares grain — it never reduces food below the rimfish-less baseline, and food never goes negative', () => {
+    const foodAfter = (withRimfish: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.colonists = 20
+      s.food = 5 // scarce — without help it drains to nothing
+      s.rimfish = withRimfish ? 100 : 0
+      for (let i = 0; i < 20; i++) stepBuild(s, sim.rng, 60)
+      return s.food
+    }
+    expect(foodAfter(true)).toBeGreaterThanOrEqual(foodAfter(false)) // rimfish never costs grain, only spares it
+    expect(foodAfter(false)).toBeGreaterThanOrEqual(0) // never negative
+    expect(foodAfter(true)).toBeGreaterThanOrEqual(0)
+  })
+
+  it('a varied table draws settlers a little faster', () => {
+    const grew = (withRimfish: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+      s.buildings.push(mk('habitat', lx, ly, { residents: 40 })) // capacity 42 — lots of room
+      s.buildings.push(mk('water', lx, ly)) // watered → liveable
+      s.power.batteryWh = s.power.batteryCapWh
+      s.power.solarW = 5
+      s.food = 5000
+      s.colonists = 8
+      s.rimfish = withRimfish ? 90 : 0 // a varied table on offer (held high so it stays > 0 across the run)
+      const c0 = s.colonists
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.colonists - c0
+    }
+    expect(grew(true)).toBeGreaterThan(grew(false)) // the richer table pulls settlers in faster
   })
 })
