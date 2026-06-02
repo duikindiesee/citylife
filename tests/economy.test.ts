@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -1416,6 +1416,106 @@ describe('Spec 027 — The Housewares Market: manufactured goods reach the home'
     expect(housewaresFraction(s)).toBe(0) // no market
     s.buildings.push(mk('market', 49, 50))
     expect(housewaresFraction(s)).toBe(1) // the home is in range and the colony holds wares
+  })
+})
+
+describe('Spec 028 — The Ward Post: idleness and hardship breed unrest', () => {
+  const mk = (kind: 'mine' | 'levy' | 'ward', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('a Ward Post keeps order only while a post is built and staffed', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(wardActive(s)).toBe(false) // no post
+    s.buildings.push(mk('ward', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.totalJobs = 2
+    s.colonists = 0
+    expect(wardActive(s)).toBe(false) // post, but nobody to crew it
+    s.colonists = 6
+    expect(wardActive(s)).toBe(true) // built + staffed
+  })
+
+  it('an idle colony with no squeeze stays orderly — idleness alone is not enough', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 12
+    s.totalJobs = 2 // badly under-employed, but no hard levy and no brownout
+    for (let i = 0; i < 300; i++) stepBuild(s, sim.rng, 10)
+    expect(s.unrest).toBe(0) // unrest needs hardship too — idleness on its own breeds nothing
+  })
+
+  it('a restless colony (injected unrest) produces less than an orderly one', () => {
+    const run = (unrest: number) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.buildings.push(mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6, materialsGen: 5 }))
+      s.colonists = 6
+      s.totalJobs = 6
+      s.materials = 5
+      s.unrest = unrest
+      const m0 = s.materials
+      for (let i = 0; i < 40; i++) stepBuild(s, sim.rng, 10)
+      return s.materials - m0
+    }
+    expect(run(0.6)).toBeLessThan(run(0)) // vandalism + slowdowns sap the mine
+  })
+
+  it('unrest refuses a slice of the levy income', () => {
+    const incomeWith = (unrest: number) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.colonists = 12
+      s.totalJobs = 12 // fully employed, so unrest does not grow — we isolate the income effect
+      s.materials = 0
+      s.unrest = unrest
+      s.treasury = 0
+      s.clock.day = 1
+      s.lastIncomeDay = 0
+      stepBuild(s, sim.rng, 10)
+      return s.treasury
+    }
+    expect(incomeWith(0.6)).toBeLessThan(incomeWith(0)) // tax refusal cuts the take
+  })
+
+  it('a staffed Ward Post calms unrest back down', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('ward', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.colonists = 6
+    s.totalJobs = 6
+    s.unrest = 0.6
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 10) // ~1.4 days of patrols
+    expect(s.unrest).toBeLessThan(0.1) // the wardens hold the line
+  })
+
+  it('an idle population under a hard levy grows restless', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('levy', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.colonists = 12
+    s.totalJobs = 2 // most of them idle
+    s.levyRate = 'high' // and squeezed hard
+    expect(s.unrest).toBe(0)
+    for (let i = 0; i < 400; i++) stepBuild(s, sim.rng, 10) // ~2.8 days
+    expect(s.unrest).toBeGreaterThan(0.1)
+    expect(unrestStatus(s).unrest).toBeGreaterThan(0.1)
+  })
+
+  it('an idle population through a long brownout grows restless', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 12
+    s.totalJobs = 2 // idle
+    s.power.batteryWh = 0
+    s.power.solarW = 1 // a brownout, not a total blackout
+    s.power.loadW = 100 // drained + over capacity → brownout
+    expect(s.unrest).toBe(0)
+    for (let i = 0; i < 400; i++) stepBuild(s, sim.rng, 10)
+    expect(s.unrest).toBeGreaterThan(0.1)
   })
 })
 

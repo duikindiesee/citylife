@@ -310,6 +310,27 @@ export const COLONY = {
     marketWaresCompPerDay: 1, // components delivered as everyday wares, per market per day
     marketLuxuryReelsPerDay: 0.3, // reels delivered as luxury wares, per market per day
     waresDesirabilityBonus: 0.2, // up to +20% immigration when homes are well stocked with wares
+    // Ward Post (spec 028): social order. Unrest rises from compounding hardship — high unemployment AND a squeeze
+    // (a hard levy or a brownout) — and brings petty disorder: refused levy income, slowed production, fewer settlers.
+    // A staffed Ward Post drives it back down. Gated so a well-run, employed colony at a normal levy stays orderly.
+    matWard: 10,
+    compWard: 6,
+    crewWard: 3,
+    wardCost: 1800,
+    wardWorkers: 2, // wardens
+    wardMaintCompPerDay: 0.5, // patrol supply
+    unrestMinPop: 4, // a handful of founders never riots
+    unrestJoblessThreshold: 0.4, // jobless fraction above which unemployment starts feeding unrest
+    unrestSpreadPerDay: 0.5, // unrest growth per day at full pressure (no ward)
+    unrestRecoverPerDay: 0.15, // natural calming per day when the squeeze eases
+    wardCalmPerDay: 0.5, // calming per day while a staffed Ward Post patrols
+    unrestMax: 0.8, // cap on disorder
+    unrestIncomeRefusal: 0.5, // share of income refused at a full outbreak of unrest (tax refusal)
+    unrestProductionPenalty: 0.4, // production lost at full unrest (vandalism / slowdowns)
+    unrestProductionFloor: 0.5, // production floor under a fully restless colony
+    unrestDesirabilityWeight: 0.5, // how much full unrest drags immigration desirability down
+    unrestBuildThreshold: 0.08, // raise a Ward Post once unrest climbs past this
+    maxWard: 3,
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,
