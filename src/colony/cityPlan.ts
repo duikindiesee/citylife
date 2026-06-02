@@ -49,8 +49,37 @@ export interface Plot {
   zone: Zone
   x: number
   y: number
+  w?: number // footprint width in cells (fitted to flat, rock-free, buildable ground)
+  h?: number // footprint depth in cells
   description: string
   assignedTo?: string // householdId
+}
+
+/** A cell is good to lay a foundation on if it is on-land, buildable (flat enough), not water, and not bare rock. */
+function padCellOk(t: Terrain, x: number, y: number): boolean {
+  if (x < 0 || y < 0 || x >= t.size || y >= t.size) return false
+  const i = t.idx(x, y)
+  if (t.buildable[i] === 0) return false
+  if (t.isWater(x, y)) return false
+  const b = t.biome[i]
+  return b !== Biome.Mountain && b !== Biome.Ocean && b !== Biome.Shallows // keep off bare rock + water
+}
+
+/** Fit a sized footprint around a plot centre: grow a centred rectangle while every new cell is flat, dry and rock-free.
+ *  Caps at 5x4 cells so plots stay plausible house lots. Returns odd, centred dims (min 1x1). */
+export function plotFootprint(t: Terrain, cx: number, cy: number): { w: number; h: number } {
+  let hx = 0, hy = 0
+  const rowsOk = (nhx: number, nhy: number): boolean => {
+    for (let yy = cy - nhy; yy <= cy + nhy; yy++) for (let xx = cx - nhx; xx <= cx + nhx; xx++) if (!padCellOk(t, xx, yy)) return false
+    return true
+  }
+  // grow alternately in x and y so the lot stays squarish, up to half-extents 2 (x) and 1 (y) => 5x3
+  for (let step = 0; step < 4; step++) {
+    if (hx < 2 && rowsOk(hx + 1, hy)) hx++
+    else if (hy < 1 && rowsOk(hx, hy + 1)) hy++
+    else break
+  }
+  return { w: hx * 2 + 1, h: hy * 2 + 1 }
 }
 
 export interface CityPlan {
@@ -128,6 +157,7 @@ export function makeCityPlan(terrain: Terrain): CityPlan {
       const tooClose = picked.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < 6)
       if (tooClose) continue
       picked.push({ x: c.x, y: c.y })
+      const fp = plotFootprint(terrain, c.x, c.y)
       plots.push({
         id: `plot_${id++}`,
         name: NAMES[vibe][picked.length - 1] ?? NAMES[vibe][0]!,
@@ -135,6 +165,8 @@ export function makeCityPlan(terrain: Terrain): CityPlan {
         zone: 'residential',
         x: c.x,
         y: c.y,
+        w: fp.w,
+        h: fp.h,
         description: DESCRIPTIONS[vibe],
       })
     }

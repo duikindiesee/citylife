@@ -44,6 +44,9 @@ export class PlanetRenderer {
   private lastFoliageSig = -2
   // Road cells the ambient pedestrians stroll along (their pavement network), refreshed when roads grow.
   private roadCells: { x: number; y: number }[] = []
+  // Sized plot foundations + the spoke roads that serve them from the colony core (the planned-settlement layer).
+  private plotPadGroup = new THREE.Group()
+  private lastPadSig = ''
   private bldgMesh!: THREE.InstancedMesh
   private crewMesh!: THREE.InstancedMesh
   private streetPostMesh!: THREE.InstancedMesh
@@ -255,6 +258,7 @@ export class PlanetRenderer {
     for (const b of s.buildings) mark(b.x, b.y, 1)
     for (const j of s.jobs) mark(j.x, j.y, 1)
     for (const st of s.structures) mark(st.x, st.y, 1) // the caravan/rocket + landmarks
+    if (s.cityPlan) for (const p of s.cityPlan.plots) mark(p.x, p.y, Math.max(1, Math.ceil(Math.max(p.w || 1, p.h || 1) / 2))) // clear the lots + their verge
     mark(t.landing.x, t.landing.y, 4) // keep the colony heart clear
     const cells: number[] = []
     for (let i = 0; i < N * N; i++) {
@@ -557,6 +561,7 @@ export class PlanetRenderer {
 
     this.scene.add(this.settlerGroup) // unique KOOKER-settler homes live here
     this.scene.add(this.plotMarkers) // city-plan flag poles, one per plot
+    this.scene.add(this.plotPadGroup) // sized plot foundations + their spoke roads
 
     // Zone tint: paint each land cell within the city's reach with its surveyed zone colour. The
     // residential arc (north + west), commercial arc (east), industrial arc (south), and civic
@@ -677,6 +682,70 @@ export class PlanetRenderer {
   }
 
   /** Turn a HouseSpec (the AI's plan) into a one-off 3D house. */
+  /** The planned-settlement layer: a sized, leveled foundation pad for each named plot (the lot it occupies on flat,
+   *  rock-free ground), and a spoke road from the colony core out to it — so the marked plots are visible, sized, and
+   *  actually served by a road instead of being abstract points. Rebuilt only when the plan changes. */
+  private buildPlotPads(plots: Plot[]) {
+    const sig = plots.map((p) => `${p.id}:${p.w || 1}x${p.h || 1}`).join('|')
+    if (sig === this.lastPadSig) return
+    this.lastPadSig = sig
+    const t = this.sim.state.terrain
+    for (const ch of [...this.plotPadGroup.children]) {
+      this.plotPadGroup.remove(ch)
+      const m = ch as THREE.Mesh
+      if (m.geometry) m.geometry.dispose()
+      if (m.material) (m.material as THREE.Material).dispose()
+    }
+    const lx = t.landing.x, ly = t.landing.y
+    const padMat = new THREE.MeshStandardMaterial({ color: 0x9a948c, roughness: 0.9, metalness: 0 }) // poured-deck concrete
+    const kerbMat = new THREE.MeshStandardMaterial({ color: 0xbfc6c9, roughness: 0.8 })
+    // one merged ribbon for all the spoke roads (draped over the terrain)
+    const surf: number[] = []
+    const triPush = (p: number[], q: number[], r: number[]) => surf.push(p[0]!, p[1]!, p[2]!, q[0]!, q[1]!, q[2]!, r[0]!, r[1]!, r[2]!)
+    const quad = (a: number[], b: number[], c: number[], d: number[]) => { triPush(a, c, b); triPush(b, c, d) }
+    for (const p of plots) {
+      const w = Math.max(1, p.w || 1), h = Math.max(1, p.h || 1)
+      const hx = (w - 1) / 2, hy = (h - 1) / 2
+      // leveled foundation height: sit at the highest corner of the lot so it cuts uphill and fills downhill
+      let padY = 0
+      for (let yy = p.y - hy; yy <= p.y + hy; yy++) for (let xx = p.x - hx; xx <= p.x + hx; xx++) padY = Math.max(padY, Math.max(0, t.worldY(Math.round(xx), Math.round(yy))))
+      // the kerb (a hair larger + lower) frames the pad
+      const kerb = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 0.16, h + 0.4), kerbMat)
+      kerb.position.set(this.wx(p.x), padY + 0.02, this.wz(p.y))
+      kerb.receiveShadow = true
+      this.plotPadGroup.add(kerb)
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(w, 0.22, h), padMat)
+      pad.position.set(this.wx(p.x), padY + 0.06, this.wz(p.y))
+      pad.receiveShadow = true
+      this.plotPadGroup.add(pad)
+      // spoke road from the colony core to this plot, draped, ~0.8 wide
+      const dx = p.x - lx, dy = p.y - ly
+      const steps = Math.max(1, Math.round(Math.hypot(dx, dy)))
+      const nl = Math.hypot(dx, dy) || 1
+      const ox = (dy / nl) * 0.4, oy = (-dx / nl) * 0.4 // perpendicular half-width
+      for (let s = 0; s < steps; s++) {
+        const fx0 = lx + dx * (s / steps), fy0 = ly + dy * (s / steps)
+        const fx1 = lx + dx * ((s + 1) / steps), fy1 = ly + dy * ((s + 1) / steps)
+        const h0 = Math.max(0, t.worldY(Math.round(fx0), Math.round(fy0))) + 0.06
+        const h1 = Math.max(0, t.worldY(Math.round(fx1), Math.round(fy1))) + 0.06
+        quad(
+          [this.wx(fx0) + ox, h0, this.wz(fy0) + oy],
+          [this.wx(fx0) - ox, h0, this.wz(fy0) - oy],
+          [this.wx(fx1) + ox, h1, this.wz(fy1) + oy],
+          [this.wx(fx1) - ox, h1, this.wz(fy1) - oy],
+        )
+      }
+    }
+    if (surf.length) {
+      const sg = new THREE.BufferGeometry()
+      sg.setAttribute('position', new THREE.Float32BufferAttribute(surf, 3))
+      sg.computeVertexNormals()
+      const spoke = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ color: 0x2b2b30, roughness: 0.95, side: THREE.DoubleSide }))
+      spoke.frustumCulled = false
+      this.plotPadGroup.add(spoke)
+    }
+  }
+
   private buildHouseMesh(h: HouseSpec): THREE.Object3D {
     const g = new THREE.Group()
     const wallMat = new THREE.MeshStandardMaterial({ color: h.wallColor, roughness: 0.82 })
@@ -785,7 +854,7 @@ export class PlanetRenderer {
     }
     // as the cleared footprint (roads + buildings + worksites) changes, re-clear the trees from it and refresh the
     // pavement the ambient pedestrians stroll along.
-    const folSig = s.roads.length * 100003 + s.buildings.length * 101 + s.jobs.length
+    const folSig = s.roads.length * 100003 + s.buildings.length * 101 + s.jobs.length + (s.cityPlan ? s.cityPlan.plots.length * 7 : 0)
     if (folSig !== this.lastFoliageSig) {
       this.buildFoliage()
       this.roadCells = s.roads.map((r) => ({ x: r.x, y: r.y }))
@@ -793,7 +862,10 @@ export class PlanetRenderer {
     }
     const rn = s.roads.length
     // plot markers reflect allocation changes (allocated → dim flag, lowered pole)
-    if (s.cityPlan) this.syncPlotMarkers(s.cityPlan.plots)
+    if (s.cityPlan) {
+      this.syncPlotMarkers(s.cityPlan.plots)
+      this.buildPlotPads(s.cityPlan.plots) // sized foundations + spoke roads to the marked plots
+    }
 
     const col = new THREE.Color()
     const cap = COLONY.build.maxBuildings + 8
