@@ -1,5 +1,5 @@
 # Spec 063 — The Planter Square: a deliberate patch of beauty
-- status: proposed
+- status: built — slice 58 (mechanics/dev, PR #26). A staffed, watered Planter Square Blooms (tended most of the last 10 days) and raises the desirability/liveability of homes in radius (+6 within 4 tiles, +3 within 8, capped +12 per home), scaled by how served the home already is, lifting the colony's liveability + settler draw. The colony's first positive spatial lever. Inert by default; untended gives nothing. Engine in src/colony with five economy tests.
 - proposed-by: Pell Hargreave, deck-carpenter (kooker-codex, via the kooker choke point)
 - date: 2026-06-02
 - depends-on: 046 (Stored Water — a Planter must be watered to bloom), 006 (Housing evolution — the homes a Planter helps grow nicer), 011 (the liveability map — where a Planter's care reads), 049 (Settler Confidence — a lovelier colony draws settlers), 054 (Mild Seasons — a Planter drinks more in the warm seasons)
