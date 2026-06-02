@@ -44,6 +44,7 @@ export interface ColonyState {
   linen: number // spec 031 — linen bolts, woven from fibre by Weaveries; the top tier + clinics need it
   folios: number // spec 044 — skybound folios, the colony's signature finished export, bound from reels + linen by Folio Houses
   water: number // spec 046 — stored water units (Mist Condenser Cisterns fill the tank; Water Hubs draw it); 0 until a cistern stands
+  tools: number // spec 047 — stored tool-kits (Tool Cribs make them; tooled workplaces draw them); 0 until a crib stands
   parcels: Parcel[]
   jobs: ConstructionJob[]
   buildings: ColonyBuilding[]
@@ -133,6 +134,7 @@ export class ColonySim {
       linen: 0, // spec 031 — woven by Weaveries
       folios: 0, // spec 044 — bound by Folio Houses from reels + linen
       water: 0, // spec 046 — no stored water until a Mist Condenser Cistern stands
+      tools: 0, // spec 047 — no tool-kits until a Tool Crib stands
       parcels: [],
       jobs: [],
       buildings: [],

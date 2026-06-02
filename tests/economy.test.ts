@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -3106,5 +3106,100 @@ describe('Spec 046 — Stored Water: the sky can deny the tanks', () => {
     expect(wateredFraction(s)).toBeCloseTo(1, 5) // unchanged — full spatial coverage, no tank dependence
     expect(s.water).toBe(0) // no cistern → no stored water ever accrues
     expect(waterStatus(s).cisterns).toBe(0)
+  })
+})
+
+describe('Spec 047 — The Tool Crib: bare hands do not mine forever', () => {
+  const mk = (kind: 'toolcrib' | 'mine' | 'workshop', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('tools are full output with no crib, and scale with the rack once a crib stands', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(toolSupplyFactor(s)).toBe(1) // no crib → inert, tooled work is free full-speed work
+    s.buildings.push(mk('toolcrib', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.tools = 0 // bone dry rack
+    expect(toolSupplyFactor(s)).toBeCloseTo(COLONY.build.toolFloor, 5) // dry → the half-speed floor
+    s.tools = COLONY.build.toolComfortBuffer // a full buffer
+    expect(toolSupplyFactor(s)).toBeCloseTo(1, 5) // healthy → no penalty (exactly as today)
+  })
+
+  it('a staffed crib draws components into tool-kits, capped at the rack', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 12
+    s.totalJobs = 4
+    s.powerGen = 100 // keep the grid up so the bench runs
+    s.power.batteryWh = s.power.batteryCapWh
+    s.buildings.push(mk('toolcrib', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.tools = 0
+    s.components = 9999 // plenty to convert (no tooled workplaces → no demand draw)
+    const startComp = s.components
+    for (let i = 0; i < 600; i++) stepBuild(s, sim.rng, 60)
+    expect(s.tools).toBeGreaterThan(0) // converted components into tool-kits
+    expect(s.tools).toBeLessThanOrEqual(toolStockCap(s)) // never overfills the rack
+    expect(s.tools).toBeGreaterThan(COLONY.build.toolStockCap * 0.8) // a long run fills it near the cap
+    expect(s.components).toBeLessThan(startComp) // it spent components to do it
+    expect(toolStatus(s).cribs).toBe(1)
+  })
+
+  it('a freshly built crib starts its rack charged (no construction-day output crash)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.colonists = 12
+    s.totalJobs = 4
+    s.tools = 0
+    const a = Object.assign({ id: 1, kind: 'toolcrib', color: 0, height: 1, residents: 0, jobs: 2, powerLoad: 0, powerGen: 0, buildTimeMin: 60, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 })
+    s.jobs.push({ id: 999, x: lx + 2, y: ly, artifact: a, progress: 0, path: [] })
+    stepBuild(s, sim.rng, 60) // 60 min build time → completes this step
+    expect(toolStatus(s).cribs).toBe(1) // the crib now stands
+    expect(s.tools).toBeCloseTo(COLONY.build.toolStockCap * COLONY.build.toolStartCharge, 5) // rack starts ~60% charged
+  })
+
+  it('a dry rack weakens tooled output toward the floor; a full rack leaves it unchanged', () => {
+    const runMine = (mode: 'nocrib' | 'full' | 'dry') => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+      s.buildings.push(mk('mine', lx, ly, { jobs: 3, materialsGen: COLONY.build.mineOutputPerDay }))
+      if (mode !== 'nocrib') s.buildings.push(mk('toolcrib', lx + 2, ly, { jobs: 2 }))
+      s.colonists = 400 // labour saturates every sector at full in all three modes
+      s.totalJobs = 5
+      s.powerGen = 100 // no brownout
+      s.power.batteryWh = s.power.batteryCapWh
+      s.materials = 0
+      if (mode === 'full') { s.tools = toolStockCap(s); s.components = 9999 } // crib stays fed → rack stays full
+      if (mode === 'dry') { s.tools = 0; s.components = 0 } // crib starved → rack stays at 0
+      for (let i = 0; i < 6; i++) stepBuild(s, sim.rng, 60)
+      return s.materials
+    }
+    const base = runMine('nocrib'), full = runMine('full'), dry = runMine('dry')
+    expect(base).toBeGreaterThan(0)
+    expect(full).toBeCloseTo(base, 4) // healthy tools → the mine digs exactly as it does today
+    expect(dry).toBeLessThan(base * 0.75) // a dry rack drags the mine toward the half-speed floor
+    expect(dry).toBeCloseTo(base * COLONY.build.toolFloor, 4) // ...specifically to the floor
+    expect(dry).toBeGreaterThan(0) // but never zero — the floor keeps the loop recoverable
+  })
+
+  it('with no crib, tool-kits never accrue and the factor stays 1 (inert)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('mine', lx, ly, { jobs: 3, materialsGen: COLONY.build.mineOutputPerDay }))
+    s.buildings.push(mk('workshop', lx + 1, ly, { jobs: 4 }))
+    s.colonists = 20
+    s.totalJobs = 7
+    s.powerGen = 100
+    s.materials = 50
+    s.tools = 0
+    for (let i = 0; i < 30; i++) stepBuild(s, sim.rng, 60)
+    expect(toolSupplyFactor(s)).toBe(1) // never industrialised tools → no penalty ever
+    expect(s.tools).toBe(0) // no crib → no tool-kits ever accrue
+    expect(toolStatus(s).cribs).toBe(0)
   })
 })

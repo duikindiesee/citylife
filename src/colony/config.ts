@@ -583,6 +583,23 @@ export const COLONY = {
     dryTankFeverPerDay: 0.04, // daily fever pressure while the tank is dry and cisterns stand
     dryTankUnrestPerDay: 0.05, // daily unrest pressure while the tank is dry
     cisternStartCharge: 0.6, // a freshly built cistern starts its tank this full (no construction-day water crash)
+    // Tool Crib (spec 047): components finally get a recurring job. A staffed crib turns components into tool-kits; once any crib
+    // stands, the tooled workplaces (mine, workshop, skyfarm, maintenance shed, turbine) draw tool-kits as they work, and a dry
+    // tool rack weakens their output together toward the floor. Inert with no crib (the tool factor is 1, so output is as today).
+    matToolCrib: 18,
+    compToolCrib: 6,
+    crewToolCrib: 2,
+    toolCribCost: 1400,
+    toolCribWorkers: 2,
+    toolCribPowerLoad: 0.6, // small bench load (a brownout slows tool-kit output)
+    toolStockCap: 120, // tool-kits the colony rack holds
+    toolCribComponentsPerDay: 2, // components one staffed crib draws per day
+    toolKitsPerComponent: 4, // Mara Venn's recipe: 1 component becomes 4 tool-kits
+    toolUsePerWorkplacePerDay: 0.6, // tool-kits each working tooled workplace consumes per day
+    toolComfortBuffer: 16, // stock above this → full output; below → output fades toward the floor
+    toolFloor: 0.5, // output floor for tooled workplaces when the rack is bone dry (bare-handed half-speed)
+    toolStartCharge: 0.6, // a freshly built crib starts its rack this full (no construction-day output crash)
+    toolCribSpareComponents: 8, // only auto-build a crib when this many components sit spare beyond its build cost
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib'
 
 export interface Parcel {
   id: number
@@ -100,6 +100,7 @@ const CENSUS_COLOR = 0x4a90c2 // census-blue — the Census Hall (the colony's o
 const FOLIO_COLOR = 0xb8862b // gilt-gold — the Folio House (binds the signature finished export)
 const TURBINE_COLOR = 0x8fb8d0 // pale steel-blue — the Wind-Shear Turbine Mast (power that scales with the colony)
 const CISTERN_COLOR = 0x3f7fb0 // deep cistern-blue — the Mist Condenser Cistern (water made real)
+const TOOLCRIB_COLOR = 0xb8823c // worked-bronze — the Tool Crib (components become working tool-kits)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -125,6 +126,7 @@ export function initBuild(state: ColonyState): void {
   state.linen = 0 // spec 031 — linen bolts, woven by Weaveries
   state.folios = 0 // spec 044 — skybound folios, bound by Folio Houses
   state.water = 0 // spec 046 — no stored water until a cistern stands
+  state.tools = 0 // spec 047 — no tool-kits until a Tool Crib stands
   state.standing = COLONY.build.standingStart // spec 032 — neutral Kookerverse Standing
   state.request = null // spec 032 — no open Civic Request
   state.requestCooldown = 0 // spec 032
@@ -424,13 +426,17 @@ function designCistern(state: ColonyState): Artifact {
   // Spec 046 — Mist Condenser Cistern; a staffed condenser that fills the colony's water tank (heavy grid draw).
   return { id: state.buildIds++, kind: 'cistern', color: CISTERN_COLOR, height: 0.9, residents: 0, jobs: COLONY.build.cisternWorkers, powerLoad: COLONY.build.cisternPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.cisternCost, materialsCost: COLONY.build.matCistern, crew: COLONY.build.crewCistern, materialsGen: 0, componentsCost: COLONY.build.compCistern }
 }
+function designToolCrib(state: ColonyState): Artifact {
+  // Spec 047 — Tool Crib; a staffed bench that turns components into tool-kits for the whole extraction-and-production base.
+  return { id: state.buildIds++, kind: 'toolcrib', color: TOOLCRIB_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.toolCribWorkers, powerLoad: COLONY.build.toolCribPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.toolCribCost, materialsCost: COLONY.build.matToolCrib, crew: COLONY.build.crewToolCrib, materialsGen: 0, componentsCost: COLONY.build.compToolCrib }
+}
 
 /** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
 export function turbinePower(state: ColonyState): number {
   const n = state.buildings.filter((b) => b.artifact.kind === 'turbine').length
   if (n === 0) return 0
   const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
-  return n * COLONY.build.turbineOutputW * staffing
+  return n * COLONY.build.turbineOutputW * staffing * toolSupplyFactor(state) // spec 047 — a turbine blade does not re-seat without tools
 }
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
@@ -477,6 +483,57 @@ function waterStep(state: ColonyState, dtMin: number): void {
     state.outbreak = Math.min(1, (state.outbreak ?? 0) + COLONY.build.dryTankFeverPerDay * lost * frac)
     state.unrest = Math.min(COLONY.build.unrestMax, (state.unrest ?? 0) + COLONY.build.dryTankUnrestPerDay * lost * frac)
   }
+}
+
+/** Spec 047 — the workplaces that need tool-kits to work at full speed (mine, workshop, skyfarm, maintenance shed, turbine). */
+const TOOLED_KINDS: BuildKind[] = ['mine', 'workshop', 'greenhouse', 'maintshed', 'turbine']
+
+/** Spec 047 — flat capacity of the colony's tool-kit rack (the same whatever the crib count; only matters once a crib stands). */
+export function toolStockCap(_state: ColonyState): number {
+  return COLONY.build.toolStockCap
+}
+
+/** Spec 047 — how many built tooled workplaces are running (skips ones mid-incident); the tool-kit demand scales with this. */
+function tooledWorkplaceCount(state: ColonyState): number {
+  let n = 0
+  for (const b of state.buildings) if (TOOLED_KINDS.includes(b.artifact.kind) && !b.incident) n++
+  return n
+}
+
+/** Spec 047 — tool-supply factor: 1 with no Tool Crib (bare-handed work is the free full-speed work it has always been); once a
+ *  crib stands it scales with the rack — full → 1, dry → the floor — so a drained rack weakens every tooled workplace together. */
+export function toolSupplyFactor(state: ColonyState): number {
+  if (countKind(state, 'toolcrib') === 0) return 1 // inert — no tool economy until the colony industrialises its tools
+  const t = Math.min(1, (state.tools ?? 0) / COLONY.build.toolComfortBuffer)
+  return COLONY.build.toolFloor + (1 - COLONY.build.toolFloor) * t
+}
+
+/** Spec 047 — Tools readout for the HUD: the rack, its capacity, the crib count, and whether the kits are running short. */
+export function toolStatus(state: ColonyState): { stored: number; cap: number; cribs: number; short: boolean } {
+  const cribs = countKind(state, 'toolcrib')
+  return { stored: Math.round(state.tools ?? 0), cap: toolStockCap(state), cribs, short: cribs > 0 && (state.tools ?? 0) < COLONY.build.toolComfortBuffer }
+}
+
+/** Spec 047 — make tools each step: staffed cribs draw components → tool-kits (cut by brownout); tooled workplaces draw them down. */
+function toolStep(state: ColonyState, dtMin: number): void {
+  if (countKind(state, 'toolcrib') === 0) return // no crib → no tool economy (every tooled output stays at factor 1; inert)
+  const frac = dtMin / (24 * 60)
+  const cribs = state.buildings.filter((b) => b.artifact.kind === 'toolcrib').length
+  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const cap = toolStockCap(state)
+  let tools = state.tools ?? 0
+  // Production: each staffed, powered crib draws up to N components → 4 kits each, never overfilling the rack.
+  const headroom = Math.max(0, cap - tools)
+  const wantComp = cribs * COLONY.build.toolCribComponentsPerDay * staffing * powerFactor(state) * frac // a brownout slows the bench
+  const drawComp = Math.min(state.components, wantComp, headroom / COLONY.build.toolKitsPerComponent)
+  if (drawComp > 0) {
+    state.components -= drawComp
+    tools += drawComp * COLONY.build.toolKitsPerComponent
+  }
+  // Demand: every working tooled workplace wears through kits as it runs (clamped to the stock on hand).
+  const draw = tooledWorkplaceCount(state) * COLONY.build.toolUsePerWorkplacePerDay * staffing * frac
+  tools -= draw
+  state.tools = Math.max(0, Math.min(cap, tools))
 }
 
 export function wateredFraction(state: ColonyState): number {
@@ -783,6 +840,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 14 && countKind(state, 'census') < 1 && state.components >= COLONY.build.compCensus) return designCensus(state)
   // Spec 046 — make water real: a large, well-powered colony raises a Mist Condenser Cistern (one per ~60 homes) to fill the tanks.
   if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'habitat') > 0 && countKind(state, 'cistern') < Math.max(1, Math.ceil(countKind(state, 'habitat') / 60)) && state.components >= COLONY.build.compCistern) return designCistern(state)
+  // Spec 047 — once an extraction base exists (a mine + a workshop) and components sit spare, raise a Tool Crib (one per ~6 tooled workplaces) to keep the hands in tools.
+  if (state.colonists > 12 && !inBrownout(state) && countKind(state, 'mine') > 0 && countKind(state, 'workshop') > 0 && state.components >= COLONY.build.compToolCrib + COLONY.build.toolCribSpareComponents && countKind(state, 'toolcrib') < Math.max(1, Math.ceil(tooledWorkplaceCount(state) / 6))) return designToolCrib(state)
   // Spec 036 — once trade is established (an Exchange stands) and the bank is flush, raise an Import Office to buy shortages.
   if (state.colonists > 12 && countKind(state, 'import') < 1 && countKind(state, 'exchange') > 0 && state.components >= COLONY.build.compImportOffice && state.treasury > COLONY.build.importOfficeCost) return designImportOffice(state)
   // Spec 039 — a mature colony raises a Comptroller's Office so the treasury can ride a hard stretch on managed debt.
@@ -885,7 +944,7 @@ export type Sector = 'food' | 'services' | 'industry' | 'logistics' | 'safety' |
 const SECTOR_OF: Record<BuildKind, Sector> = {
   greenhouse: 'food', depot: 'food', water: 'food', cistern: 'food',
   clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services',
-  mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry',
+  mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry',
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety',
   exchange: 'trade', import: 'trade',
@@ -939,7 +998,7 @@ function produceMaterials(state: ColonyState, dtMin: number): void {
   for (const b of state.buildings) if (b.artifact.kind === 'mine' && !b.incident) gen += b.artifact.materialsGen * maintFactor(b) // spec 022/024 — a worn mine digs less; one mid-incident digs nothing
   if (gen <= 0) return
   const staffing = sectorStaffing(state, 'industry') // spec 038 — labour priority can starve or favour Industry under a shortage
-  state.materials += gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) * (dtMin / (24 * 60)) // spec 009/017/021/026/028 — sick, brownout, congested, fevered or restless mines dig less
+  state.materials += gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) * toolSupplyFactor(state) * (dtMin / (24 * 60)) // spec 009/017/021/026/028/047 — sick, brownout, congested, fevered, restless or tool-starved mines dig less
 }
 
 /** Spec 020 — how well the advanced trades are staffed by skilled workers: full at the cap, 0.6 floor when untrained. */
@@ -987,7 +1046,7 @@ function maintenanceStep(state: ColonyState, dtMin: number): void {
     if (!isWorking(b)) continue
     let wear = (b.wear ?? 0) + COLONY.build.wearPerDay * frac
     if (staffed && sheds.some((s) => Math.hypot(s.x - b.x, s.y - b.y) <= COLONY.build.maintRadius)) {
-      wear -= COLONY.build.repairPerDay * frac
+      wear -= COLONY.build.repairPerDay * frac * toolSupplyFactor(state) // spec 047 — fitters with no tools mend slower
     }
     b.wear = Math.max(0, Math.min(1, wear))
   }
@@ -1629,7 +1688,7 @@ function academyStep(state: ColonyState, dtMin: number): void {
 
 /** Spec 003 — staffed workshops consume materials and produce components (2:1); halt when materials run out. */
 function produceComponents(state: ColonyState, dtMin: number): void {
-  const eff = sectorStaffing(state, 'industry') * healthFactor(state) * powerFactor(state) * skillFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 009/017/020/021/026/028/038 — sick, brownout, unskilled, congested, fevered, restless or sector-deprioritised workshops refine less
+  const eff = sectorStaffing(state, 'industry') * healthFactor(state) * powerFactor(state) * skillFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) * toolSupplyFactor(state) // spec 009/017/020/021/026/028/038/047 — sick, brownout, unskilled, congested, fevered, restless, sector-deprioritised or tool-starved workshops refine less
   if (eff <= 0) return
   const day = 24 * 60
   for (const b of state.buildings) {
@@ -1933,7 +1992,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
 /** Spec 007 — staffed greenhouses grow food (boosted near a Water Hub); colonists eat a little each day. */
 function foodStep(state: ColonyState, dtMin: number): void {
   const day = 24 * 60
-  const staffing = sectorStaffing(state, 'food') * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 009/017/021/026/028/038 — sick, brownout, congested, fevered, restless or sector-deprioritised greenhouses grow less
+  const staffing = sectorStaffing(state, 'food') * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) * toolSupplyFactor(state) // spec 009/017/021/026/028/038/047 — sick, brownout, congested, fevered, restless, sector-deprioritised or tool-starved greenhouses grow less
   let grown = 0
   for (const b of state.buildings) {
     if (b.artifact.kind !== 'greenhouse' || b.incident) continue // spec 024 — a blighted greenhouse grows nothing
@@ -2076,6 +2135,7 @@ export function tradeExportRate(state: ColonyState): number {
 }
 
 export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
+  toolStep(state, dtMin) // spec 047 — make/draw tool-kits first so every tooled producer + the fitters read this step's rack
   maintenanceStep(state, dtMin) // spec 022 — accrue/repair wear first so producers read current condition
   incidentStep(state, dtMin) // spec 024 — crises strike, get answered, or hit their consequence (paused buildings won't produce below)
   feverStep(state, dtMin) // spec 026 — the outbreak spreads or is contained; producers below read the current fever
@@ -2118,6 +2178,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
         if (a.kind === 'industrial') state.pollution += COLONY.build.pollutionPerIndustrial
       }
       if (a.kind === 'cistern') state.water = Math.min(waterTankCap(state), (state.water ?? 0) + COLONY.build.cisternTankCap * COLONY.build.cisternStartCharge) // spec 046 — a freshly built cistern starts its tank charged (no construction-day water crash)
+      if (a.kind === 'toolcrib') state.tools = Math.min(toolStockCap(state), (state.tools ?? 0) + COLONY.build.toolStockCap * COLONY.build.toolStartCharge) // spec 047 — a freshly built crib starts its rack charged (no construction-day output crash)
       state.jobs.splice(i, 1)
     }
   }
