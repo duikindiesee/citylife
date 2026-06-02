@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall' | 'firewatch'
 
 export interface Parcel {
   id: number
@@ -58,6 +58,9 @@ export interface ColonyBuilding {
   incident?: { timer: number } // spec 024 — an active emergency; the building is paused while timer (sim-min) runs
   hazardAccum?: number // spec 024 — accumulated hazard toward the next incident (deterministic, sustained-condition)
   tend?: number // spec 063 — a Planter Square's tended-day counter (0..planterBloomCap); Blooms at/above planterBloomDays
+  fireRisk?: number // spec 065 — accumulated fire risk inside a Fire-Watch district; ignites at fireIgniteThreshold (0 = safe)
+  fire?: number // spec 065 — sim-minutes this building has been burning (Spark < fireBlazeAt <= Blaze); undefined = not on fire
+  fireSpread?: boolean // spec 065 — true once this fire has lit a neighbour (so a Blaze spreads at most once)
 }
 export interface RoadCell {
   x: number
@@ -117,6 +120,7 @@ const DRYRACK_COLOR = 0x9fb4a0 // pale weathered sage — the Rimfish Drying Rac
 const REGISTRY_COLOR = 0x8a93b8 // slate-indigo — the Labour Registry Desk (clerks, boards, ledgers)
 const PLANTER_COLOR = 0x6fae5a // fresh planted green — the Planter Square (raised beds, a bench)
 const STALL_COLOR = 0xc6713e // warm terracotta — the Market Stall (awning + counter)
+const FIREWATCH_COLOR = 0xd2473a // alarm red — the Fire-Watch Post (bucket barrels + pump)
 const SANITATION_COLOR = 0x6f8f6a // drain-green — the Sanitation Post (clears household waste before it sickens the colony)
 const WATCHNOOK_COLOR = 0xb0a04a // lamp-brass — the Watch Nook (keeps petty theft off a rich colony's coffers)
 const key = (x: number, y: number) => x + ',' + y
@@ -156,6 +160,7 @@ export function initBuild(state: ColonyState): void {
   state.lastPassings = 0 // spec 055
   state.rimfish = 0 // spec 056 — no rimfish until a Cloudsea Net Dock stands
   state.driedFish = 0 // spec 061 — no dried rimfish until a Rimfish Drying Rack stands
+  state.fireCooldown = 0 // spec 065 — no fire timing until a Fire-Watch stands
   state.registryPenalty = 0 // spec 062 — no Prosperity drag until a Labour Registry reads chronic idleness
   state.unempHighDays = 0 // spec 062
   state.unempSevereDays = 0 // spec 062
@@ -516,6 +521,10 @@ function designPlanter(state: ColonyState): Artifact {
 function designStall(state: ColonyState): Artifact {
   // Spec 064 — Market Stall; a staffed Trade stall that sells surplus linen/folios to paid colonists for a little treasury margin. Costs a tool-kit + linen to build.
   return { id: state.buildIds++, kind: 'stall', color: STALL_COLOR, height: 0.5, residents: 0, jobs: COLONY.build.stallWorkers, powerLoad: 0, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.stallCost, materialsCost: COLONY.build.matStall, crew: COLONY.build.crewStall, materialsGen: 0, componentsCost: COLONY.build.compStall, toolsCost: COLONY.build.toolStall, linenCost: COLONY.build.linenStall }
+}
+function designFireWatch(state: ColonyState): Artifact {
+  // Spec 065 — Fire-Watch Post; a staffed Safety post that watches a fire district, drains risk, and runs bucket-lines on a blaze. Costs tool-kits + reels + linen to build.
+  return { id: state.buildIds++, kind: 'firewatch', color: FIREWATCH_COLOR, height: 0.9, residents: 0, jobs: COLONY.build.fireWatchWorkers, powerLoad: COLONY.build.fireWatchPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.fireWatchCost, materialsCost: COLONY.build.matFireWatch, crew: COLONY.build.crewFireWatch, materialsGen: 0, componentsCost: COLONY.build.compFireWatch, toolsCost: COLONY.build.toolFireWatch, reelsCost: COLONY.build.reelFireWatch, linenCost: COLONY.build.linenFireWatch }
 }
 
 /** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
@@ -1130,6 +1139,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (storageNearCap(state) && state.components >= COLONY.build.compStorehouse && countKind(state, 'storehouse') < COLONY.build.maxStorehouses) return designStorehouse(state)
   // Spec 024 — answer the bell: a building on fire/at-risk with too little response cover → raise an Emergency Bellhouse.
   if (colonyAtRisk(state) && state.components >= COLONY.build.compBellhouse && state.reels >= COLONY.build.reelBellhouse && countKind(state, 'bellhouse') < COLONY.build.maxBellhouses) return designBellhouse(state)
+  // Spec 065 — guard the decks against fire: a watered, established colony raises a Fire-Watch Post (one per ~12 buildings) once the tanks are kept and hose stock is on hand.
+  if (state.colonists > 14 && countKind(state, 'cistern') > 0 && countKind(state, 'firewatch') < Math.max(1, Math.ceil(state.buildings.length / 12)) && state.components >= COLONY.build.compFireWatch && state.materials >= COLONY.build.matFireWatch && (state.tools ?? 0) >= COLONY.build.toolFireWatch && state.reels >= COLONY.build.reelFireWatch && (state.linen ?? 0) >= COLONY.build.linenFireWatch) return designFireWatch(state)
   const queuedGen = state.jobs.reduce((g, j) => g + j.artifact.powerGen, 0)
   // Spec 018 — buffer the grid first when brownout-prone and reels are spare: a Battery Shed (capped vs solar so solar still leads).
   if (inBrownout(state) && state.reels >= COLONY.build.reelBattery && state.components >= COLONY.build.compBattery && countKind(state, 'battery') < countKind(state, 'solar') + 1) return designBattery(state)
@@ -1224,7 +1235,7 @@ const SECTOR_OF: Record<BuildKind, Sector> = {
   clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services', sanitation: 'services', rationvar: 'services',
   mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry', dryrack: 'industry',
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics',
-  bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety', watchnook: 'safety',
+  bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety', watchnook: 'safety', firewatch: 'safety',
   exchange: 'trade', import: 'trade', stall: 'trade',
   levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', census: 'civic', habitat: 'civic', calendar: 'civic', hallofnames: 'civic', registry: 'civic', planter: 'civic',
 }
@@ -1517,6 +1528,112 @@ export function incidentStatus(state: ColonyState): { active: number; capacity: 
 /** Spec 024 — true when a building is on fire/collapsing or is a worn, stressed tinderbox (time for a Bellhouse). */
 function colonyAtRisk(state: ColonyState): boolean {
   return state.buildings.some((b) => b.incident || (isWorking(b) && buildingHazard(state, b) > 0))
+}
+
+/** Spec 065 — a hot-work building (power/industry/workshop/drying) carries extra fire risk and catches first. */
+function fireHazardousKind(kind: BuildKind): boolean {
+  return SECTOR_OF[kind] === 'industry' || kind === 'solar' || kind === 'turbine' || kind === 'battery'
+}
+
+/** Spec 065 — is this building inside any Fire-Watch Post's district (within its radius)? */
+function inFireDistrict(state: ColonyState, b: ColonyBuilding): boolean {
+  return state.buildings.some((p) => p.artifact.kind === 'firewatch' && Math.hypot(p.x - b.x, p.y - b.y) <= COLONY.build.fireWatchRadius)
+}
+
+/** Spec 065 — count a building's direct deck-neighbours (within the adjacency distance). */
+function fireAdjacentCount(state: ColonyState, b: ColonyBuilding): number {
+  let n = 0
+  for (const o of state.buildings) if (o !== b && Math.hypot(o.x - b.x, o.y - b.y) <= COLONY.build.fireAdjacency) n++
+  return n
+}
+
+/** Spec 065 — the day's fire-risk points a building gathers from its active stressors. */
+function fireRiskPoints(state: ColonyState, b: ColonyBuilding): number {
+  let pts = 0
+  if ((b.wear ?? 0) > COLONY.build.wearBuildThreshold) pts += COLONY.build.fireWornPoints // spec 022
+  if (inBrownout(state)) pts += COLONY.build.fireBrownoutPoints // spec 017
+  let warm = false
+  if (countKind(state, 'calendar') > 0) { const n = seasonOf(calendarStatus(state).month).name; warm = n === 'Bloom' || n === 'Highsun' } // spec 054
+  if (warm) pts += COLONY.build.fireWarmPoints
+  if (fireHazardousKind(b.artifact.kind)) pts += COLONY.build.fireHazardKindPoints
+  if (storageNearCap(state)) pts += COLONY.build.fireFullStorePoints // spec 023
+  if (fireAdjacentCount(state, b) >= COLONY.build.fireCrowdedNeighbours) pts += COLONY.build.fireCrowdedPoints
+  return pts
+}
+
+/** Spec 065 — the most flammable not-yet-burning in-district deck-neighbour a Blaze would catch (hot-work buildings catch first). */
+function mostFlammableNeighbour(state: ColonyState, b: ColonyBuilding): ColonyBuilding | null {
+  let best: ColonyBuilding | null = null
+  let bestScore = -1
+  for (const o of state.buildings) {
+    if (o === b || o.fire || !inFireDistrict(state, o)) continue
+    if (Math.hypot(o.x - b.x, o.y - b.y) > COLONY.build.fireAdjacency) continue // only direct neighbours catch; an empty gap blocks it
+    const score = fireHazardousKind(o.artifact.kind) ? 1 : 0
+    if (score > bestScore) { bestScore = score; best = o }
+  }
+  return best
+}
+
+/** Spec 065 — Deck Fires: in-district buildings accrue fire risk under stress and ignite; a staffed, watered Fire-Watch drains risk and
+ *  suppresses sparks, while an unwatched fire grows Spark -> Blaze, spreads once to a deck-neighbour, then destroys the building (removed,
+ *  must rebuild). Deterministic — risk accrues, fire grows on a clock. Returns at once with no Post, so a colony that has not opted in is unchanged. */
+function fireStep(state: ColonyState, dtMin: number): void {
+  const posts = countKind(state, 'firewatch')
+  if (posts === 0) return // inert — fire stays inside the generic incident (spec 024)
+  const frac = dtMin / (24 * 60)
+  state.water = Math.max(0, (state.water ?? 0) - COLONY.build.fireWatchWaterPerDay * posts * frac) // the Posts draw barrel water
+  const safety = sectorStaffing(state, 'safety')
+  const protectedColony = safety > 0 && (state.water ?? 0) > 0 // protection needs staffed crew AND water in the tanks
+
+  // 1) progress active fires: a protected fire shrinks; an unwatched one grows, spreads once, then destroys.
+  const destroyed: number[] = []
+  for (const b of state.buildings) {
+    if (!b.fire || b.fire <= 0) continue
+    const suppress = protectedColony && inFireDistrict(state, b) ? COLONY.build.fireSuppressStrength * safety : 0
+    b.fire = b.fire + dtMin * (1 - suppress)
+    if (b.fire <= 0) { b.fire = undefined; b.fireSpread = undefined; continue } // put out
+    if (b.fire >= COLONY.build.fireSpreadAt && !b.fireSpread) {
+      b.fireSpread = true
+      const nb = mostFlammableNeighbour(state, b)
+      if (nb) nb.fire = 1 // a fresh Spark leaps to the deck-neighbour
+    }
+    if (b.fire >= COLONY.build.fireDestroyAt) destroyed.push(b.id)
+  }
+  if (destroyed.length) {
+    const gone = new Set(destroyed)
+    state.buildings = state.buildings.filter((b) => !gone.has(b.id)) // the building is lost; the colony must rebuild it
+  }
+
+  // 2) accumulate fire risk on in-district buildings; ignite the worst once the district's window allows.
+  state.fireCooldown = Math.max(0, (state.fireCooldown ?? 0) - dtMin)
+  let worst: ColonyBuilding | null = null
+  let worstRisk = 0
+  for (const b of state.buildings) {
+    if (b.fire) continue
+    if (!inFireDistrict(state, b)) { b.fireRisk = 0; continue }
+    const accrue = fireRiskPoints(state, b) * COLONY.build.fireRiskPerPoint
+    const drain = protectedColony ? COLONY.build.fireWatchDrainPerDay * safety : 0
+    b.fireRisk = Math.max(0, Math.min(COLONY.build.fireIgniteThreshold, (b.fireRisk ?? 0) + (accrue - drain) * frac))
+    if ((b.fireRisk ?? 0) > worstRisk) { worstRisk = b.fireRisk ?? 0; worst = b }
+  }
+  if (worst && worstRisk >= COLONY.build.fireIgniteThreshold && (state.fireCooldown ?? 0) <= 0) {
+    worst.fire = 1 // a Spark catches in the most-at-risk building
+    worst.fireRisk = 0
+    state.fireCooldown = COLONY.build.fireIgnitionWindowDays * 24 * 60
+  }
+}
+
+/** Spec 065 — Fire readout for the HUD: Posts built, active fires, the district's worst risk (percent of the ignite line), and whether the watch has water. */
+export function fireStatus(state: ColonyState): { posts: number; active: number; risk: number; watered: boolean } {
+  const posts = countKind(state, 'firewatch')
+  if (posts === 0) return { posts: 0, active: 0, risk: 0, watered: false }
+  let active = 0
+  let maxRisk = 0
+  for (const b of state.buildings) {
+    if (b.fire) active++
+    if (inFireDistrict(state, b)) maxRisk = Math.max(maxRisk, b.fireRisk ?? 0)
+  }
+  return { posts, active, risk: Math.round((maxRisk / COLONY.build.fireIgniteThreshold) * 100), watered: (state.water ?? 0) > 0 }
 }
 
 /** Spec 025 — the household levy bites only while a built, staffed Levy Office stands (else the colony runs flat). */
@@ -2926,6 +3043,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   toolStep(state, dtMin) // spec 047 — make/draw tool-kits first so every tooled producer + the fitters read this step's rack
   maintenanceStep(state, dtMin) // spec 022 — accrue/repair wear first so producers read current condition
   incidentStep(state, dtMin) // spec 024 — crises strike, get answered, or hit their consequence (paused buildings won't produce below)
+  fireStep(state, dtMin) // spec 065 — Deck Fires: a Fire-Watch district accrues fire risk, ignites, suppresses or spreads + destroys (inert with no Post)
   feverStep(state, dtMin) // spec 026 — the outbreak spreads or is contained; producers below read the current fever
   unrestStep(state, dtMin) // spec 028 — unrest rises or is calmed; producers + income below read the current order
   feastStep(state, dtMin) // spec 030 — count down an active feast, or auto-throw one for a wealthy, restless colony

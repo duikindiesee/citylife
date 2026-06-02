@@ -65,6 +65,7 @@ export interface ColonyState {
   unempHighDays?: number // spec 062 — consecutive days unemployment has sat above the high line (drives the -1)
   unempSevereDays?: number // spec 062 — consecutive days unemployment has sat above the severe line (drives the -2)
   unempClearDays?: number // spec 062 — consecutive days unemployment has sat below the clear line (lifts the penalty)
+  fireCooldown?: number // spec 065 — sim-minutes until a district may light its next spontaneous fire (rate-limit; 0 until a Fire-Watch stands)
   parcels: Parcel[]
   jobs: ConstructionJob[]
   buildings: ColonyBuilding[]

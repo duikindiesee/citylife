@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -4609,5 +4609,93 @@ describe('Spec 064 — The Market Stall: local custom returns a little coin', ()
     s.colonists = 40; s.totalJobs = 8; s.treasury = 1000; s.linen = 100; s.folios = 100 // food left at 0 so no other treasury effect stirs
     for (let i = 0; i < 10; i++) { s.colonists = 40; s.totalJobs = 8; const before = s.treasury; stepBuild(s, sim.rng, 24 * 60); expect(s.treasury).toBeGreaterThanOrEqual(before) }
     expect(s.treasury).toBeGreaterThan(1000) // ...and it did earn a margin
+  })
+})
+
+describe('Spec 065 — Deck Fires and the Fire-Watch Post: a blaze that eats the floor', () => {
+  const mk = (kind: 'firewatch' | 'workshop' | 'habitat', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: kind === 'firewatch' ? 3 : kind === 'workshop' ? 10 : 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+  const forceBrownout = (s: ColonySim['state']) => { s.power.loadW = 100000; s.power.batteryWh = 0; s.powerGen = 0; s.power.solarW = 0 }
+
+  it('inert without a Post — stressed buildings never carry fire risk or ignite', () => {
+    const sim = new ColonySim(29)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    const ws = mk('workshop', lx, ly); ws.wear = 1 // worn + hot work, but no Fire-Watch anywhere
+    s.buildings.push(ws)
+    s.colonists = 20; s.totalJobs = 8
+    forceBrownout(s)
+    for (let i = 0; i < 6; i++) { s.colonists = 20; s.totalJobs = 8; forceBrownout(s); stepBuild(s, sim.rng, 24 * 60) }
+    expect(fireStatus(s).posts).toBe(0)
+    expect(ws.fire).toBeUndefined() // no Post → fire stays inside the generic incident
+    expect(ws.fireRisk ?? 0).toBe(0)
+  })
+
+  it('an unwatched district accrues risk and ignites its worst building; a calm one does not', () => {
+    const sim = new ColonySim(29)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('firewatch', lx, ly, { jobs: 3 }))
+    const ws = mk('workshop', lx + 2, ly); ws.wear = 1 // worn + hot work
+    const home = mk('habitat', lx + 5, ly) // calm: not worn, not hot work, and NON-adjacent (no spread can reach it)
+    s.buildings.push(ws, home)
+    s.colonists = 20; s.totalJobs = 8; s.water = 0 // dry tanks → the watch cannot protect
+    forceBrownout(s)
+    expect(inBrownout(s)).toBe(true)
+    for (let i = 0; i < 5; i++) { s.colonists = 20; s.totalJobs = 8; s.water = 0; forceBrownout(s); stepBuild(s, sim.rng, 24 * 60) }
+    expect(ws.fire).toBeGreaterThan(0) // the worst building caught
+    expect(home.fire).toBeUndefined() // the calm one did not
+    expect(s.fireCooldown).toBeGreaterThan(0) // ...and the district's one-per-window rate-limit is armed
+  })
+
+  it('a staffed, watered Post puts a Spark out', () => {
+    const sim = new ColonySim(29)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('firewatch', lx, ly, { jobs: 3 }))
+    const ws = mk('workshop', lx + 2, ly); ws.fire = 1 // a fresh Spark
+    s.buildings.push(ws)
+    s.colonists = 20; s.totalJobs = 8; s.water = 200; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh // staffed + watered
+    for (let i = 0; i < 3; i++) { s.colonists = 20; s.totalJobs = 8; s.water = 200; stepBuild(s, sim.rng, 60) }
+    expect(ws.fire).toBeUndefined() // the bucket-line put it out before it grew
+  })
+
+  it('an unfought fire spreads to a deck-neighbour, then destroys the building', () => {
+    const sim = new ColonySim(29)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('firewatch', lx, ly + 3, { jobs: 3 })) // a Post stands but the tanks are dry
+    const a = mk('workshop', lx, ly); a.fire = COLONY.build.fireSpreadAt - 30 // a Blaze about to spread
+    const near = mk('workshop', lx + 1, ly) // a direct deck-neighbour (distance 1)
+    const far = mk('workshop', lx + 4, ly) // across an empty gap (distance 4) — never catches
+    s.buildings.push(a, near, far)
+    s.colonists = 20; s.totalJobs = 8; s.water = 0 // dry → no suppression
+    for (let i = 0; i < 3; i++) { s.colonists = 20; s.totalJobs = 8; s.water = 0; stepBuild(s, sim.rng, 60) }
+    expect(near.fire).toBeGreaterThan(0) // the blaze leapt to the neighbour
+    expect(far.fire).toBeUndefined() // ...but not across the gap
+    for (let i = 0; i < 40; i++) { s.colonists = 20; s.totalJobs = 8; s.water = 0; stepBuild(s, sim.rng, 60) }
+    expect(s.buildings.some((b) => b.id === a.id)).toBe(false) // the original building burned down and is gone
+  })
+
+  it('a dry Post cannot suppress, and destruction never drives a stockpile below zero', () => {
+    const sim = new ColonySim(29)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('firewatch', lx, ly, { jobs: 3 }))
+    const ws = mk('workshop', lx + 2, ly); ws.fire = 100 // a young fire
+    s.buildings.push(ws)
+    s.colonists = 20; s.totalJobs = 8; s.water = 0; s.materials = 0; s.components = 0 // dry tanks, empty stores
+    const before = ws.fire
+    stepBuild(s, sim.rng, 60)
+    expect(ws.fire).toBeGreaterThan(before) // a dry watch is a painted bucket — the fire grew
+    ws.fire = COLONY.build.fireDestroyAt - 30 // push it to the brink of destruction
+    for (let i = 0; i < 3; i++) { s.colonists = 20; s.totalJobs = 8; s.water = 0; stepBuild(s, sim.rng, 60) }
+    expect(s.buildings.some((b) => b.id === ws.id)).toBe(false) // destroyed
+    expect(s.materials).toBeGreaterThanOrEqual(0) // ...and no stockpile went negative
+    expect(s.components).toBeGreaterThanOrEqual(0)
   })
 })

@@ -842,6 +842,37 @@ export const COLONY = {
     stallServedPerSale: 20, // one sale per this many served colonists per day (60 served → 3 sales/day)
     stallCoinPerSale: 4, // treasury margin per sale
     stallReserve: 10, // the stall never sells linen or folios below this (protects the Exchange's export stock + the top homes)
+    // Deck Fires + the Fire-Watch Post (spec 065): the colony's first SPREADING, building-destroying hazard. A Fire-Watch Post watches a
+    // district; in-district buildings accumulate fire risk under sustained stress (worn/brownout/warm/industry/full-store/crowded), and the
+    // worst ignites. A staffed, WATERED watch drains risk and suppresses sparks; left unwatched, a fire grows spark -> blaze, spreads to a
+    // deck-neighbour, then destroys the building. Deterministic (no dice — risk accrues, fire grows on a clock). Inert with no Post.
+    matFireWatch: 40, // materials to build
+    compFireWatch: 10, // components to build
+    toolFireWatch: 3, // tool-kits to build (hooks, axes, pump fittings, spec 047)
+    reelFireWatch: 2, // reels to build (hose stock, spec 013)
+    linenFireWatch: 6, // linen to build (gasket + hose cloth, spec 031)
+    crewFireWatch: 4, // builders reserved for the construction job
+    fireWatchCost: 1200, // treasury to build
+    fireWatchWorkers: 3, // run crew (Safety sector): full at 3, two-thirds at 2, one-third at 1, no protection at 0
+    fireWatchPowerLoad: 0.3, // a small grid load for the pumps
+    fireWatchRadius: 6, // a Post watches all buildings within this many deck tiles (its fire district)
+    fireWatchWaterPerDay: 6, // stored water a Post draws per day for barrels + drills (spec 046)
+    fireRiskPerPoint: 1, // fire risk a building accrues per stressor point per day
+    fireIgniteThreshold: 10, // a building ignites once its fire risk reaches this (~2-3 days of sustained stress, unwatched)
+    fireWatchDrainPerDay: 8, // fire risk a staffed, watered Post bleeds from a covered building per day (beats normal accrual)
+    fireIgnitionWindowDays: 10, // a district lights at most one new spontaneous fire per this many days (spread ignitions are separate)
+    fireWornPoints: 1, // stressor: worn past the maintenance line (spec 022)
+    fireBrownoutPoints: 1, // stressor: the colony is browning out (spec 017)
+    fireWarmPoints: 1, // stressor: warm season — Bloom or Highsun (spec 054)
+    fireHazardKindPoints: 2, // stressor: a power/industry/workshop/drying building (hot work)
+    fireFullStorePoints: 1, // stressor: a packed store near its cap (spec 023)
+    fireCrowdedPoints: 1, // stressor: crowded — many directly adjacent buildings
+    fireCrowdedNeighbours: 4, // ...this many or more adjacent buildings counts as crowded
+    fireBlazeAt: 720, // sim-minutes burning before a Spark becomes a Blaze (12h)
+    fireSpreadAt: 1080, // sim-minutes burning before a Blaze lights its most flammable deck-neighbour (18h)
+    fireDestroyAt: 2160, // sim-minutes burning before the building is destroyed (36h)
+    fireSuppressStrength: 3, // a fully-staffed, watered Post removes this multiple of real-time fire age per step (so a Spark dies fast)
+    fireAdjacency: 1.5, // deck-tile distance counted as a direct neighbour for spread (only direct neighbours catch)
     pollutionPerIndustrial: 3,
   },
 
