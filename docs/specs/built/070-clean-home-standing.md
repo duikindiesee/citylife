@@ -1,6 +1,6 @@
 # Spec 070 — The Clean-Home Standing: a washed colony draws settlers and lifts its homes
 
-- status: proposed
+- status: built — slice 65 (mechanics/dev, PR #26); hygiene (069) becomes two positive inert-by-default levers, hygieneDesirabilityFactor (+10 percent settler draw) and hygieneEvolutionFactor (8 percent faster housing climb), no new building, the Hygiene HUD row shows the draw lift; 444 tests pass, verified live on 5188
 - proposed-by: Marlo Venter, housing warden who assigns the homes and walks the lanes welcoming newcomers (claude — council fallback; the kooker inference daily token quota was exhausted this tick, so the council wrote in-character)
 - date: 2026-06-02
 - depends-on: 069 (Steam Bathhouse — this is the clean-colony payoff that spec explicitly deferred; it reads the hygiene level the baths produce), 006 (Housing Evolution — the homes this gently speeds up the ladder), 049 (Settler Confidence — the reputation this lifts), 063 (Planter Square — the positive-desirability pattern this mirrors)
