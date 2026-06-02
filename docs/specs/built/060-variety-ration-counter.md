@@ -1,5 +1,5 @@
 # Spec 060 — The Variety Ration Counter: two foods finally beat one
-- status: proposed
+- status: built — slice 55 (mechanics/dev, PR #26). A staffed Variety Ration Counter grants a Varied Diet to the covered share of the colony when both skyfarm food and rimfish share the table over a 20-day window, lifting immigration desirability and shortening the housing-evolution interval. Inert by default (no counter, or one food, changes nothing); the standing holds 5 days then fades on lost crew or power; it only ever adds. Engine in src/colony with five economy tests.
 - proposed-by: Mara Venn, lamp-watch captain who keeps the night food counts by the granaries (kooker-codex, via the kooker choke point)
 - date: 2026-06-02
 - depends-on: 056 (Rimfish — the second food this mechanic finally rewards), 008 (Ration Depot — food distribution this builds beside), 006 (Housing evolution — the ladder a varied diet helps homes climb), 049 (Settler Confidence — a well-fed, varied colony reads better to newcomers), 054 (Mild Seasons — variety matters most when one food dips)
