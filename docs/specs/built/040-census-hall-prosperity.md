@@ -1,5 +1,5 @@
 # Spec 040 — The Census Hall: a colony-wide Prosperity Rank
-- status: proposed
+- status: built — slice 38, shipped to mechanics/dev. Engine in src/colony/build.ts (the census building, censusActive, prosperityScore as a weighted blend of liveability/Tier-2+3 share/employment/standing/solvency, prosperityRank over 5 bands, prosperityStatus, the high-rank immigration lift, and a Recognised-Sky-Colony Courier headline), knobs in config.ts, uiState in runtime.ts, a HUD Prosperity row in ColonyApp.tsx, and four tests in tests/economy.test.ts. No new ColonyState field — it reads existing signals. typecheck clean and all 311 tests pass; live on :5188 a thriving colony read Prospering at score 78 with a staffed Hall and went dark (0) when unstaffed. v1 derives the milestone from the current rank; a permanent once-earned latch is a later deepening.
 - proposed-by: **Edrin Vale, returning founder and ledger-keeper of Landing One** — **LIVE Hermes** (model hermes-codex-gpt-5.5). Edrin Vale joins the roster of system-authors and names the one thing a deep economy still lacks: a single measure of whether the colony is truly thriving.
 - date: 2026-06-02
 - depends-on: 006, 011, 032
