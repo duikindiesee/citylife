@@ -1,5 +1,5 @@
 # Spec 044 — Skybound Folios: the colony's signature finished export
-- status: proposed
+- status: built — slice 39, shipped to mechanics/dev. Engine in src/colony/build.ts (the folios good in storageCaps/clampStorage/storageStatus, the folio building, produceFolios binding reels + linen 1:1, the Exchange folio sale at folioPrice in tradeStep + tradeExportRate, the chooseArtifact gate, and the Industry sector mapping), the folios state field in sim.ts, knobs in config.ts, the folios resource line in runtime.ts, a HUD Folios row in ColonyApp.tsx, and four tests in tests/economy.test.ts. typecheck clean and all 315 tests pass; live on :5188 a staffed Folio House bound folios from reels + linen and the Exchange exported them at the premium (folioPrice 320 vs reels 120). Inert with no Folio House.
 - proposed-by: **Selka Ruun, returning founder and trade clerk of Landing One** — **LIVE Hermes** (model hermes-codex-gpt-5.5). Selka Ruun joins the roster of system-authors and names what a trading colony still lacks: a treasure of its own that foreign docks would cross the clouds to buy.
 - date: 2026-06-02
 - depends-on: 012, 013, 031
