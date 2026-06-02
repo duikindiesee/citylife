@@ -56,6 +56,10 @@ export interface ColonyState {
   lastPassings: number // spec 055 — how many passed at the most recent year-turn (for the HUD)
   rimfish: number // spec 056 — a second food netted from the cloudsea rim; spares skygrain when on hand; 0 until a Net Dock stands
   waste: number // spec 058 — household waste burden [0,1]; occupied homes fill it slowly, Sanitation Posts clear it; harmless below 0.25
+  dietSkyfarm?: number // spec 060 — trailing-window tally of skyfarm meals served (decays); the ratio vs rimfish gives the recent diet mix
+  dietRimfish?: number // spec 060 — trailing-window tally of rimfish meals served (decays)
+  dietShort?: number // spec 060 — trailing-window tally of meals demanded but not served (empty larder); disqualifies the Varied Diet bonus
+  dietStanding?: number // spec 060 — 0..1 Varied Diet standing; 1 while a counter is operating on two foods, fades over varietyHoldDays when not
   parcels: Parcel[]
   jobs: ConstructionJob[]
   buildings: ColonyBuilding[]

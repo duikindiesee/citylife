@@ -756,6 +756,25 @@ export const COLONY = {
     theftRatePerDay: 0.00017, // fraction of the treasury skimmed per day when unguarded (~1.5% per ~90-day season)
     theftCapPerDay: 0.28, // hard daily ceiling on theft (~25 per season) so even a vast hoard loses little
     watchSuppressionPerPost: 0.8, // each staffed Watch Nook cuts theft by this (1 Nook → x0.2, 2 → x0)
+    // The Variety Ration Counter (spec 060): a staffed service post that rewards a VARIED diet. While built, staffed, powered and fed
+    // two foods, the share of the colony it covers earns a Varied Diet standing that gently lifts settler reputation (immigration) and
+    // helps served homes climb the ladder. Inert by default: no counter changes nothing; one food earns no bonus and no penalty; a lost
+    // staff/grid keeps the standing 5 days then fades. It only ever adds — never pushes a home or the colony below its no-counter base.
+    matVarietyCounter: 35, // materials to build
+    compVarietyCounter: 8, // components to build
+    toolVarietyCounter: 1, // tool-kits to build (the colony's first build that draws the Tool Crib's kits, spec 047)
+    crewVarietyCounter: 4, // builders reserved for the construction job
+    varietyCounterCost: 900, // treasury to build
+    varietyCounterWorkers: 2, // run crew: 1 ration clerk + 1 food handler
+    varietyCounterPowerLoad: 0.3, // a low-priority grid load while operating (sheds first in a brownout)
+    varietyCounterCapacity: 80, // residents one counter covers
+    dietWindowDays: 20, // trailing window over which the diet mix is read
+    varietyMinShare: 0.2, // rimfish must be at least this share of recent meals (else it is a token — one-food colony)
+    varietyMaxShare: 0.8, // ...and at most this share (else skyfarm is the token) — both foods must genuinely share the table
+    dietShortTolerance: 0.1, // recent unmet meals may be up to this share of the table before a shortage disqualifies the bonus
+    varietyDesirabilityBonus: 0.04, // immigration desirability lift at full coverage + standing (a colony that eats well reads better)
+    evoVarietyNudge: 0.05, // housing-evolution interval shortened by up to this fraction at full coverage + standing (homes climb a touch faster)
+    varietyHoldDays: 5, // a Varied Diet standing persists this long after staffing/power is lost, then fades to neutral
     pollutionPerIndustrial: 3,
   },
 

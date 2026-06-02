@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar'
 
 export interface Parcel {
   id: number
@@ -34,6 +34,7 @@ export interface Artifact {
   rimfishGen?: number // spec 056: rimfish/day netted when fully staffed (Cloudsea Net Docks); defaults to 0
   componentsCost?: number // spec 005: components consumed to construct (services); defaults to 0
   reelsCost?: number // spec 018: reels (luxury good) consumed to construct (battery sheds); defaults to 0
+  toolsCost?: number // spec 060: tool-kits consumed to construct (the Variety Ration Counter); defaults to 0
 }
 export interface ConstructionJob {
   id: number
@@ -108,6 +109,7 @@ const SURVEYCAMP_COLOR = 0xc8a25a // surveyor-ochre — the Survey Camp (claims 
 const CALENDAR_COLOR = 0xd9c089 // parchment-gold — the Calendar Office (the colony counts its years)
 const HALLOFNAMES_COLOR = 0x9a8fb0 // dusk-violet — the Hall of Names (the colony remembers its elders)
 const NETDOCK_COLOR = 0x4fb0a6 // cloudsea-teal — the Cloudsea Net Dock (nets rimfish, the colony's second food)
+const RATIONVAR_COLOR = 0xd98c5f // warm amber-coral — the Variety Ration Counter (mixed-ration serving hatch)
 const SANITATION_COLOR = 0x6f8f6a // drain-green — the Sanitation Post (clears household waste before it sickens the colony)
 const WATCHNOOK_COLOR = 0xb0a04a // lamp-brass — the Watch Nook (keeps petty theft off a rich colony's coffers)
 const key = (x: number, y: number) => x + ',' + y
@@ -147,6 +149,10 @@ export function initBuild(state: ColonyState): void {
   state.lastPassings = 0 // spec 055
   state.rimfish = 0 // spec 056 — no rimfish until a Cloudsea Net Dock stands
   state.waste = 0 // spec 058 — the colony starts clean
+  state.dietSkyfarm = 0 // spec 060 — no meal history yet
+  state.dietRimfish = 0 // spec 060
+  state.dietShort = 0 // spec 060
+  state.dietStanding = 0 // spec 060 — no Varied Diet until a Variety Ration Counter stands and two foods share the table
   state.standing = COLONY.build.standingStart // spec 032 — neutral Kookerverse Standing
   state.request = null // spec 032 — no open Civic Request
   state.requestCooldown = 0 // spec 032
@@ -478,6 +484,10 @@ function designSanitationPost(state: ColonyState): Artifact {
 function designWatchNook(state: ColonyState): Artifact {
   // Spec 059 — Watch Nook; staffed watchkeepers whose lamps keep petty theft off a rich colony's coffers.
   return { id: state.buildIds++, kind: 'watchnook', color: WATCHNOOK_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.watchNookWorkers, powerLoad: COLONY.build.watchNookPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.watchNookCost, materialsCost: COLONY.build.matWatchNook, crew: COLONY.build.crewWatchNook, materialsGen: 0, componentsCost: COLONY.build.compWatchNook }
+}
+function designVarietyCounter(state: ColonyState): Artifact {
+  // Spec 060 — Variety Ration Counter; a staffed serving hatch + ledger that rewards homes eating both greens and rimfish. Costs a tool-kit to build.
+  return { id: state.buildIds++, kind: 'rationvar', color: RATIONVAR_COLOR, height: 0.6, residents: 0, jobs: COLONY.build.varietyCounterWorkers, powerLoad: COLONY.build.varietyCounterPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.varietyCounterCost, materialsCost: COLONY.build.matVarietyCounter, crew: COLONY.build.crewVarietyCounter, materialsGen: 0, componentsCost: COLONY.build.compVarietyCounter, toolsCost: COLONY.build.toolVarietyCounter }
 }
 
 /** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
@@ -948,6 +958,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 20 && countKind(state, 'calendar') > 0 && countKind(state, 'hallofnames') < 1 && state.components >= COLONY.build.compHallOfNames && state.materials >= COLONY.build.matHallOfNames) return designHallOfNames(state)
   // Spec 056 — a sizeable colony with skyfarms to its name nets a second food: raise a Cloudsea Net Dock (one per ~3 skyfarms) for dietary resilience and a richer table.
   if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'greenhouse') > 0 && countKind(state, 'netdock') < Math.max(1, Math.ceil(countKind(state, 'greenhouse') / 3)) && state.components >= COLONY.build.compNetDock && state.materials >= COLONY.build.matNetDock + COLONY.build.rimfishSurplus) return designNetDock(state)
+  // Spec 060 — once the colony nets a second food (a Net Dock beside its skyfarms) and keeps tool-kits, raise a Variety Ration Counter (one per ~80 residents) so a varied diet finally rewards the homes.
+  if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'greenhouse') > 0 && countKind(state, 'netdock') > 0 && (state.tools ?? 0) >= COLONY.build.toolVarietyCounter && countKind(state, 'rationvar') < Math.max(1, Math.ceil(state.colonists / COLONY.build.varietyCounterCapacity)) && state.components >= COLONY.build.compVarietyCounter && state.materials >= COLONY.build.matVarietyCounter) return designVarietyCounter(state)
   // Spec 058 — once the homes are many and the waste is climbing toward the harmless line, raise a Sanitation Post (one per ~wasteOccupancyRef homes) to mind the drains.
   if (state.colonists > 14 && (state.waste ?? 0) > COLONY.build.wasteHarmlessBelow * 0.7 && countKind(state, 'sanitation') < Math.max(1, Math.ceil(countKind(state, 'habitat') / COLONY.build.wasteOccupancyRef)) && state.components >= COLONY.build.compSanitation && state.materials >= COLONY.build.matSanitation) return designSanitationPost(state)
   // Spec 059 — a rich, populous colony with coffers worth guarding raises a Watch Nook (up to two) to stop petty theft of the treasury.
@@ -1019,6 +1031,7 @@ export function autoGrow(state: ColonyState, rng: RNG): boolean {
   if (state.materials < artifact.materialsCost) return false // not enough supplies
   if (state.components < (artifact.componentsCost ?? 0)) return false // spec 005 — not enough refined goods
   if (state.reels < (artifact.reelsCost ?? 0)) return false // spec 018 — not enough reels (battery sheds)
+  if ((state.tools ?? 0) < (artifact.toolsCost ?? 0)) return false // spec 060 — not enough tool-kits (the Variety Ration Counter)
   if (free < artifact.crew) return false // not enough hands to raise it
 
   const c = caravan(state)
@@ -1028,6 +1041,7 @@ export function autoGrow(state: ColonyState, rng: RNG): boolean {
   state.materials -= artifact.materialsCost // consumed up front; crew reserved via the job until done
   state.components -= artifact.componentsCost ?? 0 // spec 005 — services consume refined goods to build
   state.reels -= artifact.reelsCost ?? 0 // spec 018 — battery sheds consume reels to build
+  state.tools = Math.max(0, (state.tools ?? 0) - (artifact.toolsCost ?? 0)) // spec 060 — the Variety Ration Counter consumes a tool-kit to build
   state.jobs.push({ id: state.buildIds++, x: lot.x, y: lot.y, artifact, progress: 0, path: roadPath(state, c.x, c.y, lot.x, lot.y) })
   return true
 }
@@ -1053,7 +1067,7 @@ export function claimLot(state: ColonyState, rng: RNG): { x: number; y: number }
 export type Sector = 'food' | 'services' | 'industry' | 'logistics' | 'safety' | 'trade' | 'civic'
 const SECTOR_OF: Record<BuildKind, Sector> = {
   greenhouse: 'food', depot: 'food', water: 'food', cistern: 'food', seedloft: 'food', netdock: 'food',
-  clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services', sanitation: 'services',
+  clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services', sanitation: 'services', rationvar: 'services',
   mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry',
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety', watchnook: 'safety',
@@ -2058,7 +2072,8 @@ export function housewaresFraction(state: ColonyState): number {
  *  current tier requires, after a grace period. */
 function housingStep(state: ColonyState, dtMin: number): void {
   state.housingTimer += dtMin
-  if (state.housingTimer < COLONY.build.housingUpgradeIntervalHours * 60) return
+  // Spec 060 — a Varied Diet shortens the upgrade interval a touch, so served homes climb sooner (factor is 1 with no counter, so inert by default).
+  if (state.housingTimer < COLONY.build.housingUpgradeIntervalHours * 60 * varietyEvolutionFactor(state)) return
   const elapsed = state.housingTimer
   state.housingTimer = 0
   for (const b of state.buildings) {
@@ -2161,7 +2176,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) * (1 + COLONY.build.solaceDesirabilityBonus * solaceCoverage(state)) * (arrearsStrain(state) ? COLONY.build.arrearsStrainDesirabilityFactor : 1) * (1 + COLONY.build.educationDesirabilityBonus * educationFraction(state)) * prosperityDesirabilityFactor(state) * ((state.rimfish ?? 0) > 0 ? 1 + COLONY.build.rimfishDesirabilityBonus : 1) * wasteDesirabilityFactor(state) // spec 025/026/027/028/029/030/032/033/035/037/039/042/040/056/058 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, named founders, a consoled colony, a colony deep in arrears, a schooled colony, a high-Prosperity colony, a varied table (rimfish), and a colony that minds its drains all pull on who comes and stays
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) * (1 + COLONY.build.solaceDesirabilityBonus * solaceCoverage(state)) * (arrearsStrain(state) ? COLONY.build.arrearsStrainDesirabilityFactor : 1) * (1 + COLONY.build.educationDesirabilityBonus * educationFraction(state)) * prosperityDesirabilityFactor(state) * ((state.rimfish ?? 0) > 0 ? 1 + COLONY.build.rimfishDesirabilityBonus : 1) * wasteDesirabilityFactor(state) * varietyDesirabilityFactor(state) // spec 025/026/027/028/029/030/032/033/035/037/039/042/040/056/058/060 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, named founders, a consoled colony, a colony deep in arrears, a schooled colony, a high-Prosperity colony, a varied table (rimfish), a colony that minds its drains, and a colony whose Variety Ration Counter keeps a Varied Diet all pull on who comes and stays
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * confidenceImmigrationFactor(state) * perDay) // spec 049 — arrivals also follow the colony's Settler Confidence (a healthy colony sits at the plateau, so this is 1; deep distress slows it, terrible distress halts it)
 }
 
@@ -2453,7 +2468,85 @@ function foodStep(state: ColonyState, dtMin: number): void {
   const consumption = (state.colonists + (state.children ?? 0) * COLONY.build.childDependentLoad) * COLONY.build.foodPerColonistPerDay * (dtMin / day)
   const fishMeals = Math.min(state.rimfish ?? 0, consumption * COLONY.build.rimfishMealFraction)
   if (fishMeals > 0) state.rimfish = Math.max(0, (state.rimfish ?? 0) - fishMeals)
-  state.food = Math.max(0, state.food - (consumption - fishMeals))
+  const grainDemand = consumption - fishMeals
+  const grainMeals = Math.min(state.food, grainDemand) // actual skyfarm meals served (the rest is an unmet shortfall)
+  state.food = Math.max(0, state.food - grainDemand)
+  dietTrack(state, grainMeals, fishMeals, consumption, dtMin) // spec 060 — record this step's diet mix in the trailing window
+}
+
+/** Spec 060 — fold this step's served meals into the decaying trailing window (skyfarm vs rimfish vs unmet shortfall). The two
+ *  food tallies share one decay, so their RATIO is the recent diet mix regardless of dt; the shortfall tally flags an empty larder.
+ *  Pure bookkeeping — writes only the diet fields, so a colony with no Variety Ration Counter is wholly unaffected. */
+function dietTrack(state: ColonyState, grainMeals: number, fishMeals: number, demand: number, dtMin: number): void {
+  const tau = COLONY.build.dietWindowDays * 24 * 60
+  const decay = Math.exp(-dtMin / tau)
+  state.dietSkyfarm = (state.dietSkyfarm ?? 0) * decay + grainMeals
+  state.dietRimfish = (state.dietRimfish ?? 0) * decay + fishMeals
+  state.dietShort = (state.dietShort ?? 0) * decay + Math.max(0, demand - grainMeals - fishMeals)
+}
+
+/** Spec 060 — structural coverage: the share of the colony a built Variety Ration Counter can serve (capacity per counter over
+ *  population), capped at 1. Counts every built counter; the operating/quality gate lives in the standing, so this stays purely
+ *  structural and is 0 with no counter. */
+export function varietyCovered(state: ColonyState): number {
+  const counters = countKind(state, 'rationvar')
+  if (counters === 0 || state.colonists <= 0) return 0
+  return Math.min(1, (COLONY.build.varietyCounterCapacity * counters) / state.colonists)
+}
+
+/** Spec 060 — does the colony qualify for a Varied Diet right now: a counter built, staffed (services sector) and powered (not
+ *  browned out), no recent larder shortfall, and both foods genuinely sharing the table (rimfish share inside the band). */
+function dietQualifies(state: ColonyState): boolean {
+  if (countKind(state, 'rationvar') === 0) return false
+  if (sectorStaffing(state, 'services') <= 0) return false // an unstaffed counter serves no one
+  if (inBrownout(state)) return false // a browned-out counter is dark
+  const sky = state.dietSkyfarm ?? 0
+  const fish = state.dietRimfish ?? 0
+  const total = sky + fish
+  if (total <= 0) return false
+  const share = fish / total
+  if (share < COLONY.build.varietyMinShare || share > COLONY.build.varietyMaxShare) return false // one food is only a token
+  if ((state.dietShort ?? 0) > total * COLONY.build.dietShortTolerance) return false // the larder ran short in the window
+  return true
+}
+
+/** Spec 060 — advance the Varied Diet standing: held at 1 while the colony qualifies, fading linearly over varietyHoldDays once it
+ *  stops (a lost crew or a browned-out grid keeps the homes' standing for a few days, then it winds down — never a cliff, never a penalty). */
+function dietStep(state: ColonyState, dtMin: number): void {
+  if (dietQualifies(state)) state.dietStanding = 1
+  else state.dietStanding = Math.max(0, (state.dietStanding ?? 0) - dtMin / (COLONY.build.varietyHoldDays * 24 * 60))
+}
+
+/** Spec 060 — the immigration desirability lift from a varied table: 1 (no effect) with no counter or no standing, up to
+ *  1 + varietyDesirabilityBonus at full coverage and a full standing. The reputation a well-fed, two-food colony earns. */
+export function varietyDesirabilityFactor(state: ColonyState): number {
+  return 1 + COLONY.build.varietyDesirabilityBonus * varietyCovered(state) * (state.dietStanding ?? 0)
+}
+
+/** Spec 060 — the housing-evolution speed-up from a varied table, as a multiplier on the upgrade interval (<= 1 shortens it):
+ *  1 (no effect) with no counter or standing, down to 1 - evoVarietyNudge at full coverage + standing. Homes still need every other requirement. */
+export function varietyEvolutionFactor(state: ColonyState): number {
+  return 1 - COLONY.build.evoVarietyNudge * varietyCovered(state) * (state.dietStanding ?? 0)
+}
+
+/** Spec 060 — Variety Ration Counter readout for the HUD/tests: counters built, the covered share + head count, the Varied Diet
+ *  standing (0..1), the recent rimfish share of meals, whether a Varied Diet is in force, and the immigration bonus it is worth. */
+export function dietVarietyStatus(state: ColonyState): { counters: number; covered: number; served: number; standing: number; share: number; varied: boolean; bonus: number } {
+  const counters = countKind(state, 'rationvar')
+  const covered = varietyCovered(state)
+  const standing = state.dietStanding ?? 0
+  const sky = state.dietSkyfarm ?? 0
+  const fish = state.dietRimfish ?? 0
+  const total = sky + fish
+  return {
+    counters,
+    covered,
+    served: Math.round(covered * state.colonists),
+    standing,
+    share: total > 0 ? fish / total : 0,
+    varied: counters > 0 && covered > 0 && standing > 0,
+    bonus: COLONY.build.varietyDesirabilityBonus * covered * standing,
+  }
 }
 
 /** Spec 012 — a staffed Skybridge Exchange exports SURPLUS goods (above a reserve) for treasury each day. */
@@ -2610,6 +2703,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   serviceUpkeep(state, dtMin)
   seedStep(state, dtMin) // spec 048 — dry food (+ water) into seed-stock, then let skyfarms draw it, before foodStep reads seedSupplyFactor
   foodStep(state, dtMin)
+  dietStep(state, dtMin) // spec 060 — settle the Varied Diet standing from the trailing diet mix; runs before housing + immigration read it
   housingStep(state, dtMin)
   wasteStep(state, dtMin) // spec 058 — occupied homes make filth, Sanitation Posts clear it; runs before immigration so desirability reads the current waste
   immigration(state, dtMin)

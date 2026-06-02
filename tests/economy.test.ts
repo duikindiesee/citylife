@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -4192,5 +4192,106 @@ describe('Spec 059 — The Watch Nook: a rich colony keeps honest lamps burning'
     expect(securityStatus(s).active).toBe(false)
     s.food = 100 // larder restored
     expect(securityStatus(s).active).toBe(true) // ...and the petty theft resumes
+  })
+})
+
+describe('Spec 060 — The Variety Ration Counter: two foods finally beat one', () => {
+  const mk = (kind: 'rationvar', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  // Drive the colony for `steps` hour-steps, topping up whichever foods are on the table each step so the trailing diet window fills.
+  const feed = (sim: ColonySim, steps: number, sky: boolean, fish: boolean) => {
+    const s = sim.state
+    for (let i = 0; i < steps; i++) {
+      if (sky) s.food = 500
+      if (fish) s.rimfish = 500
+      stepBuild(s, sim.rng, 60)
+    }
+  }
+
+  it('inert without a counter — both foods on the table change nothing', () => {
+    const sim = new ColonySim(11)
+    const s = sim.state
+    s.colonists = 40; s.totalJobs = 4; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    feed(sim, 30, true, true) // eating greens AND rimfish, but no Variety Ration Counter built
+    expect(dietVarietyStatus(s).counters).toBe(0)
+    expect(varietyCovered(s)).toBe(0)
+    expect(dietVarietyStatus(s).varied).toBe(false)
+    expect(varietyDesirabilityFactor(s)).toBe(1) // no reputation lift
+    expect(varietyEvolutionFactor(s)).toBe(1) // no evolution speed-up
+  })
+
+  it('a counter on one food earns no bonus and no penalty', () => {
+    const sim = new ColonySim(11)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.colonists = 40; s.totalJobs = 4; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    s.buildings.push(mk('rationvar', lx, ly, { jobs: 2 }))
+    feed(sim, 40, true, false) // skyfarm only — rimfish never reaches the table
+    expect(varietyCovered(s)).toBeGreaterThan(0) // the counter covers people...
+    expect(dietVarietyStatus(s).varied).toBe(false) // ...but one food is no varied diet
+    expect(s.dietStanding ?? 0).toBe(0)
+    expect(varietyDesirabilityFactor(s)).toBe(1) // no bonus AND no penalty
+    expect(varietyEvolutionFactor(s)).toBe(1)
+  })
+
+  it('a staffed, powered counter on two foods earns a Varied Diet', () => {
+    const sim = new ColonySim(11)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.colonists = 40; s.totalJobs = 4; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    s.buildings.push(mk('rationvar', lx, ly, { jobs: 2 }))
+    feed(sim, 40, true, true) // greens AND rimfish both on the table
+    const d = dietVarietyStatus(s)
+    expect(d.varied).toBe(true)
+    expect(d.standing).toBeGreaterThan(0)
+    expect(d.share).toBeGreaterThanOrEqual(COLONY.build.varietyMinShare) // both foods genuinely share the table
+    expect(d.share).toBeLessThanOrEqual(COLONY.build.varietyMaxShare)
+    expect(varietyDesirabilityFactor(s)).toBeGreaterThan(1) // a varied table lifts the colony's draw on newcomers
+    expect(varietyEvolutionFactor(s)).toBeLessThan(1) // ...and helps served homes climb a touch sooner
+  })
+
+  it('the bonus scales with coverage and never dips below the no-counter baseline', () => {
+    const sim = new ColonySim(11)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('rationvar', lx, ly, { jobs: 2 }))
+    s.colonists = 160 // one counter (capacity 80) covers half
+    expect(varietyCovered(s)).toBeCloseTo(0.5, 5)
+    s.dietStanding = 1 // a standing in force
+    expect(varietyDesirabilityFactor(s)).toBeCloseTo(1 + COLONY.build.varietyDesirabilityBonus * 0.5, 5) // half coverage → half the lift
+    expect(dietVarietyStatus(s).bonus).toBeCloseTo(COLONY.build.varietyDesirabilityBonus * 0.5, 5)
+    s.colonists = 40 // one counter now covers everyone (capped at 1)
+    expect(varietyCovered(s)).toBe(1)
+    s.dietStanding = 0 // no standing → exactly the no-counter baseline, never below
+    expect(varietyDesirabilityFactor(s)).toBe(1)
+    expect(varietyEvolutionFactor(s)).toBe(1)
+  })
+
+  it('a lost crew or grid holds the standing a few days, then it fades — never a penalty', () => {
+    const sim = new ColonySim(11)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.colonists = 40; s.totalJobs = 4; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    s.buildings.push(mk('rationvar', lx, ly, { jobs: 2 }))
+    feed(sim, 40, true, true)
+    expect(s.dietStanding ?? 0).toBeGreaterThan(0.99) // a full standing earned
+
+    // pull the grid: force a brownout (huge load, flat battery) so the counter goes dark; keep a trickle of solar so no one emigrates
+    s.power.loadW = 100000; s.power.batteryWh = 0; s.power.solarW = 1; s.powerGen = 0
+    expect(inBrownout(s)).toBe(true)
+    feed(sim, 24 * 3, true, true) // ~3 days dark (under the 5-day hold), still serving both foods
+    const held = s.dietStanding ?? 0
+    expect(held).toBeGreaterThan(0) // the standing held, not dropped off a cliff
+    expect(held).toBeLessThan(1) // ...but winding down
+    expect(varietyDesirabilityFactor(s)).toBeGreaterThanOrEqual(1) // never a penalty during the fade
+
+    feed(sim, 24 * 6, true, true) // past the 5-day hold
+    expect(s.dietStanding ?? 0).toBe(0) // faded to neutral
+    expect(varietyDesirabilityFactor(s)).toBe(1) // back to the no-counter baseline, never below
   })
 })
