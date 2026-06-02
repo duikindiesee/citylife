@@ -501,6 +501,14 @@ export const COLONY = {
     arrearsStrainFraction: 0.5, // debt past this fraction of the ceiling stretches the colony
     arrearsStrainDesirabilityFactor: 0.85, // immigration desirability while under arrears strain (settlers slow)
     arrearsUnrestPerDay: 0.03, // extra daily unrest pressure while under arrears strain
+    // Roster Office (spec 038): civic labour administration. Once built + staffed it unlocks labour priority by sector —
+    // under a shortage (free colonists < open jobs) it fills high-priority sectors first. 'balanced'/no-office = today's even split.
+    matRoster: 14,
+    compRoster: 4,
+    crewRoster: 4,
+    rosterCost: 2000,
+    rosterWorkers: 3,
+    rosterMaintCompPerDay: 0.5,
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

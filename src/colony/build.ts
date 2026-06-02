@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster'
 
 export interface Parcel {
   id: number
@@ -94,6 +94,7 @@ const HALL_COLOR = 0xd8b65a // founders' gold — the Founders' Hall (civic arch
 const IMPORT_COLOR = 0xc05a9a // import-magenta — the Skybridge Import Office (the buying side of trade)
 const SHRINE_COLOR = 0xb6a8e0 // soft violet — the Mooring Shrine (faith + solace for the homes)
 const COMPTROLLER_COLOR = 0x3f7d5a // ledger-green — the Comptroller's Office (the colony's debt desk)
+const ROSTER_COLOR = 0xc89b5a // roster-bronze — the Roster Office (civic labour administration)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -125,6 +126,7 @@ export function initBuild(state: ColonyState): void {
   state.spireBuilding = false
   state.frontTimer = COLONY.build.frontFirstDelayDays * 24 * 60 // spec 034 — the calm before the first Cloudsea Front
   state.importOrder = null // spec 036 — no standing import order until the council sets one
+  state.rosterMode = 'balanced' // spec 038 — even labour split until the council sets a priority mode
   state.parcels = []
   state.jobs = []
   state.buildings = []
@@ -390,6 +392,10 @@ function designComptroller(state: ColonyState): Artifact {
   // Spec 039 — Comptroller's Office; the colony's debt desk — lets the treasury run a managed deficit to a ceiling.
   return { id: state.buildIds++, kind: 'comptroller', color: COMPTROLLER_COLOR, height: 1.4, residents: 0, jobs: COLONY.build.comptrollerWorkers, powerLoad: 0.3, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.comptrollerCost, materialsCost: COLONY.build.matComptroller, crew: COLONY.build.crewComptroller, materialsGen: 0, componentsCost: COLONY.build.compComptroller }
 }
+function designRoster(state: ColonyState): Artifact {
+  // Spec 038 — Roster Office; civic labour administration that unlocks labour priority by sector under a shortage.
+  return { id: state.buildIds++, kind: 'roster', color: ROSTER_COLOR, height: 1.3, residents: 0, jobs: COLONY.build.rosterWorkers, powerLoad: 0.3, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.rosterCost, materialsCost: COLONY.build.matRoster, crew: COLONY.build.crewRoster, materialsGen: 0, componentsCost: COLONY.build.compRoster }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -636,6 +642,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 12 && countKind(state, 'import') < 1 && countKind(state, 'exchange') > 0 && state.components >= COLONY.build.compImportOffice && state.treasury > COLONY.build.importOfficeCost) return designImportOffice(state)
   // Spec 039 — a mature colony raises a Comptroller's Office so the treasury can ride a hard stretch on managed debt.
   if (state.colonists > 14 && countKind(state, 'comptroller') < 1 && state.components >= COLONY.build.compComptroller && state.treasury > COLONY.build.comptrollerCost) return designComptroller(state)
+  // Spec 038 — a mature colony raises a Roster Office so the council can prioritise scarce labour by sector.
+  if (state.colonists > 14 && countKind(state, 'roster') < 1 && state.components >= COLONY.build.compRoster) return designRoster(state)
   // Spec 026 — answer an outbreak: when fever climbs past the build line and no post contains it → raise a Fever Watch Post.
   if (state.outbreak > COLONY.build.feverBuildThreshold && state.components >= COLONY.build.compFeverWatch && countKind(state, 'feverwatch') < COLONY.build.maxFeverWatch) return designFeverWatch(state)
   // Spec 028 — keep the peace: when unrest climbs past the build line and no post patrols → raise a Ward Post.
@@ -725,12 +733,65 @@ export function claimLot(state: ColonyState, rng: RNG): { x: number; y: number }
 }
 
 /** Per-step: advance construction, settle the daily economy, and grow on an interval. */
+/** Spec 038 — the colony's labour sectors; every workplace kind belongs to exactly one. */
+export type Sector = 'food' | 'services' | 'industry' | 'logistics' | 'safety' | 'trade' | 'civic'
+const SECTOR_OF: Record<BuildKind, Sector> = {
+  greenhouse: 'food', depot: 'food', water: 'food',
+  clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services',
+  mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry',
+  transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics',
+  bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety',
+  exchange: 'trade', import: 'trade',
+  levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', habitat: 'civic',
+}
+// Spec 038 — priority orders the Roster Office fills under a shortage. 'balanced' uses the uniform split (no order).
+const ESSENTIALS_ORDER: Sector[] = ['food', 'safety', 'services', 'civic', 'logistics', 'industry', 'trade']
+const INDUSTRY_ORDER: Sector[] = ['industry', 'logistics', 'trade', 'civic', 'services', 'safety', 'food']
+
+/** Spec 038 — total open jobs in one sector (sum of building jobs). */
+function sectorDemand(state: ColonyState, sector: Sector): number {
+  let d = 0
+  for (const b of state.buildings) if (SECTOR_OF[b.artifact.kind] === sector) d += b.artifact.jobs
+  return d
+}
+
+/** Spec 038 — labour priority bites only while a built, staffed Roster Office stands. */
+export function rosterActive(state: ColonyState): boolean {
+  if (countKind(state, 'roster') === 0) return false
+  return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+/** Spec 038 — a sector's staffing fraction (0..1). Default (no Roster Office, or Balanced mode, or no shortage) is the
+ *  uniform min(1, colonists/totalJobs) the colony has always used — so existing play is unchanged. With a staffed office in
+ *  a priority mode AND a labour shortage, high-priority sectors fill to full first and the rest absorb the shortfall. */
+export function sectorStaffing(state: ColonyState, sector: Sector): number {
+  const D = state.totalJobs
+  if (D <= 0) return 0
+  const uniform = Math.min(1, state.colonists / D)
+  if ((state.rosterMode ?? 'balanced') === 'balanced' || !rosterActive(state)) return uniform
+  if (state.colonists >= D) return 1 // no shortage: everyone is placed, priority is moot
+  const order = state.rosterMode === 'essentials' ? ESSENTIALS_ORDER : INDUSTRY_ORDER
+  let remaining = state.colonists
+  for (const sec of order) {
+    const demand = sectorDemand(state, sec)
+    const assigned = Math.min(remaining, demand)
+    if (sec === sector) return demand > 0 ? assigned / demand : uniform
+    remaining -= assigned
+  }
+  return uniform
+}
+
+/** Spec 038 — Roster readout for the HUD: whether labour priority is live, and the council's mode. */
+export function rosterStatus(state: ColonyState): { active: boolean; mode: 'essentials' | 'balanced' | 'industry' } {
+  return { active: rosterActive(state), mode: state.rosterMode ?? 'balanced' }
+}
+
 /** Spec 002 — staffed mines extract materials into the stockpile; output scales with global staffing. */
 function produceMaterials(state: ColonyState, dtMin: number): void {
   let gen = 0
   for (const b of state.buildings) if (b.artifact.kind === 'mine' && !b.incident) gen += b.artifact.materialsGen * maintFactor(b) // spec 022/024 — a worn mine digs less; one mid-incident digs nothing
   if (gen <= 0) return
-  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const staffing = sectorStaffing(state, 'industry') // spec 038 — labour priority can starve or favour Industry under a shortage
   state.materials += gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) * (dtMin / (24 * 60)) // spec 009/017/021/026/028 — sick, brownout, congested, fevered or restless mines dig less
 }
 
@@ -1411,14 +1472,14 @@ export function frontStatus(state: ColonyState): { timerDays: number; incoming: 
 function academyStep(state: ColonyState, dtMin: number): void {
   const academies = countKind(state, 'academy')
   if (academies === 0) return
-  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const staffing = sectorStaffing(state, 'civic') // spec 038 — the Academy is Civic-sector labour
   if (staffing <= 0) return
   state.skilled = Math.min(state.colonists, state.skilled + academies * COLONY.build.academyTrainPerDay * staffing * (dtMin / (24 * 60)))
 }
 
 /** Spec 003 — staffed workshops consume materials and produce components (2:1); halt when materials run out. */
 function produceComponents(state: ColonyState, dtMin: number): void {
-  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * skillFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 009/017/020/021/026/028 — sick, brownout, unskilled, congested, fevered or restless workshops refine less
+  const eff = sectorStaffing(state, 'industry') * healthFactor(state) * powerFactor(state) * skillFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 009/017/020/021/026/028/038 — sick, brownout, unskilled, congested, fevered, restless or sector-deprioritised workshops refine less
   if (eff <= 0) return
   const day = 24 * 60
   for (const b of state.buildings) {
@@ -1435,7 +1496,7 @@ function produceComponents(state: ColonyState, dtMin: number): void {
 
 /** Spec 013 — staffed reel foundries consume components and produce reels (2:1); halt when components run out. */
 function produceReels(state: ColonyState, dtMin: number): void {
-  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * skillFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 009/017/020/021/026/028 — sick, brownout, unskilled, congested, fevered or restless foundries weave less
+  const eff = sectorStaffing(state, 'industry') * healthFactor(state) * powerFactor(state) * skillFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 009/017/020/021/026/028/038 — sick, brownout, unskilled, congested, fevered, restless or sector-deprioritised foundries weave less
   if (eff <= 0) return
   const day = 24 * 60
   for (const b of state.buildings) {
@@ -1455,13 +1516,13 @@ function produceFibre(state: ColonyState, dtMin: number): void {
   let gen = 0
   for (const b of state.buildings) if (b.artifact.kind === 'skimmer' && !b.incident) gen += (b.artifact.fibreGen ?? 0) * maintFactor(b)
   if (gen <= 0) return
-  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const staffing = sectorStaffing(state, 'industry') // spec 038 — Industry sector
   state.fibre += gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) * (dtMin / (24 * 60))
 }
 
 /** Spec 031 — staffed Weaveries weave fibre into linen bolts (2:1); halt when fibre runs out. */
 function produceLinen(state: ColonyState, dtMin: number): void {
-  const eff = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // sick, brownout, congested, fevered or restless weaveries weave less
+  const eff = sectorStaffing(state, 'industry') * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 038 — sick, brownout, congested, fevered, restless or sector-deprioritised weaveries weave less
   if (eff <= 0) return
   const day = 24 * 60
   for (const b of state.buildings) {
@@ -1634,6 +1695,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
     else if (b.artifact.kind === 'import') upkeep += COLONY.build.importOfficeMaintCompPerDay // spec 036 — office + dispatch supply
     else if (b.artifact.kind === 'shrine') linenUpkeep += COLONY.build.shrineLinenPerDay // spec 037 — prayer flags + memorial wraps (linen)
     else if (b.artifact.kind === 'comptroller') upkeep += COLONY.build.comptrollerMaintCompPerDay // spec 039 — ledger + audit supply
+    else if (b.artifact.kind === 'roster') upkeep += COLONY.build.rosterMaintCompPerDay // spec 038 — roster + dispatch supply
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))
@@ -1644,7 +1706,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
 /** Spec 007 — staffed greenhouses grow food (boosted near a Water Hub); colonists eat a little each day. */
 function foodStep(state: ColonyState, dtMin: number): void {
   const day = 24 * 60
-  const staffing = (state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0) * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 009/017/021/026/028 — sick, brownout, congested, fevered or restless greenhouses grow less
+  const staffing = sectorStaffing(state, 'food') * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 009/017/021/026/028/038 — sick, brownout, congested, fevered, restless or sector-deprioritised greenhouses grow less
   let grown = 0
   for (const b of state.buildings) {
     if (b.artifact.kind !== 'greenhouse' || b.incident) continue // spec 024 — a blighted greenhouse grows nothing
@@ -1691,7 +1753,7 @@ function importStep(state: ColonyState, dtMin: number): void {
   const price = COLONY.build.importPrice[good]
   if (price <= 0) return
   const offices = countKind(state, 'import')
-  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const staffing = sectorStaffing(state, 'trade') // spec 038 — the Import Office is Trade-sector labour
   if (staffing <= 0) return
   const frac = dtMin / (24 * 60)
   const byCapacity = offices * COLONY.build.importPerDay * staffing * frac // understaffed → proportionally less
@@ -1708,7 +1770,7 @@ export function importStatus(state: ColonyState): { active: boolean; order: Impo
   const active = importOfficeActive(state)
   const good = state.importOrder ?? null
   const offices = countKind(state, 'import')
-  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const staffing = sectorStaffing(state, 'trade') // spec 038 — Trade sector
   const perDay = active && good ? offices * COLONY.build.importPerDay * staffing : 0
   const dailySpend = good ? perDay * COLONY.build.importPrice[good] : 0
   return { active, order: good, perDay: Math.round(perDay), dailySpend: Math.round(dailySpend) }
@@ -1746,7 +1808,7 @@ export function arrearsStatus(state: ColonyState): { office: boolean; debt: numb
 function tradeStep(state: ColonyState, dtMin: number): void {
   const exchanges = countKind(state, 'exchange')
   if (exchanges === 0) return
-  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const staffing = sectorStaffing(state, 'trade') // spec 038 — the Exchange is Trade-sector labour
   if (staffing <= 0) return
   const frac = dtMin / (24 * 60)
   const compSell = Math.min(Math.max(0, state.components - COLONY.build.tradeComponentReserve), exchanges * COLONY.build.tradeComponentCapPerDay * staffing * frac)
@@ -1771,7 +1833,7 @@ function tradeStep(state: ColonyState, dtMin: number): void {
 export function tradeExportRate(state: ColonyState): number {
   const exchanges = countKind(state, 'exchange')
   if (exchanges === 0) return 0
-  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const staffing = sectorStaffing(state, 'trade') // spec 038 — Trade sector (readout mirrors tradeStep)
   if (staffing <= 0) return 0
   const compSell = Math.min(Math.max(0, state.components - COLONY.build.tradeComponentReserve), exchanges * COLONY.build.tradeComponentCapPerDay * staffing)
   const foodSell = Math.min(Math.max(0, state.food - COLONY.build.tradeFoodReserve), exchanges * COLONY.build.tradeFoodCapPerDay * staffing)

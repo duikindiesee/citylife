@@ -64,6 +64,7 @@ export interface ColonyState {
   spireBuilding: boolean // spec 033 — true while a Spire stage is being raised (its crew is reserved)
   frontTimer: number // spec 034 — sim-minutes until the next Cloudsea Front strikes (counts down once established)
   importOrder: 'materials' | 'components' | 'food' | 'linen' | 'reels' | null // spec 036 — standing import order the council sets; inert until an Import Office stands
+  rosterMode: 'essentials' | 'balanced' | 'industry' // spec 038 — labour-priority mode the council sets; only bites with a staffed Roster Office under a shortage ('balanced' = today's even split)
   buildingLoad: number
   powerGen: number
   lastIncomeDay: number
@@ -149,6 +150,7 @@ export class ColonySim {
       spireBuilding: false,
       frontTimer: 0, // spec 034 — set to the first-front delay in initBuild
       importOrder: null, // spec 036 — no standing import order until the council sets one
+      rosterMode: 'balanced', // spec 038 — even labour split by default; the lever only bites with a staffed Roster Office
       buildingLoad: 0,
       powerGen: 0,
       lastIncomeDay: 0,

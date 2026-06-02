@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -2609,5 +2609,79 @@ describe('Spec 039 — Treasury Arrears: giving an empty treasury teeth', () => 
     expect(arrearsStatus(s).office).toBe(false)
     expect(arrearsStatus(s).strain).toBe(false)
     expect(arrearsStatus(s).debt).toBe(0)
+  })
+})
+
+describe('Spec 038 — The Roster Office: making a labour shortage a choice', () => {
+  const mk = (kind: 'greenhouse' | 'mine' | 'roster', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+  // a colony short of labour: 6 food jobs + 6 industry jobs (+ optional roster), 6 colonists
+  const shortColony = (withRoster: boolean) => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('greenhouse', lx, ly, { jobs: 6 })) // food demand 6
+    s.buildings.push(mk('mine', lx + 1, ly, { jobs: 6 })) // industry demand 6
+    if (withRoster) s.buildings.push(mk('roster', lx + 2, ly, { jobs: 3 }))
+    s.totalJobs = withRoster ? 15 : 12
+    s.colonists = 6 // fewer hands than jobs → a real shortage
+    return s
+  }
+
+  it('labour priority bites only with a built, staffed Roster Office', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(rosterActive(s)).toBe(false) // no office
+    s.buildings.push(mk('roster', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    s.totalJobs = 3
+    s.colonists = 0
+    expect(rosterActive(s)).toBe(false) // office, but no clerks
+    s.colonists = 6
+    expect(rosterActive(s)).toBe(true)
+  })
+
+  it('balanced mode and no office both reproduce the uniform split exactly', () => {
+    const noOffice = shortColony(false)
+    const uniform = Math.min(1, noOffice.colonists / noOffice.totalJobs)
+    expect(sectorStaffing(noOffice, 'food')).toBeCloseTo(uniform, 6) // no office → uniform
+    expect(sectorStaffing(noOffice, 'industry')).toBeCloseTo(uniform, 6)
+    const balanced = shortColony(true)
+    balanced.rosterMode = 'balanced'
+    const u2 = Math.min(1, balanced.colonists / balanced.totalJobs)
+    expect(sectorStaffing(balanced, 'food')).toBeCloseTo(u2, 6) // office but Balanced → still uniform
+    expect(sectorStaffing(balanced, 'industry')).toBeCloseTo(u2, 6)
+  })
+
+  it('under a shortage, Essentials-first fills Food before Industry — and Industry-first reverses it', () => {
+    const s = shortColony(true)
+    s.rosterMode = 'essentials'
+    expect(sectorStaffing(s, 'food')).toBeGreaterThan(sectorStaffing(s, 'industry'))
+    expect(sectorStaffing(s, 'food')).toBeCloseTo(1, 5) // 6 hands fill the 6 food jobs first
+    expect(sectorStaffing(s, 'industry')).toBeCloseTo(0, 5) // none left for Industry
+    s.rosterMode = 'industry'
+    expect(sectorStaffing(s, 'industry')).toBeGreaterThan(sectorStaffing(s, 'food'))
+    expect(sectorStaffing(s, 'industry')).toBeCloseTo(1, 5) // now Industry fills first
+  })
+
+  it('with no shortage every sector is fully staffed regardless of mode', () => {
+    const s = shortColony(true)
+    s.colonists = 30 // more hands than jobs — no shortage
+    s.rosterMode = 'essentials'
+    expect(sectorStaffing(s, 'food')).toBe(1)
+    expect(sectorStaffing(s, 'industry')).toBe(1)
+  })
+
+  it('priority redistributes labour but conserves the total (essentials)', () => {
+    const s = shortColony(true)
+    s.rosterMode = 'essentials'
+    // sum of (staffing x demand) across the demanded sectors ~ the available labour (6)
+    const placed = sectorStaffing(s, 'food') * 6 + sectorStaffing(s, 'industry') * 6 + sectorStaffing(s, 'civic') * 3
+    expect(placed).toBeCloseTo(6, 5)
+    expect(rosterStatus(s).mode).toBe('essentials')
+    expect(rosterStatus(s).active).toBe(true)
   })
 })
