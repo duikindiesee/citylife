@@ -39,6 +39,11 @@ export class PlanetRenderer {
   private roadSurfaceMesh!: THREE.Mesh
   private roadLineMesh!: THREE.Mesh
   private lastRoadCount = -1
+  // Foliage is rebuilt as the colony grows so trees never sit under streets or buildings.
+  private foliageMesh?: THREE.InstancedMesh
+  private lastFoliageSig = -2
+  // Road cells the ambient pedestrians stroll along (their pavement network), refreshed when roads grow.
+  private roadCells: { x: number; y: number }[] = []
   private bldgMesh!: THREE.InstancedMesh
   private crewMesh!: THREE.InstancedMesh
   private streetPostMesh!: THREE.InstancedMesh
@@ -229,11 +234,28 @@ export class PlanetRenderer {
   /** Scatter instanced foliage cones across the wooded land (dense in forest, sparse on plains), so
    *  the island reads as living terrain rather than flat colour. Deterministic placement (stable per
    *  seed); pure decoration with no sim or gameplay impact. */
+  /** Build (or rebuild) the tree cover. Trees are kept OFF the streets, OFF every building/worksite (+ a one-cell
+   *  verge), and OUT of the civic core, so the settled ground reads as a cleared, planned place — not a forest with
+   *  roads bulldozed through it. Rebuilt as the colony grows (roads + buildings change). */
   private buildFoliage() {
-    const t = this.sim.state.terrain
+    const s = this.sim.state
+    const t = s.terrain
     const N = t.size
     const hash = (n: number) => ((n * 2654435761) >>> 0) / 4294967296
     const TREE_COLORS = [0x3f6b4a, 0x4f7d5a, 0x5b4a7d, 0x35633f]
+    // Cells the colony has cleared: roads, buildings and worksites (each with a one-cell verge), plus the civic core.
+    const cleared = new Set<number>()
+    const mark = (cx: number, cy: number, rad: number) => {
+      const ix = Math.round(cx), iy = Math.round(cy)
+      for (let yy = iy - rad; yy <= iy + rad; yy++) for (let xx = ix - rad; xx <= ix + rad; xx++) {
+        if (xx >= 0 && yy >= 0 && xx < N && yy < N) cleared.add(yy * N + xx)
+      }
+    }
+    for (const r of s.roads) mark(r.x, r.y, 1)
+    for (const b of s.buildings) mark(b.x, b.y, 1)
+    for (const j of s.jobs) mark(j.x, j.y, 1)
+    for (const st of s.structures) mark(st.x, st.y, 1) // the caravan/rocket + landmarks
+    mark(t.landing.x, t.landing.y, 4) // keep the colony heart clear
     const cells: number[] = []
     for (let i = 0; i < N * N; i++) {
       const b = t.biome[i]
@@ -241,13 +263,21 @@ export class PlanetRenderer {
       const x = i % N
       const y = (i / N) | 0
       if (t.isWater(x, y)) continue
+      if (cleared.has(i)) continue // no trees on the streets or under the homes
       const p = b === Biome.Forest ? 0.5 : 0.08
       if (hash(i + 1) < p) cells.push(i)
+    }
+    // Replace any prior foliage mesh (this method is now a rebuild) — dispose the old GPU resources first.
+    if (this.foliageMesh) {
+      this.scene.remove(this.foliageMesh)
+      this.foliageMesh.geometry.dispose()
+      ;(this.foliageMesh.material as THREE.Material).dispose()
+      this.foliageMesh = undefined
     }
     const cap = Math.min(cells.length, 1400)
     const geo = new THREE.ConeGeometry(0.42, 1.1, 6)
     geo.translate(0, 0.55, 0)
-    const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, flatShading: true }), cap)
+    const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, flatShading: true }), Math.max(1, cap))
     mesh.castShadow = true
     mesh.frustumCulled = false
     const col = new THREE.Color()
@@ -259,9 +289,9 @@ export class PlanetRenderer {
       const h1 = hash(i * 7 + 3)
       const h2 = hash(i * 13 + 5)
       const wy = Math.max(0, t.worldY(x, y))
-      const s = 0.7 + h1 * 0.7
+      const sc = 0.7 + h1 * 0.7
       this.dummy.position.set(this.wx(x) + (h1 - 0.5) * 0.7, wy, this.wz(y) + (h2 - 0.5) * 0.7)
-      this.dummy.scale.set(s, s + h2 * 0.6, s)
+      this.dummy.scale.set(sc, sc + h2 * 0.6, sc)
       this.dummy.rotation.set(0, h2 * Math.PI, 0)
       this.dummy.updateMatrix()
       mesh.setMatrixAt(n, this.dummy.matrix)
@@ -270,6 +300,7 @@ export class PlanetRenderer {
       n++
     }
     mesh.count = n
+    this.foliageMesh = mesh
     this.scene.add(mesh)
   }
 
@@ -752,6 +783,14 @@ export class PlanetRenderer {
       this.rebuildRoads()
       this.lastRoadCount = s.roads.length
     }
+    // as the cleared footprint (roads + buildings + worksites) changes, re-clear the trees from it and refresh the
+    // pavement the ambient pedestrians stroll along.
+    const folSig = s.roads.length * 100003 + s.buildings.length * 101 + s.jobs.length
+    if (folSig !== this.lastFoliageSig) {
+      this.buildFoliage()
+      this.roadCells = s.roads.map((r) => ({ x: r.x, y: r.y }))
+      this.lastFoliageSig = folSig
+    }
     const rn = s.roads.length
     // plot markers reflect allocation changes (allocated → dim flag, lowered pole)
     if (s.cityPlan) this.syncPlotMarkers(s.cityPlan.plots)
@@ -942,6 +981,26 @@ export class PlanetRenderer {
     return !t.isWater(ix, iy)
   }
 
+  /** Pick a pedestrian's next stroll target: a nearby road cell (so they keep to the pavement), nudged a little to the
+   *  kerb so they don't all walk the centre line. Falls back to a gentle wander near the landing before any streets exist. */
+  private pickPedTarget(px: number, py: number, lx: number, ly: number): { x: number; y: number } {
+    const rc = this.roadCells
+    if (rc.length) {
+      let near = rc.filter((c) => { const dd = Math.hypot(c.x - px, c.y - py); return dd > 1.5 && dd < 16 })
+      if (!near.length) near = rc
+      const c = near[(Math.random() * near.length) | 0]!
+      return { x: c.x + (Math.random() - 0.5) * 0.5, y: c.y + (Math.random() - 0.5) * 0.5 }
+    }
+    for (let tries = 0; tries < 8; tries++) {
+      const ang = Math.atan2(ly - py, lx - px) + (Math.random() - 0.5) * Math.PI * 1.6
+      const step = 3 + Math.random() * 6
+      const nx = px + Math.cos(ang) * step
+      const ny = py + Math.sin(ang) * step
+      if (this.pedOnLand(nx, ny) && Math.hypot(nx - lx, ny - ly) < 18) return { x: nx, y: ny }
+    }
+    return { x: px, y: py }
+  }
+
   /** Seed ~16 wandering pedestrians on land within walking distance of the landing site. */
   private initPedestrians() {
     const t = this.sim.state.terrain
@@ -979,17 +1038,9 @@ export class PlanetRenderer {
       let dx = p.tx - p.x, dy = p.ty - p.y
       let d = Math.hypot(dx, dy)
       if (d < 0.4) {
-        for (let tries = 0; tries < 8; tries++) {
-          const ang = Math.atan2(ly - p.y, lx - p.x) + (Math.random() - 0.5) * Math.PI * 1.6
-          const step = 3 + Math.random() * 6
-          const nx = p.x + Math.cos(ang) * step
-          const ny = p.y + Math.sin(ang) * step
-          if (this.pedOnLand(nx, ny) && Math.hypot(nx - lx, ny - ly) < 18) {
-            p.tx = nx
-            p.ty = ny
-            break
-          }
-        }
+        const next = this.pickPedTarget(p.x, p.y, lx, ly)
+        p.tx = next.x
+        p.ty = next.y
         dx = p.tx - p.x
         dy = p.ty - p.y
         d = Math.hypot(dx, dy)

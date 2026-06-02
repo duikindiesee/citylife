@@ -5,3 +5,6 @@ dist-ssr
 .vite
 .DS_Store
 *.log
+
+# local marketing/export artifacts (cards, frames) — not part of the build
+social-export/
