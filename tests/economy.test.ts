@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, reclaimStatus, waterTankCap, festivalStatus, festBoardActive, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, reclaimStatus, waterTankCap, festivalStatus, festBoardActive, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -4852,5 +4852,79 @@ describe('Spec 067 — The Highsun Lantern Supper: a year the people look forwar
     for (let i = 0; i < COLONY.build.festFullCheerDays + 2; i++) stepBuild(s, sim.rng, 24 * 60) // run out the 30-day window
     expect(festivalStatus(s).active).toBe(false) // the cheer faded
     expect(s.festivalCheer ?? 0).toBe(0)
+  })
+})
+
+describe('Spec 068 — The Fungus Cellar: a third food the dark decks can grow', () => {
+  const mk = (kind: 'cellar' | 'rationvar', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: kind === 'cellar' ? 3 : 2, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('inert without a Cellar — no duskcap appears', () => {
+    const sim = new ColonySim(41)
+    const s = sim.state
+    s.colonists = 20; s.totalJobs = 6; s.food = 200; s.rimfish = 100; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    for (let i = 0; i < 10; i++) { s.colonists = 20; s.totalJobs = 6; s.food = 200; stepBuild(s, sim.rng, 24 * 60) }
+    expect(duskcapStatus(s).cellars).toBe(0)
+    expect(s.duskcap ?? 0).toBe(0) // no Cellar → no third food
+  })
+
+  it('a staffed, watered Cellar grows duskcap, even in a brownout', () => {
+    const sim = new ColonySim(41)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('cellar', lx, ly, { jobs: 3, duskcapGen: COLONY.build.duskcapPerDay }))
+    s.colonists = 20; s.totalJobs = 6; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    // keep the colony fed on rimfish so the homes don't eat the duskcap — isolating the cellar's growth
+    for (let i = 0; i < 5; i++) { s.colonists = 20; s.totalJobs = 6; s.water = 100; s.rimfish = 100; stepBuild(s, sim.rng, 24 * 60) }
+    const grown = s.duskcap ?? 0
+    expect(grown).toBeGreaterThan(0) // the dark decks earned their keep
+    expect(grown).toBeLessThanOrEqual(storageCaps(s).duskcap) // ...bounded by the store
+    // force a brownout — the low-draw cellar keeps growing where the greenhouses would falter
+    s.power.loadW = 100000; s.power.batteryWh = 0; s.power.solarW = 1; s.powerGen = 0
+    expect(inBrownout(s)).toBe(true)
+    const before = s.duskcap ?? 0
+    for (let i = 0; i < 3; i++) { s.colonists = 20; s.totalJobs = 6; s.water = 100; s.rimfish = 100; stepBuild(s, sim.rng, 24 * 60) }
+    expect(s.duskcap ?? 0).toBeGreaterThan(before) // still growing in the dark week
+  })
+
+  it('duskcap spares the other foods — the homes eat it for the protein course', () => {
+    const make = (dusk: number) => {
+      const sim = new ColonySim(41)
+      const s = sim.state
+      s.colonists = 20; s.totalJobs = 6; s.food = 120; s.rimfish = 0; s.driedFish = 0; s.duskcap = dusk; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh // food below the 160 cap so no clamp confound
+      stepBuild(s, sim.rng, 24 * 60) // one day's meals (no fish on hand)
+      return s
+    }
+    const withDusk = make(100), withoutDusk = make(0)
+    expect(withDusk.food).toBeGreaterThan(withoutDusk.food) // duskcap took the protein course, so skygrain lasted longer
+    expect(withDusk.duskcap ?? 0).toBeLessThan(100) // ...and the cellar's harvest was eaten
+  })
+
+  it('keeps the diet varied — greens + duskcap with no fish still reads a Varied Diet', () => {
+    const sim = new ColonySim(41)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('rationvar', lx, ly, { jobs: 2 }))
+    s.colonists = 40; s.totalJobs = 8; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    for (let i = 0; i < 40; i++) { s.colonists = 40; s.totalJobs = 8; s.food = 500; s.rimfish = 0; s.driedFish = 0; s.duskcap = 500; stepBuild(s, sim.rng, 24 * 60) }
+    expect(dietVarietyStatus(s).varied).toBe(true) // greens + duskcap is a varied table even with the nets idle
+  })
+
+  it('duskcap is capped and never goes negative', () => {
+    const sim = new ColonySim(41)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('cellar', lx, ly, { jobs: 3, duskcapGen: COLONY.build.duskcapPerDay }))
+    s.colonists = 20; s.totalJobs = 6; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    const cap = storageCaps(s).duskcap
+    for (let i = 0; i < 200; i++) { s.colonists = 20; s.totalJobs = 6; s.water = 100; stepBuild(s, sim.rng, 24 * 60) } // overproduce
+    expect(s.duskcap ?? 0).toBeLessThanOrEqual(cap) // clamped to the store
+    // now eat it down with no fish and an empty larder
+    for (let i = 0; i < 200; i++) { s.colonists = 20; s.totalJobs = 6; s.rimfish = 0; s.food = 0; s.water = 0; stepBuild(s, sim.rng, 24 * 60) }
+    expect(s.duskcap ?? 0).toBeGreaterThanOrEqual(0) // never negative
   })
 })

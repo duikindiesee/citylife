@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall' | 'firewatch' | 'reclaimer' | 'festboard'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall' | 'firewatch' | 'reclaimer' | 'festboard' | 'cellar'
 
 export interface Parcel {
   id: number
@@ -32,6 +32,7 @@ export interface Artifact {
   materialsGen: number // spec 002: materials/day produced when fully staffed (mines); 0 otherwise
   fibreGen?: number // spec 031: skyflax fibre/day produced when fully staffed (Skimmer Docks); defaults to 0
   rimfishGen?: number // spec 056: rimfish/day netted when fully staffed (Cloudsea Net Docks); defaults to 0
+  duskcapGen?: number // spec 068: duskcap/day grown when fully staffed (Fungus Cellars); defaults to 0
   componentsCost?: number // spec 005: components consumed to construct (services); defaults to 0
   reelsCost?: number // spec 018: reels (luxury good) consumed to construct (battery sheds); defaults to 0
   toolsCost?: number // spec 060: tool-kits consumed to construct (the Variety Ration Counter); defaults to 0
@@ -123,6 +124,7 @@ const STALL_COLOR = 0xc6713e // warm terracotta — the Market Stall (awning + c
 const FIREWATCH_COLOR = 0xd2473a // alarm red — the Fire-Watch Post (bucket barrels + pump)
 const RECLAIMER_COLOR = 0x3f8fa0 // teal utility — the Greywater Reclaimer (settling drums + pump)
 const FESTBOARD_COLOR = 0xe2a93f // warm lantern-gold — the Festival Board (noticeboard + lantern hooks)
+const CELLAR_COLOR = 0x7d6b86 // dusky violet-grey — the Fungus Cellar (dark damp grow-beds)
 const SANITATION_COLOR = 0x6f8f6a // drain-green — the Sanitation Post (clears household waste before it sickens the colony)
 const WATCHNOOK_COLOR = 0xb0a04a // lamp-brass — the Watch Nook (keeps petty theft off a rich colony's coffers)
 const key = (x: number, y: number) => x + ',' + y
@@ -162,6 +164,7 @@ export function initBuild(state: ColonyState): void {
   state.lastPassings = 0 // spec 055
   state.rimfish = 0 // spec 056 — no rimfish until a Cloudsea Net Dock stands
   state.driedFish = 0 // spec 061 — no dried rimfish until a Rimfish Drying Rack stands
+  state.duskcap = 0 // spec 068 — no duskcap until a Fungus Cellar stands
   state.fireCooldown = 0 // spec 065 — no fire timing until a Fire-Watch stands
   state.lastFestivalYear = 0 // spec 067 — no Highsun Supper before a Festival Board stands
   state.festivalCheer = 0 // spec 067
@@ -498,6 +501,10 @@ function designHallOfNames(state: ColonyState): Artifact {
 function designNetDock(state: ColonyState): Artifact {
   // Spec 056 — Cloudsea Net Dock; a staffed rim gatherer that nets rimfish, the colony's second food (not subject to skyfarm seasons).
   return { id: state.buildIds++, kind: 'netdock', color: NETDOCK_COLOR, height: 0.6, residents: 0, jobs: COLONY.build.netDockWorkers, powerLoad: COLONY.build.netDockPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.netDockCost, materialsCost: COLONY.build.matNetDock, crew: COLONY.build.crewNetDock, materialsGen: 0, componentsCost: COLONY.build.compNetDock, rimfishGen: COLONY.build.rimfishPerDay }
+}
+function designCellar(state: ColonyState): Artifact {
+  // Spec 068 — Fungus Cellar; a staffed Food worksite on the dark decks that grows duskcap (the third food) — non-seasonal, low-water, power-resilient.
+  return { id: state.buildIds++, kind: 'cellar', color: CELLAR_COLOR, height: 0.5, residents: 0, jobs: COLONY.build.cellarWorkers, powerLoad: COLONY.build.cellarPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.cellarCost, materialsCost: COLONY.build.matCellar, crew: COLONY.build.crewCellar, materialsGen: 0, componentsCost: COLONY.build.compCellar, toolsCost: COLONY.build.toolCellar, duskcapGen: COLONY.build.duskcapPerDay }
 }
 function designSanitationPost(state: ColonyState): Artifact {
   // Spec 058 — Sanitation Post; staffed drain-keepers who clear household waste before it sickens the colony.
@@ -1160,6 +1167,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 20 && countKind(state, 'calendar') > 0 && countKind(state, 'hallofnames') < 1 && state.components >= COLONY.build.compHallOfNames && state.materials >= COLONY.build.matHallOfNames) return designHallOfNames(state)
   // Spec 056 — a sizeable colony with skyfarms to its name nets a second food: raise a Cloudsea Net Dock (one per ~3 skyfarms) for dietary resilience and a richer table.
   if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'greenhouse') > 0 && countKind(state, 'netdock') < Math.max(1, Math.ceil(countKind(state, 'greenhouse') / 3)) && state.components >= COLONY.build.compNetDock && state.materials >= COLONY.build.matNetDock + COLONY.build.rimfishSurplus) return designNetDock(state)
+  // Spec 068 — once the colony nets fish and keeps water tanks, dig a Fungus Cellar (one per ~40 colonists) for a hardy third food the seasons and brownouts cannot touch.
+  if (state.colonists > 16 && countKind(state, 'netdock') > 0 && countKind(state, 'cistern') > 0 && countKind(state, 'cellar') < Math.max(1, Math.ceil(state.colonists / 40)) && state.components >= COLONY.build.compCellar && state.materials >= COLONY.build.matCellar && (state.tools ?? 0) >= COLONY.build.toolCellar) return designCellar(state)
   // Spec 060 — once the colony nets a second food (a Net Dock beside its skyfarms) and keeps tool-kits, raise a Variety Ration Counter (one per ~80 residents) so a varied diet finally rewards the homes.
   if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'greenhouse') > 0 && countKind(state, 'netdock') > 0 && (state.tools ?? 0) >= COLONY.build.toolVarietyCounter && countKind(state, 'rationvar') < Math.max(1, Math.ceil(state.colonists / COLONY.build.varietyCounterCapacity)) && state.components >= COLONY.build.compVarietyCounter && state.materials >= COLONY.build.matVarietyCounter) return designVarietyCounter(state)
   // Spec 061 — once the colony nets fish and keeps linen + tool-kits, raise a Rimfish Drying Rack (one per ~2 Net Docks) to bank the surplus catch against a lean season; gated on a real fresh-fish surplus so it never starves the table.
@@ -1284,7 +1293,7 @@ export function claimLot(state: ColonyState, rng: RNG): { x: number; y: number }
 /** Spec 038 — the colony's labour sectors; every workplace kind belongs to exactly one. */
 export type Sector = 'food' | 'services' | 'industry' | 'logistics' | 'safety' | 'trade' | 'civic'
 const SECTOR_OF: Record<BuildKind, Sector> = {
-  greenhouse: 'food', depot: 'food', water: 'food', cistern: 'food', seedloft: 'food', netdock: 'food',
+  greenhouse: 'food', depot: 'food', water: 'food', cistern: 'food', seedloft: 'food', netdock: 'food', cellar: 'food',
   clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services', sanitation: 'services', rationvar: 'services',
   mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry', dryrack: 'industry',
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics', reclaimer: 'logistics',
@@ -1441,7 +1450,7 @@ function maintenanceUncovered(state: ColonyState): boolean {
 }
 
 /** Spec 023 — per-resource storage cap = the founders' hold + what each Storehouse Platform adds. */
-export function storageCaps(state: ColonyState): { materials: number; components: number; food: number; reels: number; fibre: number; linen: number; folios: number; rimfish: number; driedFish: number } {
+export function storageCaps(state: ColonyState): { materials: number; components: number; food: number; reels: number; fibre: number; linen: number; folios: number; rimfish: number; driedFish: number; duskcap: number } {
   const n = countKind(state, 'storehouse')
   return {
     materials: COLONY.build.storeBaseMaterials + n * COLONY.build.storePerMaterials,
@@ -1453,6 +1462,7 @@ export function storageCaps(state: ColonyState): { materials: number; components
     folios: COLONY.build.storeBaseFolios + n * COLONY.build.storePerFolios, // spec 044
     rimfish: COLONY.build.storeBaseRimfish + n * COLONY.build.storePerRimfish, // spec 056
     driedFish: COLONY.build.storeBaseDriedFish + n * COLONY.build.storePerDriedFish, // spec 061
+    duskcap: COLONY.build.storeBaseDuskcap + n * COLONY.build.storePerDuskcap, // spec 068
   }
 }
 
@@ -1468,6 +1478,7 @@ function clampStorage(state: ColonyState): void {
   if ((state.folios ?? 0) > cap.folios) state.folios = cap.folios // spec 044
   if ((state.rimfish ?? 0) > cap.rimfish) state.rimfish = cap.rimfish // spec 056
   if ((state.driedFish ?? 0) > cap.driedFish) state.driedFish = cap.driedFish // spec 061
+  if ((state.duskcap ?? 0) > cap.duskcap) state.duskcap = cap.duskcap // spec 068
 }
 
 /** Spec 023 — storage readout for the HUD: fullest stockpile (0..1), whether it's overflowing, and which. */
@@ -2217,6 +2228,29 @@ function produceRimfish(state: ColonyState, dtMin: number): void {
   state.rimfish = Math.min(cap, (state.rimfish ?? 0) + gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) * (dtMin / (24 * 60)))
 }
 
+/** Spec 068 — staffed Fungus Cellars grow duskcap, the colony's hardy third food, on the dark decks. Unlike the greenhouses it is NOT
+ *  subject to the skyfarm seasons (spec 054), draws only a little water, and keeps growing in a brownout (its low-draw fans floor at
+ *  cellarPowerFloor) — so it is the food that holds through a lean Frost or a dark week. Inert with no Cellar (it returns at once). */
+function produceDuskcap(state: ColonyState, dtMin: number): void {
+  const cellars = countKind(state, 'cellar')
+  if (cellars === 0) return
+  let gen = 0
+  for (const b of state.buildings) if (b.artifact.kind === 'cellar' && !b.incident) gen += (b.artifact.duskcapGen ?? 0) * maintFactor(b)
+  if (gen <= 0) return
+  const frac = dtMin / (24 * 60)
+  const staffing = sectorStaffing(state, 'food')
+  const power = Math.max(COLONY.build.cellarPowerFloor, powerFactor(state)) // resilient — the low-draw fans keep going in a brownout
+  const watered = (state.water ?? 0) > 0 ? 1 : COLONY.build.cellarDryFloor // a dry damp-line slows the beds (no skyfarm season touches it)
+  const cap = storageCaps(state).duskcap
+  state.duskcap = Math.min(cap, (state.duskcap ?? 0) + gen * staffing * healthFactor(state) * power * transitFactor(state) * feverFactor(state) * orderFactor(state) * watered * frac)
+  state.water = Math.max(0, (state.water ?? 0) - COLONY.build.cellarWaterPerDay * cellars * frac) // the damp-line draw
+}
+
+/** Spec 068 — Duskcap readout for the HUD: the stock and the Cellar count. */
+export function duskcapStatus(state: ColonyState): { stock: number; cellars: number } {
+  return { stock: Math.round(state.duskcap ?? 0), cellars: countKind(state, 'cellar') }
+}
+
 /** Spec 056 — Rimfish readout for the HUD: the stock, the dock count, and whether the colony is offering a varied table. */
 export function rimfishStatus(state: ColonyState): { stock: number; docks: number; varied: boolean } {
   return { stock: Math.round(state.rimfish ?? 0), docks: countKind(state, 'netdock'), varied: (state.rimfish ?? 0) > 0 }
@@ -2896,7 +2930,9 @@ function foodStep(state: ColonyState, dtMin: number): void {
   if (freshFish > 0) state.rimfish = Math.max(0, (state.rimfish ?? 0) - freshFish)
   const driedFishMeals = Math.min(state.driedFish ?? 0, fishCap - freshFish)
   if (driedFishMeals > 0) state.driedFish = Math.max(0, (state.driedFish ?? 0) - driedFishMeals)
-  const fishMeals = freshFish + driedFishMeals
+  const duskMeals = Math.min(state.duskcap ?? 0, fishCap - freshFish - driedFishMeals) // spec 068 — the cellar's duskcap fills the protein course after the fish, sparing skygrain
+  if (duskMeals > 0) state.duskcap = Math.max(0, (state.duskcap ?? 0) - duskMeals)
+  const fishMeals = freshFish + driedFishMeals + duskMeals // all count as the varied non-greens dish for the diet tracker (spec 060)
   const grainDemand = consumption - fishMeals
   const grainMeals = Math.min(state.food, grainDemand) // actual skyfarm meals served (the rest is an unmet shortfall)
   state.food = Math.max(0, state.food - grainDemand)
@@ -3175,6 +3211,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   produceFibre(state, dtMin) // spec 031 — gather skyflax fibre (the second extractor)
   produceRimfish(state, dtMin) // spec 056 — net rimfish from the rim (the second food); runs before foodStep so the day's catch can spare skygrain
   produceDriedFish(state, dtMin) // spec 061 — dry the SURPLUS fresh rimfish into a shelf-stable reserve before foodStep eats (fresh first, then dried)
+  produceDuskcap(state, dtMin) // spec 068 — grow duskcap (the hardy third food) before foodStep eats the protein course (rimfish -> dried -> duskcap)
   academyStep(state, dtMin)
   produceComponents(state, dtMin)
   produceReels(state, dtMin)

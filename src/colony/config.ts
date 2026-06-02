@@ -917,6 +917,22 @@ export const COLONY = {
     festPartialCheerDays: 15, // ...and the modest cheer
     festUnrestRelief: 0.1, // one-time unrest relief a full supper brings (a calmer colony, like Founders' Day)
     festStandingGain: 0.05, // Kookerverse Standing a full supper earns (once per year)
+    // The Fungus Cellar (spec 068): a hardy third food (duskcap) grown on the cool dark under-decks — non-seasonal, low-water and power-
+    // resilient, so it keeps coming in a Frost or a brownout where the greenhouses falter. Eaten as a third protein course (after rimfish +
+    // dried), sparing skygrain, and counting as a varied-table dish (spec 060). Inert with no Cellar: duskcap stays 0 and the food math is unchanged.
+    matCellar: 30, // materials to build
+    compCellar: 6, // components to build
+    toolCellar: 1, // tool-kits to build (bed frames + damp-line fittings, spec 047)
+    crewCellar: 4, // builders reserved for the construction job
+    cellarCost: 700, // treasury to build
+    cellarWorkers: 3, // run crew (Food growers); understaffed grows proportionally less
+    cellarPowerLoad: 0.3, // a light grid load for the fans
+    duskcapPerDay: 5, // duskcap a fully-staffed Cellar grows per day
+    cellarWaterPerDay: 1, // stored water a Cellar draws per day for the damp-line (spec 046)
+    cellarPowerFloor: 0.6, // even a brownout leaves the low-draw cellar fans at this fraction (resilient vs the greenhouses)
+    cellarDryFloor: 0.5, // a dry damp-line (empty tanks) slows the beds to this fraction
+    storeBaseDuskcap: 80, // storage cap (spec 023) for duskcap
+    storePerDuskcap: 80,
     pollutionPerIndustrial: 3,
   },
 
