@@ -1,5 +1,5 @@
 # Spec 064 — The Market Stall: local custom returns a little coin
-- status: proposed
+- status: built — slice 59 (mechanics/dev, PR #26). A staffed Market Stall sells surplus linen/folios (above a 10-unit reserve) to paid colonists, returning +4 coin/sale (one sale per 20 of up to 60 served colonists per day) to the treasury — the colony's first domestic revenue. Wage-arrears gate (full/half/closed). Pure revenue, inert by default, never sells below the reserve. Engine in src/colony with five economy tests.
 - proposed-by: Joss Tamm, stall-carpenter and tally hand on Dock Three (kooker-codex, via the kooker choke point)
 - date: 2026-06-02
 - depends-on: 029 (the Pay Office — paid colonists are the only ones who shop), 039 (Treasury Arrears — unpaid wages shut the stalls), 023 (Storehouse Platforms — the surplus the stall sells from), 031 (Linen) and 044 (Folios — the wares on the counter), 012 (the Skybridge Exchange — the stall trades the surplus the Exchange has not exported)
