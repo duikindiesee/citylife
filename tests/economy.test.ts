@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -3574,5 +3574,85 @@ describe('Spec 051 — The Survey Camp: the colony can claim new ground', () => 
     for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 60)
     expect(s.claims).toBe(COLONY.build.maxClaims) // never claims past the island
     expect(effectiveBuildRadius(s)).toBe(r)
+  })
+})
+
+describe('Spec 052 — The Vein Ledger: ore runs out, so the colony must spread its diggings', () => {
+  const mine = (x: number, y: number, vein?: number, gen = COLONY.build.mineOutputPerDay): ColonyBuilding => {
+    const b: ColonyBuilding = { id: x * 1000 + y, x, y, artifact: { id: 1, kind: 'mine', color: 0, height: 1, residents: 0, jobs: 3, powerLoad: 0.3, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: gen } }
+    if (vein !== undefined) b.vein = vein
+    return b
+  }
+
+  it('a fresh or unrecorded vein reads at full output (inert / non-regression)', () => {
+    const m = mine(10, 10) // no vein recorded
+    expect(veinFactor(m)).toBe(1)
+    m.vein = COLONY.build.veinLifeDays // a full vein
+    expect(veinFactor(m)).toBe(1)
+  })
+
+  it('output fades by bands as the vein runs down', () => {
+    const m = mine(10, 10, COLONY.build.veinLifeDays)
+    const at = (frac: number) => { m.vein = frac * COLONY.build.veinLifeDays; return veinFactor(m) }
+    expect(at(0.6)).toBe(1) // still over half → full
+    expect(at(0.5)).toBe(1) // exactly half → still full
+    expect(at(0.44)).toBe(0.8)
+    expect(at(0.3)).toBe(0.6)
+    expect(at(0.18)).toBe(0.4)
+    expect(at(0.05)).toBe(COLONY.build.veinFloor) // nearly dug out → the floor
+  })
+
+  it('an exhausted vein still yields the floor, never zero', () => {
+    const m = mine(10, 10, 0)
+    expect(veinFactor(m)).toBe(COLONY.build.veinFloor)
+    expect(veinFactor(m)).toBeGreaterThan(0)
+  })
+
+  it('a staffed, producing mine spends its vein; an incident-stalled one holds', () => {
+    // staffed → depletes
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const m = mine(s.terrain.landing.x + 4, s.terrain.landing.y, COLONY.build.veinLifeDays)
+    s.buildings.push(m)
+    s.colonists = 8
+    s.totalJobs = 3
+    s.powerGen = 100
+    const v0 = m.vein!
+    for (let i = 0; i < 50; i++) stepBuild(s, sim.rng, 60)
+    expect(m.vein!).toBeLessThan(v0) // dug the vein down
+
+    // incident-stalled → holds (a mine that is not digging does not spend its vein)
+    const sim2 = new ColonySim(7)
+    const s2 = sim2.state
+    const m2 = mine(s2.terrain.landing.x + 4, s2.terrain.landing.y, COLONY.build.veinLifeDays)
+    m2.incident = { timer: 1e9 } // stalled mid-incident for the whole run
+    s2.buildings.push(m2)
+    s2.colonists = 8
+    s2.totalJobs = 3
+    s2.powerGen = 100
+    const v2 = m2.vein!
+    for (let i = 0; i < 50; i++) stepBuild(s2, sim2.rng, 60)
+    expect(m2.vein!).toBe(v2) // a stalled pit holds its vein
+  })
+
+  it('a fresh-vein mine out-digs a thin-vein one over the same run', () => {
+    const produced = (veinFrac: number) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.buildings.push(mine(s.terrain.landing.x + 4, s.terrain.landing.y, veinFrac * COLONY.build.veinLifeDays))
+      s.colonists = 8
+      s.totalJobs = 3
+      s.powerGen = 100
+      s.power.batteryWh = s.power.batteryCapWh
+      s.materials = 0
+      for (let i = 0; i < 10; i++) stepBuild(s, sim.rng, 60)
+      return s.materials
+    }
+    expect(produced(1.0)).toBeGreaterThan(produced(0.1)) // a full vein out-digs a nearly-exhausted one
+    expect(produced(0.1)).toBeGreaterThan(0) // ...but the thin pit still trickles (the floor)
+    // veinStatus reports the poorest pit's band: a fresh mine + one at 30% vein → poorest is 0.6
+    const status = veinStatus({ buildings: [mine(0, 0, COLONY.build.veinLifeDays), mine(1, 1, 0.3 * COLONY.build.veinLifeDays)] } as any)
+    expect(status.mines).toBe(2)
+    expect(status.poorest).toBe(0.6)
   })
 })

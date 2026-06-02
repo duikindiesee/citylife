@@ -50,6 +50,7 @@ export interface ColonyBuilding {
   tier?: number // spec 006 — habitats evolve 1..3 (more capacity + desirability); undefined = tier 1
   dryMin?: number // spec 006 — sim-minutes a habitat has gone without water (drives devolution)
   wear?: number // spec 022 — 0..1 mechanical wear on a working building; repaired by a Maintenance Shed
+  vein?: number // spec 052 — a mine's remaining ore reserve in days of life; set full on construction, ticks down as it digs; undefined = full
   incident?: { timer: number } // spec 024 — an active emergency; the building is paused while timer (sim-min) runs
   hazardAccum?: number // spec 024 — accumulated hazard toward the next incident (deterministic, sustained-condition)
 }
@@ -1060,11 +1061,36 @@ export function rosterStatus(state: ColonyState): { active: boolean; mode: 'esse
 
 /** Spec 002 — staffed mines extract materials into the stockpile; output scales with global staffing. */
 function produceMaterials(state: ColonyState, dtMin: number): void {
-  let gen = 0
-  for (const b of state.buildings) if (b.artifact.kind === 'mine' && !b.incident) gen += b.artifact.materialsGen * maintFactor(b) // spec 022/024 — a worn mine digs less; one mid-incident digs nothing
-  if (gen <= 0) return
+  const frac = dtMin / (24 * 60)
   const staffing = sectorStaffing(state, 'industry') // spec 038 — labour priority can starve or favour Industry under a shortage
-  state.materials += gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) * toolSupplyFactor(state) * (dtMin / (24 * 60)) // spec 009/017/021/026/028/047 — sick, brownout, congested, fevered, restless or tool-starved mines dig less
+  let gen = 0
+  for (const b of state.buildings) {
+    if (b.artifact.kind !== 'mine' || b.incident) continue // spec 024 — a mine mid-incident digs nothing
+    gen += b.artifact.materialsGen * maintFactor(b) * veinFactor(b) // spec 022/052 — a worn mine, or one whose vein has run down, digs less
+    if (b.vein !== undefined && staffing > 0) b.vein = Math.max(0, b.vein - staffing * frac) // spec 052 — a staffed, producing mine spends its vein; an idle one holds
+  }
+  if (gen <= 0) return
+  state.materials += gen * staffing * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) * toolSupplyFactor(state) * frac // spec 009/017/021/026/028/047 — sick, brownout, congested, fevered, restless or tool-starved mines dig less
+}
+
+/** Spec 052 — a mine's own output multiplier as its vein runs down: full until half-dug, then fading by bands to a 25% floor.
+ *  Undefined vein (a fresh fixture or seed mine) reads as full, so the materials economy is unchanged until a vein actually thins. */
+export function veinFactor(b: ColonyBuilding): number {
+  if (b.artifact.kind !== 'mine' || b.vein === undefined) return 1
+  const f = b.vein / COLONY.build.veinLifeDays
+  if (f >= 0.5) return 1
+  if (f >= 0.375) return 0.8
+  if (f >= 0.25) return 0.6
+  if (f >= 0.125) return 0.4
+  return COLONY.build.veinFloor // an old pit is a poor pit, but never a dead one
+}
+
+/** Spec 052 — Vein readout for the HUD: how many mines, and the band of the poorest (most-depleted) pit. */
+export function veinStatus(state: ColonyState): { mines: number; poorest: number } {
+  let mines = 0
+  let poorest = 1
+  for (const b of state.buildings) if (b.artifact.kind === 'mine') { mines++; const f = veinFactor(b); if (f < poorest) poorest = f }
+  return { mines, poorest }
 }
 
 /** Spec 020 — how well the advanced trades are staffed by skilled workers: full at the cap, 0.6 floor when untrained. */
@@ -2360,6 +2386,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
     if (j.progress >= 1) {
       const nb: ColonyBuilding = { id: j.id, x: j.x, y: j.y, artifact: j.artifact }
       if (j.artifact.kind === 'habitat') { nb.tier = 1; nb.dryMin = 0 } // spec 006 — homes start at tier 1
+      if (j.artifact.kind === 'mine') nb.vein = COLONY.build.veinLifeDays // spec 052 — a freshly sunk shaft starts on a full vein
       state.buildings.push(nb)
       const a = j.artifact
       if (a.kind === 'solar') state.powerGen += a.powerGen

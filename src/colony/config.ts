@@ -659,6 +659,11 @@ export const COLONY = {
     claimWorkDays: 6, // colony-days a fully-staffed camp takes to complete one Outer Claim
     matPerClaim: 40, // materials spent to lay each new boundary ring
     compPerClaim: 10, // components spent per claim
+    // Vein Ledger (spec 052): ore extraction is finite per site. Each mine starts on a vein worth ~12 colony-months of full staffed
+    // output; while staffed it ticks down, and the mine fades by bands (1.0 / 0.8 / 0.6 / 0.4) to a permanent 0.25 floor as it runs
+    // dry. Inert until a vein actually thins (a fresh or unrecorded mine reads full), so the materials economy is unchanged early.
+    veinLifeDays: 360, // days of full-staffed digging a fresh mine's vein holds (output stays 100% until half is gone, ~6 months)
+    veinFloor: 0.25, // an exhausted vein still yields this fraction — a poor pit, never a dead one
     pollutionPerIndustrial: 3,
   },
 
