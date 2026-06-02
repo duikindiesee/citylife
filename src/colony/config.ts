@@ -775,6 +775,22 @@ export const COLONY = {
     varietyDesirabilityBonus: 0.04, // immigration desirability lift at full coverage + standing (a colony that eats well reads better)
     evoVarietyNudge: 0.05, // housing-evolution interval shortened by up to this fraction at full coverage + standing (homes climb a touch faster)
     varietyHoldDays: 5, // a Varied Diet standing persists this long after staffing/power is lost, then fades to neutral
+    // Rimfish Drying Racks (spec 061): a staffed Industry worksite that dries SURPLUS fresh rimfish into shelf-stable dried rimfish,
+    // banked in the storehouses and eaten only after the fresh catch runs out — so fish stays on the table (and the diet stays varied)
+    // through a net-dock outage or a lean season. Inert by default: no rack means no dried store and exactly today's fish-meal math.
+    matDryRack: 40, // materials to build
+    compDryRack: 16, // components to build
+    toolDryRack: 4, // tool-kits to build (drying knives + rack fittings, spec 047)
+    linenDryRack: 8, // linen to build (drying lines + wrapping cloth, spec 031)
+    crewDryRack: 4, // builders reserved for the construction job
+    dryRackCost: 1200, // treasury to build
+    dryRackWorkers: 2, // run crew (Industry sector): full rate at 2, half at 1, idle at 0
+    dryRackPowerLoad: 0.4, // a grid load while operating (sheds first in a brownout)
+    dryRackRimfishReserve: 20, // a rack dries only the fresh rimfish ABOVE this reserve, so it never takes a meal the homes need today
+    dryRackRimfishPerDay: 12, // fresh rimfish one rack consumes per day at full rate
+    dryRackOutputPerDay: 8, // dried rimfish one rack produces per day at full rate (a real trimming loss — 8 per 12 fresh)
+    storeBaseDriedFish: 40, // storage cap (spec 023) for dried rimfish
+    storePerDriedFish: 40,
     pollutionPerIndustrial: 3,
   },
 

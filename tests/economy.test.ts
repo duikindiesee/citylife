@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -4293,5 +4293,90 @@ describe('Spec 060 — The Variety Ration Counter: two foods finally beat one', 
     feed(sim, 24 * 6, true, true) // past the 5-day hold
     expect(s.dietStanding ?? 0).toBe(0) // faded to neutral
     expect(varietyDesirabilityFactor(s)).toBe(1) // back to the no-counter baseline, never below
+  })
+})
+
+describe('Spec 061 — Rimfish Drying Racks: bank the second food for a lean season', () => {
+  const mk = (kind: 'dryrack' | 'rationvar' | 'storehouse', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('inert without a rack — no dried store and no fish drying', () => {
+    const sim = new ColonySim(13)
+    const s = sim.state
+    s.colonists = 30; s.totalJobs = 6; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    expect(driedFishStatus(s).racks).toBe(0)
+    for (let i = 0; i < 40; i++) { s.rimfish = 100; s.food = 500; stepBuild(s, sim.rng, 60) }
+    expect(s.driedFish ?? 0).toBe(0) // nothing is dried without a rack
+    expect(driedFishStatus(s).stock).toBe(0)
+  })
+
+  it('a staffed rack dries the SURPLUS catch, but a colony at the reserve dries nothing', () => {
+    const dried = (rimfishHeld: number) => {
+      const sim = new ColonySim(13)
+      const s = sim.state
+      const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+      s.colonists = 30; s.totalJobs = 6; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+      s.buildings.push(mk('dryrack', lx, ly, { jobs: 2 }))
+      s.driedFish = 0
+      for (let i = 0; i < 40; i++) { s.rimfish = rimfishHeld; s.food = 500; stepBuild(s, sim.rng, 60) }
+      return s.driedFish
+    }
+    expect(dried(100)).toBeGreaterThan(0) // plenty above the 20 reserve → the surplus is dried
+    expect(dried(15)).toBe(0) // below the reserve → nothing dried, the homes keep their fish
+  })
+
+  it('drying loses weight — dried banked never exceeds the loss-adjusted fresh consumed', () => {
+    const sim = new ColonySim(13)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.colonists = 30; s.totalJobs = 6; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    for (let n = 0; n < 3; n++) s.buildings.push(mk('storehouse', lx + 2 + n, ly, {})) // raise the caps so nothing clamps
+    s.buildings.push(mk('dryrack', lx, ly, { jobs: 2 }))
+    s.rimfish = 300; s.driedFish = 0
+    const rim0 = s.rimfish
+    for (let i = 0; i < 30; i++) { s.food = 500; stepBuild(s, sim.rng, 60) } // do NOT top rimfish — let it draw down
+    const rimfishConsumed = rim0 - (s.rimfish ?? 0)
+    const driedProduced = s.driedFish ?? 0
+    const ratio = COLONY.build.dryRackOutputPerDay / COLONY.build.dryRackRimfishPerDay
+    expect(COLONY.build.dryRackOutputPerDay).toBeLessThan(COLONY.build.dryRackRimfishPerDay) // the loss is real by design (8 per 12)
+    expect(driedProduced).toBeGreaterThan(0)
+    expect(driedProduced).toBeLessThanOrEqual(rimfishConsumed * ratio + 1e-6) // dried gained is at most the loss-adjusted fresh spent
+  })
+
+  it('the dried reserve keeps fish (and a varied diet) on the table when the fresh catch runs out', () => {
+    const sim = new ColonySim(13)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.colonists = 30; s.totalJobs = 6; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    for (let n = 0; n < 2; n++) s.buildings.push(mk('storehouse', lx + 2 + n, ly, {})) // headroom so the reserve lasts
+    s.buildings.push(mk('dryrack', lx, ly, { jobs: 2 }))
+    s.buildings.push(mk('rationvar', lx + 1, ly, { jobs: 2 })) // a Variety Ration Counter watching the table
+    // bank a dried reserve while eating both foods (earns a Varied Diet too)
+    for (let i = 0; i < 60; i++) { s.rimfish = 200; s.food = 500; stepBuild(s, sim.rng, 60) }
+    const driedBefore = s.driedFish ?? 0
+    expect(driedBefore).toBeGreaterThan(0)
+    expect(dietVarietyStatus(s).varied).toBe(true)
+    // the net docks go idle: no fresh fish at all
+    for (let i = 0; i < 10; i++) { s.rimfish = 0; s.food = 500; stepBuild(s, sim.rng, 60) }
+    expect(s.driedFish ?? 0).toBeLessThan(driedBefore) // the homes ate into the dried reserve...
+    expect(dietVarietyStatus(s).varied).toBe(true) // ...and the diet stayed varied on dried fish
+  })
+
+  it('dried rimfish never exceeds its cap and never goes negative', () => {
+    const sim = new ColonySim(13)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.colonists = 30; s.totalJobs = 6; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    s.buildings.push(mk('dryrack', lx, ly, { jobs: 2 }))
+    const cap = storageCaps(s).driedFish
+    for (let i = 0; i < 300; i++) { s.rimfish = 300; s.food = 500; stepBuild(s, sim.rng, 60) } // overproduce
+    expect(s.driedFish ?? 0).toBeLessThanOrEqual(cap) // clamped to the cap
+    expect(s.driedFish ?? 0).toBeGreaterThanOrEqual(0)
+    for (let i = 0; i < 400; i++) { s.rimfish = 0; s.food = 0; stepBuild(s, sim.rng, 60) } // starve it down
+    expect(s.driedFish ?? 0).toBeGreaterThanOrEqual(0) // never negative
   })
 })

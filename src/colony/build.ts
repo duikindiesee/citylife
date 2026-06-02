@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack'
 
 export interface Parcel {
   id: number
@@ -35,6 +35,7 @@ export interface Artifact {
   componentsCost?: number // spec 005: components consumed to construct (services); defaults to 0
   reelsCost?: number // spec 018: reels (luxury good) consumed to construct (battery sheds); defaults to 0
   toolsCost?: number // spec 060: tool-kits consumed to construct (the Variety Ration Counter); defaults to 0
+  linenCost?: number // spec 061: linen consumed to construct (the Rimfish Drying Racks); defaults to 0
 }
 export interface ConstructionJob {
   id: number
@@ -110,6 +111,7 @@ const CALENDAR_COLOR = 0xd9c089 // parchment-gold — the Calendar Office (the c
 const HALLOFNAMES_COLOR = 0x9a8fb0 // dusk-violet — the Hall of Names (the colony remembers its elders)
 const NETDOCK_COLOR = 0x4fb0a6 // cloudsea-teal — the Cloudsea Net Dock (nets rimfish, the colony's second food)
 const RATIONVAR_COLOR = 0xd98c5f // warm amber-coral — the Variety Ration Counter (mixed-ration serving hatch)
+const DRYRACK_COLOR = 0x9fb4a0 // pale weathered sage — the Rimfish Drying Rack (slatted drying lines)
 const SANITATION_COLOR = 0x6f8f6a // drain-green — the Sanitation Post (clears household waste before it sickens the colony)
 const WATCHNOOK_COLOR = 0xb0a04a // lamp-brass — the Watch Nook (keeps petty theft off a rich colony's coffers)
 const key = (x: number, y: number) => x + ',' + y
@@ -148,6 +150,7 @@ export function initBuild(state: ColonyState): void {
   state.renewalLastYear = 0 // spec 055
   state.lastPassings = 0 // spec 055
   state.rimfish = 0 // spec 056 — no rimfish until a Cloudsea Net Dock stands
+  state.driedFish = 0 // spec 061 — no dried rimfish until a Rimfish Drying Rack stands
   state.waste = 0 // spec 058 — the colony starts clean
   state.dietSkyfarm = 0 // spec 060 — no meal history yet
   state.dietRimfish = 0 // spec 060
@@ -488,6 +491,10 @@ function designWatchNook(state: ColonyState): Artifact {
 function designVarietyCounter(state: ColonyState): Artifact {
   // Spec 060 — Variety Ration Counter; a staffed serving hatch + ledger that rewards homes eating both greens and rimfish. Costs a tool-kit to build.
   return { id: state.buildIds++, kind: 'rationvar', color: RATIONVAR_COLOR, height: 0.6, residents: 0, jobs: COLONY.build.varietyCounterWorkers, powerLoad: COLONY.build.varietyCounterPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.varietyCounterCost, materialsCost: COLONY.build.matVarietyCounter, crew: COLONY.build.crewVarietyCounter, materialsGen: 0, componentsCost: COLONY.build.compVarietyCounter, toolsCost: COLONY.build.toolVarietyCounter }
+}
+function designDryRack(state: ColonyState): Artifact {
+  // Spec 061 — Rimfish Drying Rack; a staffed Industry worksite that dries surplus fresh rimfish into shelf-stable dried rimfish. Costs tool-kits + linen to build.
+  return { id: state.buildIds++, kind: 'dryrack', color: DRYRACK_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.dryRackWorkers, powerLoad: COLONY.build.dryRackPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.dryRackCost, materialsCost: COLONY.build.matDryRack, crew: COLONY.build.crewDryRack, materialsGen: 0, componentsCost: COLONY.build.compDryRack, toolsCost: COLONY.build.toolDryRack, linenCost: COLONY.build.linenDryRack }
 }
 
 /** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
@@ -960,6 +967,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'greenhouse') > 0 && countKind(state, 'netdock') < Math.max(1, Math.ceil(countKind(state, 'greenhouse') / 3)) && state.components >= COLONY.build.compNetDock && state.materials >= COLONY.build.matNetDock + COLONY.build.rimfishSurplus) return designNetDock(state)
   // Spec 060 — once the colony nets a second food (a Net Dock beside its skyfarms) and keeps tool-kits, raise a Variety Ration Counter (one per ~80 residents) so a varied diet finally rewards the homes.
   if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'greenhouse') > 0 && countKind(state, 'netdock') > 0 && (state.tools ?? 0) >= COLONY.build.toolVarietyCounter && countKind(state, 'rationvar') < Math.max(1, Math.ceil(state.colonists / COLONY.build.varietyCounterCapacity)) && state.components >= COLONY.build.compVarietyCounter && state.materials >= COLONY.build.matVarietyCounter) return designVarietyCounter(state)
+  // Spec 061 — once the colony nets fish and keeps linen + tool-kits, raise a Rimfish Drying Rack (one per ~2 Net Docks) to bank the surplus catch against a lean season; gated on a real fresh-fish surplus so it never starves the table.
+  if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'netdock') > 0 && (state.rimfish ?? 0) > COLONY.build.dryRackRimfishReserve + COLONY.build.dryRackRimfishPerDay && (state.linen ?? 0) >= COLONY.build.linenDryRack && (state.tools ?? 0) >= COLONY.build.toolDryRack && state.components >= COLONY.build.compDryRack && state.materials >= COLONY.build.matDryRack && countKind(state, 'dryrack') < Math.max(1, Math.ceil(countKind(state, 'netdock') / 2))) return designDryRack(state)
   // Spec 058 — once the homes are many and the waste is climbing toward the harmless line, raise a Sanitation Post (one per ~wasteOccupancyRef homes) to mind the drains.
   if (state.colonists > 14 && (state.waste ?? 0) > COLONY.build.wasteHarmlessBelow * 0.7 && countKind(state, 'sanitation') < Math.max(1, Math.ceil(countKind(state, 'habitat') / COLONY.build.wasteOccupancyRef)) && state.components >= COLONY.build.compSanitation && state.materials >= COLONY.build.matSanitation) return designSanitationPost(state)
   // Spec 059 — a rich, populous colony with coffers worth guarding raises a Watch Nook (up to two) to stop petty theft of the treasury.
@@ -1032,6 +1041,7 @@ export function autoGrow(state: ColonyState, rng: RNG): boolean {
   if (state.components < (artifact.componentsCost ?? 0)) return false // spec 005 — not enough refined goods
   if (state.reels < (artifact.reelsCost ?? 0)) return false // spec 018 — not enough reels (battery sheds)
   if ((state.tools ?? 0) < (artifact.toolsCost ?? 0)) return false // spec 060 — not enough tool-kits (the Variety Ration Counter)
+  if ((state.linen ?? 0) < (artifact.linenCost ?? 0)) return false // spec 061 — not enough linen (the Rimfish Drying Racks)
   if (free < artifact.crew) return false // not enough hands to raise it
 
   const c = caravan(state)
@@ -1042,6 +1052,7 @@ export function autoGrow(state: ColonyState, rng: RNG): boolean {
   state.components -= artifact.componentsCost ?? 0 // spec 005 — services consume refined goods to build
   state.reels -= artifact.reelsCost ?? 0 // spec 018 — battery sheds consume reels to build
   state.tools = Math.max(0, (state.tools ?? 0) - (artifact.toolsCost ?? 0)) // spec 060 — the Variety Ration Counter consumes a tool-kit to build
+  state.linen = Math.max(0, (state.linen ?? 0) - (artifact.linenCost ?? 0)) // spec 061 — the Rimfish Drying Racks consume linen to build
   state.jobs.push({ id: state.buildIds++, x: lot.x, y: lot.y, artifact, progress: 0, path: roadPath(state, c.x, c.y, lot.x, lot.y) })
   return true
 }
@@ -1068,7 +1079,7 @@ export type Sector = 'food' | 'services' | 'industry' | 'logistics' | 'safety' |
 const SECTOR_OF: Record<BuildKind, Sector> = {
   greenhouse: 'food', depot: 'food', water: 'food', cistern: 'food', seedloft: 'food', netdock: 'food',
   clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services', sanitation: 'services', rationvar: 'services',
-  mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry',
+  mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry', dryrack: 'industry',
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety', watchnook: 'safety',
   exchange: 'trade', import: 'trade',
@@ -1223,7 +1234,7 @@ function maintenanceUncovered(state: ColonyState): boolean {
 }
 
 /** Spec 023 — per-resource storage cap = the founders' hold + what each Storehouse Platform adds. */
-export function storageCaps(state: ColonyState): { materials: number; components: number; food: number; reels: number; fibre: number; linen: number; folios: number; rimfish: number } {
+export function storageCaps(state: ColonyState): { materials: number; components: number; food: number; reels: number; fibre: number; linen: number; folios: number; rimfish: number; driedFish: number } {
   const n = countKind(state, 'storehouse')
   return {
     materials: COLONY.build.storeBaseMaterials + n * COLONY.build.storePerMaterials,
@@ -1234,6 +1245,7 @@ export function storageCaps(state: ColonyState): { materials: number; components
     linen: COLONY.build.storeBaseLinen + n * COLONY.build.storePerLinen, // spec 031
     folios: COLONY.build.storeBaseFolios + n * COLONY.build.storePerFolios, // spec 044
     rimfish: COLONY.build.storeBaseRimfish + n * COLONY.build.storePerRimfish, // spec 056
+    driedFish: COLONY.build.storeBaseDriedFish + n * COLONY.build.storePerDriedFish, // spec 061
   }
 }
 
@@ -1248,6 +1260,7 @@ function clampStorage(state: ColonyState): void {
   if ((state.linen ?? 0) > cap.linen) state.linen = cap.linen // spec 031
   if ((state.folios ?? 0) > cap.folios) state.folios = cap.folios // spec 044
   if ((state.rimfish ?? 0) > cap.rimfish) state.rimfish = cap.rimfish // spec 056
+  if ((state.driedFish ?? 0) > cap.driedFish) state.driedFish = cap.driedFish // spec 061
 }
 
 /** Spec 023 — storage readout for the HUD: fullest stockpile (0..1), whether it's overflowing, and which. */
@@ -1896,6 +1909,35 @@ export function rimfishStatus(state: ColonyState): { stock: number; docks: numbe
   return { stock: Math.round(state.rimfish ?? 0), docks: countKind(state, 'netdock'), varied: (state.rimfish ?? 0) > 0 }
 }
 
+/** Spec 061 — staffed Rimfish Drying Racks dry the SURPLUS fresh rimfish (above a working reserve) into shelf-stable dried rimfish,
+ *  banked in the storehouses. A real trimming loss (8 dried per 12 fresh). Gated on Industry staffing, power, and dried-store headroom;
+ *  it never touches the reserve, so a colony short on fresh fish dries nothing. Inert with no rack (the loop body never runs). */
+function produceDriedFish(state: ColonyState, dtMin: number): void {
+  const eff = sectorStaffing(state, 'industry') * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 038 — sick, brownout, congested, fevered, restless or sector-deprioritised racks dry less
+  if (eff <= 0) return
+  const day = 24 * 60
+  const cap = storageCaps(state).driedFish
+  const ratio = COLONY.build.dryRackOutputPerDay / COLONY.build.dryRackRimfishPerDay // dried produced per fresh consumed (a trimming loss)
+  for (const b of state.buildings) {
+    if (b.artifact.kind !== 'dryrack' || b.incident) continue
+    const headroom = Math.max(0, cap - (state.driedFish ?? 0))
+    if (headroom <= 0) break // the dried store is full — no rack can bank more
+    const surplus = Math.max(0, (state.rimfish ?? 0) - COLONY.build.dryRackRimfishReserve) // only ever dry the catch above the working reserve
+    if (surplus <= 0) break // no spare fresh fish — the homes keep every meal
+    const mf = maintFactor(b)
+    let need = COLONY.build.dryRackRimfishPerDay * eff * mf * (dtMin / day) // fresh fish this rack would dry at the current rate
+    need = Math.min(need, surplus, headroom / ratio) // capped by the spare catch AND the dried-store headroom
+    if (need <= 0) continue
+    state.rimfish = Math.max(0, (state.rimfish ?? 0) - need)
+    state.driedFish = Math.min(cap, (state.driedFish ?? 0) + need * ratio)
+  }
+}
+
+/** Spec 061 — Dried-rimfish readout for the HUD: the banked stock, its cap, and the rack count. */
+export function driedFishStatus(state: ColonyState): { stock: number; cap: number; racks: number } {
+  return { stock: Math.round(state.driedFish ?? 0), cap: storageCaps(state).driedFish, racks: countKind(state, 'dryrack') }
+}
+
 /** Spec 058 — the immigration-dampening factor from household waste: 1 below the harmless line, slipping gently as filth piles up
  *  above it (a dirty colony draws settlers a little slower). Bounded so even full filth only dampens the draw modestly. */
 export function wasteDesirabilityFactor(state: ColonyState): number {
@@ -2466,8 +2508,14 @@ function foodStep(state: ColonyState, dtMin: number): void {
   // Spec 050/056 — the day's meals: children are extra mouths (half a ration each); rimfish, when on hand, covers a portion of the
   // meals and spares skygrain, so the grain lasts longer (inert — exactly the old skygrain eat-down when rimfish is 0).
   const consumption = (state.colonists + (state.children ?? 0) * COLONY.build.childDependentLoad) * COLONY.build.foodPerColonistPerDay * (dtMin / day)
-  const fishMeals = Math.min(state.rimfish ?? 0, consumption * COLONY.build.rimfishMealFraction)
-  if (fishMeals > 0) state.rimfish = Math.max(0, (state.rimfish ?? 0) - fishMeals)
+  // Spec 056/061 — the fish portion of the meals draws FRESH rimfish first, then falls back on the DRIED reserve (Drying Racks bank it),
+  // so dried fish keeps the table fed through a net-dock outage. Both count as the fish food (for the diet mix below). Inert with no dried store.
+  const fishCap = consumption * COLONY.build.rimfishMealFraction
+  const freshFish = Math.min(state.rimfish ?? 0, fishCap)
+  if (freshFish > 0) state.rimfish = Math.max(0, (state.rimfish ?? 0) - freshFish)
+  const driedFishMeals = Math.min(state.driedFish ?? 0, fishCap - freshFish)
+  if (driedFishMeals > 0) state.driedFish = Math.max(0, (state.driedFish ?? 0) - driedFishMeals)
+  const fishMeals = freshFish + driedFishMeals
   const grainDemand = consumption - fishMeals
   const grainMeals = Math.min(state.food, grainDemand) // actual skyfarm meals served (the rest is an unmet shortfall)
   state.food = Math.max(0, state.food - grainDemand)
@@ -2694,6 +2742,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   produceMaterials(state, dtMin)
   produceFibre(state, dtMin) // spec 031 — gather skyflax fibre (the second extractor)
   produceRimfish(state, dtMin) // spec 056 — net rimfish from the rim (the second food); runs before foodStep so the day's catch can spare skygrain
+  produceDriedFish(state, dtMin) // spec 061 — dry the SURPLUS fresh rimfish into a shelf-stable reserve before foodStep eats (fresh first, then dried)
   academyStep(state, dtMin)
   produceComponents(state, dtMin)
   produceReels(state, dtMin)

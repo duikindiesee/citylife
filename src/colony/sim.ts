@@ -60,6 +60,7 @@ export interface ColonyState {
   dietRimfish?: number // spec 060 — trailing-window tally of rimfish meals served (decays)
   dietShort?: number // spec 060 — trailing-window tally of meals demanded but not served (empty larder); disqualifies the Varied Diet bonus
   dietStanding?: number // spec 060 — 0..1 Varied Diet standing; 1 while a counter is operating on two foods, fades over varietyHoldDays when not
+  driedFish: number // spec 061 — dried rimfish, a shelf-stable food banked from surplus fresh rimfish by Drying Racks; eaten after fresh fish; 0 until a rack stands
   parcels: Parcel[]
   jobs: ConstructionJob[]
   buildings: ColonyBuilding[]
@@ -161,6 +162,7 @@ export class ColonySim {
       lastPassings: 0, // spec 055 — no one has passed yet
       rimfish: 0, // spec 056 — no rimfish until a Cloudsea Net Dock stands
       waste: 0, // spec 058 — the colony starts clean
+      driedFish: 0, // spec 061 — no dried rimfish until a Drying Rack stands
       parcels: [],
       jobs: [],
       buildings: [],
