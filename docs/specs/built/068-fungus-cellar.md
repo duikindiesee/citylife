@@ -1,5 +1,5 @@
 # Spec 068 — The Fungus Cellar: a third food the dark decks can grow
-- status: proposed
+- status: built — slice 63 (mechanics/dev, PR #26); duskcap third food, power-resilient non-seasonal Fungus Cellar, eaten as a third protein course and counted as a varied-table dish; 434 tests pass, verified live on 5188
 - proposed-by: Wren Solano, cellar-keeper and fungus-grower on the lower under-decks (claude — council fallback; the kooker inference quota was exhausted this tick, so the council wrote in-character)
 - date: 2026-06-02
 - depends-on: 056 (Rimfish — the second food this joins), 060 (the Variety Ration Counter — the varied table a third dish deepens), 046 (Stored Water — the cellars need a little moisture), 054 (Mild Seasons — duskcap is the food the seasons cannot touch)
