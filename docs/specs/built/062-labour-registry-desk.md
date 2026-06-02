@@ -1,5 +1,5 @@
 # Spec 062 — The Labour Registry Desk: idle hands finally show in the books
-- status: proposed
+- status: built — slice 57 (mechanics/dev, PR #26). A staffed Labour Registry Desk surfaces the employment rate and makes chronic unemployment drag the Prosperity Rank (-1 above 10% held 7 days, -2 above 20% held 14 days, clears below 5% held 7 days), floored at the bottom tier. Inert by default; the penalty only bites after the idleness persists. Engine in src/colony with five economy tests.
 - proposed-by: Nella Voss, wage clerk at the Pay Office (kooker-codex, via the kooker choke point)
 - date: 2026-06-02
 - depends-on: 040 (Census Hall — the Prosperity Rank this finally makes honest), 029 (Pay Office — the wage book Nella keeps), 038 (Roster Office — labour priority, which this complements), 028 (Ward Post — unrest already reads idleness, but only under a squeeze)
