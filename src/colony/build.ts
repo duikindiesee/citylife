@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall' | 'firewatch' | 'reclaimer'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall' | 'firewatch' | 'reclaimer' | 'festboard'
 
 export interface Parcel {
   id: number
@@ -122,6 +122,7 @@ const PLANTER_COLOR = 0x6fae5a // fresh planted green — the Planter Square (ra
 const STALL_COLOR = 0xc6713e // warm terracotta — the Market Stall (awning + counter)
 const FIREWATCH_COLOR = 0xd2473a // alarm red — the Fire-Watch Post (bucket barrels + pump)
 const RECLAIMER_COLOR = 0x3f8fa0 // teal utility — the Greywater Reclaimer (settling drums + pump)
+const FESTBOARD_COLOR = 0xe2a93f // warm lantern-gold — the Festival Board (noticeboard + lantern hooks)
 const SANITATION_COLOR = 0x6f8f6a // drain-green — the Sanitation Post (clears household waste before it sickens the colony)
 const WATCHNOOK_COLOR = 0xb0a04a // lamp-brass — the Watch Nook (keeps petty theft off a rich colony's coffers)
 const key = (x: number, y: number) => x + ',' + y
@@ -162,6 +163,9 @@ export function initBuild(state: ColonyState): void {
   state.rimfish = 0 // spec 056 — no rimfish until a Cloudsea Net Dock stands
   state.driedFish = 0 // spec 061 — no dried rimfish until a Rimfish Drying Rack stands
   state.fireCooldown = 0 // spec 065 — no fire timing until a Fire-Watch stands
+  state.lastFestivalYear = 0 // spec 067 — no Highsun Supper before a Festival Board stands
+  state.festivalCheer = 0 // spec 067
+  state.festivalCheerBonus = 0 // spec 067
   state.registryPenalty = 0 // spec 062 — no Prosperity drag until a Labour Registry reads chronic idleness
   state.unempHighDays = 0 // spec 062
   state.unempSevereDays = 0 // spec 062
@@ -530,6 +534,10 @@ function designFireWatch(state: ColonyState): Artifact {
 function designReclaimer(state: ColonyState): Artifact {
   // Spec 066 — Greywater Reclaimer; a staffed Logistics plant that treats the colony's greywater back into the tanks at a 2:1 loss. Costs tool-kits + reels to build.
   return { id: state.buildIds++, kind: 'reclaimer', color: RECLAIMER_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.reclaimerWorkers, powerLoad: COLONY.build.reclaimerPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.reclaimerCost, materialsCost: COLONY.build.matReclaimer, crew: COLONY.build.crewReclaimer, materialsGen: 0, componentsCost: COLONY.build.compReclaimer, toolsCost: COLONY.build.toolReclaimer, reelsCost: COLONY.build.reelReclaimer }
+}
+function designFestBoard(state: ColonyState): Artifact {
+  // Spec 067 — Festival Board; a staffed Civic fixture (no power) that throws the once-a-year Highsun Lantern Supper. Costs tool-kits + linen + folios to build.
+  return { id: state.buildIds++, kind: 'festboard', color: FESTBOARD_COLOR, height: 0.8, residents: 0, jobs: COLONY.build.festBoardWorkers, powerLoad: 0, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.festBoardCost, materialsCost: COLONY.build.matFestBoard, crew: COLONY.build.crewFestBoard, materialsGen: 0, componentsCost: COLONY.build.compFestBoard, toolsCost: COLONY.build.toolFestBoard, linenCost: COLONY.build.linenFestBoard, folioCost: COLONY.build.folioFestBoard }
 }
 
 /** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
@@ -1164,6 +1172,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 12 && countKind(state, 'import') < 1 && countKind(state, 'exchange') > 0 && state.components >= COLONY.build.compImportOffice && state.treasury > COLONY.build.importOfficeCost) return designImportOffice(state)
   // Spec 064 — once wages are paid and finished wares pile up past the stall reserve, raise a Market Stall (one per ~stallServedCap colonists) to sell the surplus to the home market.
   if (state.colonists > 12 && countKind(state, 'payoffice') > 0 && ((state.linen ?? 0) > COLONY.build.stallReserve + 10 || (state.folios ?? 0) > COLONY.build.stallReserve + 10) && countKind(state, 'stall') < Math.max(1, Math.ceil(state.colonists / COLONY.build.stallServedCap)) && state.components >= COLONY.build.compStall && state.materials >= COLONY.build.matStall && (state.tools ?? 0) >= COLONY.build.toolStall && (state.linen ?? 0) >= COLONY.build.linenStall) return designStall(state)
+  // Spec 067 — a colony that keeps a calendar, books, a market and a varied table raises a Festival Board so the people get a yearly Highsun Lantern Supper to look forward to.
+  if (state.colonists > 16 && countKind(state, 'festboard') < 1 && countKind(state, 'calendar') > 0 && countKind(state, 'registry') > 0 && countKind(state, 'stall') > 0 && countKind(state, 'rationvar') > 0 && state.components >= COLONY.build.compFestBoard && state.materials >= COLONY.build.matFestBoard && (state.tools ?? 0) >= COLONY.build.toolFestBoard && (state.linen ?? 0) >= COLONY.build.linenFestBoard && (state.folios ?? 0) >= COLONY.build.folioFestBoard) return designFestBoard(state)
   // Spec 039 — a mature colony raises a Comptroller's Office so the treasury can ride a hard stretch on managed debt.
   if (state.colonists > 14 && countKind(state, 'comptroller') < 1 && state.components >= COLONY.build.compComptroller && state.treasury > COLONY.build.comptrollerCost) return designComptroller(state)
   // Spec 038 — a mature colony raises a Roster Office so the council can prioritise scarce labour by sector.
@@ -1280,7 +1290,7 @@ const SECTOR_OF: Record<BuildKind, Sector> = {
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics', reclaimer: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety', watchnook: 'safety', firewatch: 'safety',
   exchange: 'trade', import: 'trade', stall: 'trade',
-  levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', census: 'civic', habitat: 'civic', calendar: 'civic', hallofnames: 'civic', registry: 'civic', planter: 'civic',
+  levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', census: 'civic', habitat: 'civic', calendar: 'civic', hallofnames: 'civic', registry: 'civic', planter: 'civic', festboard: 'civic',
 }
 // Spec 038 — priority orders the Roster Office fills under a shortage. 'balanced' uses the uniform split (no order).
 const ESSENTIALS_ORDER: Sector[] = ['food', 'safety', 'services', 'civic', 'logistics', 'industry', 'trade']
@@ -2538,12 +2548,14 @@ export function settlerConfidence(state: ColonyState): number {
   const insolvency = arrearsStrain(state) ? 1 : 0 // spec 039
   const ws = wageStatus(state) // spec 029 — neutral with no Pay Office
   const wageGap = ws.active ? (ws.rate === 'low' ? 1 : ws.rate === 'standard' ? 0.3 : 0) : 0
+  const cheer = (state.festivalCheer ?? 0) > 0 ? (state.festivalCheerBonus ?? 0) / 100 : 0 // spec 067 — Lantern Cheer lifts confidence for its window (0 with no festival)
   const c = 1
     - COLONY.build.confHungerWeight * hunger
     - COLONY.build.confThirstWeight * thirst
     - COLONY.build.confUnrestWeight * disorder
     - COLONY.build.confArrearsWeight * insolvency
     - COLONY.build.confWageWeight * wageGap
+    + cheer
   return Math.max(0, Math.min(1, c))
 }
 
@@ -2672,6 +2684,72 @@ export function calendarStep(state: ColonyState): void {
   if (year <= (state.lastFoundersYear ?? 0)) return // no new year has turned
   if (calendarStaffed(state)) state.unrest = Math.max(0, (state.unrest ?? 0) - COLONY.build.foundersDayUnrestRelief) // a free, annual morale lift
   state.lastFoundersYear = year // account the year whether or not it was marked (no catch-up celebrations)
+}
+
+/** Spec 067 — a Festival Board throws the supper only while built AND staffed (a Steward keeps the board). */
+export function festBoardActive(state: ColonyState): boolean {
+  if (countKind(state, 'festboard') === 0) return false
+  return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+/** Spec 067 — lay the Highsun supper from the colony's stores: serve as many tables (ceil(pop/20)) as the stores AND the Steward allow,
+ *  consume only what is served, and grant a tiered, decaying Lantern Cheer (confidence + a calmer colony + standing) by coverage. A supper
+ *  below the partial line is not held at all (no cost, no cheer). Never spends a stockpile below zero. */
+function throwSupper(state: ColonyState): void {
+  const colonists = state.colonists
+  if (colonists <= 0) return
+  const tables = Math.ceil(colonists / COLONY.build.festCitizensPerTable)
+  if (tables <= 0) return
+  const staffing = sectorStaffing(state, 'civic') // the Steward's organisation covers a fraction of the tables
+  const fish = (state.rimfish ?? 0) + (state.driedFish ?? 0)
+  const bySupply = Math.min(
+    Math.floor(state.food / COLONY.build.festGreensPerTable),
+    Math.floor(fish / COLONY.build.festFishPerTable),
+    Math.floor((state.linen ?? 0) / COLONY.build.festLinenPerTable),
+    Math.floor(state.materials / COLONY.build.festMaterialsPerTable),
+  )
+  const served = Math.max(0, Math.min(tables, bySupply, Math.floor(tables * staffing)))
+  const coverage = served / tables
+  if (coverage < COLONY.build.festPartialCoverage) return // not this year — the supper is not held, nothing spent
+  // hold the supper: spend the served tables' cost (greens, then fish fresh-first, then linen + materials)
+  state.food = Math.max(0, state.food - served * COLONY.build.festGreensPerTable)
+  let fishNeed = served * COLONY.build.festFishPerTable
+  const freshUse = Math.min(state.rimfish ?? 0, fishNeed)
+  state.rimfish = Math.max(0, (state.rimfish ?? 0) - freshUse)
+  fishNeed -= freshUse
+  if (fishNeed > 0) state.driedFish = Math.max(0, (state.driedFish ?? 0) - fishNeed)
+  state.linen = Math.max(0, (state.linen ?? 0) - served * COLONY.build.festLinenPerTable)
+  state.materials = Math.max(0, state.materials - served * COLONY.build.festMaterialsPerTable)
+  // grant the Lantern Cheer by tier
+  if (coverage >= COLONY.build.festFullCoverage) {
+    state.festivalCheer = COLONY.build.festFullCheerDays * 24 * 60
+    state.festivalCheerBonus = COLONY.build.festFullCheerBonus
+    state.unrest = Math.max(0, (state.unrest ?? 0) - COLONY.build.festUnrestRelief) // a full supper calms the colony
+    state.standing = Math.min(1, (state.standing ?? 0.5) + COLONY.build.festStandingGain) // ...and the wider world notices
+  } else {
+    state.festivalCheer = COLONY.build.festPartialCheerDays * 24 * 60
+    state.festivalCheerBonus = COLONY.build.festPartialCheerBonus
+  }
+}
+
+/** Spec 067 — the Highsun Lantern Supper: decay the active cheer, and once per colony-year, in the Highsun window, throw the supper from
+ *  a staffed Festival Board. Inert with no Board or no Calendar (it returns at once), so a colony that has not opted in is unchanged. */
+function festivalStep(state: ColonyState, dtMin: number): void {
+  if ((state.festivalCheer ?? 0) > 0) state.festivalCheer = Math.max(0, (state.festivalCheer ?? 0) - dtMin) // the cheer fades over its window
+  if (countKind(state, 'festboard') === 0) return // inert — no supper without a Board
+  const cal = calendarStatus(state)
+  if (!cal.office) return // ...and none without a Calendar to keep the year
+  if (cal.year > (state.lastFestivalYear ?? 0) && cal.month >= COLONY.build.festivalMonthStart && cal.month <= COLONY.build.festivalMonthEnd) {
+    state.lastFestivalYear = cal.year // account the year now (once per year, no Grey/Frost catch-up)
+    if (festBoardActive(state)) throwSupper(state) // an unstaffed Board lets the year pass
+  }
+}
+
+/** Spec 067 — Highsun Supper readout for the HUD: whether a Board stands, the cheer days left + its confidence bonus, and whether cheer is active. */
+export function festivalStatus(state: ColonyState): { board: boolean; cheerDays: number; bonus: number; active: boolean } {
+  const board = countKind(state, 'festboard') > 0
+  const cheer = state.festivalCheer ?? 0
+  return { board, cheerDays: Math.ceil(cheer / (24 * 60)), bonus: cheer > 0 ? state.festivalCheerBonus ?? 0 : 0, active: cheer > 0 }
 }
 
 /** Spec 054 — the season for a calendar month (1..12) and its skyfarm-yield multiplier. The 4+2+2+4 month weights make the twelve
@@ -3118,6 +3196,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   claimStep(state, dtMin) // spec 051 — a staffed Survey Camp advances the next Outer Claim and widens the build footprint
   state.renewalThisYear = (state.renewalThisYear ?? 0) + Math.max(0, state.colonists - popAtStepStart) // spec 055 — accumulate the year's net renewal (arrivals + births) before the Ledger reads it
   calendarStep(state) // spec 053 — mark the turning of the colony's years; a staffed Calendar Office gives a Founders' Day lift
+  festivalStep(state, dtMin) // spec 067 — the Highsun Lantern Supper: decay the cheer, and once a year throw the supper from a staffed Festival Board (inert with no Board)
   ledgerStep(state) // spec 055 — on the year-turn, a long-settled colony sees a gentle, capped natural turnover (inert below the onset span)
   tradeStep(state, dtMin)
   stallStep(state, dtMin) // spec 064 — Market Stalls sell surplus linen/folios to paid colonists for a little treasury margin (runs with the trade income)

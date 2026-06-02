@@ -891,6 +891,32 @@ export const COLONY = {
     reclaimBrownoutRate: 0.5, // a brownout halves the return (the heavy pump sheds, spec 017)
     reclaimNoFilterRate: 0.5, // without linen for filters the plant runs at half rate
     reclaimGreywaterPerLinen: 100, // linen consumed for filters per this much greywater treated
+    // The Highsun Lantern Supper (spec 067): a once-per-colony-year festival from a staffed Festival Board. On the year's Highsun turn it
+    // lays a supper from the colony's own stores (greens + fish + linen + materials, scaled per 20 citizens); its coverage grants a tiered,
+    // decaying Lantern Cheer (confidence + a calmer colony + standing). Inert by default; fires at most once a year; never spends below zero.
+    matFestBoard: 30, // materials to build
+    compFestBoard: 8, // components to build
+    toolFestBoard: 2, // tool-kits to build (spec 047)
+    linenFestBoard: 6, // linen to build (lantern bunting, spec 031)
+    folioFestBoard: 2, // folios to build (planning ledgers, spec 044)
+    crewFestBoard: 4, // builders reserved for the construction job
+    festBoardCost: 800, // treasury to build
+    festBoardWorkers: 1, // a Festival Steward (Civic); unstaffed, the supper does not happen
+    festivalMonthStart: 5, // the Highsun window (months 5..6) in which the supper fires
+    festivalMonthEnd: 6,
+    festCitizensPerTable: 20, // citizens per festival table
+    festGreensPerTable: 10, // greens (food) per table
+    festFishPerTable: 6, // rimfish (fresh first, then dried) per table
+    festLinenPerTable: 1, // linen per table (lanterns)
+    festMaterialsPerTable: 2, // materials per table (trestles)
+    festFullCoverage: 0.8, // coverage at/above this throws a full supper (the best cheer + standing)
+    festPartialCoverage: 0.5, // coverage at/above this throws a modest supper; below this the supper is not held at all (no cost, no cheer)
+    festFullCheerBonus: 5, // confidence points the full supper grants (added to settlerConfidence as +0.05)
+    festPartialCheerBonus: 2, // ...and the modest supper (+0.02)
+    festFullCheerDays: 30, // days the full Lantern Cheer lasts
+    festPartialCheerDays: 15, // ...and the modest cheer
+    festUnrestRelief: 0.1, // one-time unrest relief a full supper brings (a calmer colony, like Founders' Day)
+    festStandingGain: 0.05, // Kookerverse Standing a full supper earns (once per year)
     pollutionPerIndustrial: 3,
   },
 

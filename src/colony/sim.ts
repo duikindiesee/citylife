@@ -66,6 +66,9 @@ export interface ColonyState {
   unempSevereDays?: number // spec 062 — consecutive days unemployment has sat above the severe line (drives the -2)
   unempClearDays?: number // spec 062 — consecutive days unemployment has sat below the clear line (lifts the penalty)
   fireCooldown?: number // spec 065 — sim-minutes until a district may light its next spontaneous fire (rate-limit; 0 until a Fire-Watch stands)
+  lastFestivalYear?: number // spec 067 — the last colony-year the Highsun Lantern Supper fired (fires once per year)
+  festivalCheer?: number // spec 067 — sim-minutes left on the Lantern Cheer buff (0 = none)
+  festivalCheerBonus?: number // spec 067 — the confidence points the active cheer grants (5 full supper / 2 modest)
   parcels: Parcel[]
   jobs: ConstructionJob[]
   buildings: ColonyBuilding[]

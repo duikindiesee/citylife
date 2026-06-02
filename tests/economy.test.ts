@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, reclaimStatus, waterTankCap, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, reclaimStatus, waterTankCap, festivalStatus, festBoardActive, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -4761,5 +4761,96 @@ describe('Spec 066 — The Greywater Reclaimer: get some of our own water back',
     expect(withR.s.materials).toBe(without.s.materials) // ...no materials
     expect(withR.s.components).toBe(without.s.components) // ...no components
     expect(withR.s.colonists).toBe(without.s.colonists) // ...and no population
+  })
+})
+
+describe('Spec 067 — The Highsun Lantern Supper: a year the people look forward to', () => {
+  const mk = (kind: 'festboard' | 'calendar', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: kind === 'festboard' ? 1 : 2, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+  const HIGHSUN_Y1 = 485 // day 485 → year 1, month 5 (Highsun)
+  // a calendar-keeping colony sitting in Highsun of year 1, with stores for a supper. Materials is the clean consumption signal — nothing
+  // else in this scenario touches it (no mines/workshops/jobs), so the supper's spend shows on it without the daily food-eating confound.
+  const setup = (withBoard: boolean) => {
+    const sim = new ColonySim(37)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('calendar', lx + 1, ly, { jobs: 2 }))
+    if (withBoard) s.buildings.push(mk('festboard', lx, ly, { jobs: 1 }))
+    s.clock.day = HIGHSUN_Y1
+    s.colonists = 40; s.totalJobs = 6; s.food = 400; s.rimfish = 400; s.linen = 100; s.materials = 200; s.standing = 0.5; s.unrest = 0.5
+    s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    return { sim, s }
+  }
+
+  it('inert without a Board — the Highsun year passes with no supper', () => {
+    const { sim, s } = setup(false)
+    const mats0 = s.materials, standing0 = s.standing
+    stepBuild(s, sim.rng, 24 * 60)
+    expect(festivalStatus(s).board).toBe(false)
+    expect(s.materials).toBe(mats0) // no supper → no stores spent
+    expect(s.standing).toBe(standing0)
+    expect(festivalStatus(s).active).toBe(false)
+    expect(s.lastFestivalYear ?? 0).toBe(0)
+  })
+
+  it('a well-stocked colony throws a full supper and earns Lantern Cheer', () => {
+    const { sim, s } = setup(true)
+    expect(festBoardActive(s)).toBe(true)
+    const mats0 = s.materials, standing0 = s.standing
+    stepBuild(s, sim.rng, 24 * 60)
+    const fs = festivalStatus(s)
+    expect(fs.active).toBe(true) // the supper was laid
+    expect(fs.bonus).toBe(COLONY.build.festFullCheerBonus) // full coverage → the best cheer
+    expect(s.materials).toBe(mats0 - 2 * COLONY.build.festMaterialsPerTable) // 40 colonists → 2 tables, materials spent
+    expect(s.standing).toBeGreaterThan(standing0) // ...the wider world noticed
+    // the cheer lifts confidence: toggling it off (at the same state) lowers confidence
+    const confWith = settlerConfidence(s)
+    const saved = s.festivalCheer; s.festivalCheer = 0
+    const confWithout = settlerConfidence(s); s.festivalCheer = saved
+    expect(confWith).toBeGreaterThan(confWithout)
+  })
+
+  it('a thin supper helps less, and a failed one is not held at all', () => {
+    // partial: 40 colonists (2 tables) but materials for only 1 → coverage 0.5
+    const partial = setup(true)
+    partial.s.materials = COLONY.build.festMaterialsPerTable // one table's worth
+    const stand0 = partial.s.standing
+    stepBuild(partial.s, partial.sim.rng, 24 * 60)
+    expect(festivalStatus(partial.s).bonus).toBe(COLONY.build.festPartialCheerBonus) // the modest cheer
+    expect(partial.s.standing).toBe(stand0) // ...but no standing from a thin supper
+    // fail: 60 colonists (3 tables) but materials for only 1 → coverage 0.33, below the line
+    const fail = setup(true)
+    fail.s.colonists = 60; fail.s.materials = COLONY.build.festMaterialsPerTable
+    const mats0 = fail.s.materials
+    stepBuild(fail.s, fail.sim.rng, 24 * 60)
+    expect(festivalStatus(fail.s).active).toBe(false) // not this year
+    expect(fail.s.materials).toBe(mats0) // ...and nothing was spent
+  })
+
+  it('the supper fires at most once per colony-year and never spends below zero', () => {
+    const { sim, s } = setup(true)
+    const mats0 = s.materials
+    stepBuild(s, sim.rng, 24 * 60) // the Highsun supper fires
+    const afterOne = s.materials
+    expect(afterOne).toBeLessThan(mats0) // it was held
+    expect(s.lastFestivalYear).toBe(1)
+    stepBuild(s, sim.rng, 24 * 60) // same Highsun, same year — must NOT fire again
+    expect(s.materials).toBe(afterOne) // no second supper
+    expect(s.food).toBeGreaterThanOrEqual(0)
+    expect(s.linen ?? 0).toBeGreaterThanOrEqual(0)
+    expect(s.materials).toBeGreaterThanOrEqual(0)
+  })
+
+  it('the Lantern Cheer decays back to baseline', () => {
+    const { sim, s } = setup(true)
+    stepBuild(s, sim.rng, 24 * 60) // throw the supper → cheer active
+    expect(festivalStatus(s).active).toBe(true)
+    for (let i = 0; i < COLONY.build.festFullCheerDays + 2; i++) stepBuild(s, sim.rng, 24 * 60) // run out the 30-day window
+    expect(festivalStatus(s).active).toBe(false) // the cheer faded
+    expect(s.festivalCheer ?? 0).toBe(0)
   })
 })
