@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall'
 
 export interface Parcel {
   id: number
@@ -90,6 +90,7 @@ const SKIMMER_COLOR = 0x7fae8a // sage-green flax skimmer dock (rim cloudweed)
 const WEAVERY_COLOR = 0xd8c8a0 // linen-cream weavery (looms + bolts)
 const LIAISON_COLOR = 0x2f9bd8 // kookerverse-blue liaison office (the channel to the wider world)
 const STORMWATCH_COLOR = 0x9aa7b0 // storm-grey stormwatch shelter (rim lookout + refuge)
+const HALL_COLOR = 0xd8b65a // founders' gold — the Founders' Hall (civic archive + seat of the notable founders)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -369,6 +370,10 @@ function designStormwatch(state: ColonyState): Artifact {
   // Spec 034 — Stormwatch Shelter; a staffed rim lookout + refuge that braces the colony against Cloudsea Fronts.
   return { id: state.buildIds++, kind: 'stormwatch', color: STORMWATCH_COLOR, height: 1.1, residents: 0, jobs: COLONY.build.stormwatchWorkers, powerLoad: 0.3, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.stormwatchCost, materialsCost: COLONY.build.matStormwatch, crew: COLONY.build.crewStormwatch, materialsGen: 0, componentsCost: COLONY.build.compStormwatch }
 }
+function designHall(state: ColonyState): Artifact {
+  // Spec 035 — Founders' Hall; a staffed civic archive that seats the Living Roster of the colony's notable founders.
+  return { id: state.buildIds++, kind: 'hall', color: HALL_COLOR, height: 1.6, residents: 0, jobs: COLONY.build.hallWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.hallCost, materialsCost: COLONY.build.matHall, crew: COLONY.build.crewHall, materialsGen: 0, componentsCost: COLONY.build.compHall }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -511,6 +516,12 @@ export function colonyHeadlines(state: ColonyState): string[] {
   if (countKind(state, 'exchange') > 0) h.push("Bram Teel's Skybridge Exchange ships the colony's surplus to the dark.")
   if (countKind(state, 'foundry') > 0) h.push("Niko Vance's foundry weaves components into luxury reels.")
   if (countKind(state, 'survey') > 0) h.push('The Civic Pulse is read — the colony can see where it thrives.')
+  // Spec 035 — once the Founders' Hall seats the Living Roster, the Courier reports the founders by name and post.
+  if (foundersHallActive(state)) {
+    h.push('The Founders’ Hall seats the Living Roster — the people who built Landing One take their posts.')
+    const f = FOUNDERS[(Math.round(state.colonists) + state.buildings.length) % FOUNDERS.length] // a different founder each reading, deterministic
+    h.push(`${f.name} keeps the post of ${f.role} — the colony remembers who carries its burdens.`)
+  }
   return h
 }
 
@@ -584,6 +595,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 12 && countKind(state, 'liaison') < 1 && state.components >= COLONY.build.compLiaison && state.reels >= COLONY.build.reelLiaison) return designLiaison(state)
   // Spec 034 — respect the sky: an established colony raises a Stormwatch Shelter to brace for the Cloudsea Fronts.
   if (state.colonists > COLONY.build.frontMinColonists && countKind(state, 'stormwatch') < COLONY.build.maxStormwatch && state.components >= COLONY.build.compStormwatch) return designStormwatch(state)
+  // Spec 035 — honour the builders: a mature colony with components on hand raises a Founders' Hall to seat the Living Roster.
+  if (state.colonists > 14 && countKind(state, 'hall') < 1 && state.components >= COLONY.build.compHall) return designHall(state)
   // Spec 026 — answer an outbreak: when fever climbs past the build line and no post contains it → raise a Fever Watch Post.
   if (state.outbreak > COLONY.build.feverBuildThreshold && state.components >= COLONY.build.compFeverWatch && countKind(state, 'feverwatch') < COLONY.build.maxFeverWatch) return designFeverWatch(state)
   // Spec 028 — keep the peace: when unrest climbs past the build line and no post patrols → raise a Ward Post.
@@ -1001,6 +1014,7 @@ function unrestStep(state: ColonyState, dtMin: number): void {
   if (feasting(state)) u -= COLONY.build.feastUnrestReliefPerDay * frac // spec 030 — a feast lifts spirits, easing unrest even mid-squeeze
   if (liaisonActive(state) && (state.standing ?? 0.5) < COLONY.build.lowStandingThreshold) u += COLONY.build.standingUnrestPerDay * frac // spec 032 — disrepute breeds reputational unrest
   if (spireComplete(state)) u -= COLONY.build.spireUnrestReliefPerDay * frac // spec 033 — pride in the great work calms the colony
+  if (foundersHallActive(state)) u -= COLONY.build.foundersUnrestRelief * frac // spec 035 — pride in who built this steadies the colony
   state.unrest = Math.max(0, Math.min(COLONY.build.unrestMax, u))
 }
 
@@ -1162,7 +1176,7 @@ export function fulfillRequest(state: ColonyState): boolean {
   if (!state.request || !liaisonActive(state)) return false
   if (goodStock(state, state.request.good) < state.request.amount) return false
   spendGood(state, state.request.good, state.request.amount)
-  state.standing = Math.min(1, (state.standing ?? 0.5) + COLONY.build.standingReward * (spireComplete(state) ? COLONY.build.spireStandingMult : 1)) // spec 033 — the Beacon makes the world notice more
+  state.standing = Math.min(1, (state.standing ?? 0.5) + COLONY.build.standingReward * (spireComplete(state) ? COLONY.build.spireStandingMult : 1) * (foundersHallActive(state) ? COLONY.build.foundersStandingMult : 1)) // spec 033/035 — the Beacon makes the world notice; the seated founders are a face to it
   state.request = null
   state.requestCooldown = COLONY.build.requestIntervalDays * 24 * 60
   return true
@@ -1283,6 +1297,42 @@ export function spireStatus(state: ColonyState): { stage: number; total: number;
 export function stormwatchActive(state: ColonyState): boolean {
   if (countKind(state, 'stormwatch') === 0) return false
   return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+/** Spec 035 — the Living Roster: the colony's real system-authors, each seated as a named colonist with a public post.
+ *  Order = the order they joined the founding (spec authorship). New authors are added here as they propose. */
+export const FOUNDERS: ReadonlyArray<{ name: string; role: string }> = [
+  { name: 'Mara Venn', role: 'Works Marshal' }, // water, batteries, maintenance, storage — the infrastructure voice
+  { name: 'Bram Teel', role: 'Exchange Warden' }, // the Skybridge Exchange (trade)
+  { name: 'Niko Vance', role: 'Reel Foundryman' }, // the Reel Foundry (luxury good)
+  { name: 'Lys Ardent', role: 'Hearth Warden' }, // homes + culture
+  { name: 'Ravi Okondo', role: 'Water Steward' }, // life-support
+  { name: 'Jalen Orro', role: 'Skybridge Engineer' }, // the spans
+  { name: 'Echo Marlow', role: 'Signal Keeper' }, // the Broadcast Mast / Courier
+  { name: 'Tessa Quill', role: 'Transit Dispatcher' }, // the Skybridge Transit Depots (and this Hall)
+  { name: 'Jory Pell', role: 'Levy Clerk' }, // the Levy Office
+  { name: 'Tavi Orro', role: 'Fever Warden' }, // the Fever Watch
+  { name: 'Sella Brint', role: 'Market Packer' }, // the Housewares Market
+  { name: 'Niko Darr', role: 'Ward Captain' }, // the Ward Post
+  { name: 'Hessa Morn', role: 'Pay Clerk' }, // the Pay Office
+  { name: 'Bren Kalo', role: 'Feast Steward' }, // the Civic Feast
+]
+
+/** Spec 035 — the Living Roster is seated only while a built, staffed Founders' Hall stands (else founders are signatures). */
+export function foundersHallActive(state: ColonyState): boolean {
+  if (countKind(state, 'hall') === 0) return false
+  return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+/** Spec 035 — the seated roster: the founders as named colonists (empty until a staffed Hall seats them). */
+export function foundersRoster(state: ColonyState): ReadonlyArray<{ name: string; role: string }> {
+  return foundersHallActive(state) ? FOUNDERS : []
+}
+
+/** Spec 035 — Founders' Hall readout for the HUD: whether the Roster is seated and how many founders it seats. */
+export function foundersStatus(state: ColonyState): { active: boolean; seated: number; notable: { name: string; role: string } | null } {
+  const active = foundersHallActive(state)
+  return { active, seated: active ? FOUNDERS.length : 0, notable: active ? FOUNDERS[7] : null } // Tessa Quill, who raised the Hall
 }
 
 /** Spec 034 — the warning window before a front strikes — longer once the Spire's Sky Beacon (033) stands. */
@@ -1502,7 +1552,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) // spec 025/026/027/028/029/030/032/033 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, and the Spire all pull on who comes and stays
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) // spec 025/026/027/028/029/030/032/033/035 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, and a place with named founders all pull on who comes and stays
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * perDay)
 }
 
@@ -1538,6 +1588,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
     else if (b.artifact.kind === 'feast') upkeep += COLONY.build.feastDeckMaintCompPerDay // spec 030 — deck upkeep
     else if (b.artifact.kind === 'liaison') upkeep += COLONY.build.liaisonMaintCompPerDay // spec 032 — dispatch supply
     else if (b.artifact.kind === 'stormwatch') upkeep += COLONY.build.stormwatchMaintCompPerDay // spec 034 — watch supply
+    else if (b.artifact.kind === 'hall') upkeep += COLONY.build.hallMaintCompPerDay // spec 035 — archive + roster upkeep
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))

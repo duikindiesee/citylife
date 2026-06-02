@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -2173,5 +2173,124 @@ describe('Spec 022 — Maintenance Sheds: working buildings wear and need upkeep
     s2.buildings[0]!.wear = 0.9
     for (let i = 0; i < 200; i++) stepBuild(s2, sim2.rng, 10)
     expect(s2.buildings[0]!.wear!).toBeGreaterThan(0.9) // no fitters → it rusts further
+  })
+})
+
+describe('Spec 035 — The Founders Hall: the Living Roster of the people who built Landing One', () => {
+  const mk = (kind: 'hall' | 'liaison' | 'habitat' | 'mine', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('the Living Roster is seated only while a Founders Hall is built and staffed', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(foundersHallActive(s)).toBe(false) // no hall
+    s.buildings.push(mk('hall', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    s.totalJobs = 3
+    s.colonists = 0
+    expect(foundersHallActive(s)).toBe(false) // a hall, but nobody keeps it
+    s.colonists = 12
+    expect(foundersHallActive(s)).toBe(true) // built + staffed
+  })
+
+  it('the seated roster lists the real system-authors, each with a post', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(foundersRoster(s)).toHaveLength(0) // signatures only, no hall
+    s.buildings.push(mk('hall', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    s.totalJobs = 3
+    s.colonists = 12
+    const roster = foundersRoster(s)
+    expect(roster.length).toBeGreaterThanOrEqual(14)
+    const names = roster.map((f) => f.name)
+    expect(names).toContain('Mara Venn')
+    expect(names).toContain('Tessa Quill')
+    expect(names).toContain('Tavi Orro')
+    expect(roster.every((f) => f.role.length > 0)).toBe(true) // each founder holds a named post
+    expect(foundersStatus(s).seated).toBe(roster.length)
+    expect(foundersStatus(s).notable?.name).toBe('Tessa Quill') // the founder who raised the Hall keeps it
+  })
+
+  it('a seated Roster makes each fulfilled Civic Request earn a little more standing', () => {
+    const gain = (withHall: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.colonists = 12
+      s.totalJobs = 4
+      s.buildings.push(mk('liaison', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+      if (withHall) s.buildings.push(mk('hall', s.terrain.landing.x + 4, s.terrain.landing.y, { jobs: 3 }))
+      s.standing = 0.5
+      s.components = 100
+      s.request = { good: 'components', amount: 10, deadline: 4320 }
+      const before = s.standing
+      expect(fulfillRequest(s)).toBe(true)
+      return s.standing - before
+    }
+    expect(gain(true)).toBeGreaterThan(gain(false)) // the seated founders are a face to the wider world
+  })
+
+  it('a seated Roster eases unrest a touch (vs an identical colony with no hall)', () => {
+    const run = (withHall: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.colonists = 6
+      s.totalJobs = 6 // fully employed (0 idle) in BOTH runs → the only difference is the seated Roster's relief
+      s.buildings.push(mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6 }))
+      if (withHall) s.buildings.push(mk('hall', s.terrain.landing.x + 4, s.terrain.landing.y, { jobs: 3 }))
+      s.unrest = 0.5
+      for (let i = 0; i < 60; i++) stepBuild(s, sim.rng, 10)
+      return s.unrest ?? 0
+    }
+    expect(run(true)).toBeLessThan(run(false)) // pride in who built this steadies the colony
+  })
+
+  it('a seated Roster draws settlers a little faster (vs an identical colony with no hall)', () => {
+    const run = (withHall: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.buildings.push(mk('habitat', s.terrain.landing.x + 4, s.terrain.landing.y, { residents: 60 })) // ample headroom — never saturates
+      s.buildings.push(mk('mine', s.terrain.landing.x + 5, s.terrain.landing.y, { jobs: 6 })) // employ everyone → no idle-unrest confound
+      if (withHall) s.buildings.push(mk('hall', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+      s.colonists = 6
+      s.totalJobs = 6
+      s.standing = 1.0 // amplify absolute immigration so the +10% gap is clearly measurable
+      s.power.batteryWh = s.power.batteryCapWh
+      s.power.solarW = 5
+      const col0 = s.colonists
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.colonists - col0
+    }
+    expect(run(true)).toBeGreaterThan(run(false))
+  })
+
+  it('the Courier reports the founders by name once the Roster is seated', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 20
+    s.totalJobs = 4
+    expect(colonyHeadlines(s).some((h) => h.includes('Living Roster'))).toBe(false) // no hall → founders stay signatures
+    s.buildings.push(mk('hall', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    const lines = colonyHeadlines(s)
+    expect(lines.some((h) => h.includes('Living Roster'))).toBe(true)
+    expect(lines.some((h) => FOUNDERS.some((f) => h.includes(f.name) && h.includes(f.role)))).toBe(true) // a founder named with their post
+  })
+
+  it('with no Founders Hall the colony is unchanged — the founders stay signatures (inert)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 12
+    s.totalJobs = 6
+    s.standing = 0.5
+    s.components = 100
+    s.request = { good: 'components', amount: 10, deadline: 4320 }
+    s.buildings.push(mk('liaison', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    const before = s.standing
+    expect(fulfillRequest(s)).toBe(true)
+    expect(s.standing - before).toBeCloseTo(COLONY.build.standingReward, 6) // exactly the base reward — no founders multiplier
+    expect(foundersRoster(s)).toHaveLength(0)
+    expect(foundersStatus(s).active).toBe(false)
   })
 })

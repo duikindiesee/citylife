@@ -451,6 +451,18 @@ export const COLONY = {
     frontWearDamage: 0.4, // wear added to every working building by a full-severity front
     frontBraceFactor: 0.25, // a braced colony (staffed Stormwatch) takes only this much of the damage
     maxStormwatch: 2,
+    // Founders' Hall (spec 035): a staffed civic hall that seats the colony's notable founders (the real system-authors)
+    // as a Living Roster. While seated it gives the colony a face and a memory — modest, lasting bonuses to immigration,
+    // standing and order, plus founder-named Courier headlines. Inert with no Hall, so existing play is unaffected.
+    matHall: 18,
+    compHall: 12,
+    crewHall: 3,
+    hallCost: 2400,
+    hallWorkers: 3, // 2 clerks + a steward
+    hallMaintCompPerDay: 0.5,
+    foundersDesirabilityBonus: 1.1, // immigration desirability while the Roster is seated
+    foundersUnrestRelief: 0.05, // daily unrest relief from pride in the founders
+    foundersStandingMult: 1.1, // standing earned per fulfilled request while the Roster is seated
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,
