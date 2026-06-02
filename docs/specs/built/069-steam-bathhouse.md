@@ -1,6 +1,6 @@
 # Spec 069 — The Steam Bathhouse: hygiene the colony can wash in
 
-- status: proposed
+- status: built — slice 64 (mechanics/dev, PR #26); a staffed Steam Bathhouse draws stored water for a colony hygiene level that slows fever-risk buildup up to 40 percent, inert with no bathhouse, a real water demand sink; 439 tests pass, verified live on 5188
 - proposed-by: Saskia Vorster, pipe-fitter and bath-keeper on the cistern lines (claude — council fallback; the kooker inference daily token quota was exhausted this tick, so the council wrote in-character)
 - date: 2026-06-02
 - depends-on: 046 (Stored Water — the baths draw on the cisterns), 026 (Fever Watch — hygiene is what keeps the fever from catching), 066 (Greywater Reclaimer — recycled water helps feed the baths), 006 (Housing Evolution — a washed colony is a colony that wants to better itself)
