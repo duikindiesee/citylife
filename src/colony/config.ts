@@ -414,6 +414,24 @@ export const COLONY = {
     reqAmountLinen: 10,
     reqAmountReels: 5,
     reqAmountFood: 20,
+    // Horizon Spire (spec 033): the colony's first grand, multi-stage monument. Four stages, each a large bundle of
+    // goods + treasury and a reserved crew over a long build. Once all four stand, the payoff is permanent (standing,
+    // immigration, unrest, feasts). Opt-in: funded only by a council action or a genuine surplus, so it is inert until
+    // the colony chooses to raise it — the founding economy and existing play are unaffected.
+    spireStageCount: 4,
+    spireStageCrew: 6, // colonists tied up while a stage is under construction
+    spireStageBuildHours: 48, // sim-hours to raise one stage (far longer than a normal building)
+    spireStartColonists: 18, // the colony auto-funds the Spire only once this established
+    spireSurplusMargin: 2, // ...and only when every stage resource is stocked at least this many times over
+    spireTreasuryMargin: 5000, // ...and treasury sits at least this far above the stage's treasury cost
+    spireStandingMult: 1.5, // when complete: standing earned per fulfilled request × this
+    spireImmigrationBonus: 1.15, // when complete: a permanent immigration desirability bonus
+    spireUnrestReliefPerDay: 0.1, // when complete: a permanent daily unrest relief (pride in the great work)
+    spireStageTreasury: [1000, 1500, 1500, 3000],
+    spireStageMaterials: [160, 0, 0, 0],
+    spireStageComponents: [80, 220, 170, 160],
+    spireStageReels: [0, 60, 50, 100],
+    spireStageLinen: [0, 120, 140, 0],
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

@@ -115,6 +115,9 @@ export function initBuild(state: ColonyState): void {
   state.standing = COLONY.build.standingStart // spec 032 — neutral Kookerverse Standing
   state.request = null // spec 032 — no open Civic Request
   state.requestCooldown = 0 // spec 032
+  state.spireStage = 0 // spec 033 — the Horizon Spire is unbuilt
+  state.spireProgress = 0
+  state.spireBuilding = false
   state.parcels = []
   state.jobs = []
   state.buildings = []
@@ -599,6 +602,7 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
 function reservedCrew(state: ColonyState): number {
   let n = 0
   for (const j of state.jobs) n += j.artifact.crew
+  if (state.spireBuilding) n += COLONY.build.spireStageCrew // spec 033 — a Spire stage ties up its crew
   return n
 }
 
@@ -988,6 +992,7 @@ function unrestStep(state: ColonyState, dtMin: number): void {
   }
   if (feasting(state)) u -= COLONY.build.feastUnrestReliefPerDay * frac // spec 030 — a feast lifts spirits, easing unrest even mid-squeeze
   if (liaisonActive(state) && (state.standing ?? 0.5) < COLONY.build.lowStandingThreshold) u += COLONY.build.standingUnrestPerDay * frac // spec 032 — disrepute breeds reputational unrest
+  if (spireComplete(state)) u -= COLONY.build.spireUnrestReliefPerDay * frac // spec 033 — pride in the great work calms the colony
   state.unrest = Math.max(0, Math.min(COLONY.build.unrestMax, u))
 }
 
@@ -1149,7 +1154,7 @@ export function fulfillRequest(state: ColonyState): boolean {
   if (!state.request || !liaisonActive(state)) return false
   if (goodStock(state, state.request.good) < state.request.amount) return false
   spendGood(state, state.request.good, state.request.amount)
-  state.standing = Math.min(1, (state.standing ?? 0.5) + COLONY.build.standingReward)
+  state.standing = Math.min(1, (state.standing ?? 0.5) + COLONY.build.standingReward * (spireComplete(state) ? COLONY.build.spireStandingMult : 1)) // spec 033 — the Beacon makes the world notice more
   state.request = null
   state.requestCooldown = COLONY.build.requestIntervalDays * 24 * 60
   return true
@@ -1193,6 +1198,77 @@ export function liaisonStatus(state: ColonyState): { active: boolean; standing: 
     request: req ? { good: req.good, amount: req.amount, daysLeft: Math.ceil(req.deadline / (24 * 60)) } : null,
     canFulfil: !!(active && req && goodStock(state, req.good) >= req.amount),
   }
+}
+
+/** Spec 033 — the Horizon Spire is complete once all its stages stand. */
+export function spireComplete(state: ColonyState): boolean {
+  return (state.spireStage ?? 0) >= COLONY.build.spireStageCount
+}
+
+/** Spec 033 — the resource bundle a given Spire stage (0-indexed) demands. */
+function spireStageBundle(stage: number): { treasury: number; materials: number; components: number; reels: number; linen: number } {
+  return {
+    treasury: COLONY.build.spireStageTreasury[stage] ?? 0,
+    materials: COLONY.build.spireStageMaterials[stage] ?? 0,
+    components: COLONY.build.spireStageComponents[stage] ?? 0,
+    reels: COLONY.build.spireStageReels[stage] ?? 0,
+    linen: COLONY.build.spireStageLinen[stage] ?? 0,
+  }
+}
+
+/** Spec 033 — does the colony hold enough (at the given resource margin) to fund the next stage and spare its crew? */
+function spireAfford(state: ColonyState, margin: number): boolean {
+  const stage = state.spireStage ?? 0
+  if (stage >= COLONY.build.spireStageCount || state.spireBuilding) return false
+  const b = spireStageBundle(stage)
+  return (
+    state.treasury >= b.treasury &&
+    state.materials >= b.materials * margin &&
+    state.components >= b.components * margin &&
+    state.reels >= b.reels * margin &&
+    (state.linen ?? 0) >= b.linen * margin &&
+    freeLabour(state) >= COLONY.build.spireStageCrew
+  )
+}
+
+/** Spec 033 — fund and begin the next Spire stage: spend its bundle and reserve a crew for the long build. */
+export function fundSpireStage(state: ColonyState): boolean {
+  if (!spireAfford(state, 1)) return false
+  const b = spireStageBundle(state.spireStage ?? 0)
+  state.treasury -= b.treasury
+  state.materials -= b.materials
+  state.components -= b.components
+  state.reels -= b.reels
+  state.linen = Math.max(0, (state.linen ?? 0) - b.linen)
+  state.spireBuilding = true
+  state.spireProgress = 0
+  return true
+}
+
+/** Spec 033 — advance the Spire: raise the active stage, or auto-fund the next when the colony has a true surplus. */
+function spireStep(state: ColonyState, dtMin: number): void {
+  if (state.spireBuilding) {
+    state.spireProgress = (state.spireProgress ?? 0) + dtMin / (COLONY.build.spireStageBuildHours * 60)
+    if (state.spireProgress >= 1) {
+      state.spireStage = (state.spireStage ?? 0) + 1
+      state.spireBuilding = false
+      state.spireProgress = 0
+    }
+    return
+  }
+  // Auto-fund: a wealthy, established colony raises the Spire on its own — gated hard so it never starves the colony.
+  if (
+    state.colonists >= COLONY.build.spireStartColonists &&
+    state.treasury >= spireStageBundle(state.spireStage ?? 0).treasury + COLONY.build.spireTreasuryMargin &&
+    spireAfford(state, COLONY.build.spireSurplusMargin)
+  ) {
+    fundSpireStage(state)
+  }
+}
+
+/** Spec 033 — Spire readout for the HUD: which stage, progress, whether it's rising, and whether it's finished. */
+export function spireStatus(state: ColonyState): { stage: number; total: number; progress: number; building: boolean; complete: boolean } {
+  return { stage: state.spireStage ?? 0, total: COLONY.build.spireStageCount, progress: state.spireProgress ?? 0, building: state.spireBuilding ?? false, complete: spireComplete(state) }
 }
 
 /** Spec 020 — staffed Skillhouse Academies train colonists into skilled workers, capped at the population. */
@@ -1382,7 +1458,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) // spec 025/026/027/028/029/030/032 — levy, outbreak, stocked homes, unrest, wages, a feast, and Kookerverse standing all pull on who comes and stays
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) // spec 025/026/027/028/029/030/032/033 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, and the Spire all pull on who comes and stays
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * perDay)
 }
 
@@ -1482,6 +1558,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   unrestStep(state, dtMin) // spec 028 — unrest rises or is calmed; producers + income below read the current order
   feastStep(state, dtMin) // spec 030 — count down an active feast, or auto-throw one for a wealthy, restless colony
   requestStep(state, dtMin) // spec 032 — the Kookerverse issues/judges Civic Requests; standing drifts without an office
+  spireStep(state, dtMin) // spec 033 — raise the Horizon Spire stage by stage when the colony can spare the surplus
   produceMaterials(state, dtMin)
   produceFibre(state, dtMin) // spec 031 — gather skyflax fibre (the second extractor)
   academyStep(state, dtMin)

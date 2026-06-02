@@ -59,6 +59,9 @@ export interface ColonyState {
   standing: number // spec 032 — 0..1 Kookerverse Standing; rises on fulfilled Civic Requests, falls on missed ones
   request: { good: 'components' | 'linen' | 'reels' | 'food'; amount: number; deadline: number } | null // spec 032 — the open Civic Request
   requestCooldown: number // spec 032 — sim-minutes until the next Civic Request may arrive
+  spireStage: number // spec 033 — completed stages of the Horizon Spire (0..4)
+  spireProgress: number // spec 033 — 0..1 progress on the stage currently under construction
+  spireBuilding: boolean // spec 033 — true while a Spire stage is being raised (its crew is reserved)
   buildingLoad: number
   powerGen: number
   lastIncomeDay: number
@@ -139,6 +142,9 @@ export class ColonySim {
       standing: 0.5, // spec 032 — the colony starts neutral with the Kookerverse
       request: null, // spec 032 — no open request until a Liaison Office stands
       requestCooldown: 0, // spec 032 — ready to receive the first request once a Liaison Office is staffed
+      spireStage: 0, // spec 033 — no Horizon Spire raised at founding
+      spireProgress: 0,
+      spireBuilding: false,
       buildingLoad: 0,
       powerGen: 0,
       lastIncomeDay: 0,

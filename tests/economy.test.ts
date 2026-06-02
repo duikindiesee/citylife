@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -1912,6 +1912,127 @@ describe('Spec 032 — The Kookerverse Liaison Office: standing and Civic Reques
     for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 10)
     expect(s.request).toBe(null)
     expect(s.standing).toBe(0.5)
+  })
+})
+
+describe('Spec 033 — The Horizon Spire: a monument the colony builds toward', () => {
+  const mk = (kind: 'liaison' | 'habitat', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('funding a stage spends its bundle and begins the build', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 20
+    s.totalJobs = 0 // 20 free hands
+    s.materials = 500
+    s.components = 500
+    s.treasury = 10000
+    expect(s.spireStage).toBe(0)
+    expect(fundSpireStage(s)).toBe(true)
+    expect(s.spireBuilding).toBe(true)
+    expect(s.materials).toBe(500 - COLONY.build.spireStageMaterials[0]!)
+    expect(s.components).toBe(500 - COLONY.build.spireStageComponents[0]!)
+    expect(s.treasury).toBe(10000 - COLONY.build.spireStageTreasury[0]!)
+  })
+
+  it('a stage builds over its long span and the Spire advances', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 20
+    s.totalJobs = 0
+    s.materials = 500
+    s.components = 200
+    s.treasury = 10000
+    fundSpireStage(s)
+    const steps = Math.ceil((COLONY.build.spireStageBuildHours * 60) / 60) + 2
+    for (let i = 0; i < steps; i++) stepBuild(s, sim.rng, 60)
+    expect(s.spireStage).toBe(1) // the first stage stands
+    expect(s.spireBuilding).toBe(false)
+  })
+
+  it('a stage cannot be funded without the goods', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 20
+    s.totalJobs = 0
+    s.materials = 10
+    s.components = 10
+    s.treasury = 100 // far short of the bundle
+    expect(fundSpireStage(s)).toBe(false)
+    expect(s.spireBuilding).toBe(false)
+  })
+
+  it('a stage under construction ties up a crew', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 20
+    s.totalJobs = 0
+    s.materials = 500
+    s.components = 500
+    s.treasury = 10000
+    const free0 = freeLabour(s)
+    fundSpireStage(s)
+    expect(freeLabour(s)).toBe(free0 - COLONY.build.spireStageCrew)
+  })
+
+  it('a finished Spire makes the Kookerverse reward standing more', () => {
+    const standingGain = (complete: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      if (complete) s.spireStage = 4
+      s.colonists = 6
+      s.totalJobs = 6
+      s.components = 50
+      s.buildings.push(mk('liaison', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+      s.request = { good: 'components', amount: 15, deadline: 4320 }
+      s.standing = 0.3
+      fulfillRequest(s)
+      return s.standing - 0.3
+    }
+    expect(standingGain(true)).toBeGreaterThan(standingGain(false)) // the Beacon amplifies recognition
+  })
+
+  it('a finished Spire draws more settlers and calms unrest', () => {
+    const immigration = (complete: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      if (complete) s.spireStage = 4
+      s.buildings.push(mk('habitat', s.terrain.landing.x + 3, s.terrain.landing.y, { residents: 9 }))
+      s.colonists = 4
+      s.totalJobs = 2
+      s.power.batteryWh = s.power.batteryCapWh
+      s.power.solarW = 5
+      const col0 = s.colonists
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.colonists - col0
+    }
+    expect(immigration(true)).toBeGreaterThan(immigration(false)) // the landmark draws people
+
+    const unrestAfter = (complete: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      if (complete) s.spireStage = 4
+      s.colonists = 6
+      s.totalJobs = 6
+      s.unrest = 0.5
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.unrest
+    }
+    expect(unrestAfter(true)).toBeLessThan(unrestAfter(false)) // pride in the work calms the colony
+  })
+
+  it('an unstarted Spire is inert — a small colony never sinks itself into a monument', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 6
+    s.totalJobs = 6
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 10)
+    expect(s.spireStage).toBe(0)
+    expect(spireComplete(s)).toBe(false)
   })
 })
 
