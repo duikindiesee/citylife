@@ -684,6 +684,13 @@ export const COLONY = {
     highsunYield: 1.05, // months 5-6
     greyYield: 0.95, // months 7-8
     frostYield: 0.9, // months 9-12 — the lean season (put food by in the storehouses)
+    // Seasonal Solar Angling (spec 057): once the colony keeps a calendar, SOLAR output follows the year too, peaking in Highsun and
+    // dipping in Frost. The 4+2+2+4 month weights average to EXACTLY 1.0 (annual solar yield unchanged — redistributed, not reduced),
+    // bounded to [0.90, 1.15]. Wind-shear turbines (045) are unaffected. Inert with no Calendar Office (solar flat all year as today).
+    solarBloom: 1.05, // months 1-4
+    solarHighsun: 1.15, // months 5-6 — the long, strong days
+    solarGrey: 0.95, // months 7-8
+    solarFrost: 0.9, // months 9-12 — short, thin light (lean on batteries + turbines)
     // The Long Ledger (spec 055): a life has a long span, then a gentle, capped natural turnover. Inert until the colony is past the
     // span (no test or young colony runs that long), softened by good care, and hard-capped so it can never out-pace renewal or
     // empty the colony — passings never exceed half the year's births+arrivals, never exceed a small fraction, never below the crew.

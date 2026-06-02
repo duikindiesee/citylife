@@ -2247,10 +2247,27 @@ export function seasonFactor(state: ColonyState): number {
   return seasonOf(calendarStatus(state).month).multiplier
 }
 
-/** Spec 054 — Season readout for the HUD: the current season name, its percent modifier, and whether seasons are active (a Calendar Office stands). */
-export function seasonStatus(state: ColonyState): { name: string; modifier: number; active: boolean } {
-  const s = seasonOf(calendarStatus(state).month)
-  return { name: s.name, modifier: Math.round((s.multiplier - 1) * 100), active: countKind(state, 'calendar') > 0 }
+/** Spec 057 — the seasonal SOLAR multiplier for a calendar month (1..12). The 4+2+2+4 month weights average to exactly 1.0, so the
+ *  annual solar yield is unchanged — power is only redistributed within the year. Peaks in Highsun, dips in Frost. */
+export function solarSeasonOf(month: number): number {
+  if (month <= 4) return COLONY.build.solarBloom
+  if (month <= 6) return COLONY.build.solarHighsun
+  if (month <= 8) return COLONY.build.solarGrey
+  return COLONY.build.solarFrost
+}
+
+/** Spec 057 — the seasonal solar-output multiplier: 1 with no Calendar Office (no almanac — solar is flat all year, inert), otherwise
+ *  the current month's band, bounded to [0.90, 1.15]. Applied to solar generation only; wind-shear turbines (045) are unaffected. */
+export function solarSeasonFactor(state: ColonyState): number {
+  if (countKind(state, 'calendar') === 0) return 1 // inert until the colony keeps a calendar (053)
+  return solarSeasonOf(calendarStatus(state).month)
+}
+
+/** Spec 054/057 — Season readout for the HUD: the current season name, the food and solar percent modifiers, and whether seasons are active (a Calendar Office stands). */
+export function seasonStatus(state: ColonyState): { name: string; modifier: number; solarModifier: number; active: boolean } {
+  const month = calendarStatus(state).month
+  const s = seasonOf(month)
+  return { name: s.name, modifier: Math.round((s.multiplier - 1) * 100), solarModifier: Math.round((solarSeasonOf(month) - 1) * 100), active: countKind(state, 'calendar') > 0 }
 }
 
 /** Spec 055 — how well the colony cares for its people, blended from health, water, food and order. Returns the passing multiplier

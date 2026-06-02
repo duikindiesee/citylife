@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, ledgerStep, ledgerStatus, rimfishStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -3973,5 +3973,62 @@ describe('Spec 056 — Rimfish: a second food from the cloudsea rim', () => {
       return s.colonists - c0
     }
     expect(grew(true)).toBeGreaterThan(grew(false)) // the richer table pulls settlers in faster
+  })
+})
+
+describe('Spec 057 — Seasonal Solar Angling: the sun keeps the calendar too', () => {
+  const M = COLONY.build.daysPerMonth
+  const mk = (kind: 'calendar' | 'turbine', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('with no Calendar Office solar is flat all year — the factor is 1 in every month (inert)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.clock.day = M * 8 // month 9 — would be the Frost dip with a calendar
+    expect(solarSeasonFactor(s)).toBe(1)
+  })
+
+  it('with a Calendar Office, solar output follows the month bands (peaks in Highsun, dips in Frost)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('calendar', s.terrain.landing.x + 4, s.terrain.landing.y, { jobs: 1 }))
+    const at = (day: number) => { s.clock.day = day; return solarSeasonFactor(s) }
+    expect(at(0)).toBe(COLONY.build.solarBloom)        // month 1 — Bloom
+    expect(at(M * 4)).toBe(COLONY.build.solarHighsun)  // month 5 — Highsun (the peak)
+    expect(at(M * 6)).toBe(COLONY.build.solarGrey)     // month 7 — Grey
+    expect(at(M * 8)).toBe(COLONY.build.solarFrost)    // month 9 — Frost (the dip)
+  })
+
+  it('the twelve monthly solar multipliers average to exactly 1.0 (annual solar yield unchanged)', () => {
+    let sum = 0
+    for (let m = 1; m <= 12; m++) sum += solarSeasonOf(m)
+    expect(sum / 12).toBeCloseTo(1, 10)
+  })
+
+  it('wind-shear turbines are unaffected by the season (wind has no season)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('calendar', s.terrain.landing.x + 4, s.terrain.landing.y, { jobs: 1 }))
+    s.buildings.push(mk('turbine', s.terrain.landing.x + 5, s.terrain.landing.y, { jobs: COLONY.build.turbineWorkers }))
+    s.colonists = 8
+    s.totalJobs = 4 // staffed
+    s.clock.day = M * 4 // Highsun
+    const highsun = turbinePower(s)
+    s.clock.day = M * 8 // Frost
+    const frost = turbinePower(s)
+    expect(highsun).toBeGreaterThan(0) // the turbine is producing
+    expect(frost).toBe(highsun) // ...and the season never changes it
+  })
+
+  it('the solar factor is always bounded to [0.90, 1.15] — it can never black out the colony', () => {
+    for (let m = 1; m <= 12; m++) {
+      const f = solarSeasonOf(m)
+      expect(f).toBeGreaterThanOrEqual(0.9)
+      expect(f).toBeLessThanOrEqual(1.15)
+    }
   })
 })
