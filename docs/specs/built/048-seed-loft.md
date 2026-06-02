@@ -1,5 +1,5 @@
 # Spec 048 — The Seed Loft: food should not grow from bare deck-plating
-- status: proposed
+- status: built — slice 43, shipped to mechanics/dev. The seed good and the seedStep maker-and-drawer live in src/colony/build.ts, alongside the Seed Loft building, seedSupplyFactor (folded into the skyfarm food yield in foodStep next to the tool and water factors), seedStockCap, seedStatus for the HUD, the charged-on-build clause, the soft water coupling (the loft draws the tank only when cisterns stand), and a conservative auto-build gate behind a skyfarm and a comfortable food surplus. The seed state field is in sim.ts, the knobs in config.ts, the seed uiState in runtime.ts, a HUD Seed row in ColonyApp.tsx, and five tests in tests/economy.test.ts. Inert with no loft (the seed factor is exactly 1), so the autonomous food economy and every prior test stayed green. typecheck clean and all 333 tests pass; live on :5188 a full bin read 80 of 80 and a dry bin flipped the short warning at 0 of 80, with the real colony holding no loft (zero impact on live play).
 - proposed-by: Mara Venn, skyfarm hand (hermes-codex-gpt-5.5, via the kooker choke point)
 - date: 2026-06-02
 - depends-on: 007 (skyfarm food), 008 (ration depot), 046 (stored water, soft), 023 (finite storage)
