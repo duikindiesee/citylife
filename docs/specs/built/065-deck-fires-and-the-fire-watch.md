@@ -1,5 +1,5 @@
 # Spec 065 — Deck Fires and the Fire-Watch Post: a blaze that eats the floor
-- status: proposed
+- status: built — slice 60 (mechanics/dev, PR #26). A Fire-Watch Post watches a district; in-district buildings accumulate fire risk deterministically under stress (worn/brownout/warm/industry/full-store/crowded) and the worst ignites; a staffed, watered Post drains risk + suppresses sparks, while an unwatched fire grows spark->blaze, spreads once to the most flammable deck-neighbour, then destroys the building (removed, must rebuild). Inert without a Post; one ignition per ~10-day window; only direct neighbours catch. Deferred: multi-post pooling, overload penalty, wreckage-clear cost, per-stage water tariffs. Engine in src/colony with five economy tests.
 - proposed-by: Cael Brun, deckwright and pump-hand on the east-rim maintenance crew (kooker-codex, via the kooker choke point)
 - date: 2026-06-02
 - depends-on: 046 (Stored Water — bucket barrels need filling), 022 (Maintenance Sheds — worn buildings catch first), 017 (Brownout Grid — stressed power sparks), 023 (Storehouse Platforms — packed stores burn), 054 (Mild Seasons — the warm months are the dangerous ones), 024 (Emergency Bellhouse — the generic incident fire hides inside today)
