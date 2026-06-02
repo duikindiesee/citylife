@@ -184,6 +184,7 @@ export function ColonyApp() {
         <div className="row"><span>Buildings</span><b>{ui.colony.buildings}</b></div>
         <div className="row"><span>Building</span><b>{ui.colony.building}</b></div>
         <div className="row"><span>Solar</span><b>{ui.power.solarW.toFixed(1)} kW</b></div>
+        {ui.power.windW > 0 && <div className="row"><span>Wind</span><b style={{ color: '#8fb8d0' }} title="Wind-Shear Turbine Masts — steady generation that feeds the grid day and night (no daylight dip), scaled by staffing. Build more to outrun brownouts as the colony grows.">{ui.power.windW.toFixed(1)} kW</b></div>}
         <div className="row"><span>Load</span><b style={{ color: ui.power.loadW > ui.power.solarW ? '#e0584d' : undefined }}>{ui.power.loadW.toFixed(1)} kW</b></div>
         {ui.power.brownout && <div className="row"><span style={{ color: '#e6c84d' }}>⚡ Brownout</span><b style={{ color: '#e6c84d' }} title="Grid over capacity + battery low — heavy industry at 50% until more solar is built">industry 50%</b></div>}
         <div className="batt">

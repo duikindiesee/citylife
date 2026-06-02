@@ -557,6 +557,15 @@ export const COLONY = {
     folioCapPerDay: 8, // folios an Exchange can ship per day
     storeBaseFolios: 60, // base folio storage; raised by Storehouse Platforms (023)
     storePerFolios: 60,
+    // Wind-Shear Turbine Mast (spec 045): a buildable high-output generator that feeds the brownout grid (017) like solar,
+    // so generation scales with the colony. Steady output (no daylight), staffing-scaled. Inert with no mast.
+    matTurbine: 40,
+    compTurbine: 12,
+    crewTurbine: 8,
+    turbineCost: 3000,
+    turbineWorkers: 4,
+    turbineOutputW: 4, // steady peak watts a fully-staffed mast adds to the grid (~ one solar peak of 4.5)
+    maxTurbines: 6,
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

@@ -2,7 +2,7 @@
 import { RNG } from '../engine/rng'
 import { COLONY } from './config'
 import { Terrain } from './terrain'
-import { initBuild, stepBuild } from './build'
+import { initBuild, stepBuild, turbinePower } from './build'
 import type { ColonyBuilding, ConstructionJob, Parcel, RoadCell } from './build'
 import { updateTraffic } from './traffic'
 import type { Car } from './traffic'
@@ -250,7 +250,7 @@ export class ColonySim {
 
     const dtHours = dt / 60
     const p = s.power
-    p.solarW = (COLONY.power.solarPeakW + s.powerGen) * c.daylight
+    p.solarW = (COLONY.power.solarPeakW + s.powerGen) * c.daylight + turbinePower(s) // spec 045 — turbines harvest wind day + night (no daylight scaling)
     p.loadW = COLONY.power.baseLoadW + s.colonists * 0.15 + s.buildingLoad
     p.batteryWh = Math.max(0, Math.min(p.batteryCapWh, p.batteryWh + (p.solarW - p.loadW) * dtHours))
 

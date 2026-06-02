@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -2975,5 +2975,54 @@ describe('Spec 044 — Skybound Folios: the colony signature finished export', (
     for (let i = 0; i < 50; i++) stepBuild(s, sim.rng, 10)
     expect(s.folios).toBe(0) // no bindery → no folios
     expect(s.reels).toBe(50) // reels untouched by folio production
+  })
+})
+
+describe('Spec 045 — The Wind-Shear Turbine Mast: power that scales', () => {
+  const mk = (kind: 'turbine', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('a staffed Turbine Mast adds power, scaled by staffing; none without a mast', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(turbinePower(s)).toBe(0) // no mast
+    s.buildings.push(mk('turbine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 4 }))
+    s.totalJobs = 4
+    s.colonists = 4 // fully staffed
+    expect(turbinePower(s)).toBeCloseTo(COLONY.build.turbineOutputW, 5) // 1 mast × output × 1.0
+    s.colonists = 2 // half-staffed
+    expect(turbinePower(s)).toBeCloseTo(COLONY.build.turbineOutputW * 0.5, 5)
+    s.colonists = 0 // unstaffed → spun down
+    expect(turbinePower(s)).toBe(0)
+  })
+
+  it('staffed Turbine Masts raise the supply and ease a brownout', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.power.loadW = 30
+    s.power.batteryWh = 0 // drained
+    s.power.batteryCapWh = 80
+    s.colonists = 40
+    s.totalJobs = 10 // staffing 1.0
+    expect(inBrownout(s)).toBe(true) // load 30 >> fixed solar peak, battery empty
+    for (let i = 0; i < 10; i++) s.buildings.push(mk('turbine', s.terrain.landing.x + i, s.terrain.landing.y + 5, { jobs: 4 }))
+    expect(turbinePower(s)).toBeGreaterThan(30) // 10 masts × 4 × 1.0 = 40 > load
+    expect(inBrownout(s)).toBe(false) // supply now exceeds load → the grid steadies
+  })
+
+  it('with no Turbine Mast the power supply is unchanged (inert)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.power.loadW = 30
+    s.power.batteryWh = 0
+    s.power.batteryCapWh = 80
+    s.colonists = 40
+    s.totalJobs = 10
+    expect(turbinePower(s)).toBe(0)
+    expect(inBrownout(s)).toBe(true) // no turbine → still in brownout, exactly as before
   })
 })

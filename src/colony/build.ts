@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine'
 
 export interface Parcel {
   id: number
@@ -98,6 +98,7 @@ const ROSTER_COLOR = 0xc89b5a // roster-bronze — the Roster Office (civic labo
 const SCHOOL_COLOR = 0xd98f5a // warm ochre — the Little Schoolroom (the colony's first letters)
 const CENSUS_COLOR = 0x4a90c2 // census-blue — the Census Hall (the colony's one gauge of prosperity)
 const FOLIO_COLOR = 0xb8862b // gilt-gold — the Folio House (binds the signature finished export)
+const TURBINE_COLOR = 0x8fb8d0 // pale steel-blue — the Wind-Shear Turbine Mast (power that scales with the colony)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -413,6 +414,18 @@ function designFolio(state: ColonyState): Artifact {
   // Spec 044 — Folio House; binds 1 reel + 1 linen into 1 skybound folio, the colony's signature finished export.
   return { id: state.buildIds++, kind: 'folio', color: FOLIO_COLOR, height: 1.2, residents: 0, jobs: COLONY.build.folioWorkers, powerLoad: 0.6, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.folioCost, materialsCost: COLONY.build.matFolio, crew: COLONY.build.crewFolio, materialsGen: 0, componentsCost: COLONY.build.compFolio }
 }
+function designTurbine(state: ColonyState): Artifact {
+  // Spec 045 — Wind-Shear Turbine Mast; a staffed high-output generator (its power is computed live by turbinePower).
+  return { id: state.buildIds++, kind: 'turbine', color: TURBINE_COLOR, height: 1.8, residents: 0, jobs: COLONY.build.turbineWorkers, powerLoad: 0, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.turbineCost, materialsCost: COLONY.build.matTurbine, crew: COLONY.build.crewTurbine, materialsGen: 0, componentsCost: COLONY.build.compTurbine }
+}
+
+/** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
+export function turbinePower(state: ColonyState): number {
+  const n = state.buildings.filter((b) => b.artifact.kind === 'turbine').length
+  if (n === 0) return 0
+  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  return n * COLONY.build.turbineOutputW * staffing
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -657,7 +670,7 @@ export function liveabilityTint(score: number): number {
 }
 
 function peakSupply(state: ColonyState): number {
-  return COLONY.power.solarPeakW + state.powerGen
+  return COLONY.power.solarPeakW + state.powerGen + turbinePower(state) // spec 045 — staffed Turbine Masts scale the supply
 }
 
 /** Spec 017 — the colony browns out when it is structurally under-powered (load over peak supply) AND the
@@ -746,6 +759,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (inBrownout(state) && state.reels >= COLONY.build.reelBattery && state.components >= COLONY.build.compBattery && countKind(state, 'battery') < countKind(state, 'solar') + 1) return designBattery(state)
   // Spec 021 — keep the workers moving: when commute demand outruns capacity, raise a Skybridge Transit Depot.
   if (Math.min(state.colonists, state.totalJobs) > COLONY.build.transitBaseCapacity + countKind(state, 'transit') * COLONY.build.transitPerDepot && state.components >= COLONY.build.compTransit && countKind(state, 'transit') < 5) return designTransit(state)
+  // Spec 045 — scale generation: when power-short and established (and components on hand), raise a Turbine Mast; else fall back to a cheap solar farm.
+  if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom && state.colonists > 12 && state.components >= COLONY.build.compTurbine && countKind(state, 'turbine') < COLONY.build.maxTurbines) return designTurbine(state)
   if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom) return designSolarFarm(state)
   const pendingJobs = state.jobs.reduce((g, j) => g + j.artifact.jobs, 0)
   if (state.colonists - (state.totalJobs + pendingJobs) > COLONY.build.jobDeficitThreshold) return designWorkplace(state, rng)
@@ -826,7 +841,7 @@ const SECTOR_OF: Record<BuildKind, Sector> = {
   greenhouse: 'food', depot: 'food', water: 'food',
   clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services',
   mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry',
-  transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics',
+  transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety',
   exchange: 'trade', import: 'trade',
   levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', census: 'civic', habitat: 'civic',
