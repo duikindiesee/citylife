@@ -49,6 +49,7 @@ export interface ColonyState {
   buildIds: number
   lastGrowMin: number
   housingTimer: number // spec 006 — accumulates sim-minutes; fires the upgrade/devolve pass on an interval
+  levyRate: 'low' | 'normal' | 'high' // spec 025 — household levy the council sets; inert until a Levy Office stands
   buildingLoad: number
   powerGen: number
   lastIncomeDay: number
@@ -119,6 +120,7 @@ export class ColonySim {
       buildIds: 1,
       lastGrowMin: 0,
       housingTimer: 0,
+      levyRate: 'normal', // spec 025 — steady by default; the rate only bites once a Levy Office is built + staffed
       buildingLoad: 0,
       powerGen: 0,
       lastIncomeDay: 0,

@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy'
 
 export interface Parcel {
   id: number
@@ -79,6 +79,7 @@ const TRANSIT_COLOR = 0x4aa0e0 // sky-blue skybridge transit depot
 const MAINTSHED_COLOR = 0x8d9aa6 // steel-grey maintenance shed (repair crews)
 const STOREHOUSE_COLOR = 0xb0a06a // khaki crate-stacked storehouse platform
 const BELLHOUSE_COLOR = 0xd2452f // emergency-red bellhouse (response crews)
+const LEVY_COLOR = 0x4caf8a // jade civic levy office (the ledger desk)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -309,6 +310,10 @@ function designBellhouse(state: ColonyState): Artifact {
   // Spec 024 — Emergency Bellhouse; staffed response crews answer sudden incidents on stricken buildings.
   return { id: state.buildIds++, kind: 'bellhouse', color: BELLHOUSE_COLOR, height: 1.1, residents: 0, jobs: COLONY.build.bellhouseWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.bellhouseCost, materialsCost: COLONY.build.matBellhouse, crew: COLONY.build.crewBellhouse, materialsGen: 0, componentsCost: COLONY.build.compBellhouse, reelsCost: COLONY.build.reelBellhouse }
 }
+function designLevy(state: ColonyState): Artifact {
+  // Spec 025 — Levy Office; a staffed civic desk that lets the council set the household levy rate.
+  return { id: state.buildIds++, kind: 'levy', color: LEVY_COLOR, height: 1.2, residents: 0, jobs: COLONY.build.levyWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.levyOfficeCost, materialsCost: COLONY.build.matLevy, crew: COLONY.build.crewLevy, materialsGen: 0, componentsCost: COLONY.build.compLevy, reelsCost: COLONY.build.reelLevy }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -508,6 +513,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (countKind(state, 'workshop') + countKind(state, 'foundry') > 0 && state.skilled < (countKind(state, 'workshop') + countKind(state, 'foundry')) * COLONY.build.skilledPerAdvanced && state.components >= COLONY.build.compAcademy && countKind(state, 'academy') < 2) return designAcademy(state)
   // Spec 016 — once the colony is a real town, raise a Broadcast Mast so the Kookerverse Courier can speak.
   if (state.colonists > 12 && countKind(state, 'mast') < 1 && state.components >= COLONY.build.compMast) return designMast(state)
+  // Spec 025 — give money a lever: an established colony with reels on hand raises a Levy Office (the rate stays normal until the council sets it).
+  if (state.colonists > 10 && countKind(state, 'levy') < 1 && state.components >= COLONY.build.compLevy && state.reels >= COLONY.build.reelLevy) return designLevy(state)
   // Spec 022 — keep the machinery running: a working building worn past the build line with no shed in reach → raise a Maintenance Shed.
   if (maintenanceUncovered(state) && state.components >= COLONY.build.compMaintShed && countKind(state, 'maintshed') < Math.ceil(state.buildings.filter(isWorking).length / COLONY.build.maintShedCovers)) return designMaintShed(state)
   // Spec 023 — make room before the surplus spills: a stockpile near its cap + components on hand → raise a Storehouse Platform.
@@ -803,6 +810,33 @@ function colonyAtRisk(state: ColonyState): boolean {
   return state.buildings.some((b) => b.incident || (isWorking(b) && buildingHazard(state, b) > 0))
 }
 
+/** Spec 025 — the household levy bites only while a built, staffed Levy Office stands (else the colony runs flat). */
+export function levyActive(state: ColonyState): boolean {
+  if (countKind(state, 'levy') === 0) return false
+  return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+/** Spec 025 — daily income multiplier from the levy rate (1.0 when inert: normal, or no staffed office). */
+function levyIncomeFactor(state: ColonyState): number {
+  if (!levyActive(state)) return 1
+  if (state.levyRate === 'low') return COLONY.build.levyIncomeLow
+  if (state.levyRate === 'high') return COLONY.build.levyIncomeHigh
+  return 1
+}
+
+/** Spec 025 — immigration desirability multiplier from the levy rate (1.0 when inert). */
+function levyDesirabilityFactor(state: ColonyState): number {
+  if (!levyActive(state)) return 1
+  if (state.levyRate === 'low') return COLONY.build.levyDesireLow
+  if (state.levyRate === 'high') return COLONY.build.levyDesireHigh
+  return 1
+}
+
+/** Spec 025 — levy readout for the HUD: whether it's in force, and the current rate the council has set. */
+export function levyStatus(state: ColonyState): { active: boolean; rate: 'low' | 'normal' | 'high' } {
+  return { active: levyActive(state), rate: state.levyRate }
+}
+
 /** Spec 020 — staffed Skillhouse Academies train colonists into skilled workers, capped at the population. */
 function academyStep(state: ColonyState, dtMin: number): void {
   const academies = countKind(state, 'academy')
@@ -940,7 +974,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) // spec 025 — a gentle levy draws settlers, a hard one repels them
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * perDay)
 }
 
@@ -962,6 +996,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
     else if (b.artifact.kind === 'maintshed') upkeep += COLONY.build.maintShedMaintCompPerDay // spec 022 — spare parts
     else if (b.artifact.kind === 'storehouse') upkeep += COLONY.build.storehouseMaintCompPerDay // spec 023 — logistics
     else if (b.artifact.kind === 'bellhouse') upkeep += COLONY.build.bellhouseMaintCompPerDay // spec 024 — foam/alarm upkeep
+    else if (b.artifact.kind === 'levy') upkeep += COLONY.build.levyMaintCompPerDay // spec 025 — ledger supply
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))
@@ -1059,7 +1094,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
     const employed = Math.min(state.colonists, state.totalJobs)
     const rate = state.colonists > 0 ? employed / state.colonists : 0
     const pollutionPenalty = Math.min(0.3, state.pollution / COLONY.economy.pollutionPenaltyScale)
-    const income = state.colonists * COLONY.economy.incomePerColonistPerDay * (0.6 + 0.4 * rate) * (1 - pollutionPenalty)
+    const income = state.colonists * COLONY.economy.incomePerColonistPerDay * (0.6 + 0.4 * rate) * (1 - pollutionPenalty) * levyIncomeFactor(state) // spec 025 — the council's levy rate scales the take
     const upkeep = state.buildings.length * COLONY.economy.buildingUpkeepPerDay + state.roads.length * COLONY.economy.roadUpkeepPerDay
     state.treasury += (income - upkeep) * days
   }

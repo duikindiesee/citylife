@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -1181,6 +1181,69 @@ describe('Spec 024 — Emergency Bellhouse: incidents strike, get answered, or h
       if (mine.incident) fired = true
     }
     expect(fired).toBe(true) // sustained worn + stressed → it goes up
+  })
+})
+
+describe('Spec 025 — The Levy Office: the council sets a fiscal rate with a real tradeoff', () => {
+  const mk = (kind: 'levy' | 'habitat', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('the levy is inert until a Levy Office is built and staffed', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(levyActive(s)).toBe(false) // no office
+    s.buildings.push(mk('levy', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.totalJobs = 2
+    s.colonists = 0
+    expect(levyActive(s)).toBe(false) // office, but nobody to clerk it
+    s.colonists = 6
+    expect(levyActive(s)).toBe(true) // built + staffed
+  })
+
+  const incomeAfterOneDay = (rate: 'low' | 'normal' | 'high', withOffice: boolean) => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    if (withOffice) s.buildings.push(mk('levy', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.colonists = 12
+    s.totalJobs = 2
+    s.levyRate = rate
+    s.treasury = 0
+    s.clock.day = 1
+    s.lastIncomeDay = 0 // force the daily income to settle on this step
+    stepBuild(s, sim.rng, 10)
+    return s.treasury
+  }
+
+  it('with a staffed office, a higher levy earns more treasury per day', () => {
+    expect(incomeAfterOneDay('high', true)).toBeGreaterThan(incomeAfterOneDay('normal', true))
+    expect(incomeAfterOneDay('normal', true)).toBeGreaterThan(incomeAfterOneDay('low', true))
+  })
+
+  it('with no Levy Office the rate is inert — income is identical at every setting', () => {
+    expect(incomeAfterOneDay('high', false)).toBe(incomeAfterOneDay('low', false))
+    expect(incomeAfterOneDay('normal', false)).toBe(incomeAfterOneDay('low', false))
+  })
+
+  it('a gentle levy draws more settlers than a hard one', () => {
+    const immigrationUnder = (rate: 'low' | 'high') => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.buildings.push(mk('levy', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+      s.buildings.push(mk('habitat', s.terrain.landing.x + 4, s.terrain.landing.y, { residents: 9 })) // room to grow
+      s.colonists = 4
+      s.totalJobs = 2
+      s.levyRate = rate
+      s.power.batteryWh = s.power.batteryCapWh
+      s.power.solarW = 5 // liveable, so settlers can arrive
+      const col0 = s.colonists
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.colonists - col0
+    }
+    expect(immigrationUnder('low')).toBeGreaterThan(immigrationUnder('high')) // gentle dues → more settlers
   })
 })
 

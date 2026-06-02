@@ -3,7 +3,7 @@ import { COLONY } from './config'
 import { ColonySim } from './sim'
 import { PlanetRenderer, type CameraPreset, type ViewMode } from './render/PlanetRenderer'
 import { Biome } from './terrain'
-import { autoGrow, freeLabour, housingCapacity, wateredFraction, provisionedFraction, housingTierCounts, healthFraction, cultureFraction, colonyLiveability, surveyAvailable, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, pollutedFraction, commute, maintenanceStatus, storageStatus, incidentStatus } from './build'
+import { autoGrow, freeLabour, housingCapacity, wateredFraction, provisionedFraction, housingTierCounts, healthFraction, cultureFraction, colonyLiveability, surveyAvailable, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, pollutedFraction, commute, maintenanceStatus, storageStatus, incidentStatus, levyStatus } from './build'
 import { registerSettler as kookerRegister, generateName as randomSettlerName, type KookerCard } from './kooker'
 import { addSettler, saveColony, restoreColony, clearColony } from './settlers'
 import { bankDeposits, CURRENCY } from './ledger'
@@ -33,7 +33,7 @@ export interface ColonyUiState {
   clock: { day: number; hour: number; minute: number; isDay: boolean }
   power: { solarW: number; loadW: number; batteryWh: number; batteryCapWh: number; pct: number; brownout: boolean }
   colonists: number
-  colony: { treasury: number; materials: number; components: number; food: number; reels: number; skilled: number; freeLabour: number; capacity: number; watered: number; provisioned: number; health: number; culture: number; cultureFuelled: boolean; liveability: number; smog: number; commute: { demand: number; capacity: number; congested: boolean }; maintenance: { worst: number; needing: number; sheds: number }; storage: { fill: number; full: boolean; tightest: string }; incidents: { active: number; capacity: number }; surveyed: boolean; trade: number; tiers: [number, number, number]; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
+  colony: { treasury: number; materials: number; components: number; food: number; reels: number; skilled: number; freeLabour: number; capacity: number; watered: number; provisioned: number; health: number; culture: number; cultureFuelled: boolean; liveability: number; smog: number; commute: { demand: number; capacity: number; congested: boolean }; maintenance: { worst: number; needing: number; sheds: number }; storage: { fill: number; full: boolean; tightest: string }; incidents: { active: number; capacity: number }; levy: { active: boolean; rate: 'low' | 'normal' | 'high' }; surveyed: boolean; trade: number; tiers: [number, number, number]; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
   settlers: { count: number; recent: { id: number; name: string }[] }
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
@@ -158,6 +158,11 @@ export class ColonyRuntime {
   toggleZones(): void {
     this.zonesVisible = !this.zonesVisible
     this.renderer?.setZonesVisible(this.zonesVisible)
+    this.emit()
+  }
+  /** Spec 025 — set the household levy rate (the council's fiscal lever; only bites with a staffed Levy Office). */
+  setLevy(rate: 'low' | 'normal' | 'high'): void {
+    this.sim.state.levyRate = rate
     this.emit()
   }
   /** Capture the current view as a PNG data URL (HUD snapshot button); null before the renderer starts. */
@@ -319,6 +324,7 @@ export class ColonyRuntime {
         maintenance: (() => { const m = maintenanceStatus(s); return { worst: Math.round(m.worstWear * 100), needing: m.needing, sheds: m.sheds } })(),
         storage: (() => { const st = storageStatus(s); return { fill: Math.round(st.fill * 100), full: st.full, tightest: st.tightest } })(),
         incidents: incidentStatus(s),
+        levy: levyStatus(s),
         surveyed: surveyAvailable(s),
         trade: Math.round(tradeExportRate(s)),
         tiers: housingTierCounts(s),

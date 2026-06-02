@@ -262,6 +262,20 @@ export const COLONY = {
     incidentMin: 240, // sim-minutes an incident runs before it resolves (crew in time) or hits its consequence
     incidentResolveWearBump: 0.05, // wear a resolved building carries away from the scare
     incidentGoodsLoss: 0.25, // fraction of a stored resource destroyed when an incident goes unanswered
+    // Levy Office (spec 025): the colony's first fiscal lever. A staffed office lets the council set a household
+    // levy rate; income and immigration desirability scale by it. Inert (factors 1.0) until an office is staffed,
+    // so the default (normal / no office) leaves the founding economy exactly as before.
+    matLevy: 14,
+    compLevy: 10,
+    reelLevy: 2,
+    crewLevy: 3,
+    levyOfficeCost: 2000,
+    levyWorkers: 2, // clerks
+    levyMaintCompPerDay: 0.5, // ledger supply
+    levyIncomeLow: 0.65, // income multiplier at a low levy (normal is 1.0)
+    levyIncomeHigh: 1.5, // income multiplier at a high levy
+    levyDesireLow: 1.25, // immigration desirability multiplier at a low levy (gentle dues draw settlers)
+    levyDesireHigh: 0.7, // immigration desirability multiplier at a high levy (a squeeze repels them)
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,
