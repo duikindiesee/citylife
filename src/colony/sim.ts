@@ -47,6 +47,8 @@ export interface ColonyState {
   tools: number // spec 047 — stored tool-kits (Tool Cribs make them; tooled workplaces draw them); 0 until a crib stands
   seed: number // spec 048 — stored seed-stock (Seed Lofts dry it from food + water; skyfarms draw it); 0 until a loft stands
   children: number // spec 050 — dependents being raised in mid-tier homes; cost food, give no labour, then mature into colonists; 0 until a birth
+  claims: number // spec 051 — completed Outer Claims; each adds one deck-ring to the effective build radius; 0 until a Survey Camp claims ground
+  claimProgress: number // spec 051 — work toward the next Outer Claim, 0..1 (a staffed Survey Camp advances it)
   parcels: Parcel[]
   jobs: ConstructionJob[]
   buildings: ColonyBuilding[]
@@ -139,6 +141,8 @@ export class ColonySim {
       tools: 0, // spec 047 — no tool-kits until a Tool Crib stands
       seed: 0, // spec 048 — no seed-stock until a Seed Loft stands
       children: 0, // spec 050 — no dependents until a household births one
+      claims: 0, // spec 051 — the colony starts at its base footprint
+      claimProgress: 0, // spec 051 — no survey underway
       parcels: [],
       jobs: [],
       buildings: [],

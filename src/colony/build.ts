@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp'
 
 export interface Parcel {
   id: number
@@ -102,6 +102,7 @@ const TURBINE_COLOR = 0x8fb8d0 // pale steel-blue — the Wind-Shear Turbine Mas
 const CISTERN_COLOR = 0x3f7fb0 // deep cistern-blue — the Mist Condenser Cistern (water made real)
 const TOOLCRIB_COLOR = 0xb8823c // worked-bronze — the Tool Crib (components become working tool-kits)
 const SEEDLOFT_COLOR = 0x7fae57 // seed-green — the Seed Loft (saved harvest becomes seed-stock)
+const SURVEYCAMP_COLOR = 0xc8a25a // surveyor-ochre — the Survey Camp (claims new ground for the colony)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -130,6 +131,8 @@ export function initBuild(state: ColonyState): void {
   state.tools = 0 // spec 047 — no tool-kits until a Tool Crib stands
   state.seed = 0 // spec 048 — no seed-stock until a Seed Loft stands
   state.children = 0 // spec 050 — no dependents until a household births one
+  state.claims = 0 // spec 051 — the colony starts at its base footprint
+  state.claimProgress = 0 // spec 051 — no survey underway
   state.standing = COLONY.build.standingStart // spec 032 — neutral Kookerverse Standing
   state.request = null // spec 032 — no open Civic Request
   state.requestCooldown = 0 // spec 032
@@ -224,7 +227,8 @@ function nextBlock(state: ColonyState): { bx: number; by: number } | null {
     const by = Number(bys)
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
       const nb = { bx: bx + dx, by: by + dy }
-      if (Math.abs(nb.bx) > COLONY.build.maxBlockRadius || Math.abs(nb.by) > COLONY.build.maxBlockRadius) continue
+      const radius = effectiveBuildRadius(state) // spec 051 — Outer Claims push this past the base maxBlockRadius
+      if (Math.abs(nb.bx) > radius || Math.abs(nb.by) > radius) continue
       if (state.developedBlocks.has(blockKey(nb.bx, nb.by))) continue
       if (!hasLand(nb.bx, nb.by)) continue
       const d = nb.bx * nb.bx + nb.by * nb.by
@@ -436,6 +440,10 @@ function designToolCrib(state: ColonyState): Artifact {
 function designSeedLoft(state: ColonyState): Artifact {
   // Spec 048 — Seed Loft; a staffed loft that dries saved harvest (food + water) into seed-stock for the skyfarms.
   return { id: state.buildIds++, kind: 'seedloft', color: SEEDLOFT_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.seedLoftWorkers, powerLoad: COLONY.build.seedLoftPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.seedLoftCost, materialsCost: COLONY.build.matSeedLoft, crew: COLONY.build.crewSeedLoft, materialsGen: 0, componentsCost: COLONY.build.compSeedLoft }
+}
+function designSurveyCamp(state: ColonyState): Artifact {
+  // Spec 051 — Survey Camp; a staffed boundary worksite whose Outer Claims push the colony's build footprint outward.
+  return { id: state.buildIds++, kind: 'surveycamp', color: SURVEYCAMP_COLOR, height: 0.6, residents: 0, jobs: COLONY.build.surveyCampWorkers, powerLoad: COLONY.build.surveyCampPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.surveyCampCost, materialsCost: COLONY.build.matSurveyCamp, crew: COLONY.build.crewSurveyCamp, materialsGen: 0, componentsCost: COLONY.build.compSurveyCamp }
 }
 
 /** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
@@ -898,6 +906,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 12 && !inBrownout(state) && countKind(state, 'mine') > 0 && countKind(state, 'workshop') > 0 && state.components >= COLONY.build.compToolCrib + COLONY.build.toolCribSpareComponents && countKind(state, 'toolcrib') < Math.max(1, Math.ceil(tooledWorkplaceCount(state) / 6))) return designToolCrib(state)
   // Spec 048 — once the colony farms at scale and food sits comfortably spare, raise a Seed Loft (one per ~6 skyfarms) so the harvest stays seeded; the surplus gate keeps it from ever tipping a food-marginal colony.
   if (state.colonists > 12 && !inBrownout(state) && countKind(state, 'greenhouse') > 0 && state.food > COLONY.build.seedLoftFoodSurplus && state.components >= COLONY.build.compSeedLoft + COLONY.build.seedLoftSpareComponents && countKind(state, 'seedloft') < Math.max(1, Math.ceil(countKind(state, 'greenhouse') / 6))) return designSeedLoft(state)
+  // Spec 051 — when the colony has filled its current footprint (no block left to develop) and could still claim more ground, raise a Survey Camp to push the boundary out.
+  if (state.colonists > 14 && countKind(state, 'surveycamp') < 1 && (state.claims ?? 0) < COLONY.build.maxClaims && nextBlock(state) === null && state.components >= COLONY.build.compSurveyCamp && state.materials >= COLONY.build.matSurveyCamp + COLONY.build.matPerClaim) return designSurveyCamp(state)
   // Spec 036 — once trade is established (an Exchange stands) and the bank is flush, raise an Import Office to buy shortages.
   if (state.colonists > 12 && countKind(state, 'import') < 1 && countKind(state, 'exchange') > 0 && state.components >= COLONY.build.compImportOffice && state.treasury > COLONY.build.importOfficeCost) return designImportOffice(state)
   // Spec 039 — a mature colony raises a Comptroller's Office so the treasury can ride a hard stretch on managed debt.
@@ -1001,7 +1011,7 @@ const SECTOR_OF: Record<BuildKind, Sector> = {
   greenhouse: 'food', depot: 'food', water: 'food', cistern: 'food', seedloft: 'food',
   clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services',
   mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry',
-  transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics',
+  transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety',
   exchange: 'trade', import: 'trade',
   levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', census: 'civic', habitat: 'civic',
@@ -2089,6 +2099,42 @@ function birthStep(state: ColonyState, dtMin: number): void {
   state.children = Math.max(0, children)
 }
 
+/** Spec 051 — how far out the colony may build: the base footprint plus one ring per completed Outer Claim (capped). With no
+ *  claims this is exactly COLONY.build.maxBlockRadius, so the buildable area is unchanged until a Survey Camp claims ground. */
+export function effectiveBuildRadius(state: ColonyState): number {
+  return COLONY.build.maxBlockRadius + Math.min(state.claims ?? 0, COLONY.build.maxClaims)
+}
+
+/** Spec 051 — Footprint readout for the HUD: the effective build radius, claims made / allowed, and the current survey progress. */
+export function footprintStatus(state: ColonyState): { radius: number; claims: number; maxClaims: number; progress: number; camp: boolean; atEdge: boolean } {
+  const claims = Math.min(state.claims ?? 0, COLONY.build.maxClaims)
+  return { radius: effectiveBuildRadius(state), claims, maxClaims: COLONY.build.maxClaims, progress: state.claimProgress ?? 0, camp: countKind(state, 'surveycamp') > 0, atEdge: claims >= COLONY.build.maxClaims }
+}
+
+/** Spec 051 — advance the current Outer Claim: a staffed, powered Survey Camp surveys the next ring over several days, then spends
+ *  materials + components to lay the boundary and widen the footprint. Inert with no camp; holds at the cap and when unpaid. */
+function claimStep(state: ColonyState, dtMin: number): void {
+  const camps = state.buildings.filter((b) => b.artifact.kind === 'surveycamp').length
+  if (camps === 0) return // inert — no camp, no claims
+  if ((state.claims ?? 0) >= COLONY.build.maxClaims) { state.claimProgress = 0; return } // frontier maxed — nothing left to claim
+  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  if (staffing <= 0) return // an unstaffed camp makes no progress (the frontier holds)
+  const frac = dtMin / (24 * 60)
+  let progress = (state.claimProgress ?? 0) + camps * (1 / COLONY.build.claimWorkDays) * staffing * powerFactor(state) * frac // a brownout slows the survey
+  if (progress >= 1) {
+    // Survey done — lay the new boundary if the colony can pay; else hold at full (the frontier does not move on credit).
+    if (state.materials >= COLONY.build.matPerClaim && state.components >= COLONY.build.compPerClaim) {
+      state.materials -= COLONY.build.matPerClaim
+      state.components -= COLONY.build.compPerClaim
+      state.claims = (state.claims ?? 0) + 1
+      progress = 0
+    } else {
+      progress = 1
+    }
+  }
+  state.claimProgress = progress
+}
+
 /** Spec 005 — services (water hubs) consume a trickle of components to run. */
 function serviceUpkeep(state: ColonyState, dtMin: number): void {
   let upkeep = 0 // components (water/depot/clinic/theatre)
@@ -2304,6 +2350,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   immigration(state, dtMin)
   departureStep(state, dtMin) // spec 041 — sustained failure sheds households; runs right after immigration so the net is arrivals minus departures
   birthStep(state, dtMin) // spec 050 — stable mid-tier homes raise children that mature into colonists (reads tiers + vacancy after housing/immigration)
+  claimStep(state, dtMin) // spec 051 — a staffed Survey Camp advances the next Outer Claim and widens the build footprint
   tradeStep(state, dtMin)
   importStep(state, dtMin) // spec 036 — the buying side: spend treasury to land the order good (capped by storage headroom below)
   clampStorage(state) // spec 023 — finite storage: production past a cap is lost (after all goods are produced/sold)

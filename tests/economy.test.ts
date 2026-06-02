@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -3475,5 +3475,104 @@ describe('Spec 050 — Household Births: a colony that can grow its own', () => 
     s.children = 10
     for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 60)
     expect(s.children).toBeLessThan(10) // families stop raising — the pool drains
+  })
+})
+
+describe('Spec 051 — The Survey Camp: the colony can claim new ground', () => {
+  const camp = (x: number, y: number): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: { id: 1, kind: 'surveycamp', color: 0, height: 1, residents: 0, jobs: COLONY.build.surveyCampWorkers, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 },
+  })
+
+  it('with no Survey Camp the build radius is the base footprint, unchanged (inert)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(effectiveBuildRadius(s)).toBe(COLONY.build.maxBlockRadius)
+    expect(s.claims).toBe(0)
+    s.powerGen = 100
+    for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 60)
+    expect(effectiveBuildRadius(s)).toBe(COLONY.build.maxBlockRadius) // no camp → frontier never moves
+    expect(s.claims).toBe(0)
+    expect(footprintStatus(s).camp).toBe(false)
+  })
+
+  it('the effective radius grows one ring per claim, capped at maxClaims', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(effectiveBuildRadius(s)).toBe(COLONY.build.maxBlockRadius)
+    s.claims = 1
+    expect(effectiveBuildRadius(s)).toBe(COLONY.build.maxBlockRadius + 1)
+    s.claims = 2
+    expect(effectiveBuildRadius(s)).toBe(COLONY.build.maxBlockRadius + 2)
+    s.claims = COLONY.build.maxClaims + 5 // over the cap
+    expect(effectiveBuildRadius(s)).toBe(COLONY.build.maxBlockRadius + COLONY.build.maxClaims) // capped at the island edge
+    expect(footprintStatus(s).atEdge).toBe(true)
+  })
+
+  it('a built, staffed, supplied camp completes an Outer Claim and widens the radius', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(camp(s.terrain.landing.x + 4, s.terrain.landing.y))
+    s.colonists = 8
+    s.totalJobs = 4 // fully staffed (min(1, 8/4) = 1)
+    s.powerGen = 100
+    s.power.batteryWh = s.power.batteryCapWh
+    s.materials = 1000
+    s.components = 100
+    const r0 = effectiveBuildRadius(s)
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 60) // ~8 days > claimWorkDays
+    expect(s.claims).toBeGreaterThanOrEqual(1) // the survey laid a new ring
+    expect(effectiveBuildRadius(s)).toBeGreaterThan(r0) // the build footprint widened
+  })
+
+  it('completing a claim spends materials and components', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(camp(s.terrain.landing.x + 4, s.terrain.landing.y))
+    s.colonists = 8
+    s.totalJobs = 4
+    s.powerGen = 100
+    s.power.batteryWh = s.power.batteryCapWh
+    s.materials = 1000
+    s.components = 100
+    const m0 = s.materials, c0 = s.components
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 60)
+    expect(s.claims).toBeGreaterThanOrEqual(1)
+    expect(s.materials).toBeLessThanOrEqual(m0 - COLONY.build.matPerClaim) // paid the materials
+    expect(s.components).toBeLessThanOrEqual(c0 - COLONY.build.compPerClaim) // and the components
+  })
+
+  it('an unsupplied camp surveys but the claim waits — the frontier does not move on credit', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(camp(s.terrain.landing.x + 4, s.terrain.landing.y))
+    s.colonists = 8
+    s.totalJobs = 4
+    s.powerGen = 100
+    s.power.batteryWh = s.power.batteryCapWh
+    s.materials = 0 // cannot pay for a claim
+    s.components = 0
+    for (let i = 0; i < 300; i++) stepBuild(s, sim.rng, 60)
+    expect(s.claims).toBe(0) // no claim completes without stock
+    expect(s.claimProgress).toBeGreaterThan(0.5) // ...but the survey work accrued and waits to be paid
+  })
+
+  it('claims never exceed the cap — the radius holds at the island edge', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(camp(s.terrain.landing.x + 4, s.terrain.landing.y))
+    s.colonists = 8
+    s.totalJobs = 4
+    s.powerGen = 100
+    s.power.batteryWh = s.power.batteryCapWh
+    s.materials = 1000
+    s.components = 100
+    s.claims = COLONY.build.maxClaims // already at the edge
+    const r = effectiveBuildRadius(s)
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 60)
+    expect(s.claims).toBe(COLONY.build.maxClaims) // never claims past the island
+    expect(effectiveBuildRadius(s)).toBe(r)
   })
 })

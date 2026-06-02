@@ -645,7 +645,20 @@ export const COLONY = {
     birthCalmUnrest: 0.3, // unrest at or above this zeroes the calm score (a disorderly deck does not raise children)
     birthNeglectStability: 0.5, // below this combined stability the pool drains instead of growing/maturing
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
-    maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
+    maxBlockRadius: 7, // how many blocks out from the landing the colony can spread (the base footprint, before any Outer Claim)
+    // Survey Camp (spec 051): the colony can finally claim new ground. A staffed camp runs Outer Claims, each raising the effective
+    // build radius by one deck-ring onto existing terrain (the cell-finder already skips non-buildable land). Inert with no camp
+    // (effective radius == maxBlockRadius), capped at maxClaims so the frontier never runs past the island.
+    matSurveyCamp: 20,
+    compSurveyCamp: 6,
+    crewSurveyCamp: 4,
+    surveyCampCost: 1600,
+    surveyCampWorkers: 4, // 2 surveyors + 2 deck-wrights, tied to the boundary while they work
+    surveyCampPowerLoad: 0.3,
+    maxClaims: 4, // most extra deck-rings the colony may claim (base 7 → up to 11)
+    claimWorkDays: 6, // colony-days a fully-staffed camp takes to complete one Outer Claim
+    matPerClaim: 40, // materials spent to lay each new boundary ring
+    compPerClaim: 10, // components spent per claim
     pollutionPerIndustrial: 3,
   },
 
