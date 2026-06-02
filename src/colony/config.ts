@@ -331,6 +331,22 @@ export const COLONY = {
     unrestDesirabilityWeight: 0.5, // how much full unrest drags immigration desirability down
     unrestBuildThreshold: 0.08, // raise a Ward Post once unrest climbs past this
     maxWard: 3,
+    // Pay Office (spec 029): the colony's wage lever — the other half of the ledger. A staffed office lets the council
+    // set a colony-wide wage rate; the colony then pays a payroll scaled by employed workers, and the rate trades off
+    // against the levy and unrest. Inert (no payroll, no effect) until an office is staffed and the rate is non-standard.
+    matPayOffice: 10,
+    compPayOffice: 4,
+    reelPayOffice: 1,
+    crewPayOffice: 3,
+    payOfficeCost: 1900,
+    payOfficeWorkers: 2, // payroll clerks
+    payOfficeMaintCompPerDay: 0.5, // ledger supply
+    wagePerWorkerPerDay: 30, // base payroll per employed worker per day at the standard rate
+    wageLowFactor: 0.6, // payroll multiplier at a low wage
+    wageGenerousFactor: 1.6, // payroll multiplier at a generous wage
+    wageDesireLow: 0.85, // immigration desirability multiplier at a low wage
+    wageDesireGenerous: 1.2, // immigration desirability multiplier at a generous wage
+    wageGenerousCalmPerDay: 0.2, // extra unrest recovery per day at a generous wage (loyal workers)
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

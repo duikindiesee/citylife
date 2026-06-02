@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice'
 
 export interface Parcel {
   id: number
@@ -83,6 +83,7 @@ const LEVY_COLOR = 0x4caf8a // jade civic levy office (the ledger desk)
 const FEVERWATCH_COLOR = 0xe85d9c // pink-magenta fever watch post (public health)
 const MARKET_COLOR = 0xe39a3c // marigold housewares market (goods to homes)
 const WARD_COLOR = 0x4060c0 // deep-blue ward post (wardens keep order)
+const PAYOFFICE_COLOR = 0x7c6fce // violet pay office (payroll counter)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -329,6 +330,10 @@ function designWard(state: ColonyState): Artifact {
   // Spec 028 — Ward Post; staffed wardens patrol nearby housing and drive unrest back down.
   return { id: state.buildIds++, kind: 'ward', color: WARD_COLOR, height: 1.0, residents: 0, jobs: COLONY.build.wardWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.wardCost, materialsCost: COLONY.build.matWard, crew: COLONY.build.crewWard, materialsGen: 0, componentsCost: COLONY.build.compWard }
 }
+function designPayOffice(state: ColonyState): Artifact {
+  // Spec 029 — Pay Office; a staffed payroll counter that lets the council set the colony-wide wage rate.
+  return { id: state.buildIds++, kind: 'payoffice', color: PAYOFFICE_COLOR, height: 1.2, residents: 0, jobs: COLONY.build.payOfficeWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.payOfficeCost, materialsCost: COLONY.build.matPayOffice, crew: COLONY.build.crewPayOffice, materialsGen: 0, componentsCost: COLONY.build.compPayOffice, reelsCost: COLONY.build.reelPayOffice }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -532,6 +537,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 12 && countKind(state, 'mast') < 1 && state.components >= COLONY.build.compMast) return designMast(state)
   // Spec 025 — give money a lever: an established colony with reels on hand raises a Levy Office (the rate stays normal until the council sets it).
   if (state.colonists > 10 && countKind(state, 'levy') < 1 && state.components >= COLONY.build.compLevy && state.reels >= COLONY.build.reelLevy) return designLevy(state)
+  // Spec 029 — pay the hands: an established colony with reels on hand raises a Pay Office (the wage stays standard until the council sets it).
+  if (state.colonists > 10 && countKind(state, 'payoffice') < 1 && state.components >= COLONY.build.compPayOffice && state.reels >= COLONY.build.reelPayOffice) return designPayOffice(state)
   // Spec 026 — answer an outbreak: when fever climbs past the build line and no post contains it → raise a Fever Watch Post.
   if (state.outbreak > COLONY.build.feverBuildThreshold && state.components >= COLONY.build.compFeverWatch && countKind(state, 'feverwatch') < COLONY.build.maxFeverWatch) return designFeverWatch(state)
   // Spec 028 — keep the peace: when unrest climbs past the build line and no post patrols → raise a Ward Post.
@@ -922,7 +929,7 @@ function unrestPressure(state: ColonyState): number {
   const jobless = state.colonists > 0 ? (state.colonists - employed) / state.colonists : 0
   const unemployment = Math.max(0, (jobless - COLONY.build.unrestJoblessThreshold) / (1 - COLONY.build.unrestJoblessThreshold))
   if (unemployment <= 0) return 0
-  const hardship = Math.max(levyActive(state) && state.levyRate === 'high' ? 1 : 0, inBrownout(state) ? 1 : 0)
+  const hardship = Math.max(levyActive(state) && state.levyRate === 'high' ? 1 : 0, inBrownout(state) ? 1 : 0, lowWageBites(state) ? 1 : 0) // spec 029 — a low wage is a squeeze too
   if (hardship <= 0) return 0
   return Math.min(1, unemployment * hardship)
 }
@@ -937,6 +944,7 @@ function unrestStep(state: ColonyState, dtMin: number): void {
   } else {
     u += COLONY.build.unrestSpreadPerDay * unrestPressure(state) * frac // disorder spreads while idle + squeezed
     u -= COLONY.build.unrestRecoverPerDay * frac // some natural calming
+    if (generousWage(state)) u -= COLONY.build.wageGenerousCalmPerDay * frac // spec 029 — generous wages buy loyalty
   }
   state.unrest = Math.max(0, Math.min(COLONY.build.unrestMax, u))
 }
@@ -951,6 +959,49 @@ function orderFactor(state: ColonyState): number {
 /** Spec 028 — order readout for the HUD: the unrest level (0..1) and whether a Ward Post is keeping the peace. */
 export function unrestStatus(state: ColonyState): { unrest: number; warded: boolean } {
   return { unrest: state.unrest ?? 0, warded: wardActive(state) }
+}
+
+/** Spec 029 — wages are paid only while a built, staffed Pay Office stands (else labour is free, as before). */
+export function payOfficeActive(state: ColonyState): boolean {
+  if (countKind(state, 'payoffice') === 0) return false
+  return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+/** Spec 029 — payroll multiplier from the wage rate (1.0 at standard). */
+function wagePayrollFactor(state: ColonyState): number {
+  if (state.wageRate === 'low') return COLONY.build.wageLowFactor
+  if (state.wageRate === 'generous') return COLONY.build.wageGenerousFactor
+  return 1
+}
+
+/** Spec 029 — the colony's daily payroll: employed workers × the per-worker wage × the rate (0 with no staffed office). */
+export function payrollPerDay(state: ColonyState): number {
+  if (!payOfficeActive(state)) return 0
+  const employed = Math.min(state.colonists, state.totalJobs)
+  return employed * COLONY.build.wagePerWorkerPerDay * wagePayrollFactor(state)
+}
+
+/** Spec 029 — immigration desirability multiplier from the wage rate (1.0 when inert). */
+function wageDesirabilityFactor(state: ColonyState): number {
+  if (!payOfficeActive(state)) return 1
+  if (state.wageRate === 'low') return COLONY.build.wageDesireLow
+  if (state.wageRate === 'generous') return COLONY.build.wageDesireGenerous
+  return 1
+}
+
+/** Spec 029 — true when a staffed Pay Office is paying a low wage (a hardship that feeds unrest, like a hard levy). */
+function lowWageBites(state: ColonyState): boolean {
+  return payOfficeActive(state) && state.wageRate === 'low'
+}
+
+/** Spec 029 — true when a staffed Pay Office is paying a generous wage (loyal workers — eases unrest). */
+function generousWage(state: ColonyState): boolean {
+  return payOfficeActive(state) && state.wageRate === 'generous'
+}
+
+/** Spec 029 — wage readout for the HUD: whether it's in force, the rate, and the current daily payroll. */
+export function wageStatus(state: ColonyState): { active: boolean; rate: 'low' | 'standard' | 'generous'; payroll: number } {
+  return { active: payOfficeActive(state), rate: state.wageRate, payroll: Math.round(payrollPerDay(state)) }
 }
 
 /** Spec 020 — staffed Skillhouse Academies train colonists into skilled workers, capped at the population. */
@@ -1114,7 +1165,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) // spec 025/026/027/028 — levy, outbreak, stocked homes, and unrest all pull on who comes and stays
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) // spec 025/026/027/028/029 — levy, outbreak, stocked homes, unrest, and wages all pull on who comes and stays
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * perDay)
 }
 
@@ -1142,6 +1193,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
       upkeep += COLONY.build.marketWaresCompPerDay // spec 027 — everyday wares delivered to homes (components)
       reelUpkeep += COLONY.build.marketLuxuryReelsPerDay // spec 027 — luxury wares delivered (reels)
     } else if (b.artifact.kind === 'ward') upkeep += COLONY.build.wardMaintCompPerDay // spec 028 — patrol supply
+    else if (b.artifact.kind === 'payoffice') upkeep += COLONY.build.payOfficeMaintCompPerDay // spec 029 — ledger supply
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))
@@ -1243,7 +1295,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
     const pollutionPenalty = Math.min(0.3, state.pollution / COLONY.economy.pollutionPenaltyScale)
     const income = state.colonists * COLONY.economy.incomePerColonistPerDay * (0.6 + 0.4 * rate) * (1 - pollutionPenalty) * levyIncomeFactor(state) * (1 - (state.unrest ?? 0) * COLONY.build.unrestIncomeRefusal) // spec 025/028 — the levy rate scales the take; unrest refuses a slice of it
     const upkeep = state.buildings.length * COLONY.economy.buildingUpkeepPerDay + state.roads.length * COLONY.economy.roadUpkeepPerDay
-    state.treasury += (income - upkeep) * days
+    state.treasury += (income - upkeep - payrollPerDay(state)) * days // spec 029 — the colony pays its workers a daily wage
   }
 
   if (state.clock.totalMinutes - state.lastGrowMin >= COLONY.build.growIntervalHours * 60) {

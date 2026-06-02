@@ -52,6 +52,7 @@ export interface ColonyState {
   levyRate: 'low' | 'normal' | 'high' // spec 025 — household levy the council sets; inert until a Levy Office stands
   outbreak: number // spec 026 — 0..1 share of the population unwell; spreads in bad conditions, contained by a Fever Watch
   unrest: number // spec 028 — 0..1 social disorder; rises from idle + squeezed populations, calmed by a Ward Post
+  wageRate: 'low' | 'standard' | 'generous' // spec 029 — the council-set wage; inert until a Pay Office stands
   buildingLoad: number
   powerGen: number
   lastIncomeDay: number
@@ -125,6 +126,7 @@ export class ColonySim {
       levyRate: 'normal', // spec 025 — steady by default; the rate only bites once a Levy Office is built + staffed
       outbreak: 0, // spec 026 — the colony starts healthy; an outbreak only grows from sustained bad conditions
       unrest: 0, // spec 028 — the colony starts orderly; unrest only grows from idleness under a squeeze
+      wageRate: 'standard', // spec 029 — fair pay by default; the lever only bites once a Pay Office is built + staffed
       buildingLoad: 0,
       powerGen: 0,
       lastIncomeDay: 0,

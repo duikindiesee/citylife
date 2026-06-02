@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -1516,6 +1516,107 @@ describe('Spec 028 — The Ward Post: idleness and hardship breed unrest', () =>
     expect(s.unrest).toBe(0)
     for (let i = 0; i < 400; i++) stepBuild(s, sim.rng, 10)
     expect(s.unrest).toBeGreaterThan(0.1)
+  })
+})
+
+describe('Spec 029 — The Pay Office: the colony pays the hands that hold it up', () => {
+  const mk = (kind: 'payoffice' | 'habitat', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('wages are paid only while a Pay Office is built and staffed', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(payOfficeActive(s)).toBe(false) // no office
+    s.buildings.push(mk('payoffice', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.totalJobs = 2
+    s.colonists = 0
+    expect(payOfficeActive(s)).toBe(false) // office, but nobody to clerk it
+    s.colonists = 6
+    expect(payOfficeActive(s)).toBe(true) // built + staffed
+  })
+
+  it('payroll is zero without an office and scales with the wage rate with one', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 10
+    s.totalJobs = 10
+    expect(payrollPerDay(s)).toBe(0) // no office → labour is free, as before
+    s.buildings.push(mk('payoffice', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.wageRate = 'standard'
+    expect(payrollPerDay(s)).toBe(10 * COLONY.build.wagePerWorkerPerDay) // 10 employed × the per-worker wage
+    s.wageRate = 'generous'
+    expect(payrollPerDay(s)).toBeGreaterThan(10 * COLONY.build.wagePerWorkerPerDay) // generous costs more
+    s.wageRate = 'low'
+    expect(payrollPerDay(s)).toBeLessThan(10 * COLONY.build.wagePerWorkerPerDay) // low costs less
+  })
+
+  const treasuryAfterDay = (rate: 'low' | 'standard' | 'generous', withOffice: boolean) => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    if (withOffice) s.buildings.push(mk('payoffice', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.colonists = 12
+    s.totalJobs = 12 // fully employed → a full payroll
+    s.wageRate = rate
+    s.materials = 0
+    s.treasury = 0
+    s.clock.day = 1
+    s.lastIncomeDay = 0
+    stepBuild(s, sim.rng, 10)
+    return s.treasury
+  }
+
+  it('a generous wage drains more treasury per day than a low one', () => {
+    expect(treasuryAfterDay('generous', true)).toBeLessThan(treasuryAfterDay('low', true)) // bigger payroll → less left
+  })
+
+  it('without a Pay Office the wage rate is inert — the treasury is identical', () => {
+    expect(treasuryAfterDay('generous', false)).toBe(treasuryAfterDay('low', false)) // no office → no payroll
+  })
+
+  it('a low wage on idle workers breeds unrest', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('payoffice', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.colonists = 12
+    s.totalJobs = 2 // most of them idle
+    s.wageRate = 'low'
+    expect(s.unrest).toBe(0)
+    for (let i = 0; i < 400; i++) stepBuild(s, sim.rng, 10)
+    expect(s.unrest).toBeGreaterThan(0.1) // a cheap wage is a squeeze
+  })
+
+  it('a generous wage calms unrest back down', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('payoffice', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.colonists = 12
+    s.totalJobs = 2
+    s.wageRate = 'generous'
+    s.unrest = 0.5
+    for (let i = 0; i < 400; i++) stepBuild(s, sim.rng, 10)
+    expect(s.unrest).toBeLessThan(0.2) // loyal workers settle down
+  })
+
+  it('a generous wage draws more settlers than a low one', () => {
+    const immigrationUnder = (rate: 'low' | 'generous') => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.buildings.push(mk('payoffice', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+      s.buildings.push(mk('habitat', s.terrain.landing.x + 4, s.terrain.landing.y, { residents: 9 }))
+      s.colonists = 4
+      s.totalJobs = 2
+      s.wageRate = rate
+      s.power.batteryWh = s.power.batteryCapWh
+      s.power.solarW = 5
+      const col0 = s.colonists
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.colonists - col0
+    }
+    expect(immigrationUnder('generous')).toBeGreaterThan(immigrationUnder('low')) // better pay draws people
   })
 })
 
