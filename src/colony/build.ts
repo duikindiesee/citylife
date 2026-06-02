@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall' | 'firewatch'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall' | 'firewatch' | 'reclaimer'
 
 export interface Parcel {
   id: number
@@ -121,6 +121,7 @@ const REGISTRY_COLOR = 0x8a93b8 // slate-indigo — the Labour Registry Desk (cl
 const PLANTER_COLOR = 0x6fae5a // fresh planted green — the Planter Square (raised beds, a bench)
 const STALL_COLOR = 0xc6713e // warm terracotta — the Market Stall (awning + counter)
 const FIREWATCH_COLOR = 0xd2473a // alarm red — the Fire-Watch Post (bucket barrels + pump)
+const RECLAIMER_COLOR = 0x3f8fa0 // teal utility — the Greywater Reclaimer (settling drums + pump)
 const SANITATION_COLOR = 0x6f8f6a // drain-green — the Sanitation Post (clears household waste before it sickens the colony)
 const WATCHNOOK_COLOR = 0xb0a04a // lamp-brass — the Watch Nook (keeps petty theft off a rich colony's coffers)
 const key = (x: number, y: number) => x + ',' + y
@@ -526,6 +527,10 @@ function designFireWatch(state: ColonyState): Artifact {
   // Spec 065 — Fire-Watch Post; a staffed Safety post that watches a fire district, drains risk, and runs bucket-lines on a blaze. Costs tool-kits + reels + linen to build.
   return { id: state.buildIds++, kind: 'firewatch', color: FIREWATCH_COLOR, height: 0.9, residents: 0, jobs: COLONY.build.fireWatchWorkers, powerLoad: COLONY.build.fireWatchPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.fireWatchCost, materialsCost: COLONY.build.matFireWatch, crew: COLONY.build.crewFireWatch, materialsGen: 0, componentsCost: COLONY.build.compFireWatch, toolsCost: COLONY.build.toolFireWatch, reelsCost: COLONY.build.reelFireWatch, linenCost: COLONY.build.linenFireWatch }
 }
+function designReclaimer(state: ColonyState): Artifact {
+  // Spec 066 — Greywater Reclaimer; a staffed Logistics plant that treats the colony's greywater back into the tanks at a 2:1 loss. Costs tool-kits + reels to build.
+  return { id: state.buildIds++, kind: 'reclaimer', color: RECLAIMER_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.reclaimerWorkers, powerLoad: COLONY.build.reclaimerPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.reclaimerCost, materialsCost: COLONY.build.matReclaimer, crew: COLONY.build.crewReclaimer, materialsGen: 0, componentsCost: COLONY.build.compReclaimer, toolsCost: COLONY.build.toolReclaimer, reelsCost: COLONY.build.reelReclaimer }
+}
 
 /** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
 export function turbinePower(state: ColonyState): number {
@@ -579,6 +584,42 @@ function waterStep(state: ColonyState, dtMin: number): void {
     state.outbreak = Math.min(1, (state.outbreak ?? 0) + COLONY.build.dryTankFeverPerDay * lost * frac)
     state.unrest = Math.min(COLONY.build.unrestMax, (state.unrest ?? 0) + COLONY.build.dryTankUnrestPerDay * lost * frac)
   }
+}
+
+/** Spec 066 — how much stored water a staffed, powered Greywater Reclaimer would return per day at the current colony: a per-capita
+ *  greywater pool, treated at a 2:1 loss up to the plant's capacity, halved in a brownout and again without filters, capped by tank
+ *  headroom, and zero when the tanks are near-full (it idles). 0 with no plant or no tanks — the shared math for the step + the readout. */
+function reclaimWaterPerDay(state: ColonyState): number {
+  const plants = countKind(state, 'reclaimer')
+  if (plants === 0) return 0
+  const cap = waterTankCap(state)
+  const water = state.water ?? 0
+  if (cap <= 0 || water >= cap * COLONY.build.reclaimTankIdleFraction) return 0 // no tanks, or near-full → idle
+  const staffing = sectorStaffing(state, 'logistics')
+  if (staffing <= 0) return 0
+  if (state.power.batteryWh <= 0 && state.power.solarW <= 0) return 0 // no power → stops
+  const powerScale = inBrownout(state) ? COLONY.build.reclaimBrownoutRate : 1
+  const filterScale = (state.linen ?? 0) > 0 ? 1 : COLONY.build.reclaimNoFilterRate
+  const greywater = COLONY.build.reclaimGreywaterPerColonist * state.colonists // the day's wash/galley/cooling pool (per-capita proxy)
+  const treated = Math.min(greywater, plants * COLONY.build.reclaimGreywaterCapPerDay) * staffing * powerScale * filterScale
+  return treated / COLONY.build.reclaimLossRatio // 2 greywater → 1 stored water
+}
+
+/** Spec 066 — treat the day's greywater back into the tanks (capped by headroom, never overfilling), and draw a little linen for filters.
+ *  Runs right after waterStep so it tops up what the day drew. Returns at once with no plant — inert; it only ever adds water. */
+function reclaimStep(state: ColonyState, dtMin: number): void {
+  if (countKind(state, 'reclaimer') === 0) return // inert — the water economy is exactly as before
+  const frac = dtMin / (24 * 60)
+  const returned = Math.min(reclaimWaterPerDay(state) * frac, Math.max(0, waterTankCap(state) - (state.water ?? 0)))
+  if (returned <= 0) return
+  state.water = (state.water ?? 0) + returned // water-only — the plant adds to the tanks and touches no other stockpile
+}
+
+/** Spec 066 — Greywater Reclaimer readout for the HUD: plants built, water/day returned at the moment, and whether one is actually working. */
+export function reclaimStatus(state: ColonyState): { plants: number; perDay: number; active: boolean } {
+  const plants = countKind(state, 'reclaimer')
+  const perDay = reclaimWaterPerDay(state)
+  return { plants, perDay: Math.round(perDay), active: plants > 0 && perDay > 0 }
 }
 
 /** Spec 047 — the workplaces that need tool-kits to work at full speed (mine, workshop, skyfarm, maintenance shed, turbine). */
@@ -1097,6 +1138,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 14 && countKind(state, 'census') < 1 && state.components >= COLONY.build.compCensus) return designCensus(state)
   // Spec 046 — make water real: a large, well-powered colony raises a Mist Condenser Cistern (one per ~60 homes) to fill the tanks.
   if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'habitat') > 0 && countKind(state, 'cistern') < Math.max(1, Math.ceil(countKind(state, 'habitat') / 60)) && state.components >= COLONY.build.compCistern) return designCistern(state)
+  // Spec 066 — recycle the water: a sizeable colony that keeps tanks + a Labour Registry raises a Greywater Reclaimer (one per ~40 colonists) to treat its greywater back into the tanks.
+  if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'cistern') > 0 && countKind(state, 'registry') > 0 && countKind(state, 'reclaimer') < Math.max(1, Math.ceil(state.colonists / 40)) && state.components >= COLONY.build.compReclaimer && state.materials >= COLONY.build.matReclaimer && (state.tools ?? 0) >= COLONY.build.toolReclaimer && state.reels >= COLONY.build.reelReclaimer) return designReclaimer(state)
   // Spec 047 — once an extraction base exists (a mine + a workshop) and components sit spare, raise a Tool Crib (one per ~6 tooled workplaces) to keep the hands in tools.
   if (state.colonists > 12 && !inBrownout(state) && countKind(state, 'mine') > 0 && countKind(state, 'workshop') > 0 && state.components >= COLONY.build.compToolCrib + COLONY.build.toolCribSpareComponents && countKind(state, 'toolcrib') < Math.max(1, Math.ceil(tooledWorkplaceCount(state) / 6))) return designToolCrib(state)
   // Spec 048 — once the colony farms at scale and food sits comfortably spare, raise a Seed Loft (one per ~6 skyfarms) so the harvest stays seeded; the surplus gate keeps it from ever tipping a food-marginal colony.
@@ -1234,7 +1277,7 @@ const SECTOR_OF: Record<BuildKind, Sector> = {
   greenhouse: 'food', depot: 'food', water: 'food', cistern: 'food', seedloft: 'food', netdock: 'food',
   clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services', sanitation: 'services', rationvar: 'services',
   mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry', dryrack: 'industry',
-  transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics',
+  transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics', reclaimer: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety', watchnook: 'safety', firewatch: 'safety',
   exchange: 'trade', import: 'trade', stall: 'trade',
   levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', census: 'civic', habitat: 'civic', calendar: 'civic', hallofnames: 'civic', registry: 'civic', planter: 'civic',
@@ -3060,6 +3103,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   produceLinen(state, dtMin) // spec 031 — weave fibre into linen (the second refinery)
   produceFolios(state, dtMin) // spec 044 — bind reels + linen into skybound folios (the top-of-chain export)
   waterStep(state, dtMin) // spec 046 — condense + draw stored water (runs before housing/immigration read wateredFraction)
+  reclaimStep(state, dtMin) // spec 066 — a Greywater Reclaimer treats the day's greywater back into the tanks (inert with no plant)
   serviceUpkeep(state, dtMin)
   seedStep(state, dtMin) // spec 048 — dry food (+ water) into seed-stock, then let skyfarms draw it, before foodStep reads seedSupplyFactor
   foodStep(state, dtMin)

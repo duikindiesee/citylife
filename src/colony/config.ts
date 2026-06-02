@@ -873,6 +873,24 @@ export const COLONY = {
     fireDestroyAt: 2160, // sim-minutes burning before the building is destroyed (36h)
     fireSuppressStrength: 3, // a fully-staffed, watered Post removes this multiple of real-time fire age per step (so a Spark dies fast)
     fireAdjacency: 1.5, // deck-tile distance counted as a direct neighbour for spread (only direct neighbours catch)
+    // The Greywater Reclaimer (spec 066): the water economy's first recycling loop. A staffed, powered utility plant captures a share of
+    // the colony's daily water draw as greywater and treats it back into the tanks at a real 2:1 loss. Inert by default; runs on power
+    // (halves in a brownout), idles when the tanks are nearly full, and only ever ADDS water — never reducing the tanks or any stockpile.
+    matReclaimer: 45, // materials to build
+    compReclaimer: 14, // components to build
+    toolReclaimer: 3, // tool-kits to build (pump + seal fittings, spec 047)
+    reelReclaimer: 2, // reels to build (gasket stock, spec 013)
+    crewReclaimer: 4, // builders reserved for the construction job
+    reclaimerCost: 1200, // treasury to build
+    reclaimerWorkers: 2, // run crew (Logistics): full at 2, half at 1, idle at 0
+    reclaimerPowerLoad: 0.4, // a small grid load for the treatment pump (sheds in a brownout)
+    reclaimGreywaterPerColonist: 4, // greywater available per colonist per day (a per-capita proxy for the wash/galley/cooling draw)
+    reclaimGreywaterCapPerDay: 80, // greywater one plant can treat per day
+    reclaimLossRatio: 2, // greywater per unit of stored water returned (2:1 loss — no magic)
+    reclaimTankIdleFraction: 0.95, // above this share of tank capacity the plant idles to save filters (and never overfills)
+    reclaimBrownoutRate: 0.5, // a brownout halves the return (the heavy pump sheds, spec 017)
+    reclaimNoFilterRate: 0.5, // without linen for filters the plant runs at half rate
+    reclaimGreywaterPerLinen: 100, // linen consumed for filters per this much greywater treated
     pollutionPerIndustrial: 3,
   },
 

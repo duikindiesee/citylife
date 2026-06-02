@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, reclaimStatus, waterTankCap, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -4697,5 +4697,69 @@ describe('Spec 065 — Deck Fires and the Fire-Watch Post: a blaze that eats the
     expect(s.buildings.some((b) => b.id === ws.id)).toBe(false) // destroyed
     expect(s.materials).toBeGreaterThanOrEqual(0) // ...and no stockpile went negative
     expect(s.components).toBeGreaterThanOrEqual(0)
+  })
+})
+
+describe('Spec 066 — The Greywater Reclaimer: get some of our own water back', () => {
+  const mk = (kind: 'reclaimer' | 'cistern' | 'habitat', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: kind === 'reclaimer' ? 2 : 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+  // a populous, powered, tanked colony with headroom in the tanks (the cisterns give the tank cap; water starts empty)
+  const setup = (withReclaimer: boolean) => {
+    const sim = new ColonySim(31)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    for (let i = 0; i < 8; i++) s.buildings.push(mk('cistern', lx + i, ly + 4, { jobs: 2 }))
+    if (withReclaimer) s.buildings.push(mk('reclaimer', lx, ly, { jobs: 2 }))
+    s.colonists = 20; s.totalJobs = 6; s.water = 0; s.linen = 100; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+    return { sim, s }
+  }
+
+  it('inert without a Reclaimer; a staffed, powered one returns water to the tanks', () => {
+    const without = setup(false)
+    const withR = setup(true)
+    // one day, while the tanks still have headroom (cisterns fill fast, so the plant's value shows before the tank brims)
+    for (const c of [without, withR]) { c.s.colonists = 20; c.s.totalJobs = 6; stepBuild(c.s, c.sim.rng, 24 * 60) }
+    expect(reclaimStatus(without.s).plants).toBe(0) // no plant → the water economy is exactly as before
+    expect(withR.s.water).toBeGreaterThan(without.s.water) // ...and the plant got some of the colony's own water back
+  })
+
+  it('a brownout halves the return', () => {
+    const { s } = setup(true)
+    expect(reclaimStatus(s).perDay).toBe(40) // 20 colonists -> 80 greywater, treated 2:1 -> 40/day
+    s.power.loadW = 100000; s.power.batteryWh = 0; s.power.solarW = 1 // force a brownout (keep a trickle of solar so it is not power-dead)
+    expect(inBrownout(s)).toBe(true)
+    expect(reclaimStatus(s).perDay).toBe(20) // ...the heavy pump sheds, so the return halves
+  })
+
+  it('without filter linen the plant runs at half rate', () => {
+    const { s } = setup(true)
+    expect(reclaimStatus(s).perDay).toBe(40) // filters on hand → full rate
+    s.linen = 0
+    expect(reclaimStatus(s).perDay).toBe(20) // no filters → half rate
+  })
+
+  it('never overfills, and idles when the tanks are near full', () => {
+    const { sim, s } = setup(true)
+    s.water = waterTankCap(s) // tanks brim-full
+    expect(reclaimStatus(s).perDay).toBe(0) // idles to save filters
+    expect(reclaimStatus(s).active).toBe(false)
+    for (let i = 0; i < 10; i++) { s.colonists = 20; s.totalJobs = 6; s.water = waterTankCap(s); stepBuild(s, sim.rng, 24 * 60) }
+    expect(s.water).toBeLessThanOrEqual(waterTankCap(s)) // never pushed above the tank cap
+  })
+
+  it('water-only — it adds water and changes no other stockpile, and never reduces the tanks', () => {
+    const without = setup(false)
+    const withR = setup(true)
+    for (const c of [without, withR]) { c.s.food = 200; c.s.materials = 300; c.s.components = 150 }
+    for (const c of [without, withR]) { c.s.colonists = 20; c.s.totalJobs = 6; stepBuild(c.s, c.sim.rng, 24 * 60) } // one day
+    expect(withR.s.water).toBeGreaterThan(without.s.water) // the plant earned water...
+    expect(withR.s.food).toBe(without.s.food) // ...and touched no food
+    expect(withR.s.materials).toBe(without.s.materials) // ...no materials
+    expect(withR.s.components).toBe(without.s.components) // ...no components
+    expect(withR.s.colonists).toBe(without.s.colonists) // ...and no population
   })
 })
