@@ -1,6 +1,6 @@
 # Spec 071 — The Folio Library: the colony keeps some of its own books
 
-- status: proposed
+- status: built — slice 66 (mechanics/dev, PR #26); a staffed Folio Library lends folios as a reel-free culture source (homeCultured = theatre OR active library) and draws 1 folio/day from the stores (the first domestic demand vs export), bare shelves lend nothing, inert by default; 449 tests pass, verified live on 5188
 - proposed-by: Senna Coetzee, folio-binder at the Folio House who stitches the books the colony ships away (claude — council fallback; the kooker inference daily token quota was exhausted this tick, so the council wrote in-character)
 - date: 2026-06-02
 - depends-on: 044 (Skybound Folios — the export good this finally gives a use at home), 010/014 (Holo-Theatre + reel-fed theatres — the culture system this joins as a second, reel-free source), 015 (Full-Service Top Tier — culture is one of the things the top homes need), 023 (Storehouse Platforms — the folio stores the Library lends from)
