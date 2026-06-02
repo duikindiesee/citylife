@@ -62,6 +62,7 @@ export interface ColonyState {
   spireStage: number // spec 033 — completed stages of the Horizon Spire (0..4)
   spireProgress: number // spec 033 — 0..1 progress on the stage currently under construction
   spireBuilding: boolean // spec 033 — true while a Spire stage is being raised (its crew is reserved)
+  frontTimer: number // spec 034 — sim-minutes until the next Cloudsea Front strikes (counts down once established)
   buildingLoad: number
   powerGen: number
   lastIncomeDay: number
@@ -145,6 +146,7 @@ export class ColonySim {
       spireStage: 0, // spec 033 — no Horizon Spire raised at founding
       spireProgress: 0,
       spireBuilding: false,
+      frontTimer: 0, // spec 034 — set to the first-front delay in initBuild
       buildingLoad: 0,
       powerGen: 0,
       lastIncomeDay: 0,

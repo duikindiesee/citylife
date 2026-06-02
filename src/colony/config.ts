@@ -432,6 +432,25 @@ export const COLONY = {
     spireStageComponents: [80, 220, 170, 160],
     spireStageReels: [0, 60, 50, 100],
     spireStageLinen: [0, 120, 140, 0],
+    // Stormwatch Shelter (spec 034): the colony's first EXTERNAL danger. A Cloudsea Front periodically rolls in from
+    // beyond the island; a staffed Stormwatch Shelter braces the colony (and the Spire's Sky Beacon warns earlier), so a
+    // braced colony takes far less damage than an unprepared one (spoiled goods + a wear spike). Fronts only begin once
+    // the colony is established and arrive on a long interval, so early/short play is calm.
+    matStormwatch: 14,
+    compStormwatch: 10,
+    crewStormwatch: 3,
+    stormwatchCost: 1800,
+    stormwatchWorkers: 2, // watchkeepers
+    stormwatchMaintCompPerDay: 0.5,
+    frontFirstDelayDays: 8, // sim-days before the first Cloudsea Front can strike (longer than any short play)
+    frontIntervalDays: 6, // days between fronts thereafter
+    frontMinColonists: 12, // fronts only threaten an established colony, never the founding crew
+    frontWarningMin: 720, // the warning window (sim-min) before a front strikes
+    spireBeaconWarnMult: 2, // a complete Sky Beacon (033) lengthens the warning by this much
+    frontGoodsLoss: 0.3, // fraction of materials + components spoiled by a full-severity front
+    frontWearDamage: 0.4, // wear added to every working building by a full-severity front
+    frontBraceFactor: 0.25, // a braced colony (staffed Stormwatch) takes only this much of the damage
+    maxStormwatch: 2,
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

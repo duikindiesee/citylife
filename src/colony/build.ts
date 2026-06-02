@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch'
 
 export interface Parcel {
   id: number
@@ -89,6 +89,7 @@ const FEAST_COLOR = 0xf0b840 // festival-gold feast deck (lanterns + cook-tables
 const SKIMMER_COLOR = 0x7fae8a // sage-green flax skimmer dock (rim cloudweed)
 const WEAVERY_COLOR = 0xd8c8a0 // linen-cream weavery (looms + bolts)
 const LIAISON_COLOR = 0x2f9bd8 // kookerverse-blue liaison office (the channel to the wider world)
+const STORMWATCH_COLOR = 0x9aa7b0 // storm-grey stormwatch shelter (rim lookout + refuge)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -118,6 +119,7 @@ export function initBuild(state: ColonyState): void {
   state.spireStage = 0 // spec 033 — the Horizon Spire is unbuilt
   state.spireProgress = 0
   state.spireBuilding = false
+  state.frontTimer = COLONY.build.frontFirstDelayDays * 24 * 60 // spec 034 — the calm before the first Cloudsea Front
   state.parcels = []
   state.jobs = []
   state.buildings = []
@@ -363,6 +365,10 @@ function designLiaison(state: ColonyState): Artifact {
   // Spec 032 — Kookerverse Liaison Office; a staffed channel to the wider world that fields its Civic Requests.
   return { id: state.buildIds++, kind: 'liaison', color: LIAISON_COLOR, height: 1.4, residents: 0, jobs: COLONY.build.liaisonWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.liaisonCost, materialsCost: COLONY.build.matLiaison, crew: COLONY.build.crewLiaison, materialsGen: 0, componentsCost: COLONY.build.compLiaison, reelsCost: COLONY.build.reelLiaison }
 }
+function designStormwatch(state: ColonyState): Artifact {
+  // Spec 034 — Stormwatch Shelter; a staffed rim lookout + refuge that braces the colony against Cloudsea Fronts.
+  return { id: state.buildIds++, kind: 'stormwatch', color: STORMWATCH_COLOR, height: 1.1, residents: 0, jobs: COLONY.build.stormwatchWorkers, powerLoad: 0.3, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.stormwatchCost, materialsCost: COLONY.build.matStormwatch, crew: COLONY.build.crewStormwatch, materialsGen: 0, componentsCost: COLONY.build.compStormwatch }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -576,6 +582,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 12 && countKind(state, 'feast') < 1 && state.components >= COLONY.build.compFeast && state.reels >= COLONY.build.reelFeast) return designFeast(state)
   // Spec 032 — answer the wider world: an established colony with reels on hand raises a Kookerverse Liaison Office.
   if (state.colonists > 12 && countKind(state, 'liaison') < 1 && state.components >= COLONY.build.compLiaison && state.reels >= COLONY.build.reelLiaison) return designLiaison(state)
+  // Spec 034 — respect the sky: an established colony raises a Stormwatch Shelter to brace for the Cloudsea Fronts.
+  if (state.colonists > COLONY.build.frontMinColonists && countKind(state, 'stormwatch') < COLONY.build.maxStormwatch && state.components >= COLONY.build.compStormwatch) return designStormwatch(state)
   // Spec 026 — answer an outbreak: when fever climbs past the build line and no post contains it → raise a Fever Watch Post.
   if (state.outbreak > COLONY.build.feverBuildThreshold && state.components >= COLONY.build.compFeverWatch && countKind(state, 'feverwatch') < COLONY.build.maxFeverWatch) return designFeverWatch(state)
   // Spec 028 — keep the peace: when unrest climbs past the build line and no post patrols → raise a Ward Post.
@@ -1271,6 +1279,42 @@ export function spireStatus(state: ColonyState): { stage: number; total: number;
   return { stage: state.spireStage ?? 0, total: COLONY.build.spireStageCount, progress: state.spireProgress ?? 0, building: state.spireBuilding ?? false, complete: spireComplete(state) }
 }
 
+/** Spec 034 — the Stormwatch braces the colony only while a built, staffed shelter stands. */
+export function stormwatchActive(state: ColonyState): boolean {
+  if (countKind(state, 'stormwatch') === 0) return false
+  return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+/** Spec 034 — the warning window before a front strikes — longer once the Spire's Sky Beacon (033) stands. */
+function frontWarningWindow(state: ColonyState): number {
+  return COLONY.build.frontWarningMin * (spireComplete(state) ? COLONY.build.spireBeaconWarnMult : 1)
+}
+
+/** Spec 034 — a Cloudsea Front strikes an established colony on a long cycle; a staffed Stormwatch braces the blow. */
+function frontStep(state: ColonyState, dtMin: number): void {
+  if (state.colonists < COLONY.build.frontMinColonists) return // the founding crew is never threatened — early play is calm
+  state.frontTimer = (state.frontTimer ?? 0) - dtMin
+  if (state.frontTimer > 0) return
+  // IMPACT — damage scales with how ready the colony is: a staffed Stormwatch brings it down to the brace factor.
+  const severity = stormwatchActive(state) ? COLONY.build.frontBraceFactor : 1
+  state.materials = Math.max(0, state.materials - state.materials * COLONY.build.frontGoodsLoss * severity) // stored goods spoil
+  state.components = Math.max(0, state.components - state.components * COLONY.build.frontGoodsLoss * severity)
+  for (const b of state.buildings) {
+    if (!isWorking(b)) continue
+    b.wear = Math.min(1, (b.wear ?? 0) + COLONY.build.frontWearDamage * severity) // exposed buildings batter — the Maintenance Sheds (022) then matter
+  }
+  state.frontTimer = COLONY.build.frontIntervalDays * 24 * 60 // the next front, cycles away
+}
+
+/** Spec 034 — cloudsea-watch readout for the HUD: when the next front strikes, whether it's incoming/braced, and the watch. */
+export function frontStatus(state: ColonyState): { timerDays: number; incoming: boolean; braced: boolean; watching: boolean; established: boolean } {
+  const established = state.colonists >= COLONY.build.frontMinColonists
+  const t = state.frontTimer ?? 0
+  const incoming = established && t <= frontWarningWindow(state)
+  const watching = stormwatchActive(state)
+  return { timerDays: Math.max(0, Math.ceil(t / (24 * 60))), incoming, braced: incoming && watching, watching, established }
+}
+
 /** Spec 020 — staffed Skillhouse Academies train colonists into skilled workers, capped at the population. */
 function academyStep(state: ColonyState, dtMin: number): void {
   const academies = countKind(state, 'academy')
@@ -1493,6 +1537,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
     else if (b.artifact.kind === 'payoffice') upkeep += COLONY.build.payOfficeMaintCompPerDay // spec 029 — ledger supply
     else if (b.artifact.kind === 'feast') upkeep += COLONY.build.feastDeckMaintCompPerDay // spec 030 — deck upkeep
     else if (b.artifact.kind === 'liaison') upkeep += COLONY.build.liaisonMaintCompPerDay // spec 032 — dispatch supply
+    else if (b.artifact.kind === 'stormwatch') upkeep += COLONY.build.stormwatchMaintCompPerDay // spec 034 — watch supply
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))
@@ -1559,6 +1604,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   feastStep(state, dtMin) // spec 030 — count down an active feast, or auto-throw one for a wealthy, restless colony
   requestStep(state, dtMin) // spec 032 — the Kookerverse issues/judges Civic Requests; standing drifts without an office
   spireStep(state, dtMin) // spec 033 — raise the Horizon Spire stage by stage when the colony can spare the surplus
+  frontStep(state, dtMin) // spec 034 — count down to the next Cloudsea Front; strike (braced or not) at impact
   produceMaterials(state, dtMin)
   produceFibre(state, dtMin) // spec 031 — gather skyflax fibre (the second extractor)
   academyStep(state, dtMin)

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -2033,6 +2033,81 @@ describe('Spec 033 — The Horizon Spire: a monument the colony builds toward', 
     for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 10)
     expect(s.spireStage).toBe(0)
     expect(spireComplete(s)).toBe(false)
+  })
+})
+
+describe('Spec 034 — The Stormwatch Shelter: weathering the Cloudsea Fronts', () => {
+  const mk = (kind: 'mine' | 'stormwatch', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('the Stormwatch braces only while a shelter is built and staffed', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(stormwatchActive(s)).toBe(false) // no shelter
+    s.buildings.push(mk('stormwatch', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.totalJobs = 2
+    s.colonists = 0
+    expect(stormwatchActive(s)).toBe(false) // shelter, but nobody on watch
+    s.colonists = 6
+    expect(stormwatchActive(s)).toBe(true) // built + staffed
+  })
+
+  it('a Cloudsea Front spoils stored goods and batters buildings when unbraced', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 15
+    s.totalJobs = 6 // established
+    s.materials = 100
+    s.components = 100
+    const mine = mk('mine', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 6, materialsGen: 5 })
+    s.buildings.push(mine)
+    s.frontTimer = 5 // a front is about to strike
+    stepBuild(s, sim.rng, 10) // it hits, unbraced
+    expect(s.materials).toBeLessThan(100) // goods spoiled
+    expect(s.components).toBeLessThan(100)
+    expect(mine.wear ?? 0).toBeGreaterThan(0.1) // the building took a battering
+  })
+
+  it('a staffed Stormwatch braces the colony and cuts the damage sharply', () => {
+    const lost = (braced: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.colonists = 15
+      s.totalJobs = 6
+      s.materials = 100
+      if (braced) s.buildings.push(mk('stormwatch', s.terrain.landing.x + 5, s.terrain.landing.y, { jobs: 2 }))
+      s.frontTimer = 5
+      stepBuild(s, sim.rng, 10)
+      return 100 - s.materials
+    }
+    expect(lost(true)).toBeLessThan(lost(false)) // braced → far less spoiled
+  })
+
+  it('early and short play is calm — a small colony never sees a front', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 6 // below the established threshold
+    s.totalJobs = 6
+    s.materials = 100
+    const t0 = s.frontTimer
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 10)
+    expect(s.frontTimer).toBe(t0) // the timer never moves for a founding crew
+    expect(s.materials).toBe(100) // nothing spoils
+  })
+
+  it("the Spire's Sky Beacon lengthens the warning window", () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 15
+    s.totalJobs = 6
+    s.frontTimer = COLONY.build.frontWarningMin + 60 // just beyond the base warning window
+    expect(frontStatus(s).incoming).toBe(false)
+    s.spireStage = 4 // the Beacon stands
+    expect(frontStatus(s).incoming).toBe(true) // ...and the colony sees the front coming sooner
   })
 })
 
