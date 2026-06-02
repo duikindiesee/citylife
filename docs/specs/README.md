@@ -37,6 +37,30 @@ turn any of these into a spec; Review & Build can implement it):
   read from the spec queue + live `ColonyState` events. Cost: build + staff a Broadcast Mast (materials +
   components + a crew). Off until built.
 
+- **Token-thrift — the inference budget becomes an in-world value.** Every thing the world dreams up (a
+  citizen's proposal, a spec, a daily card) is generated through the kooker inference choke point, which
+  meters tokens per user — watchable at `GET /api/v1/ai/inference/quotas/borderpatrol@citylife.local` with
+  the CityLife PAT (`tokensToday` vs the daily limit, lately raised from the 50k default to 1M/day). Make
+  that meter an in-world economic signal: **reward the citizens and sellers who create or sell a thing for
+  the FEWEST inference tokens.** Token-thrift becomes a colony virtue the council pays for — the colonist
+  who proposes a mechanic in 200 tokens earns more standing (and coin) than one who burns 2000 for the same.
+  It ties the real cost of *imagining* the world to the world's own economy, and turns the shared daily token
+  quota into a finite colony resource the way materials and labour already are. Cost: read the quota endpoint
+  with the PAT each tick; a small civic ledger that converts tokens-saved into a reward, gated like every
+  mechanic. **Design Council: scope a small first slice** — e.g. a *Thrift Ledger* that ranks the recent
+  generations by token cost and pays a frugality bonus to the most sparing, leaving a profligate one nothing.
+
+- **Persistent things — saved world objects, so they can be scarce or duplicated.** Today the colony's goods
+  are aggregate counters that reset each session; nothing in the world is a *thing* that endures. Make the
+  world's objects **saved** — a persistent registry of what exists, keyed by id, with a count — building on
+  the existing `saveColony` / `restoreColony`. Once a thing persists with a quantity, the economy can model
+  real **scarcity** (only N of a thing exist; its value rises as it runs low) and **duplication** (spend
+  materials, labour, or even inference tokens — see token-thrift above — to copy an existing thing into a
+  second one). It is the foundation for a genuine item economy instead of fungible piles. Cost: a saved
+  thing-registry; scarcity and duplication rules gated on materials + labour like every mechanic. **Design
+  Council: scope a small first slice** — e.g. one named, finite, persistable artifact that survives a reload,
+  grows scarce as it is consumed, and can be duplicated for a real materials cost.
+
 ## Spec queue location
 
 The canonical queue lives **outside the repo** at `D:\infra\projects\citylife-specs\{proposed,built}\`
