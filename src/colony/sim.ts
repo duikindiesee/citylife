@@ -46,6 +46,7 @@ export interface ColonyState {
   water: number // spec 046 — stored water units (Mist Condenser Cisterns fill the tank; Water Hubs draw it); 0 until a cistern stands
   tools: number // spec 047 — stored tool-kits (Tool Cribs make them; tooled workplaces draw them); 0 until a crib stands
   seed: number // spec 048 — stored seed-stock (Seed Lofts dry it from food + water; skyfarms draw it); 0 until a loft stands
+  children: number // spec 050 — dependents being raised in mid-tier homes; cost food, give no labour, then mature into colonists; 0 until a birth
   parcels: Parcel[]
   jobs: ConstructionJob[]
   buildings: ColonyBuilding[]
@@ -137,6 +138,7 @@ export class ColonySim {
       water: 0, // spec 046 — no stored water until a Mist Condenser Cistern stands
       tools: 0, // spec 047 — no tool-kits until a Tool Crib stands
       seed: 0, // spec 048 — no seed-stock until a Seed Loft stands
+      children: 0, // spec 050 — no dependents until a household births one
       parcels: [],
       jobs: [],
       buildings: [],

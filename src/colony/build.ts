@@ -129,6 +129,7 @@ export function initBuild(state: ColonyState): void {
   state.water = 0 // spec 046 — no stored water until a cistern stands
   state.tools = 0 // spec 047 — no tool-kits until a Tool Crib stands
   state.seed = 0 // spec 048 — no seed-stock until a Seed Loft stands
+  state.children = 0 // spec 050 — no dependents until a household births one
   state.standing = COLONY.build.standingStart // spec 032 — neutral Kookerverse Standing
   state.request = null // spec 032 — no open Civic Request
   state.requestCooldown = 0 // spec 032
@@ -2039,6 +2040,55 @@ export function confidenceStatus(state: ColonyState): { confidence: number; fact
   return { confidence: settlerConfidence(state), factor, slowed: factor < 1, halted: factor <= 0 }
 }
 
+/** Spec 050 — how stable the homes are for raising children, in [0,1]: watered x fed x calm. Drives the birth rate, and below the
+ *  neglect threshold drains the pool. 1 when there are no homes, so an empty colony is trivially stable (and breeds nothing). */
+function birthStability(state: ColonyState): number {
+  const watered = wateredFraction(state) // 1 with no homes
+  const fed = countKind(state, 'depot') > 0 ? provisionedFraction(state) : ((state.food ?? 0) > 0 ? 1 : 0)
+  const calm = Math.max(0, 1 - (state.unrest ?? 0) / COLONY.build.birthCalmUnrest)
+  return Math.max(0, Math.min(1, watered * fed * calm))
+}
+
+/** Spec 050 — homes able to raise a child (mid-tier or better). */
+function birthableHomes(state: ColonyState): number {
+  let n = 0
+  for (const b of state.buildings) if (b.artifact.kind === 'habitat' && (b.tier ?? 1) >= COLONY.build.birthMinTier) n++
+  return n
+}
+
+/** Spec 050 — Children readout for the HUD: the dependents pool, the homes able to raise them, and whether the colony grows its own. */
+export function birthStatus(state: ColonyState): { children: number; homes: number; growing: boolean } {
+  const children = state.children ?? 0
+  const homes = birthableHomes(state)
+  return { children: Math.round(children), homes, growing: homes > 0 || children >= 0.5 }
+}
+
+/** Spec 050 — raise children in stable mid-tier homes, mature them into colonists on a housing vacancy, and drain the pool under
+ *  neglect. Inert with no mid-tier home and no children, so a young or tier-1 colony is unchanged. */
+function birthStep(state: ColonyState, dtMin: number): void {
+  const homes = birthableHomes(state)
+  let children = state.children ?? 0
+  if (homes === 0 && children <= 0) return // inert — nothing breeds and nothing to raise
+  const frac = dtMin / (24 * 60)
+  const stability = birthStability(state)
+  const cap = Math.max(0, state.colonists * COLONY.build.childrenMaxFraction) // dependents never dwarf the workforce
+  if (stability >= COLONY.build.birthNeglectStability) {
+    // Births — stable mid-tier homes slowly add to the pool (scaled by how good conditions are), never past the cap.
+    if (homes > 0 && children < cap) children = Math.min(cap, children + homes * COLONY.build.birthRatePerHomePerDay * stability * frac)
+    // Maturation — with a housing vacancy, children grow up into free colonists, filling beds like an immigrant would.
+    const room = housingCapacity(state) - state.colonists
+    if (room > 0 && children > 0) {
+      const mature = Math.min(children, children * COLONY.build.childMatureFraction * frac, room)
+      children -= mature
+      state.colonists += mature
+    }
+  } else {
+    // Neglect — poor conditions drain the pool: growth you do not sustain is growth you lose.
+    children = Math.max(0, children - children * COLONY.build.childNeglectDrainPerDay * frac)
+  }
+  state.children = Math.max(0, children)
+}
+
 /** Spec 005 — services (water hubs) consume a trickle of components to run. */
 function serviceUpkeep(state: ColonyState, dtMin: number): void {
   let upkeep = 0 // components (water/depot/clinic/theatre)
@@ -2095,7 +2145,7 @@ function foodStep(state: ColonyState, dtMin: number): void {
     grown += COLONY.build.greenhouseFoodPerDay * boost * staffing * maintFactor(b) // spec 022 — a worn greenhouse grows less
   }
   state.food += grown * (dtMin / day)
-  state.food = Math.max(0, state.food - state.colonists * COLONY.build.foodPerColonistPerDay * (dtMin / day))
+  state.food = Math.max(0, state.food - (state.colonists + (state.children ?? 0) * COLONY.build.childDependentLoad) * COLONY.build.foodPerColonistPerDay * (dtMin / day)) // spec 050 — children are extra mouths (half a ration each) before they are hands
 }
 
 /** Spec 012 — a staffed Skybridge Exchange exports SURPLUS goods (above a reserve) for treasury each day. */
@@ -2253,6 +2303,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   housingStep(state, dtMin)
   immigration(state, dtMin)
   departureStep(state, dtMin) // spec 041 — sustained failure sheds households; runs right after immigration so the net is arrivals minus departures
+  birthStep(state, dtMin) // spec 050 — stable mid-tier homes raise children that mature into colonists (reads tiers + vacancy after housing/immigration)
   tradeStep(state, dtMin)
   importStep(state, dtMin) // spec 036 — the buying side: spend treasury to land the order good (capped by storage headroom below)
   clampStorage(state) // spec 023 — finite storage: production past a cap is lost (after all goods are produced/sold)

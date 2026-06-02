@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -3375,5 +3375,105 @@ describe('Spec 049 — Settler Confidence: word travels faster than skyships', (
     s.unrest = 0 // order restored
     expect(settlerConfidence(s)).toBeGreaterThanOrEqual(COLONY.build.confPlateau)
     expect(confidenceImmigrationFactor(s)).toBe(1) // back to full-speed arrivals — no hysteresis trap
+  })
+})
+
+describe('Spec 050 — Household Births: a colony that can grow its own', () => {
+  const home = (x: number, y: number, tier: number, residents: number): ColonyBuilding => {
+    const b: ColonyBuilding = { id: x * 1000 + y, x, y, artifact: { id: 1, kind: 'habitat', color: 0, height: 1, residents, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 } }
+    b.tier = tier
+    return b
+  }
+  const water = (x: number, y: number): ColonyBuilding => ({ id: x * 1000 + y + 9, x, y, artifact: { id: 2, kind: 'water', color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 } })
+
+  it('a tier-1 colony never breeds — children stay 0 (inert)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(home(lx, ly, 1, 20)) // a tier-1 shack — survival before family
+    s.buildings.push(water(lx, ly))
+    s.food = 1000
+    s.colonists = 8
+    s.components = 0 // no components → housing cannot climb to tier 2, so it stays inert
+    s.materials = 0
+    for (let i = 0; i < 300; i++) stepBuild(s, sim.rng, 60)
+    expect(s.children).toBe(0) // no mid-tier home → no births ever
+    expect(birthStatus(s).homes).toBe(0)
+    expect(birthStatus(s).growing).toBe(false)
+  })
+
+  it('a stable mid-tier home raises children over many days', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(home(lx, ly, 2, 20)) // capacity 22
+    s.buildings.push(water(lx, ly)) // watered
+    s.food = 5000 // fed (food on hand)
+    s.unrest = 0 // calm
+    s.colonists = housingCapacity(s) // fill the beds so the pool cannot mature/immigrate away — it just accrues
+    s.children = 0
+    for (let i = 0; i < 300; i++) stepBuild(s, sim.rng, 60)
+    expect(s.children).toBeGreaterThan(0) // the household raised children into the pool
+    expect(birthStatus(s).homes).toBe(1)
+  })
+
+  it('children are extra mouths — food drains faster with them than without', () => {
+    const drain = (kids: number) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+      s.buildings.push(home(lx, ly, 1, 48)) // capacity 50, tier 1 (no births), full below
+      s.buildings.push(water(lx, ly))
+      s.colonists = housingCapacity(s) // full → no maturation, no immigration; the pool just sits and eats
+      s.unrest = 0
+      s.children = kids
+      s.food = 4000
+      const f0 = s.food
+      for (let i = 0; i < 5; i++) stepBuild(s, sim.rng, 60)
+      return f0 - s.food
+    }
+    expect(drain(20)).toBeGreaterThan(drain(0)) // 20 dependents eat half a ration each on top of the colonists
+  })
+
+  it('children mature into colonists on a vacancy, and the pool holds when housing is full', () => {
+    // vacancy → maturation
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(home(lx, ly, 2, 30)) // capacity 32
+    s.buildings.push(water(lx, ly))
+    s.food = 5000
+    s.unrest = 0
+    s.colonists = 8 // plenty of room
+    s.children = 10
+    const col0 = s.colonists
+    for (let i = 0; i < 120; i++) stepBuild(s, sim.rng, 60)
+    expect(s.children).toBeLessThan(10) // some grew up
+    expect(s.colonists).toBeGreaterThan(col0) // ...and joined the workforce
+
+    // full housing → the pool holds (the young wait for a home)
+    const sim2 = new ColonySim(7)
+    const s2 = sim2.state
+    const lx2 = s2.terrain.landing.x, ly2 = s2.terrain.landing.y
+    s2.buildings.push(home(lx2, ly2, 2, 20)) // capacity 22
+    s2.buildings.push(water(lx2, ly2))
+    s2.food = 5000
+    s2.unrest = 0
+    s2.colonists = housingCapacity(s2) // full → no room to mature into
+    s2.children = 8
+    for (let i = 0; i < 120; i++) stepBuild(s2, sim2.rng, 60)
+    expect(s2.children).toBeGreaterThanOrEqual(8) // held (and may grow), never matured away with no beds
+  })
+
+  it('neglect drains the children pool instead of maturing it', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(home(lx, ly, 2, 20)) // a mid-tier home, but with no Water Hub it is unwatered → unstable
+    s.food = 0 // and unfed → stability collapses to neglect
+    s.colonists = 8
+    s.children = 10
+    for (let i = 0; i < 80; i++) stepBuild(s, sim.rng, 60)
+    expect(s.children).toBeLessThan(10) // families stop raising — the pool drains
   })
 })

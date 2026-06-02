@@ -632,6 +632,18 @@ export const COLONY = {
     confWageWeight: 0.2, // a stingy Pay Office dents the colony's name
     confPlateau: 0.7, // Confidence at or above this → full-speed immigration (exactly as today)
     confStop: 0.25, // Confidence at or below this → immigration halts while beds sit empty
+    // Household Births (spec 050): the colony can finally grow its own. A mid-tier-or-better home on a fed, watered, calm deck
+    // slowly raises a child; children cost half a colonist of food and give no labour until they mature into colonists on a housing
+    // vacancy. Neglect drains the pool. Inert until a tier-2 home stands under good conditions (so tier-1/young colonies are
+    // unchanged), and slow enough — measured in colony-months — that short runs never trip a birth.
+    birthMinTier: 2, // a home must be at least this tier to raise a child (survival before family)
+    birthRatePerHomePerDay: 0.02, // children a qualifying home adds per day at full stability (~one child per ~50 days)
+    childDependentLoad: 0.5, // a child eats this fraction of a colonist's rations (and gives no labour)
+    childMatureFraction: 0.025, // fraction of the pool that grows up per day when there is housing room (~40 days to adulthood)
+    childNeglectDrainPerDay: 0.05, // fraction of the pool lost per day while the colony is neglected
+    childrenMaxFraction: 0.5, // the children pool is capped at this fraction of the workforce (dependents never dwarf the hands)
+    birthCalmUnrest: 0.3, // unrest at or above this zeroes the calm score (a disorderly deck does not raise children)
+    birthNeglectStability: 0.5, // below this combined stability the pool drains instead of growing/maturing
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,
