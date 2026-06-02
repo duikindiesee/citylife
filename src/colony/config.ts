@@ -463,6 +463,17 @@ export const COLONY = {
     foundersDesirabilityBonus: 1.1, // immigration desirability while the Roster is seated
     foundersUnrestRelief: 0.05, // daily unrest relief from pride in the founders
     foundersStandingMult: 1.1, // standing earned per fulfilled request while the Roster is seated
+    // Skybridge Import Office (spec 036): the buying side of trade — spend treasury to land a council-chosen good at a
+    // premium over the Exchange sell price, capped by storehouse space and by staffing, so local production stays the backbone.
+    matImportOffice: 22,
+    compImportOffice: 10,
+    crewImportOffice: 4,
+    importOfficeCost: 2600,
+    importOfficeWorkers: 3,
+    importOfficeMaintCompPerDay: 0.5,
+    importPerDay: 14, // units/day a fully staffed office lands of the order good
+    importPremiumMult: 1.6, // the premium imports carry over the Exchange sell price (the prices below already bake it in)
+    importPrice: { materials: 24, components: 64, food: 20, linen: 90, reels: 192 }, // $ per imported unit — a premium over local value / export price (comp 40, food 12, reels 120 on the Exchange)
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

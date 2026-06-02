@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -2292,5 +2292,118 @@ describe('Spec 035 — The Founders Hall: the Living Roster of the people who bu
     expect(s.standing - before).toBeCloseTo(COLONY.build.standingReward, 6) // exactly the base reward — no founders multiplier
     expect(foundersRoster(s)).toHaveLength(0)
     expect(foundersStatus(s).active).toBe(false)
+  })
+})
+
+describe('Spec 036 — The Skybridge Import Office: buying what the colony cannot make in time', () => {
+  const mk = (kind: 'import' | 'storehouse', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('the Import Office only buys while built and staffed', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(importOfficeActive(s)).toBe(false) // no office
+    s.buildings.push(mk('import', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    s.totalJobs = 3
+    s.colonists = 0
+    expect(importOfficeActive(s)).toBe(false) // office, but nobody to clerk it
+    s.colonists = 12
+    expect(importOfficeActive(s)).toBe(true) // built + staffed
+  })
+
+  it('imports cost a premium over the Exchange sell price', () => {
+    expect(COLONY.build.importPrice.components).toBeGreaterThan(COLONY.build.tradeComponentPrice)
+    expect(COLONY.build.importPrice.food).toBeGreaterThan(COLONY.build.tradeFoodPrice)
+    expect(COLONY.build.importPrice.reels).toBeGreaterThan(COLONY.build.reelPrice)
+  })
+
+  it('a staffed Import Office spends treasury to land the order good — at the premium', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 12
+    s.totalJobs = 4
+    s.buildings.push(mk('import', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    s.treasury = 2000
+    s.components = 0
+    s.importOrder = 'components'
+    const t0 = s.treasury
+    for (let i = 0; i < 50; i++) stepBuild(s, sim.rng, 10) // ~0.35 day (clock frozen: no income, no autoGrow)
+    expect(s.components).toBeGreaterThan(0) // imported — there are no workshops, so imports are the only source
+    expect(s.treasury).toBeLessThan(t0) // and the colony paid for them
+    expect(t0 - s.treasury).toBeGreaterThan(s.components * COLONY.build.tradeComponentPrice) // paid MORE than the Exchange would have paid to sell them (the premium holds)
+  })
+
+  it('can import materials — which the Exchange never sells', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 12
+    s.totalJobs = 4
+    s.buildings.push(mk('import', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    s.treasury = 2000
+    s.materials = 0
+    s.importOrder = 'materials'
+    for (let i = 0; i < 40; i++) stepBuild(s, sim.rng, 10)
+    expect(s.materials).toBeGreaterThan(0) // bought raw materials with money
+    expect(s.treasury).toBeLessThan(2000)
+  })
+
+  it('imports never overflow a full storehouse', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 12
+    s.totalJobs = 4
+    s.buildings.push(mk('import', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    s.treasury = 100000 // plenty of money
+    s.importOrder = 'components'
+    const cap = storageCaps(s).components
+    s.components = cap // already brim-full
+    for (let i = 0; i < 30; i++) stepBuild(s, sim.rng, 10)
+    expect(s.components).toBeLessThanOrEqual(cap + 1e-6) // the cap holds — money is not dumped into a full store
+  })
+
+  it('is inert with an office but no order, and with no office at all', () => {
+    // office built + staffed, but no standing order
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 12
+    s.totalJobs = 4
+    s.buildings.push(mk('import', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    s.treasury = 5000
+    s.components = 0
+    s.importOrder = null
+    for (let i = 0; i < 30; i++) stepBuild(s, sim.rng, 10)
+    expect(s.components).toBe(0) // nothing bought
+    expect(s.treasury).toBe(5000) // treasury untouched (clock frozen → no income either)
+
+    // an order set but NO office → still inert
+    const sim2 = new ColonySim(7)
+    const s2 = sim2.state
+    s2.colonists = 12
+    s2.totalJobs = 4
+    s2.treasury = 5000
+    s2.components = 0
+    s2.importOrder = 'components'
+    for (let i = 0; i < 30; i++) stepBuild(s2, sim2.rng, 10)
+    expect(s2.components).toBe(0)
+    expect(s2.treasury).toBe(5000)
+  })
+
+  it('importStatus reports the active order and a positive daily spend when buying', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 12
+    s.totalJobs = 4
+    s.buildings.push(mk('import', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    expect(importStatus(s).active).toBe(true)
+    expect(importStatus(s).order).toBe(null) // no order yet
+    s.importOrder = 'reels'
+    const st = importStatus(s)
+    expect(st.order).toBe('reels')
+    expect(st.perDay).toBeGreaterThan(0)
+    expect(st.dailySpend).toBeGreaterThan(0)
   })
 })

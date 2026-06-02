@@ -63,6 +63,7 @@ export interface ColonyState {
   spireProgress: number // spec 033 — 0..1 progress on the stage currently under construction
   spireBuilding: boolean // spec 033 — true while a Spire stage is being raised (its crew is reserved)
   frontTimer: number // spec 034 — sim-minutes until the next Cloudsea Front strikes (counts down once established)
+  importOrder: 'materials' | 'components' | 'food' | 'linen' | 'reels' | null // spec 036 — standing import order the council sets; inert until an Import Office stands
   buildingLoad: number
   powerGen: number
   lastIncomeDay: number
@@ -147,6 +148,7 @@ export class ColonySim {
       spireProgress: 0,
       spireBuilding: false,
       frontTimer: 0, // spec 034 — set to the first-front delay in initBuild
+      importOrder: null, // spec 036 — no standing import order until the council sets one
       buildingLoad: 0,
       powerGen: 0,
       lastIncomeDay: 0,

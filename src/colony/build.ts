@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import'
 
 export interface Parcel {
   id: number
@@ -91,6 +91,7 @@ const WEAVERY_COLOR = 0xd8c8a0 // linen-cream weavery (looms + bolts)
 const LIAISON_COLOR = 0x2f9bd8 // kookerverse-blue liaison office (the channel to the wider world)
 const STORMWATCH_COLOR = 0x9aa7b0 // storm-grey stormwatch shelter (rim lookout + refuge)
 const HALL_COLOR = 0xd8b65a // founders' gold — the Founders' Hall (civic archive + seat of the notable founders)
+const IMPORT_COLOR = 0xc05a9a // import-magenta — the Skybridge Import Office (the buying side of trade)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -121,6 +122,7 @@ export function initBuild(state: ColonyState): void {
   state.spireProgress = 0
   state.spireBuilding = false
   state.frontTimer = COLONY.build.frontFirstDelayDays * 24 * 60 // spec 034 — the calm before the first Cloudsea Front
+  state.importOrder = null // spec 036 — no standing import order until the council sets one
   state.parcels = []
   state.jobs = []
   state.buildings = []
@@ -374,6 +376,10 @@ function designHall(state: ColonyState): Artifact {
   // Spec 035 — Founders' Hall; a staffed civic archive that seats the Living Roster of the colony's notable founders.
   return { id: state.buildIds++, kind: 'hall', color: HALL_COLOR, height: 1.6, residents: 0, jobs: COLONY.build.hallWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.hallCost, materialsCost: COLONY.build.matHall, crew: COLONY.build.crewHall, materialsGen: 0, componentsCost: COLONY.build.compHall }
 }
+function designImportOffice(state: ColonyState): Artifact {
+  // Spec 036 — Skybridge Import Office; the buying side of trade — spends treasury to land a council-chosen good at a premium.
+  return { id: state.buildIds++, kind: 'import', color: IMPORT_COLOR, height: 1.3, residents: 0, jobs: COLONY.build.importOfficeWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.importOfficeCost, materialsCost: COLONY.build.matImportOffice, crew: COLONY.build.crewImportOffice, materialsGen: 0, componentsCost: COLONY.build.compImportOffice }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -597,6 +603,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > COLONY.build.frontMinColonists && countKind(state, 'stormwatch') < COLONY.build.maxStormwatch && state.components >= COLONY.build.compStormwatch) return designStormwatch(state)
   // Spec 035 — honour the builders: a mature colony with components on hand raises a Founders' Hall to seat the Living Roster.
   if (state.colonists > 14 && countKind(state, 'hall') < 1 && state.components >= COLONY.build.compHall) return designHall(state)
+  // Spec 036 — once trade is established (an Exchange stands) and the bank is flush, raise an Import Office to buy shortages.
+  if (state.colonists > 12 && countKind(state, 'import') < 1 && countKind(state, 'exchange') > 0 && state.components >= COLONY.build.compImportOffice && state.treasury > COLONY.build.importOfficeCost) return designImportOffice(state)
   // Spec 026 — answer an outbreak: when fever climbs past the build line and no post contains it → raise a Fever Watch Post.
   if (state.outbreak > COLONY.build.feverBuildThreshold && state.components >= COLONY.build.compFeverWatch && countKind(state, 'feverwatch') < COLONY.build.maxFeverWatch) return designFeverWatch(state)
   // Spec 028 — keep the peace: when unrest climbs past the build line and no post patrols → raise a Ward Post.
@@ -1589,6 +1597,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
     else if (b.artifact.kind === 'liaison') upkeep += COLONY.build.liaisonMaintCompPerDay // spec 032 — dispatch supply
     else if (b.artifact.kind === 'stormwatch') upkeep += COLONY.build.stormwatchMaintCompPerDay // spec 034 — watch supply
     else if (b.artifact.kind === 'hall') upkeep += COLONY.build.hallMaintCompPerDay // spec 035 — archive + roster upkeep
+    else if (b.artifact.kind === 'import') upkeep += COLONY.build.importOfficeMaintCompPerDay // spec 036 — office + dispatch supply
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))
@@ -1611,6 +1620,64 @@ function foodStep(state: ColonyState, dtMin: number): void {
 }
 
 /** Spec 012 — a staffed Skybridge Exchange exports SURPLUS goods (above a reserve) for treasury each day. */
+/** Spec 036 — the goods the Import Office can buy (materials is importable here even though the Exchange never sells it). */
+export type ImportGood = 'materials' | 'components' | 'food' | 'linen' | 'reels'
+export const IMPORT_GOODS: ImportGood[] = ['materials', 'components', 'food', 'linen', 'reels']
+
+/** Spec 036 — the Import Office buys only while built and staffed (else the order sits idle, no goods land). */
+export function importOfficeActive(state: ColonyState): boolean {
+  if (countKind(state, 'import') === 0) return false
+  return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+function importStock(state: ColonyState, good: ImportGood): number {
+  if (good === 'materials') return state.materials
+  if (good === 'components') return state.components
+  if (good === 'food') return state.food
+  if (good === 'linen') return state.linen ?? 0
+  return state.reels
+}
+function importCap(state: ColonyState, good: ImportGood): number {
+  return storageCaps(state)[good]
+}
+function addImportGood(state: ColonyState, good: ImportGood, amount: number): void {
+  if (good === 'materials') state.materials += amount
+  else if (good === 'components') state.components += amount
+  else if (good === 'food') state.food += amount
+  else if (good === 'linen') state.linen = (state.linen ?? 0) + amount
+  else state.reels += amount
+}
+
+/** Spec 036 — spend treasury to land the order good, throttled by office capacity × staffing, storage headroom, and treasury. */
+function importStep(state: ColonyState, dtMin: number): void {
+  const good = state.importOrder
+  if (!good || !importOfficeActive(state)) return // no order, or no staffed office → the money loop is unchanged
+  const price = COLONY.build.importPrice[good]
+  if (price <= 0) return
+  const offices = countKind(state, 'import')
+  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  if (staffing <= 0) return
+  const frac = dtMin / (24 * 60)
+  const byCapacity = offices * COLONY.build.importPerDay * staffing * frac // understaffed → proportionally less
+  const headroom = Math.max(0, importCap(state, good) - importStock(state, good)) // a full store stops the delivery
+  const byTreasury = Math.max(0, state.treasury) / price // can't buy what the bank can't cover
+  const units = Math.min(byCapacity, headroom, byTreasury)
+  if (units <= 0) return
+  state.treasury -= units * price
+  addImportGood(state, good, units)
+}
+
+/** Spec 036 — Import Office readout for the HUD: whether it is buying, the order good, and the daily units + spend. */
+export function importStatus(state: ColonyState): { active: boolean; order: ImportGood | null; perDay: number; dailySpend: number } {
+  const active = importOfficeActive(state)
+  const good = state.importOrder ?? null
+  const offices = countKind(state, 'import')
+  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const perDay = active && good ? offices * COLONY.build.importPerDay * staffing : 0
+  const dailySpend = good ? perDay * COLONY.build.importPrice[good] : 0
+  return { active, order: good, perDay: Math.round(perDay), dailySpend: Math.round(dailySpend) }
+}
+
 function tradeStep(state: ColonyState, dtMin: number): void {
   const exchanges = countKind(state, 'exchange')
   if (exchanges === 0) return
@@ -1667,6 +1734,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   housingStep(state, dtMin)
   immigration(state, dtMin)
   tradeStep(state, dtMin)
+  importStep(state, dtMin) // spec 036 — the buying side: spend treasury to land the order good (capped by storage headroom below)
   clampStorage(state) // spec 023 — finite storage: production past a cap is lost (after all goods are produced/sold)
   for (let i = state.jobs.length - 1; i >= 0; i--) {
     const j = state.jobs[i]!
