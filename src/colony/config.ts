@@ -390,6 +390,30 @@ export const COLONY = {
     clinicLinenPerDay: 0.5, // linen a clinic uses as bandage cloth per day
     clinicLinenFeverMult: 3, // ...up to this much more at a full fever outbreak
     maxSkimmer: 2,
+    // Kookerverse Liaison Office (spec 032): the colony's first external relationship. A staffed office draws Civic
+    // Requests from the Kookerverse (send a quota of a good by a deadline); fulfilling raises Standing, missing lowers
+    // it. Standing scales immigration and, when very low, feeds a little unrest. Inert with no office (standing neutral).
+    matLiaison: 14,
+    compLiaison: 12,
+    reelLiaison: 4,
+    crewLiaison: 3,
+    liaisonCost: 2200,
+    liaisonWorkers: 2, // liaison clerks
+    liaisonMaintCompPerDay: 0.5,
+    requestIntervalDays: 4, // cooldown between Civic Requests
+    requestDeadlineDays: 3, // days to fulfil a request before it lapses
+    standingStart: 0.5, // neutral standing at founding
+    standingReward: 0.15, // standing gained per fulfilled request
+    standingPenalty: 0.12, // standing lost per missed request
+    standingDriftPerDay: 0.05, // standing drifts back toward neutral with no office
+    standingDesireLow: 0.8, // immigration desirability multiplier at zero standing
+    standingDesireHigh: 1.2, // ...at full standing (neutral 0.5 maps to 1.0)
+    lowStandingThreshold: 0.25, // below this, reputational unrest creeps in
+    standingUnrestPerDay: 0.1, // unrest added per day at low standing (with an office)
+    reqAmountComponents: 15, // Civic Request quota per good
+    reqAmountLinen: 10,
+    reqAmountReels: 5,
+    reqAmountFood: 20,
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

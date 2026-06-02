@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -1820,6 +1820,98 @@ describe('Spec 031 — The Skyflax Line: a second resource and chain', () => {
     stepBuild(s, sim.rng, 10)
     expect(s.fibre).toBe(caps.fibre) // overflow clamped (spec 023)
     expect(s.linen).toBe(caps.linen)
+  })
+})
+
+describe('Spec 032 — The Kookerverse Liaison Office: standing and Civic Requests', () => {
+  const mk = (kind: 'liaison' | 'habitat', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('the Kookerverse only deals with a built, staffed Liaison Office', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(liaisonActive(s)).toBe(false) // no office
+    s.buildings.push(mk('liaison', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.totalJobs = 2
+    s.colonists = 0
+    expect(liaisonActive(s)).toBe(false) // office, but nobody to clerk it
+    s.colonists = 6
+    expect(liaisonActive(s)).toBe(true) // built + staffed
+  })
+
+  it('a staffed office draws a Civic Request from the wider world', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 6
+    s.totalJobs = 6
+    s.components = 50
+    s.buildings.push(mk('liaison', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    expect(s.request).toBe(null)
+    stepBuild(s, sim.rng, 10) // requestCooldown starts at 0 → the first request arrives
+    expect(s.request).not.toBe(null)
+    expect(s.request?.good).toBe('components') // the colony's most-stocked good
+  })
+
+  it('fulfilling a request spends the good and raises standing', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 6
+    s.totalJobs = 6
+    s.components = 50
+    s.buildings.push(mk('liaison', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.request = { good: 'components', amount: 15, deadline: 4320 }
+    s.standing = 0.5
+    const c0 = s.components
+    expect(fulfillRequest(s)).toBe(true)
+    expect(s.components).toBe(c0 - 15) // dispatched through the Bank
+    expect(s.standing).toBeGreaterThan(0.5) // standing rose
+    expect(s.request).toBe(null) // the request is closed
+  })
+
+  it('missing a request lowers standing', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 6
+    s.totalJobs = 6
+    s.components = 5 // far short of the quota
+    s.buildings.push(mk('liaison', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+    s.request = { good: 'components', amount: 15, deadline: 60 } // a short fuse
+    s.standing = 0.5
+    for (let i = 0; i < 20; i++) stepBuild(s, sim.rng, 10) // past the deadline
+    expect(s.standing).toBeLessThan(0.5) // the miss cost standing
+    expect(s.request).toBe(null)
+  })
+
+  it('high standing draws more settlers than low standing', () => {
+    const run = (standing: number) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      s.buildings.push(mk('liaison', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 2 }))
+      s.buildings.push(mk('habitat', s.terrain.landing.x + 4, s.terrain.landing.y, { residents: 9 }))
+      s.colonists = 4
+      s.totalJobs = 2
+      s.standing = standing
+      s.power.batteryWh = s.power.batteryCapWh
+      s.power.solarW = 5
+      const col0 = s.colonists
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.colonists - col0
+    }
+    expect(run(1.0)).toBeGreaterThan(run(0.0)) // recognition draws people, disrepute repels them
+  })
+
+  it('with no Liaison Office, standing stays neutral and no requests arrive (inert)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.colonists = 6
+    s.totalJobs = 6
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 10)
+    expect(s.request).toBe(null)
+    expect(s.standing).toBe(0.5)
   })
 })
 

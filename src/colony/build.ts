@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison'
 
 export interface Parcel {
   id: number
@@ -88,6 +88,7 @@ const PAYOFFICE_COLOR = 0x7c6fce // violet pay office (payroll counter)
 const FEAST_COLOR = 0xf0b840 // festival-gold feast deck (lanterns + cook-tables)
 const SKIMMER_COLOR = 0x7fae8a // sage-green flax skimmer dock (rim cloudweed)
 const WEAVERY_COLOR = 0xd8c8a0 // linen-cream weavery (looms + bolts)
+const LIAISON_COLOR = 0x2f9bd8 // kookerverse-blue liaison office (the channel to the wider world)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -111,6 +112,9 @@ export function initBuild(state: ColonyState): void {
   state.skilled = 0 // spec 020 — skilled workers, trained by academies
   state.fibre = 0 // spec 031 — skyflax fibre, gathered by Skimmer Docks
   state.linen = 0 // spec 031 — linen bolts, woven by Weaveries
+  state.standing = COLONY.build.standingStart // spec 032 — neutral Kookerverse Standing
+  state.request = null // spec 032 — no open Civic Request
+  state.requestCooldown = 0 // spec 032
   state.parcels = []
   state.jobs = []
   state.buildings = []
@@ -352,6 +356,10 @@ function designWeavery(state: ColonyState): Artifact {
   // Spec 031 — Weavery; weaves skyflax fibre into linen bolts (2:1) while staffed (the 2nd refinery).
   return { id: state.buildIds++, kind: 'weavery', color: WEAVERY_COLOR, height: 1.0, residents: 0, jobs: COLONY.build.weaveryWorkers, powerLoad: 0.5, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.weaveryCost, materialsCost: COLONY.build.matWeavery, crew: COLONY.build.crewWeavery, materialsGen: 0, componentsCost: COLONY.build.compWeavery }
 }
+function designLiaison(state: ColonyState): Artifact {
+  // Spec 032 — Kookerverse Liaison Office; a staffed channel to the wider world that fields its Civic Requests.
+  return { id: state.buildIds++, kind: 'liaison', color: LIAISON_COLOR, height: 1.4, residents: 0, jobs: COLONY.build.liaisonWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.liaisonCost, materialsCost: COLONY.build.matLiaison, crew: COLONY.build.crewLiaison, materialsGen: 0, componentsCost: COLONY.build.compLiaison, reelsCost: COLONY.build.reelLiaison }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -563,6 +571,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 10 && countKind(state, 'payoffice') < 1 && state.components >= COLONY.build.compPayOffice && state.reels >= COLONY.build.reelPayOffice) return designPayOffice(state)
   // Spec 030 — a place to gather: a real town with reels on hand raises a Feast Deck so the council can fund a Civic Feast.
   if (state.colonists > 12 && countKind(state, 'feast') < 1 && state.components >= COLONY.build.compFeast && state.reels >= COLONY.build.reelFeast) return designFeast(state)
+  // Spec 032 — answer the wider world: an established colony with reels on hand raises a Kookerverse Liaison Office.
+  if (state.colonists > 12 && countKind(state, 'liaison') < 1 && state.components >= COLONY.build.compLiaison && state.reels >= COLONY.build.reelLiaison) return designLiaison(state)
   // Spec 026 — answer an outbreak: when fever climbs past the build line and no post contains it → raise a Fever Watch Post.
   if (state.outbreak > COLONY.build.feverBuildThreshold && state.components >= COLONY.build.compFeverWatch && countKind(state, 'feverwatch') < COLONY.build.maxFeverWatch) return designFeverWatch(state)
   // Spec 028 — keep the peace: when unrest climbs past the build line and no post patrols → raise a Ward Post.
@@ -977,6 +987,7 @@ function unrestStep(state: ColonyState, dtMin: number): void {
     if (generousWage(state)) u -= COLONY.build.wageGenerousCalmPerDay * frac // spec 029 — generous wages buy loyalty
   }
   if (feasting(state)) u -= COLONY.build.feastUnrestReliefPerDay * frac // spec 030 — a feast lifts spirits, easing unrest even mid-squeeze
+  if (liaisonActive(state) && (state.standing ?? 0.5) < COLONY.build.lowStandingThreshold) u += COLONY.build.standingUnrestPerDay * frac // spec 032 — disrepute breeds reputational unrest
   state.unrest = Math.max(0, Math.min(COLONY.build.unrestMax, u))
 }
 
@@ -1088,6 +1099,100 @@ function feastStep(state: ColonyState, dtMin: number): void {
 /** Spec 030 — feast readout for the HUD: whether one runs, days left, and whether the council could call one. */
 export function feastStatus(state: ColonyState): { active: boolean; daysLeft: number; canCall: boolean } {
   return { active: feasting(state), daysLeft: Math.ceil((state.feastTimer ?? 0) / (24 * 60)), canCall: canCallFeast(state) }
+}
+
+type RequestGood = 'components' | 'linen' | 'reels' | 'food'
+
+/** Spec 032 — the Kookerverse only deals with the colony while a built, staffed Liaison Office stands. */
+export function liaisonActive(state: ColonyState): boolean {
+  if (countKind(state, 'liaison') === 0) return false
+  return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+/** Spec 032 — read/spend a stockpiled good by name. */
+function goodStock(state: ColonyState, good: RequestGood): number {
+  if (good === 'components') return state.components
+  if (good === 'linen') return state.linen ?? 0
+  if (good === 'reels') return state.reels
+  return state.food
+}
+function spendGood(state: ColonyState, good: RequestGood, amount: number): void {
+  if (good === 'components') state.components = Math.max(0, state.components - amount)
+  else if (good === 'linen') state.linen = Math.max(0, (state.linen ?? 0) - amount)
+  else if (good === 'reels') state.reels = Math.max(0, state.reels - amount)
+  else state.food = Math.max(0, state.food - amount)
+}
+function requestQuota(good: RequestGood): number {
+  if (good === 'components') return COLONY.build.reqAmountComponents
+  if (good === 'linen') return COLONY.build.reqAmountLinen
+  if (good === 'reels') return COLONY.build.reqAmountReels
+  return COLONY.build.reqAmountFood
+}
+
+/** Spec 032 — the Kookerverse asks for the good the colony holds most of (so it's usually within reach). */
+function makeRequest(state: ColonyState): { good: RequestGood; amount: number; deadline: number } {
+  const goods: RequestGood[] = ['components', 'linen', 'reels', 'food']
+  let best: RequestGood = 'components'
+  let bestV = goodStock(state, best)
+  for (const g of goods) {
+    const v = goodStock(state, g)
+    if (v > bestV) {
+      bestV = v
+      best = g
+    }
+  }
+  return { good: best, amount: requestQuota(best), deadline: COLONY.build.requestDeadlineDays * 24 * 60 }
+}
+
+/** Spec 032 — dispatch the requested goods through the Bank: spend them and raise Kookerverse Standing. */
+export function fulfillRequest(state: ColonyState): boolean {
+  if (!state.request || !liaisonActive(state)) return false
+  if (goodStock(state, state.request.good) < state.request.amount) return false
+  spendGood(state, state.request.good, state.request.amount)
+  state.standing = Math.min(1, (state.standing ?? 0.5) + COLONY.build.standingReward)
+  state.request = null
+  state.requestCooldown = COLONY.build.requestIntervalDays * 24 * 60
+  return true
+}
+
+/** Spec 032 — advance the external relationship: issue requests, auto-fulfil or miss them at the deadline, drift standing. */
+function requestStep(state: ColonyState, dtMin: number): void {
+  const frac = dtMin / (24 * 60)
+  if (!liaisonActive(state)) {
+    const s = state.standing ?? 0.5 // no channel: standing drifts back toward neutral
+    if (s > 0.5) state.standing = Math.max(0.5, s - COLONY.build.standingDriftPerDay * frac)
+    else if (s < 0.5) state.standing = Math.min(0.5, s + COLONY.build.standingDriftPerDay * frac)
+    return
+  }
+  if (state.request) {
+    state.request.deadline -= dtMin
+    if (state.request.deadline <= 0 && !fulfillRequest(state)) {
+      state.standing = Math.max(0, (state.standing ?? 0.5) - COLONY.build.standingPenalty) // missed → standing falls
+      state.request = null
+      state.requestCooldown = COLONY.build.requestIntervalDays * 24 * 60
+    }
+    return
+  }
+  state.requestCooldown = (state.requestCooldown ?? 0) - dtMin
+  if (state.requestCooldown <= 0) state.request = makeRequest(state)
+}
+
+/** Spec 032 — immigration desirability multiplier from standing (neutral 0.5 → 1.0; recognition draws settlers). */
+function standingDesirabilityFactor(state: ColonyState): number {
+  const s = state.standing ?? 0.5
+  return COLONY.build.standingDesireLow + (COLONY.build.standingDesireHigh - COLONY.build.standingDesireLow) * s
+}
+
+/** Spec 032 — Kookerverse readout for the HUD: the channel, the standing, any open request, and whether it's affordable. */
+export function liaisonStatus(state: ColonyState): { active: boolean; standing: number; request: { good: string; amount: number; daysLeft: number } | null; canFulfil: boolean } {
+  const active = liaisonActive(state)
+  const req = state.request
+  return {
+    active,
+    standing: state.standing ?? 0.5,
+    request: req ? { good: req.good, amount: req.amount, daysLeft: Math.ceil(req.deadline / (24 * 60)) } : null,
+    canFulfil: !!(active && req && goodStock(state, req.good) >= req.amount),
+  }
 }
 
 /** Spec 020 — staffed Skillhouse Academies train colonists into skilled workers, capped at the population. */
@@ -1277,7 +1382,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) // spec 025/026/027/028/029/030 — levy, outbreak, stocked homes, unrest, wages, and a feast all pull on who comes and stays
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) // spec 025/026/027/028/029/030/032 — levy, outbreak, stocked homes, unrest, wages, a feast, and Kookerverse standing all pull on who comes and stays
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * perDay)
 }
 
@@ -1311,6 +1416,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
     } else if (b.artifact.kind === 'ward') upkeep += COLONY.build.wardMaintCompPerDay // spec 028 — patrol supply
     else if (b.artifact.kind === 'payoffice') upkeep += COLONY.build.payOfficeMaintCompPerDay // spec 029 — ledger supply
     else if (b.artifact.kind === 'feast') upkeep += COLONY.build.feastDeckMaintCompPerDay // spec 030 — deck upkeep
+    else if (b.artifact.kind === 'liaison') upkeep += COLONY.build.liaisonMaintCompPerDay // spec 032 — dispatch supply
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))
@@ -1375,6 +1481,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   feverStep(state, dtMin) // spec 026 — the outbreak spreads or is contained; producers below read the current fever
   unrestStep(state, dtMin) // spec 028 — unrest rises or is calmed; producers + income below read the current order
   feastStep(state, dtMin) // spec 030 — count down an active feast, or auto-throw one for a wealthy, restless colony
+  requestStep(state, dtMin) // spec 032 — the Kookerverse issues/judges Civic Requests; standing drifts without an office
   produceMaterials(state, dtMin)
   produceFibre(state, dtMin) // spec 031 — gather skyflax fibre (the second extractor)
   academyStep(state, dtMin)

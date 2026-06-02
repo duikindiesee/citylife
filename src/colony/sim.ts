@@ -56,6 +56,9 @@ export interface ColonyState {
   unrest: number // spec 028 — 0..1 social disorder; rises from idle + squeezed populations, calmed by a Ward Post
   wageRate: 'low' | 'standard' | 'generous' // spec 029 — the council-set wage; inert until a Pay Office stands
   feastTimer: number // spec 030 — sim-minutes left on an active Civic Feast (0 = none); lifts morale while it runs
+  standing: number // spec 032 — 0..1 Kookerverse Standing; rises on fulfilled Civic Requests, falls on missed ones
+  request: { good: 'components' | 'linen' | 'reels' | 'food'; amount: number; deadline: number } | null // spec 032 — the open Civic Request
+  requestCooldown: number // spec 032 — sim-minutes until the next Civic Request may arrive
   buildingLoad: number
   powerGen: number
   lastIncomeDay: number
@@ -133,6 +136,9 @@ export class ColonySim {
       unrest: 0, // spec 028 — the colony starts orderly; unrest only grows from idleness under a squeeze
       wageRate: 'standard', // spec 029 — fair pay by default; the lever only bites once a Pay Office is built + staffed
       feastTimer: 0, // spec 030 — no feast running at founding
+      standing: 0.5, // spec 032 — the colony starts neutral with the Kookerverse
+      request: null, // spec 032 — no open request until a Liaison Office stands
+      requestCooldown: 0, // spec 032 — ready to receive the first request once a Liaison Office is staffed
       buildingLoad: 0,
       powerGen: 0,
       lastIncomeDay: 0,
