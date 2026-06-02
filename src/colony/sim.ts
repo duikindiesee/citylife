@@ -55,6 +55,7 @@ export interface ColonyState {
   renewalLastYear: number // spec 055 — the previous year's renewal; caps how many may pass this year
   lastPassings: number // spec 055 — how many passed at the most recent year-turn (for the HUD)
   rimfish: number // spec 056 — a second food netted from the cloudsea rim; spares skygrain when on hand; 0 until a Net Dock stands
+  waste: number // spec 058 — household waste burden [0,1]; occupied homes fill it slowly, Sanitation Posts clear it; harmless below 0.25
   parcels: Parcel[]
   jobs: ConstructionJob[]
   buildings: ColonyBuilding[]
@@ -155,6 +156,7 @@ export class ColonySim {
       renewalLastYear: 0, // spec 055
       lastPassings: 0, // spec 055 — no one has passed yet
       rimfish: 0, // spec 056 — no rimfish until a Cloudsea Net Dock stands
+      waste: 0, // spec 058 — the colony starts clean
       parcels: [],
       jobs: [],
       buildings: [],

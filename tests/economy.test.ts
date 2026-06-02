@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -4030,5 +4030,84 @@ describe('Spec 057 — Seasonal Solar Angling: the sun keeps the calendar too', 
       expect(f).toBeGreaterThanOrEqual(0.9)
       expect(f).toBeLessThanOrEqual(1.15)
     }
+  })
+})
+
+describe('Spec 058 — Household Waste: a colony that does not handle its filth sickens', () => {
+  const mk = (kind: 'habitat' | 'sanitation', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('a small colony over a short run stays under the harmless line (inert — no effect)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    for (let h = 0; h < 3; h++) s.buildings.push(mk('habitat', lx + h, ly, { residents: 4 }))
+    s.colonists = 8
+    for (let i = 0; i < 30; i++) stepBuild(s, sim.rng, 60)
+    expect(s.waste).toBeLessThan(COLONY.build.wasteHarmlessBelow) // far below 0.25
+    expect(wasteDesirabilityFactor(s)).toBe(1) // no draw penalty below the line
+    expect(wasteStatus(s).harmful).toBe(false)
+  })
+
+  it('an occupied colony with no Sanitation Post slowly accumulates waste', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    for (let h = 0; h < 20; h++) s.buildings.push(mk('habitat', lx + (h % 10), ly + Math.floor(h / 10), { residents: 4 }))
+    s.colonists = 8
+    const w0 = s.waste
+    for (let i = 0; i < 200; i++) stepBuild(s, sim.rng, 60)
+    expect(s.waste).toBeGreaterThan(w0) // the filth builds
+  })
+
+  it('waste harms in bands: desirability slips above 0.25, fever breeds above 0.50 — nothing below', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.waste = 0.1
+    expect(wasteDesirabilityFactor(s)).toBe(1) // harmless
+    s.waste = 0.5
+    expect(wasteDesirabilityFactor(s)).toBeLessThan(1) // a filthy colony draws slower
+
+    const feverGain = (waste: number) => {
+      const sub = new ColonySim(7)
+      const s2 = sub.state
+      s2.buildings.push(mk('habitat', s2.terrain.landing.x, s2.terrain.landing.y, { residents: 4 }))
+      s2.waste = waste
+      s2.outbreak = 0
+      for (let i = 0; i < 10; i++) wasteStep(s2, 60)
+      return s2.outbreak ?? 0
+    }
+    expect(feverGain(0.6)).toBeGreaterThan(feverGain(0.1)) // filth past the fever line breeds sickness
+    expect(feverGain(0.1)).toBe(0) // below the line, waste breeds no fever
+  })
+
+  it('a staffed Sanitation Post clears the waste meter over time', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    for (let h = 0; h < 20; h++) s.buildings.push(mk('habitat', lx + (h % 10), ly + Math.floor(h / 10), { residents: 4 }))
+    s.buildings.push(mk('sanitation', lx, ly + 5, { jobs: COLONY.build.sanitationWorkers }))
+    s.colonists = 8
+    s.totalJobs = 4 // staffed
+    s.waste = 0.5
+    for (let i = 0; i < 50; i++) stepBuild(s, sim.rng, 60)
+    expect(s.waste).toBeLessThan(0.5) // the keepers cleared it down
+  })
+
+  it('waste is clamped to [0,1] and the fever it breeds stays bounded (never a catastrophe)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    for (let h = 0; h < 20; h++) s.buildings.push(mk('habitat', lx + (h % 10), ly + Math.floor(h / 10), { residents: 4 }))
+    s.colonists = 8
+    s.waste = 0.99
+    for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 60)
+    expect(s.waste).toBeLessThanOrEqual(1)
+    expect(s.waste).toBeGreaterThanOrEqual(0)
+    expect(s.outbreak ?? 0).toBeLessThanOrEqual(1) // the fever it breeds is bounded
   })
 })

@@ -722,6 +722,27 @@ export const COLONY = {
     storeBaseRimfish: 100, // storage cap (spec 023) for rimfish
     storePerRimfish: 70,
     rimfishSurplus: 30, // raise a Net Dock once the colony is large and could feed a varied table
+    // Household Waste (spec 058): the everyday filth a growing population makes. A soft waste meter [0,1] fills slowly from occupied
+    // homes (more at higher tiers and in warm seasons); below the harmless line nothing happens, above it desirability slips and
+    // (higher still) fever rises gently. A staffed Sanitation Post clears it. Inert by default — it rises over colony-months and does
+    // nothing below 0.25, so a young colony and every test are unchanged — and capped so it can never empty or sicken the colony badly.
+    matSanitation: 16,
+    compSanitation: 3,
+    crewSanitation: 2,
+    sanitationCost: 1200,
+    sanitationWorkers: 2, // the drain-keepers
+    sanitationPowerLoad: 0.3,
+    wasteRisePerDay: 0.004, // base waste a fully-occupied colony makes per day (~60+ days to the harmless line — far longer than any test)
+    wasteClearPerPostPerDay: 0.02, // waste a staffed Sanitation Post clears per day
+    wasteNaturalDecay: 0.001, // a tiny self-clearing so a depopulated colony drifts clean
+    wasteHarmlessBelow: 0.25, // below this the rim copes and nothing happens
+    wasteFeverThreshold: 0.5, // at/above this, unhandled filth breeds sickness
+    wasteDesirabilityWeight: 0.4, // desirability dampening per unit of waste over the harmless line (max ~0.3 at full filth)
+    wasteFeverPerDay: 0.05, // outbreak pressure per day per unit of waste over the fever threshold (gentle, contained by clinics + fever watch)
+    wasteOccupancyRef: 20, // homes at which waste generation reaches full pressure (a small colony makes proportionally less)
+    wasteTierWeight: 0.15, // higher mean housing tier makes a little more refuse
+    wasteWarmSeason: 1.2, // waste ripens faster in Bloom/Highsun (only when a calendar is kept)
+    wasteColdSeason: 0.85, // ...and slower in Grey/Frost
     pollutionPerIndustrial: 3,
   },
 

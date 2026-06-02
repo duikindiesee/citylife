@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation'
 
 export interface Parcel {
   id: number
@@ -108,6 +108,7 @@ const SURVEYCAMP_COLOR = 0xc8a25a // surveyor-ochre — the Survey Camp (claims 
 const CALENDAR_COLOR = 0xd9c089 // parchment-gold — the Calendar Office (the colony counts its years)
 const HALLOFNAMES_COLOR = 0x9a8fb0 // dusk-violet — the Hall of Names (the colony remembers its elders)
 const NETDOCK_COLOR = 0x4fb0a6 // cloudsea-teal — the Cloudsea Net Dock (nets rimfish, the colony's second food)
+const SANITATION_COLOR = 0x6f8f6a // drain-green — the Sanitation Post (clears household waste before it sickens the colony)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -144,6 +145,7 @@ export function initBuild(state: ColonyState): void {
   state.renewalLastYear = 0 // spec 055
   state.lastPassings = 0 // spec 055
   state.rimfish = 0 // spec 056 — no rimfish until a Cloudsea Net Dock stands
+  state.waste = 0 // spec 058 — the colony starts clean
   state.standing = COLONY.build.standingStart // spec 032 — neutral Kookerverse Standing
   state.request = null // spec 032 — no open Civic Request
   state.requestCooldown = 0 // spec 032
@@ -467,6 +469,10 @@ function designHallOfNames(state: ColonyState): Artifact {
 function designNetDock(state: ColonyState): Artifact {
   // Spec 056 — Cloudsea Net Dock; a staffed rim gatherer that nets rimfish, the colony's second food (not subject to skyfarm seasons).
   return { id: state.buildIds++, kind: 'netdock', color: NETDOCK_COLOR, height: 0.6, residents: 0, jobs: COLONY.build.netDockWorkers, powerLoad: COLONY.build.netDockPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.netDockCost, materialsCost: COLONY.build.matNetDock, crew: COLONY.build.crewNetDock, materialsGen: 0, componentsCost: COLONY.build.compNetDock, rimfishGen: COLONY.build.rimfishPerDay }
+}
+function designSanitationPost(state: ColonyState): Artifact {
+  // Spec 058 — Sanitation Post; staffed drain-keepers who clear household waste before it sickens the colony.
+  return { id: state.buildIds++, kind: 'sanitation', color: SANITATION_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.sanitationWorkers, powerLoad: COLONY.build.sanitationPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.sanitationCost, materialsCost: COLONY.build.matSanitation, crew: COLONY.build.crewSanitation, materialsGen: 0, componentsCost: COLONY.build.compSanitation }
 }
 
 /** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
@@ -937,6 +943,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 20 && countKind(state, 'calendar') > 0 && countKind(state, 'hallofnames') < 1 && state.components >= COLONY.build.compHallOfNames && state.materials >= COLONY.build.matHallOfNames) return designHallOfNames(state)
   // Spec 056 — a sizeable colony with skyfarms to its name nets a second food: raise a Cloudsea Net Dock (one per ~3 skyfarms) for dietary resilience and a richer table.
   if (state.colonists > 16 && !inBrownout(state) && countKind(state, 'greenhouse') > 0 && countKind(state, 'netdock') < Math.max(1, Math.ceil(countKind(state, 'greenhouse') / 3)) && state.components >= COLONY.build.compNetDock && state.materials >= COLONY.build.matNetDock + COLONY.build.rimfishSurplus) return designNetDock(state)
+  // Spec 058 — once the homes are many and the waste is climbing toward the harmless line, raise a Sanitation Post (one per ~wasteOccupancyRef homes) to mind the drains.
+  if (state.colonists > 14 && (state.waste ?? 0) > COLONY.build.wasteHarmlessBelow * 0.7 && countKind(state, 'sanitation') < Math.max(1, Math.ceil(countKind(state, 'habitat') / COLONY.build.wasteOccupancyRef)) && state.components >= COLONY.build.compSanitation && state.materials >= COLONY.build.matSanitation) return designSanitationPost(state)
   // Spec 036 — once trade is established (an Exchange stands) and the bank is flush, raise an Import Office to buy shortages.
   if (state.colonists > 12 && countKind(state, 'import') < 1 && countKind(state, 'exchange') > 0 && state.components >= COLONY.build.compImportOffice && state.treasury > COLONY.build.importOfficeCost) return designImportOffice(state)
   // Spec 039 — a mature colony raises a Comptroller's Office so the treasury can ride a hard stretch on managed debt.
@@ -1038,7 +1046,7 @@ export function claimLot(state: ColonyState, rng: RNG): { x: number; y: number }
 export type Sector = 'food' | 'services' | 'industry' | 'logistics' | 'safety' | 'trade' | 'civic'
 const SECTOR_OF: Record<BuildKind, Sector> = {
   greenhouse: 'food', depot: 'food', water: 'food', cistern: 'food', seedloft: 'food', netdock: 'food',
-  clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services',
+  clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services', sanitation: 'services',
   mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry',
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety',
@@ -1867,6 +1875,42 @@ export function rimfishStatus(state: ColonyState): { stock: number; docks: numbe
   return { stock: Math.round(state.rimfish ?? 0), docks: countKind(state, 'netdock'), varied: (state.rimfish ?? 0) > 0 }
 }
 
+/** Spec 058 — the immigration-dampening factor from household waste: 1 below the harmless line, slipping gently as filth piles up
+ *  above it (a dirty colony draws settlers a little slower). Bounded so even full filth only dampens the draw modestly. */
+export function wasteDesirabilityFactor(state: ColonyState): number {
+  const over = Math.max(0, (state.waste ?? 0) - COLONY.build.wasteHarmlessBelow)
+  return Math.max(0, 1 - COLONY.build.wasteDesirabilityWeight * over)
+}
+
+/** Spec 058 — Waste readout for the HUD: the level (percent), the Sanitation Post count, and which harm bands are active. */
+export function wasteStatus(state: ColonyState): { level: number; posts: number; harmful: boolean; fevered: boolean } {
+  const w = state.waste ?? 0
+  return { level: Math.round(w * 100), posts: countKind(state, 'sanitation'), harmful: w >= COLONY.build.wasteHarmlessBelow, fevered: w >= COLONY.build.wasteFeverThreshold }
+}
+
+/** Spec 058 — household waste each step: occupied homes make a slow trickle (more at higher tiers and in warm seasons), staffed
+ *  Sanitation Posts clear it, and unhandled filth above the fever line gently feeds the outbreak. Capped to [0,1]; inert with no
+ *  homes, and harmless (no effect anywhere) below wasteHarmlessBelow — so a young colony and short test runs are untouched. */
+export function wasteStep(state: ColonyState, dtMin: number): void {
+  const frac = dtMin / (24 * 60)
+  const homes = countKind(state, 'habitat')
+  let waste = state.waste ?? 0
+  if (homes > 0) {
+    const occ = Math.min(1, homes / COLONY.build.wasteOccupancyRef)
+    const tierF = 1 + Math.max(0, habitatMeanTier(state) - 1) * COLONY.build.wasteTierWeight
+    const seasonF = countKind(state, 'calendar') > 0 ? (calendarStatus(state).month <= 6 ? COLONY.build.wasteWarmSeason : COLONY.build.wasteColdSeason) : 1 // warm months (1-6) ripen filth faster
+    waste += COLONY.build.wasteRisePerDay * occ * tierF * seasonF * frac
+  }
+  const posts = countKind(state, 'sanitation')
+  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  waste -= (posts * COLONY.build.wasteClearPerPostPerDay * staffing + COLONY.build.wasteNaturalDecay) * frac
+  state.waste = Math.max(0, Math.min(1, waste))
+  // Unhandled filth past the fever line breeds sickness — gentle, and contained by the fever watch (026) + clinics (009) like any source.
+  if ((state.waste ?? 0) >= COLONY.build.wasteFeverThreshold && homes > 0) {
+    state.outbreak = Math.min(1, (state.outbreak ?? 0) + COLONY.build.wasteFeverPerDay * ((state.waste) - COLONY.build.wasteFeverThreshold) * frac)
+  }
+}
+
 /** Spec 031 — staffed Weaveries weave fibre into linen bolts (2:1); halt when fibre runs out. */
 function produceLinen(state: ColonyState, dtMin: number): void {
   const eff = sectorStaffing(state, 'industry') * healthFactor(state) * powerFactor(state) * transitFactor(state) * feverFactor(state) * orderFactor(state) // spec 038 — sick, brownout, congested, fevered, restless or sector-deprioritised weaveries weave less
@@ -2078,7 +2122,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) * (1 + COLONY.build.solaceDesirabilityBonus * solaceCoverage(state)) * (arrearsStrain(state) ? COLONY.build.arrearsStrainDesirabilityFactor : 1) * (1 + COLONY.build.educationDesirabilityBonus * educationFraction(state)) * prosperityDesirabilityFactor(state) * ((state.rimfish ?? 0) > 0 ? 1 + COLONY.build.rimfishDesirabilityBonus : 1) // spec 025/026/027/028/029/030/032/033/035/037/039/042/040/056 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, named founders, a consoled colony, a colony deep in arrears, a schooled colony, a high-Prosperity colony, and a varied table (rimfish) all pull on who comes and stays
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) * (1 + COLONY.build.solaceDesirabilityBonus * solaceCoverage(state)) * (arrearsStrain(state) ? COLONY.build.arrearsStrainDesirabilityFactor : 1) * (1 + COLONY.build.educationDesirabilityBonus * educationFraction(state)) * prosperityDesirabilityFactor(state) * ((state.rimfish ?? 0) > 0 ? 1 + COLONY.build.rimfishDesirabilityBonus : 1) * wasteDesirabilityFactor(state) // spec 025/026/027/028/029/030/032/033/035/037/039/042/040/056/058 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, named founders, a consoled colony, a colony deep in arrears, a schooled colony, a high-Prosperity colony, a varied table (rimfish), and a colony that minds its drains all pull on who comes and stays
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * confidenceImmigrationFactor(state) * perDay) // spec 049 — arrivals also follow the colony's Settler Confidence (a healthy colony sits at the plateau, so this is 1; deep distress slows it, terrible distress halts it)
 }
 
@@ -2528,6 +2572,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   seedStep(state, dtMin) // spec 048 — dry food (+ water) into seed-stock, then let skyfarms draw it, before foodStep reads seedSupplyFactor
   foodStep(state, dtMin)
   housingStep(state, dtMin)
+  wasteStep(state, dtMin) // spec 058 — occupied homes make filth, Sanitation Posts clear it; runs before immigration so desirability reads the current waste
   immigration(state, dtMin)
   departureStep(state, dtMin) // spec 041 — sustained failure sheds households; runs right after immigration so the net is arrivals minus departures
   birthStep(state, dtMin) // spec 050 — stable mid-tier homes raise children that mature into colonists (reads tiers + vacancy after housing/immigration)
