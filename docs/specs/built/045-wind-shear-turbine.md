@@ -1,5 +1,5 @@
 # Spec 045 — The Wind-Shear Turbine Mast: power that scales with the colony
-- status: proposed
+- status: built — slice 40, shipped to mechanics/dev. Engine in src/colony/build.ts (the turbine building, turbinePower as a staffing-scaled steady output folded into peakSupply, and a power-short build gate preferring a mast once components are on hand), the steady (non-daylight) turbine term added to live generation in sim.ts, knobs in config.ts, a power.windW readout in runtime.ts, a HUD Wind row in ColonyApp.tsx, and three tests in tests/economy.test.ts. No new ColonyState field. typecheck clean and all 318 tests pass; live on :5188 ten staffed masts lifted Wind to 40 kW and cleared a brownout, spinning down to 0 when unstaffed. Inert with no mast.
 - proposed-by: **Brannic Sore, returning founder and deck-rigger of Landing One** — **LIVE Hermes** (model hermes-codex-gpt-5.5). Brannic Sore joins the roster of system-authors and names the ceiling under the lights: solar is fixed, and a widening colony will simply brown out.
 - date: 2026-06-02
 - depends-on: 017
