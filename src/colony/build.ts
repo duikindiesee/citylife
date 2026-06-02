@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine'
 
 export interface Parcel {
   id: number
@@ -92,6 +92,7 @@ const LIAISON_COLOR = 0x2f9bd8 // kookerverse-blue liaison office (the channel t
 const STORMWATCH_COLOR = 0x9aa7b0 // storm-grey stormwatch shelter (rim lookout + refuge)
 const HALL_COLOR = 0xd8b65a // founders' gold — the Founders' Hall (civic archive + seat of the notable founders)
 const IMPORT_COLOR = 0xc05a9a // import-magenta — the Skybridge Import Office (the buying side of trade)
+const SHRINE_COLOR = 0xb6a8e0 // soft violet — the Mooring Shrine (faith + solace for the homes)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -380,6 +381,10 @@ function designImportOffice(state: ColonyState): Artifact {
   // Spec 036 — Skybridge Import Office; the buying side of trade — spends treasury to land a council-chosen good at a premium.
   return { id: state.buildIds++, kind: 'import', color: IMPORT_COLOR, height: 1.3, residents: 0, jobs: COLONY.build.importOfficeWorkers, powerLoad: 0.4, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.importOfficeCost, materialsCost: COLONY.build.matImportOffice, crew: COLONY.build.crewImportOffice, materialsGen: 0, componentsCost: COLONY.build.compImportOffice }
 }
+function designShrine(state: ColonyState): Artifact {
+  // Spec 037 — Mooring Shrine; a small staffed civic shrine that carries Solace to nearby homes (fed by a trickle of linen).
+  return { id: state.buildIds++, kind: 'shrine', color: SHRINE_COLOR, height: 1.2, residents: 0, jobs: COLONY.build.shrineWorkers, powerLoad: 0.2, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.shrineCost, materialsCost: COLONY.build.matShrine, crew: COLONY.build.crewShrine, materialsGen: 0, componentsCost: COLONY.build.compShrine }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -450,6 +455,23 @@ export function cultureFraction(state: ColonyState): number {
 export function cultureFuelFactor(state: ColonyState): number {
   if (countKind(state, 'theatre') === 0) return 1
   return state.reels > 0 ? 1 : COLONY.build.cultureStarvedFactor
+}
+
+/** Spec 037 — fraction of homes consoled by a staffed Mooring Shrine, dimmed when the shrine runs out of linen (0 with none). */
+export function solaceCoverage(state: ColonyState): number {
+  const habs = state.buildings.filter((b) => b.artifact.kind === 'habitat')
+  if (!habs.length || countKind(state, 'shrine') === 0) return 0
+  if ((state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) <= 0) return 0 // unstaffed → nobody keeps the shrine, no Solace
+  const shrines = state.buildings.filter((b) => b.artifact.kind === 'shrine')
+  let served = 0
+  for (const h of habs) if (shrines.some((s) => Math.hypot(s.x - h.x, s.y - h.y) <= COLONY.build.shrineRadius)) served++
+  const fuel = (state.linen ?? 0) > 0 ? 1 : COLONY.build.solaceStarvedFactor // spec 037 — no linen for flags + wraps → the Solace dims
+  return (served / habs.length) * fuel
+}
+
+/** Spec 037 — Solace readout for the HUD: the consoled fraction (0..1) and how many shrines stand. */
+export function solaceStatus(state: ColonyState): { coverage: number; shrines: number } {
+  return { coverage: solaceCoverage(state), shrines: countKind(state, 'shrine') }
 }
 
 /** Spec 011 — is a building of `kind` within `radius` of this home? (per-home service coverage). */
@@ -575,6 +597,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (countKind(state, 'habitat') > 0 && healthFraction(state) < 0.9 && state.components >= COLONY.build.compClinic && countKind(state, 'clinic') < Math.ceil(countKind(state, 'habitat') / 6)) return designClinic(state)
   // Spec 010 — culture for a thriving colony: homes exist + low culture coverage + components → raise a Holo-Theatre.
   if (countKind(state, 'habitat') > 0 && cultureFraction(state) < 0.9 && state.components >= COLONY.build.compTheatre && countKind(state, 'theatre') < Math.ceil(countKind(state, 'habitat') / 8)) return designTheatre(state)
+  // Spec 037 — comfort the homes: an established colony with components on hand raises a Mooring Shrine to carry Solace.
+  if (state.colonists > 8 && countKind(state, 'habitat') > 0 && solaceCoverage(state) < 0.9 && state.components >= COLONY.build.compShrine && countKind(state, 'shrine') < Math.ceil(countKind(state, 'habitat') / COLONY.build.shrineHomes)) return designShrine(state)
   // Spec 019 — clear the air: smoggy homes + components on hand → plant an Air Scrubber Garden.
   if (pollutedFraction(state) > 0.1 && state.components >= COLONY.build.compScrubber && countKind(state, 'scrubber') < Math.ceil(countKind(state, 'habitat') / 6)) return designScrubber(state)
   // Spec 011 — once the colony is established, raise a Civic Pulse Survey Office to unlock the liveability map.
@@ -1023,6 +1047,8 @@ function unrestStep(state: ColonyState, dtMin: number): void {
   if (liaisonActive(state) && (state.standing ?? 0.5) < COLONY.build.lowStandingThreshold) u += COLONY.build.standingUnrestPerDay * frac // spec 032 — disrepute breeds reputational unrest
   if (spireComplete(state)) u -= COLONY.build.spireUnrestReliefPerDay * frac // spec 033 — pride in the great work calms the colony
   if (foundersHallActive(state)) u -= COLONY.build.foundersUnrestRelief * frac // spec 035 — pride in who built this steadies the colony
+  const solace = solaceCoverage(state)
+  if (solace > 0) u -= COLONY.build.solaceCalmPerDay * solace * frac // spec 037 — consoled homes fray slower under a squeeze
   state.unrest = Math.max(0, Math.min(COLONY.build.unrestMax, u))
 }
 
@@ -1560,7 +1586,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) // spec 025/026/027/028/029/030/032/033/035 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, and a place with named founders all pull on who comes and stays
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) * (1 + COLONY.build.solaceDesirabilityBonus * solaceCoverage(state)) // spec 025/026/027/028/029/030/032/033/035/037 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, named founders, and a consoled colony all pull on who comes and stays
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * perDay)
 }
 
@@ -1598,6 +1624,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
     else if (b.artifact.kind === 'stormwatch') upkeep += COLONY.build.stormwatchMaintCompPerDay // spec 034 — watch supply
     else if (b.artifact.kind === 'hall') upkeep += COLONY.build.hallMaintCompPerDay // spec 035 — archive + roster upkeep
     else if (b.artifact.kind === 'import') upkeep += COLONY.build.importOfficeMaintCompPerDay // spec 036 — office + dispatch supply
+    else if (b.artifact.kind === 'shrine') linenUpkeep += COLONY.build.shrineLinenPerDay // spec 037 — prayer flags + memorial wraps (linen)
   }
   if (upkeep > 0) state.components = Math.max(0, state.components - upkeep * (dtMin / (24 * 60)))
   if (matUpkeep > 0) state.materials = Math.max(0, state.materials - matUpkeep * (dtMin / (24 * 60)))

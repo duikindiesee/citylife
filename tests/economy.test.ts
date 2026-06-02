@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -2405,5 +2405,98 @@ describe('Spec 036 — The Skybridge Import Office: buying what the colony canno
     expect(st.order).toBe('reels')
     expect(st.perDay).toBeGreaterThan(0)
     expect(st.dailySpend).toBeGreaterThan(0)
+  })
+})
+
+describe('Spec 037 — The Mooring Shrine: faith, solace, and the first reason to call it home', () => {
+  const mk = (kind: 'shrine' | 'habitat' | 'mine', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('Solace reaches homes only from a built, staffed shrine — and dims without linen', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('habitat', lx, ly, { residents: 4 }))
+    s.buildings.push(mk('habitat', lx + 1, ly, { residents: 4 }))
+    s.colonists = 8
+    s.totalJobs = 3
+    s.linen = 50
+    expect(solaceCoverage(s)).toBe(0) // no shrine
+    s.buildings.push(mk('shrine', lx, ly + 1, { jobs: 3 }))
+    expect(solaceCoverage(s)).toBeCloseTo(1, 5) // both homes within reach of a staffed shrine, linen on hand
+    s.colonists = 0
+    expect(solaceCoverage(s)).toBe(0) // a shrine, but nobody keeps it → no Solace
+    s.colonists = 8
+    s.linen = 0
+    expect(solaceCoverage(s)).toBeCloseTo(COLONY.build.solaceStarvedFactor, 5) // out of linen → the Solace dims (1.0 coverage × starved factor)
+    expect(solaceCoverage(s)).toBeGreaterThan(0)
+  })
+
+  it('a consoled colony draws settlers a little faster', () => {
+    const run = (withShrine: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+      s.buildings.push(mk('habitat', lx, ly, { residents: 60 })) // ample headroom
+      s.buildings.push(mk('mine', lx + 1, ly, { jobs: 6 })) // fully employed → no idle confound
+      if (withShrine) s.buildings.push(mk('shrine', lx, ly, { jobs: 3 }))
+      s.colonists = 6
+      s.totalJobs = 6
+      s.linen = 1000 // never runs dry
+      s.power.batteryWh = s.power.batteryCapWh
+      s.power.solarW = 5
+      const c0 = s.colonists
+      for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+      return s.colonists - c0
+    }
+    expect(run(true)).toBeGreaterThan(run(false)) // the Solace bonus pulls settlers a little faster
+  })
+
+  it('consoled homes shed unrest more slowly (vs an identical colony with no shrine)', () => {
+    const run = (withShrine: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+      s.buildings.push(mk('habitat', lx, ly, { residents: 10 }))
+      s.buildings.push(mk('mine', lx + 1, ly, { jobs: 6 })) // fully employed: no idle-pressure confound
+      if (withShrine) s.buildings.push(mk('shrine', lx, ly, { jobs: 3 }))
+      s.colonists = 6
+      s.totalJobs = 6
+      s.linen = 1000
+      s.unrest = 0.5
+      for (let i = 0; i < 60; i++) stepBuild(s, sim.rng, 10)
+      return s.unrest ?? 0
+    }
+    expect(run(true)).toBeLessThan(run(false)) // Solace eases the squeeze
+  })
+
+  it('a shrine draws down linen for its prayer flags and wraps', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('habitat', lx, ly, { residents: 4 }))
+    s.buildings.push(mk('shrine', lx, ly, { jobs: 3 }))
+    s.colonists = 6
+    s.totalJobs = 3
+    s.linen = 50
+    const l0 = s.linen
+    for (let i = 0; i < 100; i++) stepBuild(s, sim.rng, 10)
+    expect(s.linen).toBeLessThan(l0) // consumed linen while it ran
+  })
+
+  it('with no shrine the colony is unchanged — Solace is zero (inert)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('habitat', lx, ly, { residents: 4 }))
+    s.colonists = 6
+    s.totalJobs = 3
+    s.linen = 50
+    expect(solaceCoverage(s)).toBe(0)
+    expect(solaceStatus(s).shrines).toBe(0)
   })
 })

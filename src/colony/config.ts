@@ -474,6 +474,19 @@ export const COLONY = {
     importPerDay: 14, // units/day a fully staffed office lands of the order good
     importPremiumMult: 1.6, // the premium imports carry over the Exchange sell price (the prices below already bake it in)
     importPrice: { materials: 24, components: 64, food: 20, linen: 90, reels: 192 }, // $ per imported unit — a premium over local value / export price (comp 40, food 12, reels 120 on the Exchange)
+    // Mooring Shrine (spec 037): a small staffed civic shrine that carries Solace to nearby homes — a new home service that
+    // lifts desirability and eases unrest, fed by a trickle of linen. Inert with no staffed shrine, so existing play is unchanged.
+    matShrine: 10,
+    compShrine: 2,
+    crewShrine: 4,
+    shrineCost: 1200,
+    shrineWorkers: 3,
+    shrineRadius: 8, // cells; habitats within this of a staffed shrine are consoled
+    shrineHomes: 8, // build ~1 shrine per this many homes
+    shrineLinenPerDay: 0.4, // linen burned per shrine per day (prayer flags + memorial wraps)
+    solaceDesirabilityBonus: 0.12, // up to +12% immigration at full solace coverage
+    solaceCalmPerDay: 0.06, // daily unrest relief at full solace coverage
+    solaceStarvedFactor: 0.3, // solace dims to this fraction when the shrine has run out of linen
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,
