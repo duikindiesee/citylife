@@ -791,6 +791,23 @@ export const COLONY = {
     dryRackOutputPerDay: 8, // dried rimfish one rack produces per day at full rate (a real trimming loss — 8 per 12 fresh)
     storeBaseDriedFish: 40, // storage cap (spec 023) for dried rimfish
     storePerDriedFish: 40,
+    // The Labour Registry Desk (spec 062): a staffed Civic office that surfaces the employment rate and makes CHRONIC unemployment drag
+    // the Prosperity Rank (spec 040) — the one place the colony currently looks away. Inert by default: with no Registry the rank is exactly
+    // today and idleness does not drag it; the penalty only bites after the idleness persists for the day-count, and clears the same way.
+    matRegistry: 20, // materials to build
+    compRegistry: 4, // components to build
+    toolRegistry: 2, // tool-kits to build (spec 047)
+    folioRegistry: 2, // folios to build (spec 044 — the bound ledgers and notices)
+    crewRegistry: 4, // builders reserved for the construction job
+    registryCost: 700, // treasury to build
+    registryWorkers: 2, // run crew (Civic clerks): full strength at 2, half at 1, idle at 0
+    registryCapacity: 120, // working-age colonists one staffed Registry keeps on the books
+    registryHighPct: 0.1, // unemployment above this for registryHighDays drags the rank by 1
+    registrySeverePct: 0.2, // unemployment above this for registrySevereDays drags the rank by 2 instead
+    registryClearPct: 0.05, // the penalty clears once unemployment stays below this for registryClearDays
+    registryHighDays: 7, // consecutive days above the high line before the -1 bites
+    registrySevereDays: 14, // consecutive days above the severe line before the -2 bites
+    registryClearDays: 7, // consecutive days below the clear line before the penalty lifts (hysteresis)
     pollutionPerIndustrial: 3,
   },
 

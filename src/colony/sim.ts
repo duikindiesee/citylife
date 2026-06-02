@@ -61,6 +61,10 @@ export interface ColonyState {
   dietShort?: number // spec 060 — trailing-window tally of meals demanded but not served (empty larder); disqualifies the Varied Diet bonus
   dietStanding?: number // spec 060 — 0..1 Varied Diet standing; 1 while a counter is operating on two foods, fades over varietyHoldDays when not
   driedFish: number // spec 061 — dried rimfish, a shelf-stable food banked from surplus fresh rimfish by Drying Racks; eaten after fresh fish; 0 until a rack stands
+  registryPenalty?: number // spec 062 — Prosperity-Rank steps subtracted for chronic unemployment while a staffed Labour Registry stands (0/1/2); sticky until cleared
+  unempHighDays?: number // spec 062 — consecutive days unemployment has sat above the high line (drives the -1)
+  unempSevereDays?: number // spec 062 — consecutive days unemployment has sat above the severe line (drives the -2)
+  unempClearDays?: number // spec 062 — consecutive days unemployment has sat below the clear line (lifts the penalty)
   parcels: Parcel[]
   jobs: ConstructionJob[]
   buildings: ColonyBuilding[]

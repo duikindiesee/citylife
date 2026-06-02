@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry'
 
 export interface Parcel {
   id: number
@@ -36,6 +36,7 @@ export interface Artifact {
   reelsCost?: number // spec 018: reels (luxury good) consumed to construct (battery sheds); defaults to 0
   toolsCost?: number // spec 060: tool-kits consumed to construct (the Variety Ration Counter); defaults to 0
   linenCost?: number // spec 061: linen consumed to construct (the Rimfish Drying Racks); defaults to 0
+  folioCost?: number // spec 062: folios consumed to construct (the Labour Registry Desk ledgers); defaults to 0
 }
 export interface ConstructionJob {
   id: number
@@ -112,6 +113,7 @@ const HALLOFNAMES_COLOR = 0x9a8fb0 // dusk-violet — the Hall of Names (the col
 const NETDOCK_COLOR = 0x4fb0a6 // cloudsea-teal — the Cloudsea Net Dock (nets rimfish, the colony's second food)
 const RATIONVAR_COLOR = 0xd98c5f // warm amber-coral — the Variety Ration Counter (mixed-ration serving hatch)
 const DRYRACK_COLOR = 0x9fb4a0 // pale weathered sage — the Rimfish Drying Rack (slatted drying lines)
+const REGISTRY_COLOR = 0x8a93b8 // slate-indigo — the Labour Registry Desk (clerks, boards, ledgers)
 const SANITATION_COLOR = 0x6f8f6a // drain-green — the Sanitation Post (clears household waste before it sickens the colony)
 const WATCHNOOK_COLOR = 0xb0a04a // lamp-brass — the Watch Nook (keeps petty theft off a rich colony's coffers)
 const key = (x: number, y: number) => x + ',' + y
@@ -151,6 +153,10 @@ export function initBuild(state: ColonyState): void {
   state.lastPassings = 0 // spec 055
   state.rimfish = 0 // spec 056 — no rimfish until a Cloudsea Net Dock stands
   state.driedFish = 0 // spec 061 — no dried rimfish until a Rimfish Drying Rack stands
+  state.registryPenalty = 0 // spec 062 — no Prosperity drag until a Labour Registry reads chronic idleness
+  state.unempHighDays = 0 // spec 062
+  state.unempSevereDays = 0 // spec 062
+  state.unempClearDays = 0 // spec 062
   state.waste = 0 // spec 058 — the colony starts clean
   state.dietSkyfarm = 0 // spec 060 — no meal history yet
   state.dietRimfish = 0 // spec 060
@@ -496,6 +502,10 @@ function designDryRack(state: ColonyState): Artifact {
   // Spec 061 — Rimfish Drying Rack; a staffed Industry worksite that dries surplus fresh rimfish into shelf-stable dried rimfish. Costs tool-kits + linen to build.
   return { id: state.buildIds++, kind: 'dryrack', color: DRYRACK_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.dryRackWorkers, powerLoad: COLONY.build.dryRackPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.dryRackCost, materialsCost: COLONY.build.matDryRack, crew: COLONY.build.crewDryRack, materialsGen: 0, componentsCost: COLONY.build.compDryRack, toolsCost: COLONY.build.toolDryRack, linenCost: COLONY.build.linenDryRack }
 }
+function designRegistry(state: ColonyState): Artifact {
+  // Spec 062 — Labour Registry Desk; a staffed Civic office (no power) that makes chronic unemployment drag the Prosperity Rank. Costs tool-kits + folios to build.
+  return { id: state.buildIds++, kind: 'registry', color: REGISTRY_COLOR, height: 0.9, residents: 0, jobs: COLONY.build.registryWorkers, powerLoad: 0, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.registryCost, materialsCost: COLONY.build.matRegistry, crew: COLONY.build.crewRegistry, materialsGen: 0, componentsCost: COLONY.build.compRegistry, toolsCost: COLONY.build.toolRegistry, folioCost: COLONY.build.folioRegistry }
+}
 
 /** Spec 045 — steady power the built, staffed Turbine Masts add to the grid (harvests wind day + night; understaffing cuts it). */
 export function turbinePower(state: ColonyState): number {
@@ -770,9 +780,12 @@ export function prosperityScore(state: ColonyState): number {
   return Math.max(0, Math.min(1, s))
 }
 
-/** Spec 040 — the Prosperity rank 0..4 (Struggling..Renowned) from the score. */
+/** Spec 040 — the Prosperity rank 0..4 (Struggling..Renowned) from the score. Spec 062 — a staffed Labour Registry that has read
+ *  chronic unemployment drags the rank down a step (or two), floored at the bottom; the penalty is 0 with no Registry, so this is
+ *  exactly spec 040 until the desk is built. */
 export function prosperityRank(state: ColonyState): number {
-  return Math.max(0, Math.min(4, Math.floor(prosperityScore(state) / 0.2)))
+  const base = Math.max(0, Math.min(4, Math.floor(prosperityScore(state) / 0.2)))
+  return Math.max(0, base - (state.registryPenalty ?? 0))
 }
 
 /** Spec 040 — immigration lift from high Prosperity: nothing below the floor, a small pull at the top (1.0 with no Hall). */
@@ -786,6 +799,54 @@ export function prosperityStatus(state: ColonyState): { active: boolean; score: 
   const active = censusActive(state)
   const rank = prosperityRank(state)
   return { active, score: Math.round(prosperityScore(state) * 100), rank, rankName: PROSPERITY_RANKS[rank], recognised: active && rank >= 4 }
+}
+
+/** Spec 062 — the share of working-age colonists with no post: max(0, 1 - jobs/workers). Children are dependents (spec 050), not
+ *  workers, so they are excluded. 0 when the colony has fewer people than posts (a labour shortage is understaffing, not idleness). */
+export function unemploymentRate(state: ColonyState): number {
+  const workers = state.colonists
+  if (workers <= 0) return 0
+  const employed = Math.min(workers, state.totalJobs)
+  return Math.max(0, (workers - employed) / workers)
+}
+
+/** Spec 062 — a Labour Registry bites only while built AND staffed (its clerks keep the book; an empty desk looks away again). */
+export function registryActive(state: ColonyState): boolean {
+  if (countKind(state, 'registry') === 0) return false
+  return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+/** Spec 062 — advance the chronic-unemployment book: while a staffed Registry stands, count the consecutive days unemployment sits
+ *  above the high/severe lines (and below the clear line), and set the sticky Prosperity penalty (-1/-2) with a clearing hysteresis.
+ *  With no staffed Registry the penalty and counters are held at zero, so Prosperity is computed exactly as spec 040 — inert. */
+function registryStep(state: ColonyState, dtMin: number): void {
+  if (!registryActive(state)) {
+    state.registryPenalty = 0
+    state.unempHighDays = 0
+    state.unempSevereDays = 0
+    state.unempClearDays = 0
+    return
+  }
+  const frac = dtMin / (24 * 60)
+  const u = unemploymentRate(state)
+  state.unempHighDays = u > COLONY.build.registryHighPct ? (state.unempHighDays ?? 0) + frac : 0
+  state.unempSevereDays = u > COLONY.build.registrySeverePct ? (state.unempSevereDays ?? 0) + frac : 0
+  state.unempClearDays = u < COLONY.build.registryClearPct ? (state.unempClearDays ?? 0) + frac : 0
+  let p = state.registryPenalty ?? 0
+  if ((state.unempClearDays ?? 0) >= COLONY.build.registryClearDays) p = 0 // hysteresis — sustained full employment lifts the drag
+  else if ((state.unempSevereDays ?? 0) >= COLONY.build.registrySevereDays) p = Math.max(p, 2)
+  else if ((state.unempHighDays ?? 0) >= COLONY.build.registryHighDays) p = Math.max(p, 1)
+  state.registryPenalty = p
+}
+
+/** Spec 062 — Labour readout for the HUD: whether a Registry reads, the unemployment rate (0..1), the covered share of the
+ *  workforce, the current Prosperity penalty (0/1/2), and whether it is dragging the rank right now. */
+export function labourStatus(state: ColonyState): { active: boolean; unemployment: number; covered: number; penalty: number; dragging: boolean } {
+  const active = registryActive(state)
+  const registries = countKind(state, 'registry')
+  const staffing = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const covered = state.colonists > 0 ? Math.min(1, (COLONY.build.registryCapacity * registries * staffing) / state.colonists) : 0
+  return { active, unemployment: unemploymentRate(state), covered, penalty: state.registryPenalty ?? 0, dragging: (state.registryPenalty ?? 0) > 0 }
 }
 
 /** Spec 011 — is a building of `kind` within `radius` of this home? (per-home service coverage). */
@@ -979,6 +1040,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 14 && countKind(state, 'comptroller') < 1 && state.components >= COLONY.build.compComptroller && state.treasury > COLONY.build.comptrollerCost) return designComptroller(state)
   // Spec 038 — a mature colony raises a Roster Office so the council can prioritise scarce labour by sector.
   if (state.colonists > 14 && countKind(state, 'roster') < 1 && state.components >= COLONY.build.compRoster) return designRoster(state)
+  // Spec 062 — a mature colony that already keeps a Census and a Pay Office raises a Labour Registry Desk so chronic idleness finally shows in the Prosperity books.
+  if (state.colonists > 14 && countKind(state, 'census') > 0 && countKind(state, 'payoffice') > 0 && countKind(state, 'registry') < Math.max(1, Math.ceil(state.colonists / COLONY.build.registryCapacity)) && state.components >= COLONY.build.compRegistry && state.materials >= COLONY.build.matRegistry && (state.tools ?? 0) >= COLONY.build.toolRegistry && (state.folios ?? 0) >= COLONY.build.folioRegistry) return designRegistry(state)
   // Spec 026 — answer an outbreak: when fever climbs past the build line and no post contains it → raise a Fever Watch Post.
   if (state.outbreak > COLONY.build.feverBuildThreshold && state.components >= COLONY.build.compFeverWatch && countKind(state, 'feverwatch') < COLONY.build.maxFeverWatch) return designFeverWatch(state)
   // Spec 028 — keep the peace: when unrest climbs past the build line and no post patrols → raise a Ward Post.
@@ -1042,6 +1105,7 @@ export function autoGrow(state: ColonyState, rng: RNG): boolean {
   if (state.reels < (artifact.reelsCost ?? 0)) return false // spec 018 — not enough reels (battery sheds)
   if ((state.tools ?? 0) < (artifact.toolsCost ?? 0)) return false // spec 060 — not enough tool-kits (the Variety Ration Counter)
   if ((state.linen ?? 0) < (artifact.linenCost ?? 0)) return false // spec 061 — not enough linen (the Rimfish Drying Racks)
+  if ((state.folios ?? 0) < (artifact.folioCost ?? 0)) return false // spec 062 — not enough folios (the Labour Registry Desk ledgers)
   if (free < artifact.crew) return false // not enough hands to raise it
 
   const c = caravan(state)
@@ -1053,6 +1117,7 @@ export function autoGrow(state: ColonyState, rng: RNG): boolean {
   state.reels -= artifact.reelsCost ?? 0 // spec 018 — battery sheds consume reels to build
   state.tools = Math.max(0, (state.tools ?? 0) - (artifact.toolsCost ?? 0)) // spec 060 — the Variety Ration Counter consumes a tool-kit to build
   state.linen = Math.max(0, (state.linen ?? 0) - (artifact.linenCost ?? 0)) // spec 061 — the Rimfish Drying Racks consume linen to build
+  state.folios = Math.max(0, (state.folios ?? 0) - (artifact.folioCost ?? 0)) // spec 062 — the Labour Registry Desk consumes folios to build
   state.jobs.push({ id: state.buildIds++, x: lot.x, y: lot.y, artifact, progress: 0, path: roadPath(state, c.x, c.y, lot.x, lot.y) })
   return true
 }
@@ -1083,7 +1148,7 @@ const SECTOR_OF: Record<BuildKind, Sector> = {
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety', watchnook: 'safety',
   exchange: 'trade', import: 'trade',
-  levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', census: 'civic', habitat: 'civic', calendar: 'civic', hallofnames: 'civic',
+  levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', census: 'civic', habitat: 'civic', calendar: 'civic', hallofnames: 'civic', registry: 'civic',
 }
 // Spec 038 — priority orders the Roster Office fills under a shortage. 'balanced' uses the uniform split (no order).
 const ESSENTIALS_ORDER: Sector[] = ['food', 'safety', 'services', 'civic', 'logistics', 'industry', 'trade']
@@ -2755,6 +2820,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   dietStep(state, dtMin) // spec 060 — settle the Varied Diet standing from the trailing diet mix; runs before housing + immigration read it
   housingStep(state, dtMin)
   wasteStep(state, dtMin) // spec 058 — occupied homes make filth, Sanitation Posts clear it; runs before immigration so desirability reads the current waste
+  registryStep(state, dtMin) // spec 062 — a staffed Labour Registry books chronic idleness into the Prosperity penalty; runs before immigration so Prosperity-driven desirability reads it
   immigration(state, dtMin)
   departureStep(state, dtMin) // spec 041 — sustained failure sheds households; runs right after immigration so the net is arrivals minus departures
   birthStep(state, dtMin) // spec 050 — stable mid-tier homes raise children that mature into colonists (reads tiers + vacancy after housing/immigration)

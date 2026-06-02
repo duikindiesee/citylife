@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -4378,5 +4378,90 @@ describe('Spec 061 — Rimfish Drying Racks: bank the second food for a lean sea
     expect(s.driedFish ?? 0).toBeGreaterThanOrEqual(0)
     for (let i = 0; i < 400; i++) { s.rimfish = 0; s.food = 0; stepBuild(s, sim.rng, 60) } // starve it down
     expect(s.driedFish ?? 0).toBeGreaterThanOrEqual(0) // never negative
+  })
+})
+
+describe('Spec 062 — The Labour Registry Desk: idle hands finally show in the books', () => {
+  const mk = (kind: 'census' | 'registry', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  // Hold a colony at a fixed unemployment (workers vs jobs) across `days`, re-pinning the levers each day so the rate stays put.
+  const holdIdle = (sim: ColonySim, workers: number, jobs: number, days: number) => {
+    const s = sim.state
+    for (let i = 0; i < days; i++) {
+      s.colonists = workers; s.totalJobs = jobs; s.treasury = 5000; s.standing = 1; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+      stepBuild(s, sim.rng, 24 * 60) // one whole day per step, so the day-counters tick cleanly
+    }
+  }
+
+  it('inert without a desk — heavy unemployment does not drag Prosperity', () => {
+    const sim = new ColonySim(17)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('census', lx, ly, { jobs: 2 }))
+    s.colonists = 100; s.totalJobs = 30; s.treasury = 5000; s.standing = 1 // 70% idle, but no Registry
+    const rankBefore = prosperityRank(s)
+    holdIdle(sim, 100, 30, 20)
+    expect(s.registryPenalty ?? 0).toBe(0) // no Registry → the books never book it
+    expect(prosperityRank(s)).toBe(rankBefore) // Prosperity unchanged by idleness
+    expect(labourStatus(s).active).toBe(false)
+  })
+
+  it('a staffed Registry surfaces the employment rate', () => {
+    const sim = new ColonySim(17)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('registry', lx, ly, { jobs: 2 }))
+    s.colonists = 100; s.totalJobs = 60
+    const st = labourStatus(s)
+    expect(st.active).toBe(true)
+    expect(st.unemployment).toBeCloseTo(0.4, 5) // 1 - 60/100
+    expect(st.covered).toBeGreaterThan(0)
+  })
+
+  it('chronic idleness drags the Prosperity Rank a step, then two', () => {
+    const sim = new ColonySim(17)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('census', lx, ly, { jobs: 2 }))
+    s.buildings.push(mk('registry', lx + 1, ly, { jobs: 2 }))
+    s.colonists = 100; s.totalJobs = 50; s.treasury = 5000; s.standing = 1 // 50% unemployment (above both lines)
+    const baseRank = prosperityRank(s)
+    expect(baseRank).toBeGreaterThan(0) // a meaningful starting rank, so the drag is visible
+    holdIdle(sim, 100, 50, 8) // past the 7-day high line, short of the 14-day severe line
+    expect(s.registryPenalty).toBe(1)
+    expect(prosperityRank(s)).toBe(Math.max(0, baseRank - 1))
+    holdIdle(sim, 100, 50, 8) // now past the 14-day severe line (16 days total)
+    expect(s.registryPenalty).toBe(2)
+    expect(prosperityRank(s)).toBe(Math.max(0, baseRank - 2))
+  })
+
+  it('the penalty clears once the colony returns to full employment', () => {
+    const sim = new ColonySim(17)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('census', lx, ly, { jobs: 2 }))
+    s.buildings.push(mk('registry', lx + 1, ly, { jobs: 2 }))
+    holdIdle(sim, 100, 50, 16) // earn the -2
+    expect(s.registryPenalty).toBe(2)
+    holdIdle(sim, 100, 120, 8) // jobs now outnumber workers → 0% unemployment, held a week
+    expect(s.registryPenalty).toBe(0) // the drag lifts
+  })
+
+  it('a fresh desk applies no penalty until the day-count, and the drag never sinks the rank below the floor', () => {
+    const sim = new ColonySim(17)
+    const s = sim.state
+    const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+    s.buildings.push(mk('census', lx, ly, { jobs: 2 }))
+    s.buildings.push(mk('registry', lx + 1, ly, { jobs: 2 }))
+    holdIdle(sim, 100, 50, 5) // only 5 days of idleness — under the 7-day onset
+    expect(s.registryPenalty ?? 0).toBe(0) // raising the desk did not snap the rank down
+    holdIdle(sim, 100, 50, 20) // now well past the severe line
+    expect(s.registryPenalty).toBe(2)
+    expect(prosperityRank(s)).toBeGreaterThanOrEqual(0) // floored — never below the bottom rank
   })
 })
