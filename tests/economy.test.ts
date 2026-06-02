@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, hygieneLevel, bathhouseStatus, bathStep, hygieneDesirabilityFactor, hygieneEvolutionFactor, immigration, libraryStatus, libraryActive, homeCultured, libraryStep, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, reclaimStatus, waterTankCap, festivalStatus, festBoardActive, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, hygieneLevel, bathhouseStatus, bathStep, hygieneDesirabilityFactor, hygieneEvolutionFactor, immigration, libraryStatus, libraryActive, homeCultured, libraryStep, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, galleryStatus, galleryAppeal, galleryStep, fireStatus, reclaimStatus, waterTankCap, festivalStatus, festBoardActive, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -5179,5 +5179,102 @@ describe('Spec 071 — The Folio Library: the colony keeps some of its own books
     for (let i = 0; i < 30; i++) { s.colonists = 20; s.totalJobs = COLONY.build.libraryWorkers; stepBuild(s, sim.rng, 24 * 60) } // a month, no Folio House to refill
     expect(s.folios ?? 0).toBeGreaterThanOrEqual(0) // never negative
     expect(libraryActive(s)).toBe(false) // drained to bare → the shelves go quiet
+  })
+})
+
+describe('Spec 072 — The Skydeck Gallery: the colony renown becomes coin', () => {
+  const mk = (kind: 'habitat' | 'water' | 'depot' | 'clinic' | 'theatre' | 'gallery', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  // a liveable colony: one home with water + depot + clinic + theatre in reach (so colonyLiveability > 0), food on hand
+  const services = (buildings: ColonyBuilding[], lx: number, ly: number) => {
+    buildings.push(mk('water', lx, ly, { jobs: 1 }))
+    buildings.push(mk('depot', lx, ly, { jobs: 1 }))
+    buildings.push(mk('clinic', lx, ly, { jobs: 2 }))
+    buildings.push(mk('theatre', lx, ly, { jobs: 2 }))
+  }
+
+  it('inert without a Gallery — no visitor coin, treasury untouched', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const L = s.terrain.landing
+    s.buildings.push(mk('habitat', L.x, L.y, { residents: 4 }))
+    services(s.buildings, L.x, L.y)
+    s.colonists = 20; s.totalJobs = 6; s.food = 200; s.treasury = 1000
+    expect(galleryStatus(s)).toEqual({ galleries: 0, open: false, coinPerDay: 0 })
+    const t0 = s.treasury
+    galleryStep(s, 24 * 60)
+    expect(s.treasury).toBe(t0) // no Gallery → no visitor coin
+  })
+
+  it('a staffed Gallery in a liveable colony earns visitor coin', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const L = s.terrain.landing
+    s.buildings.push(mk('habitat', L.x, L.y, { residents: 4 }))
+    services(s.buildings, L.x, L.y)
+    s.buildings.push(mk('gallery', L.x + 1, L.y, { jobs: COLONY.build.galleryWorkers }))
+    s.colonists = 20; s.totalJobs = 6 + COLONY.build.galleryWorkers; s.food = 200; s.treasury = 1000
+    expect(colonyLiveability(s)).toBeGreaterThan(0) // serviced homes give the colony some appeal
+    expect(galleryStatus(s).open).toBe(true)
+    expect(galleryStatus(s).coinPerDay).toBeGreaterThan(0)
+    const t0 = s.treasury
+    galleryStep(s, 24 * 60)
+    expect(s.treasury).toBeGreaterThan(t0) // a day of visitor coin
+  })
+
+  it('the take scales with appeal — a liveable colony out-earns a drab one', () => {
+    const earn = (serviced: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      const L = s.terrain.landing
+      s.buildings.push(mk('habitat', L.x, L.y, { residents: 4 }))
+      if (serviced) services(s.buildings, L.x, L.y)
+      s.buildings.push(mk('gallery', L.x + 1, L.y, { jobs: COLONY.build.galleryWorkers }))
+      s.colonists = 20; s.totalJobs = COLONY.build.galleryWorkers + (serviced ? 6 : 0); s.food = 200; s.treasury = 1000
+      const t0 = s.treasury
+      galleryStep(s, 24 * 60)
+      return s.treasury - t0
+    }
+    expect(earn(true)).toBeGreaterThan(earn(false)) // a beautiful colony draws more visitors
+  })
+
+  it('a finished Horizon Spire lifts the take', () => {
+    const earn = (spireDone: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      const L = s.terrain.landing
+      s.buildings.push(mk('habitat', L.x, L.y, { residents: 4 }))
+      services(s.buildings, L.x, L.y)
+      s.buildings.push(mk('gallery', L.x + 1, L.y, { jobs: COLONY.build.galleryWorkers }))
+      s.colonists = 20; s.totalJobs = 6 + COLONY.build.galleryWorkers; s.food = 200; s.treasury = 1000
+      if (spireDone) s.spireStage = COLONY.build.spireStageCount
+      const t0 = s.treasury
+      galleryStep(s, 24 * 60)
+      return s.treasury - t0
+    }
+    expect(earn(true)).toBeGreaterThan(earn(false)) // the monument is a marquee draw
+  })
+
+  it('an unstaffed Gallery earns nothing, and the appeal is bounded', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const L = s.terrain.landing
+    s.buildings.push(mk('habitat', L.x, L.y, { residents: 4 }))
+    services(s.buildings, L.x, L.y)
+    s.buildings.push(mk('gallery', L.x + 1, L.y, { jobs: COLONY.build.galleryWorkers }))
+    s.totalJobs = 6 + COLONY.build.galleryWorkers; s.food = 200; s.treasury = 1000
+    s.colonists = 0 // nobody to guide → no fares
+    const t0 = s.treasury
+    galleryStep(s, 24 * 60)
+    expect(s.treasury).toBe(t0) // unstaffed → no coin
+    // however renowned, the appeal never runs past the ceiling
+    s.colonists = 20; s.spireStage = COLONY.build.spireStageCount
+    expect(galleryAppeal(s)).toBeLessThanOrEqual(COLONY.build.galleryAppealCeiling)
+    expect(galleryAppeal(s)).toBeGreaterThanOrEqual(0)
   })
 })

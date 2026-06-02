@@ -965,6 +965,20 @@ export const COLONY = {
     libraryPowerLoad: 0.3, // a light grid load for the reading lamps
     libraryRadius: 8, // cells; habitats within this of a staffed, stocked Library get letters-culture (matches the theatre reach)
     libraryFoliosPerDay: 1, // folios a Library draws from the stores per day to lend (the domestic demand vs the export trade)
+    // The Skydeck Gallery (spec 072): a staffed trade hall on the mooring deck that earns visitor coin from Kookerverse travellers who
+    // come to see a renowned colony. The take scales with the colony's appeal (liveability 011, lifted by a finished Horizon Spire 033
+    // and the Prosperity standing 040) and its Trade-sector staffing. Pure revenue. Inert with no Gallery: no visitor coin, treasury unchanged.
+    matGallery: 40, // materials to build
+    compGallery: 12, // components to build
+    toolGallery: 1, // tool-kits to build (the viewing rails + display cases)
+    crewGallery: 5, // builders reserved for the construction job
+    galleryCost: 900, // treasury to build
+    galleryWorkers: 4, // run crew (guides + a curator); unstaffed the hall takes no fares
+    galleryPowerLoad: 0.4, // grid load for the lights + the lifts
+    galleryVisitorCoin: 30, // coin/day a full-house Gallery takes at full appeal + full staffing
+    gallerySpireBonus: 0.25, // appeal lift while the Horizon Spire (033) stands finished (a marquee draw)
+    galleryProsperityBonus: 0.15, // appeal lift at full Prosperity (040) standing (renown brings more skiffs)
+    galleryAppealCeiling: 1.4, // the take never scales beyond this however renowned
     pollutionPerIndustrial: 3,
   },
 

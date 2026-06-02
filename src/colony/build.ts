@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall' | 'firewatch' | 'reclaimer' | 'festboard' | 'cellar' | 'bathhouse' | 'library'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall' | 'firewatch' | 'reclaimer' | 'festboard' | 'cellar' | 'bathhouse' | 'library' | 'gallery'
 
 export interface Parcel {
   id: number
@@ -127,6 +127,7 @@ const FESTBOARD_COLOR = 0xe2a93f // warm lantern-gold — the Festival Board (no
 const CELLAR_COLOR = 0x7d6b86 // dusky violet-grey — the Fungus Cellar (dark damp grow-beds)
 const BATHHOUSE_COLOR = 0x5fa9c4 // steam-blue — the Steam Bathhouse (hot water + hygiene on the cistern line)
 const LIBRARY_COLOR = 0xc9a24b // parchment-gold — the Folio Library (the colony's own books, lent at home)
+const GALLERY_COLOR = 0xd98c3a // lookout-amber — the Skydeck Gallery (the mooring-deck viewing hall)
 const SANITATION_COLOR = 0x6f8f6a // drain-green — the Sanitation Post (clears household waste before it sickens the colony)
 const WATCHNOOK_COLOR = 0xb0a04a // lamp-brass — the Watch Nook (keeps petty theft off a rich colony's coffers)
 const key = (x: number, y: number) => x + ',' + y
@@ -516,6 +517,10 @@ function designBathhouse(state: ColonyState): Artifact {
 function designLibrary(state: ColonyState): Artifact {
   // Spec 071 — Folio Library; a staffed services hall that lends the colony's own folios to the homes as culture (a reel-free culture path) and draws a few folios a day from the stores.
   return { id: state.buildIds++, kind: 'library', color: LIBRARY_COLOR, height: 1.0, residents: 0, jobs: COLONY.build.libraryWorkers, powerLoad: COLONY.build.libraryPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.libraryCost, materialsCost: COLONY.build.matLibrary, crew: COLONY.build.crewLibrary, materialsGen: 0, componentsCost: COLONY.build.compLibrary, toolsCost: COLONY.build.toolLibrary }
+}
+function designGallery(state: ColonyState): Artifact {
+  // Spec 072 — Skydeck Gallery; a staffed trade hall on the mooring deck that sells the view, earning visitor coin scaled by the colony's renown.
+  return { id: state.buildIds++, kind: 'gallery', color: GALLERY_COLOR, height: 1.1, residents: 0, jobs: COLONY.build.galleryWorkers, powerLoad: COLONY.build.galleryPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.galleryCost, materialsCost: COLONY.build.matGallery, crew: COLONY.build.crewGallery, materialsGen: 0, componentsCost: COLONY.build.compGallery, toolsCost: COLONY.build.toolGallery }
 }
 function designSanitationPost(state: ColonyState): Artifact {
   // Spec 058 — Sanitation Post; staffed drain-keepers who clear household waste before it sickens the colony.
@@ -1207,6 +1212,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 12 && countKind(state, 'import') < 1 && countKind(state, 'exchange') > 0 && state.components >= COLONY.build.compImportOffice && state.treasury > COLONY.build.importOfficeCost) return designImportOffice(state)
   // Spec 064 — once wages are paid and finished wares pile up past the stall reserve, raise a Market Stall (one per ~stallServedCap colonists) to sell the surplus to the home market.
   if (state.colonists > 12 && countKind(state, 'payoffice') > 0 && ((state.linen ?? 0) > COLONY.build.stallReserve + 10 || (state.folios ?? 0) > COLONY.build.stallReserve + 10) && countKind(state, 'stall') < Math.max(1, Math.ceil(state.colonists / COLONY.build.stallServedCap)) && state.components >= COLONY.build.compStall && state.materials >= COLONY.build.matStall && (state.tools ?? 0) >= COLONY.build.toolStall && (state.linen ?? 0) >= COLONY.build.linenStall) return designStall(state)
+  // Spec 072 — a renowned, liveable colony with coin to spare raises a Skydeck Gallery on the mooring deck, turning its beauty into visitor coin.
+  if (state.colonists > 18 && countKind(state, 'gallery') < 1 && colonyLiveability(state) > 0.45 && state.components >= COLONY.build.compGallery && state.materials >= COLONY.build.matGallery && (state.tools ?? 0) >= COLONY.build.toolGallery && state.treasury > COLONY.build.galleryCost) return designGallery(state)
   // Spec 067 — a colony that keeps a calendar, books, a market and a varied table raises a Festival Board so the people get a yearly Highsun Lantern Supper to look forward to.
   if (state.colonists > 16 && countKind(state, 'festboard') < 1 && countKind(state, 'calendar') > 0 && countKind(state, 'registry') > 0 && countKind(state, 'stall') > 0 && countKind(state, 'rationvar') > 0 && state.components >= COLONY.build.compFestBoard && state.materials >= COLONY.build.matFestBoard && (state.tools ?? 0) >= COLONY.build.toolFestBoard && (state.linen ?? 0) >= COLONY.build.linenFestBoard && (state.folios ?? 0) >= COLONY.build.folioFestBoard) return designFestBoard(state)
   // Spec 039 — a mature colony raises a Comptroller's Office so the treasury can ride a hard stretch on managed debt.
@@ -1328,7 +1335,7 @@ const SECTOR_OF: Record<BuildKind, Sector> = {
   mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry', dryrack: 'industry',
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics', reclaimer: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety', watchnook: 'safety', firewatch: 'safety',
-  exchange: 'trade', import: 'trade', stall: 'trade',
+  exchange: 'trade', import: 'trade', stall: 'trade', gallery: 'trade',
   levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', census: 'civic', habitat: 'civic', calendar: 'civic', hallofnames: 'civic', registry: 'civic', planter: 'civic', festboard: 'civic',
 }
 // Spec 038 — priority orders the Roster Office fills under a shortage. 'balanced' uses the uniform split (no order).
@@ -3287,6 +3294,38 @@ export function stallStatus(state: ColonyState): { stalls: number; open: boolean
   return { stalls, open: staffing > 0 && wage > 0 && sales > 0, coinPerDay: Math.round(sales * COLONY.build.stallCoinPerSale) }
 }
 
+/** Spec 072 — the Skydeck Gallery's appeal (0..ceiling): how worth-seeing the colony is to a visitor. The colony's liveability (011)
+ *  is the core draw, lifted while the Horizon Spire (033) stands finished and gently by the Prosperity standing (040). Clamped to a
+ *  sane ceiling so renown never runs away. */
+export function galleryAppeal(state: ColonyState): number {
+  let a = Math.max(0, Math.min(1, colonyLiveability(state)))
+  if (spireComplete(state)) a += COLONY.build.gallerySpireBonus
+  a += COLONY.build.galleryProsperityBonus * prosperityScore(state)
+  return Math.max(0, Math.min(COLONY.build.galleryAppealCeiling, a))
+}
+
+/** Spec 072 — a staffed Skydeck Gallery earns visitor coin each day from Kookerverse travellers, scaled by the colony's appeal and its
+ *  Trade-sector staffing. Pure revenue, touching only the treasury. Inert with no Gallery; an unstaffed Gallery takes no fares. */
+export function galleryStep(state: ColonyState, dtMin: number): void {
+  const galleries = countKind(state, 'gallery')
+  if (galleries === 0) return
+  const staffing = sectorStaffing(state, 'trade') // guides + curator share the Trade-sector labour with the Exchange + Stall
+  if (staffing <= 0) return
+  const coinPerDay = COLONY.build.galleryVisitorCoin * galleryAppeal(state) * staffing * galleries
+  if (coinPerDay <= 0) return
+  state.treasury += coinPerDay * (dtMin / (24 * 60))
+}
+
+/** Spec 072 — Skydeck Gallery readout for the HUD: galleries built, whether they are earning (staffed with some appeal), and the
+ *  visitor coin/day at the current renown. */
+export function galleryStatus(state: ColonyState): { galleries: number; open: boolean; coinPerDay: number } {
+  const galleries = countKind(state, 'gallery')
+  if (galleries === 0) return { galleries: 0, open: false, coinPerDay: 0 }
+  const staffing = sectorStaffing(state, 'trade')
+  const coin = COLONY.build.galleryVisitorCoin * galleryAppeal(state) * staffing * galleries
+  return { galleries, open: staffing > 0 && coin > 0, coinPerDay: Math.round(coin) }
+}
+
 export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   const popAtStepStart = state.colonists // spec 055 — snapshot before the population steps, to measure this step's renewal
   toolStep(state, dtMin) // spec 047 — make/draw tool-kits first so every tooled producer + the fitters read this step's rack
@@ -3331,6 +3370,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   ledgerStep(state) // spec 055 — on the year-turn, a long-settled colony sees a gentle, capped natural turnover (inert below the onset span)
   tradeStep(state, dtMin)
   stallStep(state, dtMin) // spec 064 — Market Stalls sell surplus linen/folios to paid colonists for a little treasury margin (runs with the trade income)
+  galleryStep(state, dtMin) // spec 072 — Skydeck Galleries earn visitor coin from the colony's renown (liveability + Spire + Prosperity), pure treasury revenue
   theftStep(state, dtMin) // spec 059 — a rich, populous, unguarded colony bleeds a slow, capped trickle of treasury to petty theft (inert below the floors and in any crisis)
   importStep(state, dtMin) // spec 036 — the buying side: spend treasury to land the order good (capped by storage headroom below)
   clampStorage(state) // spec 023 — finite storage: production past a cap is lost (after all goods are produced/sold)
