@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, hygieneLevel, bathhouseStatus, bathStep, hygieneDesirabilityFactor, hygieneEvolutionFactor, immigration, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, reclaimStatus, waterTankCap, festivalStatus, festBoardActive, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, hygieneLevel, bathhouseStatus, bathStep, hygieneDesirabilityFactor, hygieneEvolutionFactor, immigration, libraryStatus, libraryActive, homeCultured, libraryStep, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, fireStatus, reclaimStatus, waterTankCap, festivalStatus, festBoardActive, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -5092,5 +5092,92 @@ describe('Spec 070 — The Clean-Home Standing: a washed colony draws settlers a
     expect(hygieneLevel(s)).toBeCloseTo(1, 5)
     expect(hygieneDesirabilityFactor(s)).toBeCloseTo(1 + COLONY.build.hygieneDesirabilityGain, 5) // exactly the ceiling, not beyond
     expect(hygieneEvolutionFactor(s)).toBeCloseTo(1 - COLONY.build.hygieneEvolutionGain, 5)
+  })
+})
+
+describe('Spec 071 — The Folio Library: the colony keeps some of its own books', () => {
+  const mk = (kind: 'habitat' | 'library' | 'theatre', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('inert without a Library — culture is the theatres exactly as before', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const L = s.terrain.landing
+    s.buildings.push(mk('habitat', L.x, L.y, { residents: 4 }))
+    s.buildings.push(mk('theatre', L.x, L.y, { jobs: 2 }))
+    s.colonists = 20; s.totalJobs = 2; s.folios = 50
+    expect(libraryStatus(s).libraries).toBe(0)
+    expect(libraryActive(s)).toBe(false)
+    expect(cultureFraction(s)).toBe(1) // the theatre cultures the home, just as before
+    s.reels = 0
+    expect(cultureFuelFactor(s)).toBe(COLONY.build.cultureStarvedFactor) // theatre with no reels and no library → dampened, unchanged
+    s.reels = 5
+    expect(cultureFuelFactor(s)).toBe(1) // theatre with reels → fuelled
+  })
+
+  it('a staffed, folio-stocked Library cultures the homes (a culture source on its own)', () => {
+    const cultured = (kind: 'none' | 'library' | 'theatre') => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      const L = s.terrain.landing
+      s.buildings.push(mk('habitat', L.x, L.y, { residents: 4 }))
+      if (kind === 'library') s.buildings.push(mk('library', L.x, L.y, { jobs: COLONY.build.libraryWorkers }))
+      if (kind === 'theatre') s.buildings.push(mk('theatre', L.x, L.y, { jobs: 2 }))
+      s.colonists = 20; s.totalJobs = COLONY.build.libraryWorkers; s.folios = 10; s.reels = 10
+      return cultureFraction(s)
+    }
+    expect(cultured('none')).toBe(0) // no culture source → no culture
+    expect(cultured('library')).toBeGreaterThan(0) // a stocked, staffed library cultures the home
+    expect(cultured('library')).toBe(1) // ...fully, the home is in reach
+    expect(cultured('theatre')).toBe(1) // sanity: the theatre path still works
+  })
+
+  it('the domestic demand is real — a Library draws folios to lend, and bare shelves lend nothing', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const L = s.terrain.landing
+    s.buildings.push(mk('habitat', L.x, L.y, { residents: 4 }))
+    s.buildings.push(mk('library', L.x, L.y, { jobs: COLONY.build.libraryWorkers }))
+    s.colonists = 20; s.totalJobs = COLONY.build.libraryWorkers; s.folios = 3
+    expect(libraryActive(s)).toBe(true) // staffed + folios in stock
+    libraryStep(s, 24 * 60) // one day's lending
+    expect(s.folios).toBeCloseTo(3 - COLONY.build.libraryFoliosPerDay, 5) // drew a folio from the stores
+    // ship the rest out — the shelves go bare
+    s.folios = 0
+    expect(libraryActive(s)).toBe(false) // no folios → nothing to lend
+    expect(cultureFraction(s)).toBe(0) // the home loses its library culture when the shelves are bare
+    for (let i = 0; i < 10; i++) libraryStep(s, 24 * 60)
+    expect(s.folios ?? 0).toBeGreaterThanOrEqual(0) // folios never go negative
+  })
+
+  it('reel-free resilience — a stocked Library keeps culture when the theatres go dark', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const L = s.terrain.landing
+    s.buildings.push(mk('habitat', L.x, L.y, { residents: 4 }))
+    s.buildings.push(mk('library', L.x, L.y, { jobs: COLONY.build.libraryWorkers }))
+    s.buildings.push(mk('theatre', L.x + 1, L.y, { jobs: 2 }))
+    s.colonists = 20; s.totalJobs = COLONY.build.libraryWorkers + 2; s.reels = 0; s.folios = 10 // theatres dark (no reels), shelves stocked
+    expect(cultureFuelFactor(s)).toBe(1) // the stocked Library carries the culture fuel
+    expect(homeCultured(s, s.buildings[0])).toBe(true) // the home stays cultured
+    // pull the Library — now only dark theatres remain
+    s.buildings = s.buildings.filter((b) => b.artifact.kind !== 'library')
+    expect(cultureFuelFactor(s)).toBe(COLONY.build.cultureStarvedFactor) // theatres dark, no library → dampened
+  })
+
+  it('a Library with no folio supply drains to bare over time, then lends nothing (no error)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const L = s.terrain.landing
+    s.buildings.push(mk('habitat', L.x, L.y, { residents: 4 }))
+    s.buildings.push(mk('library', L.x, L.y, { jobs: COLONY.build.libraryWorkers }))
+    s.colonists = 20; s.totalJobs = COLONY.build.libraryWorkers; s.folios = 5
+    for (let i = 0; i < 30; i++) { s.colonists = 20; s.totalJobs = COLONY.build.libraryWorkers; stepBuild(s, sim.rng, 24 * 60) } // a month, no Folio House to refill
+    expect(s.folios ?? 0).toBeGreaterThanOrEqual(0) // never negative
+    expect(libraryActive(s)).toBe(false) // drained to bare → the shelves go quiet
   })
 })

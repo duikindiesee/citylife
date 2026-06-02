@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall' | 'firewatch' | 'reclaimer' | 'festboard' | 'cellar' | 'bathhouse'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census' | 'folio' | 'turbine' | 'cistern' | 'toolcrib' | 'seedloft' | 'surveycamp' | 'calendar' | 'hallofnames' | 'netdock' | 'sanitation' | 'watchnook' | 'rationvar' | 'dryrack' | 'registry' | 'planter' | 'stall' | 'firewatch' | 'reclaimer' | 'festboard' | 'cellar' | 'bathhouse' | 'library'
 
 export interface Parcel {
   id: number
@@ -126,6 +126,7 @@ const RECLAIMER_COLOR = 0x3f8fa0 // teal utility — the Greywater Reclaimer (se
 const FESTBOARD_COLOR = 0xe2a93f // warm lantern-gold — the Festival Board (noticeboard + lantern hooks)
 const CELLAR_COLOR = 0x7d6b86 // dusky violet-grey — the Fungus Cellar (dark damp grow-beds)
 const BATHHOUSE_COLOR = 0x5fa9c4 // steam-blue — the Steam Bathhouse (hot water + hygiene on the cistern line)
+const LIBRARY_COLOR = 0xc9a24b // parchment-gold — the Folio Library (the colony's own books, lent at home)
 const SANITATION_COLOR = 0x6f8f6a // drain-green — the Sanitation Post (clears household waste before it sickens the colony)
 const WATCHNOOK_COLOR = 0xb0a04a // lamp-brass — the Watch Nook (keeps petty theft off a rich colony's coffers)
 const key = (x: number, y: number) => x + ',' + y
@@ -512,6 +513,10 @@ function designBathhouse(state: ColonyState): Artifact {
   // Spec 069 — Steam Bathhouse; a staffed health worksite on the cistern line that draws stored water to keep the colony clean (hygiene), slowing how fast a fever takes hold. Inert until built; needs a crew to run.
   return { id: state.buildIds++, kind: 'bathhouse', color: BATHHOUSE_COLOR, height: 0.8, residents: 0, jobs: COLONY.build.bathWorkers, powerLoad: COLONY.build.bathPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.bathCost, materialsCost: COLONY.build.matBath, crew: COLONY.build.crewBath, materialsGen: 0, componentsCost: COLONY.build.compBath, toolsCost: COLONY.build.toolBath }
 }
+function designLibrary(state: ColonyState): Artifact {
+  // Spec 071 — Folio Library; a staffed services hall that lends the colony's own folios to the homes as culture (a reel-free culture path) and draws a few folios a day from the stores.
+  return { id: state.buildIds++, kind: 'library', color: LIBRARY_COLOR, height: 1.0, residents: 0, jobs: COLONY.build.libraryWorkers, powerLoad: COLONY.build.libraryPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.libraryCost, materialsCost: COLONY.build.matLibrary, crew: COLONY.build.crewLibrary, materialsGen: 0, componentsCost: COLONY.build.compLibrary, toolsCost: COLONY.build.toolLibrary }
+}
 function designSanitationPost(state: ColonyState): Artifact {
   // Spec 058 — Sanitation Post; staffed drain-keepers who clear household waste before it sickens the colony.
   return { id: state.buildIds++, kind: 'sanitation', color: SANITATION_COLOR, height: 0.7, residents: 0, jobs: COLONY.build.sanitationWorkers, powerLoad: COLONY.build.sanitationPowerLoad, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.sanitationCost, materialsCost: COLONY.build.matSanitation, crew: COLONY.build.crewSanitation, materialsGen: 0, componentsCost: COLONY.build.compSanitation }
@@ -786,21 +791,36 @@ function healthFactor(state: ColonyState): number {
   return 0.6 + 0.4 * healthFraction(state)
 }
 
-/** Spec 010 — fraction of habitats reached by a Holo-Theatre (culture coverage); no homes → fully cultured. */
+/** Spec 071 — a Folio Library lends (and gives culture) only while it is built, staffed (the services sector), and has folios in the
+ *  stores to lend. With no folios the shelves are bare and it lends nothing. Inert (false) with no Library. */
+export function libraryActive(state: ColonyState): boolean {
+  if (countKind(state, 'library') === 0) return false
+  if (sectorStaffing(state, 'services') <= 0) return false
+  return (state.folios ?? 0) > 0
+}
+
+/** Spec 010/071 — a home counts as cultured if a Holo-Theatre is in reach OR a staffed, folio-stocked Folio Library is (the reel-free
+ *  second culture path). Inert with no Library: this is just the theatre reach as before. */
+export function homeCultured(state: ColonyState, home: ColonyBuilding): boolean {
+  if (nearBuildingKind(state, home, 'theatre', COLONY.build.theatreRadius)) return true
+  return libraryActive(state) && nearBuildingKind(state, home, 'library', COLONY.build.libraryRadius)
+}
+
+/** Spec 010/071 — fraction of habitats reached by a culture source (a Holo-Theatre, or a staffed + stocked Folio Library); no homes → fully cultured. */
 export function cultureFraction(state: ColonyState): number {
   const habs = state.buildings.filter((b) => b.artifact.kind === 'habitat')
   if (!habs.length) return 1
-  const theatres = state.buildings.filter((b) => b.artifact.kind === 'theatre')
-  if (!theatres.length) return 0
   let served = 0
-  for (const h of habs) if (theatres.some((t) => Math.hypot(t.x - h.x, t.y - h.y) <= COLONY.build.theatreRadius)) served++
+  for (const h of habs) if (homeCultured(state, h)) served++
   return served / habs.length
 }
 
-/** Spec 014 — theatres need reels to run their shows; with none in stock the culture bonus is dampened. */
+/** Spec 014/071 — culture sources need fuel: theatres run on reels, the Folio Library runs on folios. With a source standing but no
+ *  fuel in stock (theatres + no reels, and no stocked Library) the culture bonus is dampened. Inert (1) with no culture source. */
 export function cultureFuelFactor(state: ColonyState): number {
-  if (countKind(state, 'theatre') === 0) return 1
-  return state.reels > 0 ? 1 : COLONY.build.cultureStarvedFactor
+  const theatres = countKind(state, 'theatre') > 0
+  if (!theatres && countKind(state, 'library') === 0) return 1
+  return ((theatres && state.reels > 0) || libraryActive(state)) ? 1 : COLONY.build.cultureStarvedFactor
 }
 
 /** Spec 037 — fraction of homes consoled by a staffed Mooring Shrine, dimmed when the shrine runs out of linen (0 with none). */
@@ -958,7 +978,7 @@ export function homeLiveability(state: ColonyState, home: ColonyBuilding): numbe
   const watered = nearBuildingKind(state, home, 'water', COLONY.build.waterHubRadius) ? 1 : 0
   const provisioned = state.food > 0 && nearBuildingKind(state, home, 'depot', COLONY.build.rationDepotRadius) ? 1 : 0
   const healthy = nearBuildingKind(state, home, 'clinic', COLONY.build.clinicRadius) ? 1 : 0
-  const cultured = nearBuildingKind(state, home, 'theatre', COLONY.build.theatreRadius) ? 1 : 0
+  const cultured = homeCultured(state, home) ? 1 : 0 // spec 071 — a theatre OR a staffed, stocked Folio Library
   const services = (watered + provisioned + healthy + cultured) / 4
   const tierTerm = (Math.max(1, Math.min(3, home.tier ?? 1)) - 1) / 2
   let score = 0.7 * services + 0.3 * tierTerm
@@ -1199,6 +1219,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > 14 && countKind(state, 'habitat') > 0 && countKind(state, 'cistern') > 0 && countKind(state, 'planter') < Math.max(1, Math.ceil(countKind(state, 'habitat') / 4)) && state.components >= COLONY.build.compPlanter && state.materials >= COLONY.build.matPlanter && (state.tools ?? 0) >= COLONY.build.toolPlanter) return designPlanter(state)
   // Spec 069 — a watered, established colony builds for cleanliness: raise a Steam Bathhouse (one per ~bathServes colonists) once a Cistern keeps water and tool-kits are on hand, so hygiene keeps the fever down.
   if (state.colonists > 16 && countKind(state, 'cistern') > 0 && (state.water ?? 0) > 0 && countKind(state, 'bathhouse') < Math.max(1, Math.ceil(state.colonists / COLONY.build.bathServes)) && state.components >= COLONY.build.compBath && state.materials >= COLONY.build.matBath && (state.tools ?? 0) >= COLONY.build.toolBath) return designBathhouse(state)
+  // Spec 071 — a colony that binds folios and wants its homes cultured raises a Folio Library (one per ~8 homes) to lend its own books, a reel-free culture path that finally keeps some folios home.
+  if (state.colonists > 16 && countKind(state, 'folio') > 0 && (state.folios ?? 0) > COLONY.build.libraryFoliosPerDay && cultureFraction(state) < 0.9 && countKind(state, 'library') < Math.ceil(countKind(state, 'habitat') / 8) && state.components >= COLONY.build.compLibrary && state.materials >= COLONY.build.matLibrary && (state.tools ?? 0) >= COLONY.build.toolLibrary) return designLibrary(state)
   // Spec 026 — answer an outbreak: when fever climbs past the build line and no post contains it → raise a Fever Watch Post.
   if (state.outbreak > COLONY.build.feverBuildThreshold && state.components >= COLONY.build.compFeverWatch && countKind(state, 'feverwatch') < COLONY.build.maxFeverWatch) return designFeverWatch(state)
   // Spec 028 — keep the peace: when unrest climbs past the build line and no post patrols → raise a Ward Post.
@@ -1302,7 +1324,7 @@ export function claimLot(state: ColonyState, rng: RNG): { x: number; y: number }
 export type Sector = 'food' | 'services' | 'industry' | 'logistics' | 'safety' | 'trade' | 'civic'
 const SECTOR_OF: Record<BuildKind, Sector> = {
   greenhouse: 'food', depot: 'food', water: 'food', cistern: 'food', seedloft: 'food', netdock: 'food', cellar: 'food',
-  clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services', sanitation: 'services', rationvar: 'services', bathhouse: 'services',
+  clinic: 'services', theatre: 'services', market: 'services', shrine: 'services', survey: 'services', commercial: 'services', school: 'services', sanitation: 'services', rationvar: 'services', bathhouse: 'services', library: 'services',
   mine: 'industry', workshop: 'industry', foundry: 'industry', skimmer: 'industry', weavery: 'industry', industrial: 'industry', folio: 'industry', toolcrib: 'industry', dryrack: 'industry',
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics', turbine: 'logistics', surveycamp: 'logistics', reclaimer: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety', watchnook: 'safety', firewatch: 'safety',
@@ -1827,6 +1849,24 @@ export function hygieneEvolutionFactor(state: ColonyState): number {
  *  (the settler-draw lift and the housing-climb speed-up, both 0 with no Bathhouse). */
 export function bathhouseStatus(state: ColonyState): { hygiene: number; baths: number; drawBonus: number; climbBonus: number } {
   return { hygiene: hygieneLevel(state), baths: countKind(state, 'bathhouse'), drawBonus: hygieneDesirabilityFactor(state) - 1, climbBonus: 1 - hygieneEvolutionFactor(state) }
+}
+
+/** Spec 071 — a staffed Folio Library draws a few folios a day from the stores to lend (the domestic demand that competes with the
+ *  export trade). When the stores run dry the shelves go bare and the Library lends nothing (libraryActive falls to false). Inert with
+ *  no Library, and an unstaffed Library draws nothing. */
+export function libraryStep(state: ColonyState, dtMin: number): void {
+  const libs = countKind(state, 'library')
+  if (libs === 0) return
+  if (sectorStaffing(state, 'services') <= 0) return // unstaffed shelves lend nothing and draw nothing
+  const frac = dtMin / (24 * 60)
+  state.folios = Math.max(0, (state.folios ?? 0) - COLONY.build.libraryFoliosPerDay * libs * frac) // the day's lending, drawn from the stores
+}
+
+/** Spec 071 — Folio Library readout for the HUD: the libraries built, whether they are lending (staffed + folios in stock), and the
+ *  folios drawn per day to lend. */
+export function libraryStatus(state: ColonyState): { libraries: number; lending: boolean; foliosPerDay: number } {
+  const libraries = countKind(state, 'library')
+  return { libraries, lending: libraryActive(state), foliosPerDay: libraries > 0 ? COLONY.build.libraryFoliosPerDay * libraries : 0 }
 }
 
 /** Spec 028 — a Ward Post keeps order only while a built, staffed post stands. */
@@ -2480,7 +2520,7 @@ function fullyServed(state: ColonyState, home: ColonyBuilding): boolean {
     state.food > 0 &&
     nearBuildingKind(state, home, 'depot', COLONY.build.rationDepotRadius) &&
     nearBuildingKind(state, home, 'clinic', COLONY.build.clinicRadius) &&
-    nearBuildingKind(state, home, 'theatre', COLONY.build.theatreRadius)
+    homeCultured(state, home) // spec 010/071 — a Holo-Theatre OR a staffed, folio-stocked Folio Library
   )
 }
 
@@ -3270,6 +3310,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   produceReels(state, dtMin)
   produceLinen(state, dtMin) // spec 031 — weave fibre into linen (the second refinery)
   produceFolios(state, dtMin) // spec 044 — bind reels + linen into skybound folios (the top-of-chain export)
+  libraryStep(state, dtMin) // spec 071 — the Folio Libraries draw the day's lending folios from the stores before trade sells the surplus (a domestic demand vs the export trade)
   waterStep(state, dtMin) // spec 046 — condense + draw stored water (runs before housing/immigration read wateredFraction)
   reclaimStep(state, dtMin) // spec 066 — a Greywater Reclaimer treats the day's greywater back into the tanks (inert with no plant)
   serviceUpkeep(state, dtMin)

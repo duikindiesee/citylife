@@ -953,6 +953,18 @@ export const COLONY = {
     // Planter (063, 0.08 draw) and Variety (060, 0.04 draw / 0.05 evolution) levers. Purely positive: both are 0 effect with no Bathhouse.
     hygieneDesirabilityGain: 0.10, // at full hygiene, +10 percent to the settler-draw desirability (a clean colony is more inviting)
     hygieneEvolutionGain: 0.08, // at full hygiene, served homes climb up to 8 percent faster (shortens the housing-upgrade interval)
+    // The Folio Library (spec 071): a staffed services building that lends the colony's own folios to the homes as culture — folio-fed
+    // the way the holo-theatres are reel-fed (014), so a second culture path that needs no reels. Draws folios/day, the first DOMESTIC
+    // demand competing with the export trade. Inert with no Library: no folios drawn, culture exactly as the theatres give it today.
+    matLibrary: 40, // materials to build
+    compLibrary: 10, // components to build
+    toolLibrary: 1, // tool-kits to build (shelving + binding-presses, spec 047)
+    crewLibrary: 5, // builders reserved for the construction job
+    libraryCost: 800, // treasury to build
+    libraryWorkers: 4, // run crew (librarians); unstaffed the shelves go quiet
+    libraryPowerLoad: 0.3, // a light grid load for the reading lamps
+    libraryRadius: 8, // cells; habitats within this of a staffed, stocked Library get letters-culture (matches the theatre reach)
+    libraryFoliosPerDay: 1, // folios a Library draws from the stores per day to lend (the domestic demand vs the export trade)
     pollutionPerIndustrial: 3,
   },
 
