@@ -9,7 +9,7 @@ import type { ColonyState } from './sim'
 import { gridOrigin } from './grid'
 import { roadPath } from './traffic'
 
-export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school'
+export type BuildKind = 'habitat' | 'commercial' | 'industrial' | 'solar' | 'mine' | 'workshop' | 'water' | 'greenhouse' | 'depot' | 'clinic' | 'theatre' | 'survey' | 'exchange' | 'foundry' | 'mast' | 'battery' | 'scrubber' | 'academy' | 'transit' | 'maintshed' | 'storehouse' | 'bellhouse' | 'levy' | 'feverwatch' | 'market' | 'ward' | 'payoffice' | 'feast' | 'skimmer' | 'weavery' | 'liaison' | 'stormwatch' | 'hall' | 'import' | 'shrine' | 'comptroller' | 'roster' | 'school' | 'census'
 
 export interface Parcel {
   id: number
@@ -96,6 +96,7 @@ const SHRINE_COLOR = 0xb6a8e0 // soft violet — the Mooring Shrine (faith + sol
 const COMPTROLLER_COLOR = 0x3f7d5a // ledger-green — the Comptroller's Office (the colony's debt desk)
 const ROSTER_COLOR = 0xc89b5a // roster-bronze — the Roster Office (civic labour administration)
 const SCHOOL_COLOR = 0xd98f5a // warm ochre — the Little Schoolroom (the colony's first letters)
+const CENSUS_COLOR = 0x4a90c2 // census-blue — the Census Hall (the colony's one gauge of prosperity)
 const key = (x: number, y: number) => x + ',' + y
 const B = COLONY.build.block
 
@@ -402,6 +403,10 @@ function designSchool(state: ColonyState): Artifact {
   // Spec 042 — Little Schoolroom; a small staffed home-service building that schools nearby homes (no goods, just teachers).
   return { id: state.buildIds++, kind: 'school', color: SCHOOL_COLOR, height: 1.1, residents: 0, jobs: COLONY.build.schoolWorkers, powerLoad: 0.2, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.schoolCost, materialsCost: COLONY.build.matSchool, crew: COLONY.build.crewSchool, materialsGen: 0 }
 }
+function designCensus(state: ColonyState): Artifact {
+  // Spec 040 — Census Hall; a staffed civic hall that reads the whole colony into one Prosperity rank.
+  return { id: state.buildIds++, kind: 'census', color: CENSUS_COLOR, height: 1.5, residents: 0, jobs: COLONY.build.censusWorkers, powerLoad: 0.3, powerGen: 0, buildTimeMin: COLONY.build.workplaceBuildHours * 60, cost: COLONY.build.censusCost, materialsCost: COLONY.build.matCensus, crew: COLONY.build.crewCensus, materialsGen: 0, componentsCost: COLONY.build.compCensus }
+}
 
 /** Count buildings + queued jobs of a given kind (so we don't over-queue). */
 function countKind(state: ColonyState, kind: BuildKind): number {
@@ -507,6 +512,50 @@ export function educationStatus(state: ColonyState): { coverage: number; schools
   return { coverage: educationFraction(state), schools: countKind(state, 'school') }
 }
 
+/** Spec 040 — the colony reads its own Prosperity only while a built, staffed Census Hall stands (else the gauge is dark). */
+export function censusActive(state: ColonyState): boolean {
+  if (countKind(state, 'census') === 0) return false
+  return (state.totalJobs > 0 ? state.colonists / state.totalJobs : 0) > 0
+}
+
+/** Spec 040 — the five Prosperity ranks, lowest to highest. */
+export const PROSPERITY_RANKS = ['Struggling', 'Modest', 'Steady', 'Prospering', 'Renowned'] as const
+
+/** Spec 040 — colony-wide Prosperity score (0..1), a weighted blend of signals the colony already produces. 0 with no
+ *  staffed Census Hall, so it is a pure synthesis layer that changes nothing until the Hall is read. */
+export function prosperityScore(state: ColonyState): number {
+  if (!censusActive(state)) return 0
+  const live = colonyLiveability(state) // 0..1 — average home wellbeing (spec 011)
+  const tiers = housingTierCounts(state)
+  const homes = tiers[0] + tiers[1] + tiers[2]
+  const tierShare = homes > 0 ? (tiers[1] + tiers[2]) / homes : 0 // share of Tier 2 + 3 homes (spec 006)
+  const employment = state.totalJobs > 0 ? Math.min(1, state.colonists / state.totalJobs) : 0
+  const standing = state.standing ?? 0.5 // spec 032
+  const debt = state.treasury < 0 ? -state.treasury : 0
+  const solvency = state.treasury >= 0 ? 1 : Math.max(0, 1 - debt / COLONY.build.debtCeiling) // spec 039
+  const w = COLONY.build
+  const s = live * w.prospLiveabilityWeight + tierShare * w.prospTierWeight + employment * w.prospEmploymentWeight + standing * w.prospStandingWeight + solvency * w.prospSolvencyWeight
+  return Math.max(0, Math.min(1, s))
+}
+
+/** Spec 040 — the Prosperity rank 0..4 (Struggling..Renowned) from the score. */
+export function prosperityRank(state: ColonyState): number {
+  return Math.max(0, Math.min(4, Math.floor(prosperityScore(state) / 0.2)))
+}
+
+/** Spec 040 — immigration lift from high Prosperity: nothing below the floor, a small pull at the top (1.0 with no Hall). */
+function prosperityDesirabilityFactor(state: ColonyState): number {
+  if (!censusActive(state)) return 1
+  return 1 + COLONY.build.prosperityImmigrationBonus * Math.max(0, prosperityScore(state) - COLONY.build.prosperityBonusFloor)
+}
+
+/** Spec 040 — Prosperity readout for the HUD: whether the Hall reads, the score (0..100), the rank + its name, and the milestone. */
+export function prosperityStatus(state: ColonyState): { active: boolean; score: number; rank: number; rankName: string; recognised: boolean } {
+  const active = censusActive(state)
+  const rank = prosperityRank(state)
+  return { active, score: Math.round(prosperityScore(state) * 100), rank, rankName: PROSPERITY_RANKS[rank], recognised: active && rank >= 4 }
+}
+
 /** Spec 011 — is a building of `kind` within `radius` of this home? (per-home service coverage). */
 function nearBuildingKind(state: ColonyState, home: ColonyBuilding, kind: BuildKind, radius: number): boolean {
   return state.buildings.some((b) => b.artifact.kind === kind && Math.hypot(b.x - home.x, b.y - home.y) <= radius)
@@ -579,6 +628,8 @@ export function colonyHeadlines(state: ColonyState): string[] {
   if (countKind(state, 'exchange') > 0) h.push("Bram Teel's Skybridge Exchange ships the colony's surplus to the dark.")
   if (countKind(state, 'foundry') > 0) h.push("Niko Vance's foundry weaves components into luxury reels.")
   if (countKind(state, 'survey') > 0) h.push('The Civic Pulse is read — the colony can see where it thrives.')
+  // Spec 040 — the Census Hall reads the colony's prosperity; the top rank is a milestone the Courier proclaims.
+  if (censusActive(state)) { const p = prosperityStatus(state); h.push(p.recognised ? 'Landing One is named a Recognised Sky-Colony — Prosperity at its height.' : `The Census Hall reads the colony ${p.rankName} (Prosperity ${p.score}).`) }
   // Spec 035 — once the Founders' Hall seats the Living Roster, the Courier reports the founders by name and post.
   if (foundersHallActive(state)) {
     h.push('The Founders’ Hall seats the Living Roster — the people who built Landing One take their posts.')
@@ -664,6 +715,8 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.colonists > COLONY.build.frontMinColonists && countKind(state, 'stormwatch') < COLONY.build.maxStormwatch && state.components >= COLONY.build.compStormwatch) return designStormwatch(state)
   // Spec 035 — honour the builders: a mature colony with components on hand raises a Founders' Hall to seat the Living Roster.
   if (state.colonists > 14 && countKind(state, 'hall') < 1 && state.components >= COLONY.build.compHall) return designHall(state)
+  // Spec 040 — take the colony's measure: a mature colony with components on hand raises a Census Hall to read its Prosperity.
+  if (state.colonists > 14 && countKind(state, 'census') < 1 && state.components >= COLONY.build.compCensus) return designCensus(state)
   // Spec 036 — once trade is established (an Exchange stands) and the bank is flush, raise an Import Office to buy shortages.
   if (state.colonists > 12 && countKind(state, 'import') < 1 && countKind(state, 'exchange') > 0 && state.components >= COLONY.build.compImportOffice && state.treasury > COLONY.build.importOfficeCost) return designImportOffice(state)
   // Spec 039 — a mature colony raises a Comptroller's Office so the treasury can ride a hard stretch on managed debt.
@@ -768,7 +821,7 @@ const SECTOR_OF: Record<BuildKind, Sector> = {
   transit: 'logistics', maintshed: 'logistics', storehouse: 'logistics', solar: 'logistics', battery: 'logistics',
   bellhouse: 'safety', feverwatch: 'safety', ward: 'safety', stormwatch: 'safety', scrubber: 'safety',
   exchange: 'trade', import: 'trade',
-  levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', habitat: 'civic',
+  levy: 'civic', payoffice: 'civic', liaison: 'civic', academy: 'civic', mast: 'civic', hall: 'civic', feast: 'civic', comptroller: 'civic', roster: 'civic', census: 'civic', habitat: 'civic',
 }
 // Spec 038 — priority orders the Roster Office fills under a shortage. 'balanced' uses the uniform split (no order).
 const ESSENTIALS_ORDER: Sector[] = ['food', 'safety', 'services', 'civic', 'logistics', 'industry', 'trade']
@@ -1736,7 +1789,7 @@ function immigration(state: ColonyState, dtMin: number): void {
   // Spec 010 — culture draws settlers: a cultured colony is more desirable.
   // Spec 010/014 — culture draws settlers; a theatre with no reels (spec 014) runs dark, halving its pull.
   const cultureFactor = 1 + COLONY.build.cultureDesirabilityBonus * cultureFraction(state) * cultureFuelFactor(state)
-  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) * (1 + COLONY.build.solaceDesirabilityBonus * solaceCoverage(state)) * (arrearsStrain(state) ? COLONY.build.arrearsStrainDesirabilityFactor : 1) * (1 + COLONY.build.educationDesirabilityBonus * educationFraction(state)) // spec 025/026/027/028/029/030/032/033/035/037/039/042 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, named founders, a consoled colony, a colony deep in arrears, and a schooled colony all pull on who comes and stays
+  const desirability = Math.max(0.25, wateredFraction(state)) * fedFactor * tierFactor * cultureFactor * levyDesirabilityFactor(state) * (1 - (state.outbreak ?? 0) * COLONY.build.feverEmigrationWeight) * (1 + COLONY.build.waresDesirabilityBonus * housewaresFraction(state)) * (1 - (state.unrest ?? 0) * COLONY.build.unrestDesirabilityWeight) * wageDesirabilityFactor(state) * (feasting(state) ? 1 + COLONY.build.feastDesirabilityBonus : 1) * standingDesirabilityFactor(state) * (spireComplete(state) ? COLONY.build.spireImmigrationBonus : 1) * (foundersHallActive(state) ? COLONY.build.foundersDesirabilityBonus : 1) * (1 + COLONY.build.solaceDesirabilityBonus * solaceCoverage(state)) * (arrearsStrain(state) ? COLONY.build.arrearsStrainDesirabilityFactor : 1) * (1 + COLONY.build.educationDesirabilityBonus * educationFraction(state)) * prosperityDesirabilityFactor(state) // spec 025/026/027/028/029/030/032/033/035/037/039/042/040 — levy, outbreak, stocked homes, unrest, wages, a feast, Kookerverse standing, the Spire, named founders, a consoled colony, a colony deep in arrears, a schooled colony, and a high-Prosperity colony all pull on who comes and stays
   if (state.colonists < cap) state.colonists = Math.min(cap, state.colonists + COLONY.build.immigrationPerDay * desirability * perDay)
 }
 
@@ -1773,6 +1826,7 @@ function serviceUpkeep(state: ColonyState, dtMin: number): void {
     else if (b.artifact.kind === 'liaison') upkeep += COLONY.build.liaisonMaintCompPerDay // spec 032 — dispatch supply
     else if (b.artifact.kind === 'stormwatch') upkeep += COLONY.build.stormwatchMaintCompPerDay // spec 034 — watch supply
     else if (b.artifact.kind === 'hall') upkeep += COLONY.build.hallMaintCompPerDay // spec 035 — archive + roster upkeep
+    else if (b.artifact.kind === 'census') upkeep += COLONY.build.censusMaintCompPerDay // spec 040 — survey + ledger supply
     else if (b.artifact.kind === 'import') upkeep += COLONY.build.importOfficeMaintCompPerDay // spec 036 — office + dispatch supply
     else if (b.artifact.kind === 'shrine') linenUpkeep += COLONY.build.shrineLinenPerDay // spec 037 — prayer flags + memorial wraps (linen)
     else if (b.artifact.kind === 'comptroller') upkeep += COLONY.build.comptrollerMaintCompPerDay // spec 039 — ledger + audit supply

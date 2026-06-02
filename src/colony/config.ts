@@ -528,6 +528,22 @@ export const COLONY = {
     schoolHomes: 8, // build ~1 school per this many homes
     educationDesirabilityBonus: 0.1, // up to +10% immigration at full education coverage
     educationAcademyBonus: 0.5, // the Academy trains up to +50% faster at full education coverage
+    // Census Hall (spec 040): a staffed civic hall that reads the whole colony into one Prosperity score (0..1) + five ranks,
+    // from liveability, housing tiers, employment, Kookerverse standing and Treasury solvency. At high ranks it draws settlers
+    // faster and flags a milestone. Reads only existing signals; inert with no staffed Hall.
+    matCensus: 20,
+    compCensus: 4,
+    crewCensus: 5,
+    censusCost: 2200,
+    censusWorkers: 3,
+    censusMaintCompPerDay: 0.4,
+    prospLiveabilityWeight: 0.3, // weights blend to a 0..1 Prosperity score
+    prospTierWeight: 0.2,
+    prospEmploymentWeight: 0.2,
+    prospStandingWeight: 0.15,
+    prospSolvencyWeight: 0.15,
+    prosperityImmigrationBonus: 0.2, // immigration lift = this × max(0, score - floor) while a Census Hall stands
+    prosperityBonusFloor: 0.6, // no immigration lift below this prosperity
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
     maxBlockRadius: 7, // how many blocks out from the landing the colony can spread
     pollutionPerIndustrial: 3,

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -2831,5 +2831,78 @@ describe('Spec 042 — The Little Schoolroom: the colony learns its letters', ()
     s.totalJobs = 3
     expect(educationFraction(s)).toBe(0)
     expect(educationStatus(s).schools).toBe(0)
+  })
+})
+
+describe('Spec 040 — The Census Hall: a colony-wide Prosperity Rank', () => {
+  const mk = (kind: 'census' | 'habitat' | 'mine', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('the colony reads its Prosperity only with a built, staffed Census Hall', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    expect(censusActive(s)).toBe(false)
+    expect(prosperityScore(s)).toBe(0) // dark with no Hall
+    s.buildings.push(mk('census', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    s.totalJobs = 3
+    s.colonists = 0
+    expect(censusActive(s)).toBe(false) // a Hall, but no clerks
+    s.colonists = 12
+    expect(censusActive(s)).toBe(true)
+  })
+
+  it('Prosperity is a weighted blend of the colony signals', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('census', s.terrain.landing.x + 3, s.terrain.landing.y, { jobs: 3 }))
+    s.colonists = 10
+    s.totalJobs = 10 // employment 1.0
+    s.standing = 1.0
+    s.treasury = 1000 // solvency 1.0
+    // no habitats → liveability 0 and tier share 0, so only the employment/standing/solvency terms count
+    const w = COLONY.build
+    const expected = w.prospEmploymentWeight + w.prospStandingWeight + w.prospSolvencyWeight
+    expect(prosperityScore(s)).toBeCloseTo(expected, 5)
+    expect(prosperityRank(s)).toBe(Math.min(4, Math.floor(expected / 0.2)))
+  })
+
+  it('a thriving colony out-scores a struggling one and ranks higher', () => {
+    const status = (good: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      const lx = s.terrain.landing.x, ly = s.terrain.landing.y
+      s.buildings.push(mk('census', lx + 3, ly, { jobs: 3 }))
+      const h = mk('habitat', lx + 1, ly, { residents: 8 })
+      h.tier = good ? 3 : 1
+      s.buildings.push(h)
+      s.colonists = 10
+      s.totalJobs = good ? 10 : 40 // good: fully employed; struggling: under-employed
+      s.standing = good ? 0.9 : 0.2
+      s.treasury = good ? 2000 : 0
+      return prosperityStatus(s)
+    }
+    const hi = status(true), lo = status(false)
+    expect(hi.score).toBeGreaterThan(lo.score)
+    expect(hi.rank).toBeGreaterThanOrEqual(lo.rank)
+    expect(hi.active).toBe(true)
+  })
+
+  it('with no Census Hall, Prosperity is dark and the colony is unchanged (inert)', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    s.buildings.push(mk('habitat', s.terrain.landing.x, s.terrain.landing.y, { residents: 8 }))
+    s.colonists = 12
+    s.totalJobs = 10
+    s.standing = 0.9
+    s.treasury = 5000
+    const st = prosperityStatus(s)
+    expect(st.active).toBe(false)
+    expect(st.score).toBe(0)
+    expect(st.recognised).toBe(false)
+    expect(prosperityScore(s)).toBe(0)
   })
 })
