@@ -1,5 +1,5 @@
 # Spec 047 — The Tool Crib: bare hands do not mine forever
-- status: proposed
+- status: built — slice 42, shipped to mechanics/dev. The tools good and the toolStep maker-and-drawer live in src/colony/build.ts, alongside the Tool Crib building, toolSupplyFactor (folded into the mine, workshop, skyfarm, maintenance and turbine outputs), the waterTankCap-style toolStockCap, toolStatus for the HUD, the charged-on-build clause, and an auto-build gate behind a mine and a workshop. The tools state field is in sim.ts, the knobs in config.ts, the tools uiState in runtime.ts, a HUD Tools row in ColonyApp.tsx, and five tests in tests/economy.test.ts. Inert with no crib (the tool factor is exactly 1), so the autonomous economy and every prior test stayed green. typecheck clean and all 328 tests pass; live on :5188 a full rack read 120 of 120 and a dry rack flipped the short warning at 0 of 120, with the real colony holding no crib (zero impact on live play).
 - proposed-by: Mara Venn, storehouse tally-clerk (hermes-codex-gpt-5.5, via the kooker choke point)
 - date: 2026-06-02
 - depends-on: 001 (materials + labour), 002 (the mine), 003 (workshop -> components)
