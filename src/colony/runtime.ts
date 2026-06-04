@@ -13,6 +13,7 @@ import { BotService, defaultBotAdapter, type Bot } from './bots'
 import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
 import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
 import { firstPersonView, type FirstPersonView } from './bot/firstPersonView'
+import { solCount, resolveFoundingMs } from './sol'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
@@ -32,7 +33,7 @@ export interface ColonyUiState {
   running: boolean
   paused: boolean
   speed: number
-  clock: { day: number; hour: number; minute: number; isDay: boolean }
+  clock: { day: number; hour: number; minute: number; isDay: boolean; sol: number }
   power: { solarW: number; loadW: number; batteryWh: number; batteryCapWh: number; pct: number; brownout: boolean; windW: number }
   colonists: number
   colony: { treasury: number; materials: number; components: number; food: number; reels: number; fibre: number; linen: number; folios: number; skilled: number; freeLabour: number; capacity: number; watered: number; provisioned: number; health: number; culture: number; cultureFuelled: boolean; liveability: number; smog: number; commute: { demand: number; capacity: number; congested: boolean }; maintenance: { worst: number; needing: number; sheds: number }; storage: { fill: number; full: boolean; tightest: string }; incidents: { active: number; capacity: number }; levy: { active: boolean; rate: 'low' | 'normal' | 'high' }; wage: { active: boolean; rate: 'low' | 'standard' | 'generous'; payroll: number }; feast: { active: boolean; daysLeft: number; canCall: boolean }; liaison: { active: boolean; standing: number; request: { good: string; amount: number; daysLeft: number } | null; canFulfil: boolean }; spire: { stage: number; total: number; progress: number; building: boolean; complete: boolean }; front: { timerDays: number; incoming: boolean; braced: boolean; watching: boolean; established: boolean }; founders: { active: boolean; seated: number; notable: { name: string; role: string } | null }; imports: { active: boolean; order: ImportGood | null; perDay: number; dailySpend: number }; solace: { coverage: number; shrines: number }; education: { coverage: number; schools: number }; prosperity: { active: boolean; score: number; rank: number; rankName: string; recognised: boolean }; water: { stored: number; cap: number; cisterns: number; dry: boolean }; tools: { stored: number; cap: number; cribs: number; short: boolean }; seed: { stored: number; cap: number; lofts: number; short: boolean }; arrears: { office: boolean; debt: number; ceiling: number; strain: boolean; unmanaged: boolean }; roster: { active: boolean; mode: 'essentials' | 'balanced' | 'industry' }; departures: { pressure: number; atRisk: boolean; cause: string }; confidence: { confidence: number; factor: number; slowed: boolean; halted: boolean }; births: { children: number; homes: number; growing: boolean }; footprint: { radius: number; claims: number; maxClaims: number; progress: number; camp: boolean; atEdge: boolean }; veins: { mines: number; poorest: number }; calendar: { year: number; month: number; monthsToFounders: number; office: boolean }; season: { name: string; modifier: number; solarModifier: number; active: boolean }; ledger: { ageYears: number; onset: number; turning: boolean; lastPassings: number; hall: boolean }; rimfish: { stock: number; docks: number; varied: boolean }; driedFish: { stock: number; cap: number; racks: number }; duskcap: { stock: number; cellars: number }; bathhouse: { hygiene: number; baths: number; drawBonus: number; climbBonus: number }; library: { libraries: number; lending: boolean; foliosPerDay: number }; waste: { level: number; posts: number; harmful: boolean; fevered: boolean }; security: { active: boolean; lossPerDay: number; nooks: number; guarded: boolean }; labour: { active: boolean; unemployment: number; covered: number; penalty: number; dragging: boolean }; planters: { squares: number; blooming: number }; stalls: { stalls: number; open: boolean; coinPerDay: number }; gallery: { galleries: number; open: boolean; coinPerDay: number }; porter: { sheds: number; working: boolean; porters: number }; avatar: { foundries: number; staffed: boolean; capacity: number }; fire: { posts: number; active: number; risk: number; watered: boolean }; reclaim: { plants: number; perDay: number; active: boolean }; festival: { board: boolean; cheerDays: number; bonus: number; active: boolean }; diet: { counters: number; covered: number; served: number; standing: number; share: number; varied: boolean; bonus: number }; fever: { level: number; contained: boolean }; housewares: number; order: { unrest: number; warded: boolean }; surveyed: boolean; trade: number; tiers: [number, number, number]; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
@@ -82,6 +83,9 @@ export class ColonyRuntime {
   // (see docs/research/2026-06-01-zoning-redesign.md).
   private zonesVisible = false
   private adInterval: ReturnType<typeof setInterval> | null = null
+  // Sol = real days since founding (operator directive: every real day is a sol). Fixed on first boot and
+  // accumulated in wall-clock time, decoupled from the fast sim economy clock — so a 24/7 colony ages honestly.
+  private foundingMs: number = resolveFoundingMs(typeof localStorage === 'undefined' ? undefined : localStorage, Date.now())
 
   constructor(seed: number = COLONY.render.seed) {
     this.sim = new ColonySim(seed)
@@ -145,6 +149,12 @@ export class ColonyRuntime {
     const view = firstPersonView(this.sim.state, citizenId, this.citizens)
     const look = view?.nearestRoad ?? { x: this.sim.state.terrain.landing.x, y: this.sim.state.terrain.landing.y }
     return this.renderer.firstPersonPNG(c.homeXY, { x: look.x, y: look.y })
+  }
+
+  /** P2 — turn a player's magic prompt into a PG-safe colonist personality (safety enforced on the
+   *  prompt and the generated text). Returns a discriminated result so the UI shows the reason on reject. */
+  generatePersonality(magicPrompt: string): Promise<{ ok: true; personality: string } | { ok: false; reason: string }> {
+    return this.botService.generatePersonality(magicPrompt)
   }
 
   /** Border patrol asks an approved household's bot another question (the reply is the bot's own). */
@@ -244,7 +254,7 @@ export class ColonyRuntime {
     document.body.appendChild(
       buildShareCard({
         hero,
-        sol: info?.sol ?? ui.clock.day,
+        sol: info?.sol ?? ui.clock.sol,
         headline: info?.headline ?? headlineFor(info?.specTitle),
         tagline: info?.tagline ?? DEFAULT_TAGLINE,
         stats: shareStats(ui),
@@ -366,7 +376,7 @@ export class ColonyRuntime {
       running: this.running,
       paused: this.paused,
       speed: this.speed,
-      clock: { day: s.clock.day, hour: s.clock.hour, minute: s.clock.minute, isDay: s.clock.isDay },
+      clock: { day: s.clock.day, hour: s.clock.hour, minute: s.clock.minute, isDay: s.clock.isDay, sol: solCount(this.foundingMs, Date.now()) },
       power: { solarW: p.solarW, loadW: p.loadW, batteryWh: p.batteryWh, batteryCapWh: p.batteryCapWh, pct: p.batteryWh / p.batteryCapWh, brownout: inBrownout(s), windW: Math.round(turbinePower(s) * 10) / 10 },
       colonists: Math.round(s.colonists),
       colony: {

@@ -14,6 +14,7 @@
 // feeling heard. Narrator turns ("plot allocated") are show-only and never sent to the LLM.
 import type { Household } from './newcomers'
 import type { CityPlan, Plot } from './cityPlan'
+import { validatePG } from './bot/pgSafety'
 
 export type Speaker = 'patrol' | 'newcomer' | 'narrator'
 
@@ -68,12 +69,47 @@ export function composeCityBrainPrompt(plan: CityPlan): string {
   ].join('\n')
 }
 
+/** System prompt that turns a player's free-text MAGIC PROMPT into a short, PG, in-universe colonist
+ *  personality. Forbids anything technical, adult, or out-of-world so the result stays family-safe. */
+export const PERSONALITY_SYSTEM = [
+  'You are a character designer for a wholesome, all-ages off-world colony game called the Kookerverse.',
+  'Turn the player request into a SHORT personality for their new colonist, written in the second person ("You are ..."), 2 to 3 sentences.',
+  'Keep it warm, hopeful and family-friendly for a mixed audience of children and grownups. No profanity, no romance or sexual content, no graphic violence, no real-world brands, politics, religion or real people.',
+  'Give them a trade they hope to take up, one gentle quirk, and what they want from their new home on the floating island.',
+  'Never mention being an AI, a bot, a model, a prompt, a token, a server or anything technical. Stay fully in character as a game designer describing a colonist.',
+].join(' ')
+
 /** A source of bot replies. */
 export interface BotAdapter {
   readonly source: string
   /** Generate the next message in the conversation. speakingAs is who's about to speak;
    *  history is the full conversation so far (narrator turns are filtered out before send). */
   generate(systemPrompt: string, history: ChatMessage[], speakingAs: Speaker): Promise<string>
+  /** Optional — turn a player's magic prompt into a PG colonist personality. Adapters that cannot
+   *  generate (the pod gateway) simply omit this; callers fall back. */
+  generatePersonality?(magicPrompt: string): Promise<string>
+}
+
+/** Generate a personality and ENFORCE PG safety on both the player's input and the model's output. The
+ *  building block the signup + admin flows call: a bad input or a bad output yields a validation error and
+ *  nothing is ever persisted or shown. Returns a discriminated result so the caller renders the reason. */
+export async function generateSafePersonality(
+  adapter: BotAdapter,
+  magicPrompt: string,
+): Promise<{ ok: true; personality: string } | { ok: false; reason: string }> {
+  const input = validatePG(magicPrompt)
+  if (!input.ok) return { ok: false, reason: input.reason ?? 'Please keep it friendly and family-appropriate.' }
+  if (!magicPrompt || !magicPrompt.trim()) return { ok: false, reason: 'Tell us a little about who your colonist is.' }
+  if (!adapter.generatePersonality) return { ok: false, reason: 'Personality generation is unavailable right now.' }
+  let out: string
+  try {
+    out = await adapter.generatePersonality(magicPrompt)
+  } catch {
+    return { ok: false, reason: 'Could not reach the storyteller — please try again.' }
+  }
+  const safe = validatePG(out)
+  if (!safe.ok) return { ok: false, reason: safe.reason ?? 'The generated personality was not family-appropriate — try a different idea.' }
+  return { ok: true, personality: out.trim() }
 }
 
 /** Flavored stand-in replies for dev / CI / offline (NOT a real model). */
@@ -102,6 +138,12 @@ export class MockBotAdapter implements BotAdapter {
     if (lastText.includes('work') || lastText.includes('skill')) return `We're hard workers — whatever the colony needs, we'll learn it fast.`
     return `Thank you. We're hopeful to settle here.`
   }
+
+  /** Deterministic, always-PG mock personality for dev / CI / offline (no model). */
+  async generatePersonality(magicPrompt: string): Promise<string> {
+    const seed = magicPrompt.replace(/[^a-zA-Z ]/g, '').trim().slice(0, 60) || 'a hopeful new arrival'
+    return `You are a warm-hearted colonist who arrived dreaming of ${seed}. You hope to take up an honest trade on the floating island, you hum while you work, and more than anything you want a home where neighbours look out for one another.`
+  }
 }
 
 /** Real replies via the kooker inference choke point. Bearer = a citylife PAT (gitignored). */
@@ -123,9 +165,26 @@ export class KookerInferenceBotAdapter implements BotAdapter {
     if (messages.length === 1 || messages[messages.length - 1]!.role !== 'user') {
       messages.push({ role: 'user' as const, content: '(your turn)' })
     }
-    const body = JSON.stringify({ model: this.model, messages, max_tokens: 220, temperature: 0.8 })
+    return this.chat(messages, 220)
+  }
+
+  /** Turn a player magic prompt into a PG colonist personality (PG enforcement is applied by the caller
+   *  via generateSafePersonality on both this input and this output). */
+  async generatePersonality(magicPrompt: string): Promise<string> {
+    return this.chat(
+      [
+        { role: 'system' as const, content: PERSONALITY_SYSTEM },
+        { role: 'user' as const, content: magicPrompt },
+      ],
+      200,
+    )
+  }
+
+  /** Shared OpenAI-compatible chat call to the kooker choke point, with the 5xx retry/backoff the
+   *  cluster needs (the inference/gateway flaps under RAM pressure). */
+  private async chat(messages: { role: 'system' | 'user' | 'assistant'; content: string }[], maxTokens: number): Promise<string> {
+    const body = JSON.stringify({ model: this.model, messages, max_tokens: maxTokens, temperature: 0.8 })
     let lastErr = 'unknown error'
-    // Retry transient 5xx (502/503/504): the kooker inference/gateway flaps under the cluster's RAM pressure.
     for (let attempt = 1; attempt <= 4; attempt++) {
       try {
         const res = await fetch(this.url, {
@@ -173,6 +232,11 @@ export class BotService {
 
   get source(): string {
     return this.adapter.source
+  }
+
+  /** Generate a PG-safe personality from a player's magic prompt (enforces safety on input + output). */
+  generatePersonality(magicPrompt: string): Promise<{ ok: true; personality: string } | { ok: false; reason: string }> {
+    return generateSafePersonality(this.adapter, magicPrompt)
   }
 
   /** Update the patrol bot's system prompt as the plan changes (plots allocated, etc). */

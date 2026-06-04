@@ -81,7 +81,7 @@ export function ColonyApp() {
           City<span>Life</span> <em>· Colony</em>
         </div>
         <div className="clock">
-          Sol {ui.clock.day} · {pad(ui.clock.hour)}:{pad(ui.clock.minute)} <span>{ui.clock.isDay ? '☀' : '☾'}</span>
+          Sol {ui.clock.sol} · {pad(ui.clock.hour)}:{pad(ui.clock.minute)} <span>{ui.clock.isDay ? '☀' : '☾'}</span>
         </div>
         <div className="spacer" />
         <div className="group">
@@ -121,7 +121,7 @@ export function ColonyApp() {
               if (!url) return
               const a = document.createElement('a')
               a.href = url
-              a.download = `citylife-sol${ui.clock.day}-${String(ui.clock.hour).padStart(2, '0')}${String(ui.clock.minute).padStart(2, '0')}.png`
+              a.download = `citylife-sol${ui.clock.sol}-${String(ui.clock.hour).padStart(2, '0')}${String(ui.clock.minute).padStart(2, '0')}.png`
               a.click()
             }}
           >

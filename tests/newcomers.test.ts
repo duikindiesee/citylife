@@ -6,12 +6,11 @@ describe('Newcomer household generator', () => {
     expect(generateHousehold(123)).toEqual(generateHousehold(123))
   })
 
-  it('produces a family of 1..5 with at least one adult', () => {
+  it('produces a SINGLE adult citizen — 1 newcomer = 1 bot', () => {
     for (let s = 0; s < 50; s++) {
       const h = generateHousehold(s)
-      expect(h.members.length).toBeGreaterThanOrEqual(1)
-      expect(h.members.length).toBeLessThanOrEqual(5)
-      expect(h.members.filter((m) => m.role === 'adult').length).toBeGreaterThanOrEqual(1)
+      expect(h.members.length).toBe(1)
+      expect(h.members[0]!.role).toBe('adult')
     }
   })
 
