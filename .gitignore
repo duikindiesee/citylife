@@ -8,3 +8,6 @@ dist-ssr
 
 # local marketing/export artifacts (cards, frames) — not part of the build
 social-export/
+
+# scratch commit-message file written by Write before git commit -F
+.git-commit-msg.tmp

@@ -11,6 +11,8 @@ import { MockBackend, type CityLifeBackend, type Decision } from './backend'
 import type { Household } from './newcomers'
 import { BotService, defaultBotAdapter, type Bot } from './bots'
 import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
+import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
+import { firstPersonView, type FirstPersonView } from './bot/firstPersonView'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
@@ -37,6 +39,7 @@ export interface ColonyUiState {
   settlers: { count: number; recent: { id: number; name: string }[] }
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
+  citizens: { count: number; awake: number; list: CitizenPublic[] }
   radio: RadioState
   courier: { on: boolean; headline: string } // spec 016 — the colony's own news, when a Broadcast Mast is up
   tv: boolean
@@ -64,6 +67,9 @@ export class ColonyRuntime {
   private backend: CityLifeBackend = new MockBackend((Date.now() & 0x7fffffff) >>> 0)
   // Newcomer bots: REAL Hermes replies via kooker inference when VITE_CITYLIFE_PAT is set, else mock.
   private botService = new BotService(defaultBotAdapter())
+  // Spec 074 — registry of named citizens (each is the lead of an approved household, allocated to a plot,
+  // and the eventual owner of their own Hermes pod). Public-safe slice of this is exposed through uiState.
+  private citizens = new CitizenRoster()
   // The surveyed city plan the Border Patrol bot uses to allocate plots.
   private cityPlan!: CityPlan
   // Low Power Radio — CityLife's heartbeat. YouTube embed handles licensing; in-game ads queue up.
@@ -110,9 +116,22 @@ export class ColonyRuntime {
     const h = await this.backend.decide(id, decision)
     this.emit() // reflect approved/held/rejected immediately
     if (h && decision === 'approve' && h.status === 'approved') {
-      await this.botService.create(h) // boot a bot, inject its life history, get its first reply
+      const bot = await this.botService.create(h) // boot a bot, inject its life history, get its first reply
+      // Spec 074 — if the patrol bot allocated a plot, register this household's lead as a named citizen.
+      // The Hermes pod + kooker user mint happen out-of-process (separate PRs against kooker-bot-spawner /
+      // kooker-user, joekookerbot merges) — here we just hold the engine-side record.
+      if (bot && bot.plotId) {
+        const plot = this.cityPlan.plots.find((p) => p.id === bot.plotId)
+        if (plot) this.citizens.register(h, plot, Date.now())
+      }
       this.emit()
     }
+  }
+
+  /** Spec 074 — engine-side first-person view of one citizen (cheap, deterministic JSON). The
+   *  governor loop reads this every tick + may pair it with a costly PNG snapshot (vision). */
+  firstPersonView(citizenId: string): FirstPersonView | null {
+    return firstPersonView(this.sim.state, citizenId, this.citizens)
   }
 
   /** Border patrol asks an approved household's bot another question (the reply is the bot's own). */
@@ -421,6 +440,7 @@ export class ColonyRuntime {
         recent: s.ledger.txns.slice(0, 6).map((tx) => ({ id: tx.id, memo: tx.memo })),
       },
       border: { households: this.backend.households(), bots: this.botService.bots, botSource: this.botService.source, plots: this.cityPlan.plots },
+      citizens: { count: this.citizens.size(), awake: this.citizens.awakeCount(), list: this.citizens.list() },
       radio: this.radio,
       courier: (() => {
         // Spec 016 — the Kookerverse Courier: rotate through the colony's currently-true headlines.
