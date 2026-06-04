@@ -133,7 +133,7 @@ export function firstPersonView(
       day: state.clock.day,
       hour: state.clock.hour,
       minute: state.clock.minute,
-      isDay: state.clock.hour >= 6 && state.clock.hour < 19,
+      isDay: state.clock.hour >= 6 && state.clock.hour < 20, // matches COLONY.time dayStartHour/dayEndHour
     },
     mood: {
       liveability: 0, // a colony-wide signal is computed by build.colonyLiveability — runtime injects it
