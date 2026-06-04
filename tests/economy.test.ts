@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
-import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, hygieneLevel, bathhouseStatus, bathStep, hygieneDesirabilityFactor, hygieneEvolutionFactor, immigration, libraryStatus, libraryActive, homeCultured, libraryStep, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, galleryStatus, galleryAppeal, galleryStep, porterStatus, fireStatus, reclaimStatus, waterTankCap, festivalStatus, festBoardActive, type ColonyBuilding } from '../src/colony/build'
+import { autoGrow, freeLabour, stepBuild, housingCapacity, wateredFraction, provisionedFraction, healthFraction, cultureFraction, homeLiveability, colonyLiveability, surveyAvailable, liveabilityTint, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, polluted, pollutedFraction, commute, maintenanceStatus, storageCaps, storageStatus, incidentStatus, levyActive, feverWatchActive, feverStatus, housewaresSupplied, luxurySupplied, housewaresFraction, wardActive, unrestStatus, payOfficeActive, payrollPerDay, feastDeckActive, canCallFeast, callFeast, feasting, liaisonActive, fulfillRequest, spireComplete, fundSpireStage, stormwatchActive, frontStatus, foundersHallActive, foundersRoster, foundersStatus, FOUNDERS, importOfficeActive, importStatus, solaceCoverage, solaceStatus, comptrollerExists, comptrollerActive, arrearsStrain, arrearsStatus, sectorStaffing, rosterActive, rosterStatus, colonyDistress, departureCause, departureStatus, educationFraction, educationStatus, censusActive, prosperityScore, prosperityRank, prosperityStatus, turbinePower, waterSupplyFactor, waterStatus, toolSupplyFactor, toolStatus, toolStockCap, seedSupplyFactor, seedStatus, seedStockCap, settlerConfidence, confidenceImmigrationFactor, confidenceStatus, birthStatus, effectiveBuildRadius, footprintStatus, veinFactor, veinStatus, calendarStatus, calendarStep, seasonOf, seasonFactor, seasonStatus, solarSeasonOf, solarSeasonFactor, ledgerStep, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, hygieneLevel, bathhouseStatus, bathStep, hygieneDesirabilityFactor, hygieneEvolutionFactor, immigration, libraryStatus, libraryActive, homeCultured, libraryStep, wasteStep, wasteDesirabilityFactor, wasteStatus, securityStatus, dietVarietyStatus, varietyCovered, varietyDesirabilityFactor, varietyEvolutionFactor, labourStatus, planterStatus, planterBlooming, planterLiveabilityBoost, planterDesirabilityFactor, stallStatus, galleryStatus, galleryAppeal, galleryStep, porterStatus, avatarStatus, fireStatus, reclaimStatus, waterTankCap, festivalStatus, festBoardActive, type ColonyBuilding } from '../src/colony/build'
 import { COLONY } from '../src/colony/config'
 
 describe('Spec 001 — materials + labour gate construction', () => {
@@ -5340,5 +5340,68 @@ describe('Spec 073 — Porter Sheds: the economy you can see move', () => {
       return { materials: Math.round(s.materials), food: Math.round(s.food) }
     }
     expect(run(true)).toEqual(run(false)) // the shed produces and consumes no good — it only lets you SEE the ones already there
+  })
+})
+
+describe('Spec 074 — the Avatar Foundry: the gate on the citizen-as-bot mint', () => {
+  const mk = (kind: 'avatar' | 'hall' | 'mine', x: number, y: number, extra: Record<string, number> = {}): ColonyBuilding => ({
+    id: x * 1000 + y,
+    x,
+    y,
+    artifact: Object.assign({ id: 1, kind, color: 0, height: 1, residents: 0, jobs: 0, powerLoad: 0, powerGen: 0, buildTimeMin: 1, cost: 0, materialsCost: 0, crew: 0, materialsGen: 0 }, extra),
+  })
+
+  it('inert without a Foundry — no foundries, no capacity', () => {
+    const s = new ColonySim(7).state
+    s.colonists = 30; s.totalJobs = 0
+    expect(avatarStatus(s)).toEqual({ foundries: 0, staffed: false, capacity: 0 })
+  })
+
+  it('a staffed Foundry can mint up to its capacity', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const L = s.terrain.landing
+    s.buildings.push(mk('avatar', L.x, L.y, { jobs: COLONY.build.avatarWorkers }))
+    s.colonists = 30; s.totalJobs = COLONY.build.avatarWorkers // civic sector fully staffed
+    const st = avatarStatus(s)
+    expect(st.foundries).toBe(1)
+    expect(st.staffed).toBe(true)
+    expect(st.capacity).toBe(COLONY.build.avatarMaxCitizens)
+  })
+
+  it('an unstaffed Foundry mints nobody', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const L = s.terrain.landing
+    s.buildings.push(mk('avatar', L.x, L.y, { jobs: COLONY.build.avatarWorkers }))
+    s.colonists = 0; s.totalJobs = COLONY.build.avatarWorkers // nobody to keep the link desks lit
+    const st = avatarStatus(s)
+    expect(st.staffed).toBe(false)
+    expect(st.capacity).toBe(0)
+  })
+
+  it('capacity scales with the number of staffed Foundries', () => {
+    const sim = new ColonySim(7)
+    const s = sim.state
+    const L = s.terrain.landing
+    s.buildings.push(mk('avatar', L.x, L.y, { jobs: COLONY.build.avatarWorkers }))
+    s.buildings.push(mk('avatar', L.x + 3, L.y, { jobs: COLONY.build.avatarWorkers }))
+    s.colonists = 40; s.totalJobs = COLONY.build.avatarWorkers * 2
+    expect(avatarStatus(s).capacity).toBe(2 * COLONY.build.avatarMaxCitizens)
+  })
+
+  it('the Foundry mints citizens but moves no economy number — it is a gate, not a producer', () => {
+    const run = (withFoundry: boolean) => {
+      const sim = new ColonySim(7)
+      const s = sim.state
+      const L = s.terrain.landing
+      s.buildings.push(mk('mine', L.x + 2, L.y, { jobs: 6, materialsGen: 5 }))
+      if (withFoundry) s.buildings.push(mk('avatar', L.x, L.y, { jobs: COLONY.build.avatarWorkers }))
+      const jobs = 6 + (withFoundry ? COLONY.build.avatarWorkers : 0)
+      s.materials = 50; s.food = 200; s.powerGen = 100; s.power.batteryWh = s.power.batteryCapWh
+      for (let i = 0; i < 20; i++) { s.colonists = 40; s.totalJobs = jobs; stepBuild(s, sim.rng, 60) }
+      return { materials: Math.round(s.materials), food: Math.round(s.food) }
+    }
+    expect(run(true)).toEqual(run(false)) // fully staffed either way, the mine digs the same — the Foundry adds no good
   })
 })

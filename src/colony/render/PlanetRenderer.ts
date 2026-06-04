@@ -1094,6 +1094,30 @@ export class PlanetRenderer {
     return this.renderer.domElement.toDataURL('image/png')
   }
 
+  /** Spec 074 — the citizen's VISION. Drop the camera to standing eye height (1.6) at the citizen's home cell, face the
+   *  nearest road, render one frame, and return what they see as a PNG data URL. The live orbit pose is saved and restored,
+   *  so the operator's view is untouched. This is the image the governor loop pairs with the bot's words to decide what the
+   *  colony changes for the people who live in it. home + look are grid cells (the runtime resolves them from the roster). */
+  firstPersonPNG(home: { x: number; y: number }, look: { x: number; y: number }): string {
+    const t = this.sim.state.terrain
+    const savedPos = this.camera.position.clone()
+    const savedTarget = this.controls.target.clone()
+    const EYE = 1.6
+    const hy = Math.max(0, t.worldY(Math.round(home.x), Math.round(home.y))) + EYE
+    this.camera.position.set(this.wx(home.x), hy, this.wz(home.y))
+    const ly = Math.max(0, t.worldY(Math.round(look.x), Math.round(look.y))) + 1.0 // look at head height down the street
+    this.camera.lookAt(this.wx(look.x), ly, this.wz(look.y))
+    this.camera.updateMatrixWorld()
+    this.composer.render()
+    const url = this.renderer.domElement.toDataURL('image/png')
+    // restore the operator's orbit pose exactly
+    this.camera.position.copy(savedPos)
+    this.controls.target.copy(savedTarget)
+    this.controls.update()
+    this.composer.render()
+    return url
+  }
+
   private pedOnLand(x: number, y: number): boolean {
     const t = this.sim.state.terrain
     const ix = Math.round(x), iy = Math.round(y)
