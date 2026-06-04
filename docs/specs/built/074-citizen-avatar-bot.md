@@ -1,6 +1,6 @@
 # Spec 074 — Citizen Avatar Bot
 
-- status: proposed
+- status: built
 - proposed-by: irwin (operator directive) + claude (architect)
 - date: 2026-06-02
 - depends-on: 035 (Founders Hall + roster), 011 (Civic Pulse — liveability the bot can see)
