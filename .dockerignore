@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-ssr
+.git
+.github
+.vite
+*.log
+*.local
+social-export
+citizen-plot1.env.local
+provision-citizen.sh
+.git-commit-msg.tmp
+coverage
