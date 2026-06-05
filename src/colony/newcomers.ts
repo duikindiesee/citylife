@@ -63,8 +63,11 @@ function pick<T>(rng: RNG, arr: T[]): T {
 export function generateHousehold(seed: number): Household {
   const rng = new RNG(seed >>> 0)
   const surname = pick(rng, SURNAMES)
-  const adults = rng.int(1, 2)
-  const kids = rng.int(0, 3)
+  // 1 newcomer = 1 bot (operator directive). The colony now receives a SINGLE adult citizen who becomes
+  // exactly one Hermes avatar — the family generator is kept (members[] is still the spine downstream) but
+  // constrained to one person so the border-patrol → bot → citizen path maps one settler to one pod.
+  const adults = 1
+  const kids = 0
 
   const used = new Set<string>()
   const uniqueFirst = (): string => {

@@ -994,6 +994,18 @@ export const COLONY = {
     pilePerMaterials: 8, // one visible materials crate per this much stock (the pile quantisation, spec VISUAL-STANDARD)
     pilePerFood: 8, // one visible food sack per this much stock
     pileMaxUnits: 14, // cap on visible units per good per shed so a full store is a clear heap, not a tower
+    // Avatar Foundry (spec 074): the civic hall that mints a citizen avatar — a real Hermes pod in the kooker DMZ — for each
+    // approved household. In-engine it is a staffed civic building that GATES the mint and gives first-person vision a home on the
+    // map; the pod spawn + kooker user are out-of-process. Costs materials + components + tools + reels + a build crew. One suffices.
+    matAvatar: 60, // materials to build
+    compAvatar: 18, // components to build (the projection rig + the link desk)
+    toolAvatar: 4, // tool-kits to build
+    reelAvatar: 2, // reels for the avatar link harness
+    crewAvatar: 6, // builders reserved for the construction job
+    avatarCost: 1200, // treasury to build
+    avatarWorkers: 3, // run crew (the wrights who keep the link desks lit); unstaffed it mints nobody
+    avatarPowerLoad: 0.5, // grid load for the projection rig + the link desks
+    avatarMaxCitizens: 8, // citizen pods a staffed Foundry may mint (the operator raises this as the cluster budget allows)
     pollutionPerIndustrial: 3,
   },
 

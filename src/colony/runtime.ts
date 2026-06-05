@@ -1,9 +1,9 @@
 // Browser runtime for the colony: fixed-timestep sim loop + planet renderer + camera presets.
 import { COLONY } from './config'
 import { ColonySim } from './sim'
-import { PlanetRenderer, type CameraPreset, type ViewMode } from './render/PlanetRenderer'
+import { PlanetRenderer, type CameraPreset, type ViewMode, type AvatarView } from './render/PlanetRenderer'
 import { Biome } from './terrain'
-import { autoGrow, freeLabour, housingCapacity, wateredFraction, provisionedFraction, housingTierCounts, healthFraction, cultureFraction, colonyLiveability, surveyAvailable, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, pollutedFraction, commute, maintenanceStatus, storageStatus, incidentStatus, levyStatus, feverStatus, housewaresFraction, unrestStatus, wageStatus, feastStatus, callFeast, liaisonStatus, fulfillRequest, spireStatus, fundSpireStage, frontStatus, foundersStatus, importStatus, solaceStatus, arrearsStatus, rosterStatus, departureStatus, educationStatus, prosperityStatus, turbinePower, waterStatus, toolStatus, seedStatus, confidenceStatus, birthStatus, footprintStatus, veinStatus, calendarStatus, seasonStatus, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, bathhouseStatus, libraryStatus, wasteStatus, securityStatus, dietVarietyStatus, labourStatus, planterStatus, stallStatus, galleryStatus, porterStatus, fireStatus, reclaimStatus, festivalStatus, type ImportGood } from './build'
+import { autoGrow, freeLabour, housingCapacity, wateredFraction, provisionedFraction, housingTierCounts, healthFraction, cultureFraction, colonyLiveability, surveyAvailable, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, pollutedFraction, commute, maintenanceStatus, storageStatus, incidentStatus, levyStatus, feverStatus, housewaresFraction, unrestStatus, wageStatus, feastStatus, callFeast, liaisonStatus, fulfillRequest, spireStatus, fundSpireStage, frontStatus, foundersStatus, importStatus, solaceStatus, arrearsStatus, rosterStatus, departureStatus, educationStatus, prosperityStatus, turbinePower, waterStatus, toolStatus, seedStatus, confidenceStatus, birthStatus, footprintStatus, veinStatus, calendarStatus, seasonStatus, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, bathhouseStatus, libraryStatus, wasteStatus, securityStatus, dietVarietyStatus, labourStatus, planterStatus, stallStatus, galleryStatus, porterStatus, avatarStatus, fireStatus, reclaimStatus, festivalStatus, type ImportGood } from './build'
 import { registerSettler as kookerRegister, generateName as randomSettlerName, type KookerCard } from './kooker'
 import { addSettler, saveColony, restoreColony, clearColony } from './settlers'
 import { bankDeposits, CURRENCY } from './ledger'
@@ -11,6 +11,9 @@ import { MockBackend, type CityLifeBackend, type Decision } from './backend'
 import type { Household } from './newcomers'
 import { BotService, defaultBotAdapter, type Bot } from './bots'
 import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
+import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
+import { firstPersonView, type FirstPersonView } from './bot/firstPersonView'
+import { solCount, resolveFoundingMs } from './sol'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
@@ -30,13 +33,15 @@ export interface ColonyUiState {
   running: boolean
   paused: boolean
   speed: number
-  clock: { day: number; hour: number; minute: number; isDay: boolean }
+  clock: { day: number; hour: number; minute: number; isDay: boolean; sol: number }
   power: { solarW: number; loadW: number; batteryWh: number; batteryCapWh: number; pct: number; brownout: boolean; windW: number }
   colonists: number
-  colony: { treasury: number; materials: number; components: number; food: number; reels: number; fibre: number; linen: number; folios: number; skilled: number; freeLabour: number; capacity: number; watered: number; provisioned: number; health: number; culture: number; cultureFuelled: boolean; liveability: number; smog: number; commute: { demand: number; capacity: number; congested: boolean }; maintenance: { worst: number; needing: number; sheds: number }; storage: { fill: number; full: boolean; tightest: string }; incidents: { active: number; capacity: number }; levy: { active: boolean; rate: 'low' | 'normal' | 'high' }; wage: { active: boolean; rate: 'low' | 'standard' | 'generous'; payroll: number }; feast: { active: boolean; daysLeft: number; canCall: boolean }; liaison: { active: boolean; standing: number; request: { good: string; amount: number; daysLeft: number } | null; canFulfil: boolean }; spire: { stage: number; total: number; progress: number; building: boolean; complete: boolean }; front: { timerDays: number; incoming: boolean; braced: boolean; watching: boolean; established: boolean }; founders: { active: boolean; seated: number; notable: { name: string; role: string } | null }; imports: { active: boolean; order: ImportGood | null; perDay: number; dailySpend: number }; solace: { coverage: number; shrines: number }; education: { coverage: number; schools: number }; prosperity: { active: boolean; score: number; rank: number; rankName: string; recognised: boolean }; water: { stored: number; cap: number; cisterns: number; dry: boolean }; tools: { stored: number; cap: number; cribs: number; short: boolean }; seed: { stored: number; cap: number; lofts: number; short: boolean }; arrears: { office: boolean; debt: number; ceiling: number; strain: boolean; unmanaged: boolean }; roster: { active: boolean; mode: 'essentials' | 'balanced' | 'industry' }; departures: { pressure: number; atRisk: boolean; cause: string }; confidence: { confidence: number; factor: number; slowed: boolean; halted: boolean }; births: { children: number; homes: number; growing: boolean }; footprint: { radius: number; claims: number; maxClaims: number; progress: number; camp: boolean; atEdge: boolean }; veins: { mines: number; poorest: number }; calendar: { year: number; month: number; monthsToFounders: number; office: boolean }; season: { name: string; modifier: number; solarModifier: number; active: boolean }; ledger: { ageYears: number; onset: number; turning: boolean; lastPassings: number; hall: boolean }; rimfish: { stock: number; docks: number; varied: boolean }; driedFish: { stock: number; cap: number; racks: number }; duskcap: { stock: number; cellars: number }; bathhouse: { hygiene: number; baths: number; drawBonus: number; climbBonus: number }; library: { libraries: number; lending: boolean; foliosPerDay: number }; waste: { level: number; posts: number; harmful: boolean; fevered: boolean }; security: { active: boolean; lossPerDay: number; nooks: number; guarded: boolean }; labour: { active: boolean; unemployment: number; covered: number; penalty: number; dragging: boolean }; planters: { squares: number; blooming: number }; stalls: { stalls: number; open: boolean; coinPerDay: number }; gallery: { galleries: number; open: boolean; coinPerDay: number }; porter: { sheds: number; working: boolean; porters: number }; fire: { posts: number; active: number; risk: number; watered: boolean }; reclaim: { plants: number; perDay: number; active: boolean }; festival: { board: boolean; cheerDays: number; bonus: number; active: boolean }; diet: { counters: number; covered: number; served: number; standing: number; share: number; varied: boolean; bonus: number }; fever: { level: number; contained: boolean }; housewares: number; order: { unrest: number; warded: boolean }; surveyed: boolean; trade: number; tiers: [number, number, number]; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
+  colony: { treasury: number; materials: number; components: number; food: number; reels: number; fibre: number; linen: number; folios: number; skilled: number; freeLabour: number; capacity: number; watered: number; provisioned: number; health: number; culture: number; cultureFuelled: boolean; liveability: number; smog: number; commute: { demand: number; capacity: number; congested: boolean }; maintenance: { worst: number; needing: number; sheds: number }; storage: { fill: number; full: boolean; tightest: string }; incidents: { active: number; capacity: number }; levy: { active: boolean; rate: 'low' | 'normal' | 'high' }; wage: { active: boolean; rate: 'low' | 'standard' | 'generous'; payroll: number }; feast: { active: boolean; daysLeft: number; canCall: boolean }; liaison: { active: boolean; standing: number; request: { good: string; amount: number; daysLeft: number } | null; canFulfil: boolean }; spire: { stage: number; total: number; progress: number; building: boolean; complete: boolean }; front: { timerDays: number; incoming: boolean; braced: boolean; watching: boolean; established: boolean }; founders: { active: boolean; seated: number; notable: { name: string; role: string } | null }; imports: { active: boolean; order: ImportGood | null; perDay: number; dailySpend: number }; solace: { coverage: number; shrines: number }; education: { coverage: number; schools: number }; prosperity: { active: boolean; score: number; rank: number; rankName: string; recognised: boolean }; water: { stored: number; cap: number; cisterns: number; dry: boolean }; tools: { stored: number; cap: number; cribs: number; short: boolean }; seed: { stored: number; cap: number; lofts: number; short: boolean }; arrears: { office: boolean; debt: number; ceiling: number; strain: boolean; unmanaged: boolean }; roster: { active: boolean; mode: 'essentials' | 'balanced' | 'industry' }; departures: { pressure: number; atRisk: boolean; cause: string }; confidence: { confidence: number; factor: number; slowed: boolean; halted: boolean }; births: { children: number; homes: number; growing: boolean }; footprint: { radius: number; claims: number; maxClaims: number; progress: number; camp: boolean; atEdge: boolean }; veins: { mines: number; poorest: number }; calendar: { year: number; month: number; monthsToFounders: number; office: boolean }; season: { name: string; modifier: number; solarModifier: number; active: boolean }; ledger: { ageYears: number; onset: number; turning: boolean; lastPassings: number; hall: boolean }; rimfish: { stock: number; docks: number; varied: boolean }; driedFish: { stock: number; cap: number; racks: number }; duskcap: { stock: number; cellars: number }; bathhouse: { hygiene: number; baths: number; drawBonus: number; climbBonus: number }; library: { libraries: number; lending: boolean; foliosPerDay: number }; waste: { level: number; posts: number; harmful: boolean; fevered: boolean }; security: { active: boolean; lossPerDay: number; nooks: number; guarded: boolean }; labour: { active: boolean; unemployment: number; covered: number; penalty: number; dragging: boolean }; planters: { squares: number; blooming: number }; stalls: { stalls: number; open: boolean; coinPerDay: number }; gallery: { galleries: number; open: boolean; coinPerDay: number }; porter: { sheds: number; working: boolean; porters: number }; avatar: { foundries: number; staffed: boolean; capacity: number }; fire: { posts: number; active: number; risk: number; watered: boolean }; reclaim: { plants: number; perDay: number; active: boolean }; festival: { board: boolean; cheerDays: number; bonus: number; active: boolean }; diet: { counters: number; covered: number; served: number; standing: number; share: number; varied: boolean; bonus: number }; fever: { level: number; contained: boolean }; housewares: number; order: { unrest: number; warded: boolean }; surveyed: boolean; trade: number; tiers: [number, number, number]; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
   settlers: { count: number; recent: { id: number; name: string }[] }
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
+  citizens: { count: number; awake: number; list: CitizenPublic[] }
+  firstPerson: { active: boolean; citizenId: string | null; citizenName: string | null; operatorCitizenId: string | null }
   radio: RadioState
   courier: { on: boolean; headline: string } // spec 016 — the colony's own news, when a Broadcast Mast is up
   tv: boolean
@@ -64,6 +69,9 @@ export class ColonyRuntime {
   private backend: CityLifeBackend = new MockBackend((Date.now() & 0x7fffffff) >>> 0)
   // Newcomer bots: REAL Hermes replies via kooker inference when VITE_CITYLIFE_PAT is set, else mock.
   private botService = new BotService(defaultBotAdapter())
+  // Spec 074 — registry of named citizens (each is the lead of an approved household, allocated to a plot,
+  // and the eventual owner of their own Hermes pod). Public-safe slice of this is exposed through uiState.
+  private citizens = new CitizenRoster()
   // The surveyed city plan the Border Patrol bot uses to allocate plots.
   private cityPlan!: CityPlan
   // Low Power Radio — CityLife's heartbeat. YouTube embed handles licensing; in-game ads queue up.
@@ -76,6 +84,13 @@ export class ColonyRuntime {
   // (see docs/research/2026-06-01-zoning-redesign.md).
   private zonesVisible = false
   private adInterval: ReturnType<typeof setInterval> | null = null
+  // Sol = real days since founding (operator directive: every real day is a sol). Fixed on first boot and
+  // accumulated in wall-clock time, decoupled from the fast sim economy clock — so a 24/7 colony ages honestly.
+  private foundingMs: number = resolveFoundingMs(typeof localStorage === 'undefined' ? undefined : localStorage, Date.now())
+  // P1 — the logged-in operator's name, so we can mark which avatar is theirs + gate the step-into.
+  private operatorName: string | null = null
+  // P1 — the citizen currently being viewed in first person (null = orbit camera).
+  private fpCitizenId: string | null = null
 
   constructor(seed: number = COLONY.render.seed) {
     this.sim = new ColonySim(seed)
@@ -110,9 +125,77 @@ export class ColonyRuntime {
     const h = await this.backend.decide(id, decision)
     this.emit() // reflect approved/held/rejected immediately
     if (h && decision === 'approve' && h.status === 'approved') {
-      await this.botService.create(h) // boot a bot, inject its life history, get its first reply
+      const bot = await this.botService.create(h) // boot a bot, inject its life history, get its first reply
+      // Spec 074 — if the patrol bot allocated a plot, register this household's lead as a named citizen.
+      // The Hermes pod + kooker user mint happen out-of-process (separate PRs against kooker-bot-spawner /
+      // kooker-user, joekookerbot merges) — here we just hold the engine-side record.
+      if (bot && bot.plotId) {
+        const plot = this.cityPlan.plots.find((p) => p.id === bot.plotId)
+        if (plot) this.citizens.register(h, plot, Date.now())
+      }
       this.emit()
     }
+  }
+
+  /** Spec 074 — engine-side first-person view of one citizen (cheap, deterministic JSON). The
+   *  governor loop reads this every tick + may pair it with a costly PNG snapshot (vision). */
+  firstPersonView(citizenId: string): FirstPersonView | null {
+    return firstPersonView(this.sim.state, citizenId, this.citizens)
+  }
+
+  /** Spec 074 — the citizen's VISION as a PNG data URL: what they actually see standing at their
+   *  home, looking down their street. Resolves the home cell + the nearest road from the roster +
+   *  first-person view, then has the renderer drop to eye height and capture one frame. Returns null
+   *  before the renderer starts, for an unknown citizen, or if they have no road in sight yet. */
+  firstPersonPNG(citizenId: string): string | null {
+    if (!this.renderer) return null
+    const c = this.citizens.byId(citizenId)
+    if (!c) return null
+    const view = firstPersonView(this.sim.state, citizenId, this.citizens)
+    const look = view?.nearestRoad ?? { x: this.sim.state.terrain.landing.x, y: this.sim.state.terrain.landing.y }
+    return this.renderer.firstPersonPNG(c.homeXY, { x: look.x, y: look.y })
+  }
+
+  /** P2 — turn a player's magic prompt into a PG-safe colonist personality (safety enforced on the
+   *  prompt and the generated text). Returns a discriminated result so the UI shows the reason on reject. */
+  generatePersonality(magicPrompt: string): Promise<{ ok: true; personality: string } | { ok: false; reason: string }> {
+    return this.botService.generatePersonality(magicPrompt)
+  }
+
+  /** P1 — record the logged-in operator name (from auth). Marks their avatar + gates the step-into. */
+  setOperatorName(name: string | null): void {
+    this.operatorName = name && name.trim() ? name.trim() : null
+    this.emit()
+  }
+
+  /** P1 — the citizen the operator owns (their login name matches the citizen display name), or null. */
+  private operatorCitizenId(): string | null {
+    if (!this.operatorName) return null
+    const me = this.operatorName.toLowerCase()
+    const hit = this.citizens.list().find((c) => c.displayName.toLowerCase() === me)
+    return hit?.id ?? null
+  }
+
+  /** P1 — the bot/governor points a citizen's avatar at a destination cell (it walks there). */
+  setAvatarTarget(citizenId: string, cell: { x: number; y: number }): boolean {
+    const ok = this.citizens.setTarget(citizenId, cell)
+    if (ok) this.emit()
+    return ok
+  }
+
+  /** P1 — step the operator INTO a citizen for a live first-person view through the bot's eyes. */
+  enterFirstPerson(citizenId: string): boolean {
+    if (!this.citizens.byId(citizenId)) return false
+    this.fpCitizenId = citizenId
+    this.renderer?.enterFirstPerson(citizenId)
+    this.emit()
+    return true
+  }
+  /** P1 — leave first-person, restoring the orbit camera. */
+  exitFirstPerson(): void {
+    this.fpCitizenId = null
+    this.renderer?.exitFirstPerson()
+    this.emit()
   }
 
   /** Border patrol asks an approved household's bot another question (the reply is the bot's own). */
@@ -212,7 +295,7 @@ export class ColonyRuntime {
     document.body.appendChild(
       buildShareCard({
         hero,
-        sol: info?.sol ?? ui.clock.day,
+        sol: info?.sol ?? ui.clock.sol,
         headline: info?.headline ?? headlineFor(info?.specTitle),
         tagline: info?.tagline ?? DEFAULT_TAGLINE,
         stats: shareStats(ui),
@@ -257,6 +340,12 @@ export class ColonyRuntime {
     if (this.running) return
     this.renderer = new PlanetRenderer(container, this.sim)
     this.renderer.setZonesVisible(this.zonesVisible)
+    // P1 — feed the renderer the live citizen avatars each frame, marking the operator's own.
+    this.renderer.setAvatarSource((): AvatarView[] => {
+      const mine = this.operatorCitizenId()
+      return this.citizens.avatars().map((a) => ({ ...a, isOperator: a.id === mine }))
+    })
+    if (this.fpCitizenId) this.renderer.enterFirstPerson(this.fpCitizenId)
     this.running = true
     this.lastFrame = performance.now()
     this.lastUi = this.lastFrame
@@ -284,6 +373,7 @@ export class ColonyRuntime {
         steps++
       }
     }
+    this.citizens.stepAvatars(dtReal) // P1 — walk the avatars in real time toward their targets
     this.renderer?.frame()
     if (now - this.lastUi > 200) {
       this.lastUi = now
@@ -334,7 +424,7 @@ export class ColonyRuntime {
       running: this.running,
       paused: this.paused,
       speed: this.speed,
-      clock: { day: s.clock.day, hour: s.clock.hour, minute: s.clock.minute, isDay: s.clock.isDay },
+      clock: { day: s.clock.day, hour: s.clock.hour, minute: s.clock.minute, isDay: s.clock.isDay, sol: solCount(this.foundingMs, Date.now()) },
       power: { solarW: p.solarW, loadW: p.loadW, batteryWh: p.batteryWh, batteryCapWh: p.batteryCapWh, pct: p.batteryWh / p.batteryCapWh, brownout: inBrownout(s), windW: Math.round(turbinePower(s) * 10) / 10 },
       colonists: Math.round(s.colonists),
       colony: {
@@ -396,6 +486,7 @@ export class ColonyRuntime {
         stalls: stallStatus(s),
         gallery: galleryStatus(s),
         porter: porterStatus(s),
+        avatar: avatarStatus(s),
         fire: fireStatus(s),
         reclaim: reclaimStatus(s),
         festival: festivalStatus(s),
@@ -421,6 +512,12 @@ export class ColonyRuntime {
         recent: s.ledger.txns.slice(0, 6).map((tx) => ({ id: tx.id, memo: tx.memo })),
       },
       border: { households: this.backend.households(), bots: this.botService.bots, botSource: this.botService.source, plots: this.cityPlan.plots },
+      citizens: { count: this.citizens.size(), awake: this.citizens.awakeCount(), list: this.citizens.list() },
+      firstPerson: (() => {
+        const opId = this.operatorCitizenId()
+        const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null
+        return { active: this.fpCitizenId !== null, citizenId: this.fpCitizenId, citizenName: c?.displayName ?? null, operatorCitizenId: opId }
+      })(),
       radio: this.radio,
       courier: (() => {
         // Spec 016 — the Kookerverse Courier: rotate through the colony's currently-true headlines.

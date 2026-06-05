@@ -19,6 +19,18 @@ import { homeLiveability, surveyAvailable, liveabilityTint, porterStatus } from 
 export type ViewMode = 'biome' | 'buildable' | 'elevation'
 export type CameraPreset = 'street' | 'district' | 'planet'
 
+/** P1 — one citizen avatar's live render state, supplied by the runtime each frame from the roster. */
+export interface AvatarView {
+  id: string
+  displayName: string
+  x: number
+  y: number
+  heading: number
+  hasPod: boolean
+  /** True for the avatar belonging to the logged-in operator (rendered highlighted). */
+  isOperator: boolean
+}
+
 // Dark City: the colony floats on a slab of rock adrift in deep space. The "sky" is the void —
 // dark even at midday — while a local sun still sweeps light across the island for day/night.
 const SKY_DAY = new THREE.Color(0x0b1022)
@@ -65,6 +77,12 @@ export class PlanetRenderer {
   private pedMesh!: THREE.InstancedMesh
   private peds: { x: number; y: number; tx: number; ty: number; spd: number; phase: number }[] = []
   private lastPedT = 0
+  // P1 — citizen AVATARS: the real, named Hermes citizens, drawn from the roster (distinct from the ambient
+  // ped pool), movable by the bot, and steppable-into for a live first-person view.
+  private avatarMesh!: THREE.InstancedMesh
+  private avatarHeadMesh!: THREE.InstancedMesh
+  private avatarSource?: () => AvatarView[]
+  private fpCitizenId: string | null = null
   private settlerGroup = new THREE.Group()
   private lastSettlerCount = -1
   // City plan paint — translucent zone tints (residential / commercial / industrial / civic)
@@ -553,6 +571,23 @@ export class PlanetRenderer {
     this.pedHeadMesh.frustumCulled = false
     this.scene.add(this.pedHeadMesh)
     this.initPedestrians()
+
+    // P1 — citizen avatars: a touch taller + glowing so the real, named citizens stand out from the ambient crowd.
+    const AV_CAP = 64
+    const avGeo = new THREE.CapsuleGeometry(0.16, 0.44, 4, 8)
+    avGeo.translate(0, 0.4, 0)
+    this.avatarMesh = new THREE.InstancedMesh(avGeo, new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.1, emissive: 0x2a2050, emissiveIntensity: 0.5 }), AV_CAP)
+    this.avatarMesh.count = 0
+    this.avatarMesh.castShadow = true
+    this.avatarMesh.frustumCulled = false
+    this.scene.add(this.avatarMesh)
+    const avHeadGeo = new THREE.SphereGeometry(0.12, 10, 8)
+    avHeadGeo.translate(0, 0.86, 0)
+    this.avatarHeadMesh = new THREE.InstancedMesh(avHeadGeo, new THREE.MeshStandardMaterial({ color: 0xe8c49a, roughness: 0.8 }), AV_CAP)
+    this.avatarHeadMesh.count = 0
+    this.avatarHeadMesh.castShadow = true
+    this.avatarHeadMesh.frustumCulled = false
+    this.scene.add(this.avatarHeadMesh)
 
     // Spec 073 — goods piled at the Porter Sheds (crates + sacks), and the porter handcarts on the roads.
     const crateGeo = new THREE.BoxGeometry(0.34, 0.34, 0.34)
@@ -1071,12 +1106,29 @@ export class PlanetRenderer {
     this.updateColonyLayer()
     this.updatePedestrians()
     this.updatePorters() // spec 073 — goods piled at the sheds + porter carts on the roads
+    this.updateAvatars() // P1 — the named citizen avatars at their live roster positions
     if (this.beaconMat) {
       const blink = Math.max(0, Math.sin((performance.now() / 1000) * 2.4))
       this.beaconMat.emissiveIntensity = 0.35 + blink * blink * 2.6
     }
-    if (this.cinematic) this.updateCinematic()
-    this.controls.update()
+    if (this.fpCitizenId && this.avatarSource) {
+      // P1 — first-person: park the camera at the citizen's eye and look down their heading. OrbitControls is off.
+      const a = this.avatarSource().find((x) => x.id === this.fpCitizenId)
+      if (a) {
+        const t = this.sim.state.terrain
+        const eye = Math.max(0, t.worldY(Math.round(a.x), Math.round(a.y))) + 1.6
+        this.camera.position.set(this.wx(a.x), eye, this.wz(a.y))
+        const lx = a.x + Math.cos(a.heading) * 4, ly = a.y + Math.sin(a.heading) * 4
+        const lyW = Math.max(0, t.worldY(Math.round(lx), Math.round(ly))) + 1.2
+        this.camera.lookAt(this.wx(lx), lyW, this.wz(ly))
+        this.camera.updateMatrixWorld()
+      } else {
+        this.exitFirstPerson() // the citizen vanished — fall back to orbit
+      }
+    } else {
+      if (this.cinematic) this.updateCinematic()
+      this.controls.update()
+    }
     this.composer.render()
   }
 
@@ -1092,6 +1144,30 @@ export class PlanetRenderer {
   capturePNG(): string {
     this.composer.render()
     return this.renderer.domElement.toDataURL('image/png')
+  }
+
+  /** Spec 074 — the citizen's VISION. Drop the camera to standing eye height (1.6) at the citizen's home cell, face the
+   *  nearest road, render one frame, and return what they see as a PNG data URL. The live orbit pose is saved and restored,
+   *  so the operator's view is untouched. This is the image the governor loop pairs with the bot's words to decide what the
+   *  colony changes for the people who live in it. home + look are grid cells (the runtime resolves them from the roster). */
+  firstPersonPNG(home: { x: number; y: number }, look: { x: number; y: number }): string {
+    const t = this.sim.state.terrain
+    const savedPos = this.camera.position.clone()
+    const savedTarget = this.controls.target.clone()
+    const EYE = 1.6
+    const hy = Math.max(0, t.worldY(Math.round(home.x), Math.round(home.y))) + EYE
+    this.camera.position.set(this.wx(home.x), hy, this.wz(home.y))
+    const ly = Math.max(0, t.worldY(Math.round(look.x), Math.round(look.y))) + 1.0 // look at head height down the street
+    this.camera.lookAt(this.wx(look.x), ly, this.wz(look.y))
+    this.camera.updateMatrixWorld()
+    this.composer.render()
+    const url = this.renderer.domElement.toDataURL('image/png')
+    // restore the operator's orbit pose exactly
+    this.camera.position.copy(savedPos)
+    this.controls.target.copy(savedTarget)
+    this.controls.update()
+    this.composer.render()
+    return url
   }
 
   private pedOnLand(x: number, y: number): boolean {
@@ -1188,6 +1264,57 @@ export class PlanetRenderer {
     this.pedMesh.instanceMatrix.needsUpdate = true
     this.pedHeadMesh.count = want
     this.pedHeadMesh.instanceMatrix.needsUpdate = true
+  }
+
+  /** P1 — the runtime supplies the live citizen avatar list (positions from the roster, decorated with isOperator). */
+  setAvatarSource(fn: () => AvatarView[]): void {
+    this.avatarSource = fn
+  }
+
+  /** P1 — step the camera INTO a citizen for a live first-person view (the operator looking through their bot's
+   *  eyes). OrbitControls is suspended while active; frame() parks the camera at eye height on the live avatar. */
+  enterFirstPerson(citizenId: string): void {
+    this.fpCitizenId = citizenId
+    this.controls.enabled = false
+  }
+  /** P1 — leave first-person and restore the orbit camera. */
+  exitFirstPerson(): void {
+    if (this.fpCitizenId === null) return
+    this.fpCitizenId = null
+    this.controls.enabled = true
+  }
+  get firstPersonCitizen(): string | null {
+    return this.fpCitizenId
+  }
+
+  /** P1 — draw the citizen avatars at their live roster positions. The one the operator owns glows cyan; the
+   *  citizen currently being stepped-into is hidden (the camera is inside it). */
+  private updateAvatars() {
+    if (!this.avatarMesh || !this.avatarHeadMesh || !this.avatarSource) return
+    const list = this.avatarSource()
+    const t = this.sim.state.terrain
+    const n = Math.min(list.length, 64)
+    const col = new THREE.Color()
+    let drawn = 0
+    for (let i = 0; i < n; i++) {
+      const a = list[i]!
+      if (a.id === this.fpCitizenId) continue // hide the avatar we are looking out of
+      const wy = Math.max(0, t.worldY(Math.round(a.x), Math.round(a.y)))
+      this.dummy.position.set(this.wx(a.x), wy, this.wz(a.y))
+      this.dummy.rotation.set(0, -a.heading + Math.PI / 2, 0)
+      this.dummy.scale.set(1, 1, 1)
+      this.dummy.updateMatrix()
+      this.avatarMesh.setMatrixAt(drawn, this.dummy.matrix)
+      this.avatarHeadMesh.setMatrixAt(drawn, this.dummy.matrix)
+      col.setHex(a.isOperator ? 0x66e0ff : a.hasPod ? 0x9f86d8 : 0xc0b0e0)
+      this.avatarMesh.setColorAt(drawn, col)
+      drawn++
+    }
+    this.avatarMesh.count = drawn
+    this.avatarMesh.instanceMatrix.needsUpdate = true
+    if (this.avatarMesh.instanceColor) this.avatarMesh.instanceColor.needsUpdate = true
+    this.avatarHeadMesh.count = drawn
+    this.avatarHeadMesh.instanceMatrix.needsUpdate = true
   }
 
   /** Spec 073 — the Porter Sheds made visible: goods pile up as crates (materials) + sacks (food) beside each shed, growing and
