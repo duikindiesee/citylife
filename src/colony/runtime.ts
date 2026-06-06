@@ -41,7 +41,7 @@ export interface ColonyUiState {
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
   citizens: { count: number; awake: number; list: CitizenPublic[] }
-  firstPerson: { active: boolean; citizenId: string | null; citizenName: string | null; operatorCitizenId: string | null }
+  firstPerson: { active: boolean; citizenId: string | null; citizenName: string | null; operatorCitizenId: string | null; view: FirstPersonView | null; narration: string | null; narrating: boolean }
   radio: RadioState
   courier: { on: boolean; headline: string } // spec 016 — the colony's own news, when a Broadcast Mast is up
   tv: boolean
@@ -91,6 +91,8 @@ export class ColonyRuntime {
   private operatorName: string | null = null
   // P1 — the citizen currently being viewed in first person (null = orbit camera).
   private fpCitizenId: string | null = null
+  private fpNarration: string | null = null
+  private fpNarrating = false
 
   constructor(seed: number = COLONY.render.seed) {
     this.sim = new ColonySim(seed)
@@ -207,8 +209,58 @@ export class ColonyRuntime {
   /** P1 — leave first-person, restoring the orbit camera. */
   exitFirstPerson(): void {
     this.fpCitizenId = null
+    this.fpNarration = null
+    this.fpNarrating = false
     this.renderer?.exitFirstPerson()
     this.emit()
+  }
+
+  /** P1 — move the active first-person citizen by (dx, dy) cells and fire a narration. */
+  walkStep(dx: number, dy: number): void {
+    const id = this.fpCitizenId
+    if (!id) return
+    const c = this.citizens.byId(id)
+    if (!c) return
+    const S = this.sim.state.terrain.size
+    const nx = Math.max(0, Math.min(S - 1, Math.round(c.pos.x + dx)))
+    const ny = Math.max(0, Math.min(S - 1, Math.round(c.pos.y + dy)))
+    this.citizens.setTarget(id, { x: nx, y: ny })
+    this.emit()
+    // Narrate once the avatar arrives (poll until close enough, then fire once).
+    void this.narrateOnArrival(id, { x: nx, y: ny })
+  }
+
+  /** Ask the bot to narrate what the first-person citizen currently sees. */
+  async narrate(): Promise<void> {
+    const id = this.fpCitizenId
+    if (!id || this.fpNarrating) return
+    const view = firstPersonView(this.sim.state, id, this.citizens)
+    if (!view) return
+    const c = this.citizens.byId(id)
+    if (!c) return
+    this.fpNarrating = true
+    this.fpNarration = null
+    this.emit()
+    try {
+      const line = await this.botService.narrateView(c.displayName, c.plotName, view)
+      this.fpNarration = line
+    } catch {
+      this.fpNarration = null
+    }
+    this.fpNarrating = false
+    this.emit()
+  }
+
+  /** Poll until the avatar reaches the target cell, then trigger a narration. */
+  private async narrateOnArrival(citizenId: string, target: { x: number; y: number }): Promise<void> {
+    const deadline = Date.now() + 15_000
+    while (Date.now() < deadline) {
+      await new Promise<void>((r) => setTimeout(r, 300))
+      const c = this.citizens.byId(citizenId)
+      if (!c) return
+      const dx = c.pos.x - target.x, dy = c.pos.y - target.y
+      if (Math.hypot(dx, dy) < 1.5) { await this.narrate(); return }
+    }
   }
 
   /** Border patrol asks an approved household's bot another question (the reply is the bot's own). */
@@ -529,7 +581,8 @@ export class ColonyRuntime {
       firstPerson: (() => {
         const opId = this.operatorCitizenId()
         const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null
-        return { active: this.fpCitizenId !== null, citizenId: this.fpCitizenId, citizenName: c?.displayName ?? null, operatorCitizenId: opId }
+        const view = this.fpCitizenId ? firstPersonView(this.sim.state, this.fpCitizenId, this.citizens) : null
+        return { active: this.fpCitizenId !== null, citizenId: this.fpCitizenId, citizenName: c?.displayName ?? null, operatorCitizenId: opId, view, narration: this.fpNarration, narrating: this.fpNarrating }
       })(),
       radio: this.radio,
       courier: (() => {

@@ -3,6 +3,7 @@ import { ColonyRuntime, type ColonyUiState } from '../runtime'
 import type { CameraPreset, ViewMode } from '../render/PlanetRenderer'
 import { AuthClient } from '../authClient'
 import { RadioPanel } from './RadioPanel'
+import { FirstPersonPanel } from './FirstPersonPanel'
 import './colony.css'
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -59,6 +60,22 @@ export function ColonyApp() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      // First-person walk keys — WASD + arrows, only when a citizen is active.
+      if (runtime.getUiState().firstPerson.active) {
+        const STEP = 6
+        switch (e.code) {
+          case 'KeyW': case 'ArrowUp':    e.preventDefault(); runtime.walkStep( 0,    -STEP); return
+          case 'KeyS': case 'ArrowDown':  e.preventDefault(); runtime.walkStep( 0,     STEP); return
+          case 'KeyA': case 'ArrowLeft':  e.preventDefault(); runtime.walkStep(-STEP,  0   ); return
+          case 'KeyD': case 'ArrowRight': e.preventDefault(); runtime.walkStep( STEP,  0   ); return
+          case 'KeyQ': e.preventDefault(); runtime.walkStep(-STEP, -STEP); return
+          case 'KeyE': e.preventDefault(); runtime.walkStep( STEP, -STEP); return
+          case 'KeyZ': e.preventDefault(); runtime.walkStep(-STEP,  STEP); return
+          case 'KeyC': e.preventDefault(); runtime.walkStep( STEP,  STEP); return
+          case 'KeyN': e.preventDefault(); void runtime.narrate(); return
+          case 'Escape': runtime.exitFirstPerson(); return
+        }
+      }
       switch (e.code) {
         case 'Space': e.preventDefault(); runtime.setPaused(!runtime.getUiState().paused); break
         case 'Digit1': runtime.setPreset('street'); break
@@ -79,12 +96,7 @@ export function ColonyApp() {
   return (
     <div className="colony">
       <div className="canvas-host" ref={hostRef} />
-      {ui.firstPerson.active && (
-        <div style={{ position: 'fixed', bottom: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 50, display: 'flex', gap: 10, alignItems: 'center', background: 'rgba(10,14,28,0.78)', border: '1px solid #2a3550', borderRadius: 10, padding: '8px 14px', backdropFilter: 'blur(4px)' }}>
-          <span style={{ color: '#a0d4f0', fontSize: 13 }}>👁 Seeing through <b>{ui.firstPerson.citizenName ?? 'a citizen'}</b>&apos;s eyes</span>
-          <button style={{ padding: '3px 12px' }} onClick={() => runtime.exitFirstPerson()}>Exit first person</button>
-        </div>
-      )}
+      <FirstPersonPanel runtime={runtime} fp={ui.firstPerson} />
 
       <header className="topbar">
         <div className="brand">
