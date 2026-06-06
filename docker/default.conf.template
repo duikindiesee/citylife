@@ -1,0 +1,79 @@
+# CityLife in-cluster nginx config. Rendered by the nginx image's envsubst at container start
+# (only the CITYLIFE_*/KOOKER_GATEWAY vars are substituted via NGINX_ENVSUBST_FILTER; the
+# $-prefixed nginx runtime variables are left intact). Serves the static SPA AND proxies /kooker
+# to the gateway like the vite dev proxy, so a production build reaches kooker the same way.
+
+server {
+    listen 80;
+    server_name localhost;
+
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+
+    # Correct MIME types — three.js ships ES modules that must be served as application/javascript.
+    include /etc/nginx/mime.types;
+    types {
+        application/javascript js mjs;
+    }
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+    # Liveness/readiness for k8s probes.
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 'ok';
+    }
+
+    # Runtime config the SPA fetches on boot to choose its reply source. Holds NO secret —
+    # just whether the proxy is wired for real Hermes ("kooker") or mock stand-ins.
+    location = /citylife-runtime.json {
+        access_log off;
+        default_type application/json;
+        return 200 '{"botBackend":"${CITYLIFE_BOT_BACKEND}","model":"${CITYLIFE_MODEL}"}';
+    }
+
+    # Inference route — the ONLY place the PAT is attached. The browser sends no Authorization;
+    # nginx injects it here from the CITYLIFE_PAT env (a k8s Secret), so the credential never
+    # reaches the client bundle. Exact match so only this path gets the Bearer.
+    location = /kooker/api/v1/ai/route/chat {
+        proxy_pass ${KOOKER_GATEWAY}/api/v1/ai/route/chat;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${KOOKER_HOST};
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization "Bearer ${CITYLIFE_PAT}";
+        proxy_set_header X-Kooker-Tier external;
+    }
+
+    # All other kooker API calls (registration, etc.) — proxied WITHOUT injected auth.
+    location /kooker/ {
+        proxy_pass ${KOOKER_GATEWAY}/;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${KOOKER_HOST};
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Hashed build assets: 404 if missing, never fall back to index.html for a .js/.css request.
+    location /assets/ {
+        try_files $uri =404;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location ~* \.(js|mjs|css|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|eot|glb|gltf|hdr|wasm)$ {
+        try_files $uri =404;
+        expires 1y;
+        add_header Cache-Control "public, no-transform";
+    }
+
+    # SPA history fallback for client-side routing only.
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+    }
+}
