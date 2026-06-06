@@ -49,4 +49,28 @@ describe('Newcomer household generator', () => {
     const adults = h.members.filter((m) => m.role === 'adult').length
     expect(h.membersSummary.startsWith(`${adults} adult`)).toBe(true)
   })
+
+  it('applies player-chosen name, age and profession to the citizen', () => {
+    const h = generateHousehold(3, { name: 'Dax Brackenhollow', age: 41, profession: 'Botanist' })
+    expect(h.members[0]!.name).toBe('Dax Brackenhollow')
+    expect(h.members[0]!.age).toBe(41)
+    expect(h.members[0]!.occupation).toBe('Botanist')
+    expect(h.displayName).toBe('The Brackenhollow Household') // surname follows the chosen name
+    expect(h.lead.jobHistory).toContain('botanist') // job history follows the chosen profession
+  })
+
+  it('clamps a chosen age into the adult range', () => {
+    expect(generateHousehold(1, { age: 8 }).members[0]!.age).toBe(18)
+    expect(generateHousehold(1, { age: 250 }).members[0]!.age).toBe(99)
+  })
+
+  it('ignores an unsafe chosen name and falls back to generated', () => {
+    const h = generateHousehold(5, { name: 'kooker admin token' }) // hits the denylist
+    expect(h.members[0]!.name).not.toBe('kooker admin token')
+    expect(h.publicSafe).toBe(true)
+  })
+
+  it('omitted overrides keep the generated values (back-compat)', () => {
+    expect(generateHousehold(9)).toEqual(generateHousehold(9, {}))
+  })
 })

@@ -8,7 +8,7 @@ import { registerSettler as kookerRegister, generateName as randomSettlerName, t
 import { addSettler, saveColony, restoreColony, clearColony } from './settlers'
 import { bankDeposits, CURRENCY } from './ledger'
 import { MockBackend, type CityLifeBackend, type Decision } from './backend'
-import type { Household } from './newcomers'
+import type { Household, HouseholdOverrides } from './newcomers'
 import { BotService, defaultBotAdapter, resolveBotAdapter, type Bot } from './bots'
 import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
 import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
@@ -130,8 +130,8 @@ export class ColonyRuntime {
   }
 
   /** Border Control: generate the next candidate family at the border (status: triage). */
-  async addNewcomer(): Promise<Household> {
-    const h = await this.backend.addNewcomer()
+  async addNewcomer(overrides?: HouseholdOverrides): Promise<Household> {
+    const h = await this.backend.addNewcomer(overrides)
     this.emit()
     return h
   }
