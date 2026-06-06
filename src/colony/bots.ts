@@ -15,6 +15,7 @@
 import type { Household } from './newcomers'
 import type { CityPlan, Plot } from './cityPlan'
 import { validatePG } from './bot/pgSafety'
+import type { FirstPersonView } from './bot/firstPersonView'
 
 export type Speaker = 'patrol' | 'newcomer' | 'narrator'
 
@@ -278,6 +279,38 @@ export class BotService {
   /** Generate a PG-safe personality from a player's magic prompt (enforces safety on input + output). */
   generatePersonality(magicPrompt: string): Promise<{ ok: true; personality: string } | { ok: false; reason: string }> {
     return generateSafePersonality(this.adapter, magicPrompt)
+  }
+
+  /** First-person narration — the citizen speaks one evocative sentence about what they currently see.
+   *  Builds a context-rich system prompt from the FirstPersonView snapshot and asks the LLM to reply
+   *  in character. Falls back to a short deterministic line if the adapter errors. */
+  async narrateView(citizenName: string, plotName: string, view: FirstPersonView): Promise<string> {
+    const timeOfDay = view.clock.isDay ? `day ${view.clock.day}, ${view.clock.hour}:${String(view.clock.minute).padStart(2, '0')}` : `night (day ${view.clock.day})`
+    const moodBits: string[] = []
+    if (view.mood.hungry) moodBits.push('the colony is hungry')
+    if (view.mood.brownout) moodBits.push("the lights are dim tonight")
+    if (view.mood.fever > 0.4) moodBits.push('illness hangs in the air')
+    if (view.mood.unrest > 0.4) moodBits.push('there is unease among the people')
+    const nearBuildings = [...view.nearestBuildings, ...view.nearestCivic]
+      .slice(0, 3)
+      .map((b) => `${b.kind} (${Math.round(b.distance)} tiles)`)
+      .join(', ')
+    const neighbours = view.neighbours.slice(0, 2).map((n) => n.displayName.split(' ')[0]).join(' and ')
+    const systemPrompt = [
+      `You are ${citizenName}, a colonist living on ${plotName} in Landing One — a small off-world colony floating in the void.`,
+      `Right now it is ${timeOfDay}. You stand on ${view.ground.biome} land, elevation ${view.ground.elevation.toFixed(2)}.`,
+      nearBuildings ? `Nearby: ${nearBuildings}.` : 'The area around you is sparse.',
+      neighbours ? `Your neighbours ${neighbours} are close by.` : '',
+      moodBits.length ? `The mood: ${moodBits.join('; ')}.` : '',
+      `Speak one or two evocative sentences in the first person, present tense, about what you notice or feel right now. Stay in character. No AI references. No greetings.`,
+    ].filter(Boolean).join(' ')
+    try {
+      const history: ChatMessage[] = [{ speaker: 'patrol', text: '(describe)', ts: Date.now() }]
+      return await this.adapter.generate(systemPrompt, history, 'newcomer')
+    } catch {
+      // Deterministic fallback — never stalls the walk loop.
+      return `I stand on the ${view.ground.biome}, watching the colony go about its day.`
+    }
   }
 
   /** Update the patrol bot's system prompt as the plan changes (plots allocated, etc). */
