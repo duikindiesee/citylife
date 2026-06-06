@@ -1,0 +1,54 @@
+name: Docker
+
+# Builds the CityLife static SPA into a public GHCR image (nginx-served on :80).
+# Publishes to ghcr.io/duikland/citylife — the SAME org as this repo — so auth is the
+# built-in GITHUB_TOKEN, with NO cross-org PAT (this resolves the cross-org-token blocker
+# noted in docs/DEPLOY.md). The image contains NO credentials; runtime auth is injected by
+# the cluster's nginx layer (see Dockerfile).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/duikland/citylife
+          tags: |
+            type=raw,value=dev
+            type=sha,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

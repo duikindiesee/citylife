@@ -146,11 +146,15 @@ export class MockBotAdapter implements BotAdapter {
   }
 }
 
-/** Real replies via the kooker inference choke point. Bearer = a citylife PAT (gitignored). */
+/** Real replies via the kooker inference choke point.
+ *  Auth has two modes, both keeping the PAT out of the public bundle:
+ *   • Local dev — a gitignored VITE_CITYLIFE_PAT is passed as `token` and sent as the Bearer.
+ *   • In-cluster — `token` is undefined; the nginx layer injects the Bearer from a k8s Secret
+ *     on the inference route, so the browser never holds the credential. */
 export class KookerInferenceBotAdapter implements BotAdapter {
   readonly source = 'kooker-inference'
   constructor(
-    private readonly token: string,
+    private readonly token?: string,
     private readonly model = 'kooker-codex',
     private readonly url = '/kooker/api/v1/ai/route/chat',
   ) {}
@@ -189,7 +193,12 @@ export class KookerInferenceBotAdapter implements BotAdapter {
       try {
         const res = await fetch(this.url, {
           method: 'POST',
-          headers: { 'content-type': 'application/json', Authorization: `Bearer ${this.token}`, 'X-Kooker-Tier': 'external' },
+          headers: {
+            'content-type': 'application/json',
+            'X-Kooker-Tier': 'external',
+            // Only attach a Bearer when we hold a PAT locally; in-cluster the nginx proxy injects it.
+            ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+          },
           body,
         })
         if (res.ok) {
@@ -221,13 +230,45 @@ export function defaultBotAdapter(): BotAdapter {
   return pat ? new KookerInferenceBotAdapter(pat) : new MockBotAdapter()
 }
 
+/** Resolve the reply source at runtime, in priority order, NEVER baking a secret into the bundle:
+ *   1. Local dev — a gitignored VITE_CITYLIFE_PAT means call the choke point directly with it.
+ *   2. In-cluster — fetch /citylife-runtime.json (rendered by nginx from env, no secret). When it
+ *      says botBackend:"kooker", use the real adapter with NO token; the nginx proxy injects the
+ *      Bearer from a k8s Secret on the inference route, so the PAT never reaches the browser.
+ *   3. Otherwise — mock stand-ins (offline / CI / unconfigured cluster). */
+export async function resolveBotAdapter(): Promise<BotAdapter> {
+  let pat: string | undefined
+  try {
+    pat = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_CITYLIFE_PAT
+  } catch {
+    pat = undefined
+  }
+  if (pat) return new KookerInferenceBotAdapter(pat)
+  try {
+    const res = await fetch('/citylife-runtime.json', { cache: 'no-store' })
+    if (res.ok) {
+      const cfg = (await res.json()) as { botBackend?: string; model?: string }
+      if (cfg.botBackend === 'kooker') return new KookerInferenceBotAdapter(undefined, cfg.model || 'kooker-codex')
+    }
+  } catch {
+    /* no runtime config (e.g. local dev without the proxy) — fall through to mock */
+  }
+  return new MockBotAdapter()
+}
+
 /** Holds the colony's bots and orchestrates the border / patrol-allocation dialogue. */
 export class BotService {
   bots: Bot[] = []
   patrolBot: Bot | null = null
   private plan: CityPlan | null
-  constructor(private readonly adapter: BotAdapter, plan: CityPlan | null = null) {
+  constructor(private adapter: BotAdapter, plan: CityPlan | null = null) {
     this.plan = plan
+  }
+
+  /** Swap the reply source at runtime (e.g. after fetching the in-cluster runtime config). */
+  setAdapter(adapter: BotAdapter): void {
+    this.adapter = adapter
+    if (this.patrolBot) this.patrolBot.source = adapter.source
   }
 
   get source(): string {

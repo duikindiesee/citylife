@@ -9,7 +9,7 @@ import { addSettler, saveColony, restoreColony, clearColony } from './settlers'
 import { bankDeposits, CURRENCY } from './ledger'
 import { MockBackend, type CityLifeBackend, type Decision } from './backend'
 import type { Household } from './newcomers'
-import { BotService, defaultBotAdapter, type Bot } from './bots'
+import { BotService, defaultBotAdapter, resolveBotAdapter, type Bot } from './bots'
 import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
 import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
 import { firstPersonView, type FirstPersonView } from './bot/firstPersonView'
@@ -98,6 +98,19 @@ export class ColonyRuntime {
     this.cityPlan = makeCityPlan(this.sim.state.terrain)
     this.sim.state.cityPlan = this.cityPlan // expose to the renderer for the zone tint + plot markers
     this.botService.setCityPlan(this.cityPlan)
+    // Resolve the real reply source asynchronously (in-cluster: nginx-proxied Hermes; else mock).
+    void this.initBotAdapter()
+  }
+
+  /** Swap in the runtime-resolved bot adapter (Hermes via the nginx proxy in-cluster) once known. */
+  private async initBotAdapter(): Promise<void> {
+    try {
+      const adapter = await resolveBotAdapter()
+      this.botService.setAdapter(adapter)
+      this.emit() // refresh botSource in the UI
+    } catch {
+      /* keep the sync default (mock) on any failure */
+    }
   }
 
   /** Roll a fresh playful settler name for the immigration dialog. */
