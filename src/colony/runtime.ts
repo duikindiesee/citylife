@@ -8,7 +8,8 @@ import { registerSettler as kookerRegister, generateName as randomSettlerName, t
 import { addSettler, saveColony, restoreColony, clearColony } from './settlers'
 import { bankDeposits, CURRENCY } from './ledger'
 import { MockBackend, type CityLifeBackend, type Decision } from './backend'
-import type { Household } from './newcomers'
+import type { Household, HouseholdOverrides } from './newcomers'
+import { spawnCitizenSubUser, splitName } from './bot/citizenSpawn'
 import { BotService, defaultBotAdapter, resolveBotAdapter, type Bot } from './bots'
 import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
 import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
@@ -130,8 +131,8 @@ export class ColonyRuntime {
   }
 
   /** Border Control: generate the next candidate family at the border (status: triage). */
-  async addNewcomer(): Promise<Household> {
-    const h = await this.backend.addNewcomer()
+  async addNewcomer(overrides?: HouseholdOverrides): Promise<Household> {
+    const h = await this.backend.addNewcomer(overrides)
     this.emit()
     return h
   }
@@ -147,6 +148,15 @@ export class ColonyRuntime {
       if (bot && bot.plotId) {
         const plot = this.cityPlan.plots.find((p) => p.id === bot.plotId)
         if (plot) this.citizens.register(h, plot, Date.now())
+        // Spec 076 — mint the real kooker sub-user + Hermes pod for this citizen, owned by the player
+        // (parentUserId). Best-effort: never blocks the game if the backend is unreachable.
+        const lead = h.members[0]
+        if (lead) {
+          const { firstName, lastName } = splitName(lead.name)
+          void spawnCitizenSubUser({ firstName, lastName, age: lead.age, profession: lead.occupation }).then((r) => {
+            if (!r.ok) console.warn('[citylife] citizen sub-user spawn deferred:', r.error)
+          })
+        }
       }
       this.emit()
     }
