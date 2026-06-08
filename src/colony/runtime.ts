@@ -14,6 +14,7 @@ import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
 import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
 import { firstPersonView, type FirstPersonView } from './bot/firstPersonView'
 import { solCount, resolveFoundingMs } from './sol'
+import { makeNeighborhood, type Neighborhood, type Lot } from './neighborhood'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
@@ -42,6 +43,7 @@ export interface ColonyUiState {
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
   citizens: { count: number; awake: number; list: CitizenPublic[] }
   firstPerson: { active: boolean; citizenId: string | null; citizenName: string | null; operatorCitizenId: string | null }
+  neighborhood: { lots: { id: string; built: boolean; owner: string | null; ownerId: string | null }[]; free: number; built: number }
   radio: RadioState
   courier: { on: boolean; headline: string } // spec 016 — the colony's own news, when a Broadcast Mast is up
   tv: boolean
@@ -74,6 +76,8 @@ export class ColonyRuntime {
   private citizens = new CitizenRoster()
   // The surveyed city plan the Border Patrol bot uses to allocate plots.
   private cityPlan!: CityPlan
+  // Spec 075 — the buildable neighbourhood: a street of lots where citizens raise voxel homes.
+  private neighborhood!: Neighborhood
   // Low Power Radio — CityLife's heartbeat. YouTube embed handles licensing; in-game ads queue up.
   private radio: RadioState = createRadio()
   // TV mode hides the operator UI so you can put the city on any screen and just watch.
@@ -98,6 +102,16 @@ export class ColonyRuntime {
     this.cityPlan = makeCityPlan(this.sim.state.terrain)
     this.sim.state.cityPlan = this.cityPlan // expose to the renderer for the zone tint + plot markers
     this.botService.setCityPlan(this.cityPlan)
+    // Spec 075 — lay out the neighbourhood and merge its street into the colony roads so the avatars
+    // walk it and it renders as pavement (never over water — makeNeighborhood only uses dry, buildable ground).
+    this.neighborhood = makeNeighborhood(this.sim.state.terrain)
+    for (const c of this.neighborhood.street) {
+      const k = `${c.x},${c.y}`
+      if (!this.sim.state.roadSet.has(k)) {
+        this.sim.state.roadSet.add(k)
+        this.sim.state.roads.push({ x: c.x, y: c.y })
+      }
+    }
   }
 
   /** Roll a fresh playful settler name for the immigration dialog. */
@@ -196,6 +210,79 @@ export class ColonyRuntime {
     this.fpCitizenId = null
     this.renderer?.exitFirstPerson()
     this.emit()
+  }
+
+  // ── Spec 075 — the buildable neighbourhood ──────────────────────────────────
+  /** The neighbourhood lots (for the renderer + the HUD). */
+  lots(): Lot[] {
+    return this.neighborhood.lots
+  }
+
+  /** Assign a free lot to a citizen as their home, and send their avatar walking to the door. */
+  assignLot(citizenId: string, lotId: string): boolean {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+    const c = this.citizens.byId(citizenId)
+    if (!lot || !c || lot.ownerCitizenId) return false
+    for (const l of this.neighborhood.lots) if (l.ownerCitizenId === citizenId) { l.ownerCitizenId = undefined; l.built = false }
+    lot.ownerCitizenId = citizenId
+    c.homeXY = { x: lot.x, y: lot.y }
+    this.citizens.setTarget(citizenId, { x: lot.doorX, y: lot.doorY })
+    this.emit()
+    return true
+  }
+
+  /** Build a voxel home on a lot — gated on MATERIALS + a free hand (the Caesar III rule). */
+  buildHouse(lotId: string): boolean {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+    if (!lot || lot.built) return false
+    const s = this.sim.state
+    const cost = COLONY.build.matNeighborHouse
+    if (s.materials < cost || freeLabour(s) < 1) return false
+    s.materials -= cost
+    lot.built = true
+    this.emit()
+    return true
+  }
+
+  /** Demolish a lot's house (frees the lot, keeps the citizen). Returns the freed owner id, if any. */
+  demolishLot(lotId: string): string | null {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+    if (!lot) return null
+    const owner = lot.ownerCitizenId ?? null
+    lot.built = false
+    lot.ownerCitizenId = undefined
+    this.emit()
+    return owner
+  }
+
+  /** Demolish the lot AND destroy the citizen who lived there, agent and all — like a legend. */
+  demolishLotAndCitizen(lotId: string): boolean {
+    const owner = this.demolishLot(lotId)
+    if (owner) this.removeCitizen(owner)
+    return true
+  }
+
+  /** Destroy a citizen: free any lot they held, exit first-person if you were inside them, tear down
+   *  their Hermes pod (best-effort, server-side), and drop them from the roster. */
+  removeCitizen(citizenId: string): boolean {
+    const c = this.citizens.byId(citizenId)
+    if (!c) return false
+    for (const l of this.neighborhood.lots) if (l.ownerCitizenId === citizenId) { l.ownerCitizenId = undefined; l.built = false }
+    if (this.fpCitizenId === citizenId) this.exitFirstPerson()
+    if (c.hasPod) void this.teardownPod(citizenId)
+    this.citizens.remove(citizenId)
+    this.emit()
+    return true
+  }
+
+  /** Best-effort Hermes pod teardown. The real DELETE /bots/{label} is server-side (DMZ unreachable
+   *  from the browser); here we POST the citylife backend destroy intent. Never throws. */
+  private async teardownPod(citizenId: string): Promise<void> {
+    try {
+      await fetch(`/kooker/api/v1/citylife/citizens/${encodeURIComponent(citizenId)}/destroy`, { method: 'POST' })
+    } catch {
+      /* expected offline / internal-only */
+    }
   }
 
   /** Border patrol asks an approved household's bot another question (the reply is the bot's own). */
@@ -346,6 +433,7 @@ export class ColonyRuntime {
       return this.citizens.avatars().map((a) => ({ ...a, isOperator: a.id === mine }))
     })
     if (this.fpCitizenId) this.renderer.enterFirstPerson(this.fpCitizenId)
+    this.renderer.setNeighborhood(this.neighborhood) // spec 075 — lot pads + voxel homes
     this.running = true
     this.lastFrame = performance.now()
     this.lastUi = this.lastFrame
@@ -517,6 +605,15 @@ export class ColonyRuntime {
         const opId = this.operatorCitizenId()
         const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null
         return { active: this.fpCitizenId !== null, citizenId: this.fpCitizenId, citizenName: c?.displayName ?? null, operatorCitizenId: opId }
+      })(),
+      neighborhood: (() => {
+        const lots = this.neighborhood.lots.map((l) => ({
+          id: l.id,
+          built: l.built,
+          owner: l.ownerCitizenId ? (this.citizens.byId(l.ownerCitizenId)?.displayName ?? null) : null,
+          ownerId: l.ownerCitizenId ?? null,
+        }))
+        return { lots, free: lots.filter((l) => !l.ownerId).length, built: lots.filter((l) => l.built).length }
       })(),
       radio: this.radio,
       courier: (() => {

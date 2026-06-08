@@ -1006,6 +1006,8 @@ export const COLONY = {
     avatarWorkers: 3, // run crew (the wrights who keep the link desks lit); unstaffed it mints nobody
     avatarPowerLoad: 0.5, // grid load for the projection rig + the link desks
     avatarMaxCitizens: 8, // citizen pods a staffed Foundry may mint (the operator raises this as the cluster budget allows)
+    // Neighbourhood voxel homes (spec 075): a citizen raises a block house on their lot. Gated on materials + a free hand.
+    matNeighborHouse: 20, // materials to raise a voxel home on a lot
     pollutionPerIndustrial: 3,
   },
 

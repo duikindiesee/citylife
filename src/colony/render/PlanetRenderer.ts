@@ -15,6 +15,8 @@ import type { HouseSpec } from '../house'
 import { gridOrigin } from '../grid'
 import { cellZone, ZONE_COLOR, VIBE_COLOR, type Plot } from '../cityPlan'
 import { homeLiveability, surveyAvailable, liveabilityTint, porterStatus } from '../build'
+import type { Neighborhood } from '../neighborhood'
+import { buildVoxelHouse, BLOCK_COLOR, type VoxelHouse, type DoorDir } from '../voxelHouse'
 
 export type ViewMode = 'biome' | 'buildable' | 'elevation'
 export type CameraPreset = 'street' | 'district' | 'planet'
@@ -83,6 +85,12 @@ export class PlanetRenderer {
   private avatarHeadMesh!: THREE.InstancedMesh
   private avatarSource?: () => AvatarView[]
   private fpCitizenId: string | null = null
+  // Spec 075 — the buildable neighbourhood: lot pads + minecraft-style voxel homes.
+  private neighborhood?: Neighborhood
+  private lotPadMesh!: THREE.InstancedMesh
+  private voxelMesh!: THREE.InstancedMesh
+  private voxelCache = new Map<string, VoxelHouse>()
+  private lastNbhdSig = ''
   private settlerGroup = new THREE.Group()
   private lastSettlerCount = -1
   // City plan paint — translucent zone tints (residential / commercial / industrial / civic)
@@ -588,6 +596,21 @@ export class PlanetRenderer {
     this.avatarHeadMesh.castShadow = true
     this.avatarHeadMesh.frustumCulled = false
     this.scene.add(this.avatarHeadMesh)
+
+    // Spec 075 — lot pads (a flat marker per lot, coloured by free/owned/built) + voxel-home blocks.
+    const padGeo = new THREE.BoxGeometry(1, 0.06, 1)
+    this.lotPadMesh = new THREE.InstancedMesh(padGeo, new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 }), 48)
+    this.lotPadMesh.count = 0
+    this.lotPadMesh.receiveShadow = true
+    this.lotPadMesh.frustumCulled = false
+    this.scene.add(this.lotPadMesh)
+    const blockGeo = new THREE.BoxGeometry(0.96, 0.56, 0.96)
+    this.voxelMesh = new THREE.InstancedMesh(blockGeo, new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.02, flatShading: true }), 1200)
+    this.voxelMesh.count = 0
+    this.voxelMesh.castShadow = true
+    this.voxelMesh.receiveShadow = true
+    this.voxelMesh.frustumCulled = false
+    this.scene.add(this.voxelMesh)
 
     // Spec 073 — goods piled at the Porter Sheds (crates + sacks), and the porter handcarts on the roads.
     const crateGeo = new THREE.BoxGeometry(0.34, 0.34, 0.34)
@@ -1107,6 +1130,7 @@ export class PlanetRenderer {
     this.updatePedestrians()
     this.updatePorters() // spec 073 — goods piled at the sheds + porter carts on the roads
     this.updateAvatars() // P1 — the named citizen avatars at their live roster positions
+    this.updateNeighborhood() // spec 075 — lot pads + voxel homes
     if (this.beaconMat) {
       const blink = Math.max(0, Math.sin((performance.now() / 1000) * 2.4))
       this.beaconMat.emissiveIntensity = 0.35 + blink * blink * 2.6
@@ -1269,6 +1293,70 @@ export class PlanetRenderer {
   /** P1 — the runtime supplies the live citizen avatar list (positions from the roster, decorated with isOperator). */
   setAvatarSource(fn: () => AvatarView[]): void {
     this.avatarSource = fn
+  }
+
+  /** Spec 075 — hand the renderer the neighbourhood (by reference); it draws the lot pads + voxel homes,
+   *  rebuilding only when a lot's owned/built state changes. */
+  setNeighborhood(n: Neighborhood): void {
+    this.neighborhood = n
+    this.lastNbhdSig = '' // force a rebuild on the next frame
+  }
+
+  /** Spec 075 — lay the lot pads (free / owned / built colours) and the voxel homes for built lots. Only
+   *  recomputes when the signature (per-lot owned + built flags) changes, so it is cheap per frame. */
+  private updateNeighborhood() {
+    if (!this.neighborhood || !this.lotPadMesh || !this.voxelMesh) return
+    const lots = this.neighborhood.lots
+    const sig = lots.map((l) => `${l.id}:${l.ownerCitizenId ? 1 : 0}:${l.built ? 1 : 0}`).join('|')
+    if (sig === this.lastNbhdSig) return
+    this.lastNbhdSig = sig
+    const t = this.sim.state.terrain
+    const col = new THREE.Color()
+    const BH = 0.56 // block height (the box geometry's y size)
+
+    // ── lot pads ──
+    let p = 0
+    for (const lot of lots) {
+      const wy = Math.max(0, t.worldY(Math.round(lot.x), Math.round(lot.y)))
+      this.dummy.position.set(this.wx(lot.x), wy + 0.03, this.wz(lot.y))
+      this.dummy.rotation.set(0, 0, 0)
+      this.dummy.scale.set(lot.w, 1, lot.h)
+      this.dummy.updateMatrix()
+      this.lotPadMesh.setMatrixAt(p, this.dummy.matrix)
+      col.setHex(lot.built ? 0x4a4438 : lot.ownerCitizenId ? 0xc9a23a : 0x2f6f5f)
+      this.lotPadMesh.setColorAt(p, col)
+      p++
+    }
+    this.lotPadMesh.count = p
+    this.lotPadMesh.instanceMatrix.needsUpdate = true
+    if (this.lotPadMesh.instanceColor) this.lotPadMesh.instanceColor.needsUpdate = true
+
+    // ── voxel homes for built lots ──
+    let v = 0
+    for (const lot of lots) {
+      if (!lot.built) continue
+      const doorDir: DoorDir = lot.doorY < lot.y ? 'n' : 's'
+      const cacheKey = `${lot.id}:${doorDir}`
+      let house = this.voxelCache.get(cacheKey)
+      if (!house) { house = buildVoxelHouse(lot.houseSeed, doorDir); this.voxelCache.set(cacheKey, house) }
+      const originX = lot.x - (house.w - 1) / 2
+      const originY = lot.y - (house.d - 1) / 2
+      const baseY = Math.max(0, t.worldY(Math.round(lot.x), Math.round(lot.y)))
+      for (const b of house.blocks) {
+        if (v >= 1200) break
+        this.dummy.position.set(this.wx(originX + b.x), baseY + b.z * BH + BH / 2, this.wz(originY + b.y))
+        this.dummy.rotation.set(0, 0, 0)
+        this.dummy.scale.set(1, 1, 1)
+        this.dummy.updateMatrix()
+        this.voxelMesh.setMatrixAt(v, this.dummy.matrix)
+        col.setHex(BLOCK_COLOR[b.kind])
+        this.voxelMesh.setColorAt(v, col)
+        v++
+      }
+    }
+    this.voxelMesh.count = v
+    this.voxelMesh.instanceMatrix.needsUpdate = true
+    if (this.voxelMesh.instanceColor) this.voxelMesh.instanceColor.needsUpdate = true
   }
 
   /** P1 — step the camera INTO a citizen for a live first-person view (the operator looking through their bot's
