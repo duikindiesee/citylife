@@ -1,6 +1,6 @@
 # Spec 076 — Homesteads: large household parcels with house + garden + farm, on a terrain-aware street
 
-- status: proposed
+- status: built
 - proposed-by: irwin (operator directive) + claude (architect)
 - date: 2026-06-08
 - depends-on: 074 (citizen avatars), 075 (voxel homes — this replaces its lot model)
