@@ -21,6 +21,14 @@ export interface LeadPersona {
   migrationMotivation: string
 }
 
+/** Player-chosen attributes for the single adult citizen. Any omitted field is generated. Each is
+ *  screened against the public-safe denylist; an unsafe value is ignored (falls back to generated). */
+export interface HouseholdOverrides {
+  name?: string // the citizen's full name; its last word becomes the household surname
+  age?: number // clamped to 18..99
+  profession?: string // the citizen's occupation; also drives the lead's job history
+}
+
 export interface Household {
   id: string // public slug, never an internal profile name
   displayName: string // generated public-safe family name
@@ -59,10 +67,18 @@ function pick<T>(rng: RNG, arr: T[]): T {
   return arr[rng.int(0, arr.length - 1)]!
 }
 
-/** Generate one fictional family household deterministically from a seed. */
-export function generateHousehold(seed: number): Household {
+/** Generate one fictional family household deterministically from a seed. When `overrides` are given,
+ *  the player's chosen name / age / profession replace the generated ones for the single adult citizen
+ *  (each only if public-safe); everything else stays generated. */
+export function generateHousehold(seed: number, overrides?: HouseholdOverrides): Household {
   const rng = new RNG(seed >>> 0)
-  const surname = pick(rng, SURNAMES)
+  const chosenName = overrides?.name?.trim()
+  const useChosenName = !!chosenName && isPublicSafe(chosenName)
+  // The surname (household name) follows the chosen name's last word, else a generated one.
+  const surname = useChosenName ? (chosenName!.split(/\s+/).pop() || pick(rng, SURNAMES)) : pick(rng, SURNAMES)
+  const chosenProfession = overrides?.profession?.trim()
+  const useChosenProfession = !!chosenProfession && isPublicSafe(chosenProfession)
+  const useChosenAge = typeof overrides?.age === 'number' && Number.isFinite(overrides.age)
   // 1 newcomer = 1 bot (operator directive). The colony now receives a SINGLE adult citizen who becomes
   // exactly one Hermes avatar — the family generator is kept (members[] is still the spine downstream) but
   // constrained to one person so the border-patrol → bot → citizen path maps one settler to one pod.
@@ -83,7 +99,12 @@ export function generateHousehold(seed: number): Household {
 
   const members: HouseholdMember[] = []
   for (let i = 0; i < adults; i++) {
-    members.push({ name: `${uniqueFirst()} ${surname}`, age: rng.int(24, 54), role: 'adult', occupation: pick(rng, ADULT_JOBS) })
+    members.push({
+      name: useChosenName ? chosenName! : `${uniqueFirst()} ${surname}`,
+      age: useChosenAge ? Math.max(18, Math.min(99, Math.round(overrides!.age!))) : rng.int(24, 54),
+      role: 'adult',
+      occupation: useChosenProfession ? chosenProfession! : pick(rng, ADULT_JOBS),
+    })
   }
   for (let i = 0; i < kids; i++) {
     const age = rng.int(2, 17)

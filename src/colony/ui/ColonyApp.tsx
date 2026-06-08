@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { ColonyRuntime, type ColonyUiState } from '../runtime'
 import type { CameraPreset, ViewMode } from '../render/PlanetRenderer'
+import type { HouseholdOverrides } from '../newcomers'
 import { AuthClient } from '../authClient'
+
+// Suggestions for the citizen-profession field (free text is still allowed).
+const PROFESSION_SUGGESTIONS = ['Hydroponics tech', 'Welder', 'Medic', 'Teacher', 'Surveyor', 'Reactor tech', 'Logistics clerk', 'Cook', 'Botanist', 'Mechanic', 'Geologist', 'Pilot', 'Artist', 'Engineer', 'Farmer', 'Trader']
 import { RadioPanel } from './RadioPanel'
+import { FirstPersonPanel } from './FirstPersonPanel'
 import './colony.css'
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -34,7 +39,17 @@ export function ColonyApp() {
   const hostRef = useRef<HTMLDivElement>(null)
   const ui: ColonyUiState = runtime.getUiState()
   const [borderOpen, setBorderOpen] = useState(false)
-  const addNewcomer = () => { void runtime.addNewcomer() }
+  const [newCitizen, setNewCitizen] = useState({ name: '', age: '', profession: '' })
+  const composing = !!(newCitizen.name.trim() || newCitizen.profession.trim() || newCitizen.age.trim())
+  const addNewcomer = () => {
+    const o: HouseholdOverrides = {}
+    if (newCitizen.name.trim()) o.name = newCitizen.name.trim()
+    if (newCitizen.profession.trim()) o.profession = newCitizen.profession.trim()
+    const ageNum = parseInt(newCitizen.age, 10)
+    if (Number.isFinite(ageNum) && ageNum > 0) o.age = ageNum
+    void runtime.addNewcomer(Object.keys(o).length ? o : undefined)
+    setNewCitizen({ name: '', age: '', profession: '' })
+  }
   const decide = (id: string, d: 'approve' | 'hold' | 'decline') => { void runtime.decideNewcomer(id, d) }
   // P1 — tell the runtime who is logged in, so it can mark the operator's own avatar + gate the step-into.
   const auth = useMemo(() => new AuthClient(), [])
@@ -63,10 +78,16 @@ export function ColonyApp() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
-      if (runtime.getUiState().firstPerson.active && MOVE.has(e.code)) {
-        e.preventDefault()
-        runtime.setFpKey(norm(e.code), true)
-        return
+      if (runtime.getUiState().firstPerson.active) {
+        // Continuous WASD / arrow-key locomotion — hold to walk the bot, release to stop (keyup handler).
+        if (MOVE.has(e.code)) {
+          e.preventDefault()
+          runtime.setFpKey(norm(e.code), true)
+          return
+        }
+        // Additive first-person actions: N narrates what the citizen sees, Esc steps back out.
+        if (e.code === 'KeyN') { e.preventDefault(); void runtime.narrate(); return }
+        if (e.code === 'Escape') { runtime.exitFirstPerson(); return }
       }
       switch (e.code) {
         case 'Space': e.preventDefault(); runtime.setPaused(!runtime.getUiState().paused); break
@@ -100,6 +121,7 @@ export function ColonyApp() {
           <button style={{ padding: '3px 12px' }} onClick={() => runtime.exitFirstPerson()}>Exit first person</button>
         </div>
       )}
+      <FirstPersonPanel runtime={runtime} fp={ui.firstPerson} />
 
       <header className="topbar">
         <div className="brand">
@@ -300,7 +322,38 @@ export function ColonyApp() {
                 </div>
               </details>
             )}
-            <button className="primary border-add" onClick={addNewcomer}>+ A family arrives at the border</button>
+            <div className="border-compose">
+              <input
+                className="bc-in bc-name"
+                placeholder="Citizen name (optional)"
+                value={newCitizen.name}
+                maxLength={40}
+                onChange={(e) => setNewCitizen((s) => ({ ...s, name: e.target.value }))}
+              />
+              <input
+                className="bc-in bc-age"
+                type="number"
+                placeholder="Age"
+                min={18}
+                max={99}
+                value={newCitizen.age}
+                onChange={(e) => setNewCitizen((s) => ({ ...s, age: e.target.value }))}
+              />
+              <input
+                className="bc-in bc-prof"
+                placeholder="Profession (optional)"
+                value={newCitizen.profession}
+                maxLength={40}
+                list="bc-prof-list"
+                onChange={(e) => setNewCitizen((s) => ({ ...s, profession: e.target.value }))}
+              />
+              <datalist id="bc-prof-list">
+                {PROFESSION_SUGGESTIONS.map((j) => <option key={j} value={j} />)}
+              </datalist>
+            </div>
+            <button className="primary border-add" onClick={addNewcomer}>
+              {composing ? '+ Bring this citizen to the border' : '+ A family arrives at the border'}
+            </button>
             {ui.border.households.length === 0 && <div className="border-empty">No arrivals yet — receive a family to begin.</div>}
             <div className="border-list">
               {[...ui.border.households].reverse().map((h) => (

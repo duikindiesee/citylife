@@ -8,8 +8,9 @@ import { registerSettler as kookerRegister, generateName as randomSettlerName, t
 import { addSettler, saveColony, restoreColony, clearColony } from './settlers'
 import { bankDeposits, CURRENCY } from './ledger'
 import { MockBackend, type CityLifeBackend, type Decision } from './backend'
-import type { Household } from './newcomers'
-import { BotService, defaultBotAdapter, type Bot } from './bots'
+import type { Household, HouseholdOverrides } from './newcomers'
+import { spawnCitizenSubUser, splitName } from './bot/citizenSpawn'
+import { BotService, defaultBotAdapter, resolveBotAdapter, type Bot } from './bots'
 import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
 import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
 import { firstPersonView, type FirstPersonView } from './bot/firstPersonView'
@@ -42,7 +43,7 @@ export interface ColonyUiState {
   bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
   citizens: { count: number; awake: number; list: CitizenPublic[] }
-  firstPerson: { active: boolean; citizenId: string | null; citizenName: string | null; operatorCitizenId: string | null }
+  firstPerson: { active: boolean; citizenId: string | null; citizenName: string | null; operatorCitizenId: string | null; view: FirstPersonView | null; narration: string | null; narrating: boolean }
   neighborhood: { lots: { id: string; built: boolean; owner: string | null; ownerId: string | null }[]; free: number; built: number; houseCost: number; canAfford: boolean; buildHint: string }
   radio: RadioState
   courier: { on: boolean; headline: string } // spec 016 — the colony's own news, when a Broadcast Mast is up
@@ -97,6 +98,8 @@ export class ColonyRuntime {
   private fpCitizenId: string | null = null
   // First-person locomotion — which movement keys are held while you walk your bot around.
   private fpKeys = new Set<string>()
+  private fpNarration: string | null = null
+  private fpNarrating = false
 
   constructor(seed: number = COLONY.render.seed) {
     this.sim = new ColonySim(seed)
@@ -111,6 +114,19 @@ export class ColonyRuntime {
     this.neighborhood = makeNeighborhood(this.sim.state.terrain)
     for (const c of this.neighborhood.carriage) this.sim.state.roadSet.add(`${c.x},${c.y}`)
     for (const c of this.neighborhood.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`)
+    // Resolve the real reply source asynchronously (in-cluster: nginx-proxied Hermes; else mock).
+    void this.initBotAdapter()
+  }
+
+  /** Swap in the runtime-resolved bot adapter (Hermes via the nginx proxy in-cluster) once known. */
+  private async initBotAdapter(): Promise<void> {
+    try {
+      const adapter = await resolveBotAdapter()
+      this.botService.setAdapter(adapter)
+      this.emit() // refresh botSource in the UI
+    } catch {
+      /* keep the sync default (mock) on any failure */
+    }
   }
 
   /** Roll a fresh playful settler name for the immigration dialog. */
@@ -128,8 +144,8 @@ export class ColonyRuntime {
   }
 
   /** Border Control: generate the next candidate family at the border (status: triage). */
-  async addNewcomer(): Promise<Household> {
-    const h = await this.backend.addNewcomer()
+  async addNewcomer(overrides?: HouseholdOverrides): Promise<Household> {
+    const h = await this.backend.addNewcomer(overrides)
     this.emit()
     return h
   }
@@ -156,6 +172,15 @@ export class ColonyRuntime {
               this.assignLot(citizen.id, freeLot.id)
               this.buildHouse(freeLot.id) // best-effort; gated on materials + labour
             }
+          }
+          // Spec 076 — mint the real kooker sub-user + Hermes pod for this citizen, owned by the player
+          // (parentUserId). Best-effort: never blocks the game if the backend is unreachable.
+          const lead = h.members[0]
+          if (lead) {
+            const { firstName, lastName } = splitName(lead.name)
+            void spawnCitizenSubUser({ firstName, lastName, age: lead.age, profession: lead.occupation }).then((r) => {
+              if (!r.ok) console.warn('[citylife] citizen sub-user spawn deferred:', r.error)
+            })
           }
         }
       }
@@ -221,6 +246,8 @@ export class ColonyRuntime {
   exitFirstPerson(): void {
     this.fpCitizenId = null
     this.fpKeys.clear()
+    this.fpNarration = null
+    this.fpNarrating = false
     this.renderer?.exitFirstPerson()
     this.emit()
   }
@@ -358,6 +385,54 @@ export class ColonyRuntime {
       await fetch(`/kooker/api/v1/citylife/citizens/${encodeURIComponent(citizenId)}/destroy`, { method: 'POST' })
     } catch {
       /* expected offline / internal-only */
+    }
+  }
+
+  /** P1 — move the active first-person citizen by (dx, dy) cells and fire a narration. */
+  walkStep(dx: number, dy: number): void {
+    const id = this.fpCitizenId
+    if (!id) return
+    const c = this.citizens.byId(id)
+    if (!c) return
+    const S = this.sim.state.terrain.size
+    const nx = Math.max(0, Math.min(S - 1, Math.round(c.pos.x + dx)))
+    const ny = Math.max(0, Math.min(S - 1, Math.round(c.pos.y + dy)))
+    this.citizens.setTarget(id, { x: nx, y: ny })
+    this.emit()
+    // Narrate once the avatar arrives (poll until close enough, then fire once).
+    void this.narrateOnArrival(id, { x: nx, y: ny })
+  }
+
+  /** Ask the bot to narrate what the first-person citizen currently sees. */
+  async narrate(): Promise<void> {
+    const id = this.fpCitizenId
+    if (!id || this.fpNarrating) return
+    const view = firstPersonView(this.sim.state, id, this.citizens)
+    if (!view) return
+    const c = this.citizens.byId(id)
+    if (!c) return
+    this.fpNarrating = true
+    this.fpNarration = null
+    this.emit()
+    try {
+      const line = await this.botService.narrateView(c.displayName, c.plotName, view)
+      this.fpNarration = line
+    } catch {
+      this.fpNarration = null
+    }
+    this.fpNarrating = false
+    this.emit()
+  }
+
+  /** Poll until the avatar reaches the target cell, then trigger a narration. */
+  private async narrateOnArrival(citizenId: string, target: { x: number; y: number }): Promise<void> {
+    const deadline = Date.now() + 15_000
+    while (Date.now() < deadline) {
+      await new Promise<void>((r) => setTimeout(r, 300))
+      const c = this.citizens.byId(citizenId)
+      if (!c) return
+      const dx = c.pos.x - target.x, dy = c.pos.y - target.y
+      if (Math.hypot(dx, dy) < 1.5) { await this.narrate(); return }
     }
   }
 
@@ -682,7 +757,8 @@ export class ColonyRuntime {
       firstPerson: (() => {
         const opId = this.operatorCitizenId()
         const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null
-        return { active: this.fpCitizenId !== null, citizenId: this.fpCitizenId, citizenName: c?.displayName ?? null, operatorCitizenId: opId }
+        const view = this.fpCitizenId ? firstPersonView(this.sim.state, this.fpCitizenId, this.citizens) : null
+        return { active: this.fpCitizenId !== null, citizenId: this.fpCitizenId, citizenName: c?.displayName ?? null, operatorCitizenId: opId, view, narration: this.fpNarration, narrating: this.fpNarrating }
       })(),
       neighborhood: (() => {
         const lots = this.neighborhood.lots.map((l) => ({

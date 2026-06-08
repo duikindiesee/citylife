@@ -15,6 +15,8 @@
 import type { Household } from './newcomers'
 import type { CityPlan, Plot } from './cityPlan'
 import { validatePG } from './bot/pgSafety'
+import type { FirstPersonView } from './bot/firstPersonView'
+import { getAuthClient } from './authClient'
 
 export type Speaker = 'patrol' | 'newcomer' | 'narrator'
 
@@ -146,11 +148,18 @@ export class MockBotAdapter implements BotAdapter {
   }
 }
 
-/** Real replies via the kooker inference choke point. Bearer = a citylife PAT (gitignored). */
+/** Real replies via the kooker inference choke point.
+ *  Auth has two modes, both keeping the PAT out of the public bundle:
+ *   • Local dev — a gitignored VITE_CITYLIFE_PAT is passed as `token` and sent as the Bearer.
+ *   • In-cluster — `token` is undefined; the nginx layer injects the Bearer from a k8s Secret
+ *     on the inference route, so the browser never holds the credential. */
 export class KookerInferenceBotAdapter implements BotAdapter {
   readonly source = 'kooker-inference'
+  /** tokenProvider yields the logged-in player's current (auto-refreshed) kooker JWT. The bot
+   *  authenticates to the inference choke point AS THE PLAYER — no shared PAT. Returns null when the
+   *  player is not signed in, in which case the call fails closed (the gateway rejects it). */
   constructor(
-    private readonly token: string,
+    private readonly tokenProvider?: () => Promise<string | null>,
     private readonly model = 'kooker-codex',
     private readonly url = '/kooker/api/v1/ai/route/chat',
   ) {}
@@ -187,9 +196,16 @@ export class KookerInferenceBotAdapter implements BotAdapter {
     let lastErr = 'unknown error'
     for (let attempt = 1; attempt <= 4; attempt++) {
       try {
+        // The player's own JWT, freshly renewed if near expiry. Fetched per attempt so a token that
+        // crossed the expiry boundary mid-retry is replaced rather than reused.
+        const token = this.tokenProvider ? await this.tokenProvider() : null
         const res = await fetch(this.url, {
           method: 'POST',
-          headers: { 'content-type': 'application/json', Authorization: `Bearer ${this.token}`, 'X-Kooker-Tier': 'external' },
+          headers: {
+            'content-type': 'application/json',
+            'X-Kooker-Tier': 'external',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
           body,
         })
         if (res.ok) {
@@ -210,15 +226,37 @@ export class KookerInferenceBotAdapter implements BotAdapter {
   }
 }
 
-/** Pick the real adapter when a citylife PAT is configured, else the mock. */
+/** Real inference uses the logged-in player's own kooker JWT (no shared PAT). When the player is not
+ *  yet authenticated, fall back to the mock so the engine never stalls; resolveBotAdapter() upgrades
+ *  to the real adapter once a session exists. */
 export function defaultBotAdapter(): BotAdapter {
-  let pat: string | undefined
+  const auth = getAuthClient()
+  return auth.isAuthenticated
+    ? new KookerInferenceBotAdapter(() => auth.getValidToken())
+    : new MockBotAdapter()
+}
+
+/** Resolve the reply source at runtime. The CityLife player is signed in (the AuthGate requires it),
+ *  so the bots call the kooker inference choke point AS THE PLAYER — their session JWT is attached by
+ *  the adapter and the nginx inference route forwards it unchanged. No shared PAT, no secret in the
+ *  bundle, and inference is attributed to the real user. Falls back to the mock offline / in CI / when
+ *  no one is signed in. The model name still comes from /citylife-runtime.json when present. */
+export async function resolveBotAdapter(): Promise<BotAdapter> {
+  const auth = getAuthClient()
+  if (!auth.isAuthenticated) return new MockBotAdapter()
+  let model = 'kooker-codex'
   try {
-    pat = (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.VITE_CITYLIFE_PAT
+    const res = await fetch('/citylife-runtime.json', { cache: 'no-store' })
+    if (res.ok) {
+      const cfg = (await res.json()) as { botBackend?: string; model?: string }
+      // botBackend:"mock" (or an explicitly non-kooker backend) keeps the stand-ins even when signed in.
+      if (cfg.botBackend && cfg.botBackend !== 'kooker') return new MockBotAdapter()
+      if (cfg.model) model = cfg.model
+    }
   } catch {
-    pat = undefined
+    /* no runtime config (e.g. local dev without the proxy) — use the default model */
   }
-  return pat ? new KookerInferenceBotAdapter(pat) : new MockBotAdapter()
+  return new KookerInferenceBotAdapter(() => auth.getValidToken(), model)
 }
 
 /** Holds the colony's bots and orchestrates the border / patrol-allocation dialogue. */
@@ -226,8 +264,14 @@ export class BotService {
   bots: Bot[] = []
   patrolBot: Bot | null = null
   private plan: CityPlan | null
-  constructor(private readonly adapter: BotAdapter, plan: CityPlan | null = null) {
+  constructor(private adapter: BotAdapter, plan: CityPlan | null = null) {
     this.plan = plan
+  }
+
+  /** Swap the reply source at runtime (e.g. after fetching the in-cluster runtime config). */
+  setAdapter(adapter: BotAdapter): void {
+    this.adapter = adapter
+    if (this.patrolBot) this.patrolBot.source = adapter.source
   }
 
   get source(): string {
@@ -237,6 +281,38 @@ export class BotService {
   /** Generate a PG-safe personality from a player's magic prompt (enforces safety on input + output). */
   generatePersonality(magicPrompt: string): Promise<{ ok: true; personality: string } | { ok: false; reason: string }> {
     return generateSafePersonality(this.adapter, magicPrompt)
+  }
+
+  /** First-person narration — the citizen speaks one evocative sentence about what they currently see.
+   *  Builds a context-rich system prompt from the FirstPersonView snapshot and asks the LLM to reply
+   *  in character. Falls back to a short deterministic line if the adapter errors. */
+  async narrateView(citizenName: string, plotName: string, view: FirstPersonView): Promise<string> {
+    const timeOfDay = view.clock.isDay ? `day ${view.clock.day}, ${view.clock.hour}:${String(view.clock.minute).padStart(2, '0')}` : `night (day ${view.clock.day})`
+    const moodBits: string[] = []
+    if (view.mood.hungry) moodBits.push('the colony is hungry')
+    if (view.mood.brownout) moodBits.push("the lights are dim tonight")
+    if (view.mood.fever > 0.4) moodBits.push('illness hangs in the air')
+    if (view.mood.unrest > 0.4) moodBits.push('there is unease among the people')
+    const nearBuildings = [...view.nearestBuildings, ...view.nearestCivic]
+      .slice(0, 3)
+      .map((b) => `${b.kind} (${Math.round(b.distance)} tiles)`)
+      .join(', ')
+    const neighbours = view.neighbours.slice(0, 2).map((n) => n.displayName.split(' ')[0]).join(' and ')
+    const systemPrompt = [
+      `You are ${citizenName}, a colonist living on ${plotName} in Landing One — a small off-world colony floating in the void.`,
+      `Right now it is ${timeOfDay}. You stand on ${view.ground.biome} land, elevation ${view.ground.elevation.toFixed(2)}.`,
+      nearBuildings ? `Nearby: ${nearBuildings}.` : 'The area around you is sparse.',
+      neighbours ? `Your neighbours ${neighbours} are close by.` : '',
+      moodBits.length ? `The mood: ${moodBits.join('; ')}.` : '',
+      `Speak one or two evocative sentences in the first person, present tense, about what you notice or feel right now. Stay in character. No AI references. No greetings.`,
+    ].filter(Boolean).join(' ')
+    try {
+      const history: ChatMessage[] = [{ speaker: 'patrol', text: '(describe)', ts: Date.now() }]
+      return await this.adapter.generate(systemPrompt, history, 'newcomer')
+    } catch {
+      // Deterministic fallback — never stalls the walk loop.
+      return `I stand on the ${view.ground.biome}, watching the colony go about its day.`
+    }
   }
 
   /** Update the patrol bot's system prompt as the plan changes (plots allocated, etc). */

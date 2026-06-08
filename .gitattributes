@@ -1,0 +1,5 @@
+# Keep container build files LF — CRLF breaks nginx config parsing and shell scripts.
+Dockerfile text eol=lf
+*.template text eol=lf
+docker/** text eol=lf
+*.sh text eol=lf
