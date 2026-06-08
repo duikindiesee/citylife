@@ -95,6 +95,8 @@ export class ColonyRuntime {
   private operatorName: string | null = null
   // P1 — the citizen currently being viewed in first person (null = orbit camera).
   private fpCitizenId: string | null = null
+  // First-person locomotion — which movement keys are held while you walk your bot around.
+  private fpKeys = new Set<string>()
 
   constructor(seed: number = COLONY.render.seed) {
     this.sim = new ColonySim(seed)
@@ -208,8 +210,70 @@ export class ColonyRuntime {
   /** P1 — leave first-person, restoring the orbit camera. */
   exitFirstPerson(): void {
     this.fpCitizenId = null
+    this.fpKeys.clear()
     this.renderer?.exitFirstPerson()
     this.emit()
+  }
+
+  /** First-person locomotion — hold W/S (or up/down) to walk, A/D (or left/right) to turn. The HUD
+   *  keydown/keyup feed this; movement is applied per-frame in the loop so it is smooth. */
+  setFpKey(key: string, down: boolean): void {
+    const map: Record<string, string> = {
+      w: 'fwd', arrowup: 'fwd', s: 'back', arrowdown: 'back',
+      a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right',
+    }
+    const m = map[key.toLowerCase()]
+    if (!m) return
+    if (down) this.fpKeys.add(m)
+    else this.fpKeys.delete(m)
+  }
+
+  /** A cell is walkable if it is on the island (in-bounds, not water). */
+  private onLand(x: number, y: number): boolean {
+    const t = this.sim.state.terrain
+    const ix = Math.round(x), iy = Math.round(y)
+    if (ix < 0 || iy < 0 || ix >= t.size || iy >= t.size) return false
+    return !t.isWater(ix, iy)
+  }
+
+  /** Drive the avatar you have stepped into, from the held keys. Turns the heading and steps the
+   *  position forward/back on land; freezes its auto-walk target so it stays where you put it. */
+  private driveFirstPerson(dt: number): void {
+    const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null
+    if (!c) return
+    const k = this.fpKeys
+    const turn = 2.4 * dt
+    if (k.has('left')) c.heading -= turn
+    if (k.has('right')) c.heading += turn
+    let mv = 0
+    if (k.has('fwd')) mv += 1
+    if (k.has('back')) mv -= 1
+    if (mv !== 0) {
+      const sp = 3.4 * dt * mv
+      const nx = c.pos.x + Math.cos(c.heading) * sp
+      const ny = c.pos.y + Math.sin(c.heading) * sp
+      if (this.onLand(nx, ny)) { c.pos.x = nx; c.pos.y = ny }
+    }
+    c.target = { x: c.pos.x, y: c.pos.y } // hold the auto-walk while you drive
+  }
+
+  /** Keep the citizens alive in watch mode — when an idle one (not the one you are driving) has reached
+   *  its target, it occasionally picks a new spot nearby to stroll to, so the streets are never frozen. */
+  private wanderIdleCitizens(dt: number): void {
+    const roads = this.sim.state.roads
+    if (roads.length === 0) return
+    for (const pub of this.citizens.list()) {
+      if (pub.id === this.fpCitizenId) continue
+      const c = this.citizens.byId(pub.id)
+      if (!c) continue
+      if (Math.hypot(c.target.x - c.pos.x, c.target.y - c.pos.y) > 0.5) continue // still walking
+      if (Math.random() < dt * 0.45) {
+        const near = roads.filter((r) => Math.hypot(r.x - c.pos.x, r.y - c.pos.y) < 16)
+        const pool = near.length ? near : roads
+        const dest = pool[(Math.random() * pool.length) | 0]!
+        c.target = { x: dest.x + (Math.random() - 0.5), y: dest.y + (Math.random() - 0.5) }
+      }
+    }
   }
 
   // ── Spec 075 — the buildable neighbourhood ──────────────────────────────────
@@ -461,7 +525,9 @@ export class ColonyRuntime {
         steps++
       }
     }
+    if (this.fpCitizenId) this.driveFirstPerson(dtReal) // walk your bot with WASD when stepped in
     this.citizens.stepAvatars(dtReal) // P1 — walk the avatars in real time toward their targets
+    this.wanderIdleCitizens(dtReal) // keep the citizens strolling so watch mode is never frozen
     this.renderer?.frame()
     if (now - this.lastUi > 200) {
       this.lastUi = now

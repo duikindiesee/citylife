@@ -55,21 +55,35 @@ export function ColonyApp() {
   }, [])
 
   // Keyboard shortcuts: Space pauses, 1/2/3 switch camera, Z toggles zoning. Ignored while typing.
+  // When stepped into a bot (first person), W/A/S/D or the arrow keys WALK it around.
   useEffect(() => {
+    const MOVE = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
+    // 'KeyW' -> 'w', 'ArrowUp' -> 'arrowup' (runtime.setFpKey lowercases + maps these to fwd/back/left/right)
+    const norm = (code: string) => (code.startsWith('Arrow') ? code.toLowerCase() : code.slice(3))
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (runtime.getUiState().firstPerson.active && MOVE.has(e.code)) {
+        e.preventDefault()
+        runtime.setFpKey(norm(e.code), true)
+        return
+      }
       switch (e.code) {
         case 'Space': e.preventDefault(); runtime.setPaused(!runtime.getUiState().paused); break
         case 'Digit1': runtime.setPreset('street'); break
         case 'Digit2': runtime.setPreset('district'); break
         case 'Digit3': runtime.setPreset('planet'); break
         case 'KeyZ': runtime.toggleZones(); break
+        case 'Escape': if (runtime.getUiState().firstPerson.active) runtime.exitFirstPerson(); break
         default: return
       }
     }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (MOVE.has(e.code)) runtime.setFpKey(norm(e.code), false)
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKeyUp)
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -82,6 +96,7 @@ export function ColonyApp() {
       {ui.firstPerson.active && (
         <div style={{ position: 'fixed', bottom: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 50, display: 'flex', gap: 10, alignItems: 'center', background: 'rgba(10,14,28,0.78)', border: '1px solid #2a3550', borderRadius: 10, padding: '8px 14px', backdropFilter: 'blur(4px)' }}>
           <span style={{ color: '#a0d4f0', fontSize: 13 }}>👁 Seeing through <b>{ui.firstPerson.citizenName ?? 'a citizen'}</b>&apos;s eyes</span>
+          <span style={{ color: '#6f86b8', fontSize: 12 }}><b>W</b>/<b>S</b> walk · <b>A</b>/<b>D</b> turn · <b>Esc</b> exit</span>
           <button style={{ padding: '3px 12px' }} onClick={() => runtime.exitFirstPerson()}>Exit first person</button>
         </div>
       )}
