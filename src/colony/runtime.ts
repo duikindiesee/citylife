@@ -104,18 +104,12 @@ export class ColonyRuntime {
     this.cityPlan = makeCityPlan(this.sim.state.terrain)
     this.sim.state.cityPlan = this.cityPlan // expose to the renderer for the zone tint + plot markers
     this.botService.setCityPlan(this.cityPlan)
-    // Spec 076 — lay out the homestead neighbourhood and merge its 3-wide carriageway into the colony
-    // roads so the avatars walk it and it renders as a proper-width residential street (never over water
-    // — makeNeighborhood only uses dry, buildable ground). The grass verge is reserved so nothing builds
-    // on it, but kept out of the road array so it renders as the kerb, not asphalt.
+    // Spec 076 — lay out the homestead neighbourhood. The carriageway + verge are RESERVED in the
+    // roadSet (so the colony never builds on them — build.ts skips roadSet cells), but kept OUT of the
+    // state.roads array: that array is drawn as black colony asphalt, and a residential lane should read
+    // as warm packed earth, not a black gash. The renderer draws the carriageway + verge itself.
     this.neighborhood = makeNeighborhood(this.sim.state.terrain)
-    for (const c of this.neighborhood.carriage) {
-      const k = `${c.x},${c.y}`
-      if (!this.sim.state.roadSet.has(k)) {
-        this.sim.state.roadSet.add(k)
-        this.sim.state.roads.push({ x: c.x, y: c.y })
-      }
-    }
+    for (const c of this.neighborhood.carriage) this.sim.state.roadSet.add(`${c.x},${c.y}`)
     for (const c of this.neighborhood.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`)
   }
 

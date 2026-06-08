@@ -1324,11 +1324,13 @@ export class PlanetRenderer {
 
     let p = 0 // pad instance index
     let v = 0 // voxel instance index
-    // A flat ground tile spanning a rect (min-corner zx,zy, size zw x zd) at height hOff.
-    const padRect = (zx: number, zy: number, zw: number, zd: number, hOff: number, color: number) => {
+    // A flat ground tile spanning a rect (min-corner zx,zy, size zw x zd) at height hOff. `groundY`, when
+    // given, levels the tile on a fixed foundation height (so a whole homestead sits flush) instead of
+    // sampling per-cell terrain.
+    const padRect = (zx: number, zy: number, zw: number, zd: number, hOff: number, color: number, groundY?: number) => {
       if (p >= PAD_CAP) return
       const cx = zx + (zw - 1) / 2, cy = zy + (zd - 1) / 2
-      this.dummy.position.set(this.wx(cx), gy(cx, cy) + hOff, this.wz(cy))
+      this.dummy.position.set(this.wx(cx), (groundY ?? gy(cx, cy)) + hOff, this.wz(cy))
       this.dummy.rotation.set(0, 0, 0)
       this.dummy.scale.set(zw, 1, zd)
       this.dummy.updateMatrix()
@@ -1337,11 +1339,11 @@ export class PlanetRenderer {
       this.lotPadMesh.setColorAt(p, col)
       p++
     }
-    const padCell = (x: number, y: number, hOff: number, color: number) => padRect(x, y, 1, 1, hOff, color)
-    // A scaled cube at cell (x,y) whose bottom rests on the ground + zBase.
-    const block = (x: number, y: number, sx: number, sy: number, sz: number, zBase: number, color: number) => {
+    const padCell = (x: number, y: number, hOff: number, color: number, groundY?: number) => padRect(x, y, 1, 1, hOff, color, groundY)
+    // A scaled cube at cell (x,y) whose bottom rests on the ground (or the given foundation) + zBase.
+    const block = (x: number, y: number, sx: number, sy: number, sz: number, zBase: number, color: number, groundY?: number) => {
       if (v >= VOX_CAP) return
-      this.dummy.position.set(this.wx(x), gy(x, y) + zBase + (BH * sy) / 2, this.wz(y))
+      this.dummy.position.set(this.wx(x), (groundY ?? gy(x, y)) + zBase + (BH * sy) / 2, this.wz(y))
       this.dummy.rotation.set(0, 0, 0)
       this.dummy.scale.set(sx, sy, sz)
       this.dummy.updateMatrix()
@@ -1351,43 +1353,51 @@ export class PlanetRenderer {
       v++
     }
 
-    // ── the spine: the 3-wide carriageway is drawn by the colony road system (the runtime feeds it the
-    // carriage cells), so here we add only the grass VERGE beside it — the kerb that gives the street
-    // its width and hierarchy and stops the homes sitting flush on the asphalt. ──
-    for (const c of n.verge) padCell(c.x, c.y, 0.045, 0x55703a)
+    // ── the spine: a warm packed-earth carriageway (NOT black colony asphalt), a grass verge kerb,
+    // and a pale dashed centre line — a residential lane that reads as a country road, not a gash. ──
+    for (const c of n.verge) padCell(c.x, c.y, 0.045, 0x5d7a3c)
+    for (const c of n.carriage) padCell(c.x, c.y, 0.05, 0x8a7048)
+    for (let i = 0; i < n.spine.length; i += 2) { const c = n.spine[i]!; padCell(c.x, c.y, 0.058, 0xc6b083) }
 
     // ── each homestead parcel ──
     for (const lot of lots) {
       const fenceColor = lot.fenceType === 'hedge' ? BLOCK_COLOR.hedge : lot.fenceType === 'wall' ? BLOCK_COLOR.stone : BLOCK_COLOR.fence
-      // surveyed homestead ground (drawn whether or not it is built, so the borders read immediately)
-      padRect(lot.houseZone.x, lot.houseZone.y, lot.houseZone.w, lot.houseZone.d, 0.05, lot.built ? 0x6b5a44 : 0x5c5140)
-      padRect(lot.garden.x, lot.garden.y, lot.garden.w, lot.garden.d, 0.04, 0x4f6f33)
-      padRect(lot.farm.x, lot.farm.y, lot.farm.w, lot.farm.d, 0.045, 0x6e4a30)
-      for (const d of lot.driveway) padCell(d.x, d.y, 0.055, BLOCK_COLOR.path)
-      padCell(lot.gate.x, lot.gate.y, 0.055, BLOCK_COLOR.path)
-      // the visible parcel border — a fence/hedge/wall ring
-      for (const f of lot.fence) block(f.x, f.y, 0.26, 0.95, 0.26, 0, fenceColor)
+      // One leveled foundation height for the whole homestead (averaged front-to-back), so the pads,
+      // fence, crops and house all sit flush — no per-cell flutter or slope clipping.
+      const hcx = lot.houseZone.x + (lot.houseZone.w - 1) / 2, hcy = lot.houseZone.y + (lot.houseZone.d - 1) / 2
+      const fcx = lot.farm.x + (lot.farm.w - 1) / 2, fcy = lot.farm.y + (lot.farm.d - 1) / 2
+      const py = Math.max(0, (gy(hcx, hcy) + gy(fcx, fcy)) / 2)
+      // surveyed homestead ground (drawn whether or not it is built, so the borders read immediately).
+      // Distinct pad heights (garden < farm < house < driveway) avoid coplanar z-fighting.
+      padRect(lot.houseZone.x, lot.houseZone.y, lot.houseZone.w, lot.houseZone.d, 0.05, lot.built ? 0x6b5a44 : 0x5c5140, py)
+      padRect(lot.garden.x, lot.garden.y, lot.garden.w, lot.garden.d, 0.038, 0x4f6f33, py)
+      padRect(lot.farm.x, lot.farm.y, lot.farm.w, lot.farm.d, 0.044, 0x6e4a30, py)
+      for (const d of lot.driveway) padCell(d.x, d.y, 0.056, BLOCK_COLOR.path, py)
+      padCell(lot.gate.x, lot.gate.y, 0.056, BLOCK_COLOR.path, py)
+      // the visible parcel border — a fence/hedge/wall ring, raised clear of the pads
+      for (const f of lot.fence) block(f.x, f.y, 0.26, 0.9, 0.26, 0.06, fenceColor, py)
 
       if (!lot.built) continue
       // worked homestead: farm furrows (alternating crop colour by row)
       for (let yy = lot.farm.y; yy < lot.farm.y + lot.farm.d; yy++) {
         for (let xx = lot.farm.x; xx < lot.farm.x + lot.farm.w; xx++) {
-          block(xx, yy, 0.82, 0.5, 0.82, 0.02, yy % 2 === 0 ? BLOCK_COLOR.crop : BLOCK_COLOR.cropAlt)
+          block(xx, yy, 0.82, 0.5, 0.82, 0.05, yy % 2 === 0 ? BLOCK_COLOR.crop : BLOCK_COLOR.cropAlt, py)
         }
       }
       // garden veg beds on alternate cells
       for (let yy = lot.garden.y; yy < lot.garden.y + lot.garden.d; yy++) {
         for (let xx = lot.garden.x; xx < lot.garden.x + lot.garden.w; xx++) {
-          if ((xx + yy) % 2 === 0) block(xx, yy, 0.78, 0.38, 0.78, 0.02, BLOCK_COLOR.crop)
+          if ((xx + yy) % 2 === 0) block(xx, yy, 0.78, 0.38, 0.78, 0.05, BLOCK_COLOR.crop, py)
         }
       }
       // a fruit tree at one garden corner + a well at the other
       const tx = lot.garden.x, ty = lot.garden.y
-      block(tx, ty, 0.28, 1.1, 0.28, 0, BLOCK_COLOR.trunk)
-      block(tx, ty, 0.95, 0.95, 0.95, BH * 1.1, BLOCK_COLOR.leaf)
-      block(lot.garden.x + lot.garden.w - 1, lot.garden.y + lot.garden.d - 1, 0.6, 0.7, 0.6, 0, BLOCK_COLOR.well)
+      block(tx, ty, 0.28, 1.1, 0.28, 0.05, BLOCK_COLOR.trunk, py)
+      block(tx, ty, 0.95, 0.95, 0.95, 0.05 + BH * 1.1, BLOCK_COLOR.leaf, py)
+      block(lot.garden.x + lot.garden.w - 1, lot.garden.y + lot.garden.d - 1, 0.6, 0.7, 0.6, 0.05, BLOCK_COLOR.well, py)
 
-      // the house, set back and centred in its house-zone, grown to fill it
+      // the house, set back and centred in its house-zone, grown to fill it. Floor the origin so the
+      // block grid stays aligned to cells (no half-cell offset when zone and house widths differ in parity).
       const doorDir: DoorDir = lot.doorY < lot.y ? 'n' : 's'
       const cacheKey = `${lot.id}:${doorDir}:${lot.houseZone.w}x${lot.houseZone.d}`
       let house = this.voxelCache.get(cacheKey)
@@ -1395,12 +1405,11 @@ export class PlanetRenderer {
         house = buildVoxelHouse(lot.houseSeed, doorDir, { maxW: lot.houseZone.w, maxD: lot.houseZone.d })
         this.voxelCache.set(cacheKey, house)
       }
-      const originX = lot.houseZone.x + (lot.houseZone.w - house.w) / 2
-      const originY = lot.houseZone.y + (lot.houseZone.d - house.d) / 2
-      const baseY = gy(lot.houseZone.x + (lot.houseZone.w - 1) / 2, lot.houseZone.y + (lot.houseZone.d - 1) / 2)
+      const originX = lot.houseZone.x + Math.floor((lot.houseZone.w - house.w) / 2)
+      const originY = lot.houseZone.y + Math.floor((lot.houseZone.d - house.d) / 2)
       for (const b of house.blocks) {
         if (v >= VOX_CAP) break
-        this.dummy.position.set(this.wx(originX + b.x), baseY + b.z * BH + BH / 2, this.wz(originY + b.y))
+        this.dummy.position.set(this.wx(originX + b.x), py + 0.05 + b.z * BH + BH / 2, this.wz(originY + b.y))
         this.dummy.rotation.set(0, 0, 0)
         this.dummy.scale.set(1, 1, 1)
         this.dummy.updateMatrix()

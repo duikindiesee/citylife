@@ -208,8 +208,10 @@ function tryParcel(
   if (!corridor.carriageSet.has(key(doorX, syStreet + side * 1)) && !corridor.carriageSet.has(key(doorX, syStreet))) {
     return null
   }
+  // The driveway runs from the verge (offset 2) across the front yard all the way to the door cell
+  // (offset FRONT_OFFSET + houseD0), so it actually reaches the door — no one-cell gap.
   const driveway: Cell[] = []
-  for (let o = 2; o <= FRONT_OFFSET + sz.setback; o++) {
+  for (let o = 2; o <= FRONT_OFFSET + houseD0; o++) {
     const x = doorX, y = syStreet + side * o
     if (!cellOk(t, x, y)) return null // keep the drive on good ground
     driveway.push({ x, y })
@@ -288,6 +290,22 @@ function layParcels(t: Terrain, corridor: Corridor, sz: ParcelSize): Parcel[] {
   return parcels
 }
 
+/** Trim the spine to the span the parcels actually occupy (plus a short stub each end), then rebuild
+ *  the carriageway + verge from the trimmed spine — so the lane hugs the homesteads instead of running
+ *  off into the wilderness. */
+function trimCorridor(t: Terrain, corridor: Corridor, parcels: Parcel[]): Corridor {
+  if (parcels.length === 0) return corridor
+  const xs = parcels.map((p) => p.x)
+  const minX = Math.min(...xs) - 4, maxX = Math.max(...xs) + 4
+  const spine = corridor.spine.filter((c) => c.x >= minX && c.x <= maxX)
+  if (spine.length < 4) return corridor
+  const spineSet = new Set(spine.map((c) => key(c.x, c.y)))
+  const carriage = [...spine, ...dilate(t, spine, spineSet)]
+  const carriageSet = new Set(carriage.map((c) => key(c.x, c.y)))
+  const verge = dilate(t, carriage, carriageSet)
+  return { ...corridor, spine, carriage, verge }
+}
+
 function assemble(corridor: Corridor, parcels: Parcel[]): Neighborhood {
   return { spine: corridor.spine, carriage: corridor.carriage, verge: corridor.verge, street: corridor.carriage, parcels, lots: parcels }
 }
@@ -307,8 +325,8 @@ export function makeNeighborhood(t: Terrain): Neighborhood {
       if (!best || parcels.length > best.parcels.length) best = { corridor, parcels }
       if (parcels.length >= MAX_PER_SIDE * 2) break // a full band — good enough, stop early
     }
-    if (best && best.parcels.length >= 2) return assemble(best.corridor, best.parcels)
+    if (best && best.parcels.length >= 2) return assemble(trimCorridor(t, best.corridor, best.parcels), best.parcels)
   }
-  if (best) return assemble(best.corridor, best.parcels)
+  if (best) return assemble(trimCorridor(t, best.corridor, best.parcels), best.parcels)
   return { spine: [], carriage: [], verge: [], street: [], parcels: [], lots: [] }
 }

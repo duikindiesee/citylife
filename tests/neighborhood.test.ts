@@ -77,6 +77,8 @@ describe('the Neighbourhood — large homestead parcels on a terrain-aware stree
     for (const p of n.parcels) {
       // A front yard exists: the driveway runs from the verge across the setback to the door.
       expect(p.driveway.length).toBeGreaterThanOrEqual(3)
+      // The driveway must actually REACH the door cell (no one-cell gap).
+      expect(p.driveway[p.driveway.length - 1]).toEqual({ x: p.doorX, y: p.doorY })
       // House, garden and farm are all real, non-empty zones.
       expect(p.houseZone.w).toBeGreaterThanOrEqual(3)
       expect(p.houseZone.d).toBeGreaterThanOrEqual(3)
