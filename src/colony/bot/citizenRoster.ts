@@ -197,6 +197,17 @@ export class CitizenRoster {
     return n
   }
 
+  /** Remove a single citizen (demolition / destroy-the-agent). Returns true if one was removed. */
+  remove(citizenId: string): boolean {
+    for (const [k, c] of this.byHousehold) {
+      if (c.id === citizenId) {
+        this.byHousehold.delete(k)
+        return true
+      }
+    }
+    return false
+  }
+
   /** Drop everything (test reset / colony reset). */
   clear(): void {
     this.byHousehold.clear()

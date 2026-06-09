@@ -15,6 +15,7 @@ import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
 import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
 import { firstPersonView, type FirstPersonView } from './bot/firstPersonView'
 import { solCount, resolveFoundingMs } from './sol'
+import { makeNeighborhood, type Neighborhood, type Lot } from './neighborhood'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
@@ -43,6 +44,7 @@ export interface ColonyUiState {
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
   citizens: { count: number; awake: number; list: CitizenPublic[] }
   firstPerson: { active: boolean; citizenId: string | null; citizenName: string | null; operatorCitizenId: string | null; view: FirstPersonView | null; narration: string | null; narrating: boolean }
+  neighborhood: { lots: { id: string; built: boolean; owner: string | null; ownerId: string | null }[]; free: number; built: number; houseCost: number; canAfford: boolean; buildHint: string }
   radio: RadioState
   courier: { on: boolean; headline: string } // spec 016 — the colony's own news, when a Broadcast Mast is up
   tv: boolean
@@ -75,6 +77,8 @@ export class ColonyRuntime {
   private citizens = new CitizenRoster()
   // The surveyed city plan the Border Patrol bot uses to allocate plots.
   private cityPlan!: CityPlan
+  // Spec 075 — the buildable neighbourhood: a street of lots where citizens raise voxel homes.
+  private neighborhood!: Neighborhood
   // Low Power Radio — CityLife's heartbeat. YouTube embed handles licensing; in-game ads queue up.
   private radio: RadioState = createRadio()
   // TV mode hides the operator UI so you can put the city on any screen and just watch.
@@ -92,6 +96,8 @@ export class ColonyRuntime {
   private operatorName: string | null = null
   // P1 — the citizen currently being viewed in first person (null = orbit camera).
   private fpCitizenId: string | null = null
+  // First-person locomotion — which movement keys are held while you walk your bot around.
+  private fpKeys = new Set<string>()
   private fpNarration: string | null = null
   private fpNarrating = false
 
@@ -101,6 +107,13 @@ export class ColonyRuntime {
     this.cityPlan = makeCityPlan(this.sim.state.terrain)
     this.sim.state.cityPlan = this.cityPlan // expose to the renderer for the zone tint + plot markers
     this.botService.setCityPlan(this.cityPlan)
+    // Spec 076 — lay out the homestead neighbourhood. The carriageway + verge are RESERVED in the
+    // roadSet (so the colony never builds on them — build.ts skips roadSet cells), but kept OUT of the
+    // state.roads array: that array is drawn as black colony asphalt, and a residential lane should read
+    // as warm packed earth, not a black gash. The renderer draws the carriageway + verge itself.
+    this.neighborhood = makeNeighborhood(this.sim.state.terrain)
+    for (const c of this.neighborhood.carriage) this.sim.state.roadSet.add(`${c.x},${c.y}`)
+    for (const c of this.neighborhood.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`)
     // Resolve the real reply source asynchronously (in-cluster: nginx-proxied Hermes; else mock).
     void this.initBotAdapter()
   }
@@ -147,15 +160,28 @@ export class ColonyRuntime {
       // kooker-user, joekookerbot merges) — here we just hold the engine-side record.
       if (bot && bot.plotId) {
         const plot = this.cityPlan.plots.find((p) => p.id === bot.plotId)
-        if (plot) this.citizens.register(h, plot, Date.now())
-        // Spec 076 — mint the real kooker sub-user + Hermes pod for this citizen, owned by the player
-        // (parentUserId). Best-effort: never blocks the game if the backend is unreachable.
-        const lead = h.members[0]
-        if (lead) {
-          const { firstName, lastName } = splitName(lead.name)
-          void spawnCitizenSubUser({ firstName, lastName, age: lead.age, profession: lead.occupation }).then((r) => {
-            if (!r.ok) console.warn('[citylife] citizen sub-user spawn deferred:', r.error)
-          })
+        if (plot) {
+          const citizen = this.citizens.register(h, plot, Date.now())
+          // Spec 076 — give the newcomer a real HOMESTEAD parcel (not just the flavour plot name), so
+          // their avatar walks to a homestead that is actually theirs. If the colony can afford it
+          // (materials + a free hand), raise the house right away; otherwise the Build button stands
+          // ready on their plot in the Homesteads panel.
+          if (citizen) {
+            const freeLot = this.neighborhood.lots.find((l) => !l.ownerCitizenId)
+            if (freeLot) {
+              this.assignLot(citizen.id, freeLot.id)
+              this.buildHouse(freeLot.id) // best-effort; gated on materials + labour
+            }
+          }
+          // Spec 076 — mint the real kooker sub-user + Hermes pod for this citizen, owned by the player
+          // (parentUserId). Best-effort: never blocks the game if the backend is unreachable.
+          const lead = h.members[0]
+          if (lead) {
+            const { firstName, lastName } = splitName(lead.name)
+            void spawnCitizenSubUser({ firstName, lastName, age: lead.age, profession: lead.occupation }).then((r) => {
+              if (!r.ok) console.warn('[citylife] citizen sub-user spawn deferred:', r.error)
+            })
+          }
         }
       }
       this.emit()
@@ -219,10 +245,147 @@ export class ColonyRuntime {
   /** P1 — leave first-person, restoring the orbit camera. */
   exitFirstPerson(): void {
     this.fpCitizenId = null
+    this.fpKeys.clear()
     this.fpNarration = null
     this.fpNarrating = false
     this.renderer?.exitFirstPerson()
     this.emit()
+  }
+
+  /** First-person locomotion — hold W/S (or up/down) to walk, A/D (or left/right) to turn. The HUD
+   *  keydown/keyup feed this; movement is applied per-frame in the loop so it is smooth. */
+  setFpKey(key: string, down: boolean): void {
+    const map: Record<string, string> = {
+      w: 'fwd', arrowup: 'fwd', s: 'back', arrowdown: 'back',
+      a: 'left', arrowleft: 'left', d: 'right', arrowright: 'right',
+    }
+    const m = map[key.toLowerCase()]
+    if (!m) return
+    if (down) this.fpKeys.add(m)
+    else this.fpKeys.delete(m)
+  }
+
+  /** A cell is walkable if it is on the island (in-bounds, not water). */
+  private onLand(x: number, y: number): boolean {
+    const t = this.sim.state.terrain
+    const ix = Math.round(x), iy = Math.round(y)
+    if (ix < 0 || iy < 0 || ix >= t.size || iy >= t.size) return false
+    return !t.isWater(ix, iy)
+  }
+
+  /** Drive the avatar you have stepped into, from the held keys. Turns the heading and steps the
+   *  position forward/back on land; freezes its auto-walk target so it stays where you put it. */
+  private driveFirstPerson(dt: number): void {
+    const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null
+    if (!c) return
+    const k = this.fpKeys
+    const turn = 2.4 * dt
+    if (k.has('left')) c.heading -= turn
+    if (k.has('right')) c.heading += turn
+    let mv = 0
+    if (k.has('fwd')) mv += 1
+    if (k.has('back')) mv -= 1
+    if (mv !== 0) {
+      const sp = 3.4 * dt * mv
+      const nx = c.pos.x + Math.cos(c.heading) * sp
+      const ny = c.pos.y + Math.sin(c.heading) * sp
+      if (this.onLand(nx, ny)) { c.pos.x = nx; c.pos.y = ny }
+    }
+    c.target = { x: c.pos.x, y: c.pos.y } // hold the auto-walk while you drive
+  }
+
+  /** Keep the citizens alive in watch mode — when an idle one (not the one you are driving) has reached
+   *  its target, it occasionally picks a new spot nearby to stroll to, so the streets are never frozen. */
+  private wanderIdleCitizens(dt: number): void {
+    const roads = this.sim.state.roads
+    if (roads.length === 0) return
+    for (const pub of this.citizens.list()) {
+      if (pub.id === this.fpCitizenId) continue
+      const c = this.citizens.byId(pub.id)
+      if (!c) continue
+      if (Math.hypot(c.target.x - c.pos.x, c.target.y - c.pos.y) > 0.5) continue // still walking
+      if (Math.random() < dt * 0.45) {
+        const near = roads.filter((r) => Math.hypot(r.x - c.pos.x, r.y - c.pos.y) < 16)
+        const pool = near.length ? near : roads
+        const dest = pool[(Math.random() * pool.length) | 0]!
+        c.target = { x: dest.x + (Math.random() - 0.5), y: dest.y + (Math.random() - 0.5) }
+      }
+    }
+  }
+
+  // ── Spec 075 — the buildable neighbourhood ──────────────────────────────────
+  /** The neighbourhood lots (for the renderer + the HUD). */
+  lots(): Lot[] {
+    return this.neighborhood.lots
+  }
+
+  /** Assign a free lot to a citizen as their home, and send their avatar walking to the door. */
+  assignLot(citizenId: string, lotId: string): boolean {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+    const c = this.citizens.byId(citizenId)
+    if (!lot || !c || lot.ownerCitizenId) return false
+    for (const l of this.neighborhood.lots) if (l.ownerCitizenId === citizenId) { l.ownerCitizenId = undefined; l.built = false }
+    lot.ownerCitizenId = citizenId
+    // Home = the house-zone centre (set back from the street), so stepping into the citizen parks at
+    // their actual home; the avatar walks to the door cell facing the street.
+    c.homeXY = { x: Math.round(lot.houseZone.x + (lot.houseZone.w - 1) / 2), y: Math.round(lot.houseZone.y + (lot.houseZone.d - 1) / 2) }
+    this.citizens.setTarget(citizenId, { x: lot.doorX, y: lot.doorY })
+    this.emit()
+    return true
+  }
+
+  /** Build a voxel home on a lot — gated on MATERIALS + a free hand (the Caesar III rule). */
+  buildHouse(lotId: string): boolean {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+    if (!lot || lot.built) return false
+    const s = this.sim.state
+    const cost = COLONY.build.matNeighborHouse
+    if (s.materials < cost || freeLabour(s) < 1) return false
+    s.materials -= cost
+    lot.built = true
+    this.emit()
+    return true
+  }
+
+  /** Demolish a lot's house (frees the lot, keeps the citizen). Returns the freed owner id, if any. */
+  demolishLot(lotId: string): string | null {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+    if (!lot) return null
+    const owner = lot.ownerCitizenId ?? null
+    lot.built = false
+    lot.ownerCitizenId = undefined
+    this.emit()
+    return owner
+  }
+
+  /** Demolish the lot AND destroy the citizen who lived there, agent and all — like a legend. */
+  demolishLotAndCitizen(lotId: string): boolean {
+    const owner = this.demolishLot(lotId)
+    if (owner) this.removeCitizen(owner)
+    return true
+  }
+
+  /** Destroy a citizen: free any lot they held, exit first-person if you were inside them, tear down
+   *  their Hermes pod (best-effort, server-side), and drop them from the roster. */
+  removeCitizen(citizenId: string): boolean {
+    const c = this.citizens.byId(citizenId)
+    if (!c) return false
+    for (const l of this.neighborhood.lots) if (l.ownerCitizenId === citizenId) { l.ownerCitizenId = undefined; l.built = false }
+    if (this.fpCitizenId === citizenId) this.exitFirstPerson()
+    if (c.hasPod) void this.teardownPod(citizenId)
+    this.citizens.remove(citizenId)
+    this.emit()
+    return true
+  }
+
+  /** Best-effort Hermes pod teardown. The real DELETE /bots/{label} is server-side (DMZ unreachable
+   *  from the browser); here we POST the citylife backend destroy intent. Never throws. */
+  private async teardownPod(citizenId: string): Promise<void> {
+    try {
+      await fetch(`/kooker/api/v1/citylife/citizens/${encodeURIComponent(citizenId)}/destroy`, { method: 'POST' })
+    } catch {
+      /* expected offline / internal-only */
+    }
   }
 
   /** P1 — move the active first-person citizen by (dx, dy) cells and fire a narration. */
@@ -421,6 +584,7 @@ export class ColonyRuntime {
       return this.citizens.avatars().map((a) => ({ ...a, isOperator: a.id === mine }))
     })
     if (this.fpCitizenId) this.renderer.enterFirstPerson(this.fpCitizenId)
+    this.renderer.setNeighborhood(this.neighborhood) // spec 075 — lot pads + voxel homes
     this.running = true
     this.lastFrame = performance.now()
     this.lastUi = this.lastFrame
@@ -448,7 +612,9 @@ export class ColonyRuntime {
         steps++
       }
     }
+    if (this.fpCitizenId) this.driveFirstPerson(dtReal) // walk your bot with WASD when stepped in
     this.citizens.stepAvatars(dtReal) // P1 — walk the avatars in real time toward their targets
+    this.wanderIdleCitizens(dtReal) // keep the citizens strolling so watch mode is never frozen
     this.renderer?.frame()
     if (now - this.lastUi > 200) {
       this.lastUi = now
@@ -593,6 +759,22 @@ export class ColonyRuntime {
         const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null
         const view = this.fpCitizenId ? firstPersonView(this.sim.state, this.fpCitizenId, this.citizens) : null
         return { active: this.fpCitizenId !== null, citizenId: this.fpCitizenId, citizenName: c?.displayName ?? null, operatorCitizenId: opId, view, narration: this.fpNarration, narrating: this.fpNarrating }
+      })(),
+      neighborhood: (() => {
+        const lots = this.neighborhood.lots.map((l) => ({
+          id: l.id,
+          built: l.built,
+          owner: l.ownerCitizenId ? (this.citizens.byId(l.ownerCitizenId)?.displayName ?? null) : null,
+          ownerId: l.ownerCitizenId ?? null,
+        }))
+        // Build affordability so the Build button can tell the truth instead of silently failing.
+        const cost = COLONY.build.matNeighborHouse
+        const hands = Math.floor(freeLabour(s))
+        const canAfford = s.materials >= cost && hands >= 1
+        const buildHint = canAfford
+          ? `Raise the voxel house — costs ${cost} materials and 1 free pair of hands`
+          : `Can't build yet: need ${cost} materials (have ${s.materials})${hands < 1 ? ' and a free pair of hands (everyone is working)' : ''}`
+        return { lots, free: lots.filter((l) => !l.ownerId).length, built: lots.filter((l) => l.built).length, houseCost: cost, canAfford, buildHint }
       })(),
       radio: this.radio,
       courier: (() => {

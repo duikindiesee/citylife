@@ -70,25 +70,24 @@ export function ColonyApp() {
   }, [])
 
   // Keyboard shortcuts: Space pauses, 1/2/3 switch camera, Z toggles zoning. Ignored while typing.
+  // When stepped into a bot (first person), W/A/S/D or the arrow keys WALK it around.
   useEffect(() => {
+    const MOVE = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'])
+    // 'KeyW' -> 'w', 'ArrowUp' -> 'arrowup' (runtime.setFpKey lowercases + maps these to fwd/back/left/right)
+    const norm = (code: string) => (code.startsWith('Arrow') ? code.toLowerCase() : code.slice(3))
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
-      // First-person walk keys — WASD + arrows, only when a citizen is active.
       if (runtime.getUiState().firstPerson.active) {
-        const STEP = 6
-        switch (e.code) {
-          case 'KeyW': case 'ArrowUp':    e.preventDefault(); runtime.walkStep( 0,    -STEP); return
-          case 'KeyS': case 'ArrowDown':  e.preventDefault(); runtime.walkStep( 0,     STEP); return
-          case 'KeyA': case 'ArrowLeft':  e.preventDefault(); runtime.walkStep(-STEP,  0   ); return
-          case 'KeyD': case 'ArrowRight': e.preventDefault(); runtime.walkStep( STEP,  0   ); return
-          case 'KeyQ': e.preventDefault(); runtime.walkStep(-STEP, -STEP); return
-          case 'KeyE': e.preventDefault(); runtime.walkStep( STEP, -STEP); return
-          case 'KeyZ': e.preventDefault(); runtime.walkStep(-STEP,  STEP); return
-          case 'KeyC': e.preventDefault(); runtime.walkStep( STEP,  STEP); return
-          case 'KeyN': e.preventDefault(); void runtime.narrate(); return
-          case 'Escape': runtime.exitFirstPerson(); return
+        // Continuous WASD / arrow-key locomotion — hold to walk the bot, release to stop (keyup handler).
+        if (MOVE.has(e.code)) {
+          e.preventDefault()
+          runtime.setFpKey(norm(e.code), true)
+          return
         }
+        // Additive first-person actions: N narrates what the citizen sees, Esc steps back out.
+        if (e.code === 'KeyN') { e.preventDefault(); void runtime.narrate(); return }
+        if (e.code === 'Escape') { runtime.exitFirstPerson(); return }
       }
       switch (e.code) {
         case 'Space': e.preventDefault(); runtime.setPaused(!runtime.getUiState().paused); break
@@ -96,11 +95,16 @@ export function ColonyApp() {
         case 'Digit2': runtime.setPreset('district'); break
         case 'Digit3': runtime.setPreset('planet'); break
         case 'KeyZ': runtime.toggleZones(); break
+        case 'Escape': if (runtime.getUiState().firstPerson.active) runtime.exitFirstPerson(); break
         default: return
       }
     }
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (MOVE.has(e.code)) runtime.setFpKey(norm(e.code), false)
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKeyUp)
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -110,6 +114,13 @@ export function ColonyApp() {
   return (
     <div className="colony">
       <div className="canvas-host" ref={hostRef} />
+      {ui.firstPerson.active && (
+        <div style={{ position: 'fixed', bottom: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 50, display: 'flex', gap: 10, alignItems: 'center', background: 'rgba(10,14,28,0.78)', border: '1px solid #2a3550', borderRadius: 10, padding: '8px 14px', backdropFilter: 'blur(4px)' }}>
+          <span style={{ color: '#a0d4f0', fontSize: 13 }}>👁 Seeing through <b>{ui.firstPerson.citizenName ?? 'a citizen'}</b>&apos;s eyes</span>
+          <span style={{ color: '#6f86b8', fontSize: 12 }}><b>W</b>/<b>S</b> walk · <b>A</b>/<b>D</b> turn · <b>Esc</b> exit</span>
+          <button style={{ padding: '3px 12px' }} onClick={() => runtime.exitFirstPerson()}>Exit first person</button>
+        </div>
+      )}
       <FirstPersonPanel runtime={runtime} fp={ui.firstPerson} />
 
       <header className="topbar">
@@ -234,6 +245,17 @@ export function ColonyApp() {
         {ui.colony.avatar.foundries > 0 && <div className="row"><span>Avatar Foundry</span><b style={{ color: ui.colony.avatar.staffed ? '#9f86d8' : '#7a6e8a' }} title="The Avatar Foundry — the civic hall that mints a citizen avatar (a real Hermes pod in the kooker DMZ namespace, routed through kooker-service-ai) for each approved household, and gives the colony's first-person vision a home on the map. While staffed it can mint up to its capacity of citizen pods. The pod spawn and the kooker user live out-of-process, the Foundry is the in-world gate.">{ui.colony.avatar.foundries} foundry{ui.colony.avatar.staffed ? ` · mints up to ${ui.colony.avatar.capacity}` : ' · unstaffed'}</b></div>}
         {ui.citizens.count > 0 && <div className="row"><span>Citizens</span><b style={{ color: ui.citizens.awake > 0 ? '#a0d4f0' : '#7a8a9a' }} title={`Spec 074 — named residents allocated to a plot by the Border Patrol bot. ${ui.citizens.awake} have a live Hermes pod (DMZ namespace, kooker-service-ai routing). ${ui.citizens.list.slice(0,4).map(c => `${c.displayName} at ${c.plotName}`).join(' · ') || '(none yet)'}.`}>{ui.citizens.awake}/{ui.citizens.count} living{ui.citizens.list.length ? ` · ${ui.citizens.list.slice(0,2).map(c => c.displayName.split(' ')[0]).join(', ')}${ui.citizens.list.length > 2 ? '…' : ''}` : ''}</b></div>}
         {ui.citizens.count > 0 && !ui.firstPerson.active && <div className="row"><span>Step in</span><span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{ui.citizens.list.slice(0, 4).map((c) => <button key={c.id} className={c.id === ui.firstPerson.operatorCitizenId ? 'on' : ''} style={{ padding: '1px 6px', fontSize: 11 }} onClick={() => runtime.enterFirstPerson(c.id)} title={c.id === ui.firstPerson.operatorCitizenId ? `This is your citizen — see the world through ${c.displayName}'s eyes` : `Step into ${c.displayName} for a first-person view`}>👁 {c.displayName.split(' ')[0]}{c.id === ui.firstPerson.operatorCitizenId ? ' (you)' : ''}</button>)}</span></div>}
+        {ui.neighborhood.lots.length > 0 && <div className="row"><span>Homesteads</span><b style={{ color: '#9fd0a0' }} title="Spec 076 — large bordered HOMESTEAD parcels on a terrain-aware street: each fenced plot has a front yard, a set-back voxel house, a garden and a farm field. Assign a citizen to a homestead, build their house, or demolish it. Raze-and-evict also destroys the citizen and tears down their Hermes agent.">{ui.neighborhood.built} built · {ui.neighborhood.free} free</b></div>}
+        {ui.neighborhood.lots.length > 0 && <div className="row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 3 }}>{ui.neighborhood.lots.slice(0, 8).map((l) => {
+          const firstFree = ui.citizens.list.find((c) => !ui.neighborhood.lots.some((x) => x.ownerId === c.id))
+          return <div key={l.id} style={{ display: 'flex', gap: 5, alignItems: 'center', fontSize: 11 }}>
+            <span style={{ flex: 1, color: l.built ? '#cdbf9e' : l.owner ? '#c9a23a' : '#7a8a7a' }}>{l.id.replace('lot_', 'Plot ')}{l.owner ? ` · ${l.owner.split(' ')[0]}` : ' · free'}{l.built ? ' 🏠' : ''}</span>
+            {!l.ownerId && firstFree && <button style={{ padding: '0 6px', fontSize: 10 }} onClick={() => runtime.assignLot(firstFree.id, l.id)} title={`Give this homestead to ${firstFree.displayName}`}>Assign</button>}
+            {l.ownerId && !l.built && <button style={{ padding: '0 6px', fontSize: 10, opacity: ui.neighborhood.canAfford ? 1 : 0.5, cursor: ui.neighborhood.canAfford ? 'pointer' : 'not-allowed' }} disabled={!ui.neighborhood.canAfford} onClick={() => runtime.buildHouse(l.id)} title={ui.neighborhood.buildHint}>Build</button>}
+            {l.built && <button style={{ padding: '0 6px', fontSize: 10 }} onClick={() => runtime.demolishLot(l.id)} title="Tear the house down, keep the citizen">Demolish</button>}
+            {l.ownerId && <button style={{ padding: '0 6px', fontSize: 10, color: '#e0584d' }} onClick={() => runtime.demolishLotAndCitizen(l.id)} title="Raze the home AND destroy the citizen and their Hermes agent">Evict</button>}
+          </div>
+        })}</div>}
         {ui.colony.gallery.galleries > 0 && <div className="row"><span>Gallery</span><b style={{ color: ui.colony.gallery.open ? '#e0a83c' : '#9a8a5a' }} title="The Skydeck Gallery — a viewing hall on the mooring deck that charges Kookerverse travellers to see the colony. Its visitor coin scales with how worth-seeing the colony actually is: its liveability, lifted by a finished Horizon Spire and by the Prosperity standing. It is the first income the colony earns purely for being a good place to live, so every coin spent on Planter Squares, clean homes and the monument finally pays its own way. Must be staffed to open.">{ui.colony.gallery.galleries} gallery{ui.colony.gallery.open ? ` · +${ui.colony.gallery.coinPerDay}/day` : ' · quiet'}</b></div>}
         {ui.colony.planters.squares > 0 && <div className="row"><span>Planters</span><b style={{ color: ui.colony.planters.blooming > 0 ? '#6fae5a' : '#7a8a6a' }} title="Planter Squares — the colony's first deliberate beauty. A Square in Bloom (tended by a groundskeeper and watered for most of the last ten days) lifts the desirability of homes around it, raising their liveability and drawing settlers to a colony that looks cared for. Untended or unwatered, it simply gives nothing.">{ui.colony.planters.blooming}/{ui.colony.planters.squares} blooming</b></div>}
         {ui.colony.labour.active && <div className="row"><span>Employment</span><b style={{ color: ui.colony.labour.dragging ? '#e0584d' : ui.colony.labour.unemployment > 0.1 ? '#d8a64a' : '#7faf7a' }} title="The Labour Registry Desk — it keeps an honest count of working-age idle hands. Chronic unemployment (above 10% held a week, or 20% held a fortnight) drags the Prosperity Rank a step or two, and clears once the colony sits below 5% for a week. Without a Registry, idleness never shows in the books.">{Math.round((1 - ui.colony.labour.unemployment) * 100)}% employed{ui.colony.labour.dragging ? ` · Prosperity -${ui.colony.labour.penalty}` : ''}</b></div>}
