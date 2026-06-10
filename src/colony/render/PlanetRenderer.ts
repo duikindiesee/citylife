@@ -1446,7 +1446,7 @@ export class PlanetRenderer {
     } catch {
       return // a malformed script never crashes the renderer — the lot simply draws no house
     }
-    const VOXEL_Y = 0.18 // micro-block height in world units: ~3.2u tall for a 2-storey home — reads as a house
+    const VOXEL_Y = 0.22 // micro-block height in world units: gives each storey real presence so a home isn't squat
     const { geometry } = greedyMesh(compiled.blocks, { n: compiled.n, cell: 1, voxelY: VOXEL_Y })
     const mesh = new THREE.Mesh(geometry, this.mergedHouseMat)
     mesh.castShadow = true

@@ -92,7 +92,7 @@ export const BLOCK_COLOR: Record<BlockKind, number> = {
   floor: 0x6b5a44,
   wall: 0xd9c2a0,
   window: 0x8fd0e6,
-  roof: 0xb24a3a,
+  roof: 0x4a4640,
   door: 0x5a3a22,
   bed: 0x4d8fe0,
   table: 0x8a6a3a,

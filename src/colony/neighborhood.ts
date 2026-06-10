@@ -350,12 +350,12 @@ export function defaultBlueprint(seed: number, doorDir: DoorDir): string {
   // wall gives the masonry several brick courses tall. A back patio keeps the home open + interesting.
   const w = 6
   const d = 5
-  const wallH = (((seed >>> 6) & 1) === 0) ? 2 : 3 // most homes 2 storeys, some 3, deterministically
-  // living spans the front, bedroom beside it, patio across the back row.
+  const wallH = (((seed >>> 6) & 1) === 0) ? 1 : 2 // cosy 1 to 2 storey cottages, never towers
+  // A solid little home: a living room across the front, a bedroom beside it, filling the whole
+  // footprint so the house reads as a deep cottage under a peaked roof (no shallow open patio slab).
   const rooms = [
-    `room{kind:living x:0 y:0 w:4 d:3 win:1}`,
-    `room{kind:bedroom x:4 y:0 w:2 d:3 win:1}`,
-    `room{kind:patio x:0 y:3 w:6 d:2 win:0}`,
+    `room{kind:living x:0 y:0 w:4 d:5 win:1}`,
+    `room{kind:bedroom x:4 y:0 w:2 d:5 win:1}`,
   ]
   return `house{w:${w} d:${d} wallH:${wallH} door:${doorDir}} ${rooms.join(' ')}`
 }

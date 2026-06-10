@@ -328,21 +328,38 @@ function buildDividers(g: Grid, rooms: ScaledRoom[], w: number, d: number, n: nu
 }
 
 function buildRoof(g: Grid, rooms: ScaledRoom[], w: number, d: number, n: number, roofZ: number, seed: number): void {
-  for (let gy = 0; gy < d * n; gy++) {
-    for (let gx = 0; gx < w * n; gx++) {
-      const cx = Math.floor(gx / n), cy = Math.floor(gy / n)
-      if (rooflessAt(rooms, cx, cy)) continue // patios/pools stay open to the sky
-      g.set(gx, gy, roofZ, 'roof')
+  // Enclosed footprint micro-bounds (patios/pools stay open to the sky).
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (let cy = 0; cy < d; cy++) {
+    for (let cx = 0; cx < w; cx++) {
+      if (rooflessAt(rooms, cx, cy)) continue
+      minX = Math.min(minX, cx * n); maxX = Math.max(maxX, (cx + 1) * n - 1)
+      minY = Math.min(minY, cy * n); maxY = Math.max(maxY, (cy + 1) * n - 1)
     }
   }
-  // A chimney rising from one back corner of an enclosed room, deterministic.
+  if (!Number.isFinite(maxX)) return
+  // A PEAKED (hipped) roof: each column rises toward the ridge by its distance to the nearest eave,
+  // capped to a gentle pitch (~0.8 cell) so the roof crowns the walls without dominating them. A 2-thick
+  // shell keeps the 45-degree slopes free of see-through gaps. This makes a home read as a house, not a box.
+  const peakCap = Math.max(2, Math.round(0.8 * n))
+  for (let gy = minY; gy <= maxY; gy++) {
+    for (let gx = minX; gx <= maxX; gx++) {
+      if (rooflessAt(rooms, Math.floor(gx / n), Math.floor(gy / n))) continue
+      const rise = Math.min(gx - minX, maxX - gx, gy - minY, maxY - gy, peakCap)
+      const top = roofZ + rise
+      g.set(gx, gy, top, 'roof')
+      if (rise > 0) g.set(gx, gy, top - 1, 'roof')
+    }
+  }
+  // A short chimney rising just above the ridge from one back corner of an enclosed room.
   const enclosed = rooms.filter((r) => r.kind === 'living' || r.kind === 'bedroom')
   if (enclosed.length > 0) {
     const idx = mix(seed, enclosed.length, 7) % enclosed.length
     const r = enclosed[idx]!
     const cgx = (r.px + r.pw - 1) * n + Math.floor(n / 2)
-    const cgy = (r.py) * n + Math.floor(n / 2)
-    for (let z = roofZ; z < roofZ + Math.max(2, n); z++) g.set(cgx, cgy, z, 'chimney', true)
+    const cgy = r.py * n + Math.floor(n / 2)
+    const chimneyTop = roofZ + peakCap + Math.floor(n / 2)
+    for (let z = roofZ; z <= chimneyTop; z++) g.set(cgx, cgy, z, 'chimney', true)
   }
 }
 

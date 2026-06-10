@@ -92,8 +92,10 @@ export function greedyMesh(blocks: Block[], opts: GreedyMeshOpts): GreedyMeshRes
   const e = extentsOf(blocks)
   const { cells, gw, gd, gh } = lattice(blocks, e.gw, e.gd, e.gh)
 
-  // Per-axis world size of one micro-block step. x and z share the plan footprint; y is the storey scale.
-  const step = [vx, vy, vx] as const
+  // Per-axis world size of one micro-block step. The COMPILER is Z-UP (block.z is the storey/height axis,
+  // block.x/block.y are the plan footprint), so the storey scale `vy` goes on axis 2 (z) and the footprint
+  // scale `vx` on axes 0/1 (x,y). The finished geometry is rotated Z-up -> three.js Y-up below.
+  const step = [vx, vx, vy] as const
 
   const positions: number[] = []
   const normals: number[] = []
@@ -213,6 +215,12 @@ export function greedyMesh(blocks: Block[], opts: GreedyMeshOpts): GreedyMeshRes
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
   geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
+  // The lattice is built Z-UP (block.z is the height axis). Rotate it onto three.js' Y-UP world so the house
+  // stands up — block.z becomes world Y (up) and the plan depth (block.y) becomes world Z. This is a pure
+  // rotation (orientation- and winding-preserving, normals rotate with it), then we shift the flipped depth
+  // back into [0, depth] so the renderer can still parent the mesh at the house-zone origin unchanged.
+  geometry.rotateX(-Math.PI / 2)
+  geometry.translate(0, 0, gd * vx)
   geometry.computeBoundingSphere()
   return { geometry, quadCount }
 }
