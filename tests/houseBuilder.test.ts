@@ -104,6 +104,23 @@ describe('house builder — the blueprint compiler (spec 077 P1)', () => {
     expect(ser(a.blocks)).not.toBe(ser(b.blocks))
   })
 
+  it('CARVE semantics — a pool dropped onto a bedroom takes the cells: no full-height brick, no roof above', () => {
+    // bedroom fills the plot; a pool overlaps its back-right corner, touching the house edge.
+    const script =
+      'house{w:6 d:6 wallH:2 door:n} room{kind:bedroom x:0 y:0 w:6 d:6 win:1} room{kind:pool x:4 y:4 w:2 d:2 win:0}'
+    const h = compileBlueprint(script, { w: 6, d: 6, seed: 7 })
+    const n = HOUSE_VOXEL_N
+    const gardenH = Math.max(2, Math.floor(n / 3))
+    // pool plot-cells 4..5 x 4..5 -> micro columns 24..35 in both axes
+    const inPool = (b: { x: number; y: number }) => b.x >= 4 * n && b.x < 6 * n && b.y >= 4 * n && b.y < 6 * n
+    const poolBlocks = h.blocks.filter(inPool)
+    expect(poolBlocks.some((b) => b.kind === 'water')).toBe(true)
+    // nothing in the pool's columns rises above the low garden wall — no shaft, no roof overhang
+    const tallest = Math.max(...poolBlocks.map((b) => b.z))
+    expect(tallest).toBeLessThanOrEqual(1 + gardenH)
+    expect(poolBlocks.some((b) => b.kind === 'roof')).toBe(false)
+  })
+
   it('emits roofless rooms — a pool fills with water and a patio gets a tile floor and glass rail', () => {
     const script =
       'house{w:6 d:6 wallH:2 door:s} room{kind:living x:0 y:0 w:6 d:3 win:1} room{kind:pool x:0 y:3 w:3 d:3 win:0} room{kind:patio x:3 y:3 w:3 d:3 win:0}'

@@ -191,3 +191,24 @@ NEXT
   ring around roofless rooms on the house edge, slim the roof shell, brighter builder preview light.
 - Then P4 game wiring (Build House button + blueprint storage), backend persistence, per-citizen
   variety, bot self-design.
+
+### 2026-06-10 — Slice: house massing — pools and patios are real backyards now
+DONE
+- CARVE semantics in the compiler: the LAST room placed OWNS its cells (a deterministic owner grid).
+  A pool dropped onto a bedroom now takes those cells with it — the bedroom's dividers and the roof
+  retreat, so an outdoor room is an open-air cut into the mass, never a brick shaft under a roof hole.
+- Edge pools/patios get a LOW GARDEN WALL (about a third of a storey) on the outer face instead of
+  full-height brick or nothing, so a backyard pool reads as a walled backyard.
+- Dividers, roof bounds, chimney anchoring and amenity surfaces (water, tile, rails) are all
+  owner-aware; the chimney never anchors on a carved-away room.
+- Builder preview polish: brighter hemisphere + sun light, and the initial camera frames the WHOLE
+  house + yard from any pane size (it was cropping to a wall close-up on narrow windows).
+- New compiler test pins the carve contract (water present, nothing above the garden wall in pool
+  columns, no roof overhead). 591 tests green; verified live in the builder with the operator's exact
+  design — the pool corner now reads as a tiled backyard pool open to the sky.
+
+NEXT
+- P4 game wiring: Build House button on an owned unbuilt homestead opens /builder.html seeded with the
+  plot's real houseZone w/d + houseSeed + citizenId/lotId (bp= for re-edit, already supported by the
+  page); the game validates the blueprint_saved postMessage, stores the script on the parcel +
+  citizen, and raises the house. Then backend persistence via the /kooker proxy.

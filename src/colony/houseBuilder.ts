@@ -171,6 +171,17 @@ export function compileBlueprint(script: string, opts: CompileOpts): CompiledHou
   const g = new Grid(gw, gd, gh)
 
   const rooms = scaleRooms(p, w, d)
+  // OVERLAP SEMANTICS: the LAST room placed OWNS its cells — adding a pool over a bedroom CARVES the
+  // bedroom (its dividers and roof retreat), so outdoor rooms read as backyard amenities cut into the
+  // mass, never brick shafts punched through it. Deterministic: pure list order, no randomness.
+  const owner = roomOwners(rooms, w, d)
+  const outdoor = (cx: number, cy: number): boolean => {
+    if (cx < 0 || cy < 0 || cx >= w || cy >= d) return false
+    const i = owner[cy * w + cx]!
+    if (i < 0) return false
+    const k = rooms[i]!.kind
+    return k === 'patio' || k === 'pool'
+  }
 
   // The street-facing door cell on the relevant edge (in plot cells), centred deterministically.
   const door = doorCellPlot(w, d, p.doorDir, seed)
@@ -179,18 +190,20 @@ export function compileBlueprint(script: string, opts: CompileOpts): CompiledHou
   // 1. FLOOR slab — covers the whole footprint at z 0.
   for (let gy = 0; gy < gd; gy++) for (let gx = 0; gx < gw; gx++) g.set(gx, gy, 0, 'floor')
 
-  // 2. OUTER WALLS — brick masonry around the footprint, except where rooms are roofless (patio/pool).
+  // 2. OUTER WALLS — brick masonry around the footprint; outdoor cells on the edge get a LOW GARDEN
+  //    WALL instead of full-height brick, so an edge pool/patio reads as a walled backyard, not a shaft.
   //    The door edge gets an opening; windows are punched into long wall runs.
-  buildOuterWalls(g, w, d, n, storeys, p.doorDir, door, rooms, seed)
+  buildOuterWalls(g, w, d, n, storeys, p.doorDir, door, outdoor, seed)
 
-  // 3. INNER DIVIDERS — brick walls along room boundaries that fall inside the footprint.
-  buildDividers(g, rooms, w, d, n, storeys, seed)
+  // 3. INNER DIVIDERS — brick walls along room boundaries, only on cells the room still OWNS (a later
+  //    overlapping room carves them away).
+  buildDividers(g, rooms, owner, w, d, n, storeys, seed)
 
-  // 4. ROOF slab one micro-level above the walls, over enclosed rooms only (patio/pool stay open).
-  buildRoof(g, rooms, w, d, n, floorSub + wallSub, seed)
+  // 4. ROOF slab one micro-level above the walls, over enclosed rooms only (outdoor cells stay open).
+  buildRoof(g, rooms, owner, w, d, n, floorSub + wallSub, seed, outdoor)
 
   // 5. ROOM FLOURISHES — pool water + tile rim, patio tile + glassRail, plus a chimney for a living room.
-  buildRoomDetails(g, rooms, n, floorSub, wallSub, seed)
+  buildRoomDetails(g, rooms, owner, w, n, floorSub, wallSub, seed)
 
   // 6. DOOR LAST — carve the opening and seat a panelled door, overriding any wall/rail in the column so
   //    the entrance is always clear even when a patio rail or a room divider lands on the door edge.
@@ -236,22 +249,33 @@ function clear(g: Grid, x: number, y: number, z: number): void {
   if (g.inB(x, y, z)) g.cells[(z * g.gd + y) * g.gw + x] = 0
 }
 
-/** True if a plot cell (cx,cy) lies inside a roofless room (patio or pool) — these get no walls/roof. */
-function rooflessAt(rooms: ScaledRoom[], cx: number, cy: number): boolean {
-  return rooms.some((r) => (r.kind === 'patio' || r.kind === 'pool') && cx >= r.px && cx < r.px + r.pw && cy >= r.py && cy < r.py + r.pd)
+/** Cell ownership: the LAST room in the list covering a cell owns it (-1 = unowned). This is the
+ *  carve rule that makes overlapping designs sane — a pool dropped onto a bedroom takes those cells. */
+function roomOwners(rooms: ScaledRoom[], w: number, d: number): Int16Array {
+  const owner = new Int16Array(w * d).fill(-1)
+  rooms.forEach((r, i) => {
+    for (let cy = Math.max(0, r.py); cy < Math.min(d, r.py + r.pd); cy++) {
+      for (let cx = Math.max(0, r.px); cx < Math.min(w, r.px + r.pw); cx++) {
+        owner[cy * w + cx] = i
+      }
+    }
+  })
+  return owner
 }
 
 function buildOuterWalls(
   g: Grid, w: number, d: number, n: number, storeys: number, dir: DoorDir,
-  door: { x: number; y: number }, rooms: ScaledRoom[], seed: number,
+  door: { x: number; y: number }, outdoor: (cx: number, cy: number) => boolean, seed: number,
 ): void {
   const floorSub = 1
   const wallSub = storeys * n
+  const gardenH = Math.max(2, Math.floor(n / 3)) // a low garden wall around edge patios/pools
   for (let cy = 0; cy < d; cy++) {
     for (let cx = 0; cx < w; cx++) {
       const onEdge = cx === 0 || cx === w - 1 || cy === 0 || cy === d - 1
       if (!onEdge) continue
-      if (rooflessAt(rooms, cx, cy)) continue // patios/pools have an open edge (low rail added later)
+      const out = outdoor(cx, cy)
+      const top = out ? floorSub + gardenH : floorSub + wallSub
       // The micro rows/cols of this cell that lie on the outer face.
       for (let sy = 0; sy < n; sy++) {
         for (let sx = 0; sx < n; sx++) {
@@ -259,9 +283,9 @@ function buildOuterWalls(
           const faceX = (cx === 0 && sx === 0) || (cx === w - 1 && sx === n - 1)
           const faceY = (cy === 0 && sy === 0) || (cy === d - 1 && sy === n - 1)
           if (!faceX && !faceY) continue
-          for (let z = floorSub; z < floorSub + wallSub; z++) {
+          for (let z = floorSub; z < top; z++) {
             // Window band: one course-high opening near eye level on each storey, away from corners.
-            if (isWindow(gx, gy, z, w, d, n, floorSub, storeys, dir, door, seed)) {
+            if (!out && isWindow(gx, gy, z, w, d, n, floorSub, storeys, dir, door, seed)) {
               g.set(gx, gy, z, 'window')
               continue
             }
@@ -303,14 +327,15 @@ function isWindow(
   return (along + phase) % period === Math.floor(period / 2)
 }
 
-function buildDividers(g: Grid, rooms: ScaledRoom[], w: number, d: number, n: number, storeys: number, seed: number): void {
+function buildDividers(g: Grid, rooms: ScaledRoom[], owner: Int16Array, w: number, d: number, n: number, storeys: number, seed: number): void {
   const floorSub = 1
   const wallSub = storeys * n
-  for (const r of rooms) {
-    if (r.kind === 'patio') continue // open-plan patio, no internal walls
-    // Build the room's own perimeter walls (interior dividers); skip cells already on the outer ring,
-    // skip a doorway gap so rooms connect, and leave garages without interior walls (a wide opening).
-    if (r.kind === 'garage') continue
+  rooms.forEach((r, ri) => {
+    if (r.kind === 'patio' || r.kind === 'pool') return // outdoor rooms have no interior walls
+    // Build the room's own perimeter walls (interior dividers); skip a doorway gap so rooms connect,
+    // leave garages without interior walls (a wide opening), and skip any micro column whose CELL has
+    // been carved away by a later room — a pool dropped onto this room takes its walls with it.
+    if (r.kind === 'garage') return
     const x0 = r.px * n, x1 = (r.px + r.pw) * n - 1
     const y0 = r.py * n, y1 = (r.py + r.pd) * n - 1
     // a deterministic interior doorway centre on the wall facing the house interior
@@ -321,18 +346,24 @@ function buildDividers(g: Grid, rooms: ScaledRoom[], w: number, d: number, n: nu
         if (!onRoomEdge) continue
         // leave a gap (an interior doorway) on the top wall so rooms are connected
         if (gy === y0 && Math.abs(gx - gapAlong) <= 1) continue
+        const cellX = Math.floor(gx / n), cellY = Math.floor(gy / n)
+        if (cellX < 0 || cellY < 0 || cellX >= w || cellY >= d) continue
+        if (owner[cellY * w + cellX] !== ri) continue // carved by a later room
         for (let z = floorSub; z < floorSub + wallSub; z++) g.set(gx, gy, z, brickAt(gx, z, seed))
       }
     }
-  }
+  })
 }
 
-function buildRoof(g: Grid, rooms: ScaledRoom[], w: number, d: number, n: number, roofZ: number, seed: number): void {
-  // Enclosed footprint micro-bounds (patios/pools stay open to the sky).
+function buildRoof(
+  g: Grid, rooms: ScaledRoom[], owner: Int16Array, w: number, d: number, n: number, roofZ: number,
+  seed: number, outdoor: (cx: number, cy: number) => boolean,
+): void {
+  // Enclosed footprint micro-bounds (outdoor cells stay open to the sky).
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
   for (let cy = 0; cy < d; cy++) {
     for (let cx = 0; cx < w; cx++) {
-      if (rooflessAt(rooms, cx, cy)) continue
+      if (outdoor(cx, cy)) continue
       minX = Math.min(minX, cx * n); maxX = Math.max(maxX, (cx + 1) * n - 1)
       minY = Math.min(minY, cy * n); maxY = Math.max(maxY, (cy + 1) * n - 1)
     }
@@ -344,18 +375,24 @@ function buildRoof(g: Grid, rooms: ScaledRoom[], w: number, d: number, n: number
   const peakCap = Math.max(2, Math.round(0.8 * n))
   for (let gy = minY; gy <= maxY; gy++) {
     for (let gx = minX; gx <= maxX; gx++) {
-      if (rooflessAt(rooms, Math.floor(gx / n), Math.floor(gy / n))) continue
+      if (outdoor(Math.floor(gx / n), Math.floor(gy / n))) continue
       const rise = Math.min(gx - minX, maxX - gx, gy - minY, maxY - gy, peakCap)
       const top = roofZ + rise
       g.set(gx, gy, top, 'roof')
       if (rise > 0) g.set(gx, gy, top - 1, 'roof')
     }
   }
-  // A short chimney rising just above the ridge from one back corner of an enclosed room.
-  const enclosed = rooms.filter((r) => r.kind === 'living' || r.kind === 'bedroom')
-  if (enclosed.length > 0) {
-    const idx = mix(seed, enclosed.length, 7) % enclosed.length
-    const r = enclosed[idx]!
+  // A short chimney rising just above the ridge from one back corner of a room that still OWNS its
+  // anchor cell (an enclosed room fully carved away gets no chimney).
+  const enclosed: { r: ScaledRoom; i: number }[] = []
+  rooms.forEach((r, i) => { if (r.kind === 'living' || r.kind === 'bedroom') enclosed.push({ r, i }) })
+  const anchored = enclosed.filter(({ r, i }) => {
+    const cx = r.px + r.pw - 1, cy = r.py
+    return cx >= 0 && cy >= 0 && cx < w && cy < d && owner[cy * w + cx] === i
+  })
+  if (anchored.length > 0) {
+    const idx = mix(seed, anchored.length, 7) % anchored.length
+    const { r } = anchored[idx]!
     const cgx = (r.px + r.pw - 1) * n + Math.floor(n / 2)
     const cgy = r.py * n + Math.floor(n / 2)
     const chimneyTop = roofZ + peakCap + Math.floor(n / 2)
@@ -363,14 +400,17 @@ function buildRoof(g: Grid, rooms: ScaledRoom[], w: number, d: number, n: number
   }
 }
 
-function buildRoomDetails(g: Grid, rooms: ScaledRoom[], n: number, floorSub: number, wallSub: number, seed: number): void {
-  for (const r of rooms) {
+function buildRoomDetails(g: Grid, rooms: ScaledRoom[], owner: Int16Array, w: number, n: number, floorSub: number, wallSub: number, seed: number): void {
+  rooms.forEach((r, ri) => {
     const x0 = r.px * n, x1 = (r.px + r.pw) * n - 1
     const y0 = r.py * n, y1 = (r.py + r.pd) * n - 1
+    // amenity surfaces only paint cells the room still OWNS (a later room carves them away)
+    const owns = (gx: number, gy: number) => owner[Math.floor(gy / n) * w + Math.floor(gx / n)] === ri
     if (r.kind === 'pool') {
       // Water fill with a tile rim one block in.
       for (let gy = y0; gy <= y1; gy++) {
         for (let gx = x0; gx <= x1; gx++) {
+          if (!owns(gx, gy)) continue
           const rim = gx === x0 || gx === x1 || gy === y0 || gy === y1
           g.set(gx, gy, floorSub - 1 >= 0 ? floorSub - 1 : 0, rim ? 'tile' : 'water', true)
           if (rim) g.set(gx, gy, floorSub, 'tile', true)
@@ -380,6 +420,7 @@ function buildRoomDetails(g: Grid, rooms: ScaledRoom[], n: number, floorSub: num
       // Tile floor plus a low glassRail around the open edge.
       for (let gy = y0; gy <= y1; gy++) {
         for (let gx = x0; gx <= x1; gx++) {
+          if (!owns(gx, gy)) continue
           g.set(gx, gy, floorSub - 1 >= 0 ? floorSub - 1 : 0, 'tile', true)
           const rim = gx === x0 || gx === x1 || gy === y0 || gy === y1
           if (rim) g.set(gx, gy, floorSub, 'glassRail', true)
@@ -403,5 +444,5 @@ function buildRoomDetails(g: Grid, rooms: ScaledRoom[], n: number, floorSub: num
         g.set(gx, y1, headerZ, 'beam', true)
       }
     }
-  }
+  })
 }
