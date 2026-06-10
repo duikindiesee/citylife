@@ -265,7 +265,12 @@ function developBlock(state: ColonyState, bx: number, by: number): number {
   const edge = (ax: number, ay: number, bx2: number, by2: number) => {
     if (cellOk(t, ax, ay) && cellOk(t, bx2, by2)) {
       const path = leastCostPath(t, { x: ax, y: ay }, { x: bx2, y: by2 }, { slopeWeight: 0.6 })
-      if (path) {
+      // A DETOUR CAP keeps the contouring honest: the router may bend around a pond or a cliff, but a
+      // frame edge that wanders far off into the wilderness (a long flat loop around a dune that a
+      // graded climb would cross in a few cells) is worse than the climb — the operator immediately
+      // spotted one as a road to nowhere. Past ~1.6x the straight length plus a small slack, fall back.
+      const straightLen = Math.abs(bx2 - ax) + Math.abs(by2 - ay) + 1
+      if (path && path.length <= Math.ceil(straightLen * 1.6) + 3) {
         for (const c of path) lay(c.x, c.y)
         return
       }
