@@ -19,6 +19,12 @@ export default defineConfig(({ mode }) => {
     : new http.Agent({ family: 4 })
   return {
     plugins: [react()],
+    build: {
+      rollupOptions: {
+        // Multipage: the colony game plus the spec-077 House Builder (town.html is the legacy v1 page).
+        input: { index: 'index.html', builder: 'builder.html', town: 'town.html' },
+      },
+    },
     server: {
       port: 5188,
       host: true,

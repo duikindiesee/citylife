@@ -141,3 +141,30 @@ NEXT
   carries data-build-action; Accept validates + postMessages blueprint_saved with the DSL.
 - Then P4 game wiring, backend blueprint persistence, per-citizen variety (no two houses alike), and the
   capped bot self-design loop.
+
+### 2026-06-10 — Slice: P3 the House Builder route
+DONE
+- builder.html + src/colony/builder/ — a visual house designer over the SAME shared cores the game
+  renders with (blueprintScript parse/validate, houseBuilder compile, voxelMesh greedy mesh), so the
+  preview is pixel-for-pixel what the game will raise.
+- blueprintEdit.ts: the PURE edit grammar (defaultDesign, addRoom, removeRoom, moveRoom, resizeRoom,
+  toggleWin, setRoomKind, cycleDoor, setWallH) — every UI control and every future bot action maps to
+  one clamped immutable function; 8 new node tests are the behavioural contract.
+- BuilderApp: 2D top-down SVG floor plan (rooms colour-coded, click to select, door marker), full
+  control row (move/resize/window/kind/delete, door cycle, storeys), live validation + material
+  estimate, the DSL script visible, live 3D orbitable brick preview; URL-seeded
+  (citizenId/lotId/w/d/seed, optional bp to re-edit); Accept posts blueprint_saved {citizenId, lotId,
+  script} to the opener. Every control carries data-build-action for Playwright/bot driving.
+- Bot-burst hardening found by driving the UI exactly as a bot would: synchronous click bursts
+  collapsed to one edit via stale React closures — fixed with functional setState plus a ref-backed
+  selection, then re-verified with a worst-case no-yield burst (pool driven corner-to-corner, clamps
+  exact).
+- vite build now ships builder.html (multipage rollup input).
+- Verified live on :5188: full bot drive (add pool/patio, move runs, storey up, accept) produced the
+  exact expected DSL and the postMessage; typecheck clean, 586 tests pass (30 files).
+
+NEXT
+- P4 game wiring: a Build House button on an owned unbuilt homestead opens /builder.html with the
+  plot's real w/d/seed; the game listens for blueprint_saved, validates the script, stores it on the
+  parcel (+ citizen), raises the house from it; re-opening passes bp= so the stored script loads for
+  editing. After that: backend persistence of the blueprint via the /kooker proxy.
