@@ -17,6 +17,7 @@ import { firstPersonView, type FirstPersonView } from './bot/firstPersonView'
 import { solCount, resolveFoundingMs } from './sol'
 import { makeNeighborhood, defaultBlueprint, type Neighborhood, type Lot } from './neighborhood'
 import { validateBlueprint } from './blueprintScript'
+import { loadBlueprintsLocal, saveBlueprintLocal, saveBlueprintBackend, fetchBlueprintsBackend, mergeBlueprints } from './bot/blueprintStore'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
@@ -124,6 +125,7 @@ export class ColonyRuntime {
     for (const c of this.neighborhood.carriage) this.sim.state.roadSet.add(`${c.x},${c.y}`)
     for (const c of this.neighborhood.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`)
     this.seedJoe() // spec 078 — Joe the Crab takes up residence on the shore-most homestead
+    this.restoreBlueprints() // spec 077 P4.5 — stored designs regenerate their houses on reload
     // Spec 077 P4 — listen for blueprint_saved posted back by the House Builder popup. Same-origin
     // only; the script is validated before anything is stored or built. Guarded for node test runs.
     if (typeof window !== 'undefined') {
@@ -435,9 +437,40 @@ export class ColonyRuntime {
     lot.blueprint = script
     const c = this.citizens.byId(lot.ownerCitizenId)
     if (c) c.blueprint = script
+    // Spec 077 P4.5 — persist the accepted design: locally always (reload-proof offline), and to the
+    // citylife backend best-effort as the player (the cross-device copy; a 404 just means the
+    // kooker-side endpoint has not shipped yet — never blocks the game).
+    saveBlueprintLocal(lotId, lot.ownerCitizenId, script)
+    void saveBlueprintBackend(lotId, lot.ownerCitizenId, script).then((r) => {
+      if (!r.ok) console.warn('[citylife] blueprint backend save deferred:', r.error)
+    })
     if (!lot.built) this.buildHouse(lotId) // best-effort; the stored blueprint survives a failed gate
     this.emit()
     return true
+  }
+
+  /** Spec 077 P4.5 — restore stored designs onto their lots: the local map immediately (so the houses
+   *  stand before first paint), then the backend layer overlaid when it answers (backend wins — it is
+   *  the cross-device truth). Every script was validated + screened by the store before it gets here. */
+  private restoreBlueprints(): void {
+    const apply = (map: Record<string, { citizenId: string; script: string }>) => {
+      let applied = 0
+      for (const [lotId, entry] of Object.entries(map)) {
+        const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+        if (!lot) continue
+        lot.blueprint = entry.script
+        lot.built = true // the design was accepted and built before; it stands again on reload
+        const c = this.citizens.byId(lot.ownerCitizenId ?? '')
+        if (c) c.blueprint = entry.script
+        applied++
+      }
+      if (applied > 0) this.emit()
+    }
+    const local = loadBlueprintsLocal()
+    apply(local)
+    void fetchBlueprintsBackend().then((backend) => {
+      if (backend) apply(mergeBlueprints(local, backend))
+    })
   }
 
   /** Build a voxel home on a lot — gated on MATERIALS + a free hand (the Caesar III rule). */

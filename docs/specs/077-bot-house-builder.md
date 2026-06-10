@@ -233,3 +233,32 @@ NEXT
 - P4.5 backend persistence: save the accepted blueprint DSL to the citylife/kooker backend via the
   /kooker proxy (best-effort, never blocks, like spawnCitizenSubUser); restore on load so a reload
   regenerates the IDENTICAL house from the stored DSL; localStorage fallback when offline.
+
+### 2026-06-10 — Slice: P4.5 blueprint persistence — a design survives reload
+DONE
+- bot/blueprintStore.ts: two fail-soft layers. LOCAL — a localStorage map keyed by lot id (the
+  settlers saveColony pattern), written on every accepted design. BACKEND — PUT/GET
+  /kooker/api/v1/citylife/blueprints as the logged-in player (the spawnCitizenSubUser best-effort
+  pattern): never blocks, tolerates 404 while the kooker-side endpoint ships separately, and WINS
+  over local on restore (cross-device truth). Every write AND read is gated by validateBlueprint +
+  isPublicSafe, so a corrupt or unsafe stored string can never reach the compiler or the backend.
+- runtime: applyBlueprint persists both layers; restoreBlueprints() (constructor, after seedJoe)
+  re-applies the local map immediately and overlays the backend map when it answers — stored designs
+  raise their houses again on boot.
+- 6 new node tests (localStorage shim): exact round-trip, multi-lot + clear, invalid/unsafe writes
+  refused, tampered storage dropped on load, backend-wins merge. 597 tests green.
+- LIVE ACCEPTANCE VERIFIED on :5188: applied a distinctive design (garage + back-left pool) to Joe's
+  plot via the real blueprint_saved path, hard-reloaded — the lot carries the byte-identical script,
+  the citizen record carries it, and the house stands regenerated from the DSL (screenshot judged).
+- Remaining out-of-process piece: the kooker-side /api/v1/citylife/blueprints endpoint (a
+  kooker-service-user PR, same shape as the citizen-spawn endpoint); until it lands the backend save
+  logs a deferred warning and the local layer carries persistence.
+- Also this session: dev server now binds 127.0.0.1 by default (security, 0e716e3), gateway-URL docs
+  aligned with reality (d1f1876), homestead ground follows the land (9d727b6), multi-agent lane docs
+  (3b7cd65 — delegation experiment since retired by the operator).
+
+NEXT
+- P5 variety: a deterministic per-citizen design generator (seeded from citizenId/houseSeed) varying
+  footprint, room mix, storeys, door, patio/pool/garage so the street is VISIBLY diverse; the
+  newcomer flow uses it instead of one shared defaultBlueprint; uniqueness test over many seeds; a
+  street screenshot must show no two houses alike.
