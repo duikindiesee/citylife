@@ -118,3 +118,26 @@ stored script.
 - P7 (optional) — Headless container parity (a thin Node service exposing compile/validate/report).
 
 Each slice ships on mechanics/dev, passes typecheck plus vitest, and is visible on :5188.
+
+## Progress log (the /goal loop appends one entry per slice)
+
+### 2026-06-10 — Slice: wrap-up + founder-plot protection
+DONE
+- P0 (DSL), P1 (compiler), P2 (greedy mesher + merged brick render) shipped earlier on this PR.
+- Brick-house shape fix: the mesher had the storey scale on the wrong axis (compiler is Z-up), so every
+  house rendered tipped on its side as a tall slab; fixed with a Z-up to Y-up rotation + peaked hipped
+  roofs, dark shingle colour, cottage default footprint.
+- Spec 078: Joe the Crab is a permanent founding resident — reserved shore parcel (Parcel.reservedFor),
+  authored 077 house, roaming crab avatar, crab-height first-person.
+- This slice: founder plots are first-class — the HUD shows Joe the Crab 🦀 · Founder with a tooltip,
+  Assign/Demolish/Evict are hidden for reserved plots, and demolishLot refuses them at the API level
+  (demolishLotAndCitizen inherits the guard). PR #40 body text prepared in .pr40-body.tmp (gh CLI is
+  unauthenticated here — apply with gh auth login then gh pr edit 40 --body-file .pr40-body.tmp).
+- Verified live on :5188 (HUD row text + buttons + API guard probed in-page); typecheck clean, 578 tests.
+
+NEXT
+- P3 builder route: /builder.html + routes/builderMain.tsx — a 2D top-down floor-plan editor + live 3D
+  greedy-meshed preview over the shared cores; URL-seeded (citizenId/lotId/w/d/seed); every control
+  carries data-build-action; Accept validates + postMessages blueprint_saved with the DSL.
+- Then P4 game wiring, backend blueprint persistence, per-citizen variety (no two houses alike), and the
+  capped bot self-design loop.

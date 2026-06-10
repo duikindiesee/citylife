@@ -52,7 +52,7 @@ export interface ColonyUiState {
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
   citizens: { count: number; awake: number; list: CitizenPublic[] }
   firstPerson: { active: boolean; citizenId: string | null; citizenName: string | null; operatorCitizenId: string | null; view: FirstPersonView | null; narration: string | null; narrating: boolean }
-  neighborhood: { lots: { id: string; built: boolean; owner: string | null; ownerId: string | null }[]; free: number; built: number; houseCost: number; canAfford: boolean; buildHint: string }
+  neighborhood: { lots: { id: string; built: boolean; owner: string | null; ownerId: string | null; reserved: boolean }[]; free: number; built: number; houseCost: number; canAfford: boolean; buildHint: string }
   radio: RadioState
   courier: { on: boolean; headline: string } // spec 016 — the colony's own news, when a Broadcast Mast is up
   tv: boolean
@@ -407,10 +407,11 @@ export class ColonyRuntime {
     return true
   }
 
-  /** Demolish a lot's house (frees the lot, keeps the citizen). Returns the freed owner id, if any. */
+  /** Demolish a lot's house (frees the lot, keeps the citizen). Returns the freed owner id, if any.
+   *  Founder plots (spec 078) are protected — they cannot be demolished. */
   demolishLot(lotId: string): string | null {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId)
-    if (!lot) return null
+    if (!lot || lot.reservedFor) return null
     const owner = lot.ownerCitizenId ?? null
     lot.built = false
     lot.ownerCitizenId = undefined
@@ -826,6 +827,7 @@ export class ColonyRuntime {
           built: l.built,
           owner: l.ownerCitizenId ? (this.citizens.byId(l.ownerCitizenId)?.displayName ?? null) : null,
           ownerId: l.ownerCitizenId ?? null,
+          reserved: !!l.reservedFor, // spec 078 — founder plots show a nameplate and hide demolish/evict
         }))
         // Build affordability so the Build button can tell the truth instead of silently failing.
         const cost = COLONY.build.matNeighborHouse
