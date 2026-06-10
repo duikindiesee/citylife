@@ -212,3 +212,24 @@ NEXT
   plot's real houseZone w/d + houseSeed + citizenId/lotId (bp= for re-edit, already supported by the
   page); the game validates the blueprint_saved postMessage, stores the script on the parcel +
   citizen, and raises the house. Then backend persistence via the /kooker proxy.
+
+### 2026-06-10 — Slice: P4 game wiring — Design and Re-design from the plot
+DONE
+- runtime.builderUrl(lotId) builds the House Builder URL from the plot's REAL house-zone tile count,
+  houseSeed and owner citizen id, riding the stored blueprint along as bp= so re-opening loads the
+  citizen's current design; runtime.openBuilder(lotId) opens it as a popup.
+- The runtime listens for the blueprint_saved postMessage (same-origin only): the script is validated
+  with validateBlueprint, stored on the parcel AND the owning citizen record, and the house is raised
+  (or rebuilt — the renderer keys its rebuild on the blueprint, so a re-design re-renders live). An
+  invalid script is rejected and never overwrites the stored design. A failed materials/labour gate
+  keeps the blueprint stored for the Build button to raise later.
+- HUD: every owned plot row gets a Design (unbuilt) / Re-design (built, including Joe's founder plot)
+  button.
+- Verified live on :5188: real-click on Re-design opened the builder popup; the accept path was driven
+  with the exact popup message — Joe's blueprint changed on lot + citizen, garbage was rejected, and
+  his house visibly re-rendered as the new one-storey design. 591 tests green.
+
+NEXT
+- P4.5 backend persistence: save the accepted blueprint DSL to the citylife/kooker backend via the
+  /kooker proxy (best-effort, never blocks, like spawnCitizenSubUser); restore on load so a reload
+  regenerates the IDENTICAL house from the stored DSL; localStorage fallback when offline.

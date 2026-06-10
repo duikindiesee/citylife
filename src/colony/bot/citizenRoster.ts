@@ -46,6 +46,9 @@ export interface Citizen {
   /** Spec 078 — avatar body kind. Ordinary citizens are 'human'; Joe the founder is a 'crab'. Drives
    *  which instanced mesh the renderer draws them with and the first-person eye height. */
   kind: 'human' | 'crab'
+  /** Spec 077 P4 — the citizen's authored house blueprint (the DSL script accepted in the builder).
+   *  Mirrors the parcel's stored script; the backend persistence slice syncs from here. */
+  blueprint?: string
 }
 
 /** Public-safe slice of a Citizen for the HUD / UI / save file. Excludes any field that could carry

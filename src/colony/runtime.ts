@@ -16,6 +16,7 @@ import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
 import { firstPersonView, type FirstPersonView } from './bot/firstPersonView'
 import { solCount, resolveFoundingMs } from './sol'
 import { makeNeighborhood, defaultBlueprint, type Neighborhood, type Lot } from './neighborhood'
+import { validateBlueprint } from './blueprintScript'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
@@ -123,6 +124,16 @@ export class ColonyRuntime {
     for (const c of this.neighborhood.carriage) this.sim.state.roadSet.add(`${c.x},${c.y}`)
     for (const c of this.neighborhood.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`)
     this.seedJoe() // spec 078 — Joe the Crab takes up residence on the shore-most homestead
+    // Spec 077 P4 — listen for blueprint_saved posted back by the House Builder popup. Same-origin
+    // only; the script is validated before anything is stored or built. Guarded for node test runs.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('message', (e: MessageEvent) => {
+        if (e.origin !== window.location.origin) return
+        const d = e.data as { type?: string; lotId?: string; script?: string } | null
+        if (!d || d.type !== 'blueprint_saved' || typeof d.lotId !== 'string' || typeof d.script !== 'string') return
+        this.applyBlueprint(d.lotId, d.script)
+      })
+    }
     // Resolve the real reply source asynchronously (in-cluster: nginx-proxied Hermes; else mock).
     void this.initBotAdapter()
   }
@@ -383,6 +394,48 @@ export class ColonyRuntime {
     // their actual home; the avatar walks to the door cell facing the street.
     c.homeXY = { x: Math.round(lot.houseZone.x + (lot.houseZone.w - 1) / 2), y: Math.round(lot.houseZone.y + (lot.houseZone.d - 1) / 2) }
     this.citizens.setTarget(citizenId, { x: lot.doorX, y: lot.doorY })
+    this.emit()
+    return true
+  }
+
+  /** Spec 077 P4 — the House Builder URL for a lot, seeded with the plot's REAL house-zone tile count,
+   *  its houseSeed and the owner's citizen id. A stored blueprint rides along as bp= so re-opening the
+   *  builder loads the citizen's current design for editing. Null for an unowned lot. */
+  builderUrl(lotId: string): string | null {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+    if (!lot || !lot.ownerCitizenId) return null
+    const q = new URLSearchParams({
+      citizenId: lot.ownerCitizenId,
+      lotId: lot.id,
+      w: String(lot.houseZone.w),
+      d: String(lot.houseZone.d),
+      seed: String(lot.houseSeed >>> 0),
+    })
+    if (lot.blueprint) q.set('bp', lot.blueprint)
+    return `/builder.html?${q.toString()}`
+  }
+
+  /** Spec 077 P4 — open the House Builder for a lot in a popup. The popup posts blueprint_saved back
+   *  to this window (the constructor listens), which validates + stores + raises the house. */
+  openBuilder(lotId: string): boolean {
+    const url = this.builderUrl(lotId)
+    if (!url || typeof window === 'undefined') return false
+    window.open(url, `citylife_builder_${lotId}`, 'width=1280,height=800')
+    return true
+  }
+
+  /** Spec 077 P4 — accept an authored blueprint for a lot: validate the script, store it on the parcel
+   *  AND the owning citizen, then raise the house (materials + labour gated — when the colony cannot
+   *  afford it the blueprint stays stored and the Build button raises it later). Re-running on a built
+   *  lot re-renders the house from the new script (the renderer keys its rebuild on the blueprint). */
+  applyBlueprint(lotId: string, script: string): boolean {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+    if (!lot || !lot.ownerCitizenId) return false
+    if (!validateBlueprint(script).ok) return false
+    lot.blueprint = script
+    const c = this.citizens.byId(lot.ownerCitizenId)
+    if (c) c.blueprint = script
+    if (!lot.built) this.buildHouse(lotId) // best-effort; the stored blueprint survives a failed gate
     this.emit()
     return true
   }
