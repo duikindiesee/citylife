@@ -307,6 +307,23 @@ export function ColonyApp() {
         {ui.bank.recent.length > 0 && (
           <div className="ledger">{ui.bank.recent.map((tx) => <div key={tx.id} className="ledger-row">{tx.memo}</div>)}</div>
         )}
+
+        {ui.commerce.plots > 0 && (() => {
+          const priceOf = (kind: 'kiosk' | 'store' | 'showroom') => ui.commerce.parcels.find((p) => p.kind === kind)?.price ?? 0
+          const row = (label: string, kind: 'kiosk' | 'store' | 'showroom') =>
+            ui.commerce.byKind[kind] > 0 ? (
+              <div className="row"><span>{label}</span><b>{ui.bank.currency}{priceOf(kind).toLocaleString()} ×{ui.commerce.byKind[kind]}</b></div>
+            ) : null
+          return (
+            <>
+              <h2 style={{ marginTop: 18 }}>Commercial district</h2>
+              <div className="row"><span>Shop plots</span><b>{ui.commerce.plots} · {ui.commerce.free} free</b></div>
+              {row('Showrooms', 'showroom')}
+              {row('Stores', 'store')}
+              {row('Kiosks', 'kiosk')}
+            </>
+          )
+        })()}
       </aside>
 
       <div className="hint">

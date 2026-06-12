@@ -16,6 +16,7 @@ import { gridOrigin } from '../grid'
 import { cellZone, ZONE_COLOR, VIBE_COLOR, type Plot } from '../cityPlan'
 import { homeLiveability, surveyAvailable, liveabilityTint, porterStatus } from '../build'
 import type { Neighborhood } from '../neighborhood'
+import type { CommercialDistrict, ShopParcel } from '../commerce/district'
 import { buildVoxelHouse, BLOCK_COLOR, type VoxelHouse, type DoorDir } from '../voxelHouse'
 import { compileBlueprint, VOXEL_Y } from '../houseBuilder'
 import { greedyMesh } from './voxelMesh'
@@ -116,6 +117,12 @@ export class PlanetRenderer {
   private mergedHouseGroup = new THREE.Group()
   private mergedHouseMat!: THREE.MeshStandardMaterial
   private lastNbhdSig = ''
+  // Spec 079 P0 — the vibrant commercial strip: a group of neon market-stall composites surveyed
+  // along the high street, rebuilt when the district changes. The sign materials glow brighter after
+  // dark (the day/night hook) so the strip reads as the awake heart of the city at dusk.
+  private commercialDistrict?: CommercialDistrict
+  private commercialGroup = new THREE.Group()
+  private commercialSignMats: THREE.MeshStandardMaterial[] = []
   // Spec 084 S1 — per-lot house mesh key (blueprint + foundation height) for incremental rebuilds.
   private lotHouseKey = new Map<string, string>()
   private settlerGroup = new THREE.Group()
@@ -1236,6 +1243,9 @@ export class PlanetRenderer {
     const cmat = this.carsMesh.material as THREE.MeshStandardMaterial
     cmat.emissive.setHex(0xfff0d0)
     cmat.emissiveIntensity = night * 0.5
+    // Spec 079 — the commercial signage glows day and night, and flares brighter after dark so the
+    // market strip becomes the lit heart of the city at dusk (the concept-art look).
+    for (const sm of this.commercialSignMats) sm.emissiveIntensity = 0.7 + night * 0.9
   }
 
   frame() {
@@ -1418,6 +1428,78 @@ export class PlanetRenderer {
   setNeighborhood(n: Neighborhood): void {
     this.neighborhood = n
     this.lastNbhdSig = '' // force a rebuild on the next frame
+  }
+
+  /** Spec 079 P0 — hand the renderer the surveyed commercial district; it raises a neon market stall
+   *  on every shop plot. Rebuilt once here (the survey is static for the world's lifetime). */
+  setCommercialDistrict(d: CommercialDistrict | null | undefined): void {
+    this.commercialDistrict = d ?? undefined
+    this.buildCommercialDistrict()
+  }
+
+  // The neon palette for the strip — saturated signage that pops against the calm residential teal.
+  private static readonly NEON = [0xff2d95, 0x18e0ff, 0xffc233, 0x7bff4d, 0xb24dff, 0xff6a3d]
+  // Shop massing by kind: how tall the body stands (showroom is the anchor, the kiosk a low cart).
+  private static readonly SHOP_WALL_H: Record<ShopParcel['kind'], number> = { kiosk: 0.9, store: 1.25, showroom: 1.7 }
+
+  /** Raise a vibrant neon market stall on each surveyed shop plot: a dark counter body, a glowing
+   *  awning canopy, and a bright signage panel facing the street. Disposes any prior build first. */
+  private buildCommercialDistrict(): void {
+    // Tear down a previous build (geometry + materials) so re-survey/reload never leaks GPU memory.
+    for (const child of this.commercialGroup.children) {
+      child.traverse((o) => {
+        const m = o as THREE.Mesh
+        if (m.geometry) m.geometry.dispose()
+        const mat = m.material as THREE.Material | THREE.Material[] | undefined
+        if (Array.isArray(mat)) mat.forEach((x) => x.dispose())
+        else mat?.dispose()
+      })
+    }
+    this.commercialGroup.clear()
+    this.commercialSignMats = []
+    this.scene.add(this.commercialGroup)
+    const d = this.commercialDistrict
+    if (!d) return
+    const t = this.sim.state.terrain
+
+    d.parcels.forEach((p, i) => {
+      const neon = PlanetRenderer.NEON[i % PlanetRenderer.NEON.length]!
+      const wallH = PlanetRenderer.SHOP_WALL_H[p.kind]
+      const bodyW = p.w * 0.82
+      const bodyD = p.h * 0.82
+      const cx = p.x + (p.w - 1) / 2
+      const cy = p.y + (p.h - 1) / 2
+      const baseY = Math.max(0, t.worldY(Math.round(cx), Math.round(cy)))
+
+      const g = new THREE.Group()
+      g.position.set(this.wx(cx), baseY, this.wz(cy))
+
+      // Body — a dark slate shopfront so the neon reads against it.
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyW, wallH, bodyD),
+        new THREE.MeshStandardMaterial({ color: 0x2b3040, roughness: 0.7, metalness: 0.1 }),
+      )
+      body.position.y = wallH / 2
+      body.castShadow = true
+
+      // Awning — a glowing neon canopy slightly oversailing the body.
+      const canopy = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyW * 1.08, 0.16, bodyD * 1.08),
+        new THREE.MeshStandardMaterial({ color: neon, roughness: 0.4, emissive: neon, emissiveIntensity: 0.45 }),
+      )
+      canopy.position.y = wallH + 0.08
+      canopy.castShadow = true
+
+      // Signage — a bright panel standing above the STREET-FACING front edge. side -1 fronts +z, +1 fronts -z.
+      const frontZ = -p.side * (bodyD / 2 + 0.12)
+      const signMat = new THREE.MeshStandardMaterial({ color: neon, emissive: neon, emissiveIntensity: 0.7, roughness: 0.3 })
+      const sign = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 0.62, 0.5, 0.1), signMat)
+      sign.position.set(0, wallH + 0.5, frontZ)
+      this.commercialSignMats.push(signMat)
+
+      g.add(body, canopy, sign)
+      this.commercialGroup.add(g)
+    })
   }
 
   /** Spec 076 — draw the homestead neighbourhood: the spine carriageway + verge ribbon, then each

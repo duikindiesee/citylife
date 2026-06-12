@@ -24,6 +24,7 @@ import { dreamBrief, negotiate, briefToBlueprint, seededBudget, VIW_SEED, type N
 import { createProfile, addPost, type KbProfile, type PostKind } from './social/kookerbook'
 import { loadKookerbookLocal, saveProfileLocal, saveProfileBackend, fetchKookerbookBackend, mergeKookerbook } from './bot/kookerbookStore'
 import { getLedgerSync, type LedgerMove, type SyncStatus } from './bot/ledgerSync'
+import { makeCommercialDistrict, type CommercialDistrict, type ShopKind } from './commerce/district'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
@@ -95,6 +96,7 @@ export interface ColonyUiState {
   citizens: { count: number; awake: number; list: CitizenPublic[]; wallets: Record<string, number> }
   firstPerson: { active: boolean; citizenId: string | null; citizenName: string | null; operatorCitizenId: string | null; view: FirstPersonView | null; narration: string | null; narrating: boolean }
   neighborhood: { lots: { id: string; built: boolean; owner: string | null; ownerId: string | null; reserved: boolean; price: number | null; priceZar: number | null }[]; free: number; built: number; houseCost: number; canAfford: boolean; buildHint: string }
+  commerce: { plots: number; free: number; byKind: { kiosk: number; store: number; showroom: number }; parcels: { id: string; kind: ShopKind; price: number; priceZar: number; built: boolean; owner: string | null }[] }
   radio: RadioState
   courier: { on: boolean; headline: string } // spec 016 — the colony's own news, when a Broadcast Mast is up
   tv: boolean
@@ -150,6 +152,8 @@ export class ColonyRuntime {
   private fpKeys = new Set<string>()
   /** Spec 084 S6 / 079 — the reserved shop-district land bank at the avenue's inland end. */
   commercialReserve: { x: number; y: number; w: number; h: number } | null = null
+  /** Spec 079 P0 — the surveyed commercial high street + shop plots within the reserve. */
+  commercialDistrict: CommercialDistrict | null = null
   private fpNarration: string | null = null
   private fpNarrating = false
 
@@ -197,6 +201,11 @@ export class ColonyRuntime {
       reserveParcelLand(this.sim.state, cells)
       return rect
     })()
+    // Spec 079 P0 — survey the commercial high street + shop plots within the reserve (pure, on dry
+    // land, deterministic from terrain + reserve). The vibrant render + the buy/build economy ride this.
+    this.commercialDistrict = this.commercialReserve
+      ? makeCommercialDistrict(this.sim.state.terrain, this.commercialReserve)
+      : null
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
     // founder profile (the bug: seed-then-restore overwrote Joe's stored posts with a 1-post reset).
@@ -551,6 +560,11 @@ export class ColonyRuntime {
   /** Re-attempt the real-ledger sync now (e.g. once the player signs in). Best-effort, never throws. */
   flushLedgerSync(): void {
     getLedgerSync().flush()
+  }
+
+  /** Spec 079 — the ₭ price of a shop plot by kind, a premium tier over residential land. */
+  shopPriceK(kind: ShopKind): number {
+    return COLONY.commerce.plotPriceK[kind]
   }
 
   /** The ₭ price of a plot: its buildable area + a waterfront premium (spec 085). Reserved founder
@@ -1063,6 +1077,7 @@ export class ColonyRuntime {
     })
     if (this.fpCitizenId) this.renderer.enterFirstPerson(this.fpCitizenId)
     this.renderer.setNeighborhood(this.neighborhood) // spec 075 — lot pads + voxel homes
+    this.renderer.setCommercialDistrict(this.commercialDistrict) // spec 079 — the vibrant shop strip
     this.running = true
     this.lastFrame = performance.now()
     this.lastUi = this.lastFrame
@@ -1274,6 +1289,24 @@ export class ColonyRuntime {
           ? `The build crew raises the house — ${cost} materials from the stockpile`
           : `The build crew raises the house — the stockpile is short (${s.materials}/${cost}) so the crew sources the rest off-island`
         return { lots, free: lots.filter((l) => !l.ownerId).length, built: lots.filter((l) => l.built).length, houseCost: cost, canAfford, buildHint }
+      })(),
+      commerce: (() => {
+        // Spec 079 P0 — the commercial district readout: surveyed shop plots, their ₭ + ZAR price by
+        // kind, and how many are still free. The buy/build economy fills ownerCitizenId + built.
+        const parcels = (this.commercialDistrict?.parcels ?? []).map((p) => {
+          const price = this.shopPriceK(p.kind)
+          return {
+            id: p.id,
+            kind: p.kind,
+            price,
+            priceZar: kookToZar(price, COLONY.economy.land),
+            built: p.built,
+            owner: p.ownerCitizenId ? (this.citizens.byId(p.ownerCitizenId)?.displayName ?? null) : null,
+          }
+        })
+        const byKind = { kiosk: 0, store: 0, showroom: 0 }
+        for (const p of parcels) byKind[p.kind]++
+        return { plots: parcels.length, free: parcels.filter((p) => !p.owner).length, byKind, parcels }
       })(),
       radio: this.radio,
       courier: (() => {

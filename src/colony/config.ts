@@ -1039,6 +1039,14 @@ export const COLONY = {
     },
   },
 
+  // Spec 079 — the commercial district: shop plots priced in ₭ at a PREMIUM over residential land
+  // (a high street is dearer dirt), and the materials to raise each shop kind. The ZAR bridge on the
+  // HUD reuses economy.land.zarPerKook so a shop reads in rand like a homestead does.
+  commerce: {
+    plotPriceK: { kiosk: 220, store: 420, showroom: 720 },
+    matByKind: { kiosk: 12, store: 24, showroom: 40 },
+  },
+
   traffic: {
     maxCars: 34, // spec 084 S3 — the avenue joins the drivable network; commuters get room to use it
     carSpeed: 14, // lots per sim-hour (the street base)

@@ -1,6 +1,6 @@
 # Spec 079 — Commercial plots and shops
 
-- status: proposed
+- status: building (P0 done 2026-06-13)
 - proposed-by: irwin (operator directive) + claude (architect, commerce + bot-computers design workflow)
 - date: 2026-06-10
 - depends-on: 075 (citizen accounts + owned Hermes), 076 (bot login + homesteads), 077 (bot house builder)
@@ -163,4 +163,36 @@ reload and a device switch, and its wallet balance grows with sales.
   creation, and the mission brief POSTed to the bot over its existing OTA channel (BOT_BASE_URL,
   gateway-token auth). Replaces the manual half of P9 with one admin click.
 
-Each slice ships on mechanics/dev, passes typecheck plus vitest, and is visible on :5188.
+Each slice ships on the rolling branch, passes typecheck plus vitest, and is visible on :5188.
+
+## Progress log
+
+### 2026-06-13 — Slice P0: the commercial high street, surveyed + lit (vibrant-first)
+DONE
+- src/colony/commerce/district.ts (pure): makeCommercialDistrict(terrain, reserve) surveys a high
+  street down the reserve midline + shop plots (kiosk 4x4 / store 6x5 / showroom 8x6) flanking it on
+  both sides, every cell gated through cellOk (the shared land contract), collision-checked against a
+  claimed set, deterministic in (terrain, reserve) — no Date.now, no Math.random. 5 node tests:
+  plots placed, every footprint on-land + inside the reserve, no overlap, door on the street-facing
+  front row, replays identically.
+- config.commerce: per-kind plot prices in city coin (kiosk 220 / store 420 / showroom 720, a
+  premium tier over residential land) + build materials; the ZAR bridge reuses economy.land.
+- runtime: surveys the district on boot off the existing commercialReserve (the 40x30 land bank at
+  the avenue's inland end), exposes it in uiState.commerce (plots, free, byKind, priced parcels), and
+  hands it to the renderer. A shopPriceK(kind) helper.
+- renderer: every shop plot raises a VIBRANT NEON market stall — a dark slate shopfront, a glowing
+  awning canopy, and a bright signage panel facing the street. The neon palette
+  (magenta/cyan/amber/lime/violet/orange) cycles per stall and the signs flare brighter after dark
+  via the day/night hook, so the strip becomes the lit heart of the city at dusk — the district
+  concept-art look (docs/research/2026-06-13-district-concept.md). HUD gains a Commercial district
+  panel (plots + per-kind prices).
+- 697 tests green, tsc clean. LIVE on :5188: 10 plots surveyed (2 showroom / 4 store / 4 kiosk)
+  priced 720/420/220 city coin (R18,000 / 10,500 / 5,500), 10 stalls rendered into the scene, the
+  sign emissive flares to 1.46 at dusk, no console errors. Screenshots are broken this session, so
+  verified via scene introspection (mesh count, materials, emissive, positions) per the visual standard.
+NEXT
+- P1: buy a shop plot with city coin — the in-game ledger debit (citizen -> the city) mirrored to
+  the real kooker-service-ledger via bot/ledgerSync.ts (now live, spec 085 P1), plus the HUD Buy
+  action and an arrivals path that claims a shop when funds allow.
+- P2: raise the shop massing through the shared voxel core (compileBlueprint + greedyMesh) on a
+  bought plot, gated on materials, replacing the placeholder stall with real shop architecture.

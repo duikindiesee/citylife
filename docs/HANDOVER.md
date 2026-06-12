@@ -14,9 +14,12 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
   login gate in dev). Restart with `npm run dev` run in the background if it's dead.
 - **Stack:** React 19 + TypeScript + Vite + plain three.js. Tests: **vitest** (node env). Pure
   deterministic sim — **no `Math.random` / `Date.now()` in the sim tick**; everything seeded.
-- **Verify a slice:** `npx tsc --noEmit` (typecheck) + `npx vitest run` (currently **692 tests**). NOTE
+- **Verify a slice:** `npx tsc --noEmit` (typecheck) + `npx vitest run` (currently **697 tests**). NOTE
   Vite HMR does NOT re-instantiate the singleton `ColonyRuntime`, so after editing runtime/uiState do a
   full page reload before live-checking `window.__colony` — a hot-swap alone shows stale state.
+- **Active branch is now `feat/commercial-visuals`** (fresh from `main` after PR #41 merged; PR #42
+  carries the HUD/sync follow-up). `mechanics/dev` on the remote is the stale pre-squash orphan —
+  don't push to it. The rolling lane convention continues on `feat/commercial-visuals`.
   Then LIVE on :5188 — drive `window.__colony` via JS evals (see §6). NOTE: Chrome CDP **screenshots
   are broken this session** (`clip.scale` error) — verify with JS evals + `read_console_messages`,
   not screenshots.
@@ -88,9 +91,11 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
    `docs/specs/085-land-economy.md` P1 log.
 1. **083-P3 — inference-authored Viw dialogue.** kooker-service-ai chat phrases the haggle (screened,
    deterministic fallback intact). Off-machine inference, fits the lean-dev constraint. **Recommended next.**
-3. **085-P2 / 079 — commercial plots + shops.** A pricier commercial tier on the reserved 40×30
-   commercial land bank (already claimed at the avenue's inland end), storefront + checkout to the
-   ledger (reuse `bot/ledgerSync.ts` — a shop sale is another LAND_PURCHASE/TRANSFER). The big commerce arc.
+3. **079 — commercial plots + shops (P0 DONE 2026-06-13).** `commerce/district.ts` surveys a vibrant
+   neon high street (10 shop plots: kiosk/store/showroom, priced 220/420/720 ₭) on the reserved 40×30
+   land bank; the renderer raises glowing market stalls that flare at dusk. NEXT: **079-P1** — buy a
+   shop plot with ₭ (in-game debit mirrored via `bot/ledgerSync.ts`, a LAND_PURCHASE), then **P2** real
+   shop massing via the voxel core. See `docs/specs/079` P0 log + `docs/research/2026-06-13-district-concept.md`.
 4. **082-P3** narration + generated portraits (via the existing kooker image-gen APIs, off-machine).
 5. **Named deferrals from 084:** road-following citizen walks (citizens cut across lawns today),
    gravel driveway ribbons, foliage chunk-bucketing.
