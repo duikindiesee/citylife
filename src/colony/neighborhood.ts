@@ -81,7 +81,9 @@ export interface Neighborhood {
 
 // ── Homestead dimensions ─────────────────────────────────────────────────────
 // Depth budget D, from the street inward: front border (1) + setback + house + garden + farm + rear
-// border (1). Width W: a 1-cell fence border each side, the house inset 1 more cell each side.
+// border (1). Width W: a 1-cell fence border each side, the house inset `inset` more cells each
+// side — the estate tiers inset one EXTRA cell, creating the clear side strip the spec-084 S2
+// L-walkway needs to reach east/west doors.
 interface ParcelSize {
   W: number // frontage (along the street)
   D: number // depth (away from the street)
@@ -89,15 +91,19 @@ interface ParcelSize {
   houseDepth: number
   gardenDepth: number
   farmDepth: number
+  inset: number // house-zone inset from the side fence (1 legacy, 2 estate — the side strip)
 }
-// houseDepth bumped (spec 077) so the bot has room for a fancy multi-storey brick home; the depth
-// budget D is unchanged (the garden/farm give up one cell each), so the homestead still reads whole.
-const BIG: ParcelSize = { W: 11, D: 14, setback: 2, houseDepth: 6, gardenDepth: 2, farmDepth: 2 }
-const COMPACT: ParcelSize = { W: 9, D: 11, setback: 1, houseDepth: 5, gardenDepth: 2, farmDepth: 1 }
-const GAP = 3 // empty green cells between adjacent parcels along the street (beyond each fence)
-const MAX_PER_SIDE = 3 // a band of up to 3 large homesteads per side of the spine
-// Offset of the parcel's front fence from the spine centre: carriageway half (1) + verge (1) + 1.
-const FRONT_OFFSET = 3
+// Spec 084 S6 — the estate tiers of WORLD v2. Odd widths keep the compiled door's centre column on
+// the parcel axis, so the n/s driveway column never shifts on a redesign.
+const GRAND: ParcelSize = { W: 27, D: 33, setback: 4, houseDepth: 16, gardenDepth: 6, farmDepth: 5, inset: 2 } // houseZone 23x16 — founders + waterfront
+const ESTATE: ParcelSize = { W: 23, D: 29, setback: 3, houseDepth: 14, gardenDepth: 5, farmDepth: 5, inset: 2 } // houseZone 19x14 — the standard plot
+// The legacy tiers remain the small-ground fallback (their houses abut the side fence).
+const BIG: ParcelSize = { W: 11, D: 14, setback: 2, houseDepth: 6, gardenDepth: 2, farmDepth: 2, inset: 1 }
+const COMPACT: ParcelSize = { W: 9, D: 11, setback: 1, houseDepth: 5, gardenDepth: 2, farmDepth: 1, inset: 1 }
+const GAP = 4 // empty green cells between adjacent parcels along the street (beyond each fence)
+const MAX_PER_SIDE = 6 // up to 6 homesteads per side of the avenue (084 S6)
+// Offset of the parcel's front fence from the spine centre: carriageway half (1) + verge (1) + 2.
+const FRONT_OFFSET = 4
 
 function key(x: number, y: number): string {
   return `${x},${y}`
@@ -122,7 +128,7 @@ function dilate(t: Terrain, cells: Cell[], have: Set<string>): Cell[] {
 }
 
 /** Spiral outward from (cx,cy) up to `r` for the nearest cell that passes cellOk. */
-function slideToLand(t: Terrain, cx: number, cy: number, r = 4): Cell | null {
+function slideToLand(t: Terrain, cx: number, cy: number, r = 8): Cell | null {
   for (let rr = 0; rr <= r; rr++) {
     for (let dy = -rr; dy <= rr; dy++) {
       for (let dx = -rr; dx <= rr; dx++) {
@@ -179,7 +185,6 @@ function tryParcel(
 ): Parcel | null {
   const uHalf = (sz.W - 1) / 2
   const houseSeed = (sx * 73856093) ^ (syStreet * 19349663)
-  const jitter = ((houseSeed >>> 4) % 3) - 1 // -1, 0, +1 lateral nudge so fronts align but vary
   // Absolute coords from a lateral offset u and a depth d (0 = front fence row).
   const ax = (u: number) => sx + u
   const ay = (d: number) => syStreet + side * (FRONT_OFFSET + d)
@@ -204,25 +209,29 @@ function tryParcel(
     const ys = [ay(dA), ay(dB)]
     return { x: ax(uA), y: Math.min(ys[0]!, ys[1]!), w: uB - uA + 1, d: Math.abs(dB - dA) + 1 }
   }
-  const houseUHalf = uHalf - 1 // inset 1 cell from the side fence (1 border + 1 inset = 2)
+  const houseUHalf = uHalf - sz.inset // estate tiers inset 2: the clear SIDE STRIP for e/w walkways
   const houseZone = rect(houseD0, houseD0 + sz.houseDepth - 1, -houseUHalf, houseUHalf)
   const garden = rect(gardenD0, gardenD0 + sz.gardenDepth - 1, -(uHalf - 1), uHalf - 1)
   const farm = rect(farmD0, farmD0 + sz.farmDepth - 1, -(uHalf - 1), uHalf - 1)
 
   // 3. Door (house front, on the street side), gate (front fence at the door column), driveway.
-  let doorU = jitter
-  if (Math.abs(doorU) > houseUHalf) doorU = 0
-  const doorX = ax(doorU)
+  // The door column is the house-zone CENTRE: compileBlueprint centres the door on the door edge
+  // (doorCellPlot), so this is the only column where the driveway actually lands on the door. The
+  // old ±1 jitter made the path miss the door by a cell on two of three parcels.
+  const doorX = ax(0)
   const doorY = ay(houseD0)
   const gate = { x: doorX, y: ay(0) }
   // Frontage rule: a carriageway cell must sit directly street-ward of the gate column.
   if (!corridor.carriageSet.has(key(doorX, syStreet + side * 1)) && !corridor.carriageSet.has(key(doorX, syStreet))) {
     return null
   }
-  // The driveway runs from the verge (offset 2) across the front yard all the way to the door cell
-  // (offset FRONT_OFFSET + houseD0), so it actually reaches the door — no one-cell gap.
+  // The driveway runs from the verge across the front yard all the way to the door cell (offset
+  // FRONT_OFFSET + houseD0), so it actually reaches the door — no one-cell gap. When the carriageway
+  // does not sit directly beside the verge at this column (the dilated road skipped a cell), the
+  // drive extends one row street-ward so it still MEETS the road.
+  const oStart = corridor.carriageSet.has(key(doorX, syStreet + side * 1)) ? 2 : 1
   const driveway: Cell[] = []
-  for (let o = 2; o <= FRONT_OFFSET + houseD0; o++) {
+  for (let o = oStart; o <= FRONT_OFFSET + houseD0; o++) {
     const x = doorX, y = syStreet + side * o
     if (!cellOk(t, x, y)) return null // keep the drive on good ground
     driveway.push({ x, y })
@@ -271,31 +280,122 @@ function tryParcel(
   }
 }
 
-/** Lay as many parcels as fit along the spine, alternating both sides, at a fixed street pitch. */
-function layParcels(t: Terrain, corridor: Corridor, sz: ParcelSize): Parcel[] {
-  const pitch = sz.W + GAP
-  const xs = [...corridor.colY.keys()].sort((a, b) => a - b)
+// ── Door access contract (spec 077/083) ─────────────────────────────────────
+// The compiled house's door is a pure function of the house zone + the blueprint's door facing
+// (compileBlueprint scales the design to the zone and centres the door on its edge), so the parcel's
+// access — door cell, gate, driveway, fence gaps — can always be re-aimed at the REAL door.
+
+/** The street-facing door direction for a parcel (which way the house front looks at the spine). */
+export function streetDoorDir(p: Parcel): 'n' | 's' {
+  return p.side === 1 ? 'n' : 's'
+}
+
+/** The world cell of a compiled blueprint's door on this parcel, for a given facing. */
+export function blueprintDoorCell(p: Parcel, dir: DoorDir): Cell {
+  const z = p.houseZone
+  switch (dir) {
+    case 'n': return { x: z.x + Math.floor(z.w / 2), y: z.y }
+    case 's': return { x: z.x + Math.floor(z.w / 2), y: z.y + z.d - 1 }
+    case 'e': return { x: z.x + z.w - 1, y: z.y + Math.floor(z.d / 2) }
+    case 'w': return { x: z.x, y: z.y + Math.floor(z.d / 2) }
+  }
+}
+
+/** Rebuild the perimeter fence ring from the parcel rect, leaving the given gap cells open. */
+function rebuildFence(p: Parcel, gaps: Cell[]): void {
+  const xHalf = (p.w - 1) / 2
+  const x0 = p.x - xHalf, x1 = p.x + xHalf
+  const y0 = p.side === 1 ? p.gate.y : p.gate.y - p.h + 1
+  const y1 = p.side === 1 ? p.gate.y + p.h - 1 : p.gate.y
+  const gap = new Set(gaps.map((c) => key(c.x, c.y)))
+  const fence: Cell[] = []
+  for (let x = x0; x <= x1; x++) for (const y of [y0, y1]) if (!gap.has(key(x, y))) fence.push({ x, y })
+  for (let y = y0 + 1; y <= y1 - 1; y++) for (const x of [x0, x1]) if (!gap.has(key(x, y))) fence.push({ x, y })
+  p.fence = fence
+}
+
+/** Re-aim the parcel's access at the door of the COMPILED blueprint. doorX/doorY become the real
+ *  door cell (citizens walk to the actual door). A street-facing door pulls the gate + driveway onto
+ *  its column so the path lands exactly on the door. For side (e/w) and rear doors the behaviour
+ *  depends on the parcel tier (spec 084 S2): when a clear SIDE STRIP exists between the house zone
+ *  and the side fence (the new estate tiers inset the zone one extra cell), a full L-WALKWAY is
+ *  laid — along the front yard, up the inside-fence strip, around to the door — ending ON the door
+ *  cell, every cell inside the parcel rect. Legacy tiers, where the house abuts the fence, keep the
+ *  geometrically honest minimum: a side fence gap beside an e/w door, a garden doorstep pad behind
+ *  a rear door. Pure and deterministic — call it whenever a blueprint lands on the parcel. */
+export function retargetParcelAccess(p: Parcel, dir: DoorDir): void {
+  const street = streetDoorDir(p)
+  const door = blueprintDoorCell(p, dir)
+  p.doorX = door.x
+  p.doorY = door.y
+  // The porch path: verge row, gate row, front yard, ending ON the house-front row — at the door
+  // column when the door faces the street, else at the front centre.
+  const front = dir === street ? door : blueprintDoorCell(p, street)
+  // Preserve the street-most row tryParcel chose (it knows where the carriageway actually is).
+  const startY = p.driveway[0]?.y ?? p.gate.y - p.side
+  const cells: Cell[] = []
+  for (let y = startY; p.side > 0 ? y <= front.y : y >= front.y; y += p.side) cells.push({ x: front.x, y })
+  p.gate = { x: front.x, y: p.gate.y }
+  const gaps: Cell[] = [p.gate]
+  if (dir !== street) {
+    const z = p.houseZone
+    const x0 = p.x - (p.w - 1) / 2 // the west fence column
+    const hasStrip = z.x >= x0 + 2 // a clear walkway column between the side fence and the house
+    if (!hasStrip) {
+      if (dir === 'e' || dir === 'w') gaps.push({ x: door.x + (dir === 'e' ? 1 : -1), y: door.y })
+      else cells.push({ x: door.x, y: door.y + p.side }) // rear doorstep onto the garden
+    } else {
+      // The L-walkway. Front-yard leg: along the setback row just street-ward of the house front,
+      // from the porch column to the strip. Strip leg: along the inside-fence column to the door
+      // row (rear doors continue one row further, into the garden, and wrap along it).
+      const fyOut = front.y - p.side
+      const west = dir === 'w' || ((dir === 'n' || dir === 's') && door.x <= p.x)
+      const xs = west ? z.x - 1 : z.x + z.w
+      const stepX = xs > front.x ? 1 : -1
+      for (let x = front.x + stepX; stepX > 0 ? x <= xs : x >= xs; x += stepX) cells.push({ x, y: fyOut })
+      const endY = dir === 'n' || dir === 's' ? door.y + p.side : door.y
+      for (let y = fyOut + p.side; p.side > 0 ? y <= endY : y >= endY; y += p.side) cells.push({ x: xs, y })
+      if (dir === 'n' || dir === 's') {
+        const stepBX = door.x > xs ? 1 : -1
+        for (let x = xs + stepBX; stepBX > 0 ? x <= door.x : x >= door.x; x += stepBX) cells.push({ x, y: endY })
+      }
+      cells.push({ x: door.x, y: door.y }) // the walkway ENDS on the door cell, like the front drive
+    }
+  }
+  p.driveway = cells
+  rebuildFence(p, gaps)
+}
+
+/** Lay as many parcels as fit along the spine, alternating both sides. Spec 084 S6 — each side
+ *  carries its own size SEQUENCE (sizeFor(index)) and its own placement cursor, so a masterplan can
+ *  mix tiers (the GRAND waterfront pair first, then the ESTATE row). Columns iterate shore-ward
+ *  first when the corridor's shore end is known, so index 0 (the GRAND tier) lands by the water. */
+function layParcels(t: Terrain, corridor: Corridor, sizeFor: (index: number) => ParcelSize): Parcel[] {
+  let xs = [...corridor.colY.keys()].sort((a, b) => a - b)
   if (xs.length === 0) return []
+  // Iterate from the shore-ward corridor end (terrain.distToWater is the precomputed BFS field).
+  const dAt = (x: number) => t.distToWater[t.idx(x, corridor.colY.get(x)!)] ?? 999
+  if (dAt(xs[xs.length - 1]!) < dAt(xs[0]!)) xs = xs.reverse()
   const claimed = new Set<string>()
   const parcels: Parcel[] = []
   let id = 1
   const perSide = { [-1]: 0, [1]: 0 } as Record<number, number>
-  let lastPlacedX = -Infinity
+  const nextAt = { [-1]: -Infinity, [1]: -Infinity } as Record<number, number> // per-side |x| cursor
+  const step0 = xs[0]! <= xs[xs.length - 1]! ? 1 : -1 // travel direction along the column order
   for (const x of xs) {
-    if (x - lastPlacedX < pitch) continue
     const syStreet = corridor.colY.get(x)!
-    let placed = false
     for (const side of [-1, 1] as const) {
       if (perSide[side]! >= MAX_PER_SIDE) continue
+      if (step0 > 0 ? x < nextAt[side]! : x > nextAt[side]!) continue
+      const sz = sizeFor(perSide[side]!)
       const p = tryParcel(t, x, syStreet, side, sz, corridor, claimed, id)
       if (p) {
         parcels.push(p)
         perSide[side]!++
         id++
-        placed = true
+        nextAt[side] = x + step0 * (sz.W + GAP)
       }
     }
-    if (placed) lastPlacedX = x
     if (perSide[-1]! >= MAX_PER_SIDE && perSide[1]! >= MAX_PER_SIDE) break
   }
   return parcels
@@ -317,48 +417,134 @@ function trimCorridor(t: Terrain, corridor: Corridor, parcels: Parcel[]): Corrid
   return { ...corridor, spine, carriage, verge }
 }
 
-function assemble(corridor: Corridor, parcels: Parcel[]): Neighborhood {
-  return { spine: corridor.spine, carriage: corridor.carriage, verge: corridor.verge, street: corridor.carriage, parcels, lots: parcels }
+function assemble(t: Terrain, corridor: Corridor, parcels: Parcel[]): Neighborhood {
+  // Spec 084 S6 — plot order is a DECLARED contract: the GRAND tier numbers first (the founders'
+  // plots 1 + 2), then everything by distance to water ascending (ties by x). Joe takes lot_1,
+  // Viw lot_2 — exactly the operator's plot-one-and-plot-two ask.
+  const dw = (p: Parcel) => t.distToWater[t.idx(Math.round(p.x), Math.round(p.y))] ?? 999
+  const grand = (p: Parcel) => p.w >= GRAND.W
+  const byShore = [...parcels].sort((a, b) => {
+    if (grand(a) !== grand(b)) return grand(a) ? -1 : 1
+    const da = dw(a), db = dw(b)
+    return da !== db ? da - db : a.x - b.x
+  })
+  byShore.forEach((p, i) => { p.id = `lot_${i + 1}` })
+  return { spine: corridor.spine, carriage: corridor.carriage, verge: corridor.verge, street: corridor.carriage, parcels: byShore, lots: byShore }
 }
 
 /** Lay out the homestead neighbourhood on the best dry ground a short walk from the colony core.
- *  Tries large parcels first, then compact, across several spine baselines, and keeps the layout that
- *  yields the most homesteads. Pure + deterministic from the terrain. */
+ *  Spec 084 S6 — the ESTATE MASTERPLAN comes first: per side, a GRAND waterfront plot then a row of
+ *  ESTATEs along the avenue. Smaller tiers remain the fallback for cramped seeds. Wider baseline
+ *  sweep for the 608 world. Pure + deterministic from the terrain. */
 export function makeNeighborhood(t: Terrain): Neighborhood {
   const lx = t.landing.x, ly = t.landing.y
+  const PLANS: ReadonlyArray<(i: number) => ParcelSize> = [
+    (i) => (i === 0 ? GRAND : ESTATE), // the masterplan: GRAND shore-ward, ESTATE row after
+    () => ESTATE,
+    () => BIG,
+    () => COMPACT,
+  ]
+  const spanFor = (plan: (i: number) => ParcelSize) => {
+    let s = 4
+    for (let i = 0; i < MAX_PER_SIDE; i++) s += plan(i).W + GAP
+    return s
+  }
   let best: { corridor: Corridor; parcels: Parcel[] } | null = null
-  for (const sz of [BIG, COMPACT]) {
-    const span = MAX_PER_SIDE * (sz.W + GAP) + 4
-    for (const dy of [0, -7, 7, -13, 13, -19, 19, -25, 25]) {
+  for (const plan of PLANS) {
+    const span = spanFor(plan)
+    for (const dy of [0, -12, 12, -24, 24, -36, 36, -48, 48, -64, 64, -80, 80]) {
       const corridor = buildCorridor(t, lx, ly + dy, span)
       if (!corridor) continue
-      const parcels = layParcels(t, corridor, sz)
+      const parcels = layParcels(t, corridor, plan)
       if (!best || parcels.length > best.parcels.length) best = { corridor, parcels }
       if (parcels.length >= MAX_PER_SIDE * 2) break // a full band — good enough, stop early
     }
-    if (best && best.parcels.length >= 2) return assemble(trimCorridor(t, best.corridor, best.parcels), best.parcels)
+    if (best && best.parcels.length >= 2) return assemble(t, trimCorridor(t, best.corridor, best.parcels), best.parcels)
   }
-  if (best) return assemble(trimCorridor(t, best.corridor, best.parcels), best.parcels)
+  if (best) return assemble(t, trimCorridor(t, best.corridor, best.parcels), best.parcels)
   return { spine: [], carriage: [], verge: [], street: [], parcels: [], lots: [] }
 }
 
-/** Spec 077 P2 — a deterministic, valid fallback BLUEPRINT for a built parcel so the fancy greedy-meshed
- *  brick render path runs before the builder route (P3) and blueprint storage (P4) exist. Pure: a fixed
- *  function of the parcel seed + its house-zone footprint + door facing. The layout is a real little home —
- *  a living room across the front, a bedroom to one side, and a patio out back — sized to the zone so the
- *  rooms tile it with no gaps. The compiler scales these abstract units onto the zone tile count.
- */
-export function defaultBlueprint(seed: number, doorDir: DoorDir): string {
-  // Abstract blueprint footprint. Keep it small + sane (the compiler scales to the real zone w/d); a 2-storey
-  // wall gives the masonry several brick courses tall. A back patio keeps the home open + interesting.
-  const w = 6
-  const d = 5
-  const wallH = (((seed >>> 6) & 1) === 0) ? 1 : 2 // cosy 1 to 2 storey cottages, never towers
-  // A solid little home: a living room across the front, a bedroom beside it, filling the whole
-  // footprint so the house reads as a deep cottage under a peaked roof (no shallow open patio slab).
-  const rooms = [
-    `room{kind:living x:0 y:0 w:4 d:5 win:1}`,
-    `room{kind:bedroom x:4 y:0 w:2 d:5 win:1}`,
+// Spec 077 P5 — a strong deterministic hash for the design generator (splitmix-style avalanche), so
+// every seed bit reaches every design choice and nearby parcel seeds still get wildly different homes.
+function designHash(seed: number, salt: number): number {
+  let h = (seed ^ (salt * 0x9e3779b9)) >>> 0
+  h = Math.imul(h ^ (h >>> 16), 0x21f0aaad) >>> 0
+  h = Math.imul(h ^ (h >>> 15), 0x735a2d97) >>> 0
+  return (h ^ (h >>> 15)) >>> 0
+}
+
+/** Spec 077 P5 — EVERY CITIZEN DESIGNS THEIR OWN HOME (until their bot authors one in the builder).
+ *  A deterministic per-seed design generator: seven layout archetypes crossed with varied footprint
+ *  proportions, one or two storeys, and window choices — so no two houses on the street look alike.
+ *  Valid BY CONSTRUCTION for every seed (rooms in bounds, the front row always reaches the door edge):
+ *  layouts are authored in abstract units with door:s and the door side passed through; the compiler
+ *  scales the units onto the real house-zone tile count. Pure — no wall-clock, no Math.random. */
+export function defaultBlueprint(seed: number, doorDir: DoorDir, zoneW?: number): string {
+  const h = (salt: number) => designHash(seed >>> 0, salt)
+  // Footprint proportions vary the massing silhouette: 5x4 squat, 6x5 classic, 7x5 long, 6x6 deep.
+  const FOOTPRINTS: ReadonlyArray<readonly [number, number]> = [[5, 4], [6, 5], [7, 5], [6, 6]]
+  // Spec 084 S4 — on the estate tiers (zone width >= 14) the archetypes author on FINER footprints,
+  // so rooms keep sensible proportions when the compiler stretches the design onto the big zone.
+  // Inert at today's 9-wide zones; the S6 estates light it up.
+  const FOOTPRINTS_LARGE: ReadonlyArray<readonly [number, number]> = [[9, 7], [10, 8], [12, 8], [10, 10]]
+  const table = zoneW !== undefined && zoneW >= 14 ? FOOTPRINTS_LARGE : FOOTPRINTS
+  const [w, d] = table[h(1) % table.length]!
+  const wallH = 1 + (h(2) % 2) // cosy 1-2 storeys, never towers
+  const winA = (h(3) & 1) as 0 | 1 // window character varies per home
+  const half = Math.floor(w / 2)
+  const backD = Math.max(1, Math.floor(d * 0.4)) // depth of the back band feature
+  const frontD = d - backD
+  type R = { kind: string; x: number; y: number; w: number; d: number; win: 0 | 1 }
+  // Seven archetypes, authored with the FRONT (street/door) on the y:0 edge. Pools, patios and the
+  // backyard band sit at the rear; the door wall always lands on an enclosed front room. For a south
+  // door the whole layout is mirrored vertically below, so the front stays the front.
+  const archetypes: ReadonlyArray<() => R[]> = [
+    // 0 the classic cottage — living + bedroom side by side, full depth
+    () => [
+      { kind: 'living', x: 0, y: 0, w: w - 2, d, win: 1 },
+      { kind: 'bedroom', x: w - 2, y: 0, w: 2, d, win: winA },
+    ],
+    // 1 the backyard-pool home — full-width front living, bedroom + POOL across the back
+    () => [
+      { kind: 'living', x: 0, y: 0, w, d: frontD, win: 1 },
+      { kind: 'bedroom', x: 0, y: frontD, w: w - half, d: backD, win: winA },
+      { kind: 'pool', x: w - half, y: frontD, w: half, d: backD, win: 0 },
+    ],
+    // 2 the patio corner — L-shaped home with an open back-corner patio
+    () => [
+      { kind: 'living', x: 0, y: 0, w, d: frontD, win: 1 },
+      { kind: 'bedroom', x: 0, y: frontD, w: w - half, d: backD, win: 1 },
+      { kind: 'patio', x: w - half, y: frontD, w: half, d: backD, win: 0 },
+    ],
+    // 3 the motor home — living beside a street-facing GARAGE, bedroom across the back
+    () => [
+      { kind: 'living', x: 0, y: 0, w: w - half, d: frontD, win: 1 },
+      { kind: 'garage', x: w - half, y: 0, w: half, d: frontD, win: 0 },
+      { kind: 'bedroom', x: 0, y: frontD, w, d: backD, win: winA },
+    ],
+    // 4 the long house — three rooms in a row, windows alternating
+    () => [
+      { kind: 'bedroom', x: 0, y: 0, w: 2, d, win: winA },
+      { kind: 'living', x: 2, y: 0, w: w - 4, d, win: 1 },
+      { kind: 'bedroom', x: w - 2, y: 0, w: 2, d, win: 1 },
+    ],
+    // 5 the courtyard — a full home with an open patio heart (carved by overlap, the massing rules)
+    () => [
+      { kind: 'living', x: 0, y: 0, w, d, win: 1 },
+      { kind: 'patio', x: 1, y: Math.max(1, frontD - 1), w: Math.max(2, w - 3), d: Math.min(2, backD), win: 0 },
+    ],
+    // 6 the poolside villa — living front-left, garage front-right, pool the whole back band
+    () => [
+      { kind: 'living', x: 0, y: 0, w: w - 2, d: frontD, win: 1 },
+      { kind: 'garage', x: w - 2, y: 0, w: 2, d: frontD, win: 0 },
+      { kind: 'pool', x: 0, y: frontD, w, d: backD, win: 0 },
+    ],
   ]
-  return `house{w:${w} d:${d} wallH:${wallH} door:${doorDir}} ${rooms.join(' ')}`
+  let rooms = archetypes[h(4) % archetypes.length]!()
+  // South door: mirror vertically so the enclosed front faces the street and the yard stays out back.
+  // (East/west doors are not produced by the homestead layout; the validator reach rule still holds.)
+  if (doorDir === 's') rooms = rooms.map((r) => ({ ...r, y: d - (r.y + r.d) }))
+  const roomStr = rooms.map((r) => `room{kind:${r.kind} x:${r.x} y:${r.y} w:${r.w} d:${r.d} win:${r.win}}`)
+  return `house{w:${w} d:${d} wallH:${wallH} door:${doorDir}} ${roomStr.join(' ')}`
 }

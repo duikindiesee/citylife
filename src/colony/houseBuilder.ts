@@ -14,11 +14,17 @@ import type { Block, BlockKind, DoorDir } from './voxelHouse'
  *  that a single brick is small and a wall is several courses tall. Tunable (the spec allows up to 8). */
 export const HOUSE_VOXEL_N = 6
 
-/** A soft compile-cost budget the compiled house stays under (occupancy memory + mesh-gen time). With
- *  P2 greedy meshing a house draws as ONE merged geometry regardless of block count, so this is no longer
- *  a draw-call cap — it just bounds how large a single house may get. A big 3-storey brick home on a large
- *  plot lands near 7000 micro-blocks, so the cap sits comfortably above that. */
-export const HOUSE_VOXEL_BUDGET = 12000
+/** The compile-cost budget a compiled house must stay under (occupancy memory + mesh-gen time). With
+ *  greedy meshing a house draws as ONE merged geometry regardless of block count, so this is not a
+ *  draw-call cap — it bounds how large a single house may get. Spec 084 S4 raised it for the estate
+ *  tiers (a 3-storey GRAND-zone home lands near 45k micro-blocks) and compileBlueprint now ENFORCES
+ *  it: it used to be exported-but-never-checked, an open door for a bot script to stall the tab. */
+export const HOUSE_VOXEL_BUDGET = 60000
+
+/** Micro-block height in world units — gives each storey real presence so a home is never squat.
+ *  THE single source: the game renderer, the builder preview and the Kookerbook house card all mesh
+ *  with this, so a house looks identical everywhere it is drawn (spec 084 S1 killed 3 duplicates). */
+export const VOXEL_Y = 0.22
 
 export interface CompileOpts {
   /** houseZone width in plot cells (tiles along the street). */
@@ -168,6 +174,12 @@ export function compileBlueprint(script: string, opts: CompileOpts): CompiledHou
   const gw = w * n
   const gd = d * n
   const gh = floorSub + wallSub + roofSub + chimneySub
+  // Spec 084 S4 — the budget is ENFORCED, not advisory: the floor slab alone occupies gw*gd cells,
+  // so a zone whose slab already busts the budget can never compile (it used to allocate and mesh
+  // anyway — an open door for a bot-authored script to stall the tab on a huge plot).
+  if (gw * gd > HOUSE_VOXEL_BUDGET) {
+    throw new Error(`house exceeds the voxel budget: ${gw}x${gd} floor slab alone is ${gw * gd} > ${HOUSE_VOXEL_BUDGET} micro-blocks`)
+  }
   const g = new Grid(gw, gd, gh)
 
   const rooms = scaleRooms(p, w, d)
@@ -209,7 +221,11 @@ export function compileBlueprint(script: string, opts: CompileOpts): CompiledHou
   //    the entrance is always clear even when a patio rail or a room divider lands on the door edge.
   placeDoor(g, doorGx, door, p.doorDir, n, floorSub)
 
-  return { gw, gd, gh, n, storeys, blocks: g.toBlocks() }
+  const blocks = g.toBlocks()
+  if (blocks.length > HOUSE_VOXEL_BUDGET) {
+    throw new Error(`house exceeds the voxel budget: ${blocks.length} > ${HOUSE_VOXEL_BUDGET} micro-blocks (spec 084 S4)`)
+  }
+  return { gw, gd, gh, n, storeys, blocks }
 }
 
 // The plot-cell door cell for a facing; the column is centred (deterministically) on the door edge.

@@ -115,3 +115,62 @@ backend layer wins when it answers.
   intranet index becomes the in-cluster directory.
 
 Each citylife slice ships on mechanics/dev, passes typecheck plus vitest, and is visible on :5188.
+
+## Progress log
+
+### 2026-06-11 — Slice: P0 model + store + auto-profile
+DONE
+- social/kookerbook.ts: KbProfile + KbPost (sol-stamped + sequence — game calendar, never
+  wall-clock), createProfile/addPost/follow all screened via isPublicSafe, POST_CAP 50 newest-first,
+  AUTHORED_PER_SOL 3 rate cap, and safeProfile which rebuilds untrusted stored data through the
+  screened path so tampering never reaches the UI.
+- bot/kookerbookStore.ts: the blueprintStore two-layer contract — localStorage map keyed by
+  citizenId + best-effort PUT/GET against the generic kooker-service-social profiles path
+  (appName citylife; 404-tolerant until the service ships; backend wins on restore).
+- Runtime: ensureKbProfile at citizen registration (border approve) and for Joe the founder
+  (profile number one, Driftwood Cove, founder bio + birth event post); kbPost() appends screened
+  capped posts; restoreKookerbook() on boot (local immediately, backend overlay).
+- 7 node tests (screening, sol stamping, caps, rate limit, follow, tamper-drop, store round-trip
+  + backend-wins merge). All green. LIVE: Joe's profile exists on :5188 with his birth event, a
+  narration posted through kbPost, both persisted across reload.
+
+NEXT
+- P1 the site: kookerbook.html directory + profile pages (portrait fallback = avatar render, house
+  render, timeline), data-kb-action hooks, HUD link, rollup input line; live with Joe's page.
+
+### 2026-06-11 — Slice: P1 the site — Kookerbook is live with Joe's page
+DONE
+- kookerbook.html + social/kookerbookMain.tsx: a standalone page reading the same-origin kookerbook
+  + blueprint stores directly (backend overlay when it answers) — directory of citizen cards
+  (portrait, alias, address, last post) and the profile page: header, bio, a LIVE 3D RENDER OF THE
+  CITIZEN'S OWN DESIGNED HOUSE rebuilt from their stored blueprint through the shared compile +
+  greedy-mesh cores, and the sol-stamped timeline. Every control carries data-kb-action.
+- HUD gains a Kookerbook link (open the Book); kookerbook.html added to the rollup inputs.
+- TWO REAL BUGS found by live verification and fixed: (1) the Vite /kooker proxy prefix swallowed
+  /kookerbook.html into the APISIX gateway (404) — the proxy is now anchored to ^/kooker/ so only
+  API calls match; (2) constructor ordering clobbered stored timelines — seedJoe wrote a fresh
+  1-post profile over the persisted one before restore ran; restoreKookerbook now runs FIRST and
+  ensureKbProfile skips existing profiles.
+- Verified live end to end: Joe's page shows portrait, Driftwood Cove · Founder, bio, his
+  self-designed brick house render, and a timeline whose narration + birth event SURVIVE a full
+  game reload. 616 tests green.
+
+NEXT
+- P2 event posts: moved-in, house-designed (with blueprint snapshot), founders-day wired from the
+  runtime so timelines fill themselves as the city lives.
+
+### 2026-06-11 — Slice: P2 event posts — timelines write themselves
+DONE
+- assignLot posts a moved-in event (with the plot name) to the new owner's page; applyBlueprint
+  posts designed-their-home (first design) or redesigned-their-home (a built plot's new blueprint)
+  — and since selfDesignLot and the builder popup both flow through applyBlueprint, every design
+  path lands on the timeline automatically.
+- Verified live: Joe ran his self-design loop and his Kookerbook page now reads as a life —
+  arrived, watched the dropship lights (narration), redesigned their home — above his house render.
+  616 tests green.
+- Deferred to P3: founders-day calendar posts and the blueprint snapshot image on design events
+  (joins the generated-portrait work).
+
+NEXT
+- The commerce arc (079-P0 district survey onward) — business tabs land on these same pages — then
+  082-P3 narration/authored posts + generated portraits via the existing image APIs.

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { ColonySim } from '../src/colony/sim'
+import { reserveParcelLand } from '../src/colony/build'
+import { makeNeighborhood } from '../src/colony/neighborhood'
 
 // Roads v2 — the block frame is now ROUTED with the least-cost pathfinder (cellOk + slope weight)
 // instead of stamped as rigid straight lines, so roads contour around water and steep ground. These
@@ -28,6 +30,40 @@ describe('road planning — least-cost routed block frames', () => {
     const a = new ColonySim(1234).state.roads.map((r) => `${r.x},${r.y}`).join('|')
     const b = new ColonySim(1234).state.roads.map((r) => `${r.x},${r.y}`).join('|')
     expect(a).toBe(b)
+  })
+
+  it('PARCEL LAND IS SACRED — reserveParcelLand purges roads under parcels and blocks future laying', () => {
+    const sim = new ColonySim(42)
+    // reserve a band straight through the existing landing frame
+    const roadCell = sim.state.roads[0]!
+    const cells: { x: number; y: number }[] = []
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) cells.push({ x: roadCell.x + dx, y: roadCell.y + dy })
+    const purged = reserveParcelLand(sim.state, cells)
+    expect(purged).toBeGreaterThanOrEqual(1) // the overlapping road cell was removed
+    for (const r of sim.state.roads) {
+      const inside = cells.some((c) => c.x === r.x && c.y === r.y)
+      expect(inside, `road ${r.x},${r.y} still inside reserved land`).toBe(false)
+    }
+    for (const c of cells) expect(sim.state.occupied.has(`${c.x},${c.y}`)).toBe(true)
+  })
+
+  it('after the runtime-style homestead reservation, NO colony road sits under any parcel', () => {
+    const sim = new ColonySim(42)
+    const nbhd = makeNeighborhood(sim.state.terrain)
+    const cells: { x: number; y: number }[] = []
+    for (const lot of nbhd.lots) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      for (const f of lot.fence) {
+        minX = Math.min(minX, f.x); maxX = Math.max(maxX, f.x)
+        minY = Math.min(minY, f.y); maxY = Math.max(maxY, f.y)
+      }
+      for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) cells.push({ x, y })
+    }
+    reserveParcelLand(sim.state, cells)
+    const reserved = new Set(cells.map((c) => `${c.x},${c.y}`))
+    for (const r of sim.state.roads) {
+      expect(reserved.has(`${r.x},${r.y}`), `road ${r.x},${r.y} under a homestead`).toBe(false)
+    }
   })
 
   it('the landing frame is non-empty and 4-connected enough to walk (each cell has a road neighbour)', () => {

@@ -14,7 +14,11 @@ import { getAuthClient } from '../authClient'
 import { validateBlueprint } from '../blueprintScript'
 import { isPublicSafe } from '../newcomers'
 
-const LS_BLUEPRINTS = 'citylife.blueprints.v1'
+// v2 with the WORLD v2 re-baseline (spec 084 S6): lot ids name different physical land after the
+// 608 estate masterplan, so v1 entries are deliberately NOT migrated — restoring a v1 design onto
+// whatever lot now wears its old id would put someone's house on a stranger's plot. Founder homes
+// re-seed from code; citizen designs start fresh on the new estates.
+const LS_BLUEPRINTS = 'citylife.blueprints.v2'
 const BACKEND_PATH = '/kooker/api/v1/citylife/blueprints'
 
 export interface StoredBlueprint {

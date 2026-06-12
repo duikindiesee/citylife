@@ -9,9 +9,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { parseBlueprint, blueprintToScript, validateBlueprint, ROOM_KINDS, type ParsedBlueprint, type RoomKind } from '../blueprintScript'
-import { compileBlueprint } from '../houseBuilder'
+import { compileBlueprint, VOXEL_Y } from '../houseBuilder'
 import { greedyMesh } from '../render/voxelMesh'
 import { defaultDesign, addRoom, removeRoom, moveRoom, resizeRoom, toggleWin, setRoomKind, cycleDoor, setWallH } from './blueprintEdit'
+import { BuilderDesk } from './BuilderDesk'
 
 const ROOM_COLOR: Record<RoomKind, string> = {
   living: '#caa86a',
@@ -20,8 +21,6 @@ const ROOM_COLOR: Record<RoomKind, string> = {
   patio: '#c2b59b',
   pool: '#3f7fb0',
 }
-// Matches the game renderer's storey scale so the preview height is honest.
-const VOXEL_Y = 0.22
 
 interface Params {
   citizenId: string
@@ -41,8 +40,8 @@ function readParams(): Params {
   return {
     citizenId: q.get('citizenId') ?? 'citizen_dev',
     lotId: q.get('lotId') ?? 'lot_dev',
-    w: num('w', 9),
-    d: num('d', 6),
+    w: num('w', 19), // 084 S6 — the ESTATE house zone is the new default canvas
+    d: num('d', 14),
     seed: num('seed', 0x1234abcd),
     bp: q.get('bp'),
   }
@@ -169,10 +168,31 @@ export function BuilderApp() {
     setSavedAt(script)
   }
 
-  // 2D plan geometry: one SVG cell per plot cell.
-  const CELL = 34
+  // Spec 083 P2 — the Builder Desk hands its agreed brief here as a ready blueprint: load it as the
+  // editable design so the player can tweak it and Accept through the same validated path.
+  const loadNegotiated = (negotiatedScript: string) => {
+    try {
+      apply(() => parseBlueprint(negotiatedScript), false)
+      select(0)
+    } catch {
+      /* an engine bug would throw in briefToBlueprint already; ignore a stray parse here */
+    }
+  }
+
+  // 2D plan geometry: one SVG cell per plot cell. The cell size adapts so a big estate footprint
+  // still fits the popup (spec 084 S4): clamp(640 / span, 16, 34).
+  const CELL = Math.max(16, Math.min(34, Math.floor(640 / Math.max(design.w, design.d))))
   const planW = design.w * CELL
   const planH = design.d * CELL
+  // Live voxel-budget readout — the same enforced budget compileBlueprint throws past, surfaced
+  // BEFORE Accept so a bot (or human) sees the cost of a design as it grows.
+  const voxels = useMemo(() => {
+    try {
+      return compileBlueprint(blueprintToScript(design), { w: design.w, d: design.d, seed: params.seed }).blocks.length
+    } catch {
+      return -1 // over budget or uncompilable — the header shows the warning
+    }
+  }, [design, params.seed])
 
   const btn: React.CSSProperties = { padding: '3px 9px', fontSize: 12, background: '#1c2433', color: '#dfe7f2', border: '1px solid #34415a', borderRadius: 4, cursor: 'pointer' }
   const panel: React.CSSProperties = { background: '#10141f', border: '1px solid #232c3f', borderRadius: 8, padding: 12 }
@@ -181,7 +201,7 @@ export function BuilderApp() {
     <div style={{ display: 'flex', gap: 14, padding: 14, height: '100vh', boxSizing: 'border-box', background: '#0a0d14', color: '#dfe7f2', fontFamily: 'system-ui, sans-serif', fontSize: 13 }}>
       {/* left — the 2D floor plan */}
       <div style={{ ...panel, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <b>Floor plan · {design.w}×{design.d} cells · door {design.doorDir.toUpperCase()} · {design.wallH} storey{design.wallH > 1 ? 's' : ''}</b>
+        <b data-build-area="budget">Floor plan · {design.w}×{design.d} cells · door {design.doorDir.toUpperCase()} · {design.wallH} storey{design.wallH > 1 ? 's' : ''} · {voxels >= 0 ? `${voxels.toLocaleString()} voxels` : <span style={{ color: '#e0584d' }}>over the voxel budget — shrink the design</span>}</b>
         <svg data-build-area="plan-2d" width={planW + 2} height={planH + 2} style={{ background: '#0d1119', border: '1px solid #232c3f', borderRadius: 4 }}>
           {/* grid */}
           {Array.from({ length: design.w + 1 }, (_, i) => (
@@ -245,6 +265,8 @@ export function BuilderApp() {
         </div>
         <div style={{ opacity: 0.55, fontSize: 11 }}>for {params.citizenId} · {params.lotId} · plot {params.w}×{params.d} · seed {params.seed}</div>
       </div>
+      {/* middle — Viw's Builder Desk: dream → haggle → blueprint (spec 083 P2) */}
+      <BuilderDesk seed={params.seed} zoneW={params.w} zoneD={params.d} onAccept={loadNegotiated} />
       {/* right — the live 3D brick preview */}
       <div style={{ ...panel, flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <b>Live preview — exactly what the game will build</b>

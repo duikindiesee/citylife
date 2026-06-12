@@ -24,7 +24,7 @@ export default defineConfig(({ mode }) => {
     build: {
       rollupOptions: {
         // Multipage: the colony game plus the spec-077 House Builder (town.html is the legacy v1 page).
-        input: { index: 'index.html', builder: 'builder.html', town: 'town.html' },
+        input: { index: 'index.html', builder: 'builder.html', kookerbook: 'kookerbook.html', town: 'town.html' },
       },
     },
     server: {
@@ -36,7 +36,9 @@ export default defineConfig(({ mode }) => {
       // test from a phone). Deployed bundles are unaffected (DEV is false, creds are nginx-injected).
       host: env.VITE_LAN === '1' || env.VITE_LAN === 'true' ? true : '127.0.0.1',
       proxy: {
-        '/kooker': {
+        // Anchored with the trailing slash so only /kooker/api/... API calls proxy to the gateway —
+        // a bare /kooker prefix also swallowed /kookerbook.html (the spec 082 page) into APISIX.
+        '^/kooker/': {
           target: kookerGateway,
           changeOrigin: true,
           secure: true,

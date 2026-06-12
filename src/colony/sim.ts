@@ -3,7 +3,7 @@ import { RNG } from '../engine/rng'
 import { COLONY } from './config'
 import { Terrain } from './terrain'
 import { initBuild, stepBuild, turbinePower, solarSeasonFactor } from './build'
-import type { ColonyBuilding, ConstructionJob, Parcel, RoadCell } from './build'
+import type { ColonyBuilding, ConstructionJob, Parcel, RoadCell, RoadKind } from './build'
 import { updateTraffic } from './traffic'
 import type { Car } from './traffic'
 import type { Settler } from './settlers'
@@ -76,6 +76,14 @@ export interface ColonyState {
   buildings: ColonyBuilding[]
   roads: RoadCell[]
   roadSet: Set<string>
+  /** Spec 084 S3 — cell key -> road kind, THE membership source for "is this a drivable road cell".
+   *  roadSet also holds reserved-but-undrivable cells (the neighborhood verge), which is exactly the
+   *  trap that gave the traffic graph dead-end neighbours. Maintained by lay/mergeAvenue/purge. */
+  roadKind: Map<string, RoadKind>
+  /** Spec 084 S1 — bumped on EVERY road mutation (lay or purge). The renderer and traffic key their
+   *  rebuilds on this, not roads.length: an equal-length mutation (purge N + lay N) is invisible to
+   *  a length check and left both with a stale picture of the network. */
+  roadsVersion: number
   occupied: Set<string>
   buildIds: number
   lastGrowMin: number
@@ -178,6 +186,8 @@ export class ColonySim {
       buildings: [],
       roads: [],
       roadSet: new Set(),
+      roadKind: new Map(),
+      roadsVersion: 1,
       occupied: new Set(),
       buildIds: 1,
       lastGrowMin: 0,

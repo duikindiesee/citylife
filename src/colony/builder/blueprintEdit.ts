@@ -34,8 +34,10 @@ export function defaultDesign(w: number, d: number): ParsedBlueprint {
  *  (scanning row-major), so repeated adds tile predictably; the design may overlap other rooms — the
  *  validator + the human/bot resolve that by moving it. */
 export function addRoom(p: ParsedBlueprint, kind: RoomKind): ParsedBlueprint {
-  const rw = clamp(2, 1, p.w)
-  const rd = clamp(2, 1, p.d)
+  // Spec 084 S4 — on a big estate footprint a fresh 2x2 room reads as a closet; spawn 3x3 there.
+  const size = Math.max(p.w, p.d) >= 12 ? 3 : 2
+  const rw = clamp(size, 1, p.w)
+  const rd = clamp(size, 1, p.d)
   let x = 0, y = 0
   // prefer a spot not exactly on top of an existing room origin
   outer: for (let yy = 0; yy + rd <= p.d; yy++) {

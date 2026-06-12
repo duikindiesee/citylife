@@ -53,7 +53,7 @@ describe('blueprintStore — persistence + safety (spec 077 P4.5)', () => {
 
   it('drops corrupt entries on LOAD too — storage tampering cannot reach the compiler', () => {
     ;(globalThis as unknown as { localStorage: MemStorage }).localStorage.setItem(
-      'citylife.blueprints.v1',
+      'citylife.blueprints.v2', // the WORLD v2 store key (084 S6)
       JSON.stringify({ lot_9: { citizenId: 'x', script: 'broken{' }, lot_4: { citizenId: 'citizen_joe', script: VALID } }),
     )
     const map = loadBlueprintsLocal()

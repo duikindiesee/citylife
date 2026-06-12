@@ -4,8 +4,17 @@ import { makeNeighborhood, type Parcel, type Neighborhood } from '../src/colony/
 import { Biome } from '../src/colony/terrain'
 import { cellOk } from '../src/colony/pathfind'
 
-function terrain(seed: number) {
+// Spec 084 S6 — at the 608 world a fresh terrain costs ~1s; several tests loop the same SEEDS, so
+// without memoising, the seed-loop tests crossed vitest's 5s default under full-suite load and
+// timed out. Generate each seed's terrain ONCE and reuse it (makeNeighborhood only reads terrain).
+const TERRAIN_CACHE = new Map<number, ReturnType<typeof makeTerrain>>()
+function makeTerrain(seed: number) {
   return new ColonySim(seed).state.terrain
+}
+function terrain(seed: number) {
+  let t = TERRAIN_CACHE.get(seed)
+  if (!t) { t = makeTerrain(seed); TERRAIN_CACHE.set(seed, t) }
+  return t
 }
 
 /** The W x D footprint of a parcel = the bounding box of its fence ring. */

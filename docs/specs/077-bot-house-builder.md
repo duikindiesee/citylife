@@ -262,3 +262,54 @@ NEXT
   footprint, room mix, storeys, door, patio/pool/garage so the street is VISIBLY diverse; the
   newcomer flow uses it instead of one shared defaultBlueprint; uniqueness test over many seeds; a
   street screenshot must show no two houses alike.
+
+### 2026-06-10 — Slice: P5 variety — no two houses alike
+DONE
+- defaultBlueprint is now a real per-citizen DESIGN GENERATOR: a splitmix-style avalanche hash
+  (designHash) drives seven layout archetypes (classic cottage, backyard-pool home, patio corner,
+  motor home with street-facing garage, long house, courtyard with an open patio heart, poolside
+  villa) crossed with four footprint proportions (5x4, 6x5, 7x5, 6x6), one or two storeys, and
+  per-home window character. Valid BY CONSTRUCTION for every seed; layouts are authored door-north
+  and mirrored vertically for south doors so pools and patios always stay in the BACK yard, never
+  facing the street.
+- 5 new tests: validity across 40 seeds x both doors, 24 seeds to 24 distinct compiled block sets,
+  street-sample diversity (3+ footprints, both storey counts, 4+ room mixes), determinism, and the
+  yard-stays-back rule. 602 tests green.
+- LIVE street screenshot judged on :5188 with all six plots built from their own seeds: six visibly
+  different homes — different silhouettes, roof masses, pools/patios/garages in different places.
+  The renderer fallback and the newcomer buildHouse path both flow through the generator; an
+  authored builder blueprint still overrides it per plot.
+
+NEXT
+- P6 bot self-design: BlueprintReport from compileBlueprint (room areas, window count, storeys,
+  materials estimate) + the capped-3-iteration inspect/mutate loop over the pure blueprintEdit
+  grammar; Joe redesigns his own house as the demo; then the full 077 DONE criteria check and the
+  final progress entry. After that the loop moves to spec 082 Kookerbook.
+
+### 2026-06-10 — Slice: P6 bot self-design — SPEC 077 COMPLETE
+DONE
+- builder/selfDesign.ts: blueprintReport (storeys, rooms, per-kind areas, compiled window count,
+  block count, material estimate, outdoor + bedroom flags — the numbers a bot reasons over) and
+  selfDesign — the capped-3-iteration inspect/mutate loop the spec promised: one targeted named
+  mutation per round (add-outdoor, add-bedroom, add-windows, add-storey, grow-living) through the
+  SAME pure blueprintEdit grammar the builder buttons call, every intermediate design validated,
+  early-stop when an edit no longer changes the design. Fully deterministic.
+- runtime.selfDesignLot(lotId): runs the loop from the lot's current (or generated) design and
+  accepts the result through the same validated applyBlueprint path the builder popup uses —
+  persisted local + backend, re-rendered live. Returns the mutation trace for narration.
+- 5 new tests (report numbers, plain-box improves to outdoor+bedroom within cap, named mutations,
+  determinism, generated-design run). 607 tests green.
+- LIVE DEMO: Joe self-designed his own home on :5188 — inspected his design, grew the living room
+  twice, final report 2 storeys / 3 rooms / 28 windows / outdoor space / est 148 materials; the
+  upgraded house re-rendered and the design persisted (verified in storage).
+
+SPEC 077 ACCEPTANCE — ALL MET
+- A newcomer (and Joe) opens the builder from their plot (Design / Re-design buttons), designs a
+  custom house in the visual editor, Accept validates + stores the blueprint and raises the house.
+- The stored DSL regenerates the identical house deterministically; a reload rebuilds it (local
+  layer verified live; the backend layer is wired and waiting only on the kooker-side endpoint).
+- Every control is bot-drivable (data-build-action; burst-hardened), and the capped self-design
+  loop lets a bot design end to end — demonstrated by Joe.
+- The street shows NO TWO HOUSES ALIKE (P5 generator + the live street screenshot).
+THE SPEC IS CLOSED. The loop continues with spec 082 Kookerbook (personal pages), then 079/081
+commerce + ad boards. Status: built.

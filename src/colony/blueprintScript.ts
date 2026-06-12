@@ -128,6 +128,13 @@ export function validateBlueprint(script: BlueprintScript): ValidationResult {
   const errors: string[] = []
   if (p.w <= 0 || p.d <= 0) errors.push('house w and d must be positive')
   if (p.wallH <= 0) errors.push('house wallH must be positive')
+  // Spec 084 S4 — upper caps. The compiler scales the design onto the house zone and allocates a
+  // micro-grid from these numbers, so an uncapped script from a bot's inference loop could request
+  // an arbitrarily large allocation. 24 cells / 3 storeys / 16 rooms comfortably covers the GRAND
+  // estate tier while keeping the grid bounded.
+  if (p.w > 24 || p.d > 24) errors.push('house w and d are capped at 24 cells')
+  if (p.wallH > 3) errors.push('house wallH is capped at 3 storeys')
+  if (p.rooms.length > 16) errors.push('a house is capped at 16 rooms')
   p.rooms.forEach((r, i) => {
     if (r.w <= 0 || r.d <= 0) errors.push(`room ${i} (${r.kind}) must have positive w and d`)
     if (r.x < 0 || r.y < 0 || r.x + r.w > p.w || r.y + r.d > p.d) errors.push(`room ${i} (${r.kind}) escapes the house bounds`)

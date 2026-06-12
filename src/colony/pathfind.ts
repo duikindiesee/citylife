@@ -88,50 +88,94 @@ const NEIGH: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
 ]
 
+// Spec 084 S1 — module-level scratch reused across calls. At a 608-cell world the three per-call
+// typed arrays were ~4.4 MB of fresh allocation per route, and boot routes dozens. A generation
+// stamp marks which cells were touched by the CURRENT call, so the buffers never need clearing
+// between calls (an O(N) fill would defeat the point). leastCostPath stays a pure function of its
+// inputs — the scratch carries no information between calls by construction, and the algorithm,
+// scan order and tie-breaks are UNCHANGED, so every routed layout is byte-identical to before.
+let scratchCap = 0
+let sDist = new Float64Array(0)
+let sPrev = new Int32Array(0)
+let sSeen = new Int32Array(0) // sSeen[i] === sGen ⇔ dist/prev are valid for this call
+let sDone = new Int32Array(0) // sDone[i] === sGen ⇔ the cell is settled in this call
+let sGen = 0
+
 /** Deterministic least-cost path from start to goal over the 4-connected grid. Returns the cell list
  *  inclusive of both ends, or null if either endpoint is bad ground or no dry-buildable route exists
  *  (e.g. the two are separated by water). `slopeWeight` adds a cost proportional to the height change
  *  per step so the route drapes along the contour rather than climbing the fall line. */
-export function leastCostPath(t: Terrain, start: Cell, goal: Cell, opts: { slopeWeight?: number } = {}): Cell[] | null {
+export function leastCostPath(
+  t: Terrain,
+  start: Cell,
+  goal: Cell,
+  opts: { slopeWeight?: number; blocked?: (x: number, y: number) => boolean } = {},
+): Cell[] | null {
   const slopeWeight = opts.slopeWeight ?? 0
+  const blocked = opts.blocked
   if (!cellOk(t, start.x, start.y) || !cellOk(t, goal.x, goal.y)) return null
+  if (blocked && (blocked(start.x, start.y) || blocked(goal.x, goal.y))) return null
   const n = t.size
   const N = n * n
-  const dist = new Float64Array(N).fill(Infinity)
-  const prev = new Int32Array(N).fill(-1)
-  const done = new Uint8Array(N)
+  if (scratchCap < N) {
+    sDist = new Float64Array(N)
+    sPrev = new Int32Array(N)
+    sSeen = new Int32Array(N)
+    sDone = new Int32Array(N)
+    sGen = 0
+    scratchCap = N
+  }
+  sGen++
   const si = t.idx(start.x, start.y)
   const gi = t.idx(goal.x, goal.y)
-  dist[si] = 0
+  // Spec 084 S6 — two scale guards for the 608 world, landed inside the atomic re-baseline because
+  // both can change equal-cost tie-breaks (never land them separately):
+  // 1. A* — the heap is ordered by g + h with h = manhattan distance x the minimum step cost (1).
+  //    slopeWeight only ADDS cost, so h stays admissible and the found path cost is optimal.
+  // 2. A SEARCH RECT — exploration is bounded to the start/goal bounding box + 40 cells. Every
+  //    route we lay (corridor spans, block frames, driveways) detours far less than that (the road
+  //    planner caps detours at ~1.6x anyway); without the bound a watery dead-end could flood the
+  //    whole 370k-cell grid.
+  const MARGIN = 40
+  const bx0 = Math.max(0, Math.min(start.x, goal.x) - MARGIN)
+  const bx1 = Math.min(n - 1, Math.max(start.x, goal.x) + MARGIN)
+  const by0 = Math.max(0, Math.min(start.y, goal.y) - MARGIN)
+  const by1 = Math.min(n - 1, Math.max(start.y, goal.y) + MARGIN)
+  const hCost = (x: number, y: number) => Math.abs(x - goal.x) + Math.abs(y - goal.y)
+  sDist[si] = 0
+  sPrev[si] = -1
+  sSeen[si] = sGen
   const heap = new MinHeap()
-  heap.push(0, si)
+  heap.push(hCost(start.x, start.y), si)
   while (heap.size > 0) {
     const { idx: ci } = heap.pop()
-    if (done[ci]) continue
-    done[ci] = 1
+    if (sDone[ci] === sGen) continue
+    sDone[ci] = sGen
     if (ci === gi) break
     const cx = ci % n, cy = (ci / n) | 0
     for (const [dx, dy] of NEIGH) {
       const nx = cx + dx, ny = cy + dy
-      if (nx < 0 || ny < 0 || nx >= n || ny >= n) continue
+      if (nx < bx0 || ny < by0 || nx > bx1 || ny > by1) continue
       const ni = ny * n + nx
-      if (done[ni]) continue
+      if (sDone[ni] === sGen) continue
       const step = cellCost(t, nx, ny)
       if (!Number.isFinite(step)) continue
+      if (blocked && blocked(nx, ny)) continue // reserved land (parcels, structures) is impassable
       let w = step
       if (slopeWeight > 0) w += slopeWeight * Math.abs(t.worldY(nx, ny) - t.worldY(cx, cy))
-      const nd = dist[ci]! + w
-      if (nd < dist[ni]!) {
-        dist[ni] = nd
-        prev[ni] = ci
-        heap.push(nd, ni)
+      const nd = sDist[ci]! + w
+      if (sSeen[ni] !== sGen || nd < sDist[ni]!) {
+        sDist[ni] = nd
+        sPrev[ni] = ci
+        sSeen[ni] = sGen
+        heap.push(nd + hCost(nx, ny), ni)
       }
     }
   }
-  if (!Number.isFinite(dist[gi]!)) return null
-  // Reconstruct from goal back to start.
+  if (sSeen[gi] !== sGen || sDone[gi] !== sGen) return null
+  // Reconstruct from goal back to start (every cell on the chain was stamped by this call).
   const path: Cell[] = []
-  for (let c = gi; c !== -1; c = prev[c]!) {
+  for (let c = gi; c !== -1; c = sPrev[c]!) {
     path.push({ x: c % n, y: (c / n) | 0 })
     if (c === si) break
   }

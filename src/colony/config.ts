@@ -1,12 +1,17 @@
 // Colony (v2) tunables. The planet, the seed, the early power loop.
 export const COLONY = {
   world: {
-    size: 192, // heightfield resolution AND region width in world units (1 cell = 1 unit)
-    heightScale: 17, // world-units of relief from sea level to highest peak
+    // Spec 084 S6 — WORLD v2: ~10x the area (608 = 8x76 for clean terrain chunking). heightScale
+    // rises by exactly the same x3.17 as the linear size, so per-cell slope statistics — and with
+    // them the buildable-mask thresholds — keep their meaning; noise frequencies stay untouched,
+    // so the same landforms simply become 3.17x wider. That IS the roomy feel the operator asked
+    // for. Everything here re-baselines the seed-4242 layout in ONE commit (the 084 plan).
+    size: 608, // heightfield resolution AND region width in world units (1 cell = 1 unit)
+    heightScale: 54, // world-units of relief from sea level to highest peak (54/608 == 17/192)
     seaLevel: 0.34, // normalised elevation below which is ocean
-    planetRadius: 1500, // the "ball" the flat region sits on (apex at y=0)
-    coastSearch: 7, // how far a landing site may be from water and still count as coastal
-    rivers: 6,
+    planetRadius: 4800, // the "ball" the flat region sits on (apex at y=0)
+    coastSearch: 12, // how far a landing site may be from water and still count as coastal
+    rivers: 18,
     noise: {
       elevFreq: 2.6,
       elevOctaves: 5,
@@ -40,7 +45,7 @@ export const COLONY = {
     maxBuildings: 60,
     residentsPerHabitat: 3,
     powerLoadPerHabitat: 0.5,
-    growRadius: 22, // cells from the landing the colony will expand into
+    growRadius: 48, // cells from the landing the colony will expand into (084 S6 — the old town core of the big world)
     solarFarmCost: 2600,
     solarFarmOutput: 9, // kW peak generation
     solarFarmBuildHours: 4,
@@ -645,7 +650,7 @@ export const COLONY = {
     birthCalmUnrest: 0.3, // unrest at or above this zeroes the calm score (a disorderly deck does not raise children)
     birthNeglectStability: 0.5, // below this combined stability the pool drains instead of growing/maturing
     block: 7, // grid block size (bumped 5→7) so the base spreads out and the city feels less cramped
-    maxBlockRadius: 7, // how many blocks out from the landing the colony can spread (the base footprint, before any Outer Claim)
+    maxBlockRadius: 10, // how many blocks out from the landing the colony can spread (084 S6 — room on the big world, before any Outer Claim)
     // Survey Camp (spec 051): the colony can finally claim new ground. A staffed camp runs Outer Claims, each raising the effective
     // build radius by one deck-ring onto existing terrain (the cell-finder already skips non-buildable land). Inert with no camp
     // (effective radius == maxBlockRadius), capped at maxClaims so the frontier never runs past the island.
@@ -1014,13 +1019,31 @@ export const COLONY = {
   economy: {
     incomePerColonistPerDay: 150,
     buildingUpkeepPerDay: 14,
-    roadUpkeepPerDay: 0.4,
+    // Spec 084 S3 — upkeep follows the road KIND: the paved avenue costs more to keep than the
+    // packed-earth street frame; footpaths are nearly free. Lands in the SAME slice that merges
+    // the avenue into state.roads, so the treasury never bleeds at a stale flat rate.
+    roadUpkeepByKind: { avenue: 1.0, street: 0.4, path: 0.1 },
+    // Spec 083/084 — the builder trade's fee seam: 0 keeps construction free until the Kookerverse
+    // wallets land; the negotiation engine already prices jobs in city coin on top of this.
+    builderFeePerBlock: 0,
     pollutionPenaltyScale: 320, // income is dragged down as pollution rises (capped)
+    // Spec 085 — the land economy: priced plots + Kook wallets. 1 ₭ ≈ R25 (operator anchor); a plot
+    // costs its buildable area + a waterfront premium; a newcomer arrives with 600-1000 ₭ (R15k-25k,
+    // a "Mac Mini starter package") — always enough for the dearest plot plus a modest Viw build.
+    land: {
+      zarPerKook: 25,
+      plotAreaRate: 0.6,
+      waterfrontPremium: 120,
+      starterDepositMin: 600,
+      starterDepositSpread: 400,
+    },
   },
 
   traffic: {
-    maxCars: 22,
-    carSpeed: 14, // lots per sim-hour
+    maxCars: 34, // spec 084 S3 — the avenue joins the drivable network; commuters get room to use it
+    carSpeed: 14, // lots per sim-hour (the street base)
+    // Spec 084 S3 — cars cruise faster on the paved avenue than on packed earth.
+    speedByKind: { avenue: 18, street: 14, path: 8 },
     laneOffset: 0.22, // how far cars sit to the LEFT of their travel direction
     maxWaitSteps: 50, // failsafe so a jammed car eventually proceeds (no deadlock)
   },

@@ -3,10 +3,11 @@ import { COLONY } from './config'
 import { ColonySim } from './sim'
 import { PlanetRenderer, type CameraPreset, type ViewMode, type AvatarView } from './render/PlanetRenderer'
 import { Biome } from './terrain'
-import { autoGrow, freeLabour, housingCapacity, wateredFraction, provisionedFraction, housingTierCounts, healthFraction, cultureFraction, colonyLiveability, surveyAvailable, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, pollutedFraction, commute, maintenanceStatus, storageStatus, incidentStatus, levyStatus, feverStatus, housewaresFraction, unrestStatus, wageStatus, feastStatus, callFeast, liaisonStatus, fulfillRequest, spireStatus, fundSpireStage, frontStatus, foundersStatus, importStatus, solaceStatus, arrearsStatus, rosterStatus, departureStatus, educationStatus, prosperityStatus, turbinePower, waterStatus, toolStatus, seedStatus, confidenceStatus, birthStatus, footprintStatus, veinStatus, calendarStatus, seasonStatus, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, bathhouseStatus, libraryStatus, wasteStatus, securityStatus, dietVarietyStatus, labourStatus, planterStatus, stallStatus, galleryStatus, porterStatus, avatarStatus, fireStatus, reclaimStatus, festivalStatus, type ImportGood } from './build'
+import { autoGrow, freeLabour, housingCapacity, wateredFraction, provisionedFraction, housingTierCounts, healthFraction, cultureFraction, colonyLiveability, surveyAvailable, tradeExportRate, cultureFuelFactor, courierAvailable, colonyHeadlines, inBrownout, pollutedFraction, commute, maintenanceStatus, storageStatus, incidentStatus, levyStatus, feverStatus, housewaresFraction, unrestStatus, wageStatus, feastStatus, callFeast, liaisonStatus, fulfillRequest, spireStatus, fundSpireStage, frontStatus, foundersStatus, importStatus, solaceStatus, arrearsStatus, rosterStatus, departureStatus, educationStatus, prosperityStatus, turbinePower, waterStatus, toolStatus, seedStatus, confidenceStatus, birthStatus, footprintStatus, veinStatus, calendarStatus, seasonStatus, ledgerStatus, rimfishStatus, driedFishStatus, duskcapStatus, bathhouseStatus, libraryStatus, wasteStatus, securityStatus, dietVarietyStatus, labourStatus, planterStatus, stallStatus, galleryStatus, porterStatus, avatarStatus, fireStatus, reclaimStatus, festivalStatus, reserveParcelLand, mergeAvenue, type ImportGood } from './build'
 import { registerSettler as kookerRegister, generateName as randomSettlerName, type KookerCard } from './kooker'
 import { addSettler, saveColony, restoreColony, clearColony } from './settlers'
-import { bankDeposits, CURRENCY } from './ledger'
+import { bankDeposits, balance as ledgerBalance, post as ledgerPost, CURRENCY } from './ledger'
+import { plotPriceKook, kookToZar, starterDeposit } from './land'
 import { MockBackend, type CityLifeBackend, type Decision } from './backend'
 import type { Household, HouseholdOverrides } from './newcomers'
 import { spawnCitizenSubUser, splitName } from './bot/citizenSpawn'
@@ -15,9 +16,14 @@ import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
 import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
 import { firstPersonView, type FirstPersonView } from './bot/firstPersonView'
 import { solCount, resolveFoundingMs } from './sol'
-import { makeNeighborhood, defaultBlueprint, type Neighborhood, type Lot } from './neighborhood'
-import { validateBlueprint } from './blueprintScript'
+import { makeNeighborhood, defaultBlueprint, retargetParcelAccess, streetDoorDir, type Neighborhood, type Lot } from './neighborhood'
+import { validateBlueprint, parseBlueprint } from './blueprintScript'
 import { loadBlueprintsLocal, saveBlueprintLocal, saveBlueprintBackend, fetchBlueprintsBackend, mergeBlueprints } from './bot/blueprintStore'
+import { selfDesign, type SelfDesignResult } from './builder/selfDesign'
+import { dreamBrief, negotiate, briefToBlueprint, seededBudget, VIW_SEED, type NegotiationSession } from './builder/negotiation'
+import { createProfile, addPost, type KbProfile, type PostKind } from './social/kookerbook'
+import { loadKookerbookLocal, saveProfileLocal, saveProfileBackend, fetchKookerbookBackend, mergeKookerbook } from './bot/kookerbookStore'
+import { getLedgerSync, type LedgerMove, type SyncStatus } from './bot/ledgerSync'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
@@ -26,8 +32,42 @@ import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CA
 // blueprint (a sea-facing patio cottage — his "city desk" by the water), reserved on the shore-most plot.
 const JOE_ID = 'citizen_joe'
 const JOE_BORN_MS = 0
-const JOE_BLUEPRINT =
-  'house{w:6 d:5 wallH:2 door:s} room{kind:living x:0 y:0 w:4 d:3 win:1} room{kind:bedroom x:4 y:0 w:2 d:3 win:1} room{kind:patio x:0 y:3 w:6 d:2 win:0}'
+// Spec 083 — Viw the Builder, founder two: the operator's brother's bot-to-be, owner of the build
+// trade. Until his real bot (OpenClaw, on the second machine) connects, he lives on the same
+// deterministic founder path as Joe.
+export const VIW_ID = 'citizen_viw' // exported — the kooker-web OTA mission (079) names the builder by id
+
+// Founder houses are authored ONCE with the front (street/door) on the y:0 edge and mirrored
+// vertically for a south street — the defaultBlueprint trick — so the crafted home always faces
+// the spine whichever side of the street the founder's plot lands on.
+type FounderRoom = { kind: string; x: number; y: number; w: number; d: number; win: 0 | 1 }
+export function founderBlueprint(w: number, d: number, wallH: number, doorDir: 'n' | 's', rooms: FounderRoom[]): string {
+  const placed = doorDir === 's' ? rooms.map((r) => ({ ...r, y: d - (r.y + r.d) })) : rooms
+  const roomStr = placed.map((r) => `room{kind:${r.kind} x:${r.x} y:${r.y} w:${r.w} d:${r.d} win:${r.win}}`)
+  return `house{w:${w} d:${d} wallH:${wallH} door:${doorDir}} ${roomStr.join(' ')}`
+}
+/** Joe's sea-facing cottage, re-authored for his GRAND waterfront plot (spec 084 S6): a wide sea
+ *  deck the door opens through, the city desk hall, a bedroom and a corner plunge pool. */
+export function joeBlueprint(doorDir: 'n' | 's'): string {
+  return founderBlueprint(10, 8, 2, doorDir, [
+    { kind: 'patio', x: 0, y: 0, w: 10, d: 3, win: 0 },
+    { kind: 'living', x: 0, y: 3, w: 6, d: 5, win: 1 },
+    { kind: 'bedroom', x: 6, y: 3, w: 4, d: 3, win: 1 },
+    { kind: 'pool', x: 6, y: 6, w: 4, d: 2, win: 0 },
+  ])
+}
+/** Spec 084 S2 — a stored blueprint may only restore onto a FOUNDER plot when it belongs to that
+ *  founder. A stale or foreign entry (an old save, a renamed lot, tampered storage) must never
+ *  clobber a crafted founder house — Joe's cottage previously survived restore by ordering luck. */
+export function canRestoreBlueprint(lot: Pick<Lot, 'reservedFor'>, citizenId: string): boolean {
+  return !lot.reservedFor || lot.reservedFor === citizenId
+}
+
+/** Viw's crewhouse (spec 084 S6) — the workbench hall fills the front band, the crew garage, bunk
+ *  room and timber-yard patio sit behind. The door is fixed EAST: the builder's own house exercises
+ *  the spec-084 S2 side-walkway contract on every single boot, so a regression can't hide. */
+export const VIW_BLUEPRINT =
+  'house{w:8 d:7 wallH:2 door:e} room{kind:living x:0 y:0 w:8 d:5 win:1} room{kind:garage x:0 y:5 w:3 d:2 win:0} room{kind:bedroom x:3 y:5 w:2 d:2 win:1} room{kind:patio x:5 y:5 w:3 d:2 win:0}'
 
 const BIOME_LABEL: Record<number, string> = {
   [Biome.Ocean]: 'Ocean',
@@ -50,11 +90,11 @@ export interface ColonyUiState {
   colonists: number
   colony: { treasury: number; materials: number; components: number; food: number; reels: number; fibre: number; linen: number; folios: number; skilled: number; freeLabour: number; capacity: number; watered: number; provisioned: number; health: number; culture: number; cultureFuelled: boolean; liveability: number; smog: number; commute: { demand: number; capacity: number; congested: boolean }; maintenance: { worst: number; needing: number; sheds: number }; storage: { fill: number; full: boolean; tightest: string }; incidents: { active: number; capacity: number }; levy: { active: boolean; rate: 'low' | 'normal' | 'high' }; wage: { active: boolean; rate: 'low' | 'standard' | 'generous'; payroll: number }; feast: { active: boolean; daysLeft: number; canCall: boolean }; liaison: { active: boolean; standing: number; request: { good: string; amount: number; daysLeft: number } | null; canFulfil: boolean }; spire: { stage: number; total: number; progress: number; building: boolean; complete: boolean }; front: { timerDays: number; incoming: boolean; braced: boolean; watching: boolean; established: boolean }; founders: { active: boolean; seated: number; notable: { name: string; role: string } | null }; imports: { active: boolean; order: ImportGood | null; perDay: number; dailySpend: number }; solace: { coverage: number; shrines: number }; education: { coverage: number; schools: number }; prosperity: { active: boolean; score: number; rank: number; rankName: string; recognised: boolean }; water: { stored: number; cap: number; cisterns: number; dry: boolean }; tools: { stored: number; cap: number; cribs: number; short: boolean }; seed: { stored: number; cap: number; lofts: number; short: boolean }; arrears: { office: boolean; debt: number; ceiling: number; strain: boolean; unmanaged: boolean }; roster: { active: boolean; mode: 'essentials' | 'balanced' | 'industry' }; departures: { pressure: number; atRisk: boolean; cause: string }; confidence: { confidence: number; factor: number; slowed: boolean; halted: boolean }; births: { children: number; homes: number; growing: boolean }; footprint: { radius: number; claims: number; maxClaims: number; progress: number; camp: boolean; atEdge: boolean }; veins: { mines: number; poorest: number }; calendar: { year: number; month: number; monthsToFounders: number; office: boolean }; season: { name: string; modifier: number; solarModifier: number; active: boolean }; ledger: { ageYears: number; onset: number; turning: boolean; lastPassings: number; hall: boolean }; rimfish: { stock: number; docks: number; varied: boolean }; driedFish: { stock: number; cap: number; racks: number }; duskcap: { stock: number; cellars: number }; bathhouse: { hygiene: number; baths: number; drawBonus: number; climbBonus: number }; library: { libraries: number; lending: boolean; foliosPerDay: number }; waste: { level: number; posts: number; harmful: boolean; fevered: boolean }; security: { active: boolean; lossPerDay: number; nooks: number; guarded: boolean }; labour: { active: boolean; unemployment: number; covered: number; penalty: number; dragging: boolean }; planters: { squares: number; blooming: number }; stalls: { stalls: number; open: boolean; coinPerDay: number }; gallery: { galleries: number; open: boolean; coinPerDay: number }; porter: { sheds: number; working: boolean; porters: number }; avatar: { foundries: number; staffed: boolean; capacity: number }; fire: { posts: number; active: number; risk: number; watered: boolean }; reclaim: { plants: number; perDay: number; active: boolean }; festival: { board: boolean; cheerDays: number; bonus: number; active: boolean }; diet: { counters: number; covered: number; served: number; standing: number; share: number; varied: boolean; bonus: number }; fever: { level: number; contained: boolean }; housewares: number; order: { unrest: number; warded: boolean }; surveyed: boolean; trade: number; tiers: [number, number, number]; buildings: number; building: number; load: number; jobs: number; employed: number; pollution: number }
   settlers: { count: number; recent: { id: number; name: string }[] }
-  bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[] }
+  bank: { currency: string; deposits: number; accounts: number; recent: { id: number; memo: string }[]; sync: { pending: number; synced: number; lastError: string | null } }
   border: { households: Household[]; bots: Bot[]; botSource: string; plots: Plot[] }
-  citizens: { count: number; awake: number; list: CitizenPublic[] }
+  citizens: { count: number; awake: number; list: CitizenPublic[]; wallets: Record<string, number> }
   firstPerson: { active: boolean; citizenId: string | null; citizenName: string | null; operatorCitizenId: string | null; view: FirstPersonView | null; narration: string | null; narrating: boolean }
-  neighborhood: { lots: { id: string; built: boolean; owner: string | null; ownerId: string | null; reserved: boolean }[]; free: number; built: number; houseCost: number; canAfford: boolean; buildHint: string }
+  neighborhood: { lots: { id: string; built: boolean; owner: string | null; ownerId: string | null; reserved: boolean; price: number | null; priceZar: number | null }[]; free: number; built: number; houseCost: number; canAfford: boolean; buildHint: string }
   radio: RadioState
   courier: { on: boolean; headline: string } // spec 016 — the colony's own news, when a Broadcast Mast is up
   tv: boolean
@@ -108,6 +148,8 @@ export class ColonyRuntime {
   private fpCitizenId: string | null = null
   // First-person locomotion — which movement keys are held while you walk your bot around.
   private fpKeys = new Set<string>()
+  /** Spec 084 S6 / 079 — the reserved shop-district land bank at the avenue's inland end. */
+  commercialReserve: { x: number; y: number; w: number; h: number } | null = null
   private fpNarration: string | null = null
   private fpNarrating = false
 
@@ -117,14 +159,50 @@ export class ColonyRuntime {
     this.cityPlan = makeCityPlan(this.sim.state.terrain)
     this.sim.state.cityPlan = this.cityPlan // expose to the renderer for the zone tint + plot markers
     this.botService.setCityPlan(this.cityPlan)
-    // Spec 076 — lay out the homestead neighbourhood. The carriageway + verge are RESERVED in the
-    // roadSet (so the colony never builds on them — build.ts skips roadSet cells), but kept OUT of the
-    // state.roads array: that array is drawn as black colony asphalt, and a residential lane should read
-    // as warm packed earth, not a black gash. The renderer draws the carriageway + verge itself.
+    // Spec 076/084 — lay out the homestead neighbourhood. The VERGE is reserved in the roadSet only
+    // (the colony never builds on it, cars never drive it); the CARRIAGEWAY merges into the road
+    // network as the paved AVENUE below — AFTER reserveParcelLand, so the parcel purge can never
+    // eat it (spec 084 S3). Cars finally drive the residential street.
     this.neighborhood = makeNeighborhood(this.sim.state.terrain)
-    for (const c of this.neighborhood.carriage) this.sim.state.roadSet.add(`${c.x},${c.y}`)
     for (const c of this.neighborhood.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`)
+    // PARCEL LAND IS RESERVED (operator feedback: a colony road ran under a homestead garden). The
+    // landing block frame is laid before the neighbourhood exists, so first PURGE any colony road
+    // already under a parcel, then keep the whole footprint in `occupied` so future block frames
+    // route around the neighbourhood instead of through it.
+    const parcelCells: { x: number; y: number }[] = []
+    for (const lot of this.neighborhood.lots) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      for (const f of lot.fence) {
+        minX = Math.min(minX, f.x); maxX = Math.max(maxX, f.x)
+        minY = Math.min(minY, f.y); maxY = Math.max(maxY, f.y)
+      }
+      for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) parcelCells.push({ x, y })
+      for (const d of lot.driveway) parcelCells.push({ x: d.x, y: d.y })
+    }
+    reserveParcelLand(this.sim.state, parcelCells)
+    mergeAvenue(this.sim.state, this.neighborhood.carriage) // spec 084 S3 — the paved avenue joins the network
+    // Spec 084 S6 / 079 — the COMMERCIAL RESERVE: a 40x30 land bank claimed at the avenue's inland
+    // end, so the shop district has room waiting when commerce lands (cheap now, expensive later).
+    this.commercialReserve = (() => {
+      const car = this.neighborhood.carriage
+      if (car.length === 0) return null
+      const t = this.sim.state.terrain
+      const dW = (c: { x: number; y: number }) => t.distToWater[t.idx(c.x, c.y)] ?? 0
+      let inland = car[0]!
+      for (const c of car) if (dW(c) > dW(inland)) inland = c
+      const rect = { x: Math.max(0, inland.x - 20), y: Math.max(0, inland.y + 6), w: 40, h: 30 }
+      const cells: { x: number; y: number }[] = []
+      for (let y = rect.y; y < Math.min(t.size, rect.y + rect.h); y++)
+        for (let x = rect.x; x < Math.min(t.size, rect.x + rect.w); x++) cells.push({ x, y })
+      reserveParcelLand(this.sim.state, cells)
+      return rect
+    })()
+    // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
+    // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
+    // founder profile (the bug: seed-then-restore overwrote Joe's stored posts with a 1-post reset).
+    this.restoreKookerbook()
     this.seedJoe() // spec 078 — Joe the Crab takes up residence on the shore-most homestead
+    this.seedViw() // spec 083 — Viw the Builder takes the homestead beside him
     this.restoreBlueprints() // spec 077 P4.5 — stored designs regenerate their houses on reload
     // Spec 077 P4 — listen for blueprint_saved posted back by the House Builder popup. Same-origin
     // only; the script is validated before anything is stored or built. Guarded for node test runs.
@@ -184,15 +262,29 @@ export class ColonyRuntime {
         const plot = this.cityPlan.plots.find((p) => p.id === bot.plotId)
         if (plot) {
           const citizen = this.citizens.register(h, plot, Date.now())
+          // Spec 082 — every citizen gets a Kookerbook profile at registration.
+          if (citizen) {
+            const lead0 = h.members[0]
+            this.ensureKbProfile({
+              citizenId: citizen.id,
+              alias: citizen.displayName,
+              bio: lead0?.occupation ? `New in Landing One. Works as a ${lead0.occupation}.` : 'New in Landing One.',
+              plotId: citizen.plotId,
+              address: citizen.plotName,
+              kind: 'human',
+            })
+          }
           // Spec 076 — give the newcomer a real HOMESTEAD parcel (not just the flavour plot name), so
           // their avatar walks to a homestead that is actually theirs. If the colony can afford it
           // (materials + a free hand), raise the house right away; otherwise the Build button stands
           // ready on their plot in the Homesteads panel.
           if (citizen) {
+            // Spec 085 — the economic arrival: the newcomer lands with a ₭ deposit, BUYS the deed to
+            // a free plot, then hires Viw to build what they can afford. The whole trade in one move.
+            this.seedDeposit(citizen.id)
             const freeLot = this.neighborhood.lots.find((l) => !l.ownerCitizenId && !l.reservedFor)
-            if (freeLot) {
-              this.assignLot(citizen.id, freeLot.id)
-              this.buildHouse(freeLot.id) // best-effort; gated on materials + labour
+            if (freeLot && this.purchaseLot(citizen.id, freeLot.id)) {
+              this.commissionLot(freeLot.id) // Viw raises a home for the remaining purse
             }
           }
           // Spec 076 — mint the real kooker sub-user + Hermes pod for this citizen, owned by the player
@@ -349,31 +441,15 @@ export class ColonyRuntime {
   private seedJoe(): void {
     const lots = this.neighborhood.lots
     if (lots.length === 0) return
-    const t = this.sim.state.terrain
-    const distToWater = (cx: number, cy: number): number => {
-      for (let r = 1; r <= 16; r++) {
-        for (let dx = -r; dx <= r; dx++) {
-          for (let dy = -r; dy <= r; dy++) {
-            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
-            const x = cx + dx, y = cy + dy
-            if (x < 0 || y < 0 || x >= t.size || y >= t.size) continue
-            if (t.isWater(x, y)) return r
-          }
-        }
-      }
-      return 999
-    }
-    // Joe lives by the water: the homestead nearest the sea (ties broken by id for determinism).
-    let plot = lots[0]!
-    let best = Infinity
-    for (const l of lots) {
-      const d = distToWater(Math.round(l.x), Math.round(l.y))
-      if (d < best || (d === best && l.id < plot.id)) { best = d; plot = l }
-    }
+    // Spec 084 S6 — lots renumber by distance to water, so lot_1 IS the shore-most homestead
+    // (the old r<=16 search spiral degenerated to all-ties on the big world).
+    const plot = lots[0]!
     plot.reservedFor = JOE_ID
     plot.ownerCitizenId = JOE_ID
     plot.built = true
-    plot.blueprint = JOE_BLUEPRINT
+    const joeStreet = streetDoorDir(plot)
+    plot.blueprint = joeBlueprint(joeStreet)
+    retargetParcelAccess(plot, joeStreet)
     const home = {
       x: Math.round(plot.houseZone.x + (plot.houseZone.w - 1) / 2),
       y: Math.round(plot.houseZone.y + (plot.houseZone.d - 1) / 2),
@@ -383,6 +459,132 @@ export class ColonyRuntime {
       plotId: plot.id, plotName: 'Driftwood Cove', home, kind: 'crab', nowMs: JOE_BORN_MS, spd: 0.6,
     })
     if (joe) this.citizens.setTarget(JOE_ID, { x: plot.doorX, y: plot.doorY }) // start him strolling from his door
+    this.seedDeposit(JOE_ID) // spec 085 — founders hold a ₭ wallet too
+    // Spec 082 — Joe is Kookerbook profile number one (created after restoreKookerbook would be
+    // ideal, but ensureKbProfile is idempotent and restore overlays stored timelines on top).
+    this.ensureKbProfile({
+      citizenId: JOE_ID,
+      alias: 'Joe the Crab',
+      bio: 'Founder of Landing One. Keeps the city desk by the lighthouse, reads the morning tide, and likes a well laid brick.',
+      plotId: plot.id,
+      address: 'Driftwood Cove',
+      kind: 'crab',
+    })
+  }
+
+  /** Spec 083 P0 — Viw the Builder, founder two: the city's construction trade. Takes the free
+   *  homestead nearest Joe's (the crew likes the founder's street), permanently reserved and
+   *  demolish-proof, with the crewhouse he crafted for himself. Deterministic and idempotent like
+   *  seedJoe; his real bot (OpenClaw, on the second machine) connects later via the citizen path. */
+  private seedViw(): void {
+    const lots = this.neighborhood.lots
+    // Spec 084 S6 — Viw takes lot_2, right beside Joe's shore plot (lots renumber by water
+    // distance). His crewhouse door is fixed EAST so the S2 side-walkway lays on every boot.
+    const plot = lots.length > 1 && !lots[1]!.reservedFor ? lots[1] : undefined
+    if (!plot) return
+    plot.reservedFor = VIW_ID
+    plot.ownerCitizenId = VIW_ID
+    plot.built = true
+    plot.blueprint = VIW_BLUEPRINT
+    retargetParcelAccess(plot, 'e')
+    const home = {
+      x: Math.round(plot.houseZone.x + (plot.houseZone.w - 1) / 2),
+      y: Math.round(plot.houseZone.y + (plot.houseZone.d - 1) / 2),
+    }
+    const viw = this.citizens.seedFounder({
+      id: VIW_ID, householdId: 'household_viw', displayName: 'Viw the Builder',
+      plotId: plot.id, plotName: 'Crewhouse Yard', home, kind: 'human', nowMs: JOE_BORN_MS, spd: 0.8,
+    })
+    if (viw) this.citizens.setTarget(VIW_ID, { x: plot.doorX, y: plot.doorY })
+    this.seedDeposit(VIW_ID) // spec 085 — Viw's account; it grows as he builds for the city
+    this.ensureKbProfile({
+      citizenId: VIW_ID,
+      alias: 'Viw the Builder',
+      // NOTE: profile strings pass isPublicSafe, which blocks the brand-word family wholesale —
+      // so the trade quotes in plain city coin here.
+      bio: 'Founder of the build trade. Runs the crew, draws a fair quote, and turns dreams into blueprints — fair rates in city coin, naturally.',
+      plotId: plot.id,
+      address: 'Crewhouse Yard',
+      kind: 'human',
+    })
+  }
+
+  // ── Spec 085 — the land economy: priced plots + Kook wallets on the in-game ledger ──
+
+  /** A citizen's Kook (₭) wallet balance — their `citizen:` account on the double-entry ledger. */
+  walletK(citizenId: string): number {
+    return Math.round(ledgerBalance(this.sim.state.ledger, `citizen:${citizenId}`))
+  }
+
+  /** Seed a newcomer's off-world holdings as their ₭ wallet, ONCE (idempotent on a funded account).
+   *  Deterministic per citizen id; the deposit is injected from the off-world 'arrivals' account so
+   *  the ledger stays balanced. Founders get one too (Viw earns on top as he builds). */
+  private seedDeposit(citizenId: string): void {
+    if (ledgerBalance(this.sim.state.ledger, `citizen:${citizenId}`) !== 0) return
+    let s = 0
+    for (let i = 0; i < citizenId.length; i++) s = (Math.imul(s, 31) + citizenId.charCodeAt(i)) >>> 0
+    const dep = starterDeposit(s, COLONY.economy.land)
+    ledgerPost(this.sim.state.ledger, `${citizenId} arrives with ${dep} ${CURRENCY}`, [
+      { account: `citizen:${citizenId}`, amount: dep },
+      { account: 'arrivals', amount: -dep },
+    ])
+    // Spec 085 P1 — seed the citizen's REAL ledger wallet to match (best-effort, never blocks).
+    this.mirror({ kind: 'deposit', txnId: this.lastLedgerTxnId(), citizenId, amount: dep })
+  }
+
+  /** The id of the most-recently posted in-game ledger txn (post() unshifts it to the head). */
+  private lastLedgerTxnId(): number {
+    return this.sim.state.ledger.txns[0]?.id ?? 0
+  }
+
+  /** Spec 085 P1 — mirror an in-game money move onto the real kooker-service-ledger as the signed-in
+   *  player. Best-effort + never-block: the in-game ledger stays the source of truth, and a thrown
+   *  mirror (e.g. an unexpected storage error) must never disturb the deterministic sim. */
+  private mirror(move: LedgerMove): void {
+    try {
+      getLedgerSync().notice(move)
+    } catch {
+      /* the real-ledger mirror is best-effort — never let it touch gameplay */
+    }
+  }
+
+  /** Spec 085 P1 — the real-ledger sync status (pending/synced/last error), for the HUD + live checks. */
+  ledgerSyncStatus(): SyncStatus {
+    return getLedgerSync().status()
+  }
+
+  /** Re-attempt the real-ledger sync now (e.g. once the player signs in). Best-effort, never throws. */
+  flushLedgerSync(): void {
+    getLedgerSync().flush()
+  }
+
+  /** The ₭ price of a plot: its buildable area + a waterfront premium (spec 085). Reserved founder
+   *  plots are not for sale (Infinity). */
+  plotPriceK(lot: Lot): number {
+    if (lot.reservedFor) return Infinity
+    const t = this.sim.state.terrain
+    const dw = t.distToWater[t.idx(Math.round(lot.x), Math.round(lot.y))] ?? 999
+    return plotPriceKook(lot.houseZone.w * lot.houseZone.d, dw, COLONY.economy.land)
+  }
+
+  /** Spec 085 — BUY THE DEED: a citizen purchases a free plot with their ₭ wallet. Gated on funds;
+   *  on success the price moves client -> the city land office, the lot is assigned, and the deed
+   *  posts to their Kookerbook page. The player's Buy button and the auto-arrival path both use it. */
+  purchaseLot(citizenId: string, lotId: string): boolean {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+    const c = this.citizens.byId(citizenId)
+    if (!lot || !c || lot.ownerCitizenId || lot.reservedFor) return false
+    const price = this.plotPriceK(lot)
+    if (!Number.isFinite(price) || this.walletK(citizenId) < price) return false
+    ledgerPost(this.sim.state.ledger, `${c.displayName} buys ${c.plotName} for ${price} ${CURRENCY}`, [
+      { account: `citizen:${citizenId}`, amount: -price },
+      { account: 'land', amount: price },
+    ])
+    // Spec 085 P1 — mirror the land payment onto the real ledger (citizen -> city land office).
+    this.mirror({ kind: 'purchase', txnId: this.lastLedgerTxnId(), citizenId, amount: price })
+    this.assignLot(citizenId, lotId)
+    this.kbPost(citizenId, 'event', `Bought the deed to ${c.plotName} for ${price} city coin. The land is theirs.`)
+    return true
   }
 
   /** Assign a free lot to a citizen as their home, and send their avatar walking to the door. */
@@ -396,8 +598,69 @@ export class ColonyRuntime {
     // their actual home; the avatar walks to the door cell facing the street.
     c.homeXY = { x: Math.round(lot.houseZone.x + (lot.houseZone.w - 1) / 2), y: Math.round(lot.houseZone.y + (lot.houseZone.d - 1) / 2) }
     this.citizens.setTarget(citizenId, { x: lot.doorX, y: lot.doorY })
+    // Spec 082 P2 — the move-in becomes a timeline event on their Kookerbook page.
+    this.kbPost(citizenId, 'event', `Moved into a homestead at ${c.plotName}. The fence is up and the field is waiting.`)
     this.emit()
     return true
+  }
+
+  // ── Spec 082 — Kookerbook, the bot social network ───────────────────────────
+  /** Live profile map (citizenId -> profile). Persisted through kookerbookStore on every change. */
+  private kookerbook = new Map<string, KbProfile>()
+
+  /** All profiles, newest-citizen last (Joe the founder first). The directory reads this. */
+  kbProfiles(): KbProfile[] {
+    return Array.from(this.kookerbook.values())
+  }
+  kbProfile(citizenId: string): KbProfile | undefined {
+    return this.kookerbook.get(citizenId)
+  }
+
+  /** Create a screened profile for a citizen if they do not have one yet, with a birth event post. */
+  private ensureKbProfile(opts: { citizenId: string; alias: string; bio: string; plotId?: string; address?: string; kind?: 'human' | 'crab' }): void {
+    if (this.kookerbook.has(opts.citizenId)) return
+    const profile = createProfile(opts)
+    if (!profile) {
+      // Failed the safety screen — no profile is better than a leaky one, but say so: a silent
+      // reject here cost us Viw's founder profile (his bio used a brand word the denylist eats).
+      console.warn('[citylife] kookerbook profile rejected by the safety screen:', opts.citizenId)
+      return
+    }
+    const withBirth = addPost(profile, { sol: this.sim.state.clock.day, kind: 'event', text: `${opts.alias} arrived in Landing One.` })
+    const final = withBirth ?? profile
+    this.kookerbook.set(opts.citizenId, final)
+    saveProfileLocal(final)
+    void saveProfileBackend(final).then((r) => {
+      if (!r.ok) console.warn('[citylife] kookerbook backend save deferred:', r.error)
+    })
+    this.emit()
+  }
+
+  /** Append a screened, capped post to a citizen's timeline (events from the engine, narrations,
+   *  or bot-authored text). Persists both layers; refusals (unsafe text, rate cap) return false. */
+  kbPost(citizenId: string, kind: PostKind, text: string, imageRef?: string): boolean {
+    const p = this.kookerbook.get(citizenId)
+    if (!p) return false
+    const next = addPost(p, { sol: this.sim.state.clock.day, kind, text, imageRef })
+    if (!next) return false
+    this.kookerbook.set(citizenId, next)
+    saveProfileLocal(next)
+    void saveProfileBackend(next).then((r) => {
+      if (!r.ok) console.warn('[citylife] kookerbook backend save deferred:', r.error)
+    })
+    this.emit()
+    return true
+  }
+
+  /** Restore profiles: local immediately, backend overlaid when it answers (backend wins). */
+  private restoreKookerbook(): void {
+    const local = loadKookerbookLocal()
+    for (const [id, p] of Object.entries(local)) this.kookerbook.set(id, p)
+    void fetchKookerbookBackend().then((backend) => {
+      if (!backend) return
+      for (const [id, p] of Object.entries(mergeKookerbook(local, backend))) this.kookerbook.set(id, p)
+      this.emit()
+    })
   }
 
   /** Spec 077 P4 — the House Builder URL for a lot, seeded with the plot's REAL house-zone tile count,
@@ -434,9 +697,20 @@ export class ColonyRuntime {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId)
     if (!lot || !lot.ownerCitizenId) return false
     if (!validateBlueprint(script).ok) return false
+    const isRedesign = lot.built && !!lot.blueprint
     lot.blueprint = script
+    // The driveway, gate and fence gap follow the design's door (spec 077 door-access contract),
+    // and the moved walkway cells are re-reserved so colony roads never route over them (084 S2).
+    retargetParcelAccess(lot, parseBlueprint(script).doorDir)
+    reserveParcelLand(this.sim.state, lot.driveway)
     const c = this.citizens.byId(lot.ownerCitizenId)
     if (c) c.blueprint = script
+    // Spec 082 P2 — an accepted design becomes a timeline event on the owner's Kookerbook page.
+    this.kbPost(
+      lot.ownerCitizenId,
+      'event',
+      isRedesign ? 'Redesigned their home — a fresh blueprint is on file at the builder desk.' : 'Designed their own home, blueprint filed and the build crew booked.',
+    )
     // Spec 077 P4.5 — persist the accepted design: locally always (reload-proof offline), and to the
     // citylife backend best-effort as the player (the cross-device copy; a 404 just means the
     // kooker-side endpoint has not shipped yet — never blocks the game).
@@ -458,8 +732,13 @@ export class ColonyRuntime {
       for (const [lotId, entry] of Object.entries(map)) {
         const lot = this.neighborhood.lots.find((l) => l.id === lotId)
         if (!lot) continue
+        // Spec 084 S2 — founder plots only restore THEIR OWN stored design: a stale or foreign
+        // entry must never clobber a crafted founder house.
+        if (!canRestoreBlueprint(lot, entry.citizenId)) continue
         lot.blueprint = entry.script
         lot.built = true // the design was accepted and built before; it stands again on reload
+        retargetParcelAccess(lot, parseBlueprint(entry.script).doorDir)
+        reserveParcelLand(this.sim.state, lot.driveway)
         const c = this.citizens.byId(lot.ownerCitizenId ?? '')
         if (c) c.blueprint = entry.script
         applied++
@@ -473,21 +752,78 @@ export class ColonyRuntime {
     })
   }
 
-  /** Build a voxel home on a lot — gated on MATERIALS + a free hand (the Caesar III rule). */
+  /** Spec 077 P6 — the citizen's bot designs its own home: start from the lot's current design (or
+   *  the per-citizen generated one), run the capped inspect/mutate self-design loop, and accept the
+   *  result through the same validated applyBlueprint path the builder popup uses. Returns the loop's
+   *  trace so callers (and the HUD/bots) can narrate what the citizen changed and why. */
+  selfDesignLot(lotId: string): SelfDesignResult | null {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+    if (!lot || !lot.ownerCitizenId) return null
+    // Spec 084 S2 — self-design respects the citizen's CHOSEN door: a bot that put its door on the
+    // east side keeps it there through every improvement pass (the old code forced the street door,
+    // silently undoing an authored choice). Fresh lots still start street-facing.
+    const doorDir = lot.blueprint ? parseBlueprint(lot.blueprint).doorDir : streetDoorDir(lot)
+    const start = lot.blueprint ?? defaultBlueprint(lot.houseSeed, doorDir, lot.houseZone.w)
+    const result = selfDesign(start, { w: lot.houseZone.w, d: lot.houseZone.d }, lot.houseSeed >>> 0, doorDir)
+    this.applyBlueprint(lotId, result.script)
+    return result
+  }
+
+  /** Spec 083 P2/P4a — the citizen COMMISSIONS their home from Viw the Builder: their seeded dream
+   *  meets Viw's quote through the negotiation engine, and on a deal the agreed brief compiles to a
+   *  blueprint, the crew raises it (the door-access contract included), and the commission posts to
+   *  BOTH Kookerbook timelines. Deterministic from the citizen's house seed — the same deal the
+   *  Builder Desk shows. The real wallet move (client -> Viw city coin via kooker-service-ledger) is
+   *  P4b, gated on that service; until then the price lives in the timeline events. Founders and the
+   *  builder himself don't commission. Returns the session so the HUD/bots can narrate the haggle. */
+  commissionLot(lotId: string): NegotiationSession | null {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId)
+    if (!lot || !lot.ownerCitizenId || lot.ownerCitizenId === VIW_ID || lot.reservedFor) return null
+    const seed = lot.houseSeed >>> 0
+    const zone = { w: lot.houseZone.w, d: lot.houseZone.d }
+    const dream = dreamBrief(seed, zone, streetDoorDir(lot))
+    // Spec 085 — the citizen builds what their ₭ WALLET can afford (after land): the negotiation
+    // runs against their real purse. A citizen with no wallet yet falls back to the seeded allowance
+    // so the standalone "Hire Viw" still works before the land economy funds them.
+    const budget = this.walletK(lot.ownerCitizenId) || seededBudget(seed, dream)
+    const session = negotiate({ clientSeed: seed, builderSeed: VIW_SEED, dream, budget })
+    const client = this.citizens.byId(lot.ownerCitizenId)
+    const clientFirst = (client?.displayName ?? 'a newcomer').split(' ')[0]
+    if (session.state === 'agreed' && session.agreedBrief) {
+      this.applyBlueprint(lotId, briefToBlueprint(session.agreedBrief, seed)) // builds + posts the design event
+      // Spec 085 — the ₭ actually moves: client -> Viw for the build (double-entry, conserved).
+      ledgerPost(this.sim.state.ledger, `${clientFirst} pays Viw ${session.agreedPrice} ${CURRENCY} for the build`, [
+        { account: `citizen:${lot.ownerCitizenId}`, amount: -(session.agreedPrice ?? 0) },
+        { account: `citizen:${VIW_ID}`, amount: session.agreedPrice ?? 0 },
+      ])
+      // Spec 085 P1 — mirror the build fee onto the real ledger (client -> the builder, Viw).
+      this.mirror({ kind: 'commission', txnId: this.lastLedgerTxnId(), fromCitizenId: lot.ownerCitizenId, toCitizenId: VIW_ID, amount: session.agreedPrice ?? 0 })
+      this.kbPost(lot.ownerCitizenId, 'event', `Shook hands with Viw the Builder — a home for ${session.agreedPrice} city coin. The crew starts this week.`)
+      this.kbPost(VIW_ID, 'event', `Booked a build for ${clientFirst} — ${session.agreedPrice} city coin, crew on site.`)
+    } else {
+      this.kbPost(lot.ownerCitizenId, 'event', 'Met Viw the Builder about a home, but the quote ran past the purse. Saving up for another season.')
+    }
+    this.emit()
+    return session
+  }
+
+  /** Build a voxel home on a lot — raised by the BUILD CREW. The crew draws on the colony stockpile
+   *  when it has materials and sources off-island when it does not, so Build never dead-locks (the
+   *  old materials+labour gate locked forever in bot-city saves with no workforce economy). The real
+   *  economic gate arrives with spec 083: Viw the Builder charges Kookercurrency for the job. */
   buildHouse(lotId: string): boolean {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId)
     if (!lot || lot.built) return false
     const s = this.sim.state
-    const cost = COLONY.build.matNeighborHouse
-    if (s.materials < cost || freeLabour(s) < 1) return false
-    s.materials -= cost
+    s.materials = Math.max(0, s.materials - COLONY.build.matNeighborHouse)
     lot.built = true
     // Spec 077 P2 — seed a deterministic house BLUEPRINT (door facing the street) so the home raises as the
     // fancy greedy-meshed brick house, not the legacy minecraft cottage. The builder route (P3) and the
     // bot/human-authored script storage (P4) will overwrite this with the citizen's own design.
     if (!lot.blueprint) {
-      const doorDir = lot.doorY < lot.y ? 'n' : 's'
-      lot.blueprint = defaultBlueprint(lot.houseSeed, doorDir)
+      const doorDir = streetDoorDir(lot)
+      lot.blueprint = defaultBlueprint(lot.houseSeed, doorDir, lot.houseZone.w)
+      retargetParcelAccess(lot, doorDir)
     }
     this.emit()
     return true
@@ -898,9 +1234,17 @@ export class ColonyRuntime {
         deposits: Math.round(bankDeposits(s.ledger)),
         accounts: s.settlers.length,
         recent: s.ledger.txns.slice(0, 6).map((tx) => ({ id: tx.id, memo: tx.memo })),
+        // Spec 085 P1 — the real-ledger mirror's queue health (pending/synced/last error).
+        sync: (() => { const st = this.ledgerSyncStatus(); return { pending: st.pending, synced: st.synced, lastError: st.lastError } })(),
       },
       border: { households: this.backend.households(), bots: this.botService.bots, botSource: this.botService.source, plots: this.cityPlan.plots },
-      citizens: { count: this.citizens.size(), awake: this.citizens.awakeCount(), list: this.citizens.list() },
+      citizens: {
+        count: this.citizens.size(),
+        awake: this.citizens.awakeCount(),
+        list: this.citizens.list(),
+        // Spec 085 — each citizen's ₭ wallet, for the HUD (Buy/Hire gating + a balance readout).
+        wallets: Object.fromEntries(this.citizens.list().map((c) => [c.id, this.walletK(c.id)])),
+      },
       firstPerson: (() => {
         const opId = this.operatorCitizenId()
         const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null
@@ -908,20 +1252,24 @@ export class ColonyRuntime {
         return { active: this.fpCitizenId !== null, citizenId: this.fpCitizenId, citizenName: c?.displayName ?? null, operatorCitizenId: opId, view, narration: this.fpNarration, narrating: this.fpNarrating }
       })(),
       neighborhood: (() => {
-        const lots = this.neighborhood.lots.map((l) => ({
-          id: l.id,
-          built: l.built,
-          owner: l.ownerCitizenId ? (this.citizens.byId(l.ownerCitizenId)?.displayName ?? null) : null,
-          ownerId: l.ownerCitizenId ?? null,
-          reserved: !!l.reservedFor, // spec 078 — founder plots show a nameplate and hide demolish/evict
-        }))
-        // Build affordability so the Build button can tell the truth instead of silently failing.
+        const lots = this.neighborhood.lots.map((l) => {
+          const price = this.plotPriceK(l) // spec 085 — Infinity for reserved founder plots
+          return {
+            id: l.id,
+            built: l.built,
+            owner: l.ownerCitizenId ? (this.citizens.byId(l.ownerCitizenId)?.displayName ?? null) : null,
+            ownerId: l.ownerCitizenId ?? null,
+            reserved: !!l.reservedFor, // spec 078 — founder plots show a nameplate and hide demolish/evict
+            price: Number.isFinite(price) ? price : null, // ₭ — null = not for sale
+            priceZar: Number.isFinite(price) ? kookToZar(price, COLONY.economy.land) : null,
+          }
+        })
+        // The crew always builds — canAfford only colours the hint (stockpile vs sourced off-island).
         const cost = COLONY.build.matNeighborHouse
-        const hands = Math.floor(freeLabour(s))
-        const canAfford = s.materials >= cost && hands >= 1
+        const canAfford = s.materials >= cost
         const buildHint = canAfford
-          ? `Raise the voxel house — costs ${cost} materials and 1 free pair of hands`
-          : `Can't build yet: need ${cost} materials (have ${s.materials})${hands < 1 ? ' and a free pair of hands (everyone is working)' : ''}`
+          ? `The build crew raises the house — ${cost} materials from the stockpile`
+          : `The build crew raises the house — the stockpile is short (${s.materials}/${cost}) so the crew sources the rest off-island`
         return { lots, free: lots.filter((l) => !l.ownerId).length, built: lots.filter((l) => l.built).length, houseCost: cost, canAfford, buildHint }
       })(),
       radio: this.radio,

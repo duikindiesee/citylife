@@ -64,9 +64,14 @@ export interface ColonyBuilding {
   fire?: number // spec 065 — sim-minutes this building has been burning (Spark < fireBlazeAt <= Blaze); undefined = not on fire
   fireSpread?: boolean // spec 065 — true once this fire has lit a neighbour (so a Blaze spreads at most once)
 }
+/** Spec 084 S3 — the road hierarchy. Named `kind` (NOT `tier` — that word already means habitat
+ *  upgrade levels in this file): the paved neighborhood AVENUE, the colony STREET frame, or a light
+ *  PATH. `undefined` reads as 'street' so older saves and call sites stay valid. */
+export type RoadKind = 'avenue' | 'street' | 'path'
 export interface RoadCell {
   x: number
   y: number
+  kind?: RoadKind
 }
 
 const HAB_COLORS = [0xe6cda2, 0xd8b48a, 0xc9b08f, 0xb88a6a]
@@ -200,6 +205,8 @@ export function initBuild(state: ColonyState): void {
   state.buildings = []
   state.roads = []
   state.roadSet = new Set()
+  state.roadKind = new Map()
+  state.roadsVersion++
   state.occupied = new Set()
   state.developedBlocks = new Set()
   state.buildIds = 1
@@ -252,9 +259,15 @@ function developBlock(state: ColonyState, bx: number, by: number): number {
     // got displaced. Keeps the rocket / solar / battery clear of the road frame.
     for (const s of state.structures) if (s.x === x && s.y === y) return
     const k = key(x, y)
+    // RESERVED LAND IS SACRED: never lay colony road on an occupied cell — homestead parcels (their
+    // gardens, farms, fences and yards) are registered in `occupied` by the runtime, so a growing
+    // block frame routes around the neighbourhood instead of cutting under someone's garden.
+    if (state.occupied.has(k)) return
     if (state.roadSet.has(k)) return
     state.roadSet.add(k)
-    state.roads.push({ x, y })
+    state.roads.push({ x, y, kind: 'street' })
+    state.roadKind.set(k, 'street')
+    state.roadsVersion++
     added++
   }
   // The straight-line fallback lays whatever good cells the old frame would have had.
@@ -264,7 +277,10 @@ function developBlock(state: ColonyState, bx: number, by: number): number {
   }
   const edge = (ax: number, ay: number, bx2: number, by2: number) => {
     if (cellOk(t, ax, ay) && cellOk(t, bx2, by2)) {
-      const path = leastCostPath(t, { x: ax, y: ay }, { x: bx2, y: by2 }, { slopeWeight: 0.6 })
+      const path = leastCostPath(t, { x: ax, y: ay }, { x: bx2, y: by2 }, {
+        slopeWeight: 0.6,
+        blocked: (x, y) => state.occupied.has(key(x, y)), // route AROUND reserved parcel land
+      })
       // A DETOUR CAP keeps the contouring honest: the router may bend around a pond or a cliff, but a
       // frame edge that wanders far off into the wilderness (a long flat loop around a dune that a
       // graded climb would cross in a few cells) is worse than the climb — the operator immediately
@@ -283,6 +299,53 @@ function developBlock(state: ColonyState, bx: number, by: number): number {
   edge(x1, y0, x1, y1) // east edge
   state.developedBlocks.add(blockKey(bx, by))
   return added
+}
+
+/** Reserve a set of cells as parcel land: registered in `occupied` so neither the road frame nor
+ *  building placement ever lands there, and any ALREADY-LAID colony road on those cells is purged
+ *  (the landing frame is laid before the neighbourhood exists, so init-time overlaps are real).
+ *  Returns the number of road cells removed. The renderer rebuilds when roadsVersion bumps. */
+export function reserveParcelLand(state: ColonyState, cells: { x: number; y: number }[]): number {
+  const reserved = new Set<string>()
+  for (const c of cells) {
+    const k = key(c.x, c.y)
+    reserved.add(k)
+    state.occupied.add(k)
+  }
+  const before = state.roads.length
+  state.roads = state.roads.filter((r) => !reserved.has(key(r.x, r.y)))
+  for (const k of reserved) {
+    state.roadSet.delete(k)
+    state.roadKind.delete(k)
+  }
+  const purged = before - state.roads.length
+  if (purged > 0) state.roadsVersion++
+  return purged
+}
+
+/** Spec 084 S3 — merge the neighborhood carriageway into the road network as the paved AVENUE.
+ *  Called AFTER reserveParcelLand at boot, so the parcel purge can never eat it (the council's
+ *  order-of-operations invariant). Cells the colony frame already owns are upgraded in place. */
+export function mergeAvenue(state: ColonyState, cells: { x: number; y: number }[]): void {
+  for (const c of cells) {
+    const k = key(c.x, c.y)
+    if (state.roadKind.get(k) === 'avenue') continue
+    const existing = state.roadKind.has(k) ? state.roads.find((r) => r.x === c.x && r.y === c.y) : undefined
+    if (existing) existing.kind = 'avenue'
+    else {
+      state.roadSet.add(k)
+      state.roads.push({ x: c.x, y: c.y, kind: 'avenue' })
+    }
+    state.roadKind.set(k, 'avenue')
+  }
+  state.roadsVersion++
+}
+
+/** Spec 084 S3 — the colony's daily road bill, summed per road kind. */
+export function roadUpkeepPerDay(state: ColonyState): number {
+  let total = 0
+  for (const r of state.roads) total += COLONY.economy.roadUpkeepByKind[r.kind ?? 'street']
+  return total
 }
 
 /** An undeveloped block adjacent to a developed one, nearest the landing, with buildable land. */
@@ -1288,6 +1351,13 @@ function chooseArtifact(state: ColonyState, rng: RNG): Artifact {
   if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom && state.colonists > 12 && state.components >= COLONY.build.compTurbine && countKind(state, 'turbine') < COLONY.build.maxTurbines) return designTurbine(state)
   if (state.power.loadW > (peakSupply(state) + queuedGen) * COLONY.build.powerHeadroom) return designSolarFarm(state)
   const pendingJobs = state.jobs.reduce((g, j) => g + j.artifact.jobs, 0)
+  // Spec 084 S6 — HOMES BEFORE JOBS while the colony has no housing at all: a homeless populace
+  // hired into a wall of new workplaces leaves zero free hands (the Caesar crew rule), and with
+  // every build needing a crew the colony deadlocks permanently before its first habitat. Organic
+  // play never sees this (immigration follows housing), but a seeded town starts exactly here.
+  if (housingCapacity(state) === 0 && state.colonists > COLONY.seed.colonists && !state.jobs.some((j) => j.artifact.kind === 'habitat')) {
+    return designHabitat(state, rng)
+  }
   if (state.colonists - (state.totalJobs + pendingJobs) > COLONY.build.jobDeficitThreshold) return designWorkplace(state, rng)
   return designHabitat(state, rng)
 }
@@ -3464,7 +3534,7 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
     const rate = state.colonists > 0 ? employed / state.colonists : 0
     const pollutionPenalty = Math.min(0.3, state.pollution / COLONY.economy.pollutionPenaltyScale)
     const income = state.colonists * COLONY.economy.incomePerColonistPerDay * (0.6 + 0.4 * rate) * (1 - pollutionPenalty) * levyIncomeFactor(state) * (1 - (state.unrest ?? 0) * COLONY.build.unrestIncomeRefusal) // spec 025/028 — the levy rate scales the take; unrest refuses a slice of it
-    const upkeep = state.buildings.length * COLONY.economy.buildingUpkeepPerDay + state.roads.length * COLONY.economy.roadUpkeepPerDay
+    const upkeep = state.buildings.length * COLONY.economy.buildingUpkeepPerDay + roadUpkeepPerDay(state) // spec 084 S3 — per-kind road bill
     state.treasury += (income - upkeep - payrollPerDay(state)) * days // spec 029 — the colony pays its workers a daily wage
     if (state.treasury < 0) { // spec 039 — interest accrues on the deficit each payday, doubled while the debt desk is unstaffed (unmanaged arrears)
       const rate = COLONY.build.debtInterestPerPayday * (comptrollerActive(state) ? 1 : COLONY.build.debtUnmanagedMult)

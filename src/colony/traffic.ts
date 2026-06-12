@@ -24,7 +24,9 @@ interface TrafficData {
   graph: Map<number, number[]>
   intersections: Set<number>
   occ: Map<number, number> // intersection cell -> car id occupying it
-  roadCount: number
+  /** Spec 084 S1 — the roadsVersion this graph was built from. A length check missed equal-length
+   *  mutations (purge N + lay N), leaving cars driving a network that no longer existed. */
+  roadsVersion: number
   carId: number
 }
 
@@ -40,40 +42,45 @@ const mod = (v: number, m: number) => ((v % m) + m) % m
 
 function getTraffic(state: ColonyState): TrafficData {
   const cached = cache.get(state)
-  if (cached && cached.roadCount === state.roads.length) return cached
+  if (cached && cached.roadsVersion === state.roadsVersion) return cached
 
   const W = state.terrain.size
   const g = gridOrigin(state)
   const B = COLONY.build.block
-  const rs = state.roadSet
+  // Spec 084 S3 — adjacency comes from roadKind (actual DRIVABLE cells), never raw roadSet:
+  // roadSet also reserves undrivable cells (the neighborhood verge), and using it gave the graph
+  // neighbour ids with no node — cars routed into the verge and dead-ended.
+  const rk = state.roadKind
   const graph = new Map<number, number[]>()
   const intersections = new Set<number>()
   for (const r of state.roads) {
     const id = r.y * W + r.x
     const ns: number[] = []
     for (const [dx, dy] of DIRS) {
-      if (rs.has(r.x + dx + ',' + (r.y + dy))) ns.push((r.y + dy) * W + (r.x + dx))
+      if (rk.has(r.x + dx + ',' + (r.y + dy))) ns.push((r.y + dy) * W + (r.x + dx))
     }
     graph.set(id, ns)
     if (mod(r.x - g.x, B) === 0 && mod(r.y - g.y, B) === 0) intersections.add(id)
   }
   // graph changed -> drop stale reservations and held refs
   for (const car of state.cars) car.held = -1
-  const td: TrafficData = { graph, intersections, occ: new Map(), roadCount: state.roads.length, carId: cached?.carId ?? 1 }
+  const td: TrafficData = { graph, intersections, occ: new Map(), roadsVersion: state.roadsVersion, carId: cached?.carId ?? 1 }
   cache.set(state, td)
   return td
 }
 
-/** Nearest road cell index to a building lot (small spiral), or -1. */
+/** Nearest DRIVABLE road cell index to a building lot (spiral), or -1. roadKind membership, not
+ *  roadSet — a verge cell would be a graph orphan (spec 084 S3). Radius 8 reaches across the wider
+ *  estate setbacks. */
 function nearestRoadCell(state: ColonyState, bx: number, by: number): number {
   const W = state.terrain.size
-  for (let r = 1; r <= 4; r++) {
+  for (let r = 1; r <= 8; r++) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
         const x = bx + dx
         const y = by + dy
-        if (state.roadSet.has(x + ',' + y)) return y * W + x
+        if (state.roadKind.has(x + ',' + y)) return y * W + x
       }
     }
   }
@@ -172,7 +179,6 @@ export function updateTraffic(state: ColonyState, rng: RNG, dtMin: number): void
 
   const W = state.terrain.size
   const dtH = dtMin / 60
-  const step = COLONY.traffic.carSpeed * dtH
 
   for (const car of state.cars) {
     if (car.path.length === 0) {
@@ -182,6 +188,9 @@ export function updateTraffic(state: ColonyState, rng: RNG, dtMin: number): void
     const next = car.path[0]!
     const nx = (next % W) + 0.5
     const ny = ((next / W) | 0) + 0.5
+    // Spec 084 S3 — speed follows the kind of the cell being entered: faster on the paved avenue.
+    const kind = state.roadKind.get(next % W + ',' + ((next / W) | 0)) ?? 'street'
+    const step = (COLONY.traffic.speedByKind[kind] ?? COLONY.traffic.carSpeed) * dtH
 
     // intersection gate: first-come, one car in the box at a time
     if (td.intersections.has(next) && car.held !== next) {

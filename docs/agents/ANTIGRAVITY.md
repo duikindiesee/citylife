@@ -6,9 +6,10 @@ Read the root `AGENTS.md` first (architecture rules, CI-safe commit messages, de
 
 ## Where things are
 
-- Repo (working checkout): `D:\infra\projects\citylife-visual` — a git worktree of
-  `github.com/duikland/citylife`. The sibling primary checkout `D:\infra\projects\citylife` belongs
-  to other routines; do not work there.
+- Make YOUR OWN clone: `git clone https://github.com/duikland/citylife D:\infra\projects\citylife-antigravity`
+  and work only there. `D:\infra\projects\citylife-visual` is Claude's live working tree (its loop
+  edits files there continuously) and `D:\infra\projects\citylife` belongs to other routines — do
+  not open or modify either.
 - Game dev server: `npm run dev -- --port 5189` → http://localhost:5189 (5188 is Claude's; do not
   take it). Auth bypass for local testing, dev builds only: `http://localhost:5189/?skipauth=1`.
 - Builder page: `/builder.html?citizenId=dev&lotId=dev&w=9&d=6&seed=12345` (+ optional
@@ -84,6 +85,26 @@ edit BuilderApp.tsx; Claude wires it in on merge).
   `apply()` should push and which two buttons to add with data-build-action undo / redo).
 - Acceptance: module + tests green; zero Claude-owned files touched.
 
+### AG-5 — kooker-service-social implementation (SEPARATE REPO, the flagship side-quest)
+Implement the generic bot/app social service that spec 082 (Kookerbook) and the sprout app will
+share. Repo: `D:\infra\kooker-service-social` (github duikindiesee/kooker-service-social) — today a
+spec-only skeleton (README + `postman/specs/openapi.yaml`, written for the sprout plant app). Work
+on branch `antigravity/ag5-social-core` in that repo; PR when green; NEVER merge yourself.
+- GENERALISE, do not fork: core entities Profile / Post / Follow / Comment / Like / Feed, every
+  record scoped by `appName` (the kooker-service-ledger pattern). App-specific shapes (grow rooms,
+  plant photos, citylife plots/houses/shops) ride as an opaque `metadata` JSON field on profiles
+  and posts — no app-specific tables.
+- Match the kooker house style: Spring Boot like the sibling kooker-service-* repos (copy the
+  kooker-service-user project layout: Flyway migrations, JWT auth filter accepting kooker JWTs and
+  bot PATs, `/api/v1/social/...` routes), or if the sibling pattern is impractical, a clean Node +
+  SQLite service mirroring the citylife-backend boundary — state your choice in the PR.
+- Keep the existing OpenAPI paths where they map (profiles, watching, feed, likes, notifications);
+  add posts + comments; mark sprout-only paths (grow rooms, invitations) as a later appName module.
+- Tests required: profile CRUD, appName isolation (citylife cannot read sprout records), post
+  caps, screened-string rejection hooks (a `denylist` config), follow/feed correctness.
+- Acceptance: service boots locally, OpenAPI updated to match reality, full test suite green, a
+  README quickstart, and a PR describing the appName multi-tenancy for the operator to review.
+
 ## Status board (Antigravity updates this section on each branch)
 
 | Task | Branch | Status | Last commit |
@@ -92,6 +113,7 @@ edit BuilderApp.tsx; Claude wires it in on merge).
 | AG-2 | — | not started | — |
 | AG-3 | — | not started | — |
 | AG-4 | — | not started | — |
+| AG-5 | — | not started | — |
 
 ## How the whole loop works (for humans)
 

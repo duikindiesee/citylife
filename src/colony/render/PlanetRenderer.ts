@@ -17,9 +17,10 @@ import { cellZone, ZONE_COLOR, VIBE_COLOR, type Plot } from '../cityPlan'
 import { homeLiveability, surveyAvailable, liveabilityTint, porterStatus } from '../build'
 import type { Neighborhood } from '../neighborhood'
 import { buildVoxelHouse, BLOCK_COLOR, type VoxelHouse, type DoorDir } from '../voxelHouse'
-import { compileBlueprint } from '../houseBuilder'
+import { compileBlueprint, VOXEL_Y } from '../houseBuilder'
 import { greedyMesh } from './voxelMesh'
-import { defaultBlueprint, type Zone } from '../neighborhood'
+import { buildChunkedTerrain, type ChunkedTerrain } from './terrainChunks'
+import { defaultBlueprint, streetDoorDir, type Zone } from '../neighborhood'
 
 export type ViewMode = 'biome' | 'buildable' | 'elevation'
 export type CameraPreset = 'street' | 'district' | 'planet'
@@ -48,8 +49,10 @@ const SLAB_ROCK = 0x24242f
 const CRAB_EYE = 0.42
 // Spec 076 — instance caps for the homestead neighbourhood (zone pads + spine ribbon; voxel blocks
 // for houses, fences, crops, garden beds and trees across a full band of large parcels).
-const PAD_CAP = 2400
-const VOX_CAP = 6000
+// Spec 084 S6 — raised for the estate parcels (a GRAND lot alone pads its garden + farm + walkway
+// cell by cell); the S1 dev-mode tripwires still warn the moment either cap drops scenery.
+const PAD_CAP = 4096
+const VOX_CAP = 24576
 
 export class PlanetRenderer {
   private scene = new THREE.Scene()
@@ -59,11 +62,14 @@ export class PlanetRenderer {
   private controls: OrbitControls
   private sun: THREE.DirectionalLight
   private hemi: THREE.HemisphereLight
-  private terrainMesh!: THREE.Mesh
-  private terrainGeo!: THREE.BufferGeometry
+  private chunkedTerrain!: ChunkedTerrain // spec 084 S5 — chunk grid, see terrainChunks.ts
   private roadSurfaceMesh!: THREE.Mesh
   private roadLineMesh!: THREE.Mesh
-  private lastRoadCount = -1
+  // Spec 084 S3 — the paved avenue draws as its own asphalt ribbon with raised kerb strips, layered
+  // on the same drape/relax/skirt pipeline as the packed-earth streets.
+  private avenueSurfaceMesh!: THREE.Mesh
+  private avenueKerbMesh!: THREE.Mesh
+  private lastRoadsVersion = -1
   // Foliage is rebuilt as the colony grows so trees never sit under streets or buildings.
   private foliageMesh?: THREE.InstancedMesh
   private lastFoliageSig = -2
@@ -110,6 +116,8 @@ export class PlanetRenderer {
   private mergedHouseGroup = new THREE.Group()
   private mergedHouseMat!: THREE.MeshStandardMaterial
   private lastNbhdSig = ''
+  // Spec 084 S1 — per-lot house mesh key (blueprint + foundation height) for incremental rebuilds.
+  private lotHouseKey = new Map<string, string>()
   private settlerGroup = new THREE.Group()
   private lastSettlerCount = -1
   // City plan paint — translucent zone tints (residential / commercial / industrial / civic)
@@ -165,7 +173,7 @@ export class PlanetRenderer {
     // Far plane must reach orbital distance or the planet view washes out to sky.
     this.scene.fog = new THREE.Fog(SKY_DAY.clone(), this.N * 1.5, this.R * 1.6)
 
-    this.camera = new THREE.PerspectiveCamera(50, 1, 0.5, 12000)
+    this.camera = new THREE.PerspectiveCamera(50, 1, 0.5, 36000) // 084 S6 — covers maxDistance at planetRadius 4800
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement)
     this.controls.enableDamping = true
@@ -178,8 +186,11 @@ export class PlanetRenderer {
     this.scene.add(this.hemi)
     this.sun = new THREE.DirectionalLight(0xfff0d8, 1.7)
     this.sun.castShadow = true
-    this.sun.shadow.mapSize.set(1024, 1024)
-    const d = this.N * 0.7
+    // Spec 084 S5 — the shadow frustum FOLLOWS the camera target (updateDayNight translates sun +
+    // target together each frame) with a fixed half-extent, instead of covering the whole island:
+    // 2048 texels over ~240 world units gives crisp house-contact shadows at any world size.
+    this.sun.shadow.mapSize.set(2048, 2048)
+    const d = Math.min(120, this.N * 0.7)
     this.sun.shadow.camera.left = -d
     this.sun.shadow.camera.right = d
     this.sun.shadow.camera.top = d
@@ -332,7 +343,7 @@ export class PlanetRenderer {
       ;(this.foliageMesh.material as THREE.Material).dispose()
       this.foliageMesh = undefined
     }
-    const cap = Math.min(cells.length, 1400)
+    const cap = Math.min(cells.length, 6000) // spec 084 S5 — headroom for the 608 world's forests
     const geo = new THREE.ConeGeometry(0.42, 1.1, 6)
     geo.translate(0, 0.55, 0)
     const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, flatShading: true }), Math.max(1, cap))
@@ -389,56 +400,24 @@ export class PlanetRenderer {
   }
 
   private buildTerrain() {
-    const N = this.N
-    const t = this.sim.state.terrain
-    const verts = new Float32Array(N * N * 3)
-    const colors = new Float32Array(N * N * 3)
-    const col = new THREE.Color()
-    for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N; x++) {
-        const i = y * N + x
-        verts[i * 3] = this.wx(x)
-        verts[i * 3 + 1] = t.worldY(x, y)
-        verts[i * 3 + 2] = this.wz(y)
-        this.colorFor(this.view, i, col)
-        colors[i * 3] = col.r
-        colors[i * 3 + 1] = col.g
-        colors[i * 3 + 2] = col.b
-      }
-    }
-    const indices: number[] = []
-    for (let y = 0; y < N - 1; y++) {
-      for (let x = 0; x < N - 1; x++) {
-        const a = y * N + x
-        const b = a + 1
-        const c = a + N
-        const d = c + 1
-        indices.push(a, c, b, b, c, d)
-      }
-    }
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.BufferAttribute(verts, 3))
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
-    geo.setIndex(indices)
-    geo.computeVertexNormals()
-    this.terrainGeo = geo
+    // Spec 084 S5 — the terrain is a chunk grid (per-chunk frustum culling + one-time analytic
+    // normals + staged recolor); see terrainChunks.ts for why each matters at the 608 world.
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.02, flatShading: false })
-    this.terrainMesh = new THREE.Mesh(geo, mat)
-    this.terrainMesh.receiveShadow = true
-    this.terrainMesh.castShadow = false // big mesh self-shadowing is costly + low-value
-    this.scene.add(this.terrainMesh)
+    this.chunkedTerrain = buildChunkedTerrain(
+      this.sim.state.terrain,
+      (x) => this.wx(x),
+      (y) => this.wz(y),
+      (i, out) => this.colorFor(this.view, i, out),
+      mat,
+    )
+    this.scene.add(this.chunkedTerrain.group)
   }
 
   setView(mode: ViewMode) {
     this.view = mode
-    const N = this.N
-    const colorAttr = this.terrainGeo.getAttribute('color') as THREE.BufferAttribute
-    const col = new THREE.Color()
-    for (let i = 0; i < N * N; i++) {
-      this.colorFor(mode, i, col)
-      colorAttr.setXYZ(i, col.r, col.g, col.b)
-    }
-    colorAttr.needsUpdate = true
+    // Spec 084 S5 — recoloring is STAGED: chunks go dirty here and frame() repaints a few per
+    // frame, so a view toggle never stalls (the old full-grid rewrite froze a frame at scale).
+    this.chunkedTerrain.markAllDirty()
   }
 
   /** Show or hide the city-plan overlay (zone tints + plot flag-poles). */
@@ -517,6 +496,20 @@ export class PlanetRenderer {
       return { pos: L.clone().add(new THREE.Vector3(16, 11, 20)), target: L.clone().add(new THREE.Vector3(0, 2, 0)) }
     }
     if (p === 'district') {
+      // Spec 084 S5 — frame the NEIGHBORHOOD (derived from its bounding box), not a hardcoded
+      // point that only happened to work at the 192 world.
+      const lots = this.neighborhood?.parcels ?? []
+      if (lots.length > 0) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        for (const l of lots) {
+          minX = Math.min(minX, l.x - l.w / 2); maxX = Math.max(maxX, l.x + l.w / 2)
+          minY = Math.min(minY, l.y - l.h / 2); maxY = Math.max(maxY, l.y + l.h / 2)
+        }
+        const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
+        const span = Math.max(maxX - minX, maxY - minY, 24)
+        const c = new THREE.Vector3(this.wx(cx), Math.max(0, t.worldY(Math.round(cx), Math.round(cy))), this.wz(cy))
+        return { pos: c.clone().add(new THREE.Vector3(span * 0.9, span * 1.1, span * 1.5)), target: c.clone().add(new THREE.Vector3(0, 4, 0)) }
+      }
       return { pos: new THREE.Vector3(95, 105, 150), target: new THREE.Vector3(0, 5, 0) }
     }
     // planet — orbital framing: your colony region with the planet curving away behind it
@@ -541,8 +534,12 @@ export class PlanetRenderer {
     const t = hour + minute / 60
     const ang = ((t - 6) / 12) * Math.PI
     const r = this.N * 1.1
-    this.sun.position.set(Math.cos(ang) * r, Math.max(6, Math.sin(ang) * r), this.N * 0.25)
-    this.sun.target.position.set(0, 0, 0)
+    // Spec 084 S5 — sun + target translate TOGETHER to the orbit target: the light DIRECTION (and
+    // so all shading) is unchanged, but the fixed-extent shadow frustum now sits wherever the
+    // player is looking instead of being pinned to the island centre.
+    const c = this.controls.target
+    this.sun.position.set(c.x + Math.cos(ang) * r, Math.max(6, Math.sin(ang) * r), c.z + this.N * 0.25)
+    this.sun.target.position.set(c.x, 0, c.z)
   }
 
   private buildColonyLayer() {
@@ -563,6 +560,20 @@ export class PlanetRenderer {
     )
     this.roadLineMesh.frustumCulled = false
     this.scene.add(this.roadLineMesh)
+    // Spec 084 S3 — the AVENUE: smooth asphalt (a faint cool emissive keeps it readable under the
+    // void sky without crushing to black) and pale concrete kerb strips along its boundary edges.
+    this.avenueSurfaceMesh = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.92, metalness: 0, side: THREE.DoubleSide, emissive: 0x23232b, emissiveIntensity: 0.35 }),
+    )
+    this.avenueSurfaceMesh.frustumCulled = false
+    this.scene.add(this.avenueSurfaceMesh)
+    this.avenueKerbMesh = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshStandardMaterial({ color: 0x9a9aa2, roughness: 0.85, metalness: 0, side: THREE.DoubleSide, emissive: 0x3c3c42, emissiveIntensity: 0.3 }),
+    )
+    this.avenueKerbMesh.frustumCulled = false
+    this.scene.add(this.avenueKerbMesh)
 
     // Building = body box + a low hipped roof merged into one geometry, so each instance reads as a
     // structure with a roof instead of a plain block. The roof scales with the building height.
@@ -967,6 +978,9 @@ export class PlanetRenderer {
     const SKIRT = 0.9 // embankment depth below the bed edge
     const surf: number[] = []
     const line: number[] = []
+    // Spec 084 S3 — the avenue gets its own asphalt surface + kerb strips; streets keep the earth bed.
+    const surfA: number[] = []
+    const kerb: number[] = []
     const tri = (arr: number[], a: number[], b: number[], c: number[]) => arr.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!)
     const quad = (arr: number[], a: number[], b: number[], c: number[], d: number[]) => { tri(arr, a, c, b); tri(arr, b, c, d) }
     const roadKey = (x: number, y: number) => `${x},${y}`
@@ -995,17 +1009,37 @@ export class PlanetRenderer {
       for (const [k, h] of next) heights.set(k, h)
     }
     const cornerAt = (gx: number, gy: number): number[] => [this.wx(gx) - 0.5, (heights.get(ck(gx, gy)) ?? this.cornerY(gx, gy)) + LIFT, this.wz(gy) - 0.5]
-    // 3) surface + skirts
+    // 3) surface + skirts, split per road kind (spec 084 S3)
+    const isAvenue = (x: number, y: number) => s.roadKind.get(roadKey(x, y)) === 'avenue'
     for (const r of s.roads) {
       const x = r.x, y = r.y
+      const avenue = (r.kind ?? 'street') === 'avenue'
+      const bed = avenue ? surfA : surf
       const c00 = cornerAt(x, y), c10 = cornerAt(x + 1, y), c01 = cornerAt(x, y + 1), c11 = cornerAt(x + 1, y + 1)
-      quad(surf, c00, c10, c01, c11)
+      quad(bed, c00, c10, c01, c11)
       const drop = (p: number[]): number[] => [p[0]!, p[1]! - SKIRT, p[2]!]
       // a skirt on every edge not shared with another road cell
-      if (!roadSet.has(roadKey(x, y - 1))) quad(surf, c00, c10, drop(c00), drop(c10))
-      if (!roadSet.has(roadKey(x, y + 1))) quad(surf, c01, c11, drop(c01), drop(c11))
-      if (!roadSet.has(roadKey(x - 1, y))) quad(surf, c00, c01, drop(c00), drop(c01))
-      if (!roadSet.has(roadKey(x + 1, y))) quad(surf, c10, c11, drop(c10), drop(c11))
+      if (!roadSet.has(roadKey(x, y - 1))) quad(bed, c00, c10, drop(c00), drop(c10))
+      if (!roadSet.has(roadKey(x, y + 1))) quad(bed, c01, c11, drop(c01), drop(c11))
+      if (!roadSet.has(roadKey(x - 1, y))) quad(bed, c00, c01, drop(c00), drop(c01))
+      if (!roadSet.has(roadKey(x + 1, y))) quad(bed, c10, c11, drop(c10), drop(c11))
+      const lift = (p: number[], dx: number, dz: number): number[] => [p[0]! + dx, p[1]! + 0.045, p[2]! + dz]
+      if (avenue) {
+        // KERBS: a raised concrete strip along every edge not shared with another avenue cell.
+        if (!isAvenue(x, y - 1)) quad(kerb, lift(c00, 0, 0), lift(c10, 0, 0), lift(c00, 0, 0.16), lift(c10, 0, 0.16))
+        if (!isAvenue(x, y + 1)) quad(kerb, lift(c01, 0, -0.16), lift(c11, 0, -0.16), lift(c01, 0, 0), lift(c11, 0, 0))
+        if (!isAvenue(x - 1, y)) quad(kerb, lift(c00, 0, 0), lift(c00, 0.16, 0), lift(c01, 0, 0), lift(c01, 0.16, 0))
+        if (!isAvenue(x + 1, y)) quad(kerb, lift(c10, -0.16, 0), lift(c10, 0, 0), lift(c11, -0.16, 0), lift(c11, 0, 0))
+        // CENTRE DASHES: every other cell, oriented along the run (the avenue bends with terrain).
+        if ((x + y) % 2 === 0) {
+          const h = (c00[1]! + c10[1]! + c01[1]! + c11[1]!) / 4 + 0.03
+          const wx = this.wx(x), wz = this.wz(y)
+          const runX = isAvenue(x - 1, y) || isAvenue(x + 1, y)
+          if (runX) quad(line, [wx - 0.3, h, wz - 0.05], [wx + 0.3, h, wz - 0.05], [wx - 0.3, h, wz + 0.05], [wx + 0.3, h, wz + 0.05])
+          else quad(line, [wx - 0.05, h, wz - 0.3], [wx + 0.05, h, wz - 0.3], [wx - 0.05, h, wz + 0.3], [wx + 0.05, h, wz + 0.3])
+        }
+        continue
+      }
       const onV = ((((x - g.x) % B) + B) % B) === 0 // on a north-south grid line
       const onH = ((((y - g.y) % B) + B) % B) === 0 // on an east-west grid line
       if (onV === onH) continue // intersection or off-grid fill -> no centre dash
@@ -1014,12 +1048,15 @@ export class PlanetRenderer {
       if (onV) quad(line, [wx - 0.05, h, wz - 0.3], [wx + 0.05, h, wz - 0.3], [wx - 0.05, h, wz + 0.3], [wx + 0.05, h, wz + 0.3])
       else quad(line, [wx - 0.3, h, wz - 0.05], [wx + 0.3, h, wz - 0.05], [wx - 0.3, h, wz + 0.05], [wx + 0.3, h, wz + 0.05])
     }
-    const sg = this.roadSurfaceMesh.geometry as THREE.BufferGeometry
-    sg.setAttribute('position', new THREE.Float32BufferAttribute(surf, 3))
-    sg.computeVertexNormals()
-    const lg = this.roadLineMesh.geometry as THREE.BufferGeometry
-    lg.setAttribute('position', new THREE.Float32BufferAttribute(line, 3))
-    lg.computeVertexNormals()
+    const setPos = (mesh: THREE.Mesh, arr: number[]) => {
+      const geo = mesh.geometry as THREE.BufferGeometry
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3))
+      geo.computeVertexNormals()
+    }
+    setPos(this.roadSurfaceMesh, surf)
+    setPos(this.roadLineMesh, line)
+    setPos(this.avenueSurfaceMesh, surfA)
+    setPos(this.avenueKerbMesh, kerb)
   }
 
   private updateColonyLayer() {
@@ -1029,10 +1066,11 @@ export class PlanetRenderer {
       this.rebuildSettlerHomes()
       this.lastSettlerCount = s.settlers.length
     }
-    // roads drape on the terrain; rebuild the ribbon only when the network grows
-    if (s.roads.length !== this.lastRoadCount) {
+    // roads drape on the terrain; rebuild the ribbon on ANY network mutation (spec 084 S1 — a
+    // length check missed equal-length purge-then-lay mutations and drew roads that were gone)
+    if (s.roadsVersion !== this.lastRoadsVersion) {
       this.rebuildRoads()
-      this.lastRoadCount = s.roads.length
+      this.lastRoadsVersion = s.roadsVersion
     }
     // as the cleared footprint (roads + buildings + worksites) changes, re-clear the trees from it and refresh the
     // pavement the ambient pedestrians stroll along.
@@ -1203,6 +1241,8 @@ export class PlanetRenderer {
   frame() {
     if (this.disposed) return
     this.updateDayNight()
+    // Spec 084 S5 — staged terrain recolor: at most 8 dirty chunks repaint per frame.
+    this.chunkedTerrain.recolor((i, out) => this.colorFor(this.view, i, out), 8)
     this.updateColonyLayer()
     this.updatePedestrians()
     this.updatePorters() // spec 073 — goods piled at the sheds + porter carts on the roads
@@ -1391,12 +1431,6 @@ export class PlanetRenderer {
     const sig = lots.map((l) => `${l.id}:${l.ownerCitizenId ? 1 : 0}:${l.built ? 1 : 0}:${l.blueprint ?? ''}`).join('|') + `#${n.carriage.length}`
     if (sig === this.lastNbhdSig) return
     this.lastNbhdSig = sig
-    // Tear down the previous merged brick houses (P2) before rebuilding — dispose their GPU geometry.
-    for (const child of [...this.mergedHouseGroup.children]) {
-      this.mergedHouseGroup.remove(child)
-      const m = child as THREE.Mesh
-      if (m.geometry) m.geometry.dispose()
-    }
     const t = this.sim.state.terrain
     const col = new THREE.Color()
     const BH = 0.56 // block height (the box geometry's y size)
@@ -1411,8 +1445,9 @@ export class PlanetRenderer {
     // A ground tile spanning a rect (min-corner zx,zy, size zw x zd) whose TOP face sits at hOff above
     // the ground. The deep body sinks into the terrain. `groundY`, when given, levels the tile on a
     // fixed foundation height (the house slab) instead of sampling the smoothed per-cell terrain.
+    let padOverflow = 0, voxOverflow = 0 // spec 084 S1 — silent cap truncation hid missing scenery
     const padRect = (zx: number, zy: number, zw: number, zd: number, hOff: number, color: number, groundY?: number) => {
-      if (p >= PAD_CAP) return
+      if (p >= PAD_CAP) { padOverflow++; return }
       const cx = zx + (zw - 1) / 2, cy = zy + (zd - 1) / 2
       this.dummy.position.set(this.wx(cx), (groundY ?? gy(cx, cy)) + hOff - PAD_DEPTH / 2, this.wz(cy))
       this.dummy.rotation.set(0, 0, 0)
@@ -1426,7 +1461,7 @@ export class PlanetRenderer {
     const padCell = (x: number, y: number, hOff: number, color: number, groundY?: number) => padRect(x, y, 1, 1, hOff, color, groundY)
     // A scaled cube at cell (x,y) whose bottom rests on the ground (or the given foundation) + zBase.
     const block = (x: number, y: number, sx: number, sy: number, sz: number, zBase: number, color: number, groundY?: number) => {
-      if (v >= VOX_CAP) return
+      if (v >= VOX_CAP) { voxOverflow++; return }
       this.dummy.position.set(this.wx(x), (groundY ?? gy(x, y)) + zBase + (BH * sy) / 2, this.wz(y))
       this.dummy.rotation.set(0, 0, 0)
       this.dummy.scale.set(sx, sy, sz)
@@ -1437,11 +1472,9 @@ export class PlanetRenderer {
       v++
     }
 
-    // ── the spine: a warm packed-earth carriageway (NOT black colony asphalt), a grass verge kerb,
-    // and a pale dashed centre line — a residential lane that reads as a country road, not a gash. ──
+    // ── the spine verge: the grass kerb strip beside the avenue. The carriageway itself is now a
+    // real AVENUE in state.roads (spec 084 S3) — rebuildRoads draws its asphalt, kerbs and dashes.
     for (const c of n.verge) padCell(c.x, c.y, 0.045, 0x5d7a3c)
-    for (const c of n.carriage) padCell(c.x, c.y, 0.05, 0x8a7048)
-    for (let i = 0; i < n.spine.length; i += 2) { const c = n.spine[i]!; padCell(c.x, c.y, 0.058, 0xc6b083) }
 
     // ── each homestead parcel ──
     for (const lot of lots) {
@@ -1460,6 +1493,26 @@ export class PlanetRenderer {
       padCell(lot.gate.x, lot.gate.y, 0.056, BLOCK_COLOR.path)
       // the visible parcel border — a fence/hedge/wall ring riding the land, raised clear of the pads
       for (const f of lot.fence) block(f.x, f.y, 0.26, 0.9, 0.26, 0.06, fenceColor)
+
+      // Spec 084 S1 — houses rebuild PER LOT: one accepted blueprint recompiles ONE micro-grid, not
+      // every house in the street (the old wholesale mergedHouseGroup teardown made each save pay
+      // for the whole neighborhood). Keyed on exactly what the compiled mesh depends on.
+      const doorDir = streetDoorDir(lot) // single source — only the no-blueprint fallback uses it
+      const houseKey = lot.built ? `${lot.blueprint ?? ''}~${py}` : ''
+      if (this.lotHouseKey.get(lot.id) !== houseKey) {
+        const old = this.mergedHouseGroup.getObjectByName(lot.id) as THREE.Mesh | undefined
+        if (old) {
+          this.mergedHouseGroup.remove(old)
+          old.geometry?.dispose()
+        }
+        if (lot.built) {
+          // Spec 077 — every built house raises a FANCY BRICK home through the merged greedy-meshed
+          // path: an authored blueprint when the parcel carries one, else the deterministic
+          // defaultBlueprint from the house seed, with the masonry banding baked into vertex colours.
+          this.addMergedHouse(lot.id, lot.houseZone, lot.blueprint ?? defaultBlueprint(lot.houseSeed, doorDir, lot.houseZone.w), lot.houseSeed, py)
+        }
+        this.lotHouseKey.set(lot.id, houseKey)
+      }
 
       if (!lot.built) continue
       // worked homestead: farm furrows (alternating crop colour by row) riding their own field cells
@@ -1480,15 +1533,11 @@ export class PlanetRenderer {
       block(tx, ty, 0.95, 0.95, 0.95, 0.05 + BH * 1.1, BLOCK_COLOR.leaf)
       block(lot.garden.x + lot.garden.w - 1, lot.garden.y + lot.garden.d - 1, 0.6, 0.7, 0.6, 0.05, BLOCK_COLOR.well)
 
-      // the house, set back and centred in its house-zone, grown to fill it.
-      const doorDir: DoorDir = lot.doorY < lot.y ? 'n' : 's'
-      // Spec 077 — every built house raises a FANCY BRICK home through the merged greedy-meshed path:
-      // an authored blueprint when the parcel carries one (P3/P4), else a deterministic defaultBlueprint
-      // from the house seed. The script compiles to the fine micro-occupancy and greedy-meshes to ONE
-      // merged geometry with the masonry tint banding baked into the vertex colours.
-      this.addMergedHouse(lot.houseZone, lot.blueprint ?? defaultBlueprint(lot.houseSeed, doorDir), lot.houseSeed, py)
     }
 
+    if ((padOverflow > 0 || voxOverflow > 0) && import.meta.env.DEV) {
+      console.warn(`[citylife] instance caps hit: ${padOverflow} pads + ${voxOverflow} voxels DROPPED — scenery is silently missing; raise PAD_CAP/VOX_CAP (spec 084 S1)`)
+    }
     this.lotPadMesh.count = p
     this.lotPadMesh.instanceMatrix.needsUpdate = true
     if (this.lotPadMesh.instanceColor) this.lotPadMesh.instanceColor.needsUpdate = true
@@ -1502,16 +1551,16 @@ export class PlanetRenderer {
    *  coordinates): each micro-block is 1/n of a plot cell across, voxelY tall, so a 2-storey home is a
    *  sensible height. The merged geometry reads as fancy brick masonry — the per-course tint banding is
    *  carried in the vertex colours and the flat per-quad normals keep every face crisp. */
-  private addMergedHouse(zone: Zone, script: string, seed: number, groundY: number): void {
+  private addMergedHouse(lotId: string, zone: Zone, script: string, seed: number, groundY: number): void {
     let compiled
     try {
       compiled = compileBlueprint(script, { w: zone.w, d: zone.d, seed })
     } catch {
       return // a malformed script never crashes the renderer — the lot simply draws no house
     }
-    const VOXEL_Y = 0.22 // micro-block height in world units: gives each storey real presence so a home isn't squat
     const { geometry } = greedyMesh(compiled.blocks, { n: compiled.n, cell: 1, voxelY: VOXEL_Y })
     const mesh = new THREE.Mesh(geometry, this.mergedHouseMat)
+    mesh.name = lotId // the per-lot incremental rebuild finds + disposes it by name (spec 084 S1)
     mesh.castShadow = true
     mesh.receiveShadow = true
     mesh.frustumCulled = false
