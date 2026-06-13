@@ -125,15 +125,20 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
   (runtime/ledger/HUD only) until the lighthouse lands. The two places don't overlap in-world (shore
   vs the inland avenue). NB the existing red shore beacon is the ROCKET/dropship nav beacon, not a
   lighthouse — keep them distinct.
-- **OBSERVED 2026-06-13 (alignment check):** Codex DID land it — `origin/codex/founders-lighthouse-rockery`
-  commit `ce79b88`, factored exactly as planned into `render/shoreProps.ts` (217 lines) so the
-  `PlanetRenderer.ts` diff is just +16 (call-sites). Placement is `findFoundersLighthouseSite` in
-  `sim.ts` — Rockery Beach headland first (landmarkAnchor approx landing.x minus 0.36 times size,
-  landing.y minus 0.09 times size), dry-shore fallback — pushed into `state.structures` as kind
-  `lighthouse`. **NOT yet merged to main.** Shared files still both touched (sim.ts + PlanetRenderer.ts):
-  when both land, merge order matters but the diffs are small and non-overlapping. **086-P1 unblocks the
-  moment his branch is on main** — then anchor the commercial reserve near `structures.find kind ===
-  lighthouse` instead of the inland avenue terminus.
+- **MERGED 2026-06-13:** Codex's lighthouse (PR 43, `ce79b88`) is now merged INTO `feat/commercial-visuals`
+  (merge commit `1df3afe`). Factored exactly as planned into `render/shoreProps.ts` (217 lines); the only
+  conflict was vite.config testTimeout (kept 20s). Placement is `findFoundersLighthouseSite` in `sim.ts` —
+  Rockery Beach headland first, dry-shore fallback — pushed into `state.structures` as kind `lighthouse`
+  (live-verified at grid (85,249), renders correctly on the shore). 729 green, tsc clean, no console errors.
+  **086-P1 is now UNBLOCKED** — anchor the commercial reserve near `structures.find(s => s.kind ===
+  'lighthouse')` instead of the inland avenue terminus.
+- **Spec 087 Road Rally (2026-06-13):** operator + Codex proposed a road-rally mini-game overlay; Claude
+  reviewed it (multi-agent) — verdict **approve-with-changes**, see `docs/specs/087-road-rally-minigame.md`
+  (14 required changes, the critical ones: track gen must never touch `sim.rng`; build from `roadKind` not
+  `roadSet`; lap timer accumulates clamped dtReal; gate chase camera like first-person; `raceLayer.dispose()`
+  on race EXIT; emissive < 0.9 bloom threshold). **Codex builds it** in his own clone/branch; the do-not-touch
+  list protects the bar-seating lane, `traffic.ts`, and `state.cars`. Brief handed to operator
+  (`Desktop\codex-road-rally-prompt.txt`).
 - **Antigravity is DEAD to us** — leaving this machine (resource hunger). Its delegated work
   (`kooker-service-social` = the Kookerbook backend) won't be picked up; Kookerbook stays on its
   local layer as designed. Don't watch `origin/antigravity/*`.
