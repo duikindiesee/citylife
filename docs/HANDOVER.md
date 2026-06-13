@@ -17,9 +17,12 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
 - **Verify a slice:** `npx tsc --noEmit` (typecheck) + `npx vitest run` (currently **711 tests**). NOTE
   Vite HMR does NOT re-instantiate the singleton `ColonyRuntime`, so after editing runtime/uiState do a
   full page reload before live-checking `window.__colony` — a hot-swap alone shows stale state.
-- **Active branch is now `feat/commercial-visuals`** (fresh from `main` after PR #41 merged; PR #42
-  carries the HUD/sync follow-up). `mechanics/dev` on the remote is the stale pre-squash orphan —
-  don't push to it. The rolling lane convention continues on `feat/commercial-visuals`.
+- **Active branch is now `feat/rally-and-bot-worklife`** (fresh off `main` after PR #42 squash-merged
+  all the commerce + lighthouse work). It carries: Codex's Spec 087 P0 Road Rally (his PR #44 merged in
+  then closed — same consolidate-then-close flow as the lighthouse #43), **081-P0 ad boards** (billboards
+  + deterministic canvas posters), and the **080 CityLife Workstation badge**. 746 green, tsc clean,
+  pushed; ready to PR into `main`. `feat/commercial-visuals` and `mechanics/dev` on the remote are stale
+  pre-squash orphans — don't push to them. The rolling lane convention continues on this branch.
   Then LIVE on :5188 — drive `window.__colony` via JS evals (see §6). NOTE: Chrome CDP **screenshots
   are broken this session** (`clip.scale` error) — verify with JS evals + `read_console_messages`,
   not screenshots.
