@@ -252,9 +252,20 @@ DONE
 - 711 green, tsc clean. Live-verified on :5188 — forced night, both citizens claimed distinct stools,
   walked to them and sat (pos == seat cell); the third stool stays free with only two citizens; by day
   they release and stroll. Camera framed the bar front showing the radar mast, counter and seated bots.
+### 2026-06-13 — Loop iteration 4: Joe the Crab tends the Nearest (the exact concept-image look)
+DONE
+- renderer: a static crab keeper stands behind the Nearest counter, reusing the founder crab geometry
+  (the headset-fixed makeCrabGeometry) on a hidden duckboard riser so his headset, eyes and claws clear
+  the counter as he serves the patrons across it — the unmistakable Joe-at-the-bar look the operator
+  asked for. He faces the street side (the crab faces +z by default; rotate y by pi when side flips).
+  Citizen-Joe stays a separate founder; this is the bar mascot keeper. Disposed with the rest of the
+  commercial group on rebuild.
+- tsc clean, render-only (no test delta). Live-verified on :5188 — close shot of the bar front shows
+  the crab keeper over the wooden counter, orange shell + blue earcup headset + claws, no console errors.
 NEXT (loop)
-- bespoke polish per marquee app; then commerce relocates to the shore by the lighthouse (086-P1) once
-  Codex's lighthouse lands.
+- bespoke polish for Sprout / Sportifine / Chef Ott storefronts; then commerce relocates to the shore by
+  the lighthouse (086-P1) — now UNBLOCKED (lighthouse merged onto feat/commercial-visuals; anchor is
+  structures.find kind === 'lighthouse').
 
 ### 2026-06-13 — Fix: stalls were landing on homestead plots
 DONE

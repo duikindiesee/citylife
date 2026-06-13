@@ -1543,6 +1543,26 @@ export class PlanetRenderer {
           stool.castShadow = true
           g.add(stool)
         }
+        // Joe the Crab tends the Nearest — the signature "Joe at the bar" look from the concept image:
+        // his headset, eyes and claws clear the counter as he serves the patrons across it. A static
+        // prop reusing the founder crab geometry; he stands on a hidden duckboard riser behind the
+        // counter and faces the street side. (Citizen-Joe is separate; this is the bar's mascot keeper.)
+        const riser = 0.36
+        const board = new THREE.Mesh(
+          new THREE.BoxGeometry(bodyW * 0.5, riser, 0.32),
+          new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.9 }),
+        )
+        board.position.set(0, riser / 2, front * (bodyD / 2 + 0.18))
+        g.add(board)
+        const keeper = new THREE.Mesh(
+          this.makeCrabGeometry(),
+          new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.6, metalness: 0.05 }),
+        )
+        keeper.scale.setScalar(1.25)
+        keeper.position.set(0, riser, front * (bodyD / 2 + 0.18))
+        if (front < 0) keeper.rotation.y = Math.PI // the crab faces +z by default; turn him to face the street side
+        keeper.castShadow = true
+        g.add(keeper)
       }
 
       // Signature props give each marquee app a distinct, recognisable place (the bar's radar dish +
