@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { ColonySim } from '../src/colony/sim'
+import { ColonySim, findFoundersLighthouseSite } from '../src/colony/sim'
 import { COLONY } from '../src/colony/config'
 import { addSettler } from '../src/colony/settlers'
 import { autoGrow } from '../src/colony/build'
 import type { KookerCard } from '../src/colony/kooker'
+import { RNG } from '../src/engine/rng'
+import { Biome, Terrain } from '../src/colony/terrain'
 
 describe('Base placement (rocket / solar / battery / caravan)', () => {
   const seeds = [1, 7, 42, 99, 123, 314, 777, 2026]
@@ -25,13 +27,13 @@ describe('Base placement (rocket / solar / battery / caravan)', () => {
       })
       it('rocket / solar / battery sit INSIDE block (0,0) — never on the road frame', () => {
         for (const st of s.structures) {
-          if (st.kind === 'caravan') continue
+          if (st.kind === 'caravan' || st.kind === 'lighthouse') continue
           expect(onRoadFrame(st.x, st.y)).toBe(false)
         }
       })
       it('structure footprints clear the road frame (wide meshes do not spill onto roads)', () => {
         for (const st of s.structures) {
-          if (st.kind === 'caravan') continue
+          if (st.kind === 'caravan' || st.kind === 'lighthouse') continue
           for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
               expect(onRoadFrame(st.x + dx, st.y + dy)).toBe(false)
@@ -52,8 +54,49 @@ describe('Base placement (rocket / solar / battery / caravan)', () => {
           expect(s.roadSet.has(`${st.x},${st.y}`)).toBe(false)
         }
       })
+      it('seeds a lighthouse on dry buildable shore near the founders coast', () => {
+        const lighthouse = s.structures.find((st) => st.kind === 'lighthouse')
+        expect(lighthouse).toBeTruthy()
+        const st = lighthouse!
+        const i = s.terrain.idx(st.x, st.y)
+        expect(s.terrain.isWater(st.x, st.y)).toBe(false)
+        expect(s.terrain.buildable[i]).not.toBe(0)
+        expect(s.terrain.distToWater[i]).toBeGreaterThan(0)
+        expect(s.terrain.distToWater[i]).toBeLessThanOrEqual(COLONY.world.coastSearch)
+        expect(s.terrain.biome[i] === Biome.Beach || s.terrain.distToWater[i]! <= COLONY.world.coastSearch).toBe(true)
+      })
+      it('lighthouse placement is deterministic', () => {
+        const again = new ColonySim(seed)
+        expect(again.state.structures.find((st) => st.kind === 'lighthouse')).toEqual(
+          s.structures.find((st) => st.kind === 'lighthouse'),
+        )
+      })
     })
   }
+})
+
+describe('Founders Lighthouse placement helper', () => {
+  it('places the render-seed lighthouse on the north-west Rockery Beach headland', () => {
+    const s = new ColonySim(COLONY.render.seed).state
+    const lighthouse = s.structures.find((st) => st.kind === 'lighthouse')
+    expect(lighthouse).toBeTruthy()
+    const target = {
+      x: Math.round(s.terrain.landing.x - s.terrain.size * 0.36),
+      y: Math.round(s.terrain.landing.y - s.terrain.size * 0.09),
+    }
+    expect(Math.hypot(lighthouse!.x - target.x, lighthouse!.y - target.y)).toBeLessThanOrEqual(18)
+    expect(Math.hypot(lighthouse!.x - s.terrain.landing.x, lighthouse!.y - s.terrain.landing.y)).toBeGreaterThan(180)
+  })
+
+  it('degrades gracefully when no dry buildable shore exists', () => {
+    const t = new Terrain(new RNG(42))
+    t.water.fill(1)
+    t.buildable.fill(0)
+    t.distToWater.fill(0)
+    t.elev.fill(0)
+    t.biome.fill(Biome.Ocean)
+    expect(findFoundersLighthouseSite(t)).toBeNull()
+  })
 })
 
 describe('Homes + buildings keep clear of the base structures (no rocket-in-house)', () => {

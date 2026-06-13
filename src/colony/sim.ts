@@ -1,7 +1,7 @@
 // Colony simulation (Phase A): clock + day/night, and the off-grid solar→battery loop.
 import { RNG } from '../engine/rng'
 import { COLONY } from './config'
-import { Terrain } from './terrain'
+import { Biome, Terrain } from './terrain'
 import { initBuild, stepBuild, turbinePower, solarSeasonFactor } from './build'
 import type { ColonyBuilding, ConstructionJob, Parcel, RoadCell, RoadKind } from './build'
 import { updateTraffic } from './traffic'
@@ -10,11 +10,89 @@ import type { Settler } from './settlers'
 import { createLedger, type Ledger } from './ledger'
 import type { CityPlan } from './cityPlan'
 
-export type StructureKind = 'caravan' | 'solar' | 'battery' | 'rocket'
+export type StructureKind = 'caravan' | 'solar' | 'battery' | 'rocket' | 'lighthouse'
 export interface SeedStructure {
   kind: StructureKind
   x: number
   y: number
+}
+
+export interface LighthousePlacementOptions {
+  anchor?: { x: number; y: number }
+  landmarkAnchor?: { x: number; y: number }
+  landmarkRadius?: number
+  used?: readonly { x: number; y: number }[]
+  maxRadius?: number
+}
+
+/** Founders' Lighthouse: a deterministic shore marker for the founders' bay.
+ *  It first tries the Rockery Beach headland, then falls back to dry buildable shore. */
+export function findFoundersLighthouseSite(
+  terrain: Terrain,
+  options: LighthousePlacementOptions = {},
+): { x: number; y: number } | null {
+  const anchor = options.anchor ?? terrain.landing
+  const landmarkAnchor = options.landmarkAnchor ?? {
+    x: Math.round(anchor.x - terrain.size * 0.36),
+    y: Math.round(anchor.y - terrain.size * 0.09),
+  }
+  const landmarkRadius = options.landmarkRadius ?? Math.max(42, COLONY.world.coastSearch * 4)
+  const used = options.used ?? []
+  const usedSet = new Set(used.map((p) => `${p.x},${p.y}`))
+  const maxRadius = options.maxRadius ?? Math.max(96, Math.min(180, Math.round(terrain.size * 0.25)))
+  const coastLimit = COLONY.world.coastSearch
+  const usedClear = (x: number, y: number): boolean => {
+    for (const u of used) if (Math.max(Math.abs(u.x - x), Math.abs(u.y - y)) <= 6) return false
+    return !usedSet.has(`${x},${y}`)
+  }
+  const footprintClear = (x: number, y: number): boolean => {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy
+        if (!terrain.inBounds(nx, ny)) return false
+        if (terrain.isWater(nx, ny)) return false
+        if (terrain.buildable[terrain.idx(nx, ny)] === 0) return false
+      }
+    }
+    return true
+  }
+  const waterExposure = (x: number, y: number): number => {
+    let n = 0
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        if (dx === 0 && dy === 0) continue
+        const nx = x + dx, ny = y + dy
+        if (terrain.inBounds(nx, ny) && terrain.isWater(nx, ny)) n++
+      }
+    }
+    return n
+  }
+  const pickBest = (center: { x: number; y: number }, radius: number): { x: number; y: number } | null => {
+    let best: { x: number; y: number; score: number } | null = null
+    for (let y = Math.max(1, center.y - radius); y <= Math.min(terrain.size - 2, center.y + radius); y++) {
+      for (let x = Math.max(1, center.x - radius); x <= Math.min(terrain.size - 2, center.x + radius); x++) {
+        const dCenter = Math.hypot(x - center.x, y - center.y)
+        if (dCenter > radius) continue
+        if (!usedClear(x, y)) continue
+        if (!footprintClear(x, y)) continue
+        const i = terrain.idx(x, y)
+        const dWater = terrain.distToWater[i]!
+        if (dWater <= 0 || dWater > coastLimit) continue
+        const biome = terrain.biome[i] as Biome
+        const shore = Math.max(0, coastLimit - Math.abs(dWater - 2))
+        const beach = biome === Biome.Beach ? 28 : 0
+        const flat = terrain.buildable[i] === 2 ? 9 : 3
+        const dAnchor = Math.hypot(x - anchor.x, y - anchor.y)
+        const dLandmark = Math.hypot(x - landmarkAnchor.x, y - landmarkAnchor.y)
+        const score = beach + shore * 3 + flat + waterExposure(x, y) * 0.6 - dLandmark * 1.05 - dAnchor * 0.02
+        if (!best || score > best.score || (score === best.score && (y < best.y || (y === best.y && x < best.x)))) {
+          best = { x, y, score }
+        }
+      }
+    }
+    return best ? { x: best.x, y: best.y } : null
+  }
+  return pickBest(landmarkAnchor, landmarkRadius) ?? pickBest(anchor, maxRadius)
 }
 
 export interface ColonyClock {
@@ -145,6 +223,11 @@ export class ColonySim {
       placeAvoid('solar', lx - 2, ly + 2, 1),
       placeAvoid('battery', lx + 2, ly - 2, 1),
     ]
+    const lighthouse = findFoundersLighthouseSite(terrain, { used })
+    if (lighthouse) {
+      structures.push({ kind: 'lighthouse', x: lighthouse.x, y: lighthouse.y })
+      used.push(lighthouse)
+    }
 
     this.state = {
       name: COLONY.seed.name,
