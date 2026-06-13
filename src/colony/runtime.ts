@@ -25,7 +25,7 @@ import { createProfile, addPost, type KbProfile, type PostKind } from './social/
 import { loadKookerbookLocal, saveProfileLocal, saveProfileBackend, fetchKookerbookBackend, mergeKookerbook } from './bot/kookerbookStore'
 import { getLedgerSync, type LedgerMove, type SyncStatus } from './bot/ledgerSync'
 import { makeCommercialDistrict, type CommercialDistrict, type ShopKind, type ShopParcel } from './commerce/district'
-import { cellOk } from './pathfind'
+import { cellOk, leastCostPath } from './pathfind'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
@@ -236,6 +236,36 @@ export class ColonyRuntime {
     this.commercialDistrict = this.commercialReserve
       ? makeCommercialDistrict(this.sim.state.terrain, this.commercialReserve, blockedForShops)
       : null
+    // Spec 079 — CONNECT the district to the city. Without a road the shops are an island of boxes on
+    // bare ground (operator feedback: no roads, looks weird). Widen the high-street centre-line to a
+    // proper carriageway, route a spur from the avenue's inland terminus to its nearest end (AROUND
+    // the homesteads + shops), and merge BOTH into the road network so the district is a real,
+    // drivable branch off the avenue with shops fronting an actual street.
+    if (this.commercialDistrict && this.commercialDistrict.street.length > 0) {
+      const t = this.sim.state.terrain
+      const residentialSet = new Set(parcelCells.map((c) => `${c.x},${c.y}`))
+      const shopCells = new Set<string>()
+      for (const p of this.commercialDistrict.parcels) for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) shopCells.add(`${x},${y}`)
+      // widen the centre-line to ~3 cells (the avenue is 3-wide) so it reads as a street, not a thread
+      const widened = new Set<string>()
+      for (const c of this.commercialDistrict.street) {
+        for (const dy of [-1, 0, 1]) {
+          const x = c.x, y = c.y + dy
+          if (cellOk(t, x, y) && !residentialSet.has(`${x},${y}`) && !shopCells.has(`${x},${y}`)) widened.add(`${x},${y}`)
+        }
+      }
+      const streetCells = [...widened].map((k) => { const [x, y] = k.split(',').map(Number); return { x: x!, y: y! } })
+      // the spur from the avenue's inland terminus to the street's nearest cell, routed around plots
+      const car = this.neighborhood.carriage
+      const dW = (c: { x: number; y: number }) => t.distToWater[t.idx(Math.round(c.x), Math.round(c.y))] ?? 0
+      let terminus = car[0]!
+      for (const c of car) if (dW(c) > dW(terminus)) terminus = c
+      let near = this.commercialDistrict.street[0]!, bestD = Infinity
+      for (const c of this.commercialDistrict.street) { const d = (c.x - terminus.x) ** 2 + (c.y - terminus.y) ** 2; if (d < bestD) { bestD = d; near = c } }
+      const connector = leastCostPath(t, terminus, near, { slopeWeight: 0.5, blocked: (x, y) => residentialSet.has(`${x},${y}`) || shopCells.has(`${x},${y}`) }) ?? []
+      mergeAvenue(this.sim.state, connector)
+      mergeAvenue(this.sim.state, streetCells)
+    }
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
     // founder profile (the bug: seed-then-restore overwrote Joe's stored posts with a 1-post reset).
