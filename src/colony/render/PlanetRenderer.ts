@@ -1571,6 +1571,31 @@ export class PlanetRenderer {
 
       this.commercialGroup.add(g)
     })
+
+    // 086-P1 polish — a seaside PROMENADE: warm lamp posts line the high street on alternating verges,
+    // glowing after dark so the coastal strip by the lighthouse reads as a lit boardwalk. Cheap static
+    // posts; the head emissive stays below the bloom threshold (warmth, not a halo). Disposed with the
+    // group on rebuild like every other commercial mesh.
+    const street = d.street
+    if (street.length > 0) {
+      const poleMat = new THREE.MeshStandardMaterial({ color: 0x2f343d, roughness: 0.7 })
+      const headMat = new THREE.MeshStandardMaterial({ color: 0xffe6b0, emissive: 0xffd9a0, emissiveIntensity: 0.82, roughness: 0.4 }) // warm, but under the 0.9 bloom threshold
+      for (let i = 0; i < street.length; i += 5) {
+        const c = street[i]!
+        const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)))
+        const side = Math.floor(i / 5) % 2 === 0 ? 1 : -1 // alternate verges down the strip
+        const lamp = new THREE.Group()
+        lamp.position.set(this.wx(c.x), by, this.wz(c.y + side * 1.4))
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 1.4, 6), poleMat)
+        pole.position.y = 0.7; pole.castShadow = true
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.3), poleMat)
+        arm.position.set(0, 1.4, side * 0.15)
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), headMat)
+        head.position.set(0, 1.38, side * 0.3)
+        lamp.add(pole, arm, head)
+        this.commercialGroup.add(lamp)
+      }
+    }
   }
 
   /** Signature props for a marquee storefront, positioned relative to its plot centre. `front` is the

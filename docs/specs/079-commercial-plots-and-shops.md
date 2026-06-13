@@ -281,9 +281,17 @@ DONE
   Sportifine, Chef Ott) carry over unchanged — they just sit on the seaside now, a scenic promenade by
   the landmark. LIVE seed 4242: reserve (117,234), district 52 cells off the lighthouse, road-connected
   to the founders (BFS), no shop on the tower, no console errors. tsc clean.
+### 2026-06-13 — Loop iteration 7: a lit seaside promenade (street lamps along the high street)
+DONE
+- renderer buildCommercialDistrict(): after the shopfronts, a lamp-post pass lines the high street on
+  alternating verges (every ~5 street cells) — a dark pole + arm + a warm head that glows after dark
+  (emissive 0.82, under the 0.9 bloom threshold so it reads as warmth, not a halo). Turns the relocated
+  coastal strip into a lit promenade by the lighthouse. Cheap static meshes, disposed with the group.
+- tsc clean, render-only. Live-verified on :5188 at night (forced 21:30) — the lamps line the strip and
+  glow warm beneath the neon storefronts; no console errors.
 NEXT (loop)
-- coastal-setting polish: signage/lighting tuned for the seaside; maybe a promenade/boardwalk feel
-  between the lighthouse and the strip. Bots still buy plots over time (no premature builds).
+- optional: a boardwalk/path linking the lighthouse to the strip; benches facing the sea. Otherwise the
+  commercial economy is assembled + sited + lit — bots buy plots over time (still no premature builds).
 
 ### 2026-06-13 — Fix: stalls were landing on homestead plots
 DONE
