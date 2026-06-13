@@ -262,10 +262,21 @@ DONE
   commercial group on rebuild.
 - tsc clean, render-only (no test delta). Live-verified on :5188 — close shot of the bar front shows
   the crab keeper over the wooden counter, orange shell + blue earcup headset + claws, no console errors.
+### 2026-06-13 — Loop iteration 5: bespoke storefronts for Sprout, Sportifine and Chef Ott
+DONE
+- renderer buildBusinessProps() enriched each marquee app into a characterful place (cheap static meshes,
+  all emissive < 0.9 so nothing trips the bloom threshold):
+  - Sprout — a terracotta planter trough of flowering sprouts (pink/yellow/white/blue blooms), potted
+    bushes flanking the door, a white trellis arch with green vines, roof shrubs. Reads as a lush nursery.
+  - Sportifine — the green pitch + goal + ball, plus two floodlight poles with glowing lamp heads, a
+    stepped grandstand in the club colour, and a corner flag. Reads as a sports club.
+  - Chef Ott — the striped awning + produce crates now carry colourful goods, a glowing grill under the
+    smoking chimney, an outdoor bistro table with stools, and a kettlebell (the app's exercise side).
+- tsc clean, render-only. Live-verified on :5188 — framed all three storefronts street-side; each is
+  distinct and busy, no console errors.
 NEXT (loop)
-- bespoke polish for Sprout / Sportifine / Chef Ott storefronts; then commerce relocates to the shore by
-  the lighthouse (086-P1) — now UNBLOCKED (lighthouse merged onto feat/commercial-visuals; anchor is
-  structures.find kind === 'lighthouse').
+- 086-P1: relocate commerce to the shore by the lighthouse — now UNBLOCKED (lighthouse merged onto
+  feat/commercial-visuals; anchor is structures.find kind === 'lighthouse'). This is the next slice.
 
 ### 2026-06-13 — Fix: stalls were landing on homestead plots
 DONE

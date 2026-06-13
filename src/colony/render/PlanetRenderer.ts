@@ -1590,20 +1590,62 @@ export class PlanetRenderer {
       vials.forEach((cv, k) => { const v = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8), glow(cv, 0.85)); v.position.set((k - 1.5) * 0.18, wallH + 0.25, frontZ * 0.6); grp.add(v) })
       ;[0.3, 0.5, 0.4, 0.6].forEach((h, k) => { const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, h, 0.06), glow(biz.palette, 0.6)); b.position.set(-bodyW * 0.5 - 0.16, wallH * 0.4 + h / 2, (k - 1.5) * 0.12); grp.add(b) })
     } else if (biz.id === 'sprout_nursery') {
-      for (let k = 0; k < 5; k++) { const c = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.34, 7), matte(0x3fae5a)); c.position.set((k - 2) * 0.28, 0.17, frontZ + front * 0.6); grp.add(c) }
-      for (const sx of [-bodyW * 0.3, bodyW * 0.3]) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 7), matte(0x2f8f49)); s.position.set(sx, wallH + 0.2, frontZ * 0.4); grp.add(s) }
+      // A lush little nursery: a terracotta planter trough of flowering sprouts, potted bushes flanking
+      // the door, a leafy trellis arch over the entrance, and shrubs on the roof.
+      const leaf = matte(0x3fae5a), leafDk = matte(0x2f8f49), terra = matte(0xb5663a)
+      const blooms = [0xff7eb6, 0xffd23f, 0xf6f6f6, 0xff5ca8, 0x7bd0ff]
+      const trough = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 0.9, 0.16, 0.26), terra); trough.position.set(0, 0.08, frontZ + front * 0.55); grp.add(trough)
+      for (let k = 0; k < 5; k++) {
+        const stem = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.34, 7), leaf); stem.position.set((k - 2) * 0.28, 0.32, frontZ + front * 0.55); grp.add(stem)
+        const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), glow(blooms[k % blooms.length]!, 0.3)); bloom.position.set((k - 2) * 0.28, 0.52, frontZ + front * 0.55); grp.add(bloom)
+      }
+      for (const sx of [-bodyW * 0.34, bodyW * 0.34]) {
+        const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.09, 0.18, 10), terra); pot.position.set(sx, 0.09, frontZ + front * 0.3); grp.add(pot)
+        const bush = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 7), leafDk); bush.position.set(sx, 0.28, frontZ + front * 0.3); grp.add(bush)
+      }
+      const archMat = matte(0xd8d2c4)
+      for (const sx of [-0.5, 0.5]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.9, 0.05), archMat); post.position.set(sx, 0.45, frontZ + front * 0.15); grp.add(post) }
+      const archTop = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.05, 0.05), archMat); archTop.position.set(0, 0.9, frontZ + front * 0.15); grp.add(archTop)
+      for (let k = 0; k < 4; k++) { const vine = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 5), leaf); vine.position.set((k - 1.5) * 0.3, 0.88, frontZ + front * 0.15); grp.add(vine) }
+      for (const sx of [-bodyW * 0.3, bodyW * 0.3]) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 7), leafDk); s.position.set(sx, wallH + 0.2, -frontZ * 0.3); grp.add(s) }
     } else if (biz.id === 'sportifine_club') {
+      // A proper club: a green pitch with goal + ball, two floodlight poles, a stepped grandstand and a
+      // corner flag in the club colour.
       const pitch = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 0.9, 0.04, 1.2), matte(0x2e8b3e)); pitch.position.set(0, 0.02, frontZ + front * 0.85); grp.add(pitch)
       const postMat = glow(0xf6f6f6, 0.2)
-      const gl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), postMat); gl.position.set(-0.4, 0.25, frontZ + front * 1.4)
-      const gr = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), postMat); gr.position.set(0.4, 0.25, frontZ + front * 1.4)
-      const gt = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.05, 0.05), postMat); gt.position.set(0, 0.5, frontZ + front * 1.4)
-      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), matte(0xf0f0f0)); ball.position.set(0.1, 0.1, frontZ + front * 0.45)
+      const gl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), postMat); gl.position.set(-0.4, 0.25, frontZ + front * 1.35)
+      const gr = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), postMat); gr.position.set(0.4, 0.25, frontZ + front * 1.35)
+      const gt = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.05, 0.05), postMat); gt.position.set(0, 0.5, frontZ + front * 1.35)
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), matte(0xf0f0f0)); ball.position.set(0.1, 0.1, frontZ + front * 0.5)
       grp.add(gl, gr, gt, ball)
+      const poleMat = matte(0x9aa3b2)
+      for (const sx of [-bodyW * 0.45, bodyW * 0.45]) {
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6), poleMat); pole.position.set(sx, 0.6, frontZ + front * 1.25); grp.add(pole)
+        const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.06), glow(0xfff3c0, 0.7)); lamp.position.set(sx, 1.18, frontZ + front * 1.25); grp.add(lamp)
+      }
+      const standMat = matte(biz.palette)
+      for (let s = 0; s < 3; s++) { const step = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.12, 0.18), standMat); step.position.set(-bodyW * 0.5 - 0.25, 0.06 + s * 0.12, frontZ + front * (0.5 + s * 0.18)); grp.add(step) }
+      const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.4, 5), poleMat); flagPole.position.set(bodyW * 0.4, 0.2, frontZ + front * 0.45); grp.add(flagPole)
+      const flag = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.02), glow(biz.palette, 0.5)); flag.position.set(bodyW * 0.4 + 0.09, 0.34, frontZ + front * 0.45); grp.add(flag)
     } else if (biz.id === 'chef_market') {
+      // A restaurant-market: a striped awning, a produce stall, a glowing grill under a smoking chimney,
+      // an outdoor bistro table, and a kettlebell — the nod to the chef app's exercise side.
+      const wood = matte(0x9c6b3f)
       const awning = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 1.1, 0.08, 0.7), glow(0xff6a3d, 0.4)); awning.position.set(0, wallH * 0.82, frontZ + front * 0.35); awning.rotation.x = front * 0.25; grp.add(awning)
-      for (let k = 0; k < 3; k++) { const cr = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), matte(0x9c6b3f)); cr.position.set((k - 1) * 0.3, 0.11, frontZ + front * 0.7); grp.add(cr) }
+      const produce = [0xe23b2f, 0x7bff4d, 0xffc233]
+      for (let k = 0; k < 3; k++) {
+        const cr = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), wood); cr.position.set((k - 1) * 0.32, 0.11, frontZ + front * 0.7); grp.add(cr)
+        for (let j = 0; j < 3; j++) { const f = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), matte(produce[k % 3]!)); f.position.set((k - 1) * 0.32 + (j - 1) * 0.06, 0.25, frontZ + front * 0.7); grp.add(f) }
+      }
+      const grill = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.18, 0.26), matte(0x3a3f4a)); grill.position.set(bodyW * 0.32, 0.12, frontZ + front * 0.55); grp.add(grill)
+      const embers = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.22), glow(0xff5a1f, 0.7)); embers.position.set(bodyW * 0.32, 0.22, frontZ + front * 0.55); grp.add(embers)
       const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.4, 8), matte(0x5a5f6a)); chimney.position.set(-bodyW * 0.3, wallH + 0.2, -frontZ * 0.4); grp.add(chimney)
+      for (let k = 0; k < 3; k++) { const puff = new THREE.Mesh(new THREE.SphereGeometry(0.08 + k * 0.02, 6, 5), matte(0xcfd3da)); puff.position.set(-bodyW * 0.3, wallH + 0.5 + k * 0.18, -frontZ * 0.4); grp.add(puff) }
+      const table = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.04, 12), wood); table.position.set(-bodyW * 0.32, 0.34, frontZ + front * 0.7)
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.34, 6), matte(0x5a5f6a)); leg.position.set(-bodyW * 0.32, 0.17, frontZ + front * 0.7); grp.add(table, leg)
+      for (const sx of [-0.22, 0.22]) { const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.26, 8), matte(0x3a3f4a)); stool.position.set(-bodyW * 0.32 + sx, 0.13, frontZ + front * 0.72); grp.add(stool) }
+      const kb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 7), matte(0x2b3040)); kb.position.set(bodyW * 0.34, 0.1, frontZ + front * 0.88)
+      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.015, 6, 10, Math.PI), matte(0x2b3040)); handle.position.set(bodyW * 0.34, 0.18, frontZ + front * 0.88); grp.add(kb, handle)
     }
     return grp
   }
