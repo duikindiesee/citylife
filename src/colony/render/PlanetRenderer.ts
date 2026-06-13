@@ -23,6 +23,7 @@ import { compileBlueprint, VOXEL_Y } from '../houseBuilder'
 import { greedyMesh } from './voxelMesh'
 import { buildChunkedTerrain, type ChunkedTerrain } from './terrainChunks'
 import { defaultBlueprint, streetDoorDir, type Zone } from '../neighborhood'
+import { buildShoreProps, type ShorePropsLayer } from './shoreProps'
 
 export type ViewMode = 'biome' | 'buildable' | 'elevation'
 export type CameraPreset = 'street' | 'district' | 'planet'
@@ -151,6 +152,7 @@ export class PlanetRenderer {
   private lastCarT = 0
   // Pulsing red nav beacon at the rocket nose — material ref so frame() can blink it.
   private beaconMat: THREE.MeshStandardMaterial | null = null
+  private shoreProps: ShorePropsLayer | null = null
 
   private N: number
   private R: number
@@ -441,6 +443,7 @@ export class PlanetRenderer {
     const t = this.sim.state.terrain
     const group = new THREE.Group()
     for (const s of this.sim.state.structures) {
+      if (s.kind === 'lighthouse') continue
       const mesh = this.makeStructure(s)
       const baseY = Math.max(0.05, t.worldY(s.x, s.y))
       mesh.position.set(this.wx(s.x), baseY, this.wz(s.y))
@@ -448,6 +451,15 @@ export class PlanetRenderer {
       group.add(mesh)
     }
     this.scene.add(group)
+    this.shoreProps = buildShoreProps({
+      terrain: t,
+      structures: this.sim.state.structures,
+      roadSet: this.sim.state.roadSet,
+      occupied: this.sim.state.occupied,
+      wx: (x) => this.wx(x),
+      wz: (y) => this.wz(y),
+    })
+    if (this.shoreProps) this.scene.add(this.shoreProps.group)
   }
 
   private makeStructure(s: SeedStructure): THREE.Object3D {
@@ -476,7 +488,7 @@ export class PlanetRenderer {
       cap.position.y = 1.4
       box.castShadow = true
       g.add(box, cap)
-    } else {
+    } else if (s.kind === 'rocket') {
       // rocket / dropship (landed)
       const body = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 5, 16), new THREE.MeshStandardMaterial({ color: 0xdfe3e9, roughness: 0.4, metalness: 0.3 }))
       body.position.y = 2.5
@@ -1263,6 +1275,7 @@ export class PlanetRenderer {
       const blink = Math.max(0, Math.sin((performance.now() / 1000) * 2.4))
       this.beaconMat.emissiveIntensity = 0.35 + blink * blink * 2.6
     }
+    this.shoreProps?.update(this.sim.state.clock.daylight, performance.now())
     if (this.fpCitizenId && this.avatarSource) {
       // P1 — first-person: park the camera at the citizen's eye and look down their heading. OrbitControls is off.
       const a = this.avatarSource().find((x) => x.id === this.fpCitizenId)
@@ -1964,6 +1977,7 @@ export class PlanetRenderer {
     window.removeEventListener('resize', this.onResize)
     this.controls.dispose()
     this.composer.dispose()
+    this.shoreProps?.dispose()
     this.renderer.dispose()
     if (this.renderer.domElement.parentElement === this.container) {
       this.container.removeChild(this.renderer.domElement)
