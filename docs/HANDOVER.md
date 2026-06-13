@@ -125,6 +125,15 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
   (runtime/ledger/HUD only) until the lighthouse lands. The two places don't overlap in-world (shore
   vs the inland avenue). NB the existing red shore beacon is the ROCKET/dropship nav beacon, not a
   lighthouse — keep them distinct.
+- **OBSERVED 2026-06-13 (alignment check):** Codex DID land it — `origin/codex/founders-lighthouse-rockery`
+  commit `ce79b88`, factored exactly as planned into `render/shoreProps.ts` (217 lines) so the
+  `PlanetRenderer.ts` diff is just +16 (call-sites). Placement is `findFoundersLighthouseSite` in
+  `sim.ts` — Rockery Beach headland first (landmarkAnchor approx landing.x minus 0.36 times size,
+  landing.y minus 0.09 times size), dry-shore fallback — pushed into `state.structures` as kind
+  `lighthouse`. **NOT yet merged to main.** Shared files still both touched (sim.ts + PlanetRenderer.ts):
+  when both land, merge order matters but the diffs are small and non-overlapping. **086-P1 unblocks the
+  moment his branch is on main** — then anchor the commercial reserve near `structures.find kind ===
+  lighthouse` instead of the inland avenue terminus.
 - **Antigravity is DEAD to us** — leaving this machine (resource hunger). Its delegated work
   (`kooker-service-social` = the Kookerbook backend) won't be picked up; Kookerbook stays on its
   local layer as designed. Don't watch `origin/antigravity/*`.
