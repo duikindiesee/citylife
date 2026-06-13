@@ -289,9 +289,25 @@ DONE
   coastal strip into a lit promenade by the lighthouse. Cheap static meshes, disposed with the group.
 - tsc clean, render-only. Live-verified on :5188 at night (forced 21:30) — the lamps line the strip and
   glow warm beneath the neon storefronts; no console errors.
-NEXT (loop)
-- optional: a boardwalk/path linking the lighthouse to the strip; benches facing the sea. Otherwise the
-  commercial economy is assembled + sited + lit — bots buy plots over time (still no premature builds).
+### 2026-06-13 — Loop iteration 8: promenade furniture (benches + planters) — commerce vision COMPLETE
+DONE
+- renderer buildCommercialDistrict(): after the lamps, a furniture pass adds benches (seat + backrest +
+  legs, facing the street) and leafy planters along the high-street verges, on the opposite phase to the
+  lamps so the strip reads as a strolled promenade, not just a lit one. Cheap static meshes, disposed
+  with the group. (Sea-facing boardwalk to the lighthouse was considered + dropped: the waterline is ~16
+  cells north behind the shop row, so it would hide behind the shops and risk clashing with Codex's
+  rockery boulders — the on-street furniture is the higher-value, lower-risk touch.)
+- tsc clean, render-only. Live-verified on :5188 — looking down the high street: paved road with
+  centre-line, lamps + benches + planters lining both verges, neon storefronts flanking, the SEA
+  alongside. Reads as a seaside commercial promenade. No console errors.
+- COMMERCE VISION COMPLETE: distributed city -> scattered hamlets + roads -> four characterful app
+  storefronts (Joe tending the Nearest, Sprout, Sportifine, Chef Ott) -> live bots at the bar after dark
+  -> relocated to the scenic lighthouse shore (086-P1) -> lit + furnished promenade. All on FOR-SALE
+  plots; no premature builds.
+NEXT
+- FUNCTIONAL milestone (not decoration): bots actually move in and buy commercial plots over time
+  (079-P1 buyCommercialShop + the migration spine drives it). Recommend the operator redirect the loop
+  here, or to a different spec. Further visual polish is now marginal.
 
 ### 2026-06-13 — Fix: stalls were landing on homestead plots
 DONE

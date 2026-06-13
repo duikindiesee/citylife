@@ -1595,6 +1595,33 @@ export class PlanetRenderer {
         lamp.add(pole, arm, head)
         this.commercialGroup.add(lamp)
       }
+      // promenade FURNITURE between the lamps — a few benches + leafy planters on the verges so the
+      // strip feels strolled, not just lit. Placed on a different phase/offset from the lamps.
+      const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.85 })
+      const legMat = new THREE.MeshStandardMaterial({ color: 0x3a3f4a, roughness: 0.7 })
+      const planterMat = new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 0.9 })
+      const leafMat = new THREE.MeshStandardMaterial({ color: 0x3fae5a, roughness: 0.8 })
+      for (let i = 3; i < street.length; i += 8) {
+        const c = street[i]!
+        const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)))
+        const side = Math.floor(i / 8) % 2 === 0 ? -1 : 1 // opposite phase to the lamps
+        const fz = this.wz(c.y + side * 1.5)
+        // a bench facing the street (backrest on the verge side)
+        const bench = new THREE.Group()
+        bench.position.set(this.wx(c.x), by, fz)
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.05, 0.22), woodMat); seat.position.y = 0.2; seat.castShadow = true
+        const back = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.04), woodMat); back.position.set(0, 0.3, side * 0.09)
+        for (const lx of [-0.24, 0.24]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.18), legMat); leg.position.set(lx, 0.1, 0); bench.add(leg) }
+        bench.add(seat, back)
+        this.commercialGroup.add(bench)
+        // a leafy planter just along from the bench
+        const planter = new THREE.Group()
+        planter.position.set(this.wx(c.x + 1.1), by, fz)
+        const tub = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.11, 0.2, 10), planterMat); tub.position.y = 0.1; tub.castShadow = true
+        const bush = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 7), leafMat); bush.position.y = 0.3
+        planter.add(tub, bush)
+        this.commercialGroup.add(planter)
+      }
     }
   }
 
