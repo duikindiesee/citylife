@@ -14,7 +14,7 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
   login gate in dev). Restart with `npm run dev` run in the background if it's dead.
 - **Stack:** React 19 + TypeScript + Vite + plain three.js. Tests: **vitest** (node env). Pure
   deterministic sim — **no `Math.random` / `Date.now()` in the sim tick**; everything seeded.
-- **Verify a slice:** `npx tsc --noEmit` (typecheck) + `npx vitest run` (currently **697 tests**). NOTE
+- **Verify a slice:** `npx tsc --noEmit` (typecheck) + `npx vitest run` (currently **706 tests**). NOTE
   Vite HMR does NOT re-instantiate the singleton `ColonyRuntime`, so after editing runtime/uiState do a
   full page reload before live-checking `window.__colony` — a hot-swap alone shows stale state.
 - **Active branch is now `feat/commercial-visuals`** (fresh from `main` after PR #41 merged; PR #42
@@ -77,6 +77,14 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
   **P1** (`bot/ledgerSync.ts`) mirrors every ₭ move onto the REAL `kooker-service-ledger` as the
   signed-in player — best-effort, persisted FIFO queue, idempotent on the in-game txn id; LIVE-verified
   200/COMMITTED end-to-end. Folds in 083-P4b (the Viw payment is now a real BUILD_FEE txn).
+- **Spec 086 — the distributed city** (P0 DONE): the world no longer crams plots on one avenue.
+  `neighborhood.makeNeighborhoodAt(anchor, {small,blocked})` + `findSatelliteAnchors` scatter small
+  hamlets across biomes (coast primary keeps the founders; satellites in woods/hills), a shared
+  `taken` set keeps every cluster overlap-free, and trunk roads (leastCostPath around homesteads)
+  stitch them to the coast. Commercial reserved BEFORE satellites so it keeps its room. Order of ops
+  in `runtime` is a council invariant — see `docs/specs/086`. LIVE: 4+ clusters, all road-connected,
+  0 overlaps. **NEXT 086-P1: relocate commerce to the shore/lighthouse** (Codex's lane). Note: a
+  ColonyRuntime boot is now heavy → vite.config testTimeout bumped to 20s.
 
 ## 4. What to build next (the queue, with priorities)
 

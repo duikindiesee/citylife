@@ -16,7 +16,7 @@ import { makeCityPlan, type CityPlan, type Plot } from './cityPlan'
 import { CitizenRoster, type CitizenPublic } from './bot/citizenRoster'
 import { firstPersonView, type FirstPersonView } from './bot/firstPersonView'
 import { solCount, resolveFoundingMs } from './sol'
-import { makeNeighborhood, defaultBlueprint, retargetParcelAccess, streetDoorDir, type Neighborhood, type Lot } from './neighborhood'
+import { makeNeighborhood, makeNeighborhoodAt, findSatelliteAnchors, defaultBlueprint, retargetParcelAccess, streetDoorDir, type Neighborhood, type Lot } from './neighborhood'
 import { validateBlueprint, parseBlueprint } from './blueprintScript'
 import { loadBlueprintsLocal, saveBlueprintLocal, saveBlueprintBackend, fetchBlueprintsBackend, mergeBlueprints } from './bot/blueprintStore'
 import { selfDesign, type SelfDesignResult } from './builder/selfDesign'
@@ -169,100 +169,119 @@ export class ColonyRuntime {
     // network as the paved AVENUE below — AFTER reserveParcelLand, so the parcel purge can never
     // eat it (spec 084 S3). Cars finally drive the residential street.
     this.neighborhood = makeNeighborhood(this.sim.state.terrain)
-    for (const c of this.neighborhood.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`)
-    // PARCEL LAND IS RESERVED (operator feedback: a colony road ran under a homestead garden). The
-    // landing block frame is laid before the neighbourhood exists, so first PURGE any colony road
-    // already under a parcel, then keep the whole footprint in `occupied` so future block frames
-    // route around the neighbourhood instead of through it.
-    const parcelCells: { x: number; y: number }[] = []
-    for (const lot of this.neighborhood.lots) {
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-      for (const f of lot.fence) {
-        minX = Math.min(minX, f.x); maxX = Math.max(maxX, f.x)
-        minY = Math.min(minY, f.y); maxY = Math.max(maxY, f.y)
+    const t0 = this.sim.state.terrain
+    // Spec 086 — the DISTRIBUTED CITY. Order matters: lay + reserve the coastal PRIMARY (founders),
+    // then claim the COMMERCIAL reserve off its avenue, THEN scatter satellite hamlets that avoid
+    // everything already placed (a shared `taken` set), then stitch trunk roads between them. Without
+    // reserving commerce first, the satellites ate its land and the shop district vanished.
+    const footprintCells = (nbhd: Neighborhood): { x: number; y: number }[] => {
+      const out: { x: number; y: number }[] = []
+      for (const lot of nbhd.lots) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        for (const f of lot.fence) { minX = Math.min(minX, f.x); maxX = Math.max(maxX, f.x); minY = Math.min(minY, f.y); maxY = Math.max(maxY, f.y) }
+        for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) out.push({ x, y })
+        for (const d of lot.driveway) out.push({ x: d.x, y: d.y })
       }
-      for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) parcelCells.push({ x, y })
-      for (const d of lot.driveway) parcelCells.push({ x: d.x, y: d.y })
+      return out
     }
-    reserveParcelLand(this.sim.state, parcelCells)
+    // `taken` = every placed cell (parcels + their roads + the commercial reserve); satellites and the
+    // commercial reserve both avoid it so nothing ever overlaps. `residentialKeys` is homestead
+    // footprints only — roads may run near them but never through them.
+    const taken = new Set<string>()
+    const addCells = (cells: { x: number; y: number }[]) => { for (const c of cells) taken.add(`${c.x},${c.y}`) }
+    const residentialKeys = new Set<string>()
+    const primaryCells = footprintCells(this.neighborhood)
+    for (const c of this.neighborhood.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`)
+    reserveParcelLand(this.sim.state, primaryCells)
     mergeAvenue(this.sim.state, this.neighborhood.carriage) // spec 084 S3 — the paved avenue joins the network
-    // Spec 079 — the cells a shop must NEVER land on: every homestead footprint + driveway, plus the
-    // avenue carriage + verge. Built first so BOTH the reserve search and the survey honour it.
-    const blockedForShops = new Set<string>()
-    for (const cell of parcelCells) blockedForShops.add(`${cell.x},${cell.y}`)
-    for (const cell of this.neighborhood.carriage) blockedForShops.add(`${cell.x},${cell.y}`)
-    for (const cell of this.neighborhood.verge) blockedForShops.add(`${cell.x},${cell.y}`)
-    // Spec 084 S6 / 079 — the COMMERCIAL RESERVE. The shop district needs its OWN room: a fixed
-    // offset off the avenue end used to drop the 40x30 box right on the inland homesteads (stalls
-    // landed on people's gardens). Instead SEARCH past the avenue's inland terminus, in the avenue's
-    // own inland direction, for the rect with the most clear (dry, unbuilt, non-road) ground — the
-    // clearest candidate wins. Deterministic; null when nowhere near the end is open enough.
+    addCells(primaryCells); addCells(this.neighborhood.carriage); addCells(this.neighborhood.verge)
+    for (const c of primaryCells) residentialKeys.add(`${c.x},${c.y}`)
+    // Spec 079 / 086 — the COMMERCIAL RESERVE, claimed BEFORE the satellites so they leave it room.
+    // Search past the avenue's inland terminus, in the avenue's own inland direction, for the 40x30
+    // rect with the most clear (dry, unbuilt) ground; clearest wins, null if nowhere is open enough.
     this.commercialReserve = (() => {
       const car = this.neighborhood.carriage
       if (car.length < 2) return null
-      const t = this.sim.state.terrain
-      const W = 40, H = 30
+      const t = this.sim.state.terrain, W = 40, H = 30
       const dW = (c: { x: number; y: number }) => t.distToWater[t.idx(Math.round(c.x), Math.round(c.y))] ?? 0
       let inland = car[0]!, shore = car[0]!
       for (const c of car) { if (dW(c) > dW(inland)) inland = c; if (dW(c) < dW(shore)) shore = c }
-      // unit vector pointing INLAND (away from water) along the avenue, and its perpendicular
       let ix = inland.x - shore.x, iy = inland.y - shore.y
-      const len = Math.hypot(ix, iy) || 1
-      ix /= len; iy /= len
+      const len = Math.hypot(ix, iy) || 1; ix /= len; iy /= len
       const px = -iy, py = ix
       const clampX = (v: number) => Math.max(0, Math.min(t.size - W, Math.round(v)))
       const clampY = (v: number) => Math.max(0, Math.min(t.size - H, Math.round(v)))
-      let best: { x: number; y: number; w: number; h: number } | null = null
-      let bestFree = -1
-      for (const step of [12, 20, 28, 36, 44, 52]) { // how far past the terminus, growing
-        for (const perp of [0, -14, 14, -28, 28]) { // slide a little along the coast
-          const cx = inland.x + ix * step + px * perp
-          const cy = inland.y + iy * step + py * perp
-          const rect = { x: clampX(cx - W / 2), y: clampY(cy - H / 2), w: W, h: H }
-          let free = 0
-          for (let y = rect.y; y < rect.y + H; y++)
-            for (let x = rect.x; x < rect.x + W; x++) if (cellOk(t, x, y) && !blockedForShops.has(`${x},${y}`)) free++
-          if (free > bestFree) { bestFree = free; best = rect }
-        }
+      let best: { x: number; y: number; w: number; h: number } | null = null, bestFree = -1
+      for (const step of [12, 20, 28, 36, 44, 52]) for (const perp of [0, -14, 14, -28, 28]) {
+        const cx = inland.x + ix * step + px * perp, cy = inland.y + iy * step + py * perp
+        const rect = { x: clampX(cx - W / 2), y: clampY(cy - H / 2), w: W, h: H }
+        let free = 0
+        for (let y = rect.y; y < rect.y + H; y++) for (let x = rect.x; x < rect.x + W; x++) if (cellOk(t, x, y) && !taken.has(`${x},${y}`)) free++
+        if (free > bestFree) { bestFree = free; best = rect }
       }
-      if (!best || bestFree < 80) return null // no open room near the avenue end -> no district (graceful)
+      if (!best || bestFree < 80) return null
       const cells: { x: number; y: number }[] = []
       for (let y = best.y; y < best.y + best.h; y++) for (let x = best.x; x < best.x + best.w; x++) cells.push({ x, y })
       reserveParcelLand(this.sim.state, cells)
+      addCells(cells) // the satellites must leave the shop district its room
       return best
     })()
-    // Spec 079 P0 — survey the high street + shop plots within the chosen reserve, the survey still
-    // honouring blockedForShops as a belt-and-suspenders so a stall can never sit on a homestead.
+    // Spec 086 — SATELLITE HAMLETS in the woods + hills, each routed + placed AROUND everything already
+    // taken (the coast, the commercial reserve, prior hamlets), so scattered clusters never overlap.
+    const satellites: Neighborhood[] = []
+    for (const a of findSatelliteAnchors(t0, { x: t0.landing.x, y: t0.landing.y }, 6)) {
+      const nbhd = makeNeighborhoodAt(t0, a, { small: true, blocked: taken })
+      if (nbhd.lots.length === 0) continue
+      const b = t0.biome[t0.idx(a.x, a.y)]
+      const name = `${b === Biome.Forest ? 'wood' : b === Biome.Highland ? 'hill' : 'vale'}${satellites.length + 1}`
+      for (const lot of nbhd.lots) lot.id = `${name}_${lot.id}` // unique id; never collides with lot_1/lot_2
+      this.neighborhood.parcels.push(...nbhd.parcels) // parcels === lots (same array ref), so lots update too
+      const cells = footprintCells(nbhd)
+      reserveParcelLand(this.sim.state, cells)
+      mergeAvenue(this.sim.state, nbhd.carriage)
+      for (const c of nbhd.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`)
+      addCells(cells); addCells(nbhd.carriage); addCells(nbhd.verge)
+      for (const c of cells) residentialKeys.add(`${c.x},${c.y}`)
+      satellites.push(nbhd)
+    }
+    // Spec 086 — TRUNK ROADS stitch each satellite to the coastal avenue, routed AROUND every homestead
+    // footprint, so the whole map is one connected road network (roads between neighbourhoods).
+    for (const s of satellites) {
+      if (s.carriage.length === 0 || this.neighborhood.carriage.length === 0) continue
+      let from = this.neighborhood.carriage[0]!, to = s.carriage[0]!, bestD = Infinity
+      for (const aC of this.neighborhood.carriage) for (const bC of s.carriage) {
+        const d = (aC.x - bC.x) ** 2 + (aC.y - bC.y) ** 2
+        if (d < bestD) { bestD = d; from = aC; to = bC }
+      }
+      const trunk = leastCostPath(t0, from, to, { slopeWeight: 0.5, blocked: (x, y) => residentialKeys.has(`${x},${y}`) }) ?? []
+      mergeAvenue(this.sim.state, trunk)
+    }
+    // Spec 079 — survey the shop district in its reserved room; shops avoid every homestead + road.
+    const blockedForShops = new Set<string>(residentialKeys)
+    for (const r of this.sim.state.roads) blockedForShops.add(`${r.x},${r.y}`)
     this.commercialDistrict = this.commercialReserve
       ? makeCommercialDistrict(this.sim.state.terrain, this.commercialReserve, blockedForShops)
       : null
-    // Spec 079 — CONNECT the district to the city. Without a road the shops are an island of boxes on
-    // bare ground (operator feedback: no roads, looks weird). Widen the high-street centre-line to a
-    // proper carriageway, route a spur from the avenue's inland terminus to its nearest end (AROUND
-    // the homesteads + shops), and merge BOTH into the road network so the district is a real,
-    // drivable branch off the avenue with shops fronting an actual street.
+    // Spec 079 — CONNECT the district: widen the high-street centre-line to a carriageway + route a
+    // spur from the avenue's inland terminus to its nearest end (around homesteads + shops), and merge
+    // both into the network so the shops front a real, drivable street.
     if (this.commercialDistrict && this.commercialDistrict.street.length > 0) {
       const t = this.sim.state.terrain
-      const residentialSet = new Set(parcelCells.map((c) => `${c.x},${c.y}`))
       const shopCells = new Set<string>()
       for (const p of this.commercialDistrict.parcels) for (let y = p.y; y < p.y + p.h; y++) for (let x = p.x; x < p.x + p.w; x++) shopCells.add(`${x},${y}`)
-      // widen the centre-line to ~3 cells (the avenue is 3-wide) so it reads as a street, not a thread
       const widened = new Set<string>()
-      for (const c of this.commercialDistrict.street) {
-        for (const dy of [-1, 0, 1]) {
-          const x = c.x, y = c.y + dy
-          if (cellOk(t, x, y) && !residentialSet.has(`${x},${y}`) && !shopCells.has(`${x},${y}`)) widened.add(`${x},${y}`)
-        }
+      for (const c of this.commercialDistrict.street) for (const dy of [-1, 0, 1]) {
+        const x = c.x, y = c.y + dy
+        if (cellOk(t, x, y) && !residentialKeys.has(`${x},${y}`) && !shopCells.has(`${x},${y}`)) widened.add(`${x},${y}`)
       }
       const streetCells = [...widened].map((k) => { const [x, y] = k.split(',').map(Number); return { x: x!, y: y! } })
-      // the spur from the avenue's inland terminus to the street's nearest cell, routed around plots
       const car = this.neighborhood.carriage
       const dW = (c: { x: number; y: number }) => t.distToWater[t.idx(Math.round(c.x), Math.round(c.y))] ?? 0
       let terminus = car[0]!
       for (const c of car) if (dW(c) > dW(terminus)) terminus = c
       let near = this.commercialDistrict.street[0]!, bestD = Infinity
       for (const c of this.commercialDistrict.street) { const d = (c.x - terminus.x) ** 2 + (c.y - terminus.y) ** 2; if (d < bestD) { bestD = d; near = c } }
-      const connector = leastCostPath(t, terminus, near, { slopeWeight: 0.5, blocked: (x, y) => residentialSet.has(`${x},${y}`) || shopCells.has(`${x},${y}`) }) ?? []
+      const connector = leastCostPath(t, terminus, near, { slopeWeight: 0.5, blocked: (x, y) => residentialKeys.has(`${x},${y}`) || shopCells.has(`${x},${y}`) }) ?? []
       mergeAvenue(this.sim.state, connector)
       mergeAvenue(this.sim.state, streetCells)
     }

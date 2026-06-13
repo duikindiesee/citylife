@@ -7,6 +7,7 @@
 // the sea. Everything is a pure, deterministic function of the terrain so the layout is reproducible
 // and unit-testable.
 import type { Terrain } from './terrain'
+import { Biome } from './terrain'
 import type { DoorDir } from './voxelHouse'
 import { cellOk, leastCostPath, type Cell } from './pathfind'
 
@@ -149,17 +150,22 @@ interface Corridor {
   colY: Map<number, number> // x -> the spine y at that column nearest the baseline
 }
 
-/** Route the spine between two anchors at the baseline y and build its carriageway + verge. */
-function buildCorridor(t: Terrain, lx: number, baselineY: number, span: number): Corridor | null {
+/** Route the spine between two anchors at the baseline y and build its carriageway + verge. `taken`
+ *  (spec 086) is cells already used by other neighbourhoods/commercial — the spine routes around them
+ *  and the carriage/verge never sit on them, so scattered clusters never overlap. */
+function buildCorridor(t: Terrain, lx: number, baselineY: number, span: number, taken?: ReadonlySet<string>): Corridor | null {
   const start = slideToLand(t, lx - Math.floor(span / 2), baselineY)
   const end = slideToLand(t, lx + Math.ceil(span / 2), baselineY)
   if (!start || !end) return null
-  const spine = leastCostPath(t, start, end, { slopeWeight: 0.6 })
+  const avoid = taken && (taken.has(key(start.x, start.y)) || taken.has(key(end.x, end.y)))
+  if (avoid) return null
+  const spine = leastCostPath(t, start, end, { slopeWeight: 0.6, blocked: taken ? (x, y) => taken.has(key(x, y)) : undefined })
   if (!spine || spine.length < span * 0.6) return null
   const spineSet = new Set(spine.map((c) => key(c.x, c.y)))
-  const carriage = [...spine, ...dilate(t, spine, spineSet)]
+  const notTaken = (c: Cell) => !taken || !taken.has(key(c.x, c.y))
+  const carriage = [...spine, ...dilate(t, spine, spineSet)].filter(notTaken)
   const carriageSet = new Set(carriage.map((c) => key(c.x, c.y)))
-  const verge = dilate(t, carriage, carriageSet)
+  const verge = dilate(t, carriage, carriageSet).filter(notTaken)
   const blocked = new Set([...carriageSet, ...verge.map((c) => key(c.x, c.y))])
   // For each spine column, the spine y nearest the baseline (parcels attach against this).
   const colY = new Map<number, number>()
@@ -370,13 +376,15 @@ export function retargetParcelAccess(p: Parcel, dir: DoorDir): void {
  *  carries its own size SEQUENCE (sizeFor(index)) and its own placement cursor, so a masterplan can
  *  mix tiers (the GRAND waterfront pair first, then the ESTATE row). Columns iterate shore-ward
  *  first when the corridor's shore end is known, so index 0 (the GRAND tier) lands by the water. */
-function layParcels(t: Terrain, corridor: Corridor, sizeFor: (index: number) => ParcelSize): Parcel[] {
+function layParcels(t: Terrain, corridor: Corridor, sizeFor: (index: number) => ParcelSize, maxPerSide: number = MAX_PER_SIDE, taken?: ReadonlySet<string>): Parcel[] {
   let xs = [...corridor.colY.keys()].sort((a, b) => a - b)
   if (xs.length === 0) return []
   // Iterate from the shore-ward corridor end (terrain.distToWater is the precomputed BFS field).
   const dAt = (x: number) => t.distToWater[t.idx(x, corridor.colY.get(x)!)] ?? 999
   if (dAt(xs[xs.length - 1]!) < dAt(xs[0]!)) xs = xs.reverse()
-  const claimed = new Set<string>()
+  // Spec 086 — seed the claimed set with cells other clusters/commercial already own, so a scattered
+  // hamlet's parcels can never land on top of them.
+  const claimed = new Set<string>(taken ?? [])
   const parcels: Parcel[] = []
   let id = 1
   const perSide = { [-1]: 0, [1]: 0 } as Record<number, number>
@@ -385,7 +393,7 @@ function layParcels(t: Terrain, corridor: Corridor, sizeFor: (index: number) => 
   for (const x of xs) {
     const syStreet = corridor.colY.get(x)!
     for (const side of [-1, 1] as const) {
-      if (perSide[side]! >= MAX_PER_SIDE) continue
+      if (perSide[side]! >= maxPerSide) continue
       if (step0 > 0 ? x < nextAt[side]! : x > nextAt[side]!) continue
       const sz = sizeFor(perSide[side]!)
       const p = tryParcel(t, x, syStreet, side, sz, corridor, claimed, id)
@@ -396,7 +404,7 @@ function layParcels(t: Terrain, corridor: Corridor, sizeFor: (index: number) => 
         nextAt[side] = x + step0 * (sz.W + GAP)
       }
     }
-    if (perSide[-1]! >= MAX_PER_SIDE && perSide[1]! >= MAX_PER_SIDE) break
+    if (perSide[-1]! >= maxPerSide && perSide[1]! >= maxPerSide) break
   }
   return parcels
 }
@@ -437,32 +445,80 @@ function assemble(t: Terrain, corridor: Corridor, parcels: Parcel[]): Neighborho
  *  ESTATEs along the avenue. Smaller tiers remain the fallback for cramped seeds. Wider baseline
  *  sweep for the 608 world. Pure + deterministic from the terrain. */
 export function makeNeighborhood(t: Terrain): Neighborhood {
-  const lx = t.landing.x, ly = t.landing.y
-  const PLANS: ReadonlyArray<(i: number) => ParcelSize> = [
-    (i) => (i === 0 ? GRAND : ESTATE), // the masterplan: GRAND shore-ward, ESTATE row after
-    () => ESTATE,
-    () => BIG,
-    () => COMPACT,
-  ]
+  return makeNeighborhoodAt(t, { x: t.landing.x, y: t.landing.y })
+}
+
+/** Spec 086 — the distributed city: lay a homestead neighbourhood centred on ANY anchor, not just
+ *  the landing. makeNeighborhood is this anchored on t.landing; the satellites (hills, woods) anchor
+ *  elsewhere. Same corridor + parcel construction, so every scattered plot is a valid, buildable,
+ *  for-sale Parcel the renderer + ledger already understand. Pure + deterministic in (terrain, anchor). */
+export function makeNeighborhoodAt(t: Terrain, anchor: { x: number; y: number }, opts: { small?: boolean; blocked?: ReadonlySet<string> } = {}): Neighborhood {
+  const lx = anchor.x, ly = anchor.y
+  const blocked = opts.blocked
+  // A SMALL hamlet (the satellites) needs only a short flat strip — 2 plots a side of the COMPACT
+  // tier — so it fits a woodland/hill clearing; the coastal primary keeps the full estate masterplan.
+  const maxPerSide = opts.small ? 2 : MAX_PER_SIDE
+  const PLANS: ReadonlyArray<(i: number) => ParcelSize> = opts.small
+    ? [() => COMPACT, () => BIG]
+    : [(i) => (i === 0 ? GRAND : ESTATE), () => ESTATE, () => BIG, () => COMPACT]
+  const dySweep = opts.small ? [0, -8, 8, -16, 16] : [0, -12, 12, -24, 24, -36, 36, -48, 48, -64, 64, -80, 80]
+  const minParcels = opts.small ? 1 : 2
   const spanFor = (plan: (i: number) => ParcelSize) => {
     let s = 4
-    for (let i = 0; i < MAX_PER_SIDE; i++) s += plan(i).W + GAP
+    for (let i = 0; i < maxPerSide; i++) s += plan(i).W + GAP
     return s
   }
   let best: { corridor: Corridor; parcels: Parcel[] } | null = null
   for (const plan of PLANS) {
     const span = spanFor(plan)
-    for (const dy of [0, -12, 12, -24, 24, -36, 36, -48, 48, -64, 64, -80, 80]) {
-      const corridor = buildCorridor(t, lx, ly + dy, span)
+    for (const dy of dySweep) {
+      const corridor = buildCorridor(t, lx, ly + dy, span, blocked)
       if (!corridor) continue
-      const parcels = layParcels(t, corridor, plan)
+      const parcels = layParcels(t, corridor, plan, maxPerSide, blocked)
       if (!best || parcels.length > best.parcels.length) best = { corridor, parcels }
-      if (parcels.length >= MAX_PER_SIDE * 2) break // a full band — good enough, stop early
+      if (parcels.length >= maxPerSide * 2) break // a full band — good enough, stop early
     }
-    if (best && best.parcels.length >= 2) return assemble(t, trimCorridor(t, best.corridor, best.parcels), best.parcels)
+    if (best && best.parcels.length >= minParcels) return assemble(t, trimCorridor(t, best.corridor, best.parcels), best.parcels)
   }
+  // Fallback: return the best corridor even if cramped (matches the original makeNeighborhood — a
+  // carriage-only result still serves the commercial reserve; the runtime skips empty satellites).
   if (best) return assemble(t, trimCorridor(t, best.corridor, best.parcels), best.parcels)
   return { spine: [], carriage: [], verge: [], street: [], parcels: [], lots: [] }
+}
+
+/** Spec 086 — find spread-out, buildable anchors for satellite neighbourhoods, biased toward the
+ *  woods (Forest) and hills (Highland) so the city fills distinct parts of the map. Deterministic: a
+ *  fixed coarse-grid scan scored by buildable room in a window + distance from the coast + a biome
+ *  bonus, then a greedy spread pick. Anchors are at least SEP cells from each other and the coast. */
+export function findSatelliteAnchors(t: Terrain, coast: { x: number; y: number }, count: number): Cell[] {
+  const STEP = 12, WIN = 11, SEP = 52, MIN_ROOM = 60
+  // Buildable AREA density in a window (sampled) — irregular forest/coast rarely has a long flat ROW,
+  // but a hamlet only needs a buildable blob; the corridor's dy-sweep finds a workable line within it.
+  const roomAt = (cx: number, cy: number): number => {
+    let room = 0
+    for (let dy = -WIN; dy <= WIN; dy += 2) for (let dx = -WIN; dx <= WIN; dx += 2) if (cellOk(t, cx + dx, cy + dy)) room++
+    return room // out of ~144 samples
+  }
+  const cands: { c: Cell; score: number; ord: number }[] = []
+  for (let cy = WIN; cy < t.size - WIN; cy += STEP) {
+    for (let cx = WIN; cx < t.size - WIN; cx += STEP) {
+      if (!cellOk(t, cx, cy)) continue
+      const dCoast = Math.hypot(cx - coast.x, cy - coast.y)
+      if (dCoast < SEP) continue
+      const room = roomAt(cx, cy)
+      if (room < MIN_ROOM) continue
+      const b = t.biome[t.idx(cx, cy)]
+      const biomeBonus = b === Biome.Forest ? 28 : b === Biome.Highland ? 24 : b === Biome.Plains ? 10 : 0
+      cands.push({ c: { x: cx, y: cy }, score: room + biomeBonus + dCoast * 0.08, ord: cy * t.size + cx })
+    }
+  }
+  cands.sort((a, b) => b.score - a.score || a.ord - b.ord)
+  const picked: Cell[] = []
+  for (const cand of cands) {
+    if (picked.length >= count) break
+    if (picked.every((p) => Math.hypot(p.x - cand.c.x, p.y - cand.c.y) >= SEP)) picked.push(cand.c)
+  }
+  return picked
 }
 
 // Spec 077 P5 — a strong deterministic hash for the design generator (splitmix-style avalanche), so

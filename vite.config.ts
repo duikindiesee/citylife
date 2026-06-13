@@ -58,6 +58,11 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: 'node',
       include: ['tests/**/*.test.ts', 'src/**/*.test.ts'],
+      // Spec 086 — a ColonyRuntime boot now builds a whole distributed city (a primary + several
+      // satellite hamlets + trunk-road routing), so a construction is far heavier than one cheap
+      // neighbourhood. Under parallel-suite CPU contention that brushed the 5s default; 20s gives the
+      // city-builders room without masking a genuine hang.
+      testTimeout: 20000,
     },
   }
 })
