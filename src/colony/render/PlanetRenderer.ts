@@ -1510,7 +1510,9 @@ export class PlanetRenderer {
         g.add(em)
       }
 
-      // The bar's seating: a counter + stools (a couple with seated patrons) on the street side.
+      // The bar's seating: a counter + stools on the street side. The stools are left empty here —
+      // real citizens walk over and occupy them after dark (runtime.wanderIdleCitizens), so we must
+      // NOT draw static patron spheres or they'd double up with the live bots taking the seats.
       if (biz?.seating) {
         const counter = new THREE.Mesh(
           new THREE.BoxGeometry(bodyW * 0.9, 0.5, 0.22),
@@ -1520,7 +1522,6 @@ export class PlanetRenderer {
         counter.castShadow = true
         g.add(counter)
         const stoolMat = new THREE.MeshStandardMaterial({ color: 0x3a3f4a, roughness: 0.7 })
-        const patronMat = new THREE.MeshStandardMaterial({ color: 0x8a5a3a, roughness: 0.6, emissive: 0x201008, emissiveIntensity: 0.25 })
         const n = 3
         for (let k = 0; k < n; k++) {
           const sx = (k - (n - 1) / 2) * (bodyW * 0.9 / n)
@@ -1528,11 +1529,6 @@ export class PlanetRenderer {
           stool.position.set(sx, 0.21, front * (bodyD / 2 + 0.78))
           stool.castShadow = true
           g.add(stool)
-          if (k !== 1) { // two patrons sitting, watching the radar
-            const patron = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), patronMat)
-            patron.position.set(sx, 0.52, front * (bodyD / 2 + 0.78))
-            g.add(patron)
-          }
         }
       }
 

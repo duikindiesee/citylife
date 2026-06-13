@@ -155,6 +155,10 @@ export class ColonyRuntime {
   commercialReserve: { x: number; y: number; w: number; h: number } | null = null
   /** Spec 079 P0 — the surveyed commercial high street + shop plots within the reserve. */
   commercialDistrict: CommercialDistrict | null = null
+  // Spec 079 — the Nearest bar's seat cells + who's sitting there (a night crowd; cleared by day).
+  private barSeatCells: { x: number; y: number }[] | null = null
+  private barOccupied = new Set<string>()
+  private barSeatBy: (string | null)[] = []
   private fpNarration: string | null = null
   private fpNarrating = false
 
@@ -533,11 +537,28 @@ export class ColonyRuntime {
   private wanderIdleCitizens(dt: number): void {
     const roads = this.sim.state.roads
     if (roads.length === 0) return
+    // Spec 079 — the Nearest bar draws a night crowd: after dark, idle citizens head to a free stool
+    // and stay; by day the bar empties and they go back to strolling. (Render-loop cosmetic, not the
+    // deterministic sim tick — Math.random is fine here, like the existing stroll.)
+    const night = !this.sim.state.clock.isDay
+    const seats = this.barSeats()
+    if (!night && this.barOccupied.size > 0) { this.barOccupied.clear(); this.barSeatBy = [] }
     for (const pub of this.citizens.list()) {
       if (pub.id === this.fpCitizenId) continue
       const c = this.citizens.byId(pub.id)
       if (!c) continue
+      if (this.barOccupied.has(pub.id)) continue // sitting at the bar — stays put until day
       if (Math.hypot(c.target.x - c.pos.x, c.target.y - c.pos.y) > 0.5) continue // still walking
+      // after dark, an idle citizen may claim a free stool at the bar
+      if (night && seats.length > 0 && this.barOccupied.size < seats.length && Math.random() < dt * 0.3) {
+        const idx = seats.findIndex((_, i) => !this.barSeatBy[i])
+        if (idx >= 0) {
+          this.barSeatBy[idx] = pub.id
+          this.barOccupied.add(pub.id)
+          c.target = { x: seats[idx]!.x, y: seats[idx]!.y }
+          continue
+        }
+      }
       if (Math.random() < dt * 0.45) {
         const near = roads.filter((r) => Math.hypot(r.x - c.pos.x, r.y - c.pos.y) < 16)
         const pool = near.length ? near : roads
@@ -545,6 +566,20 @@ export class ColonyRuntime {
         c.target = { x: dest.x + (Math.random() - 0.5), y: dest.y + (Math.random() - 0.5) }
       }
     }
+  }
+
+  /** Spec 079 — the bar's stool cells in sim coords (just in front of the Nearest bar, on the street
+   *  side), so citizens can walk over and sit. Cached; matches the three rendered stools. */
+  private barSeats(): { x: number; y: number }[] {
+    if (this.barSeatCells) return this.barSeatCells
+    const bar = this.commercialDistrict?.parcels.find((p) => p.business === 'nearest_bar')
+    if (!bar) return []
+    const cx = bar.x + (bar.w - 1) / 2
+    const front = -bar.side
+    const frontRow = bar.side === -1 ? bar.y + bar.h - 1 : bar.y
+    const seatY = Math.round(frontRow + front) // one cell toward the street
+    this.barSeatCells = [-1, 0, 1].map((k) => ({ x: Math.round(cx + k * 1.2), y: seatY }))
+    return this.barSeatCells
   }
 
   // ── Spec 075 — the buildable neighbourhood ──────────────────────────────────

@@ -240,9 +240,21 @@ DONE
   concept-café look on top of its counter + stools); Sprout a row of plant sprouts + shrubs;
   Sportifine a green pitch + goal + ball; Chef Ott a striped market awning + food crates + a chimney.
   Generic plots keep the simple themed stall. 711 green, tsc clean, verified live.
+### 2026-06-13 — Loop iteration 3: live bots gather at the Nearest bar after dark
+DONE
+- runtime wanderIdleCitizens(): after dark, an idle citizen near the bar claims a free stool and stays
+  seated until day, when the bar empties and they return to strolling. barSeats() computes the three
+  stool cells in front of the Nearest parcel (street side), cached, matching the three rendered stools.
+  barOccupied/barSeatBy track who holds which seat; day clears them. Render-loop cosmetic (Math.random
+  like the existing stroll), never the deterministic sim tick.
+- renderer: removed the two static patron spheres from the bar build so the live bots taking the
+  stools are not doubled by painted-on patrons. The counter + three empty stools stay.
+- 711 green, tsc clean. Live-verified on :5188 — forced night, both citizens claimed distinct stools,
+  walked to them and sat (pos == seat cell); the third stool stays free with only two citizens; by day
+  they release and stroll. Camera framed the bar front showing the radar mast, counter and seated bots.
 NEXT (loop)
-- live bots walking to + sitting at the bar (sim behaviour); then commerce relocates to the shore by
-  the lighthouse (086-P1) once Codex's lighthouse lands.
+- bespoke polish per marquee app; then commerce relocates to the shore by the lighthouse (086-P1) once
+  Codex's lighthouse lands.
 
 ### 2026-06-13 — Fix: stalls were landing on homestead plots
 DONE
