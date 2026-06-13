@@ -25,7 +25,7 @@ import { createProfile, addPost, type KbProfile, type PostKind } from './social/
 import { loadKookerbookLocal, saveProfileLocal, saveProfileBackend, fetchKookerbookBackend, mergeKookerbook } from './bot/kookerbookStore'
 import { getLedgerSync, type LedgerMove, type SyncStatus } from './bot/ledgerSync'
 import { makeCommercialDistrict, type CommercialDistrict, type ShopKind, type ShopParcel } from './commerce/district'
-import { cellOk, leastCostPath } from './pathfind'
+import { cellOk, leastCostPath, type Cell } from './pathfind'
 import { createRadio, tuneTo, toggleOn as radioToggleOn, toggleMuted as radioToggleMuted, spinHouseAd, type RadioState } from './radio'
 import { buildShareCard, headlineFor, shareStats, siteLabel, DEFAULT_TAGLINE, CARD_ID, type CardFormat } from './social/shareCard'
 
@@ -244,17 +244,43 @@ export class ColonyRuntime {
       for (const c of cells) residentialKeys.add(`${c.x},${c.y}`)
       satellites.push(nbhd)
     }
-    // Spec 086 — TRUNK ROADS stitch each satellite to the coastal avenue, routed AROUND every homestead
-    // footprint, so the whole map is one connected road network (roads between neighbourhoods).
-    for (const s of satellites) {
-      if (s.carriage.length === 0 || this.neighborhood.carriage.length === 0) continue
-      let from = this.neighborhood.carriage[0]!, to = s.carriage[0]!, bestD = Infinity
-      for (const aC of this.neighborhood.carriage) for (const bC of s.carriage) {
-        const d = (aC.x - bC.x) ** 2 + (aC.y - bC.y) ** 2
-        if (d < bestD) { bestD = d; from = aC; to = bC }
+    // Spec 086 P2 — THE ROAD NETWORK. Each hamlet links to the coast AND to its nearest other hamlet
+    // (a mesh, not just spokes), and every trunk is WIDENED to a ~3-cell carriageway so it reads as a
+    // real road instead of a thread. Routed around every homestead; the router never crosses water.
+    const nearestPair = (a: Cell[], b: Cell[]): [Cell, Cell] => {
+      let from = a[0]!, to = b[0]!, bestD = Infinity
+      for (const p of a) for (const q of b) { const d = (p.x - q.x) ** 2 + (p.y - q.y) ** 2; if (d < bestD) { bestD = d; from = p; to = q } }
+      return [from, to]
+    }
+    const paveLink = (a: Cell[], b: Cell[]) => {
+      if (a.length === 0 || b.length === 0) return
+      const [from, to] = nearestPair(a, b)
+      const path = leastCostPath(t0, from, to, { slopeWeight: 0.5, blocked: (x, y) => residentialKeys.has(`${x},${y}`) }) ?? []
+      const wide = new Set<string>()
+      for (const cc of path) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const x = cc.x + dx, y = cc.y + dy
+        if (cellOk(t0, x, y) && !residentialKeys.has(`${x},${y}`)) wide.add(`${x},${y}`)
       }
-      const trunk = leastCostPath(t0, from, to, { slopeWeight: 0.5, blocked: (x, y) => residentialKeys.has(`${x},${y}`) }) ?? []
-      mergeAvenue(this.sim.state, trunk)
+      mergeAvenue(this.sim.state, [...wide].map((k) => { const [x, y] = k.split(',').map(Number); return { x: x!, y: y! } }))
+    }
+    const coast = this.neighborhood.carriage
+    for (let i = 0; i < satellites.length; i++) {
+      paveLink(coast, satellites[i]!.carriage) // a spoke to the coast keeps every hamlet connected
+    }
+    const meshed = new Set<string>()
+    for (let i = 0; i < satellites.length; i++) {
+      let nearest = -1, bestD = Infinity
+      for (let j = 0; j < satellites.length; j++) {
+        if (j === i) continue
+        const [p, q] = nearestPair(satellites[i]!.carriage, satellites[j]!.carriage)
+        const d = (p.x - q.x) ** 2 + (p.y - q.y) ** 2
+        if (d < bestD) { bestD = d; nearest = j }
+      }
+      if (nearest < 0) continue
+      const key = `${Math.min(i, nearest)}-${Math.max(i, nearest)}`
+      if (meshed.has(key)) continue
+      meshed.add(key)
+      paveLink(satellites[i]!.carriage, satellites[nearest]!.carriage) // the cross-link that makes it a web
     }
     // Spec 079 — survey the shop district in its reserved room; shops avoid every homestead + road.
     const blockedForShops = new Set<string>(residentialKeys)

@@ -73,4 +73,20 @@ DONE
   overlaps, 0 shops-on-homes, every cluster road-connected to the coast (BFS), founders intact. Seeds
   42/7 scatter to 7/6 clusters. Verified by screenshot + scene introspection.
 NEXT
-- P1: move commerce to the shore/lighthouse; P2: hamlet-to-hamlet roads + density tuning.
+- P1: move commerce to the shore/lighthouse (deferred — Codex is actively placing the lighthouse on
+  branch codex/founders-lighthouse-rockery; anchor commerce to it once it lands, to avoid a shore clash).
+
+### 2026-06-13 — Slice P2: the road network grows up (mesh + widened trunks)
+DONE
+- runtime: the trunk roads are no longer just hub-and-spoke. paveLink(a,b) routes the nearest-cell
+  leastCostPath between two clusters (around homesteads) and WIDENS it to a ~3-cell carriageway (a
+  1-cell dilation gated on dry, non-homestead ground) before merging. Each hamlet still spokes to the
+  coast (connectivity guaranteed) AND cross-links to its nearest other hamlet (deduped), so the map
+  reads as a connected web, not a star.
+- LIVE on :5188 (seed 4242): every cluster road-connected (BFS), roads grew 1456 -> 4524 cells (the
+  widening + cross-links), no road on a homestead, none over water (the router + the dry-cell gate
+  forbid it). 706 tests green across two runs (the 20s testTimeout absorbs the heavier boot), tsc clean.
+- Done while Codex builds the shore lighthouse on his own branch — runtime-only, zero PlanetRenderer
+  overlap with his shoreProps module, so the two lanes stay merge-clean.
+NEXT
+- P1 (commerce -> shore, once the lighthouse lands); density/biome-flavour tuning per the operator's eye.
