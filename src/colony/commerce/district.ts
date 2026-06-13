@@ -7,6 +7,7 @@
 // is node-testable headless. The vibrant render + the buy/build economy layer on top of this.
 import { cellOk, type Cell } from '../pathfind'
 import type { Terrain } from '../terrain'
+import { assignBusinesses, type BusinessId } from './businesses'
 
 export type ShopKind = 'kiosk' | 'store' | 'showroom'
 
@@ -28,6 +29,8 @@ export interface ShopParcel {
   doorY: number
   ownerCitizenId?: string
   built: boolean
+  /** The real kooker app this plot fronts (its identity/destiny; assigned deterministically). */
+  business?: BusinessId
 }
 
 export interface CommercialDistrict {
@@ -99,6 +102,10 @@ export function makeCommercialDistrict(t: Terrain, reserve: Reserve, blocked: Re
       }
     }
   }
+
+  // Each plot fronts a real kooker app — assign its business identity (deterministic).
+  const biz = assignBusinesses(parcels)
+  for (const p of parcels) p.business = biz[p.id]
 
   return { street, parcels, reserve }
 }

@@ -216,6 +216,27 @@ NEXT
 - P2: the bought plot raises real shop massing (the placeholder neon stall becomes architecture);
   P3 the listing DSL + storefront + the checkout that posts a sale to the real ledger.
 
+### 2026-06-13 — Themed commercial economy (loop iteration 1): each plot fronts a real kooker app
+DONE
+- src/colony/commerce/businesses.ts (pure): a catalog of THEMED businesses, each fronting a real
+  kooker app — The Nearest (energy/radar) as a BAR with seating, Chef Ott's Market (kitchen +
+  exercise), Sportifine Club (sports), Sprout Greenhouse (plant companion), plus generic Trading
+  Post / Corner Kiosk. assignBusinesses() deterministically gives the marquee apps the biggest plots
+  first (the bar lands on the largest, for its counter + stools); the rest fill generic. district.ts
+  tags every surveyed plot with its business.
+- renderer: each storefront is themed by its business — the business palette drives the neon
+  awning + sign, and a distinct rooftop emblem (radar dish / leaf / ball / pot / crate / tag) reads
+  the app at a glance. The Nearest bar gets a wooden counter + three stools with seated patrons on
+  the street side (the concept-café look; live bot pathing-to-sit is a later iteration).
+- Operator rule honoured: plots stay FOR SALE and are NOT pre-built — this is their business
+  identity/destiny, the builder raises the structure when a bot buys in (see project_citylife_commerce).
+- 5 node tests (marquee-to-biggest-plots, determinism, exactly-one-seating, live district tagging,
+  public-safe names). 711 green, tsc clean. Live-verified on :5188: 10 plots themed by app, the
+  Nearest bar shows its counter + stools + patrons, distinct neon per business.
+NEXT (loop)
+- bespoke structures for Sprout/Sportifine/Chef Ott (greenhouse, pitch, kitchen-market), the radar
+  dish + colour vials + bar-chart signage on the bar, and live bots walking to + sitting at the bar.
+
 ### 2026-06-13 — Fix: stalls were landing on homestead plots
 DONE
 - Operator live-screenshot caught neon stalls sitting ON residential gardens/fields: the 40x30

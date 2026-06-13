@@ -17,6 +17,7 @@ import { cellZone, ZONE_COLOR, VIBE_COLOR, type Plot } from '../cityPlan'
 import { homeLiveability, surveyAvailable, liveabilityTint, porterStatus } from '../build'
 import type { Neighborhood } from '../neighborhood'
 import type { CommercialDistrict, ShopParcel } from '../commerce/district'
+import { BUSINESSES, type Emblem } from '../commerce/businesses'
 import { buildVoxelHouse, BLOCK_COLOR, type VoxelHouse, type DoorDir } from '../voxelHouse'
 import { compileBlueprint, VOXEL_Y } from '../houseBuilder'
 import { greedyMesh } from './voxelMesh'
@@ -1463,13 +1464,17 @@ export class PlanetRenderer {
     const t = this.sim.state.terrain
 
     d.parcels.forEach((p, i) => {
-      const neon = PlanetRenderer.NEON[i % PlanetRenderer.NEON.length]!
+      // Spec 079 — each plot fronts a real kooker app: its business sets the neon palette, a rooftop
+      // emblem, and (the Nearest bar) a counter + stools where bots can sit. Plots stay for-sale.
+      const biz = p.business ? BUSINESSES[p.business] : undefined
+      const neon = biz?.palette ?? PlanetRenderer.NEON[i % PlanetRenderer.NEON.length]!
       const wallH = PlanetRenderer.SHOP_WALL_H[p.kind]
       const bodyW = p.w * 0.82
       const bodyD = p.h * 0.82
       const cx = p.x + (p.w - 1) / 2
       const cy = p.y + (p.h - 1) / 2
       const baseY = Math.max(0, t.worldY(Math.round(cx), Math.round(cy)))
+      const front = -p.side // +z when the plot fronts the street to its -y side
 
       const g = new THREE.Group()
       g.position.set(this.wx(cx), baseY, this.wz(cy))
@@ -1490,16 +1495,70 @@ export class PlanetRenderer {
       canopy.position.y = wallH + 0.08
       canopy.castShadow = true
 
-      // Signage — a bright panel standing above the STREET-FACING front edge. side -1 fronts +z, +1 fronts -z.
-      const frontZ = -p.side * (bodyD / 2 + 0.12)
+      // Signage — a bright panel standing above the STREET-FACING front edge.
+      const frontZ = front * (bodyD / 2 + 0.12)
       const signMat = new THREE.MeshStandardMaterial({ color: neon, emissive: neon, emissiveIntensity: 0.7, roughness: 0.3 })
       const sign = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 0.62, 0.5, 0.1), signMat)
       sign.position.set(0, wallH + 0.5, frontZ)
       this.commercialSignMats.push(signMat)
-
       g.add(body, canopy, sign)
+
+      // Rooftop emblem — a distinct shape per business so the app reads at a glance.
+      if (biz) {
+        const em = this.makeBusinessEmblem(biz.emblem, neon)
+        em.position.y = wallH + 0.5
+        g.add(em)
+      }
+
+      // The bar's seating: a counter + stools (a couple with seated patrons) on the street side.
+      if (biz?.seating) {
+        const counter = new THREE.Mesh(
+          new THREE.BoxGeometry(bodyW * 0.9, 0.5, 0.22),
+          new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.85 }),
+        )
+        counter.position.set(0, 0.25, front * (bodyD / 2 + 0.45))
+        counter.castShadow = true
+        g.add(counter)
+        const stoolMat = new THREE.MeshStandardMaterial({ color: 0x3a3f4a, roughness: 0.7 })
+        const patronMat = new THREE.MeshStandardMaterial({ color: 0x8a5a3a, roughness: 0.6, emissive: 0x201008, emissiveIntensity: 0.25 })
+        const n = 3
+        for (let k = 0; k < n; k++) {
+          const sx = (k - (n - 1) / 2) * (bodyW * 0.9 / n)
+          const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.42, 10), stoolMat)
+          stool.position.set(sx, 0.21, front * (bodyD / 2 + 0.78))
+          stool.castShadow = true
+          g.add(stool)
+          if (k !== 1) { // two patrons sitting, watching the radar
+            const patron = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), patronMat)
+            patron.position.set(sx, 0.52, front * (bodyD / 2 + 0.78))
+            g.add(patron)
+          }
+        }
+      }
+
       this.commercialGroup.add(g)
     })
+  }
+
+  /** A small, distinctive rooftop emblem per business kind (positioned at the group origin by the
+   *  caller). Glows in the business palette so each storefront reads from District view. */
+  private makeBusinessEmblem(emblem: Emblem, neon: number): THREE.Object3D {
+    const glow = (hex: number, ei = 0.5) => new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: ei, roughness: 0.4 })
+    if (emblem === 'dish') {
+      const grp = new THREE.Group()
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.22, 6), new THREE.MeshStandardMaterial({ color: 0x9aa3b2 }))
+      post.position.y = 0.11
+      const dish = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.12, 16, 1, true), glow(neon, 0.65))
+      dish.position.y = 0.3
+      dish.rotation.x = Math.PI * 0.85
+      grp.add(post, dish)
+      return grp
+    }
+    if (emblem === 'leaf') { const m = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.3, 7), glow(0x49c46a, 0.35)); m.position.y = 0.15; return m }
+    if (emblem === 'ball') { const m = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), new THREE.MeshStandardMaterial({ color: 0xf6f6f6, roughness: 0.5 })); m.position.y = 0.14; return m }
+    if (emblem === 'pot') { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.07, 0.16, 10), glow(neon, 0.4)); m.position.y = 0.08; return m }
+    if (emblem === 'crate') { const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), glow(neon, 0.35)); m.position.y = 0.1; return m }
+    const tag = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.04), glow(neon, 0.6)); tag.position.y = 0.1; return tag
   }
 
   /** Spec 076 — draw the homestead neighbourhood: the spine carriageway + verge ribbon, then each
