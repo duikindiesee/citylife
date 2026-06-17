@@ -1025,7 +1025,7 @@ export class PlanetRenderer {
     const s = this.sim.state
     const g = gridOrigin(s)
     const B = COLONY.build.block
-    const LIFT = 0.05
+    const LIFT = 0.12 // clear the terrain mesh so the carriageway never z-fights or lets green poke through
     const SKIRT = 0.9 // embankment depth below the bed edge
     const SHOULDER = 0.42 // worked earth beside the road, so the world grades into the carriageway
     const surf: number[] = []
@@ -1047,6 +1047,9 @@ export class PlanetRenderer {
         if (!heights.has(k)) heights.set(k, this.cornerY(gx, gy))
       }
     }
+    // keep the RAW terrain-sampled corner heights — the relaxed bed is clamped up to these so it never
+    // sinks below the ground (which buried crest cells = breaks + let green poke through the road).
+    const rawHeights = new Map(heights)
     // 2) relax each corner toward its network neighbours — two passes ease the grade transitions
     for (let pass = 0; pass < 2; pass++) {
       const next = new Map<string, number>()
@@ -1061,7 +1064,13 @@ export class PlanetRenderer {
       }
       for (const [k, h] of next) heights.set(k, h)
     }
-    const cornerAt = (gx: number, gy: number): number[] => [this.wx(gx) - 0.5, (heights.get(ck(gx, gy)) ?? this.cornerY(gx, gy)) + LIFT, this.wz(gy) - 0.5]
+    const cornerAt = (gx: number, gy: number): number[] => {
+      const k = ck(gx, gy)
+      const raw = rawHeights.get(k) ?? this.cornerY(gx, gy)
+      const relaxed = heights.get(k) ?? raw
+      // smoothing may only FILL dips (embankment), never cut the bed below the real terrain corner
+      return [this.wx(gx) - 0.5, Math.max(relaxed, raw) + LIFT, this.wz(gy) - 0.5]
+    }
     // 3) surface + skirts, split per road kind (spec 084 S3)
     const isAvenue = (x: number, y: number) => s.roadKind.get(roadKey(x, y)) === 'avenue'
     for (const r of s.roads) {
@@ -1585,11 +1594,29 @@ export class PlanetRenderer {
       const bodyD = p.h * 0.82
       const cx = p.x + (p.w - 1) / 2
       const cy = p.y + (p.h - 1) / 2
-      const baseY = Math.max(0, t.worldY(Math.round(cx), Math.round(cy)))
+      // Sit the shop on the LOWEST corner of its footprint so no edge floats over sloped/coastal
+      // ground; the uphill terrain just buries into the solid body, and the foundation plinth below
+      // fills the slope gap. (Was the centre height, which left the downhill side floating.)
+      let loY = Infinity, hiY = 0
+      for (const fx of [p.x, p.x + p.w - 1]) for (const fy of [p.y, p.y + p.h - 1]) {
+        const h = Math.max(0, t.worldY(fx, fy)); if (h < loY) loY = h; if (h > hiY) hiY = h
+      }
+      const baseY = loY
       const front = -p.side // +z when the plot fronts the street to its -y side
 
       const g = new THREE.Group()
       g.position.set(this.wx(cx), baseY, this.wz(cy))
+
+      // Foundation plinth — from the base down past the slope range, so the shop reads as built on the
+      // ground and never floats, even where the coast falls away under the footprint.
+      const foundH = (hiY - loY) + 0.7
+      const found = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyW * 1.02, foundH, bodyD * 1.02),
+        new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.9 }),
+      )
+      found.position.y = -foundH / 2 + 0.02
+      found.castShadow = true
+      g.add(found)
 
       // Body — a dark slate shopfront so the neon reads against it.
       const body = new THREE.Mesh(

@@ -43,8 +43,13 @@ describe('081 ad boards — billboard survey', () => {
         expect([1, -1]).toContain(s.faceX)
         if (s.shopId !== null) expect(shopIds.has(s.shopId)).toBe(true) // advertises a real shop
       }
-      const cells = sites.map((s) => `${s.x},${s.y}`)
-      expect(new Set(cells).size).toBe(cells.length) // no two boards share a cell
+      // no two boards sit within the min spacing (so none ever stands behind another)
+      for (let i = 0; i < sites.length; i++) {
+        for (let j = i + 1; j < sites.length; j++) {
+          const md = Math.abs(sites[i]!.x - sites[j]!.x) + Math.abs(sites[i]!.y - sites[j]!.y)
+          expect(md).toBeGreaterThanOrEqual(6)
+        }
+      }
     }
   })
 

@@ -22,7 +22,8 @@ export interface BoardSite {
 }
 
 const BOARD_COUNT = 3 // adBoardCount default (spec 081)
-const APPROACH_MAX = 10 // how far beyond a street end to search outward for open ground
+const APPROACH_MAX = 18 // how far beyond a street end to search outward (room for spaced boards)
+const MIN_SPACING = 6 // adBoardSpacing — min cells between any two boards, so none ever sits behind another
 const PERP_TRIES = [0, -3, 3, -6, 6] // perpendicular offsets tried at each approach distance (flanking the centreline)
 
 /** Survey the billboard sites. Boards stand at the two approaches to the high street (its open zone
@@ -46,25 +47,23 @@ export function surveyBillboards(
     { fromX: maxX, step: 1, faceX: -1 }, // right approach -> screen faces -x
   ]
   const shops = d.parcels.map((p) => p.id)
-  const used = new Set<string>()
   const sites: BoardSite[] = []
+  // A candidate is only allowed if it stands MIN_SPACING (Manhattan) clear of every board already
+  // placed — this is what stops two boards landing a cell apart (one behind the other).
+  const farEnough = (x: number, y: number) => sites.every((s) => Math.abs(s.x - x) + Math.abs(s.y - y) >= MIN_SPACING)
   // Round-robin the two ends, marching outward, so the boards spread to whichever approaches are open.
   for (let ring = 2; ring <= APPROACH_MAX && sites.length < BOARD_COUNT; ring++) {
     for (const e of ends) {
       if (sites.length >= BOARD_COUNT) break
       const bx = e.fromX + e.step * ring
-      let placedHere: { x: number; y: number } | null = null
       for (const perp of PERP_TRIES) {
         const by = ys + perp
-        const key = `${bx},${by}`
-        if (!cellOk(t, bx, by) || blocked.has(key) || used.has(key)) continue
-        placedHere = { x: bx, y: by }
+        if (!cellOk(t, bx, by) || blocked.has(`${bx},${by}`)) continue
+        if (!farEnough(bx, by)) continue // never stack / sit behind another board
+        const shopId = shops.length ? shops[(rotation + sites.length) % shops.length]! : null
+        sites.push({ id: `board_${sites.length}`, x: bx, y: by, faceX: e.faceX, shopId })
         break
       }
-      if (!placedHere) continue
-      used.add(`${placedHere.x},${placedHere.y}`)
-      const shopId = shops.length ? shops[(rotation + sites.length) % shops.length]! : null
-      sites.push({ id: `board_${sites.length}`, x: placedHere.x, y: placedHere.y, faceX: e.faceX, shopId })
     }
   }
   return sites
