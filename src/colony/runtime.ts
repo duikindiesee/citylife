@@ -329,7 +329,7 @@ export class ColonyRuntime {
     }
     const layRoad = (path: Cell[], half: number, kind: 'avenue' | 'street' = 'street'): Cell[] => {
       const poly = simplifyPath(path)
-      if (poly.length >= 2) this.roadWays.push({ path: poly, kind, width: half * 2 + 1 }) // 088 — smooth ribbon centre-line
+      if (poly.length >= 2) this.roadWays.push({ path: poly, kind, width: 4 }) // 088 — smooth ribbon centre-line (chunky enough to read from the district view)
       const out = new Set<string>()
       const add = (fx: number, fy: number) => { const x = Math.round(fx), y = Math.round(fy); if (roadCellOk(x, y)) out.add(`${x},${y}`) }
       for (let i = 0; i < poly.length - 1; i++) {
@@ -406,9 +406,9 @@ export class ColonyRuntime {
     // Spec 088 — collect the remaining road centre-lines as ribbon ways (the trunk roads + connector
     // already recorded themselves through layRoad): the founders' avenue spine, each hamlet spine, and
     // the commercial high street. The smooth ribbon render draws these; traffic still uses the cells.
-    if (this.neighborhood.spine.length >= 2) this.roadWays.push({ path: this.neighborhood.spine, kind: 'avenue', width: 3 })
-    for (const s of satellites) if (s.spine.length >= 2) this.roadWays.push({ path: s.spine, kind: 'street', width: 3 })
-    if (this.commercialDistrict && this.commercialDistrict.street.length >= 2) this.roadWays.push({ path: this.commercialDistrict.street, kind: 'avenue', width: 3 })
+    if (this.neighborhood.spine.length >= 2) this.roadWays.push({ path: this.neighborhood.spine, kind: 'avenue', width: 4 })
+    for (const s of satellites) if (s.spine.length >= 2) this.roadWays.push({ path: s.spine, kind: 'street', width: 4 })
+    if (this.commercialDistrict && this.commercialDistrict.street.length >= 2) this.roadWays.push({ path: this.commercialDistrict.street, kind: 'avenue', width: 4 })
     const hoodCentroid = (cells: { x: number; y: number }[]): { x: number; y: number } => {
       let sx = 0, sy = 0
       for (const c of cells) { sx += c.x; sy += c.y }

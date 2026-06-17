@@ -29,7 +29,7 @@ import { buildShoreProps, type ShorePropsLayer } from './shoreProps'
 import { buildRaceLayer, type RaceLayer } from './raceLayer'
 import { buildBusLayer, type BusLayer } from './busLayer'
 import type { BusRoute } from '../transit/busRoute'
-import { buildRoadRibbons, type RoadWay } from './roadRibbon'
+import { buildRoadRibbons, ROAD_RIBBON_LIFT, type RoadWay } from './roadRibbon'
 import type { RaceState } from '../racing/race'
 
 export type ViewMode = 'biome' | 'buildable' | 'elevation'
@@ -164,6 +164,7 @@ export class PlanetRenderer {
   private raceLayer: RaceLayer | null = null
   private busLayer: BusLayer | null = null
   private roadRibbonGroup: THREE.Group | null = null
+  private roadRibbonCells: Set<string> | null = null // cells the road ribbon actually covers (for surfaceY)
   private raceState: RaceState | null = null
   private raceCamActive = false
   private raceRestorePending = false
@@ -1009,6 +1010,17 @@ export class PlanetRenderer {
     return (t.worldY(x, y) + t.worldY(cl(x + 1), y) + t.worldY(cl(x - 1), y) + t.worldY(x, cl(y + 1)) + t.worldY(x, cl(y - 1))) / 5
   }
 
+  /** Spec 088 — the height of the WALKABLE surface at a cell: the road ribbon top when it's a road cell,
+   *  otherwise the bare terrain. Citizens (incl. Joe), the first-person eye and props stand on this, so
+   *  nobody sinks under the raised road ribbon when they're on a road. */
+  private surfaceY(x: number, y: number): number {
+    const rx = Math.round(x), ry = Math.round(y)
+    // raise to the ribbon top ONLY where the ribbon actually is (not every roadKind cell), so a citizen
+    // never floats on a road cell the ribbon doesn't reach.
+    if (this.roadRibbonCells?.has(`${rx},${ry}`)) return Math.max(0, this.smoothRoadY(rx, ry)) + ROAD_RIBBON_LIFT
+    return Math.max(0, this.sim.state.terrain.worldY(rx, ry))
+  }
+
   // Terrain height at a grid corner = mean of the 4 cells meeting there. Adjacent road cells
   // share corners, so the draped ribbon stays continuous (no stair-steps) and ramps over slopes.
   private cornerY(gx: number, gy: number): number {
@@ -1342,12 +1354,12 @@ export class PlanetRenderer {
       // P1 — first-person: park the camera at the citizen's eye and look down their heading. OrbitControls is off.
       const a = this.avatarSource().find((x) => x.id === this.fpCitizenId)
       if (a) {
-        const t = this.sim.state.terrain
         const isCrab = a.kind === 'crab' // spec 078 — Joe sees the world from down at crab height
-        const eye = Math.max(0, t.worldY(Math.round(a.x), Math.round(a.y))) + (isCrab ? CRAB_EYE : 1.6)
+        // stand the eye on the road SURFACE when on a road, so Joe is never looking up through the road
+        const eye = this.surfaceY(a.x, a.y) + (isCrab ? CRAB_EYE : 1.6)
         this.camera.position.set(this.wx(a.x), eye, this.wz(a.y))
         const lx = a.x + Math.cos(a.heading) * 4, ly = a.y + Math.sin(a.heading) * 4
-        const lyW = Math.max(0, t.worldY(Math.round(lx), Math.round(ly))) + (isCrab ? CRAB_EYE - 0.05 : 1.2)
+        const lyW = this.surfaceY(lx, ly) + (isCrab ? CRAB_EYE - 0.05 : 1.2)
         this.camera.lookAt(this.wx(lx), lyW, this.wz(ly))
         this.camera.updateMatrixWorld()
       } else {
@@ -1585,13 +1597,16 @@ export class PlanetRenderer {
       this.roadRibbonGroup.parent?.remove(this.roadRibbonGroup)
       this.roadRibbonGroup = null
     }
+    this.roadRibbonCells = null
     if (!ways || ways.length === 0) return
-    this.roadRibbonGroup = buildRoadRibbons(ways, {
+    const built = buildRoadRibbons(ways, {
       terrain: this.sim.state.terrain,
       wx: (x) => this.wx(x),
       wz: (y) => this.wz(y),
       roadY: (x, y) => this.smoothRoadY(x, y),
     })
+    this.roadRibbonGroup = built.group
+    this.roadRibbonCells = built.cells
     this.scene.add(this.roadRibbonGroup)
   }
 
@@ -2173,7 +2188,7 @@ export class PlanetRenderer {
     for (let i = 0; i < n; i++) {
       const a = list[i]!
       if (a.id === this.fpCitizenId) continue // hide the avatar we are looking out of
-      const wy = Math.max(0, t.worldY(Math.round(a.x), Math.round(a.y)))
+      const wy = this.surfaceY(a.x, a.y) // stand ON the road ribbon when on a road, not under it
       this.dummy.position.set(this.wx(a.x), wy, this.wz(a.y))
       this.dummy.rotation.set(0, -a.heading + Math.PI / 2, 0)
       this.dummy.scale.set(1, 1, 1)

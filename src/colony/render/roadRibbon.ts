@@ -23,12 +23,17 @@ export interface RoadRibbonOptions {
   roadY: (x: number, y: number) => number // smoothed road height
 }
 
-const LIFT = 0.18 // sit just above the per-cell road base so the smooth ribbon is what you see
+/** How high the ribbon surface sits above the terrain. Exported so avatars/citizens stand ON the road
+ *  surface (not the bare terrain) when they're on a road cell — else they sink under the raised ribbon. */
+export const ROAD_RIBBON_LIFT = 0.18
 
-/** Build a group of smooth draped ribbons (+ dashed centre lines) for every road way. */
-export function buildRoadRibbons(ways: RoadWay[], opts: RoadRibbonOptions): THREE.Group {
+/** Build the smooth draped ribbons (+ dashed centre lines) for every road way. Returns the group and
+ *  the SET of grid cells the ribbon actually covers — so avatars stand on the ribbon surface only
+ *  where it really is (never floating on a road cell the ribbon happens not to reach). */
+export function buildRoadRibbons(ways: RoadWay[], opts: RoadRibbonOptions): { group: THREE.Group; cells: Set<string> } {
   const group = new THREE.Group()
   group.name = 'RoadRibbons'
+  const cells = new Set<string>()
   const streetMat = new THREE.MeshStandardMaterial({ color: 0x595f6a, roughness: 0.92, metalness: 0.02 }) // mid asphalt grey — reads as road, not a black hole
   const avenueMat = new THREE.MeshStandardMaterial({ color: 0x646b78, roughness: 0.9, metalness: 0.03 })
   const dashMat = new THREE.MeshStandardMaterial({ color: 0xf2cf52, roughness: 0.5, emissive: 0xf2cf52, emissiveIntensity: 0.5 }) // bright lane line, glows a little day + night
@@ -38,7 +43,7 @@ export function buildRoadRibbons(ways: RoadWay[], opts: RoadRibbonOptions): THRE
   for (const way of ways) {
     if (way.path.length < 2) continue
     const pts = chaikin(way.path, 2)
-    ribbon(pts, way.width / 2, opts, way.kind === 'avenue' ? surfA : surf)
+    ribbon(pts, way.width / 2, opts, way.kind === 'avenue' ? surfA : surf, cells)
     dashes(pts, opts, dash)
   }
   const add = (arr: number[], mat: THREE.Material) => {
@@ -54,7 +59,7 @@ export function buildRoadRibbons(ways: RoadWay[], opts: RoadRibbonOptions): THRE
   add(surf, streetMat)
   add(surfA, avenueMat)
   add(dash, dashMat)
-  return group
+  return { group, cells }
 }
 
 /** Corner-cutting smoothing: each iteration replaces every segment with its 1/4 and 3/4 points, so
@@ -76,15 +81,17 @@ function chaikin(path: { x: number; y: number }[], iterations: number): { x: num
 
 /** Extrude a triangle strip of half-width `half` perpendicular to the smoothed polyline, draped on the
  *  terrain at each cross-section. */
-function ribbon(pts: { x: number; y: number }[], half: number, opts: RoadRibbonOptions, out: number[]): void {
+function ribbon(pts: { x: number; y: number }[], half: number, opts: RoadRibbonOptions, out: number[], cells: Set<string>): void {
   const edge = (i: number, sign: number): number[] => {
     const p = pts[i]!
     const prev = pts[Math.max(0, i - 1)]!, next = pts[Math.min(pts.length - 1, i + 1)]!
-    let tx = next.x - prev.x, ty = next.y - prev.y
+    const tx = next.x - prev.x, ty = next.y - prev.y
     const len = Math.hypot(tx, ty) || 1
     const px = -ty / len, py = tx / len // unit perpendicular
+    // record every grid cell across the cross-section so surfaceY knows where the ribbon really is
+    for (let k = -half; k <= half + 1e-6; k += 0.5) cells.add(`${Math.round(p.x + px * k)},${Math.round(p.y + py * k)}`)
     const gx = p.x + px * half * sign, gy = p.y + py * half * sign
-    return [opts.wx(gx), Math.max(0, opts.roadY(Math.round(p.x), Math.round(p.y))) + LIFT, opts.wz(gy)]
+    return [opts.wx(gx), Math.max(0, opts.roadY(Math.round(p.x), Math.round(p.y))) + ROAD_RIBBON_LIFT, opts.wz(gy)]
   }
   const tri = (a: number[], b: number[], c: number[]) => out.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!)
   for (let i = 0; i < pts.length - 1; i++) {
@@ -110,7 +117,7 @@ function dashes(pts: { x: number; y: number }[], opts: RoadRibbonOptions, out: n
       acc += 0.4
       if (acc % 2.6 > 1.4) continue // gap between dashes (dash ~1.4 long, gap ~1.2)
       const cx = a.x + tx * s, cy = a.y + ty * s
-      const y = Math.max(0, opts.roadY(Math.round(cx), Math.round(cy))) + LIFT + 0.04
+      const y = Math.max(0, opts.roadY(Math.round(cx), Math.round(cy))) + ROAD_RIBBON_LIFT + 0.04
       const aL = [opts.wx(cx + px), y, opts.wz(cy + py)]
       const aR = [opts.wx(cx - px), y, opts.wz(cy - py)]
       const bx = cx + tx * 0.55, by = cy + ty * 0.55
