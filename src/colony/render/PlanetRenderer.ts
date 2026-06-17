@@ -181,7 +181,11 @@ export class PlanetRenderer {
     this.R = COLONY.world.planetRadius
 
     this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
-    this.renderer.setPixelRatio(1)
+    // Render at the display's native pixel density (capped at 2x) so the world is crisp on HiDPI
+    // screens — matches the House Builder + legacy city renderer. The old hardcoded 1 made the 608
+    // world upscale (soft, non-HD) on a 2x+ DPR display; the 2x cap keeps the heavy world's fill rate
+    // bounded so a 3x phone/Retina panel does not quadruple-plus the fragment load.
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -196,10 +200,22 @@ export class PlanetRenderer {
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement)
     this.controls.enableDamping = true
+    this.controls.dampingFactor = 0.08 // a touch more glide so pans + orbits coast to a smooth stop
     this.controls.maxPolarAngle = Math.PI * 0.62
     this.controls.minDistance = 4
     this.controls.maxDistance = this.R * 2.6
     this.controls.target.set(0, 5, 0)
+    // Map-style navigation (operator UX): LEFT-drag PANS across the world (the intuitive "grab the
+    // map" gesture), RIGHT-drag ORBITS to look around, the wheel zooms. The OrbitControls default
+    // (left = rotate) made just moving around the world disorienting and hard. Pan along the GROUND
+    // plane (screenSpacePanning false) so a drag slides you across the terrain at a steady height
+    // instead of tilting through the air. Touch: one finger pans, two fingers pinch-zoom + rotate.
+    this.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }
+    this.controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE }
+    this.controls.screenSpacePanning = false
+    this.controls.panSpeed = 1.1
+    this.controls.rotateSpeed = 0.6
+    this.controls.zoomSpeed = 1.1
 
     this.hemi = new THREE.HemisphereLight(0xbfd6e6, 0x35324a, 0.8)
     this.scene.add(this.hemi)
