@@ -36,7 +36,7 @@ export function buildRoadRibbons(ways: RoadWay[], opts: RoadRibbonOptions): { gr
   const cells = new Set<string>()
   const streetMat = new THREE.MeshStandardMaterial({ color: 0x595f6a, roughness: 0.92, metalness: 0.02 }) // mid asphalt grey — reads as road, not a black hole
   const avenueMat = new THREE.MeshStandardMaterial({ color: 0x646b78, roughness: 0.9, metalness: 0.03 })
-  const dashMat = new THREE.MeshStandardMaterial({ color: 0xf2cf52, roughness: 0.5, emissive: 0xf2cf52, emissiveIntensity: 0.5 }) // bright lane line, glows a little day + night
+  const dashMat = new THREE.MeshStandardMaterial({ color: 0xf2cf52, roughness: 0.5, emissive: 0xf2cf52, emissiveIntensity: 0.5, side: THREE.DoubleSide }) // bright lane line, glows a little day + night. DoubleSide: the dash quads wind opposite the surface (normals point down), so without it they were back-face-culled from above and the centre line never showed.
   const edgeMat = new THREE.MeshStandardMaterial({ color: 0xe8ecf2, roughness: 0.6, emissive: 0xb9c0cc, emissiveIntensity: 0.28 }) // painted white road edges
   const surf: number[] = []
   const surfA: number[] = []
@@ -143,12 +143,12 @@ function dashes(pts: { x: number; y: number }[], opts: RoadRibbonOptions, out: n
     const seg = Math.hypot(tx, ty)
     if (seg < 1e-4) continue
     tx /= seg; ty /= seg
-    const px = -ty * 0.14, py = tx * 0.14 // dash half-thickness across the road
+    const px = -ty * 0.22, py = tx * 0.22 // dash half-thickness across the road
     for (let s = 0; s < seg; s += 0.4) {
       acc += 0.4
       if (acc % 2.6 > 1.4) continue // gap between dashes (dash ~1.4 long, gap ~1.2)
       const cx = a.x + tx * s, cy = a.y + ty * s
-      const y = Math.max(0, opts.roadY(Math.round(cx), Math.round(cy))) + ROAD_RIBBON_LIFT + 0.04
+      const y = Math.max(0, opts.roadY(Math.round(cx), Math.round(cy))) + ROAD_RIBBON_LIFT + 0.06
       const aL = [opts.wx(cx + px), y, opts.wz(cy + py)]
       const aR = [opts.wx(cx - px), y, opts.wz(cy - py)]
       const bx = cx + tx * 0.55, by = cy + ty * 0.55
