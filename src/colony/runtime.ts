@@ -297,10 +297,28 @@ export class ColonyRuntime {
       if (a.length === 0 || b.length === 0) return
       const [from, to] = nearestPair(a, b)
       const path = leastCostPath(t0, from, to, { slopeWeight: 0.5, blocked: (x, y) => residentialKeys.has(`${x},${y}`) }) ?? []
+      if (path.length === 0) return
+      // Lay a CONSTANT-WIDTH carriageway by stroking the centreline PERPENDICULAR to its local travel
+      // direction, instead of a 3x3 square dilation. The square kernel blew the width out to 4 cells on
+      // diagonal runs and corners and pinched to 2 past obstacles (the "3 then 2 then 4 lanes into a
+      // corner" the operator saw); a perpendicular stroke keeps the PERCEIVED width steady whether the
+      // road runs straight or diagonal, and the overlapping cross-sections fill turns into tidy corners.
+      const HALF = 1 // half-width in cells -> a steady ~3-cell carriageway
       const wide = new Set<string>()
-      for (const cc of path) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-        const x = cc.x + dx, y = cc.y + dy
+      const add = (fx: number, fy: number) => {
+        const x = Math.round(fx), y = Math.round(fy)
         if (cellOk(t0, x, y) && !residentialKeys.has(`${x},${y}`)) wide.add(`${x},${y}`)
+      }
+      for (let i = 0; i < path.length; i++) {
+        const prev = path[Math.max(0, i - 1)]!, next = path[Math.min(path.length - 1, i + 1)]!
+        let dx = next.x - prev.x, dy = next.y - prev.y
+        const len = Math.hypot(dx, dy) || 1
+        const px = -dy / len, py = dx / len // unit perpendicular to travel
+        add(path[i]!.x, path[i]!.y) // the centreline is always paved (keeps the ribbon connected)
+        for (let k = 0.5; k <= HALF + 1e-6; k += 0.5) {
+          add(path[i]!.x + px * k, path[i]!.y + py * k)
+          add(path[i]!.x - px * k, path[i]!.y - py * k)
+        }
       }
       mergeAvenue(this.sim.state, [...wide].map((k) => { const [x, y] = k.split(',').map(Number); return { x: x!, y: y! } }))
     }
