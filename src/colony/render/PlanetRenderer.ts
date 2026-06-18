@@ -1005,7 +1005,19 @@ export class PlanetRenderer {
   private smoothRoadY(x: number, y: number): number {
     const t = this.sim.state.terrain
     const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v))
-    return (t.worldY(x, y) + t.worldY(cl(x + 1), y) + t.worldY(cl(x - 1), y) + t.worldY(x, cl(y + 1)) + t.worldY(x, cl(y - 1))) / 5
+    // The draped road surface must ride ABOVE the ground across its whole ~4-wide carriageway, or the
+    // terrain poke up through the asphalt on rises — the operator's "ground visible above street level".
+    // A 5-cell AVERAGE (the old basis) sank below crests and the climb to the highland, burying the
+    // surface so only the raised dashes showed. Take the MAX terrain over the carriageway footprint
+    // (radius 2 ≈ the half-width) so the ribbon always sits on top. Everything that rides the road
+    // (the ribbon, its edges + dashes, citizens, cars, the bus, props) reads this one height, so they
+    // all rise together and nobody sinks under the surface.
+    let mx = 0
+    for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) {
+      const h = t.worldY(cl(x + dx), cl(y + dy))
+      if (h > mx) mx = h
+    }
+    return mx
   }
 
   /** Spec 088 — the height of the WALKABLE surface at a cell: the road ribbon top when it's a road cell,
