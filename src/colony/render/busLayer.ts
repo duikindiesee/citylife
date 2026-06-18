@@ -25,20 +25,28 @@ const STOP_DWELL = 1.4 // seconds paused at each stop
 const STOP_RADIUS = 1.2 // how close (cells) to a stop counts as "at the stop"
 
 export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
-  const loop = opts.route.loop
-  if (loop.length < 2) return null
+  const raw = opts.route.loop
+  if (raw.length < 2) return null
+  // De-zigzag the bus path. route.loop is a 4-connected BFS over road CELLS, so on diagonals it
+  // staircases and driving it cell-by-cell made the coach jitter side to side (the operator's zigzag).
+  // Corner-cut (chaikin) the closed loop into a smooth curve the bus glides along. Render-only — the
+  // pure, node-tested route is untouched. The smoothed loop has 2^iters× as many points, so scale the
+  // index speed to keep the real ground speed about the same.
+  const SMOOTH_ITERS = 2
+  const loop = smoothClosed(raw, SMOOTH_ITERS)
+  const speedMul = 1 << SMOOTH_ITERS
   const group = new THREE.Group()
   group.name = 'Bus'
   const bus = buildBus()
   group.add(bus)
-  const stopKeys = new Set(opts.route.stops.map((s) => `${s.x},${s.y}`))
   for (const s of opts.route.stops) group.add(buildStop(opts, s))
 
-  let dist = 0 // float index into loop
+  let dist = 0 // float index into the smoothed loop
   let last = -1
   let dwell = 0
+  let lastStop = '' // the stop we last paused at, cleared once we drive clear of it
   const place = (gx: number, gy: number, headingGrid: number) => {
-    const y = Math.max(0, opts.roadY(Math.round(gx), Math.round(gy))) + 0.3
+    const y = Math.max(0, opts.roadY(Math.round(gx), Math.round(gy))) + 0.18 // sit on the road surface, not floating above it
     bus.position.set(opts.wx(gx), y, opts.wz(gy))
     bus.rotation.y = -headingGrid // body is long in X; match the rally car's -heading convention
   }
@@ -49,21 +57,18 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
       if (last < 0) last = timeMs
       const dt = Math.min(0.1, (timeMs - last) / 1000)
       last = timeMs
-      const i = Math.floor(dist) % loop.length
-      const a = loop[i]!, b = loop[(i + 1) % loop.length]!
-      // pause when sitting on a stop cell
       if (dwell > 0) dwell = Math.max(0, dwell - dt)
-      else {
-        dist = (dist + dt * SPEED) % loop.length
-        const ni = Math.floor(dist) % loop.length
-        if (ni !== i && stopKeys.has(`${loop[ni]!.x},${loop[ni]!.y}`)) dwell = STOP_DWELL
-      }
+      else dist = (dist + dt * SPEED * speedMul) % loop.length
       const fi = Math.floor(dist) % loop.length
       const fa = loop[fi]!, fb = loop[(fi + 1) % loop.length]!
       const frac = dist - Math.floor(dist)
       const gx = fa.x + (fb.x - fa.x) * frac, gy = fa.y + (fb.y - fa.y) * frac
       place(gx, gy, Math.atan2(fb.y - fa.y, fb.x - fa.x))
-      void a; void b; void STOP_RADIUS
+      // dwell briefly on arriving near a stop; re-arm once we have driven clear so each lap pauses again
+      let near = ''
+      for (const s of opts.route.stops) if (Math.hypot(gx - s.x, gy - s.y) < STOP_RADIUS) { near = `${s.x},${s.y}`; break }
+      if (near && near !== lastStop && dwell <= 0) { dwell = STOP_DWELL; lastStop = near }
+      if (!near) lastStop = ''
     },
     dispose() {
       group.traverse((o) => {
@@ -76,6 +81,23 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
       group.parent?.remove(group)
     },
   }
+}
+
+/** Chaikin corner-cutting on a CLOSED loop: each iteration replaces every vertex with its 1/4 and 3/4
+ *  points (wrapping around), rounding the BFS cell staircase into a smooth circuit. */
+function smoothClosed(loop: { x: number; y: number }[], iters: number): { x: number; y: number }[] {
+  let pts = loop.map((p) => ({ x: p.x, y: p.y }))
+  for (let it = 0; it < iters; it++) {
+    const n = pts.length
+    const out: { x: number; y: number }[] = []
+    for (let i = 0; i < n; i++) {
+      const a = pts[i]!, b = pts[(i + 1) % n]!
+      out.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 })
+      out.push({ x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 })
+    }
+    pts = out
+  }
+  return pts
 }
 
 function buildBus(): THREE.Group {

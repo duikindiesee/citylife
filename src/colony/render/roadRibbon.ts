@@ -50,7 +50,12 @@ export function buildRoadRibbons(ways: RoadWay[], opts: RoadRibbonOptions): { gr
   const edge: number[] = []
   for (const way of ways) {
     if (way.path.length < 2) continue
-    const pts = chaikin(way.path, 2)
+    // Densify to ~1.5-cell stations AFTER smoothing. A string-pulled centre-line can be just a few points
+    // spanning ~120 cells, so chaikin leaves segments up to ~30 cells long. The ribbon draws one FLAT
+    // quad per segment, so a long quad on a slope dives underground in the middle and the terrain buries
+    // the surface there — leaving only the (densely-sampled) dashes visible (the operator's dash-only
+    // gaps). Short stations make the surface drape the terrain step by step so it never spans below ground.
+    const pts = densify(chaikin(way.path, 2), 1.5)
     ribbon(pts, way.width / 2, opts, way.kind === 'avenue' ? surfA : surf, cells)
     dashes(pts, opts, dash)
     edgeLines(pts, way.width / 2, opts, edge)
@@ -87,6 +92,21 @@ function chaikin(path: { x: number; y: number }[], iterations: number): { x: num
     pts = out
   }
   return pts
+}
+
+/** Insert points along a polyline so no segment is longer than `step`. Keeps the surface stations close
+ *  enough together that each flat quad hugs the terrain (so a long string-pulled segment can't span
+ *  underground). Endpoints + original vertices are preserved. */
+function densify(pts: { x: number; y: number }[], step: number): { x: number; y: number }[] {
+  if (pts.length < 2) return pts
+  const out: { x: number; y: number }[] = [pts[0]!]
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i]!, b = pts[i + 1]!
+    const d = Math.hypot(b.x - a.x, b.y - a.y)
+    const n = Math.max(1, Math.ceil(d / step))
+    for (let s = 1; s <= n; s++) out.push({ x: a.x + (b.x - a.x) * (s / n), y: a.y + (b.y - a.y) * (s / n) })
+  }
+  return out
 }
 
 /** Extrude a triangle strip of half-width `half` perpendicular to the smoothed polyline, draped on the
