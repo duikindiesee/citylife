@@ -95,17 +95,11 @@ describe('door access — the driveway lands ON the compiled door', () => {
 // (S6) have the strip by construction; these tests fake one by insetting a live parcel's zone.
 describe('door access S2 — the side-strip L-walkway', () => {
   function stripParcel(): Parcel {
-    // The L-walkway needs an estate-tier parcel carrying the side strip by construction (house zone inset
-    // >=2 from the parcel's left edge). seed 42 index [0] used to qualify, but the terraced terrain (spec
-    // 089) reshapes the founders plateau so that seed no longer yields an estate. Scan a range of seeds for
-    // the first parcel that genuinely has the strip — preserves the test's intent (exercise the real
-    // L-walkway geometry on a strip parcel) without faking, deterministic across re-baselines.
-    const hasStrip = (q: Parcel) => q.houseZone.x >= q.x - (q.w - 1) / 2 + 2
-    for (let seed = 1; seed <= 40; seed++) {
-      const p = parcels(seed).find(hasStrip)
-      if (p) return p
-    }
-    throw new Error('expected an estate-tier parcel with a side strip on some test seed')
+    // Since the 084 S6 estates landed, real parcels carry the side strip by construction (inset 2).
+    const p = parcels(42)[0]!
+    const x0 = p.x - (p.w - 1) / 2
+    expect(p.houseZone.x, 'expected an estate-tier parcel with a side strip').toBeGreaterThanOrEqual(x0 + 2)
+    return p
   }
   /** The driveway must be one connected component (4-connectivity over the cell set). */
   function isConnected(cells: { x: number; y: number }[]): boolean {

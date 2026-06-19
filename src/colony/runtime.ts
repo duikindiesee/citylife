@@ -275,22 +275,21 @@ export class ColonyRuntime {
     })()
     // Spec 086 — SATELLITE HAMLETS in the woods + hills, each routed + placed AROUND everything already
     // taken (the coast, the commercial reserve, prior hamlets), so scattered clusters never overlap.
-    // Spec 089 — candidate hamlets. Reserve their land (so later hamlets + commerce avoid them) but DEFER
-    // merging their roads + placing their homesteads until we confirm a road can REACH them (below). On
-    // terraced terrain a scattered hamlet can land across water/steep ground the router can't cross; such a
-    // hamlet is DROPPED rather than left orphaned, so the city is always ONE connected road network.
-    const satCandidates: Neighborhood[] = []
+    const satellites: Neighborhood[] = []
     for (const a of findSatelliteAnchors(t0, { x: t0.landing.x, y: t0.landing.y }, 6)) {
       const nbhd = makeNeighborhoodAt(t0, a, { small: true, blocked: taken })
       if (nbhd.lots.length === 0) continue
       const b = t0.biome[t0.idx(a.x, a.y)]
-      const name = `${b === Biome.Forest ? 'wood' : b === Biome.Highland ? 'hill' : 'vale'}${satCandidates.length + 1}`
+      const name = `${b === Biome.Forest ? 'wood' : b === Biome.Highland ? 'hill' : 'vale'}${satellites.length + 1}`
       for (const lot of nbhd.lots) lot.id = `${name}_${lot.id}` // unique id; never collides with lot_1/lot_2
+      this.neighborhood.parcels.push(...nbhd.parcels) // parcels === lots (same array ref), so lots update too
       const cells = footprintCells(nbhd)
       reserveParcelLand(this.sim.state, cells)
+      mergeAvenue(this.sim.state, nbhd.carriage)
+      for (const c of nbhd.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`)
       addCells(cells); addCells(nbhd.carriage); addCells(nbhd.verge)
       for (const c of cells) residentialKeys.add(`${c.x},${c.y}`)
-      satCandidates.push(nbhd)
+      satellites.push(nbhd)
     }
     // Spec 086 P2 — THE ROAD NETWORK. Each hamlet links to the coast AND to its nearest other hamlet
     // (a mesh, not just spokes), and every trunk is WIDENED to a ~3-cell carriageway so it reads as a
@@ -346,49 +345,17 @@ export class ColonyRuntime {
       }
       return [...out].map((k) => { const [x, y] = k.split(',').map(Number); return { x: x!, y: y! } })
     }
-    // tryPaveLink lays a trunk from a→b and returns whether a route was actually found (so placement can gate on it).
-    const tryPaveLink = (a: Cell[], b: Cell[]): boolean => {
-      if (a.length === 0 || b.length === 0) return false
+    const paveLink = (a: Cell[], b: Cell[]) => {
+      if (a.length === 0 || b.length === 0) return
       const [from, to] = nearestPair(a, b)
-      const path = leastCostPath(t0, from, to, { slopeWeight: 0.5, diagonal: true, blocked: (x, y) => residentialKeys.has(`${x},${y}`) })
-      if (!path || path.length === 0) return false
+      const path = leastCostPath(t0, from, to, { slopeWeight: 0.5, diagonal: true, blocked: (x, y) => residentialKeys.has(`${x},${y}`) }) ?? []
+      if (path.length === 0) return
       mergeAvenue(this.sim.state, layRoad(path, 1))
-      return true
     }
-    // Commit a reachable hamlet: merge its carriage + verge into the network and place its homesteads.
-    const commitSatellite = (nbhd: Neighborhood) => {
-      mergeAvenue(this.sim.state, nbhd.carriage)
-      for (const c of nbhd.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`)
-      this.neighborhood.parcels.push(...nbhd.parcels) // parcels === lots (same array ref), so lots update too
-    }
-    // INCREMENTAL CONNECT — grow ONE connected network out from the founders' coast. Each round, any
-    // candidate that can route to a hood already in the network is committed + joined (so hamlets chain
-    // through each other, not only to the coast). Repeat to a fixpoint; candidates that never connect are
-    // dropped (never placed) — guaranteeing a single connected road network on the terraced terrain.
-    const satellites: Neighborhood[] = []
     const coast = this.neighborhood.carriage
-    const connected: Cell[][] = [coast]
-    const placed = new Set<number>()
-    for (let progress = true; progress; ) {
-      progress = false
-      for (let i = 0; i < satCandidates.length; i++) {
-        if (placed.has(i)) continue
-        let target: Cell[] | null = null, bestD = Infinity
-        for (const cc of connected) {
-          const [p, q] = nearestPair(satCandidates[i]!.carriage, cc)
-          const d = (p.x - q.x) ** 2 + (p.y - q.y) ** 2
-          if (d < bestD) { bestD = d; target = cc }
-        }
-        if (target && tryPaveLink(satCandidates[i]!.carriage, target)) {
-          commitSatellite(satCandidates[i]!)
-          connected.push(satCandidates[i]!.carriage)
-          satellites.push(satCandidates[i]!)
-          placed.add(i)
-          progress = true
-        }
-      }
+    for (let i = 0; i < satellites.length; i++) {
+      paveLink(coast, satellites[i]!.carriage) // a spoke to the coast keeps every hamlet connected
     }
-    // cross-link committed hamlets to their nearest committed neighbour for a mesh (not just a spanning tree).
     const meshed = new Set<string>()
     for (let i = 0; i < satellites.length; i++) {
       let nearest = -1, bestD = Infinity
@@ -402,7 +369,7 @@ export class ColonyRuntime {
       const key = `${Math.min(i, nearest)}-${Math.max(i, nearest)}`
       if (meshed.has(key)) continue
       meshed.add(key)
-      tryPaveLink(satellites[i]!.carriage, satellites[nearest]!.carriage) // the cross-link that makes it a web
+      paveLink(satellites[i]!.carriage, satellites[nearest]!.carriage) // the cross-link that makes it a web
     }
     // Spec 079 — survey the shop district in its reserved room; shops avoid every homestead + road.
     const blockedForShops = new Set<string>(residentialKeys)
@@ -431,36 +398,6 @@ export class ColonyRuntime {
       const connector = leastCostPath(t, terminus, near, { slopeWeight: 0.5, diagonal: true, blocked: (x, y) => residentialKeys.has(`${x},${y}`) || shopCells.has(`${x},${y}`) }) ?? []
       mergeAvenue(this.sim.state, layRoad(connector, 1)) // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
       mergeAvenue(this.sim.state, streetCells)
-    }
-    // Spec 089 — STITCH the network into ONE connected component. On terraced terrain a carriage/connector
-    // can split where a level step leaves its cells no longer 4-adjacent (e.g. the founders' landing stub
-    // breaking from the hood). Find the roadKind components and route a trunk from each minor fragment to
-    // the main network, so the whole city stays drivable + the bus can loop it. Fragments the router truly
-    // can't reach (across water) are left — but the relaxed terraces keep land contiguous, so that's rare.
-    {
-      const roadComponents = (): { x: number; y: number }[][] => {
-        const seen = new Set<string>(), comps: { x: number; y: number }[][] = []
-        for (const k of this.sim.state.roadKind.keys()) {
-          if (seen.has(k)) continue
-          const cells: { x: number; y: number }[] = [], q = [k]
-          seen.add(k)
-          for (let h = 0; h < q.length; h++) {
-            const [x, y] = q[h]!.split(',').map(Number) as [number, number]
-            cells.push({ x, y })
-            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) { const nk = `${x + dx},${y + dy}`; if (this.sim.state.roadKind.has(nk) && !seen.has(nk)) { seen.add(nk); q.push(nk) } }
-          }
-          comps.push(cells)
-        }
-        return comps
-      }
-      for (let guard = 0; guard < 8; guard++) {
-        const comps = roadComponents()
-        if (comps.length <= 1) break
-        comps.sort((a, b) => b.length - a.length)
-        let linked = false
-        for (let i = 1; i < comps.length; i++) if (tryPaveLink(comps[i]!, comps[0]!)) linked = true
-        if (!linked) break // remaining fragments are unroutable (across water) — leave them
-      }
     }
     // Spec 088 — the BUS route: a loop over the finished road network visiting every hood (the founders'
     // coast + each hamlet). Anchored on each hood's carriage centroid; makeBusRoute snaps to the nearest

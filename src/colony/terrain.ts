@@ -56,7 +56,6 @@ export class Terrain {
 
     this.generateElevation(noise, moistNoise)
     this.carveRivers(rng)
-    this.terraceElevation() // spec 089 — quantise land into flat levels BEFORE biomes/buildable/landing derive from it
     this.computeDistToWater()
     this.classify()
     this.computeBuildable()
@@ -100,72 +99,6 @@ export class Terrain {
         this.elev[this.idx(x, y)] = clamp01(e)
         this.moisture[this.idx(x, y)] = clamp01(0.5 + 0.5 * moistNoise.fbm((x / n) * cfg.moistFreq, (y / n) * cfg.moistFreq, cfg.moistOctaves))
       }
-    }
-  }
-
-  /** Spec 089 — TERRACE the land into discrete flat levels (SimCity-style). Smooth the land elevation a
-   *  little (so steep slopes spread over more cells and terrace steps stay ~1 level), then SNAP each land
-   *  cell to the nearest level. Ocean (below sea) is left continuous. Pure + deterministic — reads/writes
-   *  only `this.elev`. Runs before classify/computeBuildable/landing so the whole world is built on the
-   *  terraced ground: flat plateaus for roads + buildings, joined by short slope faces. */
-  private terraceElevation(): void {
-    const n = this.size
-    const sea = COLONY.world.seaLevel
-    const { step, smoothPasses, relaxPasses } = COLONY.world.terracing
-    const land = (i: number) => this.elev[i]! >= sea
-    // 1) box-blur the LAND elevation a few passes (ocean cells held fixed), to gentle the slopes.
-    for (let pass = 0; pass < smoothPasses; pass++) {
-      const next = new Float32Array(this.elev)
-      for (let y = 0; y < n; y++) {
-        for (let x = 0; x < n; x++) {
-          const i = this.idx(x, y)
-          if (!land(i)) continue
-          let sum = this.elev[i]!, cnt = 1
-          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-            const nx = x + dx, ny = y + dy
-            if (!this.inBounds(nx, ny)) continue
-            const j = this.idx(nx, ny)
-            if (!land(j)) continue // don't average the coastline down into the sea
-            sum += this.elev[j]!; cnt++
-          }
-          next[i] = sum / cnt
-        }
-      }
-      this.elev.set(next) // mutate in place (elev is a readonly reference, contents are mutable)
-    }
-    // 2) SNAP each land cell to its nearest discrete level above sea (level >= 1, so a coastal cell never
-    //    quantises down into ocean and eats the coastline). Ocean cells get level -1 (left continuous).
-    const lvl = new Int16Array(n * n)
-    for (let i = 0; i < n * n; i++) {
-      const e = this.elev[i]!
-      lvl[i] = e < sea ? -1 : Math.max(1, Math.round((e - sea) / step))
-    }
-    // 3) ENFORCE <=1-level adjacency: clamp each land cell to its lowest land-neighbour + 1, iterated so
-    //    the limit propagates from low ground upward. This staircases steep slopes into single-level steps,
-    //    so every terrace edge is ONE step (passable "grade") and the map never fragments into disconnected
-    //    plateaus. Heights only fall ⇒ converges; fixed scan order ⇒ deterministic.
-    for (let pass = 0; pass < relaxPasses; pass++) {
-      let changed = false
-      for (let y = 0; y < n; y++) {
-        for (let x = 0; x < n; x++) {
-          const i = this.idx(x, y)
-          if (lvl[i]! < 0) continue
-          let lo = Infinity
-          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-            const nx = x + dx, ny = y + dy
-            if (!this.inBounds(nx, ny)) continue
-            const j = this.idx(nx, ny)
-            if (lvl[j]! >= 0 && lvl[j]! < lo) lo = lvl[j]!
-          }
-          if (lo !== Infinity && lvl[i]! > lo + 1) { lvl[i] = lo + 1; changed = true }
-        }
-      }
-      if (!changed) break
-    }
-    // 4) write the terraced elevation back.
-    for (let i = 0; i < n * n; i++) {
-      if (lvl[i]! < 0) continue
-      this.elev[i] = Math.min(1, sea + lvl[i]! * step)
     }
   }
 

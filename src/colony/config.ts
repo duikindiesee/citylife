@@ -19,24 +19,6 @@ export const COLONY = {
       moistFreq: 1.7,
       moistOctaves: 4,
     },
-    // Spec 089 — TERRACED terrain. Quantise the land elevation into discrete flat levels (SimCity-style)
-    // so roads + buildings sit on predictable flat ground instead of being draped over continuous noise.
-    // `step` is in normalised-elevation units. CRITICAL: one terrace edge = step×heightScale world units of
-    // slope, and computeBuildable BLOCKS cells whose slope ≥ 1.7 (1.7/54 ≈ 0.0315 elev). Keep step BELOW
-    // that so a 1-level edge stays "grade" (passable, cost 3 in pathfind) — otherwise every terrace edge is
-    // impassable and the map fragments into disconnected plateaus (routing fails → empty carriages → crash).
-    // ~(1-seaLevel)/step ≈ 22 land bands here ⇒ ~1.6 world-units per terrace. `smoothPasses` box-blurs the
-    // land elevation BEFORE quantising so steep slopes spread over more cells and edges stay ~1 level (clean
-    // terraces, fewer impassable 2-level steps) — non-destructive; peaks/valleys preserved, just graded.
-    terracing: {
-      step: 0.03,
-      smoothPasses: 3,
-      // After quantising, clamp every land cell to within ONE level of its lowest neighbour (a few passes
-      // propagating from low ground up). This staircases steep slopes into single-level steps so no terrace
-      // edge is ever a blocked multi-level cliff — keeps the whole map connected (roads/bus route across it)
-      // AND gives the clean SimCity terrace look. Converges (heights only fall) ⇒ deterministic.
-      relaxPasses: 24,
-    },
   },
   time: {
     stepsPerSec: 6, // physics ticks/sec (kept high so motion stays smooth)
