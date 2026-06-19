@@ -44,7 +44,6 @@ export function buildRoadRibbons(ways: RoadWay[], opts: RoadRibbonOptions): { gr
   const avenueMat = new THREE.MeshStandardMaterial({ color: 0x646b78, roughness: 0.9, metalness: 0.03, side: THREE.DoubleSide })
   const dashMat = new THREE.MeshStandardMaterial({ color: 0xf2cf52, roughness: 0.5, emissive: 0xf2cf52, emissiveIntensity: 0.5, side: THREE.DoubleSide }) // bright lane line, glows a little day + night
   const edgeMat = new THREE.MeshStandardMaterial({ color: 0xe8ecf2, roughness: 0.6, emissive: 0xb9c0cc, emissiveIntensity: 0.28, side: THREE.DoubleSide }) // painted white road edges
-  const junctionMat = new THREE.MeshStandardMaterial({ color: 0x5f656f, roughness: 0.9, metalness: 0.02, side: THREE.DoubleSide }) // junction apron — mid grey, blends street + avenue
   const surf: number[] = []
   const surfA: number[] = []
   const dash: number[] = []
@@ -70,77 +69,17 @@ export function buildRoadRibbons(ways: RoadWay[], opts: RoadRibbonOptions): { gr
   const JR = 3 // how far back from a crossing the painted lines stop
   for (const [k, s] of cellWays) if (s.size >= 2) { const [x, y] = k.split(',').map(Number); for (let dx = -JR; dx <= JR; dx++) for (let dy = -JR; dy <= JR; dy++) junction.add(`${x + dx},${y + dy}`) }
   const nearJunction = (x: number, y: number) => junction.has(`${Math.round(x)},${Math.round(y)}`)
-  // FLATTEN each junction to one shared height. The ribbons of the meeting roads overlap in the junction,
-  // but each takes its height from its own centre-line, so they sat at slightly different heights and the
-  // junction was a lumpy patchwork of lips + seams (one ramp riding over another). Flood-fill the junction
-  // cells into connected clusters and give each cluster a single consensus height (the max road height in
-  // it, so no arm pokes above); any surface vertex in the cluster snaps to that height, so the overlapping
-  // surfaces become COPLANAR — a clean flat junction slab the road arms ramp onto.
-  const clusterId = new Map<string, number>()
-  const clusterCells: string[][] = []
-  {
-    const visited = new Set<string>()
-    for (const start of junction) {
-      if (visited.has(start)) continue
-      const id = clusterCells.length
-      const comp: string[] = []
-      const q = [start]; visited.add(start)
-      for (let head = 0; head < q.length; head++) {
-        const cell = q[head]!; comp.push(cell); clusterId.set(cell, id)
-        const [x, y] = cell.split(',').map(Number) as [number, number]
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) { const nk = `${x + dx},${y + dy}`; if (junction.has(nk) && !visited.has(nk)) { visited.add(nk); q.push(nk) } }
-      }
-      clusterCells.push(comp)
-    }
-  }
-  const clusterH = clusterCells.map((comp) => { let H = 0; for (const cell of comp) { const [x, y] = cell.split(',').map(Number) as [number, number]; const h = Math.max(0, opts.roadY(x, y)); if (h > H) H = h } return H + ROAD_RIBBON_LIFT })
-  const clusterIdAt = (x: number, y: number): number => clusterId.get(`${Math.round(x)},${Math.round(y)}`) ?? -1
-  const junctionY = (x: number, y: number): number => { const id = clusterIdAt(x, y); return id >= 0 ? clusterH[id]! : -1 }
+  // Junctions need no flatten or slab. Every ribbon vertex takes its height from its OWN position
+  // (smoothRoadY, in ribbon() below), so where two roads overlap at a crossing both surfaces evaluate the
+  // same height at the same point — they are COPLANAR by construction, following the terrain. So a junction
+  // is just open coplanar asphalt; we only break the painted markings (above) so the lines don't criss-cross.
   for (let wi = 0; wi < ways.length; wi++) {
     const pts = paths[wi]
     if (!pts) continue
     const way = ways[wi]!
-    ribbon(pts, way.width / 2, opts, way.kind === 'avenue' ? surfA : surf, cells, junctionY)
+    ribbon(pts, way.width / 2, opts, way.kind === 'avenue' ? surfA : surf, cells)
     dashes(pts, opts, dash, nearJunction)
     edgeLines(pts, way.width / 2, opts, edge, nearJunction)
-  }
-  // JUNCTION SLABS. Even flattened, the meeting ribbons overlap with different triangulation, leaving
-  // faint faceted seams. Lay ONE flat polygon over each junction cluster — the convex hull of the meeting
-  // roads' edge points, fanned at the cluster height, a hair above the ribbons — so the junction reads as
-  // a single clean flat apron. Markings are already suppressed here, so the slab is plain asphalt.
-  const slab: number[] = []
-  const clusterPts: { x: number; y: number }[][] = clusterCells.map(() => [])
-  for (let wi = 0; wi < ways.length; wi++) {
-    const pts = paths[wi]
-    if (!pts) continue
-    const half = ways[wi]!.width / 2
-    for (let i = 0; i < pts.length; i++) {
-      const id = clusterIdAt(pts[i]!.x, pts[i]!.y)
-      if (id < 0) continue
-      const p = pts[i]!, prev = pts[Math.max(0, i - 1)]!, next = pts[Math.min(pts.length - 1, i + 1)]!
-      const tx = next.x - prev.x, ty = next.y - prev.y, L = Math.hypot(tx, ty) || 1, px = -ty / L, py = tx / L
-      clusterPts[id]!.push({ x: p.x + px * half, y: p.y + py * half }, { x: p.x - px * half, y: p.y - py * half })
-    }
-  }
-  for (let id = 0; id < clusterCells.length; id++) {
-    const pp = clusterPts[id]!
-    if (pp.length < 3) continue
-    // Only slab COMPACT clusters — true crossings / T / Y points. An elongated cluster is two roads
-    // running together (a merge), not a crossing; its convex hull would be a giant plaza, so skip it and
-    // let the coplanar-flattened ribbons handle it.
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-    for (const cell of clusterCells[id]!) { const [x, y] = cell.split(',').map(Number) as [number, number]; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y }
-    if (maxX - minX > 16 || maxY - minY > 16) continue
-    const hull = convexHull(pp)
-    if (hull.length < 3) continue
-    const H = clusterH[id]! + 0.02 // just above the ribbons so it cleanly covers their seams
-    let cx = 0, cy = 0
-    for (const q of hull) { cx += q.x; cy += q.y }
-    cx /= hull.length; cy /= hull.length
-    for (let k = 0; k < hull.length; k++) {
-      const a = hull[k]!, b = hull[(k + 1) % hull.length]!
-      slab.push(opts.wx(cx), H, opts.wz(cy), opts.wx(a.x), H, opts.wz(a.y), opts.wx(b.x), H, opts.wz(b.y))
-    }
   }
   const add = (arr: number[], mat: THREE.Material) => {
     if (arr.length === 0) return
@@ -154,23 +93,9 @@ export function buildRoadRibbons(ways: RoadWay[], opts: RoadRibbonOptions): { gr
   }
   add(surf, streetMat)
   add(surfA, avenueMat)
-  add(slab, junctionMat) // junction aprons over the ribbons
   add(edge, edgeMat)
   add(dash, dashMat)
   return { group, cells }
-}
-
-/** 2D convex hull (Andrew's monotone chain), returned counter-clockwise. */
-function convexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
-  const ps = points.slice().sort((a, b) => a.x - b.x || a.y - b.y)
-  if (ps.length < 3) return ps
-  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
-  const lower: { x: number; y: number }[] = []
-  for (const p of ps) { while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, p) <= 0) lower.pop(); lower.push(p) }
-  const upper: { x: number; y: number }[] = []
-  for (let i = ps.length - 1; i >= 0; i--) { const p = ps[i]!; while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, p) <= 0) upper.pop(); upper.push(p) }
-  lower.pop(); upper.pop()
-  return lower.concat(upper)
 }
 
 /** Corner-cutting smoothing: each iteration replaces every segment with its 1/4 and 3/4 points, so
@@ -207,7 +132,7 @@ function densify(pts: { x: number; y: number }[], step: number): { x: number; y:
 
 /** Extrude a triangle strip of half-width `half` perpendicular to the smoothed polyline, draped on the
  *  terrain at each cross-section. */
-function ribbon(pts: { x: number; y: number }[], half: number, opts: RoadRibbonOptions, out: number[], cells: Set<string>, junctionY: (x: number, y: number) => number): void {
+function ribbon(pts: { x: number; y: number }[], half: number, opts: RoadRibbonOptions, out: number[], cells: Set<string>): void {
   const edge = (i: number, sign: number): number[] => {
     const p = pts[i]!
     const prev = pts[Math.max(0, i - 1)]!, next = pts[Math.min(pts.length - 1, i + 1)]!
@@ -217,10 +142,10 @@ function ribbon(pts: { x: number; y: number }[], half: number, opts: RoadRibbonO
     // record every grid cell across the cross-section so surfaceY knows where the ribbon really is
     for (let k = -half; k <= half + 1e-6; k += 0.5) cells.add(`${Math.round(p.x + px * k)},${Math.round(p.y + py * k)}`)
     const gx = p.x + px * half * sign, gy = p.y + py * half * sign
-    // In a junction, snap to the cluster's shared height so the overlapping surfaces are coplanar; else
-    // the continuous (un-rounded) terrain-following height so straights ramp smoothly instead of stepping.
-    const jh = junctionY(p.x, p.y)
-    const h = jh >= 0 ? jh : Math.max(0, opts.roadY(p.x, p.y)) + ROAD_RIBBON_LIFT
+    // Height from this VERTEX's own position (continuous, terrain-following). Two ribbons overlapping at a
+    // junction therefore sit at the same height there — coplanar, no lips/seams — and the cross-section
+    // gently follows the terrain's cross-slope instead of forcing a level plank that floats on a hillside.
+    const h = Math.max(0, opts.roadY(gx, gy)) + ROAD_RIBBON_LIFT
     return [opts.wx(gx), h, opts.wz(gy)]
   }
   const tri = (a: number[], b: number[], c: number[]) => out.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!)
@@ -244,7 +169,8 @@ function edgeLines(pts: { x: number; y: number }[], half: number, opts: RoadRibb
     const tx = next.x - prev.x, ty = next.y - prev.y
     const len = Math.hypot(tx, ty) || 1
     const px = -ty / len, py = tx / len
-    const y = Math.max(0, opts.roadY(p.x, p.y)) + ROAD_RIBBON_LIFT + 0.05
+    const lx = p.x + px * c, ly = p.y + py * c // the edge line's own position across the road
+    const y = Math.max(0, opts.roadY(lx, ly)) + ROAD_RIBBON_LIFT + 0.05 // sit on the per-position surface
     const inX = p.x + px * (c - w), inY = p.y + py * (c - w)
     const ouX = p.x + px * (c + w), ouY = p.y + py * (c + w)
     return [[opts.wx(inX), y, opts.wz(inY)], [opts.wx(ouX), y, opts.wz(ouY)]]
