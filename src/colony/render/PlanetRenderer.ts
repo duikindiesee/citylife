@@ -1005,19 +1005,37 @@ export class PlanetRenderer {
   private smoothRoadY(x: number, y: number): number {
     const t = this.sim.state.terrain
     const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v))
-    // The draped road surface must ride ABOVE the ground across its whole ~4-wide carriageway, or the
-    // terrain poke up through the asphalt on rises — the operator's "ground visible above street level".
-    // A 5-cell AVERAGE (the old basis) sank below crests and the climb to the highland, burying the
-    // surface so only the raised dashes showed. Take the MAX terrain over the carriageway footprint
-    // (radius 2 ≈ the half-width) so the ribbon always sits on top. Everything that rides the road
-    // (the ribbon, its edges + dashes, citizens, cars, the bus, props) reads this one height, so they
-    // all rise together and nobody sinks under the surface.
+    // BILINEAR terrain sample at a CONTINUOUS position — the key to a smooth road. Sampling rounded
+    // integer cells made the height a step function (flat within a cell, a riser at every boundary), so
+    // on any slope the road terraced into little stairs (the operator's "stepways"). Interpolating gives
+    // a height that varies continuously with position, so the surface ramps instead of stepping.
+    const bil = (fx: number, fy: number): number => {
+      const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0
+      const a = t.worldY(cl(x0), cl(y0)), b = t.worldY(cl(x0 + 1), cl(y0))
+      const c = t.worldY(cl(x0), cl(y0 + 1)), d = t.worldY(cl(x0 + 1), cl(y0 + 1))
+      return a * (1 - tx) * (1 - ty) + b * tx * (1 - ty) + c * (1 - tx) * ty + d * tx * ty
+    }
+    // Still take the MAX over the ~4-wide carriageway footprint so the surface rides ABOVE the ground
+    // (no terrain poking up through the asphalt). Because the samples are bilinear and the centre moves
+    // continuously, this max is a continuous (step-free) function — smooth AND above-terrain.
     let mx = 0
-    for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) {
-      const h = t.worldY(cl(x + dx), cl(y + dy))
+    for (let dx = -2; dx <= 2; dx += 0.5) for (let dy = -2; dy <= 2; dy += 0.5) {
+      const h = bil(x + dx, y + dy)
       if (h > mx) mx = h
     }
     return mx
+  }
+
+  /** Smooth ground height (bilinear terrain) for things that should FOLLOW the grade, not ride above it
+   *  like a road — e.g. homestead pads. Kept separate from smoothRoadY (which maxes over the carriageway
+   *  to clear the asphalt) so a pad never floats up on the road-clearance height. */
+  private groundY(x: number, y: number): number {
+    const t = this.sim.state.terrain
+    const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v))
+    const x0 = Math.floor(x), y0 = Math.floor(y), tx = x - x0, ty = y - y0
+    const a = t.worldY(cl(x0), cl(y0)), b = t.worldY(cl(x0 + 1), cl(y0))
+    const c = t.worldY(cl(x0), cl(y0 + 1)), d = t.worldY(cl(x0 + 1), cl(y0 + 1))
+    return Math.max(0, a * (1 - tx) * (1 - ty) + b * tx * (1 - ty) + c * (1 - tx) * ty + d * tx * ty)
   }
 
   /** Spec 088 — the height of the WALKABLE surface at a cell: the road ribbon top when it's a road cell,
@@ -1028,7 +1046,7 @@ export class PlanetRenderer {
     // Raise to the ribbon top ONLY where the ribbon actually is (the trunk + carriage roads), so a
     // citizen stands ON the road surface and never sinks under it — and never floats on a road cell the
     // ribbon doesn't reach (the per-cell gap-fill fragments are negligible disconnected stubs).
-    if (this.roadRibbonCells?.has(`${rx},${ry}`)) return Math.max(0, this.smoothRoadY(rx, ry)) + ROAD_RIBBON_LIFT
+    if (this.roadRibbonCells?.has(`${rx},${ry}`)) return Math.max(0, this.smoothRoadY(x, y)) + ROAD_RIBBON_LIFT
     return Math.max(0, this.sim.state.terrain.worldY(rx, ry))
   }
 
@@ -1129,7 +1147,7 @@ export class PlanetRenderer {
           cy = car.y + (j.y - car.y) * drive
           heading = Math.atan2(j.y - car.y, j.x - car.x)
         }
-        this.dummy.position.set(this.wx(cx), this.smoothRoadY(Math.round(cx), Math.round(cy)) + 0.18, this.wz(cy))
+        this.dummy.position.set(this.wx(cx), this.smoothRoadY(cx, cy) + 0.18, this.wz(cy))
         this.dummy.scale.set(1, 1, 1)
         this.dummy.rotation.set(0, -heading, 0)
         this.dummy.updateMatrix()
@@ -1214,7 +1232,7 @@ export class PlanetRenderer {
       e.h += dh * aHed
       const lx = e.x + Math.sin(e.h) * off
       const ly = e.y - Math.cos(e.h) * off
-      this.dummy.position.set(this.wx(lx), this.smoothRoadY(Math.round(e.x), Math.round(e.y)) + 0.12, this.wz(ly))
+      this.dummy.position.set(this.wx(lx), this.smoothRoadY(e.x, e.y) + 0.12, this.wz(ly))
       this.dummy.rotation.set(0, -e.h, 0)
       this.dummy.scale.set(1, 1, 1)
       this.dummy.updateMatrix()
@@ -1878,7 +1896,7 @@ export class PlanetRenderer {
     // SMOOTHED per-cell ground (5-point average): tiles follow the land's grade without per-cell
     // flutter. The old single leveled height per homestead left the downhill half of a sloped parcel
     // floating in the air (operator feedback) — now only the house keeps a leveled foundation.
-    const gy = (x: number, y: number) => Math.max(0, this.smoothRoadY(Math.round(x), Math.round(y)))
+    const gy = (x: number, y: number) => this.groundY(x, y)
     const PAD_DEPTH = 0.6 // must match padGeo's y size
 
     let p = 0 // pad instance index

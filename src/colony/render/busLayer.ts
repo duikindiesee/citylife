@@ -46,7 +46,7 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
   let dwell = 0
   let lastStop = '' // the stop we last paused at, cleared once we drive clear of it
   const place = (gx: number, gy: number, headingGrid: number) => {
-    const y = Math.max(0, opts.roadY(Math.round(gx), Math.round(gy))) + 0.18 // sit on the road surface, not floating above it
+    const y = Math.max(0, opts.roadY(gx, gy)) + 0.18 // continuous height (no cell rounding) so the coach rides smoothly, sitting on the road surface
     bus.position.set(opts.wx(gx), y, opts.wz(gy))
     bus.rotation.y = -headingGrid // body is long in X; match the rally car's -heading convention
   }

@@ -121,7 +121,7 @@ function ribbon(pts: { x: number; y: number }[], half: number, opts: RoadRibbonO
     // record every grid cell across the cross-section so surfaceY knows where the ribbon really is
     for (let k = -half; k <= half + 1e-6; k += 0.5) cells.add(`${Math.round(p.x + px * k)},${Math.round(p.y + py * k)}`)
     const gx = p.x + px * half * sign, gy = p.y + py * half * sign
-    return [opts.wx(gx), Math.max(0, opts.roadY(Math.round(p.x), Math.round(p.y))) + ROAD_RIBBON_LIFT, opts.wz(gy)]
+    return [opts.wx(gx), Math.max(0, opts.roadY(p.x, p.y)) + ROAD_RIBBON_LIFT, opts.wz(gy)] // continuous height — no cell rounding, so the surface ramps instead of stepping
   }
   const tri = (a: number[], b: number[], c: number[]) => out.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!)
   for (let i = 0; i < pts.length - 1; i++) {
@@ -144,7 +144,7 @@ function edgeLines(pts: { x: number; y: number }[], half: number, opts: RoadRibb
     const tx = next.x - prev.x, ty = next.y - prev.y
     const len = Math.hypot(tx, ty) || 1
     const px = -ty / len, py = tx / len
-    const y = Math.max(0, opts.roadY(Math.round(p.x), Math.round(p.y))) + ROAD_RIBBON_LIFT + 0.05
+    const y = Math.max(0, opts.roadY(p.x, p.y)) + ROAD_RIBBON_LIFT + 0.05
     const inX = p.x + px * (c - w), inY = p.y + py * (c - w)
     const ouX = p.x + px * (c + w), ouY = p.y + py * (c + w)
     return [[opts.wx(inX), y, opts.wz(inY)], [opts.wx(ouX), y, opts.wz(ouY)]]
@@ -184,7 +184,7 @@ function dashes(pts: { x: number; y: number }[], opts: RoadRibbonOptions, out: n
   const PERIOD = 2.4 // dash centre-to-centre spacing
   const LEN = 1.2 // painted dash length
   const w = 0.16 // dash half-width across the road
-  const yOf = (x: number, y: number) => Math.max(0, opts.roadY(Math.round(x), Math.round(y))) + ROAD_RIBBON_LIFT + 0.06
+  const yOf = (x: number, y: number) => Math.max(0, opts.roadY(x, y)) + ROAD_RIBBON_LIFT + 0.06
   for (let t = (total % PERIOD) / 2 + 0.3; t + LEN <= total; t += PERIOD) {
     const s0 = sample(t), s1 = sample(t + LEN)
     const p0x = -s0.ty * w, p0y = s0.tx * w, p1x = -s1.ty * w, p1y = s1.tx * w
