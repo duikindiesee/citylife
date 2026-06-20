@@ -53,6 +53,11 @@ export interface AvatarView {
 // dark even at midday — while a local sun still sweeps light across the island for day/night.
 const SKY_DAY = new THREE.Color(0x0b1022)
 const SKY_NIGHT = new THREE.Color(0x03040a)
+// Spec 091 — atmospheric horizon glow. The void zenith stays near-black (SKY_DAY), but by day a soft
+// teal-dusk band lifts at the horizon — a gradient sky dome + distance-fog tinted to this colour — so
+// the world reads with real depth instead of a flat fill. At night daylight=0 collapses it back to the
+// uniform void, so the deep-space look is untouched after dark.
+const HORIZON_GLOW = new THREE.Color(0x2c5a73)
 const OCEAN = 0x143a4a
 const SLAB_ROCK = 0x24242f
 // Spec 078 — Joe the Crab's first-person eye height (low to the ground), vs 1.6 for the human avatars.
@@ -72,6 +77,7 @@ export class PlanetRenderer {
   private controls: OrbitControls
   private sun: THREE.DirectionalLight
   private hemi: THREE.HemisphereLight
+  private skyMat?: THREE.ShaderMaterial // spec 091 — gradient sky-dome material; its colours lerp with daylight
   private oceanGeo?: THREE.BufferGeometry // spec 090 — the living sea: a subdivided disc with animated swells
   private oceanBase?: Float32Array // base (x,y) of each ocean vertex, the wave input
   onGroundClick?: (gx: number, gy: number) => void // spec 090 — set by the runtime; fires on a ground CLICK (not a drag)
@@ -264,6 +270,7 @@ export class PlanetRenderer {
     this.scene.add(this.sun.target)
 
     this.buildPlanet()
+    this.buildSkyDome()
     this.buildOcean()
     this.buildTerrain()
     this.buildFoliage()
@@ -646,12 +653,61 @@ export class PlanetRenderer {
     this.controls.update()
   }
 
+  // Spec 091 — the gradient SKY DOME: a huge inward sphere whose fragment colour blends from the
+  // horizon glow up to the void zenith, giving the deep-space backdrop real vertical depth. Drawn first
+  // (renderOrder -1, depthTest off) as a pure backdrop, so the stars, gas giant and island all paint
+  // over it; fog is off so it never washes flat. updateDayNight feeds its two colours each frame.
+  private buildSkyDome(): void {
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        topColor: { value: SKY_DAY.clone() },
+        horizonColor: { value: HORIZON_GLOW.clone() },
+        expo: { value: 1.15 },
+      },
+      side: THREE.BackSide,
+      depthWrite: false,
+      depthTest: false,
+      fog: false,
+      vertexShader: `
+        varying vec3 vWorldPosition;
+        void main() {
+          vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 horizonColor;
+        uniform float expo;
+        varying vec3 vWorldPosition;
+        void main() {
+          float h = max(0.0, normalize(vWorldPosition).y);
+          gl_FragColor = vec4(mix(horizonColor, topColor, pow(h, expo)), 1.0);
+        }
+      `,
+    })
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(20000, 32, 16), mat)
+    dome.name = 'SkyDome'
+    dome.renderOrder = -1
+    dome.frustumCulled = false
+    this.scene.add(dome)
+    this.skyMat = mat
+  }
+
   private updateDayNight() {
     const d = this.sim.state.clock.daylight
     const { hour, minute } = this.sim.state.clock
     const sky = SKY_NIGHT.clone().lerp(SKY_DAY, d)
+    // Horizon glow only by day; at night it collapses back to the flat void so deep space is untouched.
+    const horizon = sky.clone().lerp(HORIZON_GLOW, d * 0.85)
     ;(this.scene.background as THREE.Color).copy(sky)
-    ;(this.scene.fog as THREE.Fog).color.copy(sky)
+    // Distance-fog fades to the HORIZON glow (not the zenith void), so far terrain melts into the band —
+    // atmospheric perspective that ties the island edge to the sky.
+    ;(this.scene.fog as THREE.Fog).color.copy(horizon)
+    if (this.skyMat) {
+      ;(this.skyMat.uniforms.topColor.value as THREE.Color).copy(sky)
+      ;(this.skyMat.uniforms.horizonColor.value as THREE.Color).copy(horizon)
+    }
     this.hemi.intensity = 0.35 + d * 0.65
     this.sun.intensity = 0.18 + d * 1.7
     const t = hour + minute / 60
