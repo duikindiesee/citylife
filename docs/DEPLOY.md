@@ -1,9 +1,12 @@
-# CityLife — internal-only 24/7 deploy
+# CityLife — public 24/7 deploy at citylife.kooker.co.za
 
-CityLife runs inside the kooker kind-cluster as a static nginx SPA. It is **internal-only — not
-visible to the world**. Public reachability in this cluster comes solely from a host rule in the
-kooker ingress behind the ngrok wildcard; CityLife deliberately has **no ingress host rule**, so it
-is unreachable from the internet. Access is by `kubectl port-forward` only.
+CityLife runs inside the kooker kind-cluster as a static nginx SPA, served to the world at
+**citylife.kooker.co.za**. Public reachability comes from a host rule in the kooker ingress
+(`manifests/base/ingress/ingress.yaml`, synced by the `kooker-ingress` Argo app) behind the ngrok
+wildcard. The site is **login-gated**: the bundle is a production build (`import.meta.env.DEV` is
+`false`), so the local dev auth-skip can never fire on the cluster, and access requires a kooker
+login plus membership of the CityLife app-users allowlist. The auth-skip is confined to the
+developer's own local dev server (`localhost`, `?skipauth=1` or `VITE_LOCAL_TEST`).
 
 ## What ships
 
@@ -13,7 +16,8 @@ is unreachable from the internet. Access is by `kubectl port-forward` only.
   `/kooker` reverse proxy to the gateway and the runtime auth/config described below.
 - `.github/workflows/docker.yml` — builds and publishes the image (see "Automated publish").
 - The k8s manifests live in **kooker-infra** at `manifests/base/citylife/` and the Argo app at
-  `argo/applications/citylife.yaml` (ClusterIP Service, namespace `kooker`, no ingress host).
+  `argo/applications/citylife.yaml` (ClusterIP Service, namespace `kooker`). The public host rule
+  for `citylife.kooker.co.za` lives in `manifests/base/ingress/ingress.yaml`.
 
 ## No secret in the bundle
 
@@ -68,12 +72,13 @@ Then let Argo sync the kooker-infra manifests, or apply directly:
 ```
 kubectl apply -k manifests/overlays/develop/citylife
 kubectl -n kooker rollout status deploy/citylife
-kubectl -n kooker port-forward svc/citylife 8080:80   # open http://localhost:8080 (and ?tv=1)
+kubectl -n kooker port-forward svc/citylife 8080:80   # local check; open http://localhost:8080 (and ?tv=1)
 ```
 
-## Confirm it is internal-only
+## Confirm the public host rule
 
 ```
-kubectl -n kooker get svc citylife          # type ClusterIP, no external IP
-grep -R citylife manifests/base/ingress     # MUST return nothing — no host rule
+kubectl -n kooker get svc citylife          # type ClusterIP (ingress fronts it)
+grep -R citylife manifests/base/ingress     # MUST show the citylife.kooker.co.za host rule
+curl -sI https://citylife.kooker.co.za      # reachable; serves the login-gated SPA
 ```
