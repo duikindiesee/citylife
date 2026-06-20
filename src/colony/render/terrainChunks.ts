@@ -104,7 +104,13 @@ export function buildChunkedTerrain(
       geo.setIndex(indices);
       geo.computeBoundingSphere(); // per-chunk culling needs a real bound
       const mesh = new THREE.Mesh(geo, material);
-      mesh.receiveShadow = true;
+      // Spec 092 — terrain must NOT receive shadows. Vertices use the REAL elevation (worldY above), so
+      // water cells render as a submerged seabed BELOW the waterline; with the spec-090 translucent sea
+      // (added later) on top, any shadow cast onto that seabed at a low sun showed THROUGH the water as
+      // dark blobs that swept with the sun — the operator's "moving blobs on the sea" regression. Coastal
+      // chunks are mixed land/sea so we can't split per-chunk; dropping terrain shadow-receipt keeps the
+      // sea clean at every sun angle. Buildings/voxels/lot-pads still receive, so they self-shade for depth.
+      mesh.receiveShadow = false;
       mesh.castShadow = false; // terrain self-shadowing is costly + low-value
       group.add(mesh);
       chunks.push({ mesh, x0, y0, x1, y1, dirty: false });
