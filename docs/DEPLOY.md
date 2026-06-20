@@ -49,22 +49,30 @@ kubectl create secret generic citylife-secret -n kooker --from-literal=pat='THE_
 kubectl -n kooker rollout restart deploy/citylife
 ```
 
-## Automated publish
+## Automated publish (versioned, like kooker-web)
 
-The image publishes to **`ghcr.io/duikland/citylife`** — the SAME org as this repo — so CI authenticates
-with the built-in `GITHUB_TOKEN` and needs **no cross-org PAT**. `.github/workflows/docker.yml` builds
-and pushes `:dev` (and a short-sha tag) on every push to `main`. One-time: set the resulting GHCR
-package to **Public** so the cluster pulls it with no imagePullSecret. The kooker-infra manifests pin
-`ghcr.io/duikland/citylife:dev`.
+The image publishes to **`ghcr.io/duikindiesee/citylife`**. CityLife lives in the **duikindiesee** org,
+so `.github/workflows/docker.yml` reuses the same shared workflows as kooker-web and versions identically:
+
+1. **node-version-bump** — every merge to `main` opens an auto-merging `chore/bump-X.Y.Z` PR (SemVer from
+   Conventional Commits: `feat` → minor, `fix`/other → patch).
+2. **build-and-push** — builds `ghcr.io/duikindiesee/citylife:<semver>` (+ `sha`, `latest`) with
+   `APP_VERSION` baked in.
+3. **gitops-sync** — pins that semver into `manifests/overlays/develop/citylife` in kooker-infra, so Argo
+   rolls the Deployment to the exact version each release.
+
+Same-org means the self-hosted runner and `MAVEN_PUBLISH_TOKEN` are inherited via `secrets: inherit` — no
+cross-org PAT. The repo is **private**, so the Deployment pulls the image with the shared
+`github-registry` imagePullSecret (the same one kooker-web uses).
 
 ## Build and deploy (manual path)
 
 ```
-docker build -t ghcr.io/duikland/citylife:dev .
+docker build -t ghcr.io/duikindiesee/citylife:dev .
 # local kind (no registry needed): load the image straight onto the node
-kind load docker-image ghcr.io/duikland/citylife:dev --name kooker-cluster
+kind load docker-image ghcr.io/duikindiesee/citylife:dev --name kooker-cluster
 # or push to GHCR (requires a token with write:packages):
-docker push ghcr.io/duikland/citylife:dev
+docker push ghcr.io/duikindiesee/citylife:dev
 ```
 
 Then let Argo sync the kooker-infra manifests, or apply directly:
