@@ -636,7 +636,13 @@ export class PlanetRenderer {
     };
     this.foliageWindMat = foliageMat;
     const mesh = new THREE.InstancedMesh(geo, foliageMat, Math.max(1, cap));
-    mesh.castShadow = true;
+    // Spec 092 — foliage must NOT cast shadows. Up to 6000 wind-swayed cones rendered into the single
+    // 2048 sun depth map (frustum pinned at a fixed ±d that only follows the camera, never re-fits) alias
+    // into coarse, tree-shaped dark blobs scattered across the terrain + coastal sea — worst at planet
+    // zoom-out, and they "breathe" as the swaying canopy desyncs from its static shadow each gust. The
+    // decorative low-poly trees sit flush on the ground so they read fine without a cast shadow; buildings,
+    // voxels, props and figures keep castShadow=true for depth. Bonus: 6000 cones leave the depth pass.
+    mesh.castShadow = false;
     mesh.frustumCulled = false;
     const col = new THREE.Color();
     let n = 0;
