@@ -31,7 +31,8 @@ export function buildShoreProps(
   group.name = "Rockery Beach";
   const lanternMats: THREE.MeshStandardMaterial[] = [];
   const baseY = Math.max(0.04, opts.terrain.worldY(lighthouse.x, lighthouse.y));
-  const tower = buildLighthouse(lanternMats);
+  const beamRef: { pivot?: THREE.Group; mat?: THREE.MeshBasicMaterial } = {};
+  const tower = buildLighthouse(lanternMats, beamRef);
   tower.position.set(
     opts.wx(lighthouse.x),
     baseY + 0.03,
@@ -47,6 +48,9 @@ export function buildShoreProps(
       const pulse = (Math.sin((timeMs / 1000) * 1.65) + 1) * 0.5;
       for (const mat of lanternMats)
         mat.emissiveIntensity = 0.4 + night * 0.78 + pulse * 0.22;
+      // the beam sweeps continuously and fades up after dark
+      if (beamRef.pivot) beamRef.pivot.rotation.y = (timeMs / 1000) * 0.55;
+      if (beamRef.mat) beamRef.mat.opacity = night * 0.3;
     },
     dispose() {
       group.traverse((obj) => {
@@ -62,6 +66,7 @@ export function buildShoreProps(
 
 function buildLighthouse(
   lanternMats: THREE.MeshStandardMaterial[],
+  beamRef: { pivot?: THREE.Group; mat?: THREE.MeshBasicMaterial },
 ): THREE.Group {
   const g = new THREE.Group();
   const towerMat = new THREE.MeshStandardMaterial({
@@ -151,6 +156,30 @@ function buildLighthouse(
       mesh.receiveShadow = true;
     }
   });
+  // Spec 092 — the sweeping LIGHT BEAM: a soft additive cone from the lantern, rotating on the wall clock
+  // and fading up at dusk/night (opacity set in the layer update). Apex at the lantern, widening outward.
+  const beamPivot = new THREE.Group();
+  beamPivot.position.y = 7.56;
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: 0xffe9a0,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    fog: false,
+  });
+  const beam = new THREE.Mesh(
+    new THREE.ConeGeometry(1.5, 14, 18, 1, true),
+    beamMat,
+  );
+  beam.rotation.z = Math.PI / 2; // lay it flat: apex at the lantern, base ~14u out
+  beam.position.x = 7;
+  beam.frustumCulled = false;
+  beamPivot.add(beam);
+  g.add(beamPivot);
+  beamRef.pivot = beamPivot;
+  beamRef.mat = beamMat;
   return g;
 }
 
