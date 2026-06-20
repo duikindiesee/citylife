@@ -1,10 +1,21 @@
 name: Docker
 
-# Builds the CityLife static SPA into a public GHCR image (nginx-served on :80).
-# Publishes to ghcr.io/duikland/citylife — the SAME org as this repo — so auth is the
-# built-in GITHUB_TOKEN, with NO cross-org PAT (this resolves the cross-org-token blocker
-# noted in docs/DEPLOY.md). The image contains NO credentials; runtime auth is injected by
-# the cluster's nginx layer (see Dockerfile).
+# Builds the CityLife static SPA into a public GHCR image (nginx-served on :80) AND keeps the
+# kooker-infra deployment pinned to that exact build, the same way kooker-web does — so the cluster
+# always runs a known, traceable version instead of a floating tag that Argo never re-syncs.
+#
+# Why this is not the duikindiesee reusable workflow (node-version-bump + gitops-sync): those
+# run on a self-hosted runner and write to kooker-infra with MAVEN_PUBLISH_TOKEN. CityLife lives in
+# the duikland org, which cannot use the duikindiesee self-hosted runner or that token, so the SAME
+# outcome is reproduced natively on ubuntu-latest below.
+#
+# Versioning: the image tag is major.minor.<run_number> — major/minor come from package.json (bump
+# them in a normal PR for a meaningful release), the patch is the monotonic CI run number so EVERY
+# merge to main produces a new, immutable tag. That new tag is then pinned into the kooker-infra
+# citylife overlay, which is what makes Argo roll the Deployment (a static :dev tag never changes the
+# manifest, so it never redeploys — that was the stale-version bug).
+#
+# The image still contains NO credentials; runtime auth is injected by the cluster nginx layer (Dockerfile).
 
 on:
   push:
@@ -22,8 +33,20 @@ concurrency:
 jobs:
   build-push:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Compute version
+        id: ver
+        run: |
+          BASE=$(node -p "require('./package.json').version")   # e.g. 0.1.0
+          MAJOR=$(echo "$BASE" | cut -d. -f1)
+          MINOR=$(echo "$BASE" | cut -d. -f2)
+          VERSION="${MAJOR}.${MINOR}.${{ github.run_number }}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "CityLife version: ${VERSION}"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -40,6 +63,8 @@ jobs:
         with:
           images: ghcr.io/duikland/citylife
           tags: |
+            type=raw,value=${{ steps.ver.outputs.version }}
+            type=raw,value=latest
             type=raw,value=dev
             type=sha,format=short
 
@@ -50,5 +75,61 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.ver.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Pin the just-built version into the kooker-infra citylife overlay so Argo rolls the Deployment.
+  # Mirrors kooker-web's gitops-sync step. The cross-org write needs a PAT (GITHUB_TOKEN is scoped to
+  # duikland/citylife only); if KOOKER_INFRA_TOKEN is not set the job no-ops with a warning so the
+  # image build is never blocked.
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate on cross-org token
+        id: gate
+        env:
+          TOKEN: ${{ secrets.KOOKER_INFRA_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::KOOKER_INFRA_TOKEN is not set - skipping the kooker-infra tag pin. The versioned image was still pushed; add the secret (a PAT with contents:write on duikindiesee/kooker-infra) to auto-deploy."
+          fi
+
+      - name: Checkout kooker-infra
+        if: steps.gate.outputs.ok == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: duikindiesee/kooker-infra
+          token: ${{ secrets.KOOKER_INFRA_TOKEN }}
+          path: infra
+          ref: main
+
+      - name: Install Kustomize
+        if: steps.gate.outputs.ok == 'true'
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Pin the new image tag
+        if: steps.gate.outputs.ok == 'true'
+        run: |
+          cd infra/manifests/overlays/develop/citylife
+          kustomize edit set image ghcr.io/duikland/citylife=ghcr.io/duikland/citylife:${{ needs.build-push.outputs.version }}
+
+      - name: Commit and push
+        if: steps.gate.outputs.ok == 'true'
+        run: |
+          cd infra
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          if git diff --staged --quiet; then
+            echo "No manifest change."
+          else
+            git commit -m "chore(gitops): auto-deploy ghcr.io/duikland/citylife to ${{ needs.build-push.outputs.version }}"
+            git pull --rebase origin main || true
+            git push origin main
+          fi

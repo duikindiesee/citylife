@@ -10,6 +10,10 @@
 # Stage 1: build the vite bundle.
 FROM node:24-alpine AS build
 WORKDIR /app
+# APP_VERSION is the CI build version (major.minor.run_number, see .github/workflows/docker.yml). It is
+# inlined into the bundle as VITE_APP_VERSION so the running app can report which build it is.
+ARG APP_VERSION=dev
+ENV VITE_APP_VERSION=$APP_VERSION
 COPY package*.json ./
 RUN npm ci || (rm -f package-lock.json && npm install)
 COPY . .
@@ -17,6 +21,11 @@ RUN npm run build
 
 # Stage 2: serve the static dist/ with nginx, proxying /kooker -> gateway at runtime.
 FROM nginx:alpine
+# Stamp the version onto the image so `docker inspect` / GHCR shows exactly what is deployed.
+ARG APP_VERSION=dev
+LABEL org.opencontainers.image.title="citylife" \
+      org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.source="https://github.com/duikland/citylife"
 
 # Runtime config (overridable by the Deployment env / a k8s Secret):
 #   KOOKER_GATEWAY        - base URL the SPA's /kooker calls proxy to. In-cluster this is the
