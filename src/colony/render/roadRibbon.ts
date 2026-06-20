@@ -132,6 +132,7 @@ export function buildRoadRibbons(
     );
     dashes(pts, opts, dash, nearJunction);
     edgeLines(pts, way.width / 2, opts, edge, nearJunction);
+    crosswalks(pts, way.width / 2, opts, edge, nearJunction);
   }
   const add = (arr: number[], mat: THREE.Material) => {
     if (arr.length === 0) return;
@@ -346,5 +347,87 @@ function dashes(
     const bR = [opts.wx(s1.x - p1x), y1, opts.wz(s1.y - p1y)];
     tri(aL, aR, bL);
     tri(bL, aR, bR);
+  }
+}
+
+/** Spec 092 — ZEBRA CROSSINGS at each junction arm. The open-tarmac junction read as a plain grey blob;
+ *  a band of white stripes where each road meets the junction defines it as a real intersection. We walk
+ *  the centre-line by arc length, find where it crosses the junction boundary (in <-> out), and lay a
+ *  band of stripes (parallel to traffic, spaced across the carriageway) on the approach just outside the
+ *  junction. Emitted into the white edge array. */
+function crosswalks(
+  pts: { x: number; y: number }[],
+  half: number,
+  opts: RoadRibbonOptions,
+  out: number[],
+  near: (x: number, y: number) => boolean,
+): void {
+  const tri = (a: number[], b: number[], c: number[]) =>
+    out.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!);
+  const cum = [0];
+  for (let i = 0; i < pts.length - 1; i++)
+    cum.push(
+      cum[i]! +
+        Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y),
+    );
+  const total = cum[cum.length - 1]!;
+  if (total < 2) return;
+  const sample = (t: number) => {
+    t = Math.max(0, Math.min(total, t));
+    let i = 0;
+    while (i < cum.length - 2 && cum[i + 1]! < t) i++;
+    const a = pts[i]!,
+      b = pts[i + 1]!;
+    const f = (t - cum[i]!) / (cum[i + 1]! - cum[i]! || 1);
+    const tx = b.x - a.x,
+      ty = b.y - a.y;
+    const l = Math.hypot(tx, ty) || 1;
+    return {
+      x: a.x + (b.x - a.x) * f,
+      y: a.y + (b.y - a.y) * f,
+      tx: tx / l,
+      ty: ty / l,
+    };
+  };
+  // boundary arc lengths: where the centre-line crosses into/out of a junction zone
+  const STEP = 0.5;
+  const bands: number[] = [];
+  let prev = near(pts[0]!.x, pts[0]!.y);
+  for (let t = STEP; t <= total; t += STEP) {
+    const s = sample(t);
+    const inj = near(s.x, s.y);
+    if (inj !== prev) bands.push(inj ? t - STEP : t); // approach point just OUTSIDE the junction
+    prev = inj;
+  }
+  const yOf = (x: number, y: number) =>
+    Math.max(0, opts.roadY(x, y)) + ROAD_RIBBON_LIFT + 0.055;
+  const K = 5; // stripes across the carriageway
+  const depth = 1.3; // band depth along the road
+  const sw = 0.16; // stripe half-width across the road
+  const span = half * 0.82; // half the across-extent the stripes cover
+  for (const bt of bands) {
+    const s = sample(bt);
+    const tx = s.tx,
+      ty = s.ty;
+    const nx = -ty,
+      ny = tx; // unit normal across the road
+    for (let k = 0; k < K; k++) {
+      const ca = (k / (K - 1) - 0.5) * 2 * span; // centre offset across the road
+      const cx = s.x + nx * ca,
+        cy = s.y + ny * ca;
+      const corners: [number, number][] = [
+        [cx + tx * (depth / 2) + nx * sw, cy + ty * (depth / 2) + ny * sw],
+        [cx + tx * (depth / 2) - nx * sw, cy + ty * (depth / 2) - ny * sw],
+        [cx - tx * (depth / 2) - nx * sw, cy - ty * (depth / 2) - ny * sw],
+        [cx - tx * (depth / 2) + nx * sw, cy - ty * (depth / 2) + ny * sw],
+      ];
+      const w3 = corners.map(([gx, gy]) => [
+        opts.wx(gx),
+        yOf(gx, gy),
+        opts.wz(gy),
+      ]);
+      tri(w3[0]!, w3[1]!, w3[2]!);
+      tri(w3[0]!, w3[2]!, w3[3]!);
+    }
   }
 }
