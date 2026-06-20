@@ -543,6 +543,14 @@ export class PlanetRenderer {
         }
     };
     for (const r of s.roads) mark(r.x, r.y, 1);
+    // Spec 084 world ROADS (the smooth avenue/street/path ribbon + verges) live in roadSet, not s.roads —
+    // clear them too (+1 verge) so trees never sprout through the carriageway. This was the bug: foliage
+    // only knew the old sim roads, so trees grew straight up through the ribbon network.
+    if (s.roadSet)
+      for (const key of s.roadSet) {
+        const cc = key.split(",");
+        mark(+cc[0]!, +cc[1]!, 1);
+      }
     for (const b of s.buildings) mark(b.x, b.y, 1);
     for (const j of s.jobs) mark(j.x, j.y, 1);
     for (const st of s.structures) mark(st.x, st.y, 1); // the caravan/rocket + landmarks
@@ -553,6 +561,20 @@ export class PlanetRenderer {
           p.y,
           Math.max(1, Math.ceil(Math.max(p.w || 1, p.h || 1) / 2)),
         ); // clear the lots + their verge
+    // Homestead parcels (the fenced lots + houses + gardens) — clear the whole footprint + a verge so no
+    // trees grow inside a fence or on a house. Available once setNeighborhood hands the parcels in (foliage
+    // is rebuilt there); this.neighborhood is null on the very first construction pass.
+    if (this.neighborhood)
+      for (const p of this.neighborhood.parcels)
+        mark(p.x, p.y, Math.ceil(Math.max(p.w, p.h) / 2) + 1);
+    // Commercial plots (spec 079) — the footprint min-corner is (x,y) here, so clear around the centre.
+    if (this.commercialDistrict)
+      for (const p of this.commercialDistrict.parcels)
+        mark(
+          p.x + (p.w - 1) / 2,
+          p.y + (p.h - 1) / 2,
+          Math.ceil(Math.max(p.w, p.h) / 2) + 1,
+        );
     mark(t.landing.x, t.landing.y, 4); // keep the colony heart clear
     const cells: number[] = [];
     for (let i = 0; i < N * N; i++) {
@@ -2262,6 +2284,9 @@ export class PlanetRenderer {
   setNeighborhood(n: Neighborhood): void {
     this.neighborhood = n;
     this.lastNbhdSig = ""; // force a rebuild on the next frame
+    // Re-clear foliage now that the homestead parcels (and the fully-built roadSet) are known, so no trees
+    // remain on lots/houses/roads. Called once at setup, so the extra deterministic rebuild is cheap.
+    this.buildFoliage();
   }
 
   /** Spec 079 P0 — hand the renderer the surveyed commercial district; it raises a neon market stall
@@ -2269,6 +2294,7 @@ export class PlanetRenderer {
   setCommercialDistrict(d: CommercialDistrict | null | undefined): void {
     this.commercialDistrict = d ?? undefined;
     this.buildCommercialDistrict();
+    this.buildFoliage(); // re-clear foliage so no trees stand on the commercial plots
   }
 
   /** Spec 088 — hand the renderer the road centre-lines; it lays a SMOOTH ribbon surface (Chaikin-
