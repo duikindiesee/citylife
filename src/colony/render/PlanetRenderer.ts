@@ -38,6 +38,7 @@ import { defaultBlueprint, streetDoorDir, type Zone } from "../neighborhood";
 import { buildShoreProps, type ShorePropsLayer } from "./shoreProps";
 import { buildFoam, type FoamLayer } from "./foamLayer";
 import { buildClouds, type CloudLayer } from "./cloudLayer";
+import { buildAmbient, type AmbientLayer } from "./ambientLayer";
 import { buildRaceLayer, type RaceLayer } from "./raceLayer";
 import { buildBusLayer, type BusLayer } from "./busLayer";
 import type { BusRoute } from "../transit/busRoute";
@@ -214,6 +215,7 @@ export class PlanetRenderer {
   private shoreProps: ShorePropsLayer | null = null;
   private foam: FoamLayer | null = null; // spec 091 — animated shoreline surf ring
   private clouds: CloudLayer | null = null; // spec 092 — drifting sky clouds
+  private ambient: AmbientLayer | null = null; // spec 092 — gulls gliding over the sea
   private raceLayer: RaceLayer | null = null;
   private busLayer: BusLayer | null = null;
   private roadRibbonGroup: THREE.Group | null = null;
@@ -335,6 +337,7 @@ export class PlanetRenderer {
     this.buildOcean();
     this.buildFoam();
     this.buildClouds();
+    this.buildAmbient();
     this.buildTerrain();
     this.buildFoliage();
     this.buildStructures();
@@ -742,6 +745,12 @@ export class PlanetRenderer {
   private buildClouds(): void {
     this.clouds = buildClouds({ worldSize: this.N });
     if (this.clouds) this.scene.add(this.clouds.group);
+  }
+
+  /** Spec 092 — ambient motion: gulls gliding over the sea (see ambientLayer.ts). */
+  private buildAmbient(): void {
+    this.ambient = buildAmbient({ worldSize: this.N });
+    if (this.ambient) this.scene.add(this.ambient.group);
   }
 
   private colorFor(mode: ViewMode, i: number, out: THREE.Color): void {
@@ -2073,6 +2082,7 @@ export class PlanetRenderer {
       | undefined;
     if (fsh) fsh.uniforms.uTime.value = performance.now() / 1000; // spec 092 — trees sway in the wind
     this.clouds?.update(performance.now()); // spec 092 — clouds drift across the sky
+    this.ambient?.update(performance.now()); // spec 092 — gulls glide over the sea
     if (this.fpCitizenId && this.avatarSource) {
       // P1 — first-person: park the camera at the citizen's eye and look down their heading. OrbitControls is off.
       const a = this.avatarSource().find((x) => x.id === this.fpCitizenId);
@@ -3760,6 +3770,7 @@ export class PlanetRenderer {
     this.shoreProps?.dispose();
     this.foam?.dispose();
     this.clouds?.dispose();
+    this.ambient?.dispose();
     this.clearRaceLayer();
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
