@@ -233,6 +233,11 @@ export class PlanetRenderer {
     // target together each frame) with a fixed half-extent, instead of covering the whole island:
     // 2048 texels over ~240 world units gives crisp house-contact shadows at any world size.
     this.sun.shadow.mapSize.set(2048, 2048)
+    // Spec 090 — kill the terrain SELF-SHADOW ACNE (the flickering black patches the operator saw — NOT
+    // cloud shadows; there are none). With no bias the heightfield shadow-tests against itself; nudging
+    // the test along the surface normal + a small depth bias removes the shimmer without peter-panning.
+    this.sun.shadow.normalBias = 1.6
+    this.sun.shadow.bias = -0.0004
     const d = Math.min(120, this.N * 0.7)
     this.sun.shadow.camera.left = -d
     this.sun.shadow.camera.right = d
