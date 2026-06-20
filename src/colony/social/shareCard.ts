@@ -2,59 +2,67 @@
 // Kookerverse house style: vivid but toned. Dark space, cyan hairlines, one bold line, quiet stats.
 // The pure helpers (headlineFor / shareStats / siteLabel) are unit-tested in node; the DOM builder
 // touches `document` only when CALLED, so importing this module under the node test env stays safe.
-import type { ColonyUiState } from '../runtime'
+import type { ColonyUiState } from "../runtime";
 
-export type CardFormat = 'wide' | 'story'
+export type CardFormat = "wide" | "story";
 
 export interface ShareStat {
-  label: string
-  value: string
+  label: string;
+  value: string;
 }
 
 export interface ShareCardInput {
-  hero: string // data URL (PNG) of the world snapshot
-  sol: number
-  headline: string
-  tagline: string
-  stats: ShareStat[]
-  site: string // colony name + biome flavour, e.g. "Landing One · Crystal shore"
-  format?: CardFormat
+  hero: string; // data URL (PNG) of the world snapshot
+  sol: number;
+  headline: string;
+  tagline: string;
+  stats: ShareStat[];
+  site: string; // colony name + biome flavour, e.g. "Landing One · Crystal shore"
+  format?: CardFormat;
 }
 
 /** House tagline — the one-liner that frames what CityLife is. */
-export const DEFAULT_TAGLINE = 'A floating-island colony that designs itself — one AI citizen at a time.'
+export const DEFAULT_TAGLINE =
+  "A floating-island colony that designs itself — one AI citizen at a time.";
 
 // Map the latest shipped mechanic to a punchy headline. Declarative, a little cinematic, never shouty.
 const HEADLINES: { match: RegExp; line: string }[] = [
-  { match: /greenhouse|food|farm/i, line: 'The colony learned to farm.' },
-  { match: /water/i, line: 'Water reaches the far homes.' },
-  { match: /workshop|component/i, line: 'Raw rock becomes machine parts.' },
-  { match: /mine|extraction/i, line: 'The first mine bites into the rock.' },
-  { match: /immigrat|settler|population/i, line: 'New settlers are on their way.' },
-  { match: /housing|evolution/i, line: 'The homes are starting to grow.' },
-  { match: /material|labour|labor/i, line: 'Nothing rises without hands and supplies.' },
-]
+  { match: /greenhouse|food|farm/i, line: "The colony learned to farm." },
+  { match: /water/i, line: "Water reaches the far homes." },
+  { match: /workshop|component/i, line: "Raw rock becomes machine parts." },
+  { match: /mine|extraction/i, line: "The first mine bites into the rock." },
+  {
+    match: /immigrat|settler|population/i,
+    line: "New settlers are on their way.",
+  },
+  { match: /housing|evolution/i, line: "The homes are starting to grow." },
+  {
+    match: /material|labour|labor/i,
+    line: "Nothing rises without hands and supplies.",
+  },
+];
 
 /** Turn the day's built spec title into a headline; falls back to the house line. */
 export function headlineFor(specTitle: string | undefined): string {
-  if (specTitle) for (const h of HEADLINES) if (h.match.test(specTitle)) return h.line
-  return 'The city that builds itself.'
+  if (specTitle)
+    for (const h of HEADLINES) if (h.match.test(specTitle)) return h.line;
+  return "The city that builds itself.";
 }
 
 /** The quiet stat chips along the bottom of the card, drawn from the live UI state. */
 export function shareStats(ui: ColonyUiState): ShareStat[] {
   return [
-    { label: 'Sol', value: String(ui.clock.day) },
-    { label: 'Pop', value: `${ui.colonists}/${ui.colony.capacity}` },
-    { label: 'Food', value: String(ui.colony.food) },
-    { label: 'Built', value: String(ui.colony.buildings) },
-    { label: 'Solar', value: `${ui.power.solarW.toFixed(1)}kW` },
-  ]
+    { label: "Sol", value: String(ui.clock.day) },
+    { label: "Pop", value: `${ui.colonists}/${ui.colony.capacity}` },
+    { label: "Food", value: String(ui.colony.food) },
+    { label: "Built", value: String(ui.colony.buildings) },
+    { label: "Solar", value: `${ui.power.solarW.toFixed(1)}kW` },
+  ];
 }
 
 /** "Landing One · Crystal shore" — the colony's name and the biome it sits on. */
 export function siteLabel(ui: ColonyUiState): string {
-  return `${ui.name} · ${ui.biome}`
+  return `${ui.name} · ${ui.biome}`;
 }
 
 /** Suggested window aspect per format — the routine resizes the window to this before capturing.
@@ -62,10 +70,10 @@ export function siteLabel(ui: ColonyUiState): string {
 export const ASPECT: Record<CardFormat, number> = {
   wide: 16 / 9, // X / LinkedIn / YouTube thumb
   story: 9 / 16, // stories / shorts / Reels
-}
+};
 
-const STYLE_ID = 'kv-share-style'
-export const CARD_ID = 'kv-share-card'
+const STYLE_ID = "kv-share-style";
+export const CARD_ID = "kv-share-card";
 
 const CARD_CSS = `
 .kv-card{position:fixed;inset:0;z-index:2147483000;overflow:hidden;isolation:isolate;
@@ -104,27 +112,36 @@ const CARD_CSS = `
 .kv-story .kv-wordmark{font-size:30px}
 .kv-story .kv-chip{font-size:13px}
 .kv-story .kv-chip b{font-size:20px}
-`
+`;
 
 function ensureStyle(doc: Document): void {
-  if (doc.getElementById(STYLE_ID)) return
-  const st = doc.createElement('style')
-  st.id = STYLE_ID
-  st.textContent = CARD_CSS
-  doc.head.appendChild(st)
+  if (doc.getElementById(STYLE_ID)) return;
+  const st = doc.createElement("style");
+  st.id = STYLE_ID;
+  st.textContent = CARD_CSS;
+  doc.head.appendChild(st);
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string)
+  return s.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ] as string,
+  );
 }
 
 /** Build the card element (does not mount it). Pure DOM — only runs when called, never on import. */
-export function buildShareCard(input: ShareCardInput, doc: Document = document): HTMLElement {
-  ensureStyle(doc)
-  const fmt = input.format ?? 'wide'
-  const root = doc.createElement('div')
-  root.id = CARD_ID
-  root.className = `kv-card kv-${fmt}`
+export function buildShareCard(
+  input: ShareCardInput,
+  doc: Document = document,
+): HTMLElement {
+  ensureStyle(doc);
+  const fmt = input.format ?? "wide";
+  const root = doc.createElement("div");
+  root.id = CARD_ID;
+  root.className = `kv-card kv-${fmt}`;
   root.innerHTML = `
     <div class="kv-hero" style="background-image:url('${input.hero}')"></div>
     <div class="kv-vignette"></div>
@@ -137,8 +154,8 @@ export function buildShareCard(input: ShareCardInput, doc: Document = document):
     <footer class="kv-bottom">
       <div class="kv-site">${escapeHtml(input.site)}</div>
       <h1 class="kv-headline">${escapeHtml(input.headline)}</h1>
-      <div class="kv-stats">${input.stats.map((s) => `<span class="kv-chip"><b>${escapeHtml(s.value)}</b>${escapeHtml(s.label)}</span>`).join('')}</div>
+      <div class="kv-stats">${input.stats.map((s) => `<span class="kv-chip"><b>${escapeHtml(s.value)}</b>${escapeHtml(s.label)}</span>`).join("")}</div>
       <div class="kv-tag">${escapeHtml(input.tagline)}</div>
-    </footer>`
-  return root
+    </footer>`;
+  return root;
 }

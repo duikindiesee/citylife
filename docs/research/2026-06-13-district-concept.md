@@ -33,7 +33,7 @@ concept just pushes the **commercial** arc far brighter than the calm residentia
 - **Commercial (target):** a neon night-market. Saturated signage in magenta / cyan / amber /
   lime with **high emissive** (the vials + bar-charts), warm café interior light, and movement
   (a slow sign pulse, a bar-chart bob — `anim` is a Visual-Standard bonus, used here on purpose).
-  The point of contrast: residential is where you *live*, commercial is where the city is *awake*.
+  The point of contrast: residential is where you _live_, commercial is where the city is _awake_.
 - **Cloud / civic:** cool crystalline blues with the existing beacon language.
 - **Roads:** the avenue already has a cool emissive; the spine reads as light at dusk — lean into it.
 
@@ -45,7 +45,7 @@ visible early**, not gated behind the full shop economy. So sequence it visual-f
 1. **Light the district before the shops exist.** Give the reserved east commercial arc a vibrant
    treatment NOW — emissive market-stall / signage massing along the frontage (composite forms per
    the Visual Standard, deterministic, on-land per the water/slope rule) so the commercial area
-   *reads* as the night-market strip even before a single shop is bought. A 079-P0 visual teaser.
+   _reads_ as the night-market strip even before a single shop is bought. A 079-P0 visual teaser.
 2. Then the 079 mechanic underneath it (survey → buy plot → build shop massing → listing →
    storefront → real ledger checkout), each shop inheriting the vibrant signage language.
 3. **Builder visuals** (the other operator ask): carry the crane/blueprint/hard-hat-bot language from

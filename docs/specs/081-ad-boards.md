@@ -123,7 +123,9 @@ Each citylife slice ships on mechanics/dev, passes typecheck plus vitest, and is
 ## Progress log
 
 ### 2026-06-13 — Slice P0: billboards survey + canvas posters + renderer
+
 DONE
+
 - src/colony/commerce/billboards.ts (PURE, deterministic; no Date.now / Math.random — purity guard
   pins it): surveyBillboards(district, terrain, blocked, rotation) places boards at the two APPROACHES
   to the high street (its open zone edges), marching outward and flanking the centreline, gated through
@@ -144,6 +146,6 @@ DONE
 - LIVE on :5188 (seed 4242): 3 boards at the strip approach by the lighthouse; the front reads
   "NEAREST (ENERGY RADAR) / The Nearest / Pull up a stool, watch the radar" in cyan, a "FOR SALE /
   Corner Kiosk" board behind, lighthouse + sea beyond, posters glowing at night. No console errors.
-NEXT
+  NEXT
 - P1 raycast hover + click opens the storefront (gated on 079 shop.html — defer until that lands).
 - P2 adClient generated posters via the existing kooker image APIs (best-effort, cached, session-capped).

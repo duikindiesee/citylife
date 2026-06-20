@@ -1,17 +1,20 @@
 # Spec 019 — Smog Drift + Air Scrubber Gardens: dirty growth has a civic price
+
 - status: built
 - proposed-by: **Jalen Orro, terrace farmer (Ring 3)** — **LIVE Hermes** (model hermes-codex-gpt-5.5). A NEW voice at last — the council's first proposal not from Mara Venn in four ticks. Opens a fresh dimension: pollution.
 - date: 2026-06-02
 - depends-on: 002, 013, 011, 015
 
 ## Why (the citizens' case)
-Jalen Orro: *"I grow on the terraces downwind of the foundries, and I'll tell you — the smog settles on the
+
+Jalen Orro: _"I grow on the terraces downwind of the foundries, and I'll tell you — the smog settles on the
 homes, the clinics fill, and the finest houses won't hold their tier under a grey sky. Industry's worth
 keeping, but dirty growth should cost us something civic. Let me plant **Air Scrubber Gardens** — green
 filters that clear a district and make it pleasant besides. Put your mines away from your homes, or pay to
-clean the air."*
+clean the air."_
 
 ## Mechanic
+
 - **Smog drift**: mines and foundries (heavy industry) foul the air around them. A home within
   `smogRadius` of a mine or foundry is **polluted** — unless an Air Scrubber Garden covers it.
 - A **polluted home** suffers: its **liveability drops** (it shows warmer on the map, 011), and it
@@ -22,6 +25,7 @@ clean the air."*
   air. Placement finally matters.
 
 ## Rules & data
+
 - `smogRadius` ≈ 6: a home within this of a mine or foundry is polluted, **unless** within `scrubberRadius`
   (~8) of an Air Scrubber Garden.
 - Liveability: a polluted home's score drops by a **pollution penalty** (~0.3), so the survey map (011)
@@ -30,6 +34,7 @@ clean the air."*
   the air clears.
 
 ## Cost — materials & labour
+
 - **Air Scrubber Garden**: BUILD treasury + **~12 materials + ~8 components** + a 3-colonist crew; RUN
   **~1 component/day** + its gardeners. Clears `scrubberRadius` of smog. (Jalen said 40 materials + 12
   labour; scaled to CityLife.)
@@ -37,6 +42,7 @@ clean the air."*
   the land you leave between your mines and your homes).
 
 ## Acceptance
+
 - A home near a mine or foundry is polluted (lower liveability) unless an Air Scrubber Garden covers it.
 - A polluted home **cannot reach the top tier**; a scrubber garden clears the air so it can.
 - The liveability map / a HUD indicator reflects smoggy homes.

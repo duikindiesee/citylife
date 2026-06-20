@@ -2,67 +2,80 @@
 // treasury; arriving settlers inject their Earth holdings into the economy at border security.
 // Currency: the Kook (₭). Game-side for now — mirrors what a kooker-service-ledger would hold,
 // so it can sync to a real double-entry service later (each user = one account).
-export const CURRENCY = '₭'
+export const CURRENCY = "₭";
 
-export type AccountId = string // 'earth' | 'treasury' | `settler:${kookerId}`
+export type AccountId = string; // 'earth' | 'treasury' | `settler:${kookerId}`
 
 export interface LedgerEntry {
-  account: AccountId
-  amount: number // signed; a transaction's entries must net to zero
+  account: AccountId;
+  amount: number; // signed; a transaction's entries must net to zero
 }
 export interface LedgerTxn {
-  id: number
-  ts: number
-  memo: string
-  entries: LedgerEntry[]
+  id: number;
+  ts: number;
+  memo: string;
+  entries: LedgerEntry[];
 }
 export interface Ledger {
-  accounts: Record<string, number>
-  txns: LedgerTxn[]
-  nextId: number
+  accounts: Record<string, number>;
+  txns: LedgerTxn[];
+  nextId: number;
 }
 
 export function createLedger(): Ledger {
-  return { accounts: {}, txns: [], nextId: 1 }
+  return { accounts: {}, txns: [], nextId: 1 };
 }
 
 export function balance(ledger: Ledger, account: AccountId): number {
-  return ledger.accounts[account] ?? 0
+  return ledger.accounts[account] ?? 0;
 }
 
 /** Post a balanced double-entry transaction (entries must net to ~0). */
-export function post(ledger: Ledger, memo: string, entries: LedgerEntry[]): boolean {
-  if (Math.abs(entries.reduce((s, e) => s + e.amount, 0)) > 1e-6) return false
-  for (const e of entries) ledger.accounts[e.account] = (ledger.accounts[e.account] ?? 0) + e.amount
-  ledger.txns.unshift({ id: ledger.nextId++, ts: Date.now(), memo, entries })
-  if (ledger.txns.length > 200) ledger.txns.length = 200
-  return true
+export function post(
+  ledger: Ledger,
+  memo: string,
+  entries: LedgerEntry[],
+): boolean {
+  if (Math.abs(entries.reduce((s, e) => s + e.amount, 0)) > 1e-6) return false;
+  for (const e of entries)
+    ledger.accounts[e.account] = (ledger.accounts[e.account] ?? 0) + e.amount;
+  ledger.txns.unshift({ id: ledger.nextId++, ts: Date.now(), memo, entries });
+  if (ledger.txns.length > 200) ledger.txns.length = 200;
+  return true;
 }
 
 /** Total Kook held by the Kookerverse bank across every settler account (legacy colony-sim path). */
 export function bankDeposits(ledger: Ledger): number {
-  let sum = 0
-  for (const k of Object.keys(ledger.accounts)) if (k.startsWith('settler:')) sum += ledger.accounts[k]!
-  return sum
+  let sum = 0;
+  for (const k of Object.keys(ledger.accounts))
+    if (k.startsWith("settler:")) sum += ledger.accounts[k]!;
+  return sum;
 }
 
 /** Spec 085 — total ₭ held across every citizen wallet: the active land economy's money (the
  *  settler accounts above are the retired colony-sim path; the migration spine uses `citizen:`). */
 export function walletDeposits(ledger: Ledger): number {
-  let sum = 0
-  for (const k of Object.keys(ledger.accounts)) if (k.startsWith('citizen:')) sum += ledger.accounts[k]!
-  return sum
+  let sum = 0;
+  for (const k of Object.keys(ledger.accounts))
+    if (k.startsWith("citizen:")) sum += ledger.accounts[k]!;
+  return sum;
 }
 
 /** How many citizen wallets exist on the ledger — the count of funded residents (spec 085). */
 export function walletCount(ledger: Ledger): number {
-  let n = 0
-  for (const k of Object.keys(ledger.accounts)) if (k.startsWith('citizen:')) n++
-  return n
+  let n = 0;
+  for (const k of Object.keys(ledger.accounts))
+    if (k.startsWith("citizen:")) n++;
+  return n;
 }
 
-export function settlerAccounts(ledger: Ledger): { id: number; balance: number }[] {
+export function settlerAccounts(
+  ledger: Ledger,
+): { id: number; balance: number }[] {
   return Object.keys(ledger.accounts)
-    .filter((k) => k.startsWith('settler:'))
-    .map((k) => ({ id: Number(k.slice('settler:'.length)), balance: ledger.accounts[k]! }))
+    .filter((k) => k.startsWith("settler:"))
+    .map((k) => ({
+      id: Number(k.slice("settler:".length)),
+      balance: ledger.accounts[k]!,
+    }));
 }

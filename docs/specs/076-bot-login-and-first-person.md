@@ -21,15 +21,15 @@ The arc:
 
 ## Refinement of Spec 075 D1 — one sub-user identity, two credential paths
 
-Spec 075 D1 said the bot authenticates as itself (sub-user) and rejected the *parent's* JWT for bot
+Spec 075 D1 said the bot authenticates as itself (sub-user) and rejected the _parent's_ JWT for bot
 calls. This spec keeps "bot = sub-user that acts as itself" and makes the **credential path explicit**:
 the bot is a single kooker sub-user, reachable by **either** of two credentials, both yielding a JWT
 the choke point accepts.
 
-| Path | Credential | Who uses it | Where it lives |
-|---|---|---|---|
-| **UI embodiment** | the bot's **username + password** → `/auth/basic` → JWT | a human "logging in as" their citizen (click-into, or direct login) | the human's session (sessionStorage), like any login |
-| **Autonomous** | the bot's **BOT_PAT** → exchange for short-lived JWT | the citizen's container playing itself (API moves, telemetry of where its figure is) | server-side, in the bot's container — never in a browser |
+| Path              | Credential                                              | Who uses it                                                                          | Where it lives                                           |
+| ----------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| **UI embodiment** | the bot's **username + password** → `/auth/basic` → JWT | a human "logging in as" their citizen (click-into, or direct login)                  | the human's session (sessionStorage), like any login     |
+| **Autonomous**    | the bot's **BOT_PAT** → exchange for short-lived JWT    | the citizen's container playing itself (API moves, telemetry of where its figure is) | server-side, in the bot's container — never in a browser |
 
 Both credentials belong to the **same** sub-user, so both JWTs carry the same `userId` → the choke
 point meters them identically. If a deployment only ever uses UI embodiment, the BOT_PAT is optional
@@ -86,6 +86,7 @@ from within the parent's session after asserting `parentUserId == parent`.
 ## Inference stays metered (the hard constraint)
 
 Every path produces a JWT with the citizen's `userId` and the `key` claim. It passes:
+
 1. APISIX `jwt-auth` on `/api/v1/ai/*` (valid signed kooker JWT), and
 2. kooker-service-ai `/api/v1/ai/** → .authenticated()`.
 
@@ -146,7 +147,7 @@ This is also the "username/password vs BOT_PAT" answer: the autonomous container
 
 ### Security hardening to do alongside (research-flagged)
 
-1. **No real revocation**: the 365-day JWT PAT is accepted by the filter *before* the string lookup,
+1. **No real revocation**: the 365-day JWT PAT is accepted by the filter _before_ the string lookup,
    so a leaked PAT lives a full year even after `rotate-pat`. Mint **shorter-TTL** PATs for citizens
    and add a `jti` denylist for true revocation.
 2. **`rotate-pat` mints an opaque UUID** (not a JWT) — format-inconsistent and breaks the daemon

@@ -65,7 +65,7 @@ Verify and harden:
   yours to push).
 - IDEMPOTENT references: if a transaction with the same reference + appName already exists,
   return the existing transaction (200) instead of double-posting — the citylife checkout sends
-  reference sale_<parcelId>_<n> and relies on this.
+  reference sale*<parcelId>*<n> and relies on this.
 - Tests: duplicate reference returns the original and does not change balances; balanced-entry
   validation rejects one-sided transactions.
 
@@ -79,9 +79,9 @@ each, same rules.
 
 ## Status board (Codex updates per branch)
 
-| Task | Branch | Status | PR |
-|------|--------|--------|----|
-| CX-1 | — | not started | — |
-| CX-2 | — | not started | — |
-| CX-3 | — | not started | — |
-| CX-4 | — | not started | — |
+| Task | Branch | Status      | PR  |
+| ---- | ------ | ----------- | --- |
+| CX-1 | —      | not started | —   |
+| CX-2 | —      | not started | —   |
+| CX-3 | —      | not started | —   |
+| CX-4 | —      | not started | —   |

@@ -112,7 +112,9 @@ on mechanics/dev, typecheck plus vitest green, badge visible on :5188.
 ## Progress log
 
 ### 2026-06-13 — CityLife-side v1: the Workstation badge on the citizen card
+
 DONE
+
 - ColonyApp.tsx: every BUILT homestead row now carries a 💻 Workstation badge with a tooltip — the
   resident bot's own computer, serving a static site on the bots-only intranet for other citizens to
   browse. Marker only in the public game; no intranet URL is shown (the intranet is cluster-internal).
@@ -124,13 +126,13 @@ DONE
   in-game scope requires.
 - tsc clean, full suite green. LIVE on :5188 (seed 4242): 3 badges, one per built home (Joe, Viw, and
   the third built plot), each with the explanatory tooltip.
-DEFERRED (named, not silent)
+  DEFERRED (named, not silent)
 - The in-world desk+screen PROP inside the house — the built houses render through the merged
   greedy-meshed voxel path (no clean per-lot prop hook); a low-risk exterior marker is a later slice.
 - P0-P2 (agent image static server, spawner Service web port + intranet registry, the scoped
   NetworkPolicy) are KOOKER-SIDE cluster PRs in private repos — the operator's/Codex's call, not done
   here unprompted (cluster-safety rule). P3 first tenant depends on the 079 storefront export (079-P4,
   not yet built).
-NEXT
+  NEXT
 - when the kooker-side intranet lands + 079 storefront export exists, wire the badge to the real
   pod-site-up signal and add the storefront bundle as the first tenant.

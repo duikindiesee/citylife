@@ -3,10 +3,12 @@
 How to run CityLife and capture the **true bot response** demo (plan Slice 11).
 
 ## 1. Log in
+
 Open CityLife and authenticate at the Border Authority gate. The operator passcode is read from
 `VITE_OPERATOR_PASSCODE` in the gitignored `.env.local` (never committed).
 
 ## 2. Activate true bot replies (one time)
+
 Newcomer bots reply with **mock stand-ins** until a kooker PAT is configured; then they reply **live
 from kooker inference**. To switch them on:
 
@@ -25,6 +27,7 @@ The PAT is a secret: it lives only in `.env.local` (gitignored) and is bundled i
 build time, so use a scoped / short-lived token for anything you publish.
 
 ## 3. Record the demo
+
 1. **Border Control → A family arrives at the border.**
 2. **Approve.** The bot boots, its generated life history is injected, and the border patrol asks the
    first question (the UI waits while the bot wakes).
@@ -34,6 +37,7 @@ build time, so use a scoped / short-lived token for anything you publish.
    bot's own.
 
 ## Where things live
+
 - Bot lifecycle + life-history injection + inference adapter — `src/colony/bots.ts`
 - Border Control UI + patrol↔bot chat — `src/colony/ui/ColonyApp.tsx`
 - Forkable backend boundary (mock now, portable citylife-backend later) — `src/colony/backend.ts`
@@ -42,4 +46,5 @@ build time, so use a scoped / short-lived token for anything you publish.
 - Inference choke point — `POST /api/v1/ai/route/chat` (OpenAI-compatible, `Authorization: Bearer <PAT>`)
 
 ## Reset
+
 **Border Control → Reset game** clears the settlers, the bank, and the bots for a fresh start.

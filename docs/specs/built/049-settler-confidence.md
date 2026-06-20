@@ -1,15 +1,18 @@
 # Spec 049 — Settler Confidence: word travels faster than skyships
+
 - status: built — slice 44, shipped to mechanics/dev. settlerConfidence, confidenceImmigrationFactor and confidenceStatus live in src/colony/build.ts; the factor multiplies the arrival rate inside the immigration step. Knobs in config.ts, the confidence uiState in runtime.ts, a HUD Confidence row in ColonyApp.tsx, and five tests in tests/economy.test.ts. Calibrated exactly as the spec required — the multiplier plateaus at 1 for any colony at or above the confidence plateau, and each signal is neutral when its subsystem is absent, so all 333 prior tests passed UNCHANGED (zero regression on the core immigration path). Survival shortfalls weigh light (water and food already gate immigration through desirability); civic failure (unrest, arrears, stingy wages) weighs heavy. typecheck clean and all 338 tests pass; live on :5188 a healthy colony read 100 percent at full-speed arrivals and spiking unrest dropped it to 67 percent with arrivals slowed, recovering cleanly. No building, no materials, no staff.
 - proposed-by: Mara Venn, founding dock registrar (hermes-codex-gpt-5.5, via the kooker choke point)
 - date: 2026-06-02
 - depends-on: 004 (settler immigration). Reads existing signals from 008 (food delivery), 005/046 (water), 028 (unrest), 029 (wages), 039 (treasury arrears).
 
 ## Why (the citizens' case)
-Mara Venn keeps the dock register, and she has watched the contradiction long enough: today a settler skyship docks the moment a bed falls empty, no matter what state Landing One is in. Hungry, broke, restless, the water off — and still the newcomers step off, because the engine only asks whether a house is vacant. That is not how migration works. Word travels faster than skyships. If the colony is failing its own people, no free colonist should risk bringing their family across the cloudsea just because a room is free. Settlers should *choose* Landing One because it is visibly worth choosing — and stay away when it is not.
+
+Mara Venn keeps the dock register, and she has watched the contradiction long enough: today a settler skyship docks the moment a bed falls empty, no matter what state Landing One is in. Hungry, broke, restless, the water off — and still the newcomers step off, because the engine only asks whether a house is vacant. That is not how migration works. Word travels faster than skyships. If the colony is failing its own people, no free colonist should risk bringing their family across the cloudsea just because a room is free. Settlers should _choose_ Landing One because it is visibly worth choosing — and stay away when it is not.
 
 This is the missing dynamic on immigration: arrivals should follow the colony's reputation, not just its vacancies.
 
 ## Mechanic
+
 - The colony carries a **Confidence** rating in `[0, 1]`, recomputed each step from the conditions a prospective settler can see: are the homes **fed**, the taps **watered**, the wages **paid**, the treasury **solvent** (not in arrears), and the streets **orderly** (low unrest).
 - Immigration still requires a **vacant home** (spec 004 is unchanged there) — but the **rate** at which settlers actually arrive is now scaled by Confidence:
   - **High Confidence** (a colony meeting its needs) → settlers arrive at **full speed, exactly as today**.
@@ -19,6 +22,7 @@ This is the missing dynamic on immigration: arrivals should follow the colony's 
 - **Neutral when not applicable (load-bearing):** each signal scores **1.0 when its subsystem is absent or irrelevant** — a young colony with no Pay Office is not docked for unpaid wages, a colony with no cisterns is not docked for a dry tank, a colony with no homes or no people is fully confident. Distress only counts when the colony has the thing and is failing at it. This keeps early and minimal colonies (and their tests) at full Confidence.
 
 ## Rules & data
+
 - **Confidence signals** (each a `0..1` good-score, 1 = no problem):
   - **fed** — based on food delivery to homes (provisioned fraction, 008); 1 when there are no homes/people or food is reaching them, dropping only on a real, sustained shortfall.
   - **watered** — the existing watered fraction (005/046); already 1 when there are no homes.
@@ -35,11 +39,14 @@ This is the missing dynamic on immigration: arrivals should follow the colony's 
 - **Recovery is symmetric:** fix the rations, pay the wages, calm the unrest, and Confidence climbs straight back, so a colony that halts immigration can always earn it back. No hysteresis trap.
 
 ## Cost — materials & labour
+
 - **No building. No materials, no components, no staff.** Settler Confidence is a **rule on the existing immigration system**, computed from conditions the colony already tracks.
-- The real cost is **ongoing and indirect**: Confidence must be *earned* by actually running the colony well — keeping rations delivered, water flowing, wages paid, the treasury out of arrears, and unrest down. Every one of those is already paid for in goods and labour elsewhere; Settler Confidence simply makes that upkeep the price of growth. Let the colony slide and it stops attracting people long before it starts losing them.
+- The real cost is **ongoing and indirect**: Confidence must be _earned_ by actually running the colony well — keeping rations delivered, water flowing, wages paid, the treasury out of arrears, and unrest down. Every one of those is already paid for in goods and labour elsewhere; Settler Confidence simply makes that upkeep the price of growth. Let the colony slide and it stops attracting people long before it starts losing them.
 
 ## Acceptance
+
 How Review & Build verifies it:
+
 - `npm run typecheck` clean and `npm test` fully green. Because this touches the core immigration path, the **whole existing suite must still pass** — the thresholds and weights are to be calibrated so a healthy/neutral colony reads Confidence at or above the plateau and immigrates exactly as before. New tests covering:
   1. **Healthy plateau (non-regression):** a fed, watered, solvent, orderly colony reads `confidenceFactor === 1` and immigrates at the same rate as today.
   2. **Neutral-when-absent:** a minimal early colony (no Pay Office, no cisterns, few people) still reads full Confidence (no false distress).

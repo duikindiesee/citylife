@@ -54,8 +54,8 @@ structure, one new avatar kind.
   Joe build path.
 - **Idempotence**: seeding checks for an existing `citizen_joe` / reserved parcel before adding, so
   hot reload and repeated `restoreColony` calls never duplicate Joe or double-post a ledger entry.
-- **Reuse, do not fork**: the crab is a new *kind* threaded through the *existing* avatar pipeline
-  (`Citizen` → `AvatarView` → `updateAvatars`), and the house is compiled through the *existing* 077
+- **Reuse, do not fork**: the crab is a new _kind_ threaded through the _existing_ avatar pipeline
+  (`Citizen` → `AvatarView` → `updateAvatars`), and the house is compiled through the _existing_ 077
   `compileBlueprint` / merged-mesh render path. Joe's roam + first-person inherit the kind-agnostic
   movement system untouched except for the eye-height and gait lookups.
 - **Avatar kind**: `Citizen.kind: 'human' | 'crab'` (default `'human'`), carried into `AvatarView`,
@@ -73,12 +73,14 @@ Vertex colours carry the palette so one material draws the whole crab. Local ori
 plane, facing +x (heading rotation applied by `updateAvatars` exactly as for humans).
 
 Palette (locked to the portrait):
+
 - shell / claws / legs: orange-red `0xe2562f` (with a slightly darker `0xc23f1f` underside band)
 - eye stalks: shell colour; eyeballs white `0xf5f5f0` with black pupils `0x101010`
 - headset band + earcups: blue-white — band `0xdfe7f2`, earcups `0x2f6fd0`
 - lightning accent: yellow `0xf4c020`, **only on the left earcup**
 
 Primitives:
+
 1. **Shell** — a flattened dome: `SphereGeometry(0.30, 12, 8)` scaled `(1.25, 0.62, 1.0)`, raised so
    it sits ~0.22 above ground. Underside rim a thin `CylinderGeometry` torus-substitute (a low scaled
    cylinder) in the darker band colour.
@@ -109,6 +111,7 @@ including stalks) so it sits naturally in the street crowd.
 The crab inherits the avatar movement system with **zero** changes to `stepAvatars`,
 `wanderIdleCitizens`, `pickPedTarget`, or `setTarget` — they are position+speed only and kind-blind.
 The only kind-aware touches:
+
 - `updateAvatars()` routes Joe's frame into the crab `InstancedMesh` instead of the human capsule +
   head pair, and skips him when he is the first-person citizen (existing `a.id === fpCitizenId`
   guard).

@@ -1,395 +1,516 @@
 // Renders the alien planet: a flat playable terrain region sitting on the apex of a
 // large sphere (the "ball"), with ocean, atmosphere, the landed seed, day/night, three
 // camera presets (street/district/planet) and view modes (biome/buildable/elevation).
-import * as THREE from 'three'
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
-import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { COLONY } from '../config'
-import { BIOME_COLOR, Biome } from '../terrain'
-import type { ColonySim, SeedStructure } from '../sim'
-import type { HouseSpec } from '../house'
-import { gridOrigin } from '../grid'
-import { cellZone, ZONE_COLOR, VIBE_COLOR, type Plot } from '../cityPlan'
-import { homeLiveability, surveyAvailable, liveabilityTint, porterStatus } from '../build'
-import type { Neighborhood } from '../neighborhood'
-import type { CommercialDistrict, ShopParcel } from '../commerce/district'
-import { BUSINESSES, type Business, type Emblem } from '../commerce/businesses'
-import { surveyBillboards } from '../commerce/billboards'
-import { posterModel, paintPoster } from '../commerce/adCanvas'
-import { buildVoxelHouse, BLOCK_COLOR, type VoxelHouse, type DoorDir } from '../voxelHouse'
-import { compileBlueprint, VOXEL_Y } from '../houseBuilder'
-import { greedyMesh } from './voxelMesh'
-import { buildChunkedTerrain, type ChunkedTerrain } from './terrainChunks'
-import { defaultBlueprint, streetDoorDir, type Zone } from '../neighborhood'
-import { buildShoreProps, type ShorePropsLayer } from './shoreProps'
-import { buildFoam, type FoamLayer } from './foamLayer'
-import { buildRaceLayer, type RaceLayer } from './raceLayer'
-import { buildBusLayer, type BusLayer } from './busLayer'
-import type { BusRoute } from '../transit/busRoute'
-import { buildRoadRibbons, ROAD_RIBBON_LIFT, type RoadWay } from './roadRibbon'
-import type { RaceState } from '../racing/race'
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { COLONY } from "../config";
+import { BIOME_COLOR, Biome } from "../terrain";
+import type { ColonySim, SeedStructure } from "../sim";
+import type { HouseSpec } from "../house";
+import { gridOrigin } from "../grid";
+import { cellZone, ZONE_COLOR, VIBE_COLOR, type Plot } from "../cityPlan";
+import {
+  homeLiveability,
+  surveyAvailable,
+  liveabilityTint,
+  porterStatus,
+} from "../build";
+import type { Neighborhood } from "../neighborhood";
+import type { CommercialDistrict, ShopParcel } from "../commerce/district";
+import { BUSINESSES, type Business, type Emblem } from "../commerce/businesses";
+import { surveyBillboards } from "../commerce/billboards";
+import { posterModel, paintPoster } from "../commerce/adCanvas";
+import {
+  buildVoxelHouse,
+  BLOCK_COLOR,
+  type VoxelHouse,
+  type DoorDir,
+} from "../voxelHouse";
+import { compileBlueprint, VOXEL_Y } from "../houseBuilder";
+import { greedyMesh } from "./voxelMesh";
+import { buildChunkedTerrain, type ChunkedTerrain } from "./terrainChunks";
+import { defaultBlueprint, streetDoorDir, type Zone } from "../neighborhood";
+import { buildShoreProps, type ShorePropsLayer } from "./shoreProps";
+import { buildFoam, type FoamLayer } from "./foamLayer";
+import { buildRaceLayer, type RaceLayer } from "./raceLayer";
+import { buildBusLayer, type BusLayer } from "./busLayer";
+import type { BusRoute } from "../transit/busRoute";
+import { buildRoadRibbons, ROAD_RIBBON_LIFT, type RoadWay } from "./roadRibbon";
+import type { RaceState } from "../racing/race";
 
-export type ViewMode = 'biome' | 'buildable' | 'elevation'
-export type CameraPreset = 'street' | 'district' | 'planet'
+export type ViewMode = "biome" | "buildable" | "elevation";
+export type CameraPreset = "street" | "district" | "planet";
 
 /** P1 — one citizen avatar's live render state, supplied by the runtime each frame from the roster. */
 export interface AvatarView {
-  id: string
-  displayName: string
-  x: number
-  y: number
-  heading: number
-  hasPod: boolean
+  id: string;
+  displayName: string;
+  x: number;
+  y: number;
+  heading: number;
+  hasPod: boolean;
   /** Spec 078 — body kind: humans draw as the capsule avatar, Joe the founder draws as the crab mesh. */
-  kind: 'human' | 'crab'
+  kind: "human" | "crab";
   /** True for the avatar belonging to the logged-in operator (rendered highlighted). */
-  isOperator: boolean
+  isOperator: boolean;
 }
 
 // Dark City: the colony floats on a slab of rock adrift in deep space. The "sky" is the void —
 // dark even at midday — while a local sun still sweeps light across the island for day/night.
-const SKY_DAY = new THREE.Color(0x0b1022)
-const SKY_NIGHT = new THREE.Color(0x03040a)
+const SKY_DAY = new THREE.Color(0x0b1022);
+const SKY_NIGHT = new THREE.Color(0x03040a);
 // Spec 091 — atmospheric horizon glow. The void zenith stays near-black (SKY_DAY), but by day a soft
 // teal-dusk band lifts at the horizon — a gradient sky dome + distance-fog tinted to this colour — so
 // the world reads with real depth instead of a flat fill. At night daylight=0 collapses it back to the
 // uniform void, so the deep-space look is untouched after dark.
-const HORIZON_GLOW = new THREE.Color(0x2c5a73)
+const HORIZON_GLOW = new THREE.Color(0x2c5a73);
 // Spec 091 — warmer KEY LIGHT. The sun is a warm white when high and deepens to a golden amber as it
 // rakes toward the horizon, so mornings and evenings get a real golden-hour glow instead of a flat white
 // midday. updateDayNight lerps between these by sun height each frame.
-const SUN_HIGH = new THREE.Color(0xfff2d8) // warm white near noon
-const SUN_LOW = new THREE.Color(0xff9a4a) // golden amber near sunrise / sunset
-const OCEAN = 0x143a4a
-const SLAB_ROCK = 0x24242f
+const SUN_HIGH = new THREE.Color(0xfff2d8); // warm white near noon
+const SUN_LOW = new THREE.Color(0xff9a4a); // golden amber near sunrise / sunset
+const OCEAN = 0x143a4a;
+const SLAB_ROCK = 0x24242f;
 // Spec 078 — Joe the Crab's first-person eye height (low to the ground), vs 1.6 for the human avatars.
-const CRAB_EYE = 0.42
+const CRAB_EYE = 0.42;
 // Spec 076 — instance caps for the homestead neighbourhood (zone pads + spine ribbon; voxel blocks
 // for houses, fences, crops, garden beds and trees across a full band of large parcels).
 // Spec 084 S6 — raised for the estate parcels (a GRAND lot alone pads its garden + farm + walkway
 // cell by cell); the S1 dev-mode tripwires still warn the moment either cap drops scenery.
-const PAD_CAP = 4096
-const VOX_CAP = 24576
+const PAD_CAP = 4096;
+const VOX_CAP = 24576;
 
 export class PlanetRenderer {
-  private scene = new THREE.Scene()
-  private camera: THREE.PerspectiveCamera
-  private renderer: THREE.WebGLRenderer
-  private composer!: EffectComposer
-  private controls: OrbitControls
-  private sun: THREE.DirectionalLight
-  private hemi: THREE.HemisphereLight
-  private skyMat?: THREE.ShaderMaterial // spec 091 — gradient sky-dome material; its colours lerp with daylight
-  private oceanGeo?: THREE.BufferGeometry // spec 090 — the living sea: a subdivided disc with animated swells
-  private oceanBase?: Float32Array // base (x,y) of each ocean vertex, the wave input
-  onGroundClick?: (gx: number, gy: number) => void // spec 090 — set by the runtime; fires on a ground CLICK (not a drag)
-  private picker = new THREE.Raycaster()
-  private pickDown: { x: number; y: number; t: number } | null = null
-  private chunkedTerrain!: ChunkedTerrain // spec 084 S5 — chunk grid, see terrainChunks.ts
-  private roadSurfaceMesh!: THREE.Mesh
-  private roadShoulderMesh!: THREE.Mesh
-  private roadLineMesh!: THREE.Mesh
+  private scene = new THREE.Scene();
+  private camera: THREE.PerspectiveCamera;
+  private renderer: THREE.WebGLRenderer;
+  private composer!: EffectComposer;
+  private controls: OrbitControls;
+  private sun: THREE.DirectionalLight;
+  private hemi: THREE.HemisphereLight;
+  private skyMat?: THREE.ShaderMaterial; // spec 091 — gradient sky-dome material; its colours lerp with daylight
+  private oceanGeo?: THREE.BufferGeometry; // spec 090 — the living sea: a subdivided disc with animated swells
+  private oceanBase?: Float32Array; // base (x,y) of each ocean vertex, the wave input
+  onGroundClick?: (gx: number, gy: number) => void; // spec 090 — set by the runtime; fires on a ground CLICK (not a drag)
+  private picker = new THREE.Raycaster();
+  private pickDown: { x: number; y: number; t: number } | null = null;
+  private chunkedTerrain!: ChunkedTerrain; // spec 084 S5 — chunk grid, see terrainChunks.ts
+  private roadSurfaceMesh!: THREE.Mesh;
+  private roadShoulderMesh!: THREE.Mesh;
+  private roadLineMesh!: THREE.Mesh;
   // Spec 084 S3 — the paved avenue draws as its own asphalt ribbon with raised kerb strips, layered
   // on the same drape/relax/skirt pipeline as the packed-earth streets.
-  private avenueSurfaceMesh!: THREE.Mesh
-  private avenueKerbMesh!: THREE.Mesh
-  private lastRoadsVersion = -1
+  private avenueSurfaceMesh!: THREE.Mesh;
+  private avenueKerbMesh!: THREE.Mesh;
+  private lastRoadsVersion = -1;
   // Foliage is rebuilt as the colony grows so trees never sit under streets or buildings.
-  private foliageMesh?: THREE.InstancedMesh
-  private lastFoliageSig = -2
+  private foliageMesh?: THREE.InstancedMesh;
+  private lastFoliageSig = -2;
   // Road cells the ambient pedestrians stroll along (their pavement network), refreshed when roads grow.
-  private roadCells: { x: number; y: number }[] = []
+  private roadCells: { x: number; y: number }[] = [];
   // Sized plot foundations + the spoke roads that serve them from the colony core (the planned-settlement layer).
-  private plotPadGroup = new THREE.Group()
-  private lastPadSig = ''
+  private plotPadGroup = new THREE.Group();
+  private lastPadSig = "";
   // Spec 073 — Porter Sheds: the economy embodied. Goods pile up as crates/sacks at each shed (growing + shrinking with the live
   // stock), and porter handcarts run the roads while the shed is staffed. Never on water.
-  private porterPileMesh!: THREE.InstancedMesh
-  private porterCartMesh!: THREE.InstancedMesh
-  private porterCarts: { x: number; y: number; tx: number; ty: number; spd: number }[] = []
-  private lastPorterT = 0
+  private porterPileMesh!: THREE.InstancedMesh;
+  private porterCartMesh!: THREE.InstancedMesh;
+  private porterCarts: {
+    x: number;
+    y: number;
+    tx: number;
+    ty: number;
+    spd: number;
+  }[] = [];
+  private lastPorterT = 0;
   // A head so the ambient figures read as little PEOPLE, not pills. The visible crowd is capped to the real colonist count
   // (they are the colony's actual people, not a decorative droid army) — the named-Hermes-citizen binding is the next step.
-  private pedHeadMesh!: THREE.InstancedMesh
-  private bldgMesh!: THREE.InstancedMesh
-  private crewMesh!: THREE.InstancedMesh
-  private streetPostMesh!: THREE.InstancedMesh
-  private streetHeadMesh!: THREE.InstancedMesh
-  private carsMesh!: THREE.InstancedMesh
+  private pedHeadMesh!: THREE.InstancedMesh;
+  private bldgMesh!: THREE.InstancedMesh;
+  private crewMesh!: THREE.InstancedMesh;
+  private streetPostMesh!: THREE.InstancedMesh;
+  private streetHeadMesh!: THREE.InstancedMesh;
+  private carsMesh!: THREE.InstancedMesh;
   // Ambient pedestrians — renderer-only wandering figures near the settled ground; no sim impact.
-  private pedMesh!: THREE.InstancedMesh
-  private peds: { x: number; y: number; tx: number; ty: number; spd: number; phase: number }[] = []
-  private lastPedT = 0
+  private pedMesh!: THREE.InstancedMesh;
+  private peds: {
+    x: number;
+    y: number;
+    tx: number;
+    ty: number;
+    spd: number;
+    phase: number;
+  }[] = [];
+  private lastPedT = 0;
   // P1 — citizen AVATARS: the real, named Hermes citizens, drawn from the roster (distinct from the ambient
   // ped pool), movable by the bot, and steppable-into for a live first-person view.
-  private avatarMesh!: THREE.InstancedMesh
-  private avatarHeadMesh!: THREE.InstancedMesh
+  private avatarMesh!: THREE.InstancedMesh;
+  private avatarHeadMesh!: THREE.InstancedMesh;
   // Spec 078 — Joe the Crab: one merged, vertex-coloured geometry instanced like the human avatars but
   // routed here by AvatarView.kind. Shares the roster + roam loop; only the body mesh + eye height differ.
-  private crabMesh!: THREE.InstancedMesh
-  private avatarSource?: () => AvatarView[]
-  private fpCitizenId: string | null = null
+  private crabMesh!: THREE.InstancedMesh;
+  private avatarSource?: () => AvatarView[];
+  private fpCitizenId: string | null = null;
   // Spec 075 — the buildable neighbourhood: lot pads + minecraft-style voxel homes.
-  private neighborhood?: Neighborhood
-  private lotPadMesh!: THREE.InstancedMesh
-  private voxelMesh!: THREE.InstancedMesh
-  private voxelCache = new Map<string, VoxelHouse>()
+  private neighborhood?: Neighborhood;
+  private lotPadMesh!: THREE.InstancedMesh;
+  private voxelMesh!: THREE.InstancedMesh;
+  private voxelCache = new Map<string, VoxelHouse>();
   // Spec 077 P2 — built houses that carry a blueprint render as ONE merged greedy-meshed BufferGeometry each
   // (fancy brick masonry, not minecraft cubes), parented in this group at a tile-local origin. Lots without
   // a blueprint keep the legacy per-block instanced path above. Rebuilt with the neighbourhood signature.
-  private mergedHouseGroup = new THREE.Group()
-  private mergedHouseMat!: THREE.MeshStandardMaterial
-  private lastNbhdSig = ''
+  private mergedHouseGroup = new THREE.Group();
+  private mergedHouseMat!: THREE.MeshStandardMaterial;
+  private lastNbhdSig = "";
   // Spec 079 P0 — the vibrant commercial strip: a group of neon market-stall composites surveyed
   // along the high street, rebuilt when the district changes. The sign materials glow brighter after
   // dark (the day/night hook) so the strip reads as the awake heart of the city at dusk.
-  private commercialDistrict?: CommercialDistrict
-  private commercialGroup = new THREE.Group()
-  private commercialSignMats: THREE.MeshStandardMaterial[] = []
+  private commercialDistrict?: CommercialDistrict;
+  private commercialGroup = new THREE.Group();
+  private commercialSignMats: THREE.MeshStandardMaterial[] = [];
   // Spec 084 S1 — per-lot house mesh key (blueprint + foundation height) for incremental rebuilds.
-  private lotHouseKey = new Map<string, string>()
-  private settlerGroup = new THREE.Group()
-  private lastSettlerCount = -1
+  private lotHouseKey = new Map<string, string>();
+  private settlerGroup = new THREE.Group();
+  private lastSettlerCount = -1;
   // City plan paint — translucent zone tints (residential / commercial / industrial / civic)
   // and named flag-pole markers at every plot. Both are built once from the terrain; the markers
   // dim and re-label as plots get allocated.
-  private zoneTintMesh: THREE.Mesh | null = null
-  private liveabilityOn = false // spec 011 — the overlay toggle now drives the liveability map
-  private plotMarkers = new THREE.Group()
-  private plotMeshes = new Map<string, { pole: THREE.Mesh; flag: THREE.Mesh; flagMat: THREE.MeshStandardMaterial }>()
-  private lastPlotSig = ''
-  private dummy = new THREE.Object3D()
-  private clock = new THREE.Clock()
-  private view: ViewMode = 'biome'
-  private disposed = false
+  private zoneTintMesh: THREE.Mesh | null = null;
+  private liveabilityOn = false; // spec 011 — the overlay toggle now drives the liveability map
+  private plotMarkers = new THREE.Group();
+  private plotMeshes = new Map<
+    string,
+    { pole: THREE.Mesh; flag: THREE.Mesh; flagMat: THREE.MeshStandardMaterial }
+  >();
+  private lastPlotSig = "";
+  private dummy = new THREE.Object3D();
+  private clock = new THREE.Clock();
+  private view: ViewMode = "biome";
+  private disposed = false;
   // TV-mode cinematic fly-around — when on, the camera slowly orbits the landing site, drifts up
   // to look at the whole island, dives back to street level, and so on, in a 60-second loop.
   // Reads-only the wall-clock so it stays smooth even if the sim is paused.
-  private cinematic = false
-  private cinematicT0 = 0
+  private cinematic = false;
+  private cinematicT0 = 0;
   // Per-car smoothed render state (position + heading), so cars glide between the 6 Hz sim steps
   // and ease through turns instead of snapping their heading — and lane offset — at each corner.
-  private carRender = new Map<number, { x: number; y: number; h: number }>()
-  private lastCarT = 0
+  private carRender = new Map<number, { x: number; y: number; h: number }>();
+  private lastCarT = 0;
   // Pulsing red nav beacon at the rocket nose — material ref so frame() can blink it.
-  private beaconMat: THREE.MeshStandardMaterial | null = null
-  private shoreProps: ShorePropsLayer | null = null
-  private foam: FoamLayer | null = null // spec 091 — animated shoreline surf ring
-  private raceLayer: RaceLayer | null = null
-  private busLayer: BusLayer | null = null
-  private roadRibbonGroup: THREE.Group | null = null
-  private roadRibbonCells: Set<string> | null = null // cells the road ribbon actually covers (for surfaceY)
-  private raceState: RaceState | null = null
-  private raceCamActive = false
-  private raceRestorePending = false
+  private beaconMat: THREE.MeshStandardMaterial | null = null;
+  private shoreProps: ShorePropsLayer | null = null;
+  private foam: FoamLayer | null = null; // spec 091 — animated shoreline surf ring
+  private raceLayer: RaceLayer | null = null;
+  private busLayer: BusLayer | null = null;
+  private roadRibbonGroup: THREE.Group | null = null;
+  private roadRibbonCells: Set<string> | null = null; // cells the road ribbon actually covers (for surfaceY)
+  private raceState: RaceState | null = null;
+  private raceCamActive = false;
+  private raceRestorePending = false;
 
-  private N: number
-  private R: number
+  private N: number;
+  private R: number;
 
   // camera tween
-  private tweenT = 1
-  private startPos = new THREE.Vector3()
-  private startTarget = new THREE.Vector3()
-  private endPos = new THREE.Vector3()
-  private endTarget = new THREE.Vector3()
+  private tweenT = 1;
+  private startPos = new THREE.Vector3();
+  private startTarget = new THREE.Vector3();
+  private endPos = new THREE.Vector3();
+  private endTarget = new THREE.Vector3();
 
   constructor(
     private container: HTMLElement,
     private sim: ColonySim,
   ) {
-    this.N = sim.state.terrain.size
-    this.R = COLONY.world.planetRadius
+    this.N = sim.state.terrain.size;
+    this.R = COLONY.world.planetRadius;
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      preserveDrawingBuffer: true,
+    });
     // Render at the display's native pixel density (capped at 2x) so the world is crisp on HiDPI
     // screens — matches the House Builder + legacy city renderer. The old hardcoded 1 made the 608
     // world upscale (soft, non-HD) on a 2x+ DPR display; the 2x cap keeps the heavy world's fill rate
     // bounded so a 3x phone/Retina panel does not quadruple-plus the fragment load.
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.13
-    container.appendChild(this.renderer.domElement)
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.13;
+    container.appendChild(this.renderer.domElement);
 
-    this.scene.background = SKY_DAY.clone()
+    this.scene.background = SKY_DAY.clone();
     // Far plane must reach orbital distance or the planet view washes out to sky.
-    this.scene.fog = new THREE.Fog(SKY_DAY.clone(), this.N * 1.5, this.R * 1.6)
+    this.scene.fog = new THREE.Fog(SKY_DAY.clone(), this.N * 1.5, this.R * 1.6);
 
-    this.camera = new THREE.PerspectiveCamera(50, 1, 0.5, 36000) // 084 S6 — covers maxDistance at planetRadius 4800
+    this.camera = new THREE.PerspectiveCamera(50, 1, 0.5, 36000); // 084 S6 — covers maxDistance at planetRadius 4800
 
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement)
-    this.controls.enableDamping = true
-    this.controls.dampingFactor = 0.08 // a touch more glide so pans + orbits coast to a smooth stop
-    this.controls.maxPolarAngle = Math.PI * 0.62
-    this.controls.minDistance = 4
-    this.controls.maxDistance = this.R * 2.6
-    this.controls.target.set(0, 5, 0)
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.08; // a touch more glide so pans + orbits coast to a smooth stop
+    this.controls.maxPolarAngle = Math.PI * 0.62;
+    this.controls.minDistance = 4;
+    this.controls.maxDistance = this.R * 2.6;
+    this.controls.target.set(0, 5, 0);
     // Map-style navigation (operator UX): LEFT-drag PANS across the world (the intuitive "grab the
     // map" gesture), RIGHT-drag ORBITS to look around, the wheel zooms. The OrbitControls default
     // (left = rotate) made just moving around the world disorienting and hard. Pan along the GROUND
     // plane (screenSpacePanning false) so a drag slides you across the terrain at a steady height
     // instead of tilting through the air. Touch: one finger pans, two fingers pinch-zoom + rotate.
-    this.controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }
-    this.controls.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE }
-    this.controls.screenSpacePanning = false
-    this.controls.panSpeed = 1.1
-    this.controls.rotateSpeed = 0.6
-    this.controls.zoomSpeed = 1.1
+    this.controls.mouseButtons = {
+      LEFT: THREE.MOUSE.PAN,
+      MIDDLE: THREE.MOUSE.DOLLY,
+      RIGHT: THREE.MOUSE.ROTATE,
+    };
+    this.controls.touches = {
+      ONE: THREE.TOUCH.PAN,
+      TWO: THREE.TOUCH.DOLLY_ROTATE,
+    };
+    this.controls.screenSpacePanning = false;
+    this.controls.panSpeed = 1.1;
+    this.controls.rotateSpeed = 0.6;
+    this.controls.zoomSpeed = 1.1;
 
     // Spec 090 — CLICK-TO-PICK a plot. A left CLICK (pointer barely moved, so not a pan/orbit drag)
     // raycasts the terrain and hands the grid cell to onGroundClick; the runtime maps it to a plot and
     // opens that plot's Kookerbook.
-    const pickEl = this.renderer.domElement
-    pickEl.addEventListener('pointerdown', (e) => { this.pickDown = { x: e.clientX, y: e.clientY, t: performance.now() } })
-    pickEl.addEventListener('pointerup', (e) => {
-      const d = this.pickDown; this.pickDown = null
-      if (!d || !this.onGroundClick) return
-      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6 || performance.now() - d.t > 500) return // a drag, not a click
-      const hit = this.pickGround(e.clientX, e.clientY)
-      if (hit) this.onGroundClick(hit.gx, hit.gy)
-    })
+    const pickEl = this.renderer.domElement;
+    pickEl.addEventListener("pointerdown", (e) => {
+      this.pickDown = { x: e.clientX, y: e.clientY, t: performance.now() };
+    });
+    pickEl.addEventListener("pointerup", (e) => {
+      const d = this.pickDown;
+      this.pickDown = null;
+      if (!d || !this.onGroundClick) return;
+      if (
+        Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6 ||
+        performance.now() - d.t > 500
+      )
+        return; // a drag, not a click
+      const hit = this.pickGround(e.clientX, e.clientY);
+      if (hit) this.onGroundClick(hit.gx, hit.gy);
+    });
 
     // Cool sky fill (0xbfd6e6) against the warm sun key, with a warmer ground bounce (was a cool
     // 0x35324a) so shadowed faces feel sun-warmed earth rather than cold — a richer key/fill contrast.
-    this.hemi = new THREE.HemisphereLight(0xbfd6e6, 0x473c3a, 0.8)
-    this.scene.add(this.hemi)
-    this.sun = new THREE.DirectionalLight(0xfff0d8, 1.7)
-    this.sun.castShadow = true
+    this.hemi = new THREE.HemisphereLight(0xbfd6e6, 0x473c3a, 0.8);
+    this.scene.add(this.hemi);
+    this.sun = new THREE.DirectionalLight(0xfff0d8, 1.7);
+    this.sun.castShadow = true;
     // Spec 084 S5 — the shadow frustum FOLLOWS the camera target (updateDayNight translates sun +
     // target together each frame) with a fixed half-extent, instead of covering the whole island:
     // 2048 texels over ~240 world units gives crisp house-contact shadows at any world size.
-    this.sun.shadow.mapSize.set(2048, 2048)
+    this.sun.shadow.mapSize.set(2048, 2048);
     // Spec 090 — kill the terrain SELF-SHADOW ACNE (the flickering black patches the operator saw — NOT
     // cloud shadows; there are none). With no bias the heightfield shadow-tests against itself; nudging
     // the test along the surface normal + a small depth bias removes the shimmer without peter-panning.
-    this.sun.shadow.normalBias = 1.6
-    this.sun.shadow.bias = -0.0004
-    const d = Math.min(120, this.N * 0.7)
-    this.sun.shadow.camera.left = -d
-    this.sun.shadow.camera.right = d
-    this.sun.shadow.camera.top = d
-    this.sun.shadow.camera.bottom = -d
-    this.sun.shadow.camera.far = this.N * 4
-    this.scene.add(this.sun)
-    this.scene.add(this.sun.target)
+    this.sun.shadow.normalBias = 1.6;
+    this.sun.shadow.bias = -0.0004;
+    const d = Math.min(120, this.N * 0.7);
+    this.sun.shadow.camera.left = -d;
+    this.sun.shadow.camera.right = d;
+    this.sun.shadow.camera.top = d;
+    this.sun.shadow.camera.bottom = -d;
+    this.sun.shadow.camera.far = this.N * 4;
+    this.scene.add(this.sun);
+    this.scene.add(this.sun.target);
 
-    this.buildPlanet()
-    this.buildSkyDome()
-    this.buildOcean()
-    this.buildFoam()
-    this.buildTerrain()
-    this.buildFoliage()
-    this.buildStructures()
-    this.buildColonyLayer()
-    this.setupComposer()
+    this.buildPlanet();
+    this.buildSkyDome();
+    this.buildOcean();
+    this.buildFoam();
+    this.buildTerrain();
+    this.buildFoliage();
+    this.buildStructures();
+    this.buildColonyLayer();
+    this.setupComposer();
 
-    this.applyPreset('district')
-    window.addEventListener('resize', this.onResize)
-    this.resize()
+    this.applyPreset("district");
+    window.addEventListener("resize", this.onResize);
+    this.resize();
   }
 
   private wx(x: number) {
-    return x - this.N / 2
+    return x - this.N / 2;
   }
   private wz(y: number) {
-    return y - this.N / 2
+    return y - this.N / 2;
   }
 
   /** Spec 090 — raycast the terrain under a screen point; return the grid cell hit, or null. */
-  private pickGround(clientX: number, clientY: number): { gx: number; gy: number } | null {
-    if (!this.chunkedTerrain) return null
-    const rect = this.renderer.domElement.getBoundingClientRect()
-    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1)
-    this.picker.setFromCamera(ndc, this.camera)
-    const hits = this.picker.intersectObjects(this.chunkedTerrain.group.children, true)
-    if (!hits.length) return null
-    const p = hits[0]!.point
-    return { gx: Math.round(p.x + this.N / 2), gy: Math.round(p.z + this.N / 2) }
+  private pickGround(
+    clientX: number,
+    clientY: number,
+  ): { gx: number; gy: number } | null {
+    if (!this.chunkedTerrain) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    this.picker.setFromCamera(ndc, this.camera);
+    const hits = this.picker.intersectObjects(
+      this.chunkedTerrain.group.children,
+      true,
+    );
+    if (!hits.length) return null;
+    const p = hits[0]!.point;
+    return {
+      gx: Math.round(p.x + this.N / 2),
+      gy: Math.round(p.z + this.N / 2),
+    };
   }
 
   private setupComposer() {
-    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2())
-    const target = new THREE.WebGLRenderTarget(size.x, size.y, { samples: 2 })
-    this.composer = new EffectComposer(this.renderer, target)
-    this.composer.addPass(new RenderPass(this.scene, this.camera))
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.32, 0.5, 0.9))
-    this.composer.addPass(new OutputPass())
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    const target = new THREE.WebGLRenderTarget(size.x, size.y, { samples: 2 });
+    this.composer = new EffectComposer(this.renderer, target);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.composer.addPass(
+      new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.32, 0.5, 0.9),
+    );
+    this.composer.addPass(new OutputPass());
   }
 
   private buildPlanet() {
     // Dark City: a tapered slab of rock drops from just under the waterline into the void, so the
     // island clearly floats in space instead of sitting on a planet.
-    const top = this.N * 0.72
-    const base = this.N * 0.34
-    const height = this.N * 1.05
+    const top = this.N * 0.72;
+    const base = this.N * 0.34;
+    const height = this.N * 1.05;
     const rock = new THREE.Mesh(
       new THREE.CylinderGeometry(top, base, height, 9, 1),
-      new THREE.MeshStandardMaterial({ color: SLAB_ROCK, roughness: 0.95, metalness: 0.08, flatShading: true }),
-    )
-    rock.position.set(0, -height / 2 - 0.4, 0)
-    this.scene.add(rock)
+      new THREE.MeshStandardMaterial({
+        color: SLAB_ROCK,
+        roughness: 0.95,
+        metalness: 0.08,
+        flatShading: true,
+      }),
+    );
+    rock.position.set(0, -height / 2 - 0.4, 0);
+    this.scene.add(rock);
 
     // Additive glow at the waterline so the island reads as a lit slab adrift in the dark — a tight
     // bright rim plus a taller, fainter halo that bleeds up into the void (Dark City energy).
     const rim = new THREE.Mesh(
-      new THREE.CylinderGeometry(top * 1.01, top * 0.9, this.N * 0.06, 9, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0x3aa6c8, transparent: true, opacity: 0.32, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }),
-    )
-    rim.position.set(0, -0.6, 0)
-    this.scene.add(rim)
+      new THREE.CylinderGeometry(
+        top * 1.01,
+        top * 0.9,
+        this.N * 0.06,
+        9,
+        1,
+        true,
+      ),
+      new THREE.MeshBasicMaterial({
+        color: 0x3aa6c8,
+        transparent: true,
+        opacity: 0.32,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    rim.position.set(0, -0.6, 0);
+    this.scene.add(rim);
     const rimHalo = new THREE.Mesh(
-      new THREE.CylinderGeometry(top * 1.09, top * 0.98, this.N * 0.17, 9, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0x256b8a, transparent: true, opacity: 0.11, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }),
-    )
-    rimHalo.position.set(0, -0.36, 0)
-    this.scene.add(rimHalo)
+      new THREE.CylinderGeometry(
+        top * 1.09,
+        top * 0.98,
+        this.N * 0.17,
+        9,
+        1,
+        true,
+      ),
+      new THREE.MeshBasicMaterial({
+        color: 0x256b8a,
+        transparent: true,
+        opacity: 0.11,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    rimHalo.position.set(0, -0.36, 0);
+    this.scene.add(rimHalo);
 
     // Starfield — two deterministic Fibonacci shells (fine dust + sparse bright stars), fog-disabled
     // so the void always reads as deep space. Both sit beyond the camera's max orbit distance, so you
     // never fly through them. Two layers give the void real depth instead of a flat scatter.
-    const golden = Math.PI * (3 - Math.sqrt(5))
-    const makeStars = (count: number, seed: number, rMin: number, rSpan: number, color: number, size: number, opacity: number) => {
-      const sg = new THREE.BufferGeometry()
-      const pos = new Float32Array(count * 3)
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    const makeStars = (
+      count: number,
+      seed: number,
+      rMin: number,
+      rSpan: number,
+      color: number,
+      size: number,
+      opacity: number,
+    ) => {
+      const sg = new THREE.BufferGeometry();
+      const pos = new Float32Array(count * 3);
       for (let i = 0; i < count; i++) {
-        const y = 1 - ((i + 0.5) / count) * 2
-        const rad = Math.sqrt(Math.max(0, 1 - y * y))
-        const theta = golden * (i + seed)
-        const r = rMin + ((i * 131 + seed * 977) % rSpan)
-        pos[i * 3] = Math.cos(theta) * rad * r
-        pos[i * 3 + 1] = y * r
-        pos[i * 3 + 2] = Math.sin(theta) * rad * r
+        const y = 1 - ((i + 0.5) / count) * 2;
+        const rad = Math.sqrt(Math.max(0, 1 - y * y));
+        const theta = golden * (i + seed);
+        const r = rMin + ((i * 131 + seed * 977) % rSpan);
+        pos[i * 3] = Math.cos(theta) * rad * r;
+        pos[i * 3 + 1] = y * r;
+        pos[i * 3 + 2] = Math.sin(theta) * rad * r;
       }
-      sg.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      sg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
       const points = new THREE.Points(
         sg,
-        new THREE.PointsMaterial({ color, size, sizeAttenuation: true, fog: false, transparent: true, opacity, depthWrite: false }),
-      )
-      points.matrixAutoUpdate = false
-      this.scene.add(points)
-    }
-    makeStars(2800, 0, 5000, 1700, 0x8d99c8, 4, 0.7) // fine dust
-    makeStars(380, 7, 5200, 1500, 0xeef2ff, 11, 0.95) // sparse bright stars
+        new THREE.PointsMaterial({
+          color,
+          size,
+          sizeAttenuation: true,
+          fog: false,
+          transparent: true,
+          opacity,
+          depthWrite: false,
+        }),
+      );
+      points.matrixAutoUpdate = false;
+      this.scene.add(points);
+    };
+    makeStars(2800, 0, 5000, 1700, 0x8d99c8, 4, 0.7); // fine dust
+    makeStars(380, 7, 5200, 1500, 0xeef2ff, 11, 0.95); // sparse bright stars
 
     // A distant gas giant looming in the void — gives the deep-space backdrop depth and a focal
     // point. Lit by the same sun, so it shows a soft day/night terminator. Sits beyond the orbit cap.
     const giant = new THREE.Mesh(
       new THREE.SphereGeometry(760, 48, 32),
-      new THREE.MeshStandardMaterial({ color: 0x4a5688, roughness: 1, metalness: 0, emissive: 0x1a2348, emissiveIntensity: 0.9, fog: false }),
-    )
-    giant.position.set(-1400, -100, -3400)
-    this.scene.add(giant)
+      new THREE.MeshStandardMaterial({
+        color: 0x4a5688,
+        roughness: 1,
+        metalness: 0,
+        emissive: 0x1a2348,
+        emissiveIntensity: 0.9,
+        fog: false,
+      }),
+    );
+    giant.position.set(-1400, -100, -3400);
+    this.scene.add(giant);
     const giantAtmo = new THREE.Mesh(
       new THREE.SphereGeometry(815, 40, 24),
-      new THREE.MeshBasicMaterial({ color: 0x6f86c8, transparent: true, opacity: 0.22, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
-    )
-    giantAtmo.position.copy(giant.position)
-    this.scene.add(giantAtmo)
+      new THREE.MeshBasicMaterial({
+        color: 0x6f86c8,
+        transparent: true,
+        opacity: 0.22,
+        side: THREE.BackSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        fog: false,
+      }),
+    );
+    giantAtmo.position.copy(giant.position);
+    this.scene.add(giantAtmo);
   }
 
   /** Scatter instanced foliage cones across the wooded land (dense in forest, sparse on plains), so
@@ -399,186 +520,234 @@ export class PlanetRenderer {
    *  verge), and OUT of the civic core, so the settled ground reads as a cleared, planned place — not a forest with
    *  roads bulldozed through it. Rebuilt as the colony grows (roads + buildings change). */
   private buildFoliage() {
-    const s = this.sim.state
-    const t = s.terrain
-    const N = t.size
-    const hash = (n: number) => ((n * 2654435761) >>> 0) / 4294967296
+    const s = this.sim.state;
+    const t = s.terrain;
+    const N = t.size;
+    const hash = (n: number) => ((n * 2654435761) >>> 0) / 4294967296;
     // Spec 090 — a lusher, more varied alien canopy (bright + deep greens, a teal-green, the violet
     // flora, a golden-green) so forests read with life and depth instead of a flat dark mass.
-    const TREE_COLORS = [0x55925b, 0x6fb069, 0x3f7d5e, 0x7a5aa8, 0x8fb557, 0x356b46]
+    const TREE_COLORS = [
+      0x55925b, 0x6fb069, 0x3f7d5e, 0x7a5aa8, 0x8fb557, 0x356b46,
+    ];
     // Cells the colony has cleared: roads, buildings and worksites (each with a one-cell verge), plus the civic core.
-    const cleared = new Set<number>()
+    const cleared = new Set<number>();
     const mark = (cx: number, cy: number, rad: number) => {
-      const ix = Math.round(cx), iy = Math.round(cy)
-      for (let yy = iy - rad; yy <= iy + rad; yy++) for (let xx = ix - rad; xx <= ix + rad; xx++) {
-        if (xx >= 0 && yy >= 0 && xx < N && yy < N) cleared.add(yy * N + xx)
-      }
-    }
-    for (const r of s.roads) mark(r.x, r.y, 1)
-    for (const b of s.buildings) mark(b.x, b.y, 1)
-    for (const j of s.jobs) mark(j.x, j.y, 1)
-    for (const st of s.structures) mark(st.x, st.y, 1) // the caravan/rocket + landmarks
-    if (s.cityPlan) for (const p of s.cityPlan.plots) mark(p.x, p.y, Math.max(1, Math.ceil(Math.max(p.w || 1, p.h || 1) / 2))) // clear the lots + their verge
-    mark(t.landing.x, t.landing.y, 4) // keep the colony heart clear
-    const cells: number[] = []
+      const ix = Math.round(cx),
+        iy = Math.round(cy);
+      for (let yy = iy - rad; yy <= iy + rad; yy++)
+        for (let xx = ix - rad; xx <= ix + rad; xx++) {
+          if (xx >= 0 && yy >= 0 && xx < N && yy < N) cleared.add(yy * N + xx);
+        }
+    };
+    for (const r of s.roads) mark(r.x, r.y, 1);
+    for (const b of s.buildings) mark(b.x, b.y, 1);
+    for (const j of s.jobs) mark(j.x, j.y, 1);
+    for (const st of s.structures) mark(st.x, st.y, 1); // the caravan/rocket + landmarks
+    if (s.cityPlan)
+      for (const p of s.cityPlan.plots)
+        mark(
+          p.x,
+          p.y,
+          Math.max(1, Math.ceil(Math.max(p.w || 1, p.h || 1) / 2)),
+        ); // clear the lots + their verge
+    mark(t.landing.x, t.landing.y, 4); // keep the colony heart clear
+    const cells: number[] = [];
     for (let i = 0; i < N * N; i++) {
-      const b = t.biome[i]
-      if (b !== Biome.Forest && b !== Biome.Plains) continue
-      const x = i % N
-      const y = (i / N) | 0
-      if (t.isWater(x, y)) continue
-      if (cleared.has(i)) continue // no trees on the streets or under the homes
-      const p = b === Biome.Forest ? 0.5 : 0.08
-      if (hash(i + 1) < p) cells.push(i)
+      const b = t.biome[i];
+      if (b !== Biome.Forest && b !== Biome.Plains) continue;
+      const x = i % N;
+      const y = (i / N) | 0;
+      if (t.isWater(x, y)) continue;
+      if (cleared.has(i)) continue; // no trees on the streets or under the homes
+      const p = b === Biome.Forest ? 0.5 : 0.08;
+      if (hash(i + 1) < p) cells.push(i);
     }
     // Replace any prior foliage mesh (this method is now a rebuild) — dispose the old GPU resources first.
     if (this.foliageMesh) {
-      this.scene.remove(this.foliageMesh)
-      this.foliageMesh.geometry.dispose()
-      ;(this.foliageMesh.material as THREE.Material).dispose()
-      this.foliageMesh = undefined
+      this.scene.remove(this.foliageMesh);
+      this.foliageMesh.geometry.dispose();
+      (this.foliageMesh.material as THREE.Material).dispose();
+      this.foliageMesh = undefined;
     }
-    const cap = Math.min(cells.length, 6000) // spec 084 S5 — headroom for the 608 world's forests
-    const geo = new THREE.ConeGeometry(0.42, 1.1, 6)
-    geo.translate(0, 0.55, 0)
-    const mesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0, flatShading: true }), Math.max(1, cap))
-    mesh.castShadow = true
-    mesh.frustumCulled = false
-    const col = new THREE.Color()
-    let n = 0
+    const cap = Math.min(cells.length, 6000); // spec 084 S5 — headroom for the 608 world's forests
+    const geo = new THREE.ConeGeometry(0.42, 1.1, 6);
+    geo.translate(0, 0.55, 0);
+    const mesh = new THREE.InstancedMesh(
+      geo,
+      new THREE.MeshStandardMaterial({
+        roughness: 0.9,
+        metalness: 0,
+        flatShading: true,
+      }),
+      Math.max(1, cap),
+    );
+    mesh.castShadow = true;
+    mesh.frustumCulled = false;
+    const col = new THREE.Color();
+    let n = 0;
     for (let k = 0; k < cells.length && n < cap; k++) {
-      const i = cells[k]!
-      const x = i % N
-      const y = (i / N) | 0
-      const h1 = hash(i * 7 + 3)
-      const h2 = hash(i * 13 + 5)
-      const wy = Math.max(0, t.worldY(x, y))
-      const sc = 0.72 + h1 * 0.9
-      this.dummy.position.set(this.wx(x) + (h1 - 0.5) * 0.7, wy, this.wz(y) + (h2 - 0.5) * 0.7)
-      this.dummy.scale.set(sc, sc + h2 * 1.05, sc)
-      this.dummy.rotation.set(0, h2 * Math.PI, 0)
-      this.dummy.updateMatrix()
-      mesh.setMatrixAt(n, this.dummy.matrix)
-      col.setHex(TREE_COLORS[(i + x) % TREE_COLORS.length]!)
-      mesh.setColorAt(n, col)
-      n++
+      const i = cells[k]!;
+      const x = i % N;
+      const y = (i / N) | 0;
+      const h1 = hash(i * 7 + 3);
+      const h2 = hash(i * 13 + 5);
+      const wy = Math.max(0, t.worldY(x, y));
+      const sc = 0.72 + h1 * 0.9;
+      this.dummy.position.set(
+        this.wx(x) + (h1 - 0.5) * 0.7,
+        wy,
+        this.wz(y) + (h2 - 0.5) * 0.7,
+      );
+      this.dummy.scale.set(sc, sc + h2 * 1.05, sc);
+      this.dummy.rotation.set(0, h2 * Math.PI, 0);
+      this.dummy.updateMatrix();
+      mesh.setMatrixAt(n, this.dummy.matrix);
+      col.setHex(TREE_COLORS[(i + x) % TREE_COLORS.length]!);
+      mesh.setColorAt(n, col);
+      n++;
     }
-    mesh.count = n
-    this.foliageMesh = mesh
-    this.scene.add(mesh)
+    mesh.count = n;
+    this.foliageMesh = mesh;
+    this.scene.add(mesh);
   }
 
   private buildOcean() {
     // Spec 090 — a LIVING sea. Water pooled on the slab as a disc meeting the rocky rim, but subdivided
     // so frame() can roll gentle swells across it, with a depth gradient (deep teal in the open middle,
     // lighter toward the shallow rim) and a glossier, more reflective surface so it catches the sun.
-    const R = this.N * 0.66
-    const geo = new THREE.RingGeometry(0.5, R, 120, 30)
-    const pos = geo.getAttribute('position')
-    const colors = new Float32Array(pos.count * 3)
-    const base = new Float32Array(pos.count * 2)
-    const deep = new THREE.Color(0x0e3d54), shallow = new THREE.Color(0x2f86a0)
-    const tmp = new THREE.Color()
+    const R = this.N * 0.66;
+    const geo = new THREE.RingGeometry(0.5, R, 120, 30);
+    const pos = geo.getAttribute("position");
+    const colors = new Float32Array(pos.count * 3);
+    const base = new Float32Array(pos.count * 2);
+    const deep = new THREE.Color(0x0e3d54),
+      shallow = new THREE.Color(0x2f86a0);
+    const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i), y = pos.getY(i)
-      base[i * 2] = x; base[i * 2 + 1] = y
-      const r = Math.min(1, Math.hypot(x, y) / R) // 0 open-middle .. 1 rim
-      tmp.copy(deep).lerp(shallow, Math.pow(r, 1.6) * 0.75)
-      colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b
+      const x = pos.getX(i),
+        y = pos.getY(i);
+      base[i * 2] = x;
+      base[i * 2 + 1] = y;
+      const r = Math.min(1, Math.hypot(x, y) / R); // 0 open-middle .. 1 rim
+      tmp.copy(deep).lerp(shallow, Math.pow(r, 1.6) * 0.75);
+      colors[i * 3] = tmp.r;
+      colors[i * 3 + 1] = tmp.g;
+      colors[i * 3 + 2] = tmp.b;
     }
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     const ocean = new THREE.Mesh(
       geo,
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.1, metalness: 0.55, transparent: true, opacity: 0.93 }),
-    )
-    ocean.rotation.x = -Math.PI / 2
-    ocean.position.y = -0.1
-    ocean.receiveShadow = true
-    this.scene.add(ocean)
-    this.oceanGeo = geo
-    this.oceanBase = base
+      new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.1,
+        metalness: 0.55,
+        transparent: true,
+        opacity: 0.93,
+      }),
+    );
+    ocean.rotation.x = -Math.PI / 2;
+    ocean.position.y = -0.1;
+    ocean.receiveShadow = true;
+    this.scene.add(ocean);
+    this.oceanGeo = geo;
+    this.oceanBase = base;
   }
 
   /** Spec 090 — roll gentle layered swells across the ocean disc each frame (render-loop cosmetic, on the
    *  wall clock like the bus + beacon; never touches the sim). Recomputes normals so the swells catch light. */
   private updateOcean(timeMs: number): void {
-    const geo = this.oceanGeo, base = this.oceanBase
-    if (!geo || !base) return
-    const t = timeMs / 1000
-    const pos = geo.getAttribute('position') as THREE.BufferAttribute
+    const geo = this.oceanGeo,
+      base = this.oceanBase;
+    if (!geo || !base) return;
+    const t = timeMs / 1000;
+    const pos = geo.getAttribute("position") as THREE.BufferAttribute;
     for (let i = 0; i < pos.count; i++) {
-      const x = base[i * 2]!, y = base[i * 2 + 1]!
-      const z = Math.sin(x * 0.05 + t * 0.85) * 0.18 + Math.sin(y * 0.063 - t * 0.7) * 0.14 + Math.sin((x + y) * 0.028 + t * 1.25) * 0.09
-      pos.setZ(i, z)
+      const x = base[i * 2]!,
+        y = base[i * 2 + 1]!;
+      const z =
+        Math.sin(x * 0.05 + t * 0.85) * 0.18 +
+        Math.sin(y * 0.063 - t * 0.7) * 0.14 +
+        Math.sin((x + y) * 0.028 + t * 1.25) * 0.09;
+      pos.setZ(i, z);
     }
-    pos.needsUpdate = true
-    geo.computeVertexNormals()
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
   }
 
   /** Spec 091 — the shoreline SURF: an additive foam ring traced once from the terrain coastline, parked
    *  just above the living sea. Render-only + deterministic (built from grid data, opacity pulses on the
    *  wall clock); see foamLayer.ts. */
   private buildFoam(): void {
-    this.foam = buildFoam({ terrain: this.sim.state.terrain, wx: (x) => this.wx(x), wz: (y) => this.wz(y) })
-    if (this.foam) this.scene.add(this.foam.group)
+    this.foam = buildFoam({
+      terrain: this.sim.state.terrain,
+      wx: (x) => this.wx(x),
+      wz: (y) => this.wz(y),
+    });
+    if (this.foam) this.scene.add(this.foam.group);
   }
 
   private colorFor(mode: ViewMode, i: number, out: THREE.Color): void {
-    const t = this.sim.state.terrain
-    if (mode === 'biome') {
-      out.setHex(BIOME_COLOR[t.biome[i] as Biome])
-    } else if (mode === 'buildable') {
-      const b = t.buildable[i]!
-      if (t.water[i] || t.elev[i]! < COLONY.world.seaLevel) out.setHex(0x163a4a)
-      else out.setHex(b === 2 ? 0x4caf50 : b === 1 ? 0xe0c020 : 0xc0493f)
+    const t = this.sim.state.terrain;
+    if (mode === "biome") {
+      out.setHex(BIOME_COLOR[t.biome[i] as Biome]);
+    } else if (mode === "buildable") {
+      const b = t.buildable[i]!;
+      if (t.water[i] || t.elev[i]! < COLONY.world.seaLevel)
+        out.setHex(0x163a4a);
+      else out.setHex(b === 2 ? 0x4caf50 : b === 1 ? 0xe0c020 : 0xc0493f);
     } else {
-      const g = 0.15 + t.elev[i]! * 0.85
-      out.setRGB(g * 0.9, g, g * 0.95)
+      const g = 0.15 + t.elev[i]! * 0.85;
+      out.setRGB(g * 0.9, g, g * 0.95);
     }
   }
 
   private buildTerrain() {
     // Spec 084 S5 — the terrain is a chunk grid (per-chunk frustum culling + one-time analytic
     // normals + staged recolor); see terrainChunks.ts for why each matters at the 608 world.
-    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.02, flatShading: false })
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.95,
+      metalness: 0.02,
+      flatShading: false,
+    });
     this.chunkedTerrain = buildChunkedTerrain(
       this.sim.state.terrain,
       (x) => this.wx(x),
       (y) => this.wz(y),
       (i, out) => this.colorFor(this.view, i, out),
       mat,
-    )
-    this.scene.add(this.chunkedTerrain.group)
+    );
+    this.scene.add(this.chunkedTerrain.group);
   }
 
   setView(mode: ViewMode) {
-    this.view = mode
+    this.view = mode;
     // Spec 084 S5 — recoloring is STAGED: chunks go dirty here and frame() repaints a few per
     // frame, so a view toggle never stalls (the old full-grid rewrite froze a frame at scale).
-    this.chunkedTerrain.markAllDirty()
+    this.chunkedTerrain.markAllDirty();
   }
 
   /** Show or hide the city-plan overlay (zone tints + plot flag-poles). */
   setZonesVisible(v: boolean) {
     // Spec 011 — repurposed: drives the liveability overlay (homes tinted by wellbeing). The old static
     // zone tints + named-plot flags are retired, so they stay hidden regardless of the toggle.
-    this.liveabilityOn = v
-    if (this.zoneTintMesh) this.zoneTintMesh.visible = false
-    this.plotMarkers.visible = false
+    this.liveabilityOn = v;
+    if (this.zoneTintMesh) this.zoneTintMesh.visible = false;
+    this.plotMarkers.visible = false;
   }
 
   private buildStructures() {
-    const t = this.sim.state.terrain
-    const group = new THREE.Group()
+    const t = this.sim.state.terrain;
+    const group = new THREE.Group();
     for (const s of this.sim.state.structures) {
-      if (s.kind === 'lighthouse') continue
-      const mesh = this.makeStructure(s)
-      const baseY = Math.max(0.05, t.worldY(s.x, s.y))
-      mesh.position.set(this.wx(s.x), baseY, this.wz(s.y))
-      mesh.castShadow = true
-      group.add(mesh)
+      if (s.kind === "lighthouse") continue;
+      const mesh = this.makeStructure(s);
+      const baseY = Math.max(0.05, t.worldY(s.x, s.y));
+      mesh.position.set(this.wx(s.x), baseY, this.wz(s.y));
+      mesh.castShadow = true;
+      group.add(mesh);
     }
-    this.scene.add(group)
+    this.scene.add(group);
     this.shoreProps = buildShoreProps({
       terrain: t,
       structures: this.sim.state.structures,
@@ -586,89 +755,168 @@ export class PlanetRenderer {
       occupied: this.sim.state.occupied,
       wx: (x) => this.wx(x),
       wz: (y) => this.wz(y),
-    })
-    if (this.shoreProps) this.scene.add(this.shoreProps.group)
+    });
+    if (this.shoreProps) this.scene.add(this.shoreProps.group);
   }
 
   private makeStructure(s: SeedStructure): THREE.Object3D {
-    const g = new THREE.Group()
-    if (s.kind === 'caravan') {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(3, 1.5, 1.7), new THREE.MeshStandardMaterial({ color: 0xe9e4d6, roughness: 0.7 }))
-      body.position.y = 1
-      body.castShadow = true
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(3.05, 0.3, 1.75), new THREE.MeshStandardMaterial({ color: 0xb24a3a, roughness: 0.6 }))
-      roof.position.y = 1.85
-      g.add(body, roof)
-    } else if (s.kind === 'solar') {
-      const post1 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.9), new THREE.MeshStandardMaterial({ color: 0x444 }))
-      post1.position.set(-0.8, 0.45, 0)
-      const post2 = post1.clone()
-      post2.position.x = 0.8
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.09, 1.5), new THREE.MeshStandardMaterial({ color: 0x16335a, roughness: 0.25, metalness: 0.5, emissive: 0x0a1830, emissiveIntensity: 0.5 }))
-      panel.position.y = 0.95
-      panel.rotation.x = -0.5
-      panel.castShadow = true
-      g.add(post1, post2, panel)
-    } else if (s.kind === 'battery') {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.3, 0.9), new THREE.MeshStandardMaterial({ color: 0x5a6270, roughness: 0.6 }))
-      box.position.y = 0.65
-      const cap = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.18, 0.95), new THREE.MeshStandardMaterial({ color: 0x39d353, emissive: 0x1f8a2f, emissiveIntensity: 0.6 }))
-      cap.position.y = 1.4
-      box.castShadow = true
-      g.add(box, cap)
-    } else if (s.kind === 'rocket') {
+    const g = new THREE.Group();
+    if (s.kind === "caravan") {
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(3, 1.5, 1.7),
+        new THREE.MeshStandardMaterial({ color: 0xe9e4d6, roughness: 0.7 }),
+      );
+      body.position.y = 1;
+      body.castShadow = true;
+      const roof = new THREE.Mesh(
+        new THREE.BoxGeometry(3.05, 0.3, 1.75),
+        new THREE.MeshStandardMaterial({ color: 0xb24a3a, roughness: 0.6 }),
+      );
+      roof.position.y = 1.85;
+      g.add(body, roof);
+    } else if (s.kind === "solar") {
+      const post1 = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.07, 0.9),
+        new THREE.MeshStandardMaterial({ color: 0x444 }),
+      );
+      post1.position.set(-0.8, 0.45, 0);
+      const post2 = post1.clone();
+      post2.position.x = 0.8;
+      const panel = new THREE.Mesh(
+        new THREE.BoxGeometry(2.6, 0.09, 1.5),
+        new THREE.MeshStandardMaterial({
+          color: 0x16335a,
+          roughness: 0.25,
+          metalness: 0.5,
+          emissive: 0x0a1830,
+          emissiveIntensity: 0.5,
+        }),
+      );
+      panel.position.y = 0.95;
+      panel.rotation.x = -0.5;
+      panel.castShadow = true;
+      g.add(post1, post2, panel);
+    } else if (s.kind === "battery") {
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 1.3, 0.9),
+        new THREE.MeshStandardMaterial({ color: 0x5a6270, roughness: 0.6 }),
+      );
+      box.position.y = 0.65;
+      const cap = new THREE.Mesh(
+        new THREE.BoxGeometry(1.25, 0.18, 0.95),
+        new THREE.MeshStandardMaterial({
+          color: 0x39d353,
+          emissive: 0x1f8a2f,
+          emissiveIntensity: 0.6,
+        }),
+      );
+      cap.position.y = 1.4;
+      box.castShadow = true;
+      g.add(box, cap);
+    } else if (s.kind === "rocket") {
       // rocket / dropship (landed)
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 5, 16), new THREE.MeshStandardMaterial({ color: 0xdfe3e9, roughness: 0.4, metalness: 0.3 }))
-      body.position.y = 2.5
-      const nose = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2, 16), new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.5 }))
-      nose.position.y = 6
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.4, 1.2), new THREE.MeshStandardMaterial({ color: 0xb0b6bf }))
-      fin.position.set(0, 0.9, 0)
-      body.castShadow = true
-      nose.castShadow = true
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.9, 1.1, 5, 16),
+        new THREE.MeshStandardMaterial({
+          color: 0xdfe3e9,
+          roughness: 0.4,
+          metalness: 0.3,
+        }),
+      );
+      body.position.y = 2.5;
+      const nose = new THREE.Mesh(
+        new THREE.ConeGeometry(0.9, 2, 16),
+        new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.5 }),
+      );
+      nose.position.y = 6;
+      const fin = new THREE.Mesh(
+        new THREE.BoxGeometry(0.15, 1.4, 1.2),
+        new THREE.MeshStandardMaterial({ color: 0xb0b6bf }),
+      );
+      fin.position.set(0, 0.9, 0);
+      body.castShadow = true;
+      nose.castShadow = true;
       // Pulsing red nav beacon just above the nose — the landed dropship still has power.
-      const beaconMat = new THREE.MeshStandardMaterial({ color: 0xff6a55, emissive: 0xff2a18, emissiveIntensity: 1.5 })
-      const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 10), beaconMat)
-      beacon.position.y = 7.25
-      this.beaconMat = beaconMat
-      g.add(body, nose, fin, beacon)
+      const beaconMat = new THREE.MeshStandardMaterial({
+        color: 0xff6a55,
+        emissive: 0xff2a18,
+        emissiveIntensity: 1.5,
+      });
+      const beacon = new THREE.Mesh(
+        new THREE.SphereGeometry(0.18, 12, 10),
+        beaconMat,
+      );
+      beacon.position.y = 7.25;
+      this.beaconMat = beaconMat;
+      g.add(body, nose, fin, beacon);
     }
-    return g
+    return g;
   }
 
   // ── camera presets ──
-  private presetPose(p: CameraPreset): { pos: THREE.Vector3; target: THREE.Vector3 } {
-    const t = this.sim.state.terrain
-    const L = new THREE.Vector3(this.wx(t.landing.x), Math.max(0, t.worldY(t.landing.x, t.landing.y)), this.wz(t.landing.y))
-    if (p === 'street') {
-      return { pos: L.clone().add(new THREE.Vector3(16, 11, 20)), target: L.clone().add(new THREE.Vector3(0, 2, 0)) }
+  private presetPose(p: CameraPreset): {
+    pos: THREE.Vector3;
+    target: THREE.Vector3;
+  } {
+    const t = this.sim.state.terrain;
+    const L = new THREE.Vector3(
+      this.wx(t.landing.x),
+      Math.max(0, t.worldY(t.landing.x, t.landing.y)),
+      this.wz(t.landing.y),
+    );
+    if (p === "street") {
+      return {
+        pos: L.clone().add(new THREE.Vector3(16, 11, 20)),
+        target: L.clone().add(new THREE.Vector3(0, 2, 0)),
+      };
     }
-    if (p === 'district') {
+    if (p === "district") {
       // Spec 084 S5 — frame the NEIGHBORHOOD (derived from its bounding box), not a hardcoded
       // point that only happened to work at the 192 world.
-      const lots = this.neighborhood?.parcels ?? []
+      const lots = this.neighborhood?.parcels ?? [];
       if (lots.length > 0) {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+        let minX = Infinity,
+          minY = Infinity,
+          maxX = -Infinity,
+          maxY = -Infinity;
         for (const l of lots) {
-          minX = Math.min(minX, l.x - l.w / 2); maxX = Math.max(maxX, l.x + l.w / 2)
-          minY = Math.min(minY, l.y - l.h / 2); maxY = Math.max(maxY, l.y + l.h / 2)
+          minX = Math.min(minX, l.x - l.w / 2);
+          maxX = Math.max(maxX, l.x + l.w / 2);
+          minY = Math.min(minY, l.y - l.h / 2);
+          maxY = Math.max(maxY, l.y + l.h / 2);
         }
-        const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2
-        const span = Math.max(maxX - minX, maxY - minY, 24)
-        const c = new THREE.Vector3(this.wx(cx), Math.max(0, t.worldY(Math.round(cx), Math.round(cy))), this.wz(cy))
-        return { pos: c.clone().add(new THREE.Vector3(span * 0.9, span * 1.1, span * 1.5)), target: c.clone().add(new THREE.Vector3(0, 4, 0)) }
+        const cx = (minX + maxX) / 2,
+          cy = (minY + maxY) / 2;
+        const span = Math.max(maxX - minX, maxY - minY, 24);
+        const c = new THREE.Vector3(
+          this.wx(cx),
+          Math.max(0, t.worldY(Math.round(cx), Math.round(cy))),
+          this.wz(cy),
+        );
+        return {
+          pos: c
+            .clone()
+            .add(new THREE.Vector3(span * 0.9, span * 1.1, span * 1.5)),
+          target: c.clone().add(new THREE.Vector3(0, 4, 0)),
+        };
       }
-      return { pos: new THREE.Vector3(95, 105, 150), target: new THREE.Vector3(0, 5, 0) }
+      return {
+        pos: new THREE.Vector3(95, 105, 150),
+        target: new THREE.Vector3(0, 5, 0),
+      };
     }
     // planet — orbital framing: your colony region with the planet curving away behind it
-    return { pos: new THREE.Vector3(0, this.N * 2.4, this.N * 3.4), target: new THREE.Vector3(0, 0, 0) }
+    return {
+      pos: new THREE.Vector3(0, this.N * 2.4, this.N * 3.4),
+      target: new THREE.Vector3(0, 0, 0),
+    };
   }
 
   applyPreset(p: CameraPreset) {
-    const pose = this.presetPose(p)
-    this.camera.position.copy(pose.pos)
-    this.controls.target.copy(pose.target)
-    this.controls.update()
+    const pose = this.presetPose(p);
+    this.camera.position.copy(pose.pos);
+    this.controls.target.copy(pose.target);
+    this.controls.update();
   }
 
   // Spec 091 — the gradient SKY DOME: a huge inward sphere whose fragment colour blends from the
@@ -703,43 +951,49 @@ export class PlanetRenderer {
           gl_FragColor = vec4(mix(horizonColor, topColor, pow(h, expo)), 1.0);
         }
       `,
-    })
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(20000, 32, 16), mat)
-    dome.name = 'SkyDome'
-    dome.renderOrder = -1
-    dome.frustumCulled = false
-    this.scene.add(dome)
-    this.skyMat = mat
+    });
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(20000, 32, 16), mat);
+    dome.name = "SkyDome";
+    dome.renderOrder = -1;
+    dome.frustumCulled = false;
+    this.scene.add(dome);
+    this.skyMat = mat;
   }
 
   private updateDayNight() {
-    const d = this.sim.state.clock.daylight
-    const { hour, minute } = this.sim.state.clock
-    const sky = SKY_NIGHT.clone().lerp(SKY_DAY, d)
+    const d = this.sim.state.clock.daylight;
+    const { hour, minute } = this.sim.state.clock;
+    const sky = SKY_NIGHT.clone().lerp(SKY_DAY, d);
     // Horizon glow only by day; at night it collapses back to the flat void so deep space is untouched.
-    const horizon = sky.clone().lerp(HORIZON_GLOW, d * 0.85)
-    ;(this.scene.background as THREE.Color).copy(sky)
+    const horizon = sky.clone().lerp(HORIZON_GLOW, d * 0.85);
+    (this.scene.background as THREE.Color).copy(sky);
     // Distance-fog fades to the HORIZON glow (not the zenith void), so far terrain melts into the band —
     // atmospheric perspective that ties the island edge to the sky.
-    ;(this.scene.fog as THREE.Fog).color.copy(horizon)
+    (this.scene.fog as THREE.Fog).color.copy(horizon);
     if (this.skyMat) {
-      ;(this.skyMat.uniforms.topColor.value as THREE.Color).copy(sky)
-      ;(this.skyMat.uniforms.horizonColor.value as THREE.Color).copy(horizon)
+      (this.skyMat.uniforms.topColor.value as THREE.Color).copy(sky);
+      (this.skyMat.uniforms.horizonColor.value as THREE.Color).copy(horizon);
     }
-    this.hemi.intensity = 0.35 + d * 0.65
-    this.sun.intensity = 0.18 + d * 1.7
-    const t = hour + minute / 60
-    const ang = ((t - 6) / 12) * Math.PI
+    this.hemi.intensity = 0.35 + d * 0.65;
+    this.sun.intensity = 0.18 + d * 1.7;
+    const t = hour + minute / 60;
+    const ang = ((t - 6) / 12) * Math.PI;
     // Golden-hour key: the lower the sun, the warmer (amber) it burns; high noon stays a warm white.
-    const sunHeight = Math.max(0, Math.sin(ang)) // 0 at the horizon .. 1 at noon
-    this.sun.color.copy(SUN_HIGH).lerp(SUN_LOW, Math.pow(1 - sunHeight, 1.5) * 0.85)
-    const r = this.N * 1.1
+    const sunHeight = Math.max(0, Math.sin(ang)); // 0 at the horizon .. 1 at noon
+    this.sun.color
+      .copy(SUN_HIGH)
+      .lerp(SUN_LOW, Math.pow(1 - sunHeight, 1.5) * 0.85);
+    const r = this.N * 1.1;
     // Spec 084 S5 — sun + target translate TOGETHER to the orbit target: the light DIRECTION (and
     // so all shading) is unchanged, but the fixed-extent shadow frustum now sits wherever the
     // player is looking instead of being pinned to the island centre.
-    const c = this.controls.target
-    this.sun.position.set(c.x + Math.cos(ang) * r, Math.max(6, Math.sin(ang) * r), c.z + this.N * 0.25)
-    this.sun.target.position.set(c.x, 0, c.z)
+    const c = this.controls.target;
+    this.sun.position.set(
+      c.x + Math.cos(ang) * r,
+      Math.max(6, Math.sin(ang) * r),
+      c.z + this.N * 0.25,
+    );
+    this.sun.target.position.set(c.x, 0, c.z);
   }
 
   private buildColonyLayer() {
@@ -748,194 +1002,334 @@ export class PlanetRenderer {
     // so the network sits in the landscape like the residential lane does.
     this.roadSurfaceMesh = new THREE.Mesh(
       new THREE.BufferGeometry(),
-      new THREE.MeshStandardMaterial({ color: 0x7a6750, roughness: 1, metalness: 0, side: THREE.DoubleSide, emissive: 0x4a3c2c, emissiveIntensity: 0.32 }),
-    )
-    this.roadSurfaceMesh.frustumCulled = false
-    this.scene.add(this.roadSurfaceMesh)
+      new THREE.MeshStandardMaterial({
+        color: 0x7a6750,
+        roughness: 1,
+        metalness: 0,
+        side: THREE.DoubleSide,
+        emissive: 0x4a3c2c,
+        emissiveIntensity: 0.32,
+      }),
+    );
+    this.roadSurfaceMesh.frustumCulled = false;
+    this.scene.add(this.roadSurfaceMesh);
     this.roadShoulderMesh = new THREE.Mesh(
       new THREE.BufferGeometry(),
-      new THREE.MeshStandardMaterial({ color: 0x58604d, roughness: 0.98, metalness: 0, side: THREE.DoubleSide, emissive: 0x23271f, emissiveIntensity: 0.18 }),
-    )
-    this.roadShoulderMesh.frustumCulled = false
-    this.scene.add(this.roadShoulderMesh)
+      new THREE.MeshStandardMaterial({
+        color: 0x58604d,
+        roughness: 0.98,
+        metalness: 0,
+        side: THREE.DoubleSide,
+        emissive: 0x23271f,
+        emissiveIntensity: 0.18,
+      }),
+    );
+    this.roadShoulderMesh.frustumCulled = false;
+    this.scene.add(this.roadShoulderMesh);
     this.roadLineMesh = new THREE.Mesh(
       new THREE.BufferGeometry(),
-      new THREE.MeshStandardMaterial({ color: 0xd8c879, roughness: 0.8, metalness: 0, emissive: 0x2a2410, emissiveIntensity: 0.3, side: THREE.DoubleSide }),
-    )
-    this.roadLineMesh.frustumCulled = false
-    this.scene.add(this.roadLineMesh)
+      new THREE.MeshStandardMaterial({
+        color: 0xd8c879,
+        roughness: 0.8,
+        metalness: 0,
+        emissive: 0x2a2410,
+        emissiveIntensity: 0.3,
+        side: THREE.DoubleSide,
+      }),
+    );
+    this.roadLineMesh.frustumCulled = false;
+    this.scene.add(this.roadLineMesh);
     // Spec 084 S3 — the AVENUE: smooth asphalt (a faint cool emissive keeps it readable under the
     // void sky without crushing to black) and pale concrete kerb strips along its boundary edges.
     this.avenueSurfaceMesh = new THREE.Mesh(
       new THREE.BufferGeometry(),
-      new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.92, metalness: 0, side: THREE.DoubleSide, emissive: 0x23232b, emissiveIntensity: 0.35 }),
-    )
-    this.avenueSurfaceMesh.frustumCulled = false
-    this.scene.add(this.avenueSurfaceMesh)
+      new THREE.MeshStandardMaterial({
+        color: 0x4a4a52,
+        roughness: 0.92,
+        metalness: 0,
+        side: THREE.DoubleSide,
+        emissive: 0x23232b,
+        emissiveIntensity: 0.35,
+      }),
+    );
+    this.avenueSurfaceMesh.frustumCulled = false;
+    this.scene.add(this.avenueSurfaceMesh);
     this.avenueKerbMesh = new THREE.Mesh(
       new THREE.BufferGeometry(),
-      new THREE.MeshStandardMaterial({ color: 0x9a9aa2, roughness: 0.85, metalness: 0, side: THREE.DoubleSide, emissive: 0x3c3c42, emissiveIntensity: 0.3 }),
-    )
-    this.avenueKerbMesh.frustumCulled = false
-    this.scene.add(this.avenueKerbMesh)
+      new THREE.MeshStandardMaterial({
+        color: 0x9a9aa2,
+        roughness: 0.85,
+        metalness: 0,
+        side: THREE.DoubleSide,
+        emissive: 0x3c3c42,
+        emissiveIntensity: 0.3,
+      }),
+    );
+    this.avenueKerbMesh.frustumCulled = false;
+    this.scene.add(this.avenueKerbMesh);
 
     // Building = body box + a low hipped roof merged into one geometry, so each instance reads as a
     // structure with a roof instead of a plain block. The roof scales with the building height.
-    const bBody = new THREE.BoxGeometry(0.82, 1, 0.82)
-    bBody.translate(0, 0.5, 0)
-    const bRoof = new THREE.ConeGeometry(0.64, 0.4, 4)
-    bRoof.rotateY(Math.PI / 4)
-    bRoof.translate(0, 1.2, 0)
-    const bGeo = mergeGeometries([bBody, bRoof])!
-    this.bldgMesh = new THREE.InstancedMesh(bGeo, new THREE.MeshStandardMaterial({ roughness: 0.8, metalness: 0.03, flatShading: true }), COLONY.build.maxBuildings + 8)
-    this.bldgMesh.count = 0
-    this.bldgMesh.castShadow = true
-    this.bldgMesh.frustumCulled = false
-    this.scene.add(this.bldgMesh)
+    const bBody = new THREE.BoxGeometry(0.82, 1, 0.82);
+    bBody.translate(0, 0.5, 0);
+    const bRoof = new THREE.ConeGeometry(0.64, 0.4, 4);
+    bRoof.rotateY(Math.PI / 4);
+    bRoof.translate(0, 1.2, 0);
+    const bGeo = mergeGeometries([bBody, bRoof])!;
+    this.bldgMesh = new THREE.InstancedMesh(
+      bGeo,
+      new THREE.MeshStandardMaterial({
+        roughness: 0.8,
+        metalness: 0.03,
+        flatShading: true,
+      }),
+      COLONY.build.maxBuildings + 8,
+    );
+    this.bldgMesh.count = 0;
+    this.bldgMesh.castShadow = true;
+    this.bldgMesh.frustumCulled = false;
+    this.scene.add(this.bldgMesh);
 
-    const crewGeo = new THREE.BoxGeometry(0.5, 0.3, 0.32)
-    this.crewMesh = new THREE.InstancedMesh(crewGeo, new THREE.MeshStandardMaterial({ color: 0xf2a23a, roughness: 0.5, metalness: 0.2 }), COLONY.build.maxBuildings + 8)
-    this.crewMesh.count = 0
-    this.crewMesh.castShadow = true
-    this.crewMesh.frustumCulled = false
-    this.scene.add(this.crewMesh)
+    const crewGeo = new THREE.BoxGeometry(0.5, 0.3, 0.32);
+    this.crewMesh = new THREE.InstancedMesh(
+      crewGeo,
+      new THREE.MeshStandardMaterial({
+        color: 0xf2a23a,
+        roughness: 0.5,
+        metalness: 0.2,
+      }),
+      COLONY.build.maxBuildings + 8,
+    );
+    this.crewMesh.count = 0;
+    this.crewMesh.castShadow = true;
+    this.crewMesh.frustumCulled = false;
+    this.scene.add(this.crewMesh);
 
     // Ambient pedestrians strolling the settled ground near the landing — the colony feels lived-in.
-    const pedGeo = new THREE.CapsuleGeometry(0.13, 0.34, 3, 6)
-    pedGeo.translate(0, 0.33, 0)
-    this.pedMesh = new THREE.InstancedMesh(pedGeo, new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.05 }), 28)
-    this.pedMesh.castShadow = true
-    this.pedMesh.frustumCulled = false
-    this.scene.add(this.pedMesh)
+    const pedGeo = new THREE.CapsuleGeometry(0.13, 0.34, 3, 6);
+    pedGeo.translate(0, 0.33, 0);
+    this.pedMesh = new THREE.InstancedMesh(
+      pedGeo,
+      new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.05 }),
+      28,
+    );
+    this.pedMesh.castShadow = true;
+    this.pedMesh.frustumCulled = false;
+    this.scene.add(this.pedMesh);
     // a head atop each body so the figures read as people (same instance transform, head baked above the body)
-    const pedHeadGeo = new THREE.SphereGeometry(0.1, 8, 6)
-    pedHeadGeo.translate(0, 0.72, 0)
-    this.pedHeadMesh = new THREE.InstancedMesh(pedHeadGeo, new THREE.MeshStandardMaterial({ color: 0xe0b48a, roughness: 0.85 }), 28)
-    this.pedHeadMesh.count = 0
-    this.pedHeadMesh.castShadow = true
-    this.pedHeadMesh.frustumCulled = false
-    this.scene.add(this.pedHeadMesh)
-    this.initPedestrians()
+    const pedHeadGeo = new THREE.SphereGeometry(0.1, 8, 6);
+    pedHeadGeo.translate(0, 0.72, 0);
+    this.pedHeadMesh = new THREE.InstancedMesh(
+      pedHeadGeo,
+      new THREE.MeshStandardMaterial({ color: 0xe0b48a, roughness: 0.85 }),
+      28,
+    );
+    this.pedHeadMesh.count = 0;
+    this.pedHeadMesh.castShadow = true;
+    this.pedHeadMesh.frustumCulled = false;
+    this.scene.add(this.pedHeadMesh);
+    this.initPedestrians();
 
     // P1 — citizen avatars: a touch taller + glowing so the real, named citizens stand out from the ambient crowd.
-    const AV_CAP = 64
-    const avGeo = new THREE.CapsuleGeometry(0.16, 0.44, 4, 8)
-    avGeo.translate(0, 0.4, 0)
-    this.avatarMesh = new THREE.InstancedMesh(avGeo, new THREE.MeshStandardMaterial({ roughness: 0.55, metalness: 0.1, emissive: 0x2a2050, emissiveIntensity: 0.5 }), AV_CAP)
-    this.avatarMesh.count = 0
-    this.avatarMesh.castShadow = true
-    this.avatarMesh.frustumCulled = false
-    this.scene.add(this.avatarMesh)
-    const avHeadGeo = new THREE.SphereGeometry(0.12, 10, 8)
-    avHeadGeo.translate(0, 0.86, 0)
-    this.avatarHeadMesh = new THREE.InstancedMesh(avHeadGeo, new THREE.MeshStandardMaterial({ color: 0xe8c49a, roughness: 0.8 }), AV_CAP)
-    this.avatarHeadMesh.count = 0
-    this.avatarHeadMesh.castShadow = true
-    this.avatarHeadMesh.frustumCulled = false
-    this.scene.add(this.avatarHeadMesh)
+    const AV_CAP = 64;
+    const avGeo = new THREE.CapsuleGeometry(0.16, 0.44, 4, 8);
+    avGeo.translate(0, 0.4, 0);
+    this.avatarMesh = new THREE.InstancedMesh(
+      avGeo,
+      new THREE.MeshStandardMaterial({
+        roughness: 0.55,
+        metalness: 0.1,
+        emissive: 0x2a2050,
+        emissiveIntensity: 0.5,
+      }),
+      AV_CAP,
+    );
+    this.avatarMesh.count = 0;
+    this.avatarMesh.castShadow = true;
+    this.avatarMesh.frustumCulled = false;
+    this.scene.add(this.avatarMesh);
+    const avHeadGeo = new THREE.SphereGeometry(0.12, 10, 8);
+    avHeadGeo.translate(0, 0.86, 0);
+    this.avatarHeadMesh = new THREE.InstancedMesh(
+      avHeadGeo,
+      new THREE.MeshStandardMaterial({ color: 0xe8c49a, roughness: 0.8 }),
+      AV_CAP,
+    );
+    this.avatarHeadMesh.count = 0;
+    this.avatarHeadMesh.castShadow = true;
+    this.avatarHeadMesh.frustumCulled = false;
+    this.scene.add(this.avatarHeadMesh);
     // Spec 078 — Joe the Crab's body: one merged, vertex-coloured geometry drawn by a single material.
-    const crabGeo = this.makeCrabGeometry()
-    this.crabMesh = new THREE.InstancedMesh(crabGeo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.6, metalness: 0.05 }), AV_CAP)
-    this.crabMesh.count = 0
-    this.crabMesh.castShadow = true
-    this.crabMesh.frustumCulled = false
-    this.scene.add(this.crabMesh)
+    const crabGeo = this.makeCrabGeometry();
+    this.crabMesh = new THREE.InstancedMesh(
+      crabGeo,
+      new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        flatShading: true,
+        roughness: 0.6,
+        metalness: 0.05,
+      }),
+      AV_CAP,
+    );
+    this.crabMesh.count = 0;
+    this.crabMesh.castShadow = true;
+    this.crabMesh.frustumCulled = false;
+    this.scene.add(this.crabMesh);
 
     // Spec 076 — homestead ground tiles (zone pads + the spine carriageway/verge) + voxel blocks
     // (the house, fences, farm crops, garden beds, trees). Caps raised for the larger parcels.
     // Deep pads: the tile body extends well below its top face, so on sloped ground the sides reach
     // down into the terrain — adjacent stepped tiles read as one merged surface and a tile edge over a
     // dip reads as built-up earth, never a floating wafer (operator feedback).
-    const padGeo = new THREE.BoxGeometry(1, 0.6, 1)
-    this.lotPadMesh = new THREE.InstancedMesh(padGeo, new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 }), PAD_CAP)
-    this.lotPadMesh.count = 0
-    this.lotPadMesh.receiveShadow = true
-    this.lotPadMesh.frustumCulled = false
-    this.scene.add(this.lotPadMesh)
-    const blockGeo = new THREE.BoxGeometry(0.96, 0.56, 0.96)
-    this.voxelMesh = new THREE.InstancedMesh(blockGeo, new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0.02, flatShading: true }), VOX_CAP)
-    this.voxelMesh.count = 0
-    this.voxelMesh.castShadow = true
-    this.voxelMesh.receiveShadow = true
-    this.voxelMesh.frustumCulled = false
-    this.scene.add(this.voxelMesh)
+    const padGeo = new THREE.BoxGeometry(1, 0.6, 1);
+    this.lotPadMesh = new THREE.InstancedMesh(
+      padGeo,
+      new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0 }),
+      PAD_CAP,
+    );
+    this.lotPadMesh.count = 0;
+    this.lotPadMesh.receiveShadow = true;
+    this.lotPadMesh.frustumCulled = false;
+    this.scene.add(this.lotPadMesh);
+    const blockGeo = new THREE.BoxGeometry(0.96, 0.56, 0.96);
+    this.voxelMesh = new THREE.InstancedMesh(
+      blockGeo,
+      new THREE.MeshStandardMaterial({
+        roughness: 0.85,
+        metalness: 0.02,
+        flatShading: true,
+      }),
+      VOX_CAP,
+    );
+    this.voxelMesh.count = 0;
+    this.voxelMesh.castShadow = true;
+    this.voxelMesh.receiveShadow = true;
+    this.voxelMesh.frustumCulled = false;
+    this.scene.add(this.voxelMesh);
     // Spec 077 P2 — the merged greedy-meshed brick houses. One shared vertex-colour material (the brick
     // banding lives in the per-vertex colours), flat-shaded so each merged quad reads as a crisp masonry
     // face. Slightly rougher than the instanced blocks so the surface reads as fired brick.
-    this.mergedHouseMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92, metalness: 0.02, flatShading: true })
-    this.mergedHouseGroup.frustumCulled = false
-    this.scene.add(this.mergedHouseGroup)
+    this.mergedHouseMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.92,
+      metalness: 0.02,
+      flatShading: true,
+    });
+    this.mergedHouseGroup.frustumCulled = false;
+    this.scene.add(this.mergedHouseGroup);
 
     // Spec 073 — goods piled at the Porter Sheds (crates + sacks), and the porter handcarts on the roads.
-    const crateGeo = new THREE.BoxGeometry(0.34, 0.34, 0.34)
-    crateGeo.translate(0, 0.17, 0)
-    this.porterPileMesh = new THREE.InstancedMesh(crateGeo, new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, flatShading: true }), 320)
-    this.porterPileMesh.count = 0
-    this.porterPileMesh.castShadow = true
-    this.porterPileMesh.frustumCulled = false
-    this.scene.add(this.porterPileMesh)
-    const cartGeo = new THREE.BoxGeometry(0.42, 0.22, 0.3)
-    cartGeo.translate(0, 0.14, 0)
-    this.porterCartMesh = new THREE.InstancedMesh(cartGeo, new THREE.MeshStandardMaterial({ color: 0x9a7a4a, roughness: 0.6, metalness: 0.1 }), 28)
-    this.porterCartMesh.count = 0
-    this.porterCartMesh.castShadow = true
-    this.porterCartMesh.frustumCulled = false
-    this.scene.add(this.porterCartMesh)
+    const crateGeo = new THREE.BoxGeometry(0.34, 0.34, 0.34);
+    crateGeo.translate(0, 0.17, 0);
+    this.porterPileMesh = new THREE.InstancedMesh(
+      crateGeo,
+      new THREE.MeshStandardMaterial({
+        roughness: 0.85,
+        metalness: 0,
+        flatShading: true,
+      }),
+      320,
+    );
+    this.porterPileMesh.count = 0;
+    this.porterPileMesh.castShadow = true;
+    this.porterPileMesh.frustumCulled = false;
+    this.scene.add(this.porterPileMesh);
+    const cartGeo = new THREE.BoxGeometry(0.42, 0.22, 0.3);
+    cartGeo.translate(0, 0.14, 0);
+    this.porterCartMesh = new THREE.InstancedMesh(
+      cartGeo,
+      new THREE.MeshStandardMaterial({
+        color: 0x9a7a4a,
+        roughness: 0.6,
+        metalness: 0.1,
+      }),
+      28,
+    );
+    this.porterCartMesh.count = 0;
+    this.porterCartMesh.castShadow = true;
+    this.porterCartMesh.frustumCulled = false;
+    this.scene.add(this.porterCartMesh);
 
     // street lights at grid intersections
-    const lightCap = 360
-    const postGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.9, 5)
-    postGeo.translate(0, 0.45, 0)
-    this.streetPostMesh = new THREE.InstancedMesh(postGeo, new THREE.MeshStandardMaterial({ color: 0x2a2a30 }), lightCap)
-    this.streetPostMesh.count = 0
-    this.streetPostMesh.frustumCulled = false
-    this.scene.add(this.streetPostMesh)
-    const headGeo = new THREE.BoxGeometry(0.16, 0.12, 0.16)
-    headGeo.translate(0, 0.93, 0)
-    this.streetHeadMesh = new THREE.InstancedMesh(headGeo, new THREE.MeshStandardMaterial({ color: 0xfff0c0, emissive: 0xffd58a, emissiveIntensity: 0.4 }), lightCap)
-    this.streetHeadMesh.count = 0
-    this.streetHeadMesh.frustumCulled = false
-    this.scene.add(this.streetHeadMesh)
+    const lightCap = 360;
+    const postGeo = new THREE.CylinderGeometry(0.04, 0.05, 0.9, 5);
+    postGeo.translate(0, 0.45, 0);
+    this.streetPostMesh = new THREE.InstancedMesh(
+      postGeo,
+      new THREE.MeshStandardMaterial({ color: 0x2a2a30 }),
+      lightCap,
+    );
+    this.streetPostMesh.count = 0;
+    this.streetPostMesh.frustumCulled = false;
+    this.scene.add(this.streetPostMesh);
+    const headGeo = new THREE.BoxGeometry(0.16, 0.12, 0.16);
+    headGeo.translate(0, 0.93, 0);
+    this.streetHeadMesh = new THREE.InstancedMesh(
+      headGeo,
+      new THREE.MeshStandardMaterial({
+        color: 0xfff0c0,
+        emissive: 0xffd58a,
+        emissiveIntensity: 0.4,
+      }),
+      lightCap,
+    );
+    this.streetHeadMesh.count = 0;
+    this.streetHeadMesh.frustumCulled = false;
+    this.scene.add(this.streetHeadMesh);
 
-    const carGeo = new THREE.BoxGeometry(0.36, 0.16, 0.2) // length along +X
-    this.carsMesh = new THREE.InstancedMesh(carGeo, new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.25 }), COLONY.traffic.maxCars + 4)
-    this.carsMesh.count = 0
-    this.carsMesh.castShadow = true
-    this.carsMesh.frustumCulled = false
-    this.scene.add(this.carsMesh)
+    const carGeo = new THREE.BoxGeometry(0.36, 0.16, 0.2); // length along +X
+    this.carsMesh = new THREE.InstancedMesh(
+      carGeo,
+      new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.25 }),
+      COLONY.traffic.maxCars + 4,
+    );
+    this.carsMesh.count = 0;
+    this.carsMesh.castShadow = true;
+    this.carsMesh.frustumCulled = false;
+    this.scene.add(this.carsMesh);
 
-    this.scene.add(this.settlerGroup) // unique KOOKER-settler homes live here
-    this.scene.add(this.plotMarkers) // city-plan flag poles, one per plot
-    this.scene.add(this.plotPadGroup) // sized plot foundations + their spoke roads
+    this.scene.add(this.settlerGroup); // unique KOOKER-settler homes live here
+    this.scene.add(this.plotMarkers); // city-plan flag poles, one per plot
+    this.scene.add(this.plotPadGroup); // sized plot foundations + their spoke roads
 
     // Zone tint: paint each land cell within the city's reach with its surveyed zone colour. The
     // residential arc (north + west), commercial arc (east), industrial arc (south), and civic
     // centre become visible as soft, translucent ground colour, so the patrol bot's allocations
     // and the player's first-person walk both have a *visible* city plan to land on.
-    this.buildZoneTint()
+    this.buildZoneTint();
   }
 
   /** One-time: build the translucent zone-tint mesh from the terrain. Cells off the plan get no quad. */
   private buildZoneTint() {
-    const t = this.sim.state.terrain
-    const landing = t.landing
-    const positions: number[] = []
-    const colors: number[] = []
+    const t = this.sim.state.terrain;
+    const landing = t.landing;
+    const positions: number[] = [];
+    const colors: number[] = [];
     const tri = (a: number[], b: number[], c: number[], col: THREE.Color) => {
-      positions.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!)
-      for (let i = 0; i < 3; i++) colors.push(col.r, col.g, col.b)
-    }
-    const col = new THREE.Color()
-    const LIFT = 0.03 // just above the terrain, just below the road
+      positions.push(
+        a[0]!,
+        a[1]!,
+        a[2]!,
+        b[0]!,
+        b[1]!,
+        b[2]!,
+        c[0]!,
+        c[1]!,
+        c[2]!,
+      );
+      for (let i = 0; i < 3; i++) colors.push(col.r, col.g, col.b);
+    };
+    const col = new THREE.Color();
+    const LIFT = 0.03; // just above the terrain, just below the road
     for (let y = 0; y < t.size; y++) {
       for (let x = 0; x < t.size; x++) {
-        if (t.isWater(x, y)) continue
-        const z = cellZone(landing, x, y)
-        if (!z) continue
-        col.setHex(ZONE_COLOR[z])
+        if (t.isWater(x, y)) continue;
+        const z = cellZone(landing, x, y);
+        if (!z) continue;
+        col.setHex(ZONE_COLOR[z]);
         // Quad covering the cell footprint, draped on the terrain by sampling corner heights.
         const cornerH = (gx: number, gy: number) => {
-          const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v))
+          const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v));
           return Math.max(
             0,
             (t.worldY(cl(gx - 1), cl(gy - 1)) +
@@ -943,86 +1337,108 @@ export class PlanetRenderer {
               t.worldY(cl(gx - 1), cl(gy)) +
               t.worldY(cl(gx), cl(gy))) /
               4,
-          )
-        }
-        const wx = (gx: number) => gx - t.size / 2
-        const wz = (gy: number) => gy - t.size / 2
-        const A = [wx(x) - 0.5, cornerH(x, y) + LIFT, wz(y) - 0.5]
-        const B = [wx(x) + 0.5, cornerH(x + 1, y) + LIFT, wz(y) - 0.5]
-        const C = [wx(x) - 0.5, cornerH(x, y + 1) + LIFT, wz(y) + 0.5]
-        const D = [wx(x) + 0.5, cornerH(x + 1, y + 1) + LIFT, wz(y) + 0.5]
-        tri(A, C, B, col)
-        tri(B, C, D, col)
+          );
+        };
+        const wx = (gx: number) => gx - t.size / 2;
+        const wz = (gy: number) => gy - t.size / 2;
+        const A = [wx(x) - 0.5, cornerH(x, y) + LIFT, wz(y) - 0.5];
+        const B = [wx(x) + 0.5, cornerH(x + 1, y) + LIFT, wz(y) - 0.5];
+        const C = [wx(x) - 0.5, cornerH(x, y + 1) + LIFT, wz(y) + 0.5];
+        const D = [wx(x) + 0.5, cornerH(x + 1, y + 1) + LIFT, wz(y) + 0.5];
+        tri(A, C, B, col);
+        tri(B, C, D, col);
       }
     }
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-    geo.computeVertexNormals()
-    const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.36, side: THREE.DoubleSide, depthWrite: false })
-    this.zoneTintMesh = new THREE.Mesh(geo, mat)
-    this.zoneTintMesh.frustumCulled = false
-    this.scene.add(this.zoneTintMesh)
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute(positions, 3),
+    );
+    geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.36,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.zoneTintMesh = new THREE.Mesh(geo, mat);
+    this.zoneTintMesh.frustumCulled = false;
+    this.scene.add(this.zoneTintMesh);
   }
 
   /** Per-frame: ensure each plot has a flag-pole marker; allocated plots dim + collapse. */
   private syncPlotMarkers(plots: Plot[]) {
-    const sig = plots.map((p) => `${p.id}:${p.assignedTo || ''}`).join('|')
-    if (sig === this.lastPlotSig) return
-    this.lastPlotSig = sig
-    const t = this.sim.state.terrain
-    const have = new Set<string>()
+    const sig = plots.map((p) => `${p.id}:${p.assignedTo || ""}`).join("|");
+    if (sig === this.lastPlotSig) return;
+    this.lastPlotSig = sig;
+    const t = this.sim.state.terrain;
+    const have = new Set<string>();
     for (const p of plots) {
-      have.add(p.id)
-      let entry = this.plotMeshes.get(p.id)
+      have.add(p.id);
+      let entry = this.plotMeshes.get(p.id);
       if (!entry) {
-        const poleGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.2, 6)
-        poleGeo.translate(0, 0.6, 0)
-        const poleMat = new THREE.MeshStandardMaterial({ color: 0xd6d6dc, roughness: 0.6 })
-        const pole = new THREE.Mesh(poleGeo, poleMat)
-        const flagGeo = new THREE.BoxGeometry(0.45, 0.28, 0.04)
-        flagGeo.translate(0.2, 1.05, 0)
-        const flagMat = new THREE.MeshStandardMaterial({ color: VIBE_COLOR[p.vibe], roughness: 0.5, emissive: VIBE_COLOR[p.vibe], emissiveIntensity: 0.35 })
-        const flag = new THREE.Mesh(flagGeo, flagMat)
-        const group = new THREE.Group()
-        group.add(pole)
-        group.add(flag)
-        const wx = p.x - t.size / 2
-        const wz = p.y - t.size / 2
-        const wy = Math.max(0, t.worldY(p.x, p.y))
-        group.position.set(wx, wy, wz)
-        this.plotMarkers.add(group)
-        entry = { pole, flag, flagMat }
-        this.plotMeshes.set(p.id, entry)
+        const poleGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.2, 6);
+        poleGeo.translate(0, 0.6, 0);
+        const poleMat = new THREE.MeshStandardMaterial({
+          color: 0xd6d6dc,
+          roughness: 0.6,
+        });
+        const pole = new THREE.Mesh(poleGeo, poleMat);
+        const flagGeo = new THREE.BoxGeometry(0.45, 0.28, 0.04);
+        flagGeo.translate(0.2, 1.05, 0);
+        const flagMat = new THREE.MeshStandardMaterial({
+          color: VIBE_COLOR[p.vibe],
+          roughness: 0.5,
+          emissive: VIBE_COLOR[p.vibe],
+          emissiveIntensity: 0.35,
+        });
+        const flag = new THREE.Mesh(flagGeo, flagMat);
+        const group = new THREE.Group();
+        group.add(pole);
+        group.add(flag);
+        const wx = p.x - t.size / 2;
+        const wz = p.y - t.size / 2;
+        const wy = Math.max(0, t.worldY(p.x, p.y));
+        group.position.set(wx, wy, wz);
+        this.plotMarkers.add(group);
+        entry = { pole, flag, flagMat };
+        this.plotMeshes.set(p.id, entry);
       }
       // Allocated plots: dim flag, drop emissive, half-height pole effect via scale.
-      const taken = !!p.assignedTo
-      entry.flagMat.color.setHex(VIBE_COLOR[p.vibe])
-      entry.flagMat.emissiveIntensity = taken ? 0.05 : 0.35
-      entry.flagMat.opacity = taken ? 0.55 : 1
-      entry.flagMat.transparent = taken
-      entry.flag.scale.set(taken ? 0.6 : 1, taken ? 0.6 : 1, taken ? 0.6 : 1)
-      entry.pole.scale.set(1, taken ? 0.55 : 1, 1)
+      const taken = !!p.assignedTo;
+      entry.flagMat.color.setHex(VIBE_COLOR[p.vibe]);
+      entry.flagMat.emissiveIntensity = taken ? 0.05 : 0.35;
+      entry.flagMat.opacity = taken ? 0.55 : 1;
+      entry.flagMat.transparent = taken;
+      entry.flag.scale.set(taken ? 0.6 : 1, taken ? 0.6 : 1, taken ? 0.6 : 1);
+      entry.pole.scale.set(1, taken ? 0.55 : 1, 1);
     }
     // Drop markers whose plot is gone (game reset).
     for (const [id, entry] of this.plotMeshes) {
       if (!have.has(id)) {
-        const group = entry.pole.parent
-        if (group && group.parent) group.parent.remove(group)
-        this.plotMeshes.delete(id)
+        const group = entry.pole.parent;
+        if (group && group.parent) group.parent.remove(group);
+        this.plotMeshes.delete(id);
       }
     }
   }
 
   /** Rebuild the unique settler homes (cheap; only on a new registration). */
   private rebuildSettlerHomes() {
-    for (const c of [...this.settlerGroup.children]) this.settlerGroup.remove(c)
-    const s = this.sim.state
-    const t = s.terrain
+    for (const c of [...this.settlerGroup.children])
+      this.settlerGroup.remove(c);
+    const s = this.sim.state;
+    const t = s.terrain;
     for (const settler of s.settlers) {
-      const home = this.buildHouseMesh(settler.house)
-      home.position.set(this.wx(settler.x), Math.max(0, t.worldY(settler.x, settler.y)), this.wz(settler.y))
-      this.settlerGroup.add(home)
+      const home = this.buildHouseMesh(settler.house);
+      home.position.set(
+        this.wx(settler.x),
+        Math.max(0, t.worldY(settler.x, settler.y)),
+        this.wz(settler.y),
+      );
+      this.settlerGroup.add(home);
     }
   }
 
@@ -1034,169 +1450,256 @@ export class PlanetRenderer {
   private buildPlotPads(_plots: Plot[]) {
     if (this.plotPadGroup.children.length > 0) {
       for (const ch of [...this.plotPadGroup.children]) {
-        this.plotPadGroup.remove(ch)
-        const m = ch as THREE.Mesh
-        if (m.geometry) m.geometry.dispose()
-        if (m.material) (m.material as THREE.Material).dispose()
+        this.plotPadGroup.remove(ch);
+        const m = ch as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) (m.material as THREE.Material).dispose();
       }
     }
-    this.lastPadSig = 'retired'
-    return
+    this.lastPadSig = "retired";
+    return;
     // eslint-disable-next-line no-unreachable
-    const plots = _plots
-    const sig = plots.map((p) => `${p.id}:${p.w || 1}x${p.h || 1}`).join('|')
-    if (sig === this.lastPadSig) return
-    this.lastPadSig = sig
-    const t = this.sim.state.terrain
+    const plots = _plots;
+    const sig = plots.map((p) => `${p.id}:${p.w || 1}x${p.h || 1}`).join("|");
+    if (sig === this.lastPadSig) return;
+    this.lastPadSig = sig;
+    const t = this.sim.state.terrain;
     for (const ch of [...this.plotPadGroup.children]) {
-      this.plotPadGroup.remove(ch)
-      const m = ch as THREE.Mesh
-      if (m.geometry) m.geometry.dispose()
-      if (m.material) (m.material as THREE.Material).dispose()
+      this.plotPadGroup.remove(ch);
+      const m = ch as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) (m.material as THREE.Material).dispose();
     }
-    const lx = t.landing.x, ly = t.landing.y
-    const padMat = new THREE.MeshStandardMaterial({ color: 0x9a948c, roughness: 0.9, metalness: 0 }) // poured-deck concrete
-    const kerbMat = new THREE.MeshStandardMaterial({ color: 0xbfc6c9, roughness: 0.8 })
+    const lx = t.landing.x,
+      ly = t.landing.y;
+    const padMat = new THREE.MeshStandardMaterial({
+      color: 0x9a948c,
+      roughness: 0.9,
+      metalness: 0,
+    }); // poured-deck concrete
+    const kerbMat = new THREE.MeshStandardMaterial({
+      color: 0xbfc6c9,
+      roughness: 0.8,
+    });
     // one merged ribbon for all the spoke roads (draped over the terrain)
-    const surf: number[] = []
-    const triPush = (p: number[], q: number[], r: number[]) => surf.push(p[0]!, p[1]!, p[2]!, q[0]!, q[1]!, q[2]!, r[0]!, r[1]!, r[2]!)
-    const quad = (a: number[], b: number[], c: number[], d: number[]) => { triPush(a, c, b); triPush(b, c, d) }
+    const surf: number[] = [];
+    const triPush = (p: number[], q: number[], r: number[]) =>
+      surf.push(p[0]!, p[1]!, p[2]!, q[0]!, q[1]!, q[2]!, r[0]!, r[1]!, r[2]!);
+    const quad = (a: number[], b: number[], c: number[], d: number[]) => {
+      triPush(a, c, b);
+      triPush(b, c, d);
+    };
     for (const p of plots) {
-      const w = Math.max(1, p.w || 1), h = Math.max(1, p.h || 1)
-      const hx = (w - 1) / 2, hy = (h - 1) / 2
+      const w = Math.max(1, p.w || 1),
+        h = Math.max(1, p.h || 1);
+      const hx = (w - 1) / 2,
+        hy = (h - 1) / 2;
       // leveled foundation height: sit at the highest corner of the lot so it cuts uphill and fills downhill
-      let padY = 0
-      for (let yy = p.y - hy; yy <= p.y + hy; yy++) for (let xx = p.x - hx; xx <= p.x + hx; xx++) padY = Math.max(padY, Math.max(0, t.worldY(Math.round(xx), Math.round(yy))))
+      let padY = 0;
+      for (let yy = p.y - hy; yy <= p.y + hy; yy++)
+        for (let xx = p.x - hx; xx <= p.x + hx; xx++)
+          padY = Math.max(
+            padY,
+            Math.max(0, t.worldY(Math.round(xx), Math.round(yy))),
+          );
       // the kerb (a hair larger + lower) frames the pad
-      const kerb = new THREE.Mesh(new THREE.BoxGeometry(w + 0.4, 0.16, h + 0.4), kerbMat)
-      kerb.position.set(this.wx(p.x), padY + 0.02, this.wz(p.y))
-      kerb.receiveShadow = true
-      this.plotPadGroup.add(kerb)
-      const pad = new THREE.Mesh(new THREE.BoxGeometry(w, 0.22, h), padMat)
-      pad.position.set(this.wx(p.x), padY + 0.06, this.wz(p.y))
-      pad.receiveShadow = true
-      this.plotPadGroup.add(pad)
+      const kerb = new THREE.Mesh(
+        new THREE.BoxGeometry(w + 0.4, 0.16, h + 0.4),
+        kerbMat,
+      );
+      kerb.position.set(this.wx(p.x), padY + 0.02, this.wz(p.y));
+      kerb.receiveShadow = true;
+      this.plotPadGroup.add(kerb);
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(w, 0.22, h), padMat);
+      pad.position.set(this.wx(p.x), padY + 0.06, this.wz(p.y));
+      pad.receiveShadow = true;
+      this.plotPadGroup.add(pad);
       // spoke road from the colony core to this plot, draped, ~0.8 wide
-      const dx = p.x - lx, dy = p.y - ly
-      const steps = Math.max(1, Math.round(Math.hypot(dx, dy)))
-      const nl = Math.hypot(dx, dy) || 1
-      const ox = (dy / nl) * 0.4, oy = (-dx / nl) * 0.4 // perpendicular half-width
+      const dx = p.x - lx,
+        dy = p.y - ly;
+      const steps = Math.max(1, Math.round(Math.hypot(dx, dy)));
+      const nl = Math.hypot(dx, dy) || 1;
+      const ox = (dy / nl) * 0.4,
+        oy = (-dx / nl) * 0.4; // perpendicular half-width
       for (let s = 0; s < steps; s++) {
-        const fx0 = lx + dx * (s / steps), fy0 = ly + dy * (s / steps)
-        const fx1 = lx + dx * ((s + 1) / steps), fy1 = ly + dy * ((s + 1) / steps)
-        if (t.isWater(Math.round(fx0), Math.round(fy0)) || t.isWater(Math.round(fx1), Math.round(fy1))) continue // a road never paves over open water — it breaks at the shore (ground units obey the physics of the world)
-        const h0 = Math.max(0, t.worldY(Math.round(fx0), Math.round(fy0))) + 0.06
-        const h1 = Math.max(0, t.worldY(Math.round(fx1), Math.round(fy1))) + 0.06
+        const fx0 = lx + dx * (s / steps),
+          fy0 = ly + dy * (s / steps);
+        const fx1 = lx + dx * ((s + 1) / steps),
+          fy1 = ly + dy * ((s + 1) / steps);
+        if (
+          t.isWater(Math.round(fx0), Math.round(fy0)) ||
+          t.isWater(Math.round(fx1), Math.round(fy1))
+        )
+          continue; // a road never paves over open water — it breaks at the shore (ground units obey the physics of the world)
+        const h0 =
+          Math.max(0, t.worldY(Math.round(fx0), Math.round(fy0))) + 0.06;
+        const h1 =
+          Math.max(0, t.worldY(Math.round(fx1), Math.round(fy1))) + 0.06;
         quad(
           [this.wx(fx0) + ox, h0, this.wz(fy0) + oy],
           [this.wx(fx0) - ox, h0, this.wz(fy0) - oy],
           [this.wx(fx1) + ox, h1, this.wz(fy1) + oy],
           [this.wx(fx1) - ox, h1, this.wz(fy1) - oy],
-        )
+        );
       }
     }
     if (surf.length) {
-      const sg = new THREE.BufferGeometry()
-      sg.setAttribute('position', new THREE.Float32BufferAttribute(surf, 3))
-      sg.computeVertexNormals()
-      const spoke = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ color: 0x2b2b30, roughness: 0.95, side: THREE.DoubleSide }))
-      spoke.frustumCulled = false
-      this.plotPadGroup.add(spoke)
+      const sg = new THREE.BufferGeometry();
+      sg.setAttribute("position", new THREE.Float32BufferAttribute(surf, 3));
+      sg.computeVertexNormals();
+      const spoke = new THREE.Mesh(
+        sg,
+        new THREE.MeshStandardMaterial({
+          color: 0x2b2b30,
+          roughness: 0.95,
+          side: THREE.DoubleSide,
+        }),
+      );
+      spoke.frustumCulled = false;
+      this.plotPadGroup.add(spoke);
     }
   }
 
   private buildHouseMesh(h: HouseSpec): THREE.Object3D {
-    const g = new THREE.Group()
-    const wallMat = new THREE.MeshStandardMaterial({ color: h.wallColor, roughness: 0.82 })
-    const roofMat = new THREE.MeshStandardMaterial({ color: h.roofColor, roughness: 0.7 })
-    const bodyH = h.floors * h.storeyH
-    const body = new THREE.Mesh(new THREE.BoxGeometry(h.w, bodyH, h.d), wallMat)
-    body.position.y = bodyH / 2
-    body.castShadow = true
-    body.receiveShadow = true
-    g.add(body)
+    const g = new THREE.Group();
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: h.wallColor,
+      roughness: 0.82,
+    });
+    const roofMat = new THREE.MeshStandardMaterial({
+      color: h.roofColor,
+      roughness: 0.7,
+    });
+    const bodyH = h.floors * h.storeyH;
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(h.w, bodyH, h.d),
+      wallMat,
+    );
+    body.position.y = bodyH / 2;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    g.add(body);
     if (h.wing) {
-      const wing = new THREE.Mesh(new THREE.BoxGeometry(h.w * 0.55, bodyH * 0.8, h.d * 0.6), wallMat)
-      wing.position.set(h.w * 0.5, bodyH * 0.4, h.d * 0.18)
-      wing.castShadow = true
-      g.add(wing)
+      const wing = new THREE.Mesh(
+        new THREE.BoxGeometry(h.w * 0.55, bodyH * 0.8, h.d * 0.6),
+        wallMat,
+      );
+      wing.position.set(h.w * 0.5, bodyH * 0.4, h.d * 0.18);
+      wing.castShadow = true;
+      g.add(wing);
     }
-    if (h.roof === 'flat') {
-      const r = new THREE.Mesh(new THREE.BoxGeometry(h.w * 1.06, 0.08, h.d * 1.06), roofMat)
-      r.position.y = bodyH + 0.04
-      g.add(r)
+    if (h.roof === "flat") {
+      const r = new THREE.Mesh(
+        new THREE.BoxGeometry(h.w * 1.06, 0.08, h.d * 1.06),
+        roofMat,
+      );
+      r.position.y = bodyH + 0.04;
+      g.add(r);
     } else {
-      const rad = Math.max(h.w, h.d) * 0.72
-      const ph = Math.max(0.18, h.roofPitch * rad)
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(rad, ph, 4), roofMat)
-      cone.rotation.y = Math.PI / 4
-      cone.position.y = bodyH + ph / 2
-      if (h.roof === 'gable') cone.scale.set(0.78, 1, 1.3)
-      cone.castShadow = true
-      g.add(cone)
+      const rad = Math.max(h.w, h.d) * 0.72;
+      const ph = Math.max(0.18, h.roofPitch * rad);
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(rad, ph, 4), roofMat);
+      cone.rotation.y = Math.PI / 4;
+      cone.position.y = bodyH + ph / 2;
+      if (h.roof === "gable") cone.scale.set(0.78, 1, 1.3);
+      cone.castShadow = true;
+      g.add(cone);
     }
     if (h.chimney) {
-      const ch = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.42, 0.1), new THREE.MeshStandardMaterial({ color: 0x6a5a4a }))
-      ch.position.set(h.w * 0.28, bodyH + 0.28, h.d * 0.18)
-      g.add(ch)
+      const ch = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 0.42, 0.1),
+        new THREE.MeshStandardMaterial({ color: 0x6a5a4a }),
+      );
+      ch.position.set(h.w * 0.28, bodyH + 0.28, h.d * 0.18);
+      g.add(ch);
     }
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.3, 0.05), new THREE.MeshStandardMaterial({ color: 0x4a3b2a }))
-    door.position.set(0, 0.15, h.d / 2 + 0.01)
-    g.add(door)
+    const door = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14, 0.3, 0.05),
+      new THREE.MeshStandardMaterial({ color: 0x4a3b2a }),
+    );
+    door.position.set(0, 0.15, h.d / 2 + 0.01);
+    g.add(door);
     if (h.porch) {
-      const porch = new THREE.Mesh(new THREE.BoxGeometry(h.w * 0.7, 0.05, 0.28), roofMat)
-      porch.position.set(0, Math.min(bodyH, 0.45), h.d / 2 + 0.12)
-      g.add(porch)
+      const porch = new THREE.Mesh(
+        new THREE.BoxGeometry(h.w * 0.7, 0.05, 0.28),
+        roofMat,
+      );
+      porch.position.set(0, Math.min(bodyH, 0.45), h.d / 2 + 0.12);
+      g.add(porch);
     }
-    return g
+    return g;
   }
 
   private smoothRoadY(x: number, y: number): number {
-    const t = this.sim.state.terrain
-    const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v))
+    const t = this.sim.state.terrain;
+    const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v));
     // BILINEAR terrain sample at a CONTINUOUS position — the key to a smooth road. Sampling rounded
     // integer cells made the height a step function (flat within a cell, a riser at every boundary), so
     // on any slope the road terraced into little stairs (the operator's "stepways"). Interpolating gives
     // a height that varies continuously with position, so the surface ramps instead of stepping.
     const bil = (fx: number, fy: number): number => {
-      const x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0
-      const a = t.worldY(cl(x0), cl(y0)), b = t.worldY(cl(x0 + 1), cl(y0))
-      const c = t.worldY(cl(x0), cl(y0 + 1)), d = t.worldY(cl(x0 + 1), cl(y0 + 1))
-      return a * (1 - tx) * (1 - ty) + b * tx * (1 - ty) + c * (1 - tx) * ty + d * tx * ty
-    }
+      const x0 = Math.floor(fx),
+        y0 = Math.floor(fy),
+        tx = fx - x0,
+        ty = fy - y0;
+      const a = t.worldY(cl(x0), cl(y0)),
+        b = t.worldY(cl(x0 + 1), cl(y0));
+      const c = t.worldY(cl(x0), cl(y0 + 1)),
+        d = t.worldY(cl(x0 + 1), cl(y0 + 1));
+      return (
+        a * (1 - tx) * (1 - ty) +
+        b * tx * (1 - ty) +
+        c * (1 - tx) * ty +
+        d * tx * ty
+      );
+    };
     // Still take the MAX over the ~4-wide carriageway footprint so the surface rides ABOVE the ground
     // (no terrain poking up through the asphalt). Because the samples are bilinear and the centre moves
     // continuously, this max is a continuous (step-free) function — smooth AND above-terrain.
-    let mx = 0
-    for (let dx = -2; dx <= 2; dx += 0.5) for (let dy = -2; dy <= 2; dy += 0.5) {
-      const h = bil(x + dx, y + dy)
-      if (h > mx) mx = h
-    }
-    return mx
+    let mx = 0;
+    for (let dx = -2; dx <= 2; dx += 0.5)
+      for (let dy = -2; dy <= 2; dy += 0.5) {
+        const h = bil(x + dx, y + dy);
+        if (h > mx) mx = h;
+      }
+    return mx;
   }
 
   /** Smooth ground height (bilinear terrain) for things that should FOLLOW the grade, not ride above it
    *  like a road — e.g. homestead pads. Kept separate from smoothRoadY (which maxes over the carriageway
    *  to clear the asphalt) so a pad never floats up on the road-clearance height. */
   private groundY(x: number, y: number): number {
-    const t = this.sim.state.terrain
-    const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v))
-    const x0 = Math.floor(x), y0 = Math.floor(y), tx = x - x0, ty = y - y0
-    const a = t.worldY(cl(x0), cl(y0)), b = t.worldY(cl(x0 + 1), cl(y0))
-    const c = t.worldY(cl(x0), cl(y0 + 1)), d = t.worldY(cl(x0 + 1), cl(y0 + 1))
-    return Math.max(0, a * (1 - tx) * (1 - ty) + b * tx * (1 - ty) + c * (1 - tx) * ty + d * tx * ty)
+    const t = this.sim.state.terrain;
+    const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v));
+    const x0 = Math.floor(x),
+      y0 = Math.floor(y),
+      tx = x - x0,
+      ty = y - y0;
+    const a = t.worldY(cl(x0), cl(y0)),
+      b = t.worldY(cl(x0 + 1), cl(y0));
+    const c = t.worldY(cl(x0), cl(y0 + 1)),
+      d = t.worldY(cl(x0 + 1), cl(y0 + 1));
+    return Math.max(
+      0,
+      a * (1 - tx) * (1 - ty) +
+        b * tx * (1 - ty) +
+        c * (1 - tx) * ty +
+        d * tx * ty,
+    );
   }
 
   /** Spec 088 — the height of the WALKABLE surface at a cell: the road ribbon top when it's a road cell,
    *  otherwise the bare terrain. Citizens (incl. Joe), the first-person eye and props stand on this, so
    *  nobody sinks under the raised road ribbon when they're on a road. */
   private surfaceY(x: number, y: number): number {
-    const rx = Math.round(x), ry = Math.round(y)
+    const rx = Math.round(x),
+      ry = Math.round(y);
     // Raise to the ribbon top ONLY where the ribbon actually is (the trunk + carriage roads), so a
     // citizen stands ON the road surface and never sinks under it — and never floats on a road cell the
     // ribbon doesn't reach (the per-cell gap-fill fragments are negligible disconnected stubs).
-    if (this.roadRibbonCells?.has(`${rx},${ry}`)) return Math.max(0, this.smoothRoadY(x, y)) + ROAD_RIBBON_LIFT
-    return Math.max(0, this.sim.state.terrain.worldY(rx, ry))
+    if (this.roadRibbonCells?.has(`${rx},${ry}`))
+      return Math.max(0, this.smoothRoadY(x, y)) + ROAD_RIBBON_LIFT;
+    return Math.max(0, this.sim.state.terrain.worldY(rx, ry));
   }
 
   // Spec 088 — roads render ENTIRELY as the smooth RIBBON (setRoadWays / buildRoadRibbons). The old
@@ -1208,458 +1711,554 @@ export class PlanetRenderer {
   // the legacy per-cell meshes (kept so the scene graph + materials stay stable across a road change).
   private rebuildRoads() {
     const empty = (mesh: THREE.Mesh) => {
-      const geo = mesh.geometry as THREE.BufferGeometry
-      geo.setAttribute('position', new THREE.Float32BufferAttribute([], 3))
-      geo.computeVertexNormals()
-    }
-    for (const m of [this.roadSurfaceMesh, this.roadShoulderMesh, this.roadLineMesh, this.avenueSurfaceMesh, this.avenueKerbMesh]) empty(m)
+      const geo = mesh.geometry as THREE.BufferGeometry;
+      geo.setAttribute("position", new THREE.Float32BufferAttribute([], 3));
+      geo.computeVertexNormals();
+    };
+    for (const m of [
+      this.roadSurfaceMesh,
+      this.roadShoulderMesh,
+      this.roadLineMesh,
+      this.avenueSurfaceMesh,
+      this.avenueKerbMesh,
+    ])
+      empty(m);
   }
 
   private updateColonyLayer() {
-    const s = this.sim.state
-    const t = s.terrain
+    const s = this.sim.state;
+    const t = s.terrain;
     if (s.settlers.length !== this.lastSettlerCount) {
-      this.rebuildSettlerHomes()
-      this.lastSettlerCount = s.settlers.length
+      this.rebuildSettlerHomes();
+      this.lastSettlerCount = s.settlers.length;
     }
     // roads drape on the terrain; rebuild the ribbon on ANY network mutation (spec 084 S1 — a
     // length check missed equal-length purge-then-lay mutations and drew roads that were gone)
     if (s.roadsVersion !== this.lastRoadsVersion) {
-      this.rebuildRoads()
-      this.lastRoadsVersion = s.roadsVersion
+      this.rebuildRoads();
+      this.lastRoadsVersion = s.roadsVersion;
     }
     // as the cleared footprint (roads + buildings + worksites) changes, re-clear the trees from it and refresh the
     // pavement the ambient pedestrians stroll along.
-    const folSig = s.roads.length * 100003 + s.buildings.length * 101 + s.jobs.length + (s.cityPlan ? s.cityPlan.plots.length * 7 : 0)
+    const folSig =
+      s.roads.length * 100003 +
+      s.buildings.length * 101 +
+      s.jobs.length +
+      (s.cityPlan ? s.cityPlan.plots.length * 7 : 0);
     if (folSig !== this.lastFoliageSig) {
-      this.buildFoliage()
-      this.roadCells = s.roads.map((r) => ({ x: r.x, y: r.y }))
-      this.lastFoliageSig = folSig
+      this.buildFoliage();
+      this.roadCells = s.roads.map((r) => ({ x: r.x, y: r.y }));
+      this.lastFoliageSig = folSig;
     }
-    const rn = s.roads.length
+    const rn = s.roads.length;
     // plot markers reflect allocation changes (allocated → dim flag, lowered pole)
     if (s.cityPlan) {
-      this.syncPlotMarkers(s.cityPlan.plots)
-      this.buildPlotPads(s.cityPlan.plots) // sized foundations + spoke roads to the marked plots
+      this.syncPlotMarkers(s.cityPlan.plots);
+      this.buildPlotPads(s.cityPlan.plots); // sized foundations + spoke roads to the marked plots
     }
 
-    const col = new THREE.Color()
-    const cap = COLONY.build.maxBuildings + 8
+    const col = new THREE.Color();
+    const cap = COLONY.build.maxBuildings + 8;
     // Spec 011 — when the liveability overlay is on AND a survey office is up, tint homes by wellbeing.
-    const liveOn = this.liveabilityOn && surveyAvailable(s)
-    let bi = 0
+    const liveOn = this.liveabilityOn && surveyAvailable(s);
+    let bi = 0;
     for (const b of s.buildings) {
-      if (bi >= cap) break
-      this.dummy.position.set(this.wx(b.x), Math.max(0, t.worldY(b.x, b.y)), this.wz(b.y))
-      this.dummy.scale.set(1, Math.max(0.15, b.artifact.height), 1)
-      this.dummy.rotation.set(0, 0, 0)
-      this.dummy.updateMatrix()
-      this.bldgMesh.setMatrixAt(bi, this.dummy.matrix)
-      if (liveOn && b.artifact.kind === 'habitat') col.setHex(liveabilityTint(homeLiveability(s, b)))
-      else col.setHex(b.artifact.color)
-      this.bldgMesh.setColorAt(bi, col)
-      bi++
+      if (bi >= cap) break;
+      this.dummy.position.set(
+        this.wx(b.x),
+        Math.max(0, t.worldY(b.x, b.y)),
+        this.wz(b.y),
+      );
+      this.dummy.scale.set(1, Math.max(0.15, b.artifact.height), 1);
+      this.dummy.rotation.set(0, 0, 0);
+      this.dummy.updateMatrix();
+      this.bldgMesh.setMatrixAt(bi, this.dummy.matrix);
+      if (liveOn && b.artifact.kind === "habitat")
+        col.setHex(liveabilityTint(homeLiveability(s, b)));
+      else col.setHex(b.artifact.color);
+      this.bldgMesh.setColorAt(bi, col);
+      bi++;
     }
-    const car = s.structures.find((st) => st.kind === 'caravan')!
-    let ci = 0
+    const car = s.structures.find((st) => st.kind === "caravan")!;
+    let ci = 0;
     for (const j of s.jobs) {
       if (bi < cap) {
-        const phase = Math.max(0, (j.progress - 0.25) / 0.75) // rises only after the crew arrives
-        this.dummy.position.set(this.wx(j.x), Math.max(0, t.worldY(j.x, j.y)), this.wz(j.y))
-        this.dummy.scale.set(1, Math.max(0.04, j.artifact.height * phase), 1)
-        this.dummy.rotation.set(0, 0, 0)
-        this.dummy.updateMatrix()
-        this.bldgMesh.setMatrixAt(bi, this.dummy.matrix)
-        col.setHex(j.artifact.color).multiplyScalar(0.55) // under construction = darker
-        this.bldgMesh.setColorAt(bi, col)
-        bi++
+        const phase = Math.max(0, (j.progress - 0.25) / 0.75); // rises only after the crew arrives
+        this.dummy.position.set(
+          this.wx(j.x),
+          Math.max(0, t.worldY(j.x, j.y)),
+          this.wz(j.y),
+        );
+        this.dummy.scale.set(1, Math.max(0.04, j.artifact.height * phase), 1);
+        this.dummy.rotation.set(0, 0, 0);
+        this.dummy.updateMatrix();
+        this.bldgMesh.setMatrixAt(bi, this.dummy.matrix);
+        col.setHex(j.artifact.color).multiplyScalar(0.55); // under construction = darker
+        this.bldgMesh.setColorAt(bi, col);
+        bi++;
       }
       // crew truck drives caravan -> site ALONG THE ROADS over the first quarter, then parks
       if (ci < cap) {
-        const drive = Math.min(1, j.progress / 0.25)
-        let cx: number, cy: number, heading: number
-        const path = j.path
+        const drive = Math.min(1, j.progress / 0.25);
+        let cx: number, cy: number, heading: number;
+        const path = j.path;
         if (path && path.length > 0) {
-          const W = t.size
-          const fpos = drive * path.length
-          const i0 = Math.min(path.length - 1, Math.floor(fpos))
-          const a = path[i0]!
-          const b = path[Math.min(path.length - 1, i0 + 1)]!
-          const frac = fpos - i0
-          const ax = (a % W) + 0.5, ay = ((a / W) | 0) + 0.5
-          const bx = (b % W) + 0.5, by = ((b / W) | 0) + 0.5
-          cx = ax + (bx - ax) * frac
-          cy = ay + (by - ay) * frac
-          heading = Math.hypot(bx - ax, by - ay) > 1e-4 ? Math.atan2(by - ay, bx - ax) : 0
+          const W = t.size;
+          const fpos = drive * path.length;
+          const i0 = Math.min(path.length - 1, Math.floor(fpos));
+          const a = path[i0]!;
+          const b = path[Math.min(path.length - 1, i0 + 1)]!;
+          const frac = fpos - i0;
+          const ax = (a % W) + 0.5,
+            ay = ((a / W) | 0) + 0.5;
+          const bx = (b % W) + 0.5,
+            by = ((b / W) | 0) + 0.5;
+          cx = ax + (bx - ax) * frac;
+          cy = ay + (by - ay) * frac;
+          heading =
+            Math.hypot(bx - ax, by - ay) > 1e-4
+              ? Math.atan2(by - ay, bx - ax)
+              : 0;
         } else {
-          cx = car.x + (j.x - car.x) * drive
-          cy = car.y + (j.y - car.y) * drive
-          heading = Math.atan2(j.y - car.y, j.x - car.x)
+          cx = car.x + (j.x - car.x) * drive;
+          cy = car.y + (j.y - car.y) * drive;
+          heading = Math.atan2(j.y - car.y, j.x - car.x);
         }
-        this.dummy.position.set(this.wx(cx), this.smoothRoadY(cx, cy) + 0.18, this.wz(cy))
-        this.dummy.scale.set(1, 1, 1)
-        this.dummy.rotation.set(0, -heading, 0)
-        this.dummy.updateMatrix()
-        this.crewMesh.setMatrixAt(ci, this.dummy.matrix)
-        ci++
+        this.dummy.position.set(
+          this.wx(cx),
+          this.smoothRoadY(cx, cy) + 0.18,
+          this.wz(cy),
+        );
+        this.dummy.scale.set(1, 1, 1);
+        this.dummy.rotation.set(0, -heading, 0);
+        this.dummy.updateMatrix();
+        this.crewMesh.setMatrixAt(ci, this.dummy.matrix);
+        ci++;
       }
     }
-    this.bldgMesh.count = bi
-    this.bldgMesh.instanceMatrix.needsUpdate = true
-    if (this.bldgMesh.instanceColor) this.bldgMesh.instanceColor.needsUpdate = true
-    this.crewMesh.count = ci
-    this.crewMesh.instanceMatrix.needsUpdate = true
+    this.bldgMesh.count = bi;
+    this.bldgMesh.instanceMatrix.needsUpdate = true;
+    if (this.bldgMesh.instanceColor)
+      this.bldgMesh.instanceColor.needsUpdate = true;
+    this.crewMesh.count = ci;
+    this.crewMesh.instanceMatrix.needsUpdate = true;
 
     // street lights at grid intersections (where both road lines cross). Stand each on the VERGE beside
     // the road, never on the carriageway: search outward for the nearest cell the road ribbon does NOT
     // cover and plant the lamp there at ground height (surfaceY). The old code put it on the road cell at
     // smoothRoadY — on the asphalt and 0.18 below the ribbon top, so the pole speared up through the road.
-    const B = COLONY.build.block
-    const g = gridOrigin(s)
-    const ribbon = this.roadRibbonCells
-    const onRibbon = (x: number, y: number) => !!ribbon && ribbon.has(`${x},${y}`)
-    let li = 0
+    const B = COLONY.build.block;
+    const g = gridOrigin(s);
+    const ribbon = this.roadRibbonCells;
+    const onRibbon = (x: number, y: number) =>
+      !!ribbon && ribbon.has(`${x},${y}`);
+    let li = 0;
     for (let i = 0; i < rn; i++) {
-      if (li >= 360) break
-      const r = s.roads[i]!
-      if (((((r.x - g.x) % B) + B) % B) !== 0 || ((((r.y - g.y) % B) + B) % B) !== 0) continue
+      if (li >= 360) break;
+      const r = s.roads[i]!;
+      if (
+        (((r.x - g.x) % B) + B) % B !== 0 ||
+        (((r.y - g.y) % B) + B) % B !== 0
+      )
+        continue;
       // nearest off-ribbon cell within a short reach; skip the lamp entirely if hemmed in by road
-      let lx = r.x, ly = r.y, found = false
+      let lx = r.x,
+        ly = r.y,
+        found = false;
       for (let rad = 1; rad <= 3 && !found; rad++) {
-        for (let dx = -rad; dx <= rad && !found; dx++) for (let dy = -rad; dy <= rad; dy++) {
-          if (Math.max(Math.abs(dx), Math.abs(dy)) !== rad) continue // walk the ring at this radius
-          if (!onRibbon(r.x + dx, r.y + dy)) { lx = r.x + dx; ly = r.y + dy; found = true; break }
-        }
+        for (let dx = -rad; dx <= rad && !found; dx++)
+          for (let dy = -rad; dy <= rad; dy++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== rad) continue; // walk the ring at this radius
+            if (!onRibbon(r.x + dx, r.y + dy)) {
+              lx = r.x + dx;
+              ly = r.y + dy;
+              found = true;
+              break;
+            }
+          }
       }
-      if (!found) continue
-      this.dummy.position.set(this.wx(lx), this.surfaceY(lx, ly), this.wz(ly))
-      this.dummy.scale.set(1, 1, 1)
-      this.dummy.rotation.set(0, 0, 0)
-      this.dummy.updateMatrix()
-      this.streetPostMesh.setMatrixAt(li, this.dummy.matrix)
-      this.streetHeadMesh.setMatrixAt(li, this.dummy.matrix)
-      li++
+      if (!found) continue;
+      this.dummy.position.set(this.wx(lx), this.surfaceY(lx, ly), this.wz(ly));
+      this.dummy.scale.set(1, 1, 1);
+      this.dummy.rotation.set(0, 0, 0);
+      this.dummy.updateMatrix();
+      this.streetPostMesh.setMatrixAt(li, this.dummy.matrix);
+      this.streetHeadMesh.setMatrixAt(li, this.dummy.matrix);
+      li++;
     }
-    this.streetPostMesh.count = li
-    this.streetHeadMesh.count = li
-    this.streetPostMesh.instanceMatrix.needsUpdate = true
-    this.streetHeadMesh.instanceMatrix.needsUpdate = true
+    this.streetPostMesh.count = li;
+    this.streetHeadMesh.count = li;
+    this.streetPostMesh.instanceMatrix.needsUpdate = true;
+    this.streetHeadMesh.instanceMatrix.needsUpdate = true;
 
     // cars — South African rules: keep LEFT. Driver's-left of heading h is (sin h, -cos h)
     // in lot coords, so a car heading south (+y) sits on the east (+x) side, i.e. its left.
     // The sim ticks at 6 Hz; we exponentially smooth each car's position + heading toward the
     // sim state every frame so motion is fluid at 60 fps and turns (with the lane offset) ease
     // instead of snapping a car sideways across the road at every corner.
-    const carCol = new THREE.Color()
-    const off = COLONY.traffic.laneOffset
-    const cn = Math.min(s.cars.length, COLONY.traffic.maxCars + 4)
-    this.carsMesh.count = cn
-    const carNow = performance.now()
-    const carDt = this.lastCarT ? Math.min(0.05, (carNow - this.lastCarT) / 1000) : 1 / 60
-    this.lastCarT = carNow
-    const aPos = 1 - Math.exp(-carDt * 16) // position catch-up (fast, ~1 frame lag)
-    const aHed = 1 - Math.exp(-carDt * 9) // heading ease (slower, smooth turns)
-    const liveCars = new Set<number>()
+    const carCol = new THREE.Color();
+    const off = COLONY.traffic.laneOffset;
+    const cn = Math.min(s.cars.length, COLONY.traffic.maxCars + 4);
+    this.carsMesh.count = cn;
+    const carNow = performance.now();
+    const carDt = this.lastCarT
+      ? Math.min(0.05, (carNow - this.lastCarT) / 1000)
+      : 1 / 60;
+    this.lastCarT = carNow;
+    const aPos = 1 - Math.exp(-carDt * 16); // position catch-up (fast, ~1 frame lag)
+    const aHed = 1 - Math.exp(-carDt * 9); // heading ease (slower, smooth turns)
+    const liveCars = new Set<number>();
     for (let i = 0; i < cn; i++) {
-      const v = s.cars[i]!
-      liveCars.add(v.id)
-      let e = this.carRender.get(v.id)
+      const v = s.cars[i]!;
+      liveCars.add(v.id);
+      let e = this.carRender.get(v.id);
       if (!e) {
-        e = { x: v.x, y: v.y, h: v.heading }
-        this.carRender.set(v.id, e)
+        e = { x: v.x, y: v.y, h: v.heading };
+        this.carRender.set(v.id, e);
       }
       // A re-route can jump a car a long way; snap rather than glide it across the map.
       if (Math.hypot(v.x - e.x, v.y - e.y) > 3) {
-        e.x = v.x
-        e.y = v.y
-        e.h = v.heading
+        e.x = v.x;
+        e.y = v.y;
+        e.h = v.heading;
       }
-      e.x += (v.x - e.x) * aPos
-      e.y += (v.y - e.y) * aPos
-      let dh = v.heading - e.h
-      dh -= Math.round(dh / (Math.PI * 2)) * (Math.PI * 2) // wrap to [-PI, PI]
-      e.h += dh * aHed
-      const lx = e.x + Math.sin(e.h) * off
-      const ly = e.y - Math.cos(e.h) * off
-      this.dummy.position.set(this.wx(lx), this.smoothRoadY(e.x, e.y) + 0.12, this.wz(ly))
-      this.dummy.rotation.set(0, -e.h, 0)
-      this.dummy.scale.set(1, 1, 1)
-      this.dummy.updateMatrix()
-      this.carsMesh.setMatrixAt(i, this.dummy.matrix)
-      carCol.setHex(v.color)
-      this.carsMesh.setColorAt(i, carCol)
+      e.x += (v.x - e.x) * aPos;
+      e.y += (v.y - e.y) * aPos;
+      let dh = v.heading - e.h;
+      dh -= Math.round(dh / (Math.PI * 2)) * (Math.PI * 2); // wrap to [-PI, PI]
+      e.h += dh * aHed;
+      const lx = e.x + Math.sin(e.h) * off;
+      const ly = e.y - Math.cos(e.h) * off;
+      this.dummy.position.set(
+        this.wx(lx),
+        this.smoothRoadY(e.x, e.y) + 0.12,
+        this.wz(ly),
+      );
+      this.dummy.rotation.set(0, -e.h, 0);
+      this.dummy.scale.set(1, 1, 1);
+      this.dummy.updateMatrix();
+      this.carsMesh.setMatrixAt(i, this.dummy.matrix);
+      carCol.setHex(v.color);
+      this.carsMesh.setColorAt(i, carCol);
     }
     // Drop smoothing state for any car that is no longer present.
     if (this.carRender.size > cn) {
-      for (const id of this.carRender.keys()) if (!liveCars.has(id)) this.carRender.delete(id)
+      for (const id of this.carRender.keys())
+        if (!liveCars.has(id)) this.carRender.delete(id);
     }
-    this.carsMesh.instanceMatrix.needsUpdate = true
-    if (this.carsMesh.instanceColor) this.carsMesh.instanceColor.needsUpdate = true
+    this.carsMesh.instanceMatrix.needsUpdate = true;
+    if (this.carsMesh.instanceColor)
+      this.carsMesh.instanceColor.needsUpdate = true;
 
     // day/night emissive: lamps glow and building windows light up after dark
-    const night = 1 - s.clock.daylight
-    ;(this.streetHeadMesh.material as THREE.MeshStandardMaterial).emissiveIntensity = 0.2 + night * 1.4
-    const bmat = this.bldgMesh.material as THREE.MeshStandardMaterial
-    bmat.emissive.setHex(0xffd9a0)
-    bmat.emissiveIntensity = night * 0.4
+    const night = 1 - s.clock.daylight;
+    (
+      this.streetHeadMesh.material as THREE.MeshStandardMaterial
+    ).emissiveIntensity = 0.2 + night * 1.4;
+    const bmat = this.bldgMesh.material as THREE.MeshStandardMaterial;
+    bmat.emissive.setHex(0xffd9a0);
+    bmat.emissiveIntensity = night * 0.4;
     // Cars glow softly after dark so night traffic reads as moving lights flowing along the roads.
-    const cmat = this.carsMesh.material as THREE.MeshStandardMaterial
-    cmat.emissive.setHex(0xfff0d0)
-    cmat.emissiveIntensity = night * 0.5
+    const cmat = this.carsMesh.material as THREE.MeshStandardMaterial;
+    cmat.emissive.setHex(0xfff0d0);
+    cmat.emissiveIntensity = night * 0.5;
     // Spec 079 — the commercial signage glows day and night, and flares brighter after dark so the
     // market strip becomes the lit heart of the city at dusk (the concept-art look).
-    for (const sm of this.commercialSignMats) sm.emissiveIntensity = 0.7 + night * 0.9
+    for (const sm of this.commercialSignMats)
+      sm.emissiveIntensity = 0.7 + night * 0.9;
   }
 
   frame() {
-    if (this.disposed) return
-    this.updateDayNight()
+    if (this.disposed) return;
+    this.updateDayNight();
     // Spec 084 S5 — staged terrain recolor: at most 8 dirty chunks repaint per frame.
-    this.chunkedTerrain.recolor((i, out) => this.colorFor(this.view, i, out), 8)
-    this.updateColonyLayer()
-    this.updatePedestrians()
-    this.updatePorters() // spec 073 — goods piled at the sheds + porter carts on the roads
-    this.updateAvatars() // P1 — the named citizen avatars at their live roster positions
-    this.updateNeighborhood() // spec 075 — lot pads + voxel homes
+    this.chunkedTerrain.recolor(
+      (i, out) => this.colorFor(this.view, i, out),
+      8,
+    );
+    this.updateColonyLayer();
+    this.updatePedestrians();
+    this.updatePorters(); // spec 073 — goods piled at the sheds + porter carts on the roads
+    this.updateAvatars(); // P1 — the named citizen avatars at their live roster positions
+    this.updateNeighborhood(); // spec 075 — lot pads + voxel homes
     if (this.beaconMat) {
-      const blink = Math.max(0, Math.sin((performance.now() / 1000) * 2.4))
-      this.beaconMat.emissiveIntensity = 0.35 + blink * blink * 2.6
+      const blink = Math.max(0, Math.sin((performance.now() / 1000) * 2.4));
+      this.beaconMat.emissiveIntensity = 0.35 + blink * blink * 2.6;
     }
-    this.shoreProps?.update(this.sim.state.clock.daylight, performance.now())
-    if (this.raceLayer && this.raceState) this.raceLayer.update(this.raceState, performance.now())
-    this.busLayer?.update(performance.now()) // spec 088 — the bus drives its loop between the hoods
-    this.updateOcean(performance.now()) // spec 090 — gentle swells roll across the living sea
-    this.foam?.update(performance.now()) // spec 091 — the shoreline surf breathes
+    this.shoreProps?.update(this.sim.state.clock.daylight, performance.now());
+    if (this.raceLayer && this.raceState)
+      this.raceLayer.update(this.raceState, performance.now());
+    this.busLayer?.update(performance.now()); // spec 088 — the bus drives its loop between the hoods
+    this.updateOcean(performance.now()); // spec 090 — gentle swells roll across the living sea
+    this.foam?.update(performance.now()); // spec 091 — the shoreline surf breathes
     if (this.fpCitizenId && this.avatarSource) {
       // P1 — first-person: park the camera at the citizen's eye and look down their heading. OrbitControls is off.
-      const a = this.avatarSource().find((x) => x.id === this.fpCitizenId)
+      const a = this.avatarSource().find((x) => x.id === this.fpCitizenId);
       if (a) {
-        const isCrab = a.kind === 'crab' // spec 078 — Joe sees the world from down at crab height
+        const isCrab = a.kind === "crab"; // spec 078 — Joe sees the world from down at crab height
         // stand the eye on the road SURFACE when on a road, so Joe is never looking up through the road
-        const eye = this.surfaceY(a.x, a.y) + (isCrab ? CRAB_EYE : 1.6)
-        this.camera.position.set(this.wx(a.x), eye, this.wz(a.y))
-        const lx = a.x + Math.cos(a.heading) * 4, ly = a.y + Math.sin(a.heading) * 4
-        const lyW = this.surfaceY(lx, ly) + (isCrab ? CRAB_EYE - 0.05 : 1.2)
-        this.camera.lookAt(this.wx(lx), lyW, this.wz(ly))
-        this.camera.updateMatrixWorld()
+        const eye = this.surfaceY(a.x, a.y) + (isCrab ? CRAB_EYE : 1.6);
+        this.camera.position.set(this.wx(a.x), eye, this.wz(a.y));
+        const lx = a.x + Math.cos(a.heading) * 4,
+          ly = a.y + Math.sin(a.heading) * 4;
+        const lyW = this.surfaceY(lx, ly) + (isCrab ? CRAB_EYE - 0.05 : 1.2);
+        this.camera.lookAt(this.wx(lx), lyW, this.wz(ly));
+        this.camera.updateMatrixWorld();
       } else {
-        this.exitFirstPerson() // the citizen vanished — fall back to orbit
+        this.exitFirstPerson(); // the citizen vanished — fall back to orbit
       }
     } else if (this.raceCamActive && this.raceState) {
-      this.updateRaceCamera()
+      this.updateRaceCamera();
     } else {
-      if (this.cinematic) this.updateCinematic()
-      this.controls.update()
+      if (this.cinematic) this.updateCinematic();
+      this.controls.update();
     }
-    this.composer.render()
+    this.composer.render();
   }
 
   setRaceState(race: RaceState | null): void {
-    if (!race || race.mode === 'idle') {
-      this.clearRaceLayer()
-      this.raceState = null
-      this.raceCamActive = false
-      this.raceRestorePending = false
+    if (!race || race.mode === "idle") {
+      this.clearRaceLayer();
+      this.raceState = null;
+      this.raceCamActive = false;
+      this.raceRestorePending = false;
       if (!this.fpCitizenId) {
-        this.controls.enabled = true
-        this.applyPreset('district')
+        this.controls.enabled = true;
+        this.applyPreset("district");
       }
-      return
+      return;
     }
     if (!this.raceLayer || this.raceState?.track !== race.track) {
-      this.clearRaceLayer()
+      this.clearRaceLayer();
       this.raceLayer = buildRaceLayer({
         terrain: this.sim.state.terrain,
         track: race.track,
         wx: (x) => this.wx(x),
         wz: (y) => this.wz(y),
-      })
-      if (this.raceLayer) this.scene.add(this.raceLayer.group)
+      });
+      if (this.raceLayer) this.scene.add(this.raceLayer.group);
     }
-    this.raceState = race
-    this.raceCamActive = race.mode === 'countdown' || race.mode === 'running'
-    this.controls.enabled = !this.raceCamActive && !this.fpCitizenId
-    if (this.raceCamActive) this.raceRestorePending = false
-    if (race.mode === 'finished' && !this.raceRestorePending) {
-      this.raceRestorePending = true
-      this.applyPreset('district')
+    this.raceState = race;
+    this.raceCamActive = race.mode === "countdown" || race.mode === "running";
+    this.controls.enabled = !this.raceCamActive && !this.fpCitizenId;
+    if (this.raceCamActive) this.raceRestorePending = false;
+    if (race.mode === "finished" && !this.raceRestorePending) {
+      this.raceRestorePending = true;
+      this.applyPreset("district");
     }
   }
 
   private clearRaceLayer(): void {
-    this.raceLayer?.dispose()
-    this.raceLayer = null
+    this.raceLayer?.dispose();
+    this.raceLayer = null;
   }
 
   private updateRaceCamera(): void {
-    const race = this.raceState
-    if (!race) return
-    const t = this.sim.state.terrain
-    const c = race.car
-    const ground = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)))
-    const target = new THREE.Vector3(this.wx(c.x), ground + 0.7, this.wz(c.y))
+    const race = this.raceState;
+    if (!race) return;
+    const t = this.sim.state.terrain;
+    const c = race.car;
+    const ground = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)));
+    const target = new THREE.Vector3(this.wx(c.x), ground + 0.7, this.wz(c.y));
     const behind = new THREE.Vector3(
       this.wx(c.x - Math.cos(c.heading) * 7.5),
       ground + 5.8 + Math.min(3.5, Math.abs(c.speed) * 0.25),
       this.wz(c.y - Math.sin(c.heading) * 7.5),
-    )
-    this.camera.position.lerp(behind, 0.16)
-    this.controls.target.lerp(target, 0.22)
-    this.camera.lookAt(this.controls.target)
-    this.camera.updateMatrixWorld()
+    );
+    this.camera.position.lerp(behind, 0.16);
+    this.controls.target.lerp(target, 0.22);
+    this.camera.lookAt(this.controls.target);
+    this.camera.updateMatrixWorld();
   }
 
   /** Toggle the TV-mode cinematic fly-around. Camera slowly orbits + breathes around the landing
    *  site so the city + landscape become a moving postcard while music plays. */
   setCinematic(on: boolean): void {
-    if (on === this.cinematic) return
-    this.cinematic = on
-    if (on) this.cinematicT0 = performance.now()
+    if (on === this.cinematic) return;
+    this.cinematic = on;
+    if (on) this.cinematicT0 = performance.now();
   }
 
   /** Render a fresh frame and return it as a PNG data URL — used by the HUD snapshot button. */
   capturePNG(): string {
-    this.composer.render()
-    return this.renderer.domElement.toDataURL('image/png')
+    this.composer.render();
+    return this.renderer.domElement.toDataURL("image/png");
   }
 
   /** Spec 074 — the citizen's VISION. Drop the camera to standing eye height (1.6) at the citizen's home cell, face the
    *  nearest road, render one frame, and return what they see as a PNG data URL. The live orbit pose is saved and restored,
    *  so the operator's view is untouched. This is the image the governor loop pairs with the bot's words to decide what the
    *  colony changes for the people who live in it. home + look are grid cells (the runtime resolves them from the roster). */
-  firstPersonPNG(home: { x: number; y: number }, look: { x: number; y: number }): string {
-    const t = this.sim.state.terrain
-    const savedPos = this.camera.position.clone()
-    const savedTarget = this.controls.target.clone()
-    const EYE = 1.6
-    const hy = Math.max(0, t.worldY(Math.round(home.x), Math.round(home.y))) + EYE
-    this.camera.position.set(this.wx(home.x), hy, this.wz(home.y))
-    const ly = Math.max(0, t.worldY(Math.round(look.x), Math.round(look.y))) + 1.0 // look at head height down the street
-    this.camera.lookAt(this.wx(look.x), ly, this.wz(look.y))
-    this.camera.updateMatrixWorld()
-    this.composer.render()
-    const url = this.renderer.domElement.toDataURL('image/png')
+  firstPersonPNG(
+    home: { x: number; y: number },
+    look: { x: number; y: number },
+  ): string {
+    const t = this.sim.state.terrain;
+    const savedPos = this.camera.position.clone();
+    const savedTarget = this.controls.target.clone();
+    const EYE = 1.6;
+    const hy =
+      Math.max(0, t.worldY(Math.round(home.x), Math.round(home.y))) + EYE;
+    this.camera.position.set(this.wx(home.x), hy, this.wz(home.y));
+    const ly =
+      Math.max(0, t.worldY(Math.round(look.x), Math.round(look.y))) + 1.0; // look at head height down the street
+    this.camera.lookAt(this.wx(look.x), ly, this.wz(look.y));
+    this.camera.updateMatrixWorld();
+    this.composer.render();
+    const url = this.renderer.domElement.toDataURL("image/png");
     // restore the operator's orbit pose exactly
-    this.camera.position.copy(savedPos)
-    this.controls.target.copy(savedTarget)
-    this.controls.update()
-    this.composer.render()
-    return url
+    this.camera.position.copy(savedPos);
+    this.controls.target.copy(savedTarget);
+    this.controls.update();
+    this.composer.render();
+    return url;
   }
 
   private pedOnLand(x: number, y: number): boolean {
-    const t = this.sim.state.terrain
-    const ix = Math.round(x), iy = Math.round(y)
-    if (ix < 0 || iy < 0 || ix >= t.size || iy >= t.size) return false
-    return !t.isWater(ix, iy)
+    const t = this.sim.state.terrain;
+    const ix = Math.round(x),
+      iy = Math.round(y);
+    if (ix < 0 || iy < 0 || ix >= t.size || iy >= t.size) return false;
+    return !t.isWater(ix, iy);
   }
 
   /** Pick a pedestrian's next stroll target: a nearby road cell (so they keep to the pavement), nudged a little to the
    *  kerb so they don't all walk the centre line. Falls back to a gentle wander near the landing before any streets exist. */
-  private pickPedTarget(px: number, py: number, lx: number, ly: number): { x: number; y: number } {
-    const rc = this.roadCells
+  private pickPedTarget(
+    px: number,
+    py: number,
+    lx: number,
+    ly: number,
+  ): { x: number; y: number } {
+    const rc = this.roadCells;
     if (rc.length) {
-      let near = rc.filter((c) => { const dd = Math.hypot(c.x - px, c.y - py); return dd > 1.5 && dd < 16 })
-      if (!near.length) near = rc
-      const c = near[(Math.random() * near.length) | 0]!
-      return { x: c.x + (Math.random() - 0.5) * 0.5, y: c.y + (Math.random() - 0.5) * 0.5 }
+      let near = rc.filter((c) => {
+        const dd = Math.hypot(c.x - px, c.y - py);
+        return dd > 1.5 && dd < 16;
+      });
+      if (!near.length) near = rc;
+      const c = near[(Math.random() * near.length) | 0]!;
+      return {
+        x: c.x + (Math.random() - 0.5) * 0.5,
+        y: c.y + (Math.random() - 0.5) * 0.5,
+      };
     }
     for (let tries = 0; tries < 8; tries++) {
-      const ang = Math.atan2(ly - py, lx - px) + (Math.random() - 0.5) * Math.PI * 1.6
-      const step = 3 + Math.random() * 6
-      const nx = px + Math.cos(ang) * step
-      const ny = py + Math.sin(ang) * step
-      if (this.pedOnLand(nx, ny) && Math.hypot(nx - lx, ny - ly) < 18) return { x: nx, y: ny }
+      const ang =
+        Math.atan2(ly - py, lx - px) + (Math.random() - 0.5) * Math.PI * 1.6;
+      const step = 3 + Math.random() * 6;
+      const nx = px + Math.cos(ang) * step;
+      const ny = py + Math.sin(ang) * step;
+      if (this.pedOnLand(nx, ny) && Math.hypot(nx - lx, ny - ly) < 18)
+        return { x: nx, y: ny };
     }
-    return { x: px, y: py }
+    return { x: px, y: py };
   }
 
   /** Seed a POOL of figures on land near the landing; how many are actually shown tracks the real colonist count (see
    *  updatePedestrians), so the crowd is the colony's own people — not a fixed decorative droid army. */
   private initPedestrians() {
-    const t = this.sim.state.terrain
-    const lx = t.landing.x, ly = t.landing.y
-    const PED_COLORS = [0xe06a4d, 0x4d8fe0, 0xe6c84d, 0x57b86a, 0xc9c2b6, 0xb47ad6]
-    const col = new THREE.Color()
-    this.peds = []
-    let guard = 0
+    const t = this.sim.state.terrain;
+    const lx = t.landing.x,
+      ly = t.landing.y;
+    const PED_COLORS = [
+      0xe06a4d, 0x4d8fe0, 0xe6c84d, 0x57b86a, 0xc9c2b6, 0xb47ad6,
+    ];
+    const col = new THREE.Color();
+    this.peds = [];
+    let guard = 0;
     while (this.peds.length < 28 && guard++ < 800) {
-      const a = Math.random() * Math.PI * 2
-      const r = 2 + Math.random() * 14
-      const x = lx + Math.cos(a) * r
-      const y = ly + Math.sin(a) * r
-      if (!this.pedOnLand(x, y)) continue
-      this.peds.push({ x, y, tx: x, ty: y, spd: 0.5 + Math.random() * 0.7, phase: Math.random() * Math.PI * 2 })
+      const a = Math.random() * Math.PI * 2;
+      const r = 2 + Math.random() * 14;
+      const x = lx + Math.cos(a) * r;
+      const y = ly + Math.sin(a) * r;
+      if (!this.pedOnLand(x, y)) continue;
+      this.peds.push({
+        x,
+        y,
+        tx: x,
+        ty: y,
+        spd: 0.5 + Math.random() * 0.7,
+        phase: Math.random() * Math.PI * 2,
+      });
     }
     this.peds.forEach((_, idx) => {
-      col.setHex(PED_COLORS[idx % PED_COLORS.length]!)
-      this.pedMesh.setColorAt(idx, col)
-    })
-    this.pedMesh.count = this.peds.length
-    if (this.pedMesh.instanceColor) this.pedMesh.instanceColor.needsUpdate = true
+      col.setHex(PED_COLORS[idx % PED_COLORS.length]!);
+      this.pedMesh.setColorAt(idx, col);
+    });
+    this.pedMesh.count = this.peds.length;
+    if (this.pedMesh.instanceColor)
+      this.pedMesh.instanceColor.needsUpdate = true;
   }
 
   /** Per-frame: stroll each visible pedestrian toward a nearby land target. The visible count tracks the REAL colonist
    *  population (capped to the pool), so the streets are as busy as the colony actually is — these are its people. */
   private updatePedestrians() {
-    if (!this.pedMesh || this.peds.length === 0) return
-    const t = this.sim.state.terrain
-    const lx = t.landing.x, ly = t.landing.y
-    const now = performance.now()
-    const dt = this.lastPedT ? Math.min(0.05, (now - this.lastPedT) / 1000) : 1 / 60
-    this.lastPedT = now
-    const want = Math.max(0, Math.min(this.peds.length, Math.round(this.sim.state.colonists))) // one figure per real colonist
+    if (!this.pedMesh || this.peds.length === 0) return;
+    const t = this.sim.state.terrain;
+    const lx = t.landing.x,
+      ly = t.landing.y;
+    const now = performance.now();
+    const dt = this.lastPedT
+      ? Math.min(0.05, (now - this.lastPedT) / 1000)
+      : 1 / 60;
+    this.lastPedT = now;
+    const want = Math.max(
+      0,
+      Math.min(this.peds.length, Math.round(this.sim.state.colonists)),
+    ); // one figure per real colonist
     for (let i = 0; i < want; i++) {
-      const p = this.peds[i]!
-      let dx = p.tx - p.x, dy = p.ty - p.y
-      let d = Math.hypot(dx, dy)
+      const p = this.peds[i]!;
+      let dx = p.tx - p.x,
+        dy = p.ty - p.y;
+      let d = Math.hypot(dx, dy);
       if (d < 0.4) {
-        const next = this.pickPedTarget(p.x, p.y, lx, ly)
-        p.tx = next.x
-        p.ty = next.y
-        dx = p.tx - p.x
-        dy = p.ty - p.y
-        d = Math.hypot(dx, dy)
+        const next = this.pickPedTarget(p.x, p.y, lx, ly);
+        p.tx = next.x;
+        p.ty = next.y;
+        dx = p.tx - p.x;
+        dy = p.ty - p.y;
+        d = Math.hypot(dx, dy);
       }
       if (d > 1e-3) {
-        const move = Math.min(d, p.spd * dt)
-        p.x += (dx / d) * move
-        p.y += (dy / d) * move
-        p.phase += dt * 8
+        const move = Math.min(d, p.spd * dt);
+        p.x += (dx / d) * move;
+        p.y += (dy / d) * move;
+        p.phase += dt * 8;
       }
-      const heading = Math.atan2(dy, dx)
-      const bob = Math.abs(Math.sin(p.phase)) * 0.05
-      const wy = Math.max(0, t.worldY(Math.round(p.x), Math.round(p.y)))
-      this.dummy.position.set(this.wx(p.x), wy + bob, this.wz(p.y))
-      this.dummy.rotation.set(0, -heading + Math.PI / 2, 0)
-      this.dummy.scale.set(1, 1, 1)
-      this.dummy.updateMatrix()
-      this.pedMesh.setMatrixAt(i, this.dummy.matrix)
-      this.pedHeadMesh.setMatrixAt(i, this.dummy.matrix) // the head rides the same transform, baked above the body
+      const heading = Math.atan2(dy, dx);
+      const bob = Math.abs(Math.sin(p.phase)) * 0.05;
+      const wy = Math.max(0, t.worldY(Math.round(p.x), Math.round(p.y)));
+      this.dummy.position.set(this.wx(p.x), wy + bob, this.wz(p.y));
+      this.dummy.rotation.set(0, -heading + Math.PI / 2, 0);
+      this.dummy.scale.set(1, 1, 1);
+      this.dummy.updateMatrix();
+      this.pedMesh.setMatrixAt(i, this.dummy.matrix);
+      this.pedHeadMesh.setMatrixAt(i, this.dummy.matrix); // the head rides the same transform, baked above the body
     }
-    this.pedMesh.count = want
-    this.pedMesh.instanceMatrix.needsUpdate = true
-    this.pedHeadMesh.count = want
-    this.pedHeadMesh.instanceMatrix.needsUpdate = true
+    this.pedMesh.count = want;
+    this.pedMesh.instanceMatrix.needsUpdate = true;
+    this.pedHeadMesh.count = want;
+    this.pedHeadMesh.instanceMatrix.needsUpdate = true;
   }
 
   /** P1 — the runtime supplies the live citizen avatar list (positions from the roster, decorated with isOperator). */
   setAvatarSource(fn: () => AvatarView[]): void {
-    this.avatarSource = fn
+    this.avatarSource = fn;
   }
 
   /** Spec 075 — hand the renderer the neighbourhood (by reference); it draws the lot pads + voxel homes,
    *  rebuilding only when a lot's owned/built state changes. */
   setNeighborhood(n: Neighborhood): void {
-    this.neighborhood = n
-    this.lastNbhdSig = '' // force a rebuild on the next frame
+    this.neighborhood = n;
+    this.lastNbhdSig = ""; // force a rebuild on the next frame
   }
 
   /** Spec 079 P0 — hand the renderer the surveyed commercial district; it raises a neon market stall
    *  on every shop plot. Rebuilt once here (the survey is static for the world's lifetime). */
   setCommercialDistrict(d: CommercialDistrict | null | undefined): void {
-    this.commercialDistrict = d ?? undefined
-    this.buildCommercialDistrict()
+    this.commercialDistrict = d ?? undefined;
+    this.buildCommercialDistrict();
   }
 
   /** Spec 088 — hand the renderer the road centre-lines; it lays a SMOOTH ribbon surface (Chaikin-
@@ -1668,48 +2267,54 @@ export class PlanetRenderer {
   setRoadWays(ways: RoadWay[] | null | undefined): void {
     if (this.roadRibbonGroup) {
       this.roadRibbonGroup.traverse((o) => {
-        const m = o as THREE.Mesh
-        if (m.geometry) m.geometry.dispose()
-        const mt = m.material as THREE.Material | THREE.Material[] | undefined
-        if (Array.isArray(mt)) mt.forEach((x) => x.dispose())
-        else if (mt) mt.dispose()
-      })
-      this.roadRibbonGroup.parent?.remove(this.roadRibbonGroup)
-      this.roadRibbonGroup = null
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        const mt = m.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(mt)) mt.forEach((x) => x.dispose());
+        else if (mt) mt.dispose();
+      });
+      this.roadRibbonGroup.parent?.remove(this.roadRibbonGroup);
+      this.roadRibbonGroup = null;
     }
-    this.roadRibbonCells = null
-    if (!ways || ways.length === 0) return
+    this.roadRibbonCells = null;
+    if (!ways || ways.length === 0) return;
     const built = buildRoadRibbons(ways, {
       terrain: this.sim.state.terrain,
       wx: (x) => this.wx(x),
       wz: (y) => this.wz(y),
       roadY: (x, y) => this.smoothRoadY(x, y),
-    })
-    this.roadRibbonGroup = built.group
-    this.roadRibbonCells = built.cells
-    this.scene.add(this.roadRibbonGroup)
+    });
+    this.roadRibbonGroup = built.group;
+    this.roadRibbonCells = built.cells;
+    this.scene.add(this.roadRibbonGroup);
   }
 
   /** Spec 088 — hand the renderer the bus route; it raises the stop markers and a coach that drives the
    *  loop between the hoods (a render-loop vehicle, advanced on wall-clock dt, not the sim). */
   setBusRoute(route: BusRoute | null | undefined): void {
-    this.busLayer?.dispose()
-    this.busLayer = null
-    if (!route) return
+    this.busLayer?.dispose();
+    this.busLayer = null;
+    if (!route) return;
     this.busLayer = buildBusLayer({
       terrain: this.sim.state.terrain,
       route,
       wx: (x) => this.wx(x),
       wz: (y) => this.wz(y),
       roadY: (x, y) => this.smoothRoadY(x, y),
-    })
-    if (this.busLayer) this.scene.add(this.busLayer.group)
+    });
+    if (this.busLayer) this.scene.add(this.busLayer.group);
   }
 
   // The neon palette for the strip — saturated signage that pops against the calm residential teal.
-  private static readonly NEON = [0xff2d95, 0x18e0ff, 0xffc233, 0x7bff4d, 0xb24dff, 0xff6a3d]
+  private static readonly NEON = [
+    0xff2d95, 0x18e0ff, 0xffc233, 0x7bff4d, 0xb24dff, 0xff6a3d,
+  ];
   // Shop massing by kind: how tall the body stands (showroom is the anchor, the kiosk a low cart).
-  private static readonly SHOP_WALL_H: Record<ShopParcel['kind'], number> = { kiosk: 0.9, store: 1.25, showroom: 1.7 }
+  private static readonly SHOP_WALL_H: Record<ShopParcel["kind"], number> = {
+    kiosk: 0.9,
+    store: 1.25,
+    showroom: 1.7,
+  };
 
   /** Raise a vibrant neon market stall on each surveyed shop plot: a dark counter body, a glowing
    *  awning canopy, and a bright signage panel facing the street. Disposes any prior build first. */
@@ -1717,84 +2322,109 @@ export class PlanetRenderer {
     // Tear down a previous build (geometry + materials) so re-survey/reload never leaks GPU memory.
     for (const child of this.commercialGroup.children) {
       child.traverse((o) => {
-        const m = o as THREE.Mesh
-        if (m.geometry) m.geometry.dispose()
-        const disposeMat = (x: THREE.Material) => { (x as THREE.MeshStandardMaterial).map?.dispose(); x.dispose() } // free the board CanvasTextures too
-        const mat = m.material as THREE.Material | THREE.Material[] | undefined
-        if (Array.isArray(mat)) mat.forEach(disposeMat)
-        else if (mat) disposeMat(mat)
-      })
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        const disposeMat = (x: THREE.Material) => {
+          (x as THREE.MeshStandardMaterial).map?.dispose();
+          x.dispose();
+        }; // free the board CanvasTextures too
+        const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(mat)) mat.forEach(disposeMat);
+        else if (mat) disposeMat(mat);
+      });
     }
-    this.commercialGroup.clear()
-    this.commercialSignMats = []
-    this.scene.add(this.commercialGroup)
-    const d = this.commercialDistrict
-    if (!d) return
-    const t = this.sim.state.terrain
+    this.commercialGroup.clear();
+    this.commercialSignMats = [];
+    this.scene.add(this.commercialGroup);
+    const d = this.commercialDistrict;
+    if (!d) return;
+    const t = this.sim.state.terrain;
 
     d.parcels.forEach((p, i) => {
       // Spec 079 — each plot fronts a real kooker app: its business sets the neon palette, a rooftop
       // emblem, and (the Nearest bar) a counter + stools where bots can sit. Plots stay for-sale.
-      const biz = p.business ? BUSINESSES[p.business] : undefined
-      const neon = biz?.palette ?? PlanetRenderer.NEON[i % PlanetRenderer.NEON.length]!
-      const wallH = PlanetRenderer.SHOP_WALL_H[p.kind]
-      const bodyW = p.w * 0.82
-      const bodyD = p.h * 0.82
-      const cx = p.x + (p.w - 1) / 2
-      const cy = p.y + (p.h - 1) / 2
+      const biz = p.business ? BUSINESSES[p.business] : undefined;
+      const neon =
+        biz?.palette ?? PlanetRenderer.NEON[i % PlanetRenderer.NEON.length]!;
+      const wallH = PlanetRenderer.SHOP_WALL_H[p.kind];
+      const bodyW = p.w * 0.82;
+      const bodyD = p.h * 0.82;
+      const cx = p.x + (p.w - 1) / 2;
+      const cy = p.y + (p.h - 1) / 2;
       // Sit the shop on the LOWEST corner of its footprint so no edge floats over sloped/coastal
       // ground; the uphill terrain just buries into the solid body, and the foundation plinth below
       // fills the slope gap. (Was the centre height, which left the downhill side floating.)
-      let loY = Infinity, hiY = 0
-      for (const fx of [p.x, p.x + p.w - 1]) for (const fy of [p.y, p.y + p.h - 1]) {
-        const h = Math.max(0, t.worldY(fx, fy)); if (h < loY) loY = h; if (h > hiY) hiY = h
-      }
-      const baseY = loY
-      const front = -p.side // +z when the plot fronts the street to its -y side
+      let loY = Infinity,
+        hiY = 0;
+      for (const fx of [p.x, p.x + p.w - 1])
+        for (const fy of [p.y, p.y + p.h - 1]) {
+          const h = Math.max(0, t.worldY(fx, fy));
+          if (h < loY) loY = h;
+          if (h > hiY) hiY = h;
+        }
+      const baseY = loY;
+      const front = -p.side; // +z when the plot fronts the street to its -y side
 
-      const g = new THREE.Group()
-      g.position.set(this.wx(cx), baseY, this.wz(cy))
+      const g = new THREE.Group();
+      g.position.set(this.wx(cx), baseY, this.wz(cy));
 
       // Foundation plinth — from the base down past the slope range, so the shop reads as built on the
       // ground and never floats, even where the coast falls away under the footprint.
-      const foundH = (hiY - loY) + 0.7
+      const foundH = hiY - loY + 0.7;
       const found = new THREE.Mesh(
         new THREE.BoxGeometry(bodyW * 1.02, foundH, bodyD * 1.02),
         new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.9 }),
-      )
-      found.position.y = -foundH / 2 + 0.02
-      found.castShadow = true
-      g.add(found)
+      );
+      found.position.y = -foundH / 2 + 0.02;
+      found.castShadow = true;
+      g.add(found);
 
       // Body — a dark slate shopfront so the neon reads against it.
       const body = new THREE.Mesh(
         new THREE.BoxGeometry(bodyW, wallH, bodyD),
-        new THREE.MeshStandardMaterial({ color: 0x2b3040, roughness: 0.7, metalness: 0.1 }),
-      )
-      body.position.y = wallH / 2
-      body.castShadow = true
+        new THREE.MeshStandardMaterial({
+          color: 0x2b3040,
+          roughness: 0.7,
+          metalness: 0.1,
+        }),
+      );
+      body.position.y = wallH / 2;
+      body.castShadow = true;
 
       // Awning — a glowing neon canopy slightly oversailing the body.
       const canopy = new THREE.Mesh(
         new THREE.BoxGeometry(bodyW * 1.08, 0.16, bodyD * 1.08),
-        new THREE.MeshStandardMaterial({ color: neon, roughness: 0.4, emissive: neon, emissiveIntensity: 0.45 }),
-      )
-      canopy.position.y = wallH + 0.08
-      canopy.castShadow = true
+        new THREE.MeshStandardMaterial({
+          color: neon,
+          roughness: 0.4,
+          emissive: neon,
+          emissiveIntensity: 0.45,
+        }),
+      );
+      canopy.position.y = wallH + 0.08;
+      canopy.castShadow = true;
 
       // Signage — a bright panel standing above the STREET-FACING front edge.
-      const frontZ = front * (bodyD / 2 + 0.12)
-      const signMat = new THREE.MeshStandardMaterial({ color: neon, emissive: neon, emissiveIntensity: 0.7, roughness: 0.3 })
-      const sign = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 0.62, 0.5, 0.1), signMat)
-      sign.position.set(0, wallH + 0.5, frontZ)
-      this.commercialSignMats.push(signMat)
-      g.add(body, canopy, sign)
+      const frontZ = front * (bodyD / 2 + 0.12);
+      const signMat = new THREE.MeshStandardMaterial({
+        color: neon,
+        emissive: neon,
+        emissiveIntensity: 0.7,
+        roughness: 0.3,
+      });
+      const sign = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyW * 0.62, 0.5, 0.1),
+        signMat,
+      );
+      sign.position.set(0, wallH + 0.5, frontZ);
+      this.commercialSignMats.push(signMat);
+      g.add(body, canopy, sign);
 
       // Rooftop emblem — a distinct shape per business so the app reads at a glance.
       if (biz) {
-        const em = this.makeBusinessEmblem(biz.emblem, neon)
-        em.position.y = wallH + 0.5
-        g.add(em)
+        const em = this.makeBusinessEmblem(biz.emblem, neon);
+        em.position.y = wallH + 0.5;
+        g.add(em);
       }
 
       // The bar's seating: a counter + stools on the street side. The stools are left empty here —
@@ -1804,356 +2434,793 @@ export class PlanetRenderer {
         const counter = new THREE.Mesh(
           new THREE.BoxGeometry(bodyW * 0.9, 0.5, 0.22),
           new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.85 }),
-        )
-        counter.position.set(0, 0.25, front * (bodyD / 2 + 0.45))
-        counter.castShadow = true
-        g.add(counter)
-        const stoolMat = new THREE.MeshStandardMaterial({ color: 0x3a3f4a, roughness: 0.7 })
-        const n = 3
+        );
+        counter.position.set(0, 0.25, front * (bodyD / 2 + 0.45));
+        counter.castShadow = true;
+        g.add(counter);
+        const stoolMat = new THREE.MeshStandardMaterial({
+          color: 0x3a3f4a,
+          roughness: 0.7,
+        });
+        const n = 3;
         for (let k = 0; k < n; k++) {
-          const sx = (k - (n - 1) / 2) * (bodyW * 0.9 / n)
-          const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.42, 10), stoolMat)
-          stool.position.set(sx, 0.21, front * (bodyD / 2 + 0.78))
-          stool.castShadow = true
-          g.add(stool)
+          const sx = (k - (n - 1) / 2) * ((bodyW * 0.9) / n);
+          const stool = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.09, 0.09, 0.42, 10),
+            stoolMat,
+          );
+          stool.position.set(sx, 0.21, front * (bodyD / 2 + 0.78));
+          stool.castShadow = true;
+          g.add(stool);
         }
         // Joe the Crab tends the Nearest — the signature "Joe at the bar" look from the concept image:
         // his headset, eyes and claws clear the counter as he serves the patrons across it. A static
         // prop reusing the founder crab geometry; he stands on a hidden duckboard riser behind the
         // counter and faces the street side. (Citizen-Joe is separate; this is the bar's mascot keeper.)
-        const riser = 0.36
+        const riser = 0.36;
         const board = new THREE.Mesh(
           new THREE.BoxGeometry(bodyW * 0.5, riser, 0.32),
           new THREE.MeshStandardMaterial({ color: 0x5a3a22, roughness: 0.9 }),
-        )
-        board.position.set(0, riser / 2, front * (bodyD / 2 + 0.18))
-        g.add(board)
+        );
+        board.position.set(0, riser / 2, front * (bodyD / 2 + 0.18));
+        g.add(board);
         const keeper = new THREE.Mesh(
           this.makeCrabGeometry(),
-          new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.6, metalness: 0.05 }),
-        )
-        keeper.scale.setScalar(1.25)
-        keeper.position.set(0, riser, front * (bodyD / 2 + 0.18))
-        if (front < 0) keeper.rotation.y = Math.PI // the crab faces +z by default; turn him to face the street side
-        keeper.castShadow = true
-        g.add(keeper)
+          new THREE.MeshStandardMaterial({
+            vertexColors: true,
+            flatShading: true,
+            roughness: 0.6,
+            metalness: 0.05,
+          }),
+        );
+        keeper.scale.setScalar(1.25);
+        keeper.position.set(0, riser, front * (bodyD / 2 + 0.18));
+        if (front < 0) keeper.rotation.y = Math.PI; // the crab faces +z by default; turn him to face the street side
+        keeper.castShadow = true;
+        g.add(keeper);
       }
 
       // Signature props give each marquee app a distinct, recognisable place (the bar's radar dish +
       // vials + bar-chart, Sprout's plants, Sportifine's pitch, Chef Ott's market awning + crates).
-      if (biz?.marquee) g.add(this.buildBusinessProps(biz, bodyW, bodyD, wallH, front))
+      if (biz?.marquee)
+        g.add(this.buildBusinessProps(biz, bodyW, bodyD, wallH, front));
 
-      this.commercialGroup.add(g)
-    })
+      this.commercialGroup.add(g);
+    });
 
     // 086-P1 polish — a seaside PROMENADE: warm lamp posts line the high street on alternating verges,
     // glowing after dark so the coastal strip by the lighthouse reads as a lit boardwalk. Cheap static
     // posts; the head emissive stays below the bloom threshold (warmth, not a halo). Disposed with the
     // group on rebuild like every other commercial mesh.
-    const street = d.street
+    const street = d.street;
     if (street.length > 0) {
-      const poleMat = new THREE.MeshStandardMaterial({ color: 0x2f343d, roughness: 0.7 })
-      const headMat = new THREE.MeshStandardMaterial({ color: 0xffe6b0, emissive: 0xffd9a0, emissiveIntensity: 0.82, roughness: 0.4 }) // warm, but under the 0.9 bloom threshold
+      const poleMat = new THREE.MeshStandardMaterial({
+        color: 0x2f343d,
+        roughness: 0.7,
+      });
+      const headMat = new THREE.MeshStandardMaterial({
+        color: 0xffe6b0,
+        emissive: 0xffd9a0,
+        emissiveIntensity: 0.82,
+        roughness: 0.4,
+      }); // warm, but under the 0.9 bloom threshold
       for (let i = 0; i < street.length; i += 5) {
-        const c = street[i]!
-        const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)))
-        const side = Math.floor(i / 5) % 2 === 0 ? 1 : -1 // alternate verges down the strip
-        const lamp = new THREE.Group()
-        lamp.position.set(this.wx(c.x), by, this.wz(c.y + side * 1.4))
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 1.4, 6), poleMat)
-        pole.position.y = 0.7; pole.castShadow = true
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.3), poleMat)
-        arm.position.set(0, 1.4, side * 0.15)
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), headMat)
-        head.position.set(0, 1.38, side * 0.3)
-        lamp.add(pole, arm, head)
-        this.commercialGroup.add(lamp)
+        const c = street[i]!;
+        const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)));
+        const side = Math.floor(i / 5) % 2 === 0 ? 1 : -1; // alternate verges down the strip
+        const lamp = new THREE.Group();
+        lamp.position.set(this.wx(c.x), by, this.wz(c.y + side * 1.4));
+        const pole = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.04, 0.05, 1.4, 6),
+          poleMat,
+        );
+        pole.position.y = 0.7;
+        pole.castShadow = true;
+        const arm = new THREE.Mesh(
+          new THREE.BoxGeometry(0.04, 0.04, 0.3),
+          poleMat,
+        );
+        arm.position.set(0, 1.4, side * 0.15);
+        const head = new THREE.Mesh(
+          new THREE.SphereGeometry(0.11, 8, 6),
+          headMat,
+        );
+        head.position.set(0, 1.38, side * 0.3);
+        lamp.add(pole, arm, head);
+        this.commercialGroup.add(lamp);
       }
       // promenade FURNITURE between the lamps — a few benches + leafy planters on the verges so the
       // strip feels strolled, not just lit. Placed on a different phase/offset from the lamps.
-      const woodMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.85 })
-      const legMat = new THREE.MeshStandardMaterial({ color: 0x3a3f4a, roughness: 0.7 })
-      const planterMat = new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 0.9 })
-      const leafMat = new THREE.MeshStandardMaterial({ color: 0x3fae5a, roughness: 0.8 })
+      const woodMat = new THREE.MeshStandardMaterial({
+        color: 0x6b4a2f,
+        roughness: 0.85,
+      });
+      const legMat = new THREE.MeshStandardMaterial({
+        color: 0x3a3f4a,
+        roughness: 0.7,
+      });
+      const planterMat = new THREE.MeshStandardMaterial({
+        color: 0x8a6a44,
+        roughness: 0.9,
+      });
+      const leafMat = new THREE.MeshStandardMaterial({
+        color: 0x3fae5a,
+        roughness: 0.8,
+      });
       for (let i = 3; i < street.length; i += 8) {
-        const c = street[i]!
-        const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)))
-        const side = Math.floor(i / 8) % 2 === 0 ? -1 : 1 // opposite phase to the lamps
-        const fz = this.wz(c.y + side * 1.5)
+        const c = street[i]!;
+        const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)));
+        const side = Math.floor(i / 8) % 2 === 0 ? -1 : 1; // opposite phase to the lamps
+        const fz = this.wz(c.y + side * 1.5);
         // a bench facing the street (backrest on the verge side)
-        const bench = new THREE.Group()
-        bench.position.set(this.wx(c.x), by, fz)
-        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.05, 0.22), woodMat); seat.position.y = 0.2; seat.castShadow = true
-        const back = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.18, 0.04), woodMat); back.position.set(0, 0.3, side * 0.09)
-        for (const lx of [-0.24, 0.24]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 0.18), legMat); leg.position.set(lx, 0.1, 0); bench.add(leg) }
-        bench.add(seat, back)
-        this.commercialGroup.add(bench)
+        const bench = new THREE.Group();
+        bench.position.set(this.wx(c.x), by, fz);
+        const seat = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.05, 0.22),
+          woodMat,
+        );
+        seat.position.y = 0.2;
+        seat.castShadow = true;
+        const back = new THREE.Mesh(
+          new THREE.BoxGeometry(0.6, 0.18, 0.04),
+          woodMat,
+        );
+        back.position.set(0, 0.3, side * 0.09);
+        for (const lx of [-0.24, 0.24]) {
+          const leg = new THREE.Mesh(
+            new THREE.BoxGeometry(0.05, 0.2, 0.18),
+            legMat,
+          );
+          leg.position.set(lx, 0.1, 0);
+          bench.add(leg);
+        }
+        bench.add(seat, back);
+        this.commercialGroup.add(bench);
         // a leafy planter just along from the bench
-        const planter = new THREE.Group()
-        planter.position.set(this.wx(c.x + 1.1), by, fz)
-        const tub = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.11, 0.2, 10), planterMat); tub.position.y = 0.1; tub.castShadow = true
-        const bush = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 7), leafMat); bush.position.y = 0.3
-        planter.add(tub, bush)
-        this.commercialGroup.add(planter)
+        const planter = new THREE.Group();
+        planter.position.set(this.wx(c.x + 1.1), by, fz);
+        const tub = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.14, 0.11, 0.2, 10),
+          planterMat,
+        );
+        tub.position.y = 0.1;
+        tub.castShadow = true;
+        const bush = new THREE.Mesh(
+          new THREE.SphereGeometry(0.15, 8, 7),
+          leafMat,
+        );
+        bush.position.y = 0.3;
+        planter.add(tub, bush);
+        this.commercialGroup.add(planter);
       }
       // Spec 081 P0 — AD BOARDS at the strip approaches. Each board is a post pair + frame + a screen
       // plane carrying a CanvasTexture painted by adCanvas (a deterministic poster for one real shop, or
       // the welcome PSA when none). Placement is the pure surveyBillboards (collision-checked against
       // roads + shop footprints); the screen faces inward down the strip and glows softly after dark
       // (emissive under the bloom threshold). Disposed with the group — texture too (see the teardown).
-      const boardBlocked = new Set<string>(this.sim.state.roadSet)
-      for (const p of d.parcels) for (let yy = p.y; yy < p.y + p.h; yy++) for (let xx = p.x; xx < p.x + p.w; xx++) boardBlocked.add(`${xx},${yy}`)
-      const shopById = new Map(d.parcels.map((p) => [p.id, p]))
-      const postMat = new THREE.MeshStandardMaterial({ color: 0x3a3f4a, roughness: 0.7 })
+      const boardBlocked = new Set<string>(this.sim.state.roadSet);
+      for (const p of d.parcels)
+        for (let yy = p.y; yy < p.y + p.h; yy++)
+          for (let xx = p.x; xx < p.x + p.w; xx++)
+            boardBlocked.add(`${xx},${yy}`);
+      const shopById = new Map(d.parcels.map((p) => [p.id, p]));
+      const postMat = new THREE.MeshStandardMaterial({
+        color: 0x3a3f4a,
+        roughness: 0.7,
+      });
       for (const site of surveyBillboards(d, t, boardBlocked)) {
-        const by = Math.max(0, t.worldY(Math.round(site.x), Math.round(site.y)))
-        const grp = new THREE.Group()
-        grp.position.set(this.wx(site.x), by, this.wz(site.y))
-        grp.rotation.y = site.faceX === 1 ? Math.PI / 2 : -Math.PI / 2 // a +z plane turned to face along the street
+        const by = Math.max(
+          0,
+          t.worldY(Math.round(site.x), Math.round(site.y)),
+        );
+        const grp = new THREE.Group();
+        grp.position.set(this.wx(site.x), by, this.wz(site.y));
+        grp.rotation.y = site.faceX === 1 ? Math.PI / 2 : -Math.PI / 2; // a +z plane turned to face along the street
         for (const px of [-0.7, 0.7]) {
-          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.8, 6), postMat)
-          post.position.set(px, 0.9, 0); post.castShadow = true; grp.add(post)
+          const post = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.05, 0.06, 1.8, 6),
+            postMat,
+          );
+          post.position.set(px, 0.9, 0);
+          post.castShadow = true;
+          grp.add(post);
         }
-        const frame = new THREE.Mesh(new THREE.BoxGeometry(1.95, 1.32, 0.12), postMat)
-        frame.position.set(0, 2.1, 0); frame.castShadow = true; grp.add(frame)
-        const shop = site.shopId ? shopById.get(site.shopId) : undefined
-        const cv = document.createElement('canvas'); cv.width = 256; cv.height = 160
-        const ctx = cv.getContext('2d')
-        if (ctx) paintPoster(ctx, posterModel(shop?.business), cv.width, cv.height)
-        const tex = new THREE.CanvasTexture(cv)
+        const frame = new THREE.Mesh(
+          new THREE.BoxGeometry(1.95, 1.32, 0.12),
+          postMat,
+        );
+        frame.position.set(0, 2.1, 0);
+        frame.castShadow = true;
+        grp.add(frame);
+        const shop = site.shopId ? shopById.get(site.shopId) : undefined;
+        const cv = document.createElement("canvas");
+        cv.width = 256;
+        cv.height = 160;
+        const ctx = cv.getContext("2d");
+        if (ctx)
+          paintPoster(ctx, posterModel(shop?.business), cv.width, cv.height);
+        const tex = new THREE.CanvasTexture(cv);
         const screen = new THREE.Mesh(
           new THREE.PlaneGeometry(1.78, 1.12),
-          new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.35, roughness: 0.6 }),
-        )
-        screen.position.set(0, 2.1, 0.07)
-        grp.add(screen)
-        this.commercialGroup.add(grp)
+          new THREE.MeshStandardMaterial({
+            map: tex,
+            emissive: 0xffffff,
+            emissiveMap: tex,
+            emissiveIntensity: 0.35,
+            roughness: 0.6,
+          }),
+        );
+        screen.position.set(0, 2.1, 0.07);
+        grp.add(screen);
+        this.commercialGroup.add(grp);
       }
     }
   }
 
   /** Signature props for a marquee storefront, positioned relative to its plot centre. `front` is the
    *  +z/-z direction of the street the plot faces. Keeps each app's site recognisable from afar. */
-  private buildBusinessProps(biz: Business, bodyW: number, bodyD: number, wallH: number, front: number): THREE.Object3D {
-    const grp = new THREE.Group()
-    const glow = (hex: number, ei = 0.5) => new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: ei, roughness: 0.4 })
-    const matte = (hex: number) => new THREE.MeshStandardMaterial({ color: hex, roughness: 0.8 })
-    const frontZ = front * (bodyD / 2)
-    if (biz.id === 'nearest_bar') {
-      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.0, 6), matte(0x9aa3b2))
-      mast.position.set(bodyW * 0.35, wallH + 0.5, -frontZ * 0.6)
-      const dish = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.2, 18, 1, true), glow(biz.palette, 0.7))
-      dish.position.set(bodyW * 0.35, wallH + 1.05, -frontZ * 0.6); dish.rotation.x = Math.PI * 0.8
-      grp.add(mast, dish)
-      const vials = [0xff2d95, 0x18e0ff, 0xffc233, 0x7bff4d]
-      vials.forEach((cv, k) => { const v = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8), glow(cv, 0.85)); v.position.set((k - 1.5) * 0.18, wallH + 0.25, frontZ * 0.6); grp.add(v) })
-      ;[0.3, 0.5, 0.4, 0.6].forEach((h, k) => { const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, h, 0.06), glow(biz.palette, 0.6)); b.position.set(-bodyW * 0.5 - 0.16, wallH * 0.4 + h / 2, (k - 1.5) * 0.12); grp.add(b) })
-    } else if (biz.id === 'sprout_nursery') {
+  private buildBusinessProps(
+    biz: Business,
+    bodyW: number,
+    bodyD: number,
+    wallH: number,
+    front: number,
+  ): THREE.Object3D {
+    const grp = new THREE.Group();
+    const glow = (hex: number, ei = 0.5) =>
+      new THREE.MeshStandardMaterial({
+        color: hex,
+        emissive: hex,
+        emissiveIntensity: ei,
+        roughness: 0.4,
+      });
+    const matte = (hex: number) =>
+      new THREE.MeshStandardMaterial({ color: hex, roughness: 0.8 });
+    const frontZ = front * (bodyD / 2);
+    if (biz.id === "nearest_bar") {
+      const mast = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04, 0.04, 1.0, 6),
+        matte(0x9aa3b2),
+      );
+      mast.position.set(bodyW * 0.35, wallH + 0.5, -frontZ * 0.6);
+      const dish = new THREE.Mesh(
+        new THREE.ConeGeometry(0.32, 0.2, 18, 1, true),
+        glow(biz.palette, 0.7),
+      );
+      dish.position.set(bodyW * 0.35, wallH + 1.05, -frontZ * 0.6);
+      dish.rotation.x = Math.PI * 0.8;
+      grp.add(mast, dish);
+      const vials = [0xff2d95, 0x18e0ff, 0xffc233, 0x7bff4d];
+      vials.forEach((cv, k) => {
+        const v = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8),
+          glow(cv, 0.85),
+        );
+        v.position.set((k - 1.5) * 0.18, wallH + 0.25, frontZ * 0.6);
+        grp.add(v);
+      });
+      [0.3, 0.5, 0.4, 0.6].forEach((h, k) => {
+        const b = new THREE.Mesh(
+          new THREE.BoxGeometry(0.08, h, 0.06),
+          glow(biz.palette, 0.6),
+        );
+        b.position.set(
+          -bodyW * 0.5 - 0.16,
+          wallH * 0.4 + h / 2,
+          (k - 1.5) * 0.12,
+        );
+        grp.add(b);
+      });
+    } else if (biz.id === "sprout_nursery") {
       // A lush little nursery: a terracotta planter trough of flowering sprouts, potted bushes flanking
       // the door, a leafy trellis arch over the entrance, and shrubs on the roof.
-      const leaf = matte(0x3fae5a), leafDk = matte(0x2f8f49), terra = matte(0xb5663a)
-      const blooms = [0xff7eb6, 0xffd23f, 0xf6f6f6, 0xff5ca8, 0x7bd0ff]
-      const trough = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 0.9, 0.16, 0.26), terra); trough.position.set(0, 0.08, frontZ + front * 0.55); grp.add(trough)
+      const leaf = matte(0x3fae5a),
+        leafDk = matte(0x2f8f49),
+        terra = matte(0xb5663a);
+      const blooms = [0xff7eb6, 0xffd23f, 0xf6f6f6, 0xff5ca8, 0x7bd0ff];
+      const trough = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyW * 0.9, 0.16, 0.26),
+        terra,
+      );
+      trough.position.set(0, 0.08, frontZ + front * 0.55);
+      grp.add(trough);
       for (let k = 0; k < 5; k++) {
-        const stem = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.34, 7), leaf); stem.position.set((k - 2) * 0.28, 0.32, frontZ + front * 0.55); grp.add(stem)
-        const bloom = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), glow(blooms[k % blooms.length]!, 0.3)); bloom.position.set((k - 2) * 0.28, 0.52, frontZ + front * 0.55); grp.add(bloom)
+        const stem = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.34, 7), leaf);
+        stem.position.set((k - 2) * 0.28, 0.32, frontZ + front * 0.55);
+        grp.add(stem);
+        const bloom = new THREE.Mesh(
+          new THREE.SphereGeometry(0.07, 8, 6),
+          glow(blooms[k % blooms.length]!, 0.3),
+        );
+        bloom.position.set((k - 2) * 0.28, 0.52, frontZ + front * 0.55);
+        grp.add(bloom);
       }
       for (const sx of [-bodyW * 0.34, bodyW * 0.34]) {
-        const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.09, 0.18, 10), terra); pot.position.set(sx, 0.09, frontZ + front * 0.3); grp.add(pot)
-        const bush = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 7), leafDk); bush.position.set(sx, 0.28, frontZ + front * 0.3); grp.add(bush)
+        const pot = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.12, 0.09, 0.18, 10),
+          terra,
+        );
+        pot.position.set(sx, 0.09, frontZ + front * 0.3);
+        grp.add(pot);
+        const bush = new THREE.Mesh(
+          new THREE.SphereGeometry(0.16, 8, 7),
+          leafDk,
+        );
+        bush.position.set(sx, 0.28, frontZ + front * 0.3);
+        grp.add(bush);
       }
-      const archMat = matte(0xd8d2c4)
-      for (const sx of [-0.5, 0.5]) { const post = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.9, 0.05), archMat); post.position.set(sx, 0.45, frontZ + front * 0.15); grp.add(post) }
-      const archTop = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.05, 0.05), archMat); archTop.position.set(0, 0.9, frontZ + front * 0.15); grp.add(archTop)
-      for (let k = 0; k < 4; k++) { const vine = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 5), leaf); vine.position.set((k - 1.5) * 0.3, 0.88, frontZ + front * 0.15); grp.add(vine) }
-      for (const sx of [-bodyW * 0.3, bodyW * 0.3]) { const s = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 7), leafDk); s.position.set(sx, wallH + 0.2, -frontZ * 0.3); grp.add(s) }
-    } else if (biz.id === 'sportifine_club') {
+      const archMat = matte(0xd8d2c4);
+      for (const sx of [-0.5, 0.5]) {
+        const post = new THREE.Mesh(
+          new THREE.BoxGeometry(0.05, 0.9, 0.05),
+          archMat,
+        );
+        post.position.set(sx, 0.45, frontZ + front * 0.15);
+        grp.add(post);
+      }
+      const archTop = new THREE.Mesh(
+        new THREE.BoxGeometry(1.05, 0.05, 0.05),
+        archMat,
+      );
+      archTop.position.set(0, 0.9, frontZ + front * 0.15);
+      grp.add(archTop);
+      for (let k = 0; k < 4; k++) {
+        const vine = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 5), leaf);
+        vine.position.set((k - 1.5) * 0.3, 0.88, frontZ + front * 0.15);
+        grp.add(vine);
+      }
+      for (const sx of [-bodyW * 0.3, bodyW * 0.3]) {
+        const s = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 7), leafDk);
+        s.position.set(sx, wallH + 0.2, -frontZ * 0.3);
+        grp.add(s);
+      }
+    } else if (biz.id === "sportifine_club") {
       // A proper club: a green pitch with goal + ball, two floodlight poles, a stepped grandstand and a
       // corner flag in the club colour.
-      const pitch = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 0.9, 0.04, 1.2), matte(0x2e8b3e)); pitch.position.set(0, 0.02, frontZ + front * 0.85); grp.add(pitch)
-      const postMat = glow(0xf6f6f6, 0.2)
-      const gl = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), postMat); gl.position.set(-0.4, 0.25, frontZ + front * 1.35)
-      const gr = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.5, 0.05), postMat); gr.position.set(0.4, 0.25, frontZ + front * 1.35)
-      const gt = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.05, 0.05), postMat); gt.position.set(0, 0.5, frontZ + front * 1.35)
-      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), matte(0xf0f0f0)); ball.position.set(0.1, 0.1, frontZ + front * 0.5)
-      grp.add(gl, gr, gt, ball)
-      const poleMat = matte(0x9aa3b2)
+      const pitch = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyW * 0.9, 0.04, 1.2),
+        matte(0x2e8b3e),
+      );
+      pitch.position.set(0, 0.02, frontZ + front * 0.85);
+      grp.add(pitch);
+      const postMat = glow(0xf6f6f6, 0.2);
+      const gl = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, 0.5, 0.05),
+        postMat,
+      );
+      gl.position.set(-0.4, 0.25, frontZ + front * 1.35);
+      const gr = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, 0.5, 0.05),
+        postMat,
+      );
+      gr.position.set(0.4, 0.25, frontZ + front * 1.35);
+      const gt = new THREE.Mesh(
+        new THREE.BoxGeometry(0.85, 0.05, 0.05),
+        postMat,
+      );
+      gt.position.set(0, 0.5, frontZ + front * 1.35);
+      const ball = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 10, 8),
+        matte(0xf0f0f0),
+      );
+      ball.position.set(0.1, 0.1, frontZ + front * 0.5);
+      grp.add(gl, gr, gt, ball);
+      const poleMat = matte(0x9aa3b2);
       for (const sx of [-bodyW * 0.45, bodyW * 0.45]) {
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6), poleMat); pole.position.set(sx, 0.6, frontZ + front * 1.25); grp.add(pole)
-        const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.06), glow(0xfff3c0, 0.7)); lamp.position.set(sx, 1.18, frontZ + front * 1.25); grp.add(lamp)
+        const pole = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6),
+          poleMat,
+        );
+        pole.position.set(sx, 0.6, frontZ + front * 1.25);
+        grp.add(pole);
+        const lamp = new THREE.Mesh(
+          new THREE.BoxGeometry(0.22, 0.1, 0.06),
+          glow(0xfff3c0, 0.7),
+        );
+        lamp.position.set(sx, 1.18, frontZ + front * 1.25);
+        grp.add(lamp);
       }
-      const standMat = matte(biz.palette)
-      for (let s = 0; s < 3; s++) { const step = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.12, 0.18), standMat); step.position.set(-bodyW * 0.5 - 0.25, 0.06 + s * 0.12, frontZ + front * (0.5 + s * 0.18)); grp.add(step) }
-      const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.4, 5), poleMat); flagPole.position.set(bodyW * 0.4, 0.2, frontZ + front * 0.45); grp.add(flagPole)
-      const flag = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.02), glow(biz.palette, 0.5)); flag.position.set(bodyW * 0.4 + 0.09, 0.34, frontZ + front * 0.45); grp.add(flag)
-    } else if (biz.id === 'chef_market') {
+      const standMat = matte(biz.palette);
+      for (let s = 0; s < 3; s++) {
+        const step = new THREE.Mesh(
+          new THREE.BoxGeometry(0.7, 0.12, 0.18),
+          standMat,
+        );
+        step.position.set(
+          -bodyW * 0.5 - 0.25,
+          0.06 + s * 0.12,
+          frontZ + front * (0.5 + s * 0.18),
+        );
+        grp.add(step);
+      }
+      const flagPole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.015, 0.015, 0.4, 5),
+        poleMat,
+      );
+      flagPole.position.set(bodyW * 0.4, 0.2, frontZ + front * 0.45);
+      grp.add(flagPole);
+      const flag = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.1, 0.02),
+        glow(biz.palette, 0.5),
+      );
+      flag.position.set(bodyW * 0.4 + 0.09, 0.34, frontZ + front * 0.45);
+      grp.add(flag);
+    } else if (biz.id === "chef_market") {
       // A restaurant-market: a striped awning, a produce stall, a glowing grill under a smoking chimney,
       // an outdoor bistro table, and a kettlebell — the nod to the chef app's exercise side.
-      const wood = matte(0x9c6b3f)
-      const awning = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 1.1, 0.08, 0.7), glow(0xff6a3d, 0.4)); awning.position.set(0, wallH * 0.82, frontZ + front * 0.35); awning.rotation.x = front * 0.25; grp.add(awning)
-      const produce = [0xe23b2f, 0x7bff4d, 0xffc233]
+      const wood = matte(0x9c6b3f);
+      const awning = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyW * 1.1, 0.08, 0.7),
+        glow(0xff6a3d, 0.4),
+      );
+      awning.position.set(0, wallH * 0.82, frontZ + front * 0.35);
+      awning.rotation.x = front * 0.25;
+      grp.add(awning);
+      const produce = [0xe23b2f, 0x7bff4d, 0xffc233];
       for (let k = 0; k < 3; k++) {
-        const cr = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), wood); cr.position.set((k - 1) * 0.32, 0.11, frontZ + front * 0.7); grp.add(cr)
-        for (let j = 0; j < 3; j++) { const f = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 5), matte(produce[k % 3]!)); f.position.set((k - 1) * 0.32 + (j - 1) * 0.06, 0.25, frontZ + front * 0.7); grp.add(f) }
+        const cr = new THREE.Mesh(
+          new THREE.BoxGeometry(0.22, 0.22, 0.22),
+          wood,
+        );
+        cr.position.set((k - 1) * 0.32, 0.11, frontZ + front * 0.7);
+        grp.add(cr);
+        for (let j = 0; j < 3; j++) {
+          const f = new THREE.Mesh(
+            new THREE.SphereGeometry(0.05, 6, 5),
+            matte(produce[k % 3]!),
+          );
+          f.position.set(
+            (k - 1) * 0.32 + (j - 1) * 0.06,
+            0.25,
+            frontZ + front * 0.7,
+          );
+          grp.add(f);
+        }
       }
-      const grill = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.18, 0.26), matte(0x3a3f4a)); grill.position.set(bodyW * 0.32, 0.12, frontZ + front * 0.55); grp.add(grill)
-      const embers = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.04, 0.22), glow(0xff5a1f, 0.7)); embers.position.set(bodyW * 0.32, 0.22, frontZ + front * 0.55); grp.add(embers)
-      const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.4, 8), matte(0x5a5f6a)); chimney.position.set(-bodyW * 0.3, wallH + 0.2, -frontZ * 0.4); grp.add(chimney)
-      for (let k = 0; k < 3; k++) { const puff = new THREE.Mesh(new THREE.SphereGeometry(0.08 + k * 0.02, 6, 5), matte(0xcfd3da)); puff.position.set(-bodyW * 0.3, wallH + 0.5 + k * 0.18, -frontZ * 0.4); grp.add(puff) }
-      const table = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.04, 12), wood); table.position.set(-bodyW * 0.32, 0.34, frontZ + front * 0.7)
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.34, 6), matte(0x5a5f6a)); leg.position.set(-bodyW * 0.32, 0.17, frontZ + front * 0.7); grp.add(table, leg)
-      for (const sx of [-0.22, 0.22]) { const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.26, 8), matte(0x3a3f4a)); stool.position.set(-bodyW * 0.32 + sx, 0.13, frontZ + front * 0.72); grp.add(stool) }
-      const kb = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 7), matte(0x2b3040)); kb.position.set(bodyW * 0.34, 0.1, frontZ + front * 0.88)
-      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.015, 6, 10, Math.PI), matte(0x2b3040)); handle.position.set(bodyW * 0.34, 0.18, frontZ + front * 0.88); grp.add(kb, handle)
+      const grill = new THREE.Mesh(
+        new THREE.BoxGeometry(0.34, 0.18, 0.26),
+        matte(0x3a3f4a),
+      );
+      grill.position.set(bodyW * 0.32, 0.12, frontZ + front * 0.55);
+      grp.add(grill);
+      const embers = new THREE.Mesh(
+        new THREE.BoxGeometry(0.3, 0.04, 0.22),
+        glow(0xff5a1f, 0.7),
+      );
+      embers.position.set(bodyW * 0.32, 0.22, frontZ + front * 0.55);
+      grp.add(embers);
+      const chimney = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.07, 0.07, 0.4, 8),
+        matte(0x5a5f6a),
+      );
+      chimney.position.set(-bodyW * 0.3, wallH + 0.2, -frontZ * 0.4);
+      grp.add(chimney);
+      for (let k = 0; k < 3; k++) {
+        const puff = new THREE.Mesh(
+          new THREE.SphereGeometry(0.08 + k * 0.02, 6, 5),
+          matte(0xcfd3da),
+        );
+        puff.position.set(-bodyW * 0.3, wallH + 0.5 + k * 0.18, -frontZ * 0.4);
+        grp.add(puff);
+      }
+      const table = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.16, 0.04, 12),
+        wood,
+      );
+      table.position.set(-bodyW * 0.32, 0.34, frontZ + front * 0.7);
+      const leg = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.03, 0.34, 6),
+        matte(0x5a5f6a),
+      );
+      leg.position.set(-bodyW * 0.32, 0.17, frontZ + front * 0.7);
+      grp.add(table, leg);
+      for (const sx of [-0.22, 0.22]) {
+        const stool = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.07, 0.07, 0.26, 8),
+          matte(0x3a3f4a),
+        );
+        stool.position.set(-bodyW * 0.32 + sx, 0.13, frontZ + front * 0.72);
+        grp.add(stool);
+      }
+      const kb = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 8, 7),
+        matte(0x2b3040),
+      );
+      kb.position.set(bodyW * 0.34, 0.1, frontZ + front * 0.88);
+      const handle = new THREE.Mesh(
+        new THREE.TorusGeometry(0.05, 0.015, 6, 10, Math.PI),
+        matte(0x2b3040),
+      );
+      handle.position.set(bodyW * 0.34, 0.18, frontZ + front * 0.88);
+      grp.add(kb, handle);
     }
-    return grp
+    return grp;
   }
 
   /** A small, distinctive rooftop emblem per business kind (positioned at the group origin by the
    *  caller). Glows in the business palette so each storefront reads from District view. */
   private makeBusinessEmblem(emblem: Emblem, neon: number): THREE.Object3D {
-    const glow = (hex: number, ei = 0.5) => new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: ei, roughness: 0.4 })
-    if (emblem === 'dish') {
-      const grp = new THREE.Group()
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.22, 6), new THREE.MeshStandardMaterial({ color: 0x9aa3b2 }))
-      post.position.y = 0.11
-      const dish = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.12, 16, 1, true), glow(neon, 0.65))
-      dish.position.y = 0.3
-      dish.rotation.x = Math.PI * 0.85
-      grp.add(post, dish)
-      return grp
+    const glow = (hex: number, ei = 0.5) =>
+      new THREE.MeshStandardMaterial({
+        color: hex,
+        emissive: hex,
+        emissiveIntensity: ei,
+        roughness: 0.4,
+      });
+    if (emblem === "dish") {
+      const grp = new THREE.Group();
+      const post = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.03, 0.03, 0.22, 6),
+        new THREE.MeshStandardMaterial({ color: 0x9aa3b2 }),
+      );
+      post.position.y = 0.11;
+      const dish = new THREE.Mesh(
+        new THREE.ConeGeometry(0.18, 0.12, 16, 1, true),
+        glow(neon, 0.65),
+      );
+      dish.position.y = 0.3;
+      dish.rotation.x = Math.PI * 0.85;
+      grp.add(post, dish);
+      return grp;
     }
-    if (emblem === 'leaf') { const m = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.3, 7), glow(0x49c46a, 0.35)); m.position.y = 0.15; return m }
-    if (emblem === 'ball') { const m = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), new THREE.MeshStandardMaterial({ color: 0xf6f6f6, roughness: 0.5 })); m.position.y = 0.14; return m }
-    if (emblem === 'pot') { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.07, 0.16, 10), glow(neon, 0.4)); m.position.y = 0.08; return m }
-    if (emblem === 'crate') { const m = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), glow(neon, 0.35)); m.position.y = 0.1; return m }
-    const tag = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.04), glow(neon, 0.6)); tag.position.y = 0.1; return tag
+    if (emblem === "leaf") {
+      const m = new THREE.Mesh(
+        new THREE.ConeGeometry(0.12, 0.3, 7),
+        glow(0x49c46a, 0.35),
+      );
+      m.position.y = 0.15;
+      return m;
+    }
+    if (emblem === "ball") {
+      const m = new THREE.Mesh(
+        new THREE.SphereGeometry(0.14, 10, 8),
+        new THREE.MeshStandardMaterial({ color: 0xf6f6f6, roughness: 0.5 }),
+      );
+      m.position.y = 0.14;
+      return m;
+    }
+    if (emblem === "pot") {
+      const m = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.1, 0.07, 0.16, 10),
+        glow(neon, 0.4),
+      );
+      m.position.y = 0.08;
+      return m;
+    }
+    if (emblem === "crate") {
+      const m = new THREE.Mesh(
+        new THREE.BoxGeometry(0.2, 0.2, 0.2),
+        glow(neon, 0.35),
+      );
+      m.position.y = 0.1;
+      return m;
+    }
+    const tag = new THREE.Mesh(
+      new THREE.BoxGeometry(0.22, 0.14, 0.04),
+      glow(neon, 0.6),
+    );
+    tag.position.y = 0.1;
+    return tag;
   }
 
   /** Spec 076 — draw the homestead neighbourhood: the spine carriageway + verge ribbon, then each
    *  bordered parcel (zone ground pads + fence ring + driveway always; the worked farm crops, garden
    *  beds, trees and the set-back voxel house once built). Rebuilt only when the signature changes. */
   private updateNeighborhood() {
-    if (!this.neighborhood || !this.lotPadMesh || !this.voxelMesh) return
-    const n = this.neighborhood
-    const lots = n.parcels
+    if (!this.neighborhood || !this.lotPadMesh || !this.voxelMesh) return;
+    const n = this.neighborhood;
+    const lots = n.parcels;
     // Spec 077 — the blueprint is part of the signature so a newly authored/edited script triggers a rebuild.
-    const sig = lots.map((l) => `${l.id}:${l.ownerCitizenId ? 1 : 0}:${l.built ? 1 : 0}:${l.blueprint ?? ''}`).join('|') + `#${n.carriage.length}`
-    if (sig === this.lastNbhdSig) return
-    this.lastNbhdSig = sig
-    const t = this.sim.state.terrain
-    const col = new THREE.Color()
-    const BH = 0.56 // block height (the box geometry's y size)
+    const sig =
+      lots
+        .map(
+          (l) =>
+            `${l.id}:${l.ownerCitizenId ? 1 : 0}:${l.built ? 1 : 0}:${l.blueprint ?? ""}`,
+        )
+        .join("|") + `#${n.carriage.length}`;
+    if (sig === this.lastNbhdSig) return;
+    this.lastNbhdSig = sig;
+    const t = this.sim.state.terrain;
+    const col = new THREE.Color();
+    const BH = 0.56; // block height (the box geometry's y size)
     // SMOOTHED per-cell ground (5-point average): tiles follow the land's grade without per-cell
     // flutter. The old single leveled height per homestead left the downhill half of a sloped parcel
     // floating in the air (operator feedback) — now only the house keeps a leveled foundation.
-    const gy = (x: number, y: number) => this.groundY(x, y)
-    const PAD_DEPTH = 0.6 // must match padGeo's y size
+    const gy = (x: number, y: number) => this.groundY(x, y);
+    const PAD_DEPTH = 0.6; // must match padGeo's y size
 
-    let p = 0 // pad instance index
-    let v = 0 // voxel instance index
+    let p = 0; // pad instance index
+    let v = 0; // voxel instance index
     // A ground tile spanning a rect (min-corner zx,zy, size zw x zd) whose TOP face sits at hOff above
     // the ground. The deep body sinks into the terrain. `groundY`, when given, levels the tile on a
     // fixed foundation height (the house slab) instead of sampling the smoothed per-cell terrain.
-    let padOverflow = 0, voxOverflow = 0 // spec 084 S1 — silent cap truncation hid missing scenery
-    const padRect = (zx: number, zy: number, zw: number, zd: number, hOff: number, color: number, groundY?: number) => {
-      if (p >= PAD_CAP) { padOverflow++; return }
-      const cx = zx + (zw - 1) / 2, cy = zy + (zd - 1) / 2
-      this.dummy.position.set(this.wx(cx), (groundY ?? gy(cx, cy)) + hOff - PAD_DEPTH / 2, this.wz(cy))
-      this.dummy.rotation.set(0, 0, 0)
-      this.dummy.scale.set(zw, 1, zd)
-      this.dummy.updateMatrix()
-      this.lotPadMesh.setMatrixAt(p, this.dummy.matrix)
-      col.setHex(color)
-      this.lotPadMesh.setColorAt(p, col)
-      p++
-    }
-    const padCell = (x: number, y: number, hOff: number, color: number, groundY?: number) => padRect(x, y, 1, 1, hOff, color, groundY)
+    let padOverflow = 0,
+      voxOverflow = 0; // spec 084 S1 — silent cap truncation hid missing scenery
+    const padRect = (
+      zx: number,
+      zy: number,
+      zw: number,
+      zd: number,
+      hOff: number,
+      color: number,
+      groundY?: number,
+    ) => {
+      if (p >= PAD_CAP) {
+        padOverflow++;
+        return;
+      }
+      const cx = zx + (zw - 1) / 2,
+        cy = zy + (zd - 1) / 2;
+      this.dummy.position.set(
+        this.wx(cx),
+        (groundY ?? gy(cx, cy)) + hOff - PAD_DEPTH / 2,
+        this.wz(cy),
+      );
+      this.dummy.rotation.set(0, 0, 0);
+      this.dummy.scale.set(zw, 1, zd);
+      this.dummy.updateMatrix();
+      this.lotPadMesh.setMatrixAt(p, this.dummy.matrix);
+      col.setHex(color);
+      this.lotPadMesh.setColorAt(p, col);
+      p++;
+    };
+    const padCell = (
+      x: number,
+      y: number,
+      hOff: number,
+      color: number,
+      groundY?: number,
+    ) => padRect(x, y, 1, 1, hOff, color, groundY);
     // A scaled cube at cell (x,y) whose bottom rests on the ground (or the given foundation) + zBase.
-    const block = (x: number, y: number, sx: number, sy: number, sz: number, zBase: number, color: number, groundY?: number) => {
-      if (v >= VOX_CAP) { voxOverflow++; return }
-      this.dummy.position.set(this.wx(x), (groundY ?? gy(x, y)) + zBase + (BH * sy) / 2, this.wz(y))
-      this.dummy.rotation.set(0, 0, 0)
-      this.dummy.scale.set(sx, sy, sz)
-      this.dummy.updateMatrix()
-      this.voxelMesh.setMatrixAt(v, this.dummy.matrix)
-      col.setHex(color)
-      this.voxelMesh.setColorAt(v, col)
-      v++
-    }
+    const block = (
+      x: number,
+      y: number,
+      sx: number,
+      sy: number,
+      sz: number,
+      zBase: number,
+      color: number,
+      groundY?: number,
+    ) => {
+      if (v >= VOX_CAP) {
+        voxOverflow++;
+        return;
+      }
+      this.dummy.position.set(
+        this.wx(x),
+        (groundY ?? gy(x, y)) + zBase + (BH * sy) / 2,
+        this.wz(y),
+      );
+      this.dummy.rotation.set(0, 0, 0);
+      this.dummy.scale.set(sx, sy, sz);
+      this.dummy.updateMatrix();
+      this.voxelMesh.setMatrixAt(v, this.dummy.matrix);
+      col.setHex(color);
+      this.voxelMesh.setColorAt(v, col);
+      v++;
+    };
 
     // ── the spine verge: the grass kerb strip beside the avenue. The carriageway itself is now a
     // real AVENUE in state.roads (spec 084 S3) — rebuildRoads draws its asphalt, kerbs and dashes.
-    for (const c of n.verge) padCell(c.x, c.y, 0.045, 0x5d7a3c)
+    for (const c of n.verge) padCell(c.x, c.y, 0.045, 0x5d7a3c);
 
     // ── each homestead parcel ──
     for (const lot of lots) {
-      const fenceColor = lot.fenceType === 'hedge' ? BLOCK_COLOR.hedge : lot.fenceType === 'wall' ? BLOCK_COLOR.stone : BLOCK_COLOR.fence
+      const fenceColor =
+        lot.fenceType === "hedge"
+          ? BLOCK_COLOR.hedge
+          : lot.fenceType === "wall"
+            ? BLOCK_COLOR.stone
+            : BLOCK_COLOR.fence;
       // The HOUSE keeps one leveled foundation height (a real slab); everything else — garden, farm,
       // driveway, fence — follows the smoothed per-cell terrain like real fields and paths do. The old
       // single homestead height left the downhill half of a sloped parcel hanging in the air.
-      const hcx = lot.houseZone.x + (lot.houseZone.w - 1) / 2, hcy = lot.houseZone.y + (lot.houseZone.d - 1) / 2
-      const py = gy(hcx, hcy)
+      const hcx = lot.houseZone.x + (lot.houseZone.w - 1) / 2,
+        hcy = lot.houseZone.y + (lot.houseZone.d - 1) / 2;
+      const py = gy(hcx, hcy);
       // surveyed homestead ground (drawn whether or not it is built, so the borders read immediately).
       // Distinct pad heights (garden < farm < house < driveway) avoid coplanar z-fighting.
-      padRect(lot.houseZone.x, lot.houseZone.y, lot.houseZone.w, lot.houseZone.d, 0.05, lot.built ? 0x6b5a44 : 0x5c5140, py)
-      for (let yy = lot.garden.y; yy < lot.garden.y + lot.garden.d; yy++) for (let xx = lot.garden.x; xx < lot.garden.x + lot.garden.w; xx++) padCell(xx, yy, 0.038, 0x4f6f33)
-      for (let yy = lot.farm.y; yy < lot.farm.y + lot.farm.d; yy++) for (let xx = lot.farm.x; xx < lot.farm.x + lot.farm.w; xx++) padCell(xx, yy, 0.044, 0x6e4a30)
-      for (const d of lot.driveway) padCell(d.x, d.y, 0.056, BLOCK_COLOR.path)
-      padCell(lot.gate.x, lot.gate.y, 0.056, BLOCK_COLOR.path)
+      padRect(
+        lot.houseZone.x,
+        lot.houseZone.y,
+        lot.houseZone.w,
+        lot.houseZone.d,
+        0.05,
+        lot.built ? 0x6b5a44 : 0x5c5140,
+        py,
+      );
+      for (let yy = lot.garden.y; yy < lot.garden.y + lot.garden.d; yy++)
+        for (let xx = lot.garden.x; xx < lot.garden.x + lot.garden.w; xx++)
+          padCell(xx, yy, 0.038, 0x4f6f33);
+      for (let yy = lot.farm.y; yy < lot.farm.y + lot.farm.d; yy++)
+        for (let xx = lot.farm.x; xx < lot.farm.x + lot.farm.w; xx++)
+          padCell(xx, yy, 0.044, 0x6e4a30);
+      for (const d of lot.driveway) padCell(d.x, d.y, 0.056, BLOCK_COLOR.path);
+      padCell(lot.gate.x, lot.gate.y, 0.056, BLOCK_COLOR.path);
       // the visible parcel border — a fence/hedge/wall ring riding the land, raised clear of the pads
-      for (const f of lot.fence) block(f.x, f.y, 0.26, 0.9, 0.26, 0.06, fenceColor)
+      for (const f of lot.fence)
+        block(f.x, f.y, 0.26, 0.9, 0.26, 0.06, fenceColor);
 
       // Spec 084 S1 — houses rebuild PER LOT: one accepted blueprint recompiles ONE micro-grid, not
       // every house in the street (the old wholesale mergedHouseGroup teardown made each save pay
       // for the whole neighborhood). Keyed on exactly what the compiled mesh depends on.
-      const doorDir = streetDoorDir(lot) // single source — only the no-blueprint fallback uses it
-      const houseKey = lot.built ? `${lot.blueprint ?? ''}~${py}` : ''
+      const doorDir = streetDoorDir(lot); // single source — only the no-blueprint fallback uses it
+      const houseKey = lot.built ? `${lot.blueprint ?? ""}~${py}` : "";
       if (this.lotHouseKey.get(lot.id) !== houseKey) {
-        const old = this.mergedHouseGroup.getObjectByName(lot.id) as THREE.Mesh | undefined
+        const old = this.mergedHouseGroup.getObjectByName(lot.id) as
+          | THREE.Mesh
+          | undefined;
         if (old) {
-          this.mergedHouseGroup.remove(old)
-          old.geometry?.dispose()
+          this.mergedHouseGroup.remove(old);
+          old.geometry?.dispose();
         }
         if (lot.built) {
           // Spec 077 — every built house raises a FANCY BRICK home through the merged greedy-meshed
           // path: an authored blueprint when the parcel carries one, else the deterministic
           // defaultBlueprint from the house seed, with the masonry banding baked into vertex colours.
-          this.addMergedHouse(lot.id, lot.houseZone, lot.blueprint ?? defaultBlueprint(lot.houseSeed, doorDir, lot.houseZone.w), lot.houseSeed, py)
+          this.addMergedHouse(
+            lot.id,
+            lot.houseZone,
+            lot.blueprint ??
+              defaultBlueprint(lot.houseSeed, doorDir, lot.houseZone.w),
+            lot.houseSeed,
+            py,
+          );
         }
-        this.lotHouseKey.set(lot.id, houseKey)
+        this.lotHouseKey.set(lot.id, houseKey);
       }
 
-      if (!lot.built) continue
+      if (!lot.built) continue;
       // worked homestead: farm furrows (alternating crop colour by row) riding their own field cells
       for (let yy = lot.farm.y; yy < lot.farm.y + lot.farm.d; yy++) {
         for (let xx = lot.farm.x; xx < lot.farm.x + lot.farm.w; xx++) {
-          block(xx, yy, 0.82, 0.5, 0.82, 0.05, yy % 2 === 0 ? BLOCK_COLOR.crop : BLOCK_COLOR.cropAlt)
+          block(
+            xx,
+            yy,
+            0.82,
+            0.5,
+            0.82,
+            0.05,
+            yy % 2 === 0 ? BLOCK_COLOR.crop : BLOCK_COLOR.cropAlt,
+          );
         }
       }
       // garden veg beds on alternate cells
       for (let yy = lot.garden.y; yy < lot.garden.y + lot.garden.d; yy++) {
         for (let xx = lot.garden.x; xx < lot.garden.x + lot.garden.w; xx++) {
-          if ((xx + yy) % 2 === 0) block(xx, yy, 0.78, 0.38, 0.78, 0.05, BLOCK_COLOR.crop)
+          if ((xx + yy) % 2 === 0)
+            block(xx, yy, 0.78, 0.38, 0.78, 0.05, BLOCK_COLOR.crop);
         }
       }
       // a fruit tree at one garden corner + a well at the other
-      const tx = lot.garden.x, ty = lot.garden.y
-      block(tx, ty, 0.28, 1.1, 0.28, 0.05, BLOCK_COLOR.trunk)
-      block(tx, ty, 0.95, 0.95, 0.95, 0.05 + BH * 1.1, BLOCK_COLOR.leaf)
-      block(lot.garden.x + lot.garden.w - 1, lot.garden.y + lot.garden.d - 1, 0.6, 0.7, 0.6, 0.05, BLOCK_COLOR.well)
-
+      const tx = lot.garden.x,
+        ty = lot.garden.y;
+      block(tx, ty, 0.28, 1.1, 0.28, 0.05, BLOCK_COLOR.trunk);
+      block(tx, ty, 0.95, 0.95, 0.95, 0.05 + BH * 1.1, BLOCK_COLOR.leaf);
+      block(
+        lot.garden.x + lot.garden.w - 1,
+        lot.garden.y + lot.garden.d - 1,
+        0.6,
+        0.7,
+        0.6,
+        0.05,
+        BLOCK_COLOR.well,
+      );
     }
 
     if ((padOverflow > 0 || voxOverflow > 0) && import.meta.env.DEV) {
-      console.warn(`[citylife] instance caps hit: ${padOverflow} pads + ${voxOverflow} voxels DROPPED — scenery is silently missing; raise PAD_CAP/VOX_CAP (spec 084 S1)`)
+      console.warn(
+        `[citylife] instance caps hit: ${padOverflow} pads + ${voxOverflow} voxels DROPPED — scenery is silently missing; raise PAD_CAP/VOX_CAP (spec 084 S1)`,
+      );
     }
-    this.lotPadMesh.count = p
-    this.lotPadMesh.instanceMatrix.needsUpdate = true
-    if (this.lotPadMesh.instanceColor) this.lotPadMesh.instanceColor.needsUpdate = true
-    this.voxelMesh.count = v
-    this.voxelMesh.instanceMatrix.needsUpdate = true
-    if (this.voxelMesh.instanceColor) this.voxelMesh.instanceColor.needsUpdate = true
+    this.lotPadMesh.count = p;
+    this.lotPadMesh.instanceMatrix.needsUpdate = true;
+    if (this.lotPadMesh.instanceColor)
+      this.lotPadMesh.instanceColor.needsUpdate = true;
+    this.voxelMesh.count = v;
+    this.voxelMesh.instanceMatrix.needsUpdate = true;
+    if (this.voxelMesh.instanceColor)
+      this.voxelMesh.instanceColor.needsUpdate = true;
   }
 
   /** Spec 077 P2 — compile a blueprint to its micro-occupancy, greedy-mesh it to ONE merged BufferGeometry,
@@ -2161,39 +3228,53 @@ export class PlanetRenderer {
    *  coordinates): each micro-block is 1/n of a plot cell across, voxelY tall, so a 2-storey home is a
    *  sensible height. The merged geometry reads as fancy brick masonry — the per-course tint banding is
    *  carried in the vertex colours and the flat per-quad normals keep every face crisp. */
-  private addMergedHouse(lotId: string, zone: Zone, script: string, seed: number, groundY: number): void {
-    let compiled
+  private addMergedHouse(
+    lotId: string,
+    zone: Zone,
+    script: string,
+    seed: number,
+    groundY: number,
+  ): void {
+    let compiled;
     try {
-      compiled = compileBlueprint(script, { w: zone.w, d: zone.d, seed })
+      compiled = compileBlueprint(script, { w: zone.w, d: zone.d, seed });
     } catch {
-      return // a malformed script never crashes the renderer — the lot simply draws no house
+      return; // a malformed script never crashes the renderer — the lot simply draws no house
     }
-    const { geometry } = greedyMesh(compiled.blocks, { n: compiled.n, cell: 1, voxelY: VOXEL_Y })
-    const mesh = new THREE.Mesh(geometry, this.mergedHouseMat)
-    mesh.name = lotId // the per-lot incremental rebuild finds + disposes it by name (spec 084 S1)
-    mesh.castShadow = true
-    mesh.receiveShadow = true
-    mesh.frustumCulled = false
+    const { geometry } = greedyMesh(compiled.blocks, {
+      n: compiled.n,
+      cell: 1,
+      voxelY: VOXEL_Y,
+    });
+    const mesh = new THREE.Mesh(geometry, this.mergedHouseMat);
+    mesh.name = lotId; // the per-lot incremental rebuild finds + disposes it by name (spec 084 S1)
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
     // Parent at the house-zone's min-corner: cell `zone.x` spans world [wx(zone.x)-0.5, +0.5], and the mesh's
     // local origin is the micro-grid corner, so offset by half a cell to seat it flush on the zone.
-    mesh.position.set(this.wx(zone.x) - 0.5, groundY + 0.05, this.wz(zone.y) - 0.5)
-    this.mergedHouseGroup.add(mesh)
+    mesh.position.set(
+      this.wx(zone.x) - 0.5,
+      groundY + 0.05,
+      this.wz(zone.y) - 0.5,
+    );
+    this.mergedHouseGroup.add(mesh);
   }
 
   /** P1 — step the camera INTO a citizen for a live first-person view (the operator looking through their bot's
    *  eyes). OrbitControls is suspended while active; frame() parks the camera at eye height on the live avatar. */
   enterFirstPerson(citizenId: string): void {
-    this.fpCitizenId = citizenId
-    this.controls.enabled = false
+    this.fpCitizenId = citizenId;
+    this.controls.enabled = false;
   }
   /** P1 — leave first-person and restore the orbit camera. */
   exitFirstPerson(): void {
-    if (this.fpCitizenId === null) return
-    this.fpCitizenId = null
-    this.controls.enabled = true
+    if (this.fpCitizenId === null) return;
+    this.fpCitizenId = null;
+    this.controls.enabled = true;
   }
   get firstPersonCitizen(): string | null {
-    return this.fpCitizenId
+    return this.fpCitizenId;
   }
 
   /** Spec 078 — build Joe the Crab as ONE merged, vertex-coloured BufferGeometry (so a single
@@ -2202,208 +3283,317 @@ export class PlanetRenderer {
    *  his portrait: an orange-red shell, two stalked eyes, two pincer claws, six legs, a blue-white headset
    *  with exactly one yellow lightning bolt on a single earcup. */
   private makeCrabGeometry(): THREE.BufferGeometry {
-    const parts: THREE.BufferGeometry[] = []
-    const tint = new THREE.Color()
+    const parts: THREE.BufferGeometry[] = [];
+    const tint = new THREE.Color();
     const add = (
-      g: THREE.BufferGeometry, hex: number,
-      pos: [number, number, number], rot?: [number, number, number], scale?: [number, number, number],
+      g: THREE.BufferGeometry,
+      hex: number,
+      pos: [number, number, number],
+      rot?: [number, number, number],
+      scale?: [number, number, number],
     ) => {
-      if (scale) g.scale(scale[0], scale[1], scale[2])
-      if (rot) { g.rotateX(rot[0]); g.rotateY(rot[1]); g.rotateZ(rot[2]) }
-      g.translate(pos[0], pos[1], pos[2])
-      const count = g.attributes.position!.count
-      const colors = new Float32Array(count * 3)
-      tint.setHex(hex)
-      for (let i = 0; i < count; i++) { colors[i * 3] = tint.r; colors[i * 3 + 1] = tint.g; colors[i * 3 + 2] = tint.b }
-      g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-      parts.push(g)
-    }
-    const SHELL = 0xe2562f, SHELL_DK = 0xc23f1f, EYE_W = 0xf6f6f6, EYE_P = 0x101010
-    const BAND = 0xdfe7f2, CUP = 0x2f6fd0, BOLT = 0xf4c020
+      if (scale) g.scale(scale[0], scale[1], scale[2]);
+      if (rot) {
+        g.rotateX(rot[0]);
+        g.rotateY(rot[1]);
+        g.rotateZ(rot[2]);
+      }
+      g.translate(pos[0], pos[1], pos[2]);
+      const count = g.attributes.position!.count;
+      const colors = new Float32Array(count * 3);
+      tint.setHex(hex);
+      for (let i = 0; i < count; i++) {
+        colors[i * 3] = tint.r;
+        colors[i * 3 + 1] = tint.g;
+        colors[i * 3 + 2] = tint.b;
+      }
+      g.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+      parts.push(g);
+    };
+    const SHELL = 0xe2562f,
+      SHELL_DK = 0xc23f1f,
+      EYE_W = 0xf6f6f6,
+      EYE_P = 0x101010;
+    const BAND = 0xdfe7f2,
+      CUP = 0x2f6fd0,
+      BOLT = 0xf4c020;
     // shell — a flattened dome, wider across (x) than deep (z)
-    add(new THREE.SphereGeometry(0.30, 14, 10), SHELL, [0, 0.26, 0], undefined, [1.25, 0.6, 1.0])
+    add(
+      new THREE.SphereGeometry(0.3, 14, 10),
+      SHELL,
+      [0, 0.26, 0],
+      undefined,
+      [1.25, 0.6, 1.0],
+    );
     // eyes — two forward stalks (+z) each capped with a white eyeball + dark pupil
     for (const s of [-1, 1]) {
-      add(new THREE.CylinderGeometry(0.024, 0.024, 0.16, 6), SHELL_DK, [s * 0.12, 0.36, 0.18], [0.55, 0, 0])
-      add(new THREE.SphereGeometry(0.062, 8, 6), EYE_W, [s * 0.12, 0.46, 0.25])
-      add(new THREE.SphereGeometry(0.03, 6, 6), EYE_P, [s * 0.12, 0.47, 0.30])
+      add(
+        new THREE.CylinderGeometry(0.024, 0.024, 0.16, 6),
+        SHELL_DK,
+        [s * 0.12, 0.36, 0.18],
+        [0.55, 0, 0],
+      );
+      add(new THREE.SphereGeometry(0.062, 8, 6), EYE_W, [s * 0.12, 0.46, 0.25]);
+      add(new THREE.SphereGeometry(0.03, 6, 6), EYE_P, [s * 0.12, 0.47, 0.3]);
     }
     // claws — an upper arm reaching forward-out + a two-prong pincer (mirrored)
     for (const s of [-1, 1]) {
-      add(new THREE.BoxGeometry(0.10, 0.10, 0.26), SHELL, [s * 0.30, 0.18, 0.22])
-      add(new THREE.BoxGeometry(0.12, 0.16, 0.12), SHELL, [s * 0.34, 0.20, 0.40])
-      add(new THREE.BoxGeometry(0.05, 0.05, 0.16), SHELL_DK, [s * 0.34, 0.26, 0.50])
-      add(new THREE.BoxGeometry(0.05, 0.05, 0.13), SHELL_DK, [s * 0.34, 0.16, 0.49])
+      add(new THREE.BoxGeometry(0.1, 0.1, 0.26), SHELL, [s * 0.3, 0.18, 0.22]);
+      add(new THREE.BoxGeometry(0.12, 0.16, 0.12), SHELL, [s * 0.34, 0.2, 0.4]);
+      add(new THREE.BoxGeometry(0.05, 0.05, 0.16), SHELL_DK, [
+        s * 0.34,
+        0.26,
+        0.5,
+      ]);
+      add(new THREE.BoxGeometry(0.05, 0.05, 0.13), SHELL_DK, [
+        s * 0.34,
+        0.16,
+        0.49,
+      ]);
     }
     // legs — three per side, thin cylinders splayed down-out to the ground
     for (const s of [-1, 1]) {
       for (const dz of [-0.16, 0.02, 0.18]) {
-        add(new THREE.CylinderGeometry(0.02, 0.02, 0.26, 5), SHELL_DK, [s * 0.34, 0.10, dz], [0, 0, s * 0.95])
+        add(
+          new THREE.CylinderGeometry(0.02, 0.02, 0.26, 5),
+          SHELL_DK,
+          [s * 0.34, 0.1, dz],
+          [0, 0, s * 0.95],
+        );
       }
     }
     // headset — an ELLIPTICAL band that hugs the flattened shell side-to-side (a circular torus
     // arched too high and sat narrower than the head, so it read as a floating ring with the earcups
     // buried). Scaled to the shell's own [1.25, 0.6] profile so its ends meet the earcups on the
     // sides and its crown rests just over the dome.
-    add(new THREE.TorusGeometry(0.30, 0.038, 8, 22, Math.PI), BAND, [0, 0.26, 0], undefined, [1.25, 0.68, 1.0])
+    add(
+      new THREE.TorusGeometry(0.3, 0.038, 8, 22, Math.PI),
+      BAND,
+      [0, 0.26, 0],
+      undefined,
+      [1.25, 0.68, 1.0],
+    );
     // earcups — chunky discs seated ON the sides of the head (x just past the shell edge), facing out
-    for (const s of [-1, 1]) add(new THREE.CylinderGeometry(0.10, 0.10, 0.07, 16), CUP, [s * 0.38, 0.26, 0.02], [0, 0, Math.PI / 2])
+    for (const s of [-1, 1])
+      add(
+        new THREE.CylinderGeometry(0.1, 0.1, 0.07, 16),
+        CUP,
+        [s * 0.38, 0.26, 0.02],
+        [0, 0, Math.PI / 2],
+      );
     // exactly ONE yellow lightning accent on the +x earcup's OUTER face (matches his portrait)
-    add(new THREE.BoxGeometry(0.022, 0.13, 0.06), BOLT, [0.42, 0.27, 0.02], [0, 0, 0.4])
-    const merged = mergeGeometries(parts, false)
-    for (const p of parts) p.dispose()
-    return merged
+    add(
+      new THREE.BoxGeometry(0.022, 0.13, 0.06),
+      BOLT,
+      [0.42, 0.27, 0.02],
+      [0, 0, 0.4],
+    );
+    const merged = mergeGeometries(parts, false);
+    for (const p of parts) p.dispose();
+    return merged;
   }
 
   /** P1 — draw the citizen avatars at their live roster positions. The one the operator owns glows cyan; the
    *  citizen currently being stepped-into is hidden (the camera is inside it). Spec 078 — citizens whose
    *  kind is 'crab' (Joe) draw into the crab mesh instead of the human capsule + head. */
   private updateAvatars() {
-    if (!this.avatarMesh || !this.avatarHeadMesh || !this.crabMesh || !this.avatarSource) return
-    const list = this.avatarSource()
-    const t = this.sim.state.terrain
-    const n = Math.min(list.length, 64)
-    const col = new THREE.Color()
-    let drawn = 0, crab = 0
+    if (
+      !this.avatarMesh ||
+      !this.avatarHeadMesh ||
+      !this.crabMesh ||
+      !this.avatarSource
+    )
+      return;
+    const list = this.avatarSource();
+    const t = this.sim.state.terrain;
+    const n = Math.min(list.length, 64);
+    const col = new THREE.Color();
+    let drawn = 0,
+      crab = 0;
     for (let i = 0; i < n; i++) {
-      const a = list[i]!
-      if (a.id === this.fpCitizenId) continue // hide the avatar we are looking out of
-      const wy = this.surfaceY(a.x, a.y) // stand ON the road ribbon when on a road, not under it
-      this.dummy.position.set(this.wx(a.x), wy, this.wz(a.y))
-      this.dummy.rotation.set(0, -a.heading + Math.PI / 2, 0)
-      this.dummy.scale.set(1, 1, 1)
-      this.dummy.updateMatrix()
-      if (a.kind === 'crab') {
-        this.crabMesh.setMatrixAt(crab, this.dummy.matrix)
-        crab++
+      const a = list[i]!;
+      if (a.id === this.fpCitizenId) continue; // hide the avatar we are looking out of
+      const wy = this.surfaceY(a.x, a.y); // stand ON the road ribbon when on a road, not under it
+      this.dummy.position.set(this.wx(a.x), wy, this.wz(a.y));
+      this.dummy.rotation.set(0, -a.heading + Math.PI / 2, 0);
+      this.dummy.scale.set(1, 1, 1);
+      this.dummy.updateMatrix();
+      if (a.kind === "crab") {
+        this.crabMesh.setMatrixAt(crab, this.dummy.matrix);
+        crab++;
       } else {
-        this.avatarMesh.setMatrixAt(drawn, this.dummy.matrix)
-        this.avatarHeadMesh.setMatrixAt(drawn, this.dummy.matrix)
-        col.setHex(a.isOperator ? 0x66e0ff : a.hasPod ? 0x9f86d8 : 0xc0b0e0)
-        this.avatarMesh.setColorAt(drawn, col)
-        drawn++
+        this.avatarMesh.setMatrixAt(drawn, this.dummy.matrix);
+        this.avatarHeadMesh.setMatrixAt(drawn, this.dummy.matrix);
+        col.setHex(a.isOperator ? 0x66e0ff : a.hasPod ? 0x9f86d8 : 0xc0b0e0);
+        this.avatarMesh.setColorAt(drawn, col);
+        drawn++;
       }
     }
-    this.avatarMesh.count = drawn
-    this.avatarMesh.instanceMatrix.needsUpdate = true
-    if (this.avatarMesh.instanceColor) this.avatarMesh.instanceColor.needsUpdate = true
-    this.avatarHeadMesh.count = drawn
-    this.avatarHeadMesh.instanceMatrix.needsUpdate = true
-    this.crabMesh.count = crab
-    this.crabMesh.instanceMatrix.needsUpdate = true
+    this.avatarMesh.count = drawn;
+    this.avatarMesh.instanceMatrix.needsUpdate = true;
+    if (this.avatarMesh.instanceColor)
+      this.avatarMesh.instanceColor.needsUpdate = true;
+    this.avatarHeadMesh.count = drawn;
+    this.avatarHeadMesh.instanceMatrix.needsUpdate = true;
+    this.crabMesh.count = crab;
+    this.crabMesh.instanceMatrix.needsUpdate = true;
   }
 
   /** Spec 073 — the Porter Sheds made visible: goods pile up as crates (materials) + sacks (food) beside each shed, growing and
    *  shrinking with the LIVE stock, and porter handcarts run the road network while a shed is staffed. Never on water. Inert with no shed. */
   private updatePorters() {
-    if (!this.porterPileMesh || !this.porterCartMesh) return
-    const s = this.sim.state
-    const t = s.terrain
-    const sheds = s.buildings.filter((b) => b.artifact.kind === 'porter')
+    if (!this.porterPileMesh || !this.porterCartMesh) return;
+    const s = this.sim.state;
+    const t = s.terrain;
+    const sheds = s.buildings.filter((b) => b.artifact.kind === "porter");
     if (sheds.length === 0) {
-      if (this.porterPileMesh.count !== 0) { this.porterPileMesh.count = 0; this.porterPileMesh.instanceMatrix.needsUpdate = true }
-      if (this.porterCartMesh.count !== 0) { this.porterCartMesh.count = 0; this.porterCartMesh.instanceMatrix.needsUpdate = true }
-      this.porterCarts = []
-      return
+      if (this.porterPileMesh.count !== 0) {
+        this.porterPileMesh.count = 0;
+        this.porterPileMesh.instanceMatrix.needsUpdate = true;
+      }
+      if (this.porterCartMesh.count !== 0) {
+        this.porterCartMesh.count = 0;
+        this.porterCartMesh.instanceMatrix.needsUpdate = true;
+      }
+      this.porterCarts = [];
+      return;
     }
     // ---- piles: crates of materials + sacks of food at each shed, quantised to the live stock (grow + shrink) ----
-    const col = new THREE.Color()
-    const matUnits = Math.min(COLONY.build.pileMaxUnits, Math.floor((s.materials ?? 0) / COLONY.build.pilePerMaterials))
-    const foodUnits = Math.min(COLONY.build.pileMaxUnits, Math.floor((s.food ?? 0) / COLONY.build.pilePerFood))
-    let pi = 0
+    const col = new THREE.Color();
+    const matUnits = Math.min(
+      COLONY.build.pileMaxUnits,
+      Math.floor((s.materials ?? 0) / COLONY.build.pilePerMaterials),
+    );
+    const foodUnits = Math.min(
+      COLONY.build.pileMaxUnits,
+      Math.floor((s.food ?? 0) / COLONY.build.pilePerFood),
+    );
+    let pi = 0;
     for (const shed of sheds) {
-      const baseY = Math.max(0, t.worldY(shed.x, shed.y)) + 0.02
+      const baseY = Math.max(0, t.worldY(shed.x, shed.y)) + 0.02;
       const lay = (units: number, ox: number, hex: number) => {
         for (let u = 0; u < units && pi < 320; u++) {
-          const gx = u % 3, gz = (u / 3) | 0
-          this.dummy.position.set(this.wx(shed.x) + ox + gx * 0.36, baseY, this.wz(shed.y) + 0.7 + gz * 0.36)
-          this.dummy.rotation.set(0, 0, 0)
-          this.dummy.scale.set(1, 1, 1)
-          this.dummy.updateMatrix()
-          this.porterPileMesh.setMatrixAt(pi, this.dummy.matrix)
-          col.setHex(hex)
-          this.porterPileMesh.setColorAt(pi, col)
-          pi++
+          const gx = u % 3,
+            gz = (u / 3) | 0;
+          this.dummy.position.set(
+            this.wx(shed.x) + ox + gx * 0.36,
+            baseY,
+            this.wz(shed.y) + 0.7 + gz * 0.36,
+          );
+          this.dummy.rotation.set(0, 0, 0);
+          this.dummy.scale.set(1, 1, 1);
+          this.dummy.updateMatrix();
+          this.porterPileMesh.setMatrixAt(pi, this.dummy.matrix);
+          col.setHex(hex);
+          this.porterPileMesh.setColorAt(pi, col);
+          pi++;
         }
-      }
-      lay(matUnits, -1.45, 0x8a6a3a) // materials crates (brown) to the left of the shed
-      lay(foodUnits, 0.45, 0xcbb486) // food sacks (tan) to the right
+      };
+      lay(matUnits, -1.45, 0x8a6a3a); // materials crates (brown) to the left of the shed
+      lay(foodUnits, 0.45, 0xcbb486); // food sacks (tan) to the right
     }
-    this.porterPileMesh.count = pi
-    this.porterPileMesh.instanceMatrix.needsUpdate = true
-    if (this.porterPileMesh.instanceColor) this.porterPileMesh.instanceColor.needsUpdate = true
+    this.porterPileMesh.count = pi;
+    this.porterPileMesh.instanceMatrix.needsUpdate = true;
+    if (this.porterPileMesh.instanceColor)
+      this.porterPileMesh.instanceColor.needsUpdate = true;
     // ---- carts: porter handcarts running the roads near the sheds, only while staffed (never over water) ----
-    const status = porterStatus(s)
-    const want = status.working ? Math.min(28, status.porters) : 0
+    const status = porterStatus(s);
+    const want = status.working ? Math.min(28, status.porters) : 0;
     while (this.porterCarts.length < want) {
-      const shed = sheds[this.porterCarts.length % sheds.length]!
-      this.porterCarts.push({ x: shed.x, y: shed.y, tx: shed.x, ty: shed.y, spd: 0.6 + Math.random() * 0.5 })
+      const shed = sheds[this.porterCarts.length % sheds.length]!;
+      this.porterCarts.push({
+        x: shed.x,
+        y: shed.y,
+        tx: shed.x,
+        ty: shed.y,
+        spd: 0.6 + Math.random() * 0.5,
+      });
     }
-    if (this.porterCarts.length > want) this.porterCarts.length = want
-    const now = performance.now()
-    const dt = this.lastPorterT ? Math.min(0.05, (now - this.lastPorterT) / 1000) : 1 / 60
-    this.lastPorterT = now
-    let ci = 0
+    if (this.porterCarts.length > want) this.porterCarts.length = want;
+    const now = performance.now();
+    const dt = this.lastPorterT
+      ? Math.min(0.05, (now - this.lastPorterT) / 1000)
+      : 1 / 60;
+    this.lastPorterT = now;
+    let ci = 0;
     for (const cart of this.porterCarts) {
-      let dx = cart.tx - cart.x, dy = cart.ty - cart.y, d = Math.hypot(dx, dy)
+      let dx = cart.tx - cart.x,
+        dy = cart.ty - cart.y,
+        d = Math.hypot(dx, dy);
       if (d < 0.4) {
-        const next = this.pickPedTarget(cart.x, cart.y, t.landing.x, t.landing.y) // a nearby road cell — pickPedTarget keeps to the pavement, never water
-        cart.tx = next.x; cart.ty = next.y
-        dx = cart.tx - cart.x; dy = cart.ty - cart.y; d = Math.hypot(dx, dy)
+        const next = this.pickPedTarget(
+          cart.x,
+          cart.y,
+          t.landing.x,
+          t.landing.y,
+        ); // a nearby road cell — pickPedTarget keeps to the pavement, never water
+        cart.tx = next.x;
+        cart.ty = next.y;
+        dx = cart.tx - cart.x;
+        dy = cart.ty - cart.y;
+        d = Math.hypot(dx, dy);
       }
-      if (d > 1e-3) { const move = Math.min(d, cart.spd * dt); cart.x += (dx / d) * move; cart.y += (dy / d) * move }
-      const heading = Math.atan2(dy, dx)
-      const wy = Math.max(0, t.worldY(Math.round(cart.x), Math.round(cart.y)))
-      this.dummy.position.set(this.wx(cart.x), wy + 0.05, this.wz(cart.y))
-      this.dummy.rotation.set(0, -heading, 0)
-      this.dummy.scale.set(1, 1, 1)
-      this.dummy.updateMatrix()
-      this.porterCartMesh.setMatrixAt(ci, this.dummy.matrix)
-      ci++
+      if (d > 1e-3) {
+        const move = Math.min(d, cart.spd * dt);
+        cart.x += (dx / d) * move;
+        cart.y += (dy / d) * move;
+      }
+      const heading = Math.atan2(dy, dx);
+      const wy = Math.max(0, t.worldY(Math.round(cart.x), Math.round(cart.y)));
+      this.dummy.position.set(this.wx(cart.x), wy + 0.05, this.wz(cart.y));
+      this.dummy.rotation.set(0, -heading, 0);
+      this.dummy.scale.set(1, 1, 1);
+      this.dummy.updateMatrix();
+      this.porterCartMesh.setMatrixAt(ci, this.dummy.matrix);
+      ci++;
     }
-    this.porterCartMesh.count = ci
-    this.porterCartMesh.instanceMatrix.needsUpdate = true
+    this.porterCartMesh.count = ci;
+    this.porterCartMesh.instanceMatrix.needsUpdate = true;
   }
 
   private updateCinematic() {
-    const t = this.sim.state.terrain
-    const cx = this.wx(t.landing.x)
-    const cz = this.wz(t.landing.y)
-    const cy = Math.max(0, t.worldY(t.landing.x, t.landing.y))
+    const t = this.sim.state.terrain;
+    const cx = this.wx(t.landing.x);
+    const cz = this.wz(t.landing.y);
+    const cy = Math.max(0, t.worldY(t.landing.x, t.landing.y));
     // The camera continuously orbits the landing. Roughly every ~40s a cubic envelope pulls it way
     // back and up into a wide establishing shot of the whole island adrift in space, then eases back
     // down to street level — the Dark City money shot, on a loop.
-    const T = (performance.now() - this.cinematicT0) / 1000
-    const angle = (T / 90) * Math.PI * 2
-    const wide = Math.pow(Math.sin(T * 0.1571) * 0.5 + 0.5, 3) // 0..1, mostly low with ~40s peaks
-    const radius = 28 + Math.sin(T / 22) * 14 + wide * 120
-    const height = 12 + Math.sin(T / 15) * 8 + wide * 78
-    this.camera.position.set(cx + Math.cos(angle) * radius, cy + height, cz + Math.sin(angle) * radius)
-    this.controls.target.set(cx, cy + 1.2 + wide * 6, cz)
+    const T = (performance.now() - this.cinematicT0) / 1000;
+    const angle = (T / 90) * Math.PI * 2;
+    const wide = Math.pow(Math.sin(T * 0.1571) * 0.5 + 0.5, 3); // 0..1, mostly low with ~40s peaks
+    const radius = 28 + Math.sin(T / 22) * 14 + wide * 120;
+    const height = 12 + Math.sin(T / 15) * 8 + wide * 78;
+    this.camera.position.set(
+      cx + Math.cos(angle) * radius,
+      cy + height,
+      cz + Math.sin(angle) * radius,
+    );
+    this.controls.target.set(cx, cy + 1.2 + wide * 6, cz);
   }
 
-  private onResize = () => this.resize()
+  private onResize = () => this.resize();
   resize() {
-    const rect = this.container.getBoundingClientRect()
-    const w = Math.max(1, rect.width)
-    const h = Math.max(1, rect.height)
-    this.renderer.setSize(w, h)
-    this.composer.setSize(w, h)
-    this.camera.aspect = w / h
-    this.camera.updateProjectionMatrix()
+    const rect = this.container.getBoundingClientRect();
+    const w = Math.max(1, rect.width);
+    const h = Math.max(1, rect.height);
+    this.renderer.setSize(w, h);
+    this.composer.setSize(w, h);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
   }
 
   dispose() {
-    this.disposed = true
-    window.removeEventListener('resize', this.onResize)
-    this.controls.dispose()
-    this.composer.dispose()
-    this.shoreProps?.dispose()
-    this.foam?.dispose()
-    this.clearRaceLayer()
-    this.renderer.dispose()
+    this.disposed = true;
+    window.removeEventListener("resize", this.onResize);
+    this.controls.dispose();
+    this.composer.dispose();
+    this.shoreProps?.dispose();
+    this.foam?.dispose();
+    this.clearRaceLayer();
+    this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
-      this.container.removeChild(this.renderer.domElement)
+      this.container.removeChild(this.renderer.domElement);
     }
   }
 }

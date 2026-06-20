@@ -1,15 +1,18 @@
 # Spec 047 — The Tool Crib: bare hands do not mine forever
+
 - status: built — slice 42, shipped to mechanics/dev. The tools good and the toolStep maker-and-drawer live in src/colony/build.ts, alongside the Tool Crib building, toolSupplyFactor (folded into the mine, workshop, skyfarm, maintenance and turbine outputs), the waterTankCap-style toolStockCap, toolStatus for the HUD, the charged-on-build clause, and an auto-build gate behind a mine and a workshop. The tools state field is in sim.ts, the knobs in config.ts, the tools uiState in runtime.ts, a HUD Tools row in ColonyApp.tsx, and five tests in tests/economy.test.ts. Inert with no crib (the tool factor is exactly 1), so the autonomous economy and every prior test stayed green. typecheck clean and all 328 tests pass; live on :5188 a full rack read 120 of 120 and a dry rack flipped the short warning at 0 of 120, with the real colony holding no crib (zero impact on live play).
 - proposed-by: Mara Venn, storehouse tally-clerk (hermes-codex-gpt-5.5, via the kooker choke point)
 - date: 2026-06-02
 - depends-on: 001 (materials + labour), 002 (the mine), 003 (workshop -> components)
 
 ## Why (the citizens' case)
+
 Mara Venn keeps the storehouse tallies, and the same line nags her every day: components come in, components sit. Today a component is spent once when a building goes up, and after that the shelves just grow while the mines, the workshops, the skyfarms, the maintenance crews and the new turbines all work with bare hands, forever, at full speed. That is not how Landing One was built. Ore does not lift itself; a turbine blade does not re-seat without a wrench. The colony needs a steady, internal use for components before exports and luxuries tempt the council to drain the shelves down to nothing. Give the hands tools, and give the tools a cost.
 
 In Mara's words: bare hands should not mine ore, mend turbines, or harvest skygrain forever. The Tool Crib is the missing link that turns a finished component into everyday working kit.
 
 ## Mechanic
+
 - A staffed **Tool Crib** converts **components into tool-kits**, held as a new colony stock (`tools`). Mara's recipe: **1 component becomes 4 tool-kits**.
 - Once **at least one Tool Crib stands**, the colony's **tooled workplaces** draw tool-kits while they work. Tooled workplaces are: the materials **mine**, the **workshop**, the **skyfarm**, the **maintenance shed**, and the **wind-shear turbine**.
 - A **well-stocked** tool supply lets those workplaces run at **full output — exactly as today**. A **drained** tool stock weakens their output **together** toward a **50% floor** (Mara's number): bare-handed work is half-speed work.
@@ -17,6 +20,7 @@ In Mara's words: bare hands should not mine ore, mend turbines, or harvest skygr
 - A **freshly built** Tool Crib starts its stock **partly charged**, so raising one never instantly halves output on construction day (same courtesy the cistern gives water in 046).
 
 ## Rules & data
+
 - New good **`tools`** (tool-kits): a colony stock with a flat capacity `toolStockCap = 120`, clamped `[0, cap]`. Starts at 0.
 - **Tool Crib production** (per in-game day, scaled by staffing fraction x power factor x a daily-step fraction):
   - draws up to `toolCribComponentsPerDay = 2` components from the colony,
@@ -30,13 +34,16 @@ In Mara's words: bare hands should not mine ore, mend turbines, or harvest skygr
 - **Auto-build gate:** the crib is only chosen by `chooseArtifact` once the colony is past a small size threshold, is not in brownout, already has a mine and a workshop, has spare components on hand, and holds fewer cribs than `ceil(tooledWorkplaces / 6)` — so short smoke tests never spontaneously raise one and halve output.
 
 ## Cost — materials & labour
+
 - **Build:** **18 materials + 6 components** (Mara's figure).
 - **Labour:** **2 free colonists** to staff; understaffed cribs produce proportionally fewer tool-kits.
 - **Power:** a small bench load `toolCribPowerLoad = 0.6` (brownout slows tool-kit output via the shared power factor).
 - **Runs on:** up to 2 components/day, converted to tool-kits for the whole extraction-and-production base.
 
 ## Acceptance
+
 How Review & Build verifies it:
+
 - `npm run typecheck` clean and `npm test` fully green, with new tests covering:
   1. **Inert:** with no Tool Crib, `toolSupplyFactor === 1` and mine/workshop/skyfarm outputs equal their pre-047 baseline (the economy is unchanged).
   2. **Healthy stock:** a Tool Crib plus a full tool stock keeps `toolSupplyFactor === 1` and leaves those outputs at baseline.

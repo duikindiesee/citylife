@@ -94,7 +94,9 @@ Each slice ships on mechanics/dev, passes typecheck + vitest, and is live-verifi
 ## Progress log
 
 ### 2026-06-12 — Slice: P0 — Viw the Builder is founder two
+
 DONE
+
 - seedViw in runtime.ts: the free homestead nearest Joe's is permanently reserved for citizen_viw,
   demolish-proof, with his crafted crewhouse standing (workbench hall, crew garage, bunk room,
   timber-yard patio, two storeys). Kookerbook profile (alias Viw the Builder, address Crewhouse
@@ -108,11 +110,14 @@ DONE
   profile. 629 tests green (6 new founder-blueprint tests).
 
 NEXT
+
 - P1 the negotiation engine (pure deterministic dream/quote/rounds), then the Builder Desk panel.
 - World v2 (the 10x estate) re-lays founders onto plots 1 + 2 proper, per the design council.
 
 ### 2026-06-12 — Slice: P1 negotiation engine (shipped 08e0630, logged retroactively)
+
 DONE
+
 - src/colony/builder/negotiation.ts: dreamBrief / priceBrief / negotiate / briefToBlueprint — all
   pure + deterministic (no Math.random, no wall-clock). Capped 3-round haggle: Viw opens at a
   seeded 1.15-1.35 margin, the client trims the dream down the ladder (pool->patio->none->bedroom->
@@ -121,7 +126,9 @@ DONE
   9 node tests. Built by a delegated agent against this spec, reviewed.
 
 ### 2026-06-12 — Slice: P2 the Builder Desk
+
 DONE
+
 - src/colony/builder/BuilderDesk.tsx: a third column in builder.html. Shows the newcomer's DREAM
   (deterministic from the citizen seed), a budget lever (-25/+25), and the live haggle rendered as
   a Viw <-> newcomer chat through the P1 engine. On agreement, one button (accept-negotiated)
@@ -133,13 +140,15 @@ DONE
   dream, Load -> editor shows the agreed house, valid. Fixed an S6 fallout: the 608 terrain made
   neighborhood.test.ts's seed loop cross vitest's 5s default under full-suite load -> memoised
   terrain gen per seed.
-NEXT
+  NEXT
 - P3 inference-authored dialogue (kooker-service-ai chat phrases Viw + client; screened;
   deterministic fallback intact). P4 the wallet move (client -> Viw via the ledger, idempotent
   reference) — UNBLOCKS once kooker-service-ledger's pod is healthy + jwt-auth is on its route.
 
 ### 2026-06-12 — Slice: P4a the in-engine commission (the wallet move deferred)
+
 DONE
+
 - runtime.commissionLot(lotId): the citizen HIRES Viw in-engine — their seeded dream meets Viw's
   seeded margin through the P1 engine, and on a deal the agreed brief compiles, the crew raises the
   house (door-access contract included via applyBlueprint), and the commission posts to BOTH
@@ -156,6 +165,6 @@ DONE
   blueprints, the commission replays identically). 668 green. LIVE: commissionLot on a free lot
   agreed at 422 coin over 4 rounds, the house built, the drive landed on the door, both timelines
   carried the deal.
-NEXT
+  NEXT
 - P3 inference dialogue (off-machine inference, fits the lean-dev constraint). P4b the ledger
   wallet move when Codex's ledger close-out lands (pod healthy + jwt-auth on the route).

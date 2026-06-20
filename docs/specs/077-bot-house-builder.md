@@ -122,7 +122,9 @@ Each slice ships on mechanics/dev, passes typecheck plus vitest, and is visible 
 ## Progress log (the /goal loop appends one entry per slice)
 
 ### 2026-06-10 — Slice: wrap-up + founder-plot protection
+
 DONE
+
 - P0 (DSL), P1 (compiler), P2 (greedy mesher + merged brick render) shipped earlier on this PR.
 - Brick-house shape fix: the mesher had the storey scale on the wrong axis (compiler is Z-up), so every
   house rendered tipped on its side as a tall slab; fixed with a Z-up to Y-up rotation + peaked hipped
@@ -136,6 +138,7 @@ DONE
 - Verified live on :5188 (HUD row text + buttons + API guard probed in-page); typecheck clean, 578 tests.
 
 NEXT
+
 - P3 builder route: /builder.html + routes/builderMain.tsx — a 2D top-down floor-plan editor + live 3D
   greedy-meshed preview over the shared cores; URL-seeded (citizenId/lotId/w/d/seed); every control
   carries data-build-action; Accept validates + postMessages blueprint_saved with the DSL.
@@ -143,7 +146,9 @@ NEXT
   capped bot self-design loop.
 
 ### 2026-06-10 — Slice: P3 the House Builder route
+
 DONE
+
 - builder.html + src/colony/builder/ — a visual house designer over the SAME shared cores the game
   renders with (blueprintScript parse/validate, houseBuilder compile, voxelMesh greedy mesh), so the
   preview is pixel-for-pixel what the game will raise.
@@ -164,13 +169,16 @@ DONE
   exact expected DSL and the postMessage; typecheck clean, 586 tests pass (30 files).
 
 NEXT
+
 - P4 game wiring: a Build House button on an owned unbuilt homestead opens /builder.html with the
   plot's real w/d/seed; the game listens for blueprint_saved, validates the script, stores it on the
   parcel (+ citizen), raises the house from it; re-opening passes bp= so the stored script loads for
   editing. After that: backend persistence of the blueprint via the /kooker proxy.
 
 ### 2026-06-10 — Slice: Roads v2 (operator feedback — roads and paths sucked)
+
 DONE
+
 - Planning: developBlock no longer stamps rigid straight block frames across whatever terrain is
   there. Each frame EDGE is routed with the same least-cost pathfinder the residential street uses
   (cellOk + slopeWeight 0.6), so roads contour around water, dips and steep ground; on flat land the
@@ -186,6 +194,7 @@ DONE
   run — the ribbon now hugs and grades the hill with centre dashes, no float, no gash.
 
 NEXT
+
 - Builder house massing (operator: you can do better): pools/patios should read as OUTDOOR amenities
   beside a clean house mass, not brick shafts punched through the roof — suppress the perimeter brick
   ring around roofless rooms on the house edge, slim the roof shell, brighter builder preview light.
@@ -193,7 +202,9 @@ NEXT
   variety, bot self-design.
 
 ### 2026-06-10 — Slice: house massing — pools and patios are real backyards now
+
 DONE
+
 - CARVE semantics in the compiler: the LAST room placed OWNS its cells (a deterministic owner grid).
   A pool dropped onto a bedroom now takes those cells with it — the bedroom's dividers and the roof
   retreat, so an outdoor room is an open-air cut into the mass, never a brick shaft under a roof hole.
@@ -208,13 +219,16 @@ DONE
   design — the pool corner now reads as a tiled backyard pool open to the sky.
 
 NEXT
+
 - P4 game wiring: Build House button on an owned unbuilt homestead opens /builder.html seeded with the
   plot's real houseZone w/d + houseSeed + citizenId/lotId (bp= for re-edit, already supported by the
   page); the game validates the blueprint_saved postMessage, stores the script on the parcel +
   citizen, and raises the house. Then backend persistence via the /kooker proxy.
 
 ### 2026-06-10 — Slice: P4 game wiring — Design and Re-design from the plot
+
 DONE
+
 - runtime.builderUrl(lotId) builds the House Builder URL from the plot's REAL house-zone tile count,
   houseSeed and owner citizen id, riding the stored blueprint along as bp= so re-opening loads the
   citizen's current design; runtime.openBuilder(lotId) opens it as a popup.
@@ -230,12 +244,15 @@ DONE
   his house visibly re-rendered as the new one-storey design. 591 tests green.
 
 NEXT
+
 - P4.5 backend persistence: save the accepted blueprint DSL to the citylife/kooker backend via the
   /kooker proxy (best-effort, never blocks, like spawnCitizenSubUser); restore on load so a reload
   regenerates the IDENTICAL house from the stored DSL; localStorage fallback when offline.
 
 ### 2026-06-10 — Slice: P4.5 blueprint persistence — a design survives reload
+
 DONE
+
 - bot/blueprintStore.ts: two fail-soft layers. LOCAL — a localStorage map keyed by lot id (the
   settlers saveColony pattern), written on every accepted design. BACKEND — PUT/GET
   /kooker/api/v1/citylife/blueprints as the logged-in player (the spawnCitizenSubUser best-effort
@@ -258,13 +275,16 @@ DONE
   (3b7cd65 — delegation experiment since retired by the operator).
 
 NEXT
+
 - P5 variety: a deterministic per-citizen design generator (seeded from citizenId/houseSeed) varying
   footprint, room mix, storeys, door, patio/pool/garage so the street is VISIBLY diverse; the
   newcomer flow uses it instead of one shared defaultBlueprint; uniqueness test over many seeds; a
   street screenshot must show no two houses alike.
 
 ### 2026-06-10 — Slice: P5 variety — no two houses alike
+
 DONE
+
 - defaultBlueprint is now a real per-citizen DESIGN GENERATOR: a splitmix-style avalanche hash
   (designHash) drives seven layout archetypes (classic cottage, backyard-pool home, patio corner,
   motor home with street-facing garage, long house, courtyard with an open patio heart, poolside
@@ -281,13 +301,16 @@ DONE
   authored builder blueprint still overrides it per plot.
 
 NEXT
+
 - P6 bot self-design: BlueprintReport from compileBlueprint (room areas, window count, storeys,
   materials estimate) + the capped-3-iteration inspect/mutate loop over the pure blueprintEdit
   grammar; Joe redesigns his own house as the demo; then the full 077 DONE criteria check and the
   final progress entry. After that the loop moves to spec 082 Kookerbook.
 
 ### 2026-06-10 — Slice: P6 bot self-design — SPEC 077 COMPLETE
+
 DONE
+
 - builder/selfDesign.ts: blueprintReport (storeys, rooms, per-kind areas, compiled window count,
   block count, material estimate, outdoor + bedroom flags — the numbers a bot reasons over) and
   selfDesign — the capped-3-iteration inspect/mutate loop the spec promised: one targeted named
@@ -304,6 +327,7 @@ DONE
   upgraded house re-rendered and the design persisted (verified in storage).
 
 SPEC 077 ACCEPTANCE — ALL MET
+
 - A newcomer (and Joe) opens the builder from their plot (Design / Re-design buttons), designs a
   custom house in the visual editor, Accept validates + stores the blueprint and raises the house.
 - The stored DSL regenerates the identical house deterministically; a reload rebuilds it (local
@@ -311,5 +335,5 @@ SPEC 077 ACCEPTANCE — ALL MET
 - Every control is bot-drivable (data-build-action; burst-hardened), and the capped self-design
   loop lets a bot design end to end — demonstrated by Joe.
 - The street shows NO TWO HOUSES ALIKE (P5 generator + the live street screenshot).
-THE SPEC IS CLOSED. The loop continues with spec 082 Kookerbook (personal pages), then 079/081
-commerce + ad boards. Status: built.
+  THE SPEC IS CLOSED. The loop continues with spec 082 Kookerbook (personal pages), then 079/081
+  commerce + ad boards. Status: built.

@@ -13,7 +13,7 @@ place to meter, moderate, and rate-limit), and every identity is least-privilege
 
 The arc:
 
-> kooker login → a `CITYLIFE_CITIZEN` account → claim a plot → that plot mints *your* Hermes
+> kooker login → a `CITYLIFE_CITIZEN` account → claim a plot → that plot mints _your_ Hermes
 > (a kooker **sub-user** bot) → you, and only you, chat to your brain, metered per owner.
 
 ## Decisions (locked)
@@ -24,15 +24,15 @@ Each Hermes agent is a first-class kooker **sub-user** linked to its human owner
 **authenticates as itself** with its own least-privilege credential. We do **not** use the human's
 JWT for bot calls.
 
-| Aspect | Decision | Why |
-|---|---|---|
-| Identity | Bot = kooker sub-user, `parentUserId = human userId`, role `CITYLIFE_CITIZEN_BOT` | Real wallet/profile → the bot can own a plot and act in the city economy (jobs, ledger, land). Ownership is a native link, not an ad-hoc field. |
-| Auth | Bot holds its **own** `BOT_PAT` (server-side), exchanges for a short-lived JWT, acts as itself | Least-privilege. A 24/7 bot never carries the human's authority. |
-| Human | Logs in as a `CITYLIFE_CITIZEN` (least-privilege), manages only their own plots/bots | The human's JWT authorizes *their* actions, never the bot's. |
-| Login gate | Sub-users are flagged `botUser=true` and **cannot** log into kooker-web as operators | Prevents bots becoming shadow admins. |
+| Aspect     | Decision                                                                                       | Why                                                                                                                                             |
+| ---------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity   | Bot = kooker sub-user, `parentUserId = human userId`, role `CITYLIFE_CITIZEN_BOT`              | Real wallet/profile → the bot can own a plot and act in the city economy (jobs, ledger, land). Ownership is a native link, not an ad-hoc field. |
+| Auth       | Bot holds its **own** `BOT_PAT` (server-side), exchanges for a short-lived JWT, acts as itself | Least-privilege. A 24/7 bot never carries the human's authority.                                                                                |
+| Human      | Logs in as a `CITYLIFE_CITIZEN` (least-privilege), manages only their own plots/bots           | The human's JWT authorizes _their_ actions, never the bot's.                                                                                    |
+| Login gate | Sub-users are flagged `botUser=true` and **cannot** log into kooker-web as operators           | Prevents bots becoming shadow admins.                                                                                                           |
 
-Rejected: *parent-JWT for the bot* — every always-on bot would wield the full human authority (the
-over-privilege problem). Rejected: *pure bot-PAT with no user record* — bots could not hold a wallet
+Rejected: _parent-JWT for the bot_ — every always-on bot would wield the full human authority (the
+over-privilege problem). Rejected: _pure bot-PAT with no user record_ — bots could not hold a wallet
 or own land, and ownership/isolation would be an ad-hoc field instead of `parentUserId`.
 
 ### D2 — Isolation: owner-scope by default, explicit share-ACL for cross-tenant read
@@ -42,8 +42,9 @@ or own land, and ownership/isolation would be an ad-hoc field instead of `parent
 > Seeing someone else's requires an explicit **share grant** (read-ACL).
 
 This is the single rule that fixes both observed problems:
+
 - **"I should see only their bots"** — the inference metrics / fleet views must filter to the caller.
-- **The `joe-mac-mini` host visibility** — seeing your *own* host is correct; seeing another owner's
+- **The `joe-mac-mini` host visibility** — seeing your _own_ host is correct; seeing another owner's
   host requires an explicit share ("unless I share the host with read access").
 
 Today's defect: `GET /api/v1/ai/inference/metrics` **requires ADMIN and returns every bot**. That is
@@ -82,6 +83,7 @@ human browser  --(human kooker JWT)-->  citylife-backend
 
 N citizens = N Hermes = real RAM. The spawner guardrails already exist (`BOT_MEMORY_BUDGET_GI`,
 priority class, `/bots/capacity`).
+
 - **Free citizen** → shares a model with per-user memory/context (no dedicated pod).
 - **Premium citizen** → dedicated Hermes pod (full Spec-074 path) + DMZ NetworkPolicy.
 - Per-owner quota/rate-limit is already enforced by the choke point's Redis limiter.
