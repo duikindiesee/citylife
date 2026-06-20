@@ -94,6 +94,9 @@ export function ColonyApp() {
   const auth = useMemo(() => new AuthClient(), []);
   useEffect(() => {
     runtime.setOperatorName(auth.operator?.id ?? null);
+    // Player data isolation: a CITYLIFE_PLAYER gets the restricted own-data view (activates the dormant
+    // player-view from the isolation slice); operators/admins keep the whole-colony view.
+    runtime.setPlayerView(auth.isCityLifePlayer);
   }, [auth, runtime]);
   // Spec 085 P1 — once mounted (the AuthGate has signed the player in), drain any real-ledger sync
   // moves left queued from a prior session. New moves drain themselves on notice().

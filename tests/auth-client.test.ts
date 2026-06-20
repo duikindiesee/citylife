@@ -14,6 +14,17 @@ function fakeJwt(expEpochMs: number, email = "mayor@test.com"): string {
   return `eyJhbGciOiJub25lIn0.${payload}.sig`;
 }
 
+/** Build an unsigned JWT carrying roles + a far-future exp (only the payload matters client-side). */
+function fakeJwtWithRoles(roles: string[], email = "player@test.com"): string {
+  const payload = btoa(
+    JSON.stringify({ sub: email, exp: 4070908800, roles }), // exp ~year 2099
+  )
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+  return `eyJhbGciOiJub25lIn0.${payload}.sig`;
+}
+
 function mockFetchOk(token: string, email = "mayor@test.com", name = "Mayor") {
   vi.stubGlobal("fetch", async () => ({
     ok: true,
@@ -46,6 +57,26 @@ describe("AuthClient (kooker login gate)", () => {
     const r = await a.login("", "any");
     expect(r).toEqual({ ok: false, error: "Enter your kooker email." });
     expect(a.isAuthenticated).toBe(false);
+  });
+
+  it("flags a CITYLIFE_PLAYER for the restricted view, but not an admin", async () => {
+    mockFetchOk(fakeJwtWithRoles(["CITYLIFE_PLAYER"]));
+    const player = new AuthClient();
+    await player.login("player@test.com", "pw");
+    expect(player.operator?.roles).toContain("CITYLIFE_PLAYER");
+    expect(player.isCityLifePlayer).toBe(true);
+
+    // An admin who also holds the player role keeps the full whole-colony view (not restricted).
+    mockFetchOk(fakeJwtWithRoles(["CITYLIFE_PLAYER", "ADMIN"]));
+    const admin = new AuthClient();
+    await admin.login("admin@test.com", "pw");
+    expect(admin.isCityLifePlayer).toBe(false);
+
+    // A plain operator with no player role is not restricted either.
+    mockFetchOk(fakeJwtWithRoles(["KOOKER_USER"]));
+    const op = new AuthClient();
+    await op.login("op@test.com", "pw");
+    expect(op.isCityLifePlayer).toBe(false);
   });
 
   it("rejects an empty password before hitting the network", async () => {
