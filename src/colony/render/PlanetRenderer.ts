@@ -77,6 +77,12 @@ const SUN_HIGH = new THREE.Color(0xfff2d8); // warm white near noon
 const SUN_LOW = new THREE.Color(0xff9a4a); // golden amber near sunrise / sunset
 const OCEAN = 0x143a4a;
 const SLAB_ROCK = 0x24242f;
+// Spec 092 — per-house wall tints. Each built home lerps its masonry vertex colours toward one of these
+// (picked deterministically from the house seed) so the city spans a palette instead of all-red-brick.
+const HOUSE_TINTS = [
+  0xc97b5a, 0xd9c0a0, 0x8fa07a, 0x7d93a8, 0xc9a24a, 0xb0543f, 0x9c8aa8,
+  0x9aa05a,
+];
 // Spec 078 — Joe the Crab's first-person eye height (low to the ground), vs 1.6 for the human avatars.
 const CRAB_EYE = 0.42;
 // Spec 076 — instance caps for the homestead neighbourhood (zone pads + spine ribbon; voxel blocks
@@ -3348,6 +3354,23 @@ export class PlanetRenderer {
       cell: 1,
       voxelY: VOXEL_Y,
     });
+    // Spec 092 — per-house colour variety: lerp the masonry vertex colours toward a deterministic tint
+    // from the house seed, so homes span a palette instead of all reading as the same red brick. A
+    // partial lerp keeps the per-course banding. Deterministic (seed-driven), render-only.
+    const cAttr = geometry.getAttribute("color") as THREE.BufferAttribute | undefined;
+    if (cAttr) {
+      const tint = new THREE.Color(
+        HOUSE_TINTS[((seed % HOUSE_TINTS.length) + HOUSE_TINTS.length) % HOUSE_TINTS.length]!,
+      );
+      const a = cAttr.array as Float32Array;
+      const k = 0.42;
+      for (let i = 0; i < a.length; i += 3) {
+        a[i] = a[i]! * (1 - k) + tint.r * k;
+        a[i + 1] = a[i + 1]! * (1 - k) + tint.g * k;
+        a[i + 2] = a[i + 2]! * (1 - k) + tint.b * k;
+      }
+      cAttr.needsUpdate = true;
+    }
     const mesh = new THREE.Mesh(geometry, this.mergedHouseMat);
     mesh.name = lotId; // the per-lot incremental rebuild finds + disposes it by name (spec 084 S1)
     mesh.castShadow = true;
