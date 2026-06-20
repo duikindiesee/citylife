@@ -59,6 +59,11 @@ const SKY_NIGHT = new THREE.Color(0x03040a)
 // the world reads with real depth instead of a flat fill. At night daylight=0 collapses it back to the
 // uniform void, so the deep-space look is untouched after dark.
 const HORIZON_GLOW = new THREE.Color(0x2c5a73)
+// Spec 091 — warmer KEY LIGHT. The sun is a warm white when high and deepens to a golden amber as it
+// rakes toward the horizon, so mornings and evenings get a real golden-hour glow instead of a flat white
+// midday. updateDayNight lerps between these by sun height each frame.
+const SUN_HIGH = new THREE.Color(0xfff2d8) // warm white near noon
+const SUN_LOW = new THREE.Color(0xff9a4a) // golden amber near sunrise / sunset
 const OCEAN = 0x143a4a
 const SLAB_ROCK = 0x24242f
 // Spec 078 — Joe the Crab's first-person eye height (low to the ground), vs 1.6 for the human avatars.
@@ -208,7 +213,7 @@ export class PlanetRenderer {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.1
+    this.renderer.toneMappingExposure = 1.13
     container.appendChild(this.renderer.domElement)
 
     this.scene.background = SKY_DAY.clone()
@@ -249,7 +254,9 @@ export class PlanetRenderer {
       if (hit) this.onGroundClick(hit.gx, hit.gy)
     })
 
-    this.hemi = new THREE.HemisphereLight(0xbfd6e6, 0x35324a, 0.8)
+    // Cool sky fill (0xbfd6e6) against the warm sun key, with a warmer ground bounce (was a cool
+    // 0x35324a) so shadowed faces feel sun-warmed earth rather than cold — a richer key/fill contrast.
+    this.hemi = new THREE.HemisphereLight(0xbfd6e6, 0x473c3a, 0.8)
     this.scene.add(this.hemi)
     this.sun = new THREE.DirectionalLight(0xfff0d8, 1.7)
     this.sun.castShadow = true
@@ -723,6 +730,9 @@ export class PlanetRenderer {
     this.sun.intensity = 0.18 + d * 1.7
     const t = hour + minute / 60
     const ang = ((t - 6) / 12) * Math.PI
+    // Golden-hour key: the lower the sun, the warmer (amber) it burns; high noon stays a warm white.
+    const sunHeight = Math.max(0, Math.sin(ang)) // 0 at the horizon .. 1 at noon
+    this.sun.color.copy(SUN_HIGH).lerp(SUN_LOW, Math.pow(1 - sunHeight, 1.5) * 0.85)
     const r = this.N * 1.1
     // Spec 084 S5 — sun + target translate TOGETHER to the orbit target: the light DIRECTION (and
     // so all shading) is unchanged, but the fixed-extent shadow frustum now sits wherever the
