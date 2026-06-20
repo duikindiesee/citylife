@@ -26,6 +26,7 @@ import { greedyMesh } from './voxelMesh'
 import { buildChunkedTerrain, type ChunkedTerrain } from './terrainChunks'
 import { defaultBlueprint, streetDoorDir, type Zone } from '../neighborhood'
 import { buildShoreProps, type ShorePropsLayer } from './shoreProps'
+import { buildFoam, type FoamLayer } from './foamLayer'
 import { buildRaceLayer, type RaceLayer } from './raceLayer'
 import { buildBusLayer, type BusLayer } from './busLayer'
 import type { BusRoute } from '../transit/busRoute'
@@ -172,6 +173,7 @@ export class PlanetRenderer {
   // Pulsing red nav beacon at the rocket nose — material ref so frame() can blink it.
   private beaconMat: THREE.MeshStandardMaterial | null = null
   private shoreProps: ShorePropsLayer | null = null
+  private foam: FoamLayer | null = null // spec 091 — animated shoreline surf ring
   private raceLayer: RaceLayer | null = null
   private busLayer: BusLayer | null = null
   private roadRibbonGroup: THREE.Group | null = null
@@ -272,6 +274,7 @@ export class PlanetRenderer {
     this.buildPlanet()
     this.buildSkyDome()
     this.buildOcean()
+    this.buildFoam()
     this.buildTerrain()
     this.buildFoliage()
     this.buildStructures()
@@ -503,6 +506,14 @@ export class PlanetRenderer {
     }
     pos.needsUpdate = true
     geo.computeVertexNormals()
+  }
+
+  /** Spec 091 — the shoreline SURF: an additive foam ring traced once from the terrain coastline, parked
+   *  just above the living sea. Render-only + deterministic (built from grid data, opacity pulses on the
+   *  wall clock); see foamLayer.ts. */
+  private buildFoam(): void {
+    this.foam = buildFoam({ terrain: this.sim.state.terrain, wx: (x) => this.wx(x), wz: (y) => this.wz(y) })
+    if (this.foam) this.scene.add(this.foam.group)
   }
 
   private colorFor(mode: ViewMode, i: number, out: THREE.Color): void {
@@ -1408,6 +1419,7 @@ export class PlanetRenderer {
     if (this.raceLayer && this.raceState) this.raceLayer.update(this.raceState, performance.now())
     this.busLayer?.update(performance.now()) // spec 088 — the bus drives its loop between the hoods
     this.updateOcean(performance.now()) // spec 090 — gentle swells roll across the living sea
+    this.foam?.update(performance.now()) // spec 091 — the shoreline surf breathes
     if (this.fpCitizenId && this.avatarSource) {
       // P1 — first-person: park the camera at the citizen's eye and look down their heading. OrbitControls is off.
       const a = this.avatarSource().find((x) => x.id === this.fpCitizenId)
@@ -2377,6 +2389,7 @@ export class PlanetRenderer {
     this.controls.dispose()
     this.composer.dispose()
     this.shoreProps?.dispose()
+    this.foam?.dispose()
     this.clearRaceLayer()
     this.renderer.dispose()
     if (this.renderer.domElement.parentElement === this.container) {
