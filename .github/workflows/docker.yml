@@ -1,21 +1,19 @@
 name: Docker
 
-# Builds the CityLife static SPA into a public GHCR image (nginx-served on :80) AND keeps the
-# kooker-infra deployment pinned to that exact build, the same way kooker-web does — so the cluster
-# always runs a known, traceable version instead of a floating tag that Argo never re-syncs.
+# Versioned image + GitOps auto-deploy, mirroring kooker-web. Now that citylife lives in the
+# duikindiesee org (same org as kooker-infra + the shared workflows + the self-hosted runner), it
+# reuses the SAME reusable workflows kooker-web uses, so versioning works identically:
 #
-# Why this is not the duikindiesee reusable workflow (node-version-bump + gitops-sync): those
-# run on a self-hosted runner and write to kooker-infra with MAVEN_PUBLISH_TOKEN. CityLife lives in
-# the duikland org, which cannot use the duikindiesee self-hosted runner or that token, so the SAME
-# outcome is reproduced natively on ubuntu-latest below.
+#   1. node-version-bump  - on every merge to main, opens a chore/bump-X.Y.Z PR that auto-merges
+#                           (Conventional Commits: feat -> minor, fix/other -> patch). This is the
+#                           "auto-merged version bump" that the old cross-org run_number scheme lacked.
+#   2. build-and-push     - builds ghcr.io/duikindiesee/citylife:<semver> (+ sha + latest) on the
+#                           bumped version, with APP_VERSION baked into the image for traceability.
+#   3. gitops-sync        - pins that semver into manifests/overlays/develop/citylife in kooker-infra,
+#                           so Argo rolls the Deployment to the exact version each release.
 #
-# Versioning: the image tag is major.minor.<run_number> — major/minor come from package.json (bump
-# them in a normal PR for a meaningful release), the patch is the monotonic CI run number so EVERY
-# merge to main produces a new, immutable tag. That new tag is then pinned into the kooker-infra
-# citylife overlay, which is what makes Argo roll the Deployment (a static :dev tag never changes the
-# manifest, so it never redeploys — that was the stale-version bug).
-#
-# The image still contains NO credentials; runtime auth is injected by the cluster nginx layer (Dockerfile).
+# Cross-org tokens are no longer needed: same org => the self-hosted runner and MAVEN_PUBLISH_TOKEN are
+# inherited via `secrets: inherit`. The image carries NO credentials (runtime auth via the nginx layer).
 
 on:
   push:
@@ -23,30 +21,60 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  packages: write
+  contents: write # node-version-bump commits the bump
+  packages: write # build-and-push + retention
+  pull-requests: write # node-version-bump opens the bump PR
 
 concurrency:
   group: docker-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false # never cancel a build/deploy mid-flight
 
 jobs:
-  build-push:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.ver.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
+  # STEP 1 - bump the package.json version on every merge to main (before build)
+  version-bump:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: duikindiesee/kooker-workflows/.github/workflows/node-version-bump.yml@main
+    secrets: inherit
 
-      - name: Compute version
+  # STEP 2 - build & push the versioned image
+  build-and-push:
+    needs: [version-bump]
+    if: always() && (needs.version-bump.result == 'success' || needs.version-bump.result == 'skipped') && !startsWith(github.head_ref, 'chore/bump')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck + test
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Read version
         id: ver
         run: |
-          BASE=$(node -p "require('./package.json').version")   # e.g. 0.1.0
-          MAJOR=$(echo "$BASE" | cut -d. -f1)
-          MINOR=$(echo "$BASE" | cut -d. -f2)
-          VERSION="${MAJOR}.${MINOR}.${{ github.run_number }}"
+          # Prefer the version-bump output (the bumped value, even before package.json on main is
+          # updated) so the image tag always matches what gitops-sync writes to kooker-infra.
+          BUMP_VER="${{ needs.version-bump.outputs.new-version }}"
+          PKG_VER=$(node -p "require('./package.json').version")
+          VERSION="${BUMP_VER:-$PKG_VER}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "CityLife version: ${VERSION}"
+          echo "CityLife version: ${VERSION} (bump=${BUMP_VER} pkg=${PKG_VER})"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -61,11 +89,10 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/duikland/citylife
+          images: ghcr.io/duikindiesee/citylife
           tags: |
             type=raw,value=${{ steps.ver.outputs.version }}
-            type=raw,value=latest
-            type=raw,value=dev
+            type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=short
 
       - name: Build and push
@@ -80,56 +107,25 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Pin the just-built version into the kooker-infra citylife overlay so Argo rolls the Deployment.
-  # Mirrors kooker-web's gitops-sync step. The cross-org write needs a PAT (GITHUB_TOKEN is scoped to
-  # duikland/citylife only); if KOOKER_INFRA_TOKEN is not set the job no-ops with a warning so the
-  # image build is never blocked.
+  # STEP 3 - keep the last few GHCR images
+  retention:
+    needs: build-and-push
+    if: github.event_name == 'push'
+    permissions:
+      packages: write
+      contents: read
+    uses: duikindiesee/kooker-workflows/.github/workflows/ghcr-retention.yml@main
+    secrets:
+      MAVEN_PUBLISH_TOKEN: ${{ secrets.MAVEN_PUBLISH_TOKEN }}
+
+  # STEP 4 - pin the semver into the kooker-infra citylife overlay (Argo then rolls the Deployment)
   deploy:
-    needs: build-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: Gate on cross-org token
-        id: gate
-        env:
-          TOKEN: ${{ secrets.KOOKER_INFRA_TOKEN }}
-        run: |
-          if [ -n "$TOKEN" ]; then
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::KOOKER_INFRA_TOKEN is not set - skipping the kooker-infra tag pin. The versioned image was still pushed; add the secret (a PAT with contents:write on duikindiesee/kooker-infra) to auto-deploy."
-          fi
-
-      - name: Checkout kooker-infra
-        if: steps.gate.outputs.ok == 'true'
-        uses: actions/checkout@v4
-        with:
-          repository: duikindiesee/kooker-infra
-          token: ${{ secrets.KOOKER_INFRA_TOKEN }}
-          path: infra
-          ref: main
-
-      - name: Install Kustomize
-        if: steps.gate.outputs.ok == 'true'
-        uses: imranismail/setup-kustomize@v2
-
-      - name: Pin the new image tag
-        if: steps.gate.outputs.ok == 'true'
-        run: |
-          cd infra/manifests/overlays/develop/citylife
-          kustomize edit set image ghcr.io/duikland/citylife=ghcr.io/duikland/citylife:${{ needs.build-push.outputs.version }}
-
-      - name: Commit and push
-        if: steps.gate.outputs.ok == 'true'
-        run: |
-          cd infra
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .
-          if git diff --staged --quiet; then
-            echo "No manifest change."
-          else
-            git commit -m "chore(gitops): auto-deploy ghcr.io/duikland/citylife to ${{ needs.build-push.outputs.version }}"
-            git pull --rebase origin main || true
-            git push origin main
-          fi
+    needs: [version-bump, build-and-push]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    uses: duikindiesee/kooker-workflows/.github/workflows/gitops-sync.yml@main
+    with:
+      image_name: ghcr.io/duikindiesee/citylife
+      new_tag: ${{ needs.version-bump.outputs.new-version }}
+      kustomize_path: manifests/overlays/develop/citylife
+      target_branch: main
+    secrets: inherit

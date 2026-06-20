@@ -25,7 +25,7 @@ FROM nginx:alpine
 ARG APP_VERSION=dev
 LABEL org.opencontainers.image.title="citylife" \
       org.opencontainers.image.version="$APP_VERSION" \
-      org.opencontainers.image.source="https://github.com/duikland/citylife"
+      org.opencontainers.image.source="https://github.com/duikindiesee/citylife"
 
 # Runtime config (overridable by the Deployment env / a k8s Secret):
 #   KOOKER_GATEWAY        - base URL the SPA's /kooker calls proxy to. In-cluster this is the
