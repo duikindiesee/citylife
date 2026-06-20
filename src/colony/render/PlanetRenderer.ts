@@ -117,6 +117,7 @@ export class PlanetRenderer {
   private lastRoadsVersion = -1;
   // Foliage is rebuilt as the colony grows so trees never sit under streets or buildings.
   private foliageMesh?: THREE.InstancedMesh;
+  private foliageWindMat?: THREE.MeshStandardMaterial; // spec 092 — foliage wind-sway material (uTime in frame)
   private lastFoliageSig = -2;
   // Road cells the ambient pedestrians stroll along (their pavement network), refreshed when roads grow.
   private roadCells: { x: number; y: number }[] = [];
@@ -603,15 +604,35 @@ export class PlanetRenderer {
     const cap = Math.min(cells.length, 6000); // spec 084 S5 — headroom for the 608 world's forests
     const geo = new THREE.ConeGeometry(0.42, 1.1, 6);
     geo.translate(0, 0.55, 0);
-    const mesh = new THREE.InstancedMesh(
-      geo,
-      new THREE.MeshStandardMaterial({
-        roughness: 0.9,
-        metalness: 0,
-        flatShading: true,
-      }),
-      Math.max(1, cap),
-    );
+    // Spec 092 — foliage 2.0: gentle WIND SWAY via a vertex-shader displacement (GPU-cheap for thousands
+    // of trees — one uniform, no per-instance CPU work). The cone tip sways more than the base; each tree
+    // is phased by its world position so the canopy ripples instead of moving in unison. uTime advances
+    // on the wall clock in frame() (render-only, never touches the sim).
+    const foliageMat = new THREE.MeshStandardMaterial({
+      roughness: 0.9,
+      metalness: 0,
+      flatShading: true,
+    });
+    foliageMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uTime = { value: 0 };
+      shader.vertexShader =
+        "uniform float uTime;\n" +
+        shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>
+          {
+            float windPhase = instanceMatrix[3].x * 0.11 + instanceMatrix[3].z * 0.11;
+            float gust = sin(uTime * 1.15 + windPhase) + 0.35 * sin(uTime * 2.3 + windPhase * 1.7);
+            float hfac = clamp(transformed.y / 1.1, 0.0, 1.0);
+            hfac *= hfac;
+            transformed.x += gust * hfac * 0.05;
+            transformed.z += cos(uTime * 0.9 + windPhase) * hfac * 0.03;
+          }`,
+        );
+      foliageMat.userData.shader = shader;
+    };
+    this.foliageWindMat = foliageMat;
+    const mesh = new THREE.InstancedMesh(geo, foliageMat, Math.max(1, cap));
     mesh.castShadow = true;
     mesh.frustumCulled = false;
     const col = new THREE.Color();
@@ -2047,6 +2068,10 @@ export class PlanetRenderer {
     this.busLayer?.update(performance.now()); // spec 088 — the bus drives its loop between the hoods
     this.updateOcean(performance.now()); // spec 090 — gentle swells roll across the living sea
     this.foam?.update(performance.now()); // spec 091 — the shoreline surf breathes
+    const fsh = this.foliageWindMat?.userData.shader as
+      | { uniforms: { uTime: { value: number } } }
+      | undefined;
+    if (fsh) fsh.uniforms.uTime.value = performance.now() / 1000; // spec 092 — trees sway in the wind
     this.clouds?.update(performance.now()); // spec 092 — clouds drift across the sky
     if (this.fpCitizenId && this.avatarSource) {
       // P1 — first-person: park the camera at the citizen's eye and look down their heading. OrbitControls is off.
