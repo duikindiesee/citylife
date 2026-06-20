@@ -72,6 +72,8 @@ export class PlanetRenderer {
   private controls: OrbitControls
   private sun: THREE.DirectionalLight
   private hemi: THREE.HemisphereLight
+  private oceanGeo?: THREE.BufferGeometry // spec 090 — the living sea: a subdivided disc with animated swells
+  private oceanBase?: Float32Array // base (x,y) of each ocean vertex, the wave input
   private chunkedTerrain!: ChunkedTerrain // spec 084 S5 — chunk grid, see terrainChunks.ts
   private roadSurfaceMesh!: THREE.Mesh
   private roadShoulderMesh!: THREE.Mesh
@@ -415,15 +417,50 @@ export class PlanetRenderer {
   }
 
   private buildOcean() {
-    // Water pooled on the slab — a disc meeting the rocky rim, not an endless sea to a horizon.
+    // Spec 090 — a LIVING sea. Water pooled on the slab as a disc meeting the rocky rim, but subdivided
+    // so frame() can roll gentle swells across it, with a depth gradient (deep teal in the open middle,
+    // lighter toward the shallow rim) and a glossier, more reflective surface so it catches the sun.
+    const R = this.N * 0.66
+    const geo = new THREE.RingGeometry(0.5, R, 120, 30)
+    const pos = geo.getAttribute('position')
+    const colors = new Float32Array(pos.count * 3)
+    const base = new Float32Array(pos.count * 2)
+    const deep = new THREE.Color(0x0e3d54), shallow = new THREE.Color(0x2f86a0)
+    const tmp = new THREE.Color()
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i)
+      base[i * 2] = x; base[i * 2 + 1] = y
+      const r = Math.min(1, Math.hypot(x, y) / R) // 0 open-middle .. 1 rim
+      tmp.copy(deep).lerp(shallow, Math.pow(r, 1.6) * 0.75)
+      colors[i * 3] = tmp.r; colors[i * 3 + 1] = tmp.g; colors[i * 3 + 2] = tmp.b
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3))
     const ocean = new THREE.Mesh(
-      new THREE.CircleGeometry(this.N * 0.66, 72),
-      new THREE.MeshStandardMaterial({ color: 0x17566f, roughness: 0.15, metalness: 0.45, transparent: true, opacity: 0.92 }),
+      geo,
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.1, metalness: 0.55, transparent: true, opacity: 0.93 }),
     )
     ocean.rotation.x = -Math.PI / 2
-    ocean.position.y = -0.05
+    ocean.position.y = -0.1
     ocean.receiveShadow = true
     this.scene.add(ocean)
+    this.oceanGeo = geo
+    this.oceanBase = base
+  }
+
+  /** Spec 090 — roll gentle layered swells across the ocean disc each frame (render-loop cosmetic, on the
+   *  wall clock like the bus + beacon; never touches the sim). Recomputes normals so the swells catch light. */
+  private updateOcean(timeMs: number): void {
+    const geo = this.oceanGeo, base = this.oceanBase
+    if (!geo || !base) return
+    const t = timeMs / 1000
+    const pos = geo.getAttribute('position') as THREE.BufferAttribute
+    for (let i = 0; i < pos.count; i++) {
+      const x = base[i * 2]!, y = base[i * 2 + 1]!
+      const z = Math.sin(x * 0.05 + t * 0.85) * 0.18 + Math.sin(y * 0.063 - t * 0.7) * 0.14 + Math.sin((x + y) * 0.028 + t * 1.25) * 0.09
+      pos.setZ(i, z)
+    }
+    pos.needsUpdate = true
+    geo.computeVertexNormals()
   }
 
   private colorFor(mode: ViewMode, i: number, out: THREE.Color): void {
@@ -1279,6 +1316,7 @@ export class PlanetRenderer {
     this.shoreProps?.update(this.sim.state.clock.daylight, performance.now())
     if (this.raceLayer && this.raceState) this.raceLayer.update(this.raceState, performance.now())
     this.busLayer?.update(performance.now()) // spec 088 — the bus drives its loop between the hoods
+    this.updateOcean(performance.now()) // spec 090 — gentle swells roll across the living sea
     if (this.fpCitizenId && this.avatarSource) {
       // P1 — first-person: park the camera at the citizen's eye and look down their heading. OrbitControls is off.
       const a = this.avatarSource().find((x) => x.id === this.fpCitizenId)
