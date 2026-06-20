@@ -26,7 +26,9 @@ export function buildClouds(opts: CloudLayerOptions): CloudLayer {
   const half = span / 2;
   const hash = (n: number): number => {
     let h =
-      (Math.imul(n + 0x9e37, 374761393) ^ Math.imul(n * 2 + 0x85eb, 668265263)) >>> 0;
+      (Math.imul(n + 0x9e37, 374761393) ^
+        Math.imul(n * 2 + 0x85eb, 668265263)) >>>
+      0;
     h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
     return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
   };
