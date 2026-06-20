@@ -101,6 +101,35 @@ function buildPlayerCar(): THREE.Group {
       g.add(wheel);
     }
   }
+  // Headlights (front, +x), tail lights (rear, -x) and a rear spoiler wing — a proper rally car.
+  const headMat = new THREE.MeshStandardMaterial({
+    color: 0xfff6d0,
+    emissive: 0xffe9a0,
+    emissiveIntensity: 0.9,
+    roughness: 0.3,
+  });
+  const tailMat = new THREE.MeshStandardMaterial({
+    color: 0xff5040,
+    emissive: 0xff2010,
+    emissiveIntensity: 0.85,
+    roughness: 0.3,
+  });
+  for (const z of [-0.2, 0.2]) {
+    const hl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.14), headMat);
+    hl.position.set(0.59, 0.22, z);
+    g.add(hl);
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.14), tailMat);
+    tl.position.set(-0.59, 0.22, z);
+    g.add(tl);
+  }
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.64), bodyMat);
+  wing.position.set(-0.5, 0.46, 0);
+  g.add(wing);
+  for (const z of [-0.26, 0.26]) {
+    const sup = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05), wheelMat);
+    sup.position.set(-0.5, 0.39, z);
+    g.add(sup);
+  }
   g.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (mesh.isMesh) {
@@ -145,7 +174,38 @@ function buildCheckpoint(
   bar.position.set(opts.wx(cp.x), baseY + 1.44, opts.wz(cp.y));
   bar.rotation.y = Math.atan2(side.y, side.x);
   g.add(bar);
+  // Start/finish gate gets a checkered banner hanging from the bar — the iconic race line.
+  if (idx === 0) {
+    const banner = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.5, 0.42),
+      new THREE.MeshBasicMaterial({
+        map: makeCheckerTex(),
+        side: THREE.DoubleSide,
+      }),
+    );
+    banner.position.set(opts.wx(cp.x), baseY + 1.18, opts.wz(cp.y));
+    banner.rotation.y = Math.atan2(side.y, side.x);
+    g.add(banner);
+  }
   return g;
+}
+
+/** A small black/white checkerboard texture for the start/finish banner. */
+function makeCheckerTex(): THREE.Texture {
+  const s = 64,
+    n = 6,
+    cell = s / n;
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = s;
+  const ctx = cv.getContext("2d")!;
+  for (let y = 0; y < n; y++)
+    for (let x = 0; x < n; x++) {
+      ctx.fillStyle = (x + y) % 2 ? "#15151a" : "#f4f4f8";
+      ctx.fillRect(x * cell, y * cell, cell, cell);
+    }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.magFilter = THREE.NearestFilter;
+  return tex;
 }
 
 function checkpointTangent(
