@@ -681,41 +681,37 @@ export class PlanetRenderer {
   }
 
   private buildOcean() {
-    // Spec 090 — a LIVING sea. Water pooled on the slab as a disc meeting the rocky rim, but subdivided
-    // so frame() can roll gentle swells across it, with a depth gradient (deep teal in the open middle,
-    // lighter toward the shallow rim) and a glossier, more reflective surface so it catches the sun.
-    const R = this.N * 0.66;
+    // Spec 090/092 — the sea: a subdivided disc so frame() can roll gentle swells across it. The earlier
+    // "living sea" pass made it dark-blobby; every fix below was verified live with the operator and is the
+    // reason the open water is finally clean:
+    //  • SPANS THE WHOLE water area (R = N*0.99, was N*0.66 which left the outer sea uncovered) and is
+    //    OPAQUE (was opacity 0.93). Translucent + partial water let the deep procedural seabed show through
+    //    as near-black patches.
+    //  • DIFFUSE — metalness 0, roughness 0.7 (was 0.55 / 0.1). The glossy half-metallic surface mirrored
+    //    the dark space-void as black patches on the swell facets, worst at grazing angles near the rim.
+    //  • UNIFORM teal (no vertex-colour depth gradient). The old gradient's dark deep-centre colour read as
+    //    a dark blob in the middle of the lagoon.
+    //  • Sits at y=0.15, ABOVE the shallow seabed bumps. The seabed rises toward ~0 in the lagoon, so a sea
+    //    at y=-0.1 let those bumps poke through as dark spots; a slightly higher waterline covers them.
+    // It still reads as a living sea (swells + the separate shoreline foam ring), just clean.
+    const R = this.N * 0.99;
     const geo = new THREE.RingGeometry(0.5, R, 120, 30);
     const pos = geo.getAttribute("position");
-    const colors = new Float32Array(pos.count * 3);
     const base = new Float32Array(pos.count * 2);
-    const deep = new THREE.Color(0x0e3d54),
-      shallow = new THREE.Color(0x2f86a0);
-    const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i),
-        y = pos.getY(i);
-      base[i * 2] = x;
-      base[i * 2 + 1] = y;
-      const r = Math.min(1, Math.hypot(x, y) / R); // 0 open-middle .. 1 rim
-      tmp.copy(deep).lerp(shallow, Math.pow(r, 1.6) * 0.75);
-      colors[i * 3] = tmp.r;
-      colors[i * 3 + 1] = tmp.g;
-      colors[i * 3 + 2] = tmp.b;
+      base[i * 2] = pos.getX(i);
+      base[i * 2 + 1] = pos.getY(i);
     }
-    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     const ocean = new THREE.Mesh(
       geo,
       new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.1,
-        metalness: 0.55,
-        transparent: true,
-        opacity: 0.93,
+        color: 0x1f6f8c,
+        roughness: 0.7,
+        metalness: 0,
       }),
     );
     ocean.rotation.x = -Math.PI / 2;
-    ocean.position.y = -0.1;
+    ocean.position.y = 0.15;
     // Spec 092 — the sea must NOT receive shadows. updateOcean recomputes the swell normals every frame,
     // so with receiveShadow the shadow map false-self-shadows the moving surface → scattered BLACK acne
     // blobs that "breathe" across the water (the operator's bug). Water showing the island's shadow is
