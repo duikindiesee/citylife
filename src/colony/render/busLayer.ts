@@ -28,13 +28,14 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
   const raw = opts.route.loop
   if (raw.length < 2) return null
   // De-zigzag the bus path. route.loop is a 4-connected BFS over road CELLS, so on diagonals it
-  // staircases and driving it cell-by-cell made the coach jitter side to side (the operator's zigzag).
-  // Corner-cut (chaikin) the closed loop into a smooth curve the bus glides along. Render-only — the
-  // pure, node-tested route is untouched. The smoothed loop has 2^iters× as many points, so scale the
-  // index speed to keep the real ground speed about the same.
-  const SMOOTH_ITERS = 2
-  const loop = smoothClosed(raw, SMOOTH_ITERS)
-  const speedMul = 1 << SMOOTH_ITERS
+  // staircases. Chaikin alone rounds the sharp corners but KEEPS the staircase WEAVE (it converges to a
+  // smooth curve that still snakes through the staircase envelope), so the coach kept weaving side to
+  // side. So first STRAIGHTEN the loop with Douglas-Peucker — drop points within ~1.5 cells of the
+  // straight line, collapsing the sub-cell staircase weave into straight runs while keeping the road's
+  // real bends — THEN chaikin-smooth those bends. The bus drives straight and glides through corners.
+  // Render-only; the pure, node-tested route is untouched.
+  const loop = smoothClosed(simplifyClosed(raw, 1.5), 2)
+  const speedMul = Math.max(0.05, loop.length / raw.length) // keep ground speed ~constant despite the new point count
   const group = new THREE.Group()
   group.name = 'Bus'
   const bus = buildBus()
@@ -81,6 +82,30 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
       group.parent?.remove(group)
     },
   }
+}
+
+/** Ramer-Douglas-Peucker line simplification on the loop (treated as a polyline from loop[0] to its last
+ *  cell; the closing segment stays implicit). Drops any point within `eps` of the straight line between
+ *  kept points, so the BFS staircase weave collapses into straight runs while the road's real bends
+ *  (deviation > eps) are kept. */
+function simplifyClosed(loop: { x: number; y: number }[], eps: number): { x: number; y: number }[] {
+  if (loop.length < 4) return loop
+  const perp = (p: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }): number => {
+    const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy
+    if (l2 === 0) return Math.hypot(p.x - a.x, p.y - a.y)
+    const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2
+    return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t))
+  }
+  const rdp = (pts: { x: number; y: number }[]): { x: number; y: number }[] => {
+    if (pts.length < 3) return pts
+    const a = pts[0]!, b = pts[pts.length - 1]!
+    let maxD = 0, idx = 0
+    for (let i = 1; i < pts.length - 1; i++) { const d = perp(pts[i]!, a, b); if (d > maxD) { maxD = d; idx = i } }
+    if (maxD > eps) return rdp(pts.slice(0, idx + 1)).slice(0, -1).concat(rdp(pts.slice(idx)))
+    return [a, b]
+  }
+  const out = rdp(loop.map((p) => ({ x: p.x, y: p.y })))
+  return out.length >= 2 ? out : loop
 }
 
 /** Chaikin corner-cutting on a CLOSED loop: each iteration replaces every vertex with its 1/4 and 3/4
