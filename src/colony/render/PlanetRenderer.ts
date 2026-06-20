@@ -3411,10 +3411,15 @@ export class PlanetRenderer {
     // Spec 092 — per-house colour variety: lerp the masonry vertex colours toward a deterministic tint
     // from the house seed, so homes span a palette instead of all reading as the same red brick. A
     // partial lerp keeps the per-course banding. Deterministic (seed-driven), render-only.
-    const cAttr = geometry.getAttribute("color") as THREE.BufferAttribute | undefined;
+    const cAttr = geometry.getAttribute("color") as
+      | THREE.BufferAttribute
+      | undefined;
     if (cAttr) {
       const tint = new THREE.Color(
-        HOUSE_TINTS[((seed % HOUSE_TINTS.length) + HOUSE_TINTS.length) % HOUSE_TINTS.length]!,
+        HOUSE_TINTS[
+          ((seed % HOUSE_TINTS.length) + HOUSE_TINTS.length) %
+            HOUSE_TINTS.length
+        ]!,
       );
       const a = cAttr.array as Float32Array;
       const k = 0.42;

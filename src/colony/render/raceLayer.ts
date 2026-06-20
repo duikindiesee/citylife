@@ -126,7 +126,10 @@ function buildPlayerCar(): THREE.Group {
   wing.position.set(-0.5, 0.46, 0);
   g.add(wing);
   for (const z of [-0.26, 0.26]) {
-    const sup = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.14, 0.05), wheelMat);
+    const sup = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.14, 0.05),
+      wheelMat,
+    );
     sup.position.set(-0.5, 0.39, z);
     g.add(sup);
   }
