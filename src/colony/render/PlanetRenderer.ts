@@ -37,6 +37,7 @@ import { buildChunkedTerrain, type ChunkedTerrain } from "./terrainChunks";
 import { defaultBlueprint, streetDoorDir, type Zone } from "../neighborhood";
 import { buildShoreProps, type ShorePropsLayer } from "./shoreProps";
 import { buildFoam, type FoamLayer } from "./foamLayer";
+import { buildClouds, type CloudLayer } from "./cloudLayer";
 import { buildRaceLayer, type RaceLayer } from "./raceLayer";
 import { buildBusLayer, type BusLayer } from "./busLayer";
 import type { BusRoute } from "../transit/busRoute";
@@ -205,6 +206,7 @@ export class PlanetRenderer {
   private beaconMat: THREE.MeshStandardMaterial | null = null;
   private shoreProps: ShorePropsLayer | null = null;
   private foam: FoamLayer | null = null; // spec 091 — animated shoreline surf ring
+  private clouds: CloudLayer | null = null; // spec 092 — drifting sky clouds
   private raceLayer: RaceLayer | null = null;
   private busLayer: BusLayer | null = null;
   private roadRibbonGroup: THREE.Group | null = null;
@@ -325,6 +327,7 @@ export class PlanetRenderer {
     this.buildSkyDome();
     this.buildOcean();
     this.buildFoam();
+    this.buildClouds();
     this.buildTerrain();
     this.buildFoliage();
     this.buildStructures();
@@ -684,6 +687,12 @@ export class PlanetRenderer {
       wz: (y) => this.wz(y),
     });
     if (this.foam) this.scene.add(this.foam.group);
+  }
+
+  /** Spec 092 — drifting sky clouds: soft lit puffs over the island, drifting on the wall clock. */
+  private buildClouds(): void {
+    this.clouds = buildClouds({ worldSize: this.N });
+    if (this.clouds) this.scene.add(this.clouds.group);
   }
 
   private colorFor(mode: ViewMode, i: number, out: THREE.Color): void {
@@ -1991,6 +2000,7 @@ export class PlanetRenderer {
     this.busLayer?.update(performance.now()); // spec 088 — the bus drives its loop between the hoods
     this.updateOcean(performance.now()); // spec 090 — gentle swells roll across the living sea
     this.foam?.update(performance.now()); // spec 091 — the shoreline surf breathes
+    this.clouds?.update(performance.now()); // spec 092 — clouds drift across the sky
     if (this.fpCitizenId && this.avatarSource) {
       // P1 — first-person: park the camera at the citizen's eye and look down their heading. OrbitControls is off.
       const a = this.avatarSource().find((x) => x.id === this.fpCitizenId);
@@ -3590,6 +3600,7 @@ export class PlanetRenderer {
     this.composer.dispose();
     this.shoreProps?.dispose();
     this.foam?.dispose();
+    this.clouds?.dispose();
     this.clearRaceLayer();
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
