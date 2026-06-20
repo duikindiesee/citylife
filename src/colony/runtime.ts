@@ -590,6 +590,11 @@ export class ColonyRuntime {
   );
   // P1 — the logged-in operator's name, so we can mark which avatar is theirs + gate the step-into.
   private operatorName: string | null = null;
+  // Player data isolation: false = the privileged operator/admin view (sees every citizen + wallet,
+  // the default). true = a CITYLIFE_PLAYER view — the HUD then shows only the player's own data plus
+  // other citizens' public presence (stubs), never their private wallet/usage. Set by the player login
+  // path (the first-login/route-gating slice); until then this stays false so nothing changes.
+  private playerView = false;
   // P1 — the citizen currently being viewed in first person (null = orbit camera).
   private fpCitizenId: string | null = null;
   // First-person locomotion — which movement keys are held while you walk your bot around.
@@ -1192,6 +1197,14 @@ export class ColonyRuntime {
   /** P1 — record the logged-in operator name (from auth). Marks their avatar + gates the step-into. */
   setOperatorName(name: string | null): void {
     this.operatorName = name && name.trim() ? name.trim() : null;
+    this.emit();
+  }
+
+  /** Player data isolation: turn the restricted CITYLIFE_PLAYER view on/off. When on, the HUD shows only
+   *  the player's own data + others' public presence (see uiState.citizens). The login/role-gating slice
+   *  flips this on for a player; the operator/admin keeps it off and sees the whole colony. */
+  setPlayerView(on: boolean): void {
+    this.playerView = on;
     this.emit();
   }
 
@@ -2603,15 +2616,27 @@ export class ColonyRuntime {
         botSource: this.botService.source,
         plots: this.cityPlan.plots,
       },
-      citizens: {
-        count: this.citizens.size(),
-        awake: this.citizens.awakeCount(),
-        list: this.citizens.list(),
-        // Spec 085 — each citizen's ₭ wallet, for the HUD (Buy/Hire gating + a balance readout).
-        wallets: Object.fromEntries(
-          this.citizens.list().map((c) => [c.id, this.walletK(c.id)]),
-        ),
-      },
+      citizens: (() => {
+        // Player data isolation: a CITYLIFE_PLAYER (playerView) sees only their own full record + others'
+        // public-presence stubs, and only their OWN wallet balance; the operator/admin sees everything.
+        const viewerId = this.playerView ? this.operatorCitizenId() : null;
+        const roster = viewerId
+          ? this.citizens.listFor(viewerId, VIW_ID)
+          : this.citizens.list();
+        const walletCitizens =
+          this.playerView && viewerId
+            ? this.citizens.list().filter((c) => c.id === viewerId)
+            : this.citizens.list();
+        return {
+          count: this.citizens.size(),
+          awake: this.citizens.awakeCount(),
+          list: roster,
+          // Spec 085 — each citizen's ₭ wallet, for the HUD (Buy/Hire gating + a balance readout).
+          wallets: Object.fromEntries(
+            walletCitizens.map((c) => [c.id, this.walletK(c.id)]),
+          ),
+        };
+      })(),
       firstPerson: (() => {
         const opId = this.operatorCitizenId();
         const c = this.fpCitizenId

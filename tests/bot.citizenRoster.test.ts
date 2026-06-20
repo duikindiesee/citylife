@@ -124,6 +124,38 @@ describe("CitizenRoster — spec 074 plumbing", () => {
     ).toBeUndefined();
   });
 
+  it("listFor isolates a player's view — own data in full, others as a public stub", () => {
+    const r = new CitizenRoster();
+    const a = r.register(generateHousehold(41), plot, fixedNow)!;
+    const b = r.register(
+      generateHousehold(43),
+      { ...plot, id: "plot_2", name: "Hillside Vista" },
+      fixedNow,
+    )!;
+    r.recordTokens(a.id, 120);
+    r.recordTokens(b.id, 999);
+    r.setTelegramHandle(b.id, "@b_in_landing");
+
+    // Operator / privileged view (null viewer) — every citizen in full, identical to list().
+    expect(r.listFor(null)).toEqual(r.list());
+
+    // Player A's view — A in full, B reduced to a public-presence stub.
+    const view = r.listFor(a.id);
+    const seenA = view.find((c) => c.id === a.id)!;
+    const seenB = view.find((c) => c.id === b.id)!;
+    expect(seenA.tokensSpentLifetime).toBe(120); // own usage visible
+    expect(seenB.displayName).toBe(b.displayName); // public presence: name + plot still shown
+    expect(seenB.plotName).toBe("Hillside Vista");
+    expect(seenB.tokensSpentLifetime).toBe(0); // private usage hidden
+    expect(seenB.telegramHandle).toBeUndefined(); // private contact hidden
+
+    // The Builder is always shown in full so the construction trade stays legible to every player.
+    const withBuilder = r.listFor(a.id, b.id); // treat B as the Builder
+    expect(withBuilder.find((c) => c.id === b.id)!.tokensSpentLifetime).toBe(
+      999,
+    );
+  });
+
   it("clear() empties the roster", () => {
     const h = generateHousehold(37);
     const r = new CitizenRoster();
