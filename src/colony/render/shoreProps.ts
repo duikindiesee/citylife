@@ -197,11 +197,13 @@ function addRockeryBeach(
   const color = new THREE.Color();
   const rockMesh = new THREE.InstancedMesh(
     new THREE.DodecahedronGeometry(0.55, 0),
+    // Per-instance stone colour comes from instanceColor (setColorAt below) — NOT vertexColors. With no
+    // geometry colour attribute, vertexColors:true fell through to flat BLACK, which read as the black
+    // blobs scattered along the shore and over the sea. instanceColor applies on its own.
     new THREE.MeshStandardMaterial({
       roughness: 0.94,
       metalness: 0.02,
       flatShading: true,
-      vertexColors: true,
     }),
     PROP_CAP,
   );
