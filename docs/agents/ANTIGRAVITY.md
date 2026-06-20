@@ -34,8 +34,10 @@ Read the root `AGENTS.md` first (architecture rules, CI-safe commit messages, de
 ## Task queue (work top to bottom; one branch each)
 
 ### AG-1 — Headless blueprint service (spec 077 P7) · `antigravity/ag1-blueprint-service`
+
 A small Node service + CLI under `tools/blueprint-service/` exposing the SHARED house cores headlessly
 so a Hermes bot container can design without a browser.
+
 - Import the existing pure cores via relative paths: `src/colony/blueprintScript.ts` (parse /
   serialise / validate) and `src/colony/houseBuilder.ts` (compileBlueprint).
 - CLI: `node tools/blueprint-service/cli.mjs validate "<script>"` → JSON ValidationResult;
@@ -49,8 +51,10 @@ so a Hermes bot container can design without a browser.
 - Acceptance: CLI + HTTP return correct JSON for valid, invalid, and malformed scripts; suite green.
 
 ### AG-2 — Street gallery page · `antigravity/ag2-street-gallery`
+
 A standalone `/gallery.html` that renders MANY compiled houses side by side — the visual proof page
 for the no-two-houses-alike goal.
+
 - New files only: `gallery.html` + `src/gallery/main.tsx` (+ helpers). ONE line added to
   `vite.config.ts` rollup `input` (the single permitted Claude-file touch).
 - Reads `?seeds=1,2,3,...` (default: 12 spread seeds) and `?w=9&d=6`; for each seed compiles
@@ -62,12 +66,14 @@ for the no-two-houses-alike goal.
   swap defaultBlueprint for the per-citizen generator here — keep the compile call in one helper.)
 
 ### AG-3 — Parser fuzz + compiler golden tests · `antigravity/ag3-fuzz-goldens`
+
 Harden the DSL against bot-authored garbage. New files only under `tests/antigravity/`.
+
 - Fuzz: a seeded deterministic generator (no Math.random — use a tiny LCG) producing mutated/corrupt
   scripts (truncations, swapped tokens, huge ints, negative dims, unknown kinds, duplicate fields);
   `validateBlueprint` must never throw and must return ok=false with at least one error for each.
 - Property: every VALID generated design round-trips `parseBlueprint -> blueprintToScript ->
-  parseBlueprint` losslessly (deep-equal).
+parseBlueprint` losslessly (deep-equal).
 - Goldens: for 5 fixed scripts, snapshot {blockCount, kinds histogram, gw, gd, gh, storeys} of
   compileBlueprint output into committed JSON fixtures; test compares exactly. These pin the
   deterministic compile contract — if Claude's compiler change breaks a golden intentionally, the
@@ -75,8 +81,10 @@ Harden the DSL against bot-authored garbage. New files only under `tests/antigra
 - Acceptance: ≥200 fuzz cases run in <5s, all assertions green.
 
 ### AG-4 — Builder undo/redo core · `antigravity/ag4-undo-history`
+
 A PURE history module the builder UI will adopt: `src/colony/builder/history.ts` (new file — do NOT
 edit BuilderApp.tsx; Claude wires it in on merge).
+
 - `createHistory<T>(initial: T, cap = 100)` returning {present, canUndo, canRedo} with pure
   `push(state)`, `undo()`, `redo()` transitions (immutable, generic, no DOM).
 - Tests in `tests/antigravity/history.test.ts`: push/undo/redo sequences, cap eviction, redo stack
@@ -86,15 +94,17 @@ edit BuilderApp.tsx; Claude wires it in on merge).
 - Acceptance: module + tests green; zero Claude-owned files touched.
 
 ### AG-5 — kooker-service-social implementation (SEPARATE REPO, the flagship side-quest)
+
 Implement the generic bot/app social service that spec 082 (Kookerbook) and the sprout app will
 share. Repo: `D:\infra\kooker-service-social` (github duikindiesee/kooker-service-social) — today a
 spec-only skeleton (README + `postman/specs/openapi.yaml`, written for the sprout plant app). Work
 on branch `antigravity/ag5-social-core` in that repo; PR when green; NEVER merge yourself.
+
 - GENERALISE, do not fork: core entities Profile / Post / Follow / Comment / Like / Feed, every
   record scoped by `appName` (the kooker-service-ledger pattern). App-specific shapes (grow rooms,
   plant photos, citylife plots/houses/shops) ride as an opaque `metadata` JSON field on profiles
   and posts — no app-specific tables.
-- Match the kooker house style: Spring Boot like the sibling kooker-service-* repos (copy the
+- Match the kooker house style: Spring Boot like the sibling kooker-service-\* repos (copy the
   kooker-service-user project layout: Flyway migrations, JWT auth filter accepting kooker JWTs and
   bot PATs, `/api/v1/social/...` routes), or if the sibling pattern is impractical, a clean Node +
   SQLite service mirroring the citylife-backend boundary — state your choice in the PR.
@@ -107,13 +117,13 @@ on branch `antigravity/ag5-social-core` in that repo; PR when green; NEVER merge
 
 ## Status board (Antigravity updates this section on each branch)
 
-| Task | Branch | Status | Last commit |
-|------|--------|--------|-------------|
-| AG-1 | — | not started | — |
-| AG-2 | — | not started | — |
-| AG-3 | — | not started | — |
-| AG-4 | — | not started | — |
-| AG-5 | — | not started | — |
+| Task | Branch | Status      | Last commit |
+| ---- | ------ | ----------- | ----------- |
+| AG-1 | —      | not started | —           |
+| AG-2 | —      | not started | —           |
+| AG-3 | —      | not started | —           |
+| AG-4 | —      | not started | —           |
+| AG-5 | —      | not started | —           |
 
 ## How the whole loop works (for humans)
 

@@ -2,7 +2,7 @@
 
 A stylized-3D, agent-driven city that **runs itself** while an **AI mayor governs it** — built to live on a screen and evolve on its own.
 
-> **Origin & tribute.** CityLife grew out of **[CityMind — v1](https://github.com/duikland/citymind)**: an AI-driven city builder where each model reads the rules and writes a script to run the city. The whole idea was sparked by **[Wes Roth](https://www.youtube.com/@WesRoth)** — his benchmark-game video (each AI model generating its own script to play) lodged in my head and wouldn't leave, and his *own* autonomous city-builder video kicked off this v2. Huge thanks, Wes, for the inspiration and the consistently great content. 🙏
+> **Origin & tribute.** CityLife grew out of **[CityMind — v1](https://github.com/duikland/citymind)**: an AI-driven city builder where each model reads the rules and writes a script to run the city. The whole idea was sparked by **[Wes Roth](https://www.youtube.com/@WesRoth)** — his benchmark-game video (each AI model generating its own script to play) lodged in my head and wouldn't leave, and his _own_ autonomous city-builder video kicked off this v2. Huge thanks, Wes, for the inspiration and the consistently great content. 🙏
 >
 > - The original spark: https://www.youtube.com/watch?v=bFO0uAMPx1g&t=844s
 > - The video that started v2: https://youtu.be/F_6go08nHv4
@@ -19,19 +19,22 @@ A stylized-3D, agent-driven city that **runs itself** while an **AI mayor govern
 
 ## The AI brain is swappable
 
-| Provider | Status | Notes |
-|---|---|---|
-| **Heuristic** | ✅ built-in, default | A deterministic rule-based mayor. Always works, no install. Also the fallback if an LLM errors. |
-| **Ollama · Gemma (~4B)** | ✅ wired, needs Ollama | Local LLM. Pick it in the AI panel. |
+| Provider                 | Status                 | Notes                                                                                           |
+| ------------------------ | ---------------------- | ----------------------------------------------------------------------------------------------- |
+| **Heuristic**            | ✅ built-in, default   | A deterministic rule-based mayor. Always works, no install. Also the fallback if an LLM errors. |
+| **Ollama · Gemma (~4B)** | ✅ wired, needs Ollama | Local LLM. Pick it in the AI panel.                                                             |
 
 ### Enabling the local Gemma brain
+
 The model runs on **CPU** so the 4 GB GPU stays free for rendering:
+
 ```powershell
 # install Ollama (https://ollama.com), then:
 $env:OLLAMA_NUM_GPU = "0"        # keep the model off the GPU
 ollama pull gemma3:4b
 ollama serve
 ```
+
 Then choose **"Ollama · Gemma (local)"** in the AI Mayor panel. If Ollama isn't running, the governor silently falls back to the heuristic mayor.
 
 ## Run it
@@ -45,8 +48,10 @@ npm run typecheck  # tsc --noEmit
 ```
 
 ## Using it
+
 - **Watch**: it starts running immediately. Use the speed buttons (1×–60×) up top.
 - **Govern**: in the AI Mayor panel set the **check-in interval** (presets 10s/1m/10m/30m or type minutes), pick the brain, toggle `auto`, or hit **Check in now**. The reasoning feed shows what the mayor did and why.
 
 ## Status
+
 Phases 0–3 of the spec are functional in MVP form: the city lives, renders in 3D with traffic and an art pass, and the AI governs on a configurable interval. **Done:** agent-based citizens + economy, configurable AI governor, cars/trucks + road-graph logistics, trees/water, tone mapping + bloom. **Next** (see [`docs/TECH-SPEC.md`](docs/TECH-SPEC.md) §12): proper A\* with congestion costs, web-worker sim, per-business competing AIs, test-harness model-vs-model meta-game, save/load, TV kiosk mode.

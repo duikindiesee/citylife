@@ -81,7 +81,7 @@ When the Border Patrol approves a household, the colony provisions a **citizen a
 - The build is green (typecheck + tests), live-verified on :5188.
 - A short demo script `social-export/citizen-avatar-demo.md` notes how to run the Border Patrol
   approval flow end-to-end against a mock adapter (no Telegram needed for the slice acceptance —
-  the recorded demo with real Telegram is the *next* slice).
+  the recorded demo with real Telegram is the _next_ slice).
 
 ## Out of scope this slice
 

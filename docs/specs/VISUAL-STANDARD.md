@@ -2,8 +2,8 @@
 
 Every **material, building, tool and object** in the world is a **visual component**. Nothing ships as a
 bare number. This is CityLife's modding-style contract: the way a game hands its players a tool to build
-and extend it, every thing in CityLife is declared in **one agreed format**, so the world can be *seen*,
-and later *saved, duplicated, and made scarce* (see the persistent-things backlog), and so the autonomous
+and extend it, every thing in CityLife is declared in **one agreed format**, so the world can be _seen_,
+and later _saved, duplicated, and made scarce_ (see the persistent-things backlog), and so the autonomous
 routines always produce things that are **rendered, not just counted**.
 
 ## The rule (binding on the Design Council + Review & Build)
@@ -11,7 +11,7 @@ routines always produce things that are **rendered, not just counted**.
 > A spec that introduces a new thing — a building/worksite, a material/good, a tool, or a placed object —
 > is **NOT complete until that thing renders on :5188** to the declaration below. **Visual is part of
 > "done"**, verified in the same live screenshot as the mechanic. **Animation is a bonus, never required.**
-> A mechanic the player cannot *see* is not foundational.
+> A mechanic the player cannot _see_ is not foundational.
 
 ## The format — `VisualSpec`
 
@@ -50,7 +50,7 @@ building is composed (body + roof + chimney) instead of a single coloured box.
   duskcap shows 5 sacks, a near-empty larder shows none. The counter becomes a visible store.
 - **Tool — tool-kit:** a small `box` crate token stacked at the Tool Crib, count = stock / per.
 - **Object — Planter Square in Bloom:** a `pad` with a `composite` of small green `cone` shrubs; `anim:
-  flow` (a gentle sway) as a bonus only.
+flow` (a gentle sway) as a bonus only.
 
 ## How the renderer consumes it (the build-out path)
 
@@ -60,8 +60,8 @@ direction to grow toward, in shippable slices:
 1. **Stockpiles become visible.** Materials/goods render as `pile`-quantised units at their producing
    building, growing and shrinking with the count. The deep-but-invisible economy becomes a living
    warehouse — and scarcity/duplication (backlog) become literally visible.
-2. **Goods + services move.** Trucks already drive construction crews on the roads; extend so a *delivered
-   good* (food to a depot, wares to a home) is a visible cargo run, and a *service* (a clinic round, a
+2. **Goods + services move.** Trucks already drive construction crews on the roads; extend so a _delivered
+   good_ (food to a depot, wares to a home) is a visible cargo run, and a _service_ (a clinic round, a
    ration drop) a visible figure on the footpaths. This is how CityLife answers Caesar III (see
    `docs/research/2026-06-02-living-economy.md`).
 3. **Buildings get their declared massing**, retiring the plain box for `composite` forms.

@@ -69,7 +69,9 @@ Viw negotiates against the remaining wallet and moves ₭ to Viw on a deal; the 
 ## Progress log
 
 ### 2026-06-12 — Slice: P0 priced land + Kook wallets
+
 DONE
+
 - src/colony/land.ts (pure): plotPriceKook (area × 0.6 + waterfront premium), kookToZar (× 25),
   starterDeposit (600 + seeded 0..400, deterministic per citizen id, always covers the dearest
   plot). config.economy.land carries the tunables.
@@ -89,13 +91,15 @@ DONE
   exactly +472, and the whole ledger nets to zero before AND after. The memos read true.
 - Real-world bridge: the deposit band (R15k-25k) ≈ a Mac Mini starter package — buy the hardware
   (the land the city runs on) + a seeded ₭ wallet, and Viw (the brother's bot) earns it back.
-NEXT
+  NEXT
 - P1: sync the ₭ moves to kooker-service-ledger as the signed-in player (best-effort, idempotent
   reference) — folds in 083-P4b, now that the service is healthy + jwt-auth'd.
 - P2: a commercial plot tier (079), priced higher, for shops on bought land.
 
 ### 2026-06-12 — Slice: P1 sync the ₭ moves to the REAL ledger (folds in 083-P4b)
+
 DONE
+
 - src/colony/bot/ledgerSync.ts: a best-effort, never-block mirror of the in-game ₭ moves onto
   kooker-service-ledger as the signed-in player, same shape as bot/citizenSpawn + kookerbookStore.
   A localStorage-persisted FIFO queue drains in order through the /kooker proxy; each move carries a
@@ -112,7 +116,7 @@ DONE
   caller==initiator check. Counterparty wallets (land office, Viw) auto-create at 0.
 - runtime wires three notice() calls (seedDeposit / purchaseLot / commissionLot) behind a mirror()
   guard that never lets the best-effort path disturb the deterministic sim; uiState.bank.sync +
-  __colony.ledgerSyncStatus()/flushLedgerSync() surface the queue health. ColonyApp drains a
+  \_\_colony.ledgerSyncStatus()/flushLedgerSync() surface the queue health. ColonyApp drains a
   prior session's queue once on mount.
 - 15 node tests (pure payload builders balance + carry the right type/ref/initiator, userId decode,
   FIFO order, dedup within a batch and after sync, stop-on-failure preserves order + resumes,
@@ -125,8 +129,11 @@ DONE
   status read synced:5 pending:0 lastError:null; the persisted synced-set restored across a reload
   with no duplicate posts. No ledgerSync errors (the 404s are the still-unimplemented social /
   blueprint / sub-user backends).
+
 ### 2026-06-13 — P1 follow-up: the HUD reads the ₭ economy + a cross-reload idempotency fix
+
 DONE
+
 - The City Bank HUD panel (was the legacy settler "Kookerverse Bank") now reads the ACTIVE ₭
   economy: Residents hold (Σ citizen wallets), the ZAR bridge, Wallets (count), Land office (the
   `land` account), and the real-ledger sync line (✓ N synced / ⏳ pending). The dollar Treasury
@@ -140,7 +147,7 @@ DONE
   `citylife:purchase:<citizenId>:<lotId>`, build -> `citylife:build:<citizenId>:<lotId>`. A real
   re-post (a founder re-seed) dedups; a new citizen/lot posts. LIVE-verified: a post-reload arrival
   now syncs (synced 2 founders -> 5 after the arrival, no ledger errors). 692 tests green, tsc clean.
-NEXT
+  NEXT
 - P2: a commercial plot tier (079), priced higher, for shops on bought commercial land — the
   storefront + checkout posts to this same sync as LAND_PURCHASE/TRANSFER.
 - Latent on the service side (operator/Codex's call, NOT this slice): the ledger has no idempotency

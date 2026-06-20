@@ -10,120 +10,141 @@
 //    .env.local and is a no-op in production builds
 
 export interface OperatorSession {
-  token: string
-  refreshToken?: string // kooker refresh token — used to mint a new access token before expiry
-  expiresAt: number // epoch ms
-  operator: { id: string; scopes: string[] }
+  token: string;
+  refreshToken?: string; // kooker refresh token — used to mint a new access token before expiry
+  expiresAt: number; // epoch ms
+  operator: { id: string; scopes: string[] };
 }
 
-export type LoginResult = { ok: true } | { ok: false; error: string }
+export type LoginResult = { ok: true } | { ok: false; error: string };
 
-const STORAGE_KEY = 'citylife.session.v3' // v3: adds refreshToken so the session self-renews
-const SESSION_MS = 1000 * 60 * 60 * 8 // 8 h fallback if JWT has no exp
-const KOOKER_AUTH_PATH = '/kooker/api/auth/basic'
-const KOOKER_REFRESH_PATH = '/kooker/api/auth/refresh'
-const APP_NAME = 'citylife'
-const SCOPES = ['newcomer:create', 'newcomer:read', 'chat:read', 'migration:decide', 'simulation:mutate']
+const STORAGE_KEY = "citylife.session.v3"; // v3: adds refreshToken so the session self-renews
+const SESSION_MS = 1000 * 60 * 60 * 8; // 8 h fallback if JWT has no exp
+const KOOKER_AUTH_PATH = "/kooker/api/auth/basic";
+const KOOKER_REFRESH_PATH = "/kooker/api/auth/refresh";
+const APP_NAME = "citylife";
+const SCOPES = [
+  "newcomer:create",
+  "newcomer:read",
+  "chat:read",
+  "migration:decide",
+  "simulation:mutate",
+];
 // Renew the access token this long before it actually expires, so an in-flight inference call
 // (which can take seconds) never races the expiry boundary.
-const REFRESH_SKEW_MS = 60_000
+const REFRESH_SKEW_MS = 60_000;
 
 /** The base64 Basic Auth header value sent once to the backend. Never logged or persisted. */
 export function basicAuth(username: string, password: string): string {
-  return 'Basic ' + btoa(`${username}:${password}`)
+  return "Basic " + btoa(`${username}:${password}`);
 }
 
 /** Decode the exp claim from a JWT without verifying the signature (verification is server-side). */
 function jwtExpiresAt(token: string): number {
   try {
-    const b64 = token.split('.')[1]?.replace(/-/g, '+').replace(/_/g, '/')
-    if (!b64) return 0
-    const payload = JSON.parse(atob(b64)) as Record<string, unknown>
-    return typeof payload['exp'] === 'number' ? (payload['exp'] as number) * 1000 : 0
+    const b64 = token.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/");
+    if (!b64) return 0;
+    const payload = JSON.parse(atob(b64)) as Record<string, unknown>;
+    return typeof payload["exp"] === "number"
+      ? (payload["exp"] as number) * 1000
+      : 0;
   } catch {
-    return 0
+    return 0;
   }
 }
 
 function envVar(name: string): string | undefined {
   try {
-    return (import.meta as unknown as { env?: Record<string, string | undefined> }).env?.[name]
+    return (
+      import.meta as unknown as { env?: Record<string, string | undefined> }
+    ).env?.[name];
   } catch {
-    return undefined
+    return undefined;
   }
 }
 
 function isDevBuild(): boolean {
   try {
-    return !!(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV
+    return !!(import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV;
   } catch {
-    return false
+    return false;
   }
 }
 
 /** Process-wide AuthClient shared by the login gate and the bot inference adapter, so the player's
  *  session JWT (and its refresh) is the single source of truth for who is calling kooker inference. */
-let sharedAuth: AuthClient | null = null
+let sharedAuth: AuthClient | null = null;
 export function getAuthClient(): AuthClient {
-  if (!sharedAuth) sharedAuth = new AuthClient()
-  return sharedAuth
+  if (!sharedAuth) sharedAuth = new AuthClient();
+  return sharedAuth;
 }
 
 export class AuthClient {
-  private session: OperatorSession | null = null
-  private readonly now: () => number
-  private refreshInFlight: Promise<string | null> | null = null
+  private session: OperatorSession | null = null;
+  private readonly now: () => number;
+  private refreshInFlight: Promise<string | null> | null = null;
 
   constructor(opts?: { now?: () => number }) {
-    this.now = opts?.now ?? (() => Date.now())
-    this.restore()
+    this.now = opts?.now ?? (() => Date.now());
+    this.restore();
   }
 
   get isAuthenticated(): boolean {
-    if (!this.session) return false
+    if (!this.session) return false;
     // A live access token, OR an expired one we can still renew with a refresh token.
-    return this.session.expiresAt > this.now() || !!this.session.refreshToken
+    return this.session.expiresAt > this.now() || !!this.session.refreshToken;
   }
-  get operator(): OperatorSession['operator'] | null {
-    return this.isAuthenticated ? this.session!.operator : null
+  get operator(): OperatorSession["operator"] | null {
+    return this.isAuthenticated ? this.session!.operator : null;
   }
 
   /** Sign in with a kooker account. Async — POSTs to the kooker auth service. */
   async login(email: string, password: string): Promise<LoginResult> {
-    const id = email.trim().toLowerCase()
-    if (!id) return { ok: false, error: 'Enter your kooker email.' }
-    if (!password) return { ok: false, error: 'Enter your password.' }
+    const id = email.trim().toLowerCase();
+    if (!id) return { ok: false, error: "Enter your kooker email." };
+    if (!password) return { ok: false, error: "Enter your password." };
     try {
       const resp = await fetch(KOOKER_AUTH_PATH, {
-        method: 'POST',
+        method: "POST",
         headers: {
           Authorization: basicAuth(id, password),
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ appName: APP_NAME }),
-      })
+      });
       if (!resp.ok) {
         if (resp.status === 401 || resp.status === 403) {
-          return { ok: false, error: 'Wrong email or password.' }
+          return { ok: false, error: "Wrong email or password." };
         }
-        return { ok: false, error: `Login failed (HTTP ${resp.status}).` }
+        return { ok: false, error: `Login failed (HTTP ${resp.status}).` };
       }
       const data = (await resp.json()) as {
-        accessToken?: string
-        refreshToken?: string
-        accessExpiresIn?: number
-        user?: { email?: string; name?: string }
-      }
-      const token = data.accessToken
-      if (!token) return { ok: false, error: 'No token in auth response.' }
-      const expFromJwt = jwtExpiresAt(token)
-      const expiresAt = expFromJwt > 0 ? expFromJwt : this.now() + SESSION_MS
-      const displayName = data.user?.name || data.user?.email || id
-      this.session = { token, refreshToken: data.refreshToken, expiresAt, operator: { id: displayName, scopes: SCOPES } }
-      this.persist()
-      return { ok: true }
+        accessToken?: string;
+        refreshToken?: string;
+        accessExpiresIn?: number;
+        user?: { email?: string; name?: string };
+      };
+      const token = data.accessToken;
+      if (!token) return { ok: false, error: "No token in auth response." };
+      const expFromJwt = jwtExpiresAt(token);
+      const expiresAt = expFromJwt > 0 ? expFromJwt : this.now() + SESSION_MS;
+      const displayName = data.user?.name || data.user?.email || id;
+      this.session = {
+        token,
+        refreshToken: data.refreshToken,
+        expiresAt,
+        operator: { id: displayName, scopes: SCOPES },
+      };
+      this.persist();
+      return { ok: true };
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : 'Network error — is the gateway reachable?' }
+      return {
+        ok: false,
+        error:
+          e instanceof Error
+            ? e.message
+            : "Network error — is the gateway reachable?",
+      };
     }
   }
 
@@ -131,21 +152,22 @@ export class AuthClient {
    *  gitignored .env.local, authenticate automatically so the login gate never blocks local runs.
    *  No-op (resolves false) in a production bundle or if either var is absent. */
   async tryAutoLogin(): Promise<boolean> {
-    if (this.isAuthenticated) return true
-    if (!isDevBuild()) return false
+    if (this.isAuthenticated) return true;
+    if (!isDevBuild()) return false;
     // Accept either naming: main's login uses EMAIL/PASSWORD; the homesteads line's dev gate used
     // NAME/PASSCODE. Bridge both so a local .env.local from either lineage auto-logs in.
-    const email = envVar('VITE_OPERATOR_EMAIL') ?? envVar('VITE_OPERATOR_NAME')
-    const password = envVar('VITE_OPERATOR_PASSWORD') ?? envVar('VITE_OPERATOR_PASSCODE')
-    if (!email || !password) return false
-    const r = await this.login(email, password)
-    return r.ok
+    const email = envVar("VITE_OPERATOR_EMAIL") ?? envVar("VITE_OPERATOR_NAME");
+    const password =
+      envVar("VITE_OPERATOR_PASSWORD") ?? envVar("VITE_OPERATOR_PASSCODE");
+    if (!email || !password) return false;
+    const r = await this.login(email, password);
+    return r.ok;
   }
 
   logout(): void {
-    this.session = null
+    this.session = null;
     try {
-      sessionStorage.removeItem(STORAGE_KEY)
+      sessionStorage.removeItem(STORAGE_KEY);
     } catch {
       /* no storage */
     }
@@ -154,75 +176,80 @@ export class AuthClient {
   /** Bearer header for backend calls — empty object when not authenticated (calls fail closed).
    *  Synchronous + best-effort: use getValidToken() for the refresh-aware path on long-lived calls. */
   authHeader(): Record<string, string> {
-    return this.isAuthenticated ? { Authorization: `Bearer ${this.session!.token}` } : {}
+    return this.isAuthenticated
+      ? { Authorization: `Bearer ${this.session!.token}` }
+      : {};
   }
 
   /** Return a currently-valid access token, renewing it via the refresh token when it is expired or
    *  within REFRESH_SKEW_MS of expiry. Returns null when there is no session or the refresh fails
    *  (the caller then surfaces a re-login). Concurrent callers share a single in-flight refresh. */
   async getValidToken(): Promise<string | null> {
-    const s = this.session
-    if (!s) return null
-    if (s.expiresAt - this.now() > REFRESH_SKEW_MS) return s.token
+    const s = this.session;
+    if (!s) return null;
+    if (s.expiresAt - this.now() > REFRESH_SKEW_MS) return s.token;
     if (!s.refreshToken) {
       // No refresh token (e.g. a legacy session) — fail closed once expired.
-      return s.expiresAt > this.now() ? s.token : null
+      return s.expiresAt > this.now() ? s.token : null;
     }
-    return this.refresh()
+    return this.refresh();
   }
 
   /** Exchange the refresh token for a fresh access token. Dedupes concurrent calls. */
   private refresh(): Promise<string | null> {
-    if (this.refreshInFlight) return this.refreshInFlight
-    const refreshToken = this.session?.refreshToken
-    if (!refreshToken) return Promise.resolve(null)
+    if (this.refreshInFlight) return this.refreshInFlight;
+    const refreshToken = this.session?.refreshToken;
+    if (!refreshToken) return Promise.resolve(null);
     this.refreshInFlight = (async () => {
       try {
         const resp = await fetch(KOOKER_REFRESH_PATH, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refreshToken }),
-        })
+        });
         if (!resp.ok) {
           // Refresh token expired/revoked — clear the session so the gate shows login again.
-          if (resp.status === 401 || resp.status === 403) this.logout()
-          return null
+          if (resp.status === 401 || resp.status === 403) this.logout();
+          return null;
         }
-        const data = (await resp.json()) as { accessToken?: string; refreshToken?: string }
-        if (!data.accessToken || !this.session) return null
-        const expFromJwt = jwtExpiresAt(data.accessToken)
+        const data = (await resp.json()) as {
+          accessToken?: string;
+          refreshToken?: string;
+        };
+        if (!data.accessToken || !this.session) return null;
+        const expFromJwt = jwtExpiresAt(data.accessToken);
         this.session = {
           ...this.session,
           token: data.accessToken,
           refreshToken: data.refreshToken ?? this.session.refreshToken,
           expiresAt: expFromJwt > 0 ? expFromJwt : this.now() + SESSION_MS,
-        }
-        this.persist()
-        return data.accessToken
+        };
+        this.persist();
+        return data.accessToken;
       } catch {
-        return null
+        return null;
       } finally {
-        this.refreshInFlight = null
+        this.refreshInFlight = null;
       }
-    })()
-    return this.refreshInFlight
+    })();
+    return this.refreshInFlight;
   }
 
   private persist(): void {
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(this.session))
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(this.session));
     } catch {
       /* no storage */
     }
   }
   private restore(): void {
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY)
-      if (!raw) return
-      const s = JSON.parse(raw) as OperatorSession
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const s = JSON.parse(raw) as OperatorSession;
       // Keep a restored session if the access token is still valid OR it carries a refresh token
       // (getValidToken will renew it on the next call).
-      if (s && (s.expiresAt > this.now() || s.refreshToken)) this.session = s
+      if (s && (s.expiresAt > this.now() || s.refreshToken)) this.session = s;
     } catch {
       /* no storage / bad data */
     }

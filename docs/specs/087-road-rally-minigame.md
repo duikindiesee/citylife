@@ -15,6 +15,7 @@ This turns the road maps from background infrastructure into something the opera
 ## Current Live Context
 
 Observed on `:5188`:
+
 - District view shows coastal founders, distributed residential plots, widened road network, and the commercial strip at the lower-right.
 - HUD says `2 built / 19 free`, so 21 homestead lots are live.
 - Roads are already drivable cells with `roadKind` values: `avenue`, `street`, `path`.
@@ -26,6 +27,7 @@ Observed on `:5188`:
 "Start the Kooker Cup from the commercial strip, race through the hamlets, skim the coast road, and finish back at town."
 
 The player should see:
+
 - a small bright rally car
 - checkpoint arches or glowing gate markers on roads
 - a lap timer
@@ -111,11 +113,13 @@ Kooker Cup, Rockery Rally, Landing One Road Rally, Viw's Builder Dash, The Neare
 **Verdict: approve-with-changes.** Ship a deliberately small P0+P1 delight feature. The architecture is right — pure track gen + runtime-owned race state + a self-contained render layer — but it cannot go to build until the changes below are folded in. Greenlight is conditional on them.
 
 ### What is strong
+
 - The module split is idiomatic, not novel: `raceLayer.ts` mirrors the proven `ShorePropsLayer` contract (`src/colony/render/shoreProps.ts:6-10` — `{ group: THREE.Group; update(daylight, timeMs); dispose() }`, built by a factory, returns `null` when its anchor is absent).
 - The purity boundary is correct. `makeRaceTrack` as a pure function of the road graph matches `makeCommercialDistrict` (`src/colony/commerce/district.ts:1-6`, "no Date.now, no Math.random"); race car motion in the RAF loop is correctly classed as render-cosmetic.
 - `RaceState` runtime-owned (NOT `ColonyState`) is the single most important correctness call. `state.cars` is a mutable `Car[]` consumed by the deterministic `updateTraffic()` at `sim.step()` (`traffic.ts:175-229`) — any write corrupts the next tick.
 
 ### REQUIRED CHANGES before build
+
 1. **`makeRaceTrack` must never touch `sim.rng`.** It is a stateful mulberry32 stream threaded into `sim.step()→updateTraffic(s, this.rng, dt)` (`sim.ts:393`); consuming it desyncs all traffic. Make track gen fully pure over `(state.roads, state.roadKind, state.terrain)`, or construct its OWN `new RNG(seed)` it owns exclusively. Required test: a generated track leaves traffic byte-identical after N steps vs a no-track run.
 2. **Lap timer + countdown accumulate the loop's clamped `dtReal`** (`runtime.ts:1297`, capped at 0.25s) — `raceTime += clamp(dtReal)`. NOT `endWallClock − startWallClock`, NOT `Date.now()`. This is what makes the finish-timing test deterministic and tab-throttle safe.
 3. **`race.ts` must be a pure dt-injectable stepper** — `stepRace(state, input, dtMs): RaceState` plus pure `crossedCheckpoint`/`finish` predicates. Without an injectable dt the required "race finish timing" test cannot be honored within the repo's conventions (mirror `colony-traffic.test.ts` `updateTraffic(state, rng, 1.5)`-in-a-loop).
@@ -132,9 +136,11 @@ Kooker Cup, Rockery Rally, Landing One Road Rally, Viw's Builder Dash, The Neare
 14. **Start-gantry placement exclusion.** The gantry and start checkpoint must not occupy the Nearest bar frontage. Read `commercialDistrict.parcels`, exclude the `nearest_bar` footprint + one frontage cell (honours both the "do not obscure shop fronts" rule and Claude's read-only bar-seating feature). Add a test.
 
 ### Recommended trimmed P0 scope
+
 Solo timed rally only: deterministic route from existing roads (seed 4242), player car visible+controllable, checkpoints on real `roadKind` cells, off-road slow + assist-back, finish-with-time, exit/restart, ambient CityLife intact. **Cut from P0:** ghosts (→P1), gantry/chevrons/confetti (→P1), ambient-traffic pause (drop or keep cars running), lighthouse anchor (→P2), localStorage best time (→P2). **P3 citizen sponsorship / Kookerbook stays out of scope** until the buy-a-plot/migration spine is further along — do not let the race grow a second economy.
 
 ### HARD integration constraints (do-not-touch, real symbols)
+
 - `runtime.ts:159-161, 537-583` — `barSeatCells` / `barOccupied` / `barSeatBy` / `barSeats()` / `wanderIdleCitizens()` are Claude's lane. Read-only at most; never write. Merge-conflict resolution only.
 - `traffic.ts` — do not touch at all. No edits to `updateTraffic`, `getTraffic`, `bfs`, `td.occ`, `car.held`, the speed model, or the lane offset. Track gen keeps its OWN graph/BFS for isolation.
 - `state.cars` and every `Car` field (`path`, `x`/`y`/`heading`, `held`, `waitTimer`) — read-only forever.
@@ -142,9 +148,11 @@ Solo timed rally only: deterministic route from existing roads (seed 4242), play
 - The three shared files (`runtime.ts`, `PlanetRenderer.ts`, `ColonyApp.tsx`) take ADDITIVE hooks only: new import + create/dispose/update call + new keydown branch. Codex owns the three new files in `src/colony/racing/` and `src/colony/render/raceLayer.ts` in full.
 
 ### P2 lighthouse checkpoint — how the anchor is read
+
 The lighthouse is `state.structures.find(s => s.kind === 'lighthouse')` (`sim.ts:226-230`) and **may be undefined** — `buildShoreProps` itself returns `null` on a missing lighthouse (`shoreProps.ts:25-26`). The runtime passes the resolved structure (or undefined) into `makeRaceTrack` as the optional `lighthouse` input; the track adds a scenic checkpoint at its `(x,y)` cell centre ONLY when present, and otherwise falls back silently. The lighthouse/shoreProps merge has now landed on `feat/commercial-visuals`, so a real `structures.lighthouse` exists to read. The scenic checkpoint cell still must pass the `roadKind.has` / not-water validation like any other checkpoint (snap the lighthouse to its nearest drivable road cell, do not place a gate on the tower base).
 
 ### Open questions for the operator
+
 - Is the racing slice the right next spend vs the buy-a-plot/migration commerce spine? It is honestly a side quest; its one real virtue is making the spec-086 road web FELT. Time-box it.
 - Naming: pick one (Kooker Cup / Rockery Rally / Landing One Road Rally) so the HUD label and gantry copy are settled before P1.
 - Confirm ghosts are deterministic gameplay (recommended) vs purely cosmetic — this draws the test/render boundary.

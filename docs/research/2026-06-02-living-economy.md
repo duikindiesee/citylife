@@ -2,14 +2,14 @@
 
 ## The feeling we are chasing
 
-Caesar III felt alive because the economy was **embodied**: nothing teleported. A granary sent a *cart
-walker* to a market; a prefect *walked* his beat; a doctor *walked* to the houses. You watched the economy
-move as little figures on the streets. Wealth, plague, crime — you could *see* them travel.
+Caesar III felt alive because the economy was **embodied**: nothing teleported. A granary sent a _cart
+walker_ to a market; a prefect _walked_ his beat; a doctor _walked_ to the houses. You watched the economy
+move as little figures on the streets. Wealth, plague, crime — you could _see_ them travel.
 
 CityLife has, in two days of self-design, grown a genuinely deep Caesar-III-style economy — materials,
 labour, extraction, workshops, two resource chains, four foods, power, water, services, housing tiers,
 immigration, fiscal levers, trade, hazards, a calendar, a monument. But almost all of it is **invisible**:
-aggregate counters that tick in a side panel. The world is a *spreadsheet wearing a beautiful island*.
+aggregate counters that tick in a side panel. The world is a _spreadsheet wearing a beautiful island_.
 
 The operator's instinct is right: **we have a city's economy, but not a city's life.**
 
@@ -18,9 +18,9 @@ The operator's instinct is right: **we have a city's economy, but not a city's l
 We do not copy Caesar III's walker-only world. CityLife's island already has **both** ambient **people on
 foot** AND **cars and trucks on roads**. That hybrid is the identity:
 
-- **People on foot** carry the *human* economy — a service round, a ration drop, a clinic visit, a stroll
+- **People on foot** carry the _human_ economy — a service round, a ration drop, a clinic visit, a stroll
   to the theatre. Short, local, on the footpaths and pavements.
-- **Cars and trucks** carry the *industrial* economy — a cargo run of materials from the mine to the
+- **Cars and trucks** carry the _industrial_ economy — a cargo run of materials from the mine to the
   workshop, of folios to the Exchange dock, of food from the skyfarm to the depot. Longer, on the road
   network, obeying lanes and the water barrier.
 
@@ -31,13 +31,13 @@ walking the clinic round. **Every flow in the economy should have a body on the 
 
 ## The direction (what the routines should build toward)
 
-1. **Embody the stockpiles first** — make goods *visible piles* at their buildings (see
+1. **Embody the stockpiles first** — make goods _visible piles_ at their buildings (see
    `docs/specs/VISUAL-STANDARD.md`), so the warehouse fills and empties on screen.
 2. **Embody the flows** — when a good moves between buildings (extraction → workshop, workshop → home,
    farm → depot), run a **visible carrier**: a truck on the roads for bulk, a person on the footpaths for
    a service. Re-use the existing crew-truck and pedestrian systems.
 3. **Embody the people** — tie ambient pedestrians to real life: more of them when the colony is busy and
-   liveable, fewer in a brownout or a fever; they walk *between* the things they use (home → market →
+   liveable, fewer in a brownout or a fever; they walk _between_ the things they use (home → market →
    theatre), not at random.
 4. **Respect the world** — feet and wheels both obey the physics: never over open water, always on the
    land and the roads. A colonist understands the shore.

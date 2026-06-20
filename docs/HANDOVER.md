@@ -20,12 +20,12 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
 - **Active branch is now `feat/rally-and-bot-worklife`** (fresh off `main` after PR #42 squash-merged
   all the commerce + lighthouse work). It carries: Codex's Spec 087 P0 Road Rally (his PR #44 merged in
   then closed — same consolidate-then-close flow as the lighthouse #43), **081-P0 ad boards** (billboards
-  + deterministic canvas posters), and the **080 CityLife Workstation badge**. 746 green, tsc clean,
-  pushed; ready to PR into `main`. `feat/commercial-visuals` and `mechanics/dev` on the remote are stale
-  pre-squash orphans — don't push to them. The rolling lane convention continues on this branch.
-  Then LIVE on :5188 — drive `window.__colony` via JS evals (see §6). NOTE: Chrome CDP **screenshots
-  are broken this session** (`clip.scale` error) — verify with JS evals + `read_console_messages`,
-  not screenshots.
+  - deterministic canvas posters), and the **080 CityLife Workstation badge**. 746 green, tsc clean,
+    pushed; ready to PR into `main`. `feat/commercial-visuals` and `mechanics/dev` on the remote are stale
+    pre-squash orphans — don't push to them. The rolling lane convention continues on this branch.
+    Then LIVE on :5188 — drive `window.__colony` via JS evals (see §6). NOTE: Chrome CDP **screenshots
+    are broken this session** (`clip.scale` error) — verify with JS evals + `read_console_messages`,
+    not screenshots.
 - **Kooker monorepo:** `D:\infra` (NOT `D:\infra\projects`). Each kooker service is its own dir.
 - **Repo-mirroring way-of-work (operator-blessed):** clone any repo you do branch/PR work on under
   **`D:\infra\claude\<repo>`** (mirrors Codex's `D:\infra\codex\`). `D:\infra\claude\kooker-infra`
@@ -65,7 +65,7 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
 - **Spec 084 — World v2** (S0–S6 ALL DONE): the **608-cell world** (~10×), masterplanned ESTATE
   (19×14 zone) + GRAND (23×16) plots, **Joe = lot_1, Viw = lot_2** (renumbered GRAND-first by
   distance to water), road kinds (avenue/street/path, the avenue is a real drivable road now),
-  enforced voxel budget, chunked terrain + follow-shadows, A*+searchRect. `docs/specs/084-world-v2.md`
+  enforced voxel budget, chunked terrain + follow-shadows, A\*+searchRect. `docs/specs/084-world-v2.md`
   has the full slice log + named deferrals (road-following citizen walks, gravel driveway ribbons).
 - **Spec 078 — Joe the Crab** + **Viw the Builder** = the two founders (reserved, demolish-proof,
   crafted houses). Viw's door is fixed EAST so the side-walkway contract is dogfooded every boot.
@@ -106,15 +106,15 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
    `docs/specs/085-land-economy.md` P1 log.
 1. **083-P3 — inference-authored Viw dialogue.** kooker-service-ai chat phrases the haggle (screened,
    deterministic fallback intact). Off-machine inference, fits the lean-dev constraint. **Recommended next.**
-3. **079 — commercial plots + shops (P0 DONE 2026-06-13).** `commerce/district.ts` surveys a vibrant
+2. **079 — commercial plots + shops (P0 DONE 2026-06-13).** `commerce/district.ts` surveys a vibrant
    neon high street (10 shop plots: kiosk/store/showroom, priced 220/420/720 ₭) on the reserved 40×30
    land bank; the renderer raises glowing market stalls that flare at dusk. **P1 DONE** — shops are
    buyable: `runtime.buyCommercialShop` / `claimNextShop` debit ₭ (citizen -> land office) mirrored to
    the real ledger as a LAND_PURCHASE, a funds-gated HUD "Open a shop" button, arrivals claim a shop
    when affordable. NEXT: **079-P2** real shop massing via the voxel core (replace the placeholder
    stall). See `docs/specs/079` P0+P1 log + `docs/research/2026-06-13-district-concept.md`.
-4. **082-P3** narration + generated portraits (via the existing kooker image-gen APIs, off-machine).
-5. **Named deferrals from 084:** road-following citizen walks (citizens cut across lawns today),
+3. **082-P3** narration + generated portraits (via the existing kooker image-gen APIs, off-machine).
+4. **Named deferrals from 084:** road-following citizen walks (citizens cut across lawns today),
    gravel driveway ribbons, foliage chunk-bucketing.
 
 ## 5. In-flight / blocked / cross-agent state
@@ -138,7 +138,7 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
   Rockery Beach headland first, dry-shore fallback — pushed into `state.structures` as kind `lighthouse`
   (live-verified at grid (85,249), renders correctly on the shore). 729 green, tsc clean, no console errors.
   **086-P1 is now UNBLOCKED** — anchor the commercial reserve near `structures.find(s => s.kind ===
-  'lighthouse')` instead of the inland avenue terminus.
+'lighthouse')` instead of the inland avenue terminus.
 - **Spec 087 Road Rally (2026-06-13):** operator + Codex proposed a road-rally mini-game overlay; Claude
   reviewed it (multi-agent) — verdict **approve-with-changes**, see `docs/specs/087-road-rally-minigame.md`
   (14 required changes, the critical ones: track gen must never touch `sim.rng`; build from `roadKind` not
@@ -162,6 +162,7 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
 ## 6. How to live-verify (since CDP screenshots are broken)
 
 `window.__colony` is the runtime. Useful handles:
+
 - `c.lots()` — parcels (`.priceK` via `c.plotPriceK(lot)`, `.ownerCitizenId`, `.built`, `.reservedFor`).
 - `c.walletK('citizen_id')`, `c.purchaseLot(id, lotId)`, `c.commissionLot(lotId)`, `c.selfDesignLot(lotId)`.
 - `c.kbProfile('citizen_id')`, `c.kbProfiles()` — Kookerbook timelines.

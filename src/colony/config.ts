@@ -34,7 +34,7 @@ export const COLONY = {
   },
   seed: {
     colonists: 2,
-    name: 'Landing One',
+    name: "Landing One",
   },
   build: {
     treasuryStart: 24000,
@@ -478,7 +478,13 @@ export const COLONY = {
     importOfficeMaintCompPerDay: 0.5,
     importPerDay: 14, // units/day a fully staffed office lands of the order good
     importPremiumMult: 1.6, // the premium imports carry over the Exchange sell price (the prices below already bake it in)
-    importPrice: { materials: 24, components: 64, food: 20, linen: 90, reels: 192 }, // $ per imported unit — a premium over local value / export price (comp 40, food 12, reels 120 on the Exchange)
+    importPrice: {
+      materials: 24,
+      components: 64,
+      food: 20,
+      linen: 90,
+      reels: 192,
+    }, // $ per imported unit — a premium over local value / export price (comp 40, food 12, reels 120 on the Exchange)
     // Mooring Shrine (spec 037): a small staffed civic shrine that carries Solace to nearby homes — a new home service that
     // lifts desirability and eases unrest, fed by a trickle of linen. Inert with no staffed shrine, so existing play is unchanged.
     matShrine: 10,
@@ -956,7 +962,7 @@ export const COLONY = {
     bathPowerFloor: 0.5, // even a brownout leaves the boilers throwing this fraction of heat
     // The Clean-Home Standing (spec 070): the bathhouse hygiene (069) becomes two gentle positive levers, tuned in line with the
     // Planter (063, 0.08 draw) and Variety (060, 0.04 draw / 0.05 evolution) levers. Purely positive: both are 0 effect with no Bathhouse.
-    hygieneDesirabilityGain: 0.10, // at full hygiene, +10 percent to the settler-draw desirability (a clean colony is more inviting)
+    hygieneDesirabilityGain: 0.1, // at full hygiene, +10 percent to the settler-draw desirability (a clean colony is more inviting)
     hygieneEvolutionGain: 0.08, // at full hygiene, served homes climb up to 8 percent faster (shortens the housing-upgrade interval)
     // The Folio Library (spec 071): a staffed services building that lends the colony's own folios to the homes as culture — folio-fed
     // the way the holo-theatres are reel-fed (014), so a second culture path that needs no reels. Draws folios/day, the first DOMESTIC
@@ -1059,4 +1065,4 @@ export const COLONY = {
   render: {
     seed: 4242,
   },
-} as const
+} as const;

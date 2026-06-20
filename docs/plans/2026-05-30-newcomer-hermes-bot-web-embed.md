@@ -77,6 +77,7 @@
 ### Household
 
 Fields:
+
 - `id`: public UUID/slug, not an internal profile name
 - `displayName`: generated public-safe name
 - `leadPersona`: generated background object
@@ -91,6 +92,7 @@ Fields:
 ### Land parcel / plot
 
 Fields:
+
 - `id`
 - `zone`: `residential | commercial | industrial | park | civic`
 - `size`
@@ -111,6 +113,7 @@ Fields:
 ### Migration request
 
 Fields:
+
 - `id`
 - `source`: `commercial_jobs | industrial_jobs | operator_generated | story_event`
 - `candidateHousehold`: generated preview profile, not yet an active bot
@@ -122,6 +125,7 @@ Fields:
 ### Backend auth/session
 
 Fields:
+
 - `operatorId`: public operator alias only
 - `basicAuthRealm`: configured realm name; no credentials in repo
 - `jwtSubject`: operator alias or service account alias
@@ -131,6 +135,7 @@ Fields:
 ### citylife-backend forkability boundary
 
 The backend owns:
+
 - Basic Auth credential verification and JWT issuing
 - Hermes profile/bot lifecycle
 - Kanban triage task creation
@@ -140,6 +145,7 @@ The backend owns:
 - all secret-bearing configuration
 
 The browser/game repo owns:
+
 - login screen and token storage policy
 - API client interfaces
 - CityLife rendering and simulation UI
@@ -156,11 +162,13 @@ All endpoints below require an authenticated JWT. The login endpoint itself is p
 Authenticates an operator via Basic Auth and returns a JWT. The frontend shows a login screen before loading operator controls.
 
 Request headers:
+
 ```http
 Authorization: Basic <base64 operator-login>
 ```
 
 Response:
+
 ```json
 {
   "token": "jwt-redacted",
@@ -170,6 +178,7 @@ Response:
 ```
 
 Rules:
+
 - Credentials are never stored in this repo.
 - JWT signing secret is backend-only environment config.
 - UI stores JWT only for the current operator session and clears it on logout/expiry.
@@ -179,6 +188,7 @@ Rules:
 Creates a generated household and starts triage. Requires JWT scope `newcomer:create`.
 
 Request:
+
 ```json
 {
   "seed": "optional-public-seed",
@@ -187,6 +197,7 @@ Request:
 ```
 
 Response:
+
 ```json
 {
   "household": {
@@ -209,6 +220,7 @@ Returns the safe public household view plus operator-visible audit state. Requir
 Returns sanitized chat/session events for display in the CityLife UI. Requires JWT scope `chat:read`.
 
 Rules:
+
 - Redact secrets and internal paths.
 - Show model/source/cost metadata only if safe.
 - Preserve enough context for operator review.
@@ -216,7 +228,6 @@ Rules:
 ### `POST /api/citylife/newcomers/:id/milestones`
 
 Operator advances a manual milestone. The backend appends an audit event and, where needed, creates/updates Kanban tasks. Requires JWT scope `simulation:mutate`.
-
 
 ### `GET /api/citylife/migration-requests`
 
@@ -227,6 +238,7 @@ Returns queued generated migration candidates and their public-safe messages. Re
 Operator accepts, holds, or declines a migration request. Accepted requests enter the normal newcomer flow; declined requests are logged only. Requires JWT scope `migration:decide`.
 
 Request:
+
 ```json
 {
   "decision": "accepted | held | declined",
@@ -239,6 +251,7 @@ Request:
 Creates a commercial or industrial development request after at least one household has a built house. Requires JWT scope `development:create`.
 
 Rules:
+
 - Commercial development must reference current population/foot traffic.
 - Industrial development must pass zoning distance/happiness checks or be held for operator review.
 - Approved development can create jobs, which can create migration requests.
@@ -252,11 +265,13 @@ Rules:
 **Objective:** Keep public repo safe before building features.
 
 **Files:**
+
 - Create: `.github/CODEOWNERS`
 - Create/modify: `.github/workflows/ci.yml`
 - Modify: `AGENTS.md`
 
 **Steps:**
+
 1. Add CODEOWNERS requiring the public maintainer handle for all files.
 2. Add CI running `npm test`, `npm run typecheck`, and `npm run build`.
 3. Add an AGENTS.md section: no secrets/internal namespaces/real PII in public commits.
@@ -267,12 +282,14 @@ Rules:
 **Objective:** Require login before any CityLife backend interaction.
 
 **Files:**
+
 - Create: `src/colony/authClient.ts`
 - Create: `tests/auth-client.test.ts`
 - Modify: `src/ui/App.tsx`
 - Modify: `src/ui/styles.css`
 
 **Steps:**
+
 1. Write tests for Basic Auth login request construction without logging credentials.
 2. Write tests for JWT expiry/logout behavior.
 3. Implement an API client that attaches a redacted `Authorization: Bearer <jwt>` header to backend calls.
@@ -284,11 +301,13 @@ Rules:
 **Objective:** Keep bot maintenance and API state behind a reusable backend boundary.
 
 **Files:**
+
 - Create: `docs/plans/citylife-backend-contract.md`
 - Create: `src/colony/backendTypes.ts`
 - Create: `tests/backend-types.test.ts`
 
 **Steps:**
+
 1. Define public DTOs shared between UI and backend.
 2. Document backend-owned responsibilities: auth, JWT, Hermes profiles, Kanban, chat/session retrieval, migration queue, audit logs, secrets.
 3. Document forkability requirements so the backend can be copied into new game mechanics.
@@ -299,10 +318,12 @@ Rules:
 **Objective:** Generate safe fictional household profiles without touching Hermes yet.
 
 **Files:**
+
 - Create: `src/colony/newcomers.ts`
 - Create: `tests/newcomers.test.ts`
 
 **Steps:**
+
 1. Write tests for deterministic generation by seed.
 2. Write tests rejecting denylisted/internal-looking names and raw secret-like strings.
 3. Implement generator using existing seeded RNG patterns.
@@ -313,11 +334,13 @@ Rules:
 **Objective:** Add the operator-facing gated flow without backend side effects.
 
 **Files:**
+
 - Modify: `src/ui/App.tsx`
 - Modify: `src/ui/styles.css`
 - Test: add UI/render tests if the repo test harness supports them; otherwise keep logic in testable helpers.
 
 **Steps:**
+
 1. Add an **Add newcomer** panel.
 2. Render generated household preview.
 3. Show manual milestone checklist.
@@ -328,10 +351,12 @@ Rules:
 **Objective:** Define the safe adapter boundary CityLife calls.
 
 **Files:**
+
 - Create: `src/colony/hermesNewcomerAdapter.ts`
 - Create: `tests/hermes-newcomer-adapter.test.ts`
 
 **Steps:**
+
 1. Define `NewcomerBotAdapter` interface: `createBot`, `createTriageTask`, `getChatEvents`, `advanceMilestone`.
 2. Add a mock adapter for browser/local development.
 3. Add validation that adapter never exposes internal profile names, secrets, or raw file paths.
@@ -342,9 +367,11 @@ Rules:
 **Objective:** Make every newcomer begin with a durable task.
 
 **Files:**
+
 - Extend adapter tests and docs.
 
 **Steps:**
+
 1. Ensure `createBot` returns public alias and opaque backend ref.
 2. Ensure `createTriageTask` receives the household background and manual gate checklist.
 3. Store `triageTaskId` on household state.
@@ -355,11 +382,13 @@ Rules:
 **Objective:** Let the web UI observe bot conversations without Telegram.
 
 **Files:**
+
 - Create: `src/ui/NewcomerChatPanel.tsx`
 - Create: `src/colony/chatEvents.ts`
 - Tests for redaction and ordering.
 
 **Steps:**
+
 1. Define sanitized event shape.
 2. Render chronological chat/task events.
 3. Add empty/loading/error states.
@@ -370,10 +399,12 @@ Rules:
 **Objective:** Encode the land-surveyor story into testable zoning/plot mechanics.
 
 **Files:**
+
 - Create/modify: `src/colony/land.ts`
 - Create: `tests/land-zoning.test.ts`
 
 **Steps:**
+
 1. Divide land into parcels with zone, size, base cost, development cost.
 2. Add industrial distance/happiness penalties.
 3. Gate commercial growth by population.
@@ -384,12 +415,14 @@ Rules:
 **Objective:** Unlock commercial/industrial development and controlled migration after a house is built.
 
 **Files:**
+
 - Create: `src/colony/migrationQueue.ts`
 - Create: `tests/migration-queue.test.ts`
 - Modify: `src/colony/land.ts`
 - Modify: `src/ui/App.tsx`
 
 **Steps:**
+
 1. Write tests that no development request can be approved before at least one household has `houseBuilt`.
 2. Write tests that commercial requests require population/foot-traffic thresholds.
 3. Write tests that industrial requests calculate nearby happiness impact and can be held.
@@ -402,9 +435,11 @@ Rules:
 **Objective:** Make review quick without leaking private hostnames in public docs.
 
 **Files:**
+
 - Create: `docs/plans/operator-preview.md`
 
 **Steps:**
+
 1. Add a script or runbook for local screenshot capture.
 2. Add a runbook field for an operator-only private preview URI.
 3. Do not commit the actual private URI.
@@ -425,4 +460,3 @@ Rules:
 - Every UI-to-backend API is behind Basic Auth login plus JWT authorization.
 - `citylife-backend` responsibilities are documented as a forkable boundary for future game mechanics.
 - After house-built, commercial/industrial development can create jobs and queued migration requests; operators can accept or decline generated candidates.
-

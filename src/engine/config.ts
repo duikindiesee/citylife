@@ -73,13 +73,21 @@ export const CONFIG = {
       shop: 0.0,
     } as Record<string, number>,
     factoryGoodsPerEmployee: 0.6,
-    factoryInputPerGoods: { ore: 0.4, lumber: 0.4, crops: 0.2, oil: 0.3 } as Record<string, number>,
+    factoryInputPerGoods: {
+      ore: 0.4,
+      lumber: 0.4,
+      crops: 0.2,
+      oil: 0.3,
+    } as Record<string, number>,
     shopMarkup: 1.35,
     startingCash: 8_000,
   },
 
   market: {
-    basePrice: { ore: 14, lumber: 11, crops: 8, oil: 22, goods: 40 } as Record<string, number>,
+    basePrice: { ore: 14, lumber: 11, crops: 8, oil: 22, goods: 40 } as Record<
+      string,
+      number
+    >,
     // price elasticity: how fast price chases demand/supply imbalance
     elasticity: 0.18,
     minPriceFactor: 0.45,
@@ -103,10 +111,10 @@ export const CONFIG = {
     defaultIntervalMs: 10 * 60 * 1000, // 10 minutes
     minIntervalMs: 5 * 1000,
     maxActionsPerCheckIn: 4,
-    provider: 'heuristic' as 'heuristic' | 'ollama',
+    provider: "heuristic" as "heuristic" | "ollama",
     ollama: {
-      baseUrl: 'http://localhost:11434',
-      model: 'gemma3:4b',
+      baseUrl: "http://localhost:11434",
+      model: "gemma3:4b",
       timeoutMs: 30_000,
     },
   },
@@ -123,6 +131,6 @@ export const CONFIG = {
   render: {
     seed: 1337,
   },
-} as const
+} as const;
 
-export type Config = typeof CONFIG
+export type Config = typeof CONFIG;

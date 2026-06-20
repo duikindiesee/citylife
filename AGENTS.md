@@ -3,8 +3,9 @@
 Read [`docs/TECH-SPEC.md`](docs/TECH-SPEC.md) first. It is the source of truth for direction.
 
 ## Architecture rules (do not break these)
+
 - **`src/engine/` is framework-agnostic.** No React, no three.js, no DOM imports. It must run in tests (node) and, later, in a Web Worker. The renderer and UI depend on the engine, never the reverse.
-- **The Game API (`src/engine/api.ts`) is the contract.** The UI, the AI governor, and the test harness all mutate the city *only* through `GameAPI`. Change its shape deliberately.
+- **The Game API (`src/engine/api.ts`) is the contract.** The UI, the AI governor, and the test harness all mutate the city _only_ through `GameAPI`. Change its shape deliberately.
 - **All tunable numbers live in `src/engine/config.ts`.** No magic numbers in logic. Balance the sim by editing config alone.
 - **Sim and render are decoupled.** The engine steps in fixed timesteps and knows nothing about frames; `CityRenderer` reads `sim.state` and never mutates it.
 - **The GPU renders; the LLM runs on CPU.** Never load the model onto the GPU (it shares a 4 GB card with the renderer).
@@ -12,11 +13,13 @@ Read [`docs/TECH-SPEC.md`](docs/TECH-SPEC.md) first. It is the source of truth f
 - **Layer 1 before Layer 2.** The city must be watchable and self-sustaining with zero AI before adding any governance behaviour.
 
 ## AI / small-model rules
+
 - The governor accepts **schema-validated JSON actions only** (`src/ai/schema.ts`) — never executes model-authored code. Anything a provider returns is coerced/filtered before it touches `GameAPI`.
 - Keep the governor's input a **small curated digest** (`Simulation.getDigest()`), never the full grid. Small models reason far better over a digest.
 - New brains implement `LLMProvider` (`src/ai/LLMProvider.ts`). The heuristic provider is the always-available fallback.
 
 ## Conventions
+
 - TypeScript, strict mode. `npm run typecheck` must stay clean.
 - Determinism: all randomness goes through the seeded `RNG`. Tests rely on it.
 - Add engine/governor behaviour with a matching test in `tests/`.
@@ -36,6 +39,7 @@ Antigravity task queue, acceptance criteria and merge flow live in
   `mechanics/dev`.
 
 ### Run + test
+
 - Dev server: `npm run dev` → http://localhost:5188 — **5188 belongs to Claude's loop**. Antigravity
   runs its own on **5189**: `npm run dev -- --port 5189`.
 - Auth bypass (dev builds only, no-op deployed): `http://localhost:5189/?skipauth=1` or
@@ -48,6 +52,7 @@ Antigravity task queue, acceptance criteria and merge flow live in
   `.applyBlueprint(lotId, script)`, `.builderUrl(lotId)`).
 
 ### Hard rules (both agents)
+
 - Commit messages must be CI-SAFE: no double quotes, no brackets, no colon-bullet lines — kooker CI
   shell-interpolates the head commit message. Write the message to a temp file and `git commit -F` it.
 - The blueprint compile path stays DETERMINISTIC: no Date.now, no Math.random, no wall-clock in
@@ -57,6 +62,7 @@ Antigravity task queue, acceptance criteria and merge flow live in
   write credentials or internal cluster hostnames anywhere in this repo.
 
 ### File ownership (conflict avoidance)
+
 - Claude-owned (Antigravity must not edit): `src/colony/runtime.ts`, `src/colony/houseBuilder.ts`,
   `src/colony/blueprintScript.ts`, `src/colony/neighborhood.ts`, `src/colony/render/*`,
   `src/colony/builder/BuilderApp.tsx`, `src/colony/builder/main.tsx`, `src/colony/bot/*`,
@@ -66,6 +72,7 @@ Antigravity task queue, acceptance criteria and merge flow live in
   `gallery.html`, `docs/agents/`.
 
 ## Public repository safety
+
 - This repository is public-facing. Never commit secrets, tokens, private namespaces, internal hostnames, private preview URLs, or real personal data.
 - Newcomer/household identities must be fictional, generated, and redaction-checked before being persisted or displayed.
 - Store only public aliases and opaque backend references in CityLife. Internal Hermes profile names, raw SessionDB paths, and credentials stay server-side/operator-side.

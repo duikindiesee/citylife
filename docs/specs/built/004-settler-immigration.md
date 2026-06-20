@@ -1,16 +1,19 @@
 # Spec 004 — Settler immigration fills housing vacancies
+
 - status: built
 - proposed-by: Tomas Vren (works-foreman) — live Hermes inference returned no usable response, so written in-character
 - date: 2026-06-01
 - depends-on: 001
 
 ## Why (the citizens' case)
-Tomas Vren: *"Six of us. Six! A single mine swallows every spare hand and there's no one left to build,
+
+Tomas Vren: _"Six of us. Six! A single mine swallows every spare hand and there's no one left to build,
 let alone refine. We don't need another clever machine — we need **people**. Build the homes and let
 settlers come fill them, the way any frontier grows. No homes, no newcomers; no work or no power, they
-turn round at the dock."*
+turn round at the dock."_
 
 ## Mechanic
+
 - Habitats provide **housing capacity** (empty homes), not instant residents. `colonists` becomes the
   count of settlers actually living in the colony.
 - While there is **vacant capacity** AND the colony is liveable, settlers **immigrate** at a steady
@@ -19,6 +22,7 @@ turn round at the dock."*
   slowly.
 
 ## Rules & data (research-grounded)
+
 - Housing capacity = Σ over habitats of `residentsPerHabitat` (3 each).
 - Immigration rate ≈ 1 settler per ~2 in-game hours while vacancies exist and the colony is liveable.
 - Liveability v1 (simple; refined by services/goods in later specs): power not in deep deficit AND
@@ -27,10 +31,12 @@ turn round at the dock."*
   time. The 2 founding colonists remain as the bootstrap. Population caps at total capacity.
 
 ## Cost — materials & labour
+
 - Immigration itself is free (people arrive), but it is **gated by housing** — which costs materials +
   a build crew per spec 001 — and by liveability. No homes ⇒ no settlers.
 
 ## Acceptance
+
 - A colony with vacant housing + liveable conditions gains colonists over sim time (up to capacity);
   a full or unliveable (power-dead) colony does not.
 - Building a habitat raises capacity, not colonists directly; colonists then rise toward capacity.

@@ -1,16 +1,19 @@
 # Spec 014 — Reel-fed theatres: culture demands the luxury good
+
 - status: built
 - proposed-by: **Lys Ardent, theatre-keeper** — live Hermes returned empty (upstream flaky for a third tick), written in-character. A new voice, closing the loop Mara Venn opened when she first pitched Data-Reels (spec 010) and Niko Vance built the foundry (013).
 - date: 2026-06-01
 - depends-on: 010, 013
 
 ## Why (the citizens' case)
-Lys Ardent: *"A dark theatre draws no one. The shows need Data-Reels — the luxury Niko's foundry weaves.
+
+Lys Ardent: _"A dark theatre draws no one. The shows need Data-Reels — the luxury Niko's foundry weaves.
 Feed the theatres reels and the culture sings and the skilled folk pour in; let the reels run dry and the
 halls go quiet and half the draw is lost. This is what Mara meant from the start — the reels were always
-meant to light our stages, not just fill Bram's coffers."*
+meant to light our stages, not just fill Bram's coffers."_
 
 ## Mechanic
+
 - **Holo-Theatres now consume reels** as their show media: each staffed theatre draws a trickle of reels
   from the stockpile every day.
 - Culture's pull on settlers is **full only when the colony has reels** to feed its theatres. When reels
@@ -20,6 +23,7 @@ meant to light our stages, not just fill Bram's coffers."*
   and must make enough reels (013) to.
 
 ## Rules & data
+
 - **No new building** — a rule layered onto the existing Holo-Theatre (010).
 - Each theatre consumes **~0.5 reels/day**, drawn from the stockpile (like the component upkeep of other
   services).
@@ -27,10 +31,12 @@ meant to light our stages, not just fill Bram's coffers."*
   ×0.5 on the culture desirability bonus. No theatres → no change.
 
 ## Cost — materials & labour
+
 - **No build cost** (a rule, like housing evolution 006). RUNNING cost: **~0.5 reels per theatre per day**
   — and reels cost components + a foundry crew to weave (spec 013), so culture is no longer free.
 
 ## Acceptance
+
 - A colony with theatres and reels keeps full culture desirability; the same colony with reels at zero
   immigrates measurably slower (the culture bonus is halved).
 - Theatres draw the reel stockpile down over time.
