@@ -2420,6 +2420,72 @@ export class PlanetRenderer {
       this.commercialSignMats.push(signMat);
       g.add(body, canopy, sign);
 
+      // Storefront detail (spec 092) — a warm-lit window band flanking a recessed door, awning support
+      // posts, and a couple of goods crates, so each shop reads as an OPEN business rather than a plain
+      // neon box. Windows glow warm (interior light) against the cool slate body + the neon sign.
+      const faceZ = front * (bodyD / 2 + 0.04);
+      const glassMat = new THREE.MeshStandardMaterial({
+        color: 0xffe6b0,
+        emissive: 0xffca78,
+        emissiveIntensity: 0.6,
+        roughness: 0.3,
+      });
+      const winW = bodyW * 0.26,
+        winH = wallH * 0.46;
+      for (const sx of [-bodyW * 0.3, bodyW * 0.3]) {
+        const win = new THREE.Mesh(
+          new THREE.BoxGeometry(winW, winH, 0.06),
+          glassMat,
+        );
+        win.position.set(sx, wallH * 0.52, faceZ);
+        g.add(win);
+      }
+      const door = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyW * 0.2, wallH * 0.66, 0.08),
+        new THREE.MeshStandardMaterial({
+          color: 0x15181f,
+          roughness: 0.6,
+          metalness: 0.2,
+        }),
+      );
+      door.position.set(0, wallH * 0.33, faceZ);
+      g.add(door);
+      // Awning posts + goods crates only where there's no bar counter (the seating shops fill the front).
+      if (!biz?.seating) {
+        const postMat = new THREE.MeshStandardMaterial({
+          color: 0x20242c,
+          roughness: 0.6,
+          metalness: 0.3,
+        });
+        for (const sx of [-bodyW * 0.5, bodyW * 0.5]) {
+          const post = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.05, 0.05, wallH + 0.06, 8),
+            postMat,
+          );
+          post.position.set(sx, (wallH + 0.06) / 2, front * (bodyD / 2 + 0.5));
+          post.castShadow = true;
+          g.add(post);
+        }
+        const crateMat = new THREE.MeshStandardMaterial({
+          color: 0x7a5a36,
+          roughness: 0.9,
+        });
+        for (let k = 0; k < 2; k++) {
+          const cs = 0.32 + k * 0.06;
+          const crate = new THREE.Mesh(
+            new THREE.BoxGeometry(cs, cs, cs),
+            crateMat,
+          );
+          crate.position.set(
+            -bodyW * 0.42 + k * 0.1,
+            cs / 2,
+            front * (bodyD / 2 + 0.42 - k * 0.18),
+          );
+          crate.castShadow = true;
+          g.add(crate);
+        }
+      }
+
       // Rooftop emblem — a distinct shape per business so the app reads at a glance.
       if (biz) {
         const em = this.makeBusinessEmblem(biz.emblem, neon);
