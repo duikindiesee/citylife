@@ -1486,23 +1486,23 @@ export function ColonyApp() {
                 .filter((c) => ui.firstPerson.stepInCitizenIds.includes(c.id))
                 .slice(0, 4)
                 .map((c) => (
-                <button
-                  key={c.id}
-                  className={
-                    c.id === ui.firstPerson.operatorCitizenId ? "on" : ""
-                  }
-                  style={{ padding: "1px 6px", fontSize: 11 }}
-                  onClick={() => runtime.enterFirstPerson(c.id)}
-                  title={
-                    c.id === ui.firstPerson.operatorCitizenId
-                      ? `This is your citizen — see the world through ${c.displayName}'s eyes`
-                      : `Step into ${c.displayName} for a first-person view`
-                  }
-                >
-                  👁 {c.displayName.split(" ")[0]}
-                  {c.id === ui.firstPerson.operatorCitizenId ? " (you)" : ""}
-                </button>
-              ))}
+                  <button
+                    key={c.id}
+                    className={
+                      c.id === ui.firstPerson.operatorCitizenId ? "on" : ""
+                    }
+                    style={{ padding: "1px 6px", fontSize: 11 }}
+                    onClick={() => runtime.enterFirstPerson(c.id)}
+                    title={
+                      c.id === ui.firstPerson.operatorCitizenId
+                        ? `This is your citizen — see the world through ${c.displayName}'s eyes`
+                        : `Step into ${c.displayName} for a first-person view`
+                    }
+                  >
+                    👁 {c.displayName.split(" ")[0]}
+                    {c.id === ui.firstPerson.operatorCitizenId ? " (you)" : ""}
+                  </button>
+                ))}
             </span>
           </div>
         )}
