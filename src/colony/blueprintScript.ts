@@ -9,6 +9,7 @@
 // Example (a 6x5 home: living, bedroom and patio, door facing the street to the south):
 //   house{w:6 d:5 wallH:2 door:s} room{kind:living x:0 y:0 w:4 d:3 win:1} room{kind:bedroom x:4 y:0 w:2 d:3 win:1} room{kind:patio x:0 y:3 w:6 d:2 win:0}
 import type { DoorDir } from "./voxelHouse";
+import { FURNITURE_KINDS, type FurnitureKind } from "./furniture";
 
 export type BlueprintScript = string;
 export type RoomKind = "living" | "bedroom" | "garage" | "patio" | "pool";
@@ -29,12 +30,23 @@ export interface Room {
   d: number;
   win: boolean;
 }
+/** A piece of authored furniture placed inside the house (spec 088). x/y is the blueprint cell it sits
+ *  in (scaled onto the plot like rooms); rot is a quarter-turn clockwise (0..3). Ground floor for now. */
+export interface FurnitureItem {
+  kind: FurnitureKind;
+  x: number;
+  y: number;
+  rot: number;
+}
+/** The most furniture a single house may carry — bounds a bot-authored script and keeps the editor sane. */
+export const FURNITURE_ITEM_CAP = 48;
 export interface ParsedBlueprint {
   w: number;
   d: number;
   wallH: number;
   doorDir: DoorDir;
   rooms: Room[];
+  items: FurnitureItem[];
 }
 export interface ValidationResult {
   ok: boolean;
@@ -71,6 +83,16 @@ function intField(
   return n;
 }
 
+/** Like intField but returns a default when the key is absent (the value, if present, must be an int). */
+function optIntField(
+  fields: Record<string, string>,
+  key: string,
+  ctx: string,
+  fallback: number,
+): number {
+  return fields[key] === undefined ? fallback : intField(fields, key, ctx);
+}
+
 /** Parse a blueprint script into a typed ParsedBlueprint. Throws a descriptive Error on malformed input. */
 export function parseBlueprint(script: BlueprintScript): ParsedBlueprint {
   if (typeof script !== "string")
@@ -105,7 +127,23 @@ export function parseBlueprint(script: BlueprintScript): ParsedBlueprint {
       win: intField(rf, "win", "room") !== 0,
     });
   }
-  return { w, d, wallH, doorDir, rooms };
+  const items: FurnitureItem[] = [];
+  const itemRe = /item\{([^}]*)\}/g;
+  while ((m = itemRe.exec(script)) !== null) {
+    const f = parseFields(m[1]!);
+    const kind = f["kind"] as FurnitureKind;
+    if (!FURNITURE_KINDS.includes(kind))
+      throw new Error(
+        `blueprint: furniture kind must be one of ${FURNITURE_KINDS.join(" ")}, got ${JSON.stringify(f["kind"])}`,
+      );
+    items.push({
+      kind,
+      x: intField(f, "x", "item"),
+      y: intField(f, "y", "item"),
+      rot: optIntField(f, "rot", "item", 0),
+    });
+  }
+  return { w, d, wallH, doorDir, rooms, items };
 }
 
 /** Serialise a ParsedBlueprint back to the canonical single-line script (lossless round-trip). */
@@ -115,7 +153,10 @@ export function blueprintToScript(p: ParsedBlueprint): BlueprintScript {
     (r) =>
       `room{kind:${r.kind} x:${r.x} y:${r.y} w:${r.w} d:${r.d} win:${r.win ? 1 : 0}}`,
   );
-  return [head, ...rooms].join(" ");
+  const items = (p.items ?? []).map(
+    (f) => `item{kind:${f.kind} x:${f.x} y:${f.y} rot:${f.rot}}`,
+  );
+  return [head, ...rooms, ...items].join(" ");
 }
 
 /** Does any room touch the house edge the door faces, so the house can actually be entered? */
@@ -174,6 +215,14 @@ export function validateBlueprint(script: BlueprintScript): ValidationResult {
       errors.push(`room ${i} (${r.kind}) must have positive w and d`);
     if (r.x < 0 || r.y < 0 || r.x + r.w > p.w || r.y + r.d > p.d)
       errors.push(`room ${i} (${r.kind}) escapes the house bounds`);
+  });
+  if (p.items.length > FURNITURE_ITEM_CAP)
+    errors.push(`a house is capped at ${FURNITURE_ITEM_CAP} furniture items`);
+  p.items.forEach((f, i) => {
+    if (f.x < 0 || f.y < 0 || f.x >= p.w || f.y >= p.d)
+      errors.push(`furniture ${i} (${f.kind}) sits outside the house`);
+    if (f.rot < 0 || f.rot > 3)
+      errors.push(`furniture ${i} (${f.kind}) rot must be 0..3`);
   });
   if (p.rooms.length === 0) errors.push("a house needs at least one room");
   else if (!roomTouchesDoorEdge(p))

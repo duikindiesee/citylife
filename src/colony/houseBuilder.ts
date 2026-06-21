@@ -12,6 +12,7 @@ import {
   type ParsedBlueprint,
   type Room,
 } from "./blueprintScript";
+import { stampFurniture } from "./furniture";
 import type { Block, BlockKind, DoorDir } from "./voxelHouse";
 
 /** Sub-blocks per plot cell along each axis. 6 => 6x6 micro-cells per plot cell in plan, fine enough
@@ -105,6 +106,14 @@ const KIND_CODE: Record<BlockKind, number> = {
   tile: 25,
   trim: 26,
   chimney: 27,
+  sofa: 28,
+  rug: 29,
+  lamp: 30,
+  plant: 31,
+  desk: 32,
+  shelf: 33,
+  counter: 34,
+  stove: 35,
 };
 const CODE_KIND: BlockKind[] = (() => {
   const arr: BlockKind[] = ["floor"]; // index 0 unused as a sentinel but filled to keep lookups total
@@ -261,6 +270,10 @@ export function compileBlueprint(
 
   // 5. ROOM FLOURISHES — pool water + tile rim, patio tile + glassRail, plus a chimney for a living room.
   buildRoomDetails(g, rooms, owner, w, n, floorSub, wallSub, seed);
+
+  // 5b. AUTHORED FURNITURE (spec 088) — drop each item{...} piece onto the floor of its cell. Furniture
+  //     yields to structure (force=false): it fills interior air but never punches a wall or floor.
+  buildFurnitureItems(g, p, w, d, n, floorSub);
 
   // 6. DOOR LAST — carve the opening and seat a panelled door, overriding any wall/rail in the column so
   //    the entrance is always clear even when a patio rail or a room divider lands on the door edge.
@@ -603,4 +616,28 @@ function buildRoomDetails(
       }
     }
   });
+}
+
+/** Stamp authored furniture (spec 088) onto the ground floor. Each item{...} names a piece, the cell it
+ *  sits in (blueprint coordinates, scaled onto the plot like rooms) and a quarter-turn rotation. The
+ *  piece's micro-block stamp lands at the cell's floor; force=false so furniture fills interior air but
+ *  never overwrites a wall, the floor slab or a built-in flourish. Pure + deterministic. */
+function buildFurnitureItems(
+  g: Grid,
+  p: ParsedBlueprint,
+  w: number,
+  d: number,
+  n: number,
+  floorSub: number,
+): void {
+  for (const f of p.items) {
+    // Scale the item's blueprint cell onto the plot, exactly as rooms scale, then clamp into bounds.
+    const ix = Math.max(0, Math.min(w - 1, scaleSpan(f.x, p.w, w)));
+    const iy = Math.max(0, Math.min(d - 1, scaleSpan(f.y, p.d, d)));
+    const gx0 = ix * n;
+    const gy0 = iy * n;
+    for (const b of stampFurniture(f.kind, f.rot, n)) {
+      g.set(gx0 + b.dx, gy0 + b.dy, floorSub + b.dz, b.kind, false);
+    }
+  }
 }

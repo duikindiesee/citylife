@@ -3,7 +3,14 @@
 // ParsedBlueprint out, always clamped so the design stays inside the plot and never degenerate. Pure +
 // deterministic (no DOM, no clock, no randomness), so the whole edit grammar is unit-testable in node
 // and a bot driving the UI gets exactly the same semantics as a human clicking it.
-import type { ParsedBlueprint, Room, RoomKind } from "../blueprintScript";
+import {
+  FURNITURE_ITEM_CAP,
+  type FurnitureItem,
+  type ParsedBlueprint,
+  type Room,
+  type RoomKind,
+} from "../blueprintScript";
+import type { FurnitureKind } from "../furniture";
 import type { DoorDir } from "../voxelHouse";
 
 const DOOR_ORDER: readonly DoorDir[] = ["n", "e", "s", "w"];
@@ -27,6 +34,7 @@ export function defaultDesign(w: number, d: number): ParsedBlueprint {
       { kind: "living", x: 0, y: 0, w: livingW, d: D, win: true },
       { kind: "bedroom", x: livingW, y: 0, w: W - livingW, d: D, win: true },
     ],
+    items: [],
   };
 }
 
@@ -131,4 +139,63 @@ export function cycleDoor(p: ParsedBlueprint): ParsedBlueprint {
 /** Set the wall height (storeys), clamped to the compiler's 1..3 range. */
 export function setWallH(p: ParsedBlueprint, h: number): ParsedBlueprint {
   return { ...p, wallH: clamp(Math.round(h), 1, 3) };
+}
+
+// ── Furniture (spec 088) ──────────────────────────────────────────────────────
+// Pure ops for placing authored furniture in the floor plan. Items live in blueprint-cell coordinates
+// (the same grid as rooms), default rotation 0; the compiler scales and stamps them onto the plot.
+
+/** Place a piece of furniture, centred-ish in the plot in the first reasonably free cell. Capped so a
+ *  runaway placement loop can never blow past the validator's furniture cap. */
+export function addItem(p: ParsedBlueprint, kind: FurnitureKind): ParsedBlueprint {
+  const items = p.items ?? [];
+  if (items.length >= FURNITURE_ITEM_CAP) return p;
+  // Prefer a cell no other piece already occupies, scanning row-major from the interior outward.
+  let x = Math.floor(p.w / 2);
+  let y = Math.floor(p.d / 2);
+  outer: for (let yy = 0; yy < p.d; yy++) {
+    for (let xx = 0; xx < p.w; xx++) {
+      if (!items.some((f) => f.x === xx && f.y === yy)) {
+        x = xx;
+        y = yy;
+        break outer;
+      }
+    }
+  }
+  const item: FurnitureItem = { kind, x, y, rot: 0 };
+  return { ...p, items: [...items, item] };
+}
+
+/** Remove furniture item i (no-op when out of range). */
+export function removeItem(p: ParsedBlueprint, i: number): ParsedBlueprint {
+  const items = p.items ?? [];
+  if (i < 0 || i >= items.length) return p;
+  return { ...p, items: items.filter((_, k) => k !== i) };
+}
+
+/** Move furniture item i by (dx, dy) cells, clamped to the house footprint. */
+export function moveItem(
+  p: ParsedBlueprint,
+  i: number,
+  dx: number,
+  dy: number,
+): ParsedBlueprint {
+  const items = p.items ?? [];
+  const f = items[i];
+  if (!f) return p;
+  const moved: FurnitureItem = {
+    ...f,
+    x: clamp(f.x + dx, 0, p.w - 1),
+    y: clamp(f.y + dy, 0, p.d - 1),
+  };
+  return { ...p, items: items.map((q, k) => (k === i ? moved : q)) };
+}
+
+/** Rotate furniture item i a quarter-turn clockwise (0 -> 1 -> 2 -> 3 -> 0). */
+export function rotateItem(p: ParsedBlueprint, i: number): ParsedBlueprint {
+  const items = p.items ?? [];
+  const f = items[i];
+  if (!f) return p;
+  const turned: FurnitureItem = { ...f, rot: (f.rot + 1) % 4 };
+  return { ...p, items: items.map((q, k) => (k === i ? turned : q)) };
 }
