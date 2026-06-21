@@ -29,8 +29,8 @@ stamp the game, the builder preview and the Kookerbook card all mesh identically
 - **C — furniture inventory store** ✅ DONE (this slice). See the log below.
 - **D — furniture shop**: economic core ✅ DONE (this slice — pricing + `runtime.buyFurniture()` +
   the `furniture_purchase` ledger mirror); the design-studio UI is the remaining piece. See the log below.
-- **E — place owned furniture from inventory into your house**: an inventory item → a blueprint
-  `item{}` token, consuming the inventory entry.
+- **E — place owned furniture from inventory into your house** ✅ DONE (this slice — the runtime + pure
+  transform; place-controls UI deferred). See the log below.
 - **F — Kookerbook marketplace / classifieds tab**: list furniture for sale (public-safe only,
   respecting player data isolation); Buy wired to `runtime.buyFurniture`.
 
@@ -136,6 +136,29 @@ click buy, plus a `furniture_studio` business in `businesses.ts`) is the remaini
   seq, conservation, the inventory record, the blank-name fix, and the rejection paths. 813 tests green,
   tsc clean. A single-agent adversarial review found two HIGH bugs (blank-name free furniture; mirror-ref
   collision on the capped qty) — both fixed here and regression-tested.
+
+## Slice E — place owned furniture into a house (DONE)
+
+A player drops a piece they own (Slice C inventory) into their house at a chosen cell, rotation and
+storey; the piece is appended to the lot blueprint, the house rebuilds, and one is consumed from
+inventory.
+
+- **`blueprintEdit.placeItemAt(p, kind, x, y, rot, storey)`** (pure) — places a furniture item at an
+  EXACT cell, clamped into the plot footprint (`p.w`/`p.d`) and the design storeys (`maxStorey`), rotation
+  normalised to 0..3, respecting `FURNITURE_ITEM_CAP` (a no-op when full). Its clamps exactly match what
+  `validateBlueprint` accepts, so its output never fails validation on item grounds.
+- **`runtime.placeFurnitureFromInventory(citizenId, lotId, itemId, x, y, rot?, z?)`** — verifies the
+  player OWNS the piece (`ownedBy`) and the lot (`ownerCitizenId`), starts from the lot's blueprint (or
+  its `defaultBlueprint` when undesigned, keeping the door), appends the piece via `placeItemAt`, rebuilds
+  through the validated `applyBlueprint` path, then consumes one (`removeOwned` + `saveInventoryLocal` +
+  best-effort `saveInventoryBackend`). Refuses (consuming/building nothing) when the piece is not owned,
+  the lot is not theirs, the design is full, or the result fails validation.
+- `tests/placeFurniture.test.ts` (8): the pure primitive (clamp, rot, storey, cap, immutability) and the
+  runtime placement, multi-stack decrement, and the not-owned / not-your-lot refusal paths. 821 tests
+  green, tsc clean. A single-agent adversarial review found NO defects.
+- **Known cosmetic item for the UI pass**: each placement routes through `applyBlueprint`, which posts a
+  Kookerbook "redesigned their home" event — so furnishing N pieces yields N posts. Revisit (a
+  furniture-specific or debounced event) when placement gets a real UI.
 
 ## Hard rules carried from the epic
 

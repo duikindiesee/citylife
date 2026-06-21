@@ -36,8 +36,14 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
   mirroring `buyCommercialShop` (gate→ledgerPost citizen/studio→record inventory→mirror→kbPost). 2 HIGH
   review bugs fixed (blank-name free furniture; mirror-ref collision on capped qty). `tests/furnitureShop.test.ts`
   (10), **813 green**. REMAINING for D: the design-studio UI (pick kind/name + buy button, `furniture_studio`
-  business). Queued: E place-from-inventory (inventory item → blueprint `item{}` token, consume the entry),
-  F Kookerbook marketplace tab.
+  business). **Slice E DONE (2026-06-21, commit `c6505e6`)** = place owned furniture into a house:
+  `blueprintEdit.placeItemAt` (pure: place at exact clamped cell/rot/storey, cap-respecting) +
+  `runtime.placeFurnitureFromInventory(citizenId,lotId,itemId,x,y,rot?,z?)` (own-piece + own-lot gated →
+  append to lot blueprint → rebuild via applyBlueprint → consume via removeOwned + best-effort backend).
+  `tests/placeFurniture.test.ts` (8), **821 green**, adversarial review found 0 defects. Known cosmetic
+  for the UI pass: each placement posts a Kookerbook "redesigned" event (N pieces → N posts). Queued:
+  **F — Kookerbook marketplace/classifieds tab** (list furniture for sale public-safe only, Buy wired to
+  `runtime.buyFurniture`) + the deferred UI pass (D design-studio panel, E place-controls, F market tab).
 - **Note:** the builder's 3D preview pane renders ~48px wide in its 3-column layout — verify furniture
   via tests (a quadCount render-path proof), the 2D plan markers, and the DSL textarea, not the canvas.
 - **Scheduler note (updated):** in-session `ScheduleWakeup` IS firing this session — the /loop runs on
