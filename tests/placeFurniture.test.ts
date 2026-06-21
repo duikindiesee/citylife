@@ -195,6 +195,26 @@ describe("runtime.placeFurnitureFromInventory (spec 088 Slice E)", () => {
     }); // untouched
   });
 
+  it("placing furniture does not post a 'redesigned their home' event (spec 088 F fix)", () => {
+    const rt = new ColonyRuntime(42);
+    const { citizenId } = ownerAndLot(rt);
+    recordOwnedLocal(citizenId, "lamp", "Quiet Lamp", 1);
+    rt.placeFurnitureAuto(citizenId, "lamp:quiet-lamp");
+    expect(JSON.stringify(rt.kbProfile(citizenId) ?? {})).not.toMatch(
+      /Redesigned their home/,
+    );
+  });
+
+  it("applyBlueprint honours a custom event message", () => {
+    const rt = new ColonyRuntime(42);
+    const { citizenId, lotId } = ownerAndLot(rt);
+    const base = rt.lotForCitizen(citizenId)!.blueprint!;
+    rt.applyBlueprint(lotId, base, "Furnished the lounge with a new piece");
+    expect(JSON.stringify(rt.kbProfile(citizenId) ?? {})).toMatch(
+      /Furnished the lounge with a new piece/,
+    );
+  });
+
   it("refuses to furnish a lot the citizen does not own", () => {
     const rt = new ColonyRuntime(42);
     const { citizenId } = ownerAndLot(rt);

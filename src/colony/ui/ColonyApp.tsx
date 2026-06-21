@@ -2042,7 +2042,7 @@ export function ColonyApp() {
                         {FURNITURE_CATALOG[s.kind].icon} {s.name}
                       </span>
                       <span
-                        style={{ display: "flex", alignItems: "center", gap: 8 }}
+                        style={{ display: "flex", alignItems: "center", gap: 6 }}
                       >
                         <b>×{s.qty}</b>
                         <button
@@ -2057,6 +2057,16 @@ export function ColonyApp() {
                           onClick={() => runtime.placeFurnitureAuto(me, s.id)}
                         >
                           place ↪
+                        </button>
+                        <button
+                          className="furn-place"
+                          data-build-action={`list-item-${s.id}`}
+                          title="List this design on the marketplace"
+                          onClick={() =>
+                            runtime.listFurnitureForSale(me, s.kind, s.name)
+                          }
+                        >
+                          list ⊕
                         </button>
                       </span>
                     </div>
@@ -2107,6 +2117,81 @@ export function ColonyApp() {
                   {FURNITURE_CATALOG[furnKind].icon} Design + buy · {ui.bank.currency}
                   {price}
                 </button>
+                {/* Marketplace (spec 088 Slice F UI) — the public board: browse listings, buy your own
+                    copy from the studio, and unlist your own. Listing is the "list ⊕" button per stack. */}
+                {(() => {
+                  const listings = runtime.marketListings();
+                  if (listings.length === 0) return null;
+                  const nameOf = (cid: string) =>
+                    cid === me
+                      ? "you"
+                      : (ui.citizens.list.find((x) => x.id === cid)?.displayName ??
+                        "a resident");
+                  return (
+                    <div
+                      data-build-area="furniture-market"
+                      style={{
+                        borderTop: "1px solid var(--brd)",
+                        marginTop: 10,
+                        paddingTop: 8,
+                      }}
+                    >
+                      <div className="row" style={{ opacity: 0.7 }}>
+                        <span>🏷️ Marketplace</span>
+                        <b>{listings.length} listed</b>
+                      </div>
+                      {listings.map((l) => (
+                        <div
+                          className="row"
+                          key={l.id}
+                          data-build-area={`listing-${l.id}`}
+                        >
+                          <span>
+                            {FURNITURE_CATALOG[l.kind].icon} {l.name}{" "}
+                            <small style={{ opacity: 0.55 }}>
+                              · {nameOf(l.sellerCitizenId)}
+                            </small>
+                          </span>
+                          <span
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <b>
+                              {ui.bank.currency}
+                              {l.price}
+                            </b>
+                            <button
+                              className="furn-place"
+                              data-build-action={`buy-listing-${l.id}`}
+                              disabled={wallet < l.price}
+                              title={
+                                wallet < l.price
+                                  ? "Not enough city coin"
+                                  : "Buy your own copy from the studio"
+                              }
+                              onClick={() => runtime.buyFromMarket(me, l.id)}
+                            >
+                              buy
+                            </button>
+                            {l.sellerCitizenId === me && (
+                              <button
+                                className="furn-place"
+                                data-build-action={`unlist-${l.id}`}
+                                title="Remove your listing"
+                                onClick={() => runtime.unlistFurniture(me, l.id)}
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}

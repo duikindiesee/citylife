@@ -1999,7 +1999,11 @@ export class ColonyRuntime {
    *  AND the owning citizen, then raise the house (materials + labour gated — when the colony cannot
    *  afford it the blueprint stays stored and the Build button raises it later). Re-running on a built
    *  lot re-renders the house from the new script (the renderer keys its rebuild on the blueprint). */
-  applyBlueprint(lotId: string, script: string): boolean {
+  applyBlueprint(
+    lotId: string,
+    script: string,
+    eventText?: string | null,
+  ): boolean {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
     if (!lot || !lot.ownerCitizenId) return false;
     if (!validateBlueprint(script).ok) return false;
@@ -2011,14 +2015,16 @@ export class ColonyRuntime {
     reserveParcelLand(this.sim.state, lot.driveway);
     const c = this.citizens.byId(lot.ownerCitizenId);
     if (c) c.blueprint = script;
-    // Spec 082 P2 — an accepted design becomes a timeline event on the owner's Kookerbook page.
-    this.kbPost(
-      lot.ownerCitizenId,
-      "event",
-      isRedesign
-        ? "Redesigned their home — a fresh blueprint is on file at the builder desk."
-        : "Designed their own home, blueprint filed and the build crew booked.",
-    );
+    // Spec 082 P2 — an accepted design becomes a timeline event on the owner's Kookerbook page. Callers
+    // may override the message, or pass null to skip it (spec 088 — furniture placement reuses this path
+    // but should not spam a "redesigned their home" post for every piece dropped in).
+    const eventMsg =
+      eventText === undefined
+        ? isRedesign
+          ? "Redesigned their home — a fresh blueprint is on file at the builder desk."
+          : "Designed their own home, blueprint filed and the build crew booked."
+        : eventText;
+    if (eventMsg) this.kbPost(lot.ownerCitizenId, "event", eventMsg);
     // Spec 077 P4.5 — persist the accepted design: locally always (reload-proof offline), and to the
     // citylife backend best-effort as the player (the cross-device copy; a 404 just means the
     // kooker-side endpoint has not shipped yet — never blocks the game).
@@ -2062,7 +2068,8 @@ export class ColonyRuntime {
     if ((p.items?.length ?? 0) >= FURNITURE_ITEM_CAP) return false; // full — consume nothing
     const script = blueprintToScript(placeItemAt(p, stack.kind, x, y, rot, z));
     // applyBlueprint validates, stores the design, rebuilds the house and persists it (local + backend).
-    if (!this.applyBlueprint(lotId, script)) return false;
+    // Pass null so placing a piece does not post a "redesigned their home" event for every drop.
+    if (!this.applyBlueprint(lotId, script, null)) return false;
     // Consume one of the piece from inventory only once the placement actually took.
     const inv2 = removeOwned(inv, citizenId, itemId, 1);
     saveInventoryLocal(inv2);
