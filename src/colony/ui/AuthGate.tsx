@@ -16,7 +16,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const forceLogin =
     typeof window !== "undefined" &&
     new URLSearchParams(window.location.search).get("login") === "1";
-  const [authed, setAuthed] = useState(forceLogin ? false : auth.isAuthenticated);
+  const [authed, setAuthed] = useState(
+    forceLogin ? false : auth.isAuthenticated,
+  );
   const [checking, setChecking] = useState(
     forceLogin ? false : !auth.isAuthenticated,
   );

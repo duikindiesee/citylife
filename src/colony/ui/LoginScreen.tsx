@@ -46,7 +46,10 @@ export function LoginScreen({
     const arm = () => {
       clearIdleTimer();
       if (busyRef.current) return; // never drift into cinematic mid-authentication
-      timerRef.current = window.setTimeout(() => onIdleRef.current?.(), IDLE_MS);
+      timerRef.current = window.setTimeout(
+        () => onIdleRef.current?.(),
+        IDLE_MS,
+      );
     };
     const onActivity = () => {
       onActiveRef.current?.(); // leave the cinematic the instant the operator stirs

@@ -186,8 +186,7 @@ export function BuilderDesk({
             opacity: 0.85,
           }}
         >
-          🚶 No deal this season — raise the budget and KOOKER will quote
-          again.
+          🚶 No deal this season — raise the budget and KOOKER will quote again.
         </div>
       )}
     </div>
