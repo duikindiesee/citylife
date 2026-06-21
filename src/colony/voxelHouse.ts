@@ -43,7 +43,9 @@ export type BlockKind =
   | "desk"
   | "shelf"
   | "counter"
-  | "stove";
+  | "stove"
+  // Multi-level floor plans (spec 088 Slice B) — a stair tread connecting one storey to the next.
+  | "stair";
 export type DoorDir = "n" | "s" | "e" | "w";
 
 export interface Block {
@@ -185,4 +187,6 @@ export const BLOCK_COLOR: Record<BlockKind, number> = {
   shelf: 0x6a4a2c,
   counter: 0xcdbfa3,
   stove: 0x44464d,
+  // Multi-level (spec 088 Slice B): a warm timber stair tread, distinct from the grey stone "step".
+  stair: 0x9a7846,
 };

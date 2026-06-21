@@ -9,6 +9,7 @@
 // byte-identical blocks.
 import {
   parseBlueprint,
+  type FurnitureItem,
   type ParsedBlueprint,
   type Room,
 } from "./blueprintScript";
@@ -114,6 +115,7 @@ const KIND_CODE: Record<BlockKind, number> = {
   shelf: 33,
   counter: 34,
   stove: 35,
+  stair: 36,
 };
 const CODE_KIND: BlockKind[] = (() => {
   const arr: BlockKind[] = ["floor"]; // index 0 unused as a sentinel but filled to keep lookups total
@@ -236,15 +238,37 @@ export function compileBlueprint(
   const g = new Grid(gw, gd, gh);
 
   const rooms = scaleRooms(p, w, d);
+  // SLICE B — multi-level. Rooms and furniture carry an optional storey (z, default 0). The GROUND
+  // storey runs the original single-level pipeline byte-for-byte; upper storeys get their own dividers,
+  // flourishes and furniture, plus a shared inter-storey floor slab and a stairwell. A script with no z
+  // anywhere compiles identically to before (the upper passes are empty, the slabs/stairs are gated on
+  // a wall height above one).
+  const groundRooms = rooms.filter((r) => (r.z ?? 0) === 0);
+  // Upper-storey CONTENT drives the multi-level build: a storey gets a real floor (and the house a
+  // stairwell) only where a room or furniture actually sits above the ground. A bare tall shell with
+  // everything on the ground stays byte-identical to the single-level compile — and stays under budget,
+  // since a full-footprint slab on a big estate would otherwise blow it.
+  const upperRooms = rooms.filter(
+    (r) => (r.z ?? 0) >= 1 && (r.z ?? 0) < storeys,
+  );
+  const upperItems = p.items.filter(
+    (f) => (f.z ?? 0) >= 1 && (f.z ?? 0) < storeys,
+  );
+  const hasUpper = upperRooms.length > 0 || upperItems.length > 0;
+  // When rooms STACK, ground partitions are one storey tall so an upper room is never bisected by a wall
+  // rising from the floor below it. With no stacking the ground dividers keep their original full height.
+  const perStorey = hasUpper;
+
   // OVERLAP SEMANTICS: the LAST room placed OWNS its cells — adding a pool over a bedroom CARVES the
   // bedroom (its dividers and roof retreat), so outdoor rooms read as backyard amenities cut into the
-  // mass, never brick shafts punched through it. Deterministic: pure list order, no randomness.
-  const owner = roomOwners(rooms, w, d);
+  // mass, never brick shafts punched through it. Deterministic: pure list order, no randomness. The
+  // owner map and the outdoor test are GROUND-storey concerns (the shell, roof and yard read off them).
+  const owner = roomOwners(groundRooms, w, d);
   const outdoor = (cx: number, cy: number): boolean => {
     if (cx < 0 || cy < 0 || cx >= w || cy >= d) return false;
     const i = owner[cy * w + cx]!;
     if (i < 0) return false;
-    const k = rooms[i]!.kind;
+    const k = groundRooms[i]!.kind;
     return k === "patio" || k === "pool";
   };
 
@@ -261,19 +285,58 @@ export function compileBlueprint(
   //    The door edge gets an opening; windows are punched into long wall runs.
   buildOuterWalls(g, w, d, n, storeys, p.doorDir, door, outdoor, seed);
 
-  // 3. INNER DIVIDERS — brick walls along room boundaries, only on cells the room still OWNS (a later
-  //    overlapping room carves them away).
-  buildDividers(g, rooms, owner, w, d, n, storeys, seed);
+  // 3. GROUND DIVIDERS — brick walls along room boundaries, only on cells the room still OWNS (a later
+  //    overlapping room carves them away). One storey tall when rooms stack above, else full shell height.
+  buildDividers(g, groundRooms, owner, w, d, n, floorSub, perStorey ? n : wallSub, seed);
 
   // 4. ROOF slab one micro-level above the walls, over enclosed rooms only (outdoor cells stay open).
-  buildRoof(g, rooms, owner, w, d, n, floorSub + wallSub, seed, outdoor);
+  buildRoof(g, groundRooms, owner, w, d, n, floorSub + wallSub, seed, outdoor);
 
-  // 5. ROOM FLOURISHES — pool water + tile rim, patio tile + glassRail, plus a chimney for a living room.
-  buildRoomDetails(g, rooms, owner, w, n, floorSub, wallSub, seed);
+  // 5. GROUND FLOURISHES — pool water + tile rim, patio tile + glassRail, plus a chimney for a living room.
+  buildRoomDetails(
+    g,
+    groundRooms,
+    owner,
+    w,
+    n,
+    floorSub,
+    (perStorey ? floorSub + n : floorSub + wallSub) - 1,
+    seed,
+  );
 
-  // 5b. AUTHORED FURNITURE (spec 088) — drop each item{...} piece onto the floor of its cell. Furniture
-  //     yields to structure (force=false): it fills interior air but never punches a wall or floor.
-  buildFurnitureItems(g, p, w, d, n, floorSub);
+  // 5b. GROUND FURNITURE (spec 088) — drop each ground-floor item{...} piece onto the floor of its cell.
+  //     Furniture yields to structure (force=false): it fills interior air but never punches a wall.
+  buildFurnitureItems(
+    g,
+    p.items.filter((f) => (f.z ?? 0) === 0),
+    p,
+    w,
+    d,
+    n,
+    floorSub,
+  );
+
+  // 5c. UPPER STOREYS (Slice B) — under each upper-storey room/furniture a real floor slab, a stacked
+  //     stairwell up from the ground, then that storey's own dividers, flourishes and furniture.
+  if (hasUpper) {
+    let topUsed = 1;
+    for (const r of upperRooms) topUsed = Math.max(topUsed, r.z ?? 0);
+    for (const f of upperItems) topUsed = Math.max(topUsed, f.z ?? 0);
+    const stair = pickStairCell(w, d, door, outdoor, seed);
+    buildUpperFloors(g, upperRooms, upperItems, p, w, d, n, floorSub, stair, topUsed);
+    if (stair) placeStairs(g, n, floorSub, topUsed, stair);
+    for (let s = 1; s <= topUsed; s++) {
+      const baseZ = floorSub + s * n; // the stand level (and furniture floor) of storey s
+      const sRooms = upperRooms.filter((r) => (r.z ?? 0) === s);
+      if (sRooms.length > 0) {
+        const sOwner = roomOwners(sRooms, w, d);
+        buildDividers(g, sRooms, sOwner, w, d, n, baseZ, n, seed);
+        buildRoomDetails(g, sRooms, sOwner, w, n, baseZ, baseZ + n - 1, seed);
+      }
+      const sItems = upperItems.filter((f) => (f.z ?? 0) === s);
+      if (sItems.length > 0) buildFurnitureItems(g, sItems, p, w, d, n, baseZ);
+    }
+  }
 
   // 6. DOOR LAST — carve the opening and seat a panelled door, overriding any wall/rail in the column so
   //    the entrance is always clear even when a patio rail or a room divider lands on the door edge.
@@ -443,6 +506,9 @@ function isWindow(
   return (along + phase) % period === Math.floor(period / 2);
 }
 
+/** Build the interior partitions for a set of rooms, with walls rising from `baseZ` for `dividerH`
+ *  micro-courses. Slice B calls this once per storey (the ground storey at floorSub, uppers at their own
+ *  floor level) so a partition only spans the storey it belongs to. Pure + deterministic. */
 function buildDividers(
   g: Grid,
   rooms: ScaledRoom[],
@@ -450,11 +516,10 @@ function buildDividers(
   w: number,
   d: number,
   n: number,
-  storeys: number,
+  baseZ: number,
+  dividerH: number,
   seed: number,
 ): void {
-  const floorSub = 1;
-  const wallSub = storeys * n;
   rooms.forEach((r, ri) => {
     if (r.kind === "patio" || r.kind === "pool") return; // outdoor rooms have no interior walls
     // Build the room's own perimeter walls (interior dividers); skip a doorway gap so rooms connect,
@@ -477,7 +542,7 @@ function buildDividers(
           cellY = Math.floor(gy / n);
         if (cellX < 0 || cellY < 0 || cellX >= w || cellY >= d) continue;
         if (owner[cellY * w + cellX] !== ri) continue; // carved by a later room
-        for (let z = floorSub; z < floorSub + wallSub; z++)
+        for (let z = baseZ; z < baseZ + dividerH; z++)
           g.set(gx, gy, z, brickAt(gx, z, seed));
       }
     }
@@ -551,16 +616,20 @@ function buildRoof(
   }
 }
 
+/** Paint each room's built-in flourishes. `baseZ` is the storey's floor (furniture/amenity level) and
+ *  `bandTopZ` the top course of the storey (where ceiling beams and the garage header ride). Slice B
+ *  calls this per storey so an upper living room gets its own beam and an upper bedroom its own bed. */
 function buildRoomDetails(
   g: Grid,
   rooms: ScaledRoom[],
   owner: Int16Array,
   w: number,
   n: number,
-  floorSub: number,
-  wallSub: number,
+  baseZ: number,
+  bandTopZ: number,
   seed: number,
 ): void {
+  const surfaceZ = baseZ - 1 >= 0 ? baseZ - 1 : 0; // the slab a pool/patio sinks its surface into
   rooms.forEach((r, ri) => {
     const x0 = r.px * n,
       x1 = (r.px + r.pw) * n - 1;
@@ -575,14 +644,8 @@ function buildRoomDetails(
         for (let gx = x0; gx <= x1; gx++) {
           if (!owns(gx, gy)) continue;
           const rim = gx === x0 || gx === x1 || gy === y0 || gy === y1;
-          g.set(
-            gx,
-            gy,
-            floorSub - 1 >= 0 ? floorSub - 1 : 0,
-            rim ? "tile" : "water",
-            true,
-          );
-          if (rim) g.set(gx, gy, floorSub, "tile", true);
+          g.set(gx, gy, surfaceZ, rim ? "tile" : "water", true);
+          if (rim) g.set(gx, gy, baseZ, "tile", true);
         }
       }
     } else if (r.kind === "patio") {
@@ -590,54 +653,153 @@ function buildRoomDetails(
       for (let gy = y0; gy <= y1; gy++) {
         for (let gx = x0; gx <= x1; gx++) {
           if (!owns(gx, gy)) continue;
-          g.set(gx, gy, floorSub - 1 >= 0 ? floorSub - 1 : 0, "tile", true);
+          g.set(gx, gy, surfaceZ, "tile", true);
           const rim = gx === x0 || gx === x1 || gy === y0 || gy === y1;
-          if (rim) g.set(gx, gy, floorSub, "glassRail", true);
+          if (rim) g.set(gx, gy, baseZ, "glassRail", true);
         }
       }
     } else if (r.kind === "living") {
       // a table near the middle and an exposed ceiling BEAM under the roof line for character
       const tx = Math.floor((x0 + x1) / 2),
         ty = Math.floor((y0 + y1) / 2);
-      g.set(tx, ty, floorSub, "table", true);
-      const beamZ = floorSub + wallSub - 1; // the top course, just under the roof
+      g.set(tx, ty, baseZ, "table", true);
       const phase = mix(seed, r.px, r.py) % 2;
       for (let gx = x0 + 1; gx <= x1 - 1; gx++)
-        if (((gx + phase) & 1) === 0) g.set(gx, ty, beamZ, "beam", true);
+        if (((gx + phase) & 1) === 0) g.set(gx, ty, bandTopZ, "beam", true);
     } else if (r.kind === "bedroom") {
       // a bed in the back corner away from the door edge
-      g.set(x0 + 1, y0 + 1, floorSub, "bed", true);
+      g.set(x0 + 1, y0 + 1, baseZ, "bed", true);
     } else if (r.kind === "garage") {
       // a wide opening on its street edge — a step threshold and a beam header above it
-      const headerZ = floorSub + wallSub - 1;
       for (let gx = x0; gx <= x1; gx++) {
-        g.set(gx, y1, floorSub, "step", true);
-        g.set(gx, y1, headerZ, "beam", true);
+        g.set(gx, y1, baseZ, "step", true);
+        g.set(gx, y1, bandTopZ, "beam", true);
       }
     }
   });
 }
 
-/** Stamp authored furniture (spec 088) onto the ground floor. Each item{...} names a piece, the cell it
- *  sits in (blueprint coordinates, scaled onto the plot like rooms) and a quarter-turn rotation. The
- *  piece's micro-block stamp lands at the cell's floor; force=false so furniture fills interior air but
- *  never overwrites a wall, the floor slab or a built-in flourish. Pure + deterministic. */
+/** Stamp authored furniture (spec 088) onto a storey. Each item{...} names a piece, the cell it sits in
+ *  (blueprint coordinates, scaled onto the plot like rooms), a quarter-turn rotation and (Slice B) a
+ *  storey. The piece's micro-block stamp lands at `baseZ` — the storey's floor; force=false so furniture
+ *  fills interior air but never overwrites a wall, the floor slab or a built-in flourish. Pure. */
 function buildFurnitureItems(
   g: Grid,
+  items: FurnitureItem[],
   p: ParsedBlueprint,
   w: number,
   d: number,
   n: number,
-  floorSub: number,
+  baseZ: number,
 ): void {
-  for (const f of p.items) {
+  for (const f of items) {
     // Scale the item's blueprint cell onto the plot, exactly as rooms scale, then clamp into bounds.
     const ix = Math.max(0, Math.min(w - 1, scaleSpan(f.x, p.w, w)));
     const iy = Math.max(0, Math.min(d - 1, scaleSpan(f.y, p.d, d)));
     const gx0 = ix * n;
     const gy0 = iy * n;
     for (const b of stampFurniture(f.kind, f.rot, n)) {
-      g.set(gx0 + b.dx, gy0 + b.dy, floorSub + b.dz, b.kind, false);
+      g.set(gx0 + b.dx, gy0 + b.dy, baseZ + b.dz, b.kind, false);
+    }
+  }
+}
+
+/** SLICE B — lay floor slabs under the upper-storey content only: each upper room's footprint, a pad
+ *  under each upper furniture cell, and a landing at the stairwell cell on every used storey. Sizing the
+ *  floors to the rooms (not the whole footprint) keeps an estate-scale multi-level home under the voxel
+ *  budget. The slab for storey s sits at floorSub + s*n - 1 (it caps storey s-1 and floors storey s).
+ *  force=false: the slab fills interior air and yields to brick walls already passing through it. */
+function buildUpperFloors(
+  g: Grid,
+  upperRooms: ScaledRoom[],
+  upperItems: FurnitureItem[],
+  p: ParsedBlueprint,
+  w: number,
+  d: number,
+  n: number,
+  floorSub: number,
+  stair: { cx: number; cy: number } | null,
+  topUsed: number,
+): void {
+  const slabZ = (s: number) => floorSub + s * n - 1;
+  const fillCell = (cx: number, cy: number, z: number) => {
+    if (cx < 0 || cy < 0 || cx >= w || cy >= d) return;
+    const gx0 = cx * n,
+      gy0 = cy * n;
+    for (let sy = 0; sy < n; sy++)
+      for (let sx = 0; sx < n; sx++) g.set(gx0 + sx, gy0 + sy, z, "floor");
+  };
+  for (const r of upperRooms) {
+    const z = slabZ(r.z ?? 0);
+    for (let cy = r.py; cy < r.py + r.pd; cy++)
+      for (let cx = r.px; cx < r.px + r.pw; cx++) fillCell(cx, cy, z);
+  }
+  for (const f of upperItems) {
+    const ix = Math.max(0, Math.min(w - 1, scaleSpan(f.x, p.w, w)));
+    const iy = Math.max(0, Math.min(d - 1, scaleSpan(f.y, p.d, d)));
+    fillCell(ix, iy, slabZ(f.z ?? 0));
+  }
+  // A landing under the stairwell on every used storey so a flight always arrives on solid floor even
+  // when no room sits directly above the stairs.
+  if (stair) for (let s = 1; s <= topUsed; s++) fillCell(stair.cx, stair.cy, slabZ(s));
+}
+
+/** SLICE B — choose the enclosed interior cell that hosts the stairwell: farthest from the door (so it
+ *  never blocks the entrance), ties broken by a fixed seed mix so the choice is deterministic yet varies
+ *  between homes. Returns null when a design has no enclosed interior cell (e.g. all-outdoor). */
+function pickStairCell(
+  w: number,
+  d: number,
+  door: { x: number; y: number },
+  outdoor: (cx: number, cy: number) => boolean,
+  seed: number,
+): { cx: number; cy: number } | null {
+  let best = -1;
+  let bestScore = -1;
+  for (let cy = 0; cy < d; cy++) {
+    for (let cx = 0; cx < w; cx++) {
+      if (cx === door.x && cy === door.y) continue;
+      const dist = Math.abs(cx - door.x) + Math.abs(cy - door.y);
+      // Strongly prefer an enclosed interior cell; fall back to an outdoor cell only when the whole
+      // ground is open (a house-on-stilts over a patio still needs a flight up to its upper floor). The
+      // bonus is uniform across enclosed cells, so the choice among them is unchanged from before.
+      const enclosedBonus = outdoor(cx, cy) ? 0 : 1000;
+      const score = enclosedBonus + dist * 8 + (mix(seed, cx, cy) & 7);
+      if (score > bestScore) {
+        bestScore = score;
+        best = cy * w + cx;
+      }
+    }
+  }
+  if (best < 0) return null; // a degenerate plot with no cell but the door — no stairwell
+  const cx = best % w;
+  return { cx, cy: (best - cx) / w };
+}
+
+/** SLICE B — a single stacked stairwell threading the ground up to the top used storey, in the chosen
+ *  host cell. Each flight is a 2-wide diagonal run rising one micro-course per step; the floor slab above
+ *  the run's head is punched open FIRST so the top tread (which sits at the slab level) survives, and the
+ *  flights actually connect. Pure + deterministic — no wall-clock, no randomness. */
+function placeStairs(
+  g: Grid,
+  n: number,
+  floorSub: number,
+  topUsed: number,
+  stair: { cx: number; cy: number },
+): void {
+  const sx0 = stair.cx * n + Math.max(1, Math.floor(n / 2) - 1); // a 2-wide run, centred in the cell
+  const sx1 = sx0 + 1;
+  for (let s = 0; s < topUsed; s++) {
+    const startZ = floorSub + s * n; // stand level of the lower storey
+    const slabZ = floorSub + (s + 1) * n - 1; // the floor slab this flight climbs up to
+    for (let ox = -1; ox <= 2; ox++)
+      for (let oy = n - 2; oy <= n - 1; oy++)
+        clear(g, sx0 + ox, stair.cy * n + oy, slabZ);
+    for (let i = 0; i < n; i++) {
+      const gy = stair.cy * n + i;
+      const z = startZ + i; // rise one micro-course per step of depth
+      g.set(sx0, gy, z, "stair", true);
+      g.set(sx1, gy, z, "stair", true);
     }
   }
 }
