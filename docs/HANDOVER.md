@@ -6,6 +6,27 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
 
 ---
 
+## 0. LATEST STATE (2026-06-21) — supersedes stale branch info below
+
+- **Main is at `0.4.0`** (`deb8355`, PR #66). The **player-onboarding epic is MERGED** (citylife
+  #65 idle-cinematic login, #67 KOOKER-as-Builder + per-player data isolation; kooker-service-user
+  #142 `CITYLIFE_PLAYER` role; kooker-web #362 create+fund 750 KCO+telegram bot). Still pending
+  (operator): seed the `system_cl` KCO reserve; decide on the accounts-lineup fix (first-login player
+  provisioning keyed by the kooker `userId`).
+- **Active branch: `feat/citylife-builder-expansion`** (off `main`) — the **house-builder expansion
+  epic** (/loop). Rolling **PR #68**. A 6-slice plan (see `project_citylife_builder_expansion`
+  memory): **Slice A DONE** = author-able furniture in the blueprint DSL (`item{kind x y rot}` token,
+  `furniture.ts` 11-piece catalog, 8 new furniture BlockKinds, `buildFurnitureItems` compiler stamp,
+  builder furniture palette). Queued: B multi-level floor plans (inter-storey floors + stairs), C
+  furniture inventory store, D furniture shop (design+buy+ledgerSync), E place-from-inventory, F
+  Kookerbook marketplace tab.
+- **Note:** the builder's 3D preview pane renders ~48px wide in its 3-column layout — verify furniture
+  via tests (a quadCount render-path proof), the 2D plan markers, and the DSL textarea, not the canvas.
+- **Scheduler note (updated):** in-session `ScheduleWakeup` IS firing this session — the /loop runs on
+  it plus background-task completions.
+
+---
+
 ## 1. Where everything is
 
 - **CityLife game (your main lane):** `D:\infra\projects\citylife-visual` — a git **worktree** of the
