@@ -27,8 +27,8 @@ stamp the game, the builder preview and the Kookerbook card all mesh identically
   moveItem/rotateItem`; builder furniture palette + 2D markers + controls. Ground floor only.
 - **B — multi-level floor plans** ✅ DONE (this slice). See the log below.
 - **C — furniture inventory store** ✅ DONE (this slice). See the log below.
-- **D — furniture shop**: a `furniture_studio` business; a design sub-app; `runtime.buyFurniture()`
-  mirroring `buyCommercialShop`; a `furniture_purchase` ledger move synced to the real ledger.
+- **D — furniture shop**: economic core ✅ DONE (this slice — pricing + `runtime.buyFurniture()` +
+  the `furniture_purchase` ledger mirror); the design-studio UI is the remaining piece. See the log below.
 - **E — place owned furniture from inventory into your house**: an inventory item → a blueprint
   `item{}` token, consuming the inventory entry.
 - **F — Kookerbook marketplace / classifieds tab**: list furniture for sale (public-safe only,
@@ -112,6 +112,30 @@ player has designed or bought), the foundation Slice D (buy), E (place) and F (m
   defence, immutability, the merge semantics and the local round-trip. 803 tests green, tsc clean. A
   single-agent adversarial review found no high/medium defects; three low fixes folded in (sum duplicate
   stacks, cap-after-sort, reject non-positive qty).
+
+## Slice D — furniture studio: design + buy (economic core DONE)
+
+A player designs a piece (a catalog kind + their own name) and buys it from the studio; the ₭ price moves
+citizen -> studio on the in-game ledger, mirrors to the real ledger, and the piece lands in their Slice C
+inventory. This slice shipped the economic core; the **design-studio UI** (a panel to pick kind/name and
+click buy, plus a `furniture_studio` business in `businesses.ts`) is the remaining piece.
+
+- **`furnitureShop.ts`** (pure) — a deterministic ₭ price table per kind (4 ₭ decor … 22 ₭ bed, well under
+  the residential land tier) + the `FURNITURE_SHOP_ACCOUNT` studio till id.
+- **`ledgerSync.ts`** — a `furniture_purchase` `LedgerMove` (+ `moveRef`, `furniturePurchaseBody` =
+  `FURNITURE_PURCHASE` CREDIT citizen / DEBIT the studio till, `isLedgerMove`, `requestFor`). The ref is
+  `citylife:furniture:${citizenId}:${itemId}:${seq}` where `seq` is the LIFETIME purchase count.
+- **`furnitureStore.ts`** — `nextPurchaseSeq(citizenId, itemId)`: a monotonic, **uncapped**, persisted
+  per-design purchase counter (separate from the held quantity, which caps at 99), so repeat buys never
+  collide on a mirror reference.
+- **`runtime.buyFurniture(citizenId, kind, name)`** — mirrors `buyCommercialShop`: gate on the exact
+  wallet balance, `ledgerPost` citizen -price / studio +price, record into the inventory, `mirror()` the
+  move, best-effort `saveInventoryBackend`, `kbPost` a Kookerbook event, `emit`. A blank name falls back
+  to the kind (charged + recorded, never free); an unsafe name / unknown kind is refused with no charge.
+- `tests/furnitureShop.test.ts` (10 tests): pricing, the mirror body/ref/drain, the uncapped purchase
+  seq, conservation, the inventory record, the blank-name fix, and the rejection paths. 813 tests green,
+  tsc clean. A single-agent adversarial review found two HIGH bugs (blank-name free furniture; mirror-ref
+  collision on the capped qty) — both fixed here and regression-tested.
 
 ## Hard rules carried from the epic
 

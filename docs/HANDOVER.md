@@ -30,8 +30,14 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
   as the player, mirroring `blueprintStore`; pure add/remove/merge/dedupe ops; isPublicSafe-screened;
   id recomputed from kind+name so a tampered id cannot spoof). `tests/furnitureStore.test.ts` (13),
   **803 green**, tsc clean. The kooker-service-user backend it syncs to is **PR #144** (consolidated
-  the old CX-1/CX-2 stores; #139/#140 closed). Queued: D furniture shop (design+buy+ledgerSync), E
-  place-from-inventory, F Kookerbook marketplace tab.
+  the old CX-1/CX-2 stores; #139/#140 closed). **Slice D economic core DONE (2026-06-21, commit `60e64a8`)** = furniture studio buy: `furnitureShop.ts`
+  (pure ₭ price table + studio account), `ledgerSync.ts` `furniture_purchase` move (+ `furniturePurchaseBody`
+  FURNITURE_PURCHASE, ref keyed on a lifetime `nextPurchaseSeq`), `runtime.buyFurniture(citizenId,kind,name)`
+  mirroring `buyCommercialShop` (gate→ledgerPost citizen/studio→record inventory→mirror→kbPost). 2 HIGH
+  review bugs fixed (blank-name free furniture; mirror-ref collision on capped qty). `tests/furnitureShop.test.ts`
+  (10), **813 green**. REMAINING for D: the design-studio UI (pick kind/name + buy button, `furniture_studio`
+  business). Queued: E place-from-inventory (inventory item → blueprint `item{}` token, consume the entry),
+  F Kookerbook marketplace tab.
 - **Note:** the builder's 3D preview pane renders ~48px wide in its 3-column layout — verify furniture
   via tests (a quadCount render-path proof), the 2D plan markers, and the DSL textarea, not the canvas.
 - **Scheduler note (updated):** in-session `ScheduleWakeup` IS firing this session — the /loop runs on
