@@ -47,9 +47,14 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
   tamper-proof id, cap 256, backend `/kooker/api/v1/citylife/furniture-market`) + runtime
   `listFurnitureForSale` / `unlistFurniture` / `marketListings` / `buyFromMarket` (reuses buyFurniture).
   `tests/furnitureMarket.test.ts` (12), **833 green**, adversarial review 0 defects.
-  **ALL SIX BACKEND SLICES A–F DONE.** REMAINING = one **UI pass** (deferred together): D furniture-studio
-  panel + `furniture_studio` business, E place-controls (builder placement mode), F Kookerbook market tab;
-  every control needs `data-build-action`; fix the cosmetic per-placement "redesigned" Kookerbook event then.
+  **ALL SIX BACKEND SLICES A–F DONE.** UI pass IN PROGRESS: **D furniture-studio panel DONE
+  (commit `0d867c2`)** — a "Furniture studio" HUD panel in `ColonyApp.tsx` (player-gated on
+  `operatorCitizenId`; wallet + owned inventory list + kind/name/Buy → `runtime.buyFurniture`; all
+  `data-build-action`; LIVE-VERIFIED on the dev server via preview tools — set `__colony.setOperatorName(
+  'Joe the Crab')` to reveal the player-gated panel). REMAINING UI: E place-controls (drop owned furniture
+  into the house → `placeFurnitureFromInventory`), F Kookerbook market tab in `kookerbookMain.tsx`
+  (`marketListings`/`listFurnitureForSale`/`unlistFurniture`/`buyFromMarket`); optional `furniture_studio`
+  business; fix the cosmetic per-placement "redesigned" Kookerbook event. Dev server: preview 'citylife' on :5188.
 - **Note:** the builder's 3D preview pane renders ~48px wide in its 3-column layout — verify furniture
   via tests (a quadCount render-path proof), the 2D plan markers, and the DSL textarea, not the canvas.
 - **Scheduler note (updated):** in-session `ScheduleWakeup` IS firing this session — the /loop runs on

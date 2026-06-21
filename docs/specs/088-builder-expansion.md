@@ -186,8 +186,12 @@ tab is in the UI pass.
 All six backend slices (A–F) are done. The remaining work is one **UI pass**, best done together since
 all three share the 48px-preview verification constraint and can reuse components:
 
-- **D — furniture studio panel**: pick a kind + type a name + Buy (wires `runtime.buyFurniture`); a
-  `furniture_studio` business in `businesses.ts`.
+- **D — furniture studio panel** ✅ DONE (commit `0d867c2`): a "Furniture studio" panel in the game HUD
+  (`ColonyApp.tsx`) — shown for a player who owns a citizen (`operatorCitizenId`); lists their wallet +
+  owned inventory and a kind-picker + name field + "Design + buy" button wired to `runtime.buyFurniture`.
+  Live-verified on the dev server (renders, buy decrements wallet + grows inventory + posts the Kookerbook
+  event + queues the ledger mirror, no console errors). Each control carries a `data-build-action`. STILL
+  optional: a `furniture_studio` business in `businesses.ts` (a physical shopfront).
 - **E — place-controls**: from the inventory, drop a piece into the house (wires
   `runtime.placeFurnitureFromInventory`) — a builder placement mode.
 - **F — Kookerbook market tab**: the board (`runtime.marketListings`), List-for-sale + Unlist
