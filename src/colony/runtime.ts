@@ -124,7 +124,7 @@ import {
   blueprintToScript,
   FURNITURE_ITEM_CAP,
 } from "./blueprintScript";
-import { placeItemAt } from "./builder/blueprintEdit";
+import { placeItemAt, freeItemCell } from "./builder/blueprintEdit";
 import {
   loadBlueprintsLocal,
   saveBlueprintLocal,
@@ -2070,6 +2070,36 @@ export class ColonyRuntime {
       () => {},
     );
     return true;
+  }
+
+  /** Spec 088 Slice E — the homestead lot a citizen owns (their home), or null. Public so the HUD can
+   *  target the player's own house when they place furniture. One home per citizen (assignLot is 1:1). */
+  lotForCitizen(citizenId: string): Lot | null {
+    return (
+      this.neighborhood.lots.find((l) => l.ownerCitizenId === citizenId) ?? null
+    );
+  }
+
+  /** Spec 088 Slice E — the HUD convenience: place an owned piece into the player's OWN house at an
+   *  auto-chosen free cell (precise placement stays in the builder). Finds their lot and a free cell,
+   *  then delegates to placeFurnitureFromInventory (which gates ownership, rebuilds and consumes one).
+   *  Returns false when the player owns no home or the placement is refused. */
+  placeFurnitureAuto(citizenId: string, itemId: string): boolean {
+    const lot = this.lotForCitizen(citizenId);
+    if (!lot) return false;
+    const base =
+      lot.blueprint ??
+      defaultBlueprint(lot.houseSeed, streetDoorDir(lot), lot.houseZone.w);
+    const cell = freeItemCell(parseBlueprint(base));
+    return this.placeFurnitureFromInventory(
+      citizenId,
+      lot.id,
+      itemId,
+      cell.x,
+      cell.y,
+      0,
+      0,
+    );
   }
 
   /** Spec 077 P4.5 — restore stored designs onto their lots: the local map immediately (so the houses

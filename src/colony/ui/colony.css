@@ -212,6 +212,22 @@ body,
   outline: none;
   border-color: var(--accent);
 }
+.furn-place {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--brd);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 2px 9px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.furn-place:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+.furn-place:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 .immigbtn:hover {
   background: rgba(255, 255, 255, 0.16);
 }

@@ -9,6 +9,7 @@ import {
 import {
   defaultDesign,
   placeItemAt,
+  freeItemCell,
 } from "../src/colony/builder/blueprintEdit";
 import { ColonyRuntime } from "../src/colony/runtime";
 import {
@@ -78,6 +79,36 @@ describe("placeItemAt — the inventory→DSL primitive (pure)", () => {
   });
 });
 
+describe("freeItemCell — auto placement spot (pure)", () => {
+  it("returns the first unoccupied cell row-major on the storey", () => {
+    const p: ParsedBlueprint = {
+      ...defaultDesign(3, 3),
+      items: [
+        { kind: "lamp", x: 0, y: 0, rot: 0 },
+        { kind: "lamp", x: 1, y: 0, rot: 0 },
+      ],
+    };
+    expect(freeItemCell(p)).toEqual({ x: 2, y: 0 });
+  });
+
+  it("is storey-aware — a cell taken on the ground is free upstairs", () => {
+    const p: ParsedBlueprint = {
+      ...defaultDesign(3, 3),
+      wallH: 2,
+      items: [{ kind: "lamp", x: 0, y: 0, rot: 0 }], // ground only
+    };
+    expect(freeItemCell(p, 1)).toEqual({ x: 0, y: 0 }); // free on floor 1
+  });
+
+  it("defaults to the plot centre when every cell on the storey is taken", () => {
+    const items = [];
+    for (let y = 0; y < 3; y++)
+      for (let x = 0; x < 3; x++) items.push({ kind: "lamp" as const, x, y, rot: 0 });
+    const p: ParsedBlueprint = { ...defaultDesign(3, 3), items };
+    expect(freeItemCell(p)).toEqual({ x: 1, y: 1 });
+  });
+});
+
 describe("runtime.placeFurnitureFromInventory (spec 088 Slice E)", () => {
   beforeEach(() => {
     (globalThis as { localStorage?: unknown }).localStorage = new MemStorage();
@@ -131,6 +162,37 @@ describe("runtime.placeFurnitureFromInventory (spec 088 Slice E)", () => {
     expect(rt.lots().find((l) => l.id === lotId)!.blueprint).toBe(
       before,
     );
+  });
+
+  it("lotForCitizen returns the citizen's home lot, null for a lotless citizen", () => {
+    const rt = new ColonyRuntime(42);
+    const { citizenId, lotId } = ownerAndLot(rt);
+    expect(rt.lotForCitizen(citizenId)?.id).toBe(lotId);
+    expect(rt.lotForCitizen("citizen_nobody")).toBeNull();
+  });
+
+  it("placeFurnitureAuto drops an owned piece into the player's house and consumes it", () => {
+    const rt = new ColonyRuntime(42);
+    const { citizenId } = ownerAndLot(rt);
+    recordOwnedLocal(citizenId, "lamp", "Desk Lamp", 1);
+    expect(rt.placeFurnitureAuto(citizenId, "lamp:desk-lamp")).toBe(true);
+    const lot = rt.lotForCitizen(citizenId)!;
+    expect(parseBlueprint(lot.blueprint!).items.some((f) => f.kind === "lamp")).toBe(
+      true,
+    );
+    expect(loadInventoryLocal()[citizenId]).toBeUndefined(); // consumed
+  });
+
+  it("placeFurnitureAuto refuses when the citizen owns no home or no such piece", () => {
+    const rt = new ColonyRuntime(42);
+    const { citizenId } = ownerAndLot(rt);
+    recordOwnedLocal(citizenId, "rug", "Mat", 1);
+    expect(rt.placeFurnitureAuto("citizen_nobody", "rug:mat")).toBe(false); // no home
+    expect(rt.placeFurnitureAuto(citizenId, "sofa:ghost")).toBe(false); // not owned
+    expect(ownedBy(loadInventoryLocal(), citizenId)[0]).toMatchObject({
+      id: "rug:mat",
+      qty: 1,
+    }); // untouched
   });
 
   it("refuses to furnish a lot the citizen does not own", () => {

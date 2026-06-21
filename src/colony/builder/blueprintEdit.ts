@@ -201,6 +201,21 @@ export function setWallH(p: ParsedBlueprint, h: number): ParsedBlueprint {
 
 /** Place a piece of furniture, centred-ish in the plot in the first reasonably free cell. Capped so a
  *  runaway placement loop can never blow past the validator's furniture cap. */
+/** The first cell no furniture already occupies on storey `z` (row-major), defaulting to the plot
+ *  centre when every cell is taken. Pure — the spot addItem and the HUD auto-placer drop a new piece. */
+export function freeItemCell(
+  p: ParsedBlueprint,
+  storey = 0,
+): { x: number; y: number } {
+  const items = p.items ?? [];
+  const z = clamp(Math.round(storey), 0, maxStorey(p));
+  for (let yy = 0; yy < p.d; yy++)
+    for (let xx = 0; xx < p.w; xx++)
+      if (!items.some((f) => f.x === xx && f.y === yy && (f.z ?? 0) === z))
+        return { x: xx, y: yy };
+  return { x: Math.floor(p.w / 2), y: Math.floor(p.d / 2) };
+}
+
 export function addItem(
   p: ParsedBlueprint,
   kind: FurnitureKind,
@@ -210,17 +225,7 @@ export function addItem(
   if (items.length >= FURNITURE_ITEM_CAP) return p;
   const z = clamp(Math.round(storey), 0, maxStorey(p));
   // Prefer a cell no other piece already occupies ON THE SAME STOREY, scanning row-major.
-  let x = Math.floor(p.w / 2);
-  let y = Math.floor(p.d / 2);
-  outer: for (let yy = 0; yy < p.d; yy++) {
-    for (let xx = 0; xx < p.w; xx++) {
-      if (!items.some((f) => f.x === xx && f.y === yy && (f.z ?? 0) === z)) {
-        x = xx;
-        y = yy;
-        break outer;
-      }
-    }
-  }
+  const { x, y } = freeItemCell(p, z);
   const item: FurnitureItem = { kind, x, y, rot: 0 };
   if (z > 0) item.z = z;
   return { ...p, items: [...items, item] };

@@ -2022,6 +2022,7 @@ export function ColonyApp() {
             const me = ui.firstPerson.operatorCitizenId!;
             const wallet = ui.citizens.wallets[me] ?? 0;
             const inv = ownedBy(loadInventoryLocal(), me);
+            const myLot = runtime.lotForCitizen(me); // their home, for placing furniture
             const price = furniturePriceK(furnKind);
             const canBuy = wallet >= price;
             return (
@@ -2040,7 +2041,24 @@ export function ColonyApp() {
                       <span>
                         {FURNITURE_CATALOG[s.kind].icon} {s.name}
                       </span>
-                      <b>×{s.qty}</b>
+                      <span
+                        style={{ display: "flex", alignItems: "center", gap: 8 }}
+                      >
+                        <b>×{s.qty}</b>
+                        <button
+                          className="furn-place"
+                          data-build-action={`place-item-${s.id}`}
+                          disabled={!myLot}
+                          title={
+                            myLot
+                              ? "Place one in your house at a free spot"
+                              : "Buy a plot first to furnish a home"
+                          }
+                          onClick={() => runtime.placeFurnitureAuto(me, s.id)}
+                        >
+                          place ↪
+                        </button>
+                      </span>
                     </div>
                   ))
                 ) : (
