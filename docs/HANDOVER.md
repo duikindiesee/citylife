@@ -65,7 +65,9 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
 ## 1. Where everything is
 
 - **CityLife game (your main lane):** `D:\infra\projects\citylife-visual` — a git **worktree** of the
-  public repo `github.com/duikland/citylife`, on branch **`mechanics/dev`**. Last commit `aa88495`.
+  public repo **`github.com/duikindiesee/citylife`** (transferred from `duikland/citylife` on 2026-06-20,
+  kept PUBLIC). The active branch is in §0 above. NOTE: `kooker-bot-spawner` is a DIFFERENT repo (the
+  Hermes bot spawner) — the builder-expansion PR is `duikindiesee/citylife` #68, not bot-spawner.
 - **Dev server:** `npm run dev` → http://localhost:5188 (binds 127.0.0.1; `?skipauth=1` bypasses the
   login gate in dev). Restart with `npm run dev` run in the background if it's dead.
 - **Stack:** React 19 + TypeScript + Vite + plain three.js. Tests: **vitest** (node env). Pure
