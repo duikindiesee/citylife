@@ -515,6 +515,8 @@ export interface ColonyUiState {
     citizenId: string | null;
     citizenName: string | null;
     operatorCitizenId: string | null;
+    /** Step-in choices allowed for this session. Operators/admins get every citizen; CITYLIFE_PLAYER gets only their own. */
+    stepInCitizenIds: string[];
     view: FirstPersonView | null;
     narration: string | null;
     narrating: boolean;
@@ -1224,14 +1226,33 @@ export class ColonyRuntime {
   /** P1 — record the logged-in operator name (from auth). Marks their avatar + gates the step-into. */
   setOperatorName(name: string | null): void {
     this.operatorName = name && name.trim() ? name.trim() : null;
+    if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
+      this.exitFirstPerson();
+      return;
+    }
     this.emit();
+  }
+
+  /** Player-view guard: operators/admins may step into any citizen; CITYLIFE_PLAYER may only enter their own. */
+  private stepInCitizenIds(): string[] {
+    if (!this.playerView) return this.citizens.list().map((c) => c.id);
+    const own = this.operatorCitizenId();
+    return own ? [own] : [];
+  }
+
+  private canStepIntoCitizen(citizenId: string): boolean {
+    return this.stepInCitizenIds().includes(citizenId);
   }
 
   /** Player data isolation: turn the restricted CITYLIFE_PLAYER view on/off. When on, the HUD shows only
    *  the player's own data + others' public presence (see uiState.citizens). The login/role-gating slice
-   *  flips this on for a player; the operator/admin keeps it off and sees the whole colony. */
+   *  flips this on for a player; operators/admins keep the whole-colony view. */
   setPlayerView(on: boolean): void {
     this.playerView = on;
+    if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
+      this.exitFirstPerson();
+      return;
+    }
     this.emit();
   }
 
@@ -1255,6 +1276,7 @@ export class ColonyRuntime {
   /** P1 — step the operator INTO a citizen for a live first-person view through the bot's eyes. */
   enterFirstPerson(citizenId: string): boolean {
     if (!this.citizens.byId(citizenId)) return false;
+    if (!this.canStepIntoCitizen(citizenId)) return false;
     this.fpCitizenId = citizenId;
     this.renderer?.enterFirstPerson(citizenId);
     this.emit();
@@ -2878,6 +2900,7 @@ export class ColonyRuntime {
           citizenId: this.fpCitizenId,
           citizenName: c?.displayName ?? null,
           operatorCitizenId: opId,
+          stepInCitizenIds: this.stepInCitizenIds(),
           view,
           narration: this.fpNarration,
           narrating: this.fpNarrating,

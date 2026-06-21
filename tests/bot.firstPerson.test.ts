@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ColonySim } from "../src/colony/sim";
+import { ColonyRuntime } from "../src/colony/runtime";
 import { CitizenRoster } from "../src/colony/bot/citizenRoster";
 import { firstPersonView } from "../src/colony/bot/firstPersonView";
 import { generateHousehold } from "../src/colony/newcomers";
@@ -76,5 +77,29 @@ describe("firstPersonView — spec 074", () => {
     const me = roster.register(generateHousehold(7), plot, fixedNow)!;
     const v = firstPersonView(sim.state, me.id, roster)!;
     expect(v.clock).toEqual({ day: 9, hour: 14, minute: 23, isDay: true });
+  });
+
+  it("restricts CITYLIFE_PLAYER step-in targets to the logged-in citizen only", () => {
+    const rt = new ColonyRuntime(4242);
+    const ui = rt.getUiState();
+    const me = ui.citizens.list[0]!;
+    const other = ui.citizens.list.find((c) => c.id !== me.id)!;
+
+    rt.setOperatorName(me.displayName);
+    rt.setPlayerView(true);
+
+    const playerUi = rt.getUiState();
+    expect(playerUi.firstPerson.stepInCitizenIds).toEqual([me.id]);
+    expect(rt.enterFirstPerson(other.id)).toBe(false);
+    expect(rt.getUiState().firstPerson.active).toBe(false);
+    expect(rt.enterFirstPerson(me.id)).toBe(true);
+    expect(rt.getUiState().firstPerson.citizenId).toBe(me.id);
+  });
+
+  it("keeps admin/operator step-in unrestricted", () => {
+    const rt = new ColonyRuntime(4242);
+    const ids = rt.getUiState().citizens.list.map((c) => c.id);
+    rt.setPlayerView(false);
+    expect(rt.getUiState().firstPerson.stepInCitizenIds).toEqual(ids);
   });
 });

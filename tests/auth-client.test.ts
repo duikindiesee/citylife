@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { AuthClient, basicAuth } from "../src/colony/authClient";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -40,6 +40,19 @@ function mockFetchFail(status = 401) {
     json: async () => ({}),
   }));
 }
+
+beforeEach(() => {
+  try {
+    localStorage.clear();
+  } catch {
+    // Node without localStorage support: nothing to clear.
+  }
+  try {
+    sessionStorage.clear();
+  } catch {
+    // Node without sessionStorage support: nothing to clear.
+  }
+});
 
 afterEach(() => vi.unstubAllGlobals());
 

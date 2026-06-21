@@ -1482,7 +1482,10 @@ export function ColonyApp() {
           <div className="row">
             <span>Step in</span>
             <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {ui.citizens.list.slice(0, 4).map((c) => (
+              {ui.citizens.list
+                .filter((c) => ui.firstPerson.stepInCitizenIds.includes(c.id))
+                .slice(0, 4)
+                .map((c) => (
                 <button
                   key={c.id}
                   className={
