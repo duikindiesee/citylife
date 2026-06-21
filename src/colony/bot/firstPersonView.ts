@@ -15,6 +15,10 @@ export interface FirstPersonView {
     displayName: string;
     plotName: string;
     homeXY: { x: number; y: number };
+    /** Live avatar position: this is where first-person sight/senses are sampled from. */
+    positionXY: { x: number; y: number };
+    /** Current facing in radians, so narration/rendering can reason about direction. */
+    heading: number;
   };
   /** The patch of land the citizen's house sits on. */
   ground: {
@@ -68,6 +72,10 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+function clampCell(n: number, size: number): number {
+  return Math.max(0, Math.min(size - 1, Math.round(n)));
+}
+
 /** Pure-engine "what's around the citizen" snapshot. Returns null if the citizen is unknown. */
 export function firstPersonView(
   state: ColonyState,
@@ -77,17 +85,19 @@ export function firstPersonView(
   const me = roster.byId(citizenId);
   if (!me) return null;
   const t = state.terrain;
-  const { x: hx, y: hy } = me.homeXY;
-  const i = t.idx(hx, hy);
+  const { x: px, y: py } = me.pos;
+  const tx = clampCell(px, t.size);
+  const ty = clampCell(py, t.size);
+  const i = t.idx(tx, ty);
   const biome = t.biome[i];
   const elev = t.elev[i] ?? 0;
   const distToWater = t.distToWater[i] ?? 0;
-  const isWater = t.isWater(hx, hy);
+  const isWater = t.isWater(tx, ty);
 
   // Nearest road.
   let nearestRoad: { x: number; y: number; distance: number } | null = null;
   for (const r of state.roads) {
-    const d = dist(r.x, r.y, hx, hy);
+    const d = dist(r.x, r.y, px, py);
     if (!nearestRoad || d < nearestRoad.distance)
       nearestRoad = { x: r.x, y: r.y, distance: d };
   }
@@ -96,11 +106,16 @@ export function firstPersonView(
   const allOthers = roster
     .list()
     .filter((c) => c.id !== me.id)
-    .map((c) => ({
-      displayName: c.displayName,
-      plotName: c.plotName,
-      distance: dist(c.homeXY.x, c.homeXY.y, hx, hy),
-    }))
+    .map((c) => {
+      const live = roster.byId(c.id);
+      const ox = live?.pos.x ?? c.homeXY.x;
+      const oy = live?.pos.y ?? c.homeXY.y;
+      return {
+        displayName: c.displayName,
+        plotName: c.plotName,
+        distance: dist(ox, oy, px, py),
+      };
+    })
     .sort((a, b) => a.distance - b.distance)
     .slice(0, 4);
 
@@ -139,7 +154,7 @@ export function firstPersonView(
   const seenBuildings = state.buildings
     .map((b) => ({
       kind: String(b.artifact?.kind ?? "unknown"),
-      distance: dist(b.x, b.y, hx, hy),
+      distance: dist(b.x, b.y, px, py),
     }))
     .sort((a, b) => a.distance - b.distance);
   const nearestBuildings = seenBuildings
@@ -154,7 +169,9 @@ export function firstPersonView(
       id: me.id,
       displayName: me.displayName,
       plotName: me.plotName,
-      homeXY: { x: hx, y: hy },
+      homeXY: { x: me.homeXY.x, y: me.homeXY.y },
+      positionXY: { x: px, y: py },
+      heading: me.heading,
     },
     ground: {
       biome: BIOME_NAME[biome ?? -1] ?? "unknown",

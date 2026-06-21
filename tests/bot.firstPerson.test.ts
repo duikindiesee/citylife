@@ -28,9 +28,26 @@ describe("firstPersonView — spec 074", () => {
     expect(v).toBeTruthy();
     expect(v.citizen.id).toBe(c.id);
     expect(v.citizen.homeXY).toEqual({ x: plot.x, y: plot.y });
+    expect(v.citizen.positionXY).toEqual({ x: plot.x, y: plot.y });
     expect(v.citizen.plotName).toBe(plot.name);
     expect(typeof v.ground.biome).toBe("string");
     expect(v.ground.biome.length).toBeGreaterThan(0);
+  });
+
+  it("describes the citizen's current walking position, not only their home", () => {
+    const { sim, roster } = bootColony();
+    const plot = sim.state.cityPlan!.plots[0]!;
+    const c = roster.register(generateHousehold(7), plot, fixedNow)!;
+    c.pos = { x: plot.x + 3, y: plot.y + 2 };
+    c.heading = Math.PI / 2;
+    const v = firstPersonView(sim.state, c.id, roster)!;
+    expect(v.citizen.homeXY).toEqual({ x: plot.x, y: plot.y });
+    expect(v.citizen.positionXY).toEqual({ x: plot.x + 3, y: plot.y + 2 });
+    expect(v.citizen.heading).toBeCloseTo(Math.PI / 2);
+    const terrainIndex = sim.state.terrain.idx(plot.x + 3, plot.y + 2);
+    expect(v.ground.elevation).toBe(
+      Number((sim.state.terrain.elev[terrainIndex] ?? 0).toFixed(3)),
+    );
   });
 
   it("reports neighbours when more than one citizen is registered", () => {
