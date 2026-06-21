@@ -17,9 +17,16 @@ docs for whatever slice you pick up. Your persistent memory (`MEMORY.md` + the `
   epic** (/loop). Rolling **PR #68**. A 6-slice plan (see `project_citylife_builder_expansion`
   memory): **Slice A DONE** = author-able furniture in the blueprint DSL (`item{kind x y rot}` token,
   `furniture.ts` 11-piece catalog, 8 new furniture BlockKinds, `buildFurnitureItems` compiler stamp,
-  builder furniture palette). Queued: B multi-level floor plans (inter-storey floors + stairs), C
-  furniture inventory store, D furniture shop (design+buy+ledgerSync), E place-from-inventory, F
-  Kookerbook marketplace tab.
+  builder furniture palette). **Slice B DONE (2026-06-21, commit `32b7419`)** = multi-level floor
+  plans: optional storey `z` on room{}/item{} (parsed-when-present, serialised-when-nonzero → existing
+  scripts byte-identical), **content-driven** inter-storey floors + a stacked stairwell (only under
+  upper rooms/furniture, so an estate stays under the 60k budget), per-storey dividers, new `stair`
+  BlockKind, editor storey selector + per-floor 2D ghosting + floor ▲/▼ (all `data-build-action`),
+  `setWallH` re-homes stranded content. `tests/multiLevel.test.ts` (21 tests), **790 green**, tsc
+  clean; verified via tests not the 48px preview. Multi-agent adversarial review caught+fixed 3 issues
+  pre-commit. Spec `docs/specs/088-builder-expansion.md`. Queued: C furniture inventory store
+  (`furnitureStore.ts` two-layer like `kookerbookStore`), D furniture shop (design+buy+ledgerSync), E
+  place-from-inventory, F Kookerbook marketplace tab.
 - **Note:** the builder's 3D preview pane renders ~48px wide in its 3-column layout — verify furniture
   via tests (a quadCount render-path proof), the 2D plan markers, and the DSL textarea, not the canvas.
 - **Scheduler note (updated):** in-session `ScheduleWakeup` IS firing this session — the /loop runs on
