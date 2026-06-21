@@ -28,7 +28,12 @@ import {
   setRoomKind,
   cycleDoor,
   setWallH,
+  addItem,
+  removeItem,
+  moveItem,
+  rotateItem,
 } from "./blueprintEdit";
+import { FURNITURE_CATALOG, FURNITURE_KINDS } from "../furniture";
 import { BuilderDesk } from "./BuilderDesk";
 
 const ROOM_COLOR: Record<RoomKind, string> = {
@@ -194,11 +199,19 @@ export function BuilderApp() {
     selRef.current = i;
     setSel(i);
   };
+  // Furniture (spec 088) has its own selection, parallel to the room selection. -1 = nothing selected.
+  const [selItem, setSelItem] = useState(-1);
+  const selItemRef = useRef(-1);
+  const selectItem = (i: number) => {
+    selItemRef.current = i;
+    setSelItem(i);
+  };
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
   const script = blueprintToScript(design);
   const validation = validateBlueprint(script);
   const selRoom = design.rooms[sel];
+  const selItemObj = design.items[selItem];
 
   /** Apply an edit as a FUNCTIONAL update so rapid clicks (a Playwright bot, a held key) each operate
    *  on the latest design instead of a stale render closure — without this, N fast clicks collapse to 1.
@@ -214,6 +227,24 @@ export function BuilderApp() {
         : Math.min(selRef.current, Math.max(0, next.rooms.length - 1));
       selRef.current = ns;
       setSel(ns);
+      return next;
+    });
+    setSavedAt(null);
+  };
+
+  /** Apply a FURNITURE edit, keeping the item selection on the latest design (same burst-safe pattern as
+   *  apply). selectLast points at the freshly added piece; otherwise the selection clamps into range. */
+  const applyItem = (
+    op: (p: ParsedBlueprint) => ParsedBlueprint,
+    selectLast = false,
+  ) => {
+    setDesign((prev) => {
+      const next = op(prev);
+      const ns = selectLast
+        ? next.items.length - 1
+        : Math.min(selItemRef.current, next.items.length - 1);
+      selItemRef.current = ns;
+      setSelItem(ns);
       return next;
     });
     setSavedAt(null);
@@ -395,6 +426,37 @@ export function BuilderApp() {
               />
             );
           })()}
+          {/* furniture markers (spec 088): a glyph at the cell each piece sits in, click to select */}
+          {design.items.map((f, i) => {
+            const cx = f.x * CELL + CELL / 2 + 1;
+            const cy = f.y * CELL + CELL / 2 + 1;
+            return (
+              <g
+                key={`item-${i}`}
+                data-build-action={`select-item-${i}`}
+                onClick={() => selectItem(i)}
+                style={{ cursor: "pointer" }}
+              >
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={CELL * 0.36}
+                  fill="#0d1119"
+                  fillOpacity={0.85}
+                  stroke={i === selItem ? "#ffd76a" : "#9fd0a0"}
+                  strokeWidth={i === selItem ? 2.5 : 1.25}
+                />
+                <text
+                  x={cx}
+                  y={cy + CELL * 0.16}
+                  fontSize={CELL * 0.42}
+                  textAnchor="middle"
+                >
+                  {FURNITURE_CATALOG[f.kind].icon}
+                </text>
+              </g>
+            );
+          })}
         </svg>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button
@@ -533,6 +595,87 @@ export function BuilderApp() {
               data-build-action="delete-room"
               style={{ ...btn, color: "#e0584d" }}
               onClick={() => apply((p) => removeRoom(p, selRef.current))}
+            >
+              delete
+            </button>
+          </div>
+        )}
+        {/* furniture palette (spec 088) — place interior pieces; the 3D preview meshes them live */}
+        <div
+          style={{
+            display: "flex",
+            gap: 6,
+            flexWrap: "wrap",
+            alignItems: "center",
+            borderTop: "1px solid #232c3f",
+            paddingTop: 8,
+          }}
+        >
+          <span style={{ opacity: 0.7 }}>Furniture:</span>
+          {FURNITURE_KINDS.map((k) => (
+            <button
+              key={k}
+              data-build-action={`add-item-${k}`}
+              title={FURNITURE_CATALOG[k].label}
+              style={{ ...btn, borderColor: "#3a6a4a" }}
+              onClick={() => applyItem((p) => addItem(p, k), true)}
+            >
+              {FURNITURE_CATALOG[k].icon} {FURNITURE_CATALOG[k].label}
+            </button>
+          ))}
+        </div>
+        {selItemObj && (
+          <div
+            style={{
+              display: "flex",
+              gap: 6,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <span style={{ opacity: 0.7 }}>
+              {FURNITURE_CATALOG[selItemObj.kind].icon} {selItemObj.kind} (cell{" "}
+              {selItemObj.x},{selItemObj.y}):
+            </span>
+            <button
+              data-build-action="move-item-left"
+              style={btn}
+              onClick={() => applyItem((p) => moveItem(p, selItemRef.current, -1, 0))}
+            >
+              ←
+            </button>
+            <button
+              data-build-action="move-item-right"
+              style={btn}
+              onClick={() => applyItem((p) => moveItem(p, selItemRef.current, 1, 0))}
+            >
+              →
+            </button>
+            <button
+              data-build-action="move-item-up"
+              style={btn}
+              onClick={() => applyItem((p) => moveItem(p, selItemRef.current, 0, -1))}
+            >
+              ↑
+            </button>
+            <button
+              data-build-action="move-item-down"
+              style={btn}
+              onClick={() => applyItem((p) => moveItem(p, selItemRef.current, 0, 1))}
+            >
+              ↓
+            </button>
+            <button
+              data-build-action="rotate-item"
+              style={btn}
+              onClick={() => applyItem((p) => rotateItem(p, selItemRef.current))}
+            >
+              rotate ↻ ({selItemObj.rot * 90}°)
+            </button>
+            <button
+              data-build-action="delete-item"
+              style={{ ...btn, color: "#e0584d" }}
+              onClick={() => applyItem((p) => removeItem(p, selItemRef.current))}
             >
               delete
             </button>

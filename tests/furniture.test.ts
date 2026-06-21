@@ -13,6 +13,7 @@ import {
   FURNITURE_ITEM_CAP,
 } from "../src/colony/blueprintScript";
 import { compileBlueprint, HOUSE_VOXEL_N } from "../src/colony/houseBuilder";
+import { greedyMesh } from "../src/colony/render/voxelMesh";
 import {
   addItem,
   removeItem,
@@ -138,6 +139,22 @@ describe("compiler — furniture stamping", () => {
     const a = compileBlueprint(s, { w: 6, d: 5, seed: 11 }).blocks;
     const b = compileBlueprint(s, { w: 6, d: 5, seed: 11 }).blocks;
     expect(b).toEqual(a);
+  });
+
+  it("furniture contributes real geometry to the greedy mesh (the render path)", () => {
+    const opts = { n: HOUSE_VOXEL_N, cell: 1, voxelY: 1 };
+    const bare = greedyMesh(
+      compileBlueprint(BASE, { w: 6, d: 5, seed: 7 }).blocks,
+      opts,
+    ).quadCount;
+    const furnished = greedyMesh(
+      compileBlueprint(
+        `${BASE} item{kind:sofa x:2 y:2 rot:0} item{kind:bed x:1 y:1 rot:0} item{kind:lamp x:3 y:2 rot:0}`,
+        { w: 6, d: 5, seed: 7 },
+      ).blocks,
+      opts,
+    ).quadCount;
+    expect(furnished).toBeGreaterThan(bare);
   });
 });
 
