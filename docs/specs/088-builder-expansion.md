@@ -192,8 +192,11 @@ all three share the 48px-preview verification constraint and can reuse component
   Live-verified on the dev server (renders, buy decrements wallet + grows inventory + posts the Kookerbook
   event + queues the ledger mirror, no console errors). Each control carries a `data-build-action`. STILL
   optional: a `furniture_studio` business in `businesses.ts` (a physical shopfront).
-- **E — place-controls**: from the inventory, drop a piece into the house (wires
-  `runtime.placeFurnitureFromInventory`) — a builder placement mode.
+- **E — place-controls** ✅ DONE (commit `246b6bd`): a "place ↪" button on each owned inventory stack in
+  the Furniture studio panel → `runtime.placeFurnitureAuto(me, itemId)` (finds the player's lot +
+  an auto free cell via the new pure `freeItemCell`, delegates to `placeFurnitureFromInventory`); disabled
+  until the player owns a home. Live-verified (place appends `item{}` to the lot blueprint + consumes the
+  piece, no console errors). New runtime `lotForCitizen`. `data-build-action="place-item-${id}"`.
 - **F — Kookerbook market tab**: the board (`runtime.marketListings`), List-for-sale + Unlist
   (`listFurnitureForSale` / `unlistFurniture`), and Buy (`buyFromMarket`). Fix the cosmetic
   "redesigned their home" Kookerbook event on furniture placement here.
