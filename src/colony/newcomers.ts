@@ -70,9 +70,17 @@ const DENY = [
   /cluster\.local/i,
 ];
 
-/** True if a generated string is public-safe (no internal / secret-looking content). */
+/** True if a generated string is public-safe (no internal / secret-looking content).
+ *  Exception: the Kookerverse Builder is literally named KOOKER. The 'kooker' brand word is denied so it
+ *  can never leak into GENERATED newcomer / user-chosen identities, but the Builder's own authored labels
+ *  ("KOOKER the Builder", "Hire KOOKER", …) are trusted system strings. So the uppercase brand KOOKER is
+ *  permitted specifically (generated/user content is lower- or mixed-case and stays blocked), while every
+ *  OTHER denied pattern still applies even to the Builder's strings. */
 export function isPublicSafe(s: string): boolean {
-  return !DENY.some((re) => re.test(s));
+  return !DENY.some((re) => {
+    if (re.source === "kooker" && /\bKOOKER\b/.test(s)) return false; // allow the authored uppercase brand
+    return re.test(s);
+  });
 }
 
 // Whimsical, invented lists — fictional by construction, never real-person identities.

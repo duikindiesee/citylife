@@ -74,7 +74,7 @@ export function BuilderDesk({
         overflowY: "auto",
       }}
     >
-      <b>🛠️ Zinzaar's Builder Desk</b>
+      <b>🛠️ KOOKER&apos;s Builder Desk</b>
       <div style={{ fontSize: 12, opacity: 0.85 }} data-build-area="dream">
         The newcomer dreams of <b>{briefLine(dream)}</b>. Fair build is{" "}
         <b>{fairPrice}</b> city coin.
@@ -127,7 +127,7 @@ export function BuilderDesk({
                   textAlign: viw ? "left" : "right",
                 }}
               >
-                {viw ? "🛠️ Zinzaar" : "🙂 newcomer"} · {r.price} coin
+                {viw ? "🛠️ KOOKER" : "🙂 newcomer"} · {r.price} coin
               </div>
               <div
                 style={{
@@ -173,7 +173,7 @@ export function BuilderDesk({
               onAccept(briefToBlueprint(session.agreedBrief!, seed))
             }
           >
-            Load Zinzaar&apos;s design into the editor →
+            Load KOOKER&apos;s design into the editor →
           </button>
         </div>
       ) : (
@@ -186,7 +186,7 @@ export function BuilderDesk({
             opacity: 0.85,
           }}
         >
-          🚶 No deal this season — raise the budget and Zinzaar will quote
+          🚶 No deal this season — raise the budget and KOOKER will quote
           again.
         </div>
       )}

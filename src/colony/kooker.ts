@@ -51,7 +51,7 @@ const NAMES = [
   "Tannie",
   "Boet",
   "Brakpan",
-  "Zinzaar",
+  "Mielie",
   "Skoonveld",
   "Bobotie",
   "Sambok",

@@ -13,12 +13,12 @@ export interface OperatorSession {
   token: string;
   refreshToken?: string; // kooker refresh token — used to mint a new access token before expiry
   expiresAt: number; // epoch ms
-  operator: { id: string; scopes: string[] };
+  operator: { id: string; scopes: string[]; roles: string[] };
 }
 
 export type LoginResult = { ok: true } | { ok: false; error: string };
 
-const STORAGE_KEY = "citylife.session.v3"; // v3: adds refreshToken so the session self-renews
+const STORAGE_KEY = "citylife.session.v4"; // v4: captures the user's roles (for player-view gating)
 const SESSION_MS = 1000 * 60 * 60 * 8; // 8 h fallback if JWT has no exp
 const KOOKER_AUTH_PATH = "/kooker/api/auth/basic";
 const KOOKER_REFRESH_PATH = "/kooker/api/auth/refresh";
@@ -50,6 +50,25 @@ function jwtExpiresAt(token: string): number {
       : 0;
   } catch {
     return 0;
+  }
+}
+
+/** Decode the role names from a JWT without verifying the signature (verification is server-side). Reads
+ *  the usual claim shapes — roles / role / authorities — as a comma list or array, upper-cased. */
+function jwtRoles(token: string): string[] {
+  try {
+    const b64 = token.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/");
+    if (!b64) return [];
+    const payload = JSON.parse(atob(b64)) as Record<string, unknown>;
+    const raw = payload["roles"] ?? payload["role"] ?? payload["authorities"];
+    const list = Array.isArray(raw)
+      ? raw.map(String)
+      : typeof raw === "string"
+        ? raw.split(/[,\s]+/)
+        : [];
+    return list.map((r) => r.trim().toUpperCase()).filter(Boolean);
+  } catch {
+    return [];
   }
 }
 
@@ -98,6 +117,14 @@ export class AuthClient {
     return this.isAuthenticated ? this.session!.operator : null;
   }
 
+  /** True when the signed-in user is a CITYLIFE_PLAYER and NOT an operator/admin — the colony then runs
+   *  the restricted player view (own data only). Admins/operators keep the full whole-colony view. */
+  get isCityLifePlayer(): boolean {
+    const roles = this.operator?.roles ?? [];
+    if (roles.includes("ADMIN") || roles.includes("KOOKER_ADMIN")) return false;
+    return roles.includes("CITYLIFE_PLAYER");
+  }
+
   /** Sign in with a kooker account. Async — POSTs to the kooker auth service. */
   async login(email: string, password: string): Promise<LoginResult> {
     const id = email.trim().toLowerCase();
@@ -133,7 +160,7 @@ export class AuthClient {
         token,
         refreshToken: data.refreshToken,
         expiresAt,
-        operator: { id: displayName, scopes: SCOPES },
+        operator: { id: displayName, scopes: SCOPES, roles: jwtRoles(token) },
       };
       this.persist();
       return { ok: true };

@@ -94,6 +94,9 @@ export function ColonyApp() {
   const auth = useMemo(() => new AuthClient(), []);
   useEffect(() => {
     runtime.setOperatorName(auth.operator?.id ?? null);
+    // Player data isolation: a CITYLIFE_PLAYER gets the restricted own-data view (activates the dormant
+    // player-view from the isolation slice); operators/admins keep the whole-colony view.
+    runtime.setPlayerView(auth.isCityLifePlayer);
   }, [auth, runtime]);
   // Spec 085 P1 — once mounted (the AuthGate has signed the player in), drain any real-ledger sync
   // moves left queued from a prior session. New moves drain themselves on notice().
@@ -1613,9 +1616,9 @@ export function ColonyApp() {
                         color: "#d8a85a",
                       }}
                       onClick={() => runtime.commissionLot(l.id)}
-                      title="Hire Zinzaar the Builder — the citizen dreams a home, Zinzaar quotes, they haggle, and the agreed house rises. The deal lands on both their Kookerbook pages."
+                      title="Hire KOOKER the Builder — the citizen dreams a home, KOOKER quotes, they haggle, and the agreed house rises. The deal lands on both their Kookerbook pages."
                     >
-                      🛠️ Hire Zinzaar
+                      🛠️ Hire KOOKER
                     </button>
                   )}
                   {l.ownerId && !l.built && (
