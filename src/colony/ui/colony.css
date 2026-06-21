@@ -186,6 +186,32 @@ body,
   padding: 9px;
   cursor: pointer;
 }
+.buildbtn:disabled,
+.immigbtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: none;
+}
+/* Furniture studio (spec 088) — the design kind picker + name field. */
+.furn-design {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.furn-field {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--brd);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.furn-field:focus {
+  outline: none;
+  border-color: var(--accent);
+}
 .immigbtn:hover {
   background: rgba(255, 255, 255, 0.16);
 }
