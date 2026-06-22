@@ -123,8 +123,16 @@ import {
   parseBlueprint,
   blueprintToScript,
   FURNITURE_ITEM_CAP,
+  type ParsedBlueprint,
 } from "./blueprintScript";
-import { placeItemAt, freeItemCell } from "./builder/blueprintEdit";
+import {
+  placeItemAt,
+  freeItemCell,
+  moveItem,
+  rotateItem,
+  removeItem,
+  moveItemStorey,
+} from "./builder/blueprintEdit";
 import {
   loadBlueprintsLocal,
   saveBlueprintLocal,
@@ -2132,6 +2140,101 @@ export class ColonyRuntime {
       0,
       0,
     );
+  }
+
+  // ── Furniture ARRANGEMENT (spec 089) — rearrange the furniture already placed in your house, any time
+  // after it is built. Move/rotate/restack a piece freely (no inventory churn); removing it returns the
+  // piece to your inventory. Each op edits the lot blueprint's item{...} list with a pure blueprintEdit
+  // op and rebuilds the house through the validated applyBlueprint(null) path (no "redesigned" post).
+
+  /** The furniture currently placed in a lot's house, with each piece's index (its handle for the
+   *  arrange ops), kind, cell, rotation and storey. Empty for an unbuilt/undesigned or unknown lot. */
+  placedFurniture(
+    lotId: string,
+  ): { index: number; kind: FurnitureKind; x: number; y: number; rot: number; z: number }[] {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId);
+    if (!lot || !lot.blueprint) return [];
+    return parseBlueprint(lot.blueprint).items.map((f, index) => ({
+      index,
+      kind: f.kind,
+      x: f.x,
+      y: f.y,
+      rot: f.rot,
+      z: f.z ?? 0,
+    }));
+  }
+
+  /** Apply a pure furniture edit to a lot you OWN and rebuild the house. The lot must be yours and
+   *  already designed. Returns false (no change) otherwise or if the result fails validation. Private
+   *  spine for the public move/rotate/restack ops. */
+  private arrangeOnLot(
+    citizenId: string,
+    lotId: string,
+    edit: (p: ParsedBlueprint) => ParsedBlueprint,
+  ): boolean {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId);
+    if (!lot || lot.ownerCitizenId !== citizenId || !lot.blueprint) return false;
+    const next = edit(parseBlueprint(lot.blueprint));
+    return this.applyBlueprint(lotId, blueprintToScript(next), null);
+  }
+
+  /** Spec 089 — slide a placed piece by (dx,dy) cells (clamped into the footprint). Free; no inventory
+   *  change. `index` comes from placedFurniture. */
+  moveArrangedFurniture(
+    citizenId: string,
+    lotId: string,
+    index: number,
+    dx: number,
+    dy: number,
+  ): boolean {
+    return this.arrangeOnLot(citizenId, lotId, (p) =>
+      moveItem(p, index, dx, dy),
+    );
+  }
+
+  /** Spec 089 — rotate a placed piece a quarter-turn clockwise. Free; no inventory change. */
+  rotateArrangedFurniture(
+    citizenId: string,
+    lotId: string,
+    index: number,
+  ): boolean {
+    return this.arrangeOnLot(citizenId, lotId, (p) => rotateItem(p, index));
+  }
+
+  /** Spec 089 — move a placed piece up/down a storey (dz = +1 up, -1 down), clamped to the design's
+   *  floors. Free; no inventory change — the multi-level "arrange whenever" reaches every floor. */
+  restackArrangedFurniture(
+    citizenId: string,
+    lotId: string,
+    index: number,
+    dz: number,
+  ): boolean {
+    return this.arrangeOnLot(citizenId, lotId, (p) =>
+      moveItemStorey(p, index, dz),
+    );
+  }
+
+  /** Spec 089 — take a placed piece back out of the house and RETURN it to your inventory (so you can
+   *  re-place it elsewhere, or sell it). The piece returns as its catalog kind — the blueprint does not
+   *  store the custom name, so a once-named "Cozy Couch" comes back as a plain sofa. Returns false when
+   *  the lot is not yours or the index is out of range. */
+  removeArrangedFurniture(
+    citizenId: string,
+    lotId: string,
+    index: number,
+  ): boolean {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId);
+    if (!lot || lot.ownerCitizenId !== citizenId || !lot.blueprint) return false;
+    const p = parseBlueprint(lot.blueprint);
+    const piece = p.items[index];
+    if (!piece) return false; // nothing at that handle
+    if (!this.applyBlueprint(lotId, blueprintToScript(removeItem(p, index)), null))
+      return false;
+    // Hand the piece back to the player's inventory (best-effort backend sync, never blocks).
+    const inv = recordOwnedLocal(citizenId, piece.kind, piece.kind, 1);
+    void saveInventoryBackend(citizenId, ownedBy(inv, citizenId)).catch(() => {});
+    this.emit();
+    return true;
   }
 
   /** Spec 077 P4.5 — restore stored designs onto their lots: the local map immediately (so the houses
