@@ -1512,6 +1512,29 @@ export class ColonyRuntime {
     return true;
   }
 
+  /** Spec 097 R3 — guide the first-person avatar to the hilltop Rally Point. Reuses the same guided-walk
+   *  machinery as the civic Action prompt (setTarget + fpGuidedTarget, driven by driveFirstPersonGuided /
+   *  leastCostPath), but is an EXPLICIT call: a rally SeedStructure never surfaces as an interaction
+   *  prompt (firstPersonView only scans buildings), so the HUD offers a dedicated button. Returns false
+   *  if not in first person or there is no rally structure. */
+  goToRallyPoint(): boolean {
+    const id = this.fpCitizenId;
+    if (!id) return false;
+    const c = this.citizens.byId(id);
+    if (!c) return false;
+    const rally = this.sim.state.structures.find((s) => s.kind === "rally");
+    if (!rally) return false;
+    const target = { x: Math.round(rally.x), y: Math.round(rally.y) };
+    this.citizens.setTarget(id, target);
+    this.fpWalkSpeed = 0;
+    this.fpGuidedTarget = { label: "Rally Point", ...target };
+    this.fpBlockedReason = null;
+    this.fpNarrating = false;
+    this.fpNarration = "Guiding you to the Rally Point on the hill.";
+    this.emit();
+    return true;
+  }
+
   /** Deterministic route-dogfood hook: place the active avatar at a controlled edge before stepping. */
   placeFirstPersonDogfood(
     pos: { x: number; y: number },

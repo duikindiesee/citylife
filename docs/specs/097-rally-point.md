@@ -24,9 +24,12 @@ It turns the road network into a destination ritual, not just background infrast
   platform, a signpost carrying a glowing **checker race-flag** board, a bench, and a landmark
   **beacon** — emissive floor so the point reads from the city below and at night (per the
   day-night rule). Iconographic only (no brand text). Builds as a 10-mesh group.
-- **R3 — first-person "walk to rally" (planned).** `runtime.goToRallyPoint()` reusing the civic
+- **R3 — first-person "walk to rally" (BUILT).** `runtime.goToRallyPoint()` reuses the civic
   guided-walk (`fpGuidedTarget` + `citizens.setTarget` + `driveFirstPersonGuided` + `leastCostPath`)
-  and a HUD button. (A structure does not auto-surface as an Action prompt — use the explicit method.)
+  and a "🏁 Walk to Rally" HUD button in `FirstPersonPanel`. A structure does not auto-surface as an
+  Action prompt (`firstPersonView` only scans buildings), so it is an explicit method/button. Test
+  asserts the wiring (guided target + narration + no-op outside first person); arrival over the raw
+  mountainside is exercised once R3.5 lays the spur road.
 - **R3.5 — spur road connector (planned).** Route a road from the nearest terminus to the rally cell
   (`leastCostPath` + `layRoad` + `mergeAvenue`) in the runtime constructor, mirroring the commercial
   connector, so both the walk and the race-start can reach the hilltop.

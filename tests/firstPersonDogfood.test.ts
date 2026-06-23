@@ -1285,4 +1285,32 @@ describe("first-person route dogfood", () => {
       expect(sample.after.viewHeading).toBeCloseTo(sample.after.heading, 5);
     }
   });
+
+  it("wires a guided walk to the hilltop rally point (R3)", () => {
+    const rt = new ColonyRuntime(4242);
+    const rally = rt.sim.state.structures.find((s) => s.kind === "rally");
+    expect(rally).toBeTruthy();
+    const r = rally!;
+    const me = rt.getUiState().citizens.list[0]!;
+
+    // outside first person it is a no-op
+    expect(rt.goToRallyPoint()).toBe(false);
+
+    rt.enterFirstPerson(me.id);
+    expect(rt.goToRallyPoint()).toBe(true);
+
+    const fp = rt.getUiState().firstPerson;
+    expect(fp.guidedTarget).toMatchObject({
+      label: "Rally Point",
+      x: r.x,
+      y: r.y,
+    });
+    expect(fp.narration).toBe("Guiding you to the Rally Point on the hill.");
+    // never leak infra/brand words to the player-facing rally strings
+    expect(
+      JSON.stringify({ guidedTarget: fp.guidedTarget, narration: fp.narration }),
+    ).not.toMatch(/wallet|token|secret|operator/i);
+    // arrival over the raw mountainside needs the spur-road connector (R3.5);
+    // the guided-walk traversal itself is covered by the road/civic arrival tests above.
+  });
 });

@@ -197,6 +197,28 @@ export function FirstPersonPanel({
         </div>
       )}
 
+      {/* Spec 097 R3 — walk to the hilltop Rally Point (rendezvous for the race) */}
+      {v && (
+        <button
+          title="Guide this citizen to the hilltop Rally Point"
+          aria-label="Walk to the rally point"
+          onClick={() => runtime.goToRallyPoint()}
+          style={{
+            alignSelf: "flex-start",
+            padding: "4px 10px",
+            fontSize: 12,
+            fontWeight: 700,
+            background: "rgba(255,210,90,0.16)",
+            border: "1px solid #b6892f",
+            borderRadius: 6,
+            color: "#ffd25a",
+            cursor: "pointer",
+          }}
+        >
+          🏁 Walk to Rally
+        </button>
+      )}
+
       {v && (
         <button
           style={{
