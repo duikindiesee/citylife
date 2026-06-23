@@ -1493,7 +1493,6 @@ export class ColonyRuntime {
         y: Math.round(prompt.targetXY.y),
       };
       const target =
-        prompt.kind === "building" &&
         this.blockedStepReason(rawTarget.x, rawTarget.y) !== null
           ? (this.firstPersonApproachTarget(c.pos, rawTarget) ?? rawTarget)
           : rawTarget;
