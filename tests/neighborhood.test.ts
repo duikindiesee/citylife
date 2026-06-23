@@ -134,6 +134,39 @@ describe("the Neighbourhood — large homestead parcels on a terrain-aware stree
     }
   });
 
+  it("no parcel zone or fence ring ever sits on the carriageway, across seeds", () => {
+    // The operator flagged plots that looked like they sit on the road. Only the DRIVEWAY may cross to
+    // the carriageway; the house, garden, farm and the fence ring must all stay off it. Checked for
+    // every seed because placement is deterministic per terrain and could regress on an unseen one.
+    // Collect every offending cell so a failure names exactly which plot/zone/seed landed on the road.
+    const offenders: string[] = [];
+    for (const s of SEEDS) {
+      const n = makeNeighborhood(terrain(s));
+      const road = new Set(n.carriage.map((c) => `${c.x},${c.y}`));
+      for (const p of n.parcels) {
+        const zones: [string, { x: number; y: number; w: number; d: number }][] =
+          [
+            ["house", p.houseZone],
+            ["garden", p.garden],
+            ["farm", p.farm],
+          ];
+        for (const [name, z] of zones) {
+          for (let y = z.y; y < z.y + z.d; y++) {
+            for (let x = z.x; x < z.x + z.w; x++) {
+              if (road.has(`${x},${y}`))
+                offenders.push(`seed ${s} ${p.id} ${name} ${x},${y}`);
+            }
+          }
+        }
+        for (const f of p.fence) {
+          if (road.has(`${f.x},${f.y}`))
+            offenders.push(`seed ${s} ${p.id} fence ${f.x},${f.y}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("every parcel has road frontage — its driveway meets the carriageway", () => {
     const n = makeNeighborhood(terrain(42));
     const carriage = new Set(n.carriage.map((c) => `${c.x},${c.y}`));
