@@ -3585,9 +3585,17 @@ export class PlanetRenderer {
       const a = cAttr.array as Float32Array;
       const k = 0.42;
       for (let i = 0; i < a.length; i += 3) {
-        a[i] = a[i]! * (1 - k) + tint.r * k;
-        a[i + 1] = a[i + 1]! * (1 - k) + tint.g * k;
-        a[i + 2] = a[i + 2]! * (1 - k) + tint.b * k;
+        const r = a[i]!,
+          g = a[i + 1]!,
+          b = a[i + 2]!;
+        // The spec-092 tint is for the MASONRY course only — a warm reddish-brown (r > g > b). Leave
+        // COOL / amenity colours alone (pool water, glass rails, plants, blue furniture) so a pool reads
+        // as actual blue water instead of a slab lerped to the house tint (the operator's "pool has no
+        // water"). Brick, tile, trim, beam and chimney are all warm, so the banded shell still varies.
+        if (!(r > g && g > b)) continue;
+        a[i] = r * (1 - k) + tint.r * k;
+        a[i + 1] = g * (1 - k) + tint.g * k;
+        a[i + 2] = b * (1 - k) + tint.b * k;
       }
       cAttr.needsUpdate = true;
     }
