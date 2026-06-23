@@ -1649,6 +1649,22 @@ export class ColonyRuntime {
     this.fpNarration = `Arrived at ${label}.`;
   }
 
+  private firstPersonGuidedWaypoint(
+    from: { x: number; y: number },
+    directTarget: { x: number; y: number },
+  ): { x: number; y: number } | null {
+    const start = { x: Math.round(from.x), y: Math.round(from.y) };
+    const goal = { x: Math.round(directTarget.x), y: Math.round(directTarget.y) };
+    const path = leastCostPath(this.sim.state.terrain, start, goal, {
+      blocked: (x, y) => {
+        if ((x === start.x && y === start.y) || (x === goal.x && y === goal.y)) return false;
+        return this.blockedStepReason(x, y) !== null;
+      },
+    });
+    if (!path || path.length < 2) return null;
+    return path[1]!;
+  }
+
   private driveFirstPersonGuided(
     c: {
       pos: { x: number; y: number };
@@ -1658,27 +1674,45 @@ export class ColonyRuntime {
     },
     dt: number,
   ): void {
-    if (!this.fpGuidedTarget || dt <= 0) return;
-    const dx = this.fpGuidedTarget.x - c.pos.x;
-    const dy = this.fpGuidedTarget.y - c.pos.y;
-    const d = Math.hypot(dx, dy);
-    if (d <= COLONY.firstPerson.guidedArrivalDistance) return;
-    const move = Math.min(d, c.spd * dt);
-    const nx = c.pos.x + (dx / d) * move;
-    const ny = c.pos.y + (dy / d) * move;
-    const blocked = this.blockedSegmentReason(c.pos, { x: nx, y: ny });
-    if (blocked) {
-      this.fpBlockedReason = blocked;
-      this.fpNarrating = false;
-      this.fpNarration = `Guided walk blocked by ${blocked}.`;
+    if (!this.fpGuidedTarget || dt <= 0 || c.spd <= 0) return;
+    let remaining = dt;
+    let guard = 0;
+    while (this.fpGuidedTarget && remaining > 0.0001 && guard++ < 32) {
+      const finalTarget = { x: this.fpGuidedTarget.x, y: this.fpGuidedTarget.y };
+      const directDx = finalTarget.x - c.pos.x;
+      const directDy = finalTarget.y - c.pos.y;
+      const directDistance = Math.hypot(directDx, directDy);
+      if (directDistance <= COLONY.firstPerson.guidedArrivalDistance) return;
+
+      let stepTarget = finalTarget;
+      if (this.blockedSegmentReason(c.pos, finalTarget)) {
+        const waypoint = this.firstPersonGuidedWaypoint(c.pos, finalTarget);
+        if (waypoint) stepTarget = waypoint;
+      }
+
+      const dx = stepTarget.x - c.pos.x;
+      const dy = stepTarget.y - c.pos.y;
+      const d = Math.hypot(dx, dy);
+      if (d <= 0.0001) return;
+      const move = Math.min(d, c.spd * remaining);
+      const nx = c.pos.x + (dx / d) * move;
+      const ny = c.pos.y + (dy / d) * move;
+      const blocked = this.blockedSegmentReason(c.pos, { x: nx, y: ny });
+      if (blocked) {
+        this.fpBlockedReason = blocked;
+        this.fpNarrating = false;
+        this.fpNarration = `Guided walk blocked by ${blocked}.`;
+        c.target = { x: c.pos.x, y: c.pos.y };
+        return;
+      }
+      c.pos.x = nx;
+      c.pos.y = ny;
+      c.heading = Math.atan2(dy, dx);
       c.target = { x: c.pos.x, y: c.pos.y };
-      return;
+      this.fpBlockedReason = null;
+      remaining -= move / c.spd;
+      if (move < d) break;
     }
-    c.pos.x = nx;
-    c.pos.y = ny;
-    c.heading = Math.atan2(dy, dx);
-    c.target = { x: c.pos.x, y: c.pos.y };
-    this.fpBlockedReason = null;
   }
 
   /** Drive the avatar you have stepped into, from the held keys. Turns the heading and steps the
