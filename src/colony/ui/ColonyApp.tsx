@@ -2212,7 +2212,11 @@ export function ColonyApp() {
                                 data-build-action={`arrange-rotate-${p.index}`}
                                 title="rotate"
                                 onClick={() =>
-                                  runtime.rotateArrangedFurniture(me, lid, p.index)
+                                  runtime.rotateArrangedFurniture(
+                                    me,
+                                    lid,
+                                    p.index,
+                                  )
                                 }
                               >
                                 ↻
@@ -2257,7 +2261,11 @@ export function ColonyApp() {
                                 title="take it back to your inventory"
                                 style={{ color: "#e0584d" }}
                                 onClick={() =>
-                                  runtime.removeArrangedFurniture(me, lid, p.index)
+                                  runtime.removeArrangedFurniture(
+                                    me,
+                                    lid,
+                                    p.index,
+                                  )
                                 }
                               >
                                 ✕

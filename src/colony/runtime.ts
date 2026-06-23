@@ -2151,7 +2151,14 @@ export class ColonyRuntime {
    *  arrange ops), kind, cell, rotation and storey. Empty for an unbuilt/undesigned or unknown lot. */
   placedFurniture(
     lotId: string,
-  ): { index: number; kind: FurnitureKind; x: number; y: number; rot: number; z: number }[] {
+  ): {
+    index: number;
+    kind: FurnitureKind;
+    x: number;
+    y: number;
+    rot: number;
+    z: number;
+  }[] {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
     if (!lot || !lot.blueprint) return [];
     return parseBlueprint(lot.blueprint).items.map((f, index) => ({
@@ -2181,7 +2188,8 @@ export class ColonyRuntime {
     edit: (p: ParsedBlueprint) => ParsedBlueprint,
   ): boolean {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
-    if (!lot || lot.ownerCitizenId !== citizenId || !lot.blueprint) return false;
+    if (!lot || lot.ownerCitizenId !== citizenId || !lot.blueprint)
+      return false;
     const next = edit(parseBlueprint(lot.blueprint));
     return this.applyBlueprint(lotId, blueprintToScript(next), null);
   }
@@ -2232,15 +2240,20 @@ export class ColonyRuntime {
     index: number,
   ): boolean {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
-    if (!lot || lot.ownerCitizenId !== citizenId || !lot.blueprint) return false;
+    if (!lot || lot.ownerCitizenId !== citizenId || !lot.blueprint)
+      return false;
     const p = parseBlueprint(lot.blueprint);
     const piece = p.items[index];
     if (!piece) return false; // nothing at that handle
-    if (!this.applyBlueprint(lotId, blueprintToScript(removeItem(p, index)), null))
+    if (
+      !this.applyBlueprint(lotId, blueprintToScript(removeItem(p, index)), null)
+    )
       return false;
     // Hand the piece back to the player's inventory (best-effort backend sync, never blocks).
     const inv = recordOwnedLocal(citizenId, piece.kind, piece.kind, 1);
-    void saveInventoryBackend(citizenId, ownedBy(inv, citizenId)).catch(() => {});
+    void saveInventoryBackend(citizenId, ownedBy(inv, citizenId)).catch(
+      () => {},
+    );
     this.emit();
     return true;
   }

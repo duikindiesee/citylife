@@ -67,7 +67,9 @@ describe("runtime furniture arrangement (spec 089)", () => {
     expect(rt.moveArrangedFurniture(citizenId, lotId, i, 1, 0)).toBe(true);
     expect(rt.placedFurniture(lotId)[i]).toMatchObject({ x: 3, y: 2 });
     // not your house -> no-op
-    expect(rt.moveArrangedFurniture("citizen_nobody", lotId, i, 1, 0)).toBe(false);
+    expect(rt.moveArrangedFurniture("citizen_nobody", lotId, i, 1, 0)).toBe(
+      false,
+    );
     expect(rt.placedFurniture(lotId)[i]).toMatchObject({ x: 3, y: 2 });
   });
 
@@ -122,8 +124,6 @@ describe("runtime furniture arrangement (spec 089)", () => {
     const i = placeOne(rt, citizenId, lotId, "desk", "Workbench", 1, 1);
     expect(rt.removeArrangedFurniture("citizen_nobody", lotId, i)).toBe(false);
     expect(rt.placedFurniture(lotId).some((f) => f.kind === "desk")).toBe(true);
-    expect(
-      ownedBy(loadInventoryLocal(), "citizen_nobody").length,
-    ).toBe(0);
+    expect(ownedBy(loadInventoryLocal(), "citizen_nobody").length).toBe(0);
   });
 });
