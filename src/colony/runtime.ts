@@ -299,6 +299,41 @@ const BIOME_LABEL: Record<number, string> = {
   [Biome.River]: "Riverside",
 };
 
+export interface FirstPersonDemoEvidence {
+  citizenId: string;
+  citizenName: string;
+  position: { x: number; y: number };
+  heading: number;
+  lookPitch: number;
+  action: string | null;
+  guidedTarget: {
+    label: string;
+    x: number;
+    y: number;
+    remainingDistance: number;
+    nextWaypoint?: { x: number; y: number };
+  } | null;
+  blockedReason: string | null;
+  clockLabel: string;
+  hudLines: string[];
+}
+
+export interface FirstPersonDemoCapture {
+  evidence: FirstPersonDemoEvidence;
+  /** Browser-only PNG data URL when the renderer is mounted; null in headless tests. */
+  pngDataUrl: string | null;
+}
+
+export type FirstPersonMouseSensitivity = "low" | "normal" | "high";
+
+function roundTo(n: number, places = 2): number {
+  return Number(n.toFixed(places));
+}
+
+function formatDistanceLabel(distance: number): string {
+  return `${distance} ${distance === 1 ? "unit" : "units"} away`;
+}
+
 export interface ColonyUiState {
   running: boolean;
   paused: boolean;
@@ -526,6 +561,17 @@ export interface ColonyUiState {
     /** Step-in choices allowed for this session. Operators/admins get every citizen; CITYLIFE_PLAYER gets only their own. */
     stepInCitizenIds: string[];
     view: FirstPersonView | null;
+    lookPitch: number;
+    mouseSensitivity: FirstPersonMouseSensitivity;
+    sprintCharge: number;
+    guidedTarget: {
+      label: string;
+      x: number;
+      y: number;
+      remainingDistance: number;
+      nextWaypoint?: { x: number; y: number };
+    } | null;
+    blockedReason: string | null;
     narration: string | null;
     narrating: boolean;
   };
@@ -636,6 +682,12 @@ export class ColonyRuntime {
   private fpCitizenId: string | null = null;
   // First-person locomotion — which movement keys are held while you walk your bot around.
   private fpKeys = new Set<string>();
+  private fpWalkSpeed = 0;
+  private fpLookPitch = 0;
+  private fpMouseSensitivity: FirstPersonMouseSensitivity = "normal";
+  private fpSprintCharge = 1;
+  private fpGuidedTarget: { label: string; x: number; y: number } | null = null;
+  private fpBlockedReason: string | null = null;
   private raceState: RaceState | null = null;
   private raceInput: RaceInput = {};
   private bestRaceMs: number | null = null;
@@ -1221,6 +1273,49 @@ export class ColonyRuntime {
     return this.renderer.firstPersonPNG(c.homeXY, { x: look.x, y: look.y });
   }
 
+  /** Photo-mode automation hook: pair a screenshot-capable PNG with a deterministic, public-safe HUD evidence payload. */
+  captureFirstPersonDemo(): FirstPersonDemoCapture | null {
+    const ui = this.getUiState().firstPerson;
+    const view = ui.view;
+    if (!ui.active || !ui.citizenId || !view) return null;
+    const round = (n: number, places = 2) => Number(n.toFixed(places));
+    const action = view.interactionPrompt?.label ?? null;
+    const clockLabel = `Day ${view.clock.day} ${String(view.clock.hour).padStart(2, "0")}:${String(view.clock.minute).padStart(2, "0")}`;
+    const guidedTarget = ui.guidedTarget;
+    const hudLines = [
+      action ?? "No nearby action",
+      guidedTarget
+        ? `Guided walk ${guidedTarget.label} (${guidedTarget.x}, ${guidedTarget.y}) · ${formatDistanceLabel(guidedTarget.remainingDistance)}`
+        : null,
+      guidedTarget?.nextWaypoint
+        ? `Next leg (${guidedTarget.nextWaypoint.x}, ${guidedTarget.nextWaypoint.y})`
+        : null,
+      ui.blockedReason ? `Blocked ${ui.blockedReason}` : null,
+      view.mood.hungry ? "colony hungry" : null,
+      view.mood.brownout ? "brownout" : null,
+      view.mood.fever > 0.4 ? "illness spreading" : null,
+    ].filter((line): line is string => Boolean(line));
+
+    return {
+      evidence: {
+        citizenId: ui.citizenId,
+        citizenName: ui.citizenName ?? view.citizen.displayName,
+        position: {
+          x: round(view.citizen.positionXY.x),
+          y: round(view.citizen.positionXY.y),
+        },
+        heading: round(view.citizen.heading, 3),
+        lookPitch: round(ui.lookPitch, 3),
+        action,
+        guidedTarget,
+        blockedReason: ui.blockedReason,
+        clockLabel,
+        hudLines,
+      },
+      pngDataUrl: this.renderer ? this.firstPersonPNG(ui.citizenId) : null,
+    };
+  }
+
   /** P2 — turn a player's magic prompt into a PG-safe colonist personality (safety enforced on the
    *  prompt and the generated text). Returns a discriminated result so the UI shows the reason on reject. */
   generatePersonality(
@@ -1286,6 +1381,12 @@ export class ColonyRuntime {
     if (!this.citizens.byId(citizenId)) return false;
     if (!this.canStepIntoCitizen(citizenId)) return false;
     this.fpCitizenId = citizenId;
+    this.fpKeys.clear();
+    this.fpWalkSpeed = 0;
+    this.fpLookPitch = 0;
+    this.fpSprintCharge = 1;
+    this.fpGuidedTarget = null;
+    this.fpBlockedReason = null;
     this.renderer?.enterFirstPerson(citizenId);
     this.emit();
     return true;
@@ -1294,29 +1395,145 @@ export class ColonyRuntime {
   exitFirstPerson(): void {
     this.fpCitizenId = null;
     this.fpKeys.clear();
+    this.fpWalkSpeed = 0;
+    this.fpLookPitch = 0;
+    this.fpSprintCharge = 1;
+    this.fpGuidedTarget = null;
+    this.fpBlockedReason = null;
     this.fpNarration = null;
     this.fpNarrating = false;
     this.renderer?.exitFirstPerson();
     this.emit();
   }
 
-  /** First-person locomotion — hold W/S (or up/down) to walk, A/D (or left/right) to turn. The HUD
-   *  keydown/keyup feed this; movement is applied per-frame in the loop so it is smooth. */
+  /** First-person locomotion — hold W/S (or up/down) to walk, A/D to strafe, and left/right arrows to turn.
+   *  The HUD keydown/keyup feed this; movement is applied per-frame in the loop so it is smooth. */
   setFpKey(key: string, down: boolean): void {
     const map: Record<string, string> = {
       w: "fwd",
+      keyw: "fwd",
       arrowup: "fwd",
       s: "back",
+      keys: "back",
       arrowdown: "back",
-      a: "left",
+      a: "strafeLeft",
+      keya: "strafeLeft",
       arrowleft: "left",
-      d: "right",
+      d: "strafeRight",
+      keyd: "strafeRight",
       arrowright: "right",
+      shiftleft: "sprint",
+      shiftright: "sprint",
     };
     const m = map[key.toLowerCase()];
     if (!m) return;
     if (down) this.fpKeys.add(m);
     else this.fpKeys.delete(m);
+  }
+
+  /** Pointer-lock mouse-look math: positive dx yaws right; positive dy looks down. */
+  applyFirstPersonMouseLook(dx: number, dy: number): boolean {
+    const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
+    if (!c) return false;
+    const cfg = COLONY.firstPerson;
+    const sensitivity =
+      cfg.mouseSensitivity * cfg.mouseSensitivityScale[this.fpMouseSensitivity];
+    c.heading += dx * sensitivity;
+    this.fpLookPitch = Math.max(
+      -cfg.maxLookPitch,
+      Math.min(cfg.maxLookPitch, this.fpLookPitch - dy * sensitivity),
+    );
+    this.emit();
+    return true;
+  }
+
+  setFirstPersonMouseSensitivity(level: FirstPersonMouseSensitivity): boolean {
+    if (!(level in COLONY.firstPerson.mouseSensitivityScale)) return false;
+    this.fpMouseSensitivity = level;
+    this.emit();
+    return true;
+  }
+
+  /** Mouse-look comfort affordance: re-level vertical look without snapping yaw/heading. */
+  levelFirstPersonLook(): boolean {
+    if (!this.fpCitizenId) return false;
+    this.fpLookPitch = 0;
+    this.emit();
+    return true;
+  }
+
+  /** Execute the current first-person Action prompt with deterministic player-facing feedback. */
+  activateFirstPersonInteraction(): boolean {
+    const id = this.fpCitizenId;
+    if (!id) return false;
+    const c = this.citizens.byId(id);
+    if (!c) return false;
+    const view = firstPersonView(this.sim.state, id, this.citizens);
+    const prompt = view?.interactionPrompt;
+    if (!prompt) {
+      this.fpNarrating = false;
+      this.fpNarration = "No nearby action yet — move closer to someone or something useful.";
+      this.emit();
+      return false;
+    }
+    const actionLine: Record<typeof prompt.kind, string> = {
+      citizen: `You talk to ${prompt.targetName}.`,
+      civic: `You visit ${prompt.targetName}.`,
+      building: `You inspect ${prompt.targetName}.`,
+      road: `You follow ${prompt.targetName}.`,
+    };
+    if (prompt.kind === "road" || prompt.kind === "civic" || prompt.kind === "building") {
+      const rawTarget = {
+        x: Math.round(prompt.targetXY.x),
+        y: Math.round(prompt.targetXY.y),
+      };
+      const target =
+        prompt.kind === "building" && this.blockedStepReason(rawTarget.x, rawTarget.y) !== null
+          ? this.firstPersonApproachTarget(c.pos, rawTarget) ?? rawTarget
+          : rawTarget;
+      this.citizens.setTarget(id, target);
+      this.fpWalkSpeed = 0;
+      this.fpGuidedTarget = { label: prompt.targetName, ...target };
+      this.fpNarrating = false;
+      this.fpNarration = `Guiding you to ${prompt.targetName}.`;
+      this.emit();
+      return true;
+    }
+    this.fpGuidedTarget = null;
+    this.fpNarrating = false;
+    this.fpNarration = actionLine[prompt.kind];
+    this.emit();
+    return true;
+  }
+
+  /** Deterministic route-dogfood hook: place the active avatar at a controlled edge before stepping. */
+  placeFirstPersonDogfood(
+    pos: { x: number; y: number },
+    heading: number,
+  ): boolean {
+    const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
+    if (!c) return false;
+    c.pos = { ...pos };
+    c.target = { ...pos };
+    c.heading = heading;
+    this.fpWalkSpeed = 0;
+    this.fpLookPitch = 0;
+    this.fpSprintCharge = 1;
+    this.fpGuidedTarget = null;
+    this.fpBlockedReason = null;
+    this.emit();
+    return true;
+  }
+
+  /** Deterministic route-dogfood hook: advance the same first-person driver used by the RAF loop. */
+  stepFirstPersonDogfood(seconds: number): boolean {
+    if (!this.fpCitizenId) return false;
+    const dt = Math.max(0, seconds);
+    this.driveFirstPerson(dt);
+    this.citizens.stepAvatars(dt);
+    this.updateFirstPersonGuidedArrival();
+    this.emit();
+    return true;
   }
 
   startRace(): boolean {
@@ -1397,13 +1614,162 @@ export class ColonyRuntime {
     }
   }
 
-  /** A cell is walkable if it is on the island (in-bounds, not water). */
-  private onLand(x: number, y: number): boolean {
+  /** A blocked first-person step returns a player-facing reason; null means walkable. */
+  private blockedStepReason(
+    x: number,
+    y: number,
+    from?: { x: number; y: number },
+  ): string | null {
     const t = this.sim.state.terrain;
     const ix = Math.round(x),
       iy = Math.round(y);
-    if (ix < 0 || iy < 0 || ix >= t.size || iy >= t.size) return false;
-    return !t.isWater(ix, iy);
+    if (ix < 0 || iy < 0 || ix >= t.size || iy >= t.size) return "edge of map";
+    if (t.isWater(ix, iy)) return "water";
+    if (
+      this.sim.state.buildings.some(
+        (b) => Math.round(b.x) === ix && Math.round(b.y) === iy,
+      )
+    ) {
+      return "building";
+    }
+    const fromKey = from ? `${Math.round(from.x)},${Math.round(from.y)}` : null;
+    const key = `${ix},${iy}`;
+    const fromInsideOccupied = fromKey ? this.sim.state.occupied.has(fromKey) : false;
+    if (
+      !fromInsideOccupied &&
+      key !== fromKey &&
+      this.sim.state.occupied.has(key) &&
+      !this.sim.state.roadSet.has(key)
+    ) {
+      return "parcel";
+    }
+    return null;
+  }
+
+  private blockedSegmentReason(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+  ): string | null {
+    const d = Math.hypot(to.x - from.x, to.y - from.y);
+    const steps = Math.max(1, Math.ceil(d / COLONY.firstPerson.guidedCollisionSampleStep));
+    let previous = from;
+    for (let i = 1; i <= steps; i++) {
+      const sample = {
+        x: from.x + ((to.x - from.x) * i) / steps,
+        y: from.y + ((to.y - from.y) * i) / steps,
+      };
+      const blocked = this.blockedStepReason(sample.x, sample.y, previous);
+      if (blocked) return blocked;
+      previous = sample;
+    }
+    return null;
+  }
+
+  private updateFirstPersonGuidedArrival(): void {
+    if (!this.fpGuidedTarget || !this.fpCitizenId) return;
+    const c = this.citizens.byId(this.fpCitizenId);
+    if (!c) return;
+    const d = Math.hypot(c.pos.x - this.fpGuidedTarget.x, c.pos.y - this.fpGuidedTarget.y);
+    if (d > COLONY.firstPerson.guidedArrivalDistance) return;
+    const label = this.fpGuidedTarget.label;
+    this.fpGuidedTarget = null;
+    this.fpBlockedReason = null;
+    this.fpNarrating = false;
+    this.fpNarration = `Arrived at ${label}.`;
+  }
+
+  private firstPersonGuidedWaypoint(
+    from: { x: number; y: number },
+    directTarget: { x: number; y: number },
+  ): { x: number; y: number } | null {
+    const start = { x: Math.round(from.x), y: Math.round(from.y) };
+    const goal = { x: Math.round(directTarget.x), y: Math.round(directTarget.y) };
+    const path = leastCostPath(this.sim.state.terrain, start, goal, {
+      blocked: (x, y) => {
+        if ((x === start.x && y === start.y) || (x === goal.x && y === goal.y)) return false;
+        return this.blockedStepReason(x, y) !== null;
+      },
+    });
+    if (!path || path.length < 2) return null;
+    return path[1]!;
+  }
+
+  private firstPersonApproachTarget(
+    from: { x: number; y: number },
+    blockedTarget: { x: number; y: number },
+  ): { x: number; y: number } | null {
+    const start = { x: Math.round(from.x), y: Math.round(from.y) };
+    const goal = { x: Math.round(blockedTarget.x), y: Math.round(blockedTarget.y) };
+    const candidates = [
+      { x: goal.x - 1, y: goal.y },
+      { x: goal.x + 1, y: goal.y },
+      { x: goal.x, y: goal.y - 1 },
+      { x: goal.x, y: goal.y + 1 },
+    ];
+    let best: { target: { x: number; y: number }; cost: number } | null = null;
+    for (const target of candidates) {
+      if (this.blockedStepReason(target.x, target.y) !== null) continue;
+      const path = leastCostPath(this.sim.state.terrain, start, target, {
+        blocked: (x, y) => {
+          if (x === start.x && y === start.y) return false;
+          return this.blockedStepReason(x, y) !== null;
+        },
+      });
+      if (!path) continue;
+      const cost = path.length + Math.hypot(target.x - from.x, target.y - from.y) * 0.01;
+      if (!best || cost < best.cost) best = { target, cost };
+    }
+    return best?.target ?? null;
+  }
+
+  private driveFirstPersonGuided(
+    c: {
+      pos: { x: number; y: number };
+      target: { x: number; y: number };
+      heading: number;
+      spd: number;
+    },
+    dt: number,
+  ): void {
+    if (!this.fpGuidedTarget || dt <= 0 || c.spd <= 0) return;
+    let remaining = dt;
+    let guard = 0;
+    while (this.fpGuidedTarget && remaining > 0.0001 && guard++ < 32) {
+      const finalTarget = { x: this.fpGuidedTarget.x, y: this.fpGuidedTarget.y };
+      const directDx = finalTarget.x - c.pos.x;
+      const directDy = finalTarget.y - c.pos.y;
+      const directDistance = Math.hypot(directDx, directDy);
+      if (directDistance <= COLONY.firstPerson.guidedArrivalDistance) return;
+
+      let stepTarget = finalTarget;
+      if (this.blockedSegmentReason(c.pos, finalTarget)) {
+        const waypoint = this.firstPersonGuidedWaypoint(c.pos, finalTarget);
+        if (waypoint) stepTarget = waypoint;
+      }
+
+      const dx = stepTarget.x - c.pos.x;
+      const dy = stepTarget.y - c.pos.y;
+      const d = Math.hypot(dx, dy);
+      if (d <= 0.0001) return;
+      const move = Math.min(d, c.spd * remaining);
+      const nx = c.pos.x + (dx / d) * move;
+      const ny = c.pos.y + (dy / d) * move;
+      const blocked = this.blockedSegmentReason(c.pos, { x: nx, y: ny });
+      if (blocked) {
+        this.fpBlockedReason = blocked;
+        this.fpNarrating = false;
+        this.fpNarration = `Guided walk blocked by ${blocked}.`;
+        c.target = { x: c.pos.x, y: c.pos.y };
+        return;
+      }
+      c.pos.x = nx;
+      c.pos.y = ny;
+      c.heading = Math.atan2(dy, dx);
+      c.target = { x: c.pos.x, y: c.pos.y };
+      this.fpBlockedReason = null;
+      remaining -= move / c.spd;
+      if (move < d) break;
+    }
   }
 
   /** Drive the avatar you have stepped into, from the held keys. Turns the heading and steps the
@@ -1412,22 +1778,87 @@ export class ColonyRuntime {
     const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
     if (!c) return;
     const k = this.fpKeys;
-    const turn = 2.4 * dt;
+    const cfg = COLONY.firstPerson;
+    const turn = cfg.turnSpeed * dt;
     if (k.has("left")) c.heading -= turn;
     if (k.has("right")) c.heading += turn;
-    let mv = 0;
-    if (k.has("fwd")) mv += 1;
-    if (k.has("back")) mv -= 1;
-    if (mv !== 0) {
-      const sp = 3.4 * dt * mv;
-      const nx = c.pos.x + Math.cos(c.heading) * sp;
-      const ny = c.pos.y + Math.sin(c.heading) * sp;
-      if (this.onLand(nx, ny)) {
+    const forwardHeld = k.has("fwd");
+    const backHeld = k.has("back");
+    const strafeLeftHeld = k.has("strafeLeft");
+    const strafeRightHeld = k.has("strafeRight");
+    const opposingWalkInput = forwardHeld && backHeld;
+    const opposingStrafeInput = strafeLeftHeld && strafeRightHeld;
+    let forward = 0;
+    let strafe = 0;
+    if (!opposingWalkInput && forwardHeld) forward += 1;
+    if (!opposingWalkInput && backHeld) forward -= 1;
+    if (!opposingStrafeInput && strafeRightHeld) strafe += 1;
+    if (!opposingStrafeInput && strafeLeftHeld) strafe -= 1;
+    const moving = forward !== 0 || strafe !== 0;
+    const manualControl = moving || k.has("left") || k.has("right");
+    if (manualControl && this.fpGuidedTarget) {
+      this.fpGuidedTarget = null;
+      this.fpBlockedReason = null;
+      this.fpNarrating = false;
+      this.fpNarration = "Guided walk canceled — manual control resumed.";
+    }
+    if (opposingWalkInput || opposingStrafeInput) this.fpWalkSpeed = 0;
+    const targetSpeed = moving ? cfg.maxWalkSpeed : 0;
+    if (this.fpWalkSpeed < targetSpeed) {
+      this.fpWalkSpeed = Math.min(
+        targetSpeed,
+        this.fpWalkSpeed + cfg.walkAcceleration * dt,
+      );
+    } else if (this.fpWalkSpeed > targetSpeed) {
+      const rate = targetSpeed === 0 ? cfg.walkDeceleration : cfg.walkAcceleration;
+      this.fpWalkSpeed = Math.max(targetSpeed, this.fpWalkSpeed - rate * dt);
+    }
+    const sprintHeld = k.has("sprint");
+    if (!sprintHeld) {
+      this.fpSprintCharge = Math.min(
+        1,
+        this.fpSprintCharge + dt / cfg.sprintRecoverySeconds,
+      );
+    }
+    if (Math.abs(this.fpWalkSpeed) > 0.001) {
+      const inputLength = Math.hypot(forward, strafe);
+      const dirForward = inputLength > 0 ? forward / inputLength : 1;
+      const dirStrafe = inputLength > 0 ? strafe / inputLength : 0;
+      const cellKey = `${Math.round(c.pos.x)},${Math.round(c.pos.y)}`;
+      const surfaceMultiplier = this.sim.state.roadSet.has(cellKey)
+        ? cfg.roadWalkSpeedMultiplier
+        : cfg.offRoadWalkSpeedMultiplier;
+      const sprinting = moving && sprintHeld && this.fpSprintCharge > 0;
+      if (sprinting) {
+        this.fpSprintCharge = Math.max(
+          0,
+          this.fpSprintCharge - dt / cfg.sprintChargeSeconds,
+        );
+      }
+      const sprintMultiplier = sprinting ? cfg.sprintWalkSpeedMultiplier : 1;
+      const sp = this.fpWalkSpeed * surfaceMultiplier * sprintMultiplier * dt;
+      const nx =
+        c.pos.x +
+        (Math.cos(c.heading) * dirForward - Math.sin(c.heading) * dirStrafe) * sp;
+      const ny =
+        c.pos.y +
+        (Math.sin(c.heading) * dirForward + Math.cos(c.heading) * dirStrafe) * sp;
+      const blocked = this.blockedStepReason(nx, ny, c.pos);
+      if (!blocked) {
         c.pos.x = nx;
         c.pos.y = ny;
+        this.fpBlockedReason = null;
+      } else {
+        this.fpWalkSpeed = 0;
+        this.fpBlockedReason = blocked;
       }
     }
-    c.target = { x: c.pos.x, y: c.pos.y }; // hold the auto-walk while you drive
+    if (this.fpGuidedTarget && !manualControl) {
+      this.driveFirstPersonGuided(c, dt);
+    }
+    if (!this.fpGuidedTarget) {
+      c.target = { x: c.pos.x, y: c.pos.y }; // hold the auto-walk while you drive or idle without guidance
+    }
   }
 
   /** Keep the citizens alive in watch mode — when an idle one (not the one you are driving) has reached
@@ -2715,7 +3146,11 @@ export class ColonyRuntime {
       const mine = this.operatorCitizenId();
       return this.citizens
         .avatars()
-        .map((a) => ({ ...a, isOperator: a.id === mine }));
+        .map((a) => ({
+          ...a,
+          isOperator: a.id === mine,
+          lookPitch: a.id === this.fpCitizenId ? this.fpLookPitch : 0,
+        }));
     });
     if (this.fpCitizenId) this.renderer.enterFirstPerson(this.fpCitizenId);
     this.renderer.setNeighborhood(this.neighborhood); // spec 075 — lot pads + voxel homes
@@ -2753,6 +3188,7 @@ export class ColonyRuntime {
     }
     if (this.fpCitizenId) this.driveFirstPerson(dtReal); // walk your bot with WASD when stepped in
     this.citizens.stepAvatars(dtReal); // P1 — walk the avatars in real time toward their targets
+    this.updateFirstPersonGuidedArrival();
     this.wanderIdleCitizens(dtReal); // keep the citizens strolling so watch mode is never frozen
     this.raceTick(dtReal);
     this.renderer?.frame();
@@ -3024,6 +3460,42 @@ export class ColonyRuntime {
           operatorCitizenId: opId,
           stepInCitizenIds: this.stepInCitizenIds(),
           view,
+          lookPitch: this.fpLookPitch,
+          mouseSensitivity: this.fpMouseSensitivity,
+          sprintCharge: Math.round(this.fpSprintCharge * 100),
+          guidedTarget:
+            this.fpGuidedTarget && c
+              ? (() => {
+                  const finalTarget = {
+                    x: this.fpGuidedTarget.x,
+                    y: this.fpGuidedTarget.y,
+                  };
+                  const nextWaypoint = this.blockedSegmentReason(c.pos, finalTarget)
+                    ? this.firstPersonGuidedWaypoint(c.pos, finalTarget)
+                    : null;
+                  return {
+                    label: this.fpGuidedTarget.label,
+                    x: Math.round(this.fpGuidedTarget.x),
+                    y: Math.round(this.fpGuidedTarget.y),
+                    remainingDistance: roundTo(
+                      Math.hypot(
+                        c.pos.x - this.fpGuidedTarget.x,
+                        c.pos.y - this.fpGuidedTarget.y,
+                      ),
+                      1,
+                    ),
+                    ...(nextWaypoint
+                      ? {
+                          nextWaypoint: {
+                            x: Math.round(nextWaypoint.x),
+                            y: Math.round(nextWaypoint.y),
+                          },
+                        }
+                      : {}),
+                  };
+                })()
+              : null,
+          blockedReason: this.fpBlockedReason,
           narration: this.fpNarration,
           narrating: this.fpNarrating,
         };

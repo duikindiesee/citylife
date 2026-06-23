@@ -62,6 +62,32 @@ describe("firstPersonView — spec 074", () => {
     expect(v.neighbours[0]!.distance).toBeGreaterThan(0); // not yourself
   });
 
+  it("offers the nearest live neighbour as the first-person interaction prompt", () => {
+    const { sim, roster } = bootColony();
+    const plots = sim.state.cityPlan!.plots;
+    expect(plots.length).toBeGreaterThanOrEqual(2);
+    const me = roster.register(generateHousehold(7), plots[0]!, fixedNow)!;
+    const neighbour = roster.register(generateHousehold(11), plots[1]!, fixedNow)!;
+    me.pos = { x: 20, y: 20 };
+    neighbour.pos = { x: 21.2, y: 20 };
+    sim.state.buildings.push({
+      id: 9001,
+      x: 20.4,
+      y: 20,
+      artifact: { kind: "market" },
+    } as never);
+
+    const v = firstPersonView(sim.state, me.id, roster)!;
+
+    expect(v.interactionPrompt).toEqual({
+      kind: "citizen",
+      label: `Talk to ${neighbour.displayName}`,
+      targetName: neighbour.displayName,
+      targetXY: { x: 21.2, y: 20 },
+      distance: 1.2,
+    });
+  });
+
   it("reports no neighbours when alone", () => {
     const { sim, roster } = bootColony();
     const plot = sim.state.cityPlan!.plots[0]!;

@@ -1062,6 +1062,29 @@ export const COLONY = {
     maxWaitSteps: 50, // failsafe so a jammed car eventually proceeds (no deadlock)
   },
 
+  firstPerson: {
+    maxWalkSpeed: 3.4, // world units/sec once fully accelerated
+    walkAcceleration: 10, // units/sec²; gives a visible ramp instead of instant full speed
+    walkDeceleration: 8, // units/sec²; releases coast briefly, then settle
+    roadWalkSpeedMultiplier: 1.25, // paved/path cells feel easier to roam than grass
+    offRoadWalkSpeedMultiplier: 1, // baseline terrain walking multiplier
+    sprintWalkSpeedMultiplier: 1.45, // hold Shift to cover long streets faster without changing normal walk
+    sprintChargeSeconds: 3, // sustained sprint comfort budget before falling back to normal walk
+    sprintRecoverySeconds: 4, // time off Shift to recover a fully exhausted sprint budget
+    interactionPromptMaxDistance: {
+      citizen: 14,
+      civic: 18,
+      building: 18,
+      road: 8,
+    }, // only nearby things become player actions; far citizens should not hide road prompts
+    guidedArrivalDistance: 0.05, // close enough to clear a guided-walk target and report arrival
+    guidedCollisionSampleStep: 0.25, // max world units between guided-walk guardrail samples so large deterministic steps cannot tunnel through blockers
+    turnSpeed: 2.4, // radians/sec for keyboard yaw until mouse-look lands
+    mouseSensitivity: 0.0025, // radians per pointer-lock mouse pixel for FPS look
+    mouseSensitivityScale: { low: 0.6, normal: 1, high: 1.6 }, // player-facing look sensitivity presets
+    maxLookPitch: 0.9, // radians up/down clamp so mouse-look never flips over
+  },
+
   render: {
     seed: 4242,
   },

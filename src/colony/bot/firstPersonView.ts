@@ -6,6 +6,7 @@
 // The PNG counterpart (vision) is rendered separately by PlanetRenderer.firstPersonPNG().
 import type { ColonyState } from "../sim";
 import { Biome } from "../terrain";
+import { COLONY } from "../config";
 import type { CitizenRoster } from "./citizenRoster";
 
 /** What the bot gets every turn — cheap, deterministic, vision-free. */
@@ -20,6 +21,16 @@ export interface FirstPersonView {
     /** Current facing in radians, so narration/rendering can reason about direction. */
     heading: number;
   };
+  /** The nearest useful thing the player can interact with from this live position. */
+  interactionPrompt:
+    | {
+        kind: "citizen" | "civic" | "building" | "road";
+        label: string;
+        targetName: string;
+        targetXY: { x: number; y: number };
+        distance: number;
+      }
+    | null;
   /** The patch of land the citizen's house sits on. */
   ground: {
     biome: string;
@@ -76,6 +87,10 @@ function clampCell(n: number, size: number): number {
   return Math.max(0, Math.min(size - 1, Math.round(n)));
 }
 
+function roundDistance(n: number): number {
+  return Number(n.toFixed(1));
+}
+
 /** Pure-engine "what's around the citizen" snapshot. Returns null if the citizen is unknown. */
 export function firstPersonView(
   state: ColonyState,
@@ -113,6 +128,8 @@ export function firstPersonView(
       return {
         displayName: c.displayName,
         plotName: c.plotName,
+        x: ox,
+        y: oy,
         distance: dist(ox, oy, px, py),
       };
     })
@@ -154,6 +171,8 @@ export function firstPersonView(
   const seenBuildings = state.buildings
     .map((b) => ({
       kind: String(b.artifact?.kind ?? "unknown"),
+      x: b.x,
+      y: b.y,
       distance: dist(b.x, b.y, px, py),
     }))
     .sort((a, b) => a.distance - b.distance);
@@ -164,6 +183,57 @@ export function firstPersonView(
     .filter((b) => CIVIC.has(b.kind))
     .slice(0, 3);
 
+  const nearestNeighbour = allOthers[0] ?? null;
+  const promptMax = COLONY.firstPerson.interactionPromptMaxDistance;
+  const nearbyNeighbour =
+    nearestNeighbour && nearestNeighbour.distance <= promptMax.citizen
+      ? nearestNeighbour
+      : null;
+  const nearbyCivic =
+    nearestCivic[0] && nearestCivic[0].distance <= promptMax.civic
+      ? nearestCivic[0]
+      : null;
+  const nearbyBuilding =
+    nearestBuildings[0] && nearestBuildings[0].distance <= promptMax.building
+      ? nearestBuildings[0]
+      : null;
+  const nearbyRoad =
+    nearestRoad && nearestRoad.distance <= promptMax.road ? nearestRoad : null;
+
+  const interactionPrompt = nearbyNeighbour
+    ? {
+        kind: "citizen" as const,
+        label: `Talk to ${nearbyNeighbour.displayName}`,
+        targetName: nearbyNeighbour.displayName,
+        targetXY: { x: nearbyNeighbour.x, y: nearbyNeighbour.y },
+        distance: roundDistance(nearbyNeighbour.distance),
+      }
+    : nearbyCivic
+      ? {
+          kind: "civic" as const,
+          label: `Visit ${nearbyCivic.kind}`,
+          targetName: nearbyCivic.kind,
+          targetXY: { x: nearbyCivic.x, y: nearbyCivic.y },
+          distance: roundDistance(nearbyCivic.distance),
+        }
+      : nearbyBuilding
+        ? {
+            kind: "building" as const,
+            label: `Inspect ${nearbyBuilding.kind}`,
+            targetName: nearbyBuilding.kind,
+            targetXY: { x: nearbyBuilding.x, y: nearbyBuilding.y },
+            distance: roundDistance(nearbyBuilding.distance),
+          }
+        : nearbyRoad
+          ? {
+              kind: "road" as const,
+              label: "Follow road",
+              targetName: "road",
+              targetXY: { x: nearbyRoad.x, y: nearbyRoad.y },
+              distance: roundDistance(nearbyRoad.distance),
+            }
+          : null;
+
   return {
     citizen: {
       id: me.id,
@@ -173,6 +243,7 @@ export function firstPersonView(
       positionXY: { x: px, y: py },
       heading: me.heading,
     },
+    interactionPrompt,
     ground: {
       biome: BIOME_NAME[biome ?? -1] ?? "unknown",
       elevation: Number(elev.toFixed(3)),

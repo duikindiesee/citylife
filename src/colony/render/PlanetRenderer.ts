@@ -55,6 +55,7 @@ export interface AvatarView {
   x: number;
   y: number;
   heading: number;
+  lookPitch?: number;
   hasPod: boolean;
   /** Spec 078 — body kind: humans draw as the capsule avatar, Joe the founder draws as the crab mesh. */
   kind: "human" | "crab";
@@ -2238,9 +2239,14 @@ export class PlanetRenderer {
         // stand the eye on the road SURFACE when on a road, so Joe is never looking up through the road
         const eye = this.surfaceY(a.x, a.y) + (isCrab ? CRAB_EYE : 1.6);
         this.camera.position.set(this.wx(a.x), eye, this.wz(a.y));
-        const lx = a.x + Math.cos(a.heading) * 4,
-          ly = a.y + Math.sin(a.heading) * 4;
-        const lyW = this.surfaceY(lx, ly) + (isCrab ? CRAB_EYE - 0.05 : 1.2);
+        const lookPitch = a.lookPitch ?? 0;
+        const horizontal = Math.cos(lookPitch) * 4;
+        const lx = a.x + Math.cos(a.heading) * horizontal,
+          ly = a.y + Math.sin(a.heading) * horizontal;
+        const lyW =
+          this.surfaceY(lx, ly) +
+          (isCrab ? CRAB_EYE - 0.05 : 1.2) +
+          Math.sin(lookPitch) * 4;
         this.camera.lookAt(this.wx(lx), lyW, this.wz(ly));
         this.camera.updateMatrixWorld();
       } else {

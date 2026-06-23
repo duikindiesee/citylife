@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { ColonyRuntime, type ColonyUiState } from "../runtime";
+import {
+  FIRST_PERSON_KEY_CODES,
+  RACE_KEY_CODES,
+  normalizeFirstPersonKeyCode,
+} from "./firstPersonKeys";
+import { ColonyRuntime, type ColonyUiState, type FirstPersonMouseSensitivity } from "../runtime";
 import type { CameraPreset, ViewMode } from "../render/PlanetRenderer";
 import type { HouseholdOverrides } from "../newcomers";
 import { AuthClient } from "../authClient";
@@ -39,6 +44,9 @@ import "./colony.css";
 // commercial district, the border). The old colony-sim survival/economy dashboard (water/food/health/
 // smog/incidents/fever/unrest/seasons/storms/power/etc.) is gated off here. Flip to true to bring it back.
 const OLD_WORLD_STATS = false;
+export function hudClassName(firstPersonActive: boolean): string {
+  return firstPersonActive ? "hud hud--first-person-mobile-drawer" : "hud";
+}
 const pad = (n: number) => String(n).padStart(2, "0");
 const raceTime = (ms: number | null) => {
   if (ms === null) return "--";
@@ -69,12 +77,97 @@ const VIEWS: { id: ViewMode; label: string }[] = [
   { id: "buildable", label: "Buildable" },
   { id: "elevation", label: "Elevation" },
 ];
+const MOUSE_SENSITIVITY_PRESETS: {
+  id: FirstPersonMouseSensitivity;
+  label: string;
+}[] = [
+  { id: "low", label: "Low" },
+  { id: "normal", label: "Normal" },
+  { id: "high", label: "High" },
+];
+
+export function FirstPersonMouseLookBar({
+  citizenName,
+  mouseLookLocked,
+  pointerLockError,
+  requestMouseLook,
+  levelFirstPersonLook,
+  mouseSensitivity,
+  setMouseSensitivity,
+  exitFirstPerson,
+}: {
+  citizenName: string | null;
+  mouseLookLocked: boolean;
+  pointerLockError: string | null;
+  requestMouseLook: () => void;
+  levelFirstPersonLook: () => void;
+  mouseSensitivity: FirstPersonMouseSensitivity;
+  setMouseSensitivity: (level: FirstPersonMouseSensitivity) => void;
+  exitFirstPerson: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: 18,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 50,
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+        background: "rgba(10,14,28,0.78)",
+        border: "1px solid #2a3550",
+        borderRadius: 10,
+        padding: "8px 14px",
+        backdropFilter: "blur(4px)",
+      }}
+    >
+      <span style={{ color: "#a0d4f0", fontSize: 13 }}>
+        👁 Seeing through <b>{citizenName ?? "a citizen"}</b>&apos;s eyes
+      </span>
+      <span style={{ color: "#6f86b8", fontSize: 12 }}>
+        <b>W</b>/<b>S</b> walk · <b>A</b>/<b>D</b> strafe · arrows turn · mouse-look {pointerLockError ? "unavailable" : mouseLookLocked ? "locked" : "ready"} · <b>Esc</b> {mouseLookLocked ? "unlock" : "exit"}
+      </span>
+      {pointerLockError && (
+        <span style={{ color: "#e6c84d", fontSize: 12 }} role="status">
+          {pointerLockError}
+        </span>
+      )}
+      <button style={{ padding: "3px 12px" }} onClick={requestMouseLook}>
+        {mouseLookLocked ? "Mouse-look on" : pointerLockError ? "Retry mouse-look" : "Lock mouse-look"}
+      </button>
+      <button style={{ padding: "3px 12px" }} onClick={levelFirstPersonLook}>
+        Level view
+      </button>
+      <span style={{ color: "#6f86b8", fontSize: 12 }}>Look sensitivity</span>
+      {MOUSE_SENSITIVITY_PRESETS.map((preset) => (
+        <button
+          key={preset.id}
+          aria-pressed={mouseSensitivity === preset.id}
+          style={{
+            padding: "3px 10px",
+            borderColor: mouseSensitivity === preset.id ? "#8be9fd" : undefined,
+          }}
+          onClick={() => setMouseSensitivity(preset.id)}
+        >
+          {preset.label}
+        </button>
+      ))}
+      <button style={{ padding: "3px 12px" }} onClick={exitFirstPerson}>
+        Exit first person
+      </button>
+    </div>
+  );
+}
 
 export function ColonyApp() {
   const runtime = useRuntime();
   const hostRef = useRef<HTMLDivElement>(null);
   const ui: ColonyUiState = runtime.getUiState();
   const [borderOpen, setBorderOpen] = useState(false);
+  const [mouseLookLocked, setMouseLookLocked] = useState(false);
+  const [pointerLockError, setPointerLockError] = useState<string | null>(null);
   // Furniture studio (spec 088 Slice D UI) — the design-and-buy controls.
   const [furnKind, setFurnKind] = useState<FurnitureKind>("sofa");
   const [furnName, setFurnName] = useState("");
@@ -129,23 +222,54 @@ export function ColonyApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const onPointerLockChange = () => {
+      const locked = document.pointerLockElement === hostRef.current;
+      setMouseLookLocked(locked);
+      if (locked) setPointerLockError(null);
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      if (document.pointerLockElement !== hostRef.current) return;
+      runtime.applyFirstPersonMouseLook(e.movementX, e.movementY);
+    };
+    document.addEventListener("pointerlockchange", onPointerLockChange);
+    document.addEventListener("mousemove", onMouseMove);
+    return () => {
+      document.removeEventListener("pointerlockchange", onPointerLockChange);
+      document.removeEventListener("mousemove", onMouseMove);
+    };
+  }, [runtime]);
+
+  const requestMouseLook = () => {
+    if (!ui.firstPerson.active) return;
+    const host = hostRef.current;
+    if (!host?.requestPointerLock) {
+      setPointerLockError("Mouse-look unavailable — this browser does not support pointer lock.");
+      return;
+    }
+    setPointerLockError(null);
+    try {
+      const request = host.requestPointerLock();
+      if (request && typeof request.catch === "function") {
+        request.catch(() =>
+          setPointerLockError(
+            "Mouse-look unavailable — click the city view and try again.",
+          ),
+        );
+      }
+    } catch {
+      setPointerLockError(
+        "Mouse-look unavailable — click the city view and try again.",
+      );
+    }
+  };
+
   // Keyboard shortcuts: Space pauses, 1/2/3 switch camera, Z toggles zoning. Ignored while typing.
   // When stepped into a bot (first person), W/A/S/D or the arrow keys WALK it around.
   useEffect(() => {
-    const MOVE = new Set([
-      "KeyW",
-      "KeyA",
-      "KeyS",
-      "KeyD",
-      "ArrowUp",
-      "ArrowDown",
-      "ArrowLeft",
-      "ArrowRight",
-    ]);
-    const RACE_MOVE = new Set([...MOVE, "ShiftLeft", "ShiftRight"]);
-    // 'KeyW' -> 'w', 'ArrowUp' -> 'arrowup' (runtime.setFpKey lowercases + maps these to fwd/back/left/right)
-    const norm = (code: string) =>
-      code.startsWith("Arrow") ? code.toLowerCase() : code.slice(3);
+    const MOVE = FIRST_PERSON_KEY_CODES;
+    const RACE_MOVE = RACE_KEY_CODES;
+    const norm = normalizeFirstPersonKeyCode;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (
@@ -172,13 +296,22 @@ export function ColonyApp() {
           runtime.setFpKey(norm(e.code), true);
           return;
         }
-        // Additive first-person actions: N narrates what the citizen sees, Esc steps back out.
+        // Additive first-person actions: E uses the current Action prompt, N narrates what the citizen sees, Esc steps back out.
+        if (e.code === "KeyE") {
+          e.preventDefault();
+          runtime.activateFirstPersonInteraction();
+          return;
+        }
         if (e.code === "KeyN") {
           e.preventDefault();
           void runtime.narrate();
           return;
         }
         if (e.code === "Escape") {
+          if (document.pointerLockElement === hostRef.current) {
+            document.exitPointerLock?.();
+            return;
+          }
           runtime.exitFirstPerson();
           return;
         }
@@ -233,37 +366,16 @@ export function ColonyApp() {
     <div className="colony">
       <div className="canvas-host" ref={hostRef} />
       {ui.firstPerson.active && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 18,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 50,
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            background: "rgba(10,14,28,0.78)",
-            border: "1px solid #2a3550",
-            borderRadius: 10,
-            padding: "8px 14px",
-            backdropFilter: "blur(4px)",
-          }}
-        >
-          <span style={{ color: "#a0d4f0", fontSize: 13 }}>
-            👁 Seeing through <b>{ui.firstPerson.citizenName ?? "a citizen"}</b>
-            &apos;s eyes
-          </span>
-          <span style={{ color: "#6f86b8", fontSize: 12 }}>
-            <b>W</b>/<b>S</b> walk · <b>A</b>/<b>D</b> turn · <b>Esc</b> exit
-          </span>
-          <button
-            style={{ padding: "3px 12px" }}
-            onClick={() => runtime.exitFirstPerson()}
-          >
-            Exit first person
-          </button>
-        </div>
+        <FirstPersonMouseLookBar
+          citizenName={ui.firstPerson.citizenName}
+          mouseLookLocked={mouseLookLocked}
+          pointerLockError={pointerLockError}
+          requestMouseLook={requestMouseLook}
+          levelFirstPersonLook={() => runtime.levelFirstPersonLook()}
+          mouseSensitivity={ui.firstPerson.mouseSensitivity}
+          setMouseSensitivity={(level) => runtime.setFirstPersonMouseSensitivity(level)}
+          exitFirstPerson={() => runtime.exitFirstPerson()}
+        />
       )}
       <FirstPersonPanel runtime={runtime} fp={ui.firstPerson} />
       {ui.race.mode !== "idle" && (
@@ -410,7 +522,7 @@ export function ColonyApp() {
         </div>
       </header>
 
-      <aside className="hud">
+      <aside className={hudClassName(ui.firstPerson.active)}>
         <h2>{ui.name}</h2>
         {ui.courier.on && ui.courier.headline && (
           <div
