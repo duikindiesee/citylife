@@ -367,6 +367,77 @@ describe("first-person route dogfood", () => {
     expect(ui.narration).toBe("Guided walk canceled — manual control resumed.");
   });
 
+  it("does not guide the first-person avatar through blocked parcel cells", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.sim.state.buildings = [];
+    const me = rt.getUiState().citizens.list[0]!;
+    const publicCitizens = rt.getUiState().citizens.list;
+    const terrain = rt.sim.state.terrain;
+    let start: { x: number; y: number } | null = null;
+    let blocker: { x: number; y: number } | null = null;
+
+    rt.enterFirstPerson(me.id);
+    for (const candidateRoad of rt.sim.state.roads) {
+      if (!publicCitizens.every((c) => distance(c.homeXY, candidateRoad) > 30)) continue;
+      const x = Math.round(candidateRoad.x);
+      const y = Math.round(candidateRoad.y);
+      for (const dir of [
+        { x: 1, y: 0, heading: Math.PI },
+        { x: -1, y: 0, heading: 0 },
+        { x: 0, y: 1, heading: -Math.PI / 2 },
+        { x: 0, y: -1, heading: Math.PI / 2 },
+      ]) {
+        const candidateBlocker = { x: x + dir.x, y: y + dir.y };
+        const candidateStart = { x: x + dir.x * 2, y: y + dir.y * 2 };
+        const blockerKey = `${candidateBlocker.x},${candidateBlocker.y}`;
+        const startKey = `${candidateStart.x},${candidateStart.y}`;
+        if (
+          candidateStart.x <= 0 ||
+          candidateStart.y <= 0 ||
+          candidateStart.x >= terrain.size - 1 ||
+          candidateStart.y >= terrain.size - 1 ||
+          terrain.isWater(candidateBlocker.x, candidateBlocker.y) ||
+          terrain.isWater(candidateStart.x, candidateStart.y) ||
+          rt.sim.state.roadSet.has(blockerKey) ||
+          rt.sim.state.roadSet.has(startKey) ||
+          rt.sim.state.occupied.has(startKey)
+        ) {
+          continue;
+        }
+        rt.sim.state.occupied.add(blockerKey);
+        expect(rt.placeFirstPersonDogfood(candidateStart, dir.heading)).toBe(true);
+        const prompt = rt.getUiState().firstPerson.view!.interactionPrompt;
+        if (
+          prompt?.kind === "road" &&
+          Math.round(prompt.targetXY.x) === x &&
+          Math.round(prompt.targetXY.y) === y
+        ) {
+          start = candidateStart;
+          blocker = candidateBlocker;
+          break;
+        }
+        rt.sim.state.occupied.delete(blockerKey);
+      }
+      if (start && blocker) break;
+    }
+    if (!start || !blocker) {
+      throw new Error("test terrain needs a nearby road with a blockable parcel cell before it");
+    }
+
+    expect(rt.activateFirstPersonInteraction()).toBe(true);
+    const target = rt.getUiState().firstPerson.guidedTarget!;
+    rt.stepFirstPersonDogfood(2);
+
+    const ui = rt.getUiState().firstPerson;
+    expect(ui.guidedTarget).toMatchObject({ label: target.label, x: target.x, y: target.y });
+    expect(ui.blockedReason).toBe("parcel");
+    expect(ui.narration).toBe("Guided walk blocked by parcel.");
+    expect(distance(ui.view!.citizen.positionXY, blocker)).toBeGreaterThan(0.4);
+    expect(distance(ui.view!.citizen.positionXY, target)).toBeGreaterThan(
+      COLONY.firstPerson.guidedArrivalDistance,
+    );
+  });
+
   it("advances and clears a guided walk when the target is reached", () => {
     const rt = new ColonyRuntime(4242);
     rt.sim.state.buildings = [];

@@ -1625,8 +1625,41 @@ export class ColonyRuntime {
     if (d > COLONY.firstPerson.guidedArrivalDistance) return;
     const label = this.fpGuidedTarget.label;
     this.fpGuidedTarget = null;
+    this.fpBlockedReason = null;
     this.fpNarrating = false;
     this.fpNarration = `Arrived at ${label}.`;
+  }
+
+  private driveFirstPersonGuided(
+    c: {
+      pos: { x: number; y: number };
+      target: { x: number; y: number };
+      heading: number;
+      spd: number;
+    },
+    dt: number,
+  ): void {
+    if (!this.fpGuidedTarget || dt <= 0) return;
+    const dx = this.fpGuidedTarget.x - c.pos.x;
+    const dy = this.fpGuidedTarget.y - c.pos.y;
+    const d = Math.hypot(dx, dy);
+    if (d <= COLONY.firstPerson.guidedArrivalDistance) return;
+    const move = Math.min(d, c.spd * dt);
+    const nx = c.pos.x + (dx / d) * move;
+    const ny = c.pos.y + (dy / d) * move;
+    const blocked = this.blockedStepReason(nx, ny, c.pos);
+    if (blocked) {
+      this.fpBlockedReason = blocked;
+      this.fpNarrating = false;
+      this.fpNarration = `Guided walk blocked by ${blocked}.`;
+      c.target = { x: c.pos.x, y: c.pos.y };
+      return;
+    }
+    c.pos.x = nx;
+    c.pos.y = ny;
+    c.heading = Math.atan2(dy, dx);
+    c.target = { x: c.pos.x, y: c.pos.y };
+    this.fpBlockedReason = null;
   }
 
   /** Drive the avatar you have stepped into, from the held keys. Turns the heading and steps the
@@ -1708,6 +1741,9 @@ export class ColonyRuntime {
         this.fpWalkSpeed = 0;
         this.fpBlockedReason = blocked;
       }
+    }
+    if (this.fpGuidedTarget && !manualControl) {
+      this.driveFirstPersonGuided(c, dt);
     }
     if (!this.fpGuidedTarget) {
       c.target = { x: c.pos.x, y: c.pos.y }; // hold the auto-walk while you drive or idle without guidance
