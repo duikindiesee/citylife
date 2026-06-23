@@ -530,6 +530,18 @@ describe("first-person route dogfood", () => {
 
     expect(rt.activateFirstPersonInteraction()).toBe(true);
     const target = rt.getUiState().firstPerson.guidedTarget!;
+    const nextWaypoint = (target as unknown as { nextWaypoint?: { x: number; y: number } })
+      .nextWaypoint;
+    expect(nextWaypoint).toBeTruthy();
+    expect(detour).toContainEqual(nextWaypoint);
+    const capture = rt.captureFirstPersonDemo();
+    expect(
+      (
+        capture!.evidence.guidedTarget as unknown as {
+          nextWaypoint?: { x: number; y: number };
+        }
+      ).nextWaypoint,
+    ).toEqual(nextWaypoint);
     for (let i = 0; i < 12; i++) {
       rt.stepFirstPersonDogfood(0.25);
       const routingUi = rt.getUiState().firstPerson;

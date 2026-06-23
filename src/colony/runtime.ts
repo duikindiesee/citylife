@@ -298,7 +298,13 @@ export interface FirstPersonDemoEvidence {
   heading: number;
   lookPitch: number;
   action: string | null;
-  guidedTarget: { label: string; x: number; y: number; remainingDistance: number } | null;
+  guidedTarget: {
+    label: string;
+    x: number;
+    y: number;
+    remainingDistance: number;
+    nextWaypoint?: { x: number; y: number };
+  } | null;
   blockedReason: string | null;
   clockLabel: string;
   hudLines: string[];
@@ -550,7 +556,13 @@ export interface ColonyUiState {
     lookPitch: number;
     mouseSensitivity: FirstPersonMouseSensitivity;
     sprintCharge: number;
-    guidedTarget: { label: string; x: number; y: number; remainingDistance: number } | null;
+    guidedTarget: {
+      label: string;
+      x: number;
+      y: number;
+      remainingDistance: number;
+      nextWaypoint?: { x: number; y: number };
+    } | null;
     blockedReason: string | null;
     narration: string | null;
     narrating: boolean;
@@ -1266,6 +1278,9 @@ export class ColonyRuntime {
       action ?? "No nearby action",
       guidedTarget
         ? `Guided walk ${guidedTarget.label} (${guidedTarget.x}, ${guidedTarget.y}) · ${formatDistanceLabel(guidedTarget.remainingDistance)}`
+        : null,
+      guidedTarget?.nextWaypoint
+        ? `Next leg (${guidedTarget.nextWaypoint.x}, ${guidedTarget.nextWaypoint.y})`
         : null,
       ui.blockedReason ? `Blocked ${ui.blockedReason}` : null,
       view.mood.hungry ? "colony hungry" : null,
@@ -3294,18 +3309,35 @@ export class ColonyRuntime {
           sprintCharge: Math.round(this.fpSprintCharge * 100),
           guidedTarget:
             this.fpGuidedTarget && c
-              ? {
-                  label: this.fpGuidedTarget.label,
-                  x: Math.round(this.fpGuidedTarget.x),
-                  y: Math.round(this.fpGuidedTarget.y),
-                  remainingDistance: roundTo(
-                    Math.hypot(
-                      c.pos.x - this.fpGuidedTarget.x,
-                      c.pos.y - this.fpGuidedTarget.y,
+              ? (() => {
+                  const finalTarget = {
+                    x: this.fpGuidedTarget.x,
+                    y: this.fpGuidedTarget.y,
+                  };
+                  const nextWaypoint = this.blockedSegmentReason(c.pos, finalTarget)
+                    ? this.firstPersonGuidedWaypoint(c.pos, finalTarget)
+                    : null;
+                  return {
+                    label: this.fpGuidedTarget.label,
+                    x: Math.round(this.fpGuidedTarget.x),
+                    y: Math.round(this.fpGuidedTarget.y),
+                    remainingDistance: roundTo(
+                      Math.hypot(
+                        c.pos.x - this.fpGuidedTarget.x,
+                        c.pos.y - this.fpGuidedTarget.y,
+                      ),
+                      1,
                     ),
-                    1,
-                  ),
-                }
+                    ...(nextWaypoint
+                      ? {
+                          nextWaypoint: {
+                            x: Math.round(nextWaypoint.x),
+                            y: Math.round(nextWaypoint.y),
+                          },
+                        }
+                      : {}),
+                  };
+                })()
               : null,
           blockedReason: this.fpBlockedReason,
           narration: this.fpNarration,

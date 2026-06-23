@@ -142,6 +142,30 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).not.toContain("Neighbours");
   });
 
+  it("shows the next guided route leg without exposing debug telemetry", () => {
+    const fp = makeFirstPerson();
+    fp.guidedTarget = {
+      label: "road",
+      x: 301,
+      y: 306,
+      remainingDistance: 2.8,
+      nextWaypoint: { x: 300, y: 307 },
+    } as unknown as ColonyUiState["firstPerson"]["guidedTarget"];
+
+    const html = renderToStaticMarkup(
+      React.createElement(FirstPersonPanel, {
+        runtime: makeRuntime(),
+        fp,
+      }),
+    );
+
+    expect(html).toContain("Next leg");
+    expect(html).toContain("300");
+    expect(html).toContain("307");
+    expect(html).not.toContain("Ground");
+    expect(html).not.toContain("Neighbours");
+  });
+
   it("renders the first-person HUD as a mobile-friendly control dock", () => {
     const html = renderToStaticMarkup(
       React.createElement(FirstPersonPanel, {

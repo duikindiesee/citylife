@@ -132,6 +132,11 @@ export function FirstPersonPanel({
               <span style={{ color: "#6ea8d0" }}>Guided walk</span>{" "}
               {fp.guidedTarget.label} ({Math.round(fp.guidedTarget.x)}, {Math.round(fp.guidedTarget.y)}) ·{" "}
               {distanceLabel(fp.guidedTarget.remainingDistance)}
+              {fp.guidedTarget.nextWaypoint && (
+                <div>
+                  <span style={{ color: "#6ea8d0" }}>Next leg</span> ({Math.round(fp.guidedTarget.nextWaypoint.x)}, {Math.round(fp.guidedTarget.nextWaypoint.y)})
+                </div>
+              )}
             </div>
           )}
           {(v.mood.hungry || v.mood.brownout || v.mood.fever > 0.4) && (
