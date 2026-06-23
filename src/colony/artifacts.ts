@@ -73,11 +73,13 @@ const CATALOG: CatalogSeed[] = [
 export const ARTIFACT_CATALOG_SIZE = CATALOG.length;
 
 export function artifactCatalogEntries(): ArtifactCatalogEntry[] {
-  return CATALOG.map(({ kind, category, footprint }) => ({
-    kind,
-    category,
-    footprint: { ...footprint },
-  }));
+  return CATALOG.map(({ kind, category, footprint }) =>
+    Object.freeze({
+      kind,
+      category,
+      footprint: Object.freeze({ ...footprint }),
+    }),
+  );
 }
 
 const ARTIFACT_KIND_SET = new Set<string>(ARTIFACT_KINDS);

@@ -33,30 +33,11 @@ describe("Colony visual artifacts", () => {
     ]);
   });
 
-  it("seeds a deterministic furniture/artifact catalog on dry land", () => {
-    const a = new ColonySim(4242);
-    const b = new ColonySim(4242);
+  it("freezes catalog inventory entries so consumers cannot mutate shared prefill data", () => {
+    const [bench] = artifactCatalogEntries();
 
-    expect(a.state.artifacts).toEqual(b.state.artifacts);
-    expect(a.state.artifacts.map((item) => item.kind)).toEqual(EXPECTED_KINDS);
-    expect(a.state.artifacts.map((item) => item.category)).toEqual([
-      "furniture",
-      "lighting",
-      "greenery",
-      "civic-art",
-    ]);
-
-    for (const item of a.state.artifacts) {
-      expect(typeof item.x).toBe("number");
-      expect(typeof item.y).toBe("number");
-      expect(item.rot).toBeGreaterThanOrEqual(0);
-      expect(item.rot).toBeLessThan(Math.PI * 2);
-      expect(item.footprint.w).toBeGreaterThan(0);
-      expect(item.footprint.h).toBeGreaterThan(0);
-      expect(
-        a.state.terrain.isWater(Math.round(item.x), Math.round(item.y)),
-      ).toBe(false);
-    }
+    expect(Object.isFrozen(bench)).toBe(true);
+    expect(Object.isFrozen(bench.footprint)).toBe(true);
   });
 
   it("partitions renderable artifacts by known kind and drops unsafe entries", () => {
@@ -81,5 +62,31 @@ describe("Colony visual artifacts", () => {
     });
     expect(summary.unknown).toBe(1);
     expect(summary.overflow).toBe(1);
+  });
+
+  it("seeds a deterministic furniture/artifact catalog on dry land", () => {
+    const a = new ColonySim(4242);
+    const b = new ColonySim(4242);
+
+    expect(a.state.artifacts).toEqual(b.state.artifacts);
+    expect(a.state.artifacts.map((item) => item.kind)).toEqual(EXPECTED_KINDS);
+    expect(a.state.artifacts.map((item) => item.category)).toEqual([
+      "furniture",
+      "lighting",
+      "greenery",
+      "civic-art",
+    ]);
+
+    for (const item of a.state.artifacts) {
+      expect(typeof item.x).toBe("number");
+      expect(typeof item.y).toBe("number");
+      expect(item.rot).toBeGreaterThanOrEqual(0);
+      expect(item.rot).toBeLessThan(Math.PI * 2);
+      expect(item.footprint.w).toBeGreaterThan(0);
+      expect(item.footprint.h).toBeGreaterThan(0);
+      expect(
+        a.state.terrain.isWater(Math.round(item.x), Math.round(item.y)),
+      ).toBe(false);
+    }
   });
 });
