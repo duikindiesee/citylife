@@ -1302,6 +1302,38 @@ describe("first-person route dogfood", () => {
     expect(diagonalUi.blockedReason).toBeNull();
   });
 
+  it("moves the active first-person avatar from the touch compass walk controls", () => {
+    const rt = new ColonyRuntime(4242);
+    const me = rt.getUiState().citizens.list[0]!;
+    const terrain = rt.sim.state.terrain;
+    const blocked = (x: number, y: number) => {
+      const key = `${x},${y}`;
+      return (
+        terrain.isWater(x, y) ||
+        rt.sim.state.buildings.some(
+          (b) => Math.round(b.x) === x && Math.round(b.y) === y,
+        ) ||
+        (rt.sim.state.occupied.has(key) && !rt.sim.state.roadSet.has(key))
+      );
+    };
+    let start: { x: number; y: number } | null = null;
+    for (let y = 1; y < terrain.size - 2 && !start; y++) {
+      for (let x = 1; x < terrain.size - 2 && !start; x++) {
+        if (!blocked(x, y) && !blocked(x, y + 1)) start = { x, y };
+      }
+    }
+    if (!start) throw new Error("test terrain needs a north walk lane");
+
+    rt.enterFirstPerson(me.id);
+    expect(rt.placeFirstPersonDogfood(start, 0)).toBe(true);
+
+    rt.walkStep(0, 1);
+
+    const ui = rt.getUiState().firstPerson;
+    expect(ui.view!.citizen.positionXY).toEqual({ x: start.x, y: start.y + 1 });
+    expect(ui.blockedReason).toBeNull();
+  });
+
   it("walks a deterministic route and samples live view position plus heading", () => {
     const rt = new ColonyRuntime(4242);
     const me = rt.getUiState().citizens.list[0]!;

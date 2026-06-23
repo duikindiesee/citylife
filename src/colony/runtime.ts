@@ -2960,12 +2960,24 @@ export class ColonyRuntime {
     const c = this.citizens.byId(id);
     if (!c) return;
     const S = this.sim.state.terrain.size;
-    const nx = Math.max(0, Math.min(S - 1, Math.round(c.pos.x + dx)));
-    const ny = Math.max(0, Math.min(S - 1, Math.round(c.pos.y + dy)));
-    this.citizens.setTarget(id, { x: nx, y: ny });
+    const from = { ...c.pos };
+    const target = {
+      x: Math.max(0, Math.min(S - 1, Math.round(c.pos.x + dx))),
+      y: Math.max(0, Math.min(S - 1, Math.round(c.pos.y + dy))),
+    };
+    const blocked = this.blockedSegmentReason(from, target);
+    if (blocked) {
+      this.fpBlockedReason = blocked;
+      this.emit();
+      return;
+    }
+    this.fpGuidedTarget = null;
+    this.fpBlockedReason = null;
+    this.fpWalkSpeed = 0;
+    c.pos = target;
+    c.target = target;
     this.emit();
-    // Narrate once the avatar arrives (poll until close enough, then fire once).
-    void this.narrateOnArrival(id, { x: nx, y: ny });
+    void this.narrate();
   }
 
   /** Ask the bot to narrate what the first-person citizen currently sees. */
