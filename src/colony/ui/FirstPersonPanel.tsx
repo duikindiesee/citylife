@@ -2,6 +2,7 @@
 // Renders a live scene card built from the FirstPersonView snapshot and a compass
 // rose of directional controls (WASD / arrow keys also work via ColonyApp).
 // After each step the bot narrates what the citizen sees in 1–2 sentences.
+import { useState } from "react";
 import type { ColonyRuntime } from "../runtime";
 import type { ColonyUiState } from "../runtime";
 
@@ -26,6 +27,7 @@ export function FirstPersonPanel({
   runtime: ColonyRuntime;
   fp: ColonyUiState["firstPerson"];
 }) {
+  const [showDebug, setShowDebug] = useState(false);
   if (!fp.active || !fp.citizenId) return null;
   const v = fp.view;
 
@@ -76,7 +78,7 @@ export function FirstPersonPanel({
         </button>
       </div>
 
-      {/* Scene card */}
+      {/* Player overlay */}
       {v && (
         <div
           style={{
@@ -84,6 +86,61 @@ export function FirstPersonPanel({
             borderRadius: 6,
             padding: "6px 8px",
             fontSize: 12,
+            lineHeight: 1.6,
+          }}
+        >
+          {v.interactionPrompt ? (
+            <div>
+              <span style={{ color: "#6ea8d0" }}>Action</span>{" "}
+              <b>{v.interactionPrompt.label}</b> ·{" "}
+              {Math.round(v.interactionPrompt.distance)} away
+            </div>
+          ) : (
+            <div style={{ color: "#7ab0d0" }}>No nearby action</div>
+          )}
+          {fp.blockedReason && (
+            <div style={{ color: "#e0a14d" }}>
+              <span style={{ color: "#6ea8d0" }}>Blocked</span>{" "}
+              {fp.blockedReason}
+            </div>
+          )}
+          {(v.mood.hungry || v.mood.brownout || v.mood.fever > 0.4) && (
+            <div style={{ color: "#e8905a", marginTop: 2 }}>
+              {v.mood.hungry ? "⚠ colony hungry " : ""}
+              {v.mood.brownout ? "⚠ brownout " : ""}
+              {v.mood.fever > 0.4 ? "⚠ illness spreading" : ""}
+            </div>
+          )}
+        </div>
+      )}
+
+      {v && (
+        <button
+          style={{
+            alignSelf: "flex-start",
+            padding: "2px 8px",
+            fontSize: 11,
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid #1e3a5a",
+            borderRadius: 5,
+            color: "#7ab0d0",
+            cursor: "pointer",
+          }}
+          onClick={() => setShowDebug((open) => !open)}
+        >
+          {showDebug ? "Hide debug" : "Show debug"}
+        </button>
+      )}
+
+      {/* Debug telemetry */}
+      {v && showDebug && (
+        <div
+          style={{
+            background: "rgba(255,255,255,0.035)",
+            border: "1px solid rgba(110,168,208,0.18)",
+            borderRadius: 6,
+            padding: "6px 8px",
+            fontSize: 11,
             lineHeight: 1.6,
           }}
         >
@@ -114,26 +171,6 @@ export function FirstPersonPanel({
                 .slice(0, 2)
                 .map((n) => n.displayName.split(" ")[0])
                 .join(", ")}
-            </div>
-          )}
-          {fp.blockedReason && (
-            <div style={{ color: "#e0a14d" }}>
-              <span style={{ color: "#6ea8d0" }}>Blocked</span>{" "}
-              {fp.blockedReason}
-            </div>
-          )}
-          {v.interactionPrompt && (
-            <div>
-              <span style={{ color: "#6ea8d0" }}>Action</span>{" "}
-              <b>{v.interactionPrompt.label}</b> ·{" "}
-              {Math.round(v.interactionPrompt.distance)} away
-            </div>
-          )}
-          {(v.mood.hungry || v.mood.brownout || v.mood.fever > 0.4) && (
-            <div style={{ color: "#e8905a", marginTop: 2 }}>
-              {v.mood.hungry ? "⚠ colony hungry " : ""}
-              {v.mood.brownout ? "⚠ brownout " : ""}
-              {v.mood.fever > 0.4 ? "⚠ illness spreading" : ""}
             </div>
           )}
         </div>
