@@ -8,7 +8,7 @@
 
 Roads render as a smooth **ribbon** draped over the terrain. The ribbon surface is
 `smoothRoadY(x,y)` — the **max** bilinear terrain height over the ~4-wide carriageway
-footprint — so the asphalt always rides *above* the bumpy ground and never lets the
+footprint — so the asphalt always rides _above_ the bumpy ground and never lets the
 terrain poke through the carriageway.
 
 Vehicles ride that ribbon top (`smoothRoadY + 0.12`, see the car loop in
@@ -16,8 +16,8 @@ Vehicles ride that ribbon top (`smoothRoadY + 0.12`, see the car loop in
 `worldY`**. On a slope that left two defects:
 
 1. **Downhill / gap side** — the ground sat well below the asphalt, so you could see the
-   world *under* the road and a car looked like it was driving sunk into / below the road.
-2. **Uphill bank** — the natural ground a few cells to the uphill side rose *above* the
+   world _under_ the road and a car looked like it was driving sunk into / below the road.
+2. **Uphill bank** — the natural ground a few cells to the uphill side rose _above_ the
    road surface and visually swallowed the car: "on hills you don't see the car."
 
 Measured on the steepest world road (cell `465,383`, slope ~2.0): the rendered ground was
