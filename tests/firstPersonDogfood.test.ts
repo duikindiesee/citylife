@@ -815,6 +815,58 @@ describe("first-person route dogfood", () => {
     },
   );
 
+  it("guides building prompts to a reachable approach cell instead of the blocked footprint", () => {
+    const rt = new ColonyRuntime(4242);
+    const terrain = rt.sim.state.terrain;
+    let fixture: { building: { x: number; y: number }; approach: { x: number; y: number }; start: { x: number; y: number } } | null = null;
+    for (let y = 2; y < terrain.size - 2 && !fixture; y++) {
+      for (let x = 3; x < terrain.size - 2 && !fixture; x++) {
+        const start = { x: x - 2, y };
+        const approach = { x: x - 1, y };
+        if (
+          terrain.isWater(x, y) ||
+          terrain.isWater(approach.x, approach.y) ||
+          terrain.isWater(start.x, start.y)
+        ) {
+          continue;
+        }
+        fixture = { building: { x, y }, approach, start };
+      }
+    }
+    if (!fixture) throw new Error("test terrain needs a building cell with two adjacent land cells");
+    rt.sim.state.buildings = [
+      {
+        id: 9902,
+        x: fixture.building.x,
+        y: fixture.building.y,
+        artifact: { kind: "habitat" },
+      } as never,
+    ];
+    const me = rt.getUiState().citizens.list[0]!;
+
+    rt.enterFirstPerson(me.id);
+    expect(rt.placeFirstPersonDogfood(fixture.start, 0)).toBe(true);
+    const prompt = rt.getUiState().firstPerson.view!.interactionPrompt;
+    expect(prompt?.kind).toBe("building");
+    expect(prompt!.targetXY).toMatchObject(fixture.building);
+
+    expect(rt.activateFirstPersonInteraction()).toBe(true);
+
+    const target = rt.getUiState().firstPerson.guidedTarget!;
+    expect(target).toMatchObject({ label: prompt!.targetName, ...fixture.approach });
+    expect(target).not.toMatchObject(fixture.building);
+    rt.stepFirstPersonDogfood(2);
+
+    const ui = rt.getUiState().firstPerson;
+    expect(ui.blockedReason).toBeNull();
+    expect(ui.guidedTarget).toBeNull();
+    expect(ui.narration).toBe(`Arrived at ${prompt!.targetName}.`);
+    expect(distance(ui.view!.citizen.positionXY, fixture.building)).toBeGreaterThan(0.4);
+    expect(distance(ui.view!.citizen.positionXY, target)).toBeLessThan(
+      COLONY.firstPerson.guidedArrivalDistance,
+    );
+  });
+
   it("captures deterministic first-person demo evidence for screenshot automation", () => {
     const rt = new ColonyRuntime(4242);
     const me = rt.getUiState().citizens.list[0]!;

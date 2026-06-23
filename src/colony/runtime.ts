@@ -1458,6 +1458,8 @@ export class ColonyRuntime {
   activateFirstPersonInteraction(): boolean {
     const id = this.fpCitizenId;
     if (!id) return false;
+    const c = this.citizens.byId(id);
+    if (!c) return false;
     const view = firstPersonView(this.sim.state, id, this.citizens);
     const prompt = view?.interactionPrompt;
     if (!prompt) {
@@ -1473,10 +1475,14 @@ export class ColonyRuntime {
       road: `You follow ${prompt.targetName}.`,
     };
     if (prompt.kind === "road" || prompt.kind === "civic" || prompt.kind === "building") {
-      const target = {
+      const rawTarget = {
         x: Math.round(prompt.targetXY.x),
         y: Math.round(prompt.targetXY.y),
       };
+      const target =
+        prompt.kind === "building" && this.blockedStepReason(rawTarget.x, rawTarget.y) !== null
+          ? this.firstPersonApproachTarget(c.pos, rawTarget) ?? rawTarget
+          : rawTarget;
       this.citizens.setTarget(id, target);
       this.fpWalkSpeed = 0;
       this.fpGuidedTarget = { label: prompt.targetName, ...target };
@@ -1678,6 +1684,34 @@ export class ColonyRuntime {
     });
     if (!path || path.length < 2) return null;
     return path[1]!;
+  }
+
+  private firstPersonApproachTarget(
+    from: { x: number; y: number },
+    blockedTarget: { x: number; y: number },
+  ): { x: number; y: number } | null {
+    const start = { x: Math.round(from.x), y: Math.round(from.y) };
+    const goal = { x: Math.round(blockedTarget.x), y: Math.round(blockedTarget.y) };
+    const candidates = [
+      { x: goal.x - 1, y: goal.y },
+      { x: goal.x + 1, y: goal.y },
+      { x: goal.x, y: goal.y - 1 },
+      { x: goal.x, y: goal.y + 1 },
+    ];
+    let best: { target: { x: number; y: number }; cost: number } | null = null;
+    for (const target of candidates) {
+      if (this.blockedStepReason(target.x, target.y) !== null) continue;
+      const path = leastCostPath(this.sim.state.terrain, start, target, {
+        blocked: (x, y) => {
+          if (x === start.x && y === start.y) return false;
+          return this.blockedStepReason(x, y) !== null;
+        },
+      });
+      if (!path) continue;
+      const cost = path.length + Math.hypot(target.x - from.x, target.y - from.y) * 0.01;
+      if (!best || cost < best.cost) best = { target, cost };
+    }
+    return best?.target ?? null;
   }
 
   private driveFirstPersonGuided(
