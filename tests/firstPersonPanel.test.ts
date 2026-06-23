@@ -76,6 +76,10 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).toContain("Use E");
     expect(html).toContain("Shift sprint");
     expect(html).toContain("Sprint 42%");
+    expect(html).toContain('role="progressbar"');
+    expect(html).toContain('aria-label="Sprint charge 42%"');
+    expect(html).toContain('aria-valuenow="42"');
+    expect(html).toContain('width:42%');
     expect(html).toContain("Blocked");
     expect(html).toContain("Show debug");
     expect(html).not.toContain("Ground");

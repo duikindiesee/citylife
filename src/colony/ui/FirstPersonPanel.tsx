@@ -130,6 +130,33 @@ export function FirstPersonPanel({
           )}
           <div style={{ color: "#7ab0d0", marginTop: 2 }}>
             Sprint {Math.round(fp.sprintCharge)}%
+            <div
+              role="progressbar"
+              aria-label={`Sprint charge ${Math.round(fp.sprintCharge)}%`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(fp.sprintCharge)}
+              style={{
+                marginTop: 3,
+                height: 5,
+                width: "100%",
+                overflow: "hidden",
+                borderRadius: 999,
+                background: "rgba(122,176,208,0.16)",
+              }}
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${Math.max(0, Math.min(100, Math.round(fp.sprintCharge)))}%`,
+                  borderRadius: 999,
+                  background:
+                    fp.sprintCharge <= 20
+                      ? "#e0a14d"
+                      : "linear-gradient(90deg, #6ea8d0, #a0d4f0)",
+                }}
+              />
+            </div>
           </div>
         </div>
       )}

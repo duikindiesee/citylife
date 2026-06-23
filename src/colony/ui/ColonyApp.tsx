@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  FIRST_PERSON_KEY_CODES,
+  RACE_KEY_CODES,
+  normalizeFirstPersonKeyCode,
+} from "./firstPersonKeys";
 import { ColonyRuntime, type ColonyUiState, type FirstPersonMouseSensitivity } from "../runtime";
 import type { CameraPreset, ViewMode } from "../render/PlanetRenderer";
 import type { HouseholdOverrides } from "../newcomers";
@@ -259,20 +264,9 @@ export function ColonyApp() {
   // Keyboard shortcuts: Space pauses, 1/2/3 switch camera, Z toggles zoning. Ignored while typing.
   // When stepped into a bot (first person), W/A/S/D or the arrow keys WALK it around.
   useEffect(() => {
-    const MOVE = new Set([
-      "KeyW",
-      "KeyA",
-      "KeyS",
-      "KeyD",
-      "ArrowUp",
-      "ArrowDown",
-      "ArrowLeft",
-      "ArrowRight",
-    ]);
-    const RACE_MOVE = new Set([...MOVE, "ShiftLeft", "ShiftRight"]);
-    // 'KeyW' -> 'w', 'ArrowUp' -> 'arrowup' (runtime.setFpKey lowercases + maps WASD to movement, arrows to walk/turn)
-    const norm = (code: string) =>
-      code.startsWith("Arrow") ? code.toLowerCase() : code.slice(3);
+    const MOVE = FIRST_PERSON_KEY_CODES;
+    const RACE_MOVE = RACE_KEY_CODES;
+    const norm = normalizeFirstPersonKeyCode;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (
