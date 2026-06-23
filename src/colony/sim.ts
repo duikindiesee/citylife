@@ -27,7 +27,8 @@ export type StructureKind =
   | "solar"
   | "battery"
   | "rocket"
-  | "lighthouse";
+  | "lighthouse"
+  | "rally";
 export interface SeedStructure {
   kind: StructureKind;
   x: number;
@@ -142,6 +143,97 @@ export function findFoundersLighthouseSite(
   return (
     pickBest(landmarkAnchor, landmarkRadius) ?? pickBest(anchor, maxRadius)
   );
+}
+
+export interface RallyPlacementOptions {
+  anchor?: { x: number; y: number };
+  used?: readonly { x: number; y: number }[];
+  maxRadius?: number;
+}
+
+/** Spec 097 — the Rally Overlook: a deterministic HILLTOP with a commanding view of the colony,
+ *  used as the race rendezvous point (a bus-stop on a hill). High ground (Highland/Mountain, never a
+ *  sheer Peak that a road connector cannot reach), footprint-clear so a spur road can later reach it,
+ *  and kept within reach of the landing so it overlooks the city. No Math.random — seed-deterministic. */
+export function findRallyOverlookSite(
+  terrain: Terrain,
+  options: RallyPlacementOptions = {},
+): { x: number; y: number } | null {
+  const anchor = options.anchor ?? terrain.landing;
+  const used = options.used ?? [];
+  const usedSet = new Set(used.map((p) => `${p.x},${p.y}`));
+  const maxRadius =
+    options.maxRadius ??
+    Math.max(60, Math.min(150, Math.round(terrain.size * 0.22)));
+  const usedClear = (x: number, y: number): boolean => {
+    for (const u of used)
+      if (Math.max(Math.abs(u.x - x), Math.abs(u.y - y)) <= 6) return false;
+    return !usedSet.has(`${x},${y}`);
+  };
+  const footprintClear = (x: number, y: number): boolean => {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx,
+          ny = y + dy;
+        if (!terrain.inBounds(nx, ny)) return false;
+        if (terrain.isWater(nx, ny)) return false;
+        // buildable === 0 is too steep to grade/reach — a connector road could never get there.
+        if (terrain.buildable[terrain.idx(nx, ny)] === 0) return false;
+      }
+    }
+    return true;
+  };
+  let best: { x: number; y: number; score: number } | null = null;
+  const y0 = Math.max(1, anchor.y - maxRadius),
+    y1 = Math.min(terrain.size - 2, anchor.y + maxRadius);
+  const x0 = Math.max(1, anchor.x - maxRadius),
+    x1 = Math.min(terrain.size - 2, anchor.x + maxRadius);
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const d = Math.hypot(x - anchor.x, y - anchor.y);
+      if (d > maxRadius) continue;
+      if (!usedClear(x, y)) continue;
+      if (!footprintClear(x, y)) continue;
+      const i = terrain.idx(x, y);
+      const biome = terrain.biome[i] as Biome;
+      const elev = terrain.worldY(x, y);
+      // want a commanding overlook: high ground, but a sheer Peak is unreachable/too steep to connect.
+      const biomeBonus =
+        biome === Biome.Mountain
+          ? 18
+          : biome === Biome.Highland
+            ? 12
+            : biome === Biome.Peak
+              ? 4
+              : 0;
+      // prominence: how much this cell stands above its surroundings (a true lookout, not a slope).
+      let around = 0,
+        n = 0;
+      for (const [dx, dy] of [
+        [3, 0],
+        [-3, 0],
+        [0, 3],
+        [0, -3],
+      ] as const) {
+        const nx = x + dx,
+          ny = y + dy;
+        if (terrain.inBounds(nx, ny)) {
+          around += terrain.worldY(nx, ny);
+          n++;
+        }
+      }
+      const prominence = n ? elev - around / n : 0;
+      const score = elev * 1.2 + biomeBonus + prominence * 2.0 - d * 0.06;
+      if (
+        !best ||
+        score > best.score ||
+        (score === best.score && (y < best.y || (y === best.y && x < best.x)))
+      ) {
+        best = { x, y, score };
+      }
+    }
+  }
+  return best ? { x: best.x, y: best.y } : null;
 }
 
 export interface ColonyClock {
@@ -292,6 +384,13 @@ export class ColonySim {
     if (lighthouse) {
       structures.push({ kind: "lighthouse", x: lighthouse.x, y: lighthouse.y });
       used.push(lighthouse);
+    }
+    // Spec 097 — the hilltop Rally Overlook (race rendezvous), placed after the lighthouse so it
+    // avoids it via `used`. A spur road reaches it later (runtime), like the commercial connector.
+    const rally = findRallyOverlookSite(terrain, { used });
+    if (rally) {
+      structures.push({ kind: "rally", x: rally.x, y: rally.y });
+      used.push(rally);
     }
 
     this.state = {

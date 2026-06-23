@@ -1145,6 +1145,71 @@ export class PlanetRenderer {
       beacon.position.y = 7.25;
       this.beaconMat = beaconMat;
       g.add(body, nose, fin, beacon);
+    } else if (s.kind === "rally") {
+      // Spec 097 — the hilltop Rally Point: a bus-stop-style rendezvous marker that reads from the
+      // city below AND at night (emissive floor, per the day-night rule). Iconographic only (no brand
+      // text): a signpost carrying a glowing checkered race flag, a stop platform, a bench, a beacon.
+      const platform = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.6, 1.8, 0.3, 18),
+        new THREE.MeshStandardMaterial({ color: 0x8a8f98, roughness: 0.85 }),
+      );
+      platform.position.y = 0.15;
+      platform.receiveShadow = true;
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.09, 0.09, 3.4, 10),
+        new THREE.MeshStandardMaterial({
+          color: 0x3a3f47,
+          metalness: 0.4,
+          roughness: 0.5,
+        }),
+      );
+      pole.position.set(0.9, 1.7, 0.9);
+      pole.castShadow = true;
+      const board = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 1.0, 0.08),
+        new THREE.MeshStandardMaterial({
+          color: 0xf4f4f0,
+          emissive: 0xffd25a,
+          emissiveIntensity: 0.7,
+          roughness: 0.5,
+        }),
+      );
+      board.position.set(0.9, 3.0, 0.9);
+      board.castShadow = true;
+      const dark = new THREE.MeshStandardMaterial({
+        color: 0x202329,
+        emissive: 0x14161a,
+        emissiveIntensity: 0.2,
+      });
+      // a 2x2 checker reads as a race flag from a distance
+      for (const [sx, sy] of [
+        [-0.36, 0.24],
+        [0.36, 0.24],
+        [0.0, -0.12],
+        [-0.36, -0.32],
+        [0.36, -0.32],
+      ] as const) {
+        const c = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.02), dark);
+        c.position.set(0.9 + sx, 3.0 + sy, 0.95);
+        g.add(c);
+      }
+      const bench = new THREE.Mesh(
+        new THREE.BoxGeometry(1.4, 0.12, 0.4),
+        new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 0.85 }),
+      );
+      bench.position.set(-0.6, 0.62, -0.3);
+      bench.castShadow = true;
+      // a landmark beacon atop the pole so the point is findable from the city at night
+      const beacon = new THREE.Mesh(
+        new THREE.SphereGeometry(0.16, 12, 10),
+        new THREE.MeshStandardMaterial({
+          color: 0xffd25a,
+          emissive: 0xffb020,
+          emissiveIntensity: 0.8,
+        }),
+      );
+      beacon.position.set(0.9, 3.55, 0.9);
+      g.add(platform, pole, board, bench, beacon);
     }
     return g;
   }

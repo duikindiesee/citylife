@@ -28,13 +28,23 @@ describe("Base placement (rocket / solar / battery / caravan)", () => {
       });
       it("rocket / solar / battery sit INSIDE block (0,0) — never on the road frame", () => {
         for (const st of s.structures) {
-          if (st.kind === "caravan" || st.kind === "lighthouse") continue;
+          if (
+            st.kind === "caravan" ||
+            st.kind === "lighthouse" ||
+            st.kind === "rally"
+          )
+            continue; // distant landmarks, not base-block structures (like the lighthouse)
           expect(onRoadFrame(st.x, st.y)).toBe(false);
         }
       });
       it("structure footprints clear the road frame (wide meshes do not spill onto roads)", () => {
         for (const st of s.structures) {
-          if (st.kind === "caravan" || st.kind === "lighthouse") continue;
+          if (
+            st.kind === "caravan" ||
+            st.kind === "lighthouse" ||
+            st.kind === "rally"
+          )
+            continue; // distant landmarks, not base-block structures (like the lighthouse)
           for (let dy = -1; dy <= 1; dy++) {
             for (let dx = -1; dx <= 1; dx++) {
               expect(onRoadFrame(st.x + dx, st.y + dy)).toBe(false);
@@ -76,6 +86,17 @@ describe("Base placement (rocket / solar / battery / caravan)", () => {
         expect(
           again.state.structures.find((st) => st.kind === "lighthouse"),
         ).toEqual(s.structures.find((st) => st.kind === "lighthouse"));
+      });
+      it("seeds a rally overlook on dry buildable ground, deterministically", () => {
+        const rally = s.structures.find((st) => st.kind === "rally");
+        expect(rally).toBeTruthy();
+        const i = s.terrain.idx(rally!.x, rally!.y);
+        expect(s.terrain.isWater(rally!.x, rally!.y)).toBe(false);
+        expect(s.terrain.buildable[i]).not.toBe(0); // reachable: a spur road can grade to it
+        const again = new ColonySim(seed);
+        expect(again.state.structures.find((st) => st.kind === "rally")).toEqual(
+          rally,
+        );
       });
     });
   }
