@@ -13,6 +13,11 @@ import type {
 import { updateTraffic } from "./traffic";
 import type { Car } from "./traffic";
 import type { Settler } from "./settlers";
+import {
+  createTarentaalFlock,
+  stepTarentaalFlock,
+  type TarentaalBird,
+} from "./tarentaal";
 import { createLedger, type Ledger } from "./ledger";
 import type { CityPlan } from "./cityPlan";
 
@@ -241,6 +246,7 @@ export interface ColonyState {
   pollution: number;
   cars: Car[];
   settlers: Settler[];
+  tarentaal: TarentaalBird[];
   ledger: Ledger;
   cityPlan: CityPlan | null; // attached by the runtime after construction so the renderer can paint zones
 }
@@ -362,6 +368,7 @@ export class ColonySim {
       pollution: 0,
       cars: [],
       settlers: [],
+      tarentaal: createTarentaalFlock(terrain, this.rng),
       ledger: createLedger(),
       cityPlan: null,
     };
@@ -467,5 +474,6 @@ export class ColonySim {
 
     stepBuild(s, this.rng, dt);
     updateTraffic(s, this.rng, dt);
+    stepTarentaalFlock(s.tarentaal, s.terrain, c.totalMinutes, dt);
   }
 }

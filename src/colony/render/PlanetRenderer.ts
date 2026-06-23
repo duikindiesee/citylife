@@ -11,6 +11,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { COLONY } from "../config";
 import { BIOME_COLOR, Biome } from "../terrain";
 import type { ColonySim, SeedStructure } from "../sim";
+import type { TarentaalBird } from "../tarentaal";
 import type { HouseSpec } from "../house";
 import { gridOrigin } from "../grid";
 import { cellZone, ZONE_COLOR, VIBE_COLOR, type Plot } from "../cityPlan";
@@ -164,6 +165,9 @@ export class PlanetRenderer {
     phase: number;
   }[] = [];
   private lastPedT = 0;
+  // Tarentaal flock — real deterministic sim birds (adults + chicks), rendered as low-poly instanced ground animals.
+  private tarentaalAdultMesh!: THREE.InstancedMesh;
+  private tarentaalChickMesh!: THREE.InstancedMesh;
   // P1 — citizen AVATARS: the real, named Hermes citizens, drawn from the roster (distinct from the ambient
   // ped pool), movable by the bot, and steppable-into for a live first-person view.
   private avatarMesh!: THREE.InstancedMesh;
@@ -1358,6 +1362,42 @@ export class PlanetRenderer {
     this.scene.add(this.pedHeadMesh);
     this.initPedestrians();
 
+    const tarentaalCap = COLONY.tarentaal.adults + COLONY.tarentaal.chicks;
+    const tarentaalAdultGeo = new THREE.SphereGeometry(0.22, 8, 6);
+    tarentaalAdultGeo.scale(1.25, 0.72, 0.82);
+    tarentaalAdultGeo.translate(0, 0.22, 0);
+    this.tarentaalAdultMesh = new THREE.InstancedMesh(
+      tarentaalAdultGeo,
+      new THREE.MeshStandardMaterial({
+        color: 0x32343a,
+        roughness: 0.9,
+        metalness: 0.02,
+        flatShading: true,
+      }),
+      tarentaalCap,
+    );
+    this.tarentaalAdultMesh.count = 0;
+    this.tarentaalAdultMesh.castShadow = true;
+    this.tarentaalAdultMesh.frustumCulled = false;
+    this.scene.add(this.tarentaalAdultMesh);
+    const tarentaalChickGeo = new THREE.SphereGeometry(0.12, 7, 5);
+    tarentaalChickGeo.scale(1.15, 0.78, 0.82);
+    tarentaalChickGeo.translate(0, 0.12, 0);
+    this.tarentaalChickMesh = new THREE.InstancedMesh(
+      tarentaalChickGeo,
+      new THREE.MeshStandardMaterial({
+        color: 0x8c7444,
+        roughness: 0.95,
+        metalness: 0,
+        flatShading: true,
+      }),
+      tarentaalCap,
+    );
+    this.tarentaalChickMesh.count = 0;
+    this.tarentaalChickMesh.castShadow = true;
+    this.tarentaalChickMesh.frustumCulled = false;
+    this.scene.add(this.tarentaalChickMesh);
+
     // P1 — citizen avatars: a touch taller + glowing so the real, named citizens stand out from the ambient crowd.
     const AV_CAP = 64;
     const avGeo = new THREE.CapsuleGeometry(0.16, 0.44, 4, 8);
@@ -2212,6 +2252,7 @@ export class PlanetRenderer {
     );
     this.updateColonyLayer();
     this.updatePedestrians();
+    this.updateTarentaal();
     this.updatePorters(); // spec 073 — goods piled at the sheds + porter carts on the roads
     this.updateAvatars(); // P1 — the named citizen avatars at their live roster positions
     this.updateNeighborhood(); // spec 075 — lot pads + voxel homes
@@ -2485,6 +2526,40 @@ export class PlanetRenderer {
     this.pedMesh.instanceMatrix.needsUpdate = true;
     this.pedHeadMesh.count = want;
     this.pedHeadMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /** The tarentaal are not renderer-only ambience: positions come from the deterministic ColonySim tick. */
+  private updateTarentaal(): void {
+    const birds = this.sim.state.tarentaal;
+    let adultCount = 0;
+    let chickCount = 0;
+    for (const bird of birds) {
+      const mesh = bird.age === "adult" ? this.tarentaalAdultMesh : this.tarentaalChickMesh;
+      const idx = bird.age === "adult" ? adultCount++ : chickCount++;
+      this.placeTarentaal(mesh, idx, bird);
+    }
+    this.tarentaalAdultMesh.count = adultCount;
+    this.tarentaalChickMesh.count = chickCount;
+    this.tarentaalAdultMesh.instanceMatrix.needsUpdate = true;
+    this.tarentaalChickMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  private placeTarentaal(
+    mesh: THREE.InstancedMesh,
+    idx: number,
+    bird: TarentaalBird,
+  ): void {
+    const stride = bird.behavior === "chase" ? 1.18 : 1;
+    const bob = bird.behavior === "chase" ? 0.035 : 0.01;
+    this.dummy.position.set(
+      this.wx(bird.x),
+      this.surfaceY(bird.x, bird.y) + bob,
+      this.wz(bird.y),
+    );
+    this.dummy.rotation.set(0, -bird.heading, 0);
+    this.dummy.scale.set(stride, 1, stride);
+    this.dummy.updateMatrix();
+    mesh.setMatrixAt(idx, this.dummy.matrix);
   }
 
   /** P1 — the runtime supplies the live citizen avatar list (positions from the roster, decorated with isOperator). */

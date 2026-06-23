@@ -1062,6 +1062,21 @@ export const COLONY = {
     maxWaitSteps: 50, // failsafe so a jammed car eventually proceeds (no deadlock)
   },
 
+  tarentaal: {
+    adults: 4,
+    chicks: 6,
+    anchorOffset: { x: 10, y: 8 },
+    landSearchRadius: 18,
+    flockRadius: 3.2,
+    adultSpeed: 9,
+    chickSpeed: 12,
+    chaseSpeed: 22,
+    chaseStride: 2.8,
+    chasePeriodMinutes: 12,
+    chickTrailDistance: 1.2,
+    roamTurnRate: 0.035,
+  },
+
   firstPerson: {
     maxWalkSpeed: 3.4, // world units/sec once fully accelerated
     walkAcceleration: 10, // units/sec²; gives a visible ramp instead of instant full speed
