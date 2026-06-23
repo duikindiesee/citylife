@@ -228,6 +228,21 @@ body,
   opacity: 0.4;
   cursor: not-allowed;
 }
+/* Rearrange-home controls (spec 089) — tight square buttons for move/rotate/floor/remove. */
+.arrange-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--brd);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.5;
+  min-width: 22px;
+  cursor: pointer;
+}
+.arrange-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
 .immigbtn:hover {
   background: rgba(255, 255, 255, 0.16);
 }

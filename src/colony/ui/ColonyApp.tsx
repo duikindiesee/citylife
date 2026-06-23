@@ -2137,6 +2137,137 @@ export function ColonyApp() {
                   {ui.bank.currency}
                   {price}
                 </button>
+                {/* Rearrange home (spec 089) — move/rotate/restack/remove the furniture already placed in
+                    your house, any time. The index handle re-reads from placedFurniture each render. */}
+                {myLot &&
+                  (() => {
+                    const placed = runtime.placedFurniture(myLot.id);
+                    if (placed.length === 0) return null;
+                    const storeys = runtime.houseStoreys(myLot.id);
+                    const lid = myLot.id;
+                    return (
+                      <div
+                        data-build-area="furniture-arrange"
+                        style={{
+                          borderTop: "1px solid var(--brd)",
+                          marginTop: 10,
+                          paddingTop: 8,
+                        }}
+                      >
+                        <div className="row" style={{ opacity: 0.7 }}>
+                          <span>🔧 Rearrange home</span>
+                          <b>{placed.length} placed</b>
+                        </div>
+                        {placed.map((p) => (
+                          <div
+                            key={p.index}
+                            data-build-area={`placed-${p.index}`}
+                            style={{
+                              padding: "3px 0",
+                              borderBottom: "1px solid rgba(255,255,255,0.04)",
+                            }}
+                          >
+                            <div style={{ fontSize: 12, marginBottom: 3 }}>
+                              {FURNITURE_CATALOG[p.kind].icon} {p.kind}{" "}
+                              <small style={{ opacity: 0.5 }}>
+                                {p.x},{p.y}
+                                {storeys > 1 ? ` · fl${p.z}` : ""}
+                              </small>
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 3,
+                              }}
+                            >
+                              {(
+                                [
+                                  ["left", "←", -1, 0],
+                                  ["right", "→", 1, 0],
+                                  ["up", "↑", 0, -1],
+                                  ["down", "↓", 0, 1],
+                                ] as const
+                              ).map(([dir, glyph, dx, dy]) => (
+                                <button
+                                  key={dir}
+                                  className="arrange-btn"
+                                  data-build-action={`arrange-move-${p.index}-${dir}`}
+                                  title={`move ${dir}`}
+                                  onClick={() =>
+                                    runtime.moveArrangedFurniture(
+                                      me,
+                                      lid,
+                                      p.index,
+                                      dx,
+                                      dy,
+                                    )
+                                  }
+                                >
+                                  {glyph}
+                                </button>
+                              ))}
+                              <button
+                                className="arrange-btn"
+                                data-build-action={`arrange-rotate-${p.index}`}
+                                title="rotate"
+                                onClick={() =>
+                                  runtime.rotateArrangedFurniture(me, lid, p.index)
+                                }
+                              >
+                                ↻
+                              </button>
+                              {storeys > 1 && (
+                                <>
+                                  <button
+                                    className="arrange-btn"
+                                    data-build-action={`arrange-floor-${p.index}-up`}
+                                    title="up a floor"
+                                    onClick={() =>
+                                      runtime.restackArrangedFurniture(
+                                        me,
+                                        lid,
+                                        p.index,
+                                        1,
+                                      )
+                                    }
+                                  >
+                                    ▲
+                                  </button>
+                                  <button
+                                    className="arrange-btn"
+                                    data-build-action={`arrange-floor-${p.index}-down`}
+                                    title="down a floor"
+                                    onClick={() =>
+                                      runtime.restackArrangedFurniture(
+                                        me,
+                                        lid,
+                                        p.index,
+                                        -1,
+                                      )
+                                    }
+                                  >
+                                    ▼
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                className="arrange-btn"
+                                data-build-action={`arrange-remove-${p.index}`}
+                                title="take it back to your inventory"
+                                style={{ color: "#e0584d" }}
+                                onClick={() =>
+                                  runtime.removeArrangedFurniture(me, lid, p.index)
+                                }
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 {/* Marketplace (spec 088 Slice F UI) — the public board: browse listings, buy your own
                     copy from the studio, and unlist your own. Listing is the "list ⊕" button per stack. */}
                 {(() => {
