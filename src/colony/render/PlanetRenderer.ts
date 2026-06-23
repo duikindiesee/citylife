@@ -782,7 +782,9 @@ export class PlanetRenderer {
       // doesn't show its teal sea / sand colour standing proud above the water (the operator's "blue
       // patches at Joe's house"). The land enrichment below then applies to it as ordinary ground.
       const leveled = this.terrainLevel.has(i);
-      out.setHex(leveled ? BIOME_COLOR[Biome.Plains] : BIOME_COLOR[t.biome[i] as Biome]);
+      out.setHex(
+        leveled ? BIOME_COLOR[Biome.Plains] : BIOME_COLOR[t.biome[i] as Biome],
+      );
       // Spec 092 — richer terrain: break the flat per-biome fill on LAND with deterministic per-cell
       // variation — a small brightness jitter, an elevation lift (higher ground catches more light), and
       // a moisture tint (wetter greener, drier warmer) — so plains/forest read as living ground, not one
@@ -793,7 +795,8 @@ export class PlanetRenderer {
         out.multiplyScalar(0.93 + (h / 4294967296) * 0.14); // ±7% brightness
         // clamp at the waterline so a raised (levelled) sub-sea cell isn't darkened below grass
         const lift =
-          (Math.max(t.elev[i]!, COLONY.world.seaLevel) - COLONY.world.seaLevel) *
+          (Math.max(t.elev[i]!, COLONY.world.seaLevel) -
+            COLONY.world.seaLevel) *
           0.16;
         out.r += lift;
         out.g += lift;
@@ -880,10 +883,7 @@ export class PlanetRenderer {
     const DRY = 0.65;
     const SKIRT = 4; // cells of graded transition from the flat pad out to natural ground
     const seatOf = (hz: { x: number; y: number; w: number; d: number }) =>
-      Math.max(
-        this.groundY(hz.x + (hz.w - 1) / 2, hz.y + (hz.d - 1) / 2),
-        DRY,
-      );
+      Math.max(this.groundY(hz.x + (hz.w - 1) / 2, hz.y + (hz.d - 1) / 2), DRY);
     // Cheap fingerprint: only built lots, their footprint rect, and their seat height drive the map.
     let sig = "";
     for (const lot of this.neighborhood.parcels) {
@@ -920,10 +920,7 @@ export class PlanetRenderer {
         for (let x = x0; x <= x1; x++)
           // raise sub-floor cells — but not under a road: the road RIBBON rides raw worldY, so a lifted
           // cell would poke up through the asphalt on a low coastal frontage. The ribbon bridges it.
-          if (
-            t.worldY(x, y) < DRY &&
-            !this.roadRibbonCells?.has(`${x},${y}`)
-          )
+          if (t.worldY(x, y) < DRY && !this.roadRibbonCells?.has(`${x},${y}`))
             put(x, y, DRY);
       // 2) LEVEL the footprint to the flat seat py, then GRADE a skirt out to natural ground over SKIRT
       //    cells (smoothstep) so the pad never drops off a 1-cell cliff. Without the skirt the garden /
@@ -936,13 +933,7 @@ export class PlanetRenderer {
         fy1 = hz.y + hz.d;
       for (let y = hz.y - SKIRT + 1; y < fy1 + SKIRT; y++)
         for (let x = hz.x - SKIRT + 1; x < fx1 + SKIRT; x++) {
-          const dist = Math.max(
-            0,
-            hz.x - x,
-            x - fx1,
-            hz.y - y,
-            y - fy1,
-          );
+          const dist = Math.max(0, hz.x - x, x - fx1, hz.y - y, y - fy1);
           if (dist === 0) put(x, y, py);
           else if (dist < SKIRT && x >= 0 && y >= 0 && x < N && y < N) {
             const nat = Math.max(t.worldY(x, y), DRY);

@@ -2149,9 +2149,7 @@ export class ColonyRuntime {
 
   /** The furniture currently placed in a lot's house, with each piece's index (its handle for the
    *  arrange ops), kind, cell, rotation and storey. Empty for an unbuilt/undesigned or unknown lot. */
-  placedFurniture(
-    lotId: string,
-  ): {
+  placedFurniture(lotId: string): {
     index: number;
     kind: FurnitureKind;
     x: number;
