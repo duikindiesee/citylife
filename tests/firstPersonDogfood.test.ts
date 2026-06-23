@@ -291,6 +291,30 @@ describe("first-person route dogfood", () => {
     );
   });
 
+  it("clears a guided walk when the player manually takes over movement", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.sim.state.buildings = [];
+    const me = rt.getUiState().citizens.list[0]!;
+    const publicCitizens = rt.getUiState().citizens.list;
+    const road = rt.sim.state.roads.find((r) =>
+      publicCitizens.every((c) => distance(c.homeXY, r) > 30),
+    );
+    if (!road) throw new Error("test terrain needs a road away from citizens");
+
+    rt.enterFirstPerson(me.id);
+    expect(rt.placeFirstPersonDogfood({ x: road.x + 1, y: road.y }, Math.PI)).toBe(true);
+    expect(rt.activateFirstPersonInteraction()).toBe(true);
+    expect(rt.getUiState().firstPerson.guidedTarget).toBeTruthy();
+
+    rt.setFpKey("KeyW", true);
+    rt.stepFirstPersonDogfood(0.3);
+    rt.setFpKey("KeyW", false);
+
+    const ui = rt.getUiState().firstPerson;
+    expect(ui.guidedTarget).toBeNull();
+    expect(ui.narration).toBe("Guided walk canceled — manual control resumed.");
+  });
+
   it.each([
     { kind: "civic", artifactKind: "market" },
     { kind: "building", artifactKind: "habitat" },

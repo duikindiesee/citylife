@@ -1622,6 +1622,12 @@ export class ColonyRuntime {
     if (!opposingStrafeInput && strafeRightHeld) strafe += 1;
     if (!opposingStrafeInput && strafeLeftHeld) strafe -= 1;
     const moving = forward !== 0 || strafe !== 0;
+    const manualControl = moving || k.has("left") || k.has("right");
+    if (manualControl && this.fpGuidedTarget) {
+      this.fpGuidedTarget = null;
+      this.fpNarrating = false;
+      this.fpNarration = "Guided walk canceled — manual control resumed.";
+    }
     if (opposingWalkInput || opposingStrafeInput) this.fpWalkSpeed = 0;
     const targetSpeed = moving ? cfg.maxWalkSpeed : 0;
     if (this.fpWalkSpeed < targetSpeed) {
