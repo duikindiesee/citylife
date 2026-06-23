@@ -893,7 +893,11 @@ describe("first-person route dogfood", () => {
   it("guides civic prompts to a reachable approach cell instead of the blocked footprint", () => {
     const rt = new ColonyRuntime(4242);
     const terrain = rt.sim.state.terrain;
-    let fixture: { civic: { x: number; y: number }; approach: { x: number; y: number }; start: { x: number; y: number } } | null = null;
+    let fixture: {
+      civic: { x: number; y: number };
+      approach: { x: number; y: number };
+      start: { x: number; y: number };
+    } | null = null;
     for (let y = 2; y < terrain.size - 2 && !fixture; y++) {
       for (let x = 3; x < terrain.size - 2 && !fixture; x++) {
         const start = { x: x - 2, y };
@@ -908,7 +912,10 @@ describe("first-person route dogfood", () => {
         fixture = { civic: { x, y }, approach, start };
       }
     }
-    if (!fixture) throw new Error("test terrain needs a civic cell with two adjacent land cells");
+    if (!fixture)
+      throw new Error(
+        "test terrain needs a civic cell with two adjacent land cells",
+      );
     rt.sim.state.buildings = [
       {
         id: 9903,
@@ -928,7 +935,10 @@ describe("first-person route dogfood", () => {
     expect(rt.activateFirstPersonInteraction()).toBe(true);
 
     const target = rt.getUiState().firstPerson.guidedTarget!;
-    expect(target).toMatchObject({ label: prompt!.targetName, ...fixture.approach });
+    expect(target).toMatchObject({
+      label: prompt!.targetName,
+      ...fixture.approach,
+    });
     expect(target).not.toMatchObject(fixture.civic);
     rt.stepFirstPersonDogfood(2);
 
@@ -936,7 +946,9 @@ describe("first-person route dogfood", () => {
     expect(ui.blockedReason).toBeNull();
     expect(ui.guidedTarget).toBeNull();
     expect(ui.narration).toBe(`Arrived at ${prompt!.targetName}.`);
-    expect(distance(ui.view!.citizen.positionXY, fixture.civic)).toBeGreaterThan(0.4);
+    expect(
+      distance(ui.view!.citizen.positionXY, fixture.civic),
+    ).toBeGreaterThan(0.4);
     expect(distance(ui.view!.citizen.positionXY, target)).toBeLessThan(
       COLONY.firstPerson.guidedArrivalDistance,
     );

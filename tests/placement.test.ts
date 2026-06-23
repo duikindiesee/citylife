@@ -94,9 +94,9 @@ describe("Base placement (rocket / solar / battery / caravan)", () => {
         expect(s.terrain.isWater(rally!.x, rally!.y)).toBe(false);
         expect(s.terrain.buildable[i]).not.toBe(0); // reachable: a spur road can grade to it
         const again = new ColonySim(seed);
-        expect(again.state.structures.find((st) => st.kind === "rally")).toEqual(
-          rally,
-        );
+        expect(
+          again.state.structures.find((st) => st.kind === "rally"),
+        ).toEqual(rally);
       });
     });
   }
