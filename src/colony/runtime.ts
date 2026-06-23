@@ -1311,6 +1311,13 @@ export class ColonyRuntime {
     else this.fpKeys.delete(m);
   }
 
+  /** Deterministic route-dogfood hook: advance the same first-person driver used by the RAF loop. */
+  stepFirstPersonDogfood(seconds: number): boolean {
+    if (!this.fpCitizenId) return false;
+    this.driveFirstPerson(Math.max(0, seconds));
+    return true;
+  }
+
   startRace(): boolean {
     if (this.fpCitizenId) this.exitFirstPerson();
     const track = makeRaceTrack(this.sim.state, {

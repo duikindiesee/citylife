@@ -17,9 +17,11 @@ Persistent queue for autonomous slices that advance CityLife toward FPS-quality 
    - Acceptance: an operator can trigger a reproducible first-person demo screenshot without private data; automation captures the current citizen, prompt/HUD and position evidence; documented in the PR/tasklist.
 6. [ ] Immersive HUD mode separating debug telemetry from player overlay.
    - Acceptance: player-facing first-person overlay shows only concise movement/interactions while debug telemetry remains behind an operator affordance; no raw private/backend data displayed; UI screenshot verifies.
-7. [ ] Route dogfood: scripted walk path with before/after position/camera assertions.
+7. [x] Route dogfood: scripted walk path with before/after position/camera assertions.
    - Acceptance: a test/script walks a deterministic path, asserts avatar position/heading/view changes after each step, and can be reused as browser dogfood.
+   - Done 2026-06-23: Added `driveFirstPersonRouteDogfood`, a deterministic reusable route dogfood helper that enters first-person, drives the same key input path as the UI, samples before/after position and heading, and verifies the live first-person JSON view follows each step.
 
 ## Run log
 
+- 2026-06-23: Completed task 7, route dogfood. Added `src/colony/bot/firstPersonDogfood.ts` and `tests/firstPersonDogfood.test.ts` so a deterministic scripted first-person route now drives W/D/S via the runtime key path and asserts before/after position, heading, and live view samples. Verified with focused Vitest, full Vitest, typecheck, and build. Next recommended slice: task 2 smooth movement with acceleration/deceleration, or task 1 pointer-lock/mouse-look if the branch should move into browser controls next.
 - 2026-06-23: Completed task 4, interaction affordance. Added a deterministic `interactionPrompt` to the first-person JSON view, rendered it in the HUD, and captured `/Users/joehermesbot/.hermes/cache/screenshots/browser_screenshot_15f2b3657a894e379e149d378c8e7e5d.png`. Branch note: PR #69 is already merged and remote branch was deleted; continued on recreated `joe/first-person-live-position` from `origin/main` so follow-up work stays isolated and unmerged. Next recommended slice: task 7 route dogfood or task 2 smooth movement math.
