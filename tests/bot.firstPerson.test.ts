@@ -149,4 +149,23 @@ describe("firstPersonView — spec 074", () => {
     rt.setPlayerView(false);
     expect(rt.getUiState().firstPerson.stepInCitizenIds).toEqual(ids);
   });
+
+  it("boots Joe and Jack as in-world public-safe avatar citizens", () => {
+    const rt = new ColonyRuntime(4242);
+    const ui = rt.getUiState();
+    const ids = ui.citizens.list.map((c) => c.id);
+    expect(ids).toContain("citizen_joe");
+    expect(ids).toContain("citizen_jack");
+
+    const jack = ui.citizens.list.find((c) => c.id === "citizen_jack")!;
+    expect(jack.displayName).toBe("Jack the Rabbit");
+    expect(jack.plotName).toBe("Signal Burrow");
+    expect(jack.telegramHandle).toBeUndefined();
+    expect(jack.tokensSpentLifetime).toBe(0);
+
+    const jackProfile = rt.kbProfile("citizen_jack")!;
+    expect(jackProfile.alias).toBe("Jack the Rabbit");
+    expect(jackProfile.kind).toBe("human");
+    expect(jackProfile.bio).not.toMatch(/token|secret|cluster|telegram/i);
+  });
 });

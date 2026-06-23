@@ -228,6 +228,7 @@ import {
 // blueprint (a sea-facing patio cottage — his "city desk" by the water), reserved on the shore-most plot.
 const JOE_ID = "citizen_joe";
 const JOE_BORN_MS = 0;
+const JACK_ID = "citizen_jack";
 // KOOKER, the Builder of the Kookerverse (founder two): owner of the build trade. Players see "KOOKER"
 // (the displayName/alias below); the internal id keeps its legacy value "citizen_viw" because the ledger
 // accounts (citizen:citizen_viw) and the kooker-web OTA mission (079) reference the builder by THIS id —
@@ -286,6 +287,7 @@ export function canRestoreBlueprint(
  *  the spec-084 S2 side-walkway contract on every single boot, so a regression can't hide. */
 export const VIW_BLUEPRINT =
   "house{w:8 d:7 wallH:2 door:e} room{kind:living x:0 y:0 w:8 d:5 win:1} room{kind:garage x:0 y:5 w:3 d:2 win:0} room{kind:bedroom x:3 y:5 w:2 d:2 win:1} room{kind:patio x:5 y:5 w:3 d:2 win:0}";
+
 
 const BIOME_LABEL: Record<number, string> = {
   [Biome.Ocean]: "Ocean",
@@ -1114,6 +1116,7 @@ export class ColonyRuntime {
     this.restoreKookerbook();
     this.seedJoe(); // spec 078 — Joe the Crab takes up residence on the shore-most homestead
     this.seedViw(); // spec 083 — Viw the Builder takes the homestead beside him
+    this.seedJack(); // player/UI lane — Jack is visible as an in-world reviewer avatar
     this.restoreBlueprints(); // spec 077 P4.5 — stored designs regenerate their houses on reload
     // Spec 077 P4 — listen for blueprint_saved posted back by the House Builder popup. Same-origin
     // only; the script is validated before anything is stored or built. Guarded for node test runs.
@@ -2049,6 +2052,38 @@ export class ColonyRuntime {
       bio: "Builder of the Kookerverse. Runs the crew, draws a fair quote, and turns dreams into blueprints — fair rates in city coin, naturally.",
       plotId: plot.id,
       address: "Crewhouse Yard",
+      kind: "human",
+    });
+  }
+
+  /** Jack the Rabbit, the lead/reviewer avatar. He is not a backend identity leak; just a fixed,
+   *  public-safe in-world citizen with a deterministic Kookerbook profile. Jack shares Joe's shore desk
+   *  block for now so he adds presence without changing parcel collision/pathfinding fixtures. */
+  private seedJack(): void {
+    const lots = this.neighborhood.lots;
+    const plot = lots[0];
+    if (!plot) return;
+    const home = { x: plot.doorX, y: plot.doorY };
+    const jack = this.citizens.seedFounder({
+      id: JACK_ID,
+      householdId: "household_jack",
+      displayName: "Jack the Rabbit",
+      plotId: plot.id,
+      plotName: "Signal Burrow",
+      home,
+      kind: "human",
+      nowMs: JOE_BORN_MS,
+      spd: 0.9,
+    });
+    if (jack)
+      this.citizens.setTarget(JACK_ID, { x: plot.doorX + 1, y: plot.doorY });
+    this.seedDeposit(JACK_ID);
+    this.ensureKbProfile({
+      citizenId: JACK_ID,
+      alias: "Jack the Rabbit",
+      bio: "Lead reviewer for Landing One. Keeps a signal desk above the shore road, checks the walk routes, and writes notes the town can act on.",
+      plotId: plot.id,
+      address: "Signal Burrow",
       kind: "human",
     });
   }
