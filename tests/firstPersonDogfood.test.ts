@@ -10,6 +10,30 @@ function distance(
 }
 
 describe("first-person route dogfood", () => {
+  it("ramps movement speed up and coasts down after release", () => {
+    const rt = new ColonyRuntime(4242);
+    const me = rt.getUiState().citizens.list[0]!;
+
+    const run = driveFirstPersonRouteDogfood(rt, me.id, [
+      { label: "start walking", keys: ["w"], seconds: 0.2 },
+      { label: "release and coast", keys: [], seconds: 0.2 },
+    ]);
+
+    const startDistance = distance(
+      run.samples[0]!.before.position,
+      run.samples[0]!.after.position,
+    );
+    const coastDistance = distance(
+      run.samples[1]!.before.position,
+      run.samples[1]!.after.position,
+    );
+
+    expect(startDistance).toBeGreaterThan(0.05);
+    expect(startDistance).toBeLessThan(0.68);
+    expect(coastDistance).toBeGreaterThan(0.05);
+    expect(coastDistance).toBeLessThan(startDistance);
+  });
+
   it("walks a deterministic route and samples live view position plus heading", () => {
     const rt = new ColonyRuntime(4242);
     const me = rt.getUiState().citizens.list[0]!;

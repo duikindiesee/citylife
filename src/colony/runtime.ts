@@ -628,6 +628,7 @@ export class ColonyRuntime {
   private fpCitizenId: string | null = null;
   // First-person locomotion — which movement keys are held while you walk your bot around.
   private fpKeys = new Set<string>();
+  private fpWalkSpeed = 0;
   private raceState: RaceState | null = null;
   private raceInput: RaceInput = {};
   private bestRaceMs: number | null = null;
@@ -1278,6 +1279,7 @@ export class ColonyRuntime {
     if (!this.citizens.byId(citizenId)) return false;
     if (!this.canStepIntoCitizen(citizenId)) return false;
     this.fpCitizenId = citizenId;
+    this.fpWalkSpeed = 0;
     this.renderer?.enterFirstPerson(citizenId);
     this.emit();
     return true;
@@ -1286,6 +1288,7 @@ export class ColonyRuntime {
   exitFirstPerson(): void {
     this.fpCitizenId = null;
     this.fpKeys.clear();
+    this.fpWalkSpeed = 0;
     this.fpNarration = null;
     this.fpNarrating = false;
     this.renderer?.exitFirstPerson();
@@ -1411,19 +1414,32 @@ export class ColonyRuntime {
     const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
     if (!c) return;
     const k = this.fpKeys;
-    const turn = 2.4 * dt;
+    const cfg = COLONY.firstPerson;
+    const turn = cfg.turnSpeed * dt;
     if (k.has("left")) c.heading -= turn;
     if (k.has("right")) c.heading += turn;
     let mv = 0;
     if (k.has("fwd")) mv += 1;
     if (k.has("back")) mv -= 1;
-    if (mv !== 0) {
-      const sp = 3.4 * dt * mv;
+    const targetSpeed = mv * cfg.maxWalkSpeed;
+    if (this.fpWalkSpeed < targetSpeed) {
+      this.fpWalkSpeed = Math.min(
+        targetSpeed,
+        this.fpWalkSpeed + cfg.walkAcceleration * dt,
+      );
+    } else if (this.fpWalkSpeed > targetSpeed) {
+      const rate = targetSpeed === 0 ? cfg.walkDeceleration : cfg.walkAcceleration;
+      this.fpWalkSpeed = Math.max(targetSpeed, this.fpWalkSpeed - rate * dt);
+    }
+    if (Math.abs(this.fpWalkSpeed) > 0.001) {
+      const sp = this.fpWalkSpeed * dt;
       const nx = c.pos.x + Math.cos(c.heading) * sp;
       const ny = c.pos.y + Math.sin(c.heading) * sp;
       if (this.onLand(nx, ny)) {
         c.pos.x = nx;
         c.pos.y = ny;
+      } else {
+        this.fpWalkSpeed = 0;
       }
     }
     c.target = { x: c.pos.x, y: c.pos.y }; // hold the auto-walk while you drive

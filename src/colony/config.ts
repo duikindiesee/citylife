@@ -1062,6 +1062,13 @@ export const COLONY = {
     maxWaitSteps: 50, // failsafe so a jammed car eventually proceeds (no deadlock)
   },
 
+  firstPerson: {
+    maxWalkSpeed: 3.4, // world units/sec once fully accelerated
+    walkAcceleration: 10, // units/sec²; gives a visible ramp instead of instant full speed
+    walkDeceleration: 8, // units/sec²; releases coast briefly, then settle
+    turnSpeed: 2.4, // radians/sec for keyboard yaw until mouse-look lands
+  },
+
   render: {
     seed: 4242,
   },
