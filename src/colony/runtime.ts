@@ -298,6 +298,7 @@ export interface FirstPersonDemoEvidence {
   heading: number;
   lookPitch: number;
   action: string | null;
+  guidedTarget: { label: string; x: number; y: number } | null;
   blockedReason: string | null;
   clockLabel: string;
   hudLines: string[];
@@ -1252,8 +1253,18 @@ export class ColonyRuntime {
     const round = (n: number, places = 2) => Number(n.toFixed(places));
     const action = view.interactionPrompt?.label ?? null;
     const clockLabel = `Day ${view.clock.day} ${String(view.clock.hour).padStart(2, "0")}:${String(view.clock.minute).padStart(2, "0")}`;
+    const guidedTarget = ui.guidedTarget
+      ? {
+          label: ui.guidedTarget.label,
+          x: Math.round(ui.guidedTarget.x),
+          y: Math.round(ui.guidedTarget.y),
+        }
+      : null;
     const hudLines = [
       action ?? "No nearby action",
+      guidedTarget
+        ? `Guided walk ${guidedTarget.label} (${guidedTarget.x}, ${guidedTarget.y})`
+        : null,
       ui.blockedReason ? `Blocked ${ui.blockedReason}` : null,
       view.mood.hungry ? "colony hungry" : null,
       view.mood.brownout ? "brownout" : null,
@@ -1271,6 +1282,7 @@ export class ColonyRuntime {
         heading: round(view.citizen.heading, 3),
         lookPitch: round(ui.lookPitch, 3),
         action,
+        guidedTarget,
         blockedReason: ui.blockedReason,
         clockLabel,
         hudLines,

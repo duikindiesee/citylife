@@ -292,6 +292,36 @@ describe("first-person route dogfood", () => {
     );
   });
 
+  it("includes active guided walks in deterministic first-person demo capture evidence", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.sim.state.buildings = [];
+    const me = rt.getUiState().citizens.list[0]!;
+    const publicCitizens = rt.getUiState().citizens.list;
+    const road = rt.sim.state.roads.find((r) =>
+      publicCitizens.every((c) => distance(c.homeXY, r) > 30),
+    );
+    if (!road) throw new Error("test terrain needs a road away from citizens");
+
+    rt.enterFirstPerson(me.id);
+    expect(rt.placeFirstPersonDogfood({ x: road.x + 1, y: road.y }, Math.PI)).toBe(true);
+    const prompt = rt.getUiState().firstPerson.view!.interactionPrompt;
+    expect(prompt?.kind).toBe("road");
+    expect(rt.activateFirstPersonInteraction()).toBe(true);
+
+    const capture = rt.captureFirstPersonDemo();
+
+    expect(capture).toBeTruthy();
+    expect(capture!.evidence.guidedTarget).toEqual({
+      label: "road",
+      x: Math.round(prompt!.targetXY.x),
+      y: Math.round(prompt!.targetXY.y),
+    });
+    expect(capture!.evidence.hudLines).toContain(
+      `Guided walk road (${Math.round(prompt!.targetXY.x)}, ${Math.round(prompt!.targetXY.y)})`,
+    );
+    expect(JSON.stringify(capture!.evidence)).not.toMatch(/wallet|token|secret|operator/i);
+  });
+
   it("clears a guided walk when the player manually takes over movement", () => {
     const rt = new ColonyRuntime(4242);
     rt.sim.state.buildings = [];
