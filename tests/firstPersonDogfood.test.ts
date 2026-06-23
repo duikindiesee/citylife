@@ -241,7 +241,11 @@ describe("first-person route dogfood", () => {
   it("activates the current first-person action prompt with immediate HUD feedback", () => {
     const rt = new ColonyRuntime(4242);
     const me = rt.getUiState().citizens.list[0]!;
+    const other = rt.getUiState().citizens.list.find((c) => c.id !== me.id);
     rt.enterFirstPerson(me.id);
+    if (other) {
+      expect(rt.placeFirstPersonDogfood({ x: other.homeXY.x + 1, y: other.homeXY.y }, 0)).toBe(true);
+    }
     const prompt = rt.getUiState().firstPerson.view!.interactionPrompt;
     expect(prompt).toBeTruthy();
     expect(rt.getUiState().firstPerson.narration).toBeNull();
@@ -253,6 +257,36 @@ describe("first-person route dogfood", () => {
     expect(ui.narration).toContain(prompt!.targetName);
     expect(ui.narration).toMatch(/talk|visit|inspect|follow/i);
     expect(JSON.stringify({ prompt, narration: ui.narration })).not.toMatch(
+      /wallet|token|secret|operator/i,
+    );
+  });
+
+  it("starts a guided walk when activating a road prompt", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.sim.state.buildings = [];
+    const me = rt.getUiState().citizens.list[0]!;
+    const publicCitizens = rt.getUiState().citizens.list;
+    const road = rt.sim.state.roads.find((r) =>
+      publicCitizens.every((c) => distance(c.homeXY, r) > 30),
+    );
+    if (!road) throw new Error("test terrain needs a road away from citizens");
+    const start = { x: road.x + 1, y: road.y };
+
+    rt.enterFirstPerson(me.id);
+    expect(rt.placeFirstPersonDogfood(start, Math.PI)).toBe(true);
+    const prompt = rt.getUiState().firstPerson.view!.interactionPrompt;
+    expect(prompt?.kind).toBe("road");
+
+    expect(rt.activateFirstPersonInteraction()).toBe(true);
+
+    const ui = rt.getUiState().firstPerson;
+    expect(ui.guidedTarget).toEqual({
+      label: "road",
+      x: Math.round(prompt!.targetXY.x),
+      y: Math.round(prompt!.targetXY.y),
+    });
+    expect(ui.narration).toBe("Guiding you to road.");
+    expect(JSON.stringify({ prompt, guidedTarget: ui.guidedTarget })).not.toMatch(
       /wallet|token|secret|operator/i,
     );
   });

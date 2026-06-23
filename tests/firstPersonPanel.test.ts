@@ -25,6 +25,7 @@ function makeFirstPerson(): ColonyUiState["firstPerson"] {
     lookPitch: 0,
     mouseSensitivity: "normal",
     sprintCharge: 42,
+    guidedTarget: null,
     narration: "The plaza is calm.",
     narrating: false,
     blockedReason: "water",
@@ -56,6 +57,7 @@ function makeFirstPerson(): ColonyUiState["firstPerson"] {
         kind: "citizen",
         label: "Talk to Orin Reed",
         targetName: "Orin Reed",
+        targetXY: { x: 13, y: 18 },
         distance: 4,
       },
     },
@@ -118,5 +120,24 @@ describe("FirstPersonPanel immersive HUD", () => {
 
     expect(html).toContain("Sprint low — ease off to recover");
     expect(html).not.toContain("Sprint depleted — walk to recover");
+  });
+
+  it("shows guided walk target feedback in the player overlay", () => {
+    const fp = makeFirstPerson();
+    fp.guidedTarget = { label: "road", x: 301, y: 306 };
+
+    const html = renderToStaticMarkup(
+      React.createElement(FirstPersonPanel, {
+        runtime: makeRuntime(),
+        fp,
+      }),
+    );
+
+    expect(html).toContain("Guided walk");
+    expect(html).toContain("road");
+    expect(html).toContain("301");
+    expect(html).toContain("306");
+    expect(html).not.toContain("Ground");
+    expect(html).not.toContain("Neighbours");
   });
 });

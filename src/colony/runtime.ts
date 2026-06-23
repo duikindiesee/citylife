@@ -541,6 +541,7 @@ export interface ColonyUiState {
     lookPitch: number;
     mouseSensitivity: FirstPersonMouseSensitivity;
     sprintCharge: number;
+    guidedTarget: { label: string; x: number; y: number } | null;
     blockedReason: string | null;
     narration: string | null;
     narrating: boolean;
@@ -656,6 +657,8 @@ export class ColonyRuntime {
   private fpLookPitch = 0;
   private fpMouseSensitivity: FirstPersonMouseSensitivity = "normal";
   private fpSprintCharge = 1;
+  private fpGuidedTarget: { label: string; x: number; y: number } | null = null;
+  private fpBlockedReason: string | null = null;
   private raceState: RaceState | null = null;
   private raceInput: RaceInput = {};
   private bestRaceMs: number | null = null;
@@ -673,7 +676,6 @@ export class ColonyRuntime {
   private barSeatCells: { x: number; y: number }[] | null = null;
   private barOccupied = new Set<string>();
   private barSeatBy: (string | null)[] = [];
-  private fpBlockedReason: string | null = null;
   private fpNarration: string | null = null;
   private fpNarrating = false;
 
@@ -1346,6 +1348,7 @@ export class ColonyRuntime {
     this.fpWalkSpeed = 0;
     this.fpLookPitch = 0;
     this.fpSprintCharge = 1;
+    this.fpGuidedTarget = null;
     this.fpBlockedReason = null;
     this.renderer?.enterFirstPerson(citizenId);
     this.emit();
@@ -1358,6 +1361,7 @@ export class ColonyRuntime {
     this.fpWalkSpeed = 0;
     this.fpLookPitch = 0;
     this.fpSprintCharge = 1;
+    this.fpGuidedTarget = null;
     this.fpBlockedReason = null;
     this.fpNarration = null;
     this.fpNarrating = false;
@@ -1439,6 +1443,20 @@ export class ColonyRuntime {
       building: `You inspect ${prompt.targetName}.`,
       road: `You follow ${prompt.targetName}.`,
     };
+    if (prompt.kind === "road") {
+      const target = {
+        x: Math.round(prompt.targetXY.x),
+        y: Math.round(prompt.targetXY.y),
+      };
+      this.citizens.setTarget(id, target);
+      this.fpWalkSpeed = 0;
+      this.fpGuidedTarget = { label: prompt.targetName, ...target };
+      this.fpNarrating = false;
+      this.fpNarration = `Guiding you to ${prompt.targetName}.`;
+      this.emit();
+      return true;
+    }
+    this.fpGuidedTarget = null;
     this.fpNarrating = false;
     this.fpNarration = actionLine[prompt.kind];
     this.emit();
@@ -1458,6 +1476,7 @@ export class ColonyRuntime {
     this.fpWalkSpeed = 0;
     this.fpLookPitch = 0;
     this.fpSprintCharge = 1;
+    this.fpGuidedTarget = null;
     this.fpBlockedReason = null;
     this.emit();
     return true;
@@ -3144,6 +3163,7 @@ export class ColonyRuntime {
           lookPitch: this.fpLookPitch,
           mouseSensitivity: this.fpMouseSensitivity,
           sprintCharge: Math.round(this.fpSprintCharge * 100),
+          guidedTarget: this.fpGuidedTarget,
           blockedReason: this.fpBlockedReason,
           narration: this.fpNarration,
           narrating: this.fpNarrating,

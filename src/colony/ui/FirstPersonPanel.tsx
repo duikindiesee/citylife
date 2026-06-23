@@ -122,6 +122,12 @@ export function FirstPersonPanel({
               {fp.blockedReason}
             </div>
           )}
+          {fp.guidedTarget && (
+            <div style={{ color: "#9fd4a6" }}>
+              <span style={{ color: "#6ea8d0" }}>Guided walk</span>{" "}
+              {fp.guidedTarget.label} ({Math.round(fp.guidedTarget.x)}, {Math.round(fp.guidedTarget.y)})
+            </div>
+          )}
           {(v.mood.hungry || v.mood.brownout || v.mood.fever > 0.4) && (
             <div style={{ color: "#e8905a", marginTop: 2 }}>
               {v.mood.hungry ? "⚠ colony hungry " : ""}

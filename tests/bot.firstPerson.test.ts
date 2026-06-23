@@ -83,6 +83,7 @@ describe("firstPersonView — spec 074", () => {
       kind: "citizen",
       label: `Talk to ${neighbour.displayName}`,
       targetName: neighbour.displayName,
+      targetXY: { x: 21.2, y: 20 },
       distance: 1.2,
     });
   });

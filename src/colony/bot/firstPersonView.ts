@@ -6,6 +6,7 @@
 // The PNG counterpart (vision) is rendered separately by PlanetRenderer.firstPersonPNG().
 import type { ColonyState } from "../sim";
 import { Biome } from "../terrain";
+import { COLONY } from "../config";
 import type { CitizenRoster } from "./citizenRoster";
 
 /** What the bot gets every turn — cheap, deterministic, vision-free. */
@@ -26,6 +27,7 @@ export interface FirstPersonView {
         kind: "citizen" | "civic" | "building" | "road";
         label: string;
         targetName: string;
+        targetXY: { x: number; y: number };
         distance: number;
       }
     | null;
@@ -126,6 +128,8 @@ export function firstPersonView(
       return {
         displayName: c.displayName,
         plotName: c.plotName,
+        x: ox,
+        y: oy,
         distance: dist(ox, oy, px, py),
       };
     })
@@ -167,6 +171,8 @@ export function firstPersonView(
   const seenBuildings = state.buildings
     .map((b) => ({
       kind: String(b.artifact?.kind ?? "unknown"),
+      x: b.x,
+      y: b.y,
       distance: dist(b.x, b.y, px, py),
     }))
     .sort((a, b) => a.distance - b.distance);
@@ -178,33 +184,53 @@ export function firstPersonView(
     .slice(0, 3);
 
   const nearestNeighbour = allOthers[0] ?? null;
-  const interactionPrompt = nearestNeighbour
+  const promptMax = COLONY.firstPerson.interactionPromptMaxDistance;
+  const nearbyNeighbour =
+    nearestNeighbour && nearestNeighbour.distance <= promptMax.citizen
+      ? nearestNeighbour
+      : null;
+  const nearbyCivic =
+    nearestCivic[0] && nearestCivic[0].distance <= promptMax.civic
+      ? nearestCivic[0]
+      : null;
+  const nearbyBuilding =
+    nearestBuildings[0] && nearestBuildings[0].distance <= promptMax.building
+      ? nearestBuildings[0]
+      : null;
+  const nearbyRoad =
+    nearestRoad && nearestRoad.distance <= promptMax.road ? nearestRoad : null;
+
+  const interactionPrompt = nearbyNeighbour
     ? {
         kind: "citizen" as const,
-        label: `Talk to ${nearestNeighbour.displayName}`,
-        targetName: nearestNeighbour.displayName,
-        distance: roundDistance(nearestNeighbour.distance),
+        label: `Talk to ${nearbyNeighbour.displayName}`,
+        targetName: nearbyNeighbour.displayName,
+        targetXY: { x: nearbyNeighbour.x, y: nearbyNeighbour.y },
+        distance: roundDistance(nearbyNeighbour.distance),
       }
-    : nearestCivic[0]
+    : nearbyCivic
       ? {
           kind: "civic" as const,
-          label: `Visit ${nearestCivic[0].kind}`,
-          targetName: nearestCivic[0].kind,
-          distance: roundDistance(nearestCivic[0].distance),
+          label: `Visit ${nearbyCivic.kind}`,
+          targetName: nearbyCivic.kind,
+          targetXY: { x: nearbyCivic.x, y: nearbyCivic.y },
+          distance: roundDistance(nearbyCivic.distance),
         }
-      : nearestBuildings[0]
+      : nearbyBuilding
         ? {
             kind: "building" as const,
-            label: `Inspect ${nearestBuildings[0].kind}`,
-            targetName: nearestBuildings[0].kind,
-            distance: roundDistance(nearestBuildings[0].distance),
+            label: `Inspect ${nearbyBuilding.kind}`,
+            targetName: nearbyBuilding.kind,
+            targetXY: { x: nearbyBuilding.x, y: nearbyBuilding.y },
+            distance: roundDistance(nearbyBuilding.distance),
           }
-        : nearestRoad
+        : nearbyRoad
           ? {
               kind: "road" as const,
               label: "Follow road",
               targetName: "road",
-              distance: roundDistance(nearestRoad.distance),
+              targetXY: { x: nearbyRoad.x, y: nearbyRoad.y },
+              distance: roundDistance(nearbyRoad.distance),
             }
           : null;
 
