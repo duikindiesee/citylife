@@ -68,6 +68,31 @@ describe("first-person route dogfood", () => {
     expect(ui.firstPerson.blockedReason).toBe("water");
   });
 
+  it("captures deterministic first-person demo evidence for screenshot automation", () => {
+    const rt = new ColonyRuntime(4242);
+    const me = rt.getUiState().citizens.list[0]!;
+    rt.enterFirstPerson(me.id);
+    rt.applyFirstPersonMouseLook(12, -6);
+    rt.setFpKey("KeyW", true);
+    rt.stepFirstPersonDogfood(0.25);
+    rt.setFpKey("KeyW", false);
+
+    const capture = rt.captureFirstPersonDemo();
+
+    expect(capture).toBeTruthy();
+    expect(capture!.pngDataUrl).toBeNull();
+    expect(capture!.evidence.citizenId).toBe(me.id);
+    expect(capture!.evidence.citizenName).toBe(me.displayName);
+    expect(capture!.evidence.position.x).toBeTypeOf("number");
+    expect(capture!.evidence.position.y).toBeTypeOf("number");
+    expect(capture!.evidence.heading).toBeGreaterThan(0);
+    expect(capture!.evidence.lookPitch).toBeGreaterThan(0);
+    expect(capture!.evidence.hudLines).toContain(
+      capture!.evidence.action ?? "No nearby action",
+    );
+    expect(JSON.stringify(capture!.evidence)).not.toMatch(/wallet|token|secret|operator/i);
+  });
+
   it("accepts browser KeyboardEvent.code movement names directly", () => {
     const rt = new ColonyRuntime(4242);
     const me = rt.getUiState().citizens.list[0]!;

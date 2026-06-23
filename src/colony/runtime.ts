@@ -291,6 +291,24 @@ const BIOME_LABEL: Record<number, string> = {
   [Biome.River]: "Riverside",
 };
 
+export interface FirstPersonDemoEvidence {
+  citizenId: string;
+  citizenName: string;
+  position: { x: number; y: number };
+  heading: number;
+  lookPitch: number;
+  action: string | null;
+  blockedReason: string | null;
+  clockLabel: string;
+  hudLines: string[];
+}
+
+export interface FirstPersonDemoCapture {
+  evidence: FirstPersonDemoEvidence;
+  /** Browser-only PNG data URL when the renderer is mounted; null in headless tests. */
+  pngDataUrl: string | null;
+}
+
 export interface ColonyUiState {
   running: boolean;
   paused: boolean;
@@ -1216,6 +1234,41 @@ export class ColonyRuntime {
       y: this.sim.state.terrain.landing.y,
     };
     return this.renderer.firstPersonPNG(c.homeXY, { x: look.x, y: look.y });
+  }
+
+  /** Photo-mode automation hook: pair a screenshot-capable PNG with a deterministic, public-safe HUD evidence payload. */
+  captureFirstPersonDemo(): FirstPersonDemoCapture | null {
+    const ui = this.getUiState().firstPerson;
+    const view = ui.view;
+    if (!ui.active || !ui.citizenId || !view) return null;
+    const round = (n: number, places = 2) => Number(n.toFixed(places));
+    const action = view.interactionPrompt?.label ?? null;
+    const clockLabel = `Day ${view.clock.day} ${String(view.clock.hour).padStart(2, "0")}:${String(view.clock.minute).padStart(2, "0")}`;
+    const hudLines = [
+      action ?? "No nearby action",
+      ui.blockedReason ? `Blocked ${ui.blockedReason}` : null,
+      view.mood.hungry ? "colony hungry" : null,
+      view.mood.brownout ? "brownout" : null,
+      view.mood.fever > 0.4 ? "illness spreading" : null,
+    ].filter((line): line is string => Boolean(line));
+
+    return {
+      evidence: {
+        citizenId: ui.citizenId,
+        citizenName: ui.citizenName ?? view.citizen.displayName,
+        position: {
+          x: round(view.citizen.positionXY.x),
+          y: round(view.citizen.positionXY.y),
+        },
+        heading: round(view.citizen.heading, 3),
+        lookPitch: round(ui.lookPitch, 3),
+        action,
+        blockedReason: ui.blockedReason,
+        clockLabel,
+        hudLines,
+      },
+      pngDataUrl: this.renderer ? this.firstPersonPNG(ui.citizenId) : null,
+    };
   }
 
   /** P2 — turn a player's magic prompt into a PG-safe colonist personality (safety enforced on the
