@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
+import { COLONY } from "../src/colony/config";
 import { driveFirstPersonRouteDogfood } from "../src/colony/bot/firstPersonDogfood";
 
 function distance(
@@ -313,6 +314,62 @@ describe("first-person route dogfood", () => {
     const ui = rt.getUiState().firstPerson;
     expect(ui.guidedTarget).toBeNull();
     expect(ui.narration).toBe("Guided walk canceled — manual control resumed.");
+  });
+
+  it("advances and clears a guided walk when the target is reached", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.sim.state.buildings = [];
+    const me = rt.getUiState().citizens.list[0]!;
+    const publicCitizens = rt.getUiState().citizens.list;
+    let start: { x: number; y: number } | null = null;
+    let promptTarget: { x: number; y: number } | null = null;
+
+    rt.enterFirstPerson(me.id);
+    for (const candidateRoad of rt.sim.state.roads) {
+      if (!publicCitizens.every((c) => distance(c.homeXY, candidateRoad) > 30)) continue;
+      for (const offset of [
+        { x: 1, y: 0 },
+        { x: -1, y: 0 },
+        { x: 0, y: 1 },
+        { x: 0, y: -1 },
+      ]) {
+        const candidate = { x: candidateRoad.x + offset.x, y: candidateRoad.y + offset.y };
+        expect(rt.placeFirstPersonDogfood(candidate, Math.PI)).toBe(true);
+        const prompt = rt.getUiState().firstPerson.view!.interactionPrompt;
+        if (prompt?.kind === "road" && distance(candidate, prompt.targetXY) > 0.5) {
+          start = candidate;
+          promptTarget = prompt.targetXY;
+          break;
+        }
+      }
+      if (start) break;
+    }
+    if (!start || !promptTarget) {
+      throw new Error("test terrain needs a nearby road target away from the start cell");
+    }
+
+    expect(rt.activateFirstPersonInteraction()).toBe(true);
+    const target = rt.getUiState().firstPerson.guidedTarget!;
+    expect(target).toEqual({
+      label: "road",
+      x: Math.round(promptTarget.x),
+      y: Math.round(promptTarget.y),
+    });
+
+    rt.stepFirstPersonDogfood(0.5);
+    const movingUi = rt.getUiState().firstPerson;
+    expect(distance(movingUi.view!.citizen.positionXY, target)).toBeLessThan(
+      distance(start, target),
+    );
+    expect(movingUi.guidedTarget).toEqual(target);
+
+    rt.stepFirstPersonDogfood(2);
+    const arrivedUi = rt.getUiState().firstPerson;
+    expect(distance(arrivedUi.view!.citizen.positionXY, target)).toBeLessThan(
+      COLONY.firstPerson.guidedArrivalDistance,
+    );
+    expect(arrivedUi.guidedTarget).toBeNull();
+    expect(arrivedUi.narration).toBe("Arrived at road.");
   });
 
   it.each([

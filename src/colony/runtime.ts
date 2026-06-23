@@ -1485,7 +1485,11 @@ export class ColonyRuntime {
   /** Deterministic route-dogfood hook: advance the same first-person driver used by the RAF loop. */
   stepFirstPersonDogfood(seconds: number): boolean {
     if (!this.fpCitizenId) return false;
-    this.driveFirstPerson(Math.max(0, seconds));
+    const dt = Math.max(0, seconds);
+    this.driveFirstPerson(dt);
+    this.citizens.stepAvatars(dt);
+    this.updateFirstPersonGuidedArrival();
+    this.emit();
     return true;
   }
 
@@ -1599,6 +1603,18 @@ export class ColonyRuntime {
     return null;
   }
 
+  private updateFirstPersonGuidedArrival(): void {
+    if (!this.fpGuidedTarget || !this.fpCitizenId) return;
+    const c = this.citizens.byId(this.fpCitizenId);
+    if (!c) return;
+    const d = Math.hypot(c.pos.x - this.fpGuidedTarget.x, c.pos.y - this.fpGuidedTarget.y);
+    if (d > COLONY.firstPerson.guidedArrivalDistance) return;
+    const label = this.fpGuidedTarget.label;
+    this.fpGuidedTarget = null;
+    this.fpNarrating = false;
+    this.fpNarration = `Arrived at ${label}.`;
+  }
+
   /** Drive the avatar you have stepped into, from the held keys. Turns the heading and steps the
    *  position forward/back on land; freezes its auto-walk target so it stays where you put it. */
   private driveFirstPerson(dt: number): void {
@@ -1679,7 +1695,9 @@ export class ColonyRuntime {
         this.fpBlockedReason = blocked;
       }
     }
-    c.target = { x: c.pos.x, y: c.pos.y }; // hold the auto-walk while you drive
+    if (!this.fpGuidedTarget) {
+      c.target = { x: c.pos.x, y: c.pos.y }; // hold the auto-walk while you drive or idle without guidance
+    }
   }
 
   /** Keep the citizens alive in watch mode — when an idle one (not the one you are driving) has reached
@@ -2895,6 +2913,7 @@ export class ColonyRuntime {
     }
     if (this.fpCitizenId) this.driveFirstPerson(dtReal); // walk your bot with WASD when stepped in
     this.citizens.stepAvatars(dtReal); // P1 — walk the avatars in real time toward their targets
+    this.updateFirstPersonGuidedArrival();
     this.wanderIdleCitizens(dtReal); // keep the citizens strolling so watch mode is never frozen
     this.raceTick(dtReal);
     this.renderer?.frame();

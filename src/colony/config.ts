@@ -1077,6 +1077,7 @@ export const COLONY = {
       building: 18,
       road: 8,
     }, // only nearby things become player actions; far citizens should not hide road prompts
+    guidedArrivalDistance: 0.05, // close enough to clear a guided-walk target and report arrival
     turnSpeed: 2.4, // radians/sec for keyboard yaw until mouse-look lands
     mouseSensitivity: 0.0025, // radians per pointer-lock mouse pixel for FPS look
     mouseSensitivityScale: { low: 0.6, normal: 1, high: 1.6 }, // player-facing look sensitivity presets
