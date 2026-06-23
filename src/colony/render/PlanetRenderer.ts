@@ -3508,11 +3508,31 @@ export class PlanetRenderer {
           );
         }
       }
-      // garden veg beds on alternate cells
-      for (let yy = lot.garden.y; yy < lot.garden.y + lot.garden.d; yy++) {
+      // Spec 094 — custom gardens: planted ROWS cycling a per-lot flower palette (so every garden looks
+      // different) instead of one flat green checker. Flowers bloom a touch taller than the veg rows;
+      // alternate columns stay open as little paths between the beds. The corner tree + well stay below.
+      const GARDEN_FLOWERS = [
+        0xd0587a, 0xe8b84a, 0x9a78d8, 0xe87a5a, 0xe0dce8, 0xd85a5a,
+      ];
+      let gs = lot.houseSeed | 0; // mix in the lot id so neighbouring gardens differ even on a shared seed
+      for (let ci = 0; ci < lot.id.length; ci++)
+        gs = (gs * 31 + lot.id.charCodeAt(ci)) | 0;
+      gs = gs >>> 0;
+      const bedPalette = [
+        GARDEN_FLOWERS[gs % GARDEN_FLOWERS.length]!,
+        GARDEN_FLOWERS[((gs >> 4) + 2) % GARDEN_FLOWERS.length]!,
+        BLOCK_COLOR.crop,
+        GARDEN_FLOWERS[((gs >> 8) + 4) % GARDEN_FLOWERS.length]!,
+        BLOCK_COLOR.cropAlt,
+      ];
+      let grow = 0;
+      for (let yy = lot.garden.y; yy < lot.garden.y + lot.garden.d; yy++, grow++) {
+        const bedColor = bedPalette[grow % bedPalette.length]!;
+        const veg =
+          bedColor === BLOCK_COLOR.crop || bedColor === BLOCK_COLOR.cropAlt;
         for (let xx = lot.garden.x; xx < lot.garden.x + lot.garden.w; xx++) {
-          if ((xx + yy) % 2 === 0)
-            block(xx, yy, 0.78, 0.38, 0.78, 0.05, BLOCK_COLOR.crop);
+          if ((xx + grow) % 2 === 0)
+            block(xx, yy, 0.72, veg ? 0.36 : 0.55, 0.72, 0.05, bedColor);
         }
       }
       // a fruit tree at one garden corner + a well at the other
