@@ -1,7 +1,11 @@
 import type { Terrain } from "./terrain";
 
 export type ArtifactKind = "bench" | "lamppost" | "planter" | "fountain";
-export type ArtifactCategory = "furniture" | "lighting" | "greenery" | "civic-art";
+export type ArtifactCategory =
+  | "furniture"
+  | "lighting"
+  | "greenery"
+  | "civic-art";
 
 export interface ArtifactFootprint {
   w: number;
@@ -74,7 +78,8 @@ function nearestDryCell(
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const nx = x + dx;
         const ny = y + dy;
-        if (dry(terrain, nx, ny) && !used.has(`${nx},${ny}`)) return { x: nx, y: ny };
+        if (dry(terrain, nx, ny) && !used.has(`${nx},${ny}`))
+          return { x: nx, y: ny };
       }
     }
   }

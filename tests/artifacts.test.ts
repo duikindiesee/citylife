@@ -24,9 +24,9 @@ describe("Colony visual artifacts", () => {
       expect(item.rot).toBeLessThan(Math.PI * 2);
       expect(item.footprint.w).toBeGreaterThan(0);
       expect(item.footprint.h).toBeGreaterThan(0);
-      expect(a.state.terrain.isWater(Math.round(item.x), Math.round(item.y))).toBe(
-        false,
-      );
+      expect(
+        a.state.terrain.isWater(Math.round(item.x), Math.round(item.y)),
+      ).toBe(false);
     }
   });
 });

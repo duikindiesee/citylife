@@ -1423,7 +1423,11 @@ export class PlanetRenderer {
     fountainBowl.translate(0, 0.34, 0);
     const fountainJet = new THREE.CylinderGeometry(0.06, 0.08, 0.52, 8);
     fountainJet.translate(0, 0.72, 0);
-    const fountainGeo = mergeGeometries([fountainBase, fountainBowl, fountainJet])!;
+    const fountainGeo = mergeGeometries([
+      fountainBase,
+      fountainBowl,
+      fountainJet,
+    ])!;
     const artifactCap = 8;
     this.artifactMeshes = {
       bench: new THREE.InstancedMesh(
