@@ -291,6 +291,43 @@ describe("first-person route dogfood", () => {
     );
   });
 
+  it.each([
+    { kind: "civic", artifactKind: "market" },
+    { kind: "building", artifactKind: "habitat" },
+  ] as const)(
+    "starts a guided walk when activating a $kind prompt",
+    ({ kind, artifactKind }) => {
+      const rt = new ColonyRuntime(4242);
+      rt.sim.state.buildings = [
+        {
+          id: 9901,
+          x: 128,
+          y: 128,
+          artifact: { kind: artifactKind },
+        } as never,
+      ];
+      const me = rt.getUiState().citizens.list[0]!;
+
+      rt.enterFirstPerson(me.id);
+      expect(rt.placeFirstPersonDogfood({ x: 127, y: 128 }, 0)).toBe(true);
+      const prompt = rt.getUiState().firstPerson.view!.interactionPrompt;
+      expect(prompt?.kind).toBe(kind);
+
+      expect(rt.activateFirstPersonInteraction()).toBe(true);
+
+      const ui = rt.getUiState().firstPerson;
+      expect(ui.guidedTarget).toEqual({
+        label: prompt!.targetName,
+        x: Math.round(prompt!.targetXY.x),
+        y: Math.round(prompt!.targetXY.y),
+      });
+      expect(ui.narration).toBe(`Guiding you to ${prompt!.targetName}.`);
+      expect(JSON.stringify({ prompt, guidedTarget: ui.guidedTarget })).not.toMatch(
+        /wallet|token|secret|operator/i,
+      );
+    },
+  );
+
   it("captures deterministic first-person demo evidence for screenshot automation", () => {
     const rt = new ColonyRuntime(4242);
     const me = rt.getUiState().citizens.list[0]!;

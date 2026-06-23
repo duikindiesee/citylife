@@ -1443,7 +1443,7 @@ export class ColonyRuntime {
       building: `You inspect ${prompt.targetName}.`,
       road: `You follow ${prompt.targetName}.`,
     };
-    if (prompt.kind === "road") {
+    if (prompt.kind === "road" || prompt.kind === "civic" || prompt.kind === "building") {
       const target = {
         x: Math.round(prompt.targetXY.x),
         y: Math.round(prompt.targetXY.y),
