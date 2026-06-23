@@ -116,6 +116,12 @@ export function FirstPersonPanel({
                 .join(", ")}
             </div>
           )}
+          {fp.blockedReason && (
+            <div style={{ color: "#e0a14d" }}>
+              <span style={{ color: "#6ea8d0" }}>Blocked</span>{" "}
+              {fp.blockedReason}
+            </div>
+          )}
           {v.interactionPrompt && (
             <div>
               <span style={{ color: "#6ea8d0" }}>Action</span>{" "}

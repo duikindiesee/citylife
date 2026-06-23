@@ -10,6 +10,47 @@ function distance(
 }
 
 describe("first-person route dogfood", () => {
+  it("reports when first-person walking is blocked by water", () => {
+    const rt = new ColonyRuntime(4242);
+    const me = rt.getUiState().citizens.list[0]!;
+    const terrain = rt.sim.state.terrain;
+    let edge: { land: { x: number; y: number }; water: { x: number; y: number } } | null = null;
+    for (let y = 1; y < terrain.size - 1 && !edge; y++) {
+      for (let x = 1; x < terrain.size - 1 && !edge; x++) {
+        if (terrain.isWater(x, y)) continue;
+        for (const [dx, dy] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ] as const) {
+          const wx = x + dx;
+          const wy = y + dy;
+          if (terrain.isWater(wx, wy)) {
+            edge = { land: { x, y }, water: { x: wx, y: wy } };
+            break;
+          }
+        }
+      }
+    }
+    if (!edge) throw new Error("test terrain needs a land/water boundary");
+    rt.enterFirstPerson(me.id);
+    expect(
+      rt.placeFirstPersonDogfood(
+        edge.land,
+        Math.atan2(edge.water.y - edge.land.y, edge.water.x - edge.land.x),
+      ),
+    ).toBe(true);
+
+    rt.setFpKey("KeyW", true);
+    rt.stepFirstPersonDogfood(1);
+    rt.setFpKey("KeyW", false);
+
+    const ui = rt.getUiState();
+    expect(ui.firstPerson.view!.ground.isWater).toBe(false);
+    expect(ui.firstPerson.blockedReason).toBe("water");
+  });
+
   it("accepts browser KeyboardEvent.code movement names directly", () => {
     const rt = new ColonyRuntime(4242);
     const me = rt.getUiState().citizens.list[0]!;

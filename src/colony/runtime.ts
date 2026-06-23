@@ -518,6 +518,7 @@ export interface ColonyUiState {
     /** Step-in choices allowed for this session. Operators/admins get every citizen; CITYLIFE_PLAYER gets only their own. */
     stepInCitizenIds: string[];
     view: FirstPersonView | null;
+    blockedReason: string | null;
     narration: string | null;
     narrating: boolean;
   };
@@ -646,6 +647,7 @@ export class ColonyRuntime {
   private barSeatCells: { x: number; y: number }[] | null = null;
   private barOccupied = new Set<string>();
   private barSeatBy: (string | null)[] = [];
+  private fpBlockedReason: string | null = null;
   private fpNarration: string | null = null;
   private fpNarrating = false;
 
@@ -1280,6 +1282,7 @@ export class ColonyRuntime {
     if (!this.canStepIntoCitizen(citizenId)) return false;
     this.fpCitizenId = citizenId;
     this.fpWalkSpeed = 0;
+    this.fpBlockedReason = null;
     this.renderer?.enterFirstPerson(citizenId);
     this.emit();
     return true;
@@ -1289,6 +1292,7 @@ export class ColonyRuntime {
     this.fpCitizenId = null;
     this.fpKeys.clear();
     this.fpWalkSpeed = 0;
+    this.fpBlockedReason = null;
     this.fpNarration = null;
     this.fpNarrating = false;
     this.renderer?.exitFirstPerson();
@@ -1316,6 +1320,22 @@ export class ColonyRuntime {
     if (!m) return;
     if (down) this.fpKeys.add(m);
     else this.fpKeys.delete(m);
+  }
+
+  /** Deterministic route-dogfood hook: place the active avatar at a controlled edge before stepping. */
+  placeFirstPersonDogfood(
+    pos: { x: number; y: number },
+    heading: number,
+  ): boolean {
+    const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
+    if (!c) return false;
+    c.pos = { ...pos };
+    c.target = { ...pos };
+    c.heading = heading;
+    this.fpWalkSpeed = 0;
+    this.fpBlockedReason = null;
+    this.emit();
+    return true;
   }
 
   /** Deterministic route-dogfood hook: advance the same first-person driver used by the RAF loop. */
@@ -1403,13 +1423,14 @@ export class ColonyRuntime {
     }
   }
 
-  /** A cell is walkable if it is on the island (in-bounds, not water). */
-  private onLand(x: number, y: number): boolean {
+  /** A blocked first-person step returns a player-facing reason; null means walkable. */
+  private blockedStepReason(x: number, y: number): string | null {
     const t = this.sim.state.terrain;
     const ix = Math.round(x),
       iy = Math.round(y);
-    if (ix < 0 || iy < 0 || ix >= t.size || iy >= t.size) return false;
-    return !t.isWater(ix, iy);
+    if (ix < 0 || iy < 0 || ix >= t.size || iy >= t.size) return "edge of map";
+    if (t.isWater(ix, iy)) return "water";
+    return null;
   }
 
   /** Drive the avatar you have stepped into, from the held keys. Turns the heading and steps the
@@ -1439,11 +1460,14 @@ export class ColonyRuntime {
       const sp = this.fpWalkSpeed * dt;
       const nx = c.pos.x + Math.cos(c.heading) * sp;
       const ny = c.pos.y + Math.sin(c.heading) * sp;
-      if (this.onLand(nx, ny)) {
+      const blocked = this.blockedStepReason(nx, ny);
+      if (!blocked) {
         c.pos.x = nx;
         c.pos.y = ny;
+        this.fpBlockedReason = null;
       } else {
         this.fpWalkSpeed = 0;
+        this.fpBlockedReason = blocked;
       }
     }
     c.target = { x: c.pos.x, y: c.pos.y }; // hold the auto-walk while you drive
@@ -2929,6 +2953,7 @@ export class ColonyRuntime {
           operatorCitizenId: opId,
           stepInCitizenIds: this.stepInCitizenIds(),
           view,
+          blockedReason: this.fpBlockedReason,
           narration: this.fpNarration,
           narrating: this.fpNarrating,
         };
