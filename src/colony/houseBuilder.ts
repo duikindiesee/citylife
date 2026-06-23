@@ -403,21 +403,24 @@ function placeDoor(
 ): void {
   const half = Math.max(1, Math.floor(n / 3)); // door is ~a third of a cell wide
   const doorH = Math.min(2 * n - 1, n + Math.floor(n / 2)); // a door taller than one course
+  const top = floorSub + doorH - 1; // lintel course
+  const handleZ = floorSub + Math.floor(doorH / 2);
+  // Seat ONE door column: clear the wall, fill a solid wood leaf, cap it with a pale trim lintel, and
+  // (on the latch side) set a trim knob at mid-height. The old door was a single base course under an
+  // open hole — it read as a gap, not a door; a filled, framed leaf reads as a real entrance.
+  const seat = (gx: number, gy: number, latch: boolean): void => {
+    for (let z = floorSub; z <= top; z++) clear(g, gx, gy, z);
+    for (let z = floorSub; z < top; z++)
+      g.set(gx, gy, z, latch && z === handleZ ? "trim" : "door", true);
+    g.set(gx, gy, top, "trim", true);
+  };
   if (dir === "n" || dir === "s") {
     const cy = dir === "n" ? 0 : door.y * n + n - 1;
-    for (let dx = -half; dx <= half; dx++) {
-      const gx = doorGx + dx;
-      for (let z = floorSub; z < floorSub + doorH; z++) clear(g, gx, cy, z);
-      g.set(gx, cy, floorSub, "door", true);
-    }
+    for (let dx = -half; dx <= half; dx++) seat(doorGx + dx, cy, dx === half);
   } else {
     const cx = dir === "w" ? 0 : door.x * n + n - 1;
     const cyc = door.y * n + Math.floor(n / 2);
-    for (let dy = -half; dy <= half; dy++) {
-      const gy = cyc + dy;
-      for (let z = floorSub; z < floorSub + doorH; z++) clear(g, cx, gy, z);
-      g.set(cx, gy, floorSub, "door", true);
-    }
+    for (let dy = -half; dy <= half; dy++) seat(cx, cyc + dy, dy === half);
   }
 }
 

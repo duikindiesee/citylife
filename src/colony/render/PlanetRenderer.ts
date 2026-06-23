@@ -3588,11 +3588,12 @@ export class PlanetRenderer {
         const r = a[i]!,
           g = a[i + 1]!,
           b = a[i + 2]!;
-        // The spec-092 tint is for the MASONRY course only — a warm reddish-brown (r > g > b). Leave
-        // COOL / amenity colours alone (pool water, glass rails, plants, blue furniture) so a pool reads
-        // as actual blue water instead of a slab lerped to the house tint (the operator's "pool has no
-        // water"). Brick, tile, trim, beam and chimney are all warm, so the banded shell still varies.
-        if (!(r > g && g > b)) continue;
+        // The spec-092 tint is for the MASONRY course only — a mid/light warm reddish-brown (r > g > b,
+        // and not too dark). Leave COOL / amenity colours alone (pool water, glass rails, plants, blue
+        // furniture) so a pool reads as blue water, and leave DARK warm wood alone (the front door, dark
+        // beams) so the door reads as a door against the brick instead of lerping into it. Brick, tile and
+        // trim are mid/light warm, so the banded shell still varies per house.
+        if (!(r > g && g > b) || r < 0.2) continue;
         a[i] = r * (1 - k) + tint.r * k;
         a[i + 1] = g * (1 - k) + tint.g * k;
         a[i + 2] = b * (1 - k) + tint.b * k;
