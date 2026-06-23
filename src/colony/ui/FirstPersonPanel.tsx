@@ -116,6 +116,13 @@ export function FirstPersonPanel({
                 .join(", ")}
             </div>
           )}
+          {v.interactionPrompt && (
+            <div>
+              <span style={{ color: "#6ea8d0" }}>Action</span>{" "}
+              <b>{v.interactionPrompt.label}</b> ·{" "}
+              {Math.round(v.interactionPrompt.distance)} away
+            </div>
+          )}
           {(v.mood.hungry || v.mood.brownout || v.mood.fever > 0.4) && (
             <div style={{ color: "#e8905a", marginTop: 2 }}>
               {v.mood.hungry ? "⚠ colony hungry " : ""}

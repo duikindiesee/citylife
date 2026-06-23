@@ -20,6 +20,15 @@ export interface FirstPersonView {
     /** Current facing in radians, so narration/rendering can reason about direction. */
     heading: number;
   };
+  /** The nearest useful thing the player can interact with from this live position. */
+  interactionPrompt:
+    | {
+        kind: "citizen" | "civic" | "building" | "road";
+        label: string;
+        targetName: string;
+        distance: number;
+      }
+    | null;
   /** The patch of land the citizen's house sits on. */
   ground: {
     biome: string;
@@ -74,6 +83,10 @@ function dist(ax: number, ay: number, bx: number, by: number): number {
 
 function clampCell(n: number, size: number): number {
   return Math.max(0, Math.min(size - 1, Math.round(n)));
+}
+
+function roundDistance(n: number): number {
+  return Number(n.toFixed(1));
 }
 
 /** Pure-engine "what's around the citizen" snapshot. Returns null if the citizen is unknown. */
@@ -164,6 +177,37 @@ export function firstPersonView(
     .filter((b) => CIVIC.has(b.kind))
     .slice(0, 3);
 
+  const nearestNeighbour = allOthers[0] ?? null;
+  const interactionPrompt = nearestNeighbour
+    ? {
+        kind: "citizen" as const,
+        label: `Talk to ${nearestNeighbour.displayName}`,
+        targetName: nearestNeighbour.displayName,
+        distance: roundDistance(nearestNeighbour.distance),
+      }
+    : nearestCivic[0]
+      ? {
+          kind: "civic" as const,
+          label: `Visit ${nearestCivic[0].kind}`,
+          targetName: nearestCivic[0].kind,
+          distance: roundDistance(nearestCivic[0].distance),
+        }
+      : nearestBuildings[0]
+        ? {
+            kind: "building" as const,
+            label: `Inspect ${nearestBuildings[0].kind}`,
+            targetName: nearestBuildings[0].kind,
+            distance: roundDistance(nearestBuildings[0].distance),
+          }
+        : nearestRoad
+          ? {
+              kind: "road" as const,
+              label: "Follow road",
+              targetName: "road",
+              distance: roundDistance(nearestRoad.distance),
+            }
+          : null;
+
   return {
     citizen: {
       id: me.id,
@@ -173,6 +217,7 @@ export function firstPersonView(
       positionXY: { x: px, y: py },
       heading: me.heading,
     },
+    interactionPrompt,
     ground: {
       biome: BIOME_NAME[biome ?? -1] ?? "unknown",
       elevation: Number(elev.toFixed(3)),
