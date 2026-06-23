@@ -144,12 +144,14 @@ describe("the Neighbourhood — large homestead parcels on a terrain-aware stree
       const n = makeNeighborhood(terrain(s));
       const road = new Set(n.carriage.map((c) => `${c.x},${c.y}`));
       for (const p of n.parcels) {
-        const zones: [string, { x: number; y: number; w: number; d: number }][] =
-          [
-            ["house", p.houseZone],
-            ["garden", p.garden],
-            ["farm", p.farm],
-          ];
+        const zones: [
+          string,
+          { x: number; y: number; w: number; d: number },
+        ][] = [
+          ["house", p.houseZone],
+          ["garden", p.garden],
+          ["farm", p.farm],
+        ];
         for (const [name, z] of zones) {
           for (let y = z.y; y < z.y + z.d; y++) {
             for (let x = z.x; x < z.x + z.w; x++) {

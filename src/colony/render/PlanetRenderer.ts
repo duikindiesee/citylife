@@ -3526,7 +3526,11 @@ export class PlanetRenderer {
         BLOCK_COLOR.cropAlt,
       ];
       let grow = 0;
-      for (let yy = lot.garden.y; yy < lot.garden.y + lot.garden.d; yy++, grow++) {
+      for (
+        let yy = lot.garden.y;
+        yy < lot.garden.y + lot.garden.d;
+        yy++, grow++
+      ) {
         const bedColor = bedPalette[grow % bedPalette.length]!;
         const veg =
           bedColor === BLOCK_COLOR.crop || bedColor === BLOCK_COLOR.cropAlt;

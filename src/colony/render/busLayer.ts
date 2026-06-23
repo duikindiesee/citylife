@@ -191,7 +191,10 @@ function buildBus(): THREE.Group {
     color: 0x141620,
     roughness: 0.75,
   });
-  const hubMat = new THREE.MeshStandardMaterial({ color: 0xd8dde5, roughness: 0.35 });
+  const hubMat = new THREE.MeshStandardMaterial({
+    color: 0xd8dde5,
+    roughness: 0.35,
+  });
   const routeMat = new THREE.MeshStandardMaterial({
     color: 0x1f2937,
     emissive: 0xffd66b,
@@ -215,7 +218,10 @@ function buildBus(): THREE.Group {
   const body = new THREE.Mesh(new THREE.BoxGeometry(2.55, 0.72, 0.86), bodyMat);
   body.name = "bus-body";
   body.position.y = 0.58;
-  const beltLine = new THREE.Mesh(new THREE.BoxGeometry(2.62, 0.08, 0.9), trimMat);
+  const beltLine = new THREE.Mesh(
+    new THREE.BoxGeometry(2.62, 0.08, 0.9),
+    trimMat,
+  );
   beltLine.name = "bus-lower-belt-line";
   beltLine.position.y = 0.38;
   const roof = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.13, 0.84), bodyMat);
@@ -233,7 +239,10 @@ function buildBus(): THREE.Group {
   addWheelPair(g, wheelMat, hubMat, 0.82, "front");
   addLights(g, headlightMat, tailLightMat);
 
-  const roofMarker = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.18), routeMat);
+  const roofMarker = new THREE.Mesh(
+    new THREE.BoxGeometry(0.42, 0.08, 0.18),
+    routeMat,
+  );
   roofMarker.name = "bus-roof-marker";
   roofMarker.position.set(0.22, 1.09, 0);
   g.add(roofMarker);
@@ -256,15 +265,25 @@ function addWindowStrip(
 ): void {
   const xs = [-0.68, -0.18, 0.34, 0.82];
   xs.forEach((x, i) => {
-    const window = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.25, 0.035), material);
+    const window = new THREE.Mesh(
+      new THREE.BoxGeometry(0.34, 0.25, 0.035),
+      material,
+    );
     window.name = `bus-side-window-${side}-${i}`;
     window.position.set(x, 0.82, z);
     bus.add(window);
   });
 }
 
-function addWindscreen(bus: THREE.Group, material: THREE.Material, x: number): void {
-  const windscreen = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.32, 0.56), material);
+function addWindscreen(
+  bus: THREE.Group,
+  material: THREE.Material,
+  x: number,
+): void {
+  const windscreen = new THREE.Mesh(
+    new THREE.BoxGeometry(0.045, 0.32, 0.56),
+    material,
+  );
   windscreen.name = "bus-windscreen";
   windscreen.position.set(x, 0.82, 0);
   bus.add(windscreen);
@@ -276,7 +295,10 @@ function addRouteBoard(
   x: number,
   end: "front" | "rear",
 ): void {
-  const board = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 0.5), material);
+  const board = new THREE.Mesh(
+    new THREE.BoxGeometry(0.05, 0.16, 0.5),
+    material,
+  );
   board.name = `bus-route-board-${end}`;
   board.position.set(x, 0.99, 0);
   bus.add(board);
@@ -287,7 +309,10 @@ function addDoors(bus: THREE.Group, material: THREE.Material): void {
     ["bus-door-left", 0.463],
     ["bus-door-right", -0.463],
   ] as const) {
-    const door = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.58, 0.035), material);
+    const door = new THREE.Mesh(
+      new THREE.BoxGeometry(0.34, 0.58, 0.035),
+      material,
+    );
     door.name = name;
     door.position.set(0.2, 0.58, z);
     bus.add(door);
@@ -305,11 +330,17 @@ function addWheelPair(
     ["left", 0.46],
     ["right", -0.46],
   ] as const) {
-    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.14, 14), wheelMat);
+    const wheel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.18, 0.18, 0.14, 14),
+      wheelMat,
+    );
     wheel.name = `bus-wheel-${axle}-${side}`;
     wheel.rotation.x = Math.PI / 2;
     wheel.position.set(x, 0.2, z);
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.145, 12), hubMat);
+    const hub = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.08, 0.145, 12),
+      hubMat,
+    );
     hub.name = `bus-wheel-hub-${axle}-${side}`;
     hub.rotation.x = Math.PI / 2;
     hub.position.copy(wheel.position);
@@ -326,10 +357,16 @@ function addLights(
     ["left", 0.24],
     ["right", -0.24],
   ] as const) {
-    const headlight = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.1, 0.12), headlightMat);
+    const headlight = new THREE.Mesh(
+      new THREE.BoxGeometry(0.035, 0.1, 0.12),
+      headlightMat,
+    );
     headlight.name = `bus-headlight-${side}`;
     headlight.position.set(1.32, 0.5, z);
-    const tailLight = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.1, 0.12), tailLightMat);
+    const tailLight = new THREE.Mesh(
+      new THREE.BoxGeometry(0.035, 0.1, 0.12),
+      tailLightMat,
+    );
     tailLight.name = `bus-tail-light-${side}`;
     tailLight.position.set(-1.32, 0.5, z);
     bus.add(headlight, tailLight);
