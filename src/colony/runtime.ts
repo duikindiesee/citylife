@@ -1551,7 +1551,11 @@ export class ColonyRuntime {
       this.fpWalkSpeed = Math.max(targetSpeed, this.fpWalkSpeed - rate * dt);
     }
     if (Math.abs(this.fpWalkSpeed) > 0.001) {
-      const sp = this.fpWalkSpeed * dt;
+      const cellKey = `${Math.round(c.pos.x)},${Math.round(c.pos.y)}`;
+      const surfaceMultiplier = this.sim.state.roadSet.has(cellKey)
+        ? cfg.roadWalkSpeedMultiplier
+        : cfg.offRoadWalkSpeedMultiplier;
+      const sp = this.fpWalkSpeed * surfaceMultiplier * dt;
       const nx = c.pos.x + Math.cos(c.heading) * sp;
       const ny = c.pos.y + Math.sin(c.heading) * sp;
       const blocked = this.blockedStepReason(nx, ny, c.pos);

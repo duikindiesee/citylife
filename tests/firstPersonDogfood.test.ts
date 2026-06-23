@@ -88,6 +88,71 @@ describe("first-person route dogfood", () => {
     expect(ui.firstPerson.blockedReason).toBe("parcel");
   });
 
+  it("walks faster on roads than off-road terrain", () => {
+    const rt = new ColonyRuntime(4242);
+    const me = rt.getUiState().citizens.list[0]!;
+    const terrain = rt.sim.state.terrain;
+    const blocked = (x: number, y: number) => {
+      const key = `${x},${y}`;
+      return (
+        terrain.isWater(x, y) ||
+        rt.sim.state.buildings.some(
+          (b) => Math.round(b.x) === x && Math.round(b.y) === y,
+        ) ||
+        (rt.sim.state.occupied.has(key) && !rt.sim.state.roadSet.has(key))
+      );
+    };
+    let roadStart: { x: number; y: number } | null = null;
+    for (const road of rt.sim.state.roads) {
+      const x = Math.round(road.x);
+      const y = Math.round(road.y);
+      if (
+        x > 0 &&
+        x < terrain.size - 2 &&
+        y > 0 &&
+        y < terrain.size - 1 &&
+        rt.sim.state.roadSet.has(`${x},${y}`) &&
+        !blocked(x, y) &&
+        !blocked(x + 1, y)
+      ) {
+        roadStart = { x, y };
+        break;
+      }
+    }
+    let offRoadStart: { x: number; y: number } | null = null;
+    for (let y = 1; y < terrain.size - 1 && !offRoadStart; y++) {
+      for (let x = 1; x < terrain.size - 2 && !offRoadStart; x++) {
+        if (
+          !rt.sim.state.roadSet.has(`${x},${y}`) &&
+          !rt.sim.state.roadSet.has(`${x + 1},${y}`) &&
+          !blocked(x, y) &&
+          !blocked(x + 1, y)
+        ) {
+          offRoadStart = { x, y };
+        }
+      }
+    }
+    if (!roadStart || !offRoadStart) throw new Error("test terrain needs road and off-road lanes");
+
+    rt.enterFirstPerson(me.id);
+    expect(rt.placeFirstPersonDogfood(roadStart, 0)).toBe(true);
+    rt.setFpKey("KeyW", true);
+    rt.stepFirstPersonDogfood(0.3);
+    rt.setFpKey("KeyW", false);
+    const roadAfter = rt.getUiState().firstPerson.view!.citizen.positionXY;
+    const roadDistance = distance(roadStart, roadAfter);
+
+    expect(rt.placeFirstPersonDogfood(offRoadStart, 0)).toBe(true);
+    rt.setFpKey("KeyW", true);
+    rt.stepFirstPersonDogfood(0.3);
+    rt.setFpKey("KeyW", false);
+    const offRoadAfter = rt.getUiState().firstPerson.view!.citizen.positionXY;
+    const offRoadDistance = distance(offRoadStart, offRoadAfter);
+
+    expect(roadDistance).toBeGreaterThan(offRoadDistance * 1.1);
+    expect(rt.getUiState().firstPerson.blockedReason).toBeNull();
+  });
+
   it("reports when first-person walking is blocked by water", () => {
     const rt = new ColonyRuntime(4242);
     const me = rt.getUiState().citizens.list[0]!;
