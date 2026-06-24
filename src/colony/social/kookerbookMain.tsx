@@ -3,7 +3,7 @@
 // the page reads the same-origin kookerbook + blueprint stores directly (and overlays the backend
 // when it answers), so it works without the game tab. Every control carries data-kb-action so a
 // bot can drive it like the builder.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
 import * as THREE from "three";
 import {
@@ -33,7 +33,7 @@ function houseScriptFor(citizenId: string): string | null {
 }
 
 /** A small static 3D render of the citizen's own designed house (their blueprint, their bricks). */
-function HouseCard({ script }: { script: string }) {
+function HouseCard({ script, style }: { script: string; style?: CSSProperties }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const host = hostRef.current;
@@ -54,6 +54,9 @@ function HouseCard({ script }: { script: string }) {
         H = 220;
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(W, H);
+      renderer.domElement.style.display = "block";
+      renderer.domElement.style.width = "100%";
+      renderer.domElement.style.maxWidth = "100%";
       host.appendChild(renderer.domElement);
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x101626);
@@ -93,7 +96,7 @@ function HouseCard({ script }: { script: string }) {
     <div
       ref={hostRef}
       data-kb-area="house-render"
-      style={{ borderRadius: 8, overflow: "hidden" }}
+      style={{ borderRadius: 8, overflow: "hidden", ...style }}
     />
   );
 }
@@ -314,7 +317,7 @@ function App() {
               <div style={{ opacity: 0.6, fontSize: 12, marginBottom: 6 }}>
                 their home — designed by them, rebuilt from their blueprint
               </div>
-              <HouseCard script={houseScript} />
+              <HouseCard script={houseScript} style={layout.houseRender} />
             </div>
           )}
           <h3 style={{ marginBottom: 6 }}>Timeline</h3>

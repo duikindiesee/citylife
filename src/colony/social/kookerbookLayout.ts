@@ -8,6 +8,7 @@ export type KookerbookResponsiveLayout = {
   directory: Pick<CSSProperties, "width" | "maxWidth" | "flexShrink">;
   directoryLink: Pick<CSSProperties, "minHeight">;
   profile: Pick<CSSProperties, "width" | "maxWidth" | "minWidth">;
+  houseRender: Pick<CSSProperties, "width" | "maxWidth" | "minWidth">;
   contentText: Pick<CSSProperties, "minWidth" | "overflowWrap" | "wordBreak">;
 };
 
@@ -32,6 +33,7 @@ export function kookerbookLayoutForViewport(
       directory: { width: "auto", maxWidth: "100%", flexShrink: 1 },
       directoryLink: { minHeight: 44 },
       profile: { width: "auto", maxWidth: "100%", minWidth: 0 },
+      houseRender: { width: "100%", maxWidth: "100%", minWidth: 0 },
       contentText: WRAPPING_TEXT,
     };
   }
@@ -47,6 +49,7 @@ export function kookerbookLayoutForViewport(
     directory: { width: 320, maxWidth: 320, flexShrink: 0 },
     directoryLink: { minHeight: 44 },
     profile: { width: "auto", maxWidth: 760, minWidth: 0 },
+    houseRender: { width: "100%", maxWidth: "100%", minWidth: 0 },
     contentText: WRAPPING_TEXT,
   };
 }
