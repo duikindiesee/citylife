@@ -202,8 +202,6 @@ function App() {
     <div
       style={{
         display: "flex",
-        gap: 16,
-        padding: 16,
         minHeight: "100vh",
         boxSizing: "border-box",
         background: "#0a0e18",
