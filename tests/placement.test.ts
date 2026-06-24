@@ -6,6 +6,7 @@ import { autoGrow } from "../src/colony/build";
 import type { KookerCard } from "../src/colony/kooker";
 import { RNG } from "../src/engine/rng";
 import { Biome, Terrain } from "../src/colony/terrain";
+import { cellOk } from "../src/colony/pathfind";
 
 describe("Base placement (rocket / solar / battery / caravan)", () => {
   const seeds = [1, 7, 42, 99, 123, 314, 777, 2026];
@@ -93,6 +94,8 @@ describe("Base placement (rocket / solar / battery / caravan)", () => {
         const i = s.terrain.idx(rally!.x, rally!.y);
         expect(s.terrain.isWater(rally!.x, rally!.y)).toBe(false);
         expect(s.terrain.buildable[i]).not.toBe(0); // reachable: a spur road can grade to it
+        // R3.5 — must be road/walk-traversable (cellOk rejects Mountain/Peak) or nothing can reach it
+        expect(cellOk(s.terrain, rally!.x, rally!.y)).toBe(true);
         const again = new ColonySim(seed);
         expect(
           again.state.structures.find((st) => st.kind === "rally"),

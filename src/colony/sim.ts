@@ -152,9 +152,10 @@ export interface RallyPlacementOptions {
 }
 
 /** Spec 097 — the Rally Overlook: a deterministic HILLTOP with a commanding view of the colony,
- *  used as the race rendezvous point (a bus-stop on a hill). High ground (Highland/Mountain, never a
- *  sheer Peak that a road connector cannot reach), footprint-clear so a spur road can later reach it,
- *  and kept within reach of the landing so it overlooks the city. No Math.random — seed-deterministic. */
+ *  used as the race rendezvous point (a bus-stop on a hill). High ground that is road/walk-TRAVERSABLE
+ *  (Highland — never Mountain or Peak, which pathfind cellOk rejects, so no spur road or guided walk
+ *  could ever reach it), footprint-clear so a spur road can reach it, and kept within reach of the
+ *  landing so it overlooks the city. No Math.random — seed-deterministic. */
 export function findRallyOverlookSite(
   terrain: Terrain,
   options: RallyPlacementOptions = {},
@@ -179,10 +180,61 @@ export function findRallyOverlookSite(
         if (terrain.isWater(nx, ny)) return false;
         // buildable === 0 is too steep to grade/reach — a connector road could never get there.
         if (terrain.buildable[terrain.idx(nx, ny)] === 0) return false;
+        // Mountain / Peak are NOT traversable (pathfind cellOk rejects them), so neither a spur road
+        // nor the guided walk could ever reach a rally placed on them — keep the whole footprint on
+        // reachable high ground.
+        const fb = terrain.biome[terrain.idx(nx, ny)];
+        if (fb === Biome.Mountain || fb === Biome.Peak) return false;
       }
     }
     return true;
   };
+  // Spec 097 R3.5 — flood-fill the land reachable from the landing over TRAVERSABLE cells (the same
+  // rule pathfind cellOk uses: not Mountain / Peak / water / unbuildable). A rally on an isolated
+  // Highland patch ringed by Mountain is useless — no spur road or guided walk could ever climb to it —
+  // so only cells in this connected component qualify.
+  const N2 = terrain.size;
+  const trav = (x: number, y: number): boolean => {
+    if (x < 0 || y < 0 || x >= N2 || y >= N2) return false;
+    const i = terrain.idx(x, y);
+    if (terrain.buildable[i] === 0) return false;
+    if (terrain.isWater(x, y)) return false;
+    const b = terrain.biome[i];
+    return (
+      b !== Biome.Mountain &&
+      b !== Biome.Peak &&
+      b !== Biome.Ocean &&
+      b !== Biome.Shallows
+    );
+  };
+  const reachable = new Uint8Array(N2 * N2);
+  let reachCount = 0;
+  if (trav(anchor.x, anchor.y)) {
+    const queue = [terrain.idx(anchor.x, anchor.y)];
+    reachable[queue[0]!] = 1;
+    reachCount = 1;
+    for (let head = 0; head < queue.length; head++) {
+      const ci = queue[head]!;
+      const cx = ci % N2,
+        cy = (ci / N2) | 0;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const nx = cx + dx,
+          ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= N2 || ny >= N2) continue;
+        const ni = terrain.idx(nx, ny);
+        if (reachable[ni] || !trav(nx, ny)) continue;
+        reachable[ni] = 1;
+        reachCount++;
+        queue.push(ni);
+      }
+    }
+  }
+  const haveReachable = reachCount > 0;
   let best: { x: number; y: number; score: number } | null = null;
   const y0 = Math.max(1, anchor.y - maxRadius),
     y1 = Math.min(terrain.size - 2, anchor.y + maxRadius);
@@ -195,17 +247,14 @@ export function findRallyOverlookSite(
       if (!usedClear(x, y)) continue;
       if (!footprintClear(x, y)) continue;
       const i = terrain.idx(x, y);
+      // must be connected to the colony road network, or the spur road / walk can never reach it
+      if (haveReachable && !reachable[i]) continue;
       const biome = terrain.biome[i] as Biome;
       const elev = terrain.worldY(x, y);
-      // want a commanding overlook: high ground, but a sheer Peak is unreachable/too steep to connect.
+      // want a commanding overlook on the highest REACHABLE ground — Highland (Mountain and Peak are
+      // excluded by footprintClear because roads and the guided walk cannot traverse them).
       const biomeBonus =
-        biome === Biome.Mountain
-          ? 18
-          : biome === Biome.Highland
-            ? 12
-            : biome === Biome.Peak
-              ? 4
-              : 0;
+        biome === Biome.Highland ? 18 : biome === Biome.Forest ? 6 : 0;
       // prominence: how much this cell stands above its surroundings (a true lookout, not a slope).
       let around = 0,
         n = 0;

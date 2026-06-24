@@ -27,9 +27,18 @@ It turns the road network into a destination ritual, not just background infrast
 - **R3 — first-person "walk to rally" (planned).** `runtime.goToRallyPoint()` reusing the civic
   guided-walk (`fpGuidedTarget` + `citizens.setTarget` + `driveFirstPersonGuided` + `leastCostPath`)
   and a HUD button. (A structure does not auto-surface as an Action prompt — use the explicit method.)
-- **R3.5 — spur road connector (planned).** Route a road from the nearest terminus to the rally cell
-  (`leastCostPath` + `layRoad` + `mergeAvenue`) in the runtime constructor, mirroring the commercial
-  connector, so both the walk and the race-start can reach the hilltop.
+- **R3.5a — reachable placement (BUILT).** The first cut placed the rally on a **Mountain** cell, which
+  `pathfind.cellOk` rejects — so neither the guided walk nor a spur road could ever reach it.
+  `findRallyOverlookSite` now (1) excludes Mountain/Peak from the footprint and (2) flood-fills the land
+  reachable from the landing over traversable cells and only accepts a rally cell in that connected
+  component. The rally now lands on the highest **Highland** overlook that is genuinely walk-reachable
+  (verified: cellOk true on all 8 seeds; the R3 guided walk can now arrive on foot).
+- **R3.5b — spur road connector (DEFERRED, root cause logged).** A one-shot connector laid in the
+  runtime road-setup does NOT work: the roads near a remote hilltop only appear as the colony GROWS
+  (this setup runs once, before them), and a bounded BFS/`leastCostPath` to the initial trunk network
+  did not reach across the terrain at setup. The dedicated RACE spur needs to either re-run as the road
+  network grows (a `roadsVersion` hook) or lay a long trunk connector with a wider search — a follow-up.
+  Until then the rally is walk-reachable (R3.5a) but not yet road-connected for the race start (R5).
 - **R4 — presence tracking (planned).** `rallyPresentCount` = avatars within ~1.2 cells of the rally
   cell each tick, modelled on the bar-seat presence (`barSeatCells`/`barOccupied`). Include the
   first-person operator avatar; exclude idle wanderers; reset on race start / exit / day boundary.
