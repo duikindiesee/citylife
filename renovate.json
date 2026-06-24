@@ -1,6 +1,4 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "local>duikindiesee/renovate-config"
-  ]
+  "extends": ["local>duikindiesee/renovate-config"]
 }
