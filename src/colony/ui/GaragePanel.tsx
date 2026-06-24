@@ -117,6 +117,51 @@ export function GaragePanel({
         })}
       </div>
 
+      <div
+        className="garage-panel__paint"
+        style={{ display: "flex", flexDirection: "column", gap: 4 }}
+      >
+        <span style={{ color: "#7ab0d0", fontSize: 11, fontWeight: 700 }}>
+          Paint
+        </span>
+        {garage.paint.map((row) => (
+          <div
+            key={row.channel}
+            style={{ display: "flex", alignItems: "center", gap: 5 }}
+          >
+            <span style={{ color: "#7ab0d0", fontSize: 10, width: 44 }}>
+              {row.label}
+            </span>
+            <div style={{ display: "flex", gap: 4 }}>
+              {row.options.map((c) => {
+                const hex = `#${c.toString(16).padStart(6, "0")}`;
+                const on = c === row.current;
+                return (
+                  <button
+                    key={c}
+                    data-build-action={`paint-${row.channel}-${hex.slice(1)}`}
+                    aria-label={`${row.label} ${hex}`}
+                    title={`${row.label} ${hex}`}
+                    onClick={() => runtime.setCarPaint(row.channel, c)}
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 4,
+                      cursor: "pointer",
+                      background: hex,
+                      border: on
+                        ? "2px solid #ffffff"
+                        : "1px solid rgba(255,255,255,0.25)",
+                      boxShadow: on ? "0 0 4px rgba(255,255,255,0.6)" : "none",
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
       {garage.bonnetOpen && (
         <div
           className="garage-panel__bonnet"

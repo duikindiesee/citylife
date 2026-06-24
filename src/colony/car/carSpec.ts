@@ -33,9 +33,22 @@ export const STOCK_STATS: CarStatVector = {
   braking: 0.5,
 };
 
-const BODY_PALETTE = [0xd64545, 0xe0a24d, 0x4d8be0, 0x4dbf73, 0xb84de0, 0xe0d24d];
-const CABIN_PALETTE = [0x2a2d33, 0x3a3f47, 0x52341f, 0x1f3a52];
-const ACCENT_PALETTE = [0xffd25a, 0xff6a55, 0xf4f4f0, 0x39d353];
+/** The three repaintable channels of a car (Slice H — paint customisation). */
+export type PaintChannel = "body" | "cabin" | "accent";
+
+export const BODY_PALETTE = [
+  0xd64545, 0xe0a24d, 0x4d8be0, 0x4dbf73, 0xb84de0, 0xe0d24d,
+];
+export const CABIN_PALETTE = [0x2a2d33, 0x3a3f47, 0x52341f, 0x1f3a52];
+export const ACCENT_PALETTE = [0xffd25a, 0xff6a55, 0xf4f4f0, 0x39d353];
+
+/** The selectable swatches per channel — the curated palette the garage paint UI offers. A repaint is
+ *  only accepted when the colour is one of these, so paint stays curated and deterministic. */
+export const PAINT_PALETTES: Record<PaintChannel, number[]> = {
+  body: BODY_PALETTE,
+  cabin: CABIN_PALETTE,
+  accent: ACCENT_PALETTE,
+};
 
 const clamp01 = (n: unknown): number =>
   typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.5;

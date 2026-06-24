@@ -96,6 +96,7 @@ import {
 } from "./ledger";
 import { plotPriceKook, kookToZar, starterDeposit } from "./land";
 import { loadCar, saveCar } from "./car/garageStore";
+import { PAINT_PALETTES, type PaintChannel } from "./car/carSpec";
 import {
   CAR_PARTS,
   validCarParts,
@@ -655,6 +656,13 @@ export interface ColonyUiState {
       price: number;
       sellerName: string;
       mine: boolean;
+    }[];
+    // Spec 096 H — the car's paint: each repaintable channel, its current colour and the palette options.
+    paint: {
+      channel: "body" | "cabin" | "accent";
+      label: string;
+      current: number;
+      options: number[];
     }[];
   } | null;
   // Spec 097 R4 — live presence at the hilltop Rally Point (the race rendezvous); null if no rally.
@@ -1558,6 +1566,21 @@ export class ColonyRuntime {
     const car = loadCar(id);
     const next = validCarParts(car.parts).filter((k) => k !== kind);
     saveCar(id, { ...car, parts: next });
+    this.updateOperatorCar();
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 H — repaint a channel of the signed-in player's car. The colour must be one of the curated
+   *  palette swatches for that channel (so paint stays curated + deterministic). Updates the stored car
+   *  and the in-world mesh. No-op without an operator, for an unknown channel, or an off-palette colour. */
+  setCarPaint(channel: string, color: number): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const palette = PAINT_PALETTES[channel as PaintChannel];
+    if (!palette || !palette.includes(color)) return false;
+    const car = loadCar(id);
+    saveCar(id, { ...car, paint: { ...car.paint, [channel]: color } });
     this.updateOperatorCar();
     this.emit();
     return true;
@@ -4071,6 +4094,18 @@ export class ColonyRuntime {
             price: l.price,
             sellerName: this.citizens.byId(l.sellerCitizenId)?.displayName ?? "a citizen",
             mine: l.sellerCitizenId === id,
+          })),
+          paint: (
+            [
+              { channel: "body", label: "Body" },
+              { channel: "cabin", label: "Cabin" },
+              { channel: "accent", label: "Accent" },
+            ] as const
+          ).map((p) => ({
+            channel: p.channel,
+            label: p.label,
+            current: car.paint[p.channel],
+            options: PAINT_PALETTES[p.channel],
           })),
         };
       })(),
