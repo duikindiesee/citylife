@@ -654,6 +654,7 @@ export interface ColonyUiState {
         category: "performance" | "cosmetic";
         cost: number;
         owned: boolean;
+        effects: { label: string; up: boolean }[];
       }[];
     }[];
     // Spec 096 G — the Kookerbook car-part classifieds board (public listings, city coin).
@@ -4120,6 +4121,7 @@ export class ColonyRuntime {
                 category: CAR_PARTS[k].category,
                 cost: CAR_PARTS[k].cost,
                 owned: owned.has(k),
+                effects: this.partEffects(k),
               })),
             };
           }),

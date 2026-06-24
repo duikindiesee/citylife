@@ -70,4 +70,20 @@ describe("open bonnet / engine bay (096 F)", () => {
       label: "Supercharger blower",
     });
   });
+
+  it("shows each engine-bay part's handling effect badges", () => {
+    const rt = new ColonyRuntime(4242);
+    const me = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(me.displayName);
+    const engine = rt
+      .getUiState()
+      .garage!.engineBay.find((s) => s.socket === "engine")!;
+    const blower = engine.parts.find((p) => p.kind === "blower")!;
+    // the bonnet view is where the biggest stat decisions are made, so it shows the trade-off too
+    expect(blower.effects).toEqual([
+      { label: "Spd", up: true },
+      { label: "Acc", up: true },
+      { label: "Grip", up: false },
+    ]);
+  });
 });
