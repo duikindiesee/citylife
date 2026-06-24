@@ -16,9 +16,15 @@ export type KookerbookResponsiveLayout = {
     | "padding"
     | "boxSizing"
   >;
-  panel: Pick<CSSProperties, "maxWidth" | "minWidth" | "overflowX" | "boxSizing">;
+  panel: Pick<
+    CSSProperties,
+    "maxWidth" | "minWidth" | "overflowX" | "boxSizing"
+  >;
   directory: Pick<CSSProperties, "width" | "maxWidth" | "flexShrink">;
-  directoryLink: Pick<CSSProperties, "minHeight" | "width" | "maxWidth" | "boxSizing">;
+  directoryLink: Pick<
+    CSSProperties,
+    "minHeight" | "width" | "maxWidth" | "boxSizing"
+  >;
   profile: Pick<CSSProperties, "width" | "maxWidth" | "minWidth" | "boxSizing">;
   profileHeader: Pick<CSSProperties, "flexDirection" | "alignItems">;
   houseRender: Pick<CSSProperties, "width" | "maxWidth" | "minWidth">;
