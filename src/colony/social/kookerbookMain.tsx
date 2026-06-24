@@ -18,6 +18,7 @@ import { compileBlueprint, VOXEL_Y } from "../houseBuilder";
 import { greedyMesh } from "../render/voxelMesh";
 import type { KbProfile, KbPost } from "./kookerbook";
 import {
+  kookerbookCanonicalProfileUrl,
   kookerbookInitialSelection,
   kookerbookProfileUrl,
 } from "./kookerbookNav";
@@ -136,13 +137,17 @@ function App() {
     });
   }, []);
   const profiles = useMemo(() => Object.values(map), [map]);
+  const profileIds = useMemo(() => profiles.map((p) => p.citizenId), [profiles]);
   const initialSelection =
     typeof window === "undefined"
       ? null
-      : kookerbookInitialSelection(
-          window.location.href,
-          profiles.map((p) => p.citizenId),
-        );
+      : kookerbookInitialSelection(window.location.href, profileIds);
+  useEffect(() => {
+    if (typeof window === "undefined" || profileIds.length === 0) return;
+    const nextUrl = kookerbookCanonicalProfileUrl(window.location.href, profileIds);
+    if (nextUrl && nextUrl !== window.location.href)
+      window.history.replaceState(null, "", nextUrl);
+  }, [profileIds]);
   const selected =
     sel && map[sel]
       ? map[sel]

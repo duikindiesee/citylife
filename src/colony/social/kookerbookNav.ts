@@ -23,3 +23,11 @@ export function kookerbookInitialSelection(
   if (!requested || !isKookerbookCitizenId(requested)) return firstLoaded;
   return loadedCitizenIds.includes(requested) ? requested : firstLoaded;
 }
+
+export function kookerbookCanonicalProfileUrl(
+  currentHref: string,
+  loadedCitizenIds: readonly string[],
+): string | null {
+  const selected = kookerbookInitialSelection(currentHref, loadedCitizenIds);
+  return selected ? kookerbookProfileUrl(currentHref, selected) : null;
+}

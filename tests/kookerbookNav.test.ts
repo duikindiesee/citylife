@@ -3,6 +3,7 @@ import {
   kookerbookProfileUrl,
   isKookerbookCitizenId,
   kookerbookInitialSelection,
+  kookerbookCanonicalProfileUrl,
 } from "../src/colony/social/kookerbookNav";
 
 describe("Kookerbook in-browser navigation", () => {
@@ -47,5 +48,30 @@ describe("Kookerbook in-browser navigation", () => {
         ids,
       ),
     ).toBe("citizen_joe");
+  });
+
+  it("canonicalizes stale or unsafe direct links to the selected loaded profile", () => {
+    const ids = ["citizen_joe", "citizen_jack"];
+
+    expect(
+      kookerbookCanonicalProfileUrl(
+        "https://citylife.example/kookerbook.html?citizen=citizen_jack&debug=1#directory",
+        ids,
+      ),
+    ).toBe("https://citylife.example/kookerbook.html?citizen=citizen_jack#directory");
+
+    expect(
+      kookerbookCanonicalProfileUrl(
+        "https://citylife.example/kookerbook.html?citizen=../admin&debug=1#directory",
+        ids,
+      ),
+    ).toBe("https://citylife.example/kookerbook.html?citizen=citizen_joe#directory");
+
+    expect(
+      kookerbookCanonicalProfileUrl(
+        "https://citylife.example/kookerbook.html?citizen=citizen_missing&debug=1#directory",
+        ids,
+      ),
+    ).toBe("https://citylife.example/kookerbook.html?citizen=citizen_joe#directory");
   });
 });
