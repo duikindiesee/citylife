@@ -26,15 +26,20 @@ export interface VisualArtifact {
   rot: number;
   footprint: ArtifactFootprint;
   category: ArtifactCategory;
+  isPublicSafe: true;
 }
 
 export interface ArtifactCatalogEntry {
   kind: ArtifactKind;
   category: ArtifactCategory;
   footprint: ArtifactFootprint;
+  isPublicSafe: true;
 }
 
-interface CatalogSeed extends ArtifactCatalogEntry {
+interface CatalogSeed {
+  kind: ArtifactKind;
+  category: ArtifactCategory;
+  footprint: ArtifactFootprint;
   offset: { x: number; y: number };
   rot: number;
 }
@@ -78,6 +83,7 @@ export function artifactCatalogEntries(): ArtifactCatalogEntry[] {
       kind,
       category,
       footprint: Object.freeze({ ...footprint }),
+      isPublicSafe: true as const,
     }),
   );
 }
@@ -171,6 +177,7 @@ export function createVisualArtifacts(terrain: Terrain): VisualArtifact[] {
       rot: seed.rot,
       footprint: { ...seed.footprint },
       category: seed.category,
+      isPublicSafe: true,
     };
   });
 }
