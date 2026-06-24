@@ -13,6 +13,7 @@ export interface TarentaalBird {
   heading: number;
   behavior: TarentaalBehavior;
   followId: number | null;
+  isPublicSafe: true;
 }
 
 interface Point {
@@ -95,6 +96,7 @@ export function createTarentaalFlock(
       heading: angle,
       behavior: "forage",
       followId: null,
+      isPublicSafe: true,
     });
   }
   for (let i = 0; i < COLONY.tarentaal.chicks; i++) {
@@ -117,6 +119,7 @@ export function createTarentaalFlock(
       heading: adult.heading,
       behavior: "follow",
       followId: adult.id,
+      isPublicSafe: true,
     });
   }
   return birds;

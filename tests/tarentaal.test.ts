@@ -15,6 +15,9 @@ describe("Colony tarentaal flock", () => {
       a.state.tarentaal.filter((bird) => bird.age === "chick"),
     ).toHaveLength(6);
     expect(
+      a.state.tarentaal.every((bird) => bird.isPublicSafe === true),
+    ).toBe(true);
+    expect(
       a.state.tarentaal.every(
         (bird) =>
           !a.state.terrain.isWater(Math.round(bird.x), Math.round(bird.y)),

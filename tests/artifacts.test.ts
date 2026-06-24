@@ -78,6 +78,7 @@ describe("Colony visual artifacts", () => {
     ]);
 
     for (const item of a.state.artifacts) {
+      expect(item.isPublicSafe).toBe(true);
       expect(typeof item.x).toBe("number");
       expect(typeof item.y).toBe("number");
       expect(item.rot).toBeGreaterThanOrEqual(0);
