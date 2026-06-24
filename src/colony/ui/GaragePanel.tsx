@@ -45,6 +45,10 @@ export function GaragePanel({
         🔧 Garage · {garage.carName} · ₭{garage.walletK}
       </span>
 
+      <span style={{ color: "#9fd4a6", fontSize: 11, fontWeight: 700 }}>
+        Tune rating ★ {garage.tunePoints} / 100
+      </span>
+
       <button
         data-build-action="jump-to-car"
         title="Drop into first person beside your parked car"

@@ -621,6 +621,8 @@ export interface ColonyUiState {
   garage: {
     carName: string;
     walletK: number;
+    /** Spec 096 — a single 0..100 headline build rating (50 = stock); rises as performance parts go on. */
+    tunePoints: number;
     stats: {
       topSpeed: number;
       acceleration: number;
@@ -4071,10 +4073,18 @@ export class ColonyRuntime {
           spoiler: "Spoiler",
         };
         const allKinds = Object.keys(CAR_PARTS) as CarPartKind[];
+        const stats = deriveStats(car);
+        // Spec 096 (PLAN 1.3) — a single headline build rating out of 100 derived from the effective
+        // stats: a stock car (all 0.5) reads 50, and every performance part pushes it toward 100.
+        const tunePoints = Math.round(
+          (stats.topSpeed + stats.acceleration + stats.grip + stats.braking) *
+            25,
+        );
         return {
           carName: car.name,
           walletK: this.walletK(id),
-          stats: deriveStats(car),
+          stats,
+          tunePoints,
           parts: allKinds.map((k) => {
             const d = CAR_PARTS[k];
             return {
