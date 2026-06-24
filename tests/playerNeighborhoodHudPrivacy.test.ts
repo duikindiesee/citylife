@@ -3,6 +3,7 @@ import {
   homesteadActionVisibility,
   homesteadHudTitle,
   lotHudCopy,
+  workstationMarkerTitle,
 } from "../src/colony/ui/ColonyApp";
 import { isPublicSafe } from "../src/colony/newcomers";
 
@@ -96,5 +97,22 @@ describe("player neighborhood HUD privacy", () => {
       showDemolish: true,
       showEvict: true,
     });
+  });
+
+  it("hides workstation infrastructure details from player HUD help copy", () => {
+    const title = workstationMarkerTitle({ playerScoped: true });
+
+    expect(title).toBe(
+      "This home has a resident workstation for public in-city activity.",
+    );
+    expect(title).not.toMatch(/bot|intranet|cluster|internal|Hermes|agent|URL/i);
+    expect(isPublicSafe(title)).toBe(true);
+  });
+
+  it("keeps workstation infrastructure details in operator HUD help copy", () => {
+    const title = workstationMarkerTitle({ playerScoped: false });
+
+    expect(title).toContain("bots-only intranet");
+    expect(title).toContain("cluster-internal");
   });
 });

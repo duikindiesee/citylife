@@ -205,6 +205,12 @@ export function homesteadHudTitle(args: { playerScoped: boolean }): string {
   }
   return "Spec 076 — large bordered HOMESTEAD parcels on a terrain-aware street: each fenced plot has a front yard, a set-back voxel house, a garden and a farm field. Assign a citizen to a homestead, build their house, or demolish it. Raze-and-evict also destroys the citizen and tears down their Hermes agent.";
 }
+export function workstationMarkerTitle(args: { playerScoped: boolean }): string {
+  if (args.playerScoped) {
+    return "This home has a resident workstation for public in-city activity.";
+  }
+  return "Spec 080 — this household runs a Workstation: the resident bot's own computer, serving a static site on the bots-only intranet for other citizens to browse. Marker only in the public game (the intranet is cluster-internal — no URL is shown here).";
+}
 export type HomesteadActionVisibility = {
   showDesign: boolean;
   showCommission: boolean;
@@ -1966,7 +1972,9 @@ export function ColonyApp() {
                   </span>
                   {l.built && (
                     <span
-                      title="Spec 080 — this household runs a Workstation: the resident bot's own computer, serving a static site on the bots-only intranet for other citizens to browse. Marker only in the public game (the intranet is cluster-internal — no URL is shown here)."
+                      title={workstationMarkerTitle({
+                        playerScoped: ui.bank.scope === "player",
+                      })}
                       style={{ fontSize: 11, opacity: 0.9 }}
                     >
                       💻
