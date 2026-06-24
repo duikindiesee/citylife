@@ -961,34 +961,47 @@ export class PlanetRenderer {
     this.rebuildChunkedTerrain();
   }
 
-  /** Spec 095 — lift each road-ribbon cell's RENDER height to the road surface (smoothRoadY) and ramp a
-   *  short shoulder skirt out to natural terrain. The car rides smoothRoadY + 0.12; before this the mesh
-   *  under the ribbon was raw worldY, so on a slope the ground sat below the asphalt (the car looked sunk,
-   *  the world showed under the road) and the uphill bank poked above it and hid the car. Render-only — sim
-   *  worldY, water and pathfinding all keep reading Terrain.worldY, so nothing downstream shifts. */
+  /** Spec 095 — grade the ground to the road ONLY where it genuinely differs from the road surface, so a
+   *  car (riding smoothRoadY + 0.12) never sinks on a hill and the uphill bank never hides it — WITHOUT
+   *  bermimg flat roads. The first cut graded every ribbon cell to smoothRoadY (a max over the
+   *  carriageway), which on flat/gently-noisy ground sits a hair above the local cell, so it raised a low
+   *  embankment with shoulder banks under EVERY road ("roads look elevated"). The DEADZONE leaves
+   *  near-flush road ground untouched (flat roads read flush again) and only fills a real sink / cuts a
+   *  real bank. Render-only — sim worldY, water and pathfinding keep reading Terrain.worldY. */
   private gradeRoadsInto(next: Map<number, number>, N: number) {
     this.roadGradedCells.clear();
     const cells = this.roadRibbonCells;
     if (!cells || cells.size === 0) return;
     const t = this.sim.state.terrain;
     const SKIRT = 3;
-    const roadH = new Map<number, number>();
+    // Only grade where |road surface - ground| exceeds this. Flat/gentle ground stays natural (no berm);
+    // real hills (sink/bank are ~1-2.5 units) still grade. Smaller = flatter roads grade; larger = only
+    // the steepest. 0.6 clears the per-cell terrain noise while still catching every real hill.
+    const DEADZONE = 0.6;
+    const ribbon = new Set<number>(); // every road cell (so the skirt never disturbs a flush road cell)
+    const graded = new Map<number, number>(); // road cell -> surface height, ONLY where it matters
     for (const key of cells) {
       const c = key.indexOf(",");
       const x = +key.slice(0, c);
       const y = +key.slice(c + 1);
       if (x < 0 || y < 0 || x >= N || y >= N) continue;
-      roadH.set(y * N + x, Math.max(0, this.smoothRoadY(x, y)));
+      const i = y * N + x;
+      ribbon.add(i);
+      const h = Math.max(0, this.smoothRoadY(x, y));
+      const nat = Math.max(0, t.worldY(x, y));
+      if (Math.abs(h - nat) <= DEADZONE) continue; // already flush — leave natural, no berm
+      graded.set(i, h);
     }
-    // The carriageway itself meets graded earth at the ribbon base (so it never pokes through the asphalt).
-    for (const [i, h] of roadH) {
+    if (graded.size === 0) return;
+    // Carriageway: meet the ribbon base on real slopes (fill the sink / cut the bank).
+    for (const [i, h] of graded) {
       next.set(i, h);
       this.roadGradedCells.add(i);
     }
-    // Shoulder: each non-road cell within SKIRT takes the nearest road height, ramped to natural ground by
-    // a smoothstep (cut on the uphill bank, fill on the downhill side) so the road edge is never a cliff.
+    // Shoulder: ramp ONLY around graded cells, from the nearest road height to natural ground (smoothstep),
+    // so a graded hill road is no cliff. Flush road segments grade nothing, so they grow no shoulder banks.
     const skirt = new Map<number, { h: number; d: number }>();
-    for (const [i, h] of roadH) {
+    for (const [i, h] of graded) {
       const cx = i % N;
       const cy = (i / N) | 0;
       for (let dy = -SKIRT; dy <= SKIRT; dy++)
@@ -999,7 +1012,7 @@ export class PlanetRenderer {
           const y = cy + dy;
           if (x < 0 || y < 0 || x >= N || y >= N) continue;
           const j = y * N + x;
-          if (roadH.has(j)) continue;
+          if (ribbon.has(j)) continue; // never disturb a road cell (graded or deliberately-flush)
           const cur = skirt.get(j);
           if (!cur || d < cur.d) skirt.set(j, { h, d });
         }
