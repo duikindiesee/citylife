@@ -99,6 +99,22 @@ export type CitizenHudCopy = {
   title: string;
   summary: string;
 };
+export type SettlerHudCopy = {
+  count: string;
+  recent: string[];
+};
+export function settlerHudCopy(args: {
+  count: number;
+  recent: { id: number; name: string }[];
+  playerScoped: boolean;
+}): SettlerHudCopy {
+  return {
+    count: String(args.count),
+    recent: args.recent.map((s) =>
+      args.playerScoped ? `#${s.id} Resident` : `#${s.id} ${s.name}`,
+    ),
+  };
+}
 export type AvatarFoundryCopy = {
   title: string;
   summary: string;
@@ -325,6 +341,11 @@ export function ColonyApp() {
     foundries: ui.colony.avatar.foundries,
     staffed: ui.colony.avatar.staffed,
     capacity: ui.colony.avatar.capacity,
+    playerScoped: ui.bank.scope === "player",
+  });
+  const settlerCopy = settlerHudCopy({
+    count: ui.settlers.count,
+    recent: ui.settlers.recent,
     playerScoped: ui.bank.scope === "player",
   });
   const [borderOpen, setBorderOpen] = useState(false);
@@ -2186,13 +2207,13 @@ export function ColonyApp() {
         )}
         <div className="row" style={{ marginTop: 10 }}>
           <span>Settlers</span>
-          <b>{ui.settlers.count}</b>
+          <b>{settlerCopy.count}</b>
         </div>
-        {ui.settlers.recent.length > 0 && (
+        {settlerCopy.recent.length > 0 && (
           <div className="settler-list">
-            {ui.settlers.recent.map((s) => (
-              <span key={s.id} className="chip">
-                #{s.id} {s.name}
+            {settlerCopy.recent.map((label) => (
+              <span key={label} className="chip">
+                {label}
               </span>
             ))}
           </div>
