@@ -95,6 +95,37 @@ export function bankPanelCopy(bank: ColonyUiState["bank"]): BankPanelCopy {
     ledgerRows: bank.recent.map((tx) => tx.memo),
   };
 }
+export type CitizenHudCopy = {
+  title: string;
+  summary: string;
+};
+export function citizenHudCopy(args: {
+  awake: number;
+  count: number;
+  list: { id: string; displayName: string; plotName: string }[];
+  playerScoped: boolean;
+}): CitizenHudCopy {
+  const baseSummary = `${args.awake}/${args.count} living`;
+  if (args.playerScoped) {
+    return {
+      summary: baseSummary,
+      title: "Named residents visible in the city. Other players' private household details stay hidden.",
+    };
+  }
+  const names = args.list
+    .slice(0, 2)
+    .map((c) => c.displayName.split(" ")[0])
+    .join(", ");
+  const details =
+    args.list
+      .slice(0, 4)
+      .map((c) => `${c.displayName} at ${c.plotName}`)
+      .join(" · ") || "(none yet)";
+  return {
+    summary: `${baseSummary}${names ? ` · ${names}${args.list.length > 2 ? "…" : ""}` : ""}`,
+    title: `Named residents allocated to a plot by the Border Patrol bot. ${args.awake} are active in-world. ${details}.`,
+  };
+}
 const pad = (n: number) => String(n).padStart(2, "0");
 const raceTime = (ms: number | null) => {
   if (ms === null) return "--";
@@ -224,6 +255,12 @@ export function ColonyApp() {
   const runtime = useRuntime();
   const hostRef = useRef<HTMLDivElement>(null);
   const ui: ColonyUiState = runtime.getUiState();
+  const citizenCopy = citizenHudCopy({
+    awake: ui.citizens.awake,
+    count: ui.citizens.count,
+    list: ui.citizens.list,
+    playerScoped: ui.bank.scope === "player",
+  });
   const [borderOpen, setBorderOpen] = useState(false);
   const [mouseLookLocked, setMouseLookLocked] = useState(false);
   const [pointerLockError, setPointerLockError] = useState<string | null>(null);
@@ -1636,20 +1673,9 @@ export function ColonyApp() {
             <span>Citizens</span>
             <b
               style={{ color: ui.citizens.awake > 0 ? "#a0d4f0" : "#7a8a9a" }}
-              title={`Spec 074 — named residents allocated to a plot by the Border Patrol bot. ${ui.citizens.awake} have a live Hermes pod (DMZ namespace, kooker-service-ai routing). ${
-                ui.citizens.list
-                  .slice(0, 4)
-                  .map((c) => `${c.displayName} at ${c.plotName}`)
-                  .join(" · ") || "(none yet)"
-              }.`}
+              title={citizenCopy.title}
             >
-              {ui.citizens.awake}/{ui.citizens.count} living
-              {ui.citizens.list.length
-                ? ` · ${ui.citizens.list
-                    .slice(0, 2)
-                    .map((c) => c.displayName.split(" ")[0])
-                    .join(", ")}${ui.citizens.list.length > 2 ? "…" : ""}`
-                : ""}
+              {citizenCopy.summary}
             </b>
           </div>
         )}
