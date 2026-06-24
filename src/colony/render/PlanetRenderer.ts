@@ -1573,6 +1573,23 @@ export class PlanetRenderer {
       fountainBowl,
       fountainJet,
     ])!;
+    const shadeTreeTrunk = new THREE.CylinderGeometry(0.16, 0.22, 1.05, 8);
+    shadeTreeTrunk.translate(0, 0.52, 0);
+    const shadeTreeCrown = new THREE.SphereGeometry(0.72, 10, 8);
+    shadeTreeCrown.scale(1, 0.82, 1);
+    shadeTreeCrown.translate(0, 1.18, 0);
+    const shadeTreeGeo = mergeGeometries([shadeTreeTrunk, shadeTreeCrown])!;
+    const noticePost = new THREE.BoxGeometry(0.12, 0.92, 0.12);
+    noticePost.translate(0, 0.46, 0);
+    const noticePanel = new THREE.BoxGeometry(0.92, 0.5, 0.08);
+    noticePanel.translate(0, 0.92, 0);
+    const noticeCap = new THREE.BoxGeometry(1.0, 0.08, 0.12);
+    noticeCap.translate(0, 1.21, 0);
+    const noticeBoardGeo = mergeGeometries([
+      noticePost,
+      noticePanel,
+      noticeCap,
+    ])!;
     this.artifactCap = Math.max(1, ARTIFACT_CATALOG_SIZE);
     this.artifactMeshes = {
       bench: new THREE.InstancedMesh(
@@ -1599,6 +1616,16 @@ export class PlanetRenderer {
       fountain: new THREE.InstancedMesh(
         fountainGeo,
         new THREE.MeshStandardMaterial({ color: 0x6f8da7, roughness: 0.55 }),
+        this.artifactCap,
+      ),
+      shade_tree: new THREE.InstancedMesh(
+        shadeTreeGeo,
+        new THREE.MeshStandardMaterial({ color: 0x2f6f3e, roughness: 0.88 }),
+        this.artifactCap,
+      ),
+      notice_board: new THREE.InstancedMesh(
+        noticeBoardGeo,
+        new THREE.MeshStandardMaterial({ color: 0x8f6a3a, roughness: 0.78 }),
         this.artifactCap,
       ),
     };
@@ -2787,6 +2814,8 @@ export class PlanetRenderer {
       lamppost: 0,
       planter: 0,
       fountain: 0,
+      shade_tree: 0,
+      notice_board: 0,
     };
     for (const item of renderable) {
       const mesh = this.artifactMeshes[item.kind];
