@@ -99,6 +99,29 @@ export type CitizenHudCopy = {
   title: string;
   summary: string;
 };
+export type AvatarFoundryCopy = {
+  title: string;
+  summary: string;
+};
+export function avatarFoundryCopy(args: {
+  foundries: number;
+  staffed: boolean;
+  capacity: number;
+  playerScoped: boolean;
+}): AvatarFoundryCopy {
+  if (args.playerScoped) {
+    return {
+      summary: `${args.foundries} foundry${args.staffed ? ` · up to ${args.capacity} avatars` : " · unstaffed"}`,
+      title:
+        "The Avatar Foundry gives approved citizens an in-world body so players can meet them and step into their own view.",
+    };
+  }
+  return {
+    summary: `${args.foundries} foundry${args.staffed ? ` · mints up to ${args.capacity}` : " · unstaffed"}`,
+    title:
+      "The Avatar Foundry — the civic hall that mints a citizen avatar (a real Hermes pod in the kooker DMZ namespace, routed through kooker-service-ai) for each approved household, and gives the colony's first-person vision a home on the map. While staffed it can mint up to its capacity of citizen pods. The pod spawn and the kooker user live out-of-process, the Foundry is the in-world gate.",
+  };
+}
 export function citizenHudCopy(args: {
   awake: number;
   count: number;
@@ -259,6 +282,12 @@ export function ColonyApp() {
     awake: ui.citizens.awake,
     count: ui.citizens.count,
     list: ui.citizens.list,
+    playerScoped: ui.bank.scope === "player",
+  });
+  const avatarCopy = avatarFoundryCopy({
+    foundries: ui.colony.avatar.foundries,
+    staffed: ui.colony.avatar.staffed,
+    capacity: ui.colony.avatar.capacity,
     playerScoped: ui.bank.scope === "player",
   });
   const [borderOpen, setBorderOpen] = useState(false);
@@ -1641,12 +1670,9 @@ export function ColonyApp() {
                   style={{
                     color: ui.colony.avatar.staffed ? "#9f86d8" : "#7a6e8a",
                   }}
-                  title="The Avatar Foundry — the civic hall that mints a citizen avatar (a real Hermes pod in the kooker DMZ namespace, routed through kooker-service-ai) for each approved household, and gives the colony's first-person vision a home on the map. While staffed it can mint up to its capacity of citizen pods. The pod spawn and the kooker user live out-of-process, the Foundry is the in-world gate."
+                  title={avatarCopy.title}
                 >
-                  {ui.colony.avatar.foundries} foundry
-                  {ui.colony.avatar.staffed
-                    ? ` · mints up to ${ui.colony.avatar.capacity}`
-                    : " · unstaffed"}
+                  {avatarCopy.summary}
                 </b>
               </div>
             )}
