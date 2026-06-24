@@ -24,9 +24,9 @@ describe("car-part classifieds — pure store (096 G)", () => {
     m = addCarPartListing(m, "ada", "blower", 400);
     expect(m).toHaveLength(2);
     // unknown kind / non-positive price are rejected (input unchanged)
-    expect(addCarPartListing(m, "joe", "warp_drive" as never, 100)).toHaveLength(
-      2,
-    );
+    expect(
+      addCarPartListing(m, "joe", "warp_drive" as never, 100),
+    ).toHaveLength(2);
     expect(addCarPartListing(m, "joe", "headers", 0)).toHaveLength(2);
     // remove + find
     const id = carPartListingId("ada", "blower");

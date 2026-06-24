@@ -50,10 +50,11 @@ describe("open bonnet / engine bay (096 F)", () => {
     // the bonnet reveals exactly the engine-bay sockets, and only fitting parts under each
     expect(bay().map((s) => s.socket)).toEqual(["engine", "hood"]);
     const engine = () => bay().find((s) => s.socket === "engine")!;
-    expect(engine().parts.map((p) => p.kind).sort()).toEqual([
-      "blower",
-      "fourbarrel_carb",
-    ]);
+    expect(
+      engine()
+        .parts.map((p) => p.kind)
+        .sort(),
+    ).toEqual(["blower", "fourbarrel_carb"]);
     // nothing owned yet -> the engine socket is empty
     expect(engine().state).toBe("empty");
     expect(engine().mounted).toBeNull();

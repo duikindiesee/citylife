@@ -20,8 +20,12 @@ describe("player neighborhood HUD privacy", () => {
     });
 
     expect(copy.label).toBe("Home site 7 · Occupied");
-    expect(copy.title).toBe("Home site price 240 ₭ (≈ R1,200) — larger and shore-side sites cost more");
-    expect(`${copy.label} ${copy.title}`).not.toMatch(/plot|Other Player|Mira Ledger|Mira/i);
+    expect(copy.title).toBe(
+      "Home site price 240 ₭ (≈ R1,200) — larger and shore-side sites cost more",
+    );
+    expect(`${copy.label} ${copy.title}`).not.toMatch(
+      /plot|Other Player|Mira Ledger|Mira/i,
+    );
     expect(isPublicSafe(copy.label)).toBe(true);
     expect(isPublicSafe(copy.title ?? "")).toBe(true);
   });
@@ -38,7 +42,9 @@ describe("player neighborhood HUD privacy", () => {
     });
 
     expect(copy.label).toBe("Plot 7 · Mira");
-    expect(copy.title).toBe("Plot price 240 ₭ (≈ R1,200) — bigger and shore-ward land costs more");
+    expect(copy.title).toBe(
+      "Plot price 240 ₭ (≈ R1,200) — bigger and shore-ward land costs more",
+    );
   });
 
   it("hides operator-only homestead mechanics from player HUD help copy", () => {
@@ -76,7 +82,9 @@ describe("player neighborhood HUD privacy", () => {
       showDemolish: false,
       showEvict: false,
     });
-    expect(Object.keys(actions).join(" ")).not.toMatch(/owner|wallet|ledger|plot/i);
+    expect(Object.keys(actions).join(" ")).not.toMatch(
+      /owner|wallet|ledger|plot/i,
+    );
     expect(isPublicSafe(Object.keys(actions).join(" "))).toBe(true);
   });
 
@@ -105,7 +113,9 @@ describe("player neighborhood HUD privacy", () => {
     expect(title).toBe(
       "This home has a resident workstation for public in-city activity.",
     );
-    expect(title).not.toMatch(/bot|intranet|cluster|internal|Hermes|agent|URL/i);
+    expect(title).not.toMatch(
+      /bot|intranet|cluster|internal|Hermes|agent|URL/i,
+    );
     expect(isPublicSafe(title)).toBe(true);
   });
 

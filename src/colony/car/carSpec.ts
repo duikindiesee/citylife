@@ -51,7 +51,9 @@ export const PAINT_PALETTES: Record<PaintChannel, number[]> = {
 };
 
 const clamp01 = (n: unknown): number =>
-  typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.5;
+  typeof n === "number" && Number.isFinite(n)
+    ? Math.max(0, Math.min(1, n))
+    : 0.5;
 const clampHex = (n: unknown): number =>
   typeof n === "number" && Number.isFinite(n)
     ? Math.max(0, Math.min(0xffffff, Math.floor(n)))
@@ -107,7 +109,8 @@ export function safeCarSpec(e: unknown): CarSpec | null {
   if (typeof o.id !== "string" || o.id.length === 0) return null;
   const rawName =
     typeof o.name === "string" ? o.name.replace(/\s+/g, " ").trim() : "";
-  const name = rawName.length > 0 && isPublicSafe(rawName) ? rawName : "Stock Rod";
+  const name =
+    rawName.length > 0 && isPublicSafe(rawName) ? rawName : "Stock Rod";
   const s = o.stats ?? {};
   const p = o.paint ?? {};
   // shape-clean the parts: known catalog validity + one-per-socket is enforced at use-time by carParts
@@ -117,7 +120,9 @@ export function safeCarSpec(e: unknown): CarSpec | null {
     : [];
   const parts = [
     ...new Set(
-      rawParts.filter((x): x is string => typeof x === "string" && x.length > 0),
+      rawParts.filter(
+        (x): x is string => typeof x === "string" && x.length > 0,
+      ),
     ),
   ].slice(0, 16);
   return {

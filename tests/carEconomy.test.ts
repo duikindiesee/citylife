@@ -55,7 +55,10 @@ describe("car shop economy (096 Slice D)", () => {
     expect(g2.stats.topSpeed).toBeGreaterThan(baseTop);
 
     // a free part (cost 0) is owned implicitly and mounts without buying
-    expect(rt.getUiState().garage!.parts.find((p) => p.kind === "street_tyres")!.owned).toBe(true);
+    expect(
+      rt.getUiState().garage!.parts.find((p) => p.kind === "street_tyres")!
+        .owned,
+    ).toBe(true);
     expect(rt.mountCarPart("street_tyres")).toBe(true);
   });
 
@@ -71,6 +74,8 @@ describe("car shop economy (096 Slice D)", () => {
         { account: "test:sink", amount: bal },
       ]);
     expect(rt.buyCarPart("blower")).toBe(false);
-    expect(rt.getUiState().garage!.parts.find((p) => p.kind === "blower")!.owned).toBe(false);
+    expect(
+      rt.getUiState().garage!.parts.find((p) => p.kind === "blower")!.owned,
+    ).toBe(false);
   });
 });

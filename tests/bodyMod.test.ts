@@ -34,7 +34,9 @@ describe("body mod — roof chop (096 H)", () => {
   it("lowers the cabin in the mesh without adding a child mesh", () => {
     type MeshLike = {
       isMesh?: boolean;
-      geometry?: { parameters?: { width?: number; depth?: number; height?: number } };
+      geometry?: {
+        parameters?: { width?: number; depth?: number; height?: number };
+      };
       position: { y: number };
     };
     const countMeshes = (g: ReturnType<typeof buildCarMesh>) => {

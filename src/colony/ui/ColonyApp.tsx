@@ -206,7 +206,9 @@ export function homesteadHudTitle(args: { playerScoped: boolean }): string {
   }
   return "Spec 076 — large bordered HOMESTEAD parcels on a terrain-aware street: each fenced plot has a front yard, a set-back voxel house, a garden and a farm field. Assign a citizen to a homestead, build their house, or demolish it. Raze-and-evict also destroys the citizen and tears down their Hermes agent.";
 }
-export function workstationMarkerTitle(args: { playerScoped: boolean }): string {
+export function workstationMarkerTitle(args: {
+  playerScoped: boolean;
+}): string {
   if (args.playerScoped) {
     return "This home has a resident workstation for public in-city activity.";
   }
@@ -1910,7 +1912,9 @@ export function ColonyApp() {
             <span>Homesteads</span>
             <b
               style={{ color: "#9fd0a0" }}
-              title={homesteadHudTitle({ playerScoped: ui.bank.scope === "player" })}
+              title={homesteadHudTitle({
+                playerScoped: ui.bank.scope === "player",
+              })}
             >
               {ui.neighborhood.built} built · {ui.neighborhood.free} free
             </b>
@@ -2685,8 +2689,9 @@ export function ColonyApp() {
                     furnitureMarketplaceSellerLabel({
                       sellerCitizenId: cid,
                       viewerCitizenId: me,
-                      sellerDisplayName: ui.citizens.list.find((x) => x.id === cid)
-                        ?.displayName,
+                      sellerDisplayName: ui.citizens.list.find(
+                        (x) => x.id === cid,
+                      )?.displayName,
                       playerScoped: ui.bank.scope === "player",
                     });
                   return (

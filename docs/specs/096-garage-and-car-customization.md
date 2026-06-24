@@ -27,8 +27,9 @@ We built a simpler **mesh-composition** model instead, and the divergence is del
   thing is node-testable and deterministic.
 
 Files (all new, in our lane):
+
 - `car/carSpec.ts` — `CarSpec {id, name, stats, paint, parts}`, `CarStatVector {topSpeed, acceleration,
-  grip, braking}` (0..1, stock 0.5), `defaultCarSpec` (seeded paint per player, no rng), `safeCarSpec`
+grip, braking}` (0..1, stock 0.5), `defaultCarSpec` (seeded paint per player, no rng), `safeCarSpec`
   (clamps, isPublicSafe screens a custom name), the curated paint palettes.
 - `car/carParts.ts` — the socket/part model: sockets engine, exhaust, wheels, spoiler, hood, body; nine
   parts; `partFits`, `validCarParts` (one part per socket, first wins), and `deriveStats` (base plus each

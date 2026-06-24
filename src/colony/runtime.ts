@@ -1210,7 +1210,9 @@ export class ColonyRuntime {
     // commercial connector, so the guided walk and a rally-started race reach the bus-stop on a real
     // drivable road. Laid AFTER the bus route so that loop is unchanged. Fail soft when no in-margin
     // route exists: the overlook stays reachable on foot and simply gets no spur that seed.
-    const rallyStruct = this.sim.state.structures.find((s) => s.kind === "rally");
+    const rallyStruct = this.sim.state.structures.find(
+      (s) => s.kind === "rally",
+    );
     if (rallyStruct && this.sim.state.roads.length > 0) {
       const rallyCell = {
         x: Math.round(rallyStruct.x),
@@ -1243,7 +1245,8 @@ export class ColonyRuntime {
         if (path.length < 2) continue;
         // the contiguous roadable suffix ending at the rally (the undeveloped knoll approach)
         let cut = path.length;
-        for (let k = path.length - 1; k >= 0 && roadable(path[k]!); k--) cut = k;
+        for (let k = path.length - 1; k >= 0 && roadable(path[k]!); k--)
+          cut = k;
         const tail = path.slice(cut);
         if (tail.length >= 2) {
           mergeAvenue(this.sim.state, layRoad(tail, 1));
@@ -1675,7 +1678,10 @@ export class ColonyRuntime {
       `${buyer?.displayName ?? id} buys a ${def.label} for ${listing.price} ${CURRENCY}`,
       [
         { account: `citizen:${id}`, amount: -listing.price },
-        { account: `citizen:${listing.sellerCitizenId}`, amount: listing.price },
+        {
+          account: `citizen:${listing.sellerCitizenId}`,
+          amount: listing.price,
+        },
       ],
     );
     if (!posted) return false;
@@ -4147,7 +4153,9 @@ export class ColonyRuntime {
           }),
           bonnetOpen: this.bonnetOpen,
           engineBay: ENGINE_BAY.map((sock) => {
-            const fitting = allKinds.filter((k) => CAR_PARTS[k].socket === sock);
+            const fitting = allKinds.filter(
+              (k) => CAR_PARTS[k].socket === sock,
+            );
             const mountedKind = fitting.find((k) => mounted.has(k)) ?? null;
             const state: "occupied" | "installable" | "empty" = mountedKind
               ? "occupied"
@@ -4176,7 +4184,8 @@ export class ColonyRuntime {
             kind: l.kind,
             label: CAR_PARTS[l.kind]?.label ?? l.kind,
             price: l.price,
-            sellerName: this.citizens.byId(l.sellerCitizenId)?.displayName ?? "a citizen",
+            sellerName:
+              this.citizens.byId(l.sellerCitizenId)?.displayName ?? "a citizen",
             mine: l.sellerCitizenId === id,
           })),
           paint: (

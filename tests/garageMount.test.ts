@@ -51,7 +51,9 @@ describe("garage mount/unmount (096)", () => {
     // mounting a four-barrel (also the engine socket) REPLACES the blower (one per socket)
     expect(rt.mountCarPart("fourbarrel_carb")).toBe(true);
     g = rt.getUiState().garage!;
-    expect(g.parts.find((p) => p.kind === "fourbarrel_carb")!.mounted).toBe(true);
+    expect(g.parts.find((p) => p.kind === "fourbarrel_carb")!.mounted).toBe(
+      true,
+    );
     expect(g.parts.find((p) => p.kind === "blower")!.mounted).toBe(false);
 
     // unknown kind -> no-op

@@ -44,7 +44,9 @@ describe("player commerce HUD copy privacy", () => {
     });
 
     expect(copy.claimButtonLabel).toBe("🛒 Open a shop");
-    expect(copy.claimButtonLabel).not.toMatch(/showroom|store|kiosk|₭|1600|price/i);
+    expect(copy.claimButtonLabel).not.toMatch(
+      /showroom|store|kiosk|₭|1600|price/i,
+    );
     expect(isPublicSafe(copy.claimButtonLabel)).toBe(true);
   });
 

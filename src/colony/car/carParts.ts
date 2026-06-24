@@ -47,17 +47,98 @@ export interface CarPartDef {
 }
 
 export const CAR_PARTS: Record<CarPartKind, CarPartDef> = {
-  street_tyres: { kind: "street_tyres", label: "Street tyres", socket: "wheels", category: "cosmetic", statDeltas: {}, anchor: { x: 0, y: 0.12, z: 0 }, geom: { shape: "cyl", size: [0.12, 0.12, 0.09], color: 0x1a1c20 }, cost: 0 },
-  slicks: { kind: "slicks", label: "Drag slicks", socket: "wheels", category: "performance", statDeltas: { grip: 0.25, acceleration: 0.1, topSpeed: -0.05 }, anchor: { x: 0, y: 0.13, z: 0 }, geom: { shape: "cyl", size: [0.15, 0.15, 0.12], color: 0x111317 }, cost: 180 },
-  fourbarrel_carb: { kind: "fourbarrel_carb", label: "Four-barrel carb", socket: "engine", category: "performance", statDeltas: { acceleration: 0.15, topSpeed: 0.1 }, anchor: { x: 0.18, y: 0.42, z: 0 }, geom: { shape: "box", size: [0.12, 0.1, 0.12], color: 0x8a8f98 }, cost: 240 },
-  blower: { kind: "blower", label: "Supercharger blower", socket: "engine", category: "performance", statDeltas: { topSpeed: 0.2, acceleration: 0.15, grip: -0.1 }, anchor: { x: 0.18, y: 0.5, z: 0 }, geom: { shape: "box", size: [0.18, 0.16, 0.2], color: 0x3a3f47 }, cost: 460 },
-  headers: { kind: "headers", label: "Tuned headers", socket: "exhaust", category: "performance", statDeltas: { topSpeed: 0.1, acceleration: 0.05 }, anchor: { x: -0.45, y: 0.16, z: 0.18 }, geom: { shape: "cyl", size: [0.04, 0.04, 0.3], color: 0xb8702f }, cost: 200 },
-  chrome_pipes: { kind: "chrome_pipes", label: "Chrome side pipes", socket: "exhaust", category: "cosmetic", statDeltas: {}, anchor: { x: 0, y: 0.16, z: 0.24 }, geom: { shape: "cyl", size: [0.04, 0.04, 0.6], color: 0xd6d9de }, cost: 120 },
-  ducktail_spoiler: { kind: "ducktail_spoiler", label: "Ducktail spoiler", socket: "spoiler", category: "performance", statDeltas: { grip: 0.12 }, anchor: { x: -0.46, y: 0.42, z: 0 }, geom: { shape: "box", size: [0.12, 0.05, 0.42], color: 0x202329 }, cost: 160 },
-  hood_scoop: { kind: "hood_scoop", label: "Hood scoop", socket: "hood", category: "cosmetic", statDeltas: { topSpeed: 0.03 }, anchor: { x: 0.18, y: 0.39, z: 0 }, geom: { shape: "box", size: [0.18, 0.08, 0.18], color: 0x14161a }, cost: 90 },
+  street_tyres: {
+    kind: "street_tyres",
+    label: "Street tyres",
+    socket: "wheels",
+    category: "cosmetic",
+    statDeltas: {},
+    anchor: { x: 0, y: 0.12, z: 0 },
+    geom: { shape: "cyl", size: [0.12, 0.12, 0.09], color: 0x1a1c20 },
+    cost: 0,
+  },
+  slicks: {
+    kind: "slicks",
+    label: "Drag slicks",
+    socket: "wheels",
+    category: "performance",
+    statDeltas: { grip: 0.25, acceleration: 0.1, topSpeed: -0.05 },
+    anchor: { x: 0, y: 0.13, z: 0 },
+    geom: { shape: "cyl", size: [0.15, 0.15, 0.12], color: 0x111317 },
+    cost: 180,
+  },
+  fourbarrel_carb: {
+    kind: "fourbarrel_carb",
+    label: "Four-barrel carb",
+    socket: "engine",
+    category: "performance",
+    statDeltas: { acceleration: 0.15, topSpeed: 0.1 },
+    anchor: { x: 0.18, y: 0.42, z: 0 },
+    geom: { shape: "box", size: [0.12, 0.1, 0.12], color: 0x8a8f98 },
+    cost: 240,
+  },
+  blower: {
+    kind: "blower",
+    label: "Supercharger blower",
+    socket: "engine",
+    category: "performance",
+    statDeltas: { topSpeed: 0.2, acceleration: 0.15, grip: -0.1 },
+    anchor: { x: 0.18, y: 0.5, z: 0 },
+    geom: { shape: "box", size: [0.18, 0.16, 0.2], color: 0x3a3f47 },
+    cost: 460,
+  },
+  headers: {
+    kind: "headers",
+    label: "Tuned headers",
+    socket: "exhaust",
+    category: "performance",
+    statDeltas: { topSpeed: 0.1, acceleration: 0.05 },
+    anchor: { x: -0.45, y: 0.16, z: 0.18 },
+    geom: { shape: "cyl", size: [0.04, 0.04, 0.3], color: 0xb8702f },
+    cost: 200,
+  },
+  chrome_pipes: {
+    kind: "chrome_pipes",
+    label: "Chrome side pipes",
+    socket: "exhaust",
+    category: "cosmetic",
+    statDeltas: {},
+    anchor: { x: 0, y: 0.16, z: 0.24 },
+    geom: { shape: "cyl", size: [0.04, 0.04, 0.6], color: 0xd6d9de },
+    cost: 120,
+  },
+  ducktail_spoiler: {
+    kind: "ducktail_spoiler",
+    label: "Ducktail spoiler",
+    socket: "spoiler",
+    category: "performance",
+    statDeltas: { grip: 0.12 },
+    anchor: { x: -0.46, y: 0.42, z: 0 },
+    geom: { shape: "box", size: [0.12, 0.05, 0.42], color: 0x202329 },
+    cost: 160,
+  },
+  hood_scoop: {
+    kind: "hood_scoop",
+    label: "Hood scoop",
+    socket: "hood",
+    category: "cosmetic",
+    statDeltas: { topSpeed: 0.03 },
+    anchor: { x: 0.18, y: 0.39, z: 0 },
+    geom: { shape: "box", size: [0.18, 0.08, 0.18], color: 0x14161a },
+    cost: 90,
+  },
   // a "body" mod reshapes the car (carMesh lowers the cabin) rather than bolting on a child mesh; the
   // chop sheds weight + drag for a little more accel and grip. anchor/geom are nominal (never rendered).
-  roof_chop: { kind: "roof_chop", label: "Roof chop", socket: "body", category: "performance", statDeltas: { acceleration: 0.06, grip: 0.04 }, anchor: { x: -0.02, y: 0.4, z: 0 }, geom: { shape: "box", size: [0.5, 0.16, 0.4], color: 0x000000 }, cost: 280 },
+  roof_chop: {
+    kind: "roof_chop",
+    label: "Roof chop",
+    socket: "body",
+    category: "performance",
+    statDeltas: { acceleration: 0.06, grip: 0.04 },
+    anchor: { x: -0.02, y: 0.4, z: 0 },
+    geom: { shape: "box", size: [0.5, 0.16, 0.4], color: 0x000000 },
+    cost: 280,
+  },
 };
 
 /** Does a part kind fit a given socket? Pure, total. */
@@ -67,7 +148,9 @@ export function partFits(socket: CarSocket, kind: string): boolean {
 }
 
 /** Screen a raw part list to known kinds, ONE per socket (first wins). Deterministic, order-preserving. */
-export function validCarParts(parts: readonly string[] | undefined): CarPartKind[] {
+export function validCarParts(
+  parts: readonly string[] | undefined,
+): CarPartKind[] {
   const out: CarPartKind[] = [];
   const usedSocket = new Set<CarSocket>();
   for (const p of parts ?? []) {

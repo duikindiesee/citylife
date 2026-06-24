@@ -45,15 +45,15 @@ describe("car paint (096 H)", () => {
     const body = paint().find((p) => p.channel === "body")!;
     const next = PAINT_PALETTES.body.find((c) => c !== body.current)!;
     expect(rt.setCarPaint("body", next)).toBe(true);
-    expect(rt.getUiState().garage!.paint.find((p) => p.channel === "body")!.current).toBe(
-      next,
-    );
+    expect(
+      rt.getUiState().garage!.paint.find((p) => p.channel === "body")!.current,
+    ).toBe(next);
 
     // an off-palette colour is rejected and leaves the paint unchanged
     expect(rt.setCarPaint("body", 0x123456)).toBe(false);
-    expect(rt.getUiState().garage!.paint.find((p) => p.channel === "body")!.current).toBe(
-      next,
-    );
+    expect(
+      rt.getUiState().garage!.paint.find((p) => p.channel === "body")!.current,
+    ).toBe(next);
 
     // an unknown channel is a no-op
     expect(rt.setCarPaint("wheels", PAINT_PALETTES.body[0]!)).toBe(false);

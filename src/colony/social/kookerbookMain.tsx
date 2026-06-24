@@ -234,7 +234,14 @@ function App() {
         root.style.overflowX = previousRootOverflowX;
       }
     };
-  }, [layout.body.margin, layout.body.overflowX, layout.html.overflowX, layout.root.maxWidth, layout.root.overflowX, layout.root.width]);
+  }, [
+    layout.body.margin,
+    layout.body.overflowX,
+    layout.html.overflowX,
+    layout.root.maxWidth,
+    layout.root.overflowX,
+    layout.root.width,
+  ]);
   return (
     <div
       style={{
