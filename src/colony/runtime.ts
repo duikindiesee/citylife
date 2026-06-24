@@ -4171,14 +4171,20 @@ export class ColonyRuntime {
               })),
             };
           }),
-          market: loadCarPartMarket().map((l) => ({
-            id: l.id,
-            kind: l.kind,
-            label: CAR_PARTS[l.kind]?.label ?? l.kind,
-            price: l.price,
-            sellerName: this.citizens.byId(l.sellerCitizenId)?.displayName ?? "a citizen",
-            mine: l.sellerCitizenId === id,
-          })),
+          market: loadCarPartMarket().map((l) => {
+            const mine = l.sellerCitizenId === id;
+            return {
+              id: l.id,
+              kind: l.kind,
+              label: CAR_PARTS[l.kind]?.label ?? l.kind,
+              price: l.price,
+              sellerName:
+                this.playerView && !mine
+                  ? "another resident"
+                  : this.citizens.byId(l.sellerCitizenId)?.displayName ?? "a citizen",
+              mine,
+            };
+          }),
           paint: (
             [
               { channel: "body", label: "Body" },
