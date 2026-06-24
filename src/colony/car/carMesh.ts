@@ -12,6 +12,10 @@ export function buildCarMesh(spec: CarSpec): THREE.Group {
   const g = new THREE.Group();
   const mounted = validCarParts(spec.parts).map((k) => CAR_PARTS[k]);
   const wheelPart = mounted.find((d) => d.socket === "wheels");
+  // a "body" mod reshapes the car: a roof chop lowers the cabin (a classic hot-rod silhouette)
+  const chopped = mounted.some(
+    (d) => d.socket === "body" && d.kind === "roof_chop",
+  );
 
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(0.95, 0.3, 0.42),
@@ -25,14 +29,14 @@ export function buildCarMesh(spec: CarSpec): THREE.Group {
   body.castShadow = true;
 
   const cabin = new THREE.Mesh(
-    new THREE.BoxGeometry(0.5, 0.26, 0.4),
+    new THREE.BoxGeometry(0.5, chopped ? 0.16 : 0.26, 0.4),
     new THREE.MeshStandardMaterial({
       color: spec.paint.cabin,
       roughness: 0.4,
       metalness: 0.2,
     }),
   );
-  cabin.position.set(-0.02, 0.45, 0);
+  cabin.position.set(-0.02, chopped ? 0.4 : 0.45, 0);
   cabin.castShadow = true;
 
   // accent stripe down the bonnet — a gentle emissive floor so the car still reads at night
@@ -83,9 +87,10 @@ export function buildCarMesh(spec: CarSpec): THREE.Group {
 
   g.add(body, cabin, stripe, ...wheels, ...lights);
 
-  // mount every non-wheels part as a child mesh at its socket anchor (the wheels part is the tyres above)
+  // mount every bolt-on part as a child mesh at its socket anchor. The wheels + body sockets reshape the
+  // car (tyres above, cabin chop) rather than adding a child, so they are skipped here.
   for (const def of mounted) {
-    if (def.socket === "wheels") continue;
+    if (def.socket === "wheels" || def.socket === "body") continue;
     const part = buildPartMesh(def);
     part.position.set(def.anchor.x, def.anchor.y, def.anchor.z);
     g.add(part);
