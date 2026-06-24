@@ -19,6 +19,7 @@ import { greedyMesh } from "../render/voxelMesh";
 import type { KbProfile, KbPost } from "./kookerbook";
 import {
   kookerbookCanonicalProfileUrl,
+  kookerbookDirectoryLink,
   kookerbookInitialSelection,
   kookerbookProfileUrl,
 } from "./kookerbookNav";
@@ -194,45 +195,64 @@ function App() {
             Joe moves in.
           </div>
         )}
-        {profiles.map((p) => (
-          <div
-            key={p.citizenId}
-            data-kb-action={`select-profile-${p.citizenId}`}
-            onClick={() => selectProfile(p.citizenId)}
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              padding: 8,
-              borderRadius: 8,
-              cursor: "pointer",
-              background:
-                selected?.citizenId === p.citizenId ? "#1c2740" : "transparent",
-              marginBottom: 4,
-            }}
-          >
-            <Portrait p={p} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700 }}>{p.alias}</div>
-              <div style={{ opacity: 0.65, fontSize: 12 }}>
-                {p.address ?? "no address yet"}
-              </div>
-              {p.posts[0] && (
-                <div
-                  style={{
-                    opacity: 0.5,
-                    fontSize: 12,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {p.posts[0].text}
+        {profiles.map((p) => {
+          const link =
+            typeof window === "undefined"
+              ? null
+              : kookerbookDirectoryLink({
+                  currentHref: window.location.href,
+                  citizenId: p.citizenId,
+                  alias: p.alias,
+                  selectedCitizenId: selected?.citizenId ?? null,
+                });
+          return (
+            <a
+              key={p.citizenId}
+              href={link?.href ?? "#"}
+              aria-label={link?.ariaLabel ?? `Open Kookerbook profile for ${p.alias}`}
+              aria-current={link?.ariaCurrent}
+              data-kb-action={`select-profile-${p.citizenId}`}
+              onClick={(event) => {
+                event.preventDefault();
+                selectProfile(p.citizenId);
+              }}
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                padding: 8,
+                borderRadius: 8,
+                cursor: "pointer",
+                background:
+                  selected?.citizenId === p.citizenId ? "#1c2740" : "transparent",
+                marginBottom: 4,
+                color: "inherit",
+                textDecoration: "none",
+              }}
+            >
+              <Portrait p={p} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700 }}>{p.alias}</div>
+                <div style={{ opacity: 0.65, fontSize: 12 }}>
+                  {p.address ?? "no address yet"}
                 </div>
-              )}
-            </div>
-          </div>
-        ))}
+                {p.posts[0] && (
+                  <div
+                    style={{
+                      opacity: 0.5,
+                      fontSize: 12,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {p.posts[0].text}
+                  </div>
+                )}
+              </div>
+            </a>
+          );
+        })}
       </div>
       {/* profile page */}
       {selected ? (

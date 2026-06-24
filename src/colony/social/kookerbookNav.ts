@@ -31,3 +31,19 @@ export function kookerbookCanonicalProfileUrl(
   const selected = kookerbookInitialSelection(currentHref, loadedCitizenIds);
   return selected ? kookerbookProfileUrl(currentHref, selected) : null;
 }
+
+export function kookerbookDirectoryLink(args: {
+  currentHref: string;
+  citizenId: string;
+  alias: string;
+  selectedCitizenId: string | null;
+}): { href: string; ariaLabel: string; ariaCurrent?: "page" } | null {
+  if (!isPublicSafe(args.alias)) return null;
+  const href = kookerbookProfileUrl(args.currentHref, args.citizenId);
+  if (!href) return null;
+  return {
+    href,
+    ariaLabel: `Open Kookerbook profile for ${args.alias}`,
+    ...(args.selectedCitizenId === args.citizenId ? { ariaCurrent: "page" as const } : {}),
+  };
+}

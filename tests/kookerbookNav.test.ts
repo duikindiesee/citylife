@@ -4,6 +4,7 @@ import {
   isKookerbookCitizenId,
   kookerbookInitialSelection,
   kookerbookCanonicalProfileUrl,
+  kookerbookDirectoryLink,
 } from "../src/colony/social/kookerbookNav";
 
 describe("Kookerbook in-browser navigation", () => {
@@ -73,5 +74,29 @@ describe("Kookerbook in-browser navigation", () => {
         ids,
       ),
     ).toBe("https://citylife.example/kookerbook.html?citizen=citizen_joe#directory");
+  });
+
+  it("builds accessible directory link metadata for loaded public profiles", () => {
+    expect(
+      kookerbookDirectoryLink({
+        currentHref: "https://citylife.example/kookerbook.html?citizen=citizen_joe#directory",
+        citizenId: "citizen_jack",
+        alias: "Jack the Scout",
+        selectedCitizenId: "citizen_jack",
+      }),
+    ).toEqual({
+      href: "https://citylife.example/kookerbook.html?citizen=citizen_jack#directory",
+      ariaLabel: "Open Kookerbook profile for Jack the Scout",
+      ariaCurrent: "page",
+    });
+
+    expect(
+      kookerbookDirectoryLink({
+        currentHref: "https://citylife.example/kookerbook.html",
+        citizenId: "citizen_http://internal",
+        alias: "Unsafe",
+        selectedCitizenId: "citizen_joe",
+      }),
+    ).toBeNull();
   });
 });
