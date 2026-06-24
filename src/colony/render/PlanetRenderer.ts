@@ -20,6 +20,7 @@ import {
 } from "../artifacts";
 import type { HouseSpec } from "../house";
 import { gridOrigin } from "../grid";
+import { grabPlane, grabPanDelta } from "./panControls";
 import { cellZone, ZONE_COLOR, VIBE_COLOR, type Plot } from "../cityPlan";
 import {
   homeLiveability,
@@ -117,6 +118,12 @@ export class PlanetRenderer {
   onGroundClick?: (gx: number, gy: number) => void; // spec 090 — set by the runtime; fires on a ground CLICK (not a drag)
   private picker = new THREE.Raycaster();
   private pickDown: { x: number; y: number; t: number } | null = null;
+  // Grab-the-world LEFT-drag pan: anchor the clicked ground point under the cursor so a far grab
+  // hauls the world fast and a near grab moves it little — 1:1 with the drag — instead of
+  // OrbitControls' fixed target-distance pan that crawls when zoomed in. See the pointer handlers.
+  private panning = false;
+  private panGrab = new THREE.Vector3();
+  private panPlane = new THREE.Plane();
   private chunkedTerrain!: ChunkedTerrain; // spec 084 S5 — chunk grid, see terrainChunks.ts
   private terrainMat!: THREE.Material; // kept so the terrain can be rebuilt when footprints level (spec 093)
   // Spec 093 — RENDER-ONLY leveling. Cell index (y*N+x) → the flat seat height of the house whose
@@ -296,13 +303,13 @@ export class PlanetRenderer {
     this.controls.minDistance = 4;
     this.controls.maxDistance = this.R * 2.6;
     this.controls.target.set(0, 5, 0);
-    // Map-style navigation (operator UX): LEFT-drag PANS across the world (the intuitive "grab the
-    // map" gesture), RIGHT-drag ORBITS to look around, the wheel zooms. The OrbitControls default
-    // (left = rotate) made just moving around the world disorienting and hard. Pan along the GROUND
-    // plane (screenSpacePanning false) so a drag slides you across the terrain at a steady height
-    // instead of tilting through the air. Touch: one finger pans, two fingers pinch-zoom + rotate.
+    // Map-style navigation (operator UX): LEFT-mouse-drag PANS by GRABBING the world (custom handler
+    // below) so a far grab — e.g. the shopfronts across the map — hauls the world toward you fast and
+    // a near grab moves it little, 1:1 with the drag. OrbitControls' own pan scaled by the target
+    // distance, which crawls when zoomed in, so we leave mouse-LEFT unmapped here and drive it
+    // ourselves. RIGHT-drag ORBITS, the wheel zooms. Touch: one finger pans (OrbitControls), two
+    // fingers pinch-zoom + rotate.
     this.controls.mouseButtons = {
-      LEFT: THREE.MOUSE.PAN,
       MIDDLE: THREE.MOUSE.DOLLY,
       RIGHT: THREE.MOUSE.ROTATE,
     };
@@ -315,14 +322,52 @@ export class PlanetRenderer {
     this.controls.rotateSpeed = 0.6;
     this.controls.zoomSpeed = 1.1;
 
-    // Spec 090 — CLICK-TO-PICK a plot. A left CLICK (pointer barely moved, so not a pan/orbit drag)
-    // raycasts the terrain and hands the grid cell to onGroundClick; the runtime maps it to a plot and
-    // opens that plot's Kookerbook.
+    // Spec 090 — CLICK-TO-PICK a plot. A left CLICK (pointer barely moved) raycasts the terrain and
+    // hands the grid cell to onGroundClick, opening that plot's Kookerbook. A left DRAG instead GRABS
+    // the world: on press we remember the ground point under the cursor, then each move slides the
+    // camera so that same point stays under the cursor — a far grab hauls the world toward you fast,
+    // a near grab moves it little, always 1:1 with the drag.
     const pickEl = this.renderer.domElement;
     pickEl.addEventListener("pointerdown", (e) => {
       this.pickDown = { x: e.clientX, y: e.clientY, t: performance.now() };
+      if (e.button !== 0 || e.pointerType === "touch") return; // left mouse grabs; touch = OrbitControls
+      const p = this.pickGroundPoint(e.clientX, e.clientY);
+      if (!p) return;
+      this.panGrab.copy(p);
+      this.panPlane = grabPlane(p);
+      this.panning = true;
+      try {
+        pickEl.setPointerCapture(e.pointerId);
+      } catch {
+        /* capture is best-effort — the pan still tracks via the listeners */
+      }
     });
+    pickEl.addEventListener("pointermove", (e) => {
+      if (!this.panning) return;
+      const d = grabPanDelta(
+        this.camera,
+        this.panPlane,
+        this.panGrab,
+        this.clientToNdc(e.clientX, e.clientY),
+      );
+      if (!d) return;
+      this.camera.position.x += d.dx;
+      this.camera.position.z += d.dz;
+      this.controls.target.x += d.dx;
+      this.controls.target.z += d.dz;
+      this.camera.updateMatrixWorld();
+    });
+    const endPan = (e: PointerEvent) => {
+      if (!this.panning) return;
+      this.panning = false;
+      try {
+        pickEl.releasePointerCapture(e.pointerId);
+      } catch {
+        /* pointer was not captured */
+      }
+    };
     pickEl.addEventListener("pointerup", (e) => {
+      endPan(e);
       const d = this.pickDown;
       this.pickDown = null;
       if (!d || !this.onGroundClick) return;
@@ -334,6 +379,7 @@ export class PlanetRenderer {
       const hit = this.pickGround(e.clientX, e.clientY);
       if (hit) this.onGroundClick(hit.gx, hit.gy);
     });
+    pickEl.addEventListener("pointercancel", endPan);
 
     // Cool sky fill (0xbfd6e6) against the warm sun key, with a warmer ground bounce (was a cool
     // 0x35324a) so shadowed faces feel sun-warmed earth rather than cold — a richer key/fill contrast.
@@ -383,24 +429,36 @@ export class PlanetRenderer {
     return y - this.N / 2;
   }
 
+  /** NDC (-1..1) for a client-space screen point on the canvas. */
+  private clientToNdc(clientX: number, clientY: number): THREE.Vector2 {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    return new THREE.Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+  }
+
+  /** Raycast the terrain under a screen point; return the world-space hit point, or null. */
+  private pickGroundPoint(
+    clientX: number,
+    clientY: number,
+  ): THREE.Vector3 | null {
+    if (!this.chunkedTerrain) return null;
+    this.picker.setFromCamera(this.clientToNdc(clientX, clientY), this.camera);
+    const hits = this.picker.intersectObjects(
+      this.chunkedTerrain.group.children,
+      true,
+    );
+    return hits.length ? hits[0]!.point.clone() : null;
+  }
+
   /** Spec 090 — raycast the terrain under a screen point; return the grid cell hit, or null. */
   private pickGround(
     clientX: number,
     clientY: number,
   ): { gx: number; gy: number } | null {
-    if (!this.chunkedTerrain) return null;
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE.Vector2(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    this.picker.setFromCamera(ndc, this.camera);
-    const hits = this.picker.intersectObjects(
-      this.chunkedTerrain.group.children,
-      true,
-    );
-    if (!hits.length) return null;
-    const p = hits[0]!.point;
+    const p = this.pickGroundPoint(clientX, clientY);
+    if (!p) return null;
     return {
       gx: Math.round(p.x + this.N / 2),
       gy: Math.round(p.z + this.N / 2),
