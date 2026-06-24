@@ -1942,6 +1942,21 @@ export class ColonyRuntime {
     return true;
   }
 
+  /** Deterministic privacy/dogfood hook: place any public citizen through the same roster state as avatars. */
+  placeCitizenDogfood(
+    citizenId: string,
+    pos: { x: number; y: number },
+    heading: number,
+  ): boolean {
+    const c = this.citizens.byId(citizenId);
+    if (!c) return false;
+    c.pos = { ...pos };
+    c.target = { ...pos };
+    c.heading = heading;
+    this.emit();
+    return true;
+  }
+
   /** Deterministic route-dogfood hook: advance the same first-person driver used by the RAF loop. */
   stepFirstPersonDogfood(seconds: number): boolean {
     if (!this.fpCitizenId) return false;
@@ -3913,7 +3928,10 @@ export class ColonyRuntime {
         recent: s.settlers
           .slice(-6)
           .reverse()
-          .map((x) => ({ id: x.kookerId, name: x.name })),
+          .map((x) => ({
+            id: x.kookerId,
+            name: this.playerView ? "Resident" : x.name,
+          })),
       },
       bank: (() => {
         // Spec 085 — the bank panel reads the ACTIVE ₭ economy (citizen wallets), not the retired
@@ -3941,30 +3959,43 @@ export class ColonyRuntime {
             : s.ledger.txns
                 .slice(0, 6)
                 .map((tx) => ({ id: tx.id, memo: tx.memo })),
-          sync: {
-            pending: st.pending,
-            synced: st.synced,
-            lastError: st.lastError,
-          },
+          sync: this.playerView
+            ? { pending: 0, synced: 0, lastError: null }
+            : {
+                pending: st.pending,
+                synced: st.synced,
+                lastError: st.lastError,
+              },
         };
       })(),
-      border: {
-        households: this.backend.households(),
-        bots: this.botService.bots,
-        botSource: this.botService.source,
-        plots: this.cityPlan.plots,
-      },
+      border: this.playerView
+        ? {
+            households: [],
+            bots: [],
+            botSource: "hidden",
+            plots: [],
+          }
+        : {
+            households: this.backend.households(),
+            bots: this.botService.bots,
+            botSource: this.botService.source,
+            plots: this.cityPlan.plots,
+          },
       citizens: (() => {
         // Player data isolation: a CITYLIFE_PLAYER (playerView) sees only their own full record + others'
         // public-presence stubs, and only their OWN wallet balance; the operator/admin sees everything.
         const viewerId = playerViewerId;
-        const roster = viewerId
-          ? this.citizens.listFor(viewerId, VIW_ID)
+        const roster = this.playerView
+          ? this.citizens.listFor(
+              viewerId ?? "__unmatched_player__",
+              viewerId ? VIW_ID : undefined,
+            )
           : this.citizens.list();
-        const walletCitizens =
-          this.playerView && viewerId
+        const walletCitizens = this.playerView
+          ? viewerId
             ? this.citizens.list().filter((c) => c.id === viewerId)
-            : this.citizens.list();
+            : []
+          : this.citizens.list();
         return {
           count: this.citizens.size(),
           awake: this.citizens.awakeCount(),
@@ -3980,9 +4011,19 @@ export class ColonyRuntime {
         const c = this.fpCitizenId
           ? this.citizens.byId(this.fpCitizenId)
           : null;
-        const view = this.fpCitizenId
+        const rawView = this.fpCitizenId
           ? firstPersonView(this.sim.state, this.fpCitizenId, this.citizens)
           : null;
+        const view =
+          this.playerView && rawView
+            ? {
+                ...rawView,
+                neighbours: rawView.neighbours.map((n) => ({
+                  ...n,
+                  plotName: "Occupied",
+                })),
+              }
+            : rawView;
         return {
           active: this.fpCitizenId !== null,
           citizenId: this.fpCitizenId,
@@ -4185,15 +4226,17 @@ export class ColonyRuntime {
         // The crew always builds — canAfford only colours the hint (stockpile vs sourced off-island).
         const cost = COLONY.build.matNeighborHouse;
         const canAfford = s.materials >= cost;
-        const buildHint = canAfford
-          ? `The build crew raises the house — ${cost} materials from the stockpile`
-          : `The build crew raises the house — the stockpile is short (${s.materials}/${cost}) so the crew sources the rest off-island`;
+        const buildHint = this.playerView
+          ? "The build crew handles the home build privately for this resident."
+          : canAfford
+            ? `The build crew raises the house — ${cost} materials from the stockpile`
+            : `The build crew raises the house — the stockpile is short (${s.materials}/${cost}) so the crew sources the rest off-island`;
         return {
           lots,
           free: lots.filter((l) => !l.occupied).length,
           built: lots.filter((l) => l.built).length,
           houseCost: cost,
-          canAfford,
+          canAfford: this.playerView ? true : canAfford,
           buildHint,
         };
       })(),

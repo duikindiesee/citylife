@@ -5,6 +5,7 @@ import { CitizenRoster } from "../src/colony/bot/citizenRoster";
 import { firstPersonView } from "../src/colony/bot/firstPersonView";
 import { generateHousehold, isPublicSafe } from "../src/colony/newcomers";
 import { makeCityPlan } from "../src/colony/cityPlan";
+import { designHouse } from "../src/colony/house";
 
 const fixedNow = 1_700_000_000_000;
 
@@ -171,6 +172,8 @@ describe("firstPersonView — spec 074", () => {
     expect(playerUi.bank.accounts).toBe(1);
     expect(playerUi.bank.landOffice).toBe(0);
     expect(playerUi.bank.recent).toEqual([]);
+    expect(adminUi.bank.sync.pending + adminUi.bank.sync.synced).toBeGreaterThan(0);
+    expect(playerUi.bank.sync).toEqual({ pending: 0, synced: 0, lastError: null });
     const scopedOtherLot = playerUi.neighborhood.lots.find(
       (l) => l.id === otherOwnedLot.id,
     )!;
@@ -185,6 +188,27 @@ describe("firstPersonView — spec 074", () => {
       playerUi.citizens.list.find((c) => c.id === other.id)!.displayName,
     ).toBe(other.displayName); // public presence stays visible
     expect(isPublicSafe(scopedOtherLot.owner!)).toBe(true);
+  });
+
+  it("masks nearby citizens' home sites in the player first-person HUD", () => {
+    const rt = new ColonyRuntime(4242);
+    const adminUi = rt.getUiState();
+    const me = adminUi.citizens.list[0]!;
+    const other = adminUi.citizens.list.find((c) => c.id !== me.id)!;
+    const privateOtherPlot = other.plotName;
+
+    rt.setOperatorName(me.displayName);
+    rt.setPlayerView(true);
+    expect(rt.enterFirstPerson(me.id)).toBe(true);
+    rt.placeFirstPersonDogfood({ x: 20, y: 20 }, 0);
+    rt.placeCitizenDogfood(other.id, { x: 21, y: 20 }, 0);
+
+    const playerView = rt.getUiState().firstPerson.view!;
+    expect(playerView.neighbours[0]!.displayName).toBe(other.displayName);
+    expect(playerView.neighbours[0]!.plotName).toBe("Occupied");
+    expect(playerView.neighbours[0]!.plotName).not.toBe(privateOtherPlot);
+    expect(JSON.stringify(playerView)).not.toContain(privateOtherPlot);
+    expect(isPublicSafe(playerView.neighbours[0]!.plotName)).toBe(true);
   });
 
   it("does not leak other citizens' shop-buying power in the player HUD", () => {
@@ -206,6 +230,79 @@ describe("firstPersonView — spec 074", () => {
     expect(playerUi.citizens.wallets[me.id]).toBe(0);
     expect(playerUi.citizens.wallets[other.id]).toBeUndefined();
     expect(playerUi.commerce.canClaim).toBe(false);
+  });
+
+  it("keeps unmatched player HUDs in public-stub mode instead of falling back to admin", () => {
+    const rt = new ColonyRuntime(4242);
+    const adminUi = rt.getUiState();
+    const privatePlotNames = new Set(
+      adminUi.citizens.list.map((c) => c.plotName),
+    );
+
+    rt.setOperatorName("johndoe");
+    rt.setPlayerView(true);
+
+    const playerUi = rt.getUiState();
+    expect(playerUi.bank.scope).toBe("player");
+    expect(playerUi.bank.deposits).toBe(0);
+    expect(playerUi.bank.accounts).toBe(0);
+    expect(playerUi.bank.recent).toEqual([]);
+    expect(adminUi.border.plots.length).toBeGreaterThan(0);
+    expect(playerUi.border.households).toEqual([]);
+    expect(playerUi.border.bots).toEqual([]);
+    expect(playerUi.border.plots).toEqual([]);
+    expect(isPublicSafe(JSON.stringify(playerUi.border))).toBe(true);
+    expect(playerUi.firstPerson.stepInCitizenIds).toEqual([]);
+    expect(Object.keys(playerUi.citizens.wallets)).toEqual([]);
+    expect(playerUi.citizens.list.length).toBe(adminUi.citizens.list.length);
+    for (const citizen of playerUi.citizens.list) {
+      expect(citizen.plotName).toBe("Occupied");
+      expect(privatePlotNames.has(citizen.plotName)).toBe(false);
+      expect(citizen.telegramHandle).toBeUndefined();
+      expect(citizen.tokensSpentLifetime).toBe(0);
+      expect(isPublicSafe(citizen.plotName)).toBe(true);
+    }
+  });
+
+  it("masks recent settler names in the player-scoped UI payload", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.sim.state.settlers.push(
+      {
+        kookerId: 731,
+        name: "Mira Ledger",
+        x: 12,
+        y: 13,
+        house: designHouse(731),
+      },
+      {
+        kookerId: 842,
+        name: "Other Player",
+        x: 14,
+        y: 15,
+        house: designHouse(842),
+      },
+    );
+    const adminUi = rt.getUiState();
+    expect(adminUi.settlers.recent.map((s) => s.name)).toEqual([
+      "Other Player",
+      "Mira Ledger",
+    ]);
+
+    rt.setOperatorName("johndoe");
+    rt.setPlayerView(true);
+
+    const playerUi = rt.getUiState();
+    expect(playerUi.settlers.count).toBe(2);
+    expect(playerUi.settlers.recent).toEqual([
+      { id: 842, name: "Resident" },
+      { id: 731, name: "Resident" },
+    ]);
+    expect(JSON.stringify(playerUi.settlers)).not.toMatch(
+      /Mira Ledger|Other Player/i,
+    );
+    expect(playerUi.settlers.recent.map((s) => s.name).every(isPublicSafe)).toBe(
+      true,
+    );
   });
 
   it("boots deterministic in-world agent citizens for Joe and Jack", () => {

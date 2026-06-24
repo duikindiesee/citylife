@@ -7,8 +7,14 @@ describe("Kookerbook mobile layout", () => {
 
     expect(layout.shell.flexDirection).toBe("column");
     expect(layout.shell.overflowX).toBe("hidden");
+    expect(layout.shell.padding).toBe(10);
+    expect(layout.shell.gap).toBe(10);
+    expect(layout.html.overflowX).toBe("hidden");
     expect(layout.body.margin).toBe("0");
     expect(layout.body.overflowX).toBe("hidden");
+    expect(layout.root.width).toBe("100%");
+    expect(layout.root.maxWidth).toBe("100%");
+    expect(layout.root.overflowX).toBe("hidden");
     expect(layout.directory.width).toBe("auto");
     expect(layout.directory.maxWidth).toBe("100%");
     expect(layout.profile.width).toBe("auto");
@@ -32,6 +38,8 @@ describe("Kookerbook mobile layout", () => {
     const layout = kookerbookLayoutForViewport(1024);
 
     expect(layout.shell.flexDirection).toBe("row");
+    expect(layout.shell.padding).toBe(16);
+    expect(layout.shell.gap).toBe(16);
     expect(layout.directory.width).toBe(320);
     expect(layout.profile.maxWidth).toBe(760);
   });

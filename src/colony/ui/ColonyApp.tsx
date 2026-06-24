@@ -100,12 +100,29 @@ export type CitizenHudCopy = {
   title: string;
   summary: string;
 };
+export type SettlerHudCopy = {
+  count: string;
+  recent: string[];
+};
+export function settlerHudCopy(args: {
+  count: number;
+  recent: { id: number; name: string }[];
+  playerScoped: boolean;
+}): SettlerHudCopy {
+  return {
+    count: String(args.count),
+    recent: args.recent.map((s) =>
+      args.playerScoped ? `#${s.id} Resident` : `#${s.id} ${s.name}`,
+    ),
+  };
+}
 export type AvatarFoundryCopy = {
   title: string;
   summary: string;
 };
 export type CommercePanelCopy = {
   claimTitle: string;
+  claimButtonLabel: string;
 };
 export function commercePanelCopy(args: {
   commerce: ColonyUiState["commerce"];
@@ -117,12 +134,18 @@ export function commercePanelCopy(args: {
       claimTitle: args.commerce.canClaim
         ? "You can open the next shop"
         : "Your wallet cannot open a shop yet",
+      claimButtonLabel: "🛒 Open a shop",
     };
   }
   return {
     claimTitle: args.commerce.canClaim
       ? "The wealthiest resident who can afford it takes the cheapest shop plot"
       : "No resident can afford a free shop plot yet",
+    claimButtonLabel: `🛒 Open a shop${
+      args.commerce.cheapest
+        ? ` · ${args.commerce.cheapest.kind} ${args.currency}${args.commerce.cheapest.price.toLocaleString()}`
+        : ""
+    }`,
   };
 }
 export function buyPlotButtonTitle(args: {
@@ -140,6 +163,96 @@ export function buyPlotButtonTitle(args: {
   return args.canBuy
     ? `Assign this plot to ${args.buyerName}`
     : `${args.buyerName} can't afford this plot (wallet ${args.wallet} ₭, price ${args.price} ₭)`;
+}
+export type LotHudCopy = {
+  label: string;
+  title: string | undefined;
+};
+export function lotHudCopy(args: {
+  id: string;
+  owner: string | null;
+  built: boolean;
+  reserved: boolean;
+  price: number | null;
+  priceZar: number | null;
+  playerScoped: boolean;
+}): LotHudCopy {
+  const siteLabel = args.playerScoped
+    ? args.id.replace("lot_", "Home site ")
+    : args.id.replace("lot_", "Plot ");
+  const ownerLabel = args.owner
+    ? args.playerScoped
+      ? "Occupied"
+      : args.reserved
+        ? args.owner
+        : args.owner.split(" ")[0]
+    : !args.reserved && args.price !== null
+      ? `${args.price} ₭`
+      : "free";
+  const title = args.reserved
+    ? args.playerScoped
+      ? "Founder home site — permanently reserved."
+      : "Founder plot — permanently reserved; never assigned to newcomers and protected from demolition."
+    : args.price !== null
+      ? args.playerScoped
+        ? `Home site price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString()}) — larger and shore-side sites cost more`
+        : `Plot price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString()}) — bigger and shore-ward land costs more`
+      : undefined;
+  return { label: `${siteLabel} · ${ownerLabel}`, title };
+}
+export function homesteadHudTitle(args: { playerScoped: boolean }): string {
+  if (args.playerScoped) {
+    return "Homesteads show available home sites, finished homes, and player-safe build actions.";
+  }
+  return "Spec 076 — large bordered HOMESTEAD parcels on a terrain-aware street: each fenced plot has a front yard, a set-back voxel house, a garden and a farm field. Assign a citizen to a homestead, build their house, or demolish it. Raze-and-evict also destroys the citizen and tears down their Hermes agent.";
+}
+export function workstationMarkerTitle(args: { playerScoped: boolean }): string {
+  if (args.playerScoped) {
+    return "This home has a resident workstation for public in-city activity.";
+  }
+  return "Spec 080 — this household runs a Workstation: the resident bot's own computer, serving a static site on the bots-only intranet for other citizens to browse. Marker only in the public game (the intranet is cluster-internal — no URL is shown here).";
+}
+export type HomesteadActionVisibility = {
+  showDesign: boolean;
+  showCommission: boolean;
+  showBuild: boolean;
+  showDemolish: boolean;
+  showEvict: boolean;
+};
+export function homesteadActionVisibility(args: {
+  playerScoped: boolean;
+  ownerId: string | null;
+  operatorCitizenId: string | null;
+  occupied: boolean;
+  built: boolean;
+  reserved: boolean;
+}): HomesteadActionVisibility {
+  const hasOwner = args.ownerId !== null;
+  const playerOwnsLot =
+    args.operatorCitizenId !== null && args.ownerId === args.operatorCitizenId;
+  const canManageBuild = hasOwner && (!args.playerScoped || playerOwnsLot);
+  const operatorScoped = !args.playerScoped;
+  return {
+    showDesign: canManageBuild,
+    showCommission: canManageBuild && !args.built && !args.reserved,
+    showBuild: canManageBuild && !args.built,
+    showDemolish: operatorScoped && args.built && !args.reserved,
+    showEvict: operatorScoped && hasOwner && !args.reserved,
+  };
+}
+
+export function canShowBorderControl(args: { playerScoped: boolean }): boolean {
+  return !args.playerScoped;
+}
+export function furnitureMarketplaceSellerLabel(args: {
+  sellerCitizenId: string;
+  viewerCitizenId: string;
+  sellerDisplayName: string | undefined;
+  playerScoped: boolean;
+}): string {
+  if (args.sellerCitizenId === args.viewerCitizenId) return "you";
+  if (args.playerScoped) return "another resident";
+  return args.sellerDisplayName ?? "a resident";
 }
 export function avatarFoundryCopy(args: {
   foundries: number;
@@ -327,6 +440,14 @@ export function ColonyApp() {
     foundries: ui.colony.avatar.foundries,
     staffed: ui.colony.avatar.staffed,
     capacity: ui.colony.avatar.capacity,
+    playerScoped: ui.bank.scope === "player",
+  });
+  const settlerCopy = settlerHudCopy({
+    count: ui.settlers.count,
+    recent: ui.settlers.recent,
+    playerScoped: ui.bank.scope === "player",
+  });
+  const showBorderControl = canShowBorderControl({
     playerScoped: ui.bank.scope === "player",
   });
   const [borderOpen, setBorderOpen] = useState(false);
@@ -1789,7 +1910,7 @@ export function ColonyApp() {
             <span>Homesteads</span>
             <b
               style={{ color: "#9fd0a0" }}
-              title="Spec 076 — large bordered HOMESTEAD parcels on a terrain-aware street: each fenced plot has a front yard, a set-back voxel house, a garden and a farm field. Assign a citizen to a homestead, build their house, or demolish it. Raze-and-evict also destroys the citizen and tears down their Hermes agent."
+              title={homesteadHudTitle({ playerScoped: ui.bank.scope === "player" })}
             >
               {ui.neighborhood.built} built · {ui.neighborhood.free} free
             </b>
@@ -1804,6 +1925,23 @@ export function ColonyApp() {
               const firstFree = ui.citizens.list.find(
                 (c) => !ui.neighborhood.lots.some((x) => x.ownerId === c.id),
               );
+              const lotCopy = lotHudCopy({
+                id: l.id,
+                owner: l.owner,
+                built: l.built,
+                reserved: l.reserved,
+                price: l.price,
+                priceZar: l.priceZar,
+                playerScoped: ui.bank.scope === "player",
+              });
+              const lotActions = homesteadActionVisibility({
+                playerScoped: ui.bank.scope === "player",
+                ownerId: l.ownerId,
+                operatorCitizenId: ui.firstPerson.operatorCitizenId,
+                occupied: l.occupied,
+                built: l.built,
+                reserved: l.reserved,
+              });
               return (
                 <div
                   key={l.id}
@@ -1825,20 +1963,9 @@ export function ColonyApp() {
                             ? "#c9a23a"
                             : "#7a8a7a",
                     }}
-                    title={
-                      l.reserved
-                        ? "Founder plot — permanently reserved; never assigned to newcomers and protected from demolition."
-                        : l.price !== null
-                          ? `Plot price ${l.price} ₭ (≈ R${l.priceZar?.toLocaleString()}) — bigger and shore-ward land costs more`
-                          : undefined
-                    }
+                    title={lotCopy.title}
                   >
-                    {l.id.replace("lot_", "Plot ")}
-                    {l.owner
-                      ? ` · ${l.reserved ? l.owner : l.owner.split(" ")[0]}`
-                      : !l.reserved && l.price !== null
-                        ? ` · ${l.price} ₭`
-                        : " · free"}
+                    {lotCopy.label}
                     {l.reserved
                       ? `${l.owner?.includes("Crab") ? " 🦀" : " 🛠️"} · Founder`
                       : l.built
@@ -1847,7 +1974,9 @@ export function ColonyApp() {
                   </span>
                   {l.built && (
                     <span
-                      title="Spec 080 — this household runs a Workstation: the resident bot's own computer, serving a static site on the bots-only intranet for other citizens to browse. Marker only in the public game (the intranet is cluster-internal — no URL is shown here)."
+                      title={workstationMarkerTitle({
+                        playerScoped: ui.bank.scope === "player",
+                      })}
                       style={{ fontSize: 11, opacity: 0.9 }}
                     >
                       💻
@@ -1885,7 +2014,7 @@ export function ColonyApp() {
                         </button>
                       );
                     })()}
-                  {l.ownerId && (
+                  {lotActions.showDesign && (
                     <button
                       style={{
                         padding: "0 6px",
@@ -1902,7 +2031,7 @@ export function ColonyApp() {
                       {l.built ? "Re-design" : "Design"}
                     </button>
                   )}
-                  {l.ownerId && !l.built && !l.reserved && (
+                  {lotActions.showCommission && (
                     <button
                       style={{
                         padding: "0 6px",
@@ -1915,7 +2044,7 @@ export function ColonyApp() {
                       🛠️ Hire KOOKER
                     </button>
                   )}
-                  {l.ownerId && !l.built && (
+                  {lotActions.showBuild && (
                     <button
                       style={{ padding: "0 6px", fontSize: 10 }}
                       onClick={() => runtime.buildHouse(l.id)}
@@ -1924,7 +2053,7 @@ export function ColonyApp() {
                       Build
                     </button>
                   )}
-                  {l.built && !l.reserved && (
+                  {lotActions.showDemolish && (
                     <button
                       style={{ padding: "0 6px", fontSize: 10 }}
                       onClick={() => runtime.demolishLot(l.id)}
@@ -1933,7 +2062,7 @@ export function ColonyApp() {
                       Demolish
                     </button>
                   )}
-                  {l.ownerId && !l.reserved && (
+                  {lotActions.showEvict && (
                     <button
                       style={{
                         padding: "0 6px",
@@ -2189,20 +2318,22 @@ export function ColonyApp() {
         )}
         <div className="row" style={{ marginTop: 10 }}>
           <span>Settlers</span>
-          <b>{ui.settlers.count}</b>
+          <b>{settlerCopy.count}</b>
         </div>
-        {ui.settlers.recent.length > 0 && (
+        {settlerCopy.recent.length > 0 && (
           <div className="settler-list">
-            {ui.settlers.recent.map((s) => (
-              <span key={s.id} className="chip">
-                #{s.id} {s.name}
+            {settlerCopy.recent.map((label) => (
+              <span key={label} className="chip">
+                {label}
               </span>
             ))}
           </div>
         )}
-        <button className="immigbtn" onClick={() => setBorderOpen(true)}>
-          🛂 Border Control
-        </button>
+        {showBorderControl && (
+          <button className="immigbtn" onClick={() => setBorderOpen(true)}>
+            🛂 Border Control
+          </button>
+        )}
 
         {(() => {
           const bankCopy = bankPanelCopy(ui.bank);
@@ -2279,10 +2410,7 @@ export function ColonyApp() {
                     onClick={() => runtime.claimNextShop()}
                     title={commerceCopy.claimTitle}
                   >
-                    🛒 Open a shop
-                    {ui.commerce.cheapest
-                      ? ` · ${ui.commerce.cheapest.kind} ${ui.bank.currency}${ui.commerce.cheapest.price.toLocaleString()}`
-                      : ""}
+                    {commerceCopy.claimButtonLabel}
                   </button>
                 )}
               </>
@@ -2554,10 +2682,13 @@ export function ColonyApp() {
                   const listings = runtime.marketListings();
                   if (listings.length === 0) return null;
                   const nameOf = (cid: string) =>
-                    cid === me
-                      ? "you"
-                      : (ui.citizens.list.find((x) => x.id === cid)
-                          ?.displayName ?? "a resident");
+                    furnitureMarketplaceSellerLabel({
+                      sellerCitizenId: cid,
+                      viewerCitizenId: me,
+                      sellerDisplayName: ui.citizens.list.find((x) => x.id === cid)
+                        ?.displayName,
+                      playerScoped: ui.bank.scope === "player",
+                    });
                   return (
                     <div
                       data-build-area="furniture-market"
@@ -2632,7 +2763,7 @@ export function ColonyApp() {
 
       <RadioPanel runtime={runtime} radio={ui.radio} tv={ui.tv} />
 
-      {borderOpen && (
+      {showBorderControl && borderOpen && (
         <div className="modal-overlay" onClick={() => setBorderOpen(false)}>
           <div
             className="modal border-modal"
