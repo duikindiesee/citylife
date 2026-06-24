@@ -3,7 +3,11 @@ import type { CSSProperties } from "react";
 export const KOOKERBOOK_MOBILE_MAX_WIDTH = 640;
 
 export type KookerbookResponsiveLayout = {
-  body: Pick<CSSProperties, "margin" | "overflowX">;
+  document: {
+    html: Pick<CSSProperties, "overflowX">;
+    body: Pick<CSSProperties, "margin" | "overflowX">;
+    root: Pick<CSSProperties, "width" | "maxWidth" | "overflowX">;
+  };
   shell: Pick<
     CSSProperties,
     "flexDirection" | "overflowX" | "width" | "maxWidth"
@@ -23,12 +27,18 @@ const WRAPPING_TEXT: KookerbookResponsiveLayout["contentText"] = {
   wordBreak: "break-word",
 };
 
+const DOCUMENT_OVERFLOW_GUARD: KookerbookResponsiveLayout["document"] = {
+  html: { overflowX: "hidden" },
+  body: { margin: "0", overflowX: "hidden" },
+  root: { width: "100%", maxWidth: "100%", overflowX: "hidden" },
+};
+
 export function kookerbookLayoutForViewport(
   viewportWidth: number,
 ): KookerbookResponsiveLayout {
   if (viewportWidth <= KOOKERBOOK_MOBILE_MAX_WIDTH) {
     return {
-      body: { margin: "0", overflowX: "hidden" },
+      document: DOCUMENT_OVERFLOW_GUARD,
       shell: {
         flexDirection: "column",
         overflowX: "hidden",
@@ -46,7 +56,7 @@ export function kookerbookLayoutForViewport(
   }
 
   return {
-    body: { margin: "0", overflowX: "hidden" },
+    document: DOCUMENT_OVERFLOW_GUARD,
     shell: {
       flexDirection: "row",
       overflowX: "hidden",

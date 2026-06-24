@@ -207,15 +207,43 @@ function App() {
   };
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const previousMargin = document.body.style.margin;
-    const previousOverflowX = document.body.style.overflowX;
-    document.body.style.margin = String(layout.body.margin ?? "");
-    document.body.style.overflowX = String(layout.body.overflowX ?? "");
+    const root = document.getElementById("root");
+    const previousHtmlOverflowX = document.documentElement.style.overflowX;
+    const previousBodyMargin = document.body.style.margin;
+    const previousBodyOverflowX = document.body.style.overflowX;
+    const previousRootWidth = root?.style.width ?? "";
+    const previousRootMaxWidth = root?.style.maxWidth ?? "";
+    const previousRootOverflowX = root?.style.overflowX ?? "";
+    document.documentElement.style.overflowX = String(
+      layout.document.html.overflowX ?? "",
+    );
+    document.body.style.margin = String(layout.document.body.margin ?? "");
+    document.body.style.overflowX = String(
+      layout.document.body.overflowX ?? "",
+    );
+    if (root) {
+      root.style.width = String(layout.document.root.width ?? "");
+      root.style.maxWidth = String(layout.document.root.maxWidth ?? "");
+      root.style.overflowX = String(layout.document.root.overflowX ?? "");
+    }
     return () => {
-      document.body.style.margin = previousMargin;
-      document.body.style.overflowX = previousOverflowX;
+      document.documentElement.style.overflowX = previousHtmlOverflowX;
+      document.body.style.margin = previousBodyMargin;
+      document.body.style.overflowX = previousBodyOverflowX;
+      if (root) {
+        root.style.width = previousRootWidth;
+        root.style.maxWidth = previousRootMaxWidth;
+        root.style.overflowX = previousRootOverflowX;
+      }
     };
-  }, [layout.body.margin, layout.body.overflowX]);
+  }, [
+    layout.document.html.overflowX,
+    layout.document.body.margin,
+    layout.document.body.overflowX,
+    layout.document.root.width,
+    layout.document.root.maxWidth,
+    layout.document.root.overflowX,
+  ]);
   return (
     <div
       style={{

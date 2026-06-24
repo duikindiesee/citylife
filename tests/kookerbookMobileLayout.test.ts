@@ -7,8 +7,12 @@ describe("Kookerbook mobile layout", () => {
 
     expect(layout.shell.flexDirection).toBe("column");
     expect(layout.shell.overflowX).toBe("hidden");
-    expect(layout.body.margin).toBe("0");
-    expect(layout.body.overflowX).toBe("hidden");
+    expect(layout.document.html.overflowX).toBe("hidden");
+    expect(layout.document.body.margin).toBe("0");
+    expect(layout.document.body.overflowX).toBe("hidden");
+    expect(layout.document.root.width).toBe("100%");
+    expect(layout.document.root.maxWidth).toBe("100%");
+    expect(layout.document.root.overflowX).toBe("hidden");
     expect(layout.directory.width).toBe("auto");
     expect(layout.directory.maxWidth).toBe("100%");
     expect(layout.profile.width).toBe("auto");
