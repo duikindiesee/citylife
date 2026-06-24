@@ -144,8 +144,8 @@ describe("CitizenRoster — spec 074 plumbing", () => {
     const seenA = view.find((c) => c.id === a.id)!;
     const seenB = view.find((c) => c.id === b.id)!;
     expect(seenA.tokensSpentLifetime).toBe(120); // own usage visible
-    expect(seenB.displayName).toBe(b.displayName); // public presence: name + plot still shown
-    expect(seenB.plotName).toBe("Hillside Vista");
+    expect(seenB.displayName).toBe(b.displayName); // public presence: name still shown
+    expect(seenB.plotName).toBe("Occupied");
     expect(seenB.tokensSpentLifetime).toBe(0); // private usage hidden
     expect(seenB.telegramHandle).toBeUndefined(); // private contact hidden
 

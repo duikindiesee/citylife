@@ -181,9 +181,9 @@ describe("firstPersonView — spec 074", () => {
     expect(playerUi.neighborhood.lots.filter((l) => !l.occupied).length).toBe(
       adminUi.neighborhood.free,
     );
-    expect(playerUi.citizens.list.find((c) => c.id === other.id)!.displayName).toBe(
-      other.displayName,
-    ); // public presence stays visible
+    expect(
+      playerUi.citizens.list.find((c) => c.id === other.id)!.displayName,
+    ).toBe(other.displayName); // public presence stays visible
     expect(isPublicSafe(scopedOtherLot.owner!)).toBe(true);
   });
 
@@ -206,6 +206,33 @@ describe("firstPersonView — spec 074", () => {
     expect(playerUi.citizens.wallets[me.id]).toBe(0);
     expect(playerUi.citizens.wallets[other.id]).toBeUndefined();
     expect(playerUi.commerce.canClaim).toBe(false);
+  });
+
+  it("keeps unmatched player HUDs in public-stub mode instead of falling back to admin", () => {
+    const rt = new ColonyRuntime(4242);
+    const adminUi = rt.getUiState();
+    const privatePlotNames = new Set(
+      adminUi.citizens.list.map((c) => c.plotName),
+    );
+
+    rt.setOperatorName("johndoe");
+    rt.setPlayerView(true);
+
+    const playerUi = rt.getUiState();
+    expect(playerUi.bank.scope).toBe("player");
+    expect(playerUi.bank.deposits).toBe(0);
+    expect(playerUi.bank.accounts).toBe(0);
+    expect(playerUi.bank.recent).toEqual([]);
+    expect(playerUi.firstPerson.stepInCitizenIds).toEqual([]);
+    expect(Object.keys(playerUi.citizens.wallets)).toEqual([]);
+    expect(playerUi.citizens.list.length).toBe(adminUi.citizens.list.length);
+    for (const citizen of playerUi.citizens.list) {
+      expect(citizen.plotName).toBe("Occupied");
+      expect(privatePlotNames.has(citizen.plotName)).toBe(false);
+      expect(citizen.telegramHandle).toBeUndefined();
+      expect(citizen.tokensSpentLifetime).toBe(0);
+      expect(isPublicSafe(citizen.plotName)).toBe(true);
+    }
   });
 
   it("boots deterministic in-world agent citizens for Joe and Jack", () => {

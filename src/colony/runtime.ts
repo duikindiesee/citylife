@@ -288,7 +288,6 @@ export function canRestoreBlueprint(
 export const VIW_BLUEPRINT =
   "house{w:8 d:7 wallH:2 door:e} room{kind:living x:0 y:0 w:8 d:5 win:1} room{kind:garage x:0 y:5 w:3 d:2 win:0} room{kind:bedroom x:3 y:5 w:2 d:2 win:1} room{kind:patio x:5 y:5 w:3 d:2 win:0}";
 
-
 const BIOME_LABEL: Record<number, string> = {
   [Biome.Ocean]: "Ocean",
   [Biome.Shallows]: "Shallows",
@@ -3558,13 +3557,19 @@ export class ColonyRuntime {
           currency: CURRENCY,
           deposits: held,
           depositsZar: kookToZar(held, COLONY.economy.land),
-          accounts: this.playerView ? (playerViewerId ? 1 : 0) : walletCount(s.ledger),
+          accounts: this.playerView
+            ? playerViewerId
+              ? 1
+              : 0
+            : walletCount(s.ledger),
           landOffice: this.playerView
             ? 0
             : Math.round(ledgerBalance(s.ledger, "land")),
           recent: this.playerView
             ? []
-            : s.ledger.txns.slice(0, 6).map((tx) => ({ id: tx.id, memo: tx.memo })),
+            : s.ledger.txns
+                .slice(0, 6)
+                .map((tx) => ({ id: tx.id, memo: tx.memo })),
           sync: {
             pending: st.pending,
             synced: st.synced,
@@ -3582,13 +3587,17 @@ export class ColonyRuntime {
         // Player data isolation: a CITYLIFE_PLAYER (playerView) sees only their own full record + others'
         // public-presence stubs, and only their OWN wallet balance; the operator/admin sees everything.
         const viewerId = playerViewerId;
-        const roster = viewerId
-          ? this.citizens.listFor(viewerId, VIW_ID)
+        const roster = this.playerView
+          ? this.citizens.listFor(
+              viewerId ?? "__unmatched_player__",
+              viewerId ? VIW_ID : undefined,
+            )
           : this.citizens.list();
-        const walletCitizens =
-          this.playerView && viewerId
+        const walletCitizens = this.playerView
+          ? viewerId
             ? this.citizens.list().filter((c) => c.id === viewerId)
-            : this.citizens.list();
+            : []
+          : this.citizens.list();
         return {
           count: this.citizens.size(),
           awake: this.citizens.awakeCount(),
