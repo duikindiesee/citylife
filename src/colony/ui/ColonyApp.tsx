@@ -156,6 +156,42 @@ export function buyPlotButtonTitle(args: {
     ? `Assign this plot to ${args.buyerName}`
     : `${args.buyerName} can't afford this plot (wallet ${args.wallet} ₭, price ${args.price} ₭)`;
 }
+export type LotHudCopy = {
+  label: string;
+  title: string | undefined;
+};
+export function lotHudCopy(args: {
+  id: string;
+  owner: string | null;
+  built: boolean;
+  reserved: boolean;
+  price: number | null;
+  priceZar: number | null;
+  playerScoped: boolean;
+}): LotHudCopy {
+  const siteLabel = args.playerScoped
+    ? args.id.replace("lot_", "Home site ")
+    : args.id.replace("lot_", "Plot ");
+  const ownerLabel = args.owner
+    ? args.playerScoped
+      ? args.owner
+      : args.reserved
+        ? args.owner
+        : args.owner.split(" ")[0]
+    : !args.reserved && args.price !== null
+      ? `${args.price} ₭`
+      : "free";
+  const title = args.reserved
+    ? args.playerScoped
+      ? "Founder home site — permanently reserved."
+      : "Founder plot — permanently reserved; never assigned to newcomers and protected from demolition."
+    : args.price !== null
+      ? args.playerScoped
+        ? `Home site price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString()}) — larger and shore-side sites cost more`
+        : `Plot price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString()}) — bigger and shore-ward land costs more`
+      : undefined;
+  return { label: `${siteLabel} · ${ownerLabel}`, title };
+}
 export function avatarFoundryCopy(args: {
   foundries: number;
   staffed: boolean;
@@ -1822,6 +1858,15 @@ export function ColonyApp() {
               const firstFree = ui.citizens.list.find(
                 (c) => !ui.neighborhood.lots.some((x) => x.ownerId === c.id),
               );
+              const lotCopy = lotHudCopy({
+                id: l.id,
+                owner: l.owner,
+                built: l.built,
+                reserved: l.reserved,
+                price: l.price,
+                priceZar: l.priceZar,
+                playerScoped: ui.bank.scope === "player",
+              });
               return (
                 <div
                   key={l.id}
@@ -1843,20 +1888,9 @@ export function ColonyApp() {
                             ? "#c9a23a"
                             : "#7a8a7a",
                     }}
-                    title={
-                      l.reserved
-                        ? "Founder plot — permanently reserved; never assigned to newcomers and protected from demolition."
-                        : l.price !== null
-                          ? `Plot price ${l.price} ₭ (≈ R${l.priceZar?.toLocaleString()}) — bigger and shore-ward land costs more`
-                          : undefined
-                    }
+                    title={lotCopy.title}
                   >
-                    {l.id.replace("lot_", "Plot ")}
-                    {l.owner
-                      ? ` · ${l.reserved ? l.owner : l.owner.split(" ")[0]}`
-                      : !l.reserved && l.price !== null
-                        ? ` · ${l.price} ₭`
-                        : " · free"}
+                    {lotCopy.label}
                     {l.reserved
                       ? `${l.owner?.includes("Crab") ? " 🦀" : " 🛠️"} · Founder`
                       : l.built
