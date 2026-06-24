@@ -34,6 +34,7 @@ describe("PlacedArtifact schema", () => {
     expect(seen.get("planter")).toBe("landscaping");
     expect(seen.get("shade_tree")).toBe("tree");
     expect(seen.get("notice_board")).toBe("prop");
+    expect(seen.get("wayfinder")).toBe("prop");
   });
 
   it("converts seeded visual artifacts to PlacedArtifact without quantising rot", () => {
@@ -47,6 +48,7 @@ describe("PlacedArtifact schema", () => {
       "prop",
       "tree",
       "prop",
+      "prop",
     ]);
     expect(placed.map((item) => item.data.variant)).toEqual([
       "bench",
@@ -55,6 +57,7 @@ describe("PlacedArtifact schema", () => {
       "fountain",
       "shade_tree",
       "notice_board",
+      "wayfinder",
     ]);
     expect(placed[2]!.transform.rot).toBeCloseTo(Math.PI * 0.25, 12);
     expect(placed[3]!.transform.rot).toBeCloseTo(Math.PI * 0.75, 12);
