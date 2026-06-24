@@ -2779,10 +2779,8 @@ export class PlanetRenderer {
 
   /** Deterministic furniture / civic-art catalog instances come from ColonySim, not renderer randomness. */
   private updateArtifacts(): void {
-    const { counts, renderable, unknown, overflow } = summarizeRenderableArtifacts(
-      this.sim.state.artifacts,
-      this.artifactCap,
-    );
+    const { counts, renderable, unknown, overflow } =
+      summarizeRenderableArtifacts(this.sim.state.artifacts, this.artifactCap);
 
     const placed: Record<ArtifactKind, number> = {
       bench: 0,
