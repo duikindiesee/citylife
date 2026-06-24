@@ -3309,6 +3309,17 @@ export class ColonyRuntime {
     const s = this.sim.state;
     const li = s.terrain.idx(s.terrain.landing.x, s.terrain.landing.y);
     const p = s.power;
+    const playerViewerId = this.playerView ? this.operatorCitizenId() : null;
+    const playerScopedOwner = (ownerCitizenId: string | undefined) => {
+      if (!ownerCitizenId) return { owner: null, ownerId: null };
+      if (!this.playerView || ownerCitizenId === playerViewerId) {
+        return {
+          owner: this.citizens.byId(ownerCitizenId)?.displayName ?? null,
+          ownerId: ownerCitizenId,
+        };
+      }
+      return { owner: "Occupied", ownerId: null };
+    };
     return {
       running: this.running,
       paused: this.paused,
@@ -3472,17 +3483,21 @@ export class ColonyRuntime {
         // Spec 085 — the bank panel reads the ACTIVE ₭ economy (citizen wallets), not the retired
         // settler accounts. deposits = ₭ held by residents, landOffice = ₭ paid for deeds, plus the
         // ZAR bridge and the real-ledger mirror's queue health.
-        const held = Math.round(walletDeposits(s.ledger));
+        const allHeld = Math.round(walletDeposits(s.ledger));
+        const viewerHeld = playerViewerId ? this.walletK(playerViewerId) : 0;
+        const held = this.playerView ? viewerHeld : allHeld;
         const st = this.ledgerSyncStatus();
         return {
           currency: CURRENCY,
           deposits: held,
           depositsZar: kookToZar(held, COLONY.economy.land),
-          accounts: walletCount(s.ledger),
-          landOffice: Math.round(ledgerBalance(s.ledger, "land")),
-          recent: s.ledger.txns
-            .slice(0, 6)
-            .map((tx) => ({ id: tx.id, memo: tx.memo })),
+          accounts: this.playerView ? (playerViewerId ? 1 : 0) : walletCount(s.ledger),
+          landOffice: this.playerView
+            ? 0
+            : Math.round(ledgerBalance(s.ledger, "land")),
+          recent: this.playerView
+            ? []
+            : s.ledger.txns.slice(0, 6).map((tx) => ({ id: tx.id, memo: tx.memo })),
           sync: {
             pending: st.pending,
             synced: st.synced,
@@ -3499,7 +3514,7 @@ export class ColonyRuntime {
       citizens: (() => {
         // Player data isolation: a CITYLIFE_PLAYER (playerView) sees only their own full record + others'
         // public-presence stubs, and only their OWN wallet balance; the operator/admin sees everything.
-        const viewerId = this.playerView ? this.operatorCitizenId() : null;
+        const viewerId = playerViewerId;
         const roster = viewerId
           ? this.citizens.listFor(viewerId, VIW_ID)
           : this.citizens.list();
@@ -3607,13 +3622,12 @@ export class ColonyRuntime {
       neighborhood: (() => {
         const lots = this.neighborhood.lots.map((l) => {
           const price = this.plotPriceK(l); // spec 085 — Infinity for reserved founder plots
+          const scopedOwner = playerScopedOwner(l.ownerCitizenId);
           return {
             id: l.id,
             built: l.built,
-            owner: l.ownerCitizenId
-              ? (this.citizens.byId(l.ownerCitizenId)?.displayName ?? null)
-              : null,
-            ownerId: l.ownerCitizenId ?? null,
+            owner: scopedOwner.owner,
+            ownerId: scopedOwner.ownerId,
             reserved: !!l.reservedFor, // spec 078 — founder plots show a nameplate and hide demolish/evict
             price: Number.isFinite(price) ? price : null, // ₭ — null = not for sale
             priceZar: Number.isFinite(price)
@@ -3641,15 +3655,14 @@ export class ColonyRuntime {
         // kind, and how many are still free. The buy/build economy fills ownerCitizenId + built.
         const parcels = (this.commercialDistrict?.parcels ?? []).map((p) => {
           const price = this.shopPriceK(p.kind);
+          const scopedOwner = playerScopedOwner(p.ownerCitizenId);
           return {
             id: p.id,
             kind: p.kind,
             price,
             priceZar: kookToZar(price, COLONY.economy.land),
             built: p.built,
-            owner: p.ownerCitizenId
-              ? (this.citizens.byId(p.ownerCitizenId)?.displayName ?? null)
-              : null,
+            owner: scopedOwner.owner,
           };
         });
         const byKind = { kiosk: 0, store: 0, showroom: 0 };
