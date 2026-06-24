@@ -10,6 +10,7 @@ describe("Kookerbook mobile layout", () => {
     expect(layout.shell.width).toBe("100%");
     expect(layout.shell.padding).toBe(12);
     expect(layout.shell.gap).toBe(12);
+    expect(layout.shell.boxSizing).toBe("border-box");
     expect(layout.document.html.overflowX).toBe("hidden");
     expect(layout.document.body.margin).toBe("0");
     expect(layout.document.body.overflowX).toBe("hidden");
@@ -25,6 +26,9 @@ describe("Kookerbook mobile layout", () => {
     expect(layout.contentText.overflowWrap).toBe("anywhere");
     expect(layout.contentText.wordBreak).toBe("break-word");
     expect(layout.directoryLink.minHeight).toBe(44);
+    expect(layout.directoryLink.width).toBe("100%");
+    expect(layout.directoryLink.maxWidth).toBe("100%");
+    expect(layout.directoryLink.boxSizing).toBe("border-box");
     expect(layout.houseRender.width).toBe("100%");
     expect(layout.houseRender.maxWidth).toBe("100%");
     expect(layout.houseRender.minWidth).toBe(0);
