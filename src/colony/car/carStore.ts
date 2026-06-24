@@ -78,3 +78,16 @@ export function ownCarPart(citizenId: string, kind: CarPartKind): void {
     write(o);
   }
 }
+
+/** Drop a bought part from a player's owned set (e.g. when listing it for sale, which escrows it onto
+ *  the classifieds board). Free parts are universal and cannot be unowned. Idempotent. */
+export function unownCarPart(citizenId: string, kind: CarPartKind): void {
+  const def = CAR_PARTS[kind];
+  if (!def || def.cost === 0) return; // free parts are always owned
+  const o = read();
+  const cur = o[citizenId] ?? [];
+  if (cur.includes(kind)) {
+    o[citizenId] = cur.filter((k) => k !== kind);
+    write(o);
+  }
+}

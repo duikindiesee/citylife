@@ -254,6 +254,93 @@ export function GaragePanel({
           );
         })}
       </div>
+
+      <div
+        className="garage-panel__classifieds"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 5,
+          borderTop: "1px solid #1e3a5a",
+          paddingTop: 6,
+        }}
+      >
+        <span style={{ color: "#7ab0d0", fontSize: 11, fontWeight: 700 }}>
+          Classifieds
+        </span>
+        {/* sell: a part you own and are not running can be listed for city coin */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {garage.parts
+            .filter((p) => p.owned && !p.mounted && p.cost > 0)
+            .map((p) => (
+              <button
+                key={`list-${p.kind}`}
+                data-build-action={`list-${p.kind}`}
+                title="List this part on the public board"
+                onClick={() => runtime.listCarPartForSale(p.kind, p.cost)}
+                style={{
+                  padding: "3px 7px",
+                  fontSize: 11,
+                  borderRadius: 5,
+                  cursor: "pointer",
+                  border: "1px solid #3a5a6a",
+                  background: "rgba(120,180,210,0.10)",
+                  color: "#a0d4f0",
+                }}
+              >
+                🏷️ List {p.label} · {p.cost}
+              </button>
+            ))}
+        </div>
+        {/* board: buy another player's listing, or unlist your own */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {garage.market.length === 0 ? (
+            <span style={{ color: "#5d7488", fontSize: 11 }}>
+              No listings yet.
+            </span>
+          ) : (
+            garage.market.map((l) =>
+              l.mine ? (
+                <button
+                  key={l.id}
+                  data-build-action={`unlist-${l.kind}`}
+                  title="Take this listing off the board"
+                  onClick={() => runtime.unlistCarPart(l.id)}
+                  style={{
+                    padding: "3px 7px",
+                    fontSize: 11,
+                    borderRadius: 5,
+                    cursor: "pointer",
+                    border: "1px solid #b6892f",
+                    background: "rgba(255,210,90,0.16)",
+                    color: "#ffd25a",
+                  }}
+                >
+                  ✓ {l.label} listed · {l.price} · unlist
+                </button>
+              ) : (
+                <button
+                  key={l.id}
+                  data-build-action={`buy-listing-${l.kind}`}
+                  title={`From ${l.sellerName}`}
+                  onClick={() => runtime.buyCarPartListing(l.id)}
+                  style={{
+                    padding: "3px 7px",
+                    fontSize: 11,
+                    borderRadius: 5,
+                    cursor: "pointer",
+                    border: "1px solid #3a5a2a",
+                    background: "rgba(120,200,120,0.10)",
+                    color: "#9fd4a6",
+                  }}
+                >
+                  🛒 {l.label} from {l.sellerName} · {l.price}
+                </button>
+              ),
+            )
+          )}
+        </div>
+      </div>
     </div>
   );
 }

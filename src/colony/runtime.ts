@@ -103,8 +103,21 @@ import {
   type CarPartKind,
   type CarSocket,
 } from "./car/carParts";
-import { ownsCarPart, ownedCarParts, ownCarPart } from "./car/carStore";
+import {
+  ownsCarPart,
+  ownedCarParts,
+  ownCarPart,
+  unownCarPart,
+} from "./car/carStore";
 import { CAR_SHOP_ACCOUNT } from "./car/carShop";
+import {
+  loadCarPartMarket,
+  saveCarPartMarket,
+  addCarPartListing,
+  removeCarPartListing,
+  findCarPartListing,
+  carPartListingId,
+} from "./bot/carPartMarket";
 import { MockBackend, type CityLifeBackend, type Decision } from "./backend";
 import type { Household, HouseholdOverrides } from "./newcomers";
 import { spawnCitizenSubUser, splitName } from "./bot/citizenSpawn";
@@ -633,6 +646,15 @@ export interface ColonyUiState {
         cost: number;
         owned: boolean;
       }[];
+    }[];
+    // Spec 096 G — the Kookerbook car-part classifieds board (public listings, city coin).
+    market: {
+      id: string;
+      kind: string;
+      label: string;
+      price: number;
+      sellerName: string;
+      mine: boolean;
     }[];
   } | null;
   // Spec 097 R4 — live presence at the hilltop Rally Point (the race rendezvous); null if no rally.
@@ -1537,6 +1559,83 @@ export class ColonyRuntime {
     const next = validCarParts(car.parts).filter((k) => k !== kind);
     saveCar(id, { ...car, parts: next });
     this.updateOperatorCar();
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 G — list a bolt-on part the player owns on the Kookerbook car-part classifieds for city
+   *  coin. The part must be owned and NOT currently mounted (unmount it first); listing escrows it out of
+   *  the seller's garage onto the public board. No-op without an operator, for an unknown / free /
+   *  unowned / mounted part, or a non-positive price. */
+  listCarPartForSale(kind: string, price: number): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const def = CAR_PARTS[kind as CarPartKind];
+    if (!def || def.cost === 0) return false; // unknown or a free/universal part
+    if (!ownsCarPart(id, def.kind)) return false;
+    if (validCarParts(loadCar(id).parts).includes(def.kind)) return false; // unmount first
+    if (!Number.isFinite(price) || price <= 0) return false;
+    const market = addCarPartListing(
+      loadCarPartMarket(),
+      id,
+      def.kind,
+      Math.round(price),
+    );
+    if (!findCarPartListing(market, carPartListingId(id, def.kind)))
+      return false; // rejected (board full)
+    unownCarPart(id, def.kind);
+    saveCarPartMarket(market);
+    this.kbPost(
+      id,
+      "event",
+      `Listed a ${def.label} for ${Math.round(price)} city coin.`,
+    );
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 G — pull the player's own listing back off the board; the part returns to their garage. */
+  unlistCarPart(listingId: string): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const listing = findCarPartListing(loadCarPartMarket(), listingId);
+    if (!listing || listing.sellerCitizenId !== id) return false;
+    ownCarPart(id, listing.kind);
+    saveCarPartMarket(removeCarPartListing(loadCarPartMarket(), listingId));
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 G — buy a listed part from another player. City coin moves buyer -> seller on the in-game
+   *  ledger, the part lands in the buyer's garage and the listing clears. Gated on the buyer's exact
+   *  balance; you cannot buy your own listing (unlist it) or one you already own. */
+  buyCarPartListing(listingId: string): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const listing = findCarPartListing(loadCarPartMarket(), listingId);
+    if (!listing) return false;
+    if (listing.sellerCitizenId === id) return false; // unlist your own instead
+    if (ownsCarPart(id, listing.kind)) return false; // already own one
+    if (ledgerBalance(this.sim.state.ledger, `citizen:${id}`) < listing.price)
+      return false;
+    const buyer = this.citizens.byId(id);
+    const def = CAR_PARTS[listing.kind];
+    const posted = ledgerPost(
+      this.sim.state.ledger,
+      `${buyer?.displayName ?? id} buys a ${def.label} for ${listing.price} ${CURRENCY}`,
+      [
+        { account: `citizen:${id}`, amount: -listing.price },
+        { account: `citizen:${listing.sellerCitizenId}`, amount: listing.price },
+      ],
+    );
+    if (!posted) return false;
+    ownCarPart(id, listing.kind);
+    saveCarPartMarket(removeCarPartListing(loadCarPartMarket(), listingId));
+    this.kbPost(
+      id,
+      "event",
+      `Bought a ${def.label} from the classifieds for ${listing.price} city coin.`,
+    );
     this.emit();
     return true;
   }
@@ -3965,6 +4064,14 @@ export class ColonyRuntime {
               })),
             };
           }),
+          market: loadCarPartMarket().map((l) => ({
+            id: l.id,
+            kind: l.kind,
+            label: CAR_PARTS[l.kind]?.label ?? l.kind,
+            price: l.price,
+            sellerName: this.citizens.byId(l.sellerCitizenId)?.displayName ?? "a citizen",
+            mine: l.sellerCitizenId === id,
+          })),
         };
       })(),
       // Spec 097 R4 — count avatars standing at the hilltop Rally Point (the race rendezvous). Live and
