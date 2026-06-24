@@ -155,7 +155,10 @@ export interface RallyPlacementOptions {
  *  used as the race rendezvous point (a bus-stop on a hill). High ground that is road/walk-TRAVERSABLE
  *  (Highland — never Mountain or Peak, which pathfind cellOk rejects, so no spur road or guided walk
  *  could ever reach it), footprint-clear so a spur road can reach it, and kept within reach of the
- *  landing so it overlooks the city. No Math.random — seed-deterministic. */
+ *  landing so it overlooks the city. Biased toward a knoll on the SHOULDER of rough ground (a saturating
+ *  ruggedness term) — the neighborhood only raises homesteads on flat buildable land, so a rough-adjacent
+ *  overlook keeps a clean, non-homestead approach for the R3.5 spur road instead of being walled in by
+ *  houses. No Math.random — seed-deterministic. */
 export function findRallyOverlookSite(
   terrain: Terrain,
   options: RallyPlacementOptions = {},
@@ -272,7 +275,42 @@ export function findRallyOverlookSite(
         }
       }
       const prominence = n ? elev - around / n : 0;
-      const score = elev * 1.2 + biomeBonus + prominence * 2.0 - d * 0.06;
+      // RUGGEDNESS — how much rough terrain (Mountain / Peak / too-steep-to-build) sits within a short
+      // radius. The neighborhood only raises homesteads on flat buildable land, so a buildable knoll on
+      // the SHOULDER of rough ground keeps a non-homestead side: the spur road (and the guided walk) get
+      // a clean approach down to the colony instead of being walled in by houses. A flat overlook deep in
+      // the buildable interior (ruggedness 0) gets ringed by homesteads and the spur fails soft. Biasing
+      // toward rough-adjacent overlooks makes the rally both a truer lookout AND reliably road-connected.
+      let rough = 0,
+        ruggedTotal = 0;
+      for (let ry = -6; ry <= 6; ry++) {
+        for (let rx = -6; rx <= 6; rx++) {
+          const nx = x + rx,
+            ny = y + ry;
+          if (!terrain.inBounds(nx, ny)) continue;
+          ruggedTotal++;
+          const ni = terrain.idx(nx, ny);
+          const nb = terrain.biome[ni];
+          if (
+            nb === Biome.Mountain ||
+            nb === Biome.Peak ||
+            terrain.buildable[ni] < 2
+          )
+            rough++;
+        }
+      }
+      const ruggedness = ruggedTotal ? rough / ruggedTotal : 0;
+      // SATURATING bias (cap 0.15): a spot only needs SOME rough edge to qualify — beyond that there is
+      // no extra reward, so the overlook is never dragged off high ground onto a low but maximally-rough
+      // spot. Tuned over a 120-seed sweep: cap 0.15 weight 80 lifts the spur-connection rate while
+      // keeping the average overlook elevation (a higher weight or cap collapsed elevation / regressed
+      // seeds). Elevation stays the dominant term; ruggedness breaks the tie toward a mountain-shoulder.
+      const score =
+        elev * 1.2 +
+        biomeBonus +
+        prominence * 2.0 +
+        Math.min(ruggedness, 0.15) * 80 -
+        d * 0.06;
       if (
         !best ||
         score > best.score ||
