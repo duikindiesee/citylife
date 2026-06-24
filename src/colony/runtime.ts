@@ -1579,10 +1579,28 @@ export class ColonyRuntime {
     return true;
   }
 
-  startRace(): boolean {
+  /** Spec 097 R4 — avatars standing at the hilltop Rally Point (within ~1.5 cells). Deterministic from
+   *  positions; the first-person operator avatar is one of these citizens. */
+  private rallyPresence(): { x: number; y: number; present: number } | null {
+    const rallyS = this.sim.state.structures.find((s) => s.kind === "rally");
+    if (!rallyS) return null;
+    const R = 1.5;
+    let present = 0;
+    for (const pub of this.citizens.list()) {
+      const cc = this.citizens.byId(pub.id);
+      if (cc && Math.hypot(cc.pos.x - rallyS.x, cc.pos.y - rallyS.y) <= R)
+        present++;
+    }
+    return { x: rallyS.x, y: rallyS.y, present };
+  }
+
+  /** Spec 097 R5 — start the Road Rally. An OPTIONAL startCell biases the track start near a given point
+   *  (the rally rendezvous); with no argument it starts from the commercial centre exactly as the
+   *  existing Road Rally buttons always have, so their behaviour is unchanged. */
+  startRace(startCell?: { x: number; y: number }): boolean {
     if (this.fpCitizenId) this.exitFirstPerson();
     const track = makeRaceTrack(this.sim.state, {
-      commercialCenter: this.raceCommercialCenter(),
+      commercialCenter: startCell ?? this.raceCommercialCenter(),
       lighthouse: this.sim.state.structures.find(
         (s) => s.kind === "lighthouse",
       ),
@@ -1595,6 +1613,14 @@ export class ColonyRuntime {
     this.renderer?.setRaceState(this.raceState);
     this.emit();
     return true;
+  }
+
+  /** Spec 097 R5 — when two or more players are at the hilltop Rally Point, start a race from there.
+   *  The Road Rally HUD button keeps the solo path; this is the two-present rendezvous trigger. */
+  joinRallyRace(): boolean {
+    const p = this.rallyPresence();
+    if (!p || p.present < 2 || this.raceState !== null) return false;
+    return this.startRace({ x: p.x, y: p.y });
   }
 
   exitRace(): void {
@@ -3611,20 +3637,13 @@ export class ColonyRuntime {
       // deterministic from positions; the first-person operator avatar is one of these citizens. R5 will
       // gate a Join Race offer on present >= 2. Bar-seat presence is the model (proximity within ~1.5).
       rally: (() => {
-        const rallyS = s.structures.find((x) => x.kind === "rally");
-        if (!rallyS) return null;
-        const R = 1.5;
-        let present = 0;
-        for (const pub of this.citizens.list()) {
-          const cc = this.citizens.byId(pub.id);
-          if (cc && Math.hypot(cc.pos.x - rallyS.x, cc.pos.y - rallyS.y) <= R)
-            present++;
-        }
+        const p = this.rallyPresence();
+        if (!p) return null;
         return {
-          x: rallyS.x,
-          y: rallyS.y,
-          present,
-          ready: present >= 2 && this.raceState === null,
+          x: p.x,
+          y: p.y,
+          present: p.present,
+          ready: p.present >= 2 && this.raceState === null,
         };
       })(),
       neighborhood: (() => {

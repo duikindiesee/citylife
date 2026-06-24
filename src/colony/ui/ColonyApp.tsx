@@ -510,6 +510,17 @@ export function ColonyApp() {
             Road Rally
           </button>
         </div>
+        {ui.rally?.ready && ui.race.mode === "idle" && (
+          <div className="group">
+            <button
+              className="on"
+              onClick={() => runtime.joinRallyRace()}
+              title="Two players are at the Rally Point — start a race from the hilltop"
+            >
+              Join Race
+            </button>
+          </div>
+        )}
         <div className="group">
           <button
             className={ui.zonesVisible ? "on" : ""}
