@@ -5,6 +5,7 @@ export const KOOKERBOOK_MOBILE_MAX_WIDTH = 640;
 export type KookerbookResponsiveLayout = {
   body: Pick<CSSProperties, "margin" | "overflowX">;
   shell: Pick<CSSProperties, "flexDirection" | "overflowX" | "width" | "maxWidth">;
+  panel: Pick<CSSProperties, "maxWidth" | "minWidth" | "overflowX">;
   directory: Pick<CSSProperties, "width" | "maxWidth" | "flexShrink">;
   directoryLink: Pick<CSSProperties, "minHeight">;
   profile: Pick<CSSProperties, "width" | "maxWidth" | "minWidth">;
@@ -30,6 +31,7 @@ export function kookerbookLayoutForViewport(
         width: "auto",
         maxWidth: "100%",
       },
+      panel: { maxWidth: "100%", minWidth: 0, overflowX: "hidden" },
       directory: { width: "auto", maxWidth: "100%", flexShrink: 1 },
       directoryLink: { minHeight: 44 },
       profile: { width: "auto", maxWidth: "100%", minWidth: 0 },
@@ -46,6 +48,7 @@ export function kookerbookLayoutForViewport(
       width: "100%",
       maxWidth: "100%",
     },
+    panel: { maxWidth: "100%", minWidth: 0, overflowX: "hidden" },
     directory: { width: 320, maxWidth: 320, flexShrink: 0 },
     directoryLink: { minHeight: 44 },
     profile: { width: "auto", maxWidth: 760, minWidth: 0 },

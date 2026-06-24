@@ -178,14 +178,15 @@ function App() {
     if (nextUrl) window.history.replaceState(null, "", nextUrl);
   };
 
+  const layout = kookerbookLayoutForViewport(layoutWidth);
   const panel: React.CSSProperties = {
     background: "#121826",
     border: "1px solid #232c3f",
     borderRadius: 10,
     padding: 14,
     boxSizing: "border-box",
+    ...layout.panel,
   };
-  const layout = kookerbookLayoutForViewport(layoutWidth);
   useEffect(() => {
     if (typeof document === "undefined") return;
     const previousMargin = document.body.style.margin;

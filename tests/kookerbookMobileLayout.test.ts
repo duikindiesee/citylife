@@ -21,6 +21,9 @@ describe("Kookerbook mobile layout", () => {
     expect(layout.houseRender.width).toBe("100%");
     expect(layout.houseRender.maxWidth).toBe("100%");
     expect(layout.houseRender.minWidth).toBe(0);
+    expect(layout.panel.maxWidth).toBe("100%");
+    expect(layout.panel.minWidth).toBe(0);
+    expect(layout.panel.overflowX).toBe("hidden");
   });
 
   it("keeps the two-column directory and profile layout on desktop", () => {
