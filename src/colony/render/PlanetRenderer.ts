@@ -1573,6 +1573,12 @@ export class PlanetRenderer {
       fountainBowl,
       fountainJet,
     ])!;
+    const shadeTreeTrunk = new THREE.CylinderGeometry(0.16, 0.22, 1.05, 8);
+    shadeTreeTrunk.translate(0, 0.52, 0);
+    const shadeTreeCrown = new THREE.SphereGeometry(0.72, 10, 8);
+    shadeTreeCrown.scale(1, 0.82, 1);
+    shadeTreeCrown.translate(0, 1.18, 0);
+    const shadeTreeGeo = mergeGeometries([shadeTreeTrunk, shadeTreeCrown])!;
     this.artifactCap = Math.max(1, ARTIFACT_CATALOG_SIZE);
     this.artifactMeshes = {
       bench: new THREE.InstancedMesh(
@@ -1599,6 +1605,11 @@ export class PlanetRenderer {
       fountain: new THREE.InstancedMesh(
         fountainGeo,
         new THREE.MeshStandardMaterial({ color: 0x6f8da7, roughness: 0.55 }),
+        this.artifactCap,
+      ),
+      shade_tree: new THREE.InstancedMesh(
+        shadeTreeGeo,
+        new THREE.MeshStandardMaterial({ color: 0x2f6f3e, roughness: 0.88 }),
         this.artifactCap,
       ),
     };
@@ -2787,6 +2798,7 @@ export class PlanetRenderer {
       lamppost: 0,
       planter: 0,
       fountain: 0,
+      shade_tree: 0,
     };
     for (const item of renderable) {
       const mesh = this.artifactMeshes[item.kind];

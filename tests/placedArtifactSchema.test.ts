@@ -30,6 +30,7 @@ describe("PlacedArtifact schema", () => {
     expect(seen.get("lamppost")).toBe("prop");
     expect(seen.get("fountain")).toBe("prop");
     expect(seen.get("planter")).toBe("landscaping");
+    expect(seen.get("shade_tree")).toBe("tree");
   });
 
   it("converts seeded visual artifacts to PlacedArtifact without quantising rot", () => {
@@ -41,15 +42,18 @@ describe("PlacedArtifact schema", () => {
       "prop",
       "landscaping",
       "prop",
+      "tree",
     ]);
     expect(placed.map((item) => item.data.variant)).toEqual([
       "bench",
       "lamppost",
       "planter",
       "fountain",
+      "shade_tree",
     ]);
     expect(placed[2]!.transform.rot).toBeCloseTo(Math.PI * 0.25, 12);
     expect(placed[3]!.transform.rot).toBeCloseTo(Math.PI * 0.75, 12);
+    expect(placed[4]!.transform.rot).toBeCloseTo(Math.PI * 1.25, 12);
   });
 
   it("keeps the v1 golden payload structurally compatible and serializes canonically", () => {
