@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { CitizenRoster } from "../src/colony/bot/citizenRoster";
-import { generateHousehold } from "../src/colony/newcomers";
+import { generateHousehold, isPublicSafe } from "../src/colony/newcomers";
 import type { Plot } from "../src/colony/cityPlan";
 
 const plot: Plot = {
@@ -144,8 +144,9 @@ describe("CitizenRoster — spec 074 plumbing", () => {
     const seenA = view.find((c) => c.id === a.id)!;
     const seenB = view.find((c) => c.id === b.id)!;
     expect(seenA.tokensSpentLifetime).toBe(120); // own usage visible
-    expect(seenB.displayName).toBe(b.displayName); // public presence: name + plot still shown
-    expect(seenB.plotName).toBe("Hillside Vista");
+    expect(seenB.displayName).toBe(b.displayName); // public presence: name stays visible
+    expect(seenB.plotName).toBe("Occupied"); // named ownership/address stays hidden
+    expect(isPublicSafe(seenB.plotName)).toBe(true);
     expect(seenB.tokensSpentLifetime).toBe(0); // private usage hidden
     expect(seenB.telegramHandle).toBeUndefined(); // private contact hidden
 
