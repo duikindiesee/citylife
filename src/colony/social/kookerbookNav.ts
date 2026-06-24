@@ -6,7 +6,10 @@ export function isKookerbookCitizenId(citizenId: string): boolean {
   return CITIZEN_ID_PATTERN.test(citizenId) && isPublicSafe(citizenId);
 }
 
-export function kookerbookProfileUrl(currentHref: string, citizenId: string): string | null {
+export function kookerbookProfileUrl(
+  currentHref: string,
+  citizenId: string,
+): string | null {
   if (!isKookerbookCitizenId(citizenId)) return null;
   const url = new URL(currentHref);
   url.search = "";
@@ -44,6 +47,8 @@ export function kookerbookDirectoryLink(args: {
   return {
     href,
     ariaLabel: `Open Kookerbook profile for ${args.alias}`,
-    ...(args.selectedCitizenId === args.citizenId ? { ariaCurrent: "page" as const } : {}),
+    ...(args.selectedCitizenId === args.citizenId
+      ? { ariaCurrent: "page" as const }
+      : {}),
   };
 }

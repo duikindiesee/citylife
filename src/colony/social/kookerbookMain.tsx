@@ -3,7 +3,13 @@
 // the page reads the same-origin kookerbook + blueprint stores directly (and overlays the backend
 // when it answers), so it works without the game tab. Every control carries data-kb-action so a
 // bot can drive it like the builder.
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { createRoot } from "react-dom/client";
 import * as THREE from "three";
 import {
@@ -33,7 +39,13 @@ function houseScriptFor(citizenId: string): string | null {
 }
 
 /** A small static 3D render of the citizen's own designed house (their blueprint, their bricks). */
-function HouseCard({ script, style }: { script: string; style?: CSSProperties }) {
+function HouseCard({
+  script,
+  style,
+}: {
+  script: string;
+  style?: CSSProperties;
+}) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const host = hostRef.current;
@@ -153,14 +165,20 @@ function App() {
     });
   }, []);
   const profiles = useMemo(() => Object.values(map), [map]);
-  const profileIds = useMemo(() => profiles.map((p) => p.citizenId), [profiles]);
+  const profileIds = useMemo(
+    () => profiles.map((p) => p.citizenId),
+    [profiles],
+  );
   const initialSelection =
     typeof window === "undefined"
       ? null
       : kookerbookInitialSelection(window.location.href, profileIds);
   useEffect(() => {
     if (typeof window === "undefined" || profileIds.length === 0) return;
-    const nextUrl = kookerbookCanonicalProfileUrl(window.location.href, profileIds);
+    const nextUrl = kookerbookCanonicalProfileUrl(
+      window.location.href,
+      profileIds,
+    );
     if (nextUrl && nextUrl !== window.location.href)
       window.history.replaceState(null, "", nextUrl);
   }, [profileIds]);
@@ -237,7 +255,9 @@ function App() {
             <a
               key={p.citizenId}
               href={link?.href ?? "#"}
-              aria-label={link?.ariaLabel ?? `Open Kookerbook profile for ${p.alias}`}
+              aria-label={
+                link?.ariaLabel ?? `Open Kookerbook profile for ${p.alias}`
+              }
               aria-current={link?.ariaCurrent}
               data-kb-action={`select-profile-${p.citizenId}`}
               onClick={(event) => {
@@ -252,7 +272,9 @@ function App() {
                 borderRadius: 8,
                 cursor: "pointer",
                 background:
-                  selected?.citizenId === p.citizenId ? "#1c2740" : "transparent",
+                  selected?.citizenId === p.citizenId
+                    ? "#1c2740"
+                    : "transparent",
                 marginBottom: 4,
                 color: "inherit",
                 textDecoration: "none",

@@ -47,7 +47,10 @@ describe("R3 — first-person Walk to Rally", () => {
     );
     expect(ui.narration).toBe("Guiding you to the Rally Point.");
     expect(
-      JSON.stringify({ guidedTarget: ui.guidedTarget, narration: ui.narration }),
+      JSON.stringify({
+        guidedTarget: ui.guidedTarget,
+        narration: ui.narration,
+      }),
     ).not.toMatch(/wallet|token|secret|operator/i);
   });
 

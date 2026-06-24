@@ -25,7 +25,9 @@ describe("PlacedArtifact schema", () => {
       }
     }
 
-    expect([...seen.keys()].sort()).toEqual([...artifactRegistryVariants()].sort());
+    expect([...seen.keys()].sort()).toEqual(
+      [...artifactRegistryVariants()].sort(),
+    );
     expect(seen.get("bench")).toBe("furniture");
     expect(seen.get("lamppost")).toBe("prop");
     expect(seen.get("fountain")).toBe("prop");
