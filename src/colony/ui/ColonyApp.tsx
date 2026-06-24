@@ -199,6 +199,13 @@ export function lotHudCopy(args: {
       : undefined;
   return { label: `${siteLabel} · ${ownerLabel}`, title };
 }
+export function homesteadHudTitle(args: { playerScoped: boolean }): string {
+  if (args.playerScoped) {
+    return "Homesteads show available home sites, finished homes, and player-safe build actions.";
+  }
+  return "Spec 076 — large bordered HOMESTEAD parcels on a terrain-aware street: each fenced plot has a front yard, a set-back voxel house, a garden and a farm field. Assign a citizen to a homestead, build their house, or demolish it. Raze-and-evict also destroys the citizen and tears down their Hermes agent.";
+}
+
 export function canShowBorderControl(args: { playerScoped: boolean }): boolean {
   return !args.playerScoped;
 }
@@ -1867,7 +1874,7 @@ export function ColonyApp() {
             <span>Homesteads</span>
             <b
               style={{ color: "#9fd0a0" }}
-              title="Spec 076 — large bordered HOMESTEAD parcels on a terrain-aware street: each fenced plot has a front yard, a set-back voxel house, a garden and a farm field. Assign a citizen to a homestead, build their house, or demolish it. Raze-and-evict also destroys the citizen and tears down their Hermes agent."
+              title={homesteadHudTitle({ playerScoped: ui.bank.scope === "player" })}
             >
               {ui.neighborhood.built} built · {ui.neighborhood.free} free
             </b>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lotHudCopy } from "../src/colony/ui/ColonyApp";
+import { homesteadHudTitle, lotHudCopy } from "../src/colony/ui/ColonyApp";
 import { isPublicSafe } from "../src/colony/newcomers";
 
 describe("player neighborhood HUD privacy", () => {
@@ -34,5 +34,23 @@ describe("player neighborhood HUD privacy", () => {
 
     expect(copy.label).toBe("Plot 7 · Mira");
     expect(copy.title).toBe("Plot price 240 ₭ (≈ R1,200) — bigger and shore-ward land costs more");
+  });
+
+  it("hides operator-only homestead mechanics from player HUD help copy", () => {
+    const title = homesteadHudTitle({ playerScoped: true });
+
+    expect(title).toBe(
+      "Homesteads show available home sites, finished homes, and player-safe build actions.",
+    );
+    expect(title).not.toMatch(/Hermes|agent|evict|Assign|demolish|intranet/i);
+    expect(isPublicSafe(title)).toBe(true);
+  });
+
+  it("keeps full homestead mechanics in operator HUD help copy", () => {
+    const title = homesteadHudTitle({ playerScoped: false });
+
+    expect(title).toContain("Assign a citizen to a homestead");
+    expect(title).toContain("Raze-and-evict");
+    expect(title).toContain("Hermes agent");
   });
 });
