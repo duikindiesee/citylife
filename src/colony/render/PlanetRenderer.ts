@@ -1592,6 +1592,17 @@ export class PlanetRenderer {
       noticePanel,
       noticeCap,
     ])!;
+    const wayfinderPost = new THREE.CylinderGeometry(0.07, 0.08, 1.05, 8);
+    wayfinderPost.translate(0, 0.52, 0);
+    const wayfinderArmA = new THREE.BoxGeometry(0.72, 0.16, 0.08);
+    wayfinderArmA.translate(0.24, 0.92, 0);
+    const wayfinderArmB = new THREE.BoxGeometry(0.58, 0.14, 0.08);
+    wayfinderArmB.translate(-0.18, 0.72, 0);
+    const wayfinderGeo = mergeGeometries([
+      wayfinderPost,
+      wayfinderArmA,
+      wayfinderArmB,
+    ])!;
     this.artifactCap = Math.max(1, ARTIFACT_CATALOG_SIZE);
     this.artifactMeshes = {
       bench: new THREE.InstancedMesh(
@@ -1628,6 +1639,11 @@ export class PlanetRenderer {
       notice_board: new THREE.InstancedMesh(
         noticeBoardGeo,
         new THREE.MeshStandardMaterial({ color: 0x8f6a3a, roughness: 0.78 }),
+        this.artifactCap,
+      ),
+      wayfinder: new THREE.InstancedMesh(
+        wayfinderGeo,
+        new THREE.MeshStandardMaterial({ color: 0xd8b45c, roughness: 0.74 }),
         this.artifactCap,
       ),
     };
@@ -2818,6 +2834,7 @@ export class PlanetRenderer {
       fountain: 0,
       shade_tree: 0,
       notice_board: 0,
+      wayfinder: 0,
     };
     for (const item of renderable) {
       const mesh = this.artifactMeshes[item.kind];

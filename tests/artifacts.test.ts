@@ -12,6 +12,7 @@ const EXPECTED_KINDS = [
   "fountain",
   "shade_tree",
   "notice_board",
+  "wayfinder",
 ];
 
 describe("Colony visual artifacts", () => {
@@ -53,6 +54,12 @@ describe("Colony visual artifacts", () => {
         footprint: { w: 1.2, h: 0.45 },
         isPublicSafe: true,
       },
+      {
+        kind: "wayfinder",
+        category: "civic-art",
+        footprint: { w: 0.75, h: 0.5 },
+        isPublicSafe: true,
+      },
     ]);
   });
 
@@ -84,6 +91,7 @@ describe("Colony visual artifacts", () => {
       fountain: 0,
       shade_tree: 0,
       notice_board: 0,
+      wayfinder: 0,
     });
     expect(summary.unknown).toBe(1);
     expect(summary.overflow).toBe(1);
@@ -101,6 +109,7 @@ describe("Colony visual artifacts", () => {
       "greenery",
       "civic-art",
       "greenery",
+      "civic-art",
       "civic-art",
     ]);
 
