@@ -181,9 +181,9 @@ describe("firstPersonView — spec 074", () => {
     expect(playerUi.neighborhood.lots.filter((l) => !l.occupied).length).toBe(
       adminUi.neighborhood.free,
     );
-    expect(playerUi.citizens.list.find((c) => c.id === other.id)!.displayName).toBe(
-      other.displayName,
-    ); // public presence stays visible
+    expect(
+      playerUi.citizens.list.find((c) => c.id === other.id)!.displayName,
+    ).toBe(other.displayName); // public presence stays visible
     expect(isPublicSafe(scopedOtherLot.owner!)).toBe(true);
   });
 

@@ -169,7 +169,8 @@ export function citizenHudCopy(args: {
   if (args.playerScoped) {
     return {
       summary: baseSummary,
-      title: "Named residents visible in the city. Other players' private household details stay hidden.",
+      title:
+        "Named residents visible in the city. Other players' private household details stay hidden.",
     };
   }
   const names = args.list

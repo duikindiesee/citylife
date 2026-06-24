@@ -59,27 +59,34 @@ describe("Kookerbook in-browser navigation", () => {
         "https://citylife.example/kookerbook.html?citizen=citizen_jack&debug=1#directory",
         ids,
       ),
-    ).toBe("https://citylife.example/kookerbook.html?citizen=citizen_jack#directory");
+    ).toBe(
+      "https://citylife.example/kookerbook.html?citizen=citizen_jack#directory",
+    );
 
     expect(
       kookerbookCanonicalProfileUrl(
         "https://citylife.example/kookerbook.html?citizen=../admin&debug=1#directory",
         ids,
       ),
-    ).toBe("https://citylife.example/kookerbook.html?citizen=citizen_joe#directory");
+    ).toBe(
+      "https://citylife.example/kookerbook.html?citizen=citizen_joe#directory",
+    );
 
     expect(
       kookerbookCanonicalProfileUrl(
         "https://citylife.example/kookerbook.html?citizen=citizen_missing&debug=1#directory",
         ids,
       ),
-    ).toBe("https://citylife.example/kookerbook.html?citizen=citizen_joe#directory");
+    ).toBe(
+      "https://citylife.example/kookerbook.html?citizen=citizen_joe#directory",
+    );
   });
 
   it("builds accessible directory link metadata for loaded public profiles", () => {
     expect(
       kookerbookDirectoryLink({
-        currentHref: "https://citylife.example/kookerbook.html?citizen=citizen_joe#directory",
+        currentHref:
+          "https://citylife.example/kookerbook.html?citizen=citizen_joe#directory",
         citizenId: "citizen_jack",
         alias: "Jack the Scout",
         selectedCitizenId: "citizen_jack",

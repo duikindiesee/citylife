@@ -20,7 +20,9 @@ describe("player-scoped bank HUD copy", () => {
     expect(playerBank.scope).toBe("player");
     expect(copy.title).toBe("Your wallet · ₭");
     expect(copy.rows.map((r) => r.label)).toEqual(["Your balance"]);
-    expect(copy.rows[0]!.value).toBe(`₭${playerBank.deposits.toLocaleString()}`);
+    expect(copy.rows[0]!.value).toBe(
+      `₭${playerBank.deposits.toLocaleString()}`,
+    );
     expect(copy.rows.map((r) => r.label).join(" ")).not.toMatch(
       /Residents hold|Wallets|Land office|Real ledger|≈ in rand/i,
     );

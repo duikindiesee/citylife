@@ -364,7 +364,8 @@ export function FirstPersonPanel({
         className="first-person-panel__hint"
         style={{ fontSize: 10, opacity: 0.4, textAlign: "center" }}
       >
-        WASD strafe/walk · Shift sprint · arrows turn · Tap Use to interact · Tap arrows to roam
+        WASD strafe/walk · Shift sprint · arrows turn · Tap Use to interact ·
+        Tap arrows to roam
       </div>
     </div>
   );
