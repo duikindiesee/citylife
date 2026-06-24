@@ -192,6 +192,9 @@ export function lotHudCopy(args: {
       : undefined;
   return { label: `${siteLabel} · ${ownerLabel}`, title };
 }
+export function canShowBorderControl(args: { playerScoped: boolean }): boolean {
+  return !args.playerScoped;
+}
 export function avatarFoundryCopy(args: {
   foundries: number;
   staffed: boolean;
@@ -383,6 +386,9 @@ export function ColonyApp() {
   const settlerCopy = settlerHudCopy({
     count: ui.settlers.count,
     recent: ui.settlers.recent,
+    playerScoped: ui.bank.scope === "player",
+  });
+  const showBorderControl = canShowBorderControl({
     playerScoped: ui.bank.scope === "player",
   });
   const [borderOpen, setBorderOpen] = useState(false);
@@ -2253,9 +2259,11 @@ export function ColonyApp() {
             ))}
           </div>
         )}
-        <button className="immigbtn" onClick={() => setBorderOpen(true)}>
-          🛂 Border Control
-        </button>
+        {showBorderControl && (
+          <button className="immigbtn" onClick={() => setBorderOpen(true)}>
+            🛂 Border Control
+          </button>
+        )}
 
         {(() => {
           const bankCopy = bankPanelCopy(ui.bank);
@@ -2685,7 +2693,7 @@ export function ColonyApp() {
 
       <RadioPanel runtime={runtime} radio={ui.radio} tv={ui.tv} />
 
-      {borderOpen && (
+      {showBorderControl && borderOpen && (
         <div className="modal-overlay" onClick={() => setBorderOpen(false)}>
           <div
             className="modal border-modal"
