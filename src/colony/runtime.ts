@@ -594,6 +594,7 @@ export interface ColonyUiState {
       built: boolean;
       owner: string | null;
       ownerId: string | null;
+      occupied: boolean;
       reserved: boolean;
       price: number | null;
       priceZar: number | null;
@@ -3628,6 +3629,7 @@ export class ColonyRuntime {
             built: l.built,
             owner: scopedOwner.owner,
             ownerId: scopedOwner.ownerId,
+            occupied: !!l.ownerCitizenId,
             reserved: !!l.reservedFor, // spec 078 — founder plots show a nameplate and hide demolish/evict
             price: Number.isFinite(price) ? price : null, // ₭ — null = not for sale
             priceZar: Number.isFinite(price)
@@ -3643,7 +3645,7 @@ export class ColonyRuntime {
           : `The build crew raises the house — the stockpile is short (${s.materials}/${cost}) so the crew sources the rest off-island`;
         return {
           lots,
-          free: lots.filter((l) => !l.ownerId).length,
+          free: lots.filter((l) => !l.occupied).length,
           built: lots.filter((l) => l.built).length,
           houseCost: cost,
           canAfford,

@@ -1706,7 +1706,7 @@ export function ColonyApp() {
                       💻
                     </span>
                   )}
-                  {!l.ownerId &&
+                  {!l.occupied &&
                     !l.reserved &&
                     firstFree &&
                     (() => {
