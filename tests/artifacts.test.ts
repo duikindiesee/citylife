@@ -14,21 +14,25 @@ describe("Colony visual artifacts", () => {
         kind: "bench",
         category: "furniture",
         footprint: { w: 1.4, h: 0.55 },
+        isPublicSafe: true,
       },
       {
         kind: "lamppost",
         category: "lighting",
         footprint: { w: 0.35, h: 0.35 },
+        isPublicSafe: true,
       },
       {
         kind: "planter",
         category: "greenery",
         footprint: { w: 1, h: 1 },
+        isPublicSafe: true,
       },
       {
         kind: "fountain",
         category: "civic-art",
         footprint: { w: 1.6, h: 1.6 },
+        isPublicSafe: true,
       },
     ]);
   });
@@ -85,6 +89,7 @@ describe("Colony visual artifacts", () => {
       expect(item.rot).toBeLessThan(Math.PI * 2);
       expect(item.footprint.w).toBeGreaterThan(0);
       expect(item.footprint.h).toBeGreaterThan(0);
+      expect(item.isPublicSafe).toBe(true);
       expect(
         a.state.terrain.isWater(Math.round(item.x), Math.round(item.y)),
       ).toBe(false);

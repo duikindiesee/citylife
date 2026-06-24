@@ -33,9 +33,13 @@ export interface ArtifactCatalogEntry {
   kind: ArtifactKind;
   category: ArtifactCategory;
   footprint: ArtifactFootprint;
+  isPublicSafe: true;
 }
 
-interface CatalogSeed extends ArtifactCatalogEntry {
+interface CatalogSeed {
+  kind: ArtifactKind;
+  category: ArtifactCategory;
+  footprint: ArtifactFootprint;
   offset: { x: number; y: number };
   rot: number;
 }
@@ -79,6 +83,7 @@ export function artifactCatalogEntries(): ArtifactCatalogEntry[] {
       kind,
       category,
       footprint: Object.freeze({ ...footprint }),
+      isPublicSafe: true as const,
     }),
   );
 }

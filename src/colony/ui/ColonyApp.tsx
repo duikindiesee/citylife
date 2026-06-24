@@ -52,6 +52,141 @@ const OLD_WORLD_STATS = false;
 export function hudClassName(firstPersonActive: boolean): string {
   return firstPersonActive ? "hud hud--first-person-mobile-drawer" : "hud";
 }
+export type BankPanelCopy = {
+  title: string;
+  rows: { label: string; value: string; status?: "ok" | "pending" }[];
+  ledgerRows: string[];
+};
+export function bankPanelCopy(bank: ColonyUiState["bank"]): BankPanelCopy {
+  if (bank.scope === "player") {
+    return {
+      title: `Your wallet · ${bank.currency}`,
+      rows: [
+        {
+          label: "Your balance",
+          value: `${bank.currency}${bank.deposits.toLocaleString()}`,
+        },
+      ],
+      ledgerRows: [],
+    };
+  }
+  const syncValue =
+    bank.sync.pending > 0 || bank.sync.lastError
+      ? `⏳ ${bank.sync.pending} pending · ${bank.sync.synced} synced`
+      : `✓ ${bank.sync.synced} synced`;
+  return {
+    title: `City Bank · ${bank.currency}`,
+    rows: [
+      {
+        label: "Residents hold",
+        value: `${bank.currency}${bank.deposits.toLocaleString()}`,
+      },
+      { label: "≈ in rand", value: `R${bank.depositsZar.toLocaleString()}` },
+      { label: "Wallets", value: String(bank.accounts) },
+      {
+        label: "Land office",
+        value: `${bank.currency}${bank.landOffice.toLocaleString()}`,
+      },
+      {
+        label: "Real ledger",
+        value: syncValue,
+        status: bank.sync.pending > 0 || bank.sync.lastError ? "pending" : "ok",
+      },
+    ],
+    ledgerRows: bank.recent.map((tx) => tx.memo),
+  };
+}
+export type CitizenHudCopy = {
+  title: string;
+  summary: string;
+};
+export type AvatarFoundryCopy = {
+  title: string;
+  summary: string;
+};
+export type CommercePanelCopy = {
+  claimTitle: string;
+};
+export function commercePanelCopy(args: {
+  commerce: ColonyUiState["commerce"];
+  currency: string;
+  playerScoped: boolean;
+}): CommercePanelCopy {
+  if (args.playerScoped) {
+    return {
+      claimTitle: args.commerce.canClaim
+        ? "You can open the next shop"
+        : "Your wallet cannot open a shop yet",
+    };
+  }
+  return {
+    claimTitle: args.commerce.canClaim
+      ? "The wealthiest resident who can afford it takes the cheapest shop plot"
+      : "No resident can afford a free shop plot yet",
+  };
+}
+export function buyPlotButtonTitle(args: {
+  playerScoped: boolean;
+  canBuy: boolean;
+  buyerName: string;
+  wallet: number;
+  price: number;
+}): string {
+  if (args.playerScoped) {
+    return args.canBuy
+      ? "Buy this home site"
+      : "Your wallet cannot buy this home site yet";
+  }
+  return args.canBuy
+    ? `Assign this plot to ${args.buyerName}`
+    : `${args.buyerName} can't afford this plot (wallet ${args.wallet} ₭, price ${args.price} ₭)`;
+}
+export function avatarFoundryCopy(args: {
+  foundries: number;
+  staffed: boolean;
+  capacity: number;
+  playerScoped: boolean;
+}): AvatarFoundryCopy {
+  if (args.playerScoped) {
+    return {
+      summary: `${args.foundries} foundry${args.staffed ? ` · up to ${args.capacity} avatars` : " · unstaffed"}`,
+      title:
+        "The Avatar Foundry gives approved citizens an in-world body so players can meet them and step into their own view.",
+    };
+  }
+  return {
+    summary: `${args.foundries} foundry${args.staffed ? ` · mints up to ${args.capacity}` : " · unstaffed"}`,
+    title:
+      "The Avatar Foundry — the civic hall that mints a citizen avatar (a real Hermes pod in the kooker DMZ namespace, routed through kooker-service-ai) for each approved household, and gives the colony's first-person vision a home on the map. While staffed it can mint up to its capacity of citizen pods. The pod spawn and the kooker user live out-of-process, the Foundry is the in-world gate.",
+  };
+}
+export function citizenHudCopy(args: {
+  awake: number;
+  count: number;
+  list: { id: string; displayName: string; plotName: string }[];
+  playerScoped: boolean;
+}): CitizenHudCopy {
+  const baseSummary = `${args.awake}/${args.count} living`;
+  if (args.playerScoped) {
+    return {
+      summary: baseSummary,
+      title: "Named residents visible in the city. Other players' private household details stay hidden.",
+    };
+  }
+  const names = args.list
+    .slice(0, 2)
+    .map((c) => c.displayName.split(" ")[0])
+    .join(", ");
+  const details =
+    args.list
+      .slice(0, 4)
+      .map((c) => `${c.displayName} at ${c.plotName}`)
+      .join(" · ") || "(none yet)";
+  return {
+    summary: `${baseSummary}${names ? ` · ${names}${args.list.length > 2 ? "…" : ""}` : ""}`,
+    title: `Named residents allocated to a plot by the Border Patrol bot. ${args.awake} are active in-world. ${details}.`,
+  };
+}
 const pad = (n: number) => String(n).padStart(2, "0");
 const raceTime = (ms: number | null) => {
   if (ms === null) return "--";
@@ -181,6 +316,18 @@ export function ColonyApp() {
   const runtime = useRuntime();
   const hostRef = useRef<HTMLDivElement>(null);
   const ui: ColonyUiState = runtime.getUiState();
+  const citizenCopy = citizenHudCopy({
+    awake: ui.citizens.awake,
+    count: ui.citizens.count,
+    list: ui.citizens.list,
+    playerScoped: ui.bank.scope === "player",
+  });
+  const avatarCopy = avatarFoundryCopy({
+    foundries: ui.colony.avatar.foundries,
+    staffed: ui.colony.avatar.staffed,
+    capacity: ui.colony.avatar.capacity,
+    playerScoped: ui.bank.scope === "player",
+  });
   const [borderOpen, setBorderOpen] = useState(false);
   const [mouseLookLocked, setMouseLookLocked] = useState(false);
   const [pointerLockError, setPointerLockError] = useState<string | null>(null);
@@ -512,6 +659,17 @@ export function ColonyApp() {
             Road Rally
           </button>
         </div>
+        {ui.rally?.ready && ui.race.mode === "idle" && (
+          <div className="group">
+            <button
+              className="on"
+              onClick={() => runtime.joinRallyRace()}
+              title="Two players are at the Rally Point — start a race from the hilltop"
+            >
+              Join Race
+            </button>
+          </div>
+        )}
         <div className="group">
           <button
             className={ui.zonesVisible ? "on" : ""}
@@ -1562,12 +1720,9 @@ export function ColonyApp() {
                   style={{
                     color: ui.colony.avatar.staffed ? "#9f86d8" : "#7a6e8a",
                   }}
-                  title="The Avatar Foundry — the civic hall that mints a citizen avatar (a real Hermes pod in the kooker DMZ namespace, routed through kooker-service-ai) for each approved household, and gives the colony's first-person vision a home on the map. While staffed it can mint up to its capacity of citizen pods. The pod spawn and the kooker user live out-of-process, the Foundry is the in-world gate."
+                  title={avatarCopy.title}
                 >
-                  {ui.colony.avatar.foundries} foundry
-                  {ui.colony.avatar.staffed
-                    ? ` · mints up to ${ui.colony.avatar.capacity}`
-                    : " · unstaffed"}
+                  {avatarCopy.summary}
                 </b>
               </div>
             )}
@@ -1594,20 +1749,9 @@ export function ColonyApp() {
             <span>Citizens</span>
             <b
               style={{ color: ui.citizens.awake > 0 ? "#a0d4f0" : "#7a8a9a" }}
-              title={`Spec 074 — named residents allocated to a plot by the Border Patrol bot. ${ui.citizens.awake} have a live Hermes pod (DMZ namespace, kooker-service-ai routing). ${
-                ui.citizens.list
-                  .slice(0, 4)
-                  .map((c) => `${c.displayName} at ${c.plotName}`)
-                  .join(" · ") || "(none yet)"
-              }.`}
+              title={citizenCopy.title}
             >
-              {ui.citizens.awake}/{ui.citizens.count} living
-              {ui.citizens.list.length
-                ? ` · ${ui.citizens.list
-                    .slice(0, 2)
-                    .map((c) => c.displayName.split(" ")[0])
-                    .join(", ")}${ui.citizens.list.length > 2 ? "…" : ""}`
-                : ""}
+              {citizenCopy.summary}
             </b>
           </div>
         )}
@@ -1708,7 +1852,7 @@ export function ColonyApp() {
                       💻
                     </span>
                   )}
-                  {!l.ownerId &&
+                  {!l.occupied &&
                     !l.reserved &&
                     firstFree &&
                     (() => {
@@ -1728,11 +1872,13 @@ export function ColonyApp() {
                           onClick={() =>
                             runtime.purchaseLot(firstFree.id, l.id)
                           }
-                          title={
-                            canBuy
-                              ? `${firstFree.displayName} buys the deed for ${l.price} ₭ (≈ R${l.priceZar?.toLocaleString()})`
-                              : `${firstFree.displayName} can't afford this plot (wallet ${ui.citizens.wallets[firstFree.id] ?? 0} ₭, price ${l.price} ₭)`
-                          }
+                          title={buyPlotButtonTitle({
+                            playerScoped: ui.bank.scope === "player",
+                            canBuy,
+                            buyerName: firstFree.displayName,
+                            wallet: ui.citizens.wallets[firstFree.id] ?? 0,
+                            price: l.price ?? 0,
+                          })}
                         >
                           Buy {l.price} ₭
                         </button>
@@ -2057,48 +2203,39 @@ export function ColonyApp() {
           🛂 Border Control
         </button>
 
-        <h2 style={{ marginTop: 18 }}>City Bank · {ui.bank.currency}</h2>
-        <div className="row">
-          <span>Residents hold</span>
-          <b>
-            {ui.bank.currency}
-            {ui.bank.deposits.toLocaleString()}
-          </b>
-        </div>
-        <div className="row">
-          <span>≈ in rand</span>
-          <b>R{ui.bank.depositsZar.toLocaleString()}</b>
-        </div>
-        <div className="row">
-          <span>Wallets</span>
-          <b>{ui.bank.accounts}</b>
-        </div>
-        <div className="row">
-          <span>Land office</span>
-          <b>
-            {ui.bank.currency}
-            {ui.bank.landOffice.toLocaleString()}
-          </b>
-        </div>
-        <div className="row">
-          <span>Real ledger</span>
-          {ui.bank.sync.pending > 0 || ui.bank.sync.lastError ? (
-            <b style={{ color: "#e0a14d" }}>
-              ⏳ {ui.bank.sync.pending} pending · {ui.bank.sync.synced} synced
-            </b>
-          ) : (
-            <b style={{ color: "#39d353" }}>✓ {ui.bank.sync.synced} synced</b>
-          )}
-        </div>
-        {ui.bank.recent.length > 0 && (
-          <div className="ledger">
-            {ui.bank.recent.map((tx) => (
-              <div key={tx.id} className="ledger-row">
-                {tx.memo}
-              </div>
-            ))}
-          </div>
-        )}
+        {(() => {
+          const bankCopy = bankPanelCopy(ui.bank);
+          return (
+            <>
+              <h2 style={{ marginTop: 18 }}>{bankCopy.title}</h2>
+              {bankCopy.rows.map((row) => (
+                <div className="row" key={row.label}>
+                  <span>{row.label}</span>
+                  <b
+                    style={
+                      row.status === "pending"
+                        ? { color: "#e0a14d" }
+                        : row.status === "ok"
+                          ? { color: "#39d353" }
+                          : undefined
+                    }
+                  >
+                    {row.value}
+                  </b>
+                </div>
+              ))}
+              {bankCopy.ledgerRows.length > 0 && (
+                <div className="ledger">
+                  {bankCopy.ledgerRows.map((memo, index) => (
+                    <div key={`${index}-${memo}`} className="ledger-row">
+                      {memo}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {ui.commerce.plots > 0 &&
           (() => {
@@ -2117,6 +2254,11 @@ export function ColonyApp() {
                   </b>
                 </div>
               ) : null;
+            const commerceCopy = commercePanelCopy({
+              commerce: ui.commerce,
+              currency: ui.bank.currency,
+              playerScoped: ui.bank.scope === "player",
+            });
             return (
               <>
                 <h2 style={{ marginTop: 18 }}>Commercial district</h2>
@@ -2134,11 +2276,7 @@ export function ColonyApp() {
                     className="immigbtn"
                     disabled={!ui.commerce.canClaim}
                     onClick={() => runtime.claimNextShop()}
-                    title={
-                      ui.commerce.canClaim
-                        ? "The wealthiest resident who can afford it takes the cheapest shop plot"
-                        : "No resident can afford a free shop plot yet"
-                    }
+                    title={commerceCopy.claimTitle}
                   >
                     🛒 Open a shop
                     {ui.commerce.cheapest
