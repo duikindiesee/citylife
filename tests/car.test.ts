@@ -98,6 +98,7 @@ describe("garage store (096 Slice A)", () => {
       name: "Night Owl",
       stats: { topSpeed: 0.8, acceleration: 0.6, grip: 0.4, braking: 0.5 },
       paint: { body: 0x123456, cabin: 0x222222, accent: 0xffd25a },
+      parts: [],
     };
     saveCar("citizen_joe", mine);
     expect(loadCar("citizen_joe")).toEqual(mine);

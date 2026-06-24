@@ -13,12 +13,16 @@ export interface CarStatVector {
   braking: number;
 }
 
-/** A player's car: a stable id, a player-facing name, its stats, and a paint scheme (hex colours). */
+/** A player's car: a stable id, a player-facing name, its base stats, a paint scheme (hex colours), and
+ *  the bolt-on parts mounted on it. `stats` is the BASE (stock); carParts.deriveStats(spec) folds the
+ *  parts in for the effective handling. `parts` are catalog kind strings (validated at use-time by
+ *  carParts, one per socket) — kept as strings here so carSpec stays free of a carParts import cycle. */
 export interface CarSpec {
   id: string;
   name: string;
   stats: CarStatVector;
   paint: { body: number; cabin: number; accent: number };
+  parts: string[];
 }
 
 /** A balanced stock car — every stat mid-range. The default before any tuning (Slice C onward). */
@@ -72,6 +76,7 @@ export function defaultCarSpec(playerId: string): CarSpec {
       cabin: CABIN_PALETTE[(h >>> 3) % CABIN_PALETTE.length]!,
       accent: ACCENT_PALETTE[(h >>> 6) % ACCENT_PALETTE.length]!,
     },
+    parts: [],
   };
 }
 
@@ -92,6 +97,16 @@ export function safeCarSpec(e: unknown): CarSpec | null {
   const name = rawName.length > 0 && isPublicSafe(rawName) ? rawName : "Stock Rod";
   const s = o.stats ?? {};
   const p = o.paint ?? {};
+  // shape-clean the parts: known catalog validity + one-per-socket is enforced at use-time by carParts
+  // (no import here, to avoid a carSpec <-> carParts cycle). Here: strings only, deduped, capped.
+  const rawParts = Array.isArray((o as { parts?: unknown }).parts)
+    ? ((o as { parts: unknown[] }).parts as unknown[])
+    : [];
+  const parts = [
+    ...new Set(
+      rawParts.filter((x): x is string => typeof x === "string" && x.length > 0),
+    ),
+  ].slice(0, 16);
   return {
     id: o.id,
     name,
@@ -106,5 +121,6 @@ export function safeCarSpec(e: unknown): CarSpec | null {
       cabin: clampHex(p.cabin),
       accent: clampHex(p.accent),
     },
+    parts,
   };
 }
