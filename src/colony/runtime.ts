@@ -3557,7 +3557,10 @@ export class ColonyRuntime {
         recent: s.settlers
           .slice(-6)
           .reverse()
-          .map((x) => ({ id: x.kookerId, name: x.name })),
+          .map((x) => ({
+            id: x.kookerId,
+            name: this.playerView ? "Resident" : x.name,
+          })),
       },
       bank: (() => {
         // Spec 085 — the bank panel reads the ACTIVE ₭ economy (citizen wallets), not the retired

@@ -5,6 +5,7 @@ import { CitizenRoster } from "../src/colony/bot/citizenRoster";
 import { firstPersonView } from "../src/colony/bot/firstPersonView";
 import { generateHousehold, isPublicSafe } from "../src/colony/newcomers";
 import { makeCityPlan } from "../src/colony/cityPlan";
+import { designHouse } from "../src/colony/house";
 
 const fixedNow = 1_700_000_000_000;
 
@@ -261,6 +262,47 @@ describe("firstPersonView — spec 074", () => {
       expect(citizen.tokensSpentLifetime).toBe(0);
       expect(isPublicSafe(citizen.plotName)).toBe(true);
     }
+  });
+
+  it("masks recent settler names in the player-scoped UI payload", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.sim.state.settlers.push(
+      {
+        kookerId: 731,
+        name: "Mira Ledger",
+        x: 12,
+        y: 13,
+        house: designHouse(731),
+      },
+      {
+        kookerId: 842,
+        name: "Other Player",
+        x: 14,
+        y: 15,
+        house: designHouse(842),
+      },
+    );
+    const adminUi = rt.getUiState();
+    expect(adminUi.settlers.recent.map((s) => s.name)).toEqual([
+      "Other Player",
+      "Mira Ledger",
+    ]);
+
+    rt.setOperatorName("johndoe");
+    rt.setPlayerView(true);
+
+    const playerUi = rt.getUiState();
+    expect(playerUi.settlers.count).toBe(2);
+    expect(playerUi.settlers.recent).toEqual([
+      { id: 842, name: "Resident" },
+      { id: 731, name: "Resident" },
+    ]);
+    expect(JSON.stringify(playerUi.settlers)).not.toMatch(
+      /Mira Ledger|Other Player/i,
+    );
+    expect(playerUi.settlers.recent.map((s) => s.name).every(isPublicSafe)).toBe(
+      true,
+    );
   });
 
   it("boots deterministic in-world agent citizens for Joe and Jack", () => {
