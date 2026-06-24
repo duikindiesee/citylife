@@ -1537,6 +1537,35 @@ export class ColonyRuntime {
     this.renderer.setOperatorCar(loadCar(id), cell);
   }
 
+  /** Spec 096 E — the land-next-to-your-car payoff. Drop the signed-in player into first person
+   *  standing on a walkable cell beside their own parked car (the car sits a cell east of the home,
+   *  see updateOperatorCar), facing it, ready to walk up and open the bonnet. No-op without an
+   *  operator citizen. Deterministic: takes the first walkable spot from a fixed candidate order. */
+  jumpToMyHouse(): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const c = this.citizens.byId(id);
+    if (!c) return false;
+    const home = c.homeXY ?? c.pos;
+    const hx = Math.round(home.x);
+    const hy = Math.round(home.y);
+    const car = { x: hx + 1, y: hy };
+    // stand on a walkable cell next to the car, in a fixed order so the spawn is deterministic
+    const spots = [
+      { x: hx + 2, y: hy }, // east of the car: looks back west over the car and the house
+      { x: hx + 1, y: hy + 1 }, // south of the car
+      { x: hx + 1, y: hy - 1 }, // north of the car
+      { x: hx, y: hy }, // the home cell, looking east at the car
+    ];
+    const stand = spots.find(
+      (s) => this.blockedStepReason(s.x, s.y) === null,
+    ) ?? { x: hx, y: hy };
+    c.pos = { x: stand.x, y: stand.y };
+    c.target = { x: stand.x, y: stand.y };
+    c.heading = Math.atan2(car.y - stand.y, car.x - stand.x); // face the car
+    return this.enterFirstPerson(id);
+  }
+
   /** P1 — the bot/governor points a citizen's avatar at a destination cell (it walks there). */
   setAvatarTarget(citizenId: string, cell: { x: number; y: number }): boolean {
     const ok = this.citizens.setTarget(citizenId, cell);

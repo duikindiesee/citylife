@@ -45,6 +45,24 @@ export function GaragePanel({
         🔧 Garage · {garage.carName} · ₭{garage.walletK}
       </span>
 
+      <button
+        data-build-action="jump-to-car"
+        title="Drop into first person beside your parked car"
+        onClick={() => runtime.jumpToMyHouse()}
+        style={{
+          padding: "5px 8px",
+          fontSize: 12,
+          borderRadius: 6,
+          cursor: "pointer",
+          border: "1px solid #b6892f",
+          background: "rgba(255,210,90,0.16)",
+          color: "#ffd25a",
+          fontWeight: 700,
+        }}
+      >
+        🚗 Go to my car
+      </button>
+
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {STATS.map(({ key, label }) => {
           const pct = Math.round(garage.stats[key] * 100);
