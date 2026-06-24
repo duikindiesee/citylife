@@ -121,6 +121,7 @@ export type AvatarFoundryCopy = {
 };
 export type CommercePanelCopy = {
   claimTitle: string;
+  claimButtonLabel: string;
 };
 export function commercePanelCopy(args: {
   commerce: ColonyUiState["commerce"];
@@ -132,12 +133,18 @@ export function commercePanelCopy(args: {
       claimTitle: args.commerce.canClaim
         ? "You can open the next shop"
         : "Your wallet cannot open a shop yet",
+      claimButtonLabel: "🛒 Open a shop",
     };
   }
   return {
     claimTitle: args.commerce.canClaim
       ? "The wealthiest resident who can afford it takes the cheapest shop plot"
       : "No resident can afford a free shop plot yet",
+    claimButtonLabel: `🛒 Open a shop${
+      args.commerce.cheapest
+        ? ` · ${args.commerce.cheapest.kind} ${args.currency}${args.commerce.cheapest.price.toLocaleString()}`
+        : ""
+    }`,
   };
 }
 export function buyPlotButtonTitle(args: {
@@ -2350,10 +2357,7 @@ export function ColonyApp() {
                     onClick={() => runtime.claimNextShop()}
                     title={commerceCopy.claimTitle}
                   >
-                    🛒 Open a shop
-                    {ui.commerce.cheapest
-                      ? ` · ${ui.commerce.cheapest.kind} ${ui.bank.currency}${ui.commerce.cheapest.price.toLocaleString()}`
-                      : ""}
+                    {commerceCopy.claimButtonLabel}
                   </button>
                 )}
               </>

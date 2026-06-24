@@ -36,6 +36,18 @@ describe("player commerce HUD copy privacy", () => {
     expect(isPublicSafe(copy.claimTitle)).toBe(true);
   });
 
+  it("keeps player shop claim button copy generic", () => {
+    const copy = commercePanelCopy({
+      commerce: { ...commerce, cheapest: { kind: "showroom", price: 1600 } },
+      currency: "₭",
+      playerScoped: true,
+    });
+
+    expect(copy.claimButtonLabel).toBe("🛒 Open a shop");
+    expect(copy.claimButtonLabel).not.toMatch(/showroom|store|kiosk|₭|1600|price/i);
+    expect(isPublicSafe(copy.claimButtonLabel)).toBe(true);
+  });
+
   it("keeps richer operator commerce copy for admin HUDs", () => {
     const copy = commercePanelCopy({
       commerce: { ...commerce, canClaim: true },
