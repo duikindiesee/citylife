@@ -51,6 +51,50 @@ const OLD_WORLD_STATS = false;
 export function hudClassName(firstPersonActive: boolean): string {
   return firstPersonActive ? "hud hud--first-person-mobile-drawer" : "hud";
 }
+export type BankPanelCopy = {
+  title: string;
+  rows: { label: string; value: string; status?: "ok" | "pending" }[];
+  ledgerRows: string[];
+};
+export function bankPanelCopy(bank: ColonyUiState["bank"]): BankPanelCopy {
+  if (bank.scope === "player") {
+    return {
+      title: `Your wallet · ${bank.currency}`,
+      rows: [
+        {
+          label: "Your balance",
+          value: `${bank.currency}${bank.deposits.toLocaleString()}`,
+        },
+      ],
+      ledgerRows: [],
+    };
+  }
+  const syncValue =
+    bank.sync.pending > 0 || bank.sync.lastError
+      ? `⏳ ${bank.sync.pending} pending · ${bank.sync.synced} synced`
+      : `✓ ${bank.sync.synced} synced`;
+  return {
+    title: `City Bank · ${bank.currency}`,
+    rows: [
+      {
+        label: "Residents hold",
+        value: `${bank.currency}${bank.deposits.toLocaleString()}`,
+      },
+      { label: "≈ in rand", value: `R${bank.depositsZar.toLocaleString()}` },
+      { label: "Wallets", value: String(bank.accounts) },
+      {
+        label: "Land office",
+        value: `${bank.currency}${bank.landOffice.toLocaleString()}`,
+      },
+      {
+        label: "Real ledger",
+        value: syncValue,
+        status: bank.sync.pending > 0 || bank.sync.lastError ? "pending" : "ok",
+      },
+    ],
+    ledgerRows: bank.recent.map((tx) => tx.memo),
+  };
+}
 const pad = (n: number) => String(n).padStart(2, "0");
 const raceTime = (ms: number | null) => {
   if (ms === null) return "--";
@@ -2055,48 +2099,39 @@ export function ColonyApp() {
           🛂 Border Control
         </button>
 
-        <h2 style={{ marginTop: 18 }}>City Bank · {ui.bank.currency}</h2>
-        <div className="row">
-          <span>Residents hold</span>
-          <b>
-            {ui.bank.currency}
-            {ui.bank.deposits.toLocaleString()}
-          </b>
-        </div>
-        <div className="row">
-          <span>≈ in rand</span>
-          <b>R{ui.bank.depositsZar.toLocaleString()}</b>
-        </div>
-        <div className="row">
-          <span>Wallets</span>
-          <b>{ui.bank.accounts}</b>
-        </div>
-        <div className="row">
-          <span>Land office</span>
-          <b>
-            {ui.bank.currency}
-            {ui.bank.landOffice.toLocaleString()}
-          </b>
-        </div>
-        <div className="row">
-          <span>Real ledger</span>
-          {ui.bank.sync.pending > 0 || ui.bank.sync.lastError ? (
-            <b style={{ color: "#e0a14d" }}>
-              ⏳ {ui.bank.sync.pending} pending · {ui.bank.sync.synced} synced
-            </b>
-          ) : (
-            <b style={{ color: "#39d353" }}>✓ {ui.bank.sync.synced} synced</b>
-          )}
-        </div>
-        {ui.bank.recent.length > 0 && (
-          <div className="ledger">
-            {ui.bank.recent.map((tx) => (
-              <div key={tx.id} className="ledger-row">
-                {tx.memo}
-              </div>
-            ))}
-          </div>
-        )}
+        {(() => {
+          const bankCopy = bankPanelCopy(ui.bank);
+          return (
+            <>
+              <h2 style={{ marginTop: 18 }}>{bankCopy.title}</h2>
+              {bankCopy.rows.map((row) => (
+                <div className="row" key={row.label}>
+                  <span>{row.label}</span>
+                  <b
+                    style={
+                      row.status === "pending"
+                        ? { color: "#e0a14d" }
+                        : row.status === "ok"
+                          ? { color: "#39d353" }
+                          : undefined
+                    }
+                  >
+                    {row.value}
+                  </b>
+                </div>
+              ))}
+              {bankCopy.ledgerRows.length > 0 && (
+                <div className="ledger">
+                  {bankCopy.ledgerRows.map((memo, index) => (
+                    <div key={`${index}-${memo}`} className="ledger-row">
+                      {memo}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {ui.commerce.plots > 0 &&
           (() => {

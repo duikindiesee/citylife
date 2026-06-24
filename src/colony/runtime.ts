@@ -535,6 +535,7 @@ export interface ColonyUiState {
   };
   settlers: { count: number; recent: { id: number; name: string }[] };
   bank: {
+    scope: "city" | "player";
     currency: string;
     deposits: number;
     depositsZar: number;
@@ -3489,6 +3490,7 @@ export class ColonyRuntime {
         const held = this.playerView ? viewerHeld : allHeld;
         const st = this.ledgerSyncStatus();
         return {
+          scope: this.playerView ? "player" : "city",
           currency: CURRENCY,
           deposits: held,
           depositsZar: kookToZar(held, COLONY.economy.land),
