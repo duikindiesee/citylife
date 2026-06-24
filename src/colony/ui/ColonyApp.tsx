@@ -103,6 +103,43 @@ export type AvatarFoundryCopy = {
   title: string;
   summary: string;
 };
+export type CommercePanelCopy = {
+  claimTitle: string;
+};
+export function commercePanelCopy(args: {
+  commerce: ColonyUiState["commerce"];
+  currency: string;
+  playerScoped: boolean;
+}): CommercePanelCopy {
+  if (args.playerScoped) {
+    return {
+      claimTitle: args.commerce.canClaim
+        ? "You can open the next shop"
+        : "Your wallet cannot open a shop yet",
+    };
+  }
+  return {
+    claimTitle: args.commerce.canClaim
+      ? "The wealthiest resident who can afford it takes the cheapest shop plot"
+      : "No resident can afford a free shop plot yet",
+  };
+}
+export function buyPlotButtonTitle(args: {
+  playerScoped: boolean;
+  canBuy: boolean;
+  buyerName: string;
+  wallet: number;
+  price: number;
+}): string {
+  if (args.playerScoped) {
+    return args.canBuy
+      ? "Buy this home site"
+      : "Your wallet cannot buy this home site yet";
+  }
+  return args.canBuy
+    ? `Assign this plot to ${args.buyerName}`
+    : `${args.buyerName} can't afford this plot (wallet ${args.wallet} ₭, price ${args.price} ₭)`;
+}
 export function avatarFoundryCopy(args: {
   foundries: number;
   staffed: boolean;
@@ -1822,11 +1859,13 @@ export function ColonyApp() {
                           onClick={() =>
                             runtime.purchaseLot(firstFree.id, l.id)
                           }
-                          title={
-                            canBuy
-                              ? `${firstFree.displayName} buys the deed for ${l.price} ₭ (≈ R${l.priceZar?.toLocaleString()})`
-                              : `${firstFree.displayName} can't afford this plot (wallet ${ui.citizens.wallets[firstFree.id] ?? 0} ₭, price ${l.price} ₭)`
-                          }
+                          title={buyPlotButtonTitle({
+                            playerScoped: ui.bank.scope === "player",
+                            canBuy,
+                            buyerName: firstFree.displayName,
+                            wallet: ui.citizens.wallets[firstFree.id] ?? 0,
+                            price: l.price ?? 0,
+                          })}
                         >
                           Buy {l.price} ₭
                         </button>
@@ -2202,6 +2241,11 @@ export function ColonyApp() {
                   </b>
                 </div>
               ) : null;
+            const commerceCopy = commercePanelCopy({
+              commerce: ui.commerce,
+              currency: ui.bank.currency,
+              playerScoped: ui.bank.scope === "player",
+            });
             return (
               <>
                 <h2 style={{ marginTop: 18 }}>Commercial district</h2>
@@ -2219,11 +2263,7 @@ export function ColonyApp() {
                     className="immigbtn"
                     disabled={!ui.commerce.canClaim}
                     onClick={() => runtime.claimNextShop()}
-                    title={
-                      ui.commerce.canClaim
-                        ? "The wealthiest resident who can afford it takes the cheapest shop plot"
-                        : "No resident can afford a free shop plot yet"
-                    }
+                    title={commerceCopy.claimTitle}
                   >
                     🛒 Open a shop
                     {ui.commerce.cheapest
