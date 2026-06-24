@@ -586,6 +586,13 @@ export interface ColonyUiState {
     checkpoints: number;
     offTrack: boolean;
   };
+  // Spec 097 R4 — live presence at the hilltop Rally Point (the race rendezvous); null if no rally.
+  rally: {
+    x: number;
+    y: number;
+    present: number;
+    ready: boolean;
+  } | null;
   neighborhood: {
     lots: {
       id: string;
@@ -3598,6 +3605,26 @@ export class ColonyRuntime {
           ),
           checkpoints: r.checkpoints.length,
           offTrack: r.offTrack,
+        };
+      })(),
+      // Spec 097 R4 — count avatars standing at the hilltop Rally Point (the race rendezvous). Live and
+      // deterministic from positions; the first-person operator avatar is one of these citizens. R5 will
+      // gate a Join Race offer on present >= 2. Bar-seat presence is the model (proximity within ~1.5).
+      rally: (() => {
+        const rallyS = s.structures.find((x) => x.kind === "rally");
+        if (!rallyS) return null;
+        const R = 1.5;
+        let present = 0;
+        for (const pub of this.citizens.list()) {
+          const cc = this.citizens.byId(pub.id);
+          if (cc && Math.hypot(cc.pos.x - rallyS.x, cc.pos.y - rallyS.y) <= R)
+            present++;
+        }
+        return {
+          x: rallyS.x,
+          y: rallyS.y,
+          present,
+          ready: present >= 2 && this.raceState === null,
         };
       })(),
       neighborhood: (() => {
