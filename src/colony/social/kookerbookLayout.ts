@@ -4,7 +4,10 @@ export const KOOKERBOOK_MOBILE_MAX_WIDTH = 640;
 
 export type KookerbookResponsiveLayout = {
   body: Pick<CSSProperties, "margin" | "overflowX">;
-  shell: Pick<CSSProperties, "flexDirection" | "overflowX" | "width" | "maxWidth">;
+  shell: Pick<
+    CSSProperties,
+    "flexDirection" | "overflowX" | "width" | "maxWidth"
+  >;
   panel: Pick<CSSProperties, "maxWidth" | "minWidth" | "overflowX">;
   directory: Pick<CSSProperties, "width" | "maxWidth" | "flexShrink">;
   directoryLink: Pick<CSSProperties, "minHeight">;

@@ -86,17 +86,27 @@ function assertRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function numberField(fields: Record<string, unknown>, key: string, ctx: string): number {
+function numberField(
+  fields: Record<string, unknown>,
+  key: string,
+  ctx: string,
+): number {
   const value = fields[key];
   if (typeof value !== "number" || !Number.isFinite(value))
     throw new Error(`placed artifact: ${ctx}.${key} must be a finite number`);
   return value;
 }
 
-function stringField(fields: Record<string, unknown>, key: string, ctx: string): string {
+function stringField(
+  fields: Record<string, unknown>,
+  key: string,
+  ctx: string,
+): string {
   const value = fields[key];
   if (typeof value !== "string" || !value)
-    throw new Error(`placed artifact: ${ctx}.${key} must be a non-empty string`);
+    throw new Error(
+      `placed artifact: ${ctx}.${key} must be a non-empty string`,
+    );
   return value;
 }
 
@@ -114,7 +124,9 @@ function canonicalPlacedArtifact(value: unknown): PlacedArtifact {
   const data = assertRecord(raw.data, "data");
   const variant = stringField(data, "variant", "data");
   if (!isArtifactKind(variant))
-    throw new Error(`placed artifact: unknown variant ${JSON.stringify(variant)}`);
+    throw new Error(
+      `placed artifact: unknown variant ${JSON.stringify(variant)}`,
+    );
   if (!PLACED_ARTIFACT_KIND_REGISTRY[kind].variants.includes(variant))
     throw new Error(
       `placed artifact: variant ${JSON.stringify(variant)} is not registered for ${kind}`,
@@ -182,7 +194,9 @@ export function placedArtifactFromVisualArtifact(item: {
   };
 }
 
-export function placedKindForVariant(variant: ArtifactKind): PlacedArtifactKind {
+export function placedKindForVariant(
+  variant: ArtifactKind,
+): PlacedArtifactKind {
   for (const entry of Object.values(PLACED_ARTIFACT_KIND_REGISTRY))
     if (entry.variants.includes(variant)) return entry.kind;
   // Exhaustiveness guard for future ARTIFACT_KINDS additions: tests should fail before this is reachable.

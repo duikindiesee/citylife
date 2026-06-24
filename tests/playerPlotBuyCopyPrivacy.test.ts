@@ -26,6 +26,8 @@ describe("player plot buy HUD copy privacy", () => {
       price: 230,
     });
 
-    expect(title).toBe("KOOKER the Builder can't afford this plot (wallet 0 ₭, price 230 ₭)");
+    expect(title).toBe(
+      "KOOKER the Builder can't afford this plot (wallet 0 ₭, price 230 ₭)",
+    );
   });
 });
