@@ -214,7 +214,9 @@ function App() {
     const previousRootWidth = root?.style.width ?? "";
     const previousRootMaxWidth = root?.style.maxWidth ?? "";
     const previousRootOverflowX = root?.style.overflowX ?? "";
-    document.documentElement.style.overflowX = String(layout.html.overflowX ?? "");
+    document.documentElement.style.overflowX = String(
+      layout.html.overflowX ?? "",
+    );
     document.body.style.margin = String(layout.body.margin ?? "");
     document.body.style.overflowX = String(layout.body.overflowX ?? "");
     if (root) {
