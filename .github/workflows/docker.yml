@@ -51,6 +51,37 @@ jobs:
           ref: ${{ github.ref }}
           fetch-depth: 1
 
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+          cache-dependency-path: android-wrapper/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android-wrapper/gradlew
+
+      - name: Create debug keystore
+        run: |
+          mkdir -p $GITHUB_WORKSPACE/../keystores
+          keytool -genkey -v -keystore $GITHUB_WORKSPACE/../keystores/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          echo "Debug keystore created at $GITHUB_WORKSPACE/../keystores/debug.keystore"
+
+      - name: Build Debug APK
+        run: |
+          cd android-wrapper
+          ./gradlew assembleDebug
+
+      - name: Copy APK to public folder
+        run: |
+          mkdir -p public
+          cp android-wrapper/app/build/outputs/apk/debug/app-debug.apk public/citylife.apk
+          echo "Copied APK to public/citylife.apk"
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:

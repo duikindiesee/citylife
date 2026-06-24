@@ -11,3 +11,5 @@ citizen-plot1.env.local
 provision-citizen.sh
 .git-commit-msg.tmp
 coverage
+android-wrapper/
+
