@@ -7,8 +7,10 @@ describe("Kookerbook mobile layout", () => {
 
     expect(layout.shell.flexDirection).toBe("column");
     expect(layout.shell.overflowX).toBe("hidden");
-    expect(layout.shell.padding).toBe(10);
-    expect(layout.shell.gap).toBe(10);
+    expect(layout.shell.width).toBe("100%");
+    expect(layout.shell.padding).toBe(12);
+    expect(layout.shell.gap).toBe(12);
+    expect(layout.shell.boxSizing).toBe("border-box");
     expect(layout.html.overflowX).toBe("hidden");
     expect(layout.body.margin).toBe("0");
     expect(layout.body.overflowX).toBe("hidden");
@@ -20,16 +22,21 @@ describe("Kookerbook mobile layout", () => {
     expect(layout.profile.width).toBe("auto");
     expect(layout.profile.maxWidth).toBe("100%");
     expect(layout.profile.minWidth).toBe(0);
+    expect(layout.profile.boxSizing).toBe("border-box");
     expect(layout.contentText.minWidth).toBe(0);
     expect(layout.contentText.overflowWrap).toBe("anywhere");
     expect(layout.contentText.wordBreak).toBe("break-word");
     expect(layout.directoryLink.minHeight).toBe(44);
+    expect(layout.directoryLink.width).toBe("100%");
+    expect(layout.directoryLink.maxWidth).toBe("100%");
+    expect(layout.directoryLink.boxSizing).toBe("border-box");
     expect(layout.houseRender.width).toBe("100%");
     expect(layout.houseRender.maxWidth).toBe("100%");
     expect(layout.houseRender.minWidth).toBe(0);
     expect(layout.panel.maxWidth).toBe("100%");
     expect(layout.panel.minWidth).toBe(0);
     expect(layout.panel.overflowX).toBe("hidden");
+    expect(layout.panel.boxSizing).toBe("border-box");
     expect(layout.profileHeader.flexDirection).toBe("column");
     expect(layout.profileHeader.alignItems).toBe("flex-start");
   });

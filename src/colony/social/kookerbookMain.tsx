@@ -209,14 +209,12 @@ function App() {
     if (typeof document === "undefined") return;
     const root = document.getElementById("root");
     const previousHtmlOverflowX = document.documentElement.style.overflowX;
-    const previousMargin = document.body.style.margin;
-    const previousOverflowX = document.body.style.overflowX;
+    const previousBodyMargin = document.body.style.margin;
+    const previousBodyOverflowX = document.body.style.overflowX;
     const previousRootWidth = root?.style.width ?? "";
     const previousRootMaxWidth = root?.style.maxWidth ?? "";
     const previousRootOverflowX = root?.style.overflowX ?? "";
-    document.documentElement.style.overflowX = String(
-      layout.html.overflowX ?? "",
-    );
+    document.documentElement.style.overflowX = String(layout.html.overflowX ?? "");
     document.body.style.margin = String(layout.body.margin ?? "");
     document.body.style.overflowX = String(layout.body.overflowX ?? "");
     if (root) {
@@ -226,8 +224,8 @@ function App() {
     }
     return () => {
       document.documentElement.style.overflowX = previousHtmlOverflowX;
-      document.body.style.margin = previousMargin;
-      document.body.style.overflowX = previousOverflowX;
+      document.body.style.margin = previousBodyMargin;
+      document.body.style.overflowX = previousBodyOverflowX;
       if (root) {
         root.style.width = previousRootWidth;
         root.style.maxWidth = previousRootMaxWidth;
