@@ -95,6 +95,34 @@ import {
   CURRENCY,
 } from "./ledger";
 import { plotPriceKook, kookToZar, starterDeposit } from "./land";
+import { loadCar, saveCar } from "./car/garageStore";
+import {
+  PAINT_PALETTES,
+  type PaintChannel,
+  type CarStatVector,
+} from "./car/carSpec";
+import {
+  CAR_PARTS,
+  validCarParts,
+  deriveStats,
+  type CarPartKind,
+  type CarSocket,
+} from "./car/carParts";
+import {
+  ownsCarPart,
+  ownedCarParts,
+  ownCarPart,
+  unownCarPart,
+} from "./car/carStore";
+import { CAR_SHOP_ACCOUNT } from "./car/carShop";
+import {
+  loadCarPartMarket,
+  saveCarPartMarket,
+  addCarPartListing,
+  removeCarPartListing,
+  findCarPartListing,
+  carPartListingId,
+} from "./bot/carPartMarket";
 import { MockBackend, type CityLifeBackend, type Decision } from "./backend";
 import type { Household, HouseholdOverrides } from "./newcomers";
 import { spawnCitizenSubUser, splitName } from "./bot/citizenSpawn";
@@ -588,6 +616,63 @@ export interface ColonyUiState {
     checkpoints: number;
     offTrack: boolean;
   };
+  // Spec 096 — the signed-in player's car + its catalog (mount toggles). null when no operator is set.
+  garage: {
+    carName: string;
+    walletK: number;
+    /** Spec 096 — a single 0..100 headline build rating (50 = stock); rises as performance parts go on. */
+    tunePoints: number;
+    stats: {
+      topSpeed: number;
+      acceleration: number;
+      grip: number;
+      braking: number;
+    };
+    parts: {
+      kind: string;
+      label: string;
+      socket: string;
+      category: "performance" | "cosmetic";
+      cost: number;
+      mounted: boolean;
+      owned: boolean;
+      /** Spec 096 — what fitting this part does to handling, as short up/down badges (empty = cosmetic). */
+      effects: { label: string; up: boolean }[];
+    }[];
+    // Spec 096 F — the bonnet: open it to reveal the engine bay, each socket with its install state.
+    bonnetOpen: boolean;
+    engineBay: {
+      socket: string;
+      label: string;
+      /** occupied = a part is fitted; installable = empty and a fitting part is owned; empty = none owned. */
+      state: "occupied" | "installable" | "empty";
+      mounted: { kind: string; label: string } | null;
+      parts: {
+        kind: string;
+        label: string;
+        category: "performance" | "cosmetic";
+        cost: number;
+        owned: boolean;
+        effects: { label: string; up: boolean }[];
+      }[];
+    }[];
+    // Spec 096 G — the Kookerbook car-part classifieds board (public listings, city coin).
+    market: {
+      id: string;
+      kind: string;
+      label: string;
+      price: number;
+      sellerName: string;
+      mine: boolean;
+    }[];
+    // Spec 096 H — the car's paint: each repaintable channel, its current colour and the palette options.
+    paint: {
+      channel: "body" | "cabin" | "accent";
+      label: string;
+      current: number;
+      options: number[];
+    }[];
+  } | null;
   // Spec 097 R4 — live presence at the hilltop Rally Point (the race rendezvous); null if no rally.
   rally: {
     x: number;
@@ -688,6 +773,8 @@ export class ColonyRuntime {
   // other citizens' public presence (stubs), never their private wallet/usage. Set by the player login
   // path (the first-login/route-gating slice); until then this stays false so nothing changes.
   private playerView = false;
+  // Spec 096 F — is the Garage engine-bay (the bonnet) open in the HUD? A UI toggle, render-free.
+  private bonnetOpen = false;
   // P1 — the citizen currently being viewed in first person (null = orbit camera).
   private fpCitizenId: string | null = null;
   // First-person locomotion — which movement keys are held while you walk your bot around.
@@ -1118,6 +1205,52 @@ export class ColonyRuntime {
       { roadKind: this.sim.state.roadKind },
       busAnchors,
     );
+    // Spec 097 R3.5 — connect the hilltop Rally Point to the road network. Route a spur from the
+    // nearest existing road cell to the rally cell and lay it like any other road, mirroring the
+    // commercial connector, so the guided walk and a rally-started race reach the bus-stop on a real
+    // drivable road. Laid AFTER the bus route so that loop is unchanged. Fail soft when no in-margin
+    // route exists: the overlook stays reachable on foot and simply gets no spur that seed.
+    const rallyStruct = this.sim.state.structures.find((s) => s.kind === "rally");
+    if (rallyStruct && this.sim.state.roads.length > 0) {
+      const rallyCell = {
+        x: Math.round(rallyStruct.x),
+        y: Math.round(rallyStruct.y),
+      };
+      // Try the nearest road termini in turn (sorted deterministically by distance then x,y). The
+      // route is allowed to cross homesteads so a path is always found through dense development, but
+      // only the CLEAN run reaching down from the rally is paved: the ribbon climbs the knoll to the
+      // bus-stop and stops where the homesteads (already road-fronted) begin, so no road is ever drawn
+      // through a house. If a seat is so embedded that even its own cell is built over, it fails soft.
+      const candidates: Cell[] = this.sim.state.roads
+        .map((r) => ({ x: r.x, y: r.y }))
+        .sort(
+          (a, b) =>
+            Math.hypot(a.x - rallyCell.x, a.y - rallyCell.y) -
+              Math.hypot(b.x - rallyCell.x, b.y - rallyCell.y) ||
+            a.x - b.x ||
+            a.y - b.y,
+        )
+        .slice(0, 16);
+      const roadable = (c: Cell) =>
+        cellOk(t0, c.x, c.y) && !residentialKeys.has(`${c.x},${c.y}`);
+      for (const terminus of candidates) {
+        const path =
+          leastCostPath(t0, terminus, rallyCell, {
+            slopeWeight: 0.5,
+            diagonal: true,
+            margin: 160, // the hilltop can need a long detour around a ridge to reach a road
+          }) ?? [];
+        if (path.length < 2) continue;
+        // the contiguous roadable suffix ending at the rally (the undeveloped knoll approach)
+        let cut = path.length;
+        for (let k = path.length - 1; k >= 0 && roadable(path[k]!); k--) cut = k;
+        const tail = path.slice(cut);
+        if (tail.length >= 2) {
+          mergeAvenue(this.sim.state, layRoad(tail, 1));
+          break;
+        }
+      }
+    }
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
     // founder profile (the bug: seed-then-restore overwrote Joe's stored posts with a 1-post reset).
@@ -1340,6 +1473,7 @@ export class ColonyRuntime {
   /** P1 — record the logged-in operator name (from auth). Marks their avatar + gates the step-into. */
   setOperatorName(name: string | null): void {
     this.operatorName = name && name.trim() ? name.trim() : null;
+    this.updateOperatorCar();
     if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
       this.exitFirstPerson();
       return;
@@ -1356,6 +1490,25 @@ export class ColonyRuntime {
 
   private canStepIntoCitizen(citizenId: string): boolean {
     return this.stepInCitizenIds().includes(citizenId);
+  }
+
+  /** Spec 096 — the handling effect of a part as short up/down badges, so the Garage HUD shows at a
+   *  glance what fitting it does (the core promise: a part changes performance, not just looks). Empty
+   *  for a pure cosmetic. Pure + deterministic. */
+  private partEffects(kind: CarPartKind): { label: string; up: boolean }[] {
+    const LABELS: [keyof CarStatVector, string][] = [
+      ["topSpeed", "Spd"],
+      ["acceleration", "Acc"],
+      ["grip", "Grip"],
+      ["braking", "Brk"],
+    ];
+    const d = CAR_PARTS[kind].statDeltas;
+    const out: { label: string; up: boolean }[] = [];
+    for (const [stat, label] of LABELS) {
+      const v = d[stat];
+      if (typeof v === "number" && v !== 0) out.push({ label, up: v > 0 });
+    }
+    return out;
   }
 
   /** Player data isolation: turn the restricted CITYLIFE_PLAYER view on/off. When on, the HUD shows only
@@ -1378,6 +1531,223 @@ export class ColonyRuntime {
       .list()
       .find((c) => c.displayName.toLowerCase() === me);
     return hit?.id ?? null;
+  }
+
+  /** Spec 096 Slice D — buy a car part with the player's in-game city coin (KCO). Records ownership so
+   *  the part can then be mounted (the Street Rod buy-then-bolt-on loop). Free parts own for nothing; a
+   *  paid part is gated on the exact ledger balance and moves the in-game double-entry ledger only (the
+   *  real-kooker-ledger mirror is a later, furniture-lane-coordinated slice). */
+  buyCarPart(kind: string): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const def = CAR_PARTS[kind as CarPartKind];
+    if (!def) return false;
+    if (ownsCarPart(id, def.kind)) return true; // already owned (incl. free) — no charge
+    const price = def.cost;
+    if (price <= 0) {
+      ownCarPart(id, def.kind);
+      this.emit();
+      return true;
+    }
+    if (ledgerBalance(this.sim.state.ledger, `citizen:${id}`) < price)
+      return false;
+    const c = this.citizens.byId(id);
+    const posted = ledgerPost(
+      this.sim.state.ledger,
+      `${c?.displayName ?? id} buys a ${def.label} for ${price} ${CURRENCY}`,
+      [
+        { account: `citizen:${id}`, amount: -price },
+        { account: CAR_SHOP_ACCOUNT, amount: price },
+      ],
+    );
+    if (!posted) return false;
+    ownCarPart(id, def.kind);
+    this.kbPost(id, "event", `Bought a ${def.label} for ${price} city coin.`);
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 — mount a bolt-on part on the signed-in player's car. The part must be OWNED (buy it
+   *  first); one part per socket (a new part on a socket replaces the old). No-op without an operator,
+   *  for an unknown kind, or for an unowned part. */
+  mountCarPart(kind: string): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const def = CAR_PARTS[kind as CarPartKind];
+    if (!def) return false;
+    if (!ownsCarPart(id, def.kind)) return false; // must own it first
+    const car = loadCar(id);
+    const kept = validCarParts(car.parts).filter(
+      (k) => CAR_PARTS[k].socket !== def.socket,
+    );
+    saveCar(id, { ...car, parts: [...kept, def.kind] });
+    this.updateOperatorCar();
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 — remove a bolt-on part from the player's car. No-op without an operator. */
+  unmountCarPart(kind: string): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const car = loadCar(id);
+    const next = validCarParts(car.parts).filter((k) => k !== kind);
+    saveCar(id, { ...car, parts: next });
+    this.updateOperatorCar();
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 H — repaint a channel of the signed-in player's car. The colour must be one of the curated
+   *  palette swatches for that channel (so paint stays curated + deterministic). Updates the stored car
+   *  and the in-world mesh. No-op without an operator, for an unknown channel, or an off-palette colour. */
+  setCarPaint(channel: string, color: number): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const palette = PAINT_PALETTES[channel as PaintChannel];
+    if (!palette || !palette.includes(color)) return false;
+    const car = loadCar(id);
+    saveCar(id, { ...car, paint: { ...car.paint, [channel]: color } });
+    this.updateOperatorCar();
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 G — list a bolt-on part the player owns on the Kookerbook car-part classifieds for city
+   *  coin. The part must be owned and NOT currently mounted (unmount it first); listing escrows it out of
+   *  the seller's garage onto the public board. No-op without an operator, for an unknown / free /
+   *  unowned / mounted part, or a non-positive price. */
+  listCarPartForSale(kind: string, price: number): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const def = CAR_PARTS[kind as CarPartKind];
+    if (!def || def.cost === 0) return false; // unknown or a free/universal part
+    if (!ownsCarPart(id, def.kind)) return false;
+    if (validCarParts(loadCar(id).parts).includes(def.kind)) return false; // unmount first
+    if (!Number.isFinite(price) || price <= 0) return false;
+    const market = addCarPartListing(
+      loadCarPartMarket(),
+      id,
+      def.kind,
+      Math.round(price),
+    );
+    if (!findCarPartListing(market, carPartListingId(id, def.kind)))
+      return false; // rejected (board full)
+    unownCarPart(id, def.kind);
+    saveCarPartMarket(market);
+    this.kbPost(
+      id,
+      "event",
+      `Listed a ${def.label} for ${Math.round(price)} city coin.`,
+    );
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 G — pull the player's own listing back off the board; the part returns to their garage. */
+  unlistCarPart(listingId: string): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const listing = findCarPartListing(loadCarPartMarket(), listingId);
+    if (!listing || listing.sellerCitizenId !== id) return false;
+    ownCarPart(id, listing.kind);
+    saveCarPartMarket(removeCarPartListing(loadCarPartMarket(), listingId));
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 G — buy a listed part from another player. City coin moves buyer -> seller on the in-game
+   *  ledger, the part lands in the buyer's garage and the listing clears. Gated on the buyer's exact
+   *  balance; you cannot buy your own listing (unlist it) or one you already own. */
+  buyCarPartListing(listingId: string): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const listing = findCarPartListing(loadCarPartMarket(), listingId);
+    if (!listing) return false;
+    if (listing.sellerCitizenId === id) return false; // unlist your own instead
+    if (ownsCarPart(id, listing.kind)) return false; // already own one
+    if (ledgerBalance(this.sim.state.ledger, `citizen:${id}`) < listing.price)
+      return false;
+    const buyer = this.citizens.byId(id);
+    const def = CAR_PARTS[listing.kind];
+    const posted = ledgerPost(
+      this.sim.state.ledger,
+      `${buyer?.displayName ?? id} buys a ${def.label} for ${listing.price} ${CURRENCY}`,
+      [
+        { account: `citizen:${id}`, amount: -listing.price },
+        { account: `citizen:${listing.sellerCitizenId}`, amount: listing.price },
+      ],
+    );
+    if (!posted) return false;
+    ownCarPart(id, listing.kind);
+    saveCarPartMarket(removeCarPartListing(loadCarPartMarket(), listingId));
+    this.kbPost(
+      id,
+      "event",
+      `Bought a ${def.label} from the classifieds for ${listing.price} city coin.`,
+    );
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 — (re)render the signed-in player's car parked in the world, a cell off their home (the
+   *  land-next-to-your-car spot). Called whenever the operator or the car changes. Render-only. */
+  private updateOperatorCar(): void {
+    if (!this.renderer) return;
+    const id = this.operatorCitizenId();
+    const c = id ? this.citizens.byId(id) : null;
+    if (!id || !c) {
+      this.renderer.setOperatorCar(null, null);
+      return;
+    }
+    const home = c.homeXY ?? c.pos;
+    const cell = { x: Math.round(home.x) + 1, y: Math.round(home.y) };
+    this.renderer.setOperatorCar(loadCar(id), cell);
+  }
+
+  /** Spec 096 E — the land-next-to-your-car payoff. Drop the signed-in player into first person
+   *  standing on a walkable cell beside their own parked car (the car sits a cell east of the home,
+   *  see updateOperatorCar), facing it, ready to walk up and open the bonnet. No-op without an
+   *  operator citizen. Deterministic: takes the first walkable spot from a fixed candidate order. */
+  jumpToMyHouse(): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    const c = this.citizens.byId(id);
+    if (!c) return false;
+    const home = c.homeXY ?? c.pos;
+    const hx = Math.round(home.x);
+    const hy = Math.round(home.y);
+    const car = { x: hx + 1, y: hy };
+    // stand on a walkable cell next to the car, in a fixed order so the spawn is deterministic
+    const spots = [
+      { x: hx + 2, y: hy }, // east of the car: looks back west over the car and the house
+      { x: hx + 1, y: hy + 1 }, // south of the car
+      { x: hx + 1, y: hy - 1 }, // north of the car
+      { x: hx, y: hy }, // the home cell, looking east at the car
+    ];
+    const stand = spots.find(
+      (s) => this.blockedStepReason(s.x, s.y) === null,
+    ) ?? { x: hx, y: hy };
+    c.pos = { x: stand.x, y: stand.y };
+    c.target = { x: stand.x, y: stand.y };
+    c.heading = Math.atan2(car.y - stand.y, car.x - stand.x); // face the car
+    return this.enterFirstPerson(id);
+  }
+
+  /** Spec 096 F — open the bonnet to reveal the engine bay. The Garage HUD then shows each engine-bay
+   *  socket (engine, hood) with its install state so a part can be bought and fitted from there. Requires
+   *  an operator (the panel is operator-gated). The engineBay snapshot lives on uiState.garage. */
+  openBonnet(): boolean {
+    if (!this.operatorCitizenId()) return false;
+    this.bonnetOpen = true;
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 F — close the bonnet, back to the car overview. */
+  closeBonnet(): void {
+    this.bonnetOpen = false;
+    this.emit();
   }
 
   /** P1 — the bot/governor points a citizen's avatar at a destination cell (it walks there). */
@@ -3295,6 +3665,7 @@ export class ColonyRuntime {
     this.renderer.setRoadWays(this.roadWays); // spec 088 — smooth ribbon road surfaces over the cell roads
     this.renderer.setBusRoute(this.busRoute); // spec 088 — the bus that loops between the hoods
     this.renderer.setRaceState(this.raceState);
+    this.updateOperatorCar(); // spec 096 — park the player's car in the world if an operator is set
     this.renderer.onGroundClick = (gx, gy) => this.openPlotBook(gx, gy); // spec 090 — click a plot to open its Kookerbook
     this.running = true;
     this.lastFrame = performance.now();
@@ -3689,6 +4060,96 @@ export class ColonyRuntime {
           ),
           checkpoints: r.checkpoints.length,
           offTrack: r.offTrack,
+        };
+      })(),
+      garage: (() => {
+        const id = this.operatorCitizenId();
+        if (!id) return null;
+        const car = loadCar(id);
+        const mounted = new Set<string>(validCarParts(car.parts));
+        const owned = new Set<string>(ownedCarParts(id));
+        // Spec 096 F — the engine bay revealed by the bonnet: the engine + hood sockets, each with the
+        // parts that fit it and an install state (occupied / installable / empty). One part per socket.
+        const ENGINE_BAY: CarSocket[] = ["engine", "hood"];
+        const SOCKET_LABEL: Record<string, string> = {
+          engine: "Engine",
+          hood: "Hood",
+          exhaust: "Exhaust",
+          wheels: "Wheels",
+          spoiler: "Spoiler",
+        };
+        const allKinds = Object.keys(CAR_PARTS) as CarPartKind[];
+        const stats = deriveStats(car);
+        // Spec 096 (PLAN 1.3) — a single headline build rating out of 100 derived from the effective
+        // stats: a stock car (all 0.5) reads 50, and every performance part pushes it toward 100.
+        const tunePoints = Math.round(
+          (stats.topSpeed + stats.acceleration + stats.grip + stats.braking) *
+            25,
+        );
+        return {
+          carName: car.name,
+          walletK: this.walletK(id),
+          stats,
+          tunePoints,
+          parts: allKinds.map((k) => {
+            const d = CAR_PARTS[k];
+            return {
+              kind: k,
+              label: d.label,
+              socket: d.socket,
+              category: d.category,
+              cost: d.cost,
+              mounted: mounted.has(k),
+              owned: owned.has(k),
+              effects: this.partEffects(k),
+            };
+          }),
+          bonnetOpen: this.bonnetOpen,
+          engineBay: ENGINE_BAY.map((sock) => {
+            const fitting = allKinds.filter((k) => CAR_PARTS[k].socket === sock);
+            const mountedKind = fitting.find((k) => mounted.has(k)) ?? null;
+            const state: "occupied" | "installable" | "empty" = mountedKind
+              ? "occupied"
+              : fitting.some((k) => owned.has(k))
+                ? "installable"
+                : "empty";
+            return {
+              socket: sock,
+              label: SOCKET_LABEL[sock] ?? sock,
+              state,
+              mounted: mountedKind
+                ? { kind: mountedKind, label: CAR_PARTS[mountedKind].label }
+                : null,
+              parts: fitting.map((k) => ({
+                kind: k,
+                label: CAR_PARTS[k].label,
+                category: CAR_PARTS[k].category,
+                cost: CAR_PARTS[k].cost,
+                owned: owned.has(k),
+                effects: this.partEffects(k),
+              })),
+            };
+          }),
+          market: loadCarPartMarket().map((l) => ({
+            id: l.id,
+            kind: l.kind,
+            label: CAR_PARTS[l.kind]?.label ?? l.kind,
+            price: l.price,
+            sellerName: this.citizens.byId(l.sellerCitizenId)?.displayName ?? "a citizen",
+            mine: l.sellerCitizenId === id,
+          })),
+          paint: (
+            [
+              { channel: "body", label: "Body" },
+              { channel: "cabin", label: "Cabin" },
+              { channel: "accent", label: "Accent" },
+            ] as const
+          ).map((p) => ({
+            channel: p.channel,
+            label: p.label,
+            current: car.paint[p.channel],
+            options: PAINT_PALETTES[p.channel],
+          })),
         };
       })(),
       // Spec 097 R4 — count avatars standing at the hilltop Rally Point (the race rendezvous). Live and

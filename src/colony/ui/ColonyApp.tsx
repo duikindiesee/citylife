@@ -42,6 +42,7 @@ const PROFESSION_SUGGESTIONS = [
 ];
 import { RadioPanel } from "./RadioPanel";
 import { FirstPersonPanel } from "./FirstPersonPanel";
+import { GaragePanel } from "./GaragePanel";
 import "./colony.css";
 
 // Spec 089 — the CityLife HUD shows only the city-relevant stats (citizens, homesteads, the bank, the
@@ -545,6 +546,7 @@ export function ColonyApp() {
         />
       )}
       <FirstPersonPanel runtime={runtime} fp={ui.firstPerson} />
+      {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
       {ui.race.mode !== "idle" && (
         <div
           style={{

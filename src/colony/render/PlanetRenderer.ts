@@ -31,6 +31,8 @@ import type { Neighborhood } from "../neighborhood";
 import type { CommercialDistrict, ShopParcel } from "../commerce/district";
 import { BUSINESSES, type Business, type Emblem } from "../commerce/businesses";
 import { surveyBillboards } from "../commerce/billboards";
+import { buildCarMesh } from "../car/carMesh";
+import type { CarSpec } from "../car/carSpec";
 import { posterModel, paintPoster } from "../commerce/adCanvas";
 import {
   buildVoxelHouse,
@@ -2927,6 +2929,36 @@ export class PlanetRenderer {
       roadY: (x, y) => this.smoothRoadY(x, y),
     });
     if (this.busLayer) this.scene.add(this.busLayer.group);
+  }
+
+  private operatorCarGroup: THREE.Group | null = null;
+
+  /** Spec 096 — park the signed-in player's car in the world (the land-next-to-your-car vision). Rebuilt
+   *  on change (operator set, parts mounted or unmounted); null clears it. Render-only, additive. */
+  setOperatorCar(
+    spec: CarSpec | null,
+    cell: { x: number; y: number } | null,
+  ): void {
+    if (this.operatorCarGroup) {
+      this.operatorCarGroup.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        const mat = m.material as THREE.Material | THREE.Material[] | undefined;
+        if (Array.isArray(mat)) mat.forEach((x) => x.dispose());
+        else if (mat) mat.dispose();
+      });
+      this.scene.remove(this.operatorCarGroup);
+      this.operatorCarGroup = null;
+    }
+    if (!spec || !cell) return;
+    const g = buildCarMesh(spec);
+    g.position.set(
+      this.wx(cell.x),
+      this.surfaceY(cell.x, cell.y),
+      this.wz(cell.y),
+    );
+    this.operatorCarGroup = g;
+    this.scene.add(g);
   }
 
   // The neon palette for the strip — saturated signage that pops against the calm residential teal.

@@ -134,6 +134,10 @@ export function leastCostPath(
     slopeWeight?: number;
     blocked?: (x: number, y: number) => boolean;
     diagonal?: boolean;
+    /** Half-width of the search rect around the start/goal bounding box. Defaults to 40 — every
+     *  existing caller omits it, so their routes stay byte-identical. A remote spur (e.g. the rally
+     *  overlook, which can need a long detour around a ridge) opts into a larger margin. */
+    margin?: number;
   } = {},
 ): Cell[] | null {
   const slopeWeight = opts.slopeWeight ?? 0;
@@ -164,7 +168,7 @@ export function leastCostPath(
   //    route we lay (corridor spans, block frames, driveways) detours far less than that (the road
   //    planner caps detours at ~1.6x anyway); without the bound a watery dead-end could flood the
   //    whole 370k-cell grid.
-  const MARGIN = 40;
+  const MARGIN = opts.margin ?? 40;
   const bx0 = Math.max(0, Math.min(start.x, goal.x) - MARGIN);
   const bx1 = Math.min(n - 1, Math.max(start.x, goal.x) + MARGIN);
   const by0 = Math.max(0, Math.min(start.y, goal.y) - MARGIN);
