@@ -13,6 +13,11 @@ function distanceLabel(distance: number): string {
   return `${distance} ${distance === 1 ? "unit" : "units"} away`;
 }
 
+function fpActionName(label: string, spoken: string): string {
+  if (label === "·") return "narrate";
+  return `walk-${spoken.replaceAll(" ", "-")}`;
+}
+
 const DIR: {
   label: string;
   spoken: string;
@@ -75,6 +80,7 @@ export function FirstPersonPanel({
           👁 {fp.citizenName}
         </span>
         <button
+          data-fp-action="exit"
           style={{
             padding: "2px 8px",
             fontSize: 11,
@@ -110,6 +116,7 @@ export function FirstPersonPanel({
               </div>
               <button
                 className="first-person-panel__action-button"
+                data-fp-action="use"
                 aria-label={`Use current action: ${v.interactionPrompt.label}`}
                 style={{
                   marginTop: 4,
@@ -300,6 +307,7 @@ export function FirstPersonPanel({
         {DIR.map(({ label, spoken, emoji, dx, dy }) => (
           <button
             className="first-person-panel__touch-button"
+            data-fp-action={fpActionName(label, spoken)}
             key={label}
             title={label === "·" ? "Narrate now" : `Walk ${label}`}
             aria-label={label === "·" ? "Narrate now" : `Walk ${spoken}`}
