@@ -3,7 +3,7 @@
 // the page reads the same-origin kookerbook + blueprint stores directly (and overlays the backend
 // when it answers), so it works without the game tab. Every control carries data-kb-action so a
 // bot can drive it like the builder.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
 import * as THREE from "three";
 import {
@@ -17,6 +17,13 @@ import { parseBlueprint } from "../blueprintScript";
 import { compileBlueprint, VOXEL_Y } from "../houseBuilder";
 import { greedyMesh } from "../render/voxelMesh";
 import type { KbProfile, KbPost } from "./kookerbook";
+import {
+  kookerbookCanonicalProfileUrl,
+  kookerbookDirectoryLink,
+  kookerbookInitialSelection,
+  kookerbookProfileUrl,
+} from "./kookerbookNav";
+import { kookerbookLayoutForViewport } from "./kookerbookLayout";
 
 function houseScriptFor(citizenId: string): string | null {
   const map = loadBlueprintsLocal();
@@ -26,7 +33,7 @@ function houseScriptFor(citizenId: string): string | null {
 }
 
 /** A small static 3D render of the citizen's own designed house (their blueprint, their bricks). */
-function HouseCard({ script }: { script: string }) {
+function HouseCard({ script, style }: { script: string; style?: CSSProperties }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const host = hostRef.current;
@@ -47,6 +54,9 @@ function HouseCard({ script }: { script: string }) {
         H = 220;
       renderer = new THREE.WebGLRenderer({ antialias: true });
       renderer.setSize(W, H);
+      renderer.domElement.style.display = "block";
+      renderer.domElement.style.width = "100%";
+      renderer.domElement.style.maxWidth = "100%";
       host.appendChild(renderer.domElement);
       const scene = new THREE.Scene();
       scene.background = new THREE.Color(0x101626);
@@ -86,7 +96,7 @@ function HouseCard({ script }: { script: string }) {
     <div
       ref={hostRef}
       data-kb-area="house-render"
-      style={{ borderRadius: 8, overflow: "hidden" }}
+      style={{ borderRadius: 8, overflow: "hidden", ...style }}
     />
   );
 }
@@ -117,8 +127,19 @@ const KIND_LABEL: Record<KbPost["kind"], string> = {
   authored: "✍️",
 };
 
+function viewportWidth(): number {
+  return typeof window === "undefined" ? 1024 : window.innerWidth;
+}
+
 function App() {
   const [map, setMap] = useState<KbMap>(() => loadKookerbookLocal());
+  const [layoutWidth, setLayoutWidth] = useState(() => viewportWidth());
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onResize = () => setLayoutWidth(viewportWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   // Spec 090 — deep link: /kookerbook.html?citizen=<id> opens straight to that citizen (set when you
   // click their plot in the world). Falls back to the first profile if the id is not (yet) loaded.
   const [sel, setSel] = useState<string | null>(() =>
@@ -132,15 +153,51 @@ function App() {
     });
   }, []);
   const profiles = useMemo(() => Object.values(map), [map]);
-  const selected = sel && map[sel] ? map[sel] : profiles[0];
+  const profileIds = useMemo(() => profiles.map((p) => p.citizenId), [profiles]);
+  const initialSelection =
+    typeof window === "undefined"
+      ? null
+      : kookerbookInitialSelection(window.location.href, profileIds);
+  useEffect(() => {
+    if (typeof window === "undefined" || profileIds.length === 0) return;
+    const nextUrl = kookerbookCanonicalProfileUrl(window.location.href, profileIds);
+    if (nextUrl && nextUrl !== window.location.href)
+      window.history.replaceState(null, "", nextUrl);
+  }, [profileIds]);
+  const selected =
+    sel && map[sel]
+      ? map[sel]
+      : initialSelection
+        ? map[initialSelection]
+        : profiles[0];
   const houseScript = selected ? houseScriptFor(selected.citizenId) : null;
+  const selectProfile = (citizenId: string) => {
+    setSel(citizenId);
+    if (typeof window === "undefined") return;
+    const nextUrl = kookerbookProfileUrl(window.location.href, citizenId);
+    if (nextUrl) window.history.replaceState(null, "", nextUrl);
+  };
 
+  const layout = kookerbookLayoutForViewport(layoutWidth);
   const panel: React.CSSProperties = {
     background: "#121826",
     border: "1px solid #232c3f",
     borderRadius: 10,
     padding: 14,
+    boxSizing: "border-box",
+    ...layout.panel,
   };
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const previousMargin = document.body.style.margin;
+    const previousOverflowX = document.body.style.overflowX;
+    document.body.style.margin = String(layout.body.margin ?? "");
+    document.body.style.overflowX = String(layout.body.overflowX ?? "");
+    return () => {
+      document.body.style.margin = previousMargin;
+      document.body.style.overflowX = previousOverflowX;
+    };
+  }, [layout.body.margin, layout.body.overflowX]);
   return (
     <div
       style={{
@@ -153,10 +210,11 @@ function App() {
         color: "#dfe7f2",
         fontFamily: "system-ui, sans-serif",
         fontSize: 14,
+        ...layout.shell,
       }}
     >
       {/* directory */}
-      <div style={{ ...panel, width: 320, flexShrink: 0 }}>
+      <div style={{ ...panel, ...layout.directory }}>
         <h2 style={{ margin: "2px 0 4px" }}>📘 Kookerbook</h2>
         <div style={{ opacity: 0.6, fontSize: 12, marginBottom: 12 }}>
           the citizens of Landing One
@@ -167,50 +225,70 @@ function App() {
             Joe moves in.
           </div>
         )}
-        {profiles.map((p) => (
-          <div
-            key={p.citizenId}
-            data-kb-action={`select-profile-${p.citizenId}`}
-            onClick={() => setSel(p.citizenId)}
-            style={{
-              display: "flex",
-              gap: 10,
-              alignItems: "center",
-              padding: 8,
-              borderRadius: 8,
-              cursor: "pointer",
-              background:
-                selected?.citizenId === p.citizenId ? "#1c2740" : "transparent",
-              marginBottom: 4,
-            }}
-          >
-            <Portrait p={p} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontWeight: 700 }}>{p.alias}</div>
-              <div style={{ opacity: 0.65, fontSize: 12 }}>
-                {p.address ?? "no address yet"}
-              </div>
-              {p.posts[0] && (
-                <div
-                  style={{
-                    opacity: 0.5,
-                    fontSize: 12,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {p.posts[0].text}
+        {profiles.map((p) => {
+          const link =
+            typeof window === "undefined"
+              ? null
+              : kookerbookDirectoryLink({
+                  currentHref: window.location.href,
+                  citizenId: p.citizenId,
+                  alias: p.alias,
+                  selectedCitizenId: selected?.citizenId ?? null,
+                });
+          return (
+            <a
+              key={p.citizenId}
+              href={link?.href ?? "#"}
+              aria-label={link?.ariaLabel ?? `Open Kookerbook profile for ${p.alias}`}
+              aria-current={link?.ariaCurrent}
+              data-kb-action={`select-profile-${p.citizenId}`}
+              onClick={(event) => {
+                event.preventDefault();
+                selectProfile(p.citizenId);
+              }}
+              style={{
+                display: "flex",
+                gap: 10,
+                alignItems: "center",
+                padding: 8,
+                borderRadius: 8,
+                cursor: "pointer",
+                background:
+                  selected?.citizenId === p.citizenId ? "#1c2740" : "transparent",
+                marginBottom: 4,
+                color: "inherit",
+                textDecoration: "none",
+                ...layout.directoryLink,
+              }}
+            >
+              <Portrait p={p} />
+              <div style={layout.contentText}>
+                <div style={{ fontWeight: 700 }}>{p.alias}</div>
+                <div style={{ opacity: 0.65, fontSize: 12 }}>
+                  {p.address ?? "no address yet"}
                 </div>
-              )}
-            </div>
-          </div>
-        ))}
+                {p.posts[0] && (
+                  <div
+                    style={{
+                      opacity: 0.5,
+                      fontSize: 12,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {p.posts[0].text}
+                  </div>
+                )}
+              </div>
+            </a>
+          );
+        })}
       </div>
       {/* profile page */}
       {selected ? (
         <div
-          style={{ ...panel, flex: 1, maxWidth: 760 }}
+          style={{ ...panel, flex: 1, ...layout.profile }}
           data-kb-area="profile"
         >
           <div
@@ -219,10 +297,11 @@ function App() {
               gap: 14,
               alignItems: "center",
               marginBottom: 8,
+              ...layout.profileHeader,
             }}
           >
             <Portrait p={selected} size={64} />
-            <div>
+            <div style={layout.contentText}>
               <h2 style={{ margin: 0 }}>{selected.alias}</h2>
               <div style={{ opacity: 0.7 }}>
                 {selected.address
@@ -232,13 +311,15 @@ function App() {
               </div>
             </div>
           </div>
-          <p style={{ opacity: 0.85, marginTop: 4 }}>{selected.bio}</p>
+          <p style={{ opacity: 0.85, marginTop: 4, ...layout.contentText }}>
+            {selected.bio}
+          </p>
           {houseScript && (
             <div style={{ margin: "10px 0" }}>
               <div style={{ opacity: 0.6, fontSize: 12, marginBottom: 6 }}>
                 their home — designed by them, rebuilt from their blueprint
               </div>
-              <HouseCard script={houseScript} />
+              <HouseCard script={houseScript} style={layout.houseRender} />
             </div>
           )}
           <h3 style={{ marginBottom: 6 }}>Timeline</h3>
@@ -260,7 +341,7 @@ function App() {
                 <div style={{ opacity: 0.55, fontSize: 12 }}>
                   {KIND_LABEL[q.kind]} sol {q.sol}
                 </div>
-                <div>{q.text}</div>
+                <div style={layout.contentText}>{q.text}</div>
               </div>
             ))}
           </div>

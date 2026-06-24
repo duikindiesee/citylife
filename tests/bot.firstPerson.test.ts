@@ -3,7 +3,7 @@ import { ColonySim } from "../src/colony/sim";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { CitizenRoster } from "../src/colony/bot/citizenRoster";
 import { firstPersonView } from "../src/colony/bot/firstPersonView";
-import { generateHousehold } from "../src/colony/newcomers";
+import { generateHousehold, isPublicSafe } from "../src/colony/newcomers";
 import { makeCityPlan } from "../src/colony/cityPlan";
 
 const fixedNow = 1_700_000_000_000;
@@ -148,5 +148,82 @@ describe("firstPersonView — spec 074", () => {
     const ids = rt.getUiState().citizens.list.map((c) => c.id);
     rt.setPlayerView(false);
     expect(rt.getUiState().firstPerson.stepInCitizenIds).toEqual(ids);
+  });
+
+  it("scopes the mobile player HUD to the logged-in citizen's private data", () => {
+    const rt = new ColonyRuntime(4242);
+    const adminUi = rt.getUiState();
+    const me = adminUi.citizens.list[0]!;
+    const other = adminUi.citizens.list.find((c) => c.id !== me.id)!;
+    const otherOwnedLot = adminUi.neighborhood.lots.find(
+      (l) => l.ownerId === other.id,
+    )!;
+    expect(adminUi.citizens.wallets[other.id]).toBeGreaterThan(0);
+    expect(otherOwnedLot.owner).toBe(other.displayName);
+
+    rt.setOperatorName(me.displayName);
+    rt.setPlayerView(true);
+
+    const playerUi = rt.getUiState();
+    expect(Object.keys(playerUi.citizens.wallets)).toEqual([me.id]);
+    expect(playerUi.citizens.wallets[other.id]).toBeUndefined();
+    expect(playerUi.bank.deposits).toBe(playerUi.citizens.wallets[me.id]);
+    expect(playerUi.bank.accounts).toBe(1);
+    expect(playerUi.bank.landOffice).toBe(0);
+    expect(playerUi.bank.recent).toEqual([]);
+    const scopedOtherLot = playerUi.neighborhood.lots.find(
+      (l) => l.id === otherOwnedLot.id,
+    )!;
+    expect(scopedOtherLot.owner).toBe("Occupied");
+    expect(scopedOtherLot.ownerId).toBeNull();
+    expect(scopedOtherLot.occupied).toBe(true);
+    expect(playerUi.neighborhood.free).toBe(adminUi.neighborhood.free);
+    expect(playerUi.neighborhood.lots.filter((l) => !l.occupied).length).toBe(
+      adminUi.neighborhood.free,
+    );
+    expect(playerUi.citizens.list.find((c) => c.id === other.id)!.displayName).toBe(
+      other.displayName,
+    ); // public presence stays visible
+    expect(isPublicSafe(scopedOtherLot.owner!)).toBe(true);
+  });
+
+  it("does not leak other citizens' shop-buying power in the player HUD", () => {
+    const rt = new ColonyRuntime(4242);
+    const adminUi = rt.getUiState();
+    const me = adminUi.citizens.list[0]!;
+    const other = adminUi.citizens.list.find((c) => c.id !== me.id)!;
+    const cheapest = adminUi.commerce.cheapest!;
+
+    rt.sim.state.ledger.accounts[`citizen:${me.id}`] = 0;
+    rt.sim.state.ledger.accounts[`citizen:${other.id}`] = cheapest.price;
+
+    expect(rt.getUiState().commerce.canClaim).toBe(true);
+
+    rt.setOperatorName(me.displayName);
+    rt.setPlayerView(true);
+
+    const playerUi = rt.getUiState();
+    expect(playerUi.citizens.wallets[me.id]).toBe(0);
+    expect(playerUi.citizens.wallets[other.id]).toBeUndefined();
+    expect(playerUi.commerce.canClaim).toBe(false);
+  });
+
+  it("boots deterministic in-world agent citizens for Joe and Jack", () => {
+    const rt = new ColonyRuntime(4242);
+    const ui = rt.getUiState();
+    const ids = ui.citizens.list.map((c) => c.id);
+    expect(ids).toContain("citizen_joe");
+    expect(ids).toContain("citizen_jack");
+
+    const jack = ui.citizens.list.find((c) => c.id === "citizen_jack")!;
+    expect(jack.displayName).toBe("Jack the Rabbit");
+    expect(jack.plotName).toBe("Signal Burrow");
+    expect(jack.telegramHandle).toBeUndefined();
+    expect(jack.tokensSpentLifetime).toBe(0);
+
+    const jackProfile = rt.kbProfile("citizen_jack")!;
+    expect(jackProfile.alias).toBe("Jack the Rabbit");
+    expect(jackProfile.kind).toBe("human");
+    expect(jackProfile.bio).not.toMatch(/token|secret|cluster|telegram/i);
   });
 });

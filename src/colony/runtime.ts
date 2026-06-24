@@ -228,6 +228,7 @@ import {
 // blueprint (a sea-facing patio cottage — his "city desk" by the water), reserved on the shore-most plot.
 const JOE_ID = "citizen_joe";
 const JOE_BORN_MS = 0;
+const JACK_ID = "citizen_jack";
 // KOOKER, the Builder of the Kookerverse (founder two): owner of the build trade. Players see "KOOKER"
 // (the displayName/alias below); the internal id keeps its legacy value "citizen_viw" because the ledger
 // accounts (citizen:citizen_viw) and the kooker-web OTA mission (079) reference the builder by THIS id —
@@ -286,6 +287,7 @@ export function canRestoreBlueprint(
  *  the spec-084 S2 side-walkway contract on every single boot, so a regression can't hide. */
 export const VIW_BLUEPRINT =
   "house{w:8 d:7 wallH:2 door:e} room{kind:living x:0 y:0 w:8 d:5 win:1} room{kind:garage x:0 y:5 w:3 d:2 win:0} room{kind:bedroom x:3 y:5 w:2 d:2 win:1} room{kind:patio x:5 y:5 w:3 d:2 win:0}";
+
 
 const BIOME_LABEL: Record<number, string> = {
   [Biome.Ocean]: "Ocean",
@@ -533,6 +535,7 @@ export interface ColonyUiState {
   };
   settlers: { count: number; recent: { id: number; name: string }[] };
   bank: {
+    scope: "city" | "player";
     currency: string;
     deposits: number;
     depositsZar: number;
@@ -599,6 +602,7 @@ export interface ColonyUiState {
       built: boolean;
       owner: string | null;
       ownerId: string | null;
+      occupied: boolean;
       reserved: boolean;
       price: number | null;
       priceZar: number | null;
@@ -1121,6 +1125,7 @@ export class ColonyRuntime {
     this.restoreKookerbook();
     this.seedJoe(); // spec 078 — Joe the Crab takes up residence on the shore-most homestead
     this.seedViw(); // spec 083 — Viw the Builder takes the homestead beside him
+    this.seedJack(); // player/UI lane — Jack is visible as an in-world reviewer avatar
     this.restoreBlueprints(); // spec 077 P4.5 — stored designs regenerate their houses on reload
     // Spec 077 P4 — listen for blueprint_saved posted back by the House Builder popup. Same-origin
     // only; the script is validated before anything is stored or built. Guarded for node test runs.
@@ -2113,6 +2118,38 @@ export class ColonyRuntime {
       bio: "Builder of the Kookerverse. Runs the crew, draws a fair quote, and turns dreams into blueprints — fair rates in city coin, naturally.",
       plotId: plot.id,
       address: "Crewhouse Yard",
+      kind: "human",
+    });
+  }
+
+  /** Jack the Rabbit, the lead/reviewer avatar. He is not a backend identity leak; just a fixed,
+   *  public-safe in-world citizen with a deterministic Kookerbook profile. Jack shares Joe's shore desk
+   *  block for now so he adds presence without changing parcel collision/pathfinding fixtures. */
+  private seedJack(): void {
+    const lots = this.neighborhood.lots;
+    const plot = lots[0];
+    if (!plot) return;
+    const home = { x: plot.doorX, y: plot.doorY };
+    const jack = this.citizens.seedFounder({
+      id: JACK_ID,
+      householdId: "household_jack",
+      displayName: "Jack the Rabbit",
+      plotId: plot.id,
+      plotName: "Signal Burrow",
+      home,
+      kind: "human",
+      nowMs: JOE_BORN_MS,
+      spd: 0.9,
+    });
+    if (jack)
+      this.citizens.setTarget(JACK_ID, { x: plot.doorX + 1, y: plot.doorY });
+    this.seedDeposit(JACK_ID);
+    this.ensureKbProfile({
+      citizenId: JACK_ID,
+      alias: "Jack the Rabbit",
+      bio: "Lead reviewer for Landing One. Keeps a signal desk above the shore road, checks the walk routes, and writes notes the town can act on.",
+      plotId: plot.id,
+      address: "Signal Burrow",
       kind: "human",
     });
   }
@@ -3338,6 +3375,17 @@ export class ColonyRuntime {
     const s = this.sim.state;
     const li = s.terrain.idx(s.terrain.landing.x, s.terrain.landing.y);
     const p = s.power;
+    const playerViewerId = this.playerView ? this.operatorCitizenId() : null;
+    const playerScopedOwner = (ownerCitizenId: string | undefined) => {
+      if (!ownerCitizenId) return { owner: null, ownerId: null };
+      if (!this.playerView || ownerCitizenId === playerViewerId) {
+        return {
+          owner: this.citizens.byId(ownerCitizenId)?.displayName ?? null,
+          ownerId: ownerCitizenId,
+        };
+      }
+      return { owner: "Occupied", ownerId: null };
+    };
     return {
       running: this.running,
       paused: this.paused,
@@ -3501,17 +3549,22 @@ export class ColonyRuntime {
         // Spec 085 — the bank panel reads the ACTIVE ₭ economy (citizen wallets), not the retired
         // settler accounts. deposits = ₭ held by residents, landOffice = ₭ paid for deeds, plus the
         // ZAR bridge and the real-ledger mirror's queue health.
-        const held = Math.round(walletDeposits(s.ledger));
+        const allHeld = Math.round(walletDeposits(s.ledger));
+        const viewerHeld = playerViewerId ? this.walletK(playerViewerId) : 0;
+        const held = this.playerView ? viewerHeld : allHeld;
         const st = this.ledgerSyncStatus();
         return {
+          scope: this.playerView ? "player" : "city",
           currency: CURRENCY,
           deposits: held,
           depositsZar: kookToZar(held, COLONY.economy.land),
-          accounts: walletCount(s.ledger),
-          landOffice: Math.round(ledgerBalance(s.ledger, "land")),
-          recent: s.ledger.txns
-            .slice(0, 6)
-            .map((tx) => ({ id: tx.id, memo: tx.memo })),
+          accounts: this.playerView ? (playerViewerId ? 1 : 0) : walletCount(s.ledger),
+          landOffice: this.playerView
+            ? 0
+            : Math.round(ledgerBalance(s.ledger, "land")),
+          recent: this.playerView
+            ? []
+            : s.ledger.txns.slice(0, 6).map((tx) => ({ id: tx.id, memo: tx.memo })),
           sync: {
             pending: st.pending,
             synced: st.synced,
@@ -3528,7 +3581,7 @@ export class ColonyRuntime {
       citizens: (() => {
         // Player data isolation: a CITYLIFE_PLAYER (playerView) sees only their own full record + others'
         // public-presence stubs, and only their OWN wallet balance; the operator/admin sees everything.
-        const viewerId = this.playerView ? this.operatorCitizenId() : null;
+        const viewerId = playerViewerId;
         const roster = viewerId
           ? this.citizens.listFor(viewerId, VIW_ID)
           : this.citizens.list();
@@ -3649,13 +3702,13 @@ export class ColonyRuntime {
       neighborhood: (() => {
         const lots = this.neighborhood.lots.map((l) => {
           const price = this.plotPriceK(l); // spec 085 — Infinity for reserved founder plots
+          const scopedOwner = playerScopedOwner(l.ownerCitizenId);
           return {
             id: l.id,
             built: l.built,
-            owner: l.ownerCitizenId
-              ? (this.citizens.byId(l.ownerCitizenId)?.displayName ?? null)
-              : null,
-            ownerId: l.ownerCitizenId ?? null,
+            owner: scopedOwner.owner,
+            ownerId: scopedOwner.ownerId,
+            occupied: !!l.ownerCitizenId,
             reserved: !!l.reservedFor, // spec 078 — founder plots show a nameplate and hide demolish/evict
             price: Number.isFinite(price) ? price : null, // ₭ — null = not for sale
             priceZar: Number.isFinite(price)
@@ -3671,7 +3724,7 @@ export class ColonyRuntime {
           : `The build crew raises the house — the stockpile is short (${s.materials}/${cost}) so the crew sources the rest off-island`;
         return {
           lots,
-          free: lots.filter((l) => !l.ownerId).length,
+          free: lots.filter((l) => !l.occupied).length,
           built: lots.filter((l) => l.built).length,
           houseCost: cost,
           canAfford,
@@ -3683,15 +3736,14 @@ export class ColonyRuntime {
         // kind, and how many are still free. The buy/build economy fills ownerCitizenId + built.
         const parcels = (this.commercialDistrict?.parcels ?? []).map((p) => {
           const price = this.shopPriceK(p.kind);
+          const scopedOwner = playerScopedOwner(p.ownerCitizenId);
           return {
             id: p.id,
             kind: p.kind,
             price,
             priceZar: kookToZar(price, COLONY.economy.land),
             built: p.built,
-            owner: p.ownerCitizenId
-              ? (this.citizens.byId(p.ownerCitizenId)?.displayName ?? null)
-              : null,
+            owner: scopedOwner.owner,
           };
         });
         const byKind = { kiosk: 0, store: 0, showroom: 0 };
@@ -3714,7 +3766,12 @@ export class ColonyRuntime {
             .filter((c) => !owners.has(c.id))
             .map((c) => this.walletK(c.id)),
         );
-        const canClaim = !!cheapest && richestShopless >= cheapest.price;
+        const canClaim = this.playerView
+          ? !!cheapest &&
+            !!playerViewerId &&
+            !owners.has(playerViewerId) &&
+            this.walletK(playerViewerId) >= cheapest.price
+          : !!cheapest && richestShopless >= cheapest.price;
         // free is counted off the underlying ownerCitizenId (not the display-name owner, which would
         // read free for a ghost/removed owner) so it always agrees with cheapestFreeShop.
         const free = (this.commercialDistrict?.parcels ?? []).filter(

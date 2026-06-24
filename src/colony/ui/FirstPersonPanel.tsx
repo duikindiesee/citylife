@@ -13,6 +13,11 @@ function distanceLabel(distance: number): string {
   return `${distance} ${distance === 1 ? "unit" : "units"} away`;
 }
 
+function fpActionName(label: string, spoken: string): string {
+  if (label === "·") return "narrate";
+  return `walk-${spoken.replaceAll(" ", "-")}`;
+}
+
 const DIR: {
   label: string;
   spoken: string;
@@ -75,6 +80,8 @@ export function FirstPersonPanel({
           👁 {fp.citizenName}
         </span>
         <button
+          data-fp-action="exit"
+          aria-label="Exit first-person view"
           style={{
             padding: "2px 8px",
             fontSize: 11,
@@ -109,10 +116,14 @@ export function FirstPersonPanel({
                 {Math.round(v.interactionPrompt.distance)} away
               </div>
               <button
+                className="first-person-panel__action-button"
+                data-fp-action="use"
+                aria-label={`Use current action: ${v.interactionPrompt.label}`}
                 style={{
                   marginTop: 4,
-                  padding: "2px 8px",
-                  fontSize: 11,
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  minHeight: 32,
                   background: "rgba(160,212,240,0.12)",
                   border: "1px solid #2a4a6a",
                   borderRadius: 5,
@@ -318,6 +329,7 @@ export function FirstPersonPanel({
         {DIR.map(({ label, spoken, emoji, dx, dy }) => (
           <button
             className="first-person-panel__touch-button"
+            data-fp-action={fpActionName(label, spoken)}
             key={label}
             title={label === "·" ? "Narrate now" : `Walk ${label}`}
             aria-label={label === "·" ? "Narrate now" : `Walk ${spoken}`}
@@ -352,7 +364,7 @@ export function FirstPersonPanel({
         className="first-person-panel__hint"
         style={{ fontSize: 10, opacity: 0.4, textAlign: "center" }}
       >
-        WASD strafe/walk · Shift sprint · arrows turn · Tap arrows to roam
+        WASD strafe/walk · Shift sprint · arrows turn · Tap Use to interact · Tap arrows to roam
       </div>
     </div>
   );

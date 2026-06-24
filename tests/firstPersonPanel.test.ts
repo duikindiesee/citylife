@@ -184,9 +184,20 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).toContain('class="first-person-panel"');
     expect(html).toContain('class="first-person-panel__touch-grid"');
     expect(html).toContain('class="first-person-panel__touch-button"');
+    expect(html).toContain('class="first-person-panel__action-button"');
+    expect(html).toContain('data-fp-action="exit"');
+    expect(html).toContain('aria-label="Exit first-person view"');
+    expect(html).toContain('data-fp-action="use"');
+    expect(html).toContain('data-fp-action="walk-north"');
+    expect(html).toContain('data-fp-action="walk-east"');
+    expect(html).toContain('data-fp-action="narrate"');
     expect(html).toContain('aria-label="Walk north"');
     expect(html).toContain('aria-label="Walk east"');
     expect(html).toContain('aria-label="Narrate now"');
+    expect(html).toContain(
+      'aria-label="Use current action: Talk to Orin Reed"',
+    );
+    expect(html).toContain("Tap Use to interact");
     expect(html).toContain("Tap arrows to roam");
   });
 });
