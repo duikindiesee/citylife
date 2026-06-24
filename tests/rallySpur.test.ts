@@ -36,6 +36,18 @@ describe("rally spur road (097 R3.5)", () => {
     expect(nearestRoadDist(b, cell)).toBe(nearestRoadDist(a, cell));
   });
 
+  it("connects the rally on the default demo seed 4242, on high overlook ground", () => {
+    // Spec 097 R1 bias — the overlook picker favours a knoll on the shoulder of rough ground, which the
+    // neighborhood does not fill with homesteads, so the demo world (the default seed) gets a visible
+    // spur road instead of failing soft. Regression guard for that fix.
+    const rt = new ColonyRuntime(4242);
+    const cell = rallyCell(rt)!;
+    expect(cell).not.toBeNull();
+    expect(nearestRoadDist(rt, cell)).toBeLessThanOrEqual(1.5);
+    // and it is a genuine overlook: well above the colony floor (~0.1 worldY)
+    expect(rt.sim.state.terrain.worldY(cell.x, cell.y)).toBeGreaterThan(5);
+  });
+
   it("connects the rally on most seeds; an embedded overlook fails soft, never throwing", () => {
     const seeds = [1, 7, 12, 55, 99, 808, 1234, 2026, 4242, 314];
     let connected = 0;
@@ -45,7 +57,7 @@ describe("rally spur road (097 R3.5)", () => {
       expect(cell).not.toBeNull(); // the rally is always placed; construction never throws
       if (cell && nearestRoadDist(rt, cell) <= 1.5) connected++;
     }
-    // a clean spur is laid wherever the overlook has a non-homestead approach (the majority)
-    expect(connected).toBeGreaterThanOrEqual(7);
+    // the rough-shoulder bias connects the clear majority; the rare embedded overlook fails soft
+    expect(connected).toBeGreaterThanOrEqual(9);
   });
 });
