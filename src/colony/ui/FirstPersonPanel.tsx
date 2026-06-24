@@ -81,6 +81,7 @@ export function FirstPersonPanel({
         </span>
         <button
           data-fp-action="exit"
+          aria-label="Exit first-person view"
           style={{
             padding: "2px 8px",
             fontSize: 11,

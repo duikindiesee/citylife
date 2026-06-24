@@ -186,6 +186,7 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).toContain('class="first-person-panel__touch-button"');
     expect(html).toContain('class="first-person-panel__action-button"');
     expect(html).toContain('data-fp-action="exit"');
+    expect(html).toContain('aria-label="Exit first-person view"');
     expect(html).toContain('data-fp-action="use"');
     expect(html).toContain('data-fp-action="walk-north"');
     expect(html).toContain('data-fp-action="walk-east"');
