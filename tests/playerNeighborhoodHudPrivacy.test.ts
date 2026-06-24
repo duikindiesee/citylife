@@ -3,10 +3,10 @@ import { lotHudCopy } from "../src/colony/ui/ColonyApp";
 import { isPublicSafe } from "../src/colony/newcomers";
 
 describe("player neighborhood HUD privacy", () => {
-  it("uses home-site copy instead of plot ownership terms for player HUDs", () => {
+  it("masks raw owner names before player HUDs render home sites", () => {
     const copy = lotHudCopy({
       id: "lot_7",
-      owner: "Occupied",
+      owner: "Mira Ledger",
       built: false,
       reserved: false,
       price: 240,
@@ -16,7 +16,7 @@ describe("player neighborhood HUD privacy", () => {
 
     expect(copy.label).toBe("Home site 7 · Occupied");
     expect(copy.title).toBe("Home site price 240 ₭ (≈ R1,200) — larger and shore-side sites cost more");
-    expect(`${copy.label} ${copy.title}`).not.toMatch(/plot|Other Player|Mira Ledger/i);
+    expect(`${copy.label} ${copy.title}`).not.toMatch(/plot|Other Player|Mira Ledger|Mira/i);
     expect(isPublicSafe(copy.label)).toBe(true);
     expect(isPublicSafe(copy.title ?? "")).toBe(true);
   });

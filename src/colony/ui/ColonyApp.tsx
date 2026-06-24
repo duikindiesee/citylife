@@ -174,7 +174,7 @@ export function lotHudCopy(args: {
     : args.id.replace("lot_", "Plot ");
   const ownerLabel = args.owner
     ? args.playerScoped
-      ? args.owner
+      ? "Occupied"
       : args.reserved
         ? args.owner
         : args.owner.split(" ")[0]
