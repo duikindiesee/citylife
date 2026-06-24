@@ -13,3 +13,13 @@ export function kookerbookProfileUrl(currentHref: string, citizenId: string): st
   url.searchParams.set("citizen", citizenId);
   return url.toString();
 }
+
+export function kookerbookInitialSelection(
+  currentHref: string,
+  loadedCitizenIds: readonly string[],
+): string | null {
+  const firstLoaded = loadedCitizenIds.find(isKookerbookCitizenId) ?? null;
+  const requested = new URL(currentHref).searchParams.get("citizen");
+  if (!requested || !isKookerbookCitizenId(requested)) return firstLoaded;
+  return loadedCitizenIds.includes(requested) ? requested : firstLoaded;
+}

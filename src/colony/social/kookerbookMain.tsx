@@ -17,7 +17,10 @@ import { parseBlueprint } from "../blueprintScript";
 import { compileBlueprint, VOXEL_Y } from "../houseBuilder";
 import { greedyMesh } from "../render/voxelMesh";
 import type { KbProfile, KbPost } from "./kookerbook";
-import { kookerbookProfileUrl } from "./kookerbookNav";
+import {
+  kookerbookInitialSelection,
+  kookerbookProfileUrl,
+} from "./kookerbookNav";
 
 function houseScriptFor(citizenId: string): string | null {
   const map = loadBlueprintsLocal();
@@ -133,7 +136,19 @@ function App() {
     });
   }, []);
   const profiles = useMemo(() => Object.values(map), [map]);
-  const selected = sel && map[sel] ? map[sel] : profiles[0];
+  const initialSelection =
+    typeof window === "undefined"
+      ? null
+      : kookerbookInitialSelection(
+          window.location.href,
+          profiles.map((p) => p.citizenId),
+        );
+  const selected =
+    sel && map[sel]
+      ? map[sel]
+      : initialSelection
+        ? map[initialSelection]
+        : profiles[0];
   const houseScript = selected ? houseScriptFor(selected.citizenId) : null;
   const selectProfile = (citizenId: string) => {
     setSel(citizenId);
