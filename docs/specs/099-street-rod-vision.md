@@ -30,16 +30,16 @@ Irwin's brother is **building a real car right now**. CityLife should echo that 
 1. **Meet** — the night ping; leave the garage.
 2. **Drive** — cross the city to the spot (free-roam, first-person or chase cam).
 3. **Hang** — park, step out, chat (presence + light social).
-4. **Race** — line up, count down, run the route; the winner is decided by the build *and* the driving.
+4. **Race** — line up, count down, run the route; the winner is decided by the build _and_ the driving.
 5. **Tune** — back at the garage, spend the winnings; scan the **classifieds** for the next part or engine.
-6. **Repeat** — each loop, your car (and your brother's) gets a little faster and a little more *yours*.
+6. **Repeat** — each loop, your car (and your brother's) gets a little faster and a little more _yours_.
 
 ## Systems map — two lanes, one vision
 
-| Lane | Builds | The part of the vision it serves |
-|---|---|---|
-| **Brother's lane** (claude2 / Streed Rod, `D:\infra\claude2`) | cars, garage, car build + **engine upgrades**, racing / rally, roads + grading, vehicles-ride-the-road + **ramp**, the night/social side | the *driving, tuning, and racing* |
-| **Team-lead lane** (Joe / Jack) | the world + the **PlacedArtifact catalog / Kookerbook**, in-world **characters**, houses, plots, first-person / mobile / UI | the *classifieds spine, the world, and who shows up* |
+| Lane                                                          | Builds                                                                                                                                   | The part of the vision it serves                     |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| **Brother's lane** (claude2 / Streed Rod, `D:\infra\claude2`) | cars, garage, car build + **engine upgrades**, racing / rally, roads + grading, vehicles-ride-the-road + **ramp**, the night/social side | the _driving, tuning, and racing_                    |
+| **Team-lead lane** (Joe / Jack)                               | the world + the **PlacedArtifact catalog / Kookerbook**, in-world **characters**, houses, plots, first-person / mobile / UI              | the _classifieds spine, the world, and who shows up_ |
 
 **The seam (where the lanes meet):**
 
