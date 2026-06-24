@@ -72,6 +72,22 @@ describe("car spec (096 Slice A)", () => {
     expect(meshes).toBeGreaterThanOrEqual(8); // body, cabin, stripe, 4 wheels, 2 lights
     expect(emissiveParts).toBeGreaterThanOrEqual(2); // stripe + headlights glow
   });
+
+  it("mounts bolt-on parts on the car and reshapes the wheels", () => {
+    const countMeshes = (g: ReturnType<typeof buildCarMesh>) => {
+      let n = 0;
+      g.traverse((o) => {
+        if ((o as { isMesh?: boolean }).isMesh) n++;
+      });
+      return n;
+    };
+    const stock = defaultCarSpec("p1");
+    const stockMeshes = countMeshes(buildCarMesh(stock));
+    const tuned = { ...stock, parts: ["blower", "ducktail_spoiler", "slicks"] };
+    const tunedMeshes = countMeshes(buildCarMesh(tuned));
+    // slicks reshape the existing four wheels (no new mesh); blower + ducktail each add one
+    expect(tunedMeshes).toBe(stockMeshes + 2);
+  });
 });
 
 describe("garage store (096 Slice A)", () => {
