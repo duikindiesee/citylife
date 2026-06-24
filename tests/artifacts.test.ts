@@ -5,7 +5,13 @@ import {
 } from "../src/colony/artifacts";
 import { ColonySim } from "../src/colony/sim";
 
-const EXPECTED_KINDS = ["bench", "lamppost", "planter", "fountain"];
+const EXPECTED_KINDS = [
+  "bench",
+  "lamppost",
+  "planter",
+  "fountain",
+  "shade_tree",
+];
 
 describe("Colony visual artifacts", () => {
   it("exports a deterministic public-safe artifact catalog inventory", () => {
@@ -32,6 +38,12 @@ describe("Colony visual artifacts", () => {
         kind: "fountain",
         category: "civic-art",
         footprint: { w: 1.6, h: 1.6 },
+        isPublicSafe: true,
+      },
+      {
+        kind: "shade_tree",
+        category: "greenery",
+        footprint: { w: 1.8, h: 1.8 },
         isPublicSafe: true,
       },
     ]);
@@ -63,6 +75,7 @@ describe("Colony visual artifacts", () => {
       lamppost: 1,
       planter: 0,
       fountain: 0,
+      shade_tree: 0,
     });
     expect(summary.unknown).toBe(1);
     expect(summary.overflow).toBe(1);
@@ -79,6 +92,7 @@ describe("Colony visual artifacts", () => {
       "lighting",
       "greenery",
       "civic-art",
+      "greenery",
     ]);
 
     for (const item of a.state.artifacts) {

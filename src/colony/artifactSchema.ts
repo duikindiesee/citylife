@@ -71,7 +71,7 @@ export const PLACED_ARTIFACT_KIND_REGISTRY: Record<
   }),
   tree: Object.freeze({
     kind: "tree",
-    variants: Object.freeze([] as const),
+    variants: Object.freeze(["shade_tree"] as const),
     defaultCategory: "greenery",
   }),
 });
