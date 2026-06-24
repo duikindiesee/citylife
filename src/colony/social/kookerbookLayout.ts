@@ -10,7 +10,7 @@ export type KookerbookResponsiveLayout = {
   };
   shell: Pick<
     CSSProperties,
-    "flexDirection" | "overflowX" | "width" | "maxWidth"
+    "flexDirection" | "overflowX" | "width" | "maxWidth" | "padding" | "gap"
   >;
   panel: Pick<CSSProperties, "maxWidth" | "minWidth" | "overflowX">;
   directory: Pick<CSSProperties, "width" | "maxWidth" | "flexShrink">;
@@ -42,8 +42,10 @@ export function kookerbookLayoutForViewport(
       shell: {
         flexDirection: "column",
         overflowX: "hidden",
-        width: "auto",
+        width: "100%",
         maxWidth: "100%",
+        padding: 12,
+        gap: 12,
       },
       panel: { maxWidth: "100%", minWidth: 0, overflowX: "hidden" },
       directory: { width: "auto", maxWidth: "100%", flexShrink: 1 },
@@ -62,6 +64,8 @@ export function kookerbookLayoutForViewport(
       overflowX: "hidden",
       width: "100%",
       maxWidth: "100%",
+      padding: 16,
+      gap: 16,
     },
     panel: { maxWidth: "100%", minWidth: 0, overflowX: "hidden" },
     directory: { width: 320, maxWidth: 320, flexShrink: 0 },

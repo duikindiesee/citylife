@@ -7,6 +7,9 @@ describe("Kookerbook mobile layout", () => {
 
     expect(layout.shell.flexDirection).toBe("column");
     expect(layout.shell.overflowX).toBe("hidden");
+    expect(layout.shell.width).toBe("100%");
+    expect(layout.shell.padding).toBe(12);
+    expect(layout.shell.gap).toBe(12);
     expect(layout.document.html.overflowX).toBe("hidden");
     expect(layout.document.body.margin).toBe("0");
     expect(layout.document.body.overflowX).toBe("hidden");
