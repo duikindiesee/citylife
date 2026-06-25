@@ -59,7 +59,10 @@ describe("rally who-is-here social read", () => {
   });
 
   it("falls back to a rounded present count until presentCitizens lands", () => {
-    const read = rallyWhoIsHereCopy(makeRally({ present: 1.6, ready: false }), true);
+    const read = rallyWhoIsHereCopy(
+      makeRally({ present: 1.6, ready: false }),
+      true,
+    );
 
     expect(read?.title).toBe("Rally point");
     expect(read?.summary).toBe("2 present at the hilltop");

@@ -1203,7 +1203,11 @@ body.tv-mode .radio-iframe.is-visible {
   padding: 6px 8px;
   border: 1px solid rgba(255, 219, 112, 0.42);
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(255, 219, 112, 0.16), rgba(79, 215, 255, 0.12));
+  background: linear-gradient(
+    135deg,
+    rgba(255, 219, 112, 0.16),
+    rgba(79, 215, 255, 0.12)
+  );
   color: #ffe38a;
   text-shadow: 0 0 10px rgba(255, 219, 112, 0.75);
   box-shadow: 0 0 22px rgba(255, 219, 112, 0.2);
