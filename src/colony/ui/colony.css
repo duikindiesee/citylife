@@ -1198,6 +1198,58 @@ body.tv-mode .radio-iframe.is-visible {
 .first-person-panel {
   box-shadow: 0 14px 44px rgba(0, 0, 0, 0.38);
 }
+.first-person-panel__friend-banner {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 219, 112, 0.42);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(255, 219, 112, 0.16), rgba(79, 215, 255, 0.12));
+  color: #ffe38a;
+  text-shadow: 0 0 10px rgba(255, 219, 112, 0.75);
+  box-shadow: 0 0 22px rgba(255, 219, 112, 0.2);
+}
+.rally-social-read {
+  position: fixed;
+  top: 78px;
+  left: 18px;
+  z-index: 49;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 190px;
+  max-width: min(310px, calc(100vw - 36px));
+  padding: 10px 12px;
+  border: 1px solid rgba(111, 208, 255, 0.32);
+  border-radius: 14px;
+  background: rgba(7, 12, 24, 0.76);
+  color: #d8ecff;
+  font-family: monospace;
+  font-size: 12px;
+  backdrop-filter: blur(5px);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+}
+.rally-social-read--night {
+  border-color: rgba(255, 219, 112, 0.5);
+  background: rgba(6, 8, 18, 0.88);
+  box-shadow:
+    0 0 24px rgba(255, 219, 112, 0.2),
+    0 12px 34px rgba(0, 0, 0, 0.44);
+}
+.rally-social-read__eyebrow {
+  color: #6fd0ff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.rally-social-read b {
+  color: #ffe38a;
+  font-size: 15px;
+  text-shadow: 0 0 12px rgba(255, 219, 112, 0.48);
+}
+.rally-social-read__status {
+  color: var(--muted);
+}
 .first-person-panel__touch-grid {
   touch-action: manipulation;
 }

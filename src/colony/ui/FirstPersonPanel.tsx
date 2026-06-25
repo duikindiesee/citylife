@@ -3,6 +3,7 @@
 // rose of directional controls (WASD / arrow keys also work via ColonyApp).
 // After each step the bot narrates what the citizen sees in 1–2 sentences.
 import { useState } from "react";
+import { isPublicSafe } from "../newcomers";
 import type { ColonyRuntime } from "../runtime";
 import type { ColonyUiState } from "../runtime";
 
@@ -16,6 +17,18 @@ function distanceLabel(distance: number): string {
 function fpActionName(label: string, spoken: string): string {
   if (label === "·") return "narrate";
   return `walk-${spoken.replaceAll(" ", "-")}`;
+}
+
+export function nightFriendBannerCopy(
+  view: ColonyUiState["firstPerson"]["view"],
+): string | null {
+  if (!view || view.clock.isDay || view.neighbours.length === 0) return null;
+  const names = view.neighbours
+    .filter((n) => isPublicSafe(n.displayName))
+    .slice(0, 2)
+    .map((n) => n.displayName.split(" ")[0])
+    .join(", ");
+  return names ? `Friend nearby at the night rally: ${names}` : null;
 }
 
 const DIR: {
@@ -46,6 +59,7 @@ export function FirstPersonPanel({
   const [showDebug, setShowDebug] = useState(false);
   if (!fp.active || !fp.citizenId) return null;
   const v = fp.view;
+  const nightFriendBanner = nightFriendBannerCopy(v);
 
   return (
     <div
@@ -108,6 +122,11 @@ export function FirstPersonPanel({
             lineHeight: 1.6,
           }}
         >
+          {nightFriendBanner && (
+            <div className="first-person-panel__friend-banner" role="status">
+              {nightFriendBanner}
+            </div>
+          )}
           {v.interactionPrompt ? (
             <div>
               <div>
