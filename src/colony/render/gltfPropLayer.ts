@@ -1,7 +1,10 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import type { Terrain } from "../terrain";
-import type { CityLifePropAsset, CityLifePropPlacement } from "./venuePropAssets";
+import type {
+  CityLifePropAsset,
+  CityLifePropPlacement,
+} from "./venuePropAssets";
 
 export interface GltfPropLayer {
   group: THREE.Group;
@@ -17,7 +20,9 @@ interface GltfPropLayerOptions {
   wz: (y: number) => number;
 }
 
-export function buildGltfPropLayer(opts: GltfPropLayerOptions): GltfPropLayer | null {
+export function buildGltfPropLayer(
+  opts: GltfPropLayerOptions,
+): GltfPropLayer | null {
   if (opts.placements.length === 0) return null;
   const group = new THREE.Group();
   group.name = "CityLife GLB Venue Props";
@@ -72,7 +77,8 @@ export function buildGltfPropLayer(opts: GltfPropLayerOptions): GltfPropLayer | 
     group,
     update(daylight: number) {
       const night = 1 - daylight;
-      for (const mat of emissiveMats) mat.emissiveIntensity = 0.25 + night * 0.85;
+      for (const mat of emissiveMats)
+        mat.emissiveIntensity = 0.25 + night * 0.85;
     },
     dispose() {
       for (const item of owned) item.dispose();
@@ -80,12 +86,17 @@ export function buildGltfPropLayer(opts: GltfPropLayerOptions): GltfPropLayer | 
   };
 }
 
-function cloneMaterial(material: THREE.Material | THREE.Material[]): THREE.Material | THREE.Material[] {
+function cloneMaterial(
+  material: THREE.Material | THREE.Material[],
+): THREE.Material | THREE.Material[] {
   if (Array.isArray(material)) return material.map((m) => m.clone());
   return material.clone();
 }
 
-function collectEmissive(mat: THREE.Material, out: THREE.MeshStandardMaterial[]): void {
+function collectEmissive(
+  mat: THREE.Material,
+  out: THREE.MeshStandardMaterial[],
+): void {
   const maybe = mat as THREE.MeshStandardMaterial;
   if (maybe.isMeshStandardMaterial && maybe.emissive) out.push(maybe);
 }

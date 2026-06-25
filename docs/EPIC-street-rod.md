@@ -10,7 +10,7 @@
 
 ### The fantasy
 
-CityLife exists so **two brothers can meet at night, drive to a spot, hang out, and race** — building and tuning their cars Street Rod style. That is the whole point. Irwin and his brother meet in the city after dark, drive out to a hilltop, talk, and race the cars they have been quietly making faster. The brother is building a *real* car in real life; this is the digital version of that ritual — a place to meet, show off the build, and run it.
+CityLife exists so **two brothers can meet at night, drive to a spot, hang out, and race** — building and tuning their cars Street Rod style. That is the whole point. Irwin and his brother meet in the city after dark, drive out to a hilltop, talk, and race the cars they have been quietly making faster. The brother is building a _real_ car in real life; this is the digital version of that ritual — a place to meet, show off the build, and run it.
 
 Everything that does not ladder toward **brothers meeting and racing** is a side quest. That is the north-star guardrail (spec 099): if a feature does not move toward the meetup-and-race loop, keep it out of scope.
 
@@ -27,7 +27,7 @@ Everything that does not ladder toward **brothers meeting and racing** is a side
 3. **Hang** — Stand at the hilltop overlook, see who else is present, talk (voice comms — planned pillar, section 6). The night framing makes this a social beat.
 4. **Race** — When two are present, a race begins from the rally point. Each player races their own tuned car.
 5. **Tune** — Back in the garage: buy parts, open the bonnet, mount upgrades, repaint, watch the tune rating climb.
-6. **Repeat** — Each loop makes the car a little faster and a little more *yours*.
+6. **Repeat** — Each loop makes the car a little faster and a little more _yours_.
 
 The loop is the product. Each turn of it should make the next meet feel different because the car changed.
 
@@ -37,16 +37,16 @@ The loop is the product. Each turn of it should make the next meet feel differen
 
 The work is split across two dev lanes that **must not edit each other's files**. They converge at exactly two seams.
 
-| | **Car / Garage lane** (claude2) | **World / Catalog lane** (team-lead) |
-|---|---|---|
-| Location | `D:\infra\claude2\citylife`, dev port **5191 only** | main CityLife checkout / team-lead domain |
-| Owns | garage, car spec, parts, engine upgrades, rally point, racing, car classifieds | world generation, houses, characters, Kookerbook/artifact catalog, storefronts, UI foundation |
-| Files | `src/colony/car/*`, `src/colony/bot/carPartMarket.ts`, `src/colony/ui/GaragePanel.tsx`, rally placement in `runtime.ts` | `commerce/businesses.ts`, furniture lane, Kookerbook, world spine |
-| Branch | `feat/citylife-garage-cars` (rolling PR #105) | own branches |
+|          | **Car / Garage lane** (claude2)                                                                                         | **World / Catalog lane** (team-lead)                                                          |
+| -------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Location | `D:\infra\claude2\citylife`, dev port **5191 only**                                                                     | main CityLife checkout / team-lead domain                                                     |
+| Owns     | garage, car spec, parts, engine upgrades, rally point, racing, car classifieds                                          | world generation, houses, characters, Kookerbook/artifact catalog, storefronts, UI foundation |
+| Files    | `src/colony/car/*`, `src/colony/bot/carPartMarket.ts`, `src/colony/ui/GaragePanel.tsx`, rally placement in `runtime.ts` | `commerce/businesses.ts`, furniture lane, Kookerbook, world spine                             |
+| Branch   | `feat/citylife-garage-cars` (rolling PR #105)                                                                           | own branches                                                                                  |
 
 ### The seam
 
-The two lanes converge at **the rally point** (where the brothers meet and race) and at **the classifieds** (the catalog / Kookerbook + KCO ledger). The classifieds *are* the catalog spine: the car-part marketplace is a sibling of the furniture marketplace, both feeding the same Kookerbook social/commerce surface and the same double-entry KCO ledger. The world lane provides the catalog/Kookerbook backbone and the characters who inhabit it; the car lane plugs cars and parts into that backbone.
+The two lanes converge at **the rally point** (where the brothers meet and race) and at **the classifieds** (the catalog / Kookerbook + KCO ledger). The classifieds _are_ the catalog spine: the car-part marketplace is a sibling of the furniture marketplace, both feeding the same Kookerbook social/commerce surface and the same double-entry KCO ledger. The world lane provides the catalog/Kookerbook backbone and the characters who inhabit it; the car lane plugs cars and parts into that backbone.
 
 **Hard rule:** the car lane never edits furniture lane files (`furniture.ts`, `furnitureShop.ts`, `bot/furnitureStore.ts`, `bot/furnitureMarket.ts`), never edits rally internals (`traffic.ts`, `raceLayer.ts`, `race.ts`, `state.cars`) beyond the agreed `startRace(startCell?)` param, and coordinates before touching `bot/ledgerSync.ts` or adding a car-shop storefront to `commerce/businesses.ts`.
 
@@ -63,7 +63,7 @@ The garage is the home base of the tuning half of the loop. **One car per player
 - **Open the bonnet, engine-bay view** (`openBonnet`/`closeBonnet`, slice F, commit `ce0be8d`) — toggles reveal the engine bay, listing the engine and hood sockets with the mounted part and an install state per socket (occupied / installable / empty). Per-socket fit / buy / remove buttons. No dependency DAG — one part per socket.
 - **Buy / own / mount** (slice D, commit `258fc92`) — `buyCarPart()` gates on the exact in-game ledger balance, moves coin buyer→shop (`CAR_SHOP_ACCOUNT = 'shop:car'`), and marks the part owned in `citylife.carparts.owned.v1`. `mountCarPart`/`unmountCarPart` enforce one part per socket (new part replaces old). Free parts (street tyres) are implicitly owned.
 - **Paint** (`setCarPaint`, slice H1, commit `55651a5`) — repaint body / cabin / accent from curated palettes; palette-validated, deterministic; active swatch shows a ring. Stock paint seeded per player id via `hash32` so different players auto-start different colors.
-- **Body mod — the roof chop** (slice H2, commit `f33405b`) — a `body` socket part that *reshapes* the cabin (lowers `0.26→0.16`) for the classic hot-rod silhouette, rather than bolting on a child mesh.
+- **Body mod — the roof chop** (slice H2, commit `f33405b`) — a `body` socket part that _reshapes_ the cabin (lowers `0.26→0.16`) for the classic hot-rod silhouette, rather than bolting on a child mesh.
 - **Tune rating headline** (`tunePoints`, commit `11979fd`) — a single performance number out of 100: `round(sum of four effective stats × 25)`. Stock car = 50; performance parts push toward 100. Pure derivation from `deriveStats`.
 - **Effect badges** (`partEffects`, commits `955aa76` flat list, `dadf54d` engine bay) — up/down/cosmetic badges per stat delta (green up, red down, "cosmetic" flat) under each part, in both the flat list and the engine-bay view, so the stat impact is transparent (Spd / Acc / Grip / Brk).
 - **Wallet balance** displayed in the garage UI.
@@ -86,17 +86,17 @@ A part is a **child THREE mesh mounted at a socket anchor**, or a **reshape** of
 
 ### The parts table
 
-| Label | Socket | Category | Effect | Cost (KCO) |
-|---|---|---|---|---|
-| Street tyres | wheels | cosmetic | No stat changes; cosmetic | **0** (free, implicitly owned) |
-| Drag slicks | wheels | performance | Grip +0.25, Acceleration +0.1, Top Speed −0.05 | 180 |
-| Four-barrel carb | engine | performance | Acceleration +0.15, Top Speed +0.1 | 240 |
-| Supercharger blower | engine | performance | Top Speed +0.2, Acceleration +0.15, Grip −0.1 | 460 |
-| Tuned headers | exhaust | performance | Top Speed +0.1, Acceleration +0.05 | 200 |
-| Chrome side pipes | exhaust | cosmetic | No stat changes; cosmetic | 120 |
-| Ducktail spoiler | spoiler | performance | Grip +0.12 | 160 |
-| Hood scoop | hood | cosmetic | Top Speed +0.03; minor cosmetic boost | 90 |
-| Roof chop | body | performance | Acceleration +0.06, Grip +0.04; reshapes silhouette | 280 |
+| Label               | Socket  | Category    | Effect                                              | Cost (KCO)                     |
+| ------------------- | ------- | ----------- | --------------------------------------------------- | ------------------------------ |
+| Street tyres        | wheels  | cosmetic    | No stat changes; cosmetic                           | **0** (free, implicitly owned) |
+| Drag slicks         | wheels  | performance | Grip +0.25, Acceleration +0.1, Top Speed −0.05      | 180                            |
+| Four-barrel carb    | engine  | performance | Acceleration +0.15, Top Speed +0.1                  | 240                            |
+| Supercharger blower | engine  | performance | Top Speed +0.2, Acceleration +0.15, Grip −0.1       | 460                            |
+| Tuned headers       | exhaust | performance | Top Speed +0.1, Acceleration +0.05                  | 200                            |
+| Chrome side pipes   | exhaust | cosmetic    | No stat changes; cosmetic                           | 120                            |
+| Ducktail spoiler    | spoiler | performance | Grip +0.12                                          | 160                            |
+| Hood scoop          | hood    | cosmetic    | Top Speed +0.03; minor cosmetic boost               | 90                             |
+| Roof chop           | body    | performance | Acceleration +0.06, Grip +0.04; reshapes silhouette | 280                            |
 
 ### Sockets
 
@@ -123,9 +123,9 @@ A part is a **child THREE mesh mounted at a socket anchor**, or a **reshape** of
 A Rally Point sits on a commanding hilltop overlooking the city — a bus-stop-style rendezvous where the brothers meet at night. Placement (`findRallyOverlookSite`, spec 097, commit `3a4abb0`) is fully deterministic: it maximizes elevation + local prominence with a Highland/Mountain bias, requires a buildable footprint, avoids water and other base structures, and stays within colony reach.
 
 - **Marker rendering** (R2, `3a4abb0`) — a 10-mesh iconographic group: stop platform, signpost with a glowing checker race-flag, bench, and an emissive beacon visible at night and from the city below. No brand text.
-- **Reachable placement fix** (R3.5a) — excludes Mountain/Peak from the footprint and flood-fills reachable land so the rally lands on the highest *walk-reachable* Highland overlook (`cellOk` true). Verified on all 8 seeds, so the guided walk can actually arrive on foot.
+- **Reachable placement fix** (R3.5a) — excludes Mountain/Peak from the footprint and flood-fills reachable land so the rally lands on the highest _walk-reachable_ Highland overlook (`cellOk` true). Verified on all 8 seeds, so the guided walk can actually arrive on foot.
 - **Saturating-ruggedness placement bias** (R1, commit `7d73122`) — a capped ruggedness term breaks ties toward a mountain-shoulder knoll without dragging the overlook to a low, maximally-rough spot. Tuned over a 120-seed sweep: lifted spur connection 110→116/120 while holding elevation steady, no regression.
-- **Spur road connector** (R3.5b, commit `e0021bb`) — a runtime-constructor spur paves from the nearest road *down* to the rally (so no road runs through houses), mirroring the commercial connector, with an optional `margin` param to `leastCostPath` (spur uses 160 vs default 40). Connects on 8/10 seeds; demo seed 4242 fails soft (rally embedded in homesteads).
+- **Spur road connector** (R3.5b, commit `e0021bb`) — a runtime-constructor spur paves from the nearest road _down_ to the rally (so no road runs through houses), mirroring the commercial connector, with an optional `margin` param to `leastCostPath` (spur uses 160 vs default 40). Connects on 8/10 seeds; demo seed 4242 fails soft (rally embedded in homesteads).
 
 ### First-person walk-to-rally, presence, join-race
 
@@ -142,14 +142,14 @@ A playable timed route overlaid on the **real road web**: a deterministic track 
 The payoff of the whole loop is that the car you tuned is the car you race. The hook for this is **blocked** (see §9). Once the additive `carSpec` hook lands in `buildRaceLayer`, `runtime.startRace` will source the player's `CarSpec` from `garageStore` so the race uses `buildCarMesh(opts.carSpec)` and the tuned `CarStatVector` drives physics handling:
 
 - **Stat-to-physics handling** — `topSpeed`, `acceleration`, `grip`, `braking` (derived from mounted parts) feed the car's race physics, so tuning is felt, not just displayed.
-- **Ghost-replay race-a-friend** (spec 087 / PLAN-rally-owncar-friend) — async, no netcode: record a trajectory, then render the friend's translucent car in *their* CarSpec running alongside. Optional leaderboard (fallback localStorage; deferred kooker-service-games).
+- **Ghost-replay race-a-friend** (spec 087 / PLAN-rally-owncar-friend) — async, no netcode: record a trajectory, then render the friend's translucent car in _their_ CarSpec running alongside. Optional leaderboard (fallback localStorage; deferred kooker-service-games).
 - **Night / time-of-day framing** — the meetup is a night ritual; the emissive beacon and race-flag are tuned to be visible after dark and from the city below.
 
 ---
 
 ## 6. Voice Comms With Friends (NEW planned pillar)
 
-> **This is a new pillar Irwin wants.** Not built. Design sketch below — the goal is that the brothers can actually *talk* while they hang at the meetup and during the drive/race, which is the whole emotional point of meeting up at night.
+> **This is a new pillar Irwin wants.** Not built. Design sketch below — the goal is that the brothers can actually _talk_ while they hang at the meetup and during the drive/race, which is the whole emotional point of meeting up at night.
 
 ### The pillar
 
@@ -190,7 +190,7 @@ The buy → own → mount loop runs entirely on the in-game **double-entry KCO l
 
 ### Player-to-player classifieds board (shipped, slice G, commit `c8df0b6`)
 
-A **Kookerbook car-part public marketplace** in `bot/carPartMarket.ts` — a *sibling* of `furnitureMarket` that never edits furniture files.
+A **Kookerbook car-part public marketplace** in `bot/carPartMarket.ts` — a _sibling_ of `furnitureMarket` that never edits furniture files.
 
 - Players list owned bolt-on parts for city coin; **one listing per kind per seller**; deterministic listing id `seller:kind`.
 - Listing **escrows** the part out of the seller's owned inventory onto the public board.
@@ -215,30 +215,30 @@ Every research doc and working plan captured so the research survives the cron j
 
 ### Research docs (`D:\infra\claude2\citylife\docs\research\`)
 
-| File | Summary |
-|---|---|
-| `2026-05-31-low-power-radio.md` | YouTube-iframe radio playback (royalty-clean), house ads every 90s, monetization roadmap, TV/Chromecast mode — ambient audio + in-world narrative channel, deterministic or LLM DJ banter. |
-| `2026-05-31-storytelling-and-first-person.md` | Three systems: persistent Lifepath journals on arrival; first-person drop-in with tunable FOV/walk/run (no jump); bot-to-bot dialogue UI with trust meters + viseme ASR/TTS. Grounds first-person citizenship and NPC conversation. |
+| File                                           | Summary                                                                                                                                                                                                                                                                         |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `2026-05-31-low-power-radio.md`                | YouTube-iframe radio playback (royalty-clean), house ads every 90s, monetization roadmap, TV/Chromecast mode — ambient audio + in-world narrative channel, deterministic or LLM DJ banter.                                                                                      |
+| `2026-05-31-storytelling-and-first-person.md`  | Three systems: persistent Lifepath journals on arrival; first-person drop-in with tunable FOV/walk/run (no jump); bot-to-bot dialogue UI with trust meters + viseme ASR/TTS. Grounds first-person citizenship and NPC conversation.                                             |
 | `2026-06-01-caesar3-economy-and-population.md` | Caesar III economy blueprint: housing tiers gated by goods/services, walker service coverage, 1-raw→2-workshop ratios, sentiment-driven immigration, desirability zones, ≤54-tile block roads, 9-mechanic roadmap. The canonical economy architecture replacing timer autoGrow. |
-| `2026-06-01-the-scrolls-citizen-news-radio.md` | Buildable Citizen News Radio broadcasting deterministic colony events now, deepening to personal citizen stories once Hermes bots gain persistent memory. |
-| `2026-06-01-zoning-redesign.md` | Retire the flat zone-color overlay; three futures (emergent districts from the built economy, liveability heatmap, or deletion); spec-pipeline treatment. Zoning becomes a living readout of player choices. |
-| `2026-06-02-citizen-as-bot.md` | Spawn real Hermes pods per citizen in an isolated DMZ namespace (strict NetworkPolicy), mounted with city docs + first-person vision snapshots, wired to read state and propose specs to the governor loop. Operationalizes "the city that builds itself." |
-| `2026-06-02-land-organisation-and-roads.md` | Four-phase L1–L4: terrain-aware roads via least-cost pathfinding, GIS land-suitability metadata, road-first settlement, OBB-recursion parcel subdivision with frontage/access rules. Towns emerge from terrain; every parcel has an address. |
-| `2026-06-02-living-economy.md` | Embodied logistics (people walk, trucks drive) over abstract counters; standing rule: prefer specs that make the world visibly more alive. |
-| `2026-06-02-the-people-are-the-citizens.md` | Five-phase P1–P5: crowd matches real citizen count, bind figures to a named roster (Mara/Saskia/…), tents as T0 dwellings, needs-and-job agency, per-user persistence via kooker backend. Citizens are the cast. |
-| `2026-06-08-homesteads-roads-parcels.md` | Spine-and-homestead model replacing cramped 4×4 lots: 3-cell terrain-aware carriageway, large ~14×18 parcels zoned front-to-back (setback→house→garden→farm), fenced boundaries, deterministic instanced geometry. |
-| `2026-06-09-bot-house-builder.md` | Fine 4×4×4 micro-voxels with greedy meshing (low-poly silhouettes, not Minecraft blocks); git-diffable text DSL blueprints; bot design-loop with self-inspection + mutation. Houses are data-first, inspectable, mutable. |
-| `2026-06-13-district-concept.md` | Operator's visual north star: Joe the Crab at centre (inference mascot); districts as kooker surfaces (builder's yard, cloud compute, night-market commercial, sports, residential with crests); neon commercial vs calm residential teal. Sets the whole visual tone. |
+| `2026-06-01-the-scrolls-citizen-news-radio.md` | Buildable Citizen News Radio broadcasting deterministic colony events now, deepening to personal citizen stories once Hermes bots gain persistent memory.                                                                                                                       |
+| `2026-06-01-zoning-redesign.md`                | Retire the flat zone-color overlay; three futures (emergent districts from the built economy, liveability heatmap, or deletion); spec-pipeline treatment. Zoning becomes a living readout of player choices.                                                                    |
+| `2026-06-02-citizen-as-bot.md`                 | Spawn real Hermes pods per citizen in an isolated DMZ namespace (strict NetworkPolicy), mounted with city docs + first-person vision snapshots, wired to read state and propose specs to the governor loop. Operationalizes "the city that builds itself."                      |
+| `2026-06-02-land-organisation-and-roads.md`    | Four-phase L1–L4: terrain-aware roads via least-cost pathfinding, GIS land-suitability metadata, road-first settlement, OBB-recursion parcel subdivision with frontage/access rules. Towns emerge from terrain; every parcel has an address.                                    |
+| `2026-06-02-living-economy.md`                 | Embodied logistics (people walk, trucks drive) over abstract counters; standing rule: prefer specs that make the world visibly more alive.                                                                                                                                      |
+| `2026-06-02-the-people-are-the-citizens.md`    | Five-phase P1–P5: crowd matches real citizen count, bind figures to a named roster (Mara/Saskia/…), tents as T0 dwellings, needs-and-job agency, per-user persistence via kooker backend. Citizens are the cast.                                                                |
+| `2026-06-08-homesteads-roads-parcels.md`       | Spine-and-homestead model replacing cramped 4×4 lots: 3-cell terrain-aware carriageway, large ~14×18 parcels zoned front-to-back (setback→house→garden→farm), fenced boundaries, deterministic instanced geometry.                                                              |
+| `2026-06-09-bot-house-builder.md`              | Fine 4×4×4 micro-voxels with greedy meshing (low-poly silhouettes, not Minecraft blocks); git-diffable text DSL blueprints; bot design-loop with self-inspection + mutation. Houses are data-first, inspectable, mutable.                                                       |
+| `2026-06-13-district-concept.md`               | Operator's visual north star: Joe the Crab at centre (inference mascot); districts as kooker surfaces (builder's yard, cloud compute, night-market commercial, sports, residential with crests); neon commercial vs calm residential teal. Sets the whole visual tone.          |
 
 ### Working plans (`D:\infra\claude2\`)
 
-| File | Summary |
-|---|---|
-| `PLAN-garage-cars.md` | Spec 096 plan: socket/part model, deterministic performance stats, a `carScript.ts` DSL + `carBuilder.ts` compiler, eight slices A–H. Adopts the retro arcade-garage look (brother's Fiat X1/9). **Note:** the shipped implementation chose mesh-composition over the DSL described here (see §4). |
-| `PLAN-rally-point-and-players.md` | Two tracks: (A) test players John/Jane Doe (`CITYLIFE_PLAYER`, 750 KCO, real login); (B) Rally Point R1–R5 (place, render, guided walk, road connector, presence, two-present join). Stage 2: Playwright bot player. |
-| `PLAN-rally-owncar-friend.md` | Spec 087 integration: solo rally drives the player's custom garage car (mesh + StatVector physics); race-a-friend via **ghost replay** (async, no netcode); optional leaderboard (fallback localStorage; deferred kooker-service-games). This is the plan for §5's big remaining piece. |
-| `garage-look-reference.md` | Operator's brother's garage visual reference: arcade-cabinet bezel, yellow 1979 Fiat X1/9, pegboard tools, red tool chest, shelving, warm fluorescent + work-lamp lighting, motorsport posters. The garage-UI styling target. |
-| `citylife-cron-routines.md` | The autonomous cron (every 20 min, 07:00–22:00, 7-day expiry) implementing rally R3→R3.5→R4→R5 then garage 096 A–H. Rules: main PROTECTED (PR + MoJoJo gate), one slice per fire, CI-safe commits, :5191 verify, deterministic sim, no furniture/rally-internals edits. |
+| File                              | Summary                                                                                                                                                                                                                                                                                            |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PLAN-garage-cars.md`             | Spec 096 plan: socket/part model, deterministic performance stats, a `carScript.ts` DSL + `carBuilder.ts` compiler, eight slices A–H. Adopts the retro arcade-garage look (brother's Fiat X1/9). **Note:** the shipped implementation chose mesh-composition over the DSL described here (see §4). |
+| `PLAN-rally-point-and-players.md` | Two tracks: (A) test players John/Jane Doe (`CITYLIFE_PLAYER`, 750 KCO, real login); (B) Rally Point R1–R5 (place, render, guided walk, road connector, presence, two-present join). Stage 2: Playwright bot player.                                                                               |
+| `PLAN-rally-owncar-friend.md`     | Spec 087 integration: solo rally drives the player's custom garage car (mesh + StatVector physics); race-a-friend via **ghost replay** (async, no netcode); optional leaderboard (fallback localStorage; deferred kooker-service-games). This is the plan for §5's big remaining piece.            |
+| `garage-look-reference.md`        | Operator's brother's garage visual reference: arcade-cabinet bezel, yellow 1979 Fiat X1/9, pegboard tools, red tool chest, shelving, warm fluorescent + work-lamp lighting, motorsport posters. The garage-UI styling target.                                                                      |
+| `citylife-cron-routines.md`       | The autonomous cron (every 20 min, 07:00–22:00, 7-day expiry) implementing rally R3→R3.5→R4→R5 then garage 096 A–H. Rules: main PROTECTED (PR + MoJoJo gate), one slice per fire, CI-safe commits, :5191 verify, deterministic sim, no furniture/rally-internals edits.                            |
 
 ---
 
@@ -259,15 +259,15 @@ Every research doc and working plan captured so the research survives the cron j
 
 ### Blocked / gated — with exact unblock
 
-| Item | Blocker | Exact unblock |
-|---|---|---|
+| Item                             | Blocker                                                                                | Exact unblock                                                                                                                                                                                                              |
+| -------------------------------- | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Own-car rally race (BIGGEST)** | Race internals (`raceLayer.ts`, `race.ts`, `state.cars`) owned by the Codex rally lane | Land the additive `carSpec` hook in `buildRaceLayer` per PLAN-rally-owncar-friend 2b. Then `runtime.startRace` sources the player CarSpec from `garageStore`, no regression. **Do not edit rally internals unilaterally.** |
-| **Race-a-friend ghost replay** | Same as above | Same hook; then record/render translucent friend car in their CarSpec. |
-| **Wear / consumable tyres (H3)** | Needs a usage signal from `race.ts` (Codex-owned) | Gated behind own-car rally above. |
-| **Real-ledger mirror (G2)** | `bot/ledgerSync.ts` is highest-conflict with furniture lane (Jack) | Coordination window with furniture lane; append `car_part_purchase` carefully, idempotent + best-effort. |
-| **Car-shop plot (storefront)** | `commerce/businesses.ts` is team-lead domain | Coordinate storefront strategy with team lead (storefronts front real kooker apps). |
-| **Rally spur on seed 4242** | Rally embedded among homesteads → spur fails soft | Further bias `findRallyOverlookSite` toward overlooks with a guaranteed clean approach (follow-up to R3.5). |
-| **Voice comms** | No media/signalling primitive exists (only Hermes chat WS) | Stand up a new WebRTC signalling path + STUN/TURN (see §6). |
+| **Race-a-friend ghost replay**   | Same as above                                                                          | Same hook; then record/render translucent friend car in their CarSpec.                                                                                                                                                     |
+| **Wear / consumable tyres (H3)** | Needs a usage signal from `race.ts` (Codex-owned)                                      | Gated behind own-car rally above.                                                                                                                                                                                          |
+| **Real-ledger mirror (G2)**      | `bot/ledgerSync.ts` is highest-conflict with furniture lane (Jack)                     | Coordination window with furniture lane; append `car_part_purchase` carefully, idempotent + best-effort.                                                                                                                   |
+| **Car-shop plot (storefront)**   | `commerce/businesses.ts` is team-lead domain                                           | Coordinate storefront strategy with team lead (storefronts front real kooker apps).                                                                                                                                        |
+| **Rally spur on seed 4242**      | Rally embedded among homesteads → spur fails soft                                      | Further bias `findRallyOverlookSite` toward overlooks with a guaranteed clean approach (follow-up to R3.5).                                                                                                                |
+| **Voice comms**                  | No media/signalling primitive exists (only Hermes chat WS)                             | Stand up a new WebRTC signalling path + STUN/TURN (see §6).                                                                                                                                                                |
 
 **Lane status (2026-06-24):** substantive in-lane garage/rally slices complete; the queue is drained. Remaining items are coordination-gated or Codex-blocked. **Strong recommendation: merge PR #105 before more polish** — diminishing returns reached.
 
@@ -303,4 +303,3 @@ Every research doc and working plan captured so the research survives the cron j
 - **Specs:** `docs/specs/096-garage-and-car-customization.md`, `097-rally-point.md` (note: 097 is stale — states R3–R5 as planned, but all shipped on #105), `099` north-star, `087` road rally, `095` world-meets-road, `085` land economy, `082` Kookerbook, `079` commercial plots.
 - **Live verify:** `window.__colony` on dev port **5191** (`jumpToMyHouse`, `openBonnet`, `buyCarPart`, `mountCarPart`, `setCarPaint`, `listCarPartForSale`, `buyCarPartListing`, `goToRallyPoint`, `joinRallyRace`). DOM/panel checks need a cache-bust reload (`location.href=…&cb=`).
 - **Memory:** `C:\Users\kooker\.claude\projects\C--Users-kooker\memory\project_citylife_garage_rally.md`.
-
