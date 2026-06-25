@@ -213,6 +213,80 @@ Examples:
 7. **Public safe.** Future district/POI strings must pass `isPublicSafe` before display.
 8. **Deterministic.** Layer data must be read-only render/UI state derived from deterministic world state; no `Math.random`/`Date.now` in sim/tick paths.
 
+## Mobile first-person obstruction finding
+
+Follow-up screenshot review from Irwin, 2026-06-25: in portrait mobile first-person at the rally, the current first-person panel becomes the dominant object on screen. The world is technically visible behind it, but the player is mostly reading UI instead of seeing Joe's path, Cole, the rally, or the road.
+
+Visible obstruction in the screenshot:
+
+- The phone status bar plus the CityLife top bar consume the first top band.
+- The top bar shows pause, speed, Change Server, and a partly clipped `District` button.
+- A `RALLY POINT / Cole / Waiting for a friend` popover sits over the world near the upper center.
+- The lower half is occupied by the first-person panel:
+  - `Joe the Crab` header and `exit`.
+  - current action: `Follow road · 0 away` and `Use E`.
+  - guided walk text with target coordinates and `201.1 units away`.
+  - next leg coordinates.
+  - mood warning: `colony hungry`.
+  - sprint percentage plus progress bar.
+  - `Walk to Rally` and `Show debug` buttons.
+  - narration card: `Guiding you to the Rally Point.`
+  - a 3×3 compass rose / arrow pad.
+- Behind the panel, the mouse-look / accessibility controls are still faintly visible, which makes the bottom view feel layered instead of intentionally composed.
+
+The problem is now broader than top lens controls: **first-person mobile needs a driving/walking HUD, not a popover report.** The lower panel should not be a blocking card when the user is trying to walk toward a visible rally point.
+
+## /goal — mobile joystick HUD direction
+
+Goal: turn first-person mobile from a large popover into a transparent game control HUD.
+
+### Desired layout
+
+- **Top section: compact HUD / mini-map / destination strip**
+  - Keep `Joe the Crab`, current destination, and friend/rally state visible.
+  - Show `Rally Point · Cole waiting` as a small destination chip, not a large floating card.
+  - Add a small route/map lens area when useful: target arrow, next waypoint, distance, and the active camera/lens pill.
+  - Keep pause/speed/lens controls compact and avoid clipped buttons like the partially visible `District` state.
+
+- **Center: protected world view**
+  - The center 55–65% of the screen should stay clear for the road, rally point, friend, car, avatar/nameplate, and route cues.
+  - No debug text or large panels should sit over the middle during normal play.
+
+- **Bottom left: joystick**
+  - Replace or collapse the 3×3 arrow pad into a thumb joystick / radial touch control.
+  - Joystick can support walk/strafe by drag direction and distance.
+  - A tap/hold affordance can handle sprint, but should not require reading a full sprint panel.
+
+- **Bottom right: action cluster**
+  - Primary action button: `Use` / `Talk` / `Enter garage` / `Join race` depending on context.
+  - Secondary action: `Walk to Rally` or `Stop guidance` when route guidance is active.
+  - Debug stays behind a small disclosure, never expanded by default.
+
+- **Bottom center: short guidance caption**
+  - One line max, for example `Guiding to Rally Point · 201u`.
+  - Narration can appear as a temporary toast and then fade/collapse.
+
+### What moves out of the blocking panel
+
+- Target coordinates move behind debug.
+- `Next leg` coordinates move behind debug or become a tiny arrow cue.
+- Sprint becomes a small ring/bar around the joystick or near the movement thumb area.
+- Mood warnings become small top chips unless urgent.
+- `Show debug` becomes a hidden/developer affordance.
+- The narration card becomes a timed toast, not a permanent box.
+
+### Acceptance target for a future slice
+
+A future implementation should pass a simple screenshot test:
+
+- In portrait mobile first-person, the player can see the road/rally direction through the center of the screen.
+- The first-person UI covers the edges, not the world.
+- There is one obvious movement control, one obvious action control, and one compact destination read.
+- Debug data is not visible by default.
+- Mouse-look/accessibility controls do not show through behind the first-person HUD.
+- Existing keyboard controls and accessibility labels remain available.
+- No runtime pathfinding, rally presence, car/race, district generation, or map-layer logic changes are required for the HUD-only slice.
+
 ## Implementation ladder
 
 This is a proposal ladder, not work performed by this PR.
@@ -265,7 +339,26 @@ Acceptance:
 - No permanent toolbar crowding.
 - Night readability verified.
 
-### Slice D — future Streets/Districts lens contract
+### Slice D — mobile first-person joystick HUD
+
+Owner: Player & UI.
+
+- Replace the current portrait mobile blocking panel with an edge HUD.
+- Keep the center world view clear.
+- Move from a 3×3 arrow pad toward a joystick / radial thumb control.
+- Move `Use`, `Walk to Rally`, and route guidance into a compact action cluster and destination strip.
+- Hide coordinates/debug by default.
+
+Acceptance:
+
+- In portrait first-person, the rally road/friend/world remains visible through the center.
+- One obvious movement control and one obvious action control are present.
+- Current destination and distance are visible without a large card.
+- Debug and coordinate detail are collapsed by default.
+- Keyboard controls and existing accessible button labels are preserved.
+- No edits to rally proximity, pathfinding, car/race, or district generation logic.
+
+### Slice E — future Streets/Districts lens contract
 
 Owner: Player & UI with World & Build read-only data contract.
 
@@ -288,14 +381,18 @@ Acceptance:
 4. Should the lens tray live in the top bar, or should it become a left-side map drawer so the top screen stays cinematic?
 5. Should `Liveability` eventually become a World Lens entry, or remain an unlockable city-action button tied to the Civic Pulse Survey Office?
 6. How should first-person mode simplify the lens deck? In first-person, map lenses may be less important than nameplates, route arrows, and social read.
+7. On portrait mobile, should the movement control be a virtual joystick, a smaller radial pad, or a swipe-anywhere gesture zone?
+8. Should the rally/friend popover become part of the top destination strip so it does not float over the world?
+9. Should mouse-look/accessibility controls auto-hide behind first-person mobile mode unless explicitly opened?
 
 ## Recommendation
 
-Do not add more top-row buttons for district/street/POI/signage. Instead:
+Do not add more top-row buttons for district/street/POI/signage, and do not solve mobile first-person by adding a larger popover. Instead:
 
 1. Rename the current terrain modes into player-facing lens language.
 2. Split `Camera` from `World Lens` visually.
 3. Collapse advanced lens choices into a fly-away tray.
-4. Keep future district/street overlays behind the phase/spec gates and add them as lenses only after their deterministic read-model exists.
+4. Treat first-person mobile as an edge HUD: top destination/map strip, clear center view, bottom joystick/action controls.
+5. Keep future district/street overlays behind the phase/spec gates and add them as lenses only after their deterministic read-model exists.
 
-The target is not a bigger toolbar. The target is a **small world lens** that lets Irwin quickly see Natural / Build sites / Height now, and Streets / Districts / People / Night later, without the UI fighting the open-world view.
+The target is not a bigger toolbar or a bigger report panel. The target is a **small world lens plus a mobile walking HUD** that lets Irwin quickly see Natural / Build sites / Height now, move Joe with a joystick-style control in first person, and later read Streets / Districts / People / Night without the UI fighting the open-world view.
