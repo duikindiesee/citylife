@@ -14,9 +14,11 @@ A player logs in (their operator citizen is resolved by displayName), opens the 
 
 ## Slices (per owner, with acceptance criteria)
 
-### S1 (me) — Deterministic NPC friend pinned at the night rally [SPINE]
+### S1 (me) — Deterministic NPC friend pinned at the night rally [SPINE] — SHIPPED
 
 Seed a fixed, named NPC friend standing AT the rally cell so presence reaches 2 the instant the player arrives; pin them so the night bar-wander never drags them off.
+
+**Shipped:** `seedRallyFriend()` seeds the friend **Cole the Racer** (`RALLY_FRIEND_ID = citizen_rally_friend`) at the rally cell from sol zero, and `wanderIdleCitizens` skips that id so the night bar-stroll never drags them off the overlook. Presence is now 1 at boot, so a single live player walking up makes two present and flips `ready`. Deterministic (no Math.random/Date.now), public-safe name. Tests: `tests/rallyFriend.test.ts` plus the rebaselined `tests/rallyPresence.test.ts`.
 
 - Files: `src/colony/runtime.ts` — new `private seedRallyFriend()` beside `seedJoe/seedViw/seedJack`, called in the constructor after L1263; `RALLY_FRIEND_ID` const beside `JOE_ID/JACK_ID` (~L257-265); early-`continue` guard in `wanderIdleCitizens` (~L2364).
 - Mechanism: `citizens.seedFounder({id:RALLY_FRIEND_ID, home:<rally structure cell>, kind:'human', displayName:<isPublicSafe>, nowMs:JOE_BORN_MS})` — idempotent, deterministic.

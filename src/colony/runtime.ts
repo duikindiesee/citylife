@@ -257,6 +257,10 @@ import {
 const JOE_ID = "citizen_joe";
 const JOE_BORN_MS = 0;
 const JACK_ID = "citizen_jack";
+// Phase-1 S1 — the night-meetup friend: a fixed, public-safe NPC pinned at the hilltop Rally Point so
+// that two players are present and the meetup completes. Not a backend identity leak; just a
+// deterministic in-world citizen (ultimately stands in for the brother you drive out to meet at night).
+const RALLY_FRIEND_ID = "citizen_rally_friend";
 // KOOKER, the Builder of the Kookerverse (founder two): owner of the build trade. Players see "KOOKER"
 // (the displayName/alias below); the internal id keeps its legacy value "citizen_viw" because the ledger
 // accounts (citizen:citizen_viw) and the kooker-web OTA mission (079) reference the builder by THIS id —
@@ -1261,6 +1265,7 @@ export class ColonyRuntime {
     this.seedJoe(); // spec 078 — Joe the Crab takes up residence on the shore-most homestead
     this.seedViw(); // spec 083 — Viw the Builder takes the homestead beside him
     this.seedJack(); // player/UI lane — Jack is visible as an in-world reviewer avatar
+    this.seedRallyFriend(); // phase-1 S1 — a friend waits at the night rally so the meetup completes
     this.restoreBlueprints(); // spec 077 P4.5 — stored designs regenerate their houses on reload
     // Spec 077 P4 — listen for blueprint_saved posted back by the House Builder popup. Same-origin
     // only; the script is validated before anything is stored or built. Guarded for node test runs.
@@ -2363,6 +2368,7 @@ export class ColonyRuntime {
     }
     for (const pub of this.citizens.list()) {
       if (pub.id === this.fpCitizenId) continue;
+      if (pub.id === RALLY_FRIEND_ID) continue; // phase-1 S1 — the friend stays pinned at the rally
       const c = this.citizens.byId(pub.id);
       if (!c) continue;
       if (this.barOccupied.has(pub.id)) continue; // sitting at the bar — stays put until day
@@ -2541,6 +2547,27 @@ export class ColonyRuntime {
       plotId: plot.id,
       address: "Signal Burrow",
       kind: "human",
+    });
+  }
+
+  /** Phase-1 S1 — the night-meetup friend. A fixed, deterministic, public-safe NPC seeded standing AT
+   *  the hilltop Rally Point, so when the operator walks out to meet up, rallyPresence reaches two and
+   *  the meetup completes without waiting on another live player. Idempotent (seedFounder no-ops on a
+   *  repeat id); seeded only when a rally exists. The friend is PINNED: wanderIdleCitizens skips
+   *  RALLY_FRIEND_ID so the night bar-stroll never drags them off the overlook. No Math.random/Date.now. */
+  private seedRallyFriend(): void {
+    const rally = this.sim.state.structures.find((s) => s.kind === "rally");
+    if (!rally) return;
+    this.citizens.seedFounder({
+      id: RALLY_FRIEND_ID,
+      householdId: "household_rally_friend",
+      displayName: "Cole the Racer",
+      plotId: "plot_rally_friend",
+      plotName: "Rally Overlook",
+      home: { x: Math.round(rally.x), y: Math.round(rally.y) },
+      kind: "human",
+      nowMs: JOE_BORN_MS,
+      spd: 0.9,
     });
   }
 

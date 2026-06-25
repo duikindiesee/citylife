@@ -1,33 +1,38 @@
 import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 
-// Spec 097 R4 — presence tracking at the hilltop Rally Point. uiState.rally.present counts avatars
-// standing on the rally cell; ready flips true at two present (the race rendezvous condition R5 uses).
-describe("rally presence (R4)", () => {
-  it("counts avatars present at the rally and flips ready at two", () => {
-    const rt = new ColonyRuntime(4242);
-    const rally = rt.sim.state.structures.find((s) => s.kind === "rally");
-    expect(rally).toBeTruthy();
-    expect(rt.getUiState().rally).toBeTruthy();
-    expect(rt.getUiState().rally!.ready).toBe(false); // nobody there at boot
+const FRIEND_ID = "citizen_rally_friend";
 
-    const ids = rt
-      .getUiState()
-      .citizens.list.slice(0, 2)
-      .map((c) => c.id);
-    expect(ids.length).toBe(2);
-    // place two citizens onto the rally cell (private roster reached via a cast, test-only)
-    const roster = (
+// Spec 097 R4/R5 + phase-1 S1 — presence at the hilltop Rally Point. The night-meetup friend (S1) is
+// seeded at the rally, so ONE avatar is present from boot; a single other avatar walking up flips ready
+// (two present), which is the rendezvous condition the join-race uses.
+describe("rally presence (R4 + S1 friend)", () => {
+  function rosterOf(rt: ColonyRuntime) {
+    return (
       rt as unknown as {
         citizens: {
           byId: (id: string) => { pos: { x: number; y: number } } | undefined;
         };
       }
     ).citizens;
-    for (const id of ids) {
-      const c = roster.byId(id);
-      if (c) c.pos = { x: rally!.x, y: rally!.y };
-    }
+  }
+
+  it("seeds the friend present and flips ready when a second avatar arrives", () => {
+    const rt = new ColonyRuntime(4242);
+    const rally = rt.sim.state.structures.find((s) => s.kind === "rally");
+    expect(rally).toBeTruthy();
+    expect(rt.getUiState().rally).toBeTruthy();
+    // S1 — the friend stands at the rally from sol zero: one present, not yet ready.
+    expect(rt.getUiState().rally!.present).toBe(1);
+    expect(rt.getUiState().rally!.ready).toBe(false);
+
+    const roster = rosterOf(rt);
+    const other = rt
+      .getUiState()
+      .citizens.list.find((c) => c.id !== FRIEND_ID)!;
+    expect(other).toBeTruthy();
+    const oc = roster.byId(other.id);
+    if (oc) oc.pos = { x: rally!.x, y: rally!.y };
 
     let ui = rt.getUiState();
     expect(ui.rally!.present).toBeGreaterThanOrEqual(2);
@@ -35,39 +40,29 @@ describe("rally presence (R4)", () => {
     expect(ui.rally!.x).toBe(rally!.x);
     expect(ui.rally!.y).toBe(rally!.y);
 
-    // walk one away — presence drops, ready clears
-    const c0 = roster.byId(ids[0]!);
-    if (c0) c0.pos = { x: rally!.x + 40, y: rally!.y + 40 };
+    // walk that avatar away — only the friend remains, ready clears
+    if (oc) oc.pos = { x: rally!.x + 40, y: rally!.y + 40 };
     ui = rt.getUiState();
-    expect(ui.rally!.present).toBeLessThan(2);
+    expect(ui.rally!.present).toBe(1);
     expect(ui.rally!.ready).toBe(false);
   });
 
-  it("starts a race from the rally only when two are present (R5)", () => {
+  it("starts a race from the rally when one player joins the friend (R5 + S1)", () => {
     const rt = new ColonyRuntime(4242);
     const rally = rt.sim.state.structures.find((s) => s.kind === "rally")!;
-    const roster = (
-      rt as unknown as {
-        citizens: {
-          byId: (id: string) => { pos: { x: number; y: number } } | undefined;
-        };
-      }
-    ).citizens;
-    const ids = rt
-      .getUiState()
-      .citizens.list.slice(0, 2)
-      .map((c) => c.id);
+    const roster = rosterOf(rt);
 
-    // one present -> join refused, no race starts
-    const c0 = roster.byId(ids[0]!);
-    if (c0) c0.pos = { x: rally.x, y: rally.y };
+    // the friend alone — one present — join refused, no race starts
     expect(rt.getUiState().rally!.present).toBe(1);
     expect(rt.joinRallyRace()).toBe(false);
     expect(rt.getUiState().race.mode).toBe("idle");
 
-    // two present -> join starts the race
-    const c1 = roster.byId(ids[1]!);
-    if (c1) c1.pos = { x: rally.x, y: rally.y };
+    // one player joins the friend — two present — join starts the race
+    const other = rt
+      .getUiState()
+      .citizens.list.find((c) => c.id !== FRIEND_ID)!;
+    const oc = roster.byId(other.id);
+    if (oc) oc.pos = { x: rally.x, y: rally.y };
     expect(rt.getUiState().rally!.ready).toBe(true);
     expect(rt.joinRallyRace()).toBe(true);
     expect(rt.getUiState().race.mode).not.toBe("idle");
