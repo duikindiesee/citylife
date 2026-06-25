@@ -14,8 +14,10 @@ A player logs in (their operator citizen is resolved by displayName), opens the 
 
 ## Slices (per owner, with acceptance criteria)
 
-### S1 (me) — Deterministic NPC friend pinned at the night rally  [SPINE]
+### S1 (me) — Deterministic NPC friend pinned at the night rally [SPINE]
+
 Seed a fixed, named NPC friend standing AT the rally cell so presence reaches 2 the instant the player arrives; pin them so the night bar-wander never drags them off.
+
 - Files: `src/colony/runtime.ts` — new `private seedRallyFriend()` beside `seedJoe/seedViw/seedJack`, called in the constructor after L1263; `RALLY_FRIEND_ID` const beside `JOE_ID/JACK_ID` (~L257-265); early-`continue` guard in `wanderIdleCitizens` (~L2364).
 - Mechanism: `citizens.seedFounder({id:RALLY_FRIEND_ID, home:<rally structure cell>, kind:'human', displayName:<isPublicSafe>, nowMs:JOE_BORN_MS})` — idempotent, deterministic.
 - Acceptance:
@@ -24,7 +26,8 @@ Seed a fixed, named NPC friend standing AT the rally cell so presence reaches 2 
   - Deterministic vitest: construct runtime; assert friend pos within 0.01 of the rally cell; step many night frames (clock.isDay=false); assert friend still within 1.5 of the rally.
   - Live 5191: after walking to the rally in first person, `window.__colony.getUiState().rally.present === 2` and `.ready === true`, verified at night.
 
-### S2 (me) — One-button "Head to the night meetup" + presentCitizens widening  [SPINE]
+### S2 (me) — One-button "Head to the night meetup" + presentCitizens widening [SPINE]
+
 - Files: `src/colony/runtime.ts` — new `headToNightMeetup()` orchestrator (~car block L1700-2020); widen `rallyPresence` + `uiState.rally` (L4208-4217) to add `presentCitizens:{id,displayName}[]`. `src/colony/ui/GaragePanel.tsx` — new button.
 - `headToNightMeetup()` = `updateOperatorCar()` -> `jumpToMyHouse()` -> `goToRallyPoint()`; no-op without an operator citizen.
 - Acceptance:
@@ -34,6 +37,7 @@ Seed a fixed, named NPC friend standing AT the rally cell so presence reaches 2 
 - Depends on: S1.
 
 ### S3 (joe) — Night-visible nameplates + who-is-here social read
+
 - Files: `PlanetRenderer.ts` (nameplate draw path off `AvatarView.displayName`, gated to `uiState.rally.presentCitizens`, emissive floor), `FirstPersonPanel.tsx` (friend-present banner from `FirstPersonView.neighbours` + `clock.isDay`), `ColonyApp.tsx` (who-is-here readout), `colony.css`, `bot/firstPersonView.ts`.
 - Acceptance:
   - Consumes `uiState.rally.presentCitizens` read-only (degrades to the present COUNT until S2 lands); never edits rally/race logic; nameplate emissive floors at night.
@@ -42,6 +46,7 @@ Seed a fixed, named NPC friend standing AT the rally cell so presence reaches 2 
 - Depends on: S2 (graceful degrade lets it start in parallel).
 
 ### S4 (jack) — Night-hangout venue dressing around the rally
+
 - Files: `src/colony/render/venueProps.ts` (NEW, mirrors `shoreProps.ts`), `artifacts.ts`, `artifactSchema.ts`, and ONLY the additive 2-line registration in `PlanetRenderer.ts` (`this.venueProps = buildVenueProps(...)` + `this.venueProps?.update(daylight, now)` in `frame()`).
 - Acceptance:
   - Reads `structures.find(kind==='rally')` read-only; masks roadSet+occupied+structure footprints; no Math.random/Date.now; lit elements emissive-floor at night.
@@ -51,6 +56,7 @@ Seed a fixed, named NPC friend standing AT the rally cell so presence reaches 2 
 - Depends on: none / parallel-safe.
 
 ### S5 (jack) — Unified Kookerbook classifieds read surface
+
 - Files: `src/colony/social/classifieds.ts` (NEW pure aggregator), `kookerbookMain.tsx` (Classifieds tab), `kookerbookLayout.ts`, `kookerbookNav.ts`.
 - Acceptance:
   - Merges `allListings(loadFurnitureMarket)` + `allCarPartListings(loadCarPartMarket)` read-only; never edits a producer; isPublicSafe inherited; deterministic stable ordering.
@@ -59,7 +65,8 @@ Seed a fixed, named NPC friend standing AT the rally cell so presence reaches 2 
   - Live 5191: Classifieds tab shows both feeds with seller aliases; night-visible.
 - Depends on: none / parallel-safe.
 
-### S6 (me) — Race the OWN tuned car from the rally  [BLOCKED / phase-2]
+### S6 (me) — Race the OWN tuned car from the rally [BLOCKED / phase-2]
+
 Threading the operator's CarSpec into the race car mesh is blocked on a Codex-owned hook in `buildRaceLayer`/`RaceLayerOptions`/`setRaceState`. Phase-1 ENDS at "meet a present named friend at the night rally"; `joinRallyRace` already starts a generic race. Do not attempt now.
 
 ## Seam contracts

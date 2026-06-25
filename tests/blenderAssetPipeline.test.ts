@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { rallyVenuePropPlacements, venuePropAssets } from "../src/colony/render/venuePropAssets";
+import {
+  rallyVenuePropPlacements,
+  venuePropAssets,
+} from "../src/colony/render/venuePropAssets";
 import type { SeedStructure } from "../src/colony/sim";
 
 const dryTerrain = {
@@ -38,6 +41,8 @@ describe("Blender GLB venue prop asset pipeline", () => {
   });
 
   it("does not place Blender props without a rally marker", () => {
-    expect(rallyVenuePropPlacements([{ kind: "rocket", x: 10, y: 10 }])).toEqual([]);
+    expect(
+      rallyVenuePropPlacements([{ kind: "rocket", x: 10, y: 10 }]),
+    ).toEqual([]);
   });
 });

@@ -29,18 +29,18 @@ repo, on protected `main` (PRs + review only).
 
 ## The map
 
-| Area | Where | What it holds |
-|---|---|---|
-| **Architecture** | [TECH-SPEC.md](TECH-SPEC.md), [TECH-SPEC-v2-COLONY.md](TECH-SPEC-v2-COLONY.md) | Engine/render decoupling, the Game API contract, the colony model. |
-| **North-star + phases** | [EPIC-street-rod.md](EPIC-street-rod.md), [PHASE-1-street-rod.md](PHASE-1-street-rod.md) | The vision and the current end-to-end slice. |
-| **Lanes + way of work** | [TEAM-LANES.md](TEAM-LANES.md), [../AGENTS.md](../AGENTS.md) | Lane ownership, seams, crons, documentation discipline. |
-| **Specs (the design record)** | [specs/](specs/) | Numbered game-mechanic specs. Active specs at `specs/NNN-*.md`; shipped ones move to [specs/built/](specs/built/). Index + format in [specs/README.md](specs/README.md). |
-| **Visual standard** | [specs/VISUAL-STANDARD.md](specs/VISUAL-STANDARD.md) | Every thing is a seen thing — the one format for visual components. |
-| **Research** | [research/](research/) | Dated deep-dives that ground the specs (economy, citizens, roads, radio, districts, house builder). |
-| **Working plans** | [plans/](plans/) | Multi-slice plans in flight. |
-| **Per-agent lanes** | [agents/](agents/) | Lane queues and acceptance criteria for individual coding agents. |
-| **Operations** | [DEPLOY.md](DEPLOY.md), [HANDOVER.md](HANDOVER.md) | Deploy pipeline and the cold-start handover brief. |
-| **Onboarding lore** | [KOOKERVERSE_FOR_NEWCOMERS.md](KOOKERVERSE_FOR_NEWCOMERS.md) | The in-world primer. |
+| Area                          | Where                                                                                    | What it holds                                                                                                                                                            |
+| ----------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Architecture**              | [TECH-SPEC.md](TECH-SPEC.md), [TECH-SPEC-v2-COLONY.md](TECH-SPEC-v2-COLONY.md)           | Engine/render decoupling, the Game API contract, the colony model.                                                                                                       |
+| **North-star + phases**       | [EPIC-street-rod.md](EPIC-street-rod.md), [PHASE-1-street-rod.md](PHASE-1-street-rod.md) | The vision and the current end-to-end slice.                                                                                                                             |
+| **Lanes + way of work**       | [TEAM-LANES.md](TEAM-LANES.md), [../AGENTS.md](../AGENTS.md)                             | Lane ownership, seams, crons, documentation discipline.                                                                                                                  |
+| **Specs (the design record)** | [specs/](specs/)                                                                         | Numbered game-mechanic specs. Active specs at `specs/NNN-*.md`; shipped ones move to [specs/built/](specs/built/). Index + format in [specs/README.md](specs/README.md). |
+| **Visual standard**           | [specs/VISUAL-STANDARD.md](specs/VISUAL-STANDARD.md)                                     | Every thing is a seen thing — the one format for visual components.                                                                                                      |
+| **Research**                  | [research/](research/)                                                                   | Dated deep-dives that ground the specs (economy, citizens, roads, radio, districts, house builder).                                                                      |
+| **Working plans**             | [plans/](plans/)                                                                         | Multi-slice plans in flight.                                                                                                                                             |
+| **Per-agent lanes**           | [agents/](agents/)                                                                       | Lane queues and acceptance criteria for individual coding agents.                                                                                                        |
+| **Operations**                | [DEPLOY.md](DEPLOY.md), [HANDOVER.md](HANDOVER.md)                                       | Deploy pipeline and the cold-start handover brief.                                                                                                                       |
+| **Onboarding lore**           | [KOOKERVERSE_FOR_NEWCOMERS.md](KOOKERVERSE_FOR_NEWCOMERS.md)                             | The in-world primer.                                                                                                                                                     |
 
 ---
 
