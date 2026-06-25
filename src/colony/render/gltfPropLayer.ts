@@ -40,14 +40,17 @@ export function buildGltfPropLayer(
     const placements = byAsset.get(asset.id) ?? [];
     if (placements.length === 0 || !asset.publicSafe) continue;
     void loader.loadAsync(asset.url).then((gltf) => {
-      // Sit the model's BASE on the terrain. A GLB authored with a CENTRED pivot would otherwise
-      // drop half its height below ground (the bench/garage "in the ground" bug — no in-world QA had
-      // caught it). Lift every instance by the model's bounding-box minimum, scaled per placement, so
-      // base-origin and centre-origin GLBs both land flush. baseMinY is 0 for an already-grounded model.
+      // ASSEMBLE then GROUND the model. updateMatrixWorld so each sub-mesh node transform is known —
+      // the instance matrix is placement * meshWorld below, otherwise a multi-mesh GLB collapses ALL
+      // its parts onto one point (a pile, not a model). baseMinY (the assembled scene minimum) lifts
+      // the real base flush onto the terrain so a centre-origin GLB is not half-buried. QA in-world,
+      // day AND night, base flush on the ground — a green vitest cannot catch this (worldY is stubbed).
+      gltf.scene.updateMatrixWorld(true);
       const baseMinY = new THREE.Box3().setFromObject(gltf.scene).min.y;
       gltf.scene.traverse((obj) => {
         const source = obj as THREE.Mesh;
         if (!source.isMesh) return;
+        const meshWorld = source.matrixWorld.clone();
         const geom = source.geometry.clone();
         const mat = cloneMaterial(source.material);
         owned.push(geom);
@@ -74,7 +77,7 @@ export function buildGltfPropLayer(
           dummy.rotation.set(0, p.rotationTurns * Math.PI * 2, 0);
           dummy.scale.setScalar(p.scale);
           dummy.updateMatrix();
-          mesh.setMatrixAt(i, dummy.matrix);
+          mesh.setMatrixAt(i, dummy.matrix.clone().multiply(meshWorld));
         });
         mesh.instanceMatrix.needsUpdate = true;
         group.add(mesh);
