@@ -56,6 +56,7 @@ import { buildRaceLayer, type RaceLayer } from "./raceLayer";
 import { buildBusLayer, type BusLayer } from "./busLayer";
 import type { BusRoute } from "../transit/busRoute";
 import { buildRoadRibbons, ROAD_RIBBON_LIFT, type RoadWay } from "./roadRibbon";
+import { applyCoastalCommercialDryBlend } from "./terrainLeveling";
 import type { RaceState } from "../racing/race";
 import { isPublicSafe } from "../newcomers";
 
@@ -111,6 +112,7 @@ const CRAB_EYE = 0.42;
 // Spec 084 S6 — raised for the estate parcels (a GRAND lot alone pads its garden + farm + walkway
 // cell by cell); the S1 dev-mode tripwires still warn the moment either cap drops scenery.
 const PAD_CAP = 4096;
+const RENDER_DRY_FLOOR = 0.65;
 const VOX_CAP = 24576;
 
 export class PlanetRenderer {
@@ -982,7 +984,7 @@ export class PlanetRenderer {
     // (updateOcean), so its surface PEAKS at ~0.56; a translucent sheen rides at ~0.4. A homestead cell
     // must clear that peak or the sea washes back over it as a teal tint even though the ground is dry
     // (the operator's "the sea interferes where land is"). 0.65 clears the peak with margin.
-    const DRY = 0.65;
+    const DRY = RENDER_DRY_FLOOR;
     const SKIRT = 4; // cells of graded transition from the flat pad out to natural ground
     const seatOf = (hz: { x: number; y: number; w: number; d: number }) =>
       Math.max(this.groundY(hz.x + (hz.w - 1) / 2, hz.y + (hz.d - 1) / 2), DRY);
@@ -1052,28 +1054,24 @@ export class PlanetRenderer {
           }
         }
     }
-    // Spec 103 — DRY the commercial district the same way as the homesteads. A coastal shop pad whose
-    // worldY is below the dry floor is otherwise drawn under the sea disc (the operator's "commercials
-    // is in the ground"; Floyd's night flag: pads hovering/clipping over the water). Raise every sub-floor
-    // shop-footprint + mall-pad cell clear of the sea; buildCommercialDistrict then seats the shop on this
-    // dried surface (surfaceY), so inland plots are untouched and only coastal ones lift. Roads are skipped
-    // (the ribbon bridges them). No flatten/skirt — the shop's own plinth still fills any residual slope.
+    // Spec 103/105 — DRY the commercial district like #164, then BLEND coastal low cells around the
+    // seat rectangles. #164 seats shops on surfaceY and raises below-dry shop/mall cells; this slice does
+    // not redo that dry decision. It extends the render-only height override outward on steep seaward
+    // frontages so dry commercial pads ramp toward the shoreline instead of ending in one-cell black
+    // cliff faces / floating-table silhouettes at night. Roads are skipped because ribbons bridge them.
     if (cd) {
-      const dryRect = (rx: number, ry: number, rw: number, rh: number) => {
-        for (let y = ry; y < ry + rh; y++)
-          for (let x = rx; x < rx + rw; x++)
-            if (
-              x >= 0 &&
-              y >= 0 &&
-              x < N &&
-              y < N &&
-              t.worldY(x, y) < DRY &&
-              !this.roadRibbonCells?.has(`${x},${y}`)
-            )
-              put(x, y, DRY);
-      };
-      for (const p of cd.parcels) dryRect(p.x - 1, p.y - 1, p.w + 2, p.h + 2);
-      dryRect(cd.mallPad.x, cd.mallPad.y, cd.mallPad.w, cd.mallPad.h);
+      const rects = [
+        ...cd.parcels.map((p) => ({ x: p.x - 1, y: p.y - 1, w: p.w + 2, h: p.h + 2 })),
+        { x: cd.mallPad.x, y: cd.mallPad.y, w: cd.mallPad.w, h: cd.mallPad.h },
+      ];
+      applyCoastalCommercialDryBlend({
+        next,
+        n: N,
+        terrain: t,
+        rects,
+        roadRibbonCells: this.roadRibbonCells,
+        dry: DRY,
+      });
     }
     // Spec 095 — grade the visible ground UP to the road ribbon (render-only; worldY untouched), so a
     // car riding the ribbon top is never swallowed by a hillside and the world never shows below the road.
@@ -3187,39 +3185,52 @@ export class PlanetRenderer {
       // ground; the uphill terrain just buries into the solid body, and the foundation plinth below
       // fills the slope gap. (Was the centre height, which left the downhill side floating.)
       let loY = Infinity,
-        hiY = 0;
+        hiY = 0,
+        rawLoY = Infinity;
       for (const fx of [p.x, p.x + p.w - 1])
         for (const fy of [p.y, p.y + p.h - 1]) {
           // Seat on the DRIED/levelled surface (surfaceY), not raw worldY — a coastal pad is raised
           // clear of the sea in relevelTerrain, so the shop lifts with it instead of seating underwater.
           const h = this.surfaceY(fx, fy);
+          const rawH = t.worldY(fx, fy);
           if (h < loY) loY = h;
           if (h > hiY) hiY = h;
+          if (rawH < rawLoY) rawLoY = rawH;
         }
       const baseY = loY;
+      const coastalDriedSeat = rawLoY < RENDER_DRY_FLOOR;
       const front = -p.side; // +z when the plot fronts the street to its -y side
 
       const g = new THREE.Group();
       g.position.set(this.wx(cx), baseY, this.wz(cy));
 
-      // Foundation plinth — from the base down past the slope range, so the shop reads as built on the
-      // ground and never floats, even where the coast falls away under the footprint.
-      const foundH = hiY - loY + 0.7;
+      // Foundation plinth — inland/sloped shops still get a deep fill body. Coastal DRY seats already own
+      // a flat render pad plus the Spec 105 terrain apron, so a full-depth dark plinth reads as the exact
+      // black vertical side/floating table we are removing. Keep those coastal plinths thin and let the
+      // blended terrain do the visual grounding.
+      const foundH = coastalDriedSeat ? 0.22 : hiY - loY + 0.7;
       const found = new THREE.Mesh(
         new THREE.BoxGeometry(bodyW * 1.02, foundH, bodyD * 1.02),
-        new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.9 }),
+        new THREE.MeshStandardMaterial({
+          color: coastalDriedSeat ? 0x536b3a : 0x2a2f38,
+          roughness: 0.9,
+        }),
       );
       found.position.y = -foundH / 2 + 0.02;
       found.castShadow = true;
       g.add(found);
 
-      // Body — a dark slate shopfront so the neon reads against it.
+      // Body — inland plots keep the dark slate shopfront; coastal dried seats use a colour-matched wall
+      // band so night views show grounded shop mass instead of a black tabletop silhouette.
+      const coastalWall = new THREE.Color(neon).lerp(new THREE.Color(0x536b3a), 0.45);
       const body = new THREE.Mesh(
         new THREE.BoxGeometry(bodyW, wallH, bodyD),
         new THREE.MeshStandardMaterial({
-          color: 0x2b3040,
+          color: coastalDriedSeat ? coastalWall : 0x2b3040,
           roughness: 0.7,
-          metalness: 0.1,
+          metalness: coastalDriedSeat ? 0.04 : 0.1,
+          emissive: coastalDriedSeat ? coastalWall : 0x000000,
+          emissiveIntensity: coastalDriedSeat ? 0.12 : 0,
         }),
       );
       body.position.y = wallH / 2;
