@@ -54,6 +54,7 @@ deliberately deferred so this slice stays bounded, in-lane, and re-baselinable i
    `parcels`, `reserve` are untouched so no parcel id/position/door shifts.
 
 3. PICK THE MAJOR INTERSECTION as a fully-pinned pure function (no Set/Map iteration-order dependence):
+
    - **Domain** = the deduped UNION of `street[]` and `crossStreet[]` cells — **centrelines only, NOT
      the widened carriageway cells.** The widen runs later in `runtime.ts`; at the time
      `makeCommercialDistrict` computes the intersection the widened cells do not exist yet.
@@ -65,7 +66,7 @@ deliberately deferred so this slice stays bounded, in-lane, and re-baselinable i
    - **argmax comparator** = higher degree wins; tie → smaller x; tie → smaller y. Bake this comparator
      into the picker.
    - For the single-high-street × single-cross-street geometry the crossing cell `(crossStreetX,
-     streetY)` has degree 4 (its E/W neighbours are high-street cells, its N/S neighbours are the
+streetY)` has degree 4 (its E/W neighbours are high-street cells, its N/S neighbours are the
      `streetY±1` cross-street cells, all shop-clear) while every plain street or cross-street cell has
      degree ≤ 2 — so the crossing is the UNIQUE argmax and the tie-break is never exercised here. The
      degree-argmax form is the contract that generalizes unambiguously when a second cross-street or a
@@ -109,7 +110,7 @@ deliberately deferred so this slice stays bounded, in-lane, and re-baselinable i
   "reproducible within one process today", not "deterministic by construction". The real gates are:
   - **(a) SOURCE-SCAN** asserting no `Math.random`, `Date.now`, `performance.now`, or `new Date` in:
     `src/colony/commerce/district.ts` (all of it, including the new picker), `src/colony/commerce/
-    businesses.ts`, AND the runtime commercial path — specifically the reserve-search IIFE
+businesses.ts`, AND the runtime commercial path — specifically the reserve-search IIFE
     (runtime.ts ~881-968), the cross-street widen block (runtime.ts ~1133-1168), and the
     `raceCommercialCenter` read (runtime.ts ~2076-2089). The scan MUST cover the reserve IIFE and the
     widen block, which are exactly where new nondeterminism would land.
@@ -140,10 +141,10 @@ deliberately deferred so this slice stays bounded, in-lane, and re-baselinable i
   rule `scaled = round(old * (reserveW * reserveH) / (40 * 30))`:
   - `reserveFreePrimary = round(140 * 3072 / 1200) = 358`
   - `reserveFreeFallback = round(80 * 3072 / 1200) = 205`
-  Promote BOTH to named constants under `COLONY.commerce` and use those names in the runtime IIFE.
-  Do NOT leave a "~360"/"~205" range — the exact value selects which reserve candidate clears the bar
-  on a given seed, so it is a deterministic golden-affecting input. Changing these constants later is a
-  DELIBERATE, golden-re-baselining decision, noted as such in Acceptance.
+    Promote BOTH to named constants under `COLONY.commerce` and use those names in the runtime IIFE.
+    Do NOT leave a "~360"/"~205" range — the exact value selects which reserve candidate clears the bar
+    on a given seed, so it is a deterministic golden-affecting input. Changing these constants later is a
+    DELIBERATE, golden-re-baselining decision, noted as such in Acceptance.
 - EMPIRICAL CHECK (build-time, by the implementer): confirm `commercialReserve` is non-null on
   4242/42/7 with `free >= 358` via the COASTAL path. A bigger rect near a coast clips more water/rock
   than the old 40×30 did, so the achievable free fraction can fall below the bar and silently drop to
