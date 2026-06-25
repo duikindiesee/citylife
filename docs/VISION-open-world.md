@@ -53,7 +53,7 @@ Gate per district slice: does this ladder toward the night meetup and the race? 
 
 1. FINISH PHASE-1 (car lane) — one-button meetup + presence (S2), nameplates (S3, Joe), rally venue + classifieds (S4-S5, Jack). NO district work starts until S2 is merged.
 2. PHASE 2A — DISTRICT SCALE-UP (Jack) — BUILT: grow the reserve, add the cross-street + intersection, widen carriageways.
-3. PHASE 2B — MALL + GARAGE IDENTITIES (Jack data + car-lane seam) — mall_anchor + car_garage businesses, pad ranking.
+3. PHASE 2B — MALL + GARAGE IDENTITIES (Jack data + car-lane seam) — IN PROGRESS: mall anchor pad reserved first; mall massing + garage seam remain later bounded slices.
 4. PHASE 2C — LANDMARK MASSING (Jack render + Joe signage) — mall + garage massing, pylon signage, POI markers.
 5. PHASE 2D — AUTHORED GLB SHELLS (Jack, optional uplift) — replace code-massed boxes with Blender-authored shells per spec 100.
 6. PHASE-2 RACE (car lane, blocked) — own-car rally race on the Codex carSpec hook; the new intersection is its start/checkpoint.

@@ -115,6 +115,8 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
     expect(COLONY.commerce.reserveH).toBe(48);
     expect(COLONY.commerce.reserveFreePrimary).toBe(358);
     expect(COLONY.commerce.reserveFreeFallback).toBe(205);
+    expect(COLONY.commerce.mallPadW).toBe(14);
+    expect(COLONY.commerce.mallPadH).toBe(10);
 
     for (const seed of SEEDS) {
       const rt = rtFor(seed);
@@ -131,6 +133,7 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
       const shopCells = new Set<string>();
       for (const p of d.parcels)
         for (const c of footprintCells(p)) shopCells.add(c);
+      for (const c of footprintCells(d.mallPad)) shopCells.add(c);
       const residential = residentialCells(rt);
       const crossX = reserve.x + Math.floor(reserve.w / 2);
       const streetY = reserve.y + Math.floor(reserve.h / 2);
@@ -170,6 +173,7 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
       expect(b.reserve).toEqual(a.reserve);
       expect(b.crossStreet).toEqual(a.crossStreet);
       expect(b.intersection).toEqual(a.intersection);
+      expect(b.mallPad).toEqual(a.mallPad);
     }
   }, 30000);
 });

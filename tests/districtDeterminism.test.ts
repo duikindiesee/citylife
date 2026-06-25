@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
+import { cellOk } from "../src/colony/pathfind";
 import type { Cell } from "../src/colony/pathfind";
 // @ts-ignore Vite/Vitest raw import for source-scan coverage.
 import districtSource from "../src/colony/commerce/district.ts?raw";
@@ -15,27 +16,35 @@ const GOLDEN: Record<
   {
     intersection: Cell;
     reserve: { x: number; y: number; w: number; h: number };
+    mallPad: { x: number; y: number; w: number; h: number };
     crossStreetHash: string;
     parcelFootprintHash: string;
+    mallPadHash: string;
   }
 > = {
   4242: {
     intersection: { x: 113, y: 265 },
     reserve: { x: 81, y: 241, w: 64, h: 48 },
+    mallPad: { x: 99, y: 248, w: 14, h: 10 },
     crossStreetHash: "0fd0df1b",
     parcelFootprintHash: "3659109e",
+    mallPadHash: "6bba75f7",
   },
   42: {
     intersection: { x: 156, y: 382 },
     reserve: { x: 124, y: 358, w: 64, h: 48 },
+    mallPad: { x: 142, y: 365, w: 14, h: 10 },
     crossStreetHash: "3b4adb2a",
     parcelFootprintHash: "ea4dec66",
+    mallPadHash: "2af4f7cf",
   },
   7: {
     intersection: { x: 189, y: 323 },
     reserve: { x: 157, y: 299, w: 64, h: 48 },
+    mallPad: { x: 175, y: 306, w: 14, h: 10 },
     crossStreetHash: "bae6d232",
     parcelFootprintHash: "82049b40",
+    mallPadHash: "120d1aa3",
   },
 };
 
@@ -72,10 +81,18 @@ function parcelFootprintHash(rt: ColonyRuntime): string {
   return sortedHash(cells);
 }
 
-function referenceIntersection(
-  street: Cell[],
-  crossStreet: Cell[],
-): Cell | undefined {
+function rectCells(rect: { x: number; y: number; w: number; h: number }): Cell[] {
+  const cells: Cell[] = [];
+  for (let y = rect.y; y < rect.y + rect.h; y++)
+    for (let x = rect.x; x < rect.x + rect.w; x++) cells.push({ x, y });
+  return cells;
+}
+
+function rectCenter(rect: { x: number; y: number; w: number; h: number }): { x: number; y: number } {
+  return { x: rect.x + (rect.w - 1) / 2, y: rect.y + (rect.h - 1) / 2 };
+}
+
+function referenceIntersection(street: Cell[], crossStreet: Cell[]): Cell | undefined {
   const union: Cell[] = [];
   const seen = new Set<string>();
   for (const c of [...street, ...crossStreet]) {
@@ -139,7 +156,7 @@ function coastalCandidateKeys(rt: ColonyRuntime): Set<string> {
   return out;
 }
 
-describe("phase 2A district determinism gate", () => {
+describe("phase 2A/2B district determinism gate", () => {
   it("source-scans the deterministic district path", () => {
     const runtimeCommercialPath = [
       sourceBetween(
@@ -175,8 +192,47 @@ describe("phase 2A district determinism gate", () => {
         coastalCandidateKeys(rt).has(`${golden.reserve.x},${golden.reserve.y}`),
       ).toBe(true);
       expect(d.intersection).toEqual(golden.intersection);
+      expect(d.mallPad).toEqual(golden.mallPad);
       expect(sortedHash(d.crossStreet)).toBe(golden.crossStreetHash);
       expect(parcelFootprintHash(rt)).toBe(golden.parcelFootprintHash);
+      expect(sortedHash(rectCells(d.mallPad))).toBe(golden.mallPadHash);
+    }
+  }, 30000);
+
+  it("reserves a deterministic mall pad inside the district end nearest the intersection", () => {
+    for (const seed of SEEDS) {
+      const rt = new ColonyRuntime(seed);
+      const d = rt.commercialDistrict!;
+      const reserve = rt.commercialReserve!;
+      const mallPad = d.mallPad;
+      const shopCells = new Set<string>();
+      for (const p of d.parcels)
+        for (let y = p.y; y < p.y + p.h; y++)
+          for (let x = p.x; x < p.x + p.w; x++) shopCells.add(`${x},${y}`);
+      const streetKeys = new Set(d.street.map(key));
+      const crossStreetKeys = new Set(d.crossStreet.map(key));
+      const center = rectCenter(mallPad);
+      const intersection = d.intersection!;
+
+      expect(mallPad.w).toBe(14);
+      expect(mallPad.h).toBe(10);
+      expect(mallPad.x).toBeGreaterThanOrEqual(reserve.x);
+      expect(mallPad.y).toBeGreaterThanOrEqual(reserve.y);
+      expect(mallPad.x + mallPad.w).toBeLessThanOrEqual(reserve.x + reserve.w);
+      expect(mallPad.y + mallPad.h).toBeLessThanOrEqual(reserve.y + reserve.h);
+      expect(center.y).toBeLessThan(intersection.y);
+
+      for (const c of rectCells(mallPad)) {
+        const k = key(c);
+        expect(cellOk(rt.sim.state.terrain, c.x, c.y)).toBe(true);
+        expect(streetKeys.has(k)).toBe(false);
+        expect(crossStreetKeys.has(k)).toBe(false);
+        expect(shopCells.has(k)).toBe(false);
+      }
+
+      const replay = new ColonyRuntime(seed).commercialDistrict!;
+      expect(replay.mallPad).toEqual(mallPad);
+      expect(sortedHash(rectCells(replay.mallPad))).toBe(sortedHash(rectCells(mallPad)));
     }
   }, 30000);
 

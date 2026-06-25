@@ -1053,6 +1053,8 @@ export const COLONY = {
     reserveH: 48,
     reserveFreePrimary: 358,
     reserveFreeFallback: 205,
+    mallPadW: 14,
+    mallPadH: 10,
     plotPriceK: { kiosk: 220, store: 420, showroom: 720 },
     matByKind: { kiosk: 12, store: 24, showroom: 40 },
   },

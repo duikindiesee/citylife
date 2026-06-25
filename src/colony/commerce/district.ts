@@ -6,6 +6,7 @@
 // is a pure function of (terrain, reserve) with no clock or random source, so it replays identically and
 // is node-testable headless. The vibrant render + the buy/build economy layer on top of this.
 import { cellOk, type Cell } from "../pathfind";
+import { COLONY } from "../config";
 import type { Terrain } from "../terrain";
 import { assignBusinesses, type BusinessId } from "./businesses";
 
@@ -42,6 +43,8 @@ export interface CommercialDistrict {
   crossStreet: Cell[];
   /** The degree-argmax core intersection over street + crossStreet centrelines. */
   intersection?: Cell;
+  /** The reserved mall anchor pad; massing/rendering lands in Phase 2C. */
+  mallPad: Reserve;
   /** The land bank this district was surveyed within. */
   reserve: Reserve;
 }
@@ -146,12 +149,13 @@ export function makeCommercialDistrict(
   }
 
   const intersection = pickMajorIntersection(street, crossStreet);
+  const mallPad = pickMallPad(t, reserve, street, crossStreet, parcels, claimed);
 
   // Each plot fronts a real kooker app — assign its business identity (deterministic).
   const biz = assignBusinesses(parcels);
   for (const p of parcels) p.business = biz[p.id];
 
-  return { street, parcels, crossStreet, intersection, reserve };
+  return { street, parcels, crossStreet, intersection, mallPad, reserve };
 }
 
 export function pickMajorIntersection(
@@ -194,6 +198,77 @@ export function pickMajorIntersection(
     }
   }
   return best;
+}
+
+export function pickMallPad(
+  t: Terrain,
+  reserve: Reserve,
+  street: readonly Cell[],
+  crossStreet: readonly Cell[],
+  parcels: readonly ShopParcel[],
+  shopCells: ReadonlySet<string>,
+): Reserve {
+  const w = COLONY.commerce.mallPadW;
+  const h = COLONY.commerce.mallPadH;
+  const intersection = pickMajorIntersection(street, crossStreet) ?? {
+    x: reserve.x + Math.floor(reserve.w / 2),
+    y: reserve.y + Math.floor(reserve.h / 2),
+  };
+  const streetKeys = new Set(street.map((c) => `${c.x},${c.y}`));
+  const crossKeys = new Set(crossStreet.map((c) => `${c.x},${c.y}`));
+  const northLimit = Math.min(
+    ...parcels.filter((p) => p.side === -1).map((p) => p.y),
+    intersection.y,
+  );
+  const southLimit = Math.max(
+    ...parcels.filter((p) => p.side === 1).map((p) => p.y + p.h - 1),
+    intersection.y,
+  );
+  let best: Reserve | undefined;
+  let bestDistance = Infinity;
+  const consider = (x: number, y: number) => {
+    const pad = { x, y, w, h };
+    if (!mallPadFits(t, reserve, pad, shopCells, streetKeys, crossKeys)) return;
+    const cx = x + (w - 1) / 2;
+    const cy = y + (h - 1) / 2;
+    const d = (cx - intersection.x) ** 2 + (cy - intersection.y) ** 2;
+    if (
+      d < bestDistance ||
+      (d === bestDistance && (!best || x < best.x || (x === best.x && y < best.y)))
+    ) {
+      best = pad;
+      bestDistance = d;
+    }
+  };
+
+  for (let y = reserve.y; y <= reserve.y + reserve.h - h; y++) {
+    const northEnd = y + h - 1 < northLimit;
+    const southEnd = y > southLimit;
+    if (!northEnd && !southEnd) continue;
+    for (let x = reserve.x; x <= reserve.x + reserve.w - w; x++) consider(x, y);
+  }
+
+  return best ?? { x: reserve.x, y: reserve.y, w, h };
+}
+
+function mallPadFits(
+  t: Terrain,
+  reserve: Reserve,
+  pad: Reserve,
+  shopCells: ReadonlySet<string>,
+  streetKeys: ReadonlySet<string>,
+  crossKeys: ReadonlySet<string>,
+): boolean {
+  if (pad.x < reserve.x || pad.y < reserve.y) return false;
+  if (pad.x + pad.w > reserve.x + reserve.w) return false;
+  if (pad.y + pad.h > reserve.y + reserve.h) return false;
+  for (let y = pad.y; y < pad.y + pad.h; y++)
+    for (let x = pad.x; x < pad.x + pad.w; x++) {
+      const k = `${x},${y}`;
+      if (!cellOk(t, x, y)) return false;
+      if (shopCells.has(k) || streetKeys.has(k) || crossKeys.has(k)) return false;
+    }
+  return true;
 }
 
 /** Every cell of [x0..x1]×[y0..y1] must be inside the reserve, good ground, not already taken by a

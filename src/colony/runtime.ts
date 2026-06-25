@@ -1136,6 +1136,10 @@ export class ColonyRuntime {
       for (const p of this.commercialDistrict.parcels)
         for (let y = p.y; y < p.y + p.h; y++)
           for (let x = p.x; x < p.x + p.w; x++) shopCells.add(`${x},${y}`);
+      const mallPad = this.commercialDistrict.mallPad;
+      for (let y = mallPad.y; y < mallPad.y + mallPad.h; y++)
+        for (let x = mallPad.x; x < mallPad.x + mallPad.w; x++)
+          shopCells.add(`${x},${y}`);
       const widened = new Set<string>();
       for (const c of this.commercialDistrict.street)
         for (const dy of [-1, 0, 1]) {
