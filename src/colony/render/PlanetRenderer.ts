@@ -2979,7 +2979,8 @@ export class PlanetRenderer {
     }
     for (const [id, displayName] of wanted) {
       const plate = this.rallyNameplates.get(id);
-      if (!plate) this.rallyNameplates.set(id, this.makeRallyNameplate(displayName));
+      if (!plate)
+        this.rallyNameplates.set(id, this.makeRallyNameplate(displayName));
       else if (plate.sprite.name !== displayName) {
         this.disposeRallyNameplate(id, plate);
         this.rallyNameplates.set(id, this.makeRallyNameplate(displayName));
@@ -4350,7 +4351,10 @@ export class PlanetRenderer {
       depthWrite: false,
       toneMapped: false,
     });
-    const floor = new THREE.Mesh(new THREE.CircleGeometry(0.48, 24), floorMaterial);
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(0.48, 24),
+      floorMaterial,
+    );
     floor.rotation.x = -Math.PI / 2;
     floor.renderOrder = 19;
     const group = new THREE.Group();
@@ -4391,7 +4395,8 @@ export class PlanetRenderer {
     )
       return;
     const list = this.avatarSource();
-    for (const plate of this.rallyNameplates.values()) plate.group.visible = false;
+    for (const plate of this.rallyNameplates.values())
+      plate.group.visible = false;
     const t = this.sim.state.terrain;
     const n = Math.min(list.length, 64);
     const col = new THREE.Color();
