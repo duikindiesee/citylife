@@ -1,6 +1,6 @@
 # Spec 103 — Phase 2A: district scale-up (grow the reserve, cross-street, major intersection)
 
-**Status:** planned (one bounded Jack slice).
+**Status:** built in PR (one bounded Jack slice).
 **Lane:** World & Build (Jack). Read-only seam to the car lane (race start consumes one new cell).
 **Phase:** PHASE 2A of the open-world roadmap (`docs/VISION-open-world.md`, line 55). Gated behind
 phase-1 S2 (shipped). Mall anchor, garage landmark, authored GLB shells are LATER slices (2B/2C/2D)

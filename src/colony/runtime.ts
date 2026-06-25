@@ -880,8 +880,8 @@ export class ColonyRuntime {
     }
     this.commercialReserve = (() => {
       const t = this.sim.state.terrain,
-        W = 40,
-        H = 30;
+        W = COLONY.commerce.reserveW,
+        H = COLONY.commerce.reserveH;
       const clampX = (v: number) =>
         Math.max(0, Math.min(t.size - W, Math.round(v)));
       const clampY = (v: number) =>
@@ -917,7 +917,7 @@ export class ColonyRuntime {
                 }
               }
             const s = coastal * 2 + free; // hug the shore by the lighthouse, but demand enough clear room
-            if (free >= 140 && s > bestScore) {
+            if (free >= COLONY.commerce.reserveFreePrimary && s > bestScore) {
               bestScore = s;
               best = { x: rx, y: ry, w: W, h: H };
             }
@@ -963,7 +963,7 @@ export class ColonyRuntime {
             best = rect;
           }
         }
-      if (!best || bestFree < 80) return null;
+      if (!best || bestFree < COLONY.commerce.reserveFreeFallback) return null;
       return claim(best);
     })();
     // Spec 086 — SATELLITE HAMLETS in the woods + hills, each routed + placed AROUND everything already
@@ -1152,6 +1152,22 @@ export class ColonyRuntime {
         const [x, y] = k.split(",").map(Number);
         return { x: x!, y: y! };
       });
+      const crossWidened = new Set<string>();
+      for (const c of this.commercialDistrict.crossStreet)
+        for (const dx of [-1, 0, 1]) {
+          const x = c.x + dx,
+            y = c.y;
+          if (
+            cellOk(t, x, y) &&
+            !residentialKeys.has(`${x},${y}`) &&
+            !shopCells.has(`${x},${y}`)
+          )
+            crossWidened.add(`${x},${y}`);
+        }
+      const crossStreetCells = [...crossWidened].map((k) => {
+        const [x, y] = k.split(",").map(Number);
+        return { x: x!, y: y! };
+      });
       const car = this.neighborhood.carriage;
       // 086-P1 — connect from the founders' carriage cell NEAREST the (now coastal) district, not the
       // inland terminus, so the spur is the shortest coast road rather than a backtrack inland.
@@ -1165,6 +1181,7 @@ export class ColonyRuntime {
         }) ?? [];
       mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
       mergeAvenue(this.sim.state, streetCells);
+      mergeAvenue(this.sim.state, crossStreetCells);
     }
     // Spec 088 — the BUS route: a loop over the finished road network visiting every hood (the founders'
     // coast + each hamlet). Anchored on each hood's carriage centroid; makeBusRoute snaps to the nearest
@@ -1185,6 +1202,12 @@ export class ColonyRuntime {
     if (this.commercialDistrict && this.commercialDistrict.street.length >= 2)
       this.roadWays.push({
         path: this.commercialDistrict.street,
+        kind: "avenue",
+        width: 4,
+      });
+    if (this.commercialDistrict && this.commercialDistrict.crossStreet.length >= 2)
+      this.roadWays.push({
+        path: this.commercialDistrict.crossStreet,
         kind: "avenue",
         width: 4,
       });
@@ -2074,6 +2097,8 @@ export class ColonyRuntime {
   }
 
   private raceCommercialCenter(): { x: number; y: number } | null {
+    const intersection = this.commercialDistrict?.intersection;
+    if (intersection) return intersection;
     const street = this.commercialDistrict?.street;
     if (street && street.length > 0) {
       let sx = 0,

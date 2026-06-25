@@ -1,9 +1,9 @@
-// Spec 079 P0 — the commercial high street. A pure, deterministic survey of shop plots along a
-// market street through the reserved commercial land bank (the 40x30 reserve at the avenue's inland
-// end, runtime.commercialReserve). Mirrors the residential neighbourhood survey's discipline: every
-// cell is gated through cellOk (in-bounds, buildable, dry, not rock — the shared land contract), the
-// footprint is collision-checked against a claimed set so shops never overlap, and the whole thing is
-// a pure function of (terrain, reserve) — no Date.now, no Math.random — so it replays identically and
+// Spec 079 P0 / 103 — the commercial high street. A pure, deterministic survey of shop plots along a
+// market street through the reserved commercial land bank (now a larger district reserve at the avenue's
+// inland end, runtime.commercialReserve). Mirrors the residential neighbourhood survey's discipline:
+// every cell is gated through cellOk (in-bounds, buildable, dry, not rock — the shared land contract),
+// the footprint is collision-checked against a claimed set so shops never overlap, and the whole thing
+// is a pure function of (terrain, reserve) with no clock or random source, so it replays identically and
 // is node-testable headless. The vibrant render + the buy/build economy layer on top of this.
 import { cellOk, type Cell } from "../pathfind";
 import type { Terrain } from "../terrain";
@@ -38,6 +38,10 @@ export interface CommercialDistrict {
   street: Cell[];
   /** The shop plots flanking the street, in deterministic placement order. */
   parcels: ShopParcel[];
+  /** The perpendicular cross-street centreline, surveyed in ascending y. */
+  crossStreet: Cell[];
+  /** The degree-argmax core intersection over street + crossStreet centrelines. */
+  intersection?: Cell;
   /** The land bank this district was surveyed within. */
   reserve: Reserve;
 }
@@ -129,11 +133,70 @@ export function makeCommercialDistrict(
     }
   }
 
+  const shopCells = new Set<string>();
+  for (const p of parcels) claim(shopCells, p.x, p.y, p.x + p.w - 1, p.y + p.h - 1);
+
+  const crossStreetX = reserve.x + Math.floor(reserve.w / 2);
+  const crossStreet: Cell[] = [];
+  for (let y = reserve.y; y < reserve.y + reserve.h; y++) {
+    const key = `${crossStreetX},${y}`;
+    if (
+      cellOk(t, crossStreetX, y) &&
+      !shopCells.has(key) &&
+      !blocked.has(key)
+    )
+      crossStreet.push({ x: crossStreetX, y });
+  }
+
+  const intersection = pickMajorIntersection(street, crossStreet);
+
   // Each plot fronts a real kooker app — assign its business identity (deterministic).
   const biz = assignBusinesses(parcels);
   for (const p of parcels) p.business = biz[p.id];
 
-  return { street, parcels, reserve };
+  return { street, parcels, crossStreet, intersection, reserve };
+}
+
+export function pickMajorIntersection(
+  street: readonly Cell[],
+  crossStreet: readonly Cell[],
+): Cell | undefined {
+  const union: Cell[] = [];
+  const seen = new Set<string>();
+  for (const c of street) {
+    const k = `${c.x},${c.y}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      union.push(c);
+    }
+  }
+  for (const c of crossStreet) {
+    const k = `${c.x},${c.y}`;
+    if (!seen.has(k)) {
+      seen.add(k);
+      union.push(c);
+    }
+  }
+
+  let best: Cell | undefined;
+  let bestDegree = -1;
+  for (const c of union) {
+    const degree = [
+      `${c.x + 1},${c.y}`,
+      `${c.x - 1},${c.y}`,
+      `${c.x},${c.y + 1}`,
+      `${c.x},${c.y - 1}`,
+    ].filter((k) => seen.has(k)).length;
+    if (
+      degree > bestDegree ||
+      (degree === bestDegree &&
+        (!best || c.x < best.x || (c.x === best.x && c.y < best.y)))
+    ) {
+      best = { x: c.x, y: c.y };
+      bestDegree = degree;
+    }
+  }
+  return best;
 }
 
 /** Every cell of [x0..x1]×[y0..y1] must be inside the reserve, good ground, not already taken by a

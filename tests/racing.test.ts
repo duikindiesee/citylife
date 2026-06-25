@@ -33,6 +33,8 @@ function rtFor(seed: number): ColonyRuntime {
 }
 
 function commercialCenter(rt: ColonyRuntime): { x: number; y: number } | null {
+  const intersection = rt.commercialDistrict?.intersection;
+  if (intersection) return intersection;
   const street = rt.commercialDistrict?.street;
   if (street && street.length > 0) {
     let sx = 0,
@@ -43,7 +45,10 @@ function commercialCenter(rt: ColonyRuntime): { x: number; y: number } | null {
     }
     return { x: sx / street.length, y: sy / street.length };
   }
-  return null;
+  const reserve = rt.commercialReserve;
+  return reserve
+    ? { x: reserve.x + reserve.w / 2, y: reserve.y + reserve.h / 2 }
+    : null;
 }
 
 function trackFor(seed: number): RaceTrack {
@@ -234,11 +239,22 @@ describe("spec 087 road rally track generation", () => {
   });
 
   it("keeps the start checkpoint out of the Nearest bar footprint and frontage", () => {
-    const rt = rtFor(4242);
-    const excluded = commercialFrontageExclusion(rt.commercialDistrict);
-    const track = trackFor(4242);
-    for (const cp of track.checkpoints)
-      expect(excluded.has(roadKey(cp.x, cp.y))).toBe(false);
+    for (const seed of SEEDS) {
+      const rt = rtFor(seed);
+      const excluded = commercialFrontageExclusion(rt.commercialDistrict);
+      const track = trackFor(seed);
+      const intersection = rt.commercialDistrict!.intersection!;
+      expect(excluded.has(roadKey(intersection.x, intersection.y))).toBe(false);
+      expect(rt.sim.state.roadKind.has(roadKey(intersection.x, intersection.y))).toBe(true);
+      expect(
+        Math.hypot(
+          track.checkpoints[0]!.x - intersection.x,
+          track.checkpoints[0]!.y - intersection.y,
+        ),
+      ).toBeLessThanOrEqual(2);
+      for (const cp of track.checkpoints)
+        expect(excluded.has(roadKey(cp.x, cp.y))).toBe(false);
+    }
   }, 30000);
 
   it("honors the numeric contracts on live seeds", () => {

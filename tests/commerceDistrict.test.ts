@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { cellOk } from "../src/colony/pathfind";
 import { SHOP_SIZE } from "../src/colony/commerce/district";
+import { COLONY } from "../src/colony/config";
 
 // Drive the REAL runtime boot (neighbourhood + reserve search + survey) rather than reconstructing
 // the layout — no drift between test and production. Booting is expensive, so cache per seed.
@@ -109,12 +110,66 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
     }
   }, 30000);
 
+  it("grows the reserve into a crossed block with a deterministic core intersection", () => {
+    expect(COLONY.commerce.reserveW).toBe(64);
+    expect(COLONY.commerce.reserveH).toBe(48);
+    expect(COLONY.commerce.reserveFreePrimary).toBe(358);
+    expect(COLONY.commerce.reserveFreeFallback).toBe(205);
+
+    for (const seed of SEEDS) {
+      const rt = rtFor(seed);
+      const d = rt.commercialDistrict!;
+      const reserve = rt.commercialReserve!;
+      expect(reserve.w).toBe(64);
+      expect(reserve.h).toBe(48);
+      expect(d.crossStreet.length).toBeGreaterThan(0);
+      expect(d.intersection).toEqual({
+        x: reserve.x + Math.floor(reserve.w / 2),
+        y: reserve.y + Math.floor(reserve.h / 2),
+      });
+
+      const shopCells = new Set<string>();
+      for (const p of d.parcels)
+        for (const c of footprintCells(p)) shopCells.add(c);
+      const residential = residentialCells(rt);
+      const crossX = reserve.x + Math.floor(reserve.w / 2);
+      const streetY = reserve.y + Math.floor(reserve.h / 2);
+      const crossKeys = new Set(d.crossStreet.map((c) => `${c.x},${c.y}`));
+      const streetKeys = new Set(d.street.map((c) => `${c.x},${c.y}`));
+
+      expect(streetKeys.has(`${crossX},${streetY}`)).toBe(true);
+      expect(crossKeys.has(`${crossX},${streetY}`)).toBe(true);
+      expect(crossKeys.has(`${crossX},${streetY - 1}`)).toBe(true);
+      expect(crossKeys.has(`${crossX},${streetY + 1}`)).toBe(true);
+
+      for (const c of d.crossStreet) {
+        const key = `${c.x},${c.y}`;
+        expect(c.x).toBe(crossX);
+        expect(c.x).toBeGreaterThanOrEqual(reserve.x);
+        expect(c.x).toBeLessThan(reserve.x + reserve.w);
+        expect(c.y).toBeGreaterThanOrEqual(reserve.y);
+        expect(c.y).toBeLessThan(reserve.y + reserve.h);
+        expect(cellOk(rt.sim.state.terrain, c.x, c.y)).toBe(true);
+        expect(shopCells.has(key)).toBe(false);
+        expect(residential.has(key)).toBe(false);
+        for (const dx of [-1, 0, 1]) {
+          const roadKey = `${c.x + dx},${c.y}`;
+          if (!shopCells.has(roadKey) && !residential.has(roadKey))
+            expect(rt.sim.state.roadKind.has(roadKey)).toBe(true);
+        }
+      }
+      expect(rt.sim.state.roadKind.has(`${crossX},${streetY}`)).toBe(true);
+    }
+  }, 30000);
+
   it("is deterministic — a fresh boot of the same seed replays an identical district", () => {
     for (const seed of SEEDS) {
       const a = rtFor(seed).commercialDistrict!;
       const b = new ColonyRuntime(seed).commercialDistrict!;
       expect(b.parcels).toEqual(a.parcels);
       expect(b.reserve).toEqual(a.reserve);
+      expect(b.crossStreet).toEqual(a.crossStreet);
+      expect(b.intersection).toEqual(a.intersection);
     }
   }, 30000);
 });

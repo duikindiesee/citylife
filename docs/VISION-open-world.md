@@ -52,7 +52,7 @@ This vision sits ABOVE the epic and the phase plan. The epic is the Street Rod n
 Gate per district slice: does this ladder toward the night meetup and the race? If not, it waits.
 
 1. FINISH PHASE-1 (car lane) — one-button meetup + presence (S2), nameplates (S3, Joe), rally venue + classifieds (S4-S5, Jack). NO district work starts until S2 is merged.
-2. PHASE 2A — DISTRICT SCALE-UP (Jack) — grow the reserve, add the cross-street + intersection, widen carriageways.
+2. PHASE 2A — DISTRICT SCALE-UP (Jack) — BUILT: grow the reserve, add the cross-street + intersection, widen carriageways.
 3. PHASE 2B — MALL + GARAGE IDENTITIES (Jack data + car-lane seam) — mall_anchor + car_garage businesses, pad ranking.
 4. PHASE 2C — LANDMARK MASSING (Jack render + Joe signage) — mall + garage massing, pylon signage, POI markers.
 5. PHASE 2D — AUTHORED GLB SHELLS (Jack, optional uplift) — replace code-massed boxes with Blender-authored shells per spec 100.
