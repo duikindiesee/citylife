@@ -215,7 +215,7 @@ Examples:
 
 ## Implementation ladder
 
-This is a proposal ladder, not work performed by this PR.
+This is a proposal ladder. The 2026-06-25 mobile HUD build converts the mobile first-person part into a concrete UI slice: first-person now uses an edge HUD with a top destination strip, clear center view, bottom-left joystick-style movement dock, bottom-right action cluster, one-line guidance caption, and debug details collapsed by default.
 
 ### Slice A — label-only clarity
 
@@ -265,7 +265,27 @@ Acceptance:
 - No permanent toolbar crowding.
 - Night readability verified.
 
-### Slice D — future Streets/Districts lens contract
+### Slice D — mobile first-person joystick HUD [BUILD IN THIS PR]
+
+Owner: Player & UI.
+
+- Replace the portrait mobile blocking panel with an edge HUD.
+- Keep the center world view clear.
+- Move from the report-card style 3×3 arrow pad toward a joystick/radial thumb control at the lower-left edge.
+- Move `Use`, `Walk to Rally`, debug, and exit into a compact lower-right action cluster.
+- Put `Joe view`, the active destination, distance, friend-nearby banner, and urgent blocked/mood warnings in a compact top strip.
+- Keep target coordinates, `Next leg`, ground telemetry, and neighbour debug detail hidden behind the `Debug` disclosure.
+
+Acceptance:
+
+- In portrait first-person, the rally road/friend/world remains visible through the center.
+- One obvious movement control and one obvious action control are present.
+- Current destination and distance are visible without a large card.
+- Debug and coordinate detail are collapsed by default.
+- Keyboard controls and existing accessible button labels are preserved.
+- No edits to rally proximity, pathfinding, car/race, or district generation logic.
+
+### Slice E — future Streets/Districts lens contract
 
 Owner: Player & UI with World & Build read-only data contract.
 

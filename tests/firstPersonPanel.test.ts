@@ -83,7 +83,8 @@ describe("FirstPersonPanel immersive HUD", () => {
       }),
     );
 
-    expect(html).toContain("Action");
+    expect(html).toContain('class="first-person-panel first-person-panel--edge-hud"');
+    expect(html).toContain('class="first-person-panel__destination-strip"');
     expect(html).toContain("Talk to Orin Reed");
     expect(html).toContain("Use E");
     expect(html).toContain("Shift sprint");
@@ -92,8 +93,8 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).toContain('aria-label="Sprint charge 42%"');
     expect(html).toContain('aria-valuenow="42"');
     expect(html).toContain("width:42%");
-    expect(html).toContain("Blocked");
-    expect(html).toContain("Show debug");
+    expect(html).toContain("Blocked: water");
+    expect(html).toContain("Debug");
     expect(html).not.toContain("Ground");
     expect(html).not.toContain("Neighbours");
     expect(html).not.toContain("grass");
@@ -143,11 +144,12 @@ describe("FirstPersonPanel immersive HUD", () => {
       }),
     );
 
-    expect(html).toContain("Guided walk");
+    expect(html).toContain('class="first-person-panel__destination-strip"');
     expect(html).toContain("road");
-    expect(html).toContain("301");
-    expect(html).toContain("306");
     expect(html).toContain("1.4 units away");
+    expect(html).toContain("Guiding to road · 1.4 units away");
+    expect(html).not.toContain("301");
+    expect(html).not.toContain("306");
     expect(html).not.toContain("Ground");
     expect(html).not.toContain("Neighbours");
   });
@@ -169,9 +171,12 @@ describe("FirstPersonPanel immersive HUD", () => {
       }),
     );
 
-    expect(html).toContain("Next leg");
-    expect(html).toContain("300");
-    expect(html).toContain("307");
+    expect(html).toContain("road");
+    expect(html).toContain("2.8 units away");
+    expect(html).toContain("Guiding to road · 2.8 units away");
+    expect(html).not.toContain("Next leg");
+    expect(html).not.toContain("300");
+    expect(html).not.toContain("307");
     expect(html).not.toContain("Ground");
     expect(html).not.toContain("Neighbours");
   });
@@ -231,7 +236,7 @@ describe("FirstPersonPanel immersive HUD", () => {
       }),
     );
 
-    expect(html).toContain('class="first-person-panel"');
+    expect(html).toContain('class="first-person-panel first-person-panel--edge-hud"');
     expect(html).toContain('class="first-person-panel__touch-grid"');
     expect(html).toContain('class="first-person-panel__touch-button"');
     expect(html).toContain('class="first-person-panel__action-button"');
@@ -249,5 +254,46 @@ describe("FirstPersonPanel immersive HUD", () => {
     );
     expect(html).toContain("Tap Use to interact");
     expect(html).toContain("Tap arrows to roam");
+  });
+
+  it("keeps mobile first-person controls on the edges with a compact destination strip", () => {
+    const fp = makeFirstPerson();
+    if (!fp.view) throw new Error("expected first-person view");
+    fp.view.clock.isDay = false;
+    fp.view.neighbours = [
+      { displayName: "Cole the Racer", plotName: "Occupied", distance: 2 },
+    ];
+    fp.guidedTarget = {
+      label: "Rally Point",
+      x: 425,
+      y: 326,
+      remainingDistance: 201.1,
+      nextWaypoint: { x: 226, y: 349 },
+    } as unknown as ColonyUiState["firstPerson"]["guidedTarget"];
+
+    const html = renderToStaticMarkup(
+      React.createElement(FirstPersonPanel, {
+        runtime: makeRuntime(),
+        fp,
+      }),
+    );
+
+    expect(html).toContain('class="first-person-panel first-person-panel--edge-hud"');
+    expect(html).toContain('class="first-person-panel__destination-strip"');
+    expect(html).toContain("Rally Point");
+    expect(html).toContain("201.1 units away");
+    expect(html).toContain("Friend nearby at the night rally: Cole");
+    expect(html).toContain('class="first-person-panel__joystick"');
+    expect(html).toContain('aria-label="Mobile movement joystick"');
+    expect(html).toContain('class="first-person-panel__action-cluster"');
+    expect(html).toContain('class="first-person-panel__guidance-caption"');
+    expect(html).toContain("Guiding to Rally Point · 201.1 units away");
+    expect(html).toContain('class="first-person-panel__debug-toggle"');
+    expect(html).not.toContain("Next leg");
+    expect(html).not.toContain("226");
+    expect(html).not.toContain("349");
+    expect(html).not.toContain("(425");
+    expect(html).not.toContain("326)");
+    expect(html).not.toContain("Show debug");
   });
 });
