@@ -33,6 +33,8 @@ describe("right-side HUD declutter", () => {
     expect(model.expandedPanelLabels).toContain("Homesteads");
     expect(model.expandedPanelLabels).toContain("Furniture studio");
     expect(model.defaultVisibleLabels.join(" ")).not.toContain("City Bank");
-    expect(model.defaultVisibleLabels.join(" ")).not.toContain("Commercial district");
+    expect(model.defaultVisibleLabels.join(" ")).not.toContain(
+      "Commercial district",
+    );
   });
 });
