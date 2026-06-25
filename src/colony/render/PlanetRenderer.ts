@@ -1061,7 +1061,12 @@ export class PlanetRenderer {
     // cliff faces / floating-table silhouettes at night. Roads are skipped because ribbons bridge them.
     if (cd) {
       const rects = [
-        ...cd.parcels.map((p) => ({ x: p.x - 1, y: p.y - 1, w: p.w + 2, h: p.h + 2 })),
+        ...cd.parcels.map((p) => ({
+          x: p.x - 1,
+          y: p.y - 1,
+          w: p.w + 2,
+          h: p.h + 2,
+        })),
         { x: cd.mallPad.x, y: cd.mallPad.y, w: cd.mallPad.w, h: cd.mallPad.h },
       ];
       applyCoastalCommercialDryBlend({
@@ -3222,7 +3227,10 @@ export class PlanetRenderer {
 
       // Body — inland plots keep the dark slate shopfront; coastal dried seats use a colour-matched wall
       // band so night views show grounded shop mass instead of a black tabletop silhouette.
-      const coastalWall = new THREE.Color(neon).lerp(new THREE.Color(0x536b3a), 0.45);
+      const coastalWall = new THREE.Color(neon).lerp(
+        new THREE.Color(0x536b3a),
+        0.45,
+      );
       const body = new THREE.Mesh(
         new THREE.BoxGeometry(bodyW, wallH, bodyD),
         new THREE.MeshStandardMaterial({
