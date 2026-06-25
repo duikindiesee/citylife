@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import generator from "../public/assets/citylife/props/generate_rally_venue_bench.py?raw";
 import {
   rallyVenuePropPlacements,
   venuePropAssets,
@@ -44,5 +45,16 @@ describe("Blender GLB venue prop asset pipeline", () => {
     expect(
       rallyVenuePropPlacements([{ kind: "rocket", x: 10, y: 10 }]),
     ).toEqual([]);
+  });
+
+  it("authors the rally bench as a locked no-armrest ladder frame", () => {
+    expect(generator).toContain("rally_venue_bench_backrest_slat_top");
+    expect(generator).toContain("rally_venue_bench_backrest_slat_middle");
+    expect(generator).toContain("rally_venue_bench_backrest_slat_bottom");
+    expect(generator).toContain("rally_venue_bench_backrest_left_holder");
+    expect(generator).toContain("rally_venue_bench_backrest_right_holder");
+    expect(generator).toContain("rally_venue_bench_backrest_clamp_pad");
+    expect(generator).toContain("rally_venue_bench_underseat_glow_strip");
+    expect(generator).not.toMatch(/armrest/i);
   });
 });

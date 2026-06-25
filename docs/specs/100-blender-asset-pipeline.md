@@ -41,7 +41,7 @@ The proof asset is a public-safe rally venue bench:
 - URL: `/assets/citylife/props/rally-venue-bench.glb`
 - `publicSafe: true`
 
-The model is intentionally low-poly and stylized. It includes a small emissive floor marker material (`public_safe_rally_bench_night_emissive_floor`) so lit venue props read at night without needing the Blender file to know where it will be placed.
+The model is intentionally low-poly and stylized. The bench backrest uses a locked ladder-frame: three named horizontal slats penetrate the left and right side holders, with visible clamp pads and bolt caps aligned to each slat so the top, middle, and bottom rails read as one assembled object from the in-game camera. The seating area keeps open sides with only a low graphite support frame. Warm oak materials carry a very small emissive floor so the three slats stay separable after dark, while the brighter integrated under-seat/footplate material (`public_safe_rally_bench_night_emissive_floor`) keeps the placed venue prop readable at night without needing the Blender file to know where it will be placed.
 
 ## Deterministic placement rule
 
