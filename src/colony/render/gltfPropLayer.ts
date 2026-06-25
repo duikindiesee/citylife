@@ -66,7 +66,11 @@ export function buildGltfPropLayer(
         const dummy = new THREE.Object3D();
         placements.forEach((p, i) => {
           const y = Math.max(0, opts.terrain.worldY(p.x, p.y));
-          dummy.position.set(opts.wx(p.x), y - baseMinY * p.scale, opts.wz(p.y));
+          dummy.position.set(
+            opts.wx(p.x),
+            y - baseMinY * p.scale,
+            opts.wz(p.y),
+          );
           dummy.rotation.set(0, p.rotationTurns * Math.PI * 2, 0);
           dummy.scale.setScalar(p.scale);
           dummy.updateMatrix();
