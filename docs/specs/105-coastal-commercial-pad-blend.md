@@ -14,7 +14,7 @@ blend around commercial seat rectangles:
 
 - keep every below-dry commercial shop/mall seat cell at the dry floor;
 - for adjacent shoreline/sea-floor cells below the ordinary land band, raise a bounded apron toward the
-dry seat using deterministic smoothstep falloff;
+  dry seat using deterministic smoothstep falloff;
 - skip road-ribbon cells so road bridges keep their own grade;
 - leave high-ground cells natural so inland shops and homestead pads retain their current read;
 - keep coastal dried-seat shop plinth/body side material in an earthier non-black band so night views do

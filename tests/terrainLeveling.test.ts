@@ -8,7 +8,12 @@ class FakeTerrain {
   }
 }
 
-function get(next: Map<number, number>, n: number, x: number, y: number): number | undefined {
+function get(
+  next: Map<number, number>,
+  n: number,
+  x: number,
+  y: number,
+): number | undefined {
   return next.get(y * n + x);
 }
 
@@ -51,7 +56,8 @@ describe("coastal commercial terrain leveling", () => {
     const n = 40;
     const heights = new Map<string, number>();
     for (let y = 8; y <= 15; y++)
-      for (let x = 6; x <= 15; x++) heights.set(`${x},${y}`, x < 10 ? 1.2 : 0.04);
+      for (let x = 6; x <= 15; x++)
+        heights.set(`${x},${y}`, x < 10 ? 1.2 : 0.04);
     const next = new Map<number, number>();
 
     applyCoastalCommercialDryBlend({

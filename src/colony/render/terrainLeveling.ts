@@ -39,13 +39,21 @@ export function applyCoastalCommercialDryBlend({
   const put = (x: number, y: number, v: number) => {
     if (x >= 0 && y >= 0 && x < n && y < n) next.set(y * n + x, v);
   };
-  const road = (x: number, y: number) => roadRibbonCells?.has(`${x},${y}`) ?? false;
+  const road = (x: number, y: number) =>
+    roadRibbonCells?.has(`${x},${y}`) ?? false;
 
   for (const r of rects) {
     // Keep #164's dry behavior: footprint / immediate seat cells clear the sea disc.
     for (let y = r.y; y < r.y + r.h; y++)
       for (let x = r.x; x < r.x + r.w; x++)
-        if (x >= 0 && y >= 0 && x < n && y < n && terrain.worldY(x, y) < dry && !road(x, y))
+        if (
+          x >= 0 &&
+          y >= 0 &&
+          x < n &&
+          y < n &&
+          terrain.worldY(x, y) < dry &&
+          !road(x, y)
+        )
           put(x, y, dry);
 
     // Blend only below-dry coastal cells around the dry rectangle. Inland cells already above DRY are
