@@ -1,0 +1,58 @@
+name: Single release bump
+
+# Keep at most ONE open release-bump PR at a time.
+#
+# Every merge to main opens a chore/bump-X.Y.Z PR via the shared node-version-bump workflow
+# (see docs/DEPLOY.md). Those normally auto-merge instantly. But if one gets stuck (for example a
+# version that collides with a tag that already exists), the next merges stack more bump PRs behind
+# it, and the duplicates have to be closed by hand. That is exactly what jammed the 0.17.0 release.
+#
+# This guard fires whenever a bump PR opens and closes every OTHER open bump PR, keeping only the
+# highest version. So the moment a newer bump appears the older one is auto-superseded: there is
+# only ever one open bump, and colliding duplicates cannot pile up.
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  supersede:
+    # only react to release-bump PRs (branch chore/bump-X.Y.Z)
+    if: startsWith(github.event.pull_request.head.ref, 'chore/bump-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep only the highest open release bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # All OPEN release-bump PRs as "number version" lines (branch chore/bump-X.Y.Z).
+          rows=$(gh pr list --repo "$REPO" --state open --limit 100 \
+            --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("chore/bump-")) | "\(.number) \(.headRefName | ltrimstr("chore/bump-"))"')
+
+          count=$(printf '%s' "$rows" | grep -c . || true)
+          if [ "${count:-0}" -le 1 ]; then
+            echo "Open release bumps: ${count:-0} - nothing to supersede."
+            exit 0
+          fi
+
+          # Winner = highest semver among the open bumps (sort -V handles X.Y.Z ordering).
+          winner_ver=$(printf '%s\n' "$rows" | awk 'NF{print $2}' | sort -V | tail -n1)
+          winner_num=$(printf '%s\n' "$rows" | awk -v v="$winner_ver" '$2==v {print $1; exit}')
+          echo "Winner: PR #$winner_num (v$winner_ver). Superseding the rest."
+
+          printf '%s\n' "$rows" | while read -r num ver; do
+            [ -n "${num:-}" ] || continue
+            if [ "$num" != "$winner_num" ]; then
+              echo "Closing #$num (v$ver)"
+              gh pr close "$num" --repo "$REPO" \
+                --comment "Auto-closed: superseded by #$winner_num (v$winner_ver). Only the highest open release bump is kept so duplicate or colliding version bumps cannot pile up. See .github/workflows/single-release-bump.yml." || true
+            fi
+          done

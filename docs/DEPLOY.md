@@ -65,6 +65,20 @@ Same-org means the self-hosted runner and `MAVEN_PUBLISH_TOKEN` are inherited vi
 cross-org PAT. The repo is **private**, so the Deployment pulls the image with the shared
 `github-registry` imagePullSecret (the same one kooker-web uses).
 
+### One bump at a time (no colliding duplicates)
+
+Step 1 opens a fresh `chore/bump-X.Y.Z` PR on **every** merge to main, and those normally auto-merge
+instantly. But if one gets stuck — e.g. it computes a version that collides with a tag that already
+exists — the following merges stack more bump PRs behind it, and the stale ones have to be closed by
+hand. That is what jammed the 0.17.0 release (0.16.0, then 0.15.1, then 0.16.0 again all piled up).
+
+`.github/workflows/single-release-bump.yml` is a citylife-local guard: whenever a bump PR opens it
+closes every **other** open bump PR, keeping only the **highest** version. So the moment a newer bump
+appears the older one is auto-superseded — there is only ever one open bump, and colliding duplicates
+cannot accumulate. The guard does not change how the version is computed (that lives in the shared
+`node-version-bump` workflow); it only stops the pile-up. If a bump still sticks on a tag collision,
+the underlying fix is in the shared workflow's version computation, not here.
+
 ## Build and deploy (manual path)
 
 ```
