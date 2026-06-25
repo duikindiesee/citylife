@@ -46,6 +46,8 @@ import { greedyMesh } from "./voxelMesh";
 import { buildChunkedTerrain, type ChunkedTerrain } from "./terrainChunks";
 import { defaultBlueprint, streetDoorDir, type Zone } from "../neighborhood";
 import { buildShoreProps, type ShorePropsLayer } from "./shoreProps";
+import { buildGltfPropLayer, type GltfPropLayer } from "./gltfPropLayer";
+import { rallyVenuePropPlacements, venuePropAssets } from "./venuePropAssets";
 import { buildFoam, type FoamLayer } from "./foamLayer";
 import { buildClouds, type CloudLayer } from "./cloudLayer";
 import { buildAmbient, type AmbientLayer } from "./ambientLayer";
@@ -247,6 +249,7 @@ export class PlanetRenderer {
   // Pulsing red nav beacon at the rocket nose — material ref so frame() can blink it.
   private beaconMat: THREE.MeshStandardMaterial | null = null;
   private shoreProps: ShorePropsLayer | null = null;
+  private gltfProps: GltfPropLayer | null = null;
   private foam: FoamLayer | null = null; // spec 091 — animated shoreline surf ring
   private clouds: CloudLayer | null = null; // spec 092 — drifting sky clouds
   private ambient: AmbientLayer | null = null; // spec 092 — gulls gliding over the sea
@@ -1132,6 +1135,14 @@ export class PlanetRenderer {
       wz: (y) => this.wz(y),
     });
     if (this.shoreProps) this.scene.add(this.shoreProps.group);
+    this.gltfProps = buildGltfPropLayer({
+      assets: venuePropAssets,
+      placements: rallyVenuePropPlacements(this.sim.state.structures, t),
+      terrain: t,
+      wx: (x) => this.wx(x),
+      wz: (y) => this.wz(y),
+    });
+    if (this.gltfProps) this.scene.add(this.gltfProps.group);
   }
 
   private makeStructure(s: SeedStructure): THREE.Object3D {
@@ -2576,6 +2587,7 @@ export class PlanetRenderer {
       this.beaconMat.emissiveIntensity = 0.35 + blink * blink * 2.6;
     }
     this.shoreProps?.update(this.sim.state.clock.daylight, performance.now());
+    this.gltfProps?.update(this.sim.state.clock.daylight);
     if (this.raceLayer && this.raceState)
       this.raceLayer.update(this.raceState, performance.now());
     this.busLayer?.update(performance.now()); // spec 088 — the bus drives its loop between the hoods
@@ -4450,6 +4462,7 @@ export class PlanetRenderer {
     this.controls.dispose();
     this.composer.dispose();
     this.shoreProps?.dispose();
+    this.gltfProps?.dispose();
     this.foam?.dispose();
     this.clouds?.dispose();
     this.ambient?.dispose();
