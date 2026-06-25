@@ -83,7 +83,9 @@ describe("FirstPersonPanel immersive HUD", () => {
       }),
     );
 
-    expect(html).toContain('class="first-person-panel first-person-panel--edge-hud"');
+    expect(html).toContain(
+      'class="first-person-panel first-person-panel--edge-hud"',
+    );
     expect(html).toContain('class="first-person-panel__destination-strip"');
     expect(html).toContain("Talk to Orin Reed");
     expect(html).toContain("Use E");
@@ -236,7 +238,9 @@ describe("FirstPersonPanel immersive HUD", () => {
       }),
     );
 
-    expect(html).toContain('class="first-person-panel first-person-panel--edge-hud"');
+    expect(html).toContain(
+      'class="first-person-panel first-person-panel--edge-hud"',
+    );
     expect(html).toContain('class="first-person-panel__touch-grid"');
     expect(html).toContain('class="first-person-panel__touch-button"');
     expect(html).toContain('class="first-person-panel__action-button"');
@@ -278,7 +282,9 @@ describe("FirstPersonPanel immersive HUD", () => {
       }),
     );
 
-    expect(html).toContain('class="first-person-panel first-person-panel--edge-hud"');
+    expect(html).toContain(
+      'class="first-person-panel first-person-panel--edge-hud"',
+    );
     expect(html).toContain('class="first-person-panel__destination-strip"');
     expect(html).toContain("Rally Point");
     expect(html).toContain("201.1 units away");

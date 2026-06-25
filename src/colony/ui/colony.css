@@ -1427,7 +1427,11 @@ body.tv-mode .radio-iframe.is-visible {
   min-height: 42px;
   border: 1px solid #1e3a5a;
   border-radius: 999px;
-  background: radial-gradient(circle at 50% 35%, rgba(160, 212, 240, 0.22), rgba(255, 255, 255, 0.05));
+  background: radial-gradient(
+    circle at 50% 35%,
+    rgba(160, 212, 240, 0.22),
+    rgba(255, 255, 255, 0.05)
+  );
   color: #a0d4f0;
   font-size: 17px;
   touch-action: manipulation;
