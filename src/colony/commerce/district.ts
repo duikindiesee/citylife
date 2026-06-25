@@ -149,7 +149,14 @@ export function makeCommercialDistrict(
   }
 
   const intersection = pickMajorIntersection(street, crossStreet);
-  const mallPad = pickMallPad(t, reserve, street, crossStreet, parcels, claimed);
+  const mallPad = pickMallPad(
+    t,
+    reserve,
+    street,
+    crossStreet,
+    parcels,
+    claimed,
+  );
 
   // Each plot fronts a real kooker app — assign its business identity (deterministic).
   const biz = assignBusinesses(parcels);
@@ -234,7 +241,8 @@ export function pickMallPad(
     const d = (cx - intersection.x) ** 2 + (cy - intersection.y) ** 2;
     if (
       d < bestDistance ||
-      (d === bestDistance && (!best || x < best.x || (x === best.x && y < best.y)))
+      (d === bestDistance &&
+        (!best || x < best.x || (x === best.x && y < best.y)))
     ) {
       best = pad;
       bestDistance = d;
@@ -266,7 +274,8 @@ function mallPadFits(
     for (let x = pad.x; x < pad.x + pad.w; x++) {
       const k = `${x},${y}`;
       if (!cellOk(t, x, y)) return false;
-      if (shopCells.has(k) || streetKeys.has(k) || crossKeys.has(k)) return false;
+      if (shopCells.has(k) || streetKeys.has(k) || crossKeys.has(k))
+        return false;
     }
   return true;
 }

@@ -81,18 +81,29 @@ function parcelFootprintHash(rt: ColonyRuntime): string {
   return sortedHash(cells);
 }
 
-function rectCells(rect: { x: number; y: number; w: number; h: number }): Cell[] {
+function rectCells(rect: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}): Cell[] {
   const cells: Cell[] = [];
   for (let y = rect.y; y < rect.y + rect.h; y++)
     for (let x = rect.x; x < rect.x + rect.w; x++) cells.push({ x, y });
   return cells;
 }
 
-function rectCenter(rect: { x: number; y: number; w: number; h: number }): { x: number; y: number } {
+function rectCenter(rect: { x: number; y: number; w: number; h: number }): {
+  x: number;
+  y: number;
+} {
   return { x: rect.x + (rect.w - 1) / 2, y: rect.y + (rect.h - 1) / 2 };
 }
 
-function referenceIntersection(street: Cell[], crossStreet: Cell[]): Cell | undefined {
+function referenceIntersection(
+  street: Cell[],
+  crossStreet: Cell[],
+): Cell | undefined {
   const union: Cell[] = [];
   const seen = new Set<string>();
   for (const c of [...street, ...crossStreet]) {
@@ -232,7 +243,9 @@ describe("phase 2A/2B district determinism gate", () => {
 
       const replay = new ColonyRuntime(seed).commercialDistrict!;
       expect(replay.mallPad).toEqual(mallPad);
-      expect(sortedHash(rectCells(replay.mallPad))).toBe(sortedHash(rectCells(mallPad)));
+      expect(sortedHash(rectCells(replay.mallPad))).toBe(
+        sortedHash(rectCells(mallPad)),
+      );
     }
   }, 30000);
 
