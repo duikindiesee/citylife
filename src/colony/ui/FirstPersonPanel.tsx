@@ -18,6 +18,17 @@ function fpActionName(label: string, spoken: string): string {
   return `walk-${spoken.replaceAll(" ", "-")}`;
 }
 
+export function nightFriendBannerCopy(
+  view: ColonyUiState["firstPerson"]["view"],
+): string | null {
+  if (!view || view.clock.isDay || view.neighbours.length === 0) return null;
+  const names = view.neighbours
+    .slice(0, 2)
+    .map((n) => n.displayName.split(" ")[0])
+    .join(", ");
+  return names ? `Friend nearby at the night rally: ${names}` : null;
+}
+
 const DIR: {
   label: string;
   spoken: string;
@@ -46,6 +57,7 @@ export function FirstPersonPanel({
   const [showDebug, setShowDebug] = useState(false);
   if (!fp.active || !fp.citizenId) return null;
   const v = fp.view;
+  const nightFriendBanner = nightFriendBannerCopy(v);
 
   return (
     <div
@@ -108,6 +120,11 @@ export function FirstPersonPanel({
             lineHeight: 1.6,
           }}
         >
+          {nightFriendBanner && (
+            <div className="first-person-panel__friend-banner" role="status">
+              {nightFriendBanner}
+            </div>
+          )}
           {v.interactionPrompt ? (
             <div>
               <div>

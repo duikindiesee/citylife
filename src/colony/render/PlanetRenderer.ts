@@ -75,6 +75,11 @@ export interface AvatarView {
   isOperator: boolean;
 }
 
+export interface RallyPresentCitizenView {
+  id: string;
+  displayName: string;
+}
+
 // Dark City: the colony floats on a slab of rock adrift in deep space. The "sky" is the void —
 // dark even at midday — while a local sun still sweeps light across the island for day/night.
 const SKY_DAY = new THREE.Color(0x0b1022);
@@ -201,6 +206,19 @@ export class PlanetRenderer {
   private crabMesh!: THREE.InstancedMesh;
   private avatarSource?: () => AvatarView[];
   private fpCitizenId: string | null = null;
+  private rallyPresentCitizenIds = new Set<string>();
+  private rallyNameplateGroup = new THREE.Group();
+  private rallyNameplates = new Map<
+    string,
+    {
+      group: THREE.Group;
+      sprite: THREE.Sprite;
+      texture: THREE.CanvasTexture;
+      material: THREE.SpriteMaterial;
+      floor: THREE.Mesh;
+      floorMaterial: THREE.MeshBasicMaterial;
+    }
+  >();
   // Spec 075 — the buildable neighbourhood: lot pads + minecraft-style voxel homes.
   private neighborhood?: Neighborhood;
   private lotPadMesh!: THREE.InstancedMesh;
@@ -390,6 +408,7 @@ export class PlanetRenderer {
     this.scene.add(this.hemi);
     this.sun = new THREE.DirectionalLight(0xfff0d8, 1.7);
     this.sun.castShadow = true;
+    this.scene.add(this.rallyNameplateGroup);
     // Spec 084 S5 — the shadow frustum FOLLOWS the camera target (updateDayNight translates sun +
     // target together each frame) with a fixed half-extent, instead of covering the whole island:
     // 2048 texels over ~240 world units gives crisp house-contact shadows at any world size.
@@ -2946,6 +2965,24 @@ export class PlanetRenderer {
     this.avatarSource = fn;
   }
 
+  /** S3 — read-only rally presence from uiState.rally.presentCitizens. Until the car lane lands that
+   *  additive field, callers pass an empty list and the renderer draws no social nameplates. */
+  setRallyPresentCitizens(citizens: RallyPresentCitizenView[]): void {
+    this.rallyPresentCitizenIds = new Set(citizens.map((c) => c.id));
+    const wanted = new Map(citizens.map((c) => [c.id, c.displayName]));
+    for (const [id, plate] of [...this.rallyNameplates]) {
+      if (!wanted.has(id)) this.disposeRallyNameplate(id, plate);
+    }
+    for (const [id, displayName] of wanted) {
+      const plate = this.rallyNameplates.get(id);
+      if (!plate) this.rallyNameplates.set(id, this.makeRallyNameplate(displayName));
+      else if (plate.sprite.name !== displayName) {
+        this.disposeRallyNameplate(id, plate);
+        this.rallyNameplates.set(id, this.makeRallyNameplate(displayName));
+      }
+    }
+  }
+
   /** Spec 075 — hand the renderer the neighbourhood (by reference); it draws the lot pads + voxel homes,
    *  rebuilding only when a lot's owned/built state changes. */
   setNeighborhood(n: Neighborhood): void {
@@ -4266,6 +4303,78 @@ export class PlanetRenderer {
     return merged;
   }
 
+  private makeRallyNameplate(displayName: string) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 72;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "rgba(5, 8, 18, 0.82)";
+      ctx.strokeStyle = "rgba(255, 226, 120, 0.96)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(8, 10, 240, 48, 18);
+      ctx.fill();
+      ctx.stroke();
+      ctx.font = "700 28px monospace";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = "rgba(255, 226, 120, 0.95)";
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = "#fff1a8";
+      ctx.fillText(displayName.split(" ")[0] ?? displayName, 128, 35, 220);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.name = displayName;
+    sprite.scale.set(1.8, 0.5, 1);
+    sprite.renderOrder = 20;
+    const floorMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffdf70,
+      transparent: true,
+      opacity: 0.32,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(0.48, 24), floorMaterial);
+    floor.rotation.x = -Math.PI / 2;
+    floor.renderOrder = 19;
+    const group = new THREE.Group();
+    group.add(floor);
+    group.add(sprite);
+    this.rallyNameplateGroup.add(group);
+    return { group, sprite, texture, material, floor, floorMaterial };
+  }
+
+  private disposeRallyNameplate(
+    id: string,
+    plate: {
+      group: THREE.Group;
+      sprite: THREE.Sprite;
+      texture: THREE.CanvasTexture;
+      material: THREE.SpriteMaterial;
+      floor: THREE.Mesh;
+      floorMaterial: THREE.MeshBasicMaterial;
+    },
+  ): void {
+    this.rallyNameplateGroup.remove(plate.group);
+    plate.texture.dispose();
+    plate.material.dispose();
+    plate.floor.geometry.dispose();
+    plate.floorMaterial.dispose();
+    this.rallyNameplates.delete(id);
+  }
+
   /** P1 — draw the citizen avatars at their live roster positions. The one the operator owns glows cyan; the
    *  citizen currently being stepped-into is hidden (the camera is inside it). Spec 078 — citizens whose
    *  kind is 'crab' (Joe) draw into the crab mesh instead of the human capsule + head. */
@@ -4278,6 +4387,7 @@ export class PlanetRenderer {
     )
       return;
     const list = this.avatarSource();
+    for (const plate of this.rallyNameplates.values()) plate.group.visible = false;
     const t = this.sim.state.terrain;
     const n = Math.min(list.length, 64);
     const col = new THREE.Color();
@@ -4300,6 +4410,17 @@ export class PlanetRenderer {
         col.setHex(a.isOperator ? 0x66e0ff : a.hasPod ? 0x9f86d8 : 0xc0b0e0);
         this.avatarMesh.setColorAt(drawn, col);
         drawn++;
+      }
+      const plate = this.rallyPresentCitizenIds.has(a.id)
+        ? this.rallyNameplates.get(a.id)
+        : undefined;
+      if (plate) {
+        const night = 1 - this.sim.state.clock.daylight;
+        plate.group.visible = true;
+        plate.group.position.set(this.wx(a.x), wy + 1.25, this.wz(a.y));
+        plate.floor.position.set(0, -1.22, 0);
+        plate.floorMaterial.opacity = 0.18 + night * 0.42;
+        plate.material.opacity = 0.72 + night * 0.28;
       }
     }
     this.avatarMesh.count = drawn;
@@ -4467,6 +4588,9 @@ export class PlanetRenderer {
     this.clouds?.dispose();
     this.ambient?.dispose();
     this.clearRaceLayer();
+    for (const [id, plate] of [...this.rallyNameplates]) {
+      this.disposeRallyNameplate(id, plate);
+    }
     // Spec 093 — the chunk-grid geometries + the shared terrain material are app-side GL objects that
     // renderer.dispose() does NOT free; release them so a teardown/recreate (HMR, remount) doesn't leak.
     this.chunkedTerrain?.dispose();

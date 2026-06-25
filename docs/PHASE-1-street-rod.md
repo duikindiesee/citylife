@@ -39,6 +39,7 @@ Seed a fixed, named NPC friend standing AT the rally cell so presence reaches 2 
 ### S3 (joe) — Night-visible nameplates + who-is-here social read
 
 - Files: `PlanetRenderer.ts` (nameplate draw path off `AvatarView.displayName`, gated to `uiState.rally.presentCitizens`, emissive floor), `FirstPersonPanel.tsx` (friend-present banner from `FirstPersonView.neighbours` + `clock.isDay`), `ColonyApp.tsx` (who-is-here readout), `colony.css`, `bot/firstPersonView.ts`.
+- 2026-06-25 slice update: Joe branch `joe/s3-night-rally-ui` added the read-only who-is-here panel, first-person night friend banner, and renderer nameplate hook. The renderer only draws nameplates for ids supplied by `uiState.rally.presentCitizens`; until S2 lands it degrades to the present count and no nameplates.
 - Acceptance:
   - Consumes `uiState.rally.presentCitizens` read-only (degrades to the present COUNT until S2 lands); never edits rally/race logic; nameplate emissive floors at night.
   - Deterministic vitest: stub `presentCitizens` -> selector returns exactly those ids; FP banner renders the screened name; emissive > 0 at daylight=0.

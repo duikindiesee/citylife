@@ -342,6 +342,42 @@ const MOUSE_SENSITIVITY_PRESETS: {
   { id: "high", label: "High" },
 ];
 
+export type RallyCitizenRead = { id: string; displayName: string };
+type RallyRead = NonNullable<ColonyUiState["rally"]> & {
+  presentCitizens?: RallyCitizenRead[];
+};
+
+export function rallyWhoIsHereCopy(
+  rally: ColonyUiState["rally"],
+  isDay: boolean,
+): {
+  title: string;
+  summary: string;
+  citizens: RallyCitizenRead[];
+  signature: string;
+} | null {
+  if (!rally) return null;
+  const presentCitizens = ((rally as RallyRead).presentCitizens ?? [])
+    .filter(
+      (c): c is RallyCitizenRead =>
+        !!c && typeof c.id === "string" && typeof c.displayName === "string",
+    )
+    .slice(0, Math.max(0, Math.round(rally.present)));
+  const label = presentCitizens.length
+    ? presentCitizens.map((c) => c.displayName.split(" ")[0]).join(", ")
+    : `${Math.round(rally.present)} present`;
+  return {
+    title: isDay ? "Rally point" : "Night rally",
+    summary: presentCitizens.length ? label : `${label} at the hilltop`,
+    citizens: presentCitizens,
+    signature: presentCitizens.map((c) => `${c.id}:${c.displayName}`).join("|"),
+  };
+}
+
+type RuntimeRendererHandle = {
+  setRallyPresentCitizens?: (citizens: RallyCitizenRead[]) => void;
+};
+
 export function FirstPersonMouseLookBar({
   citizenName,
   mouseLookLocked,
@@ -449,6 +485,7 @@ export function ColonyApp() {
     recent: ui.settlers.recent,
     playerScoped: ui.bank.scope === "player",
   });
+  const rallyRead = rallyWhoIsHereCopy(ui.rally, ui.clock.isDay);
   const showBorderControl = canShowBorderControl({
     playerScoped: ui.bank.scope === "player",
   });
@@ -494,6 +531,13 @@ export function ColonyApp() {
   useEffect(() => {
     runtime.flushLedgerSync();
   }, [runtime]);
+
+  useEffect(() => {
+    const renderer = (runtime as unknown as Record<string, unknown>)[
+      "renderer"
+    ] as RuntimeRendererHandle | null | undefined;
+    renderer?.setRallyPresentCitizens?.(rallyRead?.citizens ?? []);
+  });
 
   useEffect(() => {
     const el = hostRef.current;
@@ -670,6 +714,22 @@ export function ColonyApp() {
       )}
       <FirstPersonPanel runtime={runtime} fp={ui.firstPerson} />
       {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
+      {rallyRead && (
+        <div
+          className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
+          aria-label="Who is here at the rally"
+        >
+          <span className="rally-social-read__eyebrow">{rallyRead.title}</span>
+          <b>{rallyRead.summary}</b>
+          <span className="rally-social-read__status">
+            {ui.rally?.ready
+              ? "Friend present · race ready"
+              : ui.rally && ui.rally.present > 0
+                ? "Waiting for a friend"
+                : "Rally point empty"}
+          </span>
+        </div>
+      )}
       {ui.race.mode !== "idle" && (
         <div
           style={{
