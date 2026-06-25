@@ -82,16 +82,19 @@ Beyond the spine + the commercial district lies the FULL open-world arc (Irwin: 
 ## Decisions + open questions
 
 RESOLVED (Irwin, 2026-06-25):
+
 - HOW FAR TOWARD NFS -> as far as we can: the FULL open-world car game endgame, reached in staged parts (see Direction locked + the roadmap).
 - REPLACE vs AUGMENT -> REPLACE the current high street with the larger district.
 - GARAGE MODEL -> a first-class LANDMARK STRUCTURE (a SeedStructure placed by findGarageSite, like the rally), not a corner shop-parcel.
 - INTERSECTION AMBITION -> one hero intersection for the commercial district NOW; a real road mesh with loops/shortcuts arrives in the full-open-world arc (phase 4).
 
 STILL OPEN (Irwin to steer):
+
 - MALL SCOPE — one always-present civic anchor, or a fully buildable mega-anchor bots raise over time? (Plan: the former.)
 - REAL-KOOKER-APP FRONTS — should the mall front a real kooker hub app; should the garage front an app or stay a pure landmark? (Undecided.)
 - DAY/NIGHT MOOD — how explicit should the in-world signalling of day-browse / night-cruise / night-race be?
 - DISTRICT SIZE — replacing the high street gives room; how big should the district be relative to world.size=608 before it crowds residential/satellites?
 
 ---
+
 This document is updated as the game evolves. Last direction set (2026-06-25): go as far toward a FULL open-world car game as we can (staged into the roadmap parts); REPLACE the current high street with the larger commercial district; make the garage a first-class landmark structure. All of it stays subordinate to, and gated behind, the phase-1 garage -> car -> meet -> race spine.
