@@ -62,7 +62,9 @@ function destinationDistance(fp: ColonyUiState["firstPerson"]): string | null {
   return null;
 }
 
-function moodWarning(view: ColonyUiState["firstPerson"]["view"]): string | null {
+function moodWarning(
+  view: ColonyUiState["firstPerson"]["view"],
+): string | null {
   if (!view) return null;
   if (view.mood.hungry) return "colony hungry";
   if (view.mood.brownout) return "brownout";
@@ -110,13 +112,20 @@ export function FirstPersonPanel({
             {nightFriendBanner}
           </div>
         )}
-        {warning && <div className="first-person-panel__warning">⚠ {warning}</div>}
+        {warning && (
+          <div className="first-person-panel__warning">⚠ {warning}</div>
+        )}
         {fp.blockedReason && (
-          <div className="first-person-panel__blocked">Blocked: {fp.blockedReason}</div>
+          <div className="first-person-panel__blocked">
+            Blocked: {fp.blockedReason}
+          </div>
         )}
       </div>
 
-      <div className="first-person-panel__joystick" aria-label="Mobile movement joystick">
+      <div
+        className="first-person-panel__joystick"
+        aria-label="Mobile movement joystick"
+      >
         <div className="first-person-panel__touch-grid">
           {DIR.map(({ label, spoken, emoji, dx, dy }) => (
             <button
@@ -135,7 +144,10 @@ export function FirstPersonPanel({
             </button>
           ))}
         </div>
-        <div className="first-person-panel__sprint" aria-label={`Sprint charge ${Math.round(fp.sprintCharge)}%`}>
+        <div
+          className="first-person-panel__sprint"
+          aria-label={`Sprint charge ${Math.round(fp.sprintCharge)}%`}
+        >
           <span>Sprint {Math.round(fp.sprintCharge)}%</span>
           <div
             role="progressbar"
@@ -144,7 +156,11 @@ export function FirstPersonPanel({
             aria-valuemax={100}
             aria-valuenow={Math.round(fp.sprintCharge)}
           >
-            <i style={{ width: `${Math.max(0, Math.min(100, Math.round(fp.sprintCharge)))}%` }} />
+            <i
+              style={{
+                width: `${Math.max(0, Math.min(100, Math.round(fp.sprintCharge)))}%`,
+              }}
+            />
           </div>
           {fp.sprintCharge <= 0 ? (
             <em>Sprint depleted — walk to recover</em>
@@ -162,8 +178,7 @@ export function FirstPersonPanel({
             aria-label={`Use current action: ${v.interactionPrompt.label}`}
             onClick={() => runtime.activateFirstPersonInteraction()}
           >
-            Use E
-            <span>{v.interactionPrompt.label}</span>
+            Use E<span>{v.interactionPrompt.label}</span>
           </button>
         ) : (
           <div className="first-person-panel__no-action">No nearby action</div>
@@ -207,16 +222,21 @@ export function FirstPersonPanel({
       {v && showDebug && (
         <div className="first-person-panel__debug-panel">
           <div>
-            <span>Ground</span> <b>{v.ground.biome}</b> · elev {v.ground.elevation.toFixed(2)}
+            <span>Ground</span> <b>{v.ground.biome}</b> · elev{" "}
+            {v.ground.elevation.toFixed(2)}
             {v.ground.isWater ? " 🌊" : ""}
           </div>
           <div>
-            <span>Time</span> Day {v.clock.day} · {String(v.clock.hour).padStart(2, "0")}:
-            {String(v.clock.minute).padStart(2, "0")} {v.clock.isDay ? "☀" : "🌙"}
+            <span>Time</span> Day {v.clock.day} ·{" "}
+            {String(v.clock.hour).padStart(2, "0")}:
+            {String(v.clock.minute).padStart(2, "0")}{" "}
+            {v.clock.isDay ? "☀" : "🌙"}
           </div>
           {fp.guidedTarget?.nextWaypoint && (
             <div>
-              <span>Next leg</span> ({Math.round(fp.guidedTarget.nextWaypoint.x)}, {Math.round(fp.guidedTarget.nextWaypoint.y)})
+              <span>Next leg</span> (
+              {Math.round(fp.guidedTarget.nextWaypoint.x)},{" "}
+              {Math.round(fp.guidedTarget.nextWaypoint.y)})
             </div>
           )}
           {v.nearestCivic.length > 0 && (
@@ -241,7 +261,8 @@ export function FirstPersonPanel({
       )}
 
       <div className="first-person-panel__hint">
-        WASD strafe/walk · Shift sprint · arrows turn · Tap Use to interact · Tap arrows to roam
+        WASD strafe/walk · Shift sprint · arrows turn · Tap Use to interact ·
+        Tap arrows to roam
       </div>
     </div>
   );
