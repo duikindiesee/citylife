@@ -7,7 +7,7 @@
 - Lanes + way of work: [TEAM-LANES.md](TEAM-LANES.md)
 - Visual north-star: [research/2026-06-13-district-concept.md](research/2026-06-13-district-concept.md) (neon night-market commercial vs calm residential teal)
 - Asset pipeline: [specs/100-blender-asset-pipeline.md](specs/100-blender-asset-pipeline.md) (Blender -> glTF authored shells; geometry in Blender, placement in code)
-- District spec (to author): docs/specs/101-commercial-district-and-garage-landmark.md
+- Garage hero shell: [specs/102-commercial-garage-hero-glb.md](specs/102-commercial-garage-hero-glb.md) (parallel-safe Blender GLB asset only; no world placement until the Phase-1/S2 gate)
 
 ## Direction locked (2026-06-25, Irwin)
 

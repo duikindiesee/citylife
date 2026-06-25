@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import generator from "../public/assets/citylife/props/generate_rally_venue_bench.py?raw";
+import garageHeroGenerator from "../public/assets/citylife/props/generate_commercial_garage_hero.py?raw";
+import rallyBenchGenerator from "../public/assets/citylife/props/generate_rally_venue_bench.py?raw";
 import {
   rallyVenuePropPlacements,
   venuePropAssets,
@@ -48,13 +49,27 @@ describe("Blender GLB venue prop asset pipeline", () => {
   });
 
   it("authors the rally bench as a locked no-armrest ladder frame", () => {
-    expect(generator).toContain("rally_venue_bench_backrest_slat_top");
-    expect(generator).toContain("rally_venue_bench_backrest_slat_middle");
-    expect(generator).toContain("rally_venue_bench_backrest_slat_bottom");
-    expect(generator).toContain("rally_venue_bench_backrest_left_holder");
-    expect(generator).toContain("rally_venue_bench_backrest_right_holder");
-    expect(generator).toContain("rally_venue_bench_backrest_clamp_pad");
-    expect(generator).toContain("rally_venue_bench_underseat_glow_strip");
-    expect(generator).not.toMatch(/armrest/i);
+    expect(rallyBenchGenerator).toContain("rally_venue_bench_backrest_slat_top");
+    expect(rallyBenchGenerator).toContain("rally_venue_bench_backrest_slat_middle");
+    expect(rallyBenchGenerator).toContain("rally_venue_bench_backrest_slat_bottom");
+    expect(rallyBenchGenerator).toContain("rally_venue_bench_backrest_left_holder");
+    expect(rallyBenchGenerator).toContain("rally_venue_bench_backrest_right_holder");
+    expect(rallyBenchGenerator).toContain("rally_venue_bench_backrest_clamp_pad");
+    expect(rallyBenchGenerator).toContain("rally_venue_bench_underseat_glow_strip");
+    expect(rallyBenchGenerator).not.toMatch(/armrest/i);
+  });
+
+  it("authors the commercial garage hero as a no-placement GLB landmark shell", () => {
+    expect(garageHeroGenerator).toContain("commercial_garage_hero_showroom_glass_cube");
+    expect(garageHeroGenerator).toContain("commercial_garage_hero_showroom_car_glow");
+    expect(garageHeroGenerator).toContain("commercial_garage_hero_service_bay_shed");
+    expect(garageHeroGenerator).toContain("commercial_garage_hero_rollup_door_left");
+    expect(garageHeroGenerator).toContain("commercial_garage_hero_forecourt_lane");
+    expect(garageHeroGenerator).toContain("commercial_garage_hero_corner_pylon_sign");
+    expect(garageHeroGenerator).toContain("commercial_garage_hero_display_car_angle_left");
+    expect(garageHeroGenerator).toContain("commercial_garage_hero_rooftop_wrench_emblem");
+    expect(garageHeroGenerator).toContain("commercial_garage_hero_warm_night_emissive");
+    expect(garageHeroGenerator).toContain("commercial-garage-hero.glb");
+    expect(garageHeroGenerator).not.toMatch(/\b(brand|logo|text|placement)\b|Math\.random|Date\.now/i);
   });
 });
