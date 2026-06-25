@@ -52,6 +52,32 @@ const OLD_WORLD_STATS = false;
 export function hudClassName(firstPersonActive: boolean): string {
   return firstPersonActive ? "hud hud--first-person-mobile-drawer" : "hud";
 }
+export type RightHudDeclutterModel = {
+  defaultCollapsed: boolean;
+  defaultVisibleLabels: string[];
+  expandLabel: string;
+  collapseLabel: string;
+  expandedPanelLabels: string[];
+};
+export function rightHudDeclutterModel(ui: ColonyUiState): RightHudDeclutterModel {
+  const labels = [
+    ui.name,
+    `Site: ${ui.biome}`,
+    `Pop: ${ui.colonists}/${ui.colony.capacity}`,
+  ];
+  const expandedPanelLabels = ["City Bank"];
+  if (ui.citizens.count > 0) expandedPanelLabels.push("Citizens");
+  if (ui.neighborhood.lots.length > 0) expandedPanelLabels.push("Homesteads");
+  if (ui.commerce.plots > 0) expandedPanelLabels.push("Commercial district");
+  if (ui.firstPerson.operatorCitizenId) expandedPanelLabels.push("Furniture studio");
+  return {
+    defaultCollapsed: true,
+    defaultVisibleLabels: labels,
+    expandLabel: "Open HUD details",
+    collapseLabel: "Hide HUD details",
+    expandedPanelLabels,
+  };
+}
 export type BankPanelCopy = {
   title: string;
   rows: { label: string; value: string; status?: "ok" | "pending" }[];
@@ -494,6 +520,7 @@ export function ColonyApp() {
     playerScoped: ui.bank.scope === "player",
   });
   const [borderOpen, setBorderOpen] = useState(false);
+  const [rightHudOpen, setRightHudOpen] = useState(false);
   const [mouseLookLocked, setMouseLookLocked] = useState(false);
   const [pointerLockError, setPointerLockError] = useState<string | null>(null);
   // Furniture studio (spec 088 Slice D UI) — the design-and-buy controls.
@@ -698,6 +725,7 @@ export function ColonyApp() {
       : ui.power.pct > 0.15
         ? "#e6c84d"
         : "#e0584d";
+  const rightHud = rightHudDeclutterModel(ui);
 
   return (
     <div className="colony">
@@ -889,8 +917,32 @@ export function ColonyApp() {
         </div>
       </header>
 
-      <aside className={hudClassName(ui.firstPerson.active)}>
-        <h2>{ui.name}</h2>
+      <aside
+        className={hudClassName(ui.firstPerson.active)}
+        data-hud-expanded={rightHudOpen ? "true" : "false"}
+      >
+        <div className="hud-essentials" aria-label="City HUD essentials">
+          <h2>{ui.name}</h2>
+          <div className="hud-essential-row">
+            <span>Site</span>
+            <b>{ui.biome}</b>
+          </div>
+          <div className="hud-essential-row">
+            <span>Pop</span>
+            <b>
+              {ui.colonists}/{ui.colony.capacity}
+            </b>
+          </div>
+          <button
+            className="hud-detail-toggle"
+            type="button"
+            aria-expanded={rightHudOpen}
+            onClick={() => setRightHudOpen((open) => !open)}
+            title={rightHudOpen ? rightHud.collapseLabel : rightHud.expandLabel}
+          >
+            {rightHudOpen ? "▴ Hide details" : "▾ HUD details"}
+          </button>
+        </div>
         {ui.courier.on && ui.courier.headline && (
           <div
             className="courier-ticker"
@@ -908,6 +960,7 @@ export function ColonyApp() {
             📻 {ui.courier.headline}
           </div>
         )}
+        <div className="hud-detail-stack" hidden={!rightHudOpen}>
         <div className="row">
           <span>Site</span>
           <b>{ui.biome}</b>
@@ -2828,6 +2881,7 @@ export function ColonyApp() {
               </div>
             );
           })()}
+        </div>
       </aside>
 
       <RadioPanel runtime={runtime} radio={ui.radio} tv={ui.tv} />

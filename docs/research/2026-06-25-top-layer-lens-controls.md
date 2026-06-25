@@ -1,9 +1,9 @@
 # Top layer lens controls — making the upper screen readable
 
-**Date:** 2026-06-25 20:21 SAST  
-**Status:** research proposal / discussion space  
-**Owner lane:** Player & UI, with Claude review requested before implementation  
-**Scope:** docs-only research. No runtime, no map-layer, no district/signage implementation in this PR.
+**Date:** 2026-06-25 20:21 SAST
+**Status:** research proposal plus shipped Player & UI HUD slices
+**Owner lane:** Player & UI, with review requested before merge
+**Scope:** top-layer/readability research; concrete HUD slices stay UI-only and must not implement map-layer, district, signage, car, or rally logic.
 
 ## Why this exists
 
@@ -215,7 +215,7 @@ Examples:
 
 ## Implementation ladder
 
-This is a proposal ladder. The 2026-06-25 mobile HUD build converts the mobile first-person part into a concrete UI slice: first-person now uses an edge HUD with a top destination strip, clear center view, bottom-left joystick-style movement dock, bottom-right action cluster, one-line guidance caption, and debug details collapsed by default.
+This is a proposal ladder with shipped UI slices. The 2026-06-25 mobile HUD build (#160) converted the mobile first-person part into a concrete UI slice: first-person now uses an edge HUD with a top destination strip, clear center view, bottom-left joystick-style movement dock, bottom-right action cluster, one-line guidance caption, and debug details collapsed by default. The right-side HUD declutter slice continues the same principle for the main web/mobile HUD: essentials stay visible, while dense city, bank, homestead, commerce, and furniture detail is behind a click/tap toggle.
 
 ### Slice A — label-only clarity
 
@@ -265,7 +265,7 @@ Acceptance:
 - No permanent toolbar crowding.
 - Night readability verified.
 
-### Slice D — mobile first-person joystick HUD [BUILD IN THIS PR]
+### Slice D — mobile first-person joystick HUD [BUILT #160]
 
 Owner: Player & UI.
 
@@ -285,7 +285,25 @@ Acceptance:
 - Keyboard controls and existing accessible button labels are preserved.
 - No edits to rally proximity, pathfinding, car/race, or district generation logic.
 
-### Slice E — future Streets/Districts lens contract
+### Slice E — declutter the right-side HUD [BUILD IN THIS PR]
+
+Owner: Player & UI.
+
+- Keep only the right HUD essentials visible by default: city name, site/biome, population, and one compact `HUD details` control.
+- Move dense details behind the click/tap toggle: city bank, citizens, homesteads, settlers, commerce, furniture studio, marketplace, and any old-world/debug rows.
+- Preserve the existing panel content and actions once expanded; this is a display/visibility slice, not a bank, commerce, homestead, car, rally, or world-logic change.
+- Make the collapsed and expanded states work on web and mobile. The collapsed state must not cover the world center.
+
+Acceptance:
+
+- Default right HUD is visibly compact on web and mobile.
+- `HUD details` expands the full right-side panel; tapping/clicking again collapses it.
+- Critical essentials remain visible when collapsed.
+- Existing actions remain accessible when expanded.
+- Tests cover the default-visible essentials and hidden expanded panel labels.
+- Fresh build is verified in-world at day and night with screenshots.
+
+### Slice F — future Streets/Districts lens contract
 
 Owner: Player & UI with World & Build read-only data contract.
 
