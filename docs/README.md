@@ -17,12 +17,14 @@ repo, on protected `main` (PRs + review only).
    engine and colony architecture: the source of truth for direction.
 2. **[../AGENTS.md](../AGENTS.md)** — the rules every coding agent must follow (architecture
    invariants, determinism, CI-safe commits, the documentation discipline, lane ownership).
-3. **[EPIC-street-rod.md](EPIC-street-rod.md)** — the current north-star initiative: two brothers
+3. **[VISION-open-world.md](VISION-open-world.md)** — the living document: what CityLife is becoming
+   (a Need-for-Speed-feel open-world car game) and where it is going. Sits above the epic and phases.
+4. **[EPIC-street-rod.md](EPIC-street-rod.md)** — the current north-star initiative: two brothers
    meet at night, drive, hang, race, and tune their cars. The single source of truth for the Street
    Rod game (mirrors GitHub issue #125).
-4. **[PHASE-1-street-rod.md](PHASE-1-street-rod.md)** — the active phase: the end-to-end slice
+5. **[PHASE-1-street-rod.md](PHASE-1-street-rod.md)** — the active phase: the end-to-end slice
    (garage to car to meeting up with friends), split across the dev lanes with acceptance criteria.
-5. **[TEAM-LANES.md](TEAM-LANES.md)** — who owns what, the cross-lane seams, the cron operating
+6. **[TEAM-LANES.md](TEAM-LANES.md)** — who owns what, the cross-lane seams, the cron operating
    model, and the review/merge flow.
 
 ---
