@@ -14,6 +14,10 @@ export interface RaceLayerOptions {
   track: RaceTrack;
   wx: (x: number) => number;
   wz: (y: number) => number;
+  /** Height of the WALKABLE/driveable surface at a position — the road ribbon top on a road cell,
+   *  bare terrain otherwise. The car rides THIS, not raw worldY, or it sinks under the raised road
+   *  ribbon on a hill (the "car disappearing under road" bug). Supplied by PlanetRenderer.surfaceY. */
+  roadSurfaceY: (x: number, y: number) => number;
 }
 
 export function buildRaceLayer(opts: RaceLayerOptions): RaceLayer | null {
@@ -31,9 +35,11 @@ export function buildRaceLayer(opts: RaceLayerOptions): RaceLayer | null {
   return {
     group,
     update(raceState: RaceState, timeMs: number) {
-      const t = opts.terrain;
       const c = raceState.car;
-      const y = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y))) + 0.22;
+      // Ride the ROAD SURFACE (ribbon top on a road cell), not raw terrain — otherwise the car sinks
+      // under the raised road ribbon on a hill and reads as "disappearing under the road". Fractional
+      // x/y so the chassis glides smoothly along the carriageway instead of snapping per grid cell.
+      const y = opts.roadSurfaceY(c.x, c.y) + 0.22;
       car.position.set(opts.wx(c.x), y, opts.wz(c.y));
       car.rotation.set(0, -c.heading, 0);
       const pulse = (Math.sin(timeMs / 180) + 1) * 0.5;

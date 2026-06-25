@@ -993,6 +993,13 @@ export class PlanetRenderer {
       const hz = lot.houseZone;
       sig += `${lot.id}:${hz.x},${hz.y},${hz.w},${hz.d}@${seatOf(hz).toFixed(3)}|`;
     }
+    // Commercial district drives the map too — its coastal shop pads must be dried like the homesteads
+    // or they seat under the sea disc ("commercials is in the ground" / Floyd's night water-clip flag).
+    const cd = this.commercialDistrict;
+    if (cd) {
+      sig += `cd${cd.reserve.x},${cd.reserve.y},${cd.reserve.w},${cd.reserve.h};`;
+      for (const p of cd.parcels) sig += `${p.id}:${p.x},${p.y},${p.w},${p.h}|`;
+    }
     if (sig === this.terrainLevelSig) return;
     this.terrainLevelSig = sig;
     const next = new Map<number, number>();
@@ -1044,6 +1051,29 @@ export class PlanetRenderer {
             put(x, y, py + (nat - py) * sm);
           }
         }
+    }
+    // Spec 103 — DRY the commercial district the same way as the homesteads. A coastal shop pad whose
+    // worldY is below the dry floor is otherwise drawn under the sea disc (the operator's "commercials
+    // is in the ground"; Floyd's night flag: pads hovering/clipping over the water). Raise every sub-floor
+    // shop-footprint + mall-pad cell clear of the sea; buildCommercialDistrict then seats the shop on this
+    // dried surface (surfaceY), so inland plots are untouched and only coastal ones lift. Roads are skipped
+    // (the ribbon bridges them). No flatten/skirt — the shop's own plinth still fills any residual slope.
+    if (cd) {
+      const dryRect = (rx: number, ry: number, rw: number, rh: number) => {
+        for (let y = ry; y < ry + rh; y++)
+          for (let x = rx; x < rx + rw; x++)
+            if (
+              x >= 0 &&
+              y >= 0 &&
+              x < N &&
+              y < N &&
+              t.worldY(x, y) < DRY &&
+              !this.roadRibbonCells?.has(`${x},${y}`)
+            )
+              put(x, y, DRY);
+      };
+      for (const p of cd.parcels) dryRect(p.x - 1, p.y - 1, p.w + 2, p.h + 2);
+      dryRect(cd.mallPad.x, cd.mallPad.y, cd.mallPad.w, cd.mallPad.h);
     }
     // Spec 095 — grade the visible ground UP to the road ribbon (render-only; worldY untouched), so a
     // car riding the ribbon top is never swallowed by a hillside and the world never shows below the road.
@@ -2680,6 +2710,7 @@ export class PlanetRenderer {
         track: race.track,
         wx: (x) => this.wx(x),
         wz: (y) => this.wz(y),
+        roadSurfaceY: (x, y) => this.surfaceY(x, y),
       });
       if (this.raceLayer) this.scene.add(this.raceLayer.group);
     }
@@ -3019,6 +3050,10 @@ export class PlanetRenderer {
    *  on every shop plot. Rebuilt once here (the survey is static for the world's lifetime). */
   setCommercialDistrict(d: CommercialDistrict | null | undefined): void {
     this.commercialDistrict = d ?? undefined;
+    // Dry the commercial land FIRST (raises coastal shop pads clear of the sea), then build the shops
+    // so they seat on the dried surface (buildCommercialDistrict reads surfaceY). Order matters: the
+    // dried heights land in terrainLevel here, and the shop seat reads them on the next line.
+    if (this.terrainMat) this.relevelTerrain();
     this.buildCommercialDistrict();
     this.buildFoliage(); // re-clear foliage so no trees stand on the commercial plots
   }
@@ -3155,7 +3190,9 @@ export class PlanetRenderer {
         hiY = 0;
       for (const fx of [p.x, p.x + p.w - 1])
         for (const fy of [p.y, p.y + p.h - 1]) {
-          const h = Math.max(0, t.worldY(fx, fy));
+          // Seat on the DRIED/levelled surface (surfaceY), not raw worldY — a coastal pad is raised
+          // clear of the sea in relevelTerrain, so the shop lifts with it instead of seating underwater.
+          const h = this.surfaceY(fx, fy);
           if (h < loY) loY = h;
           if (h > hiY) hiY = h;
         }
