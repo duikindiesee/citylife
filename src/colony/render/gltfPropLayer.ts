@@ -40,6 +40,11 @@ export function buildGltfPropLayer(
     const placements = byAsset.get(asset.id) ?? [];
     if (placements.length === 0 || !asset.publicSafe) continue;
     void loader.loadAsync(asset.url).then((gltf) => {
+      // Sit the model's BASE on the terrain. A GLB authored with a CENTRED pivot would otherwise
+      // drop half its height below ground (the bench/garage "in the ground" bug — no in-world QA had
+      // caught it). Lift every instance by the model's bounding-box minimum, scaled per placement, so
+      // base-origin and centre-origin GLBs both land flush. baseMinY is 0 for an already-grounded model.
+      const baseMinY = new THREE.Box3().setFromObject(gltf.scene).min.y;
       gltf.scene.traverse((obj) => {
         const source = obj as THREE.Mesh;
         if (!source.isMesh) return;
@@ -61,7 +66,7 @@ export function buildGltfPropLayer(
         const dummy = new THREE.Object3D();
         placements.forEach((p, i) => {
           const y = Math.max(0, opts.terrain.worldY(p.x, p.y));
-          dummy.position.set(opts.wx(p.x), y, opts.wz(p.y));
+          dummy.position.set(opts.wx(p.x), y - baseMinY * p.scale, opts.wz(p.y));
           dummy.rotation.set(0, p.rotationTurns * Math.PI * 2, 0);
           dummy.scale.setScalar(p.scale);
           dummy.updateMatrix();
