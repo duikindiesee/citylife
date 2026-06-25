@@ -39,8 +39,12 @@ describe("night rally venue prop placement", () => {
     expect(cells).not.toContain("91,75");
     expect(cells).not.toContain("89,73");
     for (const p of first) {
-      expect(Math.max(Math.abs(p.x - 91), Math.abs(p.y - 73))).toBeGreaterThanOrEqual(2);
-      expect(Math.max(Math.abs(p.x - 91), Math.abs(p.y - 73))).toBeLessThanOrEqual(5);
+      expect(
+        Math.max(Math.abs(p.x - 91), Math.abs(p.y - 73)),
+      ).toBeGreaterThanOrEqual(2);
+      expect(
+        Math.max(Math.abs(p.x - 91), Math.abs(p.y - 73)),
+      ).toBeLessThanOrEqual(5);
     }
   });
 });

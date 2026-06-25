@@ -32,7 +32,11 @@ interface VenuePlacementOptions {
   occupied: ReadonlySet<string>;
 }
 
-const RING: readonly { dx: number; dy: number; kind: VenuePropPlacement["kind"] }[] = [
+const RING: readonly {
+  dx: number;
+  dy: number;
+  kind: VenuePropPlacement["kind"];
+}[] = [
   { dx: -4, dy: -2, kind: "lantern" },
   { dx: -2, dy: -4, kind: "stool" },
   { dx: 2, dy: -4, kind: "crate" },
@@ -78,7 +82,9 @@ export function computeVenuePropPlacements(
   return placements;
 }
 
-export function buildVenueProps(opts: VenuePropsOptions): VenuePropsLayer | null {
+export function buildVenueProps(
+  opts: VenuePropsOptions,
+): VenuePropsLayer | null {
   const placements = computeVenuePropPlacements(opts);
   if (placements.length === 0) return null;
 
@@ -179,7 +185,13 @@ export function buildVenueProps(opts: VenuePropsOptions): VenuePropsLayer | null
     floorMesh.setMatrixAt(floors++, reusable.matrix);
   }
 
-  for (const mesh of [lanternMesh, lanternGlowMesh, stoolMesh, crateMesh, floorMesh]) {
+  for (const mesh of [
+    lanternMesh,
+    lanternGlowMesh,
+    stoolMesh,
+    crateMesh,
+    floorMesh,
+  ]) {
     mesh.castShadow = mesh !== floorMesh;
     mesh.receiveShadow = mesh !== floorMesh;
     mesh.frustumCulled = false;
