@@ -21,6 +21,71 @@ export interface RaceInput {
   steerLeft?: boolean;
   steerRight?: boolean;
   handbrake?: boolean;
+  steer?: number;
+}
+
+export interface RaceDriveInput {
+  steer: number;
+  throttle: boolean;
+  brake: boolean;
+  handbrake: boolean;
+}
+
+export interface OrientationLike {
+  gamma: number | null;
+  beta: number | null;
+}
+
+export interface GamepadLike {
+  axes: readonly number[];
+  buttons: readonly { pressed: boolean }[];
+}
+
+const RACE_STEER_DEADZONE = 0.15;
+const GYRO_STEER_DEADZONE_DEGREES = 2;
+const GYRO_STEER_FULL_LOCK_DEGREES = 30;
+
+export function normalizeRaceDriveInput(input: RaceInput): RaceDriveInput {
+  const keySteer = (input.steerLeft ? -1 : 0) + (input.steerRight ? 1 : 0);
+  return {
+    steer: clamp(keySteer + clamp(input.steer ?? 0, -1, 1), -1, 1),
+    throttle: input.accelerate === true,
+    brake: input.brake === true,
+    handbrake: input.handbrake === true,
+  };
+}
+
+export function gyroSteerFromOrientation(
+  orientation: OrientationLike,
+  baseline: OrientationLike,
+): number {
+  const gamma = finiteOrNull(orientation.gamma);
+  const baseGamma = finiteOrNull(baseline.gamma);
+  if (gamma === null || baseGamma === null) return 0;
+  const delta = gamma - baseGamma;
+  if (Math.abs(delta) < GYRO_STEER_DEADZONE_DEGREES) return 0;
+  return clamp(delta / GYRO_STEER_FULL_LOCK_DEGREES, -1, 1);
+}
+
+export function gamepadRaceInput(gamepad: GamepadLike): RaceInput {
+  const stick = finiteNumber(gamepad.axes[0]);
+  const dpadLeft = gamepad.buttons[14]?.pressed === true;
+  const dpadRight = gamepad.buttons[15]?.pressed === true;
+  const dpadSteer = (dpadLeft ? -1 : 0) + (dpadRight ? 1 : 0);
+  const steer = Math.abs(stick) >= RACE_STEER_DEADZONE ? clamp(stick, -1, 1) : dpadSteer;
+  return {
+    steer,
+    accelerate: gamepad.buttons[0]?.pressed === true,
+    brake: gamepad.buttons[1]?.pressed === true,
+  };
+}
+
+function finiteNumber(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : 0;
+}
+
+function finiteOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
 export interface RaceState {
@@ -122,18 +187,18 @@ function driveCar(state: RaceState, input: RaceInput, dt: number): void {
     (onTrack ? 1 : 0.48);
   const maxReverse = onTrack ? -2.8 : -1.4;
 
-  if (input.accelerate) car.speed += 13.5 * dt;
-  if (input.brake) car.speed -= car.speed > 0.2 ? 16 * dt : 7 * dt;
-  if (!input.accelerate && !input.brake) car.speed *= Math.max(0, 1 - 2.2 * dt);
-  if (input.handbrake) car.speed *= Math.max(0, 1 - 1.8 * dt);
+  const drive = normalizeRaceDriveInput(input);
+  if (drive.throttle) car.speed += 13.5 * dt;
+  if (drive.brake) car.speed -= car.speed > 0.2 ? 16 * dt : 7 * dt;
+  if (!drive.throttle && !drive.brake) car.speed *= Math.max(0, 1 - 2.2 * dt);
+  if (drive.handbrake) car.speed *= Math.max(0, 1 - 1.8 * dt);
   car.speed = clamp(car.speed, maxReverse, maxForward);
 
-  const steer = (input.steerLeft ? -1 : 0) + (input.steerRight ? 1 : 0);
-  if (steer !== 0 && Math.abs(car.speed) > 0.05) {
+  if (drive.steer !== 0 && Math.abs(car.speed) > 0.05) {
     const dir = car.speed >= 0 ? 1 : -1;
-    const handbrake = input.handbrake ? 1.45 : 1;
+    const handbrake = drive.handbrake ? 1.45 : 1;
     car.heading +=
-      steer *
+      drive.steer *
       dir *
       (2.25 + Math.min(5, Math.abs(car.speed)) * 0.12) *
       handbrake *

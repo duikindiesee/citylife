@@ -76,6 +76,9 @@ describe("mobile Road Rally driving controls", () => {
     expect(html).toContain("aria-label=\"Hold throttle\"");
     expect(html).toContain("aria-label=\"Brake or reverse\"");
     expect(html).toContain("Hold throttle");
+    expect(html).toContain("data-race-action=\"gyro-toggle\"");
+    expect(html).toContain("data-race-action=\"gyro-recenter\"");
+    expect(html).toContain("Gyro steer off");
   });
 
   it("maps touch actions to the exact keyboard codes read by the race driver", () => {

@@ -44,6 +44,7 @@ import { RadioPanel } from "./RadioPanel";
 import { FirstPersonPanel } from "./FirstPersonPanel";
 import { GaragePanel } from "./GaragePanel";
 import { RaceMobileControls } from "./RaceMobileControls";
+import { gamepadRaceInput } from "../racing/race";
 import "./colony.css";
 
 // Spec 089 — the CityLife HUD shows only the city-relevant stats (citizens, homesteads, the bank, the
@@ -542,6 +543,7 @@ export function ColonyApp() {
   const [mouseLookLocked, setMouseLookLocked] = useState(false);
   const [pointerLockError, setPointerLockError] = useState<string | null>(null);
   const [touchCapable, setTouchCapable] = useState(detectTouchCapable);
+  const [controllerConnected, setControllerConnected] = useState(false);
   // Furniture studio (spec 088 Slice D UI) — the design-and-buy controls.
   const [furnKind, setFurnKind] = useState<FurnitureKind>("sofa");
   const [furnName, setFurnName] = useState("");
@@ -594,6 +596,41 @@ export function ColonyApp() {
       window.removeEventListener("touchstart", markTouchCapable);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || typeof window === "undefined") return;
+    let raf = 0;
+    let wasConnected = false;
+    const clearGamepad = () => {
+      runtime.setRaceAnalogInput("gamepad", null);
+      if (wasConnected) {
+        wasConnected = false;
+        setControllerConnected(false);
+      }
+    };
+    const poll = () => {
+      const raceActive = runtime.getUiState().race.mode !== "idle";
+      const pads = Array.from(navigator.getGamepads?.() ?? []).filter(
+        (pad): pad is Gamepad => Boolean(pad),
+      );
+      const pad = pads[0];
+      if (!raceActive || !pad) {
+        clearGamepad();
+      } else {
+        if (!wasConnected) {
+          wasConnected = true;
+          setControllerConnected(true);
+        }
+        runtime.setRaceAnalogInput("gamepad", gamepadRaceInput(pad));
+      }
+      raf = window.requestAnimationFrame(poll);
+    };
+    poll();
+    return () => {
+      window.cancelAnimationFrame(raf);
+      runtime.setRaceAnalogInput("gamepad", null);
+    };
+  }, [runtime]);
 
   useEffect(() => {
     const renderer = (runtime as unknown as Record<string, unknown>)[
@@ -823,6 +860,11 @@ export function ColonyApp() {
           <span style={{ color: ui.race.offTrack ? "#e0a14d" : "#8fb6d8" }}>
             {ui.race.checkpoint}/{ui.race.checkpoints}
           </span>
+          {controllerConnected && (
+            <span data-race-controller="connected" style={{ color: "#9ee6ff" }}>
+              Controller connected · left stick/D-pad steer · A throttle · B brake
+            </span>
+          )}
           {ui.race.bestMs !== null && (
             <span style={{ color: "#8fd0a6" }}>
               Best {raceTime(ui.race.bestMs)}

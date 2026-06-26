@@ -792,6 +792,7 @@ export class ColonyRuntime {
   private fpBlockedReason: string | null = null;
   private raceState: RaceState | null = null;
   private raceInput: RaceInput = {};
+  private raceAnalogInput: Record<string, RaceInput> = {};
   private bestRaceMs: number | null = null;
   private readonly worldSeed: number;
   /** Spec 084 S6 / 079 — the reserved shop-district land bank at the avenue's inland end. */
@@ -2063,6 +2064,7 @@ export class ColonyRuntime {
     });
     if (!track) return false;
     this.raceInput = {};
+    this.raceAnalogInput = {};
     this.raceState = newRaceState(track);
     this.renderer?.setRaceState(this.raceState);
     this.emit();
@@ -2081,6 +2083,7 @@ export class ColonyRuntime {
     if (!this.raceState) return;
     this.raceState = null;
     this.raceInput = {};
+    this.raceAnalogInput = {};
     this.renderer?.setRaceState(null);
     this.emit();
   }
@@ -2101,6 +2104,36 @@ export class ColonyRuntime {
     const m = map[key.toLowerCase()];
     if (!m) return;
     this.raceInput = { ...this.raceInput, [m]: down };
+  }
+
+  setRaceAnalogInput(source: string, input: RaceInput | null): void {
+    if (!source) return;
+    if (input === null) {
+      const { [source]: _removed, ...rest } = this.raceAnalogInput;
+      this.raceAnalogInput = rest;
+      return;
+    }
+    this.raceAnalogInput = { ...this.raceAnalogInput, [source]: input };
+  }
+
+  private combinedRaceInput(): RaceInput {
+    let steer = this.raceInput.steer ?? 0;
+    let accelerate = this.raceInput.accelerate === true;
+    let brake = this.raceInput.brake === true;
+    let handbrake = this.raceInput.handbrake === true;
+    for (const input of Object.values(this.raceAnalogInput)) {
+      steer += input.steer ?? 0;
+      accelerate ||= input.accelerate === true;
+      brake ||= input.brake === true;
+      handbrake ||= input.handbrake === true;
+    }
+    return {
+      ...this.raceInput,
+      steer,
+      accelerate,
+      brake,
+      handbrake,
+    };
   }
 
   private raceCommercialCenter(): { x: number; y: number } | null {
@@ -2127,7 +2160,7 @@ export class ColonyRuntime {
       this.renderer?.setRaceState(cur);
       return;
     }
-    const next = stepRace(cur, this.raceInput, dtReal * 1000);
+    const next = stepRace(cur, this.combinedRaceInput(), dtReal * 1000);
     this.raceState = next;
     this.renderer?.setRaceState(next);
     if (next.mode === "finished" && next.finishedMs !== null) {
