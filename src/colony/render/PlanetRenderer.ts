@@ -32,7 +32,12 @@ import type { Neighborhood } from "../neighborhood";
 import type { CommercialDistrict } from "../commerce/district";
 import { BUSINESSES, type Business, type Emblem } from "../commerce/businesses";
 import { surveyBillboards } from "../commerce/billboards";
-import { surveyBusinessLabels, type BusinessLabel } from "../commerce/businessLabels";
+import {
+  declutterBusinessLabels,
+  surveyBusinessLabels,
+  type BusinessLabel,
+  type BusinessLabelDeclutterInput,
+} from "../commerce/businessLabels";
 import { buildCarMesh } from "../car/carMesh";
 import type { CarSpec } from "../car/carSpec";
 import { posterModel, paintPoster } from "../commerce/adCanvas";
@@ -253,10 +258,17 @@ export class PlanetRenderer {
   private commercialMallFloorMat: THREE.MeshStandardMaterial | null = null;
   private commercialFloorMats: THREE.MeshStandardMaterial[] = [];
   private commercialLabelMats: {
+    group: THREE.Object3D;
     sprite: THREE.SpriteMaterial;
     floor: THREE.MeshBasicMaterial;
     model: BusinessLabel;
+    visibilityOpacity: number;
   }[] = [];
+  private commercialLabelProjection = new THREE.Vector3();
+  private commercialLabelWorld = new THREE.Vector3();
+  private commercialLabelDirection = new THREE.Vector3();
+  private commercialLabelRaycaster = new THREE.Raycaster();
+  private commercialLabelNight = 0;
   // Spec 084 S1 — per-lot house mesh key (blueprint + foundation height) for incremental rebuilds.
   private lotHouseKey = new Map<string, string>();
   private settlerGroup = new THREE.Group();
@@ -2687,6 +2699,7 @@ export class PlanetRenderer {
     cmat.emissiveIntensity = night * 0.5;
     // Spec 079 — the commercial signage glows day and night, and flares brighter after dark so the
     // market strip becomes the lit heart of the city at dusk (the concept-art look).
+    this.commercialLabelNight = night;
     for (const sm of this.commercialSignMats)
       sm.emissiveIntensity = 0.7 + night * 0.9;
     if (this.commercialMallFloorMat)
@@ -2694,18 +2707,13 @@ export class PlanetRenderer {
         mallAnchorNightFloorEmissive(s.clock.daylight);
     for (const fm of this.commercialFloorMats)
       fm.emissiveIntensity = commercialShopNightFloorEmissive(s.clock.daylight);
-    for (const entry of this.commercialLabelMats) {
-      const glow =
-        entry.model.nightEmissiveFloor +
-        night * (entry.model.nightEmissivePeak - entry.model.nightEmissiveFloor);
-      entry.sprite.opacity = Math.min(1, glow);
-      entry.floor.opacity = 0.18 + night * 0.34;
-    }
+    this.applyCommercialLabelVisibility();
   }
 
   frame() {
     if (this.disposed) return;
     this.updateDayNight();
+    this.updateCommercialBusinessLabels();
     // Spec 084 S5 — staged terrain recolor: at most 8 dirty chunks repaint per frame.
     this.chunkedTerrain.recolor(
       (i, out) => this.colorFor(this.view, i, out),
@@ -3814,6 +3822,83 @@ export class PlanetRenderer {
     }
   }
 
+  private applyCommercialLabelVisibility() {
+    const night = this.commercialLabelNight;
+    for (const entry of this.commercialLabelMats) {
+      const glow =
+        entry.model.nightEmissiveFloor +
+        night * (entry.model.nightEmissivePeak - entry.model.nightEmissiveFloor);
+      entry.sprite.opacity = Math.min(1, glow) * entry.visibilityOpacity;
+      entry.floor.opacity = (0.18 + night * 0.34) * entry.visibilityOpacity;
+    }
+  }
+
+  private updateCommercialBusinessLabels() {
+    if (this.commercialLabelMats.length === 0) return;
+    const width = Math.max(1, this.renderer.domElement.clientWidth);
+    const height = Math.max(1, this.renderer.domElement.clientHeight);
+    const candidates: BusinessLabelDeclutterInput[] = [];
+    const occluders = this.commercialLabelOccluders();
+    for (const entry of this.commercialLabelMats) {
+      entry.group.getWorldPosition(this.commercialLabelWorld);
+      this.commercialLabelProjection.copy(this.commercialLabelWorld).project(this.camera);
+      const distance = this.camera.position.distanceTo(this.commercialLabelWorld);
+      candidates.push({
+        label: entry.model,
+        screenX: (this.commercialLabelProjection.x + 1) * 0.5 * width,
+        screenY: (1 - this.commercialLabelProjection.y) * 0.5 * height,
+        distance,
+        occluded:
+          this.commercialLabelProjection.z < -1 ||
+          this.commercialLabelProjection.z > 1 ||
+          Math.abs(this.commercialLabelProjection.x) > 1.18 ||
+          Math.abs(this.commercialLabelProjection.y) > 1.18 ||
+          this.commercialLabelOccluded(occluders, distance),
+      });
+    }
+    const visibility = declutterBusinessLabels(candidates);
+    for (const entry of this.commercialLabelMats) {
+      const state = visibility.find((item) => item.shopId === entry.model.shopId);
+      entry.group.visible = Boolean(state?.visible);
+      entry.visibilityOpacity = state?.visible ? state.opacity : 0;
+    }
+    this.applyCommercialLabelVisibility();
+  }
+
+  private commercialLabelOccluders() {
+    const occluders: THREE.Object3D[] = [];
+    this.scene.traverse((object) => {
+      if (object.type !== "Mesh") return;
+      if (this.isCommercialLabelObject(object)) return;
+      occluders.push(object);
+    });
+    return occluders;
+  }
+
+  private commercialLabelOccluded(
+    occluders: readonly THREE.Object3D[],
+    distance: number,
+  ) {
+    if (distance <= 1.4 || occluders.length === 0) return false;
+    this.commercialLabelDirection
+      .copy(this.commercialLabelWorld)
+      .sub(this.camera.position)
+      .normalize();
+    this.commercialLabelRaycaster.set(
+      this.camera.position,
+      this.commercialLabelDirection,
+    );
+    this.commercialLabelRaycaster.far = Math.max(0.1, distance - 1.2);
+    return this.commercialLabelRaycaster.intersectObjects([...occluders], false).length > 0;
+  }
+
+  private isCommercialLabelObject(object: THREE.Object3D) {
+    for (let cursor: THREE.Object3D | null = object; cursor; cursor = cursor.parent) {
+      if (cursor.name.startsWith("commercial-label-")) return true;
+    }
+    return false;
+  }
+
   private makeCommercialBusinessLabel(label: BusinessLabel): THREE.Object3D | null {
     if (!isPublicSafe(label.text)) return null;
     const group = new THREE.Group();
@@ -3839,7 +3924,7 @@ export class PlanetRenderer {
     ctx.fillStyle = accent;
     ctx.fillRect(42, 122, cv.width - 84, 8);
     ctx.fillStyle = "#fff5d6";
-    ctx.font = "700 42px system-ui, sans-serif";
+    ctx.font = "700 38px system-ui, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.shadowColor = accent;
@@ -3858,7 +3943,7 @@ export class PlanetRenderer {
       toneMapped: false,
     });
     const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(6.0, 1.9, 1);
+    sprite.scale.set(4.8, 1.55, 1);
     sprite.name = label.text;
     sprite.renderOrder = 30;
 
@@ -3876,7 +3961,13 @@ export class PlanetRenderer {
     floor.position.y = -0.72;
     floor.renderOrder = 29;
     group.add(floor, sprite);
-    this.commercialLabelMats.push({ sprite: spriteMat, floor: floorMat, model: label });
+    this.commercialLabelMats.push({
+      group,
+      sprite: spriteMat,
+      floor: floorMat,
+      model: label,
+      visibilityOpacity: 1,
+    });
     return group;
   }
 

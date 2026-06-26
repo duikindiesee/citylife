@@ -3,6 +3,7 @@ import { ColonyRuntime } from "../src/colony/runtime";
 import { isPublicSafe } from "../src/colony/newcomers";
 import {
   businessLabelModel,
+  declutterBusinessLabels,
   surveyBusinessLabels,
 } from "../src/colony/commerce/businessLabels";
 
@@ -72,6 +73,56 @@ describe("commercial business labels", () => {
     expect(label).toBeNull();
   });
 
+  it("declutters close and distant labels while preserving real business identity", () => {
+    const labels = surveyBusinessLabels(rtFor(4242).commercialDistrict!);
+    const candidates = labels.map((label, index) => ({
+      label,
+      screenX: index < 4 ? 400 + index * 14 : 100 + index * 120,
+      screenY: index < 4 ? 320 + index * 10 : 140 + index * 28,
+      distance:
+        index === 0 ? 22 : index === 1 ? 18 : index === 2 ? 68 : index === 3 ? 120 : 28 + index,
+    }));
+
+    const visible = declutterBusinessLabels(candidates, {
+      maxVisible: 3,
+      minScreenGap: 72,
+      farFadeStart: 50,
+      farHideDistance: 100,
+    });
+
+    expect(visible).toHaveLength(labels.length);
+    expect(visible.filter((l) => l.visible)).toHaveLength(3);
+    expect(visible.find((l) => l.shopId === labels[1]!.shopId)?.visible).toBe(true);
+    expect(visible.find((l) => l.shopId === labels[0]!.shopId)?.visible).toBe(false);
+    expect(visible.find((l) => l.shopId === labels[2]!.shopId)?.opacity).toBeLessThan(1);
+    expect(visible.find((l) => l.shopId === labels[3]!.shopId)?.visible).toBe(false);
+    for (const out of visible) {
+      const source = labels.find((label) => label.shopId === out.shopId)!;
+      expect(out.businessId).toBe(source.businessId);
+      expect(out.text).toBe(source.text);
+    }
+  });
+
+  it("hides occluded labels before they can overlap the shop strip", () => {
+    const labels = surveyBusinessLabels(rtFor(4242).commercialDistrict!).slice(0, 3);
+    const visible = declutterBusinessLabels(
+      labels.map((label, index) => ({
+        label,
+        screenX: 500 + index * 160,
+        screenY: 260,
+        distance: 20 + index,
+        occluded: index === 1,
+      })),
+      { maxVisible: 3, minScreenGap: 60, farFadeStart: 70, farHideDistance: 120 },
+    );
+
+    expect(visible[1]?.visible).toBe(false);
+    expect(visible.filter((l) => l.visible).map((l) => l.shopId)).toEqual([
+      labels[0]!.shopId,
+      labels[2]!.shopId,
+    ]);
+  });
+
   it("is deterministic and touches no wall-clock or RNG", () => {
     const rt = rtFor(4242);
     const fresh = new ColonyRuntime(4242);
@@ -81,6 +132,25 @@ describe("commercial business labels", () => {
       const a = surveyBusinessLabels(rt.commercialDistrict!);
       const b = surveyBusinessLabels(fresh.commercialDistrict!);
       expect(b).toEqual(a);
+      expect(
+        declutterBusinessLabels(
+          a.map((label, index) => ({
+            label,
+            screenX: index * 100,
+            screenY: index * 25,
+            distance: 20 + index,
+          })),
+        ),
+      ).toEqual(
+        declutterBusinessLabels(
+          b.map((label, index) => ({
+            label,
+            screenX: index * 100,
+            screenY: index * 25,
+            distance: 20 + index,
+          })),
+        ),
+      );
       expect(dateSpy).not.toHaveBeenCalled();
       expect(randSpy).not.toHaveBeenCalled();
     } finally {

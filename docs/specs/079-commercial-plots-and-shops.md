@@ -168,6 +168,14 @@ reload and a device switch, and its wallet balance grows with sales.
 
 Each slice ships on the rolling branch, passes typecheck plus vitest, and is visible on :5188.
 
+- Spec 106 / signage follow-up: floating per-shop labels now declutter dynamically in screen space
+  instead of stacking into unreadable piles. The renderer projects every read-only business label from
+  commercialDistrict.parcels, hides occluded/off-screen/far labels, caps visible labels, and prioritises
+  the nearest non-overlapping shop identities while preserving the real parcel.business contract. The
+  floor glow remains active day and night so labels still read after dark. This is read-only UI/render
+  work only; Jack's business variety + shop massing fixes remain the shared upstream source of richer
+  names and distinct buildings.
+
 ## Progress log
 
 ### 2026-06-13 — Slice P0: the commercial high street, surveyed + lit (vibrant-first)
