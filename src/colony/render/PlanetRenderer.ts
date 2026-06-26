@@ -57,6 +57,10 @@ import { buildBusLayer, type BusLayer } from "./busLayer";
 import type { BusRoute } from "../transit/busRoute";
 import { buildRoadRibbons, ROAD_RIBBON_LIFT, type RoadWay } from "./roadRibbon";
 import { applyCoastalCommercialDryBlend } from "./terrainLeveling";
+import {
+  buildMallAnchorShellModel,
+  mallAnchorNightFloorEmissive,
+} from "./mallAnchorShell";
 import type { RaceState } from "../racing/race";
 import { isPublicSafe } from "../newcomers";
 
@@ -240,6 +244,7 @@ export class PlanetRenderer {
   private commercialDistrict?: CommercialDistrict;
   private commercialGroup = new THREE.Group();
   private commercialSignMats: THREE.MeshStandardMaterial[] = [];
+  private commercialMallFloorMat: THREE.MeshStandardMaterial | null = null;
   // Spec 084 S1 — per-lot house mesh key (blueprint + foundation height) for incremental rebuilds.
   private lotHouseKey = new Map<string, string>();
   private settlerGroup = new THREE.Group();
@@ -2629,6 +2634,9 @@ export class PlanetRenderer {
     // market strip becomes the lit heart of the city at dusk (the concept-art look).
     for (const sm of this.commercialSignMats)
       sm.emissiveIntensity = 0.7 + night * 0.9;
+    if (this.commercialMallFloorMat)
+      this.commercialMallFloorMat.emissiveIntensity =
+        mallAnchorNightFloorEmissive(s.clock.daylight);
   }
 
   frame() {
@@ -3151,6 +3159,126 @@ export class PlanetRenderer {
     showroom: 1.7,
   };
 
+  /** Spec 106 — turn the reserved mallPad into the first visible anchor: a deterministic flat-roofed
+   * shell seated on the dried commercial surface, with a night-emissive plaza/floor slab. */
+  private buildMallAnchorShell(d: CommercialDistrict): void {
+    const model = buildMallAnchorShellModel(d.mallPad, (x, y) =>
+      this.surfaceY(x, y),
+    );
+    const g = new THREE.Group();
+    g.name = "commercialDistrict.mallPad.mallAnchorShell";
+    g.userData.kind = model.kind;
+    g.position.set(
+      this.wx(model.center.x),
+      model.baseY,
+      this.wz(model.center.y),
+    );
+
+    const floorMat = new THREE.MeshStandardMaterial({
+      color: 0x1b2938,
+      roughness: 0.58,
+      metalness: 0.05,
+      emissive: 0x31d6ff,
+      emissiveIntensity: model.nightFloor.emissiveIntensity.day,
+      transparent: true,
+      opacity: 0.82,
+    });
+    this.commercialMallFloorMat = floorMat;
+    const floor = new THREE.Mesh(
+      new THREE.BoxGeometry(model.nightFloor.w, 0.05, model.nightFloor.d),
+      floorMat,
+    );
+    floor.name = "mallAnchorNightFloor";
+    floor.position.y = model.nightFloor.y;
+    floor.receiveShadow = true;
+
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x465169,
+      roughness: 0.72,
+      metalness: 0.08,
+      emissive: 0x102040,
+      emissiveIntensity: 0.08,
+    });
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(model.body.w, model.body.h, model.body.d),
+      wallMat,
+    );
+    body.name = "mallAnchorMainBody";
+    body.position.y = model.body.y;
+    body.castShadow = true;
+    body.receiveShadow = true;
+
+    const wingMat = new THREE.MeshStandardMaterial({
+      color: 0x384258,
+      roughness: 0.76,
+      metalness: 0.06,
+    });
+    for (const sx of [-1, 1]) {
+      const wing = new THREE.Mesh(
+        new THREE.BoxGeometry(model.wing.w, model.wing.h, model.wing.d),
+        wingMat,
+      );
+      wing.name = sx < 0 ? "mallAnchorWestWing" : "mallAnchorEastWing";
+      wing.position.set(sx * model.wing.xOffset, model.wing.y, 0.2);
+      wing.castShadow = true;
+      wing.receiveShadow = true;
+      g.add(wing);
+    }
+
+    const roof = new THREE.Mesh(
+      new THREE.BoxGeometry(model.roof.w, model.roof.h, model.roof.d),
+      new THREE.MeshStandardMaterial({
+        color: 0x202633,
+        roughness: 0.84,
+        metalness: 0.04,
+      }),
+    );
+    roof.name = "mallAnchorFlatRoof";
+    roof.position.y = model.roof.y;
+    roof.castShadow = true;
+
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: 0x8bdcff,
+      roughness: 0.24,
+      metalness: 0.15,
+      emissive: 0x5ed7ff,
+      emissiveIntensity: 0.42,
+    });
+    for (const sx of [-model.body.w * 0.24, 0, model.body.w * 0.24]) {
+      const pane = new THREE.Mesh(
+        new THREE.BoxGeometry(model.body.w * 0.18, model.body.h * 0.45, 0.06),
+        glassMat,
+      );
+      pane.name = "mallAnchorStorefrontPane";
+      pane.position.set(sx, model.body.h * 0.46, -model.body.d / 2 - 0.035);
+      g.add(pane);
+    }
+
+    const canopy = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        model.entranceCanopy.w,
+        model.entranceCanopy.h,
+        model.entranceCanopy.d,
+      ),
+      new THREE.MeshStandardMaterial({
+        color: 0x31d6ff,
+        emissive: 0x31d6ff,
+        emissiveIntensity: 0.62,
+        roughness: 0.35,
+      }),
+    );
+    canopy.name = "mallAnchorEntranceCanopy";
+    canopy.position.set(
+      0,
+      model.entranceCanopy.y,
+      model.entranceCanopy.zOffset,
+    );
+    canopy.castShadow = true;
+
+    g.add(floor, body, roof, canopy);
+    this.commercialGroup.add(g);
+  }
+
   /** Raise a vibrant neon market stall on each surveyed shop plot: a dark counter body, a glowing
    *  awning canopy, and a bright signage panel facing the street. Disposes any prior build first. */
   private buildCommercialDistrict(): void {
@@ -3170,10 +3298,13 @@ export class PlanetRenderer {
     }
     this.commercialGroup.clear();
     this.commercialSignMats = [];
+    this.commercialMallFloorMat = null;
     this.scene.add(this.commercialGroup);
     const d = this.commercialDistrict;
     if (!d) return;
     const t = this.sim.state.terrain;
+
+    this.buildMallAnchorShell(d);
 
     d.parcels.forEach((p, i) => {
       // Spec 079 — each plot fronts a real kooker app: its business sets the neon palette, a rooftop
