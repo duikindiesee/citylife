@@ -29,7 +29,7 @@ import {
   porterStatus,
 } from "../build";
 import type { Neighborhood } from "../neighborhood";
-import type { CommercialDistrict, ShopParcel } from "../commerce/district";
+import type { CommercialDistrict } from "../commerce/district";
 import { BUSINESSES, type Business, type Emblem } from "../commerce/businesses";
 import { surveyBillboards } from "../commerce/billboards";
 import { buildCarMesh } from "../car/carMesh";
@@ -63,6 +63,11 @@ import {
 } from "./mallAnchorShell";
 import type { RaceState } from "../racing/race";
 import { isPublicSafe } from "../newcomers";
+import {
+  commercialShopMassing,
+  commercialShopNightFloorEmissive,
+  type CommercialShopMassing,
+} from "./commercialShopMassing";
 
 export type ViewMode = "biome" | "buildable" | "elevation";
 export type CameraPreset = "street" | "district" | "planet";
@@ -245,6 +250,7 @@ export class PlanetRenderer {
   private commercialGroup = new THREE.Group();
   private commercialSignMats: THREE.MeshStandardMaterial[] = [];
   private commercialMallFloorMat: THREE.MeshStandardMaterial | null = null;
+  private commercialFloorMats: THREE.MeshStandardMaterial[] = [];
   // Spec 084 S1 — per-lot house mesh key (blueprint + foundation height) for incremental rebuilds.
   private lotHouseKey = new Map<string, string>();
   private settlerGroup = new THREE.Group();
@@ -2637,6 +2643,8 @@ export class PlanetRenderer {
     if (this.commercialMallFloorMat)
       this.commercialMallFloorMat.emissiveIntensity =
         mallAnchorNightFloorEmissive(s.clock.daylight);
+    for (const fm of this.commercialFloorMats)
+      fm.emissiveIntensity = commercialShopNightFloorEmissive(s.clock.daylight);
   }
 
   frame() {
@@ -3152,12 +3160,6 @@ export class PlanetRenderer {
   private static readonly NEON = [
     0xff2d95, 0x18e0ff, 0xffc233, 0x7bff4d, 0xb24dff, 0xff6a3d,
   ];
-  // Shop massing by kind: how tall the body stands (showroom is the anchor, the kiosk a low cart).
-  private static readonly SHOP_WALL_H: Record<ShopParcel["kind"], number> = {
-    kiosk: 0.9,
-    store: 1.25,
-    showroom: 1.7,
-  };
 
   /** Spec 106 — turn the reserved mallPad into the first visible anchor: a deterministic flat-roofed
    * shell seated on the dried commercial surface, with a night-emissive plaza/floor slab. */
@@ -3299,6 +3301,7 @@ export class PlanetRenderer {
     this.commercialGroup.clear();
     this.commercialSignMats = [];
     this.commercialMallFloorMat = null;
+    this.commercialFloorMats = [];
     this.scene.add(this.commercialGroup);
     const d = this.commercialDistrict;
     if (!d) return;
@@ -3312,9 +3315,10 @@ export class PlanetRenderer {
       const biz = p.business ? BUSINESSES[p.business] : undefined;
       const neon =
         biz?.palette ?? PlanetRenderer.NEON[i % PlanetRenderer.NEON.length]!;
-      const wallH = PlanetRenderer.SHOP_WALL_H[p.kind];
-      const bodyW = p.w * 0.82;
-      const bodyD = p.h * 0.82;
+      const massing = commercialShopMassing(p, biz, i);
+      const wallH = massing.wallHeight;
+      const bodyW = massing.bodyW;
+      const bodyD = massing.bodyD;
       const cx = p.x + (p.w - 1) / 2;
       const cy = p.y + (p.h - 1) / 2;
       // Sit the shop on the LOWEST corner of its footprint so no edge floats over sloped/coastal
@@ -3338,6 +3342,13 @@ export class PlanetRenderer {
       const front = -p.side; // +z when the plot fronts the street to its -y side
 
       const g = new THREE.Group();
+      g.name = `commercialDistrict.${p.id}.${biz?.id ?? "open"}`;
+      g.userData = {
+        parcelId: p.id,
+        businessId: biz?.id,
+        businessName: biz?.name,
+        massing: massing.signatureKey,
+      };
       g.position.set(this.wx(cx), baseY, this.wz(cy));
 
       // Foundation plinth — inland/sloped shops still get a deep fill body. Coastal DRY seats already own
@@ -3356,6 +3367,25 @@ export class PlanetRenderer {
       found.castShadow = true;
       g.add(found);
 
+      const floorMat = new THREE.MeshStandardMaterial({
+        color: neon,
+        emissive: neon,
+        emissiveIntensity: commercialShopNightFloorEmissive(
+          this.sim.state.clock.daylight,
+        ),
+        roughness: 0.55,
+        transparent: true,
+        opacity: 0.52,
+      });
+      const floor = new THREE.Mesh(
+        new THREE.BoxGeometry(bodyW * 1.12, 0.035, bodyD * 1.12),
+        floorMat,
+      );
+      floor.name = "commercialShopNightFloor";
+      floor.position.y = 0.04;
+      this.commercialFloorMats.push(floorMat);
+      g.add(floor);
+
       // Body — inland plots keep the dark slate shopfront; coastal dried seats use a colour-matched wall
       // band so night views show grounded shop mass instead of a black tabletop silhouette.
       const coastalWall = new THREE.Color(neon).lerp(
@@ -3372,12 +3402,19 @@ export class PlanetRenderer {
           emissiveIntensity: coastalDriedSeat ? 0.12 : 0,
         }),
       );
+      body.name = "commercialShopBody";
       body.position.y = wallH / 2;
       body.castShadow = true;
 
+      // Roof form — per-business massing turns adjacent shops into distinct silhouettes instead of
+      // one flat box recoloured.
+      const roof = this.buildCommercialShopRoof(massing, neon, coastalDriedSeat);
+      roof.name = `commercialShopRoof.${massing.roofForm}`;
+      roof.position.y = wallH + massing.roofRise / 2;
+
       // Awning — a glowing neon canopy slightly oversailing the body.
       const canopy = new THREE.Mesh(
-        new THREE.BoxGeometry(bodyW * 1.08, 0.16, bodyD * 1.08),
+        new THREE.BoxGeometry(bodyW * massing.roofOverhang, 0.16, bodyD * 0.42),
         new THREE.MeshStandardMaterial({
           color: neon,
           roughness: 0.4,
@@ -3385,7 +3422,9 @@ export class PlanetRenderer {
           emissiveIntensity: 0.45,
         }),
       );
-      canopy.position.y = wallH + 0.08;
+      canopy.name = "commercialShopCanopy";
+      canopy.position.y = wallH * 0.86;
+      canopy.position.z = front * (bodyD / 2 + 0.22);
       canopy.castShadow = true;
 
       // Signage — a bright panel standing above the STREET-FACING front edge.
@@ -3397,12 +3436,13 @@ export class PlanetRenderer {
         roughness: 0.3,
       });
       const sign = new THREE.Mesh(
-        new THREE.BoxGeometry(bodyW * 0.62, 0.5, 0.1),
+        new THREE.BoxGeometry(bodyW * massing.signWidthScale, 0.5, 0.1),
         signMat,
       );
-      sign.position.set(0, wallH + 0.5, frontZ);
+      sign.name = "commercialShopSign";
+      sign.position.set(0, wallH + massing.roofRise + 0.34, frontZ);
       this.commercialSignMats.push(signMat);
-      g.add(body, canopy, sign);
+      g.add(body, roof, canopy, sign);
 
       // Storefront detail (spec 092) — a warm-lit window band flanking a recessed door, awning support
       // posts, and a couple of goods crates, so each shop reads as an OPEN business rather than a plain
@@ -3414,9 +3454,11 @@ export class PlanetRenderer {
         emissiveIntensity: 0.6,
         roughness: 0.3,
       });
-      const winW = bodyW * 0.26,
+      const winW = bodyW * Math.max(0.14, 0.62 / massing.windowCount),
         winH = wallH * 0.46;
-      for (const sx of [-bodyW * 0.3, bodyW * 0.3]) {
+      for (let wi = 0; wi < massing.windowCount; wi++) {
+        const center = (massing.windowCount - 1) / 2;
+        const sx = (wi - center) * (bodyW * 0.18);
         const win = new THREE.Mesh(
           new THREE.BoxGeometry(winW, winH, 0.06),
           glassMat,
@@ -3532,8 +3574,7 @@ export class PlanetRenderer {
 
       // Signature props give each marquee app a distinct, recognisable place (the bar's radar dish +
       // vials + bar-chart, Sprout's plants, Sportifine's pitch, Chef Ott's market awning + crates).
-      if (biz?.marquee)
-        g.add(this.buildBusinessProps(biz, bodyW, bodyD, wallH, front));
+      if (biz) g.add(this.buildBusinessProps(biz, bodyW, bodyD, wallH, front));
 
       this.commercialGroup.add(g);
     });
@@ -3983,8 +4024,103 @@ export class PlanetRenderer {
       );
       handle.position.set(bodyW * 0.34, 0.18, frontZ + front * 0.88);
       grp.add(kb, handle);
+    } else {
+      const featureMat = glow(biz.palette, 0.55);
+      const sideX = bodyW * 0.38;
+      if (biz.id === "citylife_garage") {
+        const bay = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 0.46, 0.72, 0.08), matte(0x1d222b));
+        bay.position.set(0, 0.36, frontZ + front * 0.12);
+        const wrench = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.08, 0.08), featureMat);
+        wrench.position.set(sideX, wallH + 0.18, frontZ * 0.2);
+        grp.add(bay, wrench);
+      } else if (biz.id === "mojojo_records") {
+        const disc = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.055, 10, 18), featureMat);
+        disc.position.set(-sideX, wallH + 0.12, frontZ * 0.2);
+        disc.rotation.x = Math.PI / 2;
+        const booth = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.28, 0.32), matte(0x20242c));
+        booth.position.set(0, 0.14, frontZ + front * 0.58);
+        grp.add(disc, booth);
+      } else if (biz.id === "classifieds_arcade") {
+        for (const sx of [-0.28, 0, 0.28]) {
+          const board = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.34, 0.05), featureMat);
+          board.position.set(sx, wallH * 0.52, frontZ + front * 0.12);
+          grp.add(board);
+        }
+      } else if (biz.id === "ledger_exchange") {
+        const counter = new THREE.Mesh(new THREE.BoxGeometry(bodyW * 0.62, 0.26, 0.28), matte(0x4d3b1f));
+        counter.position.set(0, 0.13, frontZ + front * 0.52);
+        const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.04, 18), featureMat);
+        coin.position.set(sideX, wallH + 0.2, frontZ * 0.2);
+        coin.rotation.x = Math.PI / 2;
+        grp.add(counter, coin);
+      } else if (biz.id === "tarentaal_tours") {
+        const perch = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.7, 6), matte(0x9a7a4a));
+        perch.position.set(-sideX, 0.35, frontZ + front * 0.55);
+        const bird = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 7), featureMat);
+        bird.position.set(-sideX, 0.76, frontZ + front * 0.55);
+        grp.add(perch, bird);
+      } else if (biz.id === "builder_studio") {
+        const frameA = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.9, 0.06), featureMat);
+        frameA.position.set(-0.38, 0.45, frontZ + front * 0.18);
+        const frameB = frameA.clone();
+        frameB.position.x = 0.38;
+        const lintel = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.08, 0.06), featureMat);
+        lintel.position.set(0, 0.88, frontZ + front * 0.18);
+        grp.add(frameA, frameB, lintel);
+      } else {
+        const marker = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.24, 0.1), featureMat);
+        marker.position.set(sideX, wallH + 0.18, frontZ * 0.2);
+        grp.add(marker);
+      }
     }
     return grp;
+  }
+
+  private buildCommercialShopRoof(
+    massing: CommercialShopMassing,
+    neon: number,
+    coastalDriedSeat: boolean,
+  ): THREE.Mesh {
+    const mat = new THREE.MeshStandardMaterial({
+      color: coastalDriedSeat ? new THREE.Color(neon).lerp(new THREE.Color(0x536b3a), 0.3) : neon,
+      emissive: neon,
+      emissiveIntensity: 0.16,
+      roughness: 0.55,
+      metalness: 0.06,
+    });
+    const w = massing.bodyW * massing.roofOverhang;
+    const d = massing.bodyD * massing.roofOverhang;
+    if (massing.roofForm === "gable") {
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(w * 0.55, massing.roofRise, 4), mat);
+      roof.rotation.y = Math.PI / 4;
+      roof.scale.z = d / w;
+      return roof;
+    }
+    if (massing.roofForm === "mono") {
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(w, massing.roofRise, d), mat);
+      roof.rotation.z = 0.08;
+      return roof;
+    }
+    if (massing.roofForm === "sawtooth") {
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(w, massing.roofRise, d), mat);
+      roof.rotation.z = -0.08;
+      return roof;
+    }
+    if (massing.roofForm === "greenhouse")
+      return new THREE.Mesh(new THREE.SphereGeometry(Math.min(w, d) * 0.42, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), mat);
+    if (massing.roofForm === "arena") {
+      const roof = new THREE.Mesh(new THREE.CylinderGeometry(w * 0.48, w * 0.55, massing.roofRise, 18), mat);
+      roof.scale.z = d / w;
+      return roof;
+    }
+    if (massing.roofForm === "market-canopy") {
+      const roof = new THREE.Mesh(new THREE.BoxGeometry(w * 1.08, massing.roofRise, d * 0.7), mat);
+      roof.rotation.x = 0.12;
+      return roof;
+    }
+    if (massing.roofForm === "tower-cap")
+      return new THREE.Mesh(new THREE.CylinderGeometry(w * 0.28, w * 0.38, massing.roofRise, 8), mat);
+    return new THREE.Mesh(new THREE.BoxGeometry(w, massing.roofRise, d), mat);
   }
 
   /** A small, distinctive rooftop emblem per business kind (positioned at the group origin by the
@@ -4043,6 +4179,37 @@ export class PlanetRenderer {
         glow(neon, 0.35),
       );
       m.position.y = 0.1;
+      return m;
+    }
+    if (emblem === "garage") {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.18, 0.08), glow(neon, 0.55));
+      m.position.y = 0.12;
+      return m;
+    }
+    if (emblem === "record") {
+      const m = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.035, 8, 16), glow(neon, 0.65));
+      m.position.y = 0.13;
+      return m;
+    }
+    if (emblem === "board") {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.18, 0.04), glow(neon, 0.6));
+      m.position.y = 0.12;
+      return m;
+    }
+    if (emblem === "coin") {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.04, 18), glow(neon, 0.55));
+      m.rotation.x = Math.PI / 2;
+      m.position.y = 0.12;
+      return m;
+    }
+    if (emblem === "bird") {
+      const m = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.24, 5), glow(neon, 0.5));
+      m.position.y = 0.14;
+      return m;
+    }
+    if (emblem === "frame") {
+      const m = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.02, 4, 4), glow(neon, 0.55));
+      m.position.y = 0.14;
       return m;
     }
     const tag = new THREE.Mesh(

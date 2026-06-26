@@ -104,7 +104,7 @@ city is a product, not a demo.
 
 On :5188 the east arc shows the commercial high street with surveyed shop plots. As a resident with
 funds: Buy Shop Plot debits exactly the configured price (HUD balance + a txn memo prove it), Build
-raises the preset shop massing gated on materials + labour, Edit Listing stores a validated catalog
+raises the preset shop massing gated on materials + labour. Spec 107 upgrades that preset into deterministic per-business massing so adjacent shops differ in form and identity. Edit Listing stores a validated catalog
 and rejects an invalid or unsafe one, Storefront opens shop.html?plot=... showing the items with
 prices. With the player signed in and the backend reachable, Buy in the storefront posts one
 balanced transaction to kooker-service-ledger — GET wallet balances shows the buyer down and the
@@ -118,6 +118,9 @@ reload and a device switch, and its wallet balance grows with sales.
 
 - src/colony/commerce/district.ts — pure deterministic survey: high street + CommercialParcels,
   unit-tested for determinism, dry land, no overlap with homesteads or roads.
+- src/colony/commerce/businesses.ts — deterministic, public-safe Kooker app identity pool for the high street; orders marquee anchors first, then secondary storefronts, with no immediate-neighbour name repeats.
+- src/colony/render/commercialShopMassing.ts — pure massing contract for wall height, roof form, frontage/depth, canopy/sign/window variation, signature features, and night emissive floor values.
+- src/colony/render/PlanetRenderer.ts — builds the commercial strip from assigned identity + massing metadata, exposing `businessId`, `businessName`, `app`, and `signatureFeature` for signage lanes such as Joe #173.
 - src/colony/commerce/shopListing.ts — listing DSL parse/validate/serialise, isPublicSafe at every
   boundary; pure, node-tested.
 - src/colony/bot/ledgerClient.ts — best-effort wrapper over the /kooker proxy (authClient JWT):

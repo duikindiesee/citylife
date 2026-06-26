@@ -6,6 +6,11 @@ import {
   type BusinessId,
 } from "../src/colony/commerce/businesses";
 
+function businessName(id: BusinessId | undefined): string {
+  expect(id).toBeTruthy();
+  return BUSINESSES[id as BusinessId].name;
+}
+
 describe("commerce businesses (themed app storefronts)", () => {
   it("assigns the marquee apps to the biggest plots first, the bar to the largest", () => {
     // 1 showroom + 3 stores covers the 4 marquee apps, so the kiosks are left generic.
@@ -20,20 +25,31 @@ describe("commerce businesses (themed app storefronts)", () => {
     const a = assignBusinesses(parcels);
     // the bar (a marquee) takes the showroom (largest)
     expect(a["shop_0"]).toBe("nearest_bar");
-    // the stores take the remaining marquee apps; kiosks fall back to the generic kiosk
-    const marquee: BusinessId[] = [
-      "chef_market",
-      "sportifine_club",
-      "sprout_nursery",
-    ];
-    expect(marquee).toContain(a["shop_1"]);
-    expect(marquee).toContain(a["shop_2"]);
-    expect(marquee).toContain(a["shop_3"]);
-    expect(a["shop_4"]).toBe("corner_kiosk");
-    expect(a["shop_5"]).toBe("corner_kiosk");
+    // the remaining plots keep distinct authored identities instead of repeating one generic kiosk.
+    const assigned = parcels.map((p) => a[p.id] as BusinessId);
+    expect(new Set(assigned).size).toBe(parcels.length);
+    const names = assigned.map((id) => BUSINESSES[id].name);
+    for (let i = 1; i < names.length; i++) expect(names[i]).not.toBe(names[i - 1]);
     // every plot gets exactly one known business
     for (const p of parcels)
       expect(BUSINESSES[a[p.id] as BusinessId]).toBeTruthy();
+  });
+
+  it("gives the visible high street distinct identities without neighbour repeats", () => {
+    const rt = new ColonyRuntime(4242);
+    const shops = rt.commercialDistrict?.parcels ?? [];
+    expect(shops.length).toBeGreaterThanOrEqual(8);
+    const names = shops.map((p) => businessName(p.business));
+
+    for (let i = 1; i < names.length; i++) expect(names[i]).not.toBe(names[i - 1]);
+
+    const counts = new Map<string, number>();
+    for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1);
+    for (const count of counts.values()) expect(count).toBeLessThanOrEqual(2);
+  }, 20000);
+
+  it("marks every authored storefront identity as public-safe metadata", () => {
+    for (const b of Object.values(BUSINESSES)) expect(b.isPublicSafe).toBe(true);
   });
 
   it("is deterministic", () => {
