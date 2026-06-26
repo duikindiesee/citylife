@@ -9,7 +9,7 @@
 
 CityLife is becoming a Need-for-Speed-feel open-world car game. The garage must read as a hero landmark in that world: the place you remember, cruise past, tune at, and use as the visual anchor for the future commercial district.
 
-This spec deliberately ships only the authored asset shell. The active Phase-1 plan still comes first, and commercial-district world placement must wait until the S2 meetup spine has merged. The GLB can be prepared in parallel because it does not reserve cells, alter runtime placement, or start district layout.
+This spec deliberately shipped only the authored asset shell. The in-world runtime placement is owned by Spec 109: the garage is now a standalone deterministic landmark pad + render-only massing, not the small `Gearbox Garage` shop identity from Spec 107 and not superseded by Spec 108's future large-venue redesign.
 
 ## Mechanic
 

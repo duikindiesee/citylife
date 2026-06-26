@@ -174,6 +174,7 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
       expect(b.crossStreet).toEqual(a.crossStreet);
       expect(b.intersection).toEqual(a.intersection);
       expect(b.mallPad).toEqual(a.mallPad);
+      expect(b.garagePad).toEqual(a.garagePad);
     }
   }, 30000);
 });
