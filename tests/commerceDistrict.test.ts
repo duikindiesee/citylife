@@ -111,8 +111,8 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
   }, 30000);
 
   it("grows the reserve into a crossed block with a deterministic core intersection", () => {
-    expect(COLONY.commerce.reserveW).toBe(88);
-    expect(COLONY.commerce.reserveH).toBe(64);
+    expect(COLONY.commerce.reserveW).toBe(64);
+    expect(COLONY.commerce.reserveH).toBe(48);
     expect(COLONY.commerce.reserveFreePrimary).toBe(358);
     expect(COLONY.commerce.reserveFreeFallback).toBe(205);
     expect(COLONY.commerce.mallPadW).toBe(14);
@@ -122,8 +122,8 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
       const rt = rtFor(seed);
       const d = rt.commercialDistrict!;
       const reserve = rt.commercialReserve!;
-      expect(reserve.w).toBe(88);
-      expect(reserve.h).toBe(64);
+      expect(reserve.w).toBe(64);
+      expect(reserve.h).toBe(48);
       expect(d.crossStreet.length).toBeGreaterThan(0);
       expect(d.intersection).toEqual({
         x: reserve.x + Math.floor(reserve.w / 2),

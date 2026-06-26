@@ -59,9 +59,6 @@ export interface GaragePad extends Reserve {
   facingAngle: number;
   /** The deterministic road/intersection cell the forecourt faces. */
   roadTarget: Cell;
-  /** Spec 110 — the pad CORNER nearest the intersection: a corner-lot anchor where the landscaped
-   *  island + sky-high pylon sit, so the garage wraps the crossroads instead of sitting beside it. */
-  islandCell: Cell;
 }
 
 export interface Reserve {
@@ -332,15 +329,8 @@ export function findGarageSite(
     const hardCornerBias =
       (cx < intersection.x ? cx - reserve.x : reserve.x + reserve.w - 1 - cx) +
       (cy < intersection.y ? cy - reserve.y : reserve.y + reserve.h - 1 - cy);
-    // Spec 110 — the pad CORNER nearest the intersection is the corner-lot anchor (landscaped island +
-    // sky-high pylon). Score by how tightly THAT corner hugs the crossroads so the garage WRAPS the
-    // junction (a frontage on each street) instead of sitting beside it as a lone square.
-    const cornerX = intersection.x < cx ? x + w - 1 : x;
-    const cornerY = intersection.y < cy ? y + h - 1 : y;
-    const cdx = intersection.x - cornerX;
-    const cdy = intersection.y - cornerY;
-    const cornerDist = cdx * cdx + cdy * cdy;
-    const score = cornerDist * 4 + hardCornerBias;
+    const roadDistance = dx * dx + dy * dy;
+    const score = roadDistance * 4 + hardCornerBias;
     if (
       score < bestScore ||
       (score === bestScore &&
@@ -353,7 +343,6 @@ export function findGarageSite(
         isPublicSafe: true,
         facingAngle,
         roadTarget: { ...intersection },
-        islandCell: { x: cornerX, y: cornerY },
       };
       bestScore = score;
     }
@@ -376,7 +365,6 @@ export function findGarageSite(
         intersection.y - reserve.y,
       ),
       roadTarget: { ...intersection },
-      islandCell: { x: reserve.x, y: reserve.y },
     }
   );
 }

@@ -1,0 +1,2410 @@
+{
+  "title": "CityLife — Colony",
+  "href": "https://citylife.kooker.co.za/?skipauth=1&floydMallAnchorQA=1",
+  "appVersion": "https://citylife.kooker.co.za/assets/index-DAP0WRz7.js",
+  "N": 608,
+  "reserve": {
+    "x": 81,
+    "y": 241,
+    "w": 64,
+    "h": 48
+  },
+  "mallPad": {
+    "x": 99,
+    "y": 248,
+    "w": 14,
+    "h": 10
+  },
+  "parcelCount": 17,
+  "terrainLevelSize": 13093,
+  "clock": {
+    "totalMinutes": 669,
+    "day": 0,
+    "hour": 11,
+    "minute": 9,
+    "isDay": true,
+    "daylight": 0.9472533134578507
+  },
+  "mallCorners": [
+    {
+      "x": 99,
+      "y": 248,
+      "raw": 0.6237634563446032,
+      "surface": 0.65,
+      "level": 0.65
+    },
+    {
+      "x": 112,
+      "y": 248,
+      "raw": 2.1055948877334583,
+      "surface": 3.017065472602843,
+      "level": 2.837065472602843
+    },
+    {
+      "x": 99,
+      "y": 257,
+      "raw": 2.0212372684478748,
+      "surface": 1.9947968566417682,
+      "level": 1.9947968566417682
+    },
+    {
+      "x": 112,
+      "y": 257,
+      "raw": 3.8865709447860706,
+      "surface": 4.745839841365813,
+      "level": 4.565839841365813
+    }
+  ],
+  "nearMallOrNamedObjects": [
+    {
+      "name": "",
+      "type": "Group",
+      "x": -207.2,
+      "y": 69.53,
+      "z": -56.69,
+      "visible": true,
+      "children": 3,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -212.5,
+      "y": 69.93,
+      "z": -53.34,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -192.99,
+      "y": 71.22,
+      "z": -47.36,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "rally-venue-bench:rally_venue_bench_backrest_clamp_pad",
+      "type": "Mesh",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "rally-venue-bench:rally_venue_bench_backrest_clamp_pad001",
+      "type": "Mesh",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "rally-venue-bench:rally_venue_bench_backrest_clamp_pad002",
+      "type": "Mesh",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "rally-venue-bench:rally_venue_bench_backrest_clamp_pad003",
+      "type": "Mesh",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "rally-venue-bench:rally_venue_bench_backrest_clamp_pad004",
+      "type": "Mesh",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "rally-venue-bench:rally_venue_bench_backrest_clamp_pad005",
+      "type": "Mesh",
+      "x": 0,
+      "y": 0,
+      "z": 0,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialDistrict.mallPad.mallAnchorShell",
+      "type": "Group",
+      "x": -198.5,
+      "y": 0.65,
+      "z": -51.5,
+      "visible": true,
+      "children": 9,
+      "inMallArea": true
+    },
+    {
+      "name": "mallAnchorWestWing",
+      "type": "Mesh",
+      "x": -203.26,
+      "y": 1.43,
+      "z": -51.3,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "mallAnchorEastWing",
+      "type": "Mesh",
+      "x": -193.74,
+      "y": 1.43,
+      "z": -51.3,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "mallAnchorStorefrontPane",
+      "type": "Mesh",
+      "x": -201.39,
+      "y": 1.64,
+      "z": -55.44,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "mallAnchorStorefrontPane",
+      "type": "Mesh",
+      "x": -198.5,
+      "y": 1.64,
+      "z": -55.44,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "mallAnchorStorefrontPane",
+      "type": "Mesh",
+      "x": -195.61,
+      "y": 1.64,
+      "z": -55.44,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "mallAnchorNightFloor",
+      "type": "Mesh",
+      "x": -198.5,
+      "y": 0.68,
+      "z": -51.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "mallAnchorMainBody",
+      "type": "Mesh",
+      "x": -198.5,
+      "y": 1.73,
+      "z": -51.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "mallAnchorFlatRoof",
+      "type": "Mesh",
+      "x": -198.5,
+      "y": 2.94,
+      "z": -51.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "mallAnchorEntranceCanopy",
+      "type": "Mesh",
+      "x": -198.5,
+      "y": 2.13,
+      "z": -55.78,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialDistrict.shop_0.nearest_bar",
+      "type": "Group",
+      "x": -215.5,
+      "y": 0.65,
+      "z": -43.5,
+      "visible": true,
+      "children": 18,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -215.5,
+      "y": 0.69,
+      "z": -43.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -215.5,
+      "y": 1.54,
+      "z": -43.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.tower-cap",
+      "type": "Mesh",
+      "x": -215.5,
+      "y": 2.74,
+      "z": -43.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -215.5,
+      "y": 2.18,
+      "z": -40.94,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -215.5,
+      "y": 3.39,
+      "z": -41.04,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -212.98,
+      "y": 2.93,
+      "z": -44.9,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -212.98,
+      "y": 3.48,
+      "z": -44.9,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialDistrict.shop_1.citylife_garage",
+      "type": "Group",
+      "x": -207.5,
+      "y": 2.53,
+      "z": -43,
+      "visible": true,
+      "children": 14,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 2.2,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 2.57,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 3.23,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopRoof.mono",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 4.07,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 3.73,
+      "z": -40.73,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 4.55,
+      "z": -40.83,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 3.26,
+      "z": -40.91,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 2.99,
+      "z": -40.91,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -210.38,
+      "y": 3.26,
+      "z": -40.45,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -204.62,
+      "y": 3.26,
+      "z": -40.45,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -209.92,
+      "y": 2.69,
+      "z": -40.53,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -209.82,
+      "y": 2.72,
+      "z": -40.71,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 4.43,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Group",
+      "x": -207.5,
+      "y": 2.53,
+      "z": -43,
+      "visible": true,
+      "children": 2,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 2.89,
+      "z": -40.83,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -205.31,
+      "y": 4.11,
+      "z": -42.59,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialDistrict.shop_2.mojojo_records",
+      "type": "Group",
+      "x": -201.5,
+      "y": 4.36,
+      "z": -42.5,
+      "visible": true,
+      "children": 15,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -201.5,
+      "y": 4.03,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -201.5,
+      "y": 4.4,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -201.5,
+      "y": 4.8,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopRoof.sawtooth",
+      "type": "Mesh",
+      "x": -201.5,
+      "y": 5.41,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -201.5,
+      "y": 5.12,
+      "z": -40.68,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -201.5,
+      "y": 5.92,
+      "z": -40.78,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -201.77,
+      "y": 4.82,
+      "z": -40.86,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -201.23,
+      "y": 4.82,
+      "z": -40.86,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -201.5,
+      "y": 4.65,
+      "z": -40.86,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -203.02,
+      "y": 4.83,
+      "z": -40.4,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -199.98,
+      "y": 4.83,
+      "z": -40.4,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -202.78,
+      "y": 4.52,
+      "z": -40.48,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -202.68,
+      "y": 4.55,
+      "z": -40.66,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -201.5,
+      "y": 5.74,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Group",
+      "x": -201.5,
+      "y": 4.36,
+      "z": -42.5,
+      "visible": true,
+      "children": 2,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -202.66,
+      "y": 5.36,
+      "z": -42.18,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -201.5,
+      "y": 4.5,
+      "z": -40.32,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialDistrict.shop_3.classifieds_arcade",
+      "type": "Group",
+      "x": -195.5,
+      "y": 4.95,
+      "z": -43,
+      "visible": true,
+      "children": 15,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -195.5,
+      "y": 4.62,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -195.5,
+      "y": 4.99,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -195.5,
+      "y": 5.62,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopRoof.flat",
+      "type": "Mesh",
+      "x": -195.5,
+      "y": 6.39,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -195.5,
+      "y": 6.1,
+      "z": -40.73,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -195.5,
+      "y": 6.83,
+      "z": -40.83,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -195.94,
+      "y": 5.64,
+      "z": -40.91,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -195.06,
+      "y": 5.64,
+      "z": -40.91,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -195.5,
+      "y": 5.39,
+      "z": -40.91,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -197.96,
+      "y": 5.65,
+      "z": -40.45,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -193.04,
+      "y": 5.65,
+      "z": -40.45,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -197.57,
+      "y": 5.11,
+      "z": -40.53,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -197.47,
+      "y": 5.14,
+      "z": -40.71,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -195.5,
+      "y": 6.79,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Group",
+      "x": -195.5,
+      "y": 4.95,
+      "z": -43,
+      "visible": true,
+      "children": 3,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -195.78,
+      "y": 5.64,
+      "z": -40.83,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -195.5,
+      "y": 5.64,
+      "z": -40.83,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -195.22,
+      "y": 5.64,
+      "z": -40.83,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialDistrict.shop_4.ledger_exchange",
+      "type": "Group",
+      "x": -189.5,
+      "y": 5.08,
+      "z": -42.5,
+      "visible": true,
+      "children": 15,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -189.5,
+      "y": 4.75,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -189.5,
+      "y": 5.12,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -189.5,
+      "y": 5.63,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopRoof.gable",
+      "type": "Mesh",
+      "x": -189.5,
+      "y": 6.43,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -189.5,
+      "y": 6.02,
+      "z": -40.52,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -189.5,
+      "y": 7.02,
+      "z": -40.62,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -189.79,
+      "y": 5.65,
+      "z": -40.7,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -189.21,
+      "y": 5.65,
+      "z": -40.7,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -189.5,
+      "y": 5.44,
+      "z": -40.7,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -191.1,
+      "y": 5.66,
+      "z": -40.24,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -187.9,
+      "y": 5.66,
+      "z": -40.24,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -190.84,
+      "y": 5.24,
+      "z": -40.32,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -190.74,
+      "y": 5.27,
+      "z": -40.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -189.5,
+      "y": 6.68,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Group",
+      "x": -189.5,
+      "y": 5.08,
+      "z": -42.5,
+      "visible": true,
+      "children": 2,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -189.5,
+      "y": 5.21,
+      "z": -40.22,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -188.28,
+      "y": 6.38,
+      "z": -42.15,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialDistrict.shop_5.chef_market",
+      "type": "Group",
+      "x": -182.5,
+      "y": 5.06,
+      "z": -43.5,
+      "visible": true,
+      "children": 16,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -182.5,
+      "y": 5.1,
+      "z": -43.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -182.5,
+      "y": 5.91,
+      "z": -43.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.market-canopy",
+      "type": "Mesh",
+      "x": -182.5,
+      "y": 6.92,
+      "z": -43.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -182.5,
+      "y": 6.52,
+      "z": -40.76,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -182.5,
+      "y": 7.42,
+      "z": -40.86,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -186.02,
+      "y": 5.94,
+      "z": -40.48,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -185.46,
+      "y": 5.22,
+      "z": -40.56,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -185.36,
+      "y": 5.25,
+      "z": -40.74,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -184.61,
+      "y": 6.96,
+      "z": -44.51,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -184.61,
+      "y": 7.26,
+      "z": -44.51,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -184.61,
+      "y": 7.44,
+      "z": -44.51,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -184.61,
+      "y": 7.62,
+      "z": -44.51,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -184.75,
+      "y": 5.4,
+      "z": -40.28,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -184.75,
+      "y": 5.23,
+      "z": -40.28,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -184.97,
+      "y": 5.19,
+      "z": -40.26,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -184.53,
+      "y": 5.19,
+      "z": -40.26,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercialDistrict.shop_6.tarentaal_tours",
+      "type": "Group",
+      "x": -174.5,
+      "y": 5.8,
+      "z": -43,
+      "visible": true,
+      "children": 15,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -174.5,
+      "y": 5.84,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -174.5,
+      "y": 6.37,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.mono",
+      "type": "Mesh",
+      "x": -174.5,
+      "y": 7.05,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -174.5,
+      "y": 6.78,
+      "z": -40.88,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -174.5,
+      "y": 7.5,
+      "z": -40.98,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialDistrict.shop_7.builder_studio",
+      "type": "Group",
+      "x": -168.5,
+      "y": 5.47,
+      "z": -42.5,
+      "visible": true,
+      "children": 16,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -168.5,
+      "y": 5.51,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -168.5,
+      "y": 6,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.sawtooth",
+      "type": "Mesh",
+      "x": -168.5,
+      "y": 6.74,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -168.5,
+      "y": 6.38,
+      "z": -40.48,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -168.5,
+      "y": 7.29,
+      "z": -40.58,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialDistrict.shop_8.trading_post",
+      "type": "Group",
+      "x": -220.5,
+      "y": 0.65,
+      "z": -35,
+      "visible": true,
+      "children": 15,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -220.5,
+      "y": 0.69,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -220.5,
+      "y": 1.26,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.gable",
+      "type": "Mesh",
+      "x": -220.5,
+      "y": 2.02,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -220.5,
+      "y": 1.7,
+      "z": -37.17,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -220.5,
+      "y": 2.51,
+      "z": -37.07,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialDistrict.shop_9.corner_kiosk",
+      "type": "Group",
+      "x": -214.5,
+      "y": 2.46,
+      "z": -35.5,
+      "visible": true,
+      "children": 14,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -214.5,
+      "y": 2.5,
+      "z": -35.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -214.5,
+      "y": 2.85,
+      "z": -35.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.flat",
+      "type": "Mesh",
+      "x": -214.5,
+      "y": 3.31,
+      "z": -35.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -214.5,
+      "y": 3.13,
+      "z": -37.2,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -214.5,
+      "y": 3.72,
+      "z": -37.1,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialDistrict.shop_10.sportifine_club",
+      "type": "Group",
+      "x": -207.5,
+      "y": 4.22,
+      "z": -34.5,
+      "visible": true,
+      "children": 14,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 4.26,
+      "z": -34.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 5.17,
+      "z": -34.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.arena",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 6.31,
+      "z": -34.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 5.85,
+      "z": -37.3,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 6.84,
+      "z": -37.2,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialDistrict.shop_11.citylife_garage",
+      "type": "Group",
+      "x": -199.5,
+      "y": 6.33,
+      "z": -35,
+      "visible": true,
+      "children": 14,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -199.5,
+      "y": 6.37,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -199.5,
+      "y": 7.03,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.mono",
+      "type": "Mesh",
+      "x": -199.5,
+      "y": 7.87,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -199.5,
+      "y": 7.54,
+      "z": -37.27,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -199.5,
+      "y": 8.35,
+      "z": -37.17,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialDistrict.shop_12.mojojo_records",
+      "type": "Group",
+      "x": -193.5,
+      "y": 7.15,
+      "z": -35.5,
+      "visible": true,
+      "children": 15,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -193.5,
+      "y": 7.19,
+      "z": -35.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -193.5,
+      "y": 7.59,
+      "z": -35.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.sawtooth",
+      "type": "Mesh",
+      "x": -193.5,
+      "y": 8.2,
+      "z": -35.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -193.5,
+      "y": 7.9,
+      "z": -37.32,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -193.5,
+      "y": 8.71,
+      "z": -37.22,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialDistrict.shop_13.sprout_nursery",
+      "type": "Group",
+      "x": -186.5,
+      "y": 7.58,
+      "z": -34.5,
+      "visible": true,
+      "children": 17,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -186.5,
+      "y": 7.62,
+      "z": -34.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -186.5,
+      "y": 8.37,
+      "z": -34.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.greenhouse",
+      "type": "Mesh",
+      "x": -186.5,
+      "y": 9.39,
+      "z": -34.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -186.5,
+      "y": 8.94,
+      "z": -37.48,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -186.5,
+      "y": 9.96,
+      "z": -37.38,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialDistrict.shop_14.classifieds_arcade",
+      "type": "Group",
+      "x": -178.5,
+      "y": 7.45,
+      "z": -35,
+      "visible": true,
+      "children": 15,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -178.5,
+      "y": 7.49,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -178.5,
+      "y": 8.12,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.flat",
+      "type": "Mesh",
+      "x": -178.5,
+      "y": 8.89,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -178.5,
+      "y": 8.6,
+      "z": -37.27,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -178.5,
+      "y": 9.33,
+      "z": -37.17,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialDistrict.shop_15.ledger_exchange",
+      "type": "Group",
+      "x": -172.5,
+      "y": 6.99,
+      "z": -35.5,
+      "visible": true,
+      "children": 15,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -172.5,
+      "y": 7.03,
+      "z": -35.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -172.5,
+      "y": 7.54,
+      "z": -35.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.gable",
+      "type": "Mesh",
+      "x": -172.5,
+      "y": 8.34,
+      "z": -35.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -172.5,
+      "y": 7.93,
+      "z": -37.48,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -172.5,
+      "y": 8.93,
+      "z": -37.38,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialDistrict.shop_16.tarentaal_tours",
+      "type": "Group",
+      "x": -166.5,
+      "y": 6.49,
+      "z": -35,
+      "visible": true,
+      "children": 15,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopNightFloor",
+      "type": "Mesh",
+      "x": -166.5,
+      "y": 6.53,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopBody",
+      "type": "Mesh",
+      "x": -166.5,
+      "y": 7.06,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopRoof.mono",
+      "type": "Mesh",
+      "x": -166.5,
+      "y": 7.74,
+      "z": -35,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopCanopy",
+      "type": "Mesh",
+      "x": -166.5,
+      "y": 7.47,
+      "z": -37.12,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercialShopSign",
+      "type": "Mesh",
+      "x": -166.5,
+      "y": 8.19,
+      "z": -37.02,
+      "visible": true,
+      "children": 0,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_0",
+      "type": "Group",
+      "x": -215.5,
+      "y": 4.14,
+      "z": -43.5,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_1",
+      "type": "Group",
+      "x": -207.5,
+      "y": 5.48,
+      "z": -43,
+      "visible": false,
+      "children": 2,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -207.5,
+      "y": 4.76,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "Gearbox Garage",
+      "type": "Sprite",
+      "x": -207.5,
+      "y": 5.48,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercial-label-shop_2",
+      "type": "Group",
+      "x": -201.5,
+      "y": 6.96,
+      "z": -42.5,
+      "visible": false,
+      "children": 2,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -201.5,
+      "y": 6.24,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "MoJoJo Records",
+      "type": "Sprite",
+      "x": -201.5,
+      "y": 6.96,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercial-label-shop_3",
+      "type": "Group",
+      "x": -195.5,
+      "y": 7.9,
+      "z": -43,
+      "visible": false,
+      "children": 2,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -195.5,
+      "y": 7.18,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "Classifieds Arcade",
+      "type": "Sprite",
+      "x": -195.5,
+      "y": 7.9,
+      "z": -43,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercial-label-shop_4",
+      "type": "Group",
+      "x": -189.5,
+      "y": 7.68,
+      "z": -42.5,
+      "visible": false,
+      "children": 2,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -189.5,
+      "y": 6.96,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "Coin Counter",
+      "type": "Sprite",
+      "x": -189.5,
+      "y": 7.68,
+      "z": -42.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "commercial-label-shop_5",
+      "type": "Group",
+      "x": -182.5,
+      "y": 8.46,
+      "z": -43.5,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_6",
+      "type": "Group",
+      "x": -174.5,
+      "y": 8.75,
+      "z": -43,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_7",
+      "type": "Group",
+      "x": -168.5,
+      "y": 8.07,
+      "z": -42.5,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_8",
+      "type": "Group",
+      "x": -220.5,
+      "y": 3.96,
+      "z": -35,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_9",
+      "type": "Group",
+      "x": -214.5,
+      "y": 5.06,
+      "z": -35.5,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_10",
+      "type": "Group",
+      "x": -207.5,
+      "y": 7.62,
+      "z": -34.5,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_11",
+      "type": "Group",
+      "x": -199.5,
+      "y": 9.28,
+      "z": -35,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_12",
+      "type": "Group",
+      "x": -193.5,
+      "y": 9.75,
+      "z": -35.5,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_13",
+      "type": "Group",
+      "x": -186.5,
+      "y": 10.98,
+      "z": -34.5,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_14",
+      "type": "Group",
+      "x": -178.5,
+      "y": 10.4,
+      "z": -35,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_15",
+      "type": "Group",
+      "x": -172.5,
+      "y": 9.59,
+      "z": -35.5,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "commercial-label-shop_16",
+      "type": "Group",
+      "x": -166.5,
+      "y": 9.44,
+      "z": -35,
+      "visible": false,
+      "children": 2,
+      "inMallArea": false
+    },
+    {
+      "name": "",
+      "type": "Group",
+      "x": -208,
+      "y": 3.5,
+      "z": -40.4,
+      "visible": true,
+      "children": 3,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -208,
+      "y": 4.2,
+      "z": -40.4,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -208,
+      "y": 4.9,
+      "z": -40.55,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -208,
+      "y": 4.88,
+      "z": -40.7,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Group",
+      "x": -198,
+      "y": 5.81,
+      "z": -40.4,
+      "visible": true,
+      "children": 3,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -198,
+      "y": 6.51,
+      "z": -40.4,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -198,
+      "y": 7.21,
+      "z": -40.55,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -198,
+      "y": 7.19,
+      "z": -40.7,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Group",
+      "x": -188,
+      "y": 5.88,
+      "z": -40.4,
+      "visible": true,
+      "children": 3,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -188,
+      "y": 6.58,
+      "z": -40.4,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -188,
+      "y": 7.28,
+      "z": -40.55,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -188,
+      "y": 7.26,
+      "z": -40.7,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Group",
+      "x": -204,
+      "y": 4.69,
+      "z": -40.5,
+      "visible": true,
+      "children": 4,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -204.24,
+      "y": 4.79,
+      "z": -40.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -203.76,
+      "y": 4.79,
+      "z": -40.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -204,
+      "y": 4.89,
+      "z": -40.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -204,
+      "y": 4.99,
+      "z": -40.59,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Group",
+      "x": -202.9,
+      "y": 4.69,
+      "z": -40.5,
+      "visible": true,
+      "children": 2,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -202.9,
+      "y": 4.79,
+      "z": -40.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -202.9,
+      "y": 4.99,
+      "z": -40.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Group",
+      "x": -188,
+      "y": 5.88,
+      "z": -40.5,
+      "visible": true,
+      "children": 4,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -188.24,
+      "y": 5.98,
+      "z": -40.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -187.76,
+      "y": 5.98,
+      "z": -40.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -188,
+      "y": 6.08,
+      "z": -40.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -188,
+      "y": 6.18,
+      "z": -40.59,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Group",
+      "x": -186.9,
+      "y": 5.88,
+      "z": -40.5,
+      "visible": true,
+      "children": 2,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -186.9,
+      "y": 5.98,
+      "z": -40.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    },
+    {
+      "name": "",
+      "type": "Mesh",
+      "x": -186.9,
+      "y": 6.18,
+      "z": -40.5,
+      "visible": true,
+      "children": 0,
+      "inMallArea": true
+    }
+  ]
+}
