@@ -168,6 +168,16 @@ reload and a device switch, and its wallet balance grows with sales.
 
 Each slice ships on the rolling branch, passes typecheck plus vitest, and is visible on :5188.
 
+- Spec 106 / signage follow-up: floating per-shop labels now declutter dynamically in screen space
+  instead of stacking into unreadable piles. The renderer projects every read-only business label from
+  commercialDistrict.parcels, hides occluded/off-screen/far labels, caps visible labels at four, and
+  prioritises the nearest non-overlapping shop identities while preserving the real parcel.business
+  contract. The second declutter pass also limits each horizontal screen band to two labels, so one
+  dense frontage cannot fill the whole overlay while nearby labels in another band stay hidden. The
+  sprite/floor opacity helper keeps accepted labels readable in day and night after distance fade. This
+  is read-only UI/render work only; Jack's business variety + shop massing fixes remain the shared
+  upstream source of richer names and distinct buildings.
+
 ## Progress log
 
 ### 2026-06-13 — Slice P0: the commercial high street, surveyed + lit (vibrant-first)
@@ -338,6 +348,22 @@ DONE
 - FUNCTIONAL milestone (not decoration): bots actually move in and buy commercial plots over time
   (079-P1 buyCommercialShop + the migration spine drives it). Recommend the operator redirect the loop
   here, or to a different spec. Further visual polish is now marginal.
+
+### 2026-06-26 — Joe: read-only commercial POI labels
+
+DONE
+
+- Player/UI signage slice adds deterministic floating per-shop business labels above every commercial
+  parcel that has a `business`, consuming only `commercialDistrict.parcels`. It does not mutate district
+  survey, business assignment, world-gen, roads, terrain, mall-pad reservation, or Jack-owned massing.
+- Labels use public-safe display copy. `Sportifine Club` is intentionally rendered as the safe alias
+  `Sports Club` because `isPublicSafe` denies the real app brand word for generated/shown public strings;
+  the underlying business id remains unchanged for deterministic assignment.
+- Renderer labels are CanvasTexture sprites with an accent floor glow; `updateColonyLayer()` lifts both
+  label opacity and the floor halo after dark so the district reads at night from the same commercial
+  render pass as the existing neon storefronts.
+- Tests: `tests/businessLabels.test.ts` verifies one label per business parcel, public-safe text,
+  deterministic output, no wall-clock/RNG in the label survey path, and unsafe-name rejection.
 
 ### 2026-06-13 — Fix: stalls were landing on homestead plots
 
