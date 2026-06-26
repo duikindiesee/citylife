@@ -1,6 +1,6 @@
 # Spec 107 — Land Tools: RCT-style tile zoning, large plots, and real venues
 
-Status: DESIGN (planning) · Owner: lead (design) + Jack/World & Joe/UI (slices) · Date: 2026-06-26
+Status: DESIGN — direction decisions LOCKED (see Decisions) · Owner: lead (design) + Jack/World & Joe/UI (slices) · Date: 2026-06-26
 
 ## Why — the operator's steer (Irwin, 2026-06-26)
 
@@ -60,10 +60,12 @@ This is a **foundational "Land Tools" track (call it Phase 2.5)** that makes the
 
 A painted grid is deterministic data; no Math.random/Date.now anywhere in the logic. The `zoneGrid` (and any authored road cells) persist with the save so a world replays identically.
 
-## Open questions for Irwin (these change the design — answer before S2/S3)
+## Decisions (locked by Irwin, 2026-06-26)
 
-1. **Player-facing or designer/build tool?** Do PLAYERS paint zones as a gameplay mechanic, or is this a team/admin world-layout tool ("so WE build our land easily")? This decides where the UI lives and how guarded it is.
-2. **Auto-fill or hand-stamp?** Mark a commercial zone and have venues auto-place into it, or hand-stamp each venue plot RCT-style?
-3. **Scope of "the whole map"** — re-zone the entire 608^2 (replace the current auto-layout) or start with the commercial district only and expand?
-4. **Sports field** — a soccer pitch specifically, or a generic multi-sport field? How big?
-5. **Keep the for-sale economy?** Do bots still buy + build venues over time on the large plots, or are marquee venues pre-placed by the layout?
+1. **Designer/team build tool.** The paint UI is a build-time/admin world-layout tool ("so WE build our land easily") behind a builder/admin gate (alongside the existing `/builder.html` house editor), NOT in the player flow. No player-economy or permission work needed for the tools themselves. Players still experience the RESULT (the laid-out world); they just do not paint it.
+2. **Whole map at once.** The painted `zoneGrid` becomes the single source of the world layout for the entire 608^2 map, REPLACING the `cellZone()` formula and the procedural block-frame road derivation. We seed `zoneGrid` (and an authored road set) once from the current formula/derivation so nothing regresses, then the team re-paints from there. This makes the world AUTHORED, not derived.
+3. **Mark zone, venues auto-fill.** You paint a large commercial zone and a deterministic surveyor places DISTINCT venues into it (marquee apps first, by identity), the same discipline as `makeCommercialDistrict` but driven by the painted zone footprint instead of the fixed reserve rectangle. No per-venue hand-stamping required.
+
+### Remaining minor questions (proposed defaults; not blocking S1/S2)
+4. **Sports field** — default: a generic multi-sport field (pitch + goal + line markings + small stands), ~16 cells long, tuned in S4. Confirm if it should be a specific sport.
+5. **For-sale economy** — default: KEEP it. Bots still buy + build venues over time on the large plots (consistent with the current buy-and-build model); the auto-fill places the venue IDENTITY/plot, build happens through the economy. Confirm if marquee venues should instead be pre-built by the layout.
