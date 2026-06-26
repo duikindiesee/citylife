@@ -170,11 +170,13 @@ Each slice ships on the rolling branch, passes typecheck plus vitest, and is vis
 
 - Spec 106 / signage follow-up: floating per-shop labels now declutter dynamically in screen space
   instead of stacking into unreadable piles. The renderer projects every read-only business label from
-  commercialDistrict.parcels, hides occluded/off-screen/far labels, caps visible labels, and prioritises
-  the nearest non-overlapping shop identities while preserving the real parcel.business contract. The
-  floor glow remains active day and night so labels still read after dark. This is read-only UI/render
-  work only; Jack's business variety + shop massing fixes remain the shared upstream source of richer
-  names and distinct buildings.
+  commercialDistrict.parcels, hides occluded/off-screen/far labels, caps visible labels at four, and
+  prioritises the nearest non-overlapping shop identities while preserving the real parcel.business
+  contract. The second declutter pass also limits each horizontal screen band to two labels, so one
+  dense frontage cannot fill the whole overlay while nearby labels in another band stay hidden. The
+  sprite/floor opacity helper keeps accepted labels readable in day and night after distance fade. This
+  is read-only UI/render work only; Jack's business variety + shop massing fixes remain the shared
+  upstream source of richer names and distinct buildings.
 
 ## Progress log
 

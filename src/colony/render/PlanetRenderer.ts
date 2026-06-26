@@ -33,7 +33,9 @@ import type { CommercialDistrict } from "../commerce/district";
 import { BUSINESSES, type Business, type Emblem } from "../commerce/businesses";
 import { surveyBillboards } from "../commerce/billboards";
 import {
+  BUSINESS_LABEL_VIEWPORT_NDC_LIMIT,
   declutterBusinessLabels,
+  labelOpacityForVisibility,
   surveyBusinessLabels,
   type BusinessLabel,
   type BusinessLabelDeclutterInput,
@@ -3825,11 +3827,13 @@ export class PlanetRenderer {
   private applyCommercialLabelVisibility() {
     const night = this.commercialLabelNight;
     for (const entry of this.commercialLabelMats) {
-      const glow =
-        entry.model.nightEmissiveFloor +
-        night * (entry.model.nightEmissivePeak - entry.model.nightEmissiveFloor);
-      entry.sprite.opacity = Math.min(1, glow) * entry.visibilityOpacity;
-      entry.floor.opacity = (0.18 + night * 0.34) * entry.visibilityOpacity;
+      const opacity = labelOpacityForVisibility(
+        entry.model,
+        entry.visibilityOpacity,
+        night,
+      );
+      entry.sprite.opacity = opacity.spriteOpacity;
+      entry.floor.opacity = opacity.floorOpacity;
     }
   }
 
@@ -3851,8 +3855,10 @@ export class PlanetRenderer {
         occluded:
           this.commercialLabelProjection.z < -1 ||
           this.commercialLabelProjection.z > 1 ||
-          Math.abs(this.commercialLabelProjection.x) > 1.18 ||
-          Math.abs(this.commercialLabelProjection.y) > 1.18 ||
+          Math.abs(this.commercialLabelProjection.x) >
+            BUSINESS_LABEL_VIEWPORT_NDC_LIMIT ||
+          Math.abs(this.commercialLabelProjection.y) >
+            BUSINESS_LABEL_VIEWPORT_NDC_LIMIT ||
           this.commercialLabelOccluded(occluders, distance),
       });
     }

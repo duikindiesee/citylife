@@ -4,6 +4,7 @@ import { isPublicSafe } from "../src/colony/newcomers";
 import {
   businessLabelModel,
   declutterBusinessLabels,
+  labelOpacityForVisibility,
   surveyBusinessLabels,
 } from "../src/colony/commerce/businessLabels";
 
@@ -67,6 +68,7 @@ describe("commercial business labels", () => {
         emblem: "dish",
         seating: false,
         marquee: false,
+        isPublicSafe: true,
       },
     );
 
@@ -121,6 +123,60 @@ describe("commercial business labels", () => {
       labels[0]!.shopId,
       labels[2]!.shopId,
     ]);
+  });
+
+  it("caps default visibility to four nearest non-overlapping readable signs", () => {
+    const labels = surveyBusinessLabels(rtFor(4242).commercialDistrict!).slice(0, 8);
+    const visible = declutterBusinessLabels(
+      labels.map((label, index) => ({
+        label,
+        screenX: 80 + index * 220,
+        screenY: index < 2 ? 220 : index < 4 ? 420 : 620,
+        distance: 18 + index * 3,
+      })),
+    );
+
+    expect(visible.filter((l) => l.visible).map((l) => l.shopId)).toEqual(
+      labels.slice(0, 4).map((label) => label.shopId),
+    );
+  });
+
+  it("spreads labels across screen bands instead of filling one cluttered strip", () => {
+    const labels = surveyBusinessLabels(rtFor(4242).commercialDistrict!).slice(0, 7);
+    const visible = declutterBusinessLabels(
+      labels.map((label, index) => ({
+        label,
+        screenX: 80 + index * 210,
+        screenY: index < 5 ? 250 : 470,
+        distance: index < 5 ? 18 + index : 34 + index,
+      })),
+      {
+        maxVisible: 4,
+        minScreenGap: 120,
+        farFadeStart: 70,
+        farHideDistance: 120,
+        screenBandHeight: 180,
+        maxVisiblePerScreenBand: 2,
+      },
+    );
+
+    expect(visible.filter((l) => l.visible).map((l) => l.shopId)).toEqual([
+      labels[0]!.shopId,
+      labels[1]!.shopId,
+      labels[5]!.shopId,
+      labels[6]!.shopId,
+    ]);
+  });
+
+  it("keeps accepted signs readable in day and night after declutter opacity", () => {
+    const [label] = surveyBusinessLabels(rtFor(4242).commercialDistrict!);
+    const day = labelOpacityForVisibility(label!, 0.35, 0);
+    const night = labelOpacityForVisibility(label!, 0.35, 1);
+
+    expect(day.spriteOpacity).toBeGreaterThanOrEqual(0.3);
+    expect(day.floorOpacity).toBeGreaterThanOrEqual(0.12);
+    expect(night.spriteOpacity).toBeGreaterThan(day.spriteOpacity);
+    expect(night.floorOpacity).toBeGreaterThan(day.floorOpacity);
   });
 
   it("is deterministic and touches no wall-clock or RNG", () => {

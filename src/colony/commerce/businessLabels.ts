@@ -30,6 +30,8 @@ export interface BusinessLabelDeclutterOptions {
   minScreenGap: number;
   farFadeStart: number;
   farHideDistance: number;
+  screenBandHeight?: number;
+  maxVisiblePerScreenBand?: number;
 }
 
 export interface BusinessLabelVisibility {
@@ -42,11 +44,15 @@ export interface BusinessLabelVisibility {
 }
 
 export const DEFAULT_BUSINESS_LABEL_DECLUTTER: BusinessLabelDeclutterOptions = {
-  maxVisible: 5,
-  minScreenGap: 170,
+  maxVisible: 4,
+  minScreenGap: 190,
   farFadeStart: 54,
   farHideDistance: 96,
+  screenBandHeight: 180,
+  maxVisiblePerScreenBand: 2,
 };
+
+export const BUSINESS_LABEL_VIEWPORT_NDC_LIMIT = 0.82;
 
 const WALL_H: Record<ShopParcel["kind"], number> = {
   kiosk: 0.9,
@@ -125,8 +131,14 @@ export function declutterBusinessLabels(
     );
 
   const accepted: BusinessLabelDeclutterInput[] = [];
+  const acceptedByBand = new Map<number, number>();
+  const bandHeight = options.screenBandHeight ?? 0;
+  const maxPerBand = options.maxVisiblePerScreenBand ?? Number.POSITIVE_INFINITY;
   for (const rankedEntry of ranked) {
     if (accepted.length >= options.maxVisible) break;
+    const band =
+      bandHeight > 0 ? Math.floor(rankedEntry.candidate.screenY / bandHeight) : 0;
+    if ((acceptedByBand.get(band) ?? 0) >= maxPerBand) continue;
     const overlaps = accepted.some(
       (acceptedCandidate) =>
         Math.hypot(
@@ -151,6 +163,23 @@ export function declutterBusinessLabels(
     target.opacity = farFade;
     target.priority = rankedEntry.candidate.distance;
     accepted.push(rankedEntry.candidate);
+    acceptedByBand.set(band, (acceptedByBand.get(band) ?? 0) + 1);
   }
   return out;
+}
+
+export function labelOpacityForVisibility(
+  label: Pick<BusinessLabel, "nightEmissiveFloor" | "nightEmissivePeak">,
+  visibilityOpacity: number,
+  night: number,
+): { spriteOpacity: number; floorOpacity: number } {
+  const clampedVisibility = Math.max(0, Math.min(1, visibilityOpacity));
+  const clampedNight = Math.max(0, Math.min(1, night));
+  const glow =
+    label.nightEmissiveFloor +
+    clampedNight * (label.nightEmissivePeak - label.nightEmissiveFloor);
+  return {
+    spriteOpacity: Math.max(0.3, Math.min(1, glow) * clampedVisibility),
+    floorOpacity: Math.max(0.12, (0.18 + clampedNight * 0.34) * clampedVisibility),
+  };
 }
