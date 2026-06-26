@@ -26,18 +26,22 @@ Conclusion: the codebase already wants this. We are turning a hidden formula int
 ## The design — "Land Tools", three layers
 
 ### Layer A — Tile zoning as DATA + paint tools (the foundation)
+
 - Add a persisted `zoneGrid: Uint8Array[608^2]` to ColonyState (deterministic data, saved with the world). Zone enum: `unzoned / road / commercial / residential / civic / recreation / park`.
 - Replace the `cellZone()` formula with a lookup into `zoneGrid`. Seed `zoneGrid` once from the existing formula so nothing regresses, then make it paintable.
 - Roads become paintable too: the `roadSet` already exists; allow authoring road cells directly instead of only deriving them from the block frame.
 - Add a **"Plan" view mode + an RCT-style tool palette**: zone brush, road brush, plot stamp, bulldoze. Reuse `pickGround` for cell selection. Palette must be tasteful (deep-space + cyan hairlines, per the zoning-redesign research), not the old flat overlay.
 
 ### Layer B — Large, variable plots
+
 - Raise the `plotFootprint` 5x3 cap and extend `SHOP_SIZE` into venue-scale kinds (data-driven, not hardcoded).
 - A commercial zone enclosed by roads subdivides into **large plots** (the L3 idea), or a designer/player **stamps** a big plot rectangle directly.
 - Marquee venues get big plots, e.g. bar ~12x10, sports ~20x16 (building + field), market ~12x8, nursery ~10x8 (tune in S3).
 
 ### Layer C — Real venue buildings (per business identity)
+
 One venue per slice, marquee apps first:
+
 - **The Nearest** — a **walk-in radar bar**: open frontage, interior counter + stools (seating is already a business flag), rooftop **radar dish**, cyan neon.
 - **Sportifine** — a club building **plus an adjacent sports field** (pitch, goal, line markings, small stands), lime.
 - **Chef Ott's Market** — market hall + stalls + crates, orange.
@@ -69,5 +73,6 @@ A painted grid is deterministic data; no Math.random/Date.now anywhere in the lo
 3. **Mark zone, venues auto-fill.** You paint a large commercial zone and a deterministic surveyor places DISTINCT venues into it (marquee apps first, by identity), the same discipline as `makeCommercialDistrict` but driven by the painted zone footprint instead of the fixed reserve rectangle. No per-venue hand-stamping required.
 
 ### Remaining minor questions (proposed defaults; not blocking S1/S2)
+
 4. **Sports field** — default: a generic multi-sport field (pitch + goal + line markings + small stands), ~16 cells long, tuned in S4. Confirm if it should be a specific sport.
 5. **For-sale economy** — default: KEEP it. Bots still buy + build venues over time on the large plots (consistent with the current buy-and-build model); the auto-fill places the venue IDENTITY/plot, build happens through the economy. Confirm if marquee venues should instead be pre-built by the layout.
