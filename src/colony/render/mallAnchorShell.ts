@@ -85,8 +85,8 @@ export function buildMallAnchorShellModel(
       y: 1.48,
     },
     nightFloor: {
-      w: pad.w * 0.96,
-      d: pad.h * 0.88,
+      w: pad.w * 1.04,
+      d: pad.h * 0.96,
       y: 0.025,
       emissiveIntensity: { day: 0.08, night: 1.35 },
     },

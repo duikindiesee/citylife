@@ -1,6 +1,6 @@
 # Spec 109 — Commercial pad grading + the missing garage landmark
 
-Status: IN PROGRESS — P0 by lead, P1/P2 to Jack/World · Date: 2026-06-26 · Source: operator screenshot + a multi-agent root-cause audit
+Status: IN PROGRESS — P0 merged in #178; P1/P2 garage landmark implemented in current Jack/World slice · Date: 2026-06-26 · Source: operator screenshot + a multi-agent root-cause audit
 
 ## Why
 
@@ -18,9 +18,17 @@ Port the unconditional homestead level-to-seat + smoothstep skirt to every comme
 
 ### P1 — Add the missing garage landmark (Jack/World, effort L)
 
-The garage is the headline gap. (1) Add `garagePad?: Reserve` to `CommercialDistrict` (commerce/district.ts, after `mallPad`). (2) Implement deterministic `findGarageSite(...)` modeled on `pickMallPad`, reserving a pad on a hard corner of the intersection (district.ts ~151). (3) Call it from `makeCommercialDistrict` after `pickMallPad`; assign to the returned district. (4) Create `render/garageAnchorShell.ts` exporting `buildGarageAnchorShellModel(garagePad, surfaceYFn)` with distinct massing — glassy showroom cube, lower service-bay shed with roll-up doors, tall corner pylon sign (night-emissive), forecourt display cars — matching Jack's Blender concept + VISION-open-world.md. Seat it on `surfaceY` using the SAME lowest-corner + graded-skirt approach as P0 so it lands flush. (5) Call `this.buildGarageAnchorShell(d)` in `buildCommercialDistrict` right after `buildMallAnchorShell` (PlanetRenderer.ts ~3337), guarding optional `garagePad`. Deterministic-sim (site) + render-only (massing). NOTE: the garage is a standalone LANDMARK (not a shop kind), so it is NOT superseded by spec 108's large-venue track — ship it.
+The garage is the headline gap. (1) Add `garagePad?: GaragePad` to `CommercialDistrict` (commerce/district.ts, after `mallPad`). (2) Implement deterministic `findGarageSite(...)` modeled on `pickMallPad`, reserving a standalone pad on a hard corner near the intersection while excluding shop plots, the mall pad, and street/cross-street cells. (3) Call it from `makeCommercialDistrict` after `pickMallPad`; assign to the returned district. (4) Create `render/garageAnchorShell.ts` exporting `buildGarageAnchorShellModel(garagePad, surfaceYFn)` with distinct massing — glassy showroom cube, front glass/header, lower service-bay shed with three roll-up doors, tall corner pylon sign, and forecourt display cars — matching Spec 102's asset triad and VISION-open-world.md. Seat it on `surfaceY` and include the garage pad in the Spec 109 P0 commercial grading pass so it lands flush with no dark plinth. (5) Call `this.buildGarageAnchorShell(d)` in `buildCommercialDistrict` right after `buildMallAnchorShell`, guarding optional `garagePad`. Deterministic-sim (site) + render-only (massing). NOTE: the garage is a standalone LANDMARK (not a shop kind), so it is NOT superseded by spec 108's large-venue track — ship it.
 
-### P2 — Orient the garage forecourt/showroom toward the road (fold into P1)
+Implementation contract now used by the code:
+
+- `GaragePad.kind === "garage_landmark"`, `publicName === "Gearbox Auto Hub"`, `isPublicSafe === true`.
+- `GaragePad.facingAngle` is the Three.js Y rotation whose local `+z`/front points toward the district road/intersection.
+- The render group is named `commercialDistrict.garagePad.garageAnchorShell` with public-safe `userData`.
+- The night floor mesh is named `garageAnchorNightFloor`; `garageAnchorNightFloorEmissive(daylight)` clamps to `0.12` by day and `1.05` by night.
+- The visible silhouette must include `garageAnchorGlassShowroom`, `garageAnchorGlassShowroomFront`, `garageAnchorShowroomHeaderSign`, `garageAnchorServiceBayBlock`, `garageAnchorRollupDoor.*`, `garageAnchorCornerPylonSign`, `garageAnchorRoadFacingForecourt`, and `garageAnchorDisplayCar.*` children.
+
+### P2 — Orient the garage forecourt/showroom toward the road (folded into P1)
 
 Today every shop front derives only from `side` (PlanetRenderer.ts ~3368, `front = -p.side`), so nothing reorients toward the intersection. Build the garage facing the road FROM THE START: add an optional `facingTurns`/`facingAngle` to the garage pad (or ShopParcel for showroom kind), compute the bearing to the intersection after it is chosen (district.ts ~151), and orient the garage massing from it. Do this inside the P1 garage work rather than as a separate pass.
 
@@ -30,4 +38,4 @@ The near-identical shop aspect ratios + shared detail template are explicitly su
 
 ## Verification
 
-P0 verified in-world via `.flyby/verify-district.cjs` (HUD-free day+night oblique capture of the district). P1/P2 to be verified the same way (day+night, plinth buried, garage reads as showroom+bays+pylon facing the road) before merge.
+P0 verified in-world via `.flyby/verify-district.cjs` (HUD-free day+night oblique capture of the district). P1/P2 must be verified via Vitest plus day/night browser proof: the named garage group exists, the showroom/service-bay/pylon/forecourt children exist, `garageAnchorNightFloor` emissive maps from `0.12` day to `1.05` night, the garage pad is included in commercial grading, and screenshots show a distinct showroom+bays+pylon landmark facing the road rather than the mall/dark-shop-plinth silhouette.

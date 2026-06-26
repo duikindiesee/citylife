@@ -37,5 +37,5 @@ This slice intentionally keeps the reservation geometry unchanged. It only rende
 - Seeds `4242`, `42`, and `7` build identical mall shell models across two fresh runtime boots.
 - The shell model centre equals the reserved `mallPad` centre and its body dimensions derive from the pad dimensions.
 - `baseY` seats at or below sampled pad `surfaceY`, proving the renderer can place the shell on the dried surface rather than raw coastal terrain.
-- The night floor exposes day/night emissive intensities and `PlanetRenderer` updates that material as `1 - daylight` changes.
+- The night floor exposes day/night emissive intensities, extends beyond the roof edge so the glow stays visible from the district camera, and `PlanetRenderer` updates that material as `1 - daylight` changes.
 - Focused Vitest passes, district determinism tests still pass, typecheck/build/full Vitest stay green, and day/night proof screenshots show the anchor shell present on the mall pad with the floor glow visible at night.

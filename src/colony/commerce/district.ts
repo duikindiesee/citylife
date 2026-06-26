@@ -45,8 +45,20 @@ export interface CommercialDistrict {
   intersection?: Cell;
   /** The reserved mall anchor pad; massing/rendering lands in Phase 2C. */
   mallPad: Reserve;
+  /** The standalone road-facing garage landmark pad (spec 109 P1/P2). */
+  garagePad?: GaragePad;
   /** The land bank this district was surveyed within. */
   reserve: Reserve;
+}
+
+export interface GaragePad extends Reserve {
+  kind: "garage_landmark";
+  publicName: "Gearbox Auto Hub";
+  isPublicSafe: true;
+  /** Three.js Y rotation: local +z points toward the district road/intersection. */
+  facingAngle: number;
+  /** The deterministic road/intersection cell the forecourt faces. */
+  roadTarget: Cell;
 }
 
 export interface Reserve {
@@ -157,12 +169,28 @@ export function makeCommercialDistrict(
     parcels,
     claimed,
   );
+  const garagePad = findGarageSite(
+    t,
+    reserve,
+    street,
+    crossStreet,
+    claimed,
+    mallPad,
+  );
 
   // Each plot fronts a real kooker app — assign its business identity (deterministic).
   const biz = assignBusinesses(parcels);
   for (const p of parcels) p.business = biz[p.id];
 
-  return { street, parcels, crossStreet, intersection, mallPad, reserve };
+  return {
+    street,
+    parcels,
+    crossStreet,
+    intersection,
+    mallPad,
+    garagePad,
+    reserve,
+  };
 }
 
 export function pickMajorIntersection(
@@ -257,6 +285,122 @@ export function pickMallPad(
   }
 
   return best ?? { x: reserve.x, y: reserve.y, w, h };
+}
+
+export function findGarageSite(
+  t: Terrain,
+  reserve: Reserve,
+  street: readonly Cell[],
+  crossStreet: readonly Cell[],
+  shopCells: ReadonlySet<string>,
+  mallPad: Reserve,
+): GaragePad {
+  const w = COLONY.commerce.garagePadW;
+  const h = COLONY.commerce.garagePadH;
+  const intersection = pickMajorIntersection(street, crossStreet) ?? {
+    x: reserve.x + Math.floor(reserve.w / 2),
+    y: reserve.y + Math.floor(reserve.h / 2),
+  };
+  const streetKeys = new Set(street.map((c) => `${c.x},${c.y}`));
+  const crossKeys = new Set(crossStreet.map((c) => `${c.x},${c.y}`));
+  const mallCells = new Set(footprintKeys(mallPad));
+  let best: GaragePad | undefined;
+  let bestScore = Infinity;
+
+  const consider = (x: number, y: number) => {
+    const pad = { x, y, w, h };
+    if (
+      !garagePadFits(
+        t,
+        reserve,
+        pad,
+        shopCells,
+        streetKeys,
+        crossKeys,
+        mallCells,
+      )
+    )
+      return;
+    const cx = x + (w - 1) / 2;
+    const cy = y + (h - 1) / 2;
+    const dx = intersection.x - cx;
+    const dy = intersection.y - cy;
+    const facingAngle = Math.atan2(dx, dy);
+    const hardCornerBias =
+      (cx < intersection.x ? cx - reserve.x : reserve.x + reserve.w - 1 - cx) +
+      (cy < intersection.y ? cy - reserve.y : reserve.y + reserve.h - 1 - cy);
+    const roadDistance = dx * dx + dy * dy;
+    const score = roadDistance * 4 + hardCornerBias;
+    if (
+      score < bestScore ||
+      (score === bestScore &&
+        (!best || x < best.x || (x === best.x && y < best.y)))
+    ) {
+      best = {
+        ...pad,
+        kind: "garage_landmark",
+        publicName: "Gearbox Auto Hub",
+        isPublicSafe: true,
+        facingAngle,
+        roadTarget: { ...intersection },
+      };
+      bestScore = score;
+    }
+  };
+
+  for (let y = reserve.y; y <= reserve.y + reserve.h - h; y++)
+    for (let x = reserve.x; x <= reserve.x + reserve.w - w; x++) consider(x, y);
+
+  return (
+    best ?? {
+      x: reserve.x,
+      y: reserve.y,
+      w,
+      h,
+      kind: "garage_landmark",
+      publicName: "Gearbox Auto Hub",
+      isPublicSafe: true,
+      facingAngle: Math.atan2(
+        intersection.x - reserve.x,
+        intersection.y - reserve.y,
+      ),
+      roadTarget: { ...intersection },
+    }
+  );
+}
+
+function garagePadFits(
+  t: Terrain,
+  reserve: Reserve,
+  pad: Reserve,
+  shopCells: ReadonlySet<string>,
+  streetKeys: ReadonlySet<string>,
+  crossKeys: ReadonlySet<string>,
+  mallCells: ReadonlySet<string>,
+): boolean {
+  if (pad.x < reserve.x || pad.y < reserve.y) return false;
+  if (pad.x + pad.w > reserve.x + reserve.w) return false;
+  if (pad.y + pad.h > reserve.y + reserve.h) return false;
+  for (let y = pad.y; y < pad.y + pad.h; y++)
+    for (let x = pad.x; x < pad.x + pad.w; x++) {
+      const k = `${x},${y}`;
+      if (!cellOk(t, x, y)) return false;
+      if (
+        shopCells.has(k) ||
+        streetKeys.has(k) ||
+        crossKeys.has(k) ||
+        mallCells.has(k)
+      )
+        return false;
+    }
+  return true;
+}
+
+function footprintKeys(p: Reserve): string[] {
+  const out: string[] = [];
+  for (let y = p.y; y < p.y + p.h; y++)
+    for (let x = p.x; x < p.x + p.w; x++) out.push(`${x},${y}`);
+  return out;
 }
 
 function mallPadFits(
