@@ -13,15 +13,19 @@ Shops and the mall are seated on the LOWEST footprint corner with a dark foundat
 ## Prioritized fix plan
 
 ### P0 — Grade ALL commercial parcels (lead, DONE in this PR)
+
 Port the unconditional homestead level-to-seat + smoothstep skirt to every commercial parcel + the mall pad, inside `relevelTerrain` (PlanetRenderer.ts, in the `if (cd)` block before the coastal blend). Each footprint is levelled to `max(groundY(centre), DRY)` and a 4-cell skirt ramps out with smoothstep into `max(worldY, DRY)` — identical to homesteads — so the dark plinth (`foundH` shrinks to ~0.7 once `hiY == loY`) is buried by graded terrain on EVERY pad, not just coastal ones. Render-only, deterministic (height-fn, no RNG), roads skipped (the ribbon bridges them). This is the cheapest, most-visible win and a prerequisite for seating the garage flush.
 
 ### P1 — Add the missing garage landmark (Jack/World, effort L)
+
 The garage is the headline gap. (1) Add `garagePad?: Reserve` to `CommercialDistrict` (commerce/district.ts, after `mallPad`). (2) Implement deterministic `findGarageSite(...)` modeled on `pickMallPad`, reserving a pad on a hard corner of the intersection (district.ts ~151). (3) Call it from `makeCommercialDistrict` after `pickMallPad`; assign to the returned district. (4) Create `render/garageAnchorShell.ts` exporting `buildGarageAnchorShellModel(garagePad, surfaceYFn)` with distinct massing — glassy showroom cube, lower service-bay shed with roll-up doors, tall corner pylon sign (night-emissive), forecourt display cars — matching Jack's Blender concept + VISION-open-world.md. Seat it on `surfaceY` using the SAME lowest-corner + graded-skirt approach as P0 so it lands flush. (5) Call `this.buildGarageAnchorShell(d)` in `buildCommercialDistrict` right after `buildMallAnchorShell` (PlanetRenderer.ts ~3337), guarding optional `garagePad`. Deterministic-sim (site) + render-only (massing). NOTE: the garage is a standalone LANDMARK (not a shop kind), so it is NOT superseded by spec 108's large-venue track — ship it.
 
 ### P2 — Orient the garage forecourt/showroom toward the road (fold into P1)
+
 Today every shop front derives only from `side` (PlanetRenderer.ts ~3368, `front = -p.side`), so nothing reorients toward the intersection. Build the garage facing the road FROM THE START: add an optional `facingTurns`/`facingAngle` to the garage pad (or ShopParcel for showroom kind), compute the bearing to the intersection after it is chosen (district.ts ~151), and orient the garage massing from it. Do this inside the P1 garage work rather than as a separate pass.
 
 ### Flat-slab shops — DO NOT patch (superseded)
+
 The near-identical shop aspect ratios + shared detail template are explicitly superseded by locked spec 108 (large-plot venue redesign: 12x10 bar / 20x16 sports / 12x8 market / 10x8 nursery + per-business massing). No interim massing patch — it wastes effort and risks lock-in. Jack's #176 high-street-variety is allowed to land as a free interim win (already built) but the real answer is spec 108 S3/S4. Tracked, not re-discovered.
 
 ## Verification
