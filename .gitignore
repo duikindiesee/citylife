@@ -16,3 +16,6 @@ social-export/
 provision-citizen.sh
 .env
 
+
+# Local QA-rig artifacts (Floyd flyby captures, inspection JSON, screenshots)
+.flyby/
