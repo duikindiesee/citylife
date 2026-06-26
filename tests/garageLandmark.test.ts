@@ -39,8 +39,9 @@ function dotTowardRoad(d: NonNullable<ColonyRuntime["commercialDistrict"]>) {
 
 describe("garage landmark site and render model (spec 109 P1/P2)", () => {
   it("surveys one deterministic public-safe garage landmark pad per commercial district", () => {
-    expect(COLONY.commerce.garagePadW).toBe(12);
-    expect(COLONY.commerce.garagePadH).toBe(8);
+    // Spec 110 — statement corner lot (was 12x8); the bigger pad wraps the crossroads.
+    expect(COLONY.commerce.garagePadW).toBe(16);
+    expect(COLONY.commerce.garagePadH).toBe(11);
 
     for (const seed of SEEDS) {
       const a = rtFor(seed).commercialDistrict!;
