@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { ColonyRuntime, ColonyUiState } from "../runtime";
-import {
-  gyroSteerFromOrientation,
-  type OrientationLike,
-} from "../racing/race";
+import { gyroSteerFromOrientation, type OrientationLike } from "../racing/race";
 
 export type MobileRallyControlAction =
   | "steer-left"
@@ -183,7 +180,9 @@ export function RaceMobileControls({
           className={gyroEnabled ? "on" : ""}
           data-race-action="gyro-toggle"
           aria-pressed={gyroEnabled}
-          aria-label={gyroEnabled ? "Turn gyro steering off" : "Turn gyro steering on"}
+          aria-label={
+            gyroEnabled ? "Turn gyro steering off" : "Turn gyro steering on"
+          }
           onClick={() => {
             if (gyroEnabled) disableGyro();
             else void enableGyro();

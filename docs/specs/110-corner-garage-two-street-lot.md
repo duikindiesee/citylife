@@ -4,7 +4,7 @@ Status: DESIGN · Date: 2026-06-26 · Owner: lead (design) · Source: Irwin brie
 
 ## Why
 
-The current garage (#180 + the spec-110 visual upgrade) is a single rectangular pad scored to sit NEAR the intersection but with street cells EXCLUDED (`findGarageSite`, district.ts:290-370, `garagePadFits` rejects street/cross cells). Result: an awkward square shoved *beside* the junction — Irwin: "you tried to bastardise the square to be shifted so it is in between two streets." A real auto landmark on a crossroads is a **corner LOT**: an L-shaped building that wraps the intersection with a frontage on EACH street, a glass showroom gallery on the primary street, drive-in workshop bays on the secondary, and a landscaped **corner island with a sky-high pylon** right at the junction.
+The current garage (#180 + the spec-110 visual upgrade) is a single rectangular pad scored to sit NEAR the intersection but with street cells EXCLUDED (`findGarageSite`, district.ts:290-370, `garagePadFits` rejects street/cross cells). Result: an awkward square shoved _beside_ the junction — Irwin: "you tried to bastardise the square to be shifted so it is in between two streets." A real auto landmark on a crossroads is a **corner LOT**: an L-shaped building that wraps the intersection with a frontage on EACH street, a glass showroom gallery on the primary street, drive-in workshop bays on the secondary, and a landscaped **corner island with a sky-high pylon** right at the junction.
 
 ## The corner-lot model (target)
 
@@ -34,6 +34,7 @@ Top-down, at the intersection of the high `street` and the `crossStreet`:
 ## Placement redesign (`findGarageSite`, district.ts)
 
 Replace "nearest non-street rectangle" with "best CORNER quadrant":
+
 1. Take the `intersection` (already from `pickMajorIntersection`).
 2. For each of the 4 quadrants (±x, ±y off the intersection), test an L-or-rect footprint seated 1 cell back from both the `street` line and the `crossStreet` line, inside the reserve, not over shops/mall/water.
 3. Score by: both frontages actually adjoin their road (a real two-street lot) + hard-corner bias + determinism tiebreak (smaller x then y). Pick the best quadrant.
@@ -43,6 +44,7 @@ Replace "nearest non-street rectangle" with "best CORNER quadrant":
 ## Massing redesign (`garageAnchorShell.ts` + PlanetRenderer garage build)
 
 Keep all existing named children (additive contract), but re-place them onto the two wings + island:
+
 - **Showroom wing (high-street face):** the `garageAnchorGlassShowroom` becomes a LONG glass curtain along the street frontage (cool glazing + dark lit interior already in the visual upgrade), with `garageAnchorDisplayCar.*` INSIDE the glass (cars on display in the gallery), a slim `garageAnchorShowroomHeaderSign` fascia, and a cantilevered canopy.
 - **Workshop wing (cross-street face):** the `garageAnchorServiceBayBlock` + the 3 `garageAnchorRollupDoor.*` move to the cross-street frontage; the middle bay is the OPEN drive-in (recessed `garageAnchorOpenBayInterior` + `garageAnchorDriveInApronRamp`) facing the cross street so a car cruises in off the secondary road. Mono-slope industrial roof.
 - **Corner island + pylon:** a small raised `garageAnchorCornerIsland` (planter/kerb) at `islandCell`; the `garageAnchorCornerPylonSign` stands on it, taller (sky-high), illuminated, with a `garageAnchorPylonWordmark` readable from both streets. Fuel/charge island optional beside it.

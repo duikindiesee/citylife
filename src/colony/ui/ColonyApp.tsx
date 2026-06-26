@@ -598,7 +598,8 @@ export function ColonyApp() {
   }, []);
 
   useEffect(() => {
-    if (typeof navigator === "undefined" || typeof window === "undefined") return;
+    if (typeof navigator === "undefined" || typeof window === "undefined")
+      return;
     let raf = 0;
     let wasConnected = false;
     const clearGamepad = () => {
@@ -862,7 +863,8 @@ export function ColonyApp() {
           </span>
           {controllerConnected && (
             <span data-race-controller="connected" style={{ color: "#9ee6ff" }}>
-              Controller connected · left stick/D-pad steer · A throttle · B brake
+              Controller connected · left stick/D-pad steer · A throttle · B
+              brake
             </span>
           )}
           {ui.race.bestMs !== null && (

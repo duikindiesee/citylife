@@ -72,7 +72,8 @@ export function gamepadRaceInput(gamepad: GamepadLike): RaceInput {
   const dpadLeft = gamepad.buttons[14]?.pressed === true;
   const dpadRight = gamepad.buttons[15]?.pressed === true;
   const dpadSteer = (dpadLeft ? -1 : 0) + (dpadRight ? 1 : 0);
-  const steer = Math.abs(stick) >= RACE_STEER_DEADZONE ? clamp(stick, -1, 1) : dpadSteer;
+  const steer =
+    Math.abs(stick) >= RACE_STEER_DEADZONE ? clamp(stick, -1, 1) : dpadSteer;
   return {
     steer,
     accelerate: gamepad.buttons[0]?.pressed === true,

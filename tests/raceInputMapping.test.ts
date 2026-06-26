@@ -16,28 +16,39 @@ describe("Road Rally additive input mapping", () => {
       throttle: false,
       brake: false,
     });
-    expect(normalizeRaceDriveInput({ steerRight: true, accelerate: true })).toMatchObject({
+    expect(
+      normalizeRaceDriveInput({ steerRight: true, accelerate: true }),
+    ).toMatchObject({
       steer: 1,
       throttle: true,
       brake: false,
     });
-    expect(normalizeRaceDriveInput({ steer: 0.42, brake: true })).toMatchObject({
-      steer: 0.42,
-      throttle: false,
-      brake: true,
-    });
-    expect(normalizeRaceDriveInput({ steerLeft: true, steer: 0.8 }).steer).toBeCloseTo(
-      -0.2,
-      5,
+    expect(normalizeRaceDriveInput({ steer: 0.42, brake: true })).toMatchObject(
+      {
+        steer: 0.42,
+        throttle: false,
+        brake: true,
+      },
     );
+    expect(
+      normalizeRaceDriveInput({ steerLeft: true, steer: 0.8 }).steer,
+    ).toBeCloseTo(-0.2, 5);
   });
 
   it("maps calibrated DeviceOrientation tilt through a dead-zone into normalized steering", () => {
     const baseline = { gamma: 4, beta: 10 };
-    expect(gyroSteerFromOrientation({ gamma: 5.4, beta: 12 }, baseline)).toBe(0);
-    expect(gyroSteerFromOrientation({ gamma: 16, beta: 10 }, baseline)).toBeCloseTo(0.4, 5);
-    expect(gyroSteerFromOrientation({ gamma: -40, beta: 10 }, baseline)).toBe(-1);
-    expect(gyroSteerFromOrientation({ gamma: null, beta: 10 }, baseline)).toBe(0);
+    expect(gyroSteerFromOrientation({ gamma: 5.4, beta: 12 }, baseline)).toBe(
+      0,
+    );
+    expect(
+      gyroSteerFromOrientation({ gamma: 16, beta: 10 }, baseline),
+    ).toBeCloseTo(0.4, 5);
+    expect(gyroSteerFromOrientation({ gamma: -40, beta: 10 }, baseline)).toBe(
+      -1,
+    );
+    expect(gyroSteerFromOrientation({ gamma: null, beta: 10 }, baseline)).toBe(
+      0,
+    );
   });
 
   it("maps Android TV gamepads to steer, throttle, and brake", () => {

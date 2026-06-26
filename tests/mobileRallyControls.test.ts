@@ -68,16 +68,16 @@ describe("mobile Road Rally driving controls", () => {
     );
 
     expect(html).toContain("race-mobile-controls");
-    expect(html).toContain("data-race-action=\"steer-left\"");
-    expect(html).toContain("data-race-action=\"steer-right\"");
-    expect(html).toContain("data-race-action=\"throttle\"");
-    expect(html).toContain("data-race-action=\"brake-reverse\"");
-    expect(html).toContain("aria-label=\"Steer left\"");
-    expect(html).toContain("aria-label=\"Hold throttle\"");
-    expect(html).toContain("aria-label=\"Brake or reverse\"");
+    expect(html).toContain('data-race-action="steer-left"');
+    expect(html).toContain('data-race-action="steer-right"');
+    expect(html).toContain('data-race-action="throttle"');
+    expect(html).toContain('data-race-action="brake-reverse"');
+    expect(html).toContain('aria-label="Steer left"');
+    expect(html).toContain('aria-label="Hold throttle"');
+    expect(html).toContain('aria-label="Brake or reverse"');
     expect(html).toContain("Hold throttle");
-    expect(html).toContain("data-race-action=\"gyro-toggle\"");
-    expect(html).toContain("data-race-action=\"gyro-recenter\"");
+    expect(html).toContain('data-race-action="gyro-toggle"');
+    expect(html).toContain('data-race-action="gyro-recenter"');
     expect(html).toContain("Gyro steer off");
   });
 
@@ -92,7 +92,11 @@ describe("mobile Road Rally driving controls", () => {
     let accelerated = stepRace(newRaceState(manualTrack()), {}, 3000);
     accelerated = stepRace(
       accelerated,
-      { [mobileRallyControlKeyCode("throttle") === "KeyW" ? "accelerate" : "brake"]: true },
+      {
+        [mobileRallyControlKeyCode("throttle") === "KeyW"
+          ? "accelerate"
+          : "brake"]: true,
+      },
       400,
     );
     expect(accelerated.car.speed).toBeGreaterThan(0);
