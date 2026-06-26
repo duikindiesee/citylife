@@ -15,6 +15,15 @@ export type BusinessId =
   | "ledger_exchange"
   | "tarentaal_tours"
   | "builder_studio"
+  | "rimlight_detail"
+  | "neon_tire"
+  | "harbor_books"
+  | "skyline_cafe"
+  | "parcel_press"
+  | "arcade_lane"
+  | "plant_lab"
+  | "tool_library"
+  | "poster_union"
   | "trading_post"
   | "corner_kiosk";
 
@@ -162,6 +171,105 @@ export const BUSINESSES: Record<BusinessId, Business> = {
     marquee: false,
     isPublicSafe: true,
   },
+  rimlight_detail: {
+    id: "rimlight_detail",
+    name: "Rimlight Detail",
+    app: "car care desk",
+    tagline: "Wax shine meet night line",
+    palette: 0x65f2ff,
+    emblem: "garage",
+    seating: false,
+    marquee: false,
+    isPublicSafe: true,
+  },
+  neon_tire: {
+    id: "neon_tire",
+    name: "Neon Tire Co",
+    app: "wheel and tire counter",
+    tagline: "Grip for the coast road",
+    palette: 0x4dff9d,
+    emblem: "coin",
+    seating: false,
+    marquee: false,
+    isPublicSafe: true,
+  },
+  harbor_books: {
+    id: "harbor_books",
+    name: "Harbor Books",
+    app: "city reading nook",
+    tagline: "Pages by the pier",
+    palette: 0xffd86b,
+    emblem: "frame",
+    seating: false,
+    marquee: false,
+    isPublicSafe: true,
+  },
+  skyline_cafe: {
+    id: "skyline_cafe",
+    name: "Skyline Cafe",
+    app: "coffee stop",
+    tagline: "Warm cups and bright roofs",
+    palette: 0xff9f4d,
+    emblem: "pot",
+    seating: false,
+    marquee: false,
+    isPublicSafe: true,
+  },
+  parcel_press: {
+    id: "parcel_press",
+    name: "Parcel Press",
+    app: "print and pack shop",
+    tagline: "Labels posters and parcels",
+    palette: 0xd7ff4d,
+    emblem: "tag",
+    seating: false,
+    marquee: false,
+    isPublicSafe: true,
+  },
+  arcade_lane: {
+    id: "arcade_lane",
+    name: "Arcade Lane",
+    app: "coin-op games",
+    tagline: "Quarter mile cabinet row",
+    palette: 0xff4df0,
+    emblem: "board",
+    seating: false,
+    marquee: false,
+    isPublicSafe: true,
+  },
+  plant_lab: {
+    id: "plant_lab",
+    name: "Plant Lab",
+    app: "seedling counter",
+    tagline: "Tiny leaves big plans",
+    palette: 0x7cff6b,
+    emblem: "leaf",
+    seating: false,
+    marquee: false,
+    isPublicSafe: true,
+  },
+  tool_library: {
+    id: "tool_library",
+    name: "Tool Library",
+    app: "shared tools",
+    tagline: "Borrow build return",
+    palette: 0x6bb6ff,
+    emblem: "crate",
+    seating: false,
+    marquee: false,
+    isPublicSafe: true,
+  },
+  poster_union: {
+    id: "poster_union",
+    name: "Poster Union",
+    app: "street print wall",
+    tagline: "Fresh bills for every show",
+    palette: 0xff6bb6,
+    emblem: "record",
+    seating: false,
+    marquee: false,
+    isPublicSafe: true,
+  },
   trading_post: {
     id: "trading_post",
     name: "Trading Post",
@@ -199,6 +307,15 @@ const SECONDARY_ORDER: BusinessId[] = [
   "ledger_exchange",
   "tarentaal_tours",
   "builder_studio",
+  "rimlight_detail",
+  "neon_tire",
+  "harbor_books",
+  "skyline_cafe",
+  "parcel_press",
+  "arcade_lane",
+  "plant_lab",
+  "tool_library",
+  "poster_union",
   "trading_post",
   "corner_kiosk",
 ];

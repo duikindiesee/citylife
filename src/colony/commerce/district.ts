@@ -59,6 +59,12 @@ export interface GaragePad extends Reserve {
   facingAngle: number;
   /** The deterministic road/intersection cell the forecourt faces. */
   roadTarget: Cell;
+  /** Unit direction from the garage lot toward the high-street frontage. */
+  streetFrontDir: Cell;
+  /** Unit direction from the garage lot toward the cross-street drive-in frontage. */
+  crossFrontDir: Cell;
+  /** The corner-island cell that carries the garage pylon sign. */
+  islandCell: Cell;
 }
 
 export interface Reserve {
@@ -174,17 +180,22 @@ export function makeCommercialDistrict(
     reserve,
     street,
     crossStreet,
-    claimed,
+    new Set(),
     mallPad,
+  );
+  const garageCells = new Set(footprintKeys(garagePad));
+  garageCells.add(`${garagePad.islandCell.x},${garagePad.islandCell.y}`);
+  const garageClearParcels = parcels.filter((p) =>
+    footprintKeys(p).every((k) => !garageCells.has(k)),
   );
 
   // Each plot fronts a real kooker app — assign its business identity (deterministic).
-  const biz = assignBusinesses(parcels);
-  for (const p of parcels) p.business = biz[p.id];
+  const biz = assignBusinesses(garageClearParcels);
+  for (const p of garageClearParcels) p.business = biz[p.id];
 
   return {
     street,
-    parcels,
+    parcels: garageClearParcels,
     crossStreet,
     intersection,
     mallPad,
@@ -304,11 +315,16 @@ export function findGarageSite(
   const streetKeys = new Set(street.map((c) => `${c.x},${c.y}`));
   const crossKeys = new Set(crossStreet.map((c) => `${c.x},${c.y}`));
   const mallCells = new Set(footprintKeys(mallPad));
+  type Candidate = Reserve & {
+    streetFrontDir: Cell;
+    crossFrontDir: Cell;
+    islandCell: Cell;
+  };
   let best: GaragePad | undefined;
   let bestScore = Infinity;
 
-  const consider = (x: number, y: number) => {
-    const pad = { x, y, w, h };
+  const consider = (candidate: Candidate) => {
+    const pad = { x: candidate.x, y: candidate.y, w, h };
     if (
       !garagePadFits(
         t,
@@ -321,20 +337,24 @@ export function findGarageSite(
       )
     )
       return;
-    const cx = x + (w - 1) / 2;
-    const cy = y + (h - 1) / 2;
+    const cx = candidate.x + (w - 1) / 2;
+    const cy = candidate.y + (h - 1) / 2;
     const dx = intersection.x - cx;
     const dy = intersection.y - cy;
     const facingAngle = Math.atan2(dx, dy);
-    const hardCornerBias =
-      (cx < intersection.x ? cx - reserve.x : reserve.x + reserve.w - 1 - cx) +
-      (cy < intersection.y ? cy - reserve.y : reserve.y + reserve.h - 1 - cy);
-    const roadDistance = dx * dx + dy * dy;
-    const score = roadDistance * 4 + hardCornerBias;
+    const cornerX =
+      candidate.streetFrontDir.x < 0 ? reserve.x + reserve.w - 1 : reserve.x;
+    const cornerY =
+      candidate.crossFrontDir.y < 0 ? reserve.y + reserve.h - 1 : reserve.y;
+    const cornerDistance =
+      (candidate.islandCell.x - cornerX) ** 2 +
+      (candidate.islandCell.y - cornerY) ** 2;
+    const roadDistance = Math.abs(dx) + Math.abs(dy);
+    const score = cornerDistance * 100 + roadDistance;
     if (
       score < bestScore ||
       (score === bestScore &&
-        (!best || x < best.x || (x === best.x && y < best.y)))
+        (!best || pad.x < best.x || (pad.x === best.x && pad.y < best.y)))
     ) {
       best = {
         ...pad,
@@ -343,13 +363,27 @@ export function findGarageSite(
         isPublicSafe: true,
         facingAngle,
         roadTarget: { ...intersection },
+        streetFrontDir: { ...candidate.streetFrontDir },
+        crossFrontDir: { ...candidate.crossFrontDir },
+        islandCell: { ...candidate.islandCell },
       };
       bestScore = score;
     }
   };
 
-  for (let y = reserve.y; y <= reserve.y + reserve.h - h; y++)
-    for (let x = reserve.x; x <= reserve.x + reserve.w - w; x++) consider(x, y);
+  for (const sx of [-1, 1] as const) {
+    for (const sy of [-1, 1] as const) {
+      consider({
+        x: sx < 0 ? intersection.x + 1 : intersection.x - w,
+        y: sy < 0 ? intersection.y + 1 : intersection.y - h,
+        w,
+        h,
+        streetFrontDir: { x: sx, y: 0 },
+        crossFrontDir: { x: 0, y: sy },
+        islandCell: { x: intersection.x - sx, y: intersection.y - sy },
+      });
+    }
+  }
 
   return (
     best ?? {
@@ -365,6 +399,9 @@ export function findGarageSite(
         intersection.y - reserve.y,
       ),
       roadTarget: { ...intersection },
+      streetFrontDir: { x: 1, y: 0 },
+      crossFrontDir: { x: 0, y: 1 },
+      islandCell: { x: intersection.x - 1, y: intersection.y - 1 },
     }
   );
 }
