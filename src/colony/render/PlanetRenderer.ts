@@ -1071,6 +1071,49 @@ export class PlanetRenderer {
     // frontages so dry commercial pads ramp toward the shoreline instead of ending in one-cell black
     // cliff faces / floating-table silhouettes at night. Roads are skipped because ribbons bridge them.
     if (cd) {
+      // Spec 109 P0 — GRADE EVERY commercial parcel + the mall pad like a homestead, not just coastal
+      // ones. The old code only blended seaward sub-dry cells, so an INLAND parcel on the steep hillside
+      // got zero grading and the dark foundation plinth (buildCommercialDistrict, colour 0x2a2f38) met the
+      // slope as a sheer BLACK vertical wall / floating-table silhouette (the operator's "buildings in the
+      // ground / floating"). The shops sit ~1 cell apart on a steep coastal grade, so — unlike the
+      // far-apart homesteads — a single per-parcel pass lets a neighbour's skirt overwrite this parcel's
+      // footprint, leaving its 4 corners at different surfaceY (large hiY-loY -> tall plinth). So do it in
+      // TWO global passes: write ALL skirts first, then ALL footprints, so every footprint cell ends flat
+      // at its own seat (hiY==loY -> plinth collapses to ~0.7 and is buried). Stays >= DRY (never floods);
+      // roads skipped (the ribbon bridges them). Deterministic height-fn, no RNG.
+      const seats = [
+        ...cd.parcels.map((p) => ({ x: p.x, y: p.y, w: p.w, h: p.h })),
+        { x: cd.mallPad.x, y: cd.mallPad.y, w: cd.mallPad.w, h: cd.mallPad.h },
+      ];
+      const seatY = (r: { x: number; y: number; w: number; h: number }) =>
+        Math.max(this.groundY(r.x + (r.w - 1) / 2, r.y + (r.h - 1) / 2), DRY);
+      // Pass 1 — skirts (smoothstep ramp from the flat pad out to natural ground).
+      for (const r of seats) {
+        const py = seatY(r);
+        const fx1 = r.x + r.w,
+          fy1 = r.y + r.h;
+        for (let y = r.y - SKIRT + 1; y < fy1 + SKIRT; y++)
+          for (let x = r.x - SKIRT + 1; x < fx1 + SKIRT; x++) {
+            if (x < 0 || y < 0 || x >= N || y >= N) continue;
+            if (this.roadRibbonCells?.has(`${x},${y}`)) continue;
+            const dist = Math.max(0, r.x - x, x - fx1, r.y - y, y - fy1);
+            if (dist > 0 && dist < SKIRT) {
+              const nat = Math.max(t.worldY(x, y), DRY);
+              const s = dist / SKIRT;
+              put(x, y, py + (nat - py) * (s * s * (3 - 2 * s)));
+            }
+          }
+      }
+      // Pass 2 — footprints WIN: flatten each pad to its own seat so all 4 corners match.
+      for (const r of seats) {
+        const py = seatY(r);
+        for (let y = r.y; y <= r.y + r.h; y++)
+          for (let x = r.x; x <= r.x + r.w; x++) {
+            if (x < 0 || y < 0 || x >= N || y >= N) continue;
+            if (this.roadRibbonCells?.has(`${x},${y}`)) continue;
+            put(x, y, py);
+          }
+      }
       const rects = [
         ...cd.parcels.map((p) => ({
           x: p.x - 1,
