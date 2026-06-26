@@ -3845,8 +3845,12 @@ export class PlanetRenderer {
     const occluders = this.commercialLabelOccluders();
     for (const entry of this.commercialLabelMats) {
       entry.group.getWorldPosition(this.commercialLabelWorld);
-      this.commercialLabelProjection.copy(this.commercialLabelWorld).project(this.camera);
-      const distance = this.camera.position.distanceTo(this.commercialLabelWorld);
+      this.commercialLabelProjection
+        .copy(this.commercialLabelWorld)
+        .project(this.camera);
+      const distance = this.camera.position.distanceTo(
+        this.commercialLabelWorld,
+      );
       candidates.push({
         label: entry.model,
         screenX: (this.commercialLabelProjection.x + 1) * 0.5 * width,
@@ -3864,7 +3868,9 @@ export class PlanetRenderer {
     }
     const visibility = declutterBusinessLabels(candidates);
     for (const entry of this.commercialLabelMats) {
-      const state = visibility.find((item) => item.shopId === entry.model.shopId);
+      const state = visibility.find(
+        (item) => item.shopId === entry.model.shopId,
+      );
       entry.group.visible = Boolean(state?.visible);
       entry.visibilityOpacity = state?.visible ? state.opacity : 0;
     }
@@ -3895,17 +3901,26 @@ export class PlanetRenderer {
       this.commercialLabelDirection,
     );
     this.commercialLabelRaycaster.far = Math.max(0.1, distance - 1.2);
-    return this.commercialLabelRaycaster.intersectObjects([...occluders], false).length > 0;
+    return (
+      this.commercialLabelRaycaster.intersectObjects([...occluders], false)
+        .length > 0
+    );
   }
 
   private isCommercialLabelObject(object: THREE.Object3D) {
-    for (let cursor: THREE.Object3D | null = object; cursor; cursor = cursor.parent) {
+    for (
+      let cursor: THREE.Object3D | null = object;
+      cursor;
+      cursor = cursor.parent
+    ) {
       if (cursor.name.startsWith("commercial-label-")) return true;
     }
     return false;
   }
 
-  private makeCommercialBusinessLabel(label: BusinessLabel): THREE.Object3D | null {
+  private makeCommercialBusinessLabel(
+    label: BusinessLabel,
+  ): THREE.Object3D | null {
     if (!isPublicSafe(label.text)) return null;
     const group = new THREE.Group();
     group.name = `commercial-label-${label.shopId}`;

@@ -40,7 +40,9 @@ describe("commercial business labels", () => {
       expect(label.height).toBeGreaterThan(2.5);
       expect(isPublicSafe(label.text)).toBe(true);
       expect(label.nightEmissiveFloor).toBeGreaterThan(0);
-      expect(label.nightEmissiveFloor).toBeLessThanOrEqual(label.nightEmissivePeak);
+      expect(label.nightEmissiveFloor).toBeLessThanOrEqual(
+        label.nightEmissivePeak,
+      );
     }
   });
 
@@ -82,7 +84,15 @@ describe("commercial business labels", () => {
       screenX: index < 4 ? 400 + index * 14 : 100 + index * 120,
       screenY: index < 4 ? 320 + index * 10 : 140 + index * 28,
       distance:
-        index === 0 ? 22 : index === 1 ? 18 : index === 2 ? 68 : index === 3 ? 120 : 28 + index,
+        index === 0
+          ? 22
+          : index === 1
+            ? 18
+            : index === 2
+              ? 68
+              : index === 3
+                ? 120
+                : 28 + index,
     }));
 
     const visible = declutterBusinessLabels(candidates, {
@@ -94,10 +104,18 @@ describe("commercial business labels", () => {
 
     expect(visible).toHaveLength(labels.length);
     expect(visible.filter((l) => l.visible)).toHaveLength(3);
-    expect(visible.find((l) => l.shopId === labels[1]!.shopId)?.visible).toBe(true);
-    expect(visible.find((l) => l.shopId === labels[0]!.shopId)?.visible).toBe(false);
-    expect(visible.find((l) => l.shopId === labels[2]!.shopId)?.opacity).toBeLessThan(1);
-    expect(visible.find((l) => l.shopId === labels[3]!.shopId)?.visible).toBe(false);
+    expect(visible.find((l) => l.shopId === labels[1]!.shopId)?.visible).toBe(
+      true,
+    );
+    expect(visible.find((l) => l.shopId === labels[0]!.shopId)?.visible).toBe(
+      false,
+    );
+    expect(
+      visible.find((l) => l.shopId === labels[2]!.shopId)?.opacity,
+    ).toBeLessThan(1);
+    expect(visible.find((l) => l.shopId === labels[3]!.shopId)?.visible).toBe(
+      false,
+    );
     for (const out of visible) {
       const source = labels.find((label) => label.shopId === out.shopId)!;
       expect(out.businessId).toBe(source.businessId);
@@ -106,7 +124,10 @@ describe("commercial business labels", () => {
   });
 
   it("hides occluded labels before they can overlap the shop strip", () => {
-    const labels = surveyBusinessLabels(rtFor(4242).commercialDistrict!).slice(0, 3);
+    const labels = surveyBusinessLabels(rtFor(4242).commercialDistrict!).slice(
+      0,
+      3,
+    );
     const visible = declutterBusinessLabels(
       labels.map((label, index) => ({
         label,
@@ -115,7 +136,12 @@ describe("commercial business labels", () => {
         distance: 20 + index,
         occluded: index === 1,
       })),
-      { maxVisible: 3, minScreenGap: 60, farFadeStart: 70, farHideDistance: 120 },
+      {
+        maxVisible: 3,
+        minScreenGap: 60,
+        farFadeStart: 70,
+        farHideDistance: 120,
+      },
     );
 
     expect(visible[1]?.visible).toBe(false);
@@ -126,7 +152,10 @@ describe("commercial business labels", () => {
   });
 
   it("caps default visibility to four nearest non-overlapping readable signs", () => {
-    const labels = surveyBusinessLabels(rtFor(4242).commercialDistrict!).slice(0, 8);
+    const labels = surveyBusinessLabels(rtFor(4242).commercialDistrict!).slice(
+      0,
+      8,
+    );
     const visible = declutterBusinessLabels(
       labels.map((label, index) => ({
         label,
@@ -142,7 +171,10 @@ describe("commercial business labels", () => {
   });
 
   it("spreads labels across screen bands instead of filling one cluttered strip", () => {
-    const labels = surveyBusinessLabels(rtFor(4242).commercialDistrict!).slice(0, 7);
+    const labels = surveyBusinessLabels(rtFor(4242).commercialDistrict!).slice(
+      0,
+      7,
+    );
     const visible = declutterBusinessLabels(
       labels.map((label, index) => ({
         label,

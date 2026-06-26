@@ -118,26 +118,31 @@ export function declutterBusinessLabels(
   }));
   const ranked = candidates
     .map((candidate, index) => ({ candidate, index }))
-    .filter(({ candidate }) =>
-      Number.isFinite(candidate.screenX) &&
-      Number.isFinite(candidate.screenY) &&
-      Number.isFinite(candidate.distance) &&
-      !candidate.occluded &&
-      candidate.distance < options.farHideDistance,
+    .filter(
+      ({ candidate }) =>
+        Number.isFinite(candidate.screenX) &&
+        Number.isFinite(candidate.screenY) &&
+        Number.isFinite(candidate.distance) &&
+        !candidate.occluded &&
+        candidate.distance < options.farHideDistance,
     )
-    .sort((a, b) =>
-      a.candidate.distance - b.candidate.distance ||
-      a.candidate.label.shopId.localeCompare(b.candidate.label.shopId),
+    .sort(
+      (a, b) =>
+        a.candidate.distance - b.candidate.distance ||
+        a.candidate.label.shopId.localeCompare(b.candidate.label.shopId),
     );
 
   const accepted: BusinessLabelDeclutterInput[] = [];
   const acceptedByBand = new Map<number, number>();
   const bandHeight = options.screenBandHeight ?? 0;
-  const maxPerBand = options.maxVisiblePerScreenBand ?? Number.POSITIVE_INFINITY;
+  const maxPerBand =
+    options.maxVisiblePerScreenBand ?? Number.POSITIVE_INFINITY;
   for (const rankedEntry of ranked) {
     if (accepted.length >= options.maxVisible) break;
     const band =
-      bandHeight > 0 ? Math.floor(rankedEntry.candidate.screenY / bandHeight) : 0;
+      bandHeight > 0
+        ? Math.floor(rankedEntry.candidate.screenY / bandHeight)
+        : 0;
     if ((acceptedByBand.get(band) ?? 0) >= maxPerBand) continue;
     const overlaps = accepted.some(
       (acceptedCandidate) =>
@@ -156,7 +161,9 @@ export function declutterBusinessLabels(
         ? 1
         : Math.max(
             0.2,
-            1 - (rankedEntry.candidate.distance - options.farFadeStart) / fadeSpan,
+            1 -
+              (rankedEntry.candidate.distance - options.farFadeStart) /
+                fadeSpan,
           );
     const target = out[rankedEntry.index]!;
     target.visible = true;
@@ -180,6 +187,9 @@ export function labelOpacityForVisibility(
     clampedNight * (label.nightEmissivePeak - label.nightEmissiveFloor);
   return {
     spriteOpacity: Math.max(0.3, Math.min(1, glow) * clampedVisibility),
-    floorOpacity: Math.max(0.12, (0.18 + clampedNight * 0.34) * clampedVisibility),
+    floorOpacity: Math.max(
+      0.12,
+      (0.18 + clampedNight * 0.34) * clampedVisibility,
+    ),
   };
 }
