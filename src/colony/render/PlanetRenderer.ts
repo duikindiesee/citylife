@@ -3417,6 +3417,28 @@ export class PlanetRenderer {
     forecourt.position.set(0, model.forecourt.y, model.forecourt.frontOffset);
     forecourt.receiveShadow = true;
 
+    const forecourtLane = new THREE.Group();
+    forecourtLane.name = "garageAnchorForecourtWarmLaneStrips";
+    const laneMat = new THREE.MeshStandardMaterial({
+      color: 0xffcf74,
+      emissive: 0xffa13a,
+      emissiveIntensity: 0.58,
+      roughness: 0.34,
+    });
+    for (const x of [-model.forecourt.w * 0.22, model.forecourt.w * 0.22]) {
+      const lane = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.035, model.forecourt.d * 0.82),
+        laneMat,
+      );
+      lane.name = `garageAnchorForecourtWarmLaneStrip.${x < 0 ? "left" : "right"}`;
+      lane.position.set(
+        x,
+        model.forecourt.y + 0.03,
+        model.forecourt.frontOffset,
+      );
+      forecourtLane.add(lane);
+    }
+
     const showroom = new THREE.Mesh(
       new THREE.BoxGeometry(
         model.showroom.w,
@@ -3424,13 +3446,13 @@ export class PlanetRenderer {
         model.showroom.d,
       ),
       new THREE.MeshStandardMaterial({
-        color: 0x8fe6ff,
-        roughness: 0.18,
-        metalness: 0.08,
-        emissive: 0xffb86b,
-        emissiveIntensity: 0.38,
+        color: 0xffc48a,
+        roughness: 0.14,
+        metalness: 0.06,
+        emissive: 0xff9f4a,
+        emissiveIntensity: 0.46,
         transparent: true,
-        opacity: 0.74,
+        opacity: 0.68,
       }),
     );
     showroom.name = "garageAnchorGlassShowroom";
@@ -3445,13 +3467,13 @@ export class PlanetRenderer {
         0.08,
       ),
       new THREE.MeshStandardMaterial({
-        color: 0xbff6ff,
+        color: 0xffd3a0,
         roughness: 0.08,
         metalness: 0.04,
-        emissive: 0x5fdfff,
-        emissiveIntensity: 0.52,
+        emissive: 0xffb24a,
+        emissiveIntensity: 0.58,
         transparent: true,
-        opacity: 0.82,
+        opacity: 0.8,
       }),
     );
     showroomFront.name = "garageAnchorGlassShowroomFront";
@@ -3476,6 +3498,79 @@ export class PlanetRenderer {
       model.showroom.h + 0.12,
       model.showroom.z + model.showroom.d / 2 + 0.08,
     );
+
+    const showroomCarSilhouette = new THREE.Group();
+    showroomCarSilhouette.name = "garageAnchorShowroomFrontCarSilhouette";
+    showroomCarSilhouette.position.set(
+      model.showroom.x,
+      model.showroom.h * 0.43,
+      model.showroom.z + model.showroom.d / 2 + 0.13,
+    );
+    const silhouetteMat = new THREE.MeshStandardMaterial({
+      color: 0x6fe7ff,
+      emissive: 0x35d8ff,
+      emissiveIntensity: 0.78,
+      roughness: 0.18,
+      transparent: true,
+      opacity: 0.88,
+    });
+    const silhouetteBody = new THREE.Mesh(
+      new THREE.BoxGeometry(model.showroom.w * 0.44, 0.13, 0.04),
+      silhouetteMat,
+    );
+    silhouetteBody.name = "garageAnchorShowroomFrontCarSilhouette.body";
+    const silhouetteCab = new THREE.Mesh(
+      new THREE.BoxGeometry(model.showroom.w * 0.18, 0.17, 0.045),
+      silhouetteMat,
+    );
+    silhouetteCab.name = "garageAnchorShowroomFrontCarSilhouette.cab";
+    silhouetteCab.position.y = 0.14;
+    showroomCarSilhouette.add(silhouetteBody, silhouetteCab);
+
+    const showroomCarGlow = new THREE.Group();
+    showroomCarGlow.name = "garageAnchorShowroomCarGlow";
+    showroomCarGlow.position.set(
+      model.showroom.x - model.showroom.w * 0.03,
+      0.16,
+      model.showroom.z + model.showroom.d * 0.26,
+    );
+    const showroomCarBody = new THREE.Mesh(
+      new THREE.BoxGeometry(1.18, 0.24, 0.54),
+      new THREE.MeshStandardMaterial({
+        color: 0xff6f3a,
+        roughness: 0.42,
+        emissive: 0xff6f3a,
+        emissiveIntensity: 0.38,
+      }),
+    );
+    showroomCarBody.name = "garageAnchorShowroomCarGlow.body";
+    showroomCarBody.position.y = 0.2;
+    const showroomCarCab = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 0.25, 0.4),
+      new THREE.MeshStandardMaterial({
+        color: 0xffe3b8,
+        roughness: 0.12,
+        emissive: 0xffc47a,
+        emissiveIntensity: 0.5,
+        transparent: true,
+        opacity: 0.82,
+      }),
+    );
+    showroomCarCab.name = "garageAnchorShowroomCarGlow.cab";
+    showroomCarCab.position.set(-0.08, 0.42, 0);
+    const showroomUnderGlow = new THREE.Mesh(
+      new THREE.BoxGeometry(1.38, 0.035, 0.68),
+      new THREE.MeshStandardMaterial({
+        color: 0xffb24a,
+        emissive: 0xff8f2f,
+        emissiveIntensity: 0.9,
+        transparent: true,
+        opacity: 0.7,
+      }),
+    );
+    showroomUnderGlow.name = "garageAnchorShowroomCarUnderGlow";
+    showroomUnderGlow.position.y = 0.04;
+    showroomCarGlow.add(showroomUnderGlow, showroomCarBody, showroomCarCab);
 
     const service = new THREE.Mesh(
       new THREE.BoxGeometry(
@@ -3502,15 +3597,46 @@ export class PlanetRenderer {
 
     const roof = new THREE.Mesh(
       new THREE.BoxGeometry(
-        model.footprint.w * 0.82,
-        0.22,
-        model.footprint.d * 0.62,
+        model.footprint.w * 0.86,
+        0.18,
+        model.footprint.d * 0.64,
       ),
-      new THREE.MeshStandardMaterial({ color: 0x1f2731, roughness: 0.86 }),
+      new THREE.MeshStandardMaterial({
+        color: 0x303845,
+        roughness: 0.82,
+        metalness: 0.06,
+      }),
     );
-    roof.name = "garageAnchorFlatRoofCanopy";
+    roof.name = "garageAnchorGraphiteFlatRoofCanopy";
     roof.position.set(0.12, model.serviceBay.h + 0.12, -0.04);
     roof.castShadow = true;
+
+    const wrenchGroup = new THREE.Group();
+    wrenchGroup.name = "garageAnchorRooftopWrenchEmblem";
+    wrenchGroup.position.set(
+      model.serviceBay.x + model.serviceBay.w * 0.04,
+      model.serviceBay.h + 0.27,
+      model.serviceBay.z - model.serviceBay.d * 0.04,
+    );
+    wrenchGroup.rotation.y = -0.28;
+    const wrenchMat = new THREE.MeshStandardMaterial({
+      color: 0x6fe7ff,
+      emissive: 0x26c6ff,
+      emissiveIntensity: 0.48,
+      roughness: 0.28,
+    });
+    const wrenchHandle = new THREE.Mesh(
+      new THREE.BoxGeometry(1.25, 0.08, 0.16),
+      wrenchMat,
+    );
+    wrenchHandle.name = "garageAnchorRooftopWrenchHandle";
+    const wrenchJaw = new THREE.Mesh(
+      new THREE.BoxGeometry(0.32, 0.08, 0.48),
+      wrenchMat,
+    );
+    wrenchJaw.name = "garageAnchorRooftopWrenchJaw";
+    wrenchJaw.position.x = 0.63;
+    wrenchGroup.add(wrenchHandle, wrenchJaw);
 
     const doorMat = new THREE.MeshStandardMaterial({
       color: 0xd8e4ee,
@@ -3527,19 +3653,39 @@ export class PlanetRenderer {
       const door = new THREE.Mesh(
         new THREE.BoxGeometry(
           model.serviceBay.bayDoorW,
-          model.serviceBay.h * 0.62,
-          0.06,
+          model.serviceBay.h * 0.68,
+          0.075,
         ),
         doorMat,
       );
       door.name = `garageAnchorRollupDoor.${i + 1}`;
       door.position.set(
         sx,
-        model.serviceBay.h * 0.36,
-        model.serviceBay.z + model.serviceBay.d / 2 + 0.035,
+        model.serviceBay.h * 0.39,
+        model.serviceBay.z + model.serviceBay.d / 2 + 0.045,
       );
       g.add(door);
-      for (let slat = 1; slat <= 3; slat++) {
+      const frame = new THREE.Mesh(
+        new THREE.BoxGeometry(
+          model.serviceBay.bayDoorW * 1.14,
+          model.serviceBay.h * 0.77,
+          0.04,
+        ),
+        new THREE.MeshStandardMaterial({
+          color: 0xffb24a,
+          emissive: 0xff8f2f,
+          emissiveIntensity: 0.38,
+          roughness: 0.36,
+        }),
+      );
+      frame.name = `garageAnchorRollupDoorFrame.${i + 1}`;
+      frame.position.set(
+        door.position.x,
+        door.position.y,
+        door.position.z - 0.018,
+      );
+      g.add(frame);
+      for (let slat = 1; slat <= 5; slat++) {
         const rib = new THREE.Mesh(
           new THREE.BoxGeometry(model.serviceBay.bayDoorW * 0.96, 0.025, 0.075),
           new THREE.MeshStandardMaterial({ color: 0x8fa1ad, roughness: 0.45 }),
@@ -3547,7 +3693,7 @@ export class PlanetRenderer {
         rib.name = `garageAnchorDoorSlat.${i + 1}.${slat}`;
         rib.position.set(
           door.position.x,
-          door.position.y + (slat - 2) * 0.28,
+          door.position.y + (slat - 3) * 0.25,
           door.position.z + 0.02,
         );
         g.add(rib);
@@ -3569,11 +3715,43 @@ export class PlanetRenderer {
     pylon.castShadow = true;
 
     const pylonCap = new THREE.Mesh(
-      new THREE.BoxGeometry(model.pylon.w * 2.2, 0.75, model.pylon.d * 1.25),
+      new THREE.BoxGeometry(model.pylon.w * 2.35, 0.9, model.pylon.d * 1.35),
       pylonMat,
     );
     pylonCap.name = "garageAnchorPylonLightBox";
-    pylonCap.position.set(model.pylon.x, model.pylon.h + 0.2, model.pylon.z);
+    pylonCap.position.set(model.pylon.x, model.pylon.h + 0.28, model.pylon.z);
+
+    const pylonCyanPanel = new THREE.Mesh(
+      new THREE.BoxGeometry(model.pylon.w * 1.45, 0.12, model.pylon.d * 1.52),
+      new THREE.MeshStandardMaterial({
+        color: 0x79edff,
+        emissive: 0x35d8ff,
+        emissiveIntensity: 0.74,
+        roughness: 0.24,
+      }),
+    );
+    pylonCyanPanel.name = "garageAnchorPylonCyanEdgePanel";
+    pylonCyanPanel.position.set(
+      model.pylon.x,
+      model.pylon.h + 0.78,
+      model.pylon.z,
+    );
+
+    const pylonRoadFace = new THREE.Mesh(
+      new THREE.BoxGeometry(model.pylon.w * 1.9, model.pylon.h * 0.34, 0.08),
+      new THREE.MeshStandardMaterial({
+        color: 0xffcf74,
+        emissive: 0xff9f2f,
+        emissiveIntensity: 0.9,
+        roughness: 0.26,
+      }),
+    );
+    pylonRoadFace.name = "garageAnchorRoadFacingPylonSignFace";
+    pylonRoadFace.position.set(
+      model.pylon.x,
+      model.pylon.h * 0.74,
+      model.pylon.z + model.pylon.d * 0.78,
+    );
 
     for (const [i, car] of model.displayCars.entries()) {
       const cg = new THREE.Group();
@@ -3598,20 +3776,38 @@ export class PlanetRenderer {
         }),
       );
       cab.position.set(-0.05, 0.43, 0);
-      cg.add(body, cab);
+      const underGlow = new THREE.Mesh(
+        new THREE.BoxGeometry(1.26, 0.025, 0.62),
+        new THREE.MeshStandardMaterial({
+          color: 0xffb24a,
+          emissive: 0xff8f2f,
+          emissiveIntensity: 0.62,
+          transparent: true,
+          opacity: 0.7,
+        }),
+      );
+      underGlow.name = `garageAnchorDisplayCarUnderGlow.${i + 1}`;
+      underGlow.position.y = 0.035;
+      cg.add(underGlow, body, cab);
       g.add(cg);
     }
 
     g.add(
       floor,
       forecourt,
+      forecourtLane,
       showroom,
       showroomFront,
       showroomHeader,
+      showroomCarSilhouette,
+      showroomCarGlow,
       service,
       roof,
+      wrenchGroup,
       pylon,
       pylonCap,
+      pylonCyanPanel,
+      pylonRoadFace,
     );
     this.commercialGroup.add(g);
   }

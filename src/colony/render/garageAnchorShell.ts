@@ -56,30 +56,30 @@ export function buildGarageAnchorShellModel(
       baseY = Math.min(baseY, surfaceY(x, y));
   const footprint = { w: garagePad.w, d: garagePad.h };
   const showroom = {
-    w: footprint.w * 0.46,
-    h: 2.5,
-    d: footprint.d * 0.48,
-    x: -footprint.w * 0.21,
-    z: footprint.d * 0.04,
-    y: 1.25,
+    w: footprint.w * 0.52,
+    h: 2.85,
+    d: footprint.d * 0.5,
+    x: -footprint.w * 0.22,
+    z: footprint.d * 0.06,
+    y: 1.425,
   };
   const serviceBay = {
     w: footprint.w * 0.58,
-    h: 2.05,
+    h: 2.15,
     d: footprint.d * 0.56,
-    x: footprint.w * 0.2,
+    x: footprint.w * 0.21,
     z: -footprint.d * 0.06,
-    y: 1.025,
+    y: 1.075,
     doorCount: 3 as const,
-    bayDoorW: footprint.w * 0.13,
+    bayDoorW: footprint.w * 0.135,
   };
   const pylon = {
-    w: 0.58,
-    h: 4.6,
-    d: 0.34,
-    x: -footprint.w * 0.42,
-    z: footprint.d * 0.38,
-    y: 2.3,
+    w: 0.7,
+    h: 5.4,
+    d: 0.42,
+    x: -footprint.w * 0.46,
+    z: footprint.d * 0.43,
+    y: 2.7,
   };
   const forecourt = {
     w: footprint.w * 0.92,
