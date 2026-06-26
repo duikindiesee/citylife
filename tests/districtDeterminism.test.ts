@@ -23,27 +23,27 @@ const GOLDEN: Record<
   }
 > = {
   4242: {
-    intersection: { x: 113, y: 265 },
-    reserve: { x: 81, y: 241, w: 64, h: 48 },
-    mallPad: { x: 99, y: 248, w: 14, h: 10 },
-    crossStreetHash: "0fd0df1b",
-    parcelFootprintHash: "3659109e",
-    mallPadHash: "6bba75f7",
+    intersection: { x: 125, y: 265 },
+    reserve: { x: 81, y: 233, w: 88, h: 64 },
+    mallPad: { x: 111, y: 248, w: 14, h: 10 },
+    crossStreetHash: "4757aca8",
+    parcelFootprintHash: "371923cf",
+    mallPadHash: "e58bb703",
   },
   42: {
-    intersection: { x: 156, y: 382 },
-    reserve: { x: 124, y: 358, w: 64, h: 48 },
-    mallPad: { x: 142, y: 365, w: 14, h: 10 },
-    crossStreetHash: "3b4adb2a",
-    parcelFootprintHash: "ea4dec66",
-    mallPadHash: "2af4f7cf",
+    intersection: { x: 148, y: 414 },
+    reserve: { x: 104, y: 382, w: 88, h: 64 },
+    mallPad: { x: 134, y: 397, w: 14, h: 10 },
+    crossStreetHash: "cbfebf1a",
+    parcelFootprintHash: "ae3baed0",
+    mallPadHash: "334a8bc7",
   },
   7: {
     intersection: { x: 189, y: 323 },
-    reserve: { x: 157, y: 299, w: 64, h: 48 },
+    reserve: { x: 145, y: 291, w: 88, h: 64 },
     mallPad: { x: 175, y: 306, w: 14, h: 10 },
-    crossStreetHash: "bae6d232",
-    parcelFootprintHash: "82049b40",
+    crossStreetHash: "43d44ba8",
+    parcelFootprintHash: "c50b9c42",
     mallPadHash: "120d1aa3",
   },
 };
@@ -150,8 +150,8 @@ function coastalCandidateKeys(rt: ColonyRuntime): Set<string> {
     (s) => s.kind === "lighthouse",
   );
   expect(lighthouse).toBeTruthy();
-  const W = 64,
-    H = 48;
+  const W = 88,
+    H = 64;
   const clampX = (v: number) =>
     Math.max(0, Math.min(t.size - W, Math.round(v)));
   const clampY = (v: number) =>

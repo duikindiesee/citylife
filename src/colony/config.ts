@@ -1049,14 +1049,14 @@ export const COLONY = {
   // (a high street is dearer dirt), and the materials to raise each shop kind. The ZAR bridge on the
   // HUD reuses economy.land.zarPerKook so a shop reads in rand like a homestead does.
   commerce: {
-    reserveW: 64,
-    reserveH: 48,
+    reserveW: 88,
+    reserveH: 64,
     reserveFreePrimary: 358,
     reserveFreeFallback: 205,
     mallPadW: 14,
     mallPadH: 10,
-    garagePadW: 12,
-    garagePadH: 8,
+    garagePadW: 16,
+    garagePadH: 11,
     plotPriceK: { kiosk: 220, store: 420, showroom: 720 },
     matByKind: { kiosk: 12, store: 24, showroom: 40 },
   },

@@ -83,5 +83,29 @@ export function surveyBillboards(
       }
     }
   }
+  if (sites.length === 0) {
+    const edgeXs: { x: number; faceX: 1 | -1 }[] = [
+      { x: d.reserve.x - 2, faceX: 1 },
+      { x: d.reserve.x + d.reserve.w + 1, faceX: -1 },
+    ];
+    const midY = d.reserve.y + Math.floor(d.reserve.h / 2);
+    for (let dy = 0; dy <= Math.ceil(d.reserve.h / 2); dy++) {
+      for (const signedDy of dy === 0 ? [0] : [-dy, dy]) {
+        const by = midY + signedDy;
+        if (by < d.reserve.y || by >= d.reserve.y + d.reserve.h) continue;
+        for (const e of edgeXs) {
+          if (!cellOk(t, e.x, by) || blocked.has(`${e.x},${by}`)) continue;
+          sites.push({
+            id: "board_0",
+            x: e.x,
+            y: by,
+            faceX: e.faceX,
+            shopId: shops.length ? shops[rotation % shops.length]! : null,
+          });
+          return sites;
+        }
+      }
+    }
+  }
   return sites;
 }
