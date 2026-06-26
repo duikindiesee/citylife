@@ -3446,19 +3446,45 @@ export class PlanetRenderer {
         model.showroom.d,
       ),
       new THREE.MeshStandardMaterial({
-        color: 0xffc48a,
-        roughness: 0.14,
-        metalness: 0.06,
-        emissive: 0xff9f4a,
-        emissiveIntensity: 0.46,
+        // Spec 109/110 — COOL glazing (not a warm frosted cube): low-opacity blue-teal glass with a
+        // metallic sheen reads against the warm sign/forecourt for material contrast, and the dark
+        // interior box below gives it depth so it reads as glass with a lit showroom behind it.
+        color: 0x8fd2e6,
+        roughness: 0.05,
+        metalness: 0.28,
+        emissive: 0x123642,
+        emissiveIntensity: 0.16,
         transparent: true,
-        opacity: 0.68,
+        opacity: 0.38,
       }),
     );
     showroom.name = "garageAnchorGlassShowroom";
     showroom.position.set(model.showroom.x, model.showroom.y, model.showroom.z);
     showroom.castShadow = true;
     showroom.receiveShadow = true;
+
+    // Dark lit interior behind the glass so the showroom reads as glazing with depth (not a frosted
+    // cube). Warm interior glow at night via the night-floor emissive helper.
+    const showroomInteriorMat = new THREE.MeshStandardMaterial({
+      color: 0x14202c,
+      roughness: 0.85,
+      emissive: 0x3a2a12,
+      emissiveIntensity: 0.12,
+    });
+    const showroomInterior = new THREE.Mesh(
+      new THREE.BoxGeometry(
+        model.showroom.w * 0.9,
+        model.showroom.h * 0.86,
+        model.showroom.d * 0.9,
+      ),
+      showroomInteriorMat,
+    );
+    showroomInterior.name = "garageAnchorShowroomInterior";
+    showroomInterior.position.set(
+      model.showroom.x,
+      model.showroom.y * 0.96,
+      model.showroom.z,
+    );
 
     const showroomFront = new THREE.Mesh(
       new THREE.BoxGeometry(
@@ -3598,8 +3624,9 @@ export class PlanetRenderer {
     const roof = new THREE.Mesh(
       new THREE.BoxGeometry(
         model.footprint.w * 0.86,
-        0.18,
-        model.footprint.d * 0.64,
+        0.16,
+        // overhang the road frontage so the canted roof reads as a canopy, not a lid
+        model.footprint.d * 0.78,
       ),
       new THREE.MeshStandardMaterial({
         color: 0x303845,
@@ -3608,7 +3635,11 @@ export class PlanetRenderer {
       }),
     );
     roof.name = "garageAnchorGraphiteFlatRoofCanopy";
-    roof.position.set(0.12, model.serviceBay.h + 0.12, -0.04);
+    roof.position.set(0.12, model.serviceBay.h + 0.16, 0.02);
+    // Spec 110 — MONO-SLOPE the roof (tilt toward the road) so the garage silhouette is no longer a flat
+    // box lid; the canted plane + the cool glass below are the two non-orthogonal moves that break the
+    // "detailed box" read the design critique flagged.
+    roof.rotation.x = -0.19;
     roof.castShadow = true;
 
     const wrenchGroup = new THREE.Group();
@@ -3645,15 +3676,19 @@ export class PlanetRenderer {
       emissive: 0xffc36b,
       emissiveIntensity: 0.22,
     });
+    const openBayIndex = 1; // Spec 110 — the road-facing middle bay is OPEN (a real recessed cavity you
+    // can drive into); the other two stay closed. +z is the road frontage (group rotated by facingAngle).
+    const bayFaceZ = model.serviceBay.z + model.serviceBay.d / 2 + 0.045;
     for (let i = 0; i < model.serviceBay.doorCount; i++) {
       const sx =
         model.serviceBay.x +
         (i - (model.serviceBay.doorCount - 1) / 2) *
           (model.serviceBay.bayDoorW * 1.25);
+      const open = i === openBayIndex;
       const door = new THREE.Mesh(
         new THREE.BoxGeometry(
           model.serviceBay.bayDoorW,
-          model.serviceBay.h * 0.68,
+          open ? model.serviceBay.h * 0.14 : model.serviceBay.h * 0.68,
           0.075,
         ),
         doorMat,
@@ -3661,10 +3696,59 @@ export class PlanetRenderer {
       door.name = `garageAnchorRollupDoor.${i + 1}`;
       door.position.set(
         sx,
-        model.serviceBay.h * 0.39,
-        model.serviceBay.z + model.serviceBay.d / 2 + 0.045,
+        open ? model.serviceBay.h * 0.88 : model.serviceBay.h * 0.39,
+        bayFaceZ,
       );
       g.add(door);
+      if (open) {
+        // recessed dark cavity set INTO the shed (a real opening, not a lifted door over a solid wall)
+        const cavity = new THREE.Mesh(
+          new THREE.BoxGeometry(
+            model.serviceBay.bayDoorW * 1.05,
+            model.serviceBay.h * 0.72,
+            model.serviceBay.d * 0.52,
+          ),
+          new THREE.MeshStandardMaterial({
+            color: 0x0a0f15,
+            roughness: 0.95,
+            emissive: 0x2b3a4a,
+            emissiveIntensity: 0.18,
+          }),
+        );
+        cavity.name = "garageAnchorOpenBayInterior";
+        cavity.position.set(
+          sx,
+          model.serviceBay.h * 0.36,
+          bayFaceZ - model.serviceBay.d * 0.27,
+        );
+        g.add(cavity);
+        // apron/ramp continuing out of the bay toward the road — reads as drive-into-able and is the
+        // corner-aligned approach the free-roam car will use (true drive-through gated on the Codex
+        // carSpec hook; this lays the road-facing path + visual now).
+        const apronMat = new THREE.MeshStandardMaterial({
+          color: 0x3a3f4a,
+          roughness: 0.7,
+          emissive: 0xff9f2f,
+          emissiveIntensity:
+            garageAnchorNightFloorEmissive(this.sim.state.clock.daylight) * 0.5,
+        });
+        this.commercialGarageFloorMats.push(apronMat);
+        const apron = new THREE.Mesh(
+          new THREE.BoxGeometry(
+            model.serviceBay.bayDoorW * 1.35,
+            0.04,
+            model.serviceBay.d * 0.85,
+          ),
+          apronMat,
+        );
+        apron.name = "garageAnchorDriveInApronRamp";
+        apron.position.set(
+          sx,
+          model.nightFloor.y + 0.02,
+          bayFaceZ + model.serviceBay.d * 0.42,
+        );
+        g.add(apron);
+      }
       const frame = new THREE.Mesh(
         new THREE.BoxGeometry(
           model.serviceBay.bayDoorW * 1.14,
@@ -3685,7 +3769,7 @@ export class PlanetRenderer {
         door.position.z - 0.018,
       );
       g.add(frame);
-      for (let slat = 1; slat <= 5; slat++) {
+      for (let slat = 1; slat <= 5 && !open; slat++) {
         const rib = new THREE.Mesh(
           new THREE.BoxGeometry(model.serviceBay.bayDoorW * 0.96, 0.025, 0.075),
           new THREE.MeshStandardMaterial({ color: 0x8fa1ad, roughness: 0.45 }),
@@ -3796,6 +3880,7 @@ export class PlanetRenderer {
       floor,
       forecourt,
       forecourtLane,
+      showroomInterior,
       showroom,
       showroomFront,
       showroomHeader,
