@@ -332,6 +332,22 @@ function tryParcel(
     fence.push({ x: ax(uHalf), y: ay(d) });
   }
 
+  // Spec 114 — the visible plot border is a floor/border footprint, so it
+  // must not touch the final road corridor. `corridor.blocked` is the local
+  // carriage + verge road envelope; reject parcels whose fence ring would be
+  // 4-neighbour adjacent to it, not just directly on it.
+  for (const f of fence) {
+    for (const [dx, dy] of [
+      [0, 0],
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      if (corridor.blocked.has(key(f.x + dx, f.y + dy))) return null;
+    }
+  }
+
   // 5. Claim the footprint plus a GAP halo so neighbours never crowd it.
   for (let d = -GAP; d < sz.D + GAP; d++) {
     for (let u = -uHalf - GAP; u <= uHalf + GAP; u++) {
@@ -528,9 +544,20 @@ function trimCorridor(
   const spine = corridor.spine.filter((c) => c.x >= minX && c.x <= maxX);
   if (spine.length < 4) return corridor;
   const spineSet = new Set(spine.map((c) => key(c.x, c.y)));
-  const carriage = [...spine, ...dilate(t, spine, spineSet)];
+  const fenceSetback = new Set<string>();
+  for (const p of parcels) {
+    for (const f of p.fence) {
+      fenceSetback.add(key(f.x, f.y));
+      fenceSetback.add(key(f.x + 1, f.y));
+      fenceSetback.add(key(f.x - 1, f.y));
+      fenceSetback.add(key(f.x, f.y + 1));
+      fenceSetback.add(key(f.x, f.y - 1));
+    }
+  }
+  const notFenceSetback = (c: Cell) => !fenceSetback.has(key(c.x, c.y));
+  const carriage = [...spine, ...dilate(t, spine, spineSet)].filter(notFenceSetback);
   const carriageSet = new Set(carriage.map((c) => key(c.x, c.y)));
-  const verge = dilate(t, carriage, carriageSet);
+  const verge = dilate(t, carriage, carriageSet).filter(notFenceSetback);
   return { ...corridor, spine, carriage, verge };
 }
 

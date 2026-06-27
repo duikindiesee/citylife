@@ -381,8 +381,11 @@ export function findGarageSite(
   for (const sx of [-1, 1] as const) {
     for (const sy of [-1, 1] as const) {
       consider({
-        x: sx < 0 ? intersection.x + 1 : intersection.x - w,
-        y: sy < 0 ? intersection.y + 1 : intersection.y - h,
+        // Spec 114 — keep the floor footprint one clear cell back from both
+        // orthogonal road centre-lines before runtime widens them into the
+        // final 3-wide carriageways.
+        x: sx < 0 ? intersection.x + 3 : intersection.x - w - 2,
+        y: sy < 0 ? intersection.y + 3 : intersection.y - h - 2,
         w,
         h,
         streetFrontDir: { x: sx, y: 0 },
@@ -436,6 +439,15 @@ function garagePadFits(
         mallCells.has(k)
       )
         return false;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const nk = `${x + dx},${y + dy}`;
+        if (streetKeys.has(nk) || crossKeys.has(nk)) return false;
+      }
     }
   return true;
 }

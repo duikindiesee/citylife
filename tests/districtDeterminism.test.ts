@@ -27,7 +27,7 @@ const GOLDEN: Record<
     reserve: { x: 81, y: 233, w: 88, h: 64 },
     mallPad: { x: 111, y: 248, w: 14, h: 10 },
     crossStreetHash: "4757aca8",
-    parcelFootprintHash: "371923cf",
+    parcelFootprintHash: "8123431f",
     mallPadHash: "e58bb703",
   },
   42: {
@@ -35,7 +35,7 @@ const GOLDEN: Record<
     reserve: { x: 104, y: 382, w: 88, h: 64 },
     mallPad: { x: 134, y: 397, w: 14, h: 10 },
     crossStreetHash: "cbfebf1a",
-    parcelFootprintHash: "ae3baed0",
+    parcelFootprintHash: "1c9685f0",
     mallPadHash: "334a8bc7",
   },
   7: {
@@ -43,7 +43,7 @@ const GOLDEN: Record<
     reserve: { x: 145, y: 291, w: 88, h: 64 },
     mallPad: { x: 175, y: 306, w: 14, h: 10 },
     crossStreetHash: "43d44ba8",
-    parcelFootprintHash: "c50b9c42",
+    parcelFootprintHash: "ff065765",
     mallPadHash: "120d1aa3",
   },
 };

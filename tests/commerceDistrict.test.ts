@@ -45,6 +45,20 @@ function residentialCells(rt: ColonyRuntime): Set<string> {
   return s;
 }
 
+function residentialSetbackCells(rt: ColonyRuntime): Set<string> {
+  const s = residentialCells(rt);
+  for (const lot of rt.lots()) {
+    for (const f of lot.fence) {
+      s.add(`${f.x},${f.y}`);
+      s.add(`${f.x + 1},${f.y}`);
+      s.add(`${f.x - 1},${f.y}`);
+      s.add(`${f.x},${f.y + 1}`);
+      s.add(`${f.x},${f.y - 1}`);
+    }
+  }
+  return s;
+}
+
 describe("commercial district survey (spec 079 P0/P1)", () => {
   it("surveys shop plots on the coastal seeds", () => {
     for (const seed of SEEDS) {
@@ -134,7 +148,12 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
       for (const p of d.parcels)
         for (const c of footprintCells(p)) shopCells.add(c);
       for (const c of footprintCells(d.mallPad)) shopCells.add(c);
+      if (d.garagePad) {
+        for (const c of footprintCells(d.garagePad)) shopCells.add(c);
+        shopCells.add(`${d.garagePad.islandCell.x},${d.garagePad.islandCell.y}`);
+      }
       const residential = residentialCells(rt);
+      const residentialSetback = residentialSetbackCells(rt);
       const crossX = reserve.x + Math.floor(reserve.w / 2);
       const streetY = reserve.y + Math.floor(reserve.h / 2);
       const crossKeys = new Set(d.crossStreet.map((c) => `${c.x},${c.y}`));
@@ -157,7 +176,7 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
         expect(residential.has(key)).toBe(false);
         for (const dx of [-1, 0, 1]) {
           const roadKey = `${c.x + dx},${c.y}`;
-          if (!shopCells.has(roadKey) && !residential.has(roadKey))
+          if (!shopCells.has(roadKey) && !residentialSetback.has(roadKey))
             expect(rt.sim.state.roadKind.has(roadKey)).toBe(true);
         }
       }

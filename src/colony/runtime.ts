@@ -991,6 +991,19 @@ export class ColonyRuntime {
       for (const c of cells) residentialKeys.add(`${c.x},${c.y}`);
       satellites.push(nbhd);
     }
+    // Spec 114 — roads laid after parcel placement must keep the same one-cell setback from
+    // floor/border footprints. Build a deterministic exclusion halo around residential parcels
+    // before routing/widening trunk connectors so no final road cell can 4-neighbour touch a fence.
+    const residentialSetbackKeys = new Set(residentialKeys);
+    for (const k of residentialKeys) {
+      const [xs, ys] = k.split(",");
+      const x = Number(xs),
+        y = Number(ys);
+      residentialSetbackKeys.add(`${x + 1},${y}`);
+      residentialSetbackKeys.add(`${x - 1},${y}`);
+      residentialSetbackKeys.add(`${x},${y + 1}`);
+      residentialSetbackKeys.add(`${x},${y - 1}`);
+    }
     // Spec 086 P2 — THE ROAD NETWORK. Each hamlet links to the coast AND to its nearest other hamlet
     // (a mesh, not just spokes), and every trunk is WIDENED to a ~3-cell carriageway so it reads as a
     // real road instead of a thread. Routed around every homestead; the router never crosses water.
@@ -1018,7 +1031,7 @@ export class ColonyRuntime {
     // The trunk roads AND the commercial connector both lay through this, so no road is a raw 1-cell
     // zig-zag any more (the staircase the operator kept seeing).
     const roadCellOk = (x: number, y: number) =>
-      cellOk(t0, x, y) && !residentialKeys.has(`${x},${y}`);
+      cellOk(t0, x, y) && !residentialSetbackKeys.has(`${x},${y}`);
     const losClear = (a: Cell, b: Cell): boolean => {
       const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
       for (let s = 0; s <= steps; s++) {
@@ -1086,7 +1099,7 @@ export class ColonyRuntime {
         leastCostPath(t0, from, to, {
           slopeWeight: 0.5,
           diagonal: true,
-          blocked: (x, y) => residentialKeys.has(`${x},${y}`),
+          blocked: (x, y) => residentialSetbackKeys.has(`${x},${y}`),
         }) ?? [];
       if (path.length === 0) return;
       mergeAvenue(this.sim.state, layRoad(path, 1));
@@ -1141,6 +1154,13 @@ export class ColonyRuntime {
       for (let y = mallPad.y; y < mallPad.y + mallPad.h; y++)
         for (let x = mallPad.x; x < mallPad.x + mallPad.w; x++)
           shopCells.add(`${x},${y}`);
+      const garagePad = this.commercialDistrict.garagePad;
+      if (garagePad) {
+        for (let y = garagePad.y; y < garagePad.y + garagePad.h; y++)
+          for (let x = garagePad.x; x < garagePad.x + garagePad.w; x++)
+            shopCells.add(`${x},${y}`);
+        shopCells.add(`${garagePad.islandCell.x},${garagePad.islandCell.y}`);
+      }
       const widened = new Set<string>();
       for (const c of this.commercialDistrict.street)
         for (const dy of [-1, 0, 1]) {
@@ -1148,7 +1168,7 @@ export class ColonyRuntime {
             y = c.y + dy;
           if (
             cellOk(t, x, y) &&
-            !residentialKeys.has(`${x},${y}`) &&
+            !residentialSetbackKeys.has(`${x},${y}`) &&
             !shopCells.has(`${x},${y}`)
           )
             widened.add(`${x},${y}`);
@@ -1164,7 +1184,7 @@ export class ColonyRuntime {
             y = c.y;
           if (
             cellOk(t, x, y) &&
-            !residentialKeys.has(`${x},${y}`) &&
+            !residentialSetbackKeys.has(`${x},${y}`) &&
             !shopCells.has(`${x},${y}`)
           )
             crossWidened.add(`${x},${y}`);
@@ -1182,7 +1202,7 @@ export class ColonyRuntime {
           slopeWeight: 0.5,
           diagonal: true,
           blocked: (x, y) =>
-            residentialKeys.has(`${x},${y}`) || shopCells.has(`${x},${y}`),
+            residentialSetbackKeys.has(`${x},${y}`) || shopCells.has(`${x},${y}`),
         }) ?? [];
       mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
       mergeAvenue(this.sim.state, streetCells);
@@ -1270,7 +1290,7 @@ export class ColonyRuntime {
         )
         .slice(0, 16);
       const roadable = (c: Cell) =>
-        cellOk(t0, c.x, c.y) && !residentialKeys.has(`${c.x},${c.y}`);
+        cellOk(t0, c.x, c.y) && !residentialSetbackKeys.has(`${c.x},${c.y}`);
       for (const terminus of candidates) {
         const path =
           leastCostPath(t0, terminus, rallyCell, {
@@ -1289,6 +1309,33 @@ export class ColonyRuntime {
           break;
         }
       }
+    }
+    // Spec 114 final local cleanup: late optional `street` spurs are not allowed to touch lot fence
+    // borders. Keep avenue/carriage cells intact for traffic frontage and prune only ordinary street
+    // cells that violate the final no-floor-touches-road invariant.
+    const fenceSetbackKeys = new Set<string>();
+    for (const lot of this.neighborhood.lots) {
+      for (const f of lot.fence) {
+        fenceSetbackKeys.add(`${f.x},${f.y}`);
+        fenceSetbackKeys.add(`${f.x + 1},${f.y}`);
+        fenceSetbackKeys.add(`${f.x - 1},${f.y}`);
+        fenceSetbackKeys.add(`${f.x},${f.y + 1}`);
+        fenceSetbackKeys.add(`${f.x},${f.y - 1}`);
+      }
+    }
+    if (fenceSetbackKeys.size > 0) {
+      const before = this.sim.state.roads.length;
+      this.sim.state.roads = this.sim.state.roads.filter(
+        (r) => (r.kind ?? "street") !== "street" || !fenceSetbackKeys.has(`${r.x},${r.y}`),
+      );
+      this.sim.state.roadSet.clear();
+      this.sim.state.roadKind.clear();
+      for (const r of this.sim.state.roads) {
+        const rk = `${r.x},${r.y}`;
+        this.sim.state.roadSet.add(rk);
+        this.sim.state.roadKind.set(rk, r.kind ?? "street");
+      }
+      if (this.sim.state.roads.length !== before) this.sim.state.roadsVersion++;
     }
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh

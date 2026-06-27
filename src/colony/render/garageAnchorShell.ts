@@ -92,10 +92,14 @@ export function buildGarageAnchorShellModel(
     z: pylonLocal.z,
     y: 2.7,
   };
+  const forecourtDepth = footprint.d * 0.34;
   const forecourt = {
     w: footprint.w * 0.92,
-    d: footprint.d * 0.34,
-    frontOffset: footprint.d * 0.52,
+    d: forecourtDepth,
+    // Spec 114 — the driveway apron is a floor footprint too. Keep its
+    // front edge inside the surveyed pad instead of letting it project into
+    // the widened road cells.
+    frontOffset: Math.max(0, footprint.d / 2 - forecourtDepth / 2 - 0.01),
     y: 0.045,
   };
   return {
