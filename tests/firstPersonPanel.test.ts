@@ -32,6 +32,7 @@ function makeFirstPerson(): ColonyUiState["firstPerson"] {
     narration: "The plaza is calm.",
     narrating: false,
     blockedReason: "water",
+    neighbourhood: { name: "Driftwood Shore", relation: "in" },
     view: {
       citizen: {
         id: "citizen-1",

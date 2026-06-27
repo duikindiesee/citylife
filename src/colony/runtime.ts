@@ -95,6 +95,11 @@ import {
   CURRENCY,
 } from "./ledger";
 import { plotPriceKook, kookToZar, starterDeposit } from "./land";
+import {
+  nearestNeighbourhoodLabel,
+  type NamedNeighbourhood,
+  type NeighbourhoodLabel,
+} from "./neighbourhoodNames";
 import { loadCar, saveCar } from "./car/garageStore";
 import {
   PAINT_PALETTES,
@@ -595,6 +600,7 @@ export interface ColonyUiState {
     /** Step-in choices allowed for this session. Operators/admins get every citizen; CITYLIFE_PLAYER gets only their own. */
     stepInCitizenIds: string[];
     view: FirstPersonView | null;
+    neighbourhood: NeighbourhoodLabel | null;
     lookPitch: number;
     mouseSensitivity: FirstPersonMouseSensitivity;
     sprintCharge: number;
@@ -810,6 +816,7 @@ export class ColonyRuntime {
   private barSeatBy: (string | null)[] = [];
   private fpNarration: string | null = null;
   private fpNarrating = false;
+  private neighbourhoodPlaces: NamedNeighbourhood[] = [];
 
   constructor(seed: number = COLONY.render.seed) {
     this.worldSeed = seed;
@@ -991,6 +998,53 @@ export class ColonyRuntime {
       for (const c of cells) residentialKeys.add(`${c.x},${c.y}`);
       satellites.push(nbhd);
     }
+    const hoodCenter = (nbhd: Neighborhood): { x: number; y: number } => {
+      const cells = nbhd.carriage.length > 0 ? nbhd.carriage : nbhd.lots.map((l) => ({ x: l.x, y: l.y }));
+      const sum = cells.reduce(
+        (acc, c) => ({ x: acc.x + c.x, y: acc.y + c.y }),
+        { x: 0, y: 0 },
+      );
+      return {
+        x: Math.round(sum.x / Math.max(1, cells.length)),
+        y: Math.round(sum.y / Math.max(1, cells.length)),
+      };
+    };
+    const primaryCenter = hoodCenter(this.neighborhood);
+    const places: NamedNeighbourhood[] = [
+      { name: "Driftwood Shore", ...primaryCenter, radius: 34 },
+    ];
+    if (this.commercialReserve) {
+      places.push({
+        name: "Crewhouse Quarter",
+        x: Math.round(this.commercialReserve.x + this.commercialReserve.w / 2),
+        y: Math.round(this.commercialReserve.y + this.commercialReserve.h / 2),
+        radius: 30,
+      });
+    }
+    const lighthouseCenter = this.sim.state.structures.find(
+      (s) => s.kind === "lighthouse",
+    );
+    if (lighthouseCenter) {
+      places.push({
+        name: "Saltkern Bay",
+        x: Math.round(lighthouseCenter.x),
+        y: Math.round(lighthouseCenter.y),
+        radius: 30,
+      });
+    }
+    const unusedSatelliteNames = new Set(["Kookerbos", "Ridgeline", "Lantern Hollow"] as const);
+    for (const nbhd of satellites) {
+      const c = hoodCenter(nbhd);
+      const b = t0.biome[t0.idx(c.x, c.y)];
+      const preferred = b === Biome.Forest ? "Kookerbos" : b === Biome.Highland ? "Ridgeline" : "Lantern Hollow";
+      const name = unusedSatelliteNames.has(preferred)
+        ? preferred
+        : (unusedSatelliteNames.values().next().value ?? null);
+      if (!name) continue;
+      unusedSatelliteNames.delete(name);
+      places.push({ name, ...c, radius: 32 });
+    }
+    this.neighbourhoodPlaces = places;
     // Spec 086 P2 — THE ROAD NETWORK. Each hamlet links to the coast AND to its nearest other hamlet
     // (a mesh, not just spokes), and every trunk is WIDENED to a ~3-cell carriageway so it reads as a
     // real road instead of a thread. Routed around every homestead; the router never crosses water.
@@ -4156,6 +4210,9 @@ export class ColonyRuntime {
           operatorCitizenId: opId,
           stepInCitizenIds: this.stepInCitizenIds(),
           view,
+          neighbourhood: c
+            ? nearestNeighbourhoodLabel(c.pos, this.neighbourhoodPlaces)
+            : null,
           lookPitch: this.fpLookPitch,
           mouseSensitivity: this.fpMouseSensitivity,
           sprintCharge: Math.round(this.fpSprintCharge * 100),

@@ -81,6 +81,13 @@ function guidanceCaption(fp: ColonyUiState["firstPerson"]): string {
   return `Tap the joystick to roam with ${fp.citizenName?.split(" ")[0] ?? "your citizen"}.`;
 }
 
+export function neighbourhoodHudCopy(
+  fp: ColonyUiState["firstPerson"],
+): string | null {
+  if (!fp.neighbourhood) return null;
+  return `${fp.neighbourhood.relation === "in" ? "In" : "Near"} ${fp.neighbourhood.name}`;
+}
+
 export function FirstPersonPanel({
   runtime,
   fp,
@@ -95,6 +102,7 @@ export function FirstPersonPanel({
   const targetLabel = destinationLabel(fp);
   const targetDistance = destinationDistance(fp);
   const warning = moodWarning(v);
+  const neighbourhood = neighbourhoodHudCopy(fp);
 
   return (
     <div className="first-person-panel first-person-panel--edge-hud">
@@ -107,6 +115,11 @@ export function FirstPersonPanel({
           <span>{targetLabel}</span>
           {targetDistance && <em>{targetDistance}</em>}
         </div>
+        {neighbourhood && (
+          <div className="first-person-panel__friend-banner">
+            📍 {neighbourhood}
+          </div>
+        )}
         {nightFriendBanner && (
           <div className="first-person-panel__friend-banner">
             {nightFriendBanner}
