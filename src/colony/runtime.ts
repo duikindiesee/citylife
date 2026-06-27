@@ -262,6 +262,8 @@ import {
 const JOE_ID = "citizen_joe";
 const JOE_BORN_MS = 0;
 const JACK_ID = "citizen_jack";
+const KOOKERBOS_FOUNDER_ID = "citizen_irwin";
+const KOOKERBOS_GERHARD_ID = "citizen_gerhard";
 // Phase-1 S1 — the night-meetup friend: a fixed, public-safe NPC pinned at the hilltop Rally Point so
 // that two players are present and the meetup completes. Not a backend identity leak; just a
 // deterministic in-world citizen (ultimately stands in for the brother you drive out to meet at night).
@@ -1348,6 +1350,7 @@ export class ColonyRuntime {
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
     // founder profile (the bug: seed-then-restore overwrote Joe's stored posts with a 1-post reset).
     this.restoreKookerbook();
+    this.reserveKookerbosPlots(); // live Kookerbos lane — two clean reserved woods plots for founder + Gerhard
     this.seedJoe(); // spec 078 — Joe the Crab takes up residence on the shore-most homestead
     this.seedViw(); // spec 083 — Viw the Builder takes the homestead beside him
     this.seedJack(); // player/UI lane — Jack is visible as an in-world reviewer avatar
@@ -2571,13 +2574,37 @@ export class ColonyRuntime {
     return this.neighborhood.lots;
   }
 
+  /** Kookerbos Woods live-lane reservation: keep two SMALL inland woods plots clean and held for the
+   *  founder plus Gerhard. They stay unowned/unbuilt so the matching reserved citizen can still buy/build
+   *  through the normal signup economy, while newcomer auto-assignment skips them via reservedFor. */
+  private reserveKookerbosPlots(): void {
+    const kookerbos = this.neighbourhoodPlaces.find((p) => p.name === "Kookerbos");
+    if (!kookerbos) return;
+    const lots = this.neighborhood.lots
+      .filter((lot) => Math.hypot(lot.x - kookerbos.x, lot.y - kookerbos.y) <= kookerbos.radius)
+      .filter((lot) => lot.w <= 11 && lot.h <= 14)
+      .sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
+    const founder = lots[0];
+    const gerhard = lots[1];
+    if (founder) {
+      founder.reservedFor = KOOKERBOS_FOUNDER_ID;
+      founder.ownerCitizenId = undefined;
+      founder.built = false;
+    }
+    if (gerhard) {
+      gerhard.reservedFor = KOOKERBOS_GERHARD_ID;
+      gerhard.ownerCitizenId = undefined;
+      gerhard.built = false;
+    }
+  }
+
   /** Spec 078 — Joe the Crab, the founder. Reserve the shore-most homestead as permanently his, raise his
    *  fixed 077 house on it, and seed his crab citizen so he is always present and roams the streets. Pure +
    *  deterministic from the terrain and idempotent (the roster guards on the fixed id), so reloads reproduce
    *  the identical Joe without any new save format. The newcomer search skips reservedFor lots so Joe's plot
    *  is never handed to an arriving family. */
   private seedJoe(): void {
-    const lots = this.neighborhood.lots;
+    const lots = this.neighborhood.lots.filter((lot) => /^lot_\d+$/.test(lot.id));
     if (lots.length === 0) return;
     // Spec 084 S6 — lots renumber by distance to water, so lot_1 IS the shore-most homestead
     // (the old r<=16 search spiral degenerated to all-ties on the big world).
@@ -2622,7 +2649,7 @@ export class ColonyRuntime {
    *  demolish-proof, with the crewhouse he crafted for himself. Deterministic and idempotent like
    *  seedJoe; his real bot (OpenClaw, on the second machine) connects later via the citizen path. */
   private seedViw(): void {
-    const lots = this.neighborhood.lots;
+    const lots = this.neighborhood.lots.filter((lot) => /^lot_\d+$/.test(lot.id));
     // Spec 084 S6 — Viw takes lot_2, right beside Joe's shore plot (lots renumber by water
     // distance). His crewhouse door is fixed EAST so the S2 side-walkway lays on every boot.
     const plot = lots.length > 1 && !lots[1]!.reservedFor ? lots[1] : undefined;

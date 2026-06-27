@@ -142,6 +142,13 @@ function key(x: number, y: number): string {
   return `${x},${y}`;
 }
 
+/** Plots must be fully inland-buildable: roads may cross beaches, but purchasable/reserved parcel
+ * footprints stay off sand and sea so fences, gardens and homes never sit on the shoreline edge. */
+function parcelGroundOk(t: Terrain, x: number, y: number): boolean {
+  if (!cellOk(t, x, y)) return false;
+  return t.biome[t.idx(x, y)] !== Biome.Beach;
+}
+
 /** Dilate a set of cells by their 4-neighbours that pass cellOk — turns the 1-cell spine into a
  *  ~3-wide carriageway that follows every bend, and the carriageway into its verge ring. */
 function dilate(t: Terrain, cells: Cell[], have: Set<string>): Cell[] {
@@ -253,7 +260,7 @@ function tryParcel(
       const x = ax(u),
         y = ay(d);
       const k = key(x, y);
-      if (!cellOk(t, x, y)) return null;
+      if (!parcelGroundOk(t, x, y)) return null;
       if (corridor.blocked.has(k)) return null;
       if (claimed.has(k)) return null;
     }
@@ -520,11 +527,12 @@ function trimCorridor(
   t: Terrain,
   corridor: Corridor,
   parcels: Parcel[],
+  stub = 4,
 ): Corridor {
   if (parcels.length === 0) return corridor;
   const xs = parcels.map((p) => p.x);
-  const minX = Math.min(...xs) - 4,
-    maxX = Math.max(...xs) + 4;
+  const minX = Math.min(...xs) - stub,
+    maxX = Math.max(...xs) + stub;
   const spine = corridor.spine.filter((c) => c.x >= minX && c.x <= maxX);
   if (spine.length < 4) return corridor;
   const spineSet = new Set(spine.map((c) => key(c.x, c.y)));
@@ -618,7 +626,7 @@ export function makeNeighborhoodAt(
     if (best && best.parcels.length >= minParcels)
       return assemble(
         t,
-        trimCorridor(t, best.corridor, best.parcels),
+        trimCorridor(t, best.corridor, best.parcels, opts.small ? 10 : 4),
         best.parcels,
       );
   }
@@ -627,7 +635,7 @@ export function makeNeighborhoodAt(
   if (best)
     return assemble(
       t,
-      trimCorridor(t, best.corridor, best.parcels),
+      trimCorridor(t, best.corridor, best.parcels, opts.small ? 10 : 4),
       best.parcels,
     );
   return {
