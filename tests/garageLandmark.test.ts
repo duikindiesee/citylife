@@ -26,15 +26,20 @@ function cells(r: { x: number; y: number; w: number; h: number }): string[] {
   return out;
 }
 
-function dotTowardRoad(d: NonNullable<ColonyRuntime["commercialDistrict"]>) {
-  const g = d.garagePad!;
-  const cx = g.x + (g.w - 1) / 2;
-  const cy = g.y + (g.h - 1) / 2;
-  const fx = Math.sin(g.facingAngle);
-  const fy = Math.cos(g.facingAngle);
-  const ix = d.intersection!.x - cx;
-  const iy = d.intersection!.y - cy;
-  return fx * ix + fy * iy;
+function facingVector(angle: number) {
+  return {
+    x: Math.round(Math.sin(angle)),
+    y: Math.round(Math.cos(angle)),
+  };
+}
+
+function localToGrid(angle: number, local: { x: number; z: number }) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: local.x * cos + local.z * sin,
+    y: -local.x * sin + local.z * cos,
+  };
 }
 
 describe("garage landmark site and render model (spec 109 P1/P2)", () => {
@@ -101,14 +106,30 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
     }
   }, 30000);
 
-  it("orients the garage forecourt toward the road intersection", () => {
+  it("keeps the drive-in garage square to the cross street rather than diagonal to the junction", () => {
     for (const seed of SEEDS) {
       const d = rtFor(seed).commercialDistrict!;
+      const g = d.garagePad!;
       expect(d.intersection).toBeDefined();
-      expect(dotTowardRoad(d)).toBeGreaterThan(0);
-      const model = buildGarageAnchorShellModel(d.garagePad!, () => 1.25);
+      expect(facingVector(g.facingAngle)).toEqual(g.crossFrontDir);
+      const model = buildGarageAnchorShellModel(g, () => 1.25);
       expect(model.forecourt.frontOffset).toBeGreaterThan(0);
-      expect(model.facingAngle).toBe(d.garagePad!.facingAngle);
+      expect(facingVector(model.facingAngle)).toEqual(g.crossFrontDir);
+    }
+  }, 30000);
+
+  it("places the pylon model on the surveyed corner island cell", () => {
+    for (const seed of SEEDS) {
+      const d = rtFor(seed).commercialDistrict!;
+      const g = d.garagePad!;
+      const model = buildGarageAnchorShellModel(g, () => 1.25);
+      const center = {
+        x: g.x + (g.w - 1) / 2,
+        y: g.y + (g.h - 1) / 2,
+      };
+      const pylonGrid = localToGrid(model.facingAngle, model.pylon);
+      expect(Math.round(center.x + pylonGrid.x)).toBe(g.islandCell.x);
+      expect(Math.round(center.y + pylonGrid.y)).toBe(g.islandCell.y);
     }
   }, 30000);
 

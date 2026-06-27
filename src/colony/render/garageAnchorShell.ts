@@ -73,12 +73,23 @@ export function buildGarageAnchorShellModel(
     doorCount: 3 as const,
     bayDoorW: footprint.w * 0.135,
   };
+  const localFromGrid = (grid: { x: number; y: number }) => {
+    const dx = grid.x - center.x;
+    const dy = grid.y - center.y;
+    const cos = Math.cos(garagePad.facingAngle);
+    const sin = Math.sin(garagePad.facingAngle);
+    return {
+      x: dx * cos - dy * sin,
+      z: dx * sin + dy * cos,
+    };
+  };
+  const pylonLocal = localFromGrid(garagePad.islandCell);
   const pylon = {
     w: 0.7,
     h: 5.4,
     d: 0.42,
-    x: -footprint.w * 0.46,
-    z: footprint.d * 0.43,
+    x: pylonLocal.x,
+    z: pylonLocal.z,
     y: 2.7,
   };
   const forecourt = {

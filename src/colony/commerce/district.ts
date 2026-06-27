@@ -341,7 +341,14 @@ export function findGarageSite(
     const cy = candidate.y + (h - 1) / 2;
     const dx = intersection.x - cx;
     const dy = intersection.y - cy;
-    const facingAngle = Math.atan2(dx, dy);
+    // Keep the rectangular drive-in shell square to the selected cross-street
+    // frontage. A diagonal centre-to-intersection angle makes the 16x11 pad read
+    // skewed against the orthogonal roads and pulls its forecourt/pylon off the
+    // surveyed corner.
+    const facingAngle = Math.atan2(
+      candidate.crossFrontDir.x,
+      candidate.crossFrontDir.y,
+    );
     const cornerX =
       candidate.streetFrontDir.x < 0 ? reserve.x + reserve.w - 1 : reserve.x;
     const cornerY =

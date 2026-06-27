@@ -12,6 +12,7 @@ The commercial district needed enough room to read as a real coastal high street
 - The standalone garage pad now surveys at `16x11` cells.
 - `findGarageSite` scores the four deterministic quadrants around the district intersection and chooses the valid corner nearest a reserve corner, with stable x/y tie-breaks.
 - `GaragePad` now carries `streetFrontDir`, `crossFrontDir`, and `islandCell` so the renderer and later drive-in interactions know which street face is the showroom face, which face is the service-bay intake, and where the pylon island belongs.
+- The garage render shell stays square to the surveyed cross-street frontage instead of rotating diagonally toward the junction centre; its pylon mesh is derived from `islandCell` so the visual sign lands on the surveyed corner island.
 - Shop parcels that would overlap the selected corner garage/pylon cell are dropped before business assignment; this preserves the garage corner without relaxing shop variety tests.
 - The ad-board survey keeps its normal street-approach placement, then falls back to a deterministic reserve-edge scan so the larger live seed `4242` still gets at least one public board.
 
