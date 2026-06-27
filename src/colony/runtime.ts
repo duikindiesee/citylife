@@ -2679,9 +2679,12 @@ export class ColonyRuntime {
     for (let i = 0; i < citizenId.length; i++)
       s = (Math.imul(s, 31) + citizenId.charCodeAt(i)) >>> 0;
     const dep = starterDeposit(s, COLONY.economy.land);
+    // Use the citizen's public display name in the memo, never the raw ledger id — the City Bank HUD
+    // renders these memos verbatim, so echoing citizenId would leak ids like citizen_viw on screen.
+    const who = this.citizens.byId(citizenId)?.displayName ?? citizenId;
     ledgerPost(
       this.sim.state.ledger,
-      `${citizenId} arrives with ${dep} ${CURRENCY}`,
+      `${who} arrives with ${dep} ${CURRENCY}`,
       [
         { account: `citizen:${citizenId}`, amount: dep },
         { account: "arrivals", amount: -dep },
