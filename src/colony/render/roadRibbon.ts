@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Terrain } from "../terrain";
+import { Biome } from "../terrain";
 
 // Spec 088 — SMOOTH ROAD RIBBONS. The roads are stored + driven as per-cell grid data (for traffic,
 // the bus and the rally), but rendering one axis-aligned square per cell makes every non-straight road
@@ -26,6 +27,33 @@ export interface RoadRibbonOptions {
 /** How high the ribbon surface sits above the terrain. Exported so avatars/citizens stand ON the road
  *  surface (not the bare terrain) when they're on a road cell — else they sink under the raised ribbon. */
 export const ROAD_RIBBON_LIFT = 0.18;
+
+function roadSurfaceCellOk(opts: RoadRibbonOptions, x: number, y: number): boolean {
+  const gx = Math.round(x),
+    gy = Math.round(y);
+  if (!opts.terrain.inBounds(gx, gy)) return false;
+  const i = opts.terrain.idx(gx, gy);
+  return opts.terrain.biome[i] !== Biome.Ocean && opts.terrain.buildable[i] !== 0;
+}
+
+function roadCrossSectionOk(
+  pts: { x: number; y: number }[],
+  i: number,
+  half: number,
+  opts: RoadRibbonOptions,
+): boolean {
+  const p = pts[i]!;
+  const prev = pts[Math.max(0, i - 1)]!,
+    next = pts[Math.min(pts.length - 1, i + 1)]!;
+  const tx = next.x - prev.x,
+    ty = next.y - prev.y;
+  const len = Math.hypot(tx, ty) || 1;
+  const px = -ty / len,
+    py = tx / len;
+  for (let k = -half; k <= half + 1e-6; k += 0.5)
+    if (!roadSurfaceCellOk(opts, p.x + px * k, p.y + py * k)) return false;
+  return true;
+}
 
 /** Build the smooth draped ribbons (+ dashed centre lines) for every road way. Returns the group and
  *  the SET of grid cells the ribbon actually covers — so avatars stand on the ribbon surface only
@@ -115,6 +143,8 @@ export function buildRoadRibbons(
     }
   const nearJunction = (x: number, y: number) =>
     junction.has(`${Math.round(x)},${Math.round(y)}`);
+  const skipPaint = (x: number, y: number) =>
+    nearJunction(x, y) || !roadSurfaceCellOk(opts, x, y);
   // Junctions need no flatten or slab. Every ribbon vertex takes its height from its OWN position
   // (smoothRoadY, in ribbon() below), so where two roads overlap at a crossing both surfaces evaluate the
   // same height at the same point — they are COPLANAR by construction, following the terrain. So a junction
@@ -130,9 +160,9 @@ export function buildRoadRibbons(
       way.kind === "avenue" ? surfA : surf,
       cells,
     );
-    dashes(pts, opts, dash, nearJunction);
-    edgeLines(pts, way.width / 2, opts, edge, nearJunction);
-    crosswalks(pts, way.width / 2, opts, edge, nearJunction);
+    dashes(pts, opts, dash, skipPaint);
+    edgeLines(pts, way.width / 2, opts, edge, skipPaint);
+    crosswalks(pts, way.width / 2, opts, edge, nearJunction, skipPaint);
   }
   const add = (arr: number[], mat: THREE.Material) => {
     if (arr.length === 0) return;
@@ -213,9 +243,14 @@ function ribbon(
     const len = Math.hypot(tx, ty) || 1;
     const px = -ty / len,
       py = tx / len; // unit perpendicular
-    // record every grid cell across the cross-section so surfaceY knows where the ribbon really is
-    for (let k = -half; k <= half + 1e-6; k += 0.5)
-      cells.add(`${Math.round(p.x + px * k)},${Math.round(p.y + py * k)}`);
+    // record every grid cell across the cross-section so surfaceY knows where the ribbon really is.
+    // Spec 115 guard: only record cells that the ribbon is actually allowed to render on.
+    for (let k = -half; k <= half + 1e-6; k += 0.5) {
+      const gx = p.x + px * k,
+        gy = p.y + py * k;
+      if (roadSurfaceCellOk(opts, gx, gy))
+        cells.add(`${Math.round(gx)},${Math.round(gy)}`);
+    }
     const gx = p.x + px * half * sign,
       gy = p.y + py * half * sign;
     // Height from this VERTEX's own position (continuous, terrain-following). Two ribbons overlapping at a
@@ -224,9 +259,20 @@ function ribbon(
     const h = Math.max(0, opts.roadY(gx, gy)) + ROAD_RIBBON_LIFT;
     return [opts.wx(gx), h, opts.wz(gy)];
   };
+  const segmentOk = (i: number): boolean => {
+    for (const f of [0, 0.5, 1] as const) {
+      const sample = {
+        x: pts[i]!.x + (pts[i + 1]!.x - pts[i]!.x) * f,
+        y: pts[i]!.y + (pts[i + 1]!.y - pts[i]!.y) * f,
+      };
+      if (!roadCrossSectionOk([sample], 0, half, opts)) return false;
+    }
+    return true;
+  };
   const tri = (a: number[], b: number[], c: number[]) =>
     out.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!);
   for (let i = 0; i < pts.length - 1; i++) {
+    if (!segmentOk(i)) continue;
     const aL = edge(i, -1),
       aR = edge(i, 1),
       bL = edge(i + 1, -1),
@@ -334,7 +380,7 @@ function dashes(
   for (let t = (total % PERIOD) / 2 + 0.3; t + LEN <= total; t += PERIOD) {
     const s0 = sample(t),
       s1 = sample(t + LEN);
-    if (skip(s0.x, s0.y)) continue; // break the centre line at junctions
+    if (skip(s0.x, s0.y) || skip(s1.x, s1.y)) continue; // break the centre line at junctions/unsafe terrain
     const p0x = -s0.ty * w,
       p0y = s0.tx * w,
       p1x = -s1.ty * w,
@@ -361,6 +407,7 @@ function crosswalks(
   opts: RoadRibbonOptions,
   out: number[],
   near: (x: number, y: number) => boolean,
+  skip: (x: number, y: number) => boolean,
 ): void {
   const tri = (a: number[], b: number[], c: number[]) =>
     out.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!);
@@ -407,6 +454,7 @@ function crosswalks(
   const span = half * 0.82; // half the across-extent the stripes cover
   for (const bt of bands) {
     const s = sample(bt);
+    if (skip(s.x, s.y)) continue;
     const tx = s.tx,
       ty = s.ty;
     const nx = -ty,
@@ -421,6 +469,7 @@ function crosswalks(
         [cx - tx * (depth / 2) - nx * sw, cy - ty * (depth / 2) - ny * sw],
         [cx - tx * (depth / 2) + nx * sw, cy - ty * (depth / 2) + ny * sw],
       ];
+      if (corners.some(([gx, gy]) => skip(gx, gy))) continue;
       const w3 = corners.map(([gx, gy]) => [
         opts.wx(gx),
         yOf(gx, gy),
