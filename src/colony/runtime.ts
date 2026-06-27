@@ -695,6 +695,7 @@ export interface ColonyUiState {
       reserved: boolean;
       price: number | null;
       priceZar: number | null;
+      houseZoneArea: number;
     }[];
     free: number;
     built: number;
@@ -4350,6 +4351,7 @@ export class ColonyRuntime {
             priceZar: Number.isFinite(price)
               ? kookToZar(price, COLONY.economy.land)
               : null,
+            houseZoneArea: l.houseZone.w * l.houseZone.d,
           };
         });
         // The crew always builds — canAfford only colours the hint (stockpile vs sourced off-island).

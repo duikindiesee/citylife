@@ -51,6 +51,7 @@ import "./colony.css";
 // commercial district, the border). The old colony-sim survival/economy dashboard (water/food/health/
 // smog/incidents/fever/unrest/seasons/storms/power/etc.) is gated off here. Flip to true to bring it back.
 const OLD_WORLD_STATS = false;
+const SIGNUP_GRANT_K = 750;
 export function hudClassName(firstPersonActive: boolean): string {
   return firstPersonActive ? "hud hud--first-person-mobile-drawer" : "hud";
 }
@@ -194,6 +195,79 @@ export function buyPlotButtonTitle(args: {
   return args.canBuy
     ? `Assign this plot to ${args.buyerName}`
     : `${args.buyerName} can't afford this plot (wallet ${args.wallet} ₭, price ${args.price} ₭)`;
+}
+export type PlotPurchaseTier = {
+  key: "small" | "medium" | "large";
+  label: "Small" | "Medium" | "Large";
+  lots: {
+    id: string;
+    price: number | null;
+    priceZar: number | null;
+    occupied: boolean;
+    reserved: boolean;
+    houseZoneArea: number;
+  }[];
+  fromPrice: number | null;
+  fromPriceZar: number | null;
+  priceLine: string;
+  grantLine: string;
+  grantBuys: boolean;
+};
+const PLOT_TIER_ORDER: PlotPurchaseTier["key"][] = [
+  "small",
+  "medium",
+  "large",
+];
+const PLOT_TIER_LABEL: Record<PlotPurchaseTier["key"], PlotPurchaseTier["label"]> = {
+  small: "Small",
+  medium: "Medium",
+  large: "Large",
+};
+function plotTierForArea(area: number): PlotPurchaseTier["key"] {
+  if (area <= 80) return "small";
+  if (area <= 220) return "medium";
+  return "large";
+}
+function moneyLine(kook: number | null, zar: number | null): string {
+  if (kook === null || zar === null) return "not for sale";
+  return `₭${kook.toLocaleString()} · ≈ R${zar.toLocaleString()}`;
+}
+export function groupPlotPurchaseTiers(
+  lots: PlotPurchaseTier["lots"],
+  signupGrant: number,
+): PlotPurchaseTier[] {
+  return PLOT_TIER_ORDER.map((key) => {
+    const tierLots = lots
+      .filter((lot) => !lot.occupied && !lot.reserved)
+      .filter((lot) => plotTierForArea(lot.houseZoneArea) === key)
+      .sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+    const first = tierLots.find((lot) => lot.price !== null);
+    const fromPrice = first?.price ?? null;
+    const fromPriceZar = first?.priceZar ?? null;
+    const grantBuys = fromPrice !== null && fromPrice <= signupGrant;
+    return {
+      key,
+      label: PLOT_TIER_LABEL[key],
+      lots: tierLots,
+      fromPrice,
+      fromPriceZar,
+      priceLine: moneyLine(fromPrice, fromPriceZar),
+      grantLine: grantBuys
+        ? `${signupGrant} signup grant buys this tier`
+        : `above the ${signupGrant} signup grant`,
+      grantBuys,
+    };
+  });
+}
+export function plotPurchaseGrantCopy(
+  tiers: PlotPurchaseTier[],
+  signupGrant: number,
+): string {
+  const tier = tiers.find((t) => t.key === "small" && t.grantBuys);
+  if (!tier || tier.fromPrice === null) {
+    return `${signupGrant} signup grant is reserved for starter plots.`;
+  }
+  return `${signupGrant} signup grant buys a ${tier.label} plot from ₭${tier.fromPrice.toLocaleString()}.`;
 }
 export type LotHudCopy = {
   label: string;
@@ -2146,6 +2220,47 @@ export function ColonyApp() {
               className="row"
               style={{ flexDirection: "column", alignItems: "stretch", gap: 3 }}
             >
+              <div
+                style={{
+                  border: "1px solid rgba(143,208,166,0.25)",
+                  borderRadius: 8,
+                  padding: "5px 6px",
+                  background: "rgba(60,90,60,0.12)",
+                  display: "grid",
+                  gap: 4,
+                }}
+                title={plotPurchaseGrantCopy(
+                  groupPlotPurchaseTiers(ui.neighborhood.lots, SIGNUP_GRANT_K),
+                  SIGNUP_GRANT_K,
+                )}
+              >
+                <b style={{ color: "#cfe8b0", fontSize: 11 }}>
+                  {plotPurchaseGrantCopy(
+                    groupPlotPurchaseTiers(ui.neighborhood.lots, SIGNUP_GRANT_K),
+                    SIGNUP_GRANT_K,
+                  )}
+                </b>
+                {groupPlotPurchaseTiers(ui.neighborhood.lots, SIGNUP_GRANT_K).map(
+                  (tier) =>
+                    tier.lots.length > 0 && (
+                      <div
+                        key={tier.key}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          fontSize: 10,
+                          color: tier.grantBuys ? "#8fd0a6" : "#b6a57a",
+                        }}
+                      >
+                        <span>{tier.label}</span>
+                        <span>
+                          {tier.priceLine} · {tier.grantLine}
+                        </span>
+                      </div>
+                    ),
+                )}
+              </div>
               {ui.neighborhood.lots.slice(0, 8).map((l) => {
                 const firstFree = ui.citizens.list.find(
                   (c) => !ui.neighborhood.lots.some((x) => x.ownerId === c.id),
