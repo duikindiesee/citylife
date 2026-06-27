@@ -20,10 +20,22 @@ function garageForecourtCells(rt: ColonyRuntime): GridCell[] {
   const sin = Math.sin(model.facingAngle);
   const center = model.center;
   const corners = [
-    { x: -model.forecourt.w / 2, z: model.forecourt.frontOffset - model.forecourt.d / 2 },
-    { x: model.forecourt.w / 2, z: model.forecourt.frontOffset - model.forecourt.d / 2 },
-    { x: -model.forecourt.w / 2, z: model.forecourt.frontOffset + model.forecourt.d / 2 },
-    { x: model.forecourt.w / 2, z: model.forecourt.frontOffset + model.forecourt.d / 2 },
+    {
+      x: -model.forecourt.w / 2,
+      z: model.forecourt.frontOffset - model.forecourt.d / 2,
+    },
+    {
+      x: model.forecourt.w / 2,
+      z: model.forecourt.frontOffset - model.forecourt.d / 2,
+    },
+    {
+      x: -model.forecourt.w / 2,
+      z: model.forecourt.frontOffset + model.forecourt.d / 2,
+    },
+    {
+      x: model.forecourt.w / 2,
+      z: model.forecourt.frontOffset + model.forecourt.d / 2,
+    },
   ].map((p) => ({
     x: center.x + p.x * cos + p.z * sin,
     y: center.y - p.x * sin + p.z * cos,

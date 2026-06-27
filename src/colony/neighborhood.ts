@@ -555,7 +555,9 @@ function trimCorridor(
     }
   }
   const notFenceSetback = (c: Cell) => !fenceSetback.has(key(c.x, c.y));
-  const carriage = [...spine, ...dilate(t, spine, spineSet)].filter(notFenceSetback);
+  const carriage = [...spine, ...dilate(t, spine, spineSet)].filter(
+    notFenceSetback,
+  );
   const carriageSet = new Set(carriage.map((c) => key(c.x, c.y)));
   const verge = dilate(t, carriage, carriageSet).filter(notFenceSetback);
   return { ...corridor, spine, carriage, verge };

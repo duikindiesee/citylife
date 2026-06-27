@@ -150,7 +150,9 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
       for (const c of footprintCells(d.mallPad)) shopCells.add(c);
       if (d.garagePad) {
         for (const c of footprintCells(d.garagePad)) shopCells.add(c);
-        shopCells.add(`${d.garagePad.islandCell.x},${d.garagePad.islandCell.y}`);
+        shopCells.add(
+          `${d.garagePad.islandCell.x},${d.garagePad.islandCell.y}`,
+        );
       }
       const residential = residentialCells(rt);
       const residentialSetback = residentialSetbackCells(rt);

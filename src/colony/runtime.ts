@@ -1202,7 +1202,8 @@ export class ColonyRuntime {
           slopeWeight: 0.5,
           diagonal: true,
           blocked: (x, y) =>
-            residentialSetbackKeys.has(`${x},${y}`) || shopCells.has(`${x},${y}`),
+            residentialSetbackKeys.has(`${x},${y}`) ||
+            shopCells.has(`${x},${y}`),
         }) ?? [];
       mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
       mergeAvenue(this.sim.state, streetCells);
@@ -1326,7 +1327,9 @@ export class ColonyRuntime {
     if (fenceSetbackKeys.size > 0) {
       const before = this.sim.state.roads.length;
       this.sim.state.roads = this.sim.state.roads.filter(
-        (r) => (r.kind ?? "street") !== "street" || !fenceSetbackKeys.has(`${r.x},${r.y}`),
+        (r) =>
+          (r.kind ?? "street") !== "street" ||
+          !fenceSetbackKeys.has(`${r.x},${r.y}`),
       );
       this.sim.state.roadSet.clear();
       this.sim.state.roadKind.clear();
