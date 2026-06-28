@@ -20,7 +20,8 @@ export interface OperatorSession {
 // disabled") — i.e. a not-yet-activated visitor who can self-activate with an unlock code. The login
 // gate uses it to drop into the inline code prompt instead of showing a generic error.
 export type LoginResult =
-  { ok: true } | { ok: false; error: string; pending?: boolean };
+  | { ok: true }
+  | { ok: false; error: string; pending?: boolean };
 
 const STORAGE_KEY = "citylife.session.v4"; // v4: captures the user's roles (for player-view gating)
 const SESSION_MS = 1000 * 60 * 60 * 8; // 8 h fallback if JWT has no exp
