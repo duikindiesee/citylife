@@ -9,7 +9,6 @@ import {
   type ColonyUiState,
   type FirstPersonMouseSensitivity,
 } from "../runtime";
-import type { CameraPreset, ViewMode } from "../render/PlanetRenderer";
 import { isPublicSafe, type HouseholdOverrides } from "../newcomers";
 import { AuthClient } from "../authClient";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
@@ -354,16 +353,6 @@ function useRuntime(): ColonyRuntime {
   return ref.current!;
 }
 
-const PRESETS: { id: CameraPreset; label: string }[] = [
-  { id: "street", label: "Street" },
-  { id: "district", label: "District" },
-  { id: "planet", label: "Planet" },
-];
-const VIEWS: { id: ViewMode; label: string }[] = [
-  { id: "biome", label: "Biome" },
-  { id: "buildable", label: "Buildable" },
-  { id: "elevation", label: "Elevation" },
-];
 const MOUSE_SENSITIVITY_PRESETS: {
   id: FirstPersonMouseSensitivity;
   label: string;
@@ -924,28 +913,6 @@ export function ColonyApp() {
           ))}
         </div>
         <div className="group">
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              className={ui.preset === p.id ? "on" : ""}
-              onClick={() => runtime.setPreset(p.id)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <div className="group">
-          {VIEWS.map((v) => (
-            <button
-              key={v.id}
-              className={ui.view === v.id ? "on" : ""}
-              onClick={() => runtime.setView(v.id)}
-            >
-              {v.label}
-            </button>
-          ))}
-        </div>
-        <div className="group">
           <button
             className={ui.race.mode !== "idle" ? "on" : ""}
             disabled={!ui.race.available}
@@ -971,20 +938,6 @@ export function ColonyApp() {
         )}
         <div className="group">
           <button
-            className={ui.zonesVisible ? "on" : ""}
-            disabled={!ui.colony.surveyed}
-            onClick={() => runtime.toggleZones()}
-            title={
-              ui.colony.surveyed
-                ? "Liveability map — tint homes cyan (thriving) to amber (starved)"
-                : "Build a Civic Pulse Survey Office to unlock the liveability map"
-            }
-          >
-            Liveability
-          </button>
-        </div>
-        <div className="group">
-          <button
             title="Save a PNG snapshot of the city"
             onClick={() => {
               const url = runtime.snapshot();
@@ -996,6 +949,17 @@ export function ColonyApp() {
             }}
           >
             📷
+          </button>
+        </div>
+        <div className="group">
+          <button
+            title="Sign out of CityLife"
+            onClick={() => {
+              auth.logout();
+              window.location.reload();
+            }}
+          >
+            Log out
           </button>
         </div>
       </header>
