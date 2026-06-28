@@ -116,11 +116,18 @@ export function LoginScreen({
       return;
     }
     if (r.pending) {
-      // Correct password but the account is inactive — could be approved-awaiting-code OR still
-      // awaiting operator approval (both are active=false). The code phase explains both cases.
+      // Correct password and an unlock code is outstanding (or a legacy "disabled" account) — drop
+      // into the inline code phase so they can enter it.
       setPhase("code");
       return;
     }
+    if (r.accountState === "pending_review") {
+      // Signed up, still awaiting operator approval, no code issued yet — reassure rather than alarm,
+      // and stay on the sign-in form (there is no code to enter yet).
+      setNotice(r.error);
+      return;
+    }
+    // revoked / no CityLife access / any other gate — a plain error, no code prompt.
     setError(r.error);
   };
 
@@ -254,6 +261,7 @@ export function LoginScreen({
           onChange={(e) => {
             setEmail(e.target.value);
             setError(null);
+            setNotice(null);
           }}
           autoFocus
           disabled={busy}
@@ -267,10 +275,12 @@ export function LoginScreen({
           onChange={(e) => {
             setPassword(e.target.value);
             setError(null);
+            setNotice(null);
           }}
           disabled={busy}
           autoComplete="current-password"
         />
+        {notice && <div className="visitor-pending-badge">{notice}</div>}
         {error && <div className="login-err">⚠ {error}</div>}
         <button className="login-btn" type="submit" disabled={busy}>
           {busy ? "Authenticating…" : "Enter the Kookerverse"}

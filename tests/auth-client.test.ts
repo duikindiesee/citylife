@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { AuthClient, basicAuth } from "../src/colony/authClient";
+import {
+  AuthClient,
+  basicAuth,
+  classifyLoginFailure,
+} from "../src/colony/authClient";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +50,14 @@ function mockFetchFail403(message: string) {
     ok: false,
     status: 403,
     json: async () => ({ message }),
+  }));
+}
+
+function mockFetchFail403Body(body: { message?: string; code?: string }) {
+  vi.stubGlobal("fetch", async () => ({
+    ok: false,
+    status: 403,
+    json: async () => body,
   }));
 }
 
@@ -198,6 +210,115 @@ describe("AuthClient (kooker login gate)", () => {
     const r = await a.login("mayor@test.com", "correct");
     expect(r.ok).toBe(false);
     expect((r as { ok: false; error: string }).error).toMatch(/network down/);
+  });
+});
+
+describe("classifyLoginFailure (Spec 077 account-status messaging)", () => {
+  it("maps ACCOUNT_REVOKED to a revoked state with no code prompt", () => {
+    const r = classifyLoginFailure(403, {
+      code: "ACCOUNT_REVOKED",
+      message: "Account disabled: your access has been revoked.",
+    });
+    expect(r.accountState).toBe("revoked");
+    expect(r.pending).toBeUndefined();
+    expect(r.error).toMatch(/revoked/i);
+  });
+
+  it("maps ACCOUNT_PENDING_REVIEW to awaiting-review with no code prompt", () => {
+    const r = classifyLoginFailure(403, {
+      code: "ACCOUNT_PENDING_REVIEW",
+      message: "Account disabled: your visitor request is still being reviewed.",
+    });
+    expect(r.accountState).toBe("pending_review");
+    expect(r.pending).toBeUndefined();
+    expect(r.error).toMatch(/still being reviewed/i);
+  });
+
+  it("maps ACCOUNT_PENDING_CODE_ISSUED to the inline code prompt", () => {
+    const r = classifyLoginFailure(403, {
+      code: "ACCOUNT_PENDING_CODE_ISSUED",
+      message: "Account disabled: enter your unlock code to activate.",
+    });
+    expect(r.accountState).toBe("code_issued");
+    expect(r.pending).toBe(true);
+    expect(r.error).toMatch(/unlock code/i);
+  });
+
+  it("treats an explicit ACCOUNT_DISABLED code as the legacy activatable state", () => {
+    const r = classifyLoginFailure(403, {
+      code: "ACCOUNT_DISABLED",
+      message: "Account disabled",
+    });
+    expect(r.accountState).toBe("disabled");
+    expect(r.pending).toBe(true);
+  });
+
+  it("falls back to the legacy substring when no code is present (older auth service)", () => {
+    const r = classifyLoginFailure(403, { message: "Account disabled" });
+    expect(r.pending).toBe(true);
+    expect(r.accountState).toBe("disabled");
+    expect(r.error).toMatch(/unlock code/i);
+  });
+
+  it("keeps no-app-access a non-pending access error", () => {
+    const r = classifyLoginFailure(403, {
+      message: "User does not have access to app: citylife",
+    });
+    expect(r.pending).toBeUndefined();
+    expect(r.accountState).toBeUndefined();
+    expect(r.error).toMatch(/CityLife access/i);
+  });
+
+  it("maps a 401 to a credentials error", () => {
+    expect(classifyLoginFailure(401, {})).toEqual({
+      ok: false,
+      error: "Wrong email or password.",
+    });
+  });
+});
+
+describe("AuthClient.login (Spec 077 end-to-end)", () => {
+  it("surfaces a revoked account via login() without prompting for a code", async () => {
+    mockFetchFail403Body({
+      code: "ACCOUNT_REVOKED",
+      message: "Account disabled: your access has been revoked.",
+    });
+    const a = new AuthClient();
+    const r = await a.login("revoked@test.com", "correctpw");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.accountState).toBe("revoked");
+      expect(r.pending).toBeUndefined();
+    }
+    expect(a.isAuthenticated).toBe(false);
+  });
+
+  it("surfaces an awaiting-review account via login() without prompting for a code", async () => {
+    mockFetchFail403Body({
+      code: "ACCOUNT_PENDING_REVIEW",
+      message: "Account disabled: your visitor request is still being reviewed.",
+    });
+    const a = new AuthClient();
+    const r = await a.login("newbie@test.com", "correctpw");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.accountState).toBe("pending_review");
+      expect(r.pending).toBeUndefined();
+    }
+  });
+
+  it("drops a code-issued account into the inline code prompt via login()", async () => {
+    mockFetchFail403Body({
+      code: "ACCOUNT_PENDING_CODE_ISSUED",
+      message: "Account disabled: enter your unlock code to activate.",
+    });
+    const a = new AuthClient();
+    const r = await a.login("ready@test.com", "correctpw");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.pending).toBe(true);
+      expect(r.accountState).toBe("code_issued");
+    }
   });
 });
 
