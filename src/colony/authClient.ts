@@ -20,8 +20,7 @@ export interface OperatorSession {
 // disabled") — i.e. a not-yet-activated visitor who can self-activate with an unlock code. The login
 // gate uses it to drop into the inline code prompt instead of showing a generic error.
 export type LoginResult =
-  | { ok: true }
-  | { ok: false; error: string; pending?: boolean };
+  { ok: true } | { ok: false; error: string; pending?: boolean };
 
 const STORAGE_KEY = "citylife.session.v4"; // v4: captures the user's roles (for player-view gating)
 const SESSION_MS = 1000 * 60 * 60 * 8; // 8 h fallback if JWT has no exp
@@ -122,12 +121,15 @@ export class AuthClient {
     return this.isAuthenticated ? this.session!.operator : null;
   }
 
-  /** True when the signed-in user is a CITYLIFE_PLAYER and NOT an operator/admin — the colony then runs
-   *  the restricted player view (own data only). Admins/operators keep the full whole-colony view. */
+  /** Whether the signed-in user runs the RESTRICTED player view — own data only, and may step into
+   *  their OWN avatar only. SECURITY: this FAILS CLOSED. Only an operator/admin role gets the full
+   *  whole-colony view (and step-into-anyone); EVERY other signed-in user — CITYLIFE_PLAYER,
+   *  CITYLIFE_VISITOR, a plain KOOKER_USER, or any newcomer role — is restricted. A non-operator must
+   *  never fall through to the operator view (an activated visitor was previously loaded as admin). */
   get isCityLifePlayer(): boolean {
     const roles = this.operator?.roles ?? [];
-    if (roles.includes("ADMIN") || roles.includes("KOOKER_ADMIN")) return false;
-    return roles.includes("CITYLIFE_PLAYER");
+    const OPERATOR_ROLES = ["ADMIN", "KOOKER_ADMIN", "CITYLIFE_ADMIN"];
+    return !OPERATOR_ROLES.some((r) => roles.includes(r));
   }
 
   /** Sign in with a kooker account. Async — POSTs to the kooker auth service. */
