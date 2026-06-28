@@ -25,6 +25,17 @@ function fakeJwtWithRoles(roles: string[], email = "player@test.com"): string {
   return `eyJhbGciOiJub25lIn0.${payload}.sig`;
 }
 
+/** Build an unsigned JWT carrying an explicit kooker userId claim + a far-future exp. */
+function fakeJwtWithUserId(userId: string, email = "player@test.com"): string {
+  const payload = btoa(
+    JSON.stringify({ sub: email, exp: 4070908800, userId }),
+  )
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+  return `eyJhbGciOiJub25lIn0.${payload}.sig`;
+}
+
 function mockFetchOk(token: string, email = "mayor@test.com", name = "Mayor") {
   vi.stubGlobal("fetch", async () => ({
     ok: true,
@@ -78,6 +89,23 @@ describe("AuthClient (kooker login gate)", () => {
     const r = await a.login("", "any");
     expect(r).toEqual({ ok: false, error: "Enter your kooker email." });
     expect(a.isAuthenticated).toBe(false);
+  });
+
+  it("exposes the kooker userId from the JWT on the operator", async () => {
+    mockFetchOk(fakeJwtWithUserId("kooker-77"));
+    const a = new AuthClient();
+    await a.login("player@test.com", "pw");
+    expect(a.operator?.userId).toBe("kooker-77");
+    // The display id stays the human label, distinct from the identity key.
+    expect(a.operator?.id).toBe("Mayor");
+  });
+
+  it("falls back to the sub claim when no userId claim is present", async () => {
+    // fakeJwt carries only sub (the kooker subject) — userIdFromToken-style fallback reads it.
+    mockFetchOk(fakeJwt(Date.now() + 1000 * 60 * 60, "sub-user@test.com"));
+    const a = new AuthClient();
+    await a.login("sub-user@test.com", "pw");
+    expect(a.operator?.userId).toBe("sub-user@test.com");
   });
 
   it("restricts every non-operator to the player view (fail closed); full view only for operators", async () => {

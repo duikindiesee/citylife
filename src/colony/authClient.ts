@@ -13,7 +13,10 @@ export interface OperatorSession {
   token: string;
   refreshToken?: string; // kooker refresh token — used to mint a new access token before expiry
   expiresAt: number; // epoch ms
-  operator: { id: string; scopes: string[]; roles: string[] };
+  // `id` is the display name (for the HUD); `userId` is the authenticated kooker user id decoded from
+  // the JWT — the stable identity the player view keys off, so own-data / step-into can never be
+  // hijacked by a colliding display name. `userId` is null only for a legacy token with no such claim.
+  operator: { id: string; userId: string | null; scopes: string[]; roles: string[] };
 }
 
 // `pending: true` means the password was accepted but the account is inactive (a 403 "Account
@@ -22,7 +25,10 @@ export interface OperatorSession {
 export type LoginResult =
   { ok: true } | { ok: false; error: string; pending?: boolean };
 
-const STORAGE_KEY = "citylife.session.v4"; // v4: captures the user's roles (for player-view gating)
+// v5: captures the authenticated kooker userId on the operator so the player view is identity-keyed.
+// Bumping the version means a stale v4 session is ignored on restore and the userId is re-derived on
+// the next login (the JWT carries it), rather than silently leaving an operator with userId=null.
+const STORAGE_KEY = "citylife.session.v5";
 const SESSION_MS = 1000 * 60 * 60 * 8; // 8 h fallback if JWT has no exp
 const KOOKER_AUTH_PATH = "/kooker/api/auth/basic";
 const KOOKER_REFRESH_PATH = "/kooker/api/auth/refresh";
@@ -73,6 +79,23 @@ function jwtRoles(token: string): string[] {
     return list.map((r) => r.trim().toUpperCase()).filter(Boolean);
   } catch {
     return [];
+  }
+}
+
+/** Decode the kooker userId claim from a JWT WITHOUT verifying the signature (verification is the
+ *  gateway's job; this only reads who the already-validated token belongs to). Reads the usual claim
+ *  shapes — userId / userid / sub — and mirrors bot/ledgerSync.userIdFromToken, including the
+ *  base64url padding atob needs. Returns null when no such claim is present. */
+function jwtUserId(token: string): string | null {
+  try {
+    const b64 = token.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/");
+    if (!b64) return null;
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded)) as Record<string, unknown>;
+    const id = payload["userId"] ?? payload["userid"] ?? payload["sub"];
+    return id == null ? null : String(id);
+  } catch {
+    return null;
   }
 }
 
@@ -199,7 +222,12 @@ export class AuthClient {
         token,
         refreshToken: data.refreshToken,
         expiresAt,
-        operator: { id: displayName, scopes: SCOPES, roles: jwtRoles(token) },
+        operator: {
+          id: displayName,
+          userId: jwtUserId(token),
+          scopes: SCOPES,
+          roles: jwtRoles(token),
+        },
       };
       this.persist();
       return { ok: true };

@@ -565,6 +565,9 @@ export function ColonyApp() {
   const auth = useMemo(() => new AuthClient(), []);
   useEffect(() => {
     runtime.setOperatorName(auth.operator?.id ?? null);
+    // Identity key: bind the player view to the authenticated kooker userId (from the JWT), so own-data
+    // and step-into resolve by user id, not a spoofable / collision-prone display name.
+    runtime.setOperatorUserId(auth.operator?.userId ?? null);
     // Player data isolation: a CITYLIFE_PLAYER gets the restricted own-data view (activates the dormant
     // player-view from the isolation slice); operators/admins keep the whole-colony view.
     runtime.setPlayerView(auth.isCityLifePlayer);
