@@ -547,6 +547,8 @@ export function ColonyApp() {
   // Furniture studio (spec 088 Slice D UI) — the design-and-buy controls.
   const [furnKind, setFurnKind] = useState<FurnitureKind>("sofa");
   const [furnName, setFurnName] = useState("");
+  // The buy-time access gate's last denial (private neighbourhood / not signed in / couldn't verify).
+  const [buyNotice, setBuyNotice] = useState<string | null>(null);
   const [newCitizen, setNewCitizen] = useState({
     name: "",
     age: "",
@@ -2141,6 +2143,15 @@ export function ColonyApp() {
               </b>
             </div>
           )}
+          {buyNotice && (
+            <div
+              className="row"
+              role="status"
+              style={{ color: "#e8a06a", fontSize: 11, lineHeight: 1.3 }}
+            >
+              🔒 {buyNotice}
+            </div>
+          )}
           {ui.neighborhood.lots.length > 0 && (
             <div
               className="row"
@@ -2224,9 +2235,24 @@ export function ColonyApp() {
                               cursor: canBuy ? "pointer" : "not-allowed",
                             }}
                             disabled={!canBuy}
-                            onClick={() =>
-                              runtime.purchaseLot(firstFree.id, l.id)
-                            }
+                            onClick={() => {
+                              setBuyNotice(null);
+                              // Gate PRIVATE neighbourhoods: the open primary lots (no key) pass
+                              // instantly; a satellite hamlet is checked against the backend allowlist
+                              // before the purchase completes. Fails closed on a network blip.
+                              void runtime
+                                .canBuyLotByAccess(l.id)
+                                .then((decision) => {
+                                  if (decision.allowed) {
+                                    runtime.purchaseLot(firstFree.id, l.id);
+                                  } else {
+                                    setBuyNotice(
+                                      decision.reason ??
+                                        "You can't buy in this neighbourhood",
+                                    );
+                                  }
+                                });
+                            }}
                             title={buyPlotButtonTitle({
                               playerScoped: ui.bank.scope === "player",
                               canBuy,
@@ -2235,7 +2261,7 @@ export function ColonyApp() {
                               price: l.price ?? 0,
                             })}
                           >
-                            Buy {l.price} ₭
+                            {l.neighbourhoodKey ? "🔒 " : ""}Buy {l.price} ₭
                           </button>
                         );
                       })()}

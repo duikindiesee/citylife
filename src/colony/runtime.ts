@@ -195,6 +195,13 @@ import {
   type LedgerMove,
   type SyncStatus,
 } from "./bot/ledgerSync";
+import {
+  checkNeighbourhoodAccess,
+  defaultAccessDeps,
+  neighbourhoodKeyForLot,
+  type AccessDecision,
+  type NeighbourhoodAccessDeps,
+} from "./bot/neighbourhoodAccess";
 import { furniturePriceK, FURNITURE_SHOP_ACCOUNT } from "./furnitureShop";
 import type { FurnitureKind } from "./furniture";
 import {
@@ -695,6 +702,7 @@ export interface ColonyUiState {
       reserved: boolean;
       price: number | null;
       priceZar: number | null;
+      neighbourhoodKey: string | null;
     }[];
     free: number;
     built: number;
@@ -979,7 +987,10 @@ export class ColonyRuntime {
       if (nbhd.lots.length === 0) continue;
       const b = t0.biome[t0.idx(a.x, a.y)];
       const name = `${b === Biome.Forest ? "wood" : b === Biome.Highland ? "hill" : "vale"}${satellites.length + 1}`;
-      for (const lot of nbhd.lots) lot.id = `${name}_${lot.id}`; // unique id; never collides with lot_1/lot_2
+      for (const lot of nbhd.lots) {
+        lot.id = `${name}_${lot.id}`; // unique id; never collides with lot_1/lot_2
+        lot.neighborhoodKey = name; // pairs with the backend neighbourhoods table for the buy-time access gate
+      }
       this.neighborhood.parcels.push(...nbhd.parcels); // parcels === lots (same array ref), so lots update too
       const cells = footprintCells(nbhd);
       reserveParcelLand(this.sim.state, cells);
@@ -3005,6 +3016,20 @@ export class ColonyRuntime {
     return true;
   }
 
+  /** The buy-time gate for PRIVATE neighbourhoods. Before the player completes a plot purchase the UI
+   *  asks whether this signed-in player may buy in the lot's neighbourhood: the open primary
+   *  neighbourhood (no key) always passes; a satellite hamlet is checked against the backend allowlist
+   *  (private hamlets gate on a grant; public/unregistered ones pass). Fails closed, so a network blip
+   *  never leaks a private hamlet to a non-granted player. Deps are injectable for tests. */
+  async canBuyLotByAccess(
+    lotId: string,
+    deps: NeighbourhoodAccessDeps = defaultAccessDeps(),
+  ): Promise<AccessDecision> {
+    const lot = this.neighborhood.lots.find((l) => l.id === lotId);
+    const key = lot?.neighborhoodKey ?? neighbourhoodKeyForLot(lotId);
+    return checkNeighbourhoodAccess(key, deps);
+  }
+
   /** Assign a free lot to a citizen as their home, and send their avatar walking to the door. */
   assignLot(citizenId: string, lotId: string): boolean {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
@@ -4400,6 +4425,9 @@ export class ColonyRuntime {
             priceZar: Number.isFinite(price)
               ? kookToZar(price, COLONY.economy.land)
               : null,
+            // null = the open primary neighbourhood; a key = a satellite hamlet that may be private
+            // (the Buy button checks access against the backend before completing the purchase).
+            neighbourhoodKey: l.neighborhoodKey ?? null,
           };
         });
         // The crew always builds — canAfford only colours the hint (stockpile vs sourced off-island).

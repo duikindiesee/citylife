@@ -25,6 +25,10 @@ export interface Zone {
  *  (id, x, y, w, h, doorX, doorY, built, ownerCitizenId, houseSeed) plus the new homestead structure. */
 export interface Parcel {
   id: string;
+  /** The stable engine key of the satellite hamlet this parcel belongs to (wood1/hill2/vale2), set at
+   *  world build. Undefined for the primary coastal neighbourhood — bare lots are open land. Pairs with
+   *  the backend neighbourhoods table so a PRIVATE hamlet can be allowlist-gated at buy time. */
+  neighborhoodKey?: string;
   /** Parcel centre cell. */
   x: number;
   y: number;
