@@ -1,4 +1,36 @@
-import type { GaragePad } from "../commerce/district";
+import type { CommercialDistrict, GaragePad } from "../commerce/district";
+
+export type PromenadeLampPosition = { x: number; y: number; side: 1 | -1 };
+
+export function commercialPromenadeLampPosition(
+  c: { x: number; y: number },
+  streetIndex: number,
+): PromenadeLampPosition {
+  const side = Math.floor(streetIndex / 5) % 2 === 0 ? 1 : -1;
+  return { x: c.x, y: c.y + side * 1.4, side };
+}
+
+function insideRect(
+  p: { x: number; y: number },
+  r: { x: number; y: number; w: number; h: number },
+  pad = 0,
+): boolean {
+  return (
+    p.x >= r.x - pad &&
+    p.x <= r.x + r.w - 1 + pad &&
+    p.y >= r.y - pad &&
+    p.y <= r.y + r.h - 1 + pad
+  );
+}
+
+export function commercialPromenadeLampAllowed(
+  p: { x: number; y: number },
+  d: Pick<CommercialDistrict, "garagePad" | "mallPad" | "parcels">,
+): boolean {
+  if (d.garagePad && insideRect(p, d.garagePad, 0)) return false;
+  if (insideRect(p, d.mallPad, 0)) return false;
+  return !d.parcels.some((parcel) => insideRect(p, parcel, 0));
+}
 
 export interface GarageAnchorShellModel {
   kind: "garage_anchor_shell";
@@ -74,12 +106,12 @@ export function buildGarageAnchorShellModel(
     bayDoorW: footprint.w * 0.135,
   };
   const pylon = {
-    w: serviceBay.w * 0.48,
-    h: 0.66,
-    d: 0.18,
+    w: serviceBay.w * 0.82,
+    h: 0.38,
+    d: 0.12,
     x: serviceBay.x,
-    z: serviceBay.z + serviceBay.d / 2 + 0.08,
-    y: serviceBay.h + 0.02,
+    z: serviceBay.z + serviceBay.d / 2 + 0.055,
+    y: serviceBay.h - 0.18,
   };
   const forecourt = {
     w: footprint.w * 0.92,

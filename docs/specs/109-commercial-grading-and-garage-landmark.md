@@ -27,7 +27,7 @@ Implementation contract now used by the code:
 - The render group is named `commercialDistrict.garagePad.garageAnchorShell` with public-safe `userData`.
 - The night floor mesh is named `garageAnchorNightFloor`; `garageAnchorNightFloorEmissive(daylight)` clamps to `0.12` by day and `1.05` by night.
 - The visible silhouette must include `garageAnchorGlassShowroom`, `garageAnchorGlassShowroomFront`, `garageAnchorShowroomHeaderSign`, `garageAnchorServiceBayBlock`, `garageAnchorRollupDoor.*`, `garageAnchorCornerPylonSign`, `garageAnchorRoadFacingForecourt`, and `garageAnchorDisplayCar.*` children.
-- The garage sign, forecourt, display cars, and drive-in apron are visual footprint, not road furniture: the sign must be a compact facade-mounted/side-mounted blade on the building frontage, not a freestanding driveway/crossroad pole; the rendered forecourt/apron samples must stay inside the garage pad so no post/apron reads as standing in the crossroad or blocking the roll-up doors.
+- The garage sign, forecourt, display cars, and drive-in apron are visual footprint, not road furniture: the sign must be a low/wide facade-mounted fascia/blade sitting under the service-bay roofline, not a freestanding driveway/crossroad pole; commercial promenade lamp posts must be suppressed when their verge placement would land inside the garage pad/frontage; the rendered forecourt/apron samples must stay inside the garage pad so no post/apron reads as standing in the crossroad or blocking the roll-up doors.
 
 ### P2 — Orient the garage forecourt/showroom toward the road (folded into P1)
 
@@ -39,4 +39,4 @@ The near-identical shop aspect ratios + shared detail template are explicitly su
 
 ## Verification
 
-P0 verified in-world via `.flyby/verify-district.cjs` (HUD-free day+night oblique capture of the district). P1/P2 must be verified via Vitest plus day/night browser proof: the named garage group exists, the showroom/service-bay/pylon/forecourt children exist, `garageAnchorNightFloor` emissive maps from `0.12` day to `1.05` night, the garage pad is included in commercial grading, and screenshots show a distinct showroom+bays+pylon landmark facing the road rather than the mall/dark-shop-plinth silhouette.
+P0 verified in-world via `.flyby/verify-district.cjs` (HUD-free day+night oblique capture of the district). P1/P2 must be verified via Vitest plus day/night browser proof: the named garage group exists, the showroom/service-bay/fascia/forecourt children exist, `garageAnchorNightFloor` emissive maps from `0.12` day to `1.05` night, the garage pad is included in commercial grading, and screenshots include a Buildable/District placement-style aerial-front proof showing the distinct showroom+bays/fascia landmark facing the road rather than a rear/roof-only angle or a freestanding pole silhouette.

@@ -71,6 +71,8 @@ import {
 } from "./mallAnchorShell";
 import {
   buildGarageAnchorShellModel,
+  commercialPromenadeLampAllowed,
+  commercialPromenadeLampPosition,
   garageAnchorNightFloorEmissive,
 } from "./garageAnchorShell";
 import type { RaceState } from "../racing/race";
@@ -3822,18 +3824,18 @@ export class PlanetRenderer {
     pylon.castShadow = true;
 
     const pylonCap = new THREE.Mesh(
-      new THREE.BoxGeometry(model.pylon.w * 1.18, 0.28, model.pylon.d * 1.24),
+      new THREE.BoxGeometry(model.pylon.w * 1.04, 0.08, model.pylon.d * 1.12),
       pylonMat,
     );
     pylonCap.name = "garageAnchorPylonLightBox";
     pylonCap.position.set(
       model.pylon.x,
-      model.pylon.y + model.pylon.h / 2 + 0.18,
+      model.pylon.y + model.pylon.h / 2 - 0.04,
       model.pylon.z,
     );
 
     const pylonCyanPanel = new THREE.Mesh(
-      new THREE.BoxGeometry(model.pylon.w * 0.86, 0.1, model.pylon.d * 1.36),
+      new THREE.BoxGeometry(model.pylon.w * 0.72, 0.055, model.pylon.d * 1.18),
       new THREE.MeshStandardMaterial({
         color: 0x79edff,
         emissive: 0x35d8ff,
@@ -3844,12 +3846,12 @@ export class PlanetRenderer {
     pylonCyanPanel.name = "garageAnchorPylonCyanEdgePanel";
     pylonCyanPanel.position.set(
       model.pylon.x,
-      model.pylon.y + model.pylon.h / 2 + 0.34,
+      model.pylon.y - model.pylon.h / 2 + 0.08,
       model.pylon.z,
     );
 
     const pylonRoadFace = new THREE.Mesh(
-      new THREE.BoxGeometry(model.pylon.w * 0.92, model.pylon.h * 0.46, 0.06),
+      new THREE.BoxGeometry(model.pylon.w * 0.9, model.pylon.h * 0.64, 0.045),
       new THREE.MeshStandardMaterial({
         color: 0xffcf74,
         emissive: 0xff9f2f,
@@ -4252,10 +4254,13 @@ export class PlanetRenderer {
       }); // warm, but under the 0.9 bloom threshold
       for (let i = 0; i < street.length; i += 5) {
         const c = street[i]!;
+        const lampPos = commercialPromenadeLampPosition(c, i);
+        if (!commercialPromenadeLampAllowed(lampPos, d)) continue;
         const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)));
-        const side = Math.floor(i / 5) % 2 === 0 ? 1 : -1; // alternate verges down the strip
+        const side = lampPos.side; // alternate verges down the strip
         const lamp = new THREE.Group();
-        lamp.position.set(this.wx(c.x), by, this.wz(c.y + side * 1.4));
+        lamp.name = `commercialDistrict.promenadeLamp.${i}`;
+        lamp.position.set(this.wx(lampPos.x), by, this.wz(lampPos.y));
         const pole = new THREE.Mesh(
           new THREE.CylinderGeometry(0.04, 0.05, 1.4, 6),
           poleMat,

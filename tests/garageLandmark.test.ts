@@ -3,6 +3,8 @@ import { ColonyRuntime } from "../src/colony/runtime";
 import { cellOk } from "../src/colony/pathfind";
 import {
   buildGarageAnchorShellModel,
+  commercialPromenadeLampAllowed,
+  commercialPromenadeLampPosition,
   garageAnchorNightFloorEmissive,
 } from "../src/colony/render/garageAnchorShell";
 import { COLONY } from "../src/colony/config";
@@ -207,17 +209,44 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
       );
 
       expectInsidePad(pylonAbs, g);
-      expect(model.pylon.w).toBeGreaterThanOrEqual(model.pylon.h * 3);
-      expect(model.pylon.h).toBeLessThanOrEqual(0.85);
+      expect(model.pylon.w).toBeGreaterThanOrEqual(model.pylon.h * 8);
+      expect(model.pylon.h).toBeLessThanOrEqual(0.5);
       expect(model.pylon.y - model.pylon.h / 2).toBeGreaterThanOrEqual(
         model.serviceBay.h - 0.55,
       );
+      expect(model.pylon.y + model.pylon.h / 2).toBeLessThanOrEqual(
+        model.serviceBay.h + 0.08,
+      );
       expect(model.pylon.z).toBeLessThanOrEqual(
-        model.serviceBay.z + model.serviceBay.d / 2 + 0.22,
+        model.serviceBay.z + model.serviceBay.d / 2 + 0.12,
       );
       expect(Math.abs(model.pylon.x - model.serviceBay.x)).toBeLessThanOrEqual(
         model.serviceBay.w * 0.1,
       );
+    }
+  }, 30000);
+
+  it("keeps commercial promenade lamp posts out of the garage frontage pad", () => {
+    for (const seed of SEEDS) {
+      const d = rtFor(seed).commercialDistrict!;
+      const g = d.garagePad!;
+      let rejectedGaragePadLamps = 0;
+      for (let i = 0; i < d.street.length; i += 5) {
+        const lamp = commercialPromenadeLampPosition(d.street[i]!, i);
+        const insideGaragePad =
+          lamp.x >= g.x &&
+          lamp.x <= g.x + g.w - 1 &&
+          lamp.y >= g.y &&
+          lamp.y <= g.y + g.h - 1;
+        const allowed = commercialPromenadeLampAllowed(lamp, d);
+        if (insideGaragePad) {
+          rejectedGaragePadLamps++;
+          expect(allowed).toBe(false);
+        } else {
+          expect(allowed).toBe(true);
+        }
+      }
+      expect(rejectedGaragePadLamps).toBeGreaterThan(0);
     }
   }, 30000);
 
@@ -273,9 +302,13 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
     expect(model.isPublicSafe).toBe(true);
     expect(model.showroom.w).toBeGreaterThan(model.serviceBay.bayDoorW);
     expect(model.serviceBay.doorCount).toBe(3);
-    expect(model.pylon.w).toBeGreaterThan(model.pylon.h * 3);
+    expect(model.pylon.w).toBeGreaterThan(model.pylon.h * 8);
+    expect(model.pylon.h).toBeLessThanOrEqual(0.5);
     expect(model.pylon.y - model.pylon.h / 2).toBeGreaterThanOrEqual(
       model.serviceBay.h - 0.55,
+    );
+    expect(model.pylon.y + model.pylon.h / 2).toBeLessThanOrEqual(
+      model.serviceBay.h + 0.08,
     );
     expect(model.forecourt.w).toBeGreaterThan(model.serviceBay.w * 0.9);
     expect(garageAnchorNightFloorEmissive(1)).toBeCloseTo(0.12);
