@@ -448,8 +448,7 @@ body,
   align-items: center;
   justify-content: center;
   background-color: #05070f;
-  background-image:
-    radial-gradient(
+  background-image: radial-gradient(
       1px 1px at 15px 25px,
       rgba(255, 255, 255, 0.75) 50%,
       transparent 51%
