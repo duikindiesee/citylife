@@ -26,6 +26,29 @@ function cells(r: { x: number; y: number; w: number; h: number }): string[] {
   return out;
 }
 
+function roadClearanceKeys(r: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}): string[] {
+  const keys = new Set<string>();
+  for (let y = r.y; y < r.y + r.h; y++) {
+    for (let x = r.x; x < r.x + r.w; x++) {
+      for (const [dx, dy] of [
+        [0, 0],
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        keys.add(`${x + dx},${y + dy}`);
+      }
+    }
+  }
+  return [...keys];
+}
+
 function facingVector(angle: number) {
   return {
     x: Math.round(Math.sin(angle)),
@@ -103,6 +126,15 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
         expect(cellOk(rt.sim.state.terrain, x, y)).toBe(true);
         expect(occupied.has(c)).toBe(false);
       }
+    }
+  }, 30000);
+
+  it("keeps the garage landmark footprint road-clear on final widened roads", () => {
+    for (const seed of SEEDS) {
+      const rt = rtFor(seed);
+      const g = rt.commercialDistrict!.garagePad!;
+      const roads = new Set(rt.sim.state.roads.map((c) => `${c.x},${c.y}`));
+      for (const c of roadClearanceKeys(g)) expect(roads.has(c)).toBe(false);
     }
   }, 30000);
 

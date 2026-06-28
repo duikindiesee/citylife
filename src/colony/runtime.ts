@@ -1263,24 +1263,40 @@ export class ColonyRuntime {
     if (this.commercialDistrict && this.commercialDistrict.street.length > 0) {
       const t = this.sim.state.terrain;
       const shopCells = new Set<string>();
-      for (const p of this.commercialDistrict.parcels)
-        for (let y = p.y; y < p.y + p.h; y++)
-          for (let x = p.x; x < p.x + p.w; x++) shopCells.add(`${x},${y}`);
-      const mallPad = this.commercialDistrict.mallPad;
-      for (let y = mallPad.y; y < mallPad.y + mallPad.h; y++)
-        for (let x = mallPad.x; x < mallPad.x + mallPad.w; x++)
-          shopCells.add(`${x},${y}`);
+      const commercialRoadClearanceKeys = new Set<string>();
+      const addCommercialFootprint = (r: {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+      }) => {
+        for (let y = r.y; y < r.y + r.h; y++)
+          for (let x = r.x; x < r.x + r.w; x++) {
+            shopCells.add(`${x},${y}`);
+            for (const [dx, dy] of [
+              [0, 0],
+              [1, 0],
+              [-1, 0],
+              [0, 1],
+              [0, -1],
+            ] as const)
+              commercialRoadClearanceKeys.add(`${x + dx},${y + dy}`);
+          }
+      };
+      for (const p of this.commercialDistrict.parcels) addCommercialFootprint(p);
+      addCommercialFootprint(this.commercialDistrict.mallPad);
+      if (this.commercialDistrict.garagePad)
+        addCommercialFootprint(this.commercialDistrict.garagePad);
+      const roadAllowed = (x: number, y: number) =>
+        cellOk(t, x, y) &&
+        !residentialKeys.has(`${x},${y}`) &&
+        !commercialRoadClearanceKeys.has(`${x},${y}`);
       const widened = new Set<string>();
       for (const c of this.commercialDistrict.street)
         for (const dy of [-1, 0, 1]) {
           const x = c.x,
             y = c.y + dy;
-          if (
-            cellOk(t, x, y) &&
-            !residentialKeys.has(`${x},${y}`) &&
-            !shopCells.has(`${x},${y}`)
-          )
-            widened.add(`${x},${y}`);
+          if (roadAllowed(x, y)) widened.add(`${x},${y}`);
         }
       const streetCells = [...widened].map((k) => {
         const [x, y] = k.split(",").map(Number);
@@ -1291,12 +1307,7 @@ export class ColonyRuntime {
         for (const dx of [-1, 0, 1]) {
           const x = c.x + dx,
             y = c.y;
-          if (
-            cellOk(t, x, y) &&
-            !residentialKeys.has(`${x},${y}`) &&
-            !shopCells.has(`${x},${y}`)
-          )
-            crossWidened.add(`${x},${y}`);
+          if (roadAllowed(x, y)) crossWidened.add(`${x},${y}`);
         }
       const crossStreetCells = [...crossWidened].map((k) => {
         const [x, y] = k.split(",").map(Number);
@@ -1313,7 +1324,10 @@ export class ColonyRuntime {
           blocked: (x, y) =>
             residentialKeys.has(`${x},${y}`) || shopCells.has(`${x},${y}`),
         }) ?? [];
-      mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
+      const connectorRoadCells = layRoad(connector, 1).filter((c) =>
+        roadAllowed(c.x, c.y),
+      );
+      mergeAvenue(this.sim.state, connectorRoadCells); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
       mergeAvenue(this.sim.state, streetCells);
       mergeAvenue(this.sim.state, crossStreetCells);
     }
