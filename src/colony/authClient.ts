@@ -16,7 +16,11 @@ export interface OperatorSession {
   operator: { id: string; scopes: string[]; roles: string[] };
 }
 
-export type LoginResult = { ok: true } | { ok: false; error: string };
+// `pending: true` means the password was accepted but the account is inactive (a 403 "Account
+// disabled") — i.e. a not-yet-activated visitor who can self-activate with an unlock code. The login
+// gate uses it to drop into the inline code prompt instead of showing a generic error.
+export type LoginResult =
+  { ok: true } | { ok: false; error: string; pending?: boolean };
 
 const STORAGE_KEY = "citylife.session.v4"; // v4: captures the user's roles (for player-view gating)
 const SESSION_MS = 1000 * 60 * 60 * 8; // 8 h fallback if JWT has no exp
@@ -140,8 +144,40 @@ export class AuthClient {
         body: JSON.stringify({ appName: APP_NAME }),
       });
       if (!resp.ok) {
-        if (resp.status === 401 || resp.status === 403) {
+        if (resp.status === 401) {
           return { ok: false, error: "Wrong email or password." };
+        }
+        if (resp.status === 403) {
+          // The password was accepted (verifyPin runs before these gates), but a gate rejected the
+          // account. 403 "Account disabled" == not-yet-activated (or disabled) → self-activatable with
+          // an unlock code. 403 "...does not have access to app..." == active but no CityLife grant.
+          let msg = "";
+          try {
+            msg = ((await resp.json()) as { message?: string })?.message ?? "";
+          } catch {
+            /* no JSON body */
+          }
+          if (/account disabled/i.test(msg)) {
+            return {
+              ok: false,
+              pending: true,
+              error:
+                "Your account isn't active yet. Enter the unlock code your operator sent you.",
+            };
+          }
+          if (/does not have access/i.test(msg)) {
+            return {
+              ok: false,
+              error:
+                "This account doesn't have CityLife access yet. Ask the operator to grant it.",
+            };
+          }
+          // Unknown 403 (correct password, some other gate) — fail safe: a neutral message rather than
+          // falsely blaming the password, and do NOT offer the code field.
+          return {
+            ok: false,
+            error: "This account can't sign in to CityLife right now.",
+          };
         }
         return { ok: false, error: `Login failed (HTTP ${resp.status}).` };
       }

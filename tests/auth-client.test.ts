@@ -41,6 +41,14 @@ function mockFetchFail(status = 401) {
   }));
 }
 
+function mockFetchFail403(message: string) {
+  vi.stubGlobal("fetch", async () => ({
+    ok: false,
+    status: 403,
+    json: async () => ({ message }),
+  }));
+}
+
 beforeEach(() => {
   try {
     localStorage.clear();
@@ -106,6 +114,45 @@ describe("AuthClient (kooker login gate)", () => {
     expect(r).toEqual({ ok: false, error: "Wrong email or password." });
     expect(a.isAuthenticated).toBe(false);
     expect(a.authHeader()).toEqual({});
+  });
+
+  it("flags a 403 'Account disabled' as pending so the gate can prompt for a code", async () => {
+    mockFetchFail403("Account disabled");
+    const a = new AuthClient();
+    const r = await a.login("newbie@test.com", "correctpw");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.pending).toBe(true);
+      expect(r.error).toMatch(/unlock code/i);
+    }
+    expect(a.isAuthenticated).toBe(false);
+  });
+
+  it("treats a 403 'no app access' as a non-pending access error", async () => {
+    mockFetchFail403("User does not have access to app: citylife");
+    const a = new AuthClient();
+    const r = await a.login("u@test.com", "correctpw");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.pending).toBeUndefined();
+      expect(r.error).toMatch(/CityLife access/i);
+    }
+  });
+
+  it("fails safe on an unparseable 403 — neutral error, not pending", async () => {
+    vi.stubGlobal("fetch", async () => ({
+      ok: false,
+      status: 403,
+      json: async () => {
+        throw new Error("no body");
+      },
+    }));
+    const a = new AuthClient();
+    const r = await a.login("u@test.com", "pw");
+    expect(r).toEqual({
+      ok: false,
+      error: "This account can't sign in to CityLife right now.",
+    });
   });
 
   it("accepts a valid login and attaches a Bearer token", async () => {

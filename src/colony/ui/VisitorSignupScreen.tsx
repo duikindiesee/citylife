@@ -2,16 +2,22 @@ import { useState, type FormEvent } from "react";
 import { signupVisitor } from "../visitorClient";
 
 interface Props {
-  onSignedUp: (email: string) => void;
   onBackToLogin: () => void;
 }
 
-export function VisitorSignupScreen({ onSignedUp, onBackToLogin }: Props) {
+/**
+ * Brand-new-visitor entry point. Explains the whole process up front (request → operator approves →
+ * one-time code → enter it at sign-in → in), then on submit flips to an in-screen confirmation that
+ * recaps the next step. There is no separate pending/unlock screen: once they have their code, the
+ * user signs in normally and the login screen prompts for the code inline.
+ */
+export function VisitorSignupScreen({ onBackToLogin }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -32,7 +38,7 @@ export function VisitorSignupScreen({ onSignedUp, onBackToLogin }: Props) {
     setError(null);
     try {
       await signupVisitor(email.trim(), password, u);
-      onSignedUp(email.trim());
+      setSubmitted(true);
     } catch (err) {
       setError((err as Error).message || "Signup failed — try again.");
     } finally {
@@ -40,16 +46,43 @@ export function VisitorSignupScreen({ onSignedUp, onBackToLogin }: Props) {
     }
   };
 
+  if (submitted) {
+    return (
+      <div className="login">
+        <div className="login-card">
+          <div className="login-brand">
+            City<span>Life</span>
+          </div>
+          <div className="login-sub">Request received</div>
+          <p className="login-blurb">
+            Your account is created but <b>not active yet</b>. An operator will
+            review your request and send you a one-time unlock code.
+          </p>
+          <div className="visitor-pending-badge">Awaiting approval</div>
+          <p className="login-blurb">
+            When you have your code, come back here, sign in with the email and
+            password you just chose, and you'll be prompted to enter the code to
+            finish.
+          </p>
+          <button className="login-btn" type="button" onClick={onBackToLogin}>
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="login">
       <form className="login-card" onSubmit={submit}>
         <div className="login-brand">
           City<span>Life</span>
         </div>
-        <div className="login-sub">Visitor Registration</div>
+        <div className="login-sub">Sign up as a visitor</div>
         <p className="login-blurb">
-          Create an account to request access. An operator will review your
-          registration and send you an unlock code.
+          Request access below. An operator reviews it, then sends you a
+          one-time unlock code. Come back and sign in with this email and
+          password — you'll be asked for the code right there to finish.
         </p>
         <input
           className="login-input"

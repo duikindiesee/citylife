@@ -581,17 +581,6 @@ body,
   text-align: center;
   margin: 4px 0;
 }
-.visitor-activated-badge {
-  background: rgba(92, 214, 92, 0.15);
-  border: 1px solid rgba(92, 214, 92, 0.35);
-  color: #5cd65c;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  text-align: center;
-  margin: 4px 0;
-}
-
 /* Border Control */
 .border-modal {
   width: 470px;
