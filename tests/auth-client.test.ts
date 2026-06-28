@@ -80,24 +80,43 @@ describe("AuthClient (kooker login gate)", () => {
     expect(a.isAuthenticated).toBe(false);
   });
 
-  it("flags a CITYLIFE_PLAYER for the restricted view, but not an admin", async () => {
+  it("restricts every non-operator to the player view (fail closed); full view only for operators", async () => {
+    // The restricted own-data view applies to a CITYLIFE_PLAYER...
     mockFetchOk(fakeJwtWithRoles(["CITYLIFE_PLAYER"]));
     const player = new AuthClient();
     await player.login("player@test.com", "pw");
-    expect(player.operator?.roles).toContain("CITYLIFE_PLAYER");
     expect(player.isCityLifePlayer).toBe(true);
 
-    // An admin who also holds the player role keeps the full whole-colony view (not restricted).
-    mockFetchOk(fakeJwtWithRoles(["CITYLIFE_PLAYER", "ADMIN"]));
-    const admin = new AuthClient();
-    await admin.login("admin@test.com", "pw");
-    expect(admin.isCityLifePlayer).toBe(false);
+    // ...to an activated CITYLIFE_VISITOR (the bug: a visitor was loading as admin + FP on anyone)...
+    mockFetchOk(fakeJwtWithRoles(["CITYLIFE_VISITOR"]));
+    const visitor = new AuthClient();
+    await visitor.login("visitor@test.com", "pw");
+    expect(visitor.isCityLifePlayer).toBe(true);
 
-    // A plain operator with no player role is not restricted either.
+    // ...to a plain KOOKER_USER, and to an empty/unrecognised role set (fail closed).
     mockFetchOk(fakeJwtWithRoles(["KOOKER_USER"]));
-    const op = new AuthClient();
-    await op.login("op@test.com", "pw");
-    expect(op.isCityLifePlayer).toBe(false);
+    const basic = new AuthClient();
+    await basic.login("basic@test.com", "pw");
+    expect(basic.isCityLifePlayer).toBe(true);
+
+    mockFetchOk(fakeJwtWithRoles([]));
+    const none = new AuthClient();
+    await none.login("none@test.com", "pw");
+    expect(none.isCityLifePlayer).toBe(true);
+
+    // ONLY operator/admin roles keep the full whole-colony view.
+    for (const role of ["ADMIN", "KOOKER_ADMIN", "CITYLIFE_ADMIN"]) {
+      mockFetchOk(fakeJwtWithRoles([role]));
+      const op = new AuthClient();
+      await op.login("op@test.com", "pw");
+      expect(op.isCityLifePlayer).toBe(false);
+    }
+
+    // An operator who also holds CITYLIFE_PLAYER still keeps the full view.
+    mockFetchOk(fakeJwtWithRoles(["CITYLIFE_PLAYER", "ADMIN"]));
+    const adminPlayer = new AuthClient();
+    await adminPlayer.login("admin@test.com", "pw");
+    expect(adminPlayer.isCityLifePlayer).toBe(false);
   });
 
   it("rejects an empty password before hitting the network", async () => {
