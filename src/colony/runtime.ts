@@ -1,12 +1,7 @@
 // Browser runtime for the colony: fixed-timestep sim loop + planet renderer + camera presets.
 import { COLONY } from "./config";
 import { ColonySim } from "./sim";
-import {
-  PlanetRenderer,
-  type CameraPreset,
-  type ViewMode,
-  type AvatarView,
-} from "./render/R3FPlanetRenderer";
+import { PlanetRenderer, type CameraPreset, type ViewMode, type AvatarView } from "./render/R3FPlanetRenderer";
 import { Biome } from "./terrain";
 import {
   autoGrow,
