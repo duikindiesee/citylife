@@ -28,12 +28,18 @@ export interface RoadRibbonOptions {
  *  surface (not the bare terrain) when they're on a road cell — else they sink under the raised ribbon. */
 export const ROAD_RIBBON_LIFT = 0.18;
 
-function roadSurfaceCellOk(opts: RoadRibbonOptions, x: number, y: number): boolean {
+function roadSurfaceCellOk(
+  opts: RoadRibbonOptions,
+  x: number,
+  y: number,
+): boolean {
   const gx = Math.round(x),
     gy = Math.round(y);
   if (!opts.terrain.inBounds(gx, gy)) return false;
   const i = opts.terrain.idx(gx, gy);
-  return opts.terrain.biome[i] !== Biome.Ocean && opts.terrain.buildable[i] !== 0;
+  return (
+    opts.terrain.biome[i] !== Biome.Ocean && opts.terrain.buildable[i] !== 0
+  );
 }
 
 function roadCrossSectionOk(
