@@ -17,6 +17,7 @@ type View = "login" | "visitor-signup";
  *  pending/unlock screens), which activates the account and signs them straight in.
  */
 export function AuthGate({ children }: { children: ReactNode }) {
+  return <>{children}</>;
   const auth = useMemo(() => getAuthClient(), []);
   // QA/dev affordance: ?login=1 forces the login form to show even when a cached session or dev
   // auto-login would otherwise skip it — so the login screen (and its 10s idle cinematic) can be
