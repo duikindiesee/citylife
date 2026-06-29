@@ -1,7 +1,12 @@
 // Spec 112 slice 3 — player-facing roadmap data for the KOOKER beacon HUD.
 // This stays pure and deterministic so the HUD, tests, and bot controls all read the same roadmap.
 
-export type RoadmapPhase = "shipped" | "merging" | "next" | "later" | "parallel";
+export type RoadmapPhase =
+  | "shipped"
+  | "merging"
+  | "next"
+  | "later"
+  | "parallel";
 
 export interface RoadmapItem {
   id: string;
@@ -121,10 +126,15 @@ export function roadmapGroups(): RoadmapGroup[] {
   });
 }
 
-export function isKookerBeaconPrompt(prompt: {
-  label: string;
-  targetName?: string;
-} | null | undefined): boolean {
+export function isKookerBeaconPrompt(
+  prompt:
+    | {
+        label: string;
+        targetName?: string;
+      }
+    | null
+    | undefined,
+): boolean {
   if (!prompt) return false;
   const text = `${prompt.label} ${prompt.targetName ?? ""}`.toUpperCase();
   return text.includes("KOOKER");

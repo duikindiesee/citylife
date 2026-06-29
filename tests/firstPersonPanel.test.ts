@@ -280,7 +280,9 @@ describe("FirstPersonPanel immersive HUD", () => {
     );
 
     expect(html).toContain('data-roadmap-action="open-from-kooker-beacon"');
-    expect(html).toContain('aria-label="Open CityLife roadmap from KOOKER beacon"');
+    expect(html).toContain(
+      'aria-label="Open CityLife roadmap from KOOKER beacon"',
+    );
     expect(html).toContain("Roadmap");
   });
 
