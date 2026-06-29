@@ -3,6 +3,7 @@
 // edge movement joystick, and a small action cluster instead of a blocking report panel.
 import { useState } from "react";
 import { isPublicSafe } from "../newcomers";
+import { isKookerBeaconPrompt } from "../roadmap";
 import type { ColonyRuntime } from "../runtime";
 import type { ColonyUiState } from "../runtime";
 
@@ -84,9 +85,11 @@ function guidanceCaption(fp: ColonyUiState["firstPerson"]): string {
 export function FirstPersonPanel({
   runtime,
   fp,
+  onOpenRoadmap,
 }: {
   runtime: ColonyRuntime;
   fp: ColonyUiState["firstPerson"];
+  onOpenRoadmap?: () => void;
 }) {
   const [showDebug, setShowDebug] = useState(false);
   if (!fp.active || !fp.citizenId) return null;
@@ -95,6 +98,7 @@ export function FirstPersonPanel({
   const targetLabel = destinationLabel(fp);
   const targetDistance = destinationDistance(fp);
   const warning = moodWarning(v);
+  const kookerBeaconPrompt = isKookerBeaconPrompt(v?.interactionPrompt);
 
   return (
     <div className="first-person-panel first-person-panel--edge-hud">
@@ -182,6 +186,17 @@ export function FirstPersonPanel({
           </button>
         ) : (
           <div className="first-person-panel__no-action">No nearby action</div>
+        )}
+        {kookerBeaconPrompt && onOpenRoadmap && (
+          <button
+            className="first-person-panel__roadmap-button"
+            data-roadmap-action="open-from-kooker-beacon"
+            aria-label="Open CityLife roadmap from KOOKER beacon"
+            title="Open the phase-grouped CityLife roadmap"
+            onClick={onOpenRoadmap}
+          >
+            🧭 Roadmap
+          </button>
         )}
         {v && (
           <button
