@@ -33,26 +33,23 @@ export function R3FRoadNetwork({ sim }: R3FRoadNetworkProps) {
     const terrainSize = terrain.size;
     
     const getRotation = (mask: number): [number, number, number] => {
-      // Rotation around Y axis (which is Z in R3F when lying flat on X,Z)
-      // Because we rotate the plane -PI/2 on X, the Y rotation becomes Z rotation.
-      
       switch (mask) {
         // Straights
-        case RoadMask.StraightH: return [-Math.PI / 2, 0, Math.PI / 2];
-        case RoadMask.StraightV: return [-Math.PI / 2, 0, 0];
+        case RoadMask.StraightH: return [0, Math.PI / 2, 0];
+        case RoadMask.StraightV: return [0, 0, 0];
         // Corners
-        case RoadMask.CornerNE: return [-Math.PI / 2, 0, 0];
-        case RoadMask.CornerES: return [-Math.PI / 2, 0, -Math.PI / 2];
-        case RoadMask.CornerSW: return [-Math.PI / 2, 0, Math.PI];
-        case RoadMask.CornerNW: return [-Math.PI / 2, 0, Math.PI / 2];
+        case RoadMask.CornerNE: return [0, 0, 0];
+        case RoadMask.CornerES: return [0, -Math.PI / 2, 0];
+        case RoadMask.CornerSW: return [0, Math.PI, 0];
+        case RoadMask.CornerNW: return [0, Math.PI / 2, 0];
         // T-junctions
-        case RoadMask.T_N: return [-Math.PI / 2, 0, 0];
-        case RoadMask.T_E: return [-Math.PI / 2, 0, -Math.PI / 2];
-        case RoadMask.T_S: return [-Math.PI / 2, 0, Math.PI];
-        case RoadMask.T_W: return [-Math.PI / 2, 0, Math.PI / 2];
+        case RoadMask.T_N: return [0, 0, 0];
+        case RoadMask.T_E: return [0, -Math.PI / 2, 0];
+        case RoadMask.T_S: return [0, Math.PI, 0];
+        case RoadMask.T_W: return [0, Math.PI / 2, 0];
         // Cross
-        case RoadMask.Cross: return [-Math.PI / 2, 0, 0];
-        default: return [-Math.PI / 2, 0, 0]; // dead end or isolated
+        case RoadMask.Cross: return [0, 0, 0];
+        default: return [0, 0, 0]; // dead end or isolated
       }
     };
 
