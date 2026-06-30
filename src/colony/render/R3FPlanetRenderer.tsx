@@ -35,6 +35,7 @@ import { R3FRoadBuilder } from './R3FRoadBuilder';
 import { R3FRoadNetwork } from './R3FRoadNetwork';
 import { useTerrainLeveling } from './useTerrainLeveling';
 import { useRoadNetwork } from '../stores/useRoadNetwork';
+import { COLONY } from '../config';
 import { Html, MapControls } from '@react-three/drei';
 import { useThree, useFrame } from '@react-three/fiber';
 
@@ -228,6 +229,34 @@ function AerialCameraController() {
 
 
 
+function findDrySpawn(terrain: any) {
+  const N = terrain.size;
+  const cx = terrain.landing.x;
+  const cz = terrain.landing.y;
+  
+  const isLand = (x: number, y: number) => {
+    const i = y * N + x;
+    return terrain.elev[i] >= COLONY.world.seaLevel && !terrain.water[i];
+  };
+  
+  for (let r = 0; r < N; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const x = Math.round(cx + dx);
+        const y = Math.round(cz + dy);
+        if (x < 0 || y < 0 || x >= N || y >= N) continue;
+        if (isLand(x, y)) {
+          const wx = (x - N/2) * 4;
+          const wz = (y - N/2) * 4;
+          return [wx, terrain.worldY(x, y) + 2, wz] as [number, number, number];
+        }
+      }
+    }
+  }
+  return [0, COLONY.world.seaLevel * COLONY.world.heightScale + 2, 0] as [number, number, number];
+}
+
 function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
   const terrainSize = sim.state.terrain.size;
   
@@ -248,6 +277,19 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
       setDebouncedTerrainLevel(terrainLevel);
     }
   }, [isDrawing, builderMode, terrainLevel]);
+
+  const startPos = useMemo(() => {
+    const n = (sim.state as any).neighborhood;
+    const lot = n?.lots?.find((l: any) => l.id === 'starter-plot');
+    if (lot) {
+      const size = sim.state.terrain.size;
+      const wx = (lot.doorX - size / 2) * 4;
+      const wz = (lot.doorY - size / 2) * 4;
+      const wy = sim.state.terrain.worldY(Math.round(lot.doorX), Math.round(lot.doorY));
+      return [wx, wy + 2, wz] as [number, number, number];
+    }
+    return findDrySpawn(sim.state.terrain);
+  }, [sim.state.terrain, (sim.state as any).neighborhood]);
 
   return (
     <>
@@ -272,7 +314,7 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
         {useRoadNetwork(state => state.builderActive || state.worldViewActive) ? (
           <AerialCameraController />
         ) : (
-          <FirstPersonController startPosition={[0, 1.8, 0]} />
+          <FirstPersonController startPosition={startPos} />
         )}
       </Physics>
 
