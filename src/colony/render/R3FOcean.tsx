@@ -1,62 +1,60 @@
-import React, { useEffect, useMemo } from "react";
-import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
-import { BIOME_COLOR, Biome } from "../terrain";
-import {
-  patchOceanShader,
-  OCEAN_TIME_SCALE,
-  OCEAN_TIME_UNIFORM,
-  type PatchableShader,
-} from "./oceanWaves";
+import React, { useRef, useMemo } from 'react';
+import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
+import { BIOME_COLOR, Biome } from '../terrain';
 
 interface R3FOceanProps {
   size: number;
 }
 
 export function R3FOcean({ size }: R3FOceanProps) {
-  const geometry = useMemo(
+  const meshRef = useRef<THREE.Mesh>(null);
+  
+  const { geometry, base } = useMemo(() => {
+    const geo = new THREE.RingGeometry(0.5, size * 0.99, 120, 30);
+    const pos = geo.getAttribute('position');
+    const b = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i++) {
+      b[i * 2] = pos.getX(i);
+      b[i * 2 + 1] = pos.getY(i);
+    }
     // RingGeometry creates in X,Y so we must rotate the mesh to lie flat in X,Z
-    () => new THREE.RingGeometry(0.5, size * 0.99, 120, 30),
-    [size],
-  );
-  // Spec 119 — dispose the superseded ring when size changes, and on unmount.
-  useEffect(() => () => geometry.dispose(), [geometry]);
-
-  // Spec 116 — the waves live on the GPU. The vertex shader displaces the ring and derives
-  // lit normals from the wave slopes (patchOceanShader); the frame loop below only advances
-  // one uniform. The old path iterated ~3,750 vertices on the CPU every frame.
-  const material = useMemo(() => {
-    const mat = new THREE.MeshStandardMaterial({
-      color: BIOME_COLOR[Biome.Ocean],
-      roughness: 0.7,
-      metalness: 0.0,
-      flatShading: false,
-    });
-    mat.onBeforeCompile = (shader) => {
-      patchOceanShader(shader);
-      // Same idiom as R3FFoliage: park the shader on the material so useFrame can reach it
-      mat.userData.shader = shader;
-    };
-    return mat;
-  }, []);
-  // Spec 119 — free the patched shader program on unmount.
-  useEffect(() => () => material.dispose(), [material]);
+    return { geometry: geo, base: b };
+  }, [size]);
 
   useFrame((state) => {
-    const shader = material.userData.shader as PatchableShader | undefined;
-    if (shader) {
-      shader.uniforms[OCEAN_TIME_UNIFORM].value =
-        state.clock.elapsedTime * OCEAN_TIME_SCALE;
+    if (!meshRef.current) return;
+    const geo = meshRef.current.geometry;
+    const pos = geo.getAttribute('position');
+    const t = state.clock.elapsedTime * 0.5; // slow down slightly for calm swells
+    
+    for (let i = 0; i < pos.count; i++) {
+      const x = base[i * 2];
+      const y = base[i * 2 + 1];
+      const z =
+        Math.sin(x * 0.05 + t * 0.85) * 0.18 +
+        Math.sin(y * 0.063 - t * 0.7) * 0.14 +
+        Math.sin((x + y) * 0.028 + t * 1.25) * 0.09;
+      pos.setZ(i, z);
     }
+    pos.needsUpdate = true;
+    // Removed computeVertexNormals() - it's too slow for CPU each frame!
   });
 
   return (
-    <mesh
-      geometry={geometry}
-      material={material}
-      rotation={[-Math.PI / 2, 0, 0]}
-      position={[0, 0.15, 0]}
+    <mesh 
+      ref={meshRef} 
+      geometry={geometry} 
+      rotation={[-Math.PI / 2, 0, 0]} 
+      position={[0, 0.15, 0]} 
       receiveShadow
-    />
+    >
+      <meshStandardMaterial 
+        color={BIOME_COLOR[Biome.Ocean]}
+        roughness={0.7}
+        metalness={0.0}
+        flatShading={false}
+      />
+    </mesh>
   );
 }

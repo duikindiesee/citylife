@@ -1,17 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
-import * as THREE from "three";
-import { RigidBody, HeightfieldCollider } from "@react-three/rapier";
-import type { ColonySim } from "../sim";
-import { buildChunkedTerrain } from "./terrainChunks";
-import {
-  computeColliderHeights,
-  colliderScale,
-  COLLIDER_CENTER,
-} from "./terrainCollider";
-import { disposeDeep } from "./disposeDeep";
-import { Biome, BIOME_COLOR } from "../terrain";
-import { COLONY } from "../config";
-import { useRoadNetwork } from "../stores/useRoadNetwork";
+import React, { useMemo } from 'react';
+import * as THREE from 'three';
+import { RigidBody, HeightfieldCollider } from '@react-three/rapier';
+import type { ColonySim } from '../sim';
+import { buildChunkedTerrain } from './terrainChunks';
+import { Biome, BIOME_COLOR } from '../terrain';
+import { COLONY } from '../config';
 
 interface R3FTerrainProps {
   sim: ColonySim;
@@ -34,7 +27,7 @@ export function R3FTerrain({ sim, terrainLevel }: R3FTerrainProps) {
 
     const leveledTerrain = new Proxy(t, {
       get(target, prop, receiver) {
-        if (prop === "worldY") {
+        if (prop === 'worldY') {
           return (x: number, y: number) => {
             if (terrainLevel) {
               const idx = Math.round(y) * target.size + Math.round(x);
@@ -45,8 +38,8 @@ export function R3FTerrain({ sim, terrainLevel }: R3FTerrainProps) {
           };
         }
         const value = Reflect.get(target, prop, receiver);
-        return typeof value === "function" ? value.bind(target) : value;
-      },
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
     });
 
     const chunked = buildChunkedTerrain(
@@ -61,12 +54,10 @@ export function R3FTerrain({ sim, terrainLevel }: R3FTerrainProps) {
         if (terrainLevel && terrainLevel.has(i)) {
           const newY = terrainLevel.get(i)!;
           if (newY > 0.2) {
-            if (b === Biome.Ocean || b === Biome.Shallows || b === Biome.River)
-              b = Biome.Beach;
+            if (b === Biome.Ocean || b === Biome.Shallows || b === Biome.River) b = Biome.Beach;
             isAboveWater = true;
           } else if (newY <= 0.2) {
-            if (b === Biome.Beach || b === Biome.Plains || b === Biome.Forest)
-              b = Biome.Shallows;
+            if (b === Biome.Beach || b === Biome.Plains || b === Biome.Forest) b = Biome.Shallows;
             isAboveWater = false;
           }
         }
@@ -79,48 +70,31 @@ export function R3FTerrain({ sim, terrainLevel }: R3FTerrainProps) {
         }
       },
       terrainMat,
-      8,
+      8
     );
 
     return chunked.group;
   }, [sim, terrainLevel]);
 
-  // Spec 119 — the chunked terrain (370k+ vertices plus its material) is rebuilt wholesale
-  // on every terraform/leveling change; dispose the superseded tree or every rebuild leaks
-  // its GPU buffers. Runs when a new group replaces the old, and on unmount.
-  useEffect(() => () => disposeDeep(terrainGroup), [terrainGroup]);
-
-  // The heightfield COLLIDER only matters to the first-person walker, which is off while the
-  // builder or world view drives the aerial camera. Placing a plot changes terrainLevel and
-  // used to rebuild the 607×607 collider (a 369,664-float fill + Array.from boxing + a full
-  // Rapier rebuild) on EVERY placement — the "slow to place a plot" hitch. Freeze the collider
-  // source while editing; it recommits once when the builder closes.
-  const editing = useRoadNetwork((s) => s.builderActive || s.worldViewActive);
-  // Column-major fill + exact mesh-matched sizing — see terrainCollider.ts for the rapier
-  // layout contract (the old inline row-major fill mirrored the island across the diagonal).
-  const computeHeights = () =>
-    computeColliderHeights(sim.state.terrain, terrainLevel);
-  const [colliderHeights, setColliderHeights] =
-    useState<Float32Array>(computeHeights);
-  useEffect(() => {
-    if (editing) return; // frozen while building — recomputed when the builder closes
-    setColliderHeights(computeHeights());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sim, terrainLevel, editing]);
+  const heights = useMemo(() => {
+    const t = sim.state.terrain;
+    const N = t.size;
+    const h = new Float32Array(N * N);
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const idx = y * N + x;
+        h[x + y * N] = terrainLevel?.get(idx) ?? t.worldY(x, y);
+      }
+    }
+    return h;
+  }, [sim, terrainLevel]);
 
   const N = sim.state.terrain.size;
-  // Memoize the boxed args: a fresh Array.from on every render would rebuild the Rapier
-  // collider whenever anything re-renders R3FWorld (builder toggles, road edits, ...).
-  const colliderArgs = useMemo(
-    () =>
-      [N - 1, N - 1, Array.from(colliderHeights), colliderScale(N)] as const,
-    [colliderHeights, N],
-  );
   return (
     <group>
       <primitive object={terrainGroup} />
-      <RigidBody type="fixed" colliders={false} position={COLLIDER_CENTER}>
-        <HeightfieldCollider args={colliderArgs as any} />
+      <RigidBody type="fixed" colliders={false}>
+        <HeightfieldCollider args={[N - 1, N - 1, Array.from(heights), { x: N * 4, y: 1, z: N * 4 }]} />
       </RigidBody>
     </group>
   );

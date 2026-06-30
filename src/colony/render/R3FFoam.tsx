@@ -1,8 +1,8 @@
-import React, { useEffect, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
-import * as THREE from "three";
-import { buildFoam, FoamLayer } from "./foamLayer";
-import { ColonySim } from "../sim";
+import React, { useEffect, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
+import { buildFoam, FoamLayer } from './foamLayer';
+import { ColonySim } from '../sim';
 
 export function R3FFoam({ sim }: { sim: ColonySim }) {
   const groupRef = useRef<THREE.Group>(null);
@@ -10,7 +10,7 @@ export function R3FFoam({ sim }: { sim: ColonySim }) {
 
   useEffect(() => {
     if (!groupRef.current) return;
-
+    
     const N = sim.state.terrain.size;
     const wx = (x: number) => (x - N / 2) * 4;
     const wz = (y: number) => (y - N / 2) * 4;

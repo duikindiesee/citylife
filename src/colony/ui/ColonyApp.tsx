@@ -46,9 +46,8 @@ import { RaceMobileControls } from "./RaceMobileControls";
 import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
 import { BuilderPanel } from "./BuilderPanel";
-import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
 import "./colony.css";
-import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
+import { useRoadNetwork } from "../stores/useRoadNetwork";
 
 // Spec 089 — the CityLife HUD shows only the city-relevant stats (citizens, homesteads, the bank, the
 // commercial district, the border). The old colony-sim survival/economy dashboard (water/food/health/
@@ -891,27 +890,22 @@ export function ColonyApp() {
       />
       <RoadmapPanel open={roadmapOpen} onClose={() => setRoadmapOpen(false)} />
       {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
-      {!ui.firstPerson.active &&
-        !builderActive &&
-        !worldViewActive &&
-        rallyRead && (
-          <div
-            className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
-            aria-label="Who is here at the rally"
-          >
-            <span className="rally-social-read__eyebrow">
-              {rallyRead.title}
-            </span>
-            <b>{rallyRead.summary}</b>
-            <span className="rally-social-read__status">
-              {ui.rally?.ready
-                ? "Friend present · race ready"
-                : ui.rally && ui.rally.present > 0
-                  ? "Waiting for a friend"
-                  : "Rally point empty"}
-            </span>
-          </div>
-        )}
+      {(!builderActive && !worldViewActive && rallyRead) && (
+        <div
+          className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
+          aria-label="Who is here at the rally"
+        >
+          <span className="rally-social-read__eyebrow">{rallyRead.title}</span>
+          <b>{rallyRead.summary}</b>
+          <span className="rally-social-read__status">
+            {ui.rally?.ready
+              ? "Friend present · race ready"
+              : ui.rally && ui.rally.present > 0
+                ? "Waiting for a friend"
+                : "Rally point empty"}
+          </span>
+        </div>
+      )}
       {ui.race.mode !== "idle" && (
         <div
           style={{
@@ -1040,7 +1034,7 @@ export function ColonyApp() {
             📷
           </button>
         </div>
-        <BuilderPanel runtime={runtime} sim={runtime.sim} />
+        <BuilderPanel />
         <div className="group">
           <a
             className="linkbtn"
@@ -1060,57 +1054,104 @@ export function ColonyApp() {
           </button>
         </div>
       </header>
-      <BusNetworkMiniMap runtime={runtime} />
-      {!builderActive && !worldViewActive && (
+      {(!builderActive && !worldViewActive) && (
         <aside
           className={hudClassName(ui.firstPerson.active)}
           data-hud-expanded={rightHudOpen ? "true" : "false"}
         >
           <div className="hud-essentials" aria-label="City HUD essentials">
             <h2>{ui.name}</h2>
-            <button
-              className="hud-detail-toggle"
-              type="button"
-              aria-expanded={rightHudOpen}
-              onClick={() => setRightHudOpen((open) => !open)}
-              title={
-                rightHudOpen ? rightHud.collapseLabel : rightHud.expandLabel
-              }
-            >
-              {rightHudOpen ? "▴ Hide details" : "▾ HUD details"}
-            </button>
+          <button
+            className="hud-detail-toggle"
+            type="button"
+            aria-expanded={rightHudOpen}
+            onClick={() => setRightHudOpen((open) => !open)}
+            title={rightHudOpen ? rightHud.collapseLabel : rightHud.expandLabel}
+          >
+            {rightHudOpen ? "▴ Hide details" : "▾ HUD details"}
+          </button>
+        </div>
+        {ui.courier.on && ui.courier.headline && (
+          <div
+            className="courier-ticker"
+            title="The Kookerverse Courier — the colony's own news, from the Broadcast Mast"
+            style={{
+              fontSize: 12,
+              color: "#6fd0ff",
+              fontStyle: "italic",
+              lineHeight: 1.35,
+              margin: "2px 0 10px",
+              borderLeft: "2px solid #6fd0ff",
+              paddingLeft: 8,
+            }}
+          >
+            📻 {ui.courier.headline}
           </div>
-          {ui.courier.on && ui.courier.headline && (
-            <div
-              className="courier-ticker"
-              title="The Kookerverse Courier — the colony's own news, from the Broadcast Mast"
-              style={{
-                fontSize: 12,
-                color: "#6fd0ff",
-                fontStyle: "italic",
-                lineHeight: 1.35,
-                margin: "2px 0 10px",
-                borderLeft: "2px solid #6fd0ff",
-                paddingLeft: 8,
-              }}
-            >
-              📻 {ui.courier.headline}
-            </div>
-          )}
-          <div className="hud-detail-stack" hidden={!rightHudOpen}>
-            <div className="row">
-              <span>Site</span>
-              <b>{ui.biome}</b>
-            </div>
-            <div className="row">
-              <span>Colonists</span>
-              <b>
-                {ui.colonists} / {ui.colony.capacity}
-              </b>
-            </div>
-            {/* Spec 089 — the old colony-sim survival/economy dashboard is hidden in the CityLife HUD. */}
-            {OLD_WORLD_STATS && (
-              <>
+        )}
+        <div className="hud-detail-stack" hidden={!rightHudOpen}>
+          <div className="row">
+            <span>Site</span>
+            <b>{ui.biome}</b>
+          </div>
+          <div className="row">
+            <span>Colonists</span>
+            <b>
+              {ui.colonists} / {ui.colony.capacity}
+            </b>
+          </div>
+          {/* Spec 089 — the old colony-sim survival/economy dashboard is hidden in the CityLife HUD. */}
+          {OLD_WORLD_STATS && (
+            <>
+              <div className="row">
+                <span>Homes watered</span>
+                <b
+                  style={{
+                    color: ui.colony.watered < 60 ? "#e6c84d" : undefined,
+                  }}
+                >
+                  {ui.colony.watered}%
+                </b>
+              </div>
+              <div className="row">
+                <span>Homes fed</span>
+                <b
+                  style={{
+                    color: ui.colony.provisioned < 60 ? "#e6c84d" : undefined,
+                  }}
+                >
+                  {ui.colony.provisioned}%
+                </b>
+              </div>
+              <div className="row">
+                <span>Homes healthy</span>
+                <b
+                  style={{
+                    color: ui.colony.health < 60 ? "#e6c84d" : undefined,
+                  }}
+                >
+                  {ui.colony.health}%
+                </b>
+              </div>
+              <div className="row">
+                <span>Homes cultured</span>
+                <b
+                  style={{
+                    color:
+                      ui.colony.culture < 40 || !ui.colony.cultureFuelled
+                        ? "#e6c84d"
+                        : undefined,
+                  }}
+                  title={
+                    !ui.colony.cultureFuelled
+                      ? "Theatres are out of reels — culture pull halved"
+                      : undefined
+                  }
+                >
+                  {ui.colony.culture}%
+                  {!ui.colony.cultureFuelled ? " · reels out" : ""}
+                </b>
+              </div>
+              {ui.colony.housewares > 0 && (
                 <div className="row">
                   <span>Homes watered</span>
                   <b
@@ -3118,11 +3159,92 @@ export function ColonyApp() {
                         </div>
                       );
                     })()}
-                  </div>
-                );
-              })()}
-          </div>
-        </aside>
+                  {/* Marketplace (spec 088 Slice F UI) — the public board: browse listings, buy your own
+                    copy from the studio, and unlist your own. Listing is the "list ⊕" button per stack. */}
+                  {(() => {
+                    const listings = runtime.marketListings();
+                    if (listings.length === 0) return null;
+                    const nameOf = (cid: string) =>
+                      furnitureMarketplaceSellerLabel({
+                        sellerCitizenId: cid,
+                        viewerCitizenId: me,
+                        sellerDisplayName: ui.citizens.list.find(
+                          (x) => x.id === cid,
+                        )?.displayName,
+                        playerScoped: ui.bank.scope === "player",
+                      });
+                    return (
+                      <div
+                        data-build-area="furniture-market"
+                        style={{
+                          borderTop: "1px solid var(--brd)",
+                          marginTop: 10,
+                          paddingTop: 8,
+                        }}
+                      >
+                        <div className="row" style={{ opacity: 0.7 }}>
+                          <span>🏷️ Marketplace</span>
+                          <b>{listings.length} listed</b>
+                        </div>
+                        {listings.map((l) => (
+                          <div
+                            className="row"
+                            key={l.id}
+                            data-build-area={`listing-${l.id}`}
+                          >
+                            <span>
+                              {FURNITURE_CATALOG[l.kind].icon} {l.name}{" "}
+                              <small style={{ opacity: 0.55 }}>
+                                · {nameOf(l.sellerCitizenId)}
+                              </small>
+                            </span>
+                            <span
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                              }}
+                            >
+                              <b>
+                                {ui.bank.currency}
+                                {l.price}
+                              </b>
+                              <button
+                                className="furn-place"
+                                data-build-action={`buy-listing-${l.id}`}
+                                disabled={wallet < l.price}
+                                title={
+                                  wallet < l.price
+                                    ? "Not enough city coin"
+                                    : "Buy your own copy from the studio"
+                                }
+                                onClick={() => runtime.buyFromMarket(me, l.id)}
+                              >
+                                buy
+                              </button>
+                              {l.sellerCitizenId === me && (
+                                <button
+                                  className="furn-place"
+                                  data-build-action={`unlist-${l.id}`}
+                                  title="Remove your listing"
+                                  onClick={() =>
+                                    runtime.unlistFurniture(me, l.id)
+                                  }
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+        </div>
+      </aside>
       )}
 
       <RadioPanel runtime={runtime} radio={ui.radio} tv={ui.tv} />

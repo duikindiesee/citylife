@@ -4667,7 +4667,6 @@ export class ColonyRuntime {
     this.wanderIdleCitizens(dtReal); // keep the citizens strolling so watch mode is never frozen
     this.tickAutoZoningSettlers(dtReal);
     this.raceTick(dtReal);
-    this.transitTick(dtReal); // spec 149 — the bus fleet rides the sim clock
     this.renderer?.frame(dtReal);
     if (now - this.lastUi > 200) {
       this.lastUi = now;

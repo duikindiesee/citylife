@@ -7,7 +7,7 @@ describe("terrainChunks", () => {
     const size = 17; // 16 cells across
     const terrain = {
       size,
-      worldY: (x: number, y: number) => 0,
+      worldY: (x: number, y: number) => 0
     } as any;
 
     const wx = (x: number) => x;
@@ -20,7 +20,7 @@ describe("terrainChunks", () => {
 
     expect(chunked.chunks.length).toBe(4);
     expect(chunked.group.children.length).toBe(4);
-
+    
     // Each chunk should cover an 8x8 cell area (9x9 vertices)
     const firstChunk = chunked.chunks[0];
     expect(firstChunk.x0).toBe(0);

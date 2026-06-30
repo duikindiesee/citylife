@@ -1,7 +1,8 @@
 import React, { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { RigidBody, RapierRigidBody } from '@react-three/rapier';
+import { RigidBody, RapierRigidBody, CapsuleCollider } from '@react-three/rapier';
 import { Vector3, Euler, Quaternion } from 'three';
+import { COLONY } from '../../colony/config';
 
 const MOVEMENT_SPEED = 10;
 const LOOK_SPEED = 2;
@@ -45,8 +46,11 @@ export function FirstPersonController({ startPosition = [0, 2, 0] }: { startPosi
       }
     };
 
-    const handleClick = () => {
-      document.body.requestPointerLock();
+    const handleClick = (e: MouseEvent) => {
+      // Only lock pointer if clicking directly on the 3D canvas, not UI elements!
+      if (e.target instanceof HTMLCanvasElement) {
+        document.body.requestPointerLock();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -101,32 +105,43 @@ export function FirstPersonController({ startPosition = [0, 2, 0] }: { startPosi
 
     // Apply rotation to movement vector
     movement.applyEuler(new Euler(0, rotation.current.y, 0));
-    movement.multiplyScalar(MOVEMENT_SPEED * delta);
+    movement.multiplyScalar(MOVEMENT_SPEED); // Velocity, so no delta
 
     // Apply movement to physics body
-    const pos = rigidBody.current.translation();
+    const currentVel = rigidBody.current.linvel();
     
-    // We use a kinematic position body, so we manually update its position based on collisions
-    // Wait, dynamic body is better for sliding against walls, but let's use kinematicPosition for simple WASD
-    rigidBody.current.setTranslation({
-      x: pos.x + movement.x,
-      y: pos.y, // simple lock to height
-      z: pos.z + movement.z
+    // We use a dynamic body so gravity and terrain collisions work automatically!
+    rigidBody.current.setLinvel({
+      x: movement.x,
+      y: currentVel.y, // preserve gravity/jumping
+      z: movement.z
     }, true);
 
     // Sync Camera
-    camera.position.set(pos.x, pos.y + 1.6, pos.z); // 1.6m eye height
+    const pos = rigidBody.current.translation();
+    const minHeight = COLONY.world.seaLevel * COLONY.world.heightScale + 1.6;
+    const camY = Math.max(minHeight, pos.y + 1.6);
+    camera.position.set(pos.x, camY, pos.z); // 1.6m eye height, clamped above sea level
     camera.quaternion.setFromEuler(rotation.current);
   });
+
+  const safeSpawn = [
+    startPosition[0],
+    Math.max(startPosition[1], COLONY.world.seaLevel * COLONY.world.heightScale + 2),
+    startPosition[2]
+  ] as [number, number, number];
 
   return (
     <RigidBody
       ref={rigidBody}
-      type="kinematicPosition"
-      colliders="hull"
-      position={startPosition}
+      type="dynamic"
+      colliders={false}
+      position={safeSpawn}
       enabledRotations={[false, false, false]}
+      mass={1}
+      friction={0}
     >
+      <CapsuleCollider args={[0.5, 1]} />
       <mesh visible={false}>
         <capsuleGeometry args={[0.5, 1, 4]} />
         <meshBasicMaterial color="red" wireframe />

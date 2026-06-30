@@ -1,70 +1,88 @@
-import React, { useMemo } from "react";
-import * as THREE from "three";
-import { useRoadNetwork } from "../stores/useRoadNetwork";
-import { getSmoothRoadY } from "./roadSurface";
-import type { ColonySim } from "../sim";
-
-// Spec 127 — this component used to draw the committed road surface as one bordered box PER
-// CELL, plus per-cell junction decorations detected off tile-neighbour counts. The road cell
-// data is a deliberately ~3-cell-wide carriageway, so that rendered every road as 2-3 parallel
-// bordered strips (the operator's "laid triple and double") and, because nearly every interior
-// cell of a wide road has 3-4 neighbours, hung "junction" furniture on thousands of cells —
-// together ~100k scene nodes and the single biggest frame cost (7 FPS measured). The surface
-// now renders as the smooth centre-line ribbon (R3FRoadRibbons, the legacy spec 088 path) and
-// junctions come from the road WAYS (roadJunctions.ts). What remains here is the one per-cell
-// feature the ribbon genuinely can't produce: the cul-de-sac turnaround bulbs. The road
-// trimesh collider is gone too — nothing collides road meshes (first-person, the car and the
-// race all ride terrain.worldY / getSmoothRoadY).
+import React, { useMemo } from 'react';
+import * as THREE from 'three';
+import { useRoadNetwork, RoadMask } from '../stores/useRoadNetwork';
+import type { ColonySim } from '../sim';
 
 interface R3FRoadNetworkProps {
   sim: ColonySim;
-  runtime?: any;
 }
 
 export function R3FRoadNetwork({ sim }: R3FRoadNetworkProps) {
-  const tiles = useRoadNetwork((state) => state.tiles);
+  const tiles = useRoadNetwork(state => state.tiles);
+  
+  // We use useMemo to rebuild the InstancedMeshes when the road tiles change.
+  // In a massive city, we'd use InstancedMesh for each type of road segment.
+  const { straightGeo, cornerGeo, crossGeo, tGeo, material } = useMemo(() => {
+    const mat = new THREE.MeshStandardMaterial({
+      color: '#333333',
+      roughness: 0.9,
+      metalness: 0.1,
+    });
+    
+    const straight = new THREE.BoxGeometry(4, 0.4, 4);
+    const corner = new THREE.BoxGeometry(4, 0.4, 4);
+    const cross = new THREE.BoxGeometry(4, 0.4, 4);
+    const t = new THREE.BoxGeometry(4, 0.4, 4);
+    
+    return { straightGeo: straight, cornerGeo: corner, crossGeo: cross, tGeo: t, material: mat };
+  }, []);
 
-  const culDeSacs = useMemo(() => {
+  const roadMeshes = useMemo(() => {
     const elements = [];
     const terrain = sim.state.terrain;
-    const N = terrain.size;
-
-    const keys = Object.keys(tiles);
-
-    for (const k of keys) {
-      const tile = tiles[k];
-      if (tile.type === "culdesac") {
-        const wX = (tile.x - N / 2) * 4;
-        const wZ = (tile.y - N / 2) * 4;
-        const wY = getSmoothRoadY(terrain, tile.x, tile.y) + 0.18;
-
-        elements.push(
-          <group key={`culdesac-${k}`} position={[wX, wY, wZ]}>
-            {/* Asphalt turnaround bulb */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]}>
-              <ringGeometry args={[0, 3.2]} />
-              <meshStandardMaterial
-                color="#595f6a"
-                roughness={0.92}
-                metalness={0.02}
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-            {/* White outer curb */}
-            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]}>
-              <ringGeometry args={[3.1, 3.3]} />
-              <meshStandardMaterial
-                color="#e8ecf2"
-                roughness={0.6}
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-          </group>,
-        );
+    const terrainSize = terrain.size;
+    
+    const getRotation = (mask: number): [number, number, number] => {
+      // Rotation around Y axis (which is Z in R3F when lying flat on X,Z)
+      // Because we rotate the plane -PI/2 on X, the Y rotation becomes Z rotation.
+      
+      switch (mask) {
+        // Straights
+        case RoadMask.StraightH: return [-Math.PI / 2, 0, Math.PI / 2];
+        case RoadMask.StraightV: return [-Math.PI / 2, 0, 0];
+        // Corners
+        case RoadMask.CornerNE: return [-Math.PI / 2, 0, 0];
+        case RoadMask.CornerES: return [-Math.PI / 2, 0, -Math.PI / 2];
+        case RoadMask.CornerSW: return [-Math.PI / 2, 0, Math.PI];
+        case RoadMask.CornerNW: return [-Math.PI / 2, 0, Math.PI / 2];
+        // T-junctions
+        case RoadMask.T_N: return [-Math.PI / 2, 0, 0];
+        case RoadMask.T_E: return [-Math.PI / 2, 0, -Math.PI / 2];
+        case RoadMask.T_S: return [-Math.PI / 2, 0, Math.PI];
+        case RoadMask.T_W: return [-Math.PI / 2, 0, Math.PI / 2];
+        // Cross
+        case RoadMask.Cross: return [-Math.PI / 2, 0, 0];
+        default: return [-Math.PI / 2, 0, 0]; // dead end or isolated
       }
-    }
-    return elements;
-  }, [tiles, sim]);
+    };
 
-  return <group name="RoadNetwork">{culDeSacs}</group>;
+    for (const key in tiles) {
+      const tile = tiles[key];
+      const wX = (tile.x - terrainSize / 2) * 4;
+      const wZ = (tile.y - terrainSize / 2) * 4;
+      // Get the true elevation from the terrain
+      const wY = terrain.worldY(tile.x, tile.y);
+      
+      let geo = straightGeo;
+      if ([RoadMask.CornerNE, RoadMask.CornerNW, RoadMask.CornerES, RoadMask.CornerSW].includes(tile.mask)) geo = cornerGeo;
+      if ([RoadMask.T_N, RoadMask.T_E, RoadMask.T_S, RoadMask.T_W].includes(tile.mask)) geo = tGeo;
+      if (tile.mask === RoadMask.Cross) geo = crossGeo;
+
+      // Add a slight lift so the bottom rests on the terrain
+      elements.push(
+        <mesh 
+          key={key} 
+          position={[wX, wY + 0.2, wZ]} 
+          rotation={getRotation(tile.mask)}
+          geometry={geo}
+          material={material}
+          receiveShadow
+        />
+      );
+    }
+    
+    return elements;
+  }, [tiles, straightGeo, cornerGeo, crossGeo, tGeo, material, sim]);
+
+  return <group name="RoadNetwork">{roadMeshes}</group>;
 }

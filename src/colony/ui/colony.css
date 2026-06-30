@@ -1657,43 +1657,8 @@ body.tv-mode .radio-iframe.is-visible {
 
 @media (max-width: 760px) {
   .topbar {
-    left: 0;
-    gap: 4px;
-    flex-wrap: nowrap;
-    padding: 7px 10px 7px 96px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .topbar::-webkit-scrollbar {
-    display: none;
-  }
-  .topbar .brand,
-  .topbar .spacer {
-    display: none;
-  }
-  .topbar .clock {
-    flex: 0 0 auto;
-    font-size: 10px;
-    white-space: nowrap;
-  }
-  .topbar .group {
-    flex: 0 0 auto;
-    border-radius: 8px;
-    padding: 3px;
-  }
-  .topbar .group button,
-  .topbar .group .linkbtn {
-    padding: 4px 5px;
-    font-size: 12px;
-  }
-  .radio-strip {
-    top: 7px;
-    left: 10px;
-    gap: 6px;
-  }
-  .radio-pill {
-    padding: 6px 10px;
-    font-size: 12px;
+    gap: 8px;
+    padding: 8px 10px 12px;
   }
 
   .hud {
