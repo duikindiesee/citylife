@@ -1961,121 +1961,12 @@ export class ColonyRuntime {
    *  (see setOperatorUserId). Still attempts a claim so an order of name-then-userId resolves either way. */
   setOperatorName(name: string | null): void {
     this.operatorName = name && name.trim() ? name.trim() : null;
-    if (this.operatorName) {
-      const id = this.operatorCitizenId();
-      if (!id) {
-        this.createStarterPlotForOperator(this.operatorName);
-      }
-    }
     this.updateOperatorCar();
     if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
       this.exitFirstPerson();
       return;
     }
     this.emit();
-  }
-
-  private createStarterPlotForOperator(operatorName: string) {
-    const t = this.sim.state.terrain;
-    const lx = t.landing.x;
-    const ly = t.landing.y;
-
-    const roadTiles = useRoadNetwork.getState().tiles;
-    const hasRoad = Object.keys(roadTiles).length > 0;
-    if (!hasRoad) {
-      const cells = [
-        { x: lx - 2, y: ly },
-        { x: lx - 1, y: ly },
-        { x: lx, y: ly },
-        { x: lx + 1, y: ly },
-        { x: lx + 2, y: ly }
-      ];
-      useRoadNetwork.getState().plotRoad(cells, 'street');
-    }
-
-    const roadX = lx;
-    const roadY = ly;
-    const size = ESTATE;
-    const orientation = 'n';
-    const plotY = roadY + 1;
-    
-    const lotId = 'starter-plot';
-    const lot = createDynamicPlot(
-      t,
-      roadX,
-      plotY,
-      size,
-      orientation,
-      lotId,
-      'residential'
-    );
-
-    if (lot) {
-      this.neighborhood.lots.push(lot);
-      this.neighborhood.parcels.push(lot);
-      
-      const h: Household = {
-        id: `h-operator-${Date.now()}`,
-        displayName: operatorName,
-        botHandle: `${operatorName.toLowerCase()}bot`,
-        members: [{
-          name: operatorName,
-          age: 30,
-          role: 'adult',
-          occupation: 'Founder'
-        }],
-        membersSummary: '1 Founder',
-        lead: {
-          education: 'Self-taught',
-          jobHistory: 'Founder',
-          migrationMotivation: 'Building a new city'
-        },
-        originLocation: 'Earth',
-        holdings: 1000,
-        status: 'approved',
-        generated: true,
-        publicSafe: true
-      };
-
-      const plotInfo = {
-        id: lot.id,
-        name: "Starter Estate",
-        vibe: "plains" as any,
-        zone: "residential" as any,
-        x: lot.x,
-        y: lot.y,
-        description: "Your starting city estate."
-      };
-
-      const citizen = this.citizens.register(h, plotInfo, Date.now());
-      if (citizen) {
-        lot.ownerCitizenId = citizen.id;
-        citizen.homeXY = {
-          x: Math.round(lot.houseZone.x + (lot.houseZone.w - 1) / 2),
-          y: Math.round(lot.houseZone.y + (lot.houseZone.d - 1) / 2),
-        };
-        this.citizens.setTarget(citizen.id, { x: lot.doorX, y: lot.doorY });
-        
-        this.seedDeposit(citizen.id);
-        lot.built = true;
-        const doorDir = streetDoorDir(lot);
-        lot.blueprint = defaultBlueprint(lot.houseSeed, doorDir, lot.houseZone.w);
-        retargetParcelAccess(lot, doorDir);
-
-        citizen.pos = { x: lot.doorX, y: lot.doorY };
-        citizen.target = { x: lot.doorX, y: lot.doorY };
-
-        const carStoreKey = `citylife.car.${citizen.id}`;
-        if (!localStorage.getItem(carStoreKey)) {
-          const starterCar = {
-            name: "Founder Cruiser",
-            parts: ["engine_stock", "hood_stock"],
-            paint: { primary: "#57d1c4", secondary: "#1a2035" }
-          };
-          localStorage.setItem(carStoreKey, JSON.stringify(starterCar));
-        }
-      }
-    }
   }
 
   /** Player-view guard: operators/admins may step into any citizen; CITYLIFE_PLAYER may only enter their own. */

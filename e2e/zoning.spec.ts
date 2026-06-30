@@ -1,17 +1,13 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from '@playwright/test';
 
-test("Zoning and building plots E2E", async ({ page }) => {
-  // Heavy build-interaction flow (open zoning menus, drag a plot, wait for the sim to build it).
-  // On the slow headless CI runner the drag + per-plot terrain/collider recompute overran the 2 min
-  // budget (it reached "Zoning mode active" then timed out placing the plot). Same class as
-  // first_plot — 5 min gives it comfortable headroom in a single attempt (global retries are 0).
-  test.setTimeout(300000);
+test('Zoning and building plots E2E', async ({ page }) => {
+  test.setTimeout(120000); // 2 minutes timeout
 
-  console.log("Navigating to CityLife...");
-  await page.goto("/?skipauth=1");
+  console.log('Navigating to CityLife...');
+  await page.goto('/');
 
   // Wait for the simulation to be ready by checking if the canvas is rendered
-  await page.waitForSelector("canvas", { timeout: 30000 });
+  await page.waitForSelector('canvas', { timeout: 30000 });
   await page.waitForTimeout(5000); // Give the renderer time to boot up and initialize
 
   // Get initial lots count
@@ -22,7 +18,7 @@ test("Zoning and building plots E2E", async ({ page }) => {
 
   // Ensure we are in Builder Mode
   // If "City Builder" button is visible, we are NOT in builder mode. Click it.
-  const cityBuilderBtn = page.locator("button", { hasText: "City Builder" });
+  const cityBuilderBtn = page.locator('button', { hasText: 'City Builder' });
   if (await cityBuilderBtn.isVisible()) {
     await cityBuilderBtn.click({ force: true });
     await page.waitForTimeout(1000);
@@ -30,76 +26,42 @@ test("Zoning and building plots E2E", async ({ page }) => {
 
   // 1. Assert that entering Builder Mode shows the category submenus
   // By default, entering builder mode starts in 'roads' mode, so the 'Street' and 'Gravel Avenue' submenus should be visible.
-  const streetBtn = page.locator("button", { hasText: /street/i });
-  const gravelBtn = page.locator("button", { hasText: /gravel/i });
+  const streetBtn = page.locator('button', { hasText: 'Street' });
+  const gravelBtn = page.locator('button', { hasText: 'Gravel Avenue' });
   await expect(streetBtn).toBeVisible();
   await expect(gravelBtn).toBeVisible();
-  console.log("Category submenus for roads are successfully displayed.");
+  console.log('Category submenus for roads are successfully displayed.');
 
-  // Find a flat, dry, buildable area in the terrain
-  const buildableCenter = await page.evaluate(() => {
-    const t = (window as any).__colony?.sim?.state?.terrain;
-    if (!t) return null;
-
-    // Serialized-safe cellOk emulator
-    const cellOkLocal = (gx: number, gy: number) => {
-      if (gx < 0 || gy < 0 || gx >= t.size || gy >= t.size) return false;
-      const idx = gy * t.size + gx;
-      if (t.buildable?.[idx] === 0) return false;
-      const b = t.biome?.[idx];
-      // Exclude Mountain (4), Peak (5), Ocean (6), Shallows (7)
-      return b !== 4 && b !== 5 && b !== 6 && b !== 7;
-    };
-
-    // Scan for a 30x30 flat buildable block
-    for (let y = 100; y < t.size - 100; y += 10) {
-      for (let x = 100; x < t.size - 100; x += 10) {
-        let ok = true;
-        for (let dy = -15; dy <= 15; dy++) {
-          for (let dx = -15; dx <= 15; dx++) {
-            if (!cellOkLocal(x + dx, y + dy)) {
-              ok = false;
-              break;
-            }
-          }
-          if (!ok) break;
-        }
-        if (ok) return { x, y };
-      }
+  // Ensure we are in "Plot Roads" mode to draw a road
+  const plotRoadsBtn = page.locator('button', { hasText: 'Roads' });
+  if (await plotRoadsBtn.isVisible()) {
+    const className = await plotRoadsBtn.getAttribute('class');
+    if (!className?.includes('on')) {
+      await plotRoadsBtn.click({ force: true });
+      await page.waitForTimeout(500);
     }
-    return { x: t.landing.x, y: t.landing.y };
-  });
+  }
 
-  console.log(`Found buildable center at: ${JSON.stringify(buildableCenter)}`);
-  expect(buildableCenter).not.toBeNull();
-  const bx = buildableCenter!.x;
-  const by = buildableCenter!.y;
-
-  // Plot road programmatically at the buildable center
-  await page.evaluate(
-    ({ rx, ry }) => {
-      const cells = [];
-      for (let x = rx - 5; x <= rx + 5; x++) {
-        cells.push({ x, y: ry });
-      }
-      (window as any).useRoadNetwork.getState().plotRoad(cells, "street");
-    },
-    { rx: bx, ry: by },
-  );
-  console.log("Road plotted programmatically.");
+  console.log('Drawing a road segment at the center of the screen...');
+  // Draw a horizontal road segment from (500, 300) to (700, 300)
+  await page.mouse.move(500, 300);
+  await page.mouse.down();
+  await page.mouse.move(700, 300, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(1000);
 
   // Switch to Zoning Mode
-  const zoningCategoryBtn = page.locator("button", { hasText: /zoning/i });
+  const zoningCategoryBtn = page.locator('button', { hasText: 'Zoning' });
   await expect(zoningCategoryBtn).toBeVisible();
   await zoningCategoryBtn.click({ force: true });
   await page.waitForTimeout(500);
 
   // Assert that zoning submenus (Residential Plot / Commercial Plot) show up
-  const resPlotBtn = page.locator("button", { hasText: /residential/i });
-  const commPlotBtn = page.locator("button", { hasText: /commercial/i });
+  const resPlotBtn = page.locator('button', { hasText: 'Residential Plot' });
+  const commPlotBtn = page.locator('button', { hasText: 'Commercial Plot' });
   await expect(resPlotBtn).toBeVisible();
   await expect(commPlotBtn).toBeVisible();
-  console.log("Category submenus for zoning are successfully displayed.");
+  console.log('Category submenus for zoning are successfully displayed.');
 
   // Click Residential Plot
   await resPlotBtn.click({ force: true });
@@ -107,34 +69,41 @@ test("Zoning and building plots E2E", async ({ page }) => {
 
   // 2. Assert that clicking Residential Plot draws the zoning preview
   // Hover over the canvas to activate pointer hover cell and trigger preview
-  console.log("Moving mouse to trigger zoning preview...");
-  await page.mouse.move(640, 360);
+  console.log('Moving mouse to trigger zoning preview...');
+  await page.mouse.move(600, 330);
   await page.waitForTimeout(1000);
 
   // Check if we are in zoning mode in the store
   const builderMode = await page.evaluate(() => {
-    return (window as any).useRoadNetwork?.getState()?.builderMode;
+    return (window as any).__colony?.builderMode;
   });
-  expect(builderMode).toBe("zoning_residential");
-  console.log("Zoning mode is active.");
+  expect(builderMode).toBe('zoning_residential');
+  console.log('Zoning mode is active.');
+
+  // Dismiss any dialogs that might pop up (like road connection alerts if placement fails)
+  let alertMessage = '';
+  page.on('dialog', async dialog => {
+    alertMessage = dialog.message();
+    console.log(`Alert dialog shown: "${alertMessage}"`);
+    await dialog.dismiss();
+  });
 
   // 3. Assert that placing a plot near a road successfully creates a parcel
-  // We place a zoned plot programmatically at the dynamically verified coordinates
-  console.log("Placing the plot next to the road programmatically...");
-  const placementResult = await page.evaluate(
-    ({ px, py }) => {
-      return (window as any).__colony.placeZonedPlot(
-        px,
-        py + 1,
-        "n",
-        "BIG",
-        "residential",
-      );
-    },
-    { px: bx, py: by },
-  );
+  // We click at (600, 330), which should be adjacent to the horizontal road at y=300.
+  console.log('Clicking to place the plot next to the road...');
+  await page.mouse.click(600, 330);
+  await page.waitForTimeout(2000);
 
-  expect(placementResult).toBe(true);
+  // If the placement failed because of coordinate offset, try another nearby offset (e.g. 600, 320 or 600, 325)
+  const lotsCountAfterFirstClick = await page.evaluate(() => {
+    return (window as any).__colony?.neighborhood?.lots?.length ?? 0;
+  });
+
+  if (lotsCountAfterFirstClick === initialLotsCount) {
+    console.log('First placement attempt did not create a lot. Trying alternative offset (600, 323)...');
+    await page.mouse.click(600, 323);
+    await page.waitForTimeout(2000);
+  }
 
   const finalLotsCount = await page.evaluate(() => {
     return (window as any).__colony?.neighborhood?.lots?.length ?? 0;
@@ -142,7 +111,5 @@ test("Zoning and building plots E2E", async ({ page }) => {
 
   console.log(`Final lots count: ${finalLotsCount}`);
   expect(finalLotsCount).toBeGreaterThan(initialLotsCount);
-  console.log(
-    "Residential Plot successfully placed near a road and parcel created.",
-  );
+  console.log('Residential Plot successfully placed near a road and parcel created.');
 });
