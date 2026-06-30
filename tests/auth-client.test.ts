@@ -272,7 +272,8 @@ describe("classifyLoginFailure (Spec 077 account-status messaging)", () => {
   it("maps ACCOUNT_PENDING_REVIEW to awaiting-review with no code prompt", () => {
     const r = classifyLoginFailure(403, {
       code: "ACCOUNT_PENDING_REVIEW",
-      message: "Account disabled: your visitor request is still being reviewed.",
+      message:
+        "Account disabled: your visitor request is still being reviewed.",
     });
     expect(r.accountState).toBe("pending_review");
     expect(r.pending).toBeUndefined();
@@ -341,7 +342,8 @@ describe("AuthClient.login (Spec 077 end-to-end)", () => {
   it("surfaces an awaiting-review account via login() without prompting for a code", async () => {
     mockFetchFail403Body({
       code: "ACCOUNT_PENDING_REVIEW",
-      message: "Account disabled: your visitor request is still being reviewed.",
+      message:
+        "Account disabled: your visitor request is still being reviewed.",
     });
     const a = new AuthClient();
     const r = await a.login("newbie@test.com", "correctpw");
