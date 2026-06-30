@@ -119,7 +119,12 @@ import {
   carPartListingId,
 } from "./bot/carPartMarket";
 import { MockBackend, type CityLifeBackend, type Decision } from "./backend";
-import type { Household, HouseholdOverrides } from "./newcomers";
+import {
+  generateHousehold,
+  type Household,
+  type HouseholdOverrides,
+} from "./newcomers";
+import { useRoadNetwork } from "./stores/useRoadNetwork";
 import { spawnCitizenSubUser, splitName } from "./bot/citizenSpawn";
 import {
   BotService,
@@ -140,6 +145,11 @@ import {
   streetDoorDir,
   type Neighborhood,
   type Lot,
+  GRAND,
+  ESTATE,
+  BIG,
+  COMPACT,
+  createDynamicPlot,
 } from "./neighborhood";
 import {
   validateBlueprint,
@@ -813,6 +823,7 @@ export class ColonyRuntime {
   private barSeatBy: (string | null)[] = [];
   private fpNarration: string | null = null;
   private fpNarrating = false;
+  private settlerTimer = 0;
 
   constructor(seed: number = COLONY.render.seed) {
     this.worldSeed = seed;
@@ -1569,12 +1580,121 @@ export class ColonyRuntime {
   /** P1 — record the logged-in operator name (from auth). Marks their avatar + gates the step-into. */
   setOperatorName(name: string | null): void {
     this.operatorName = name && name.trim() ? name.trim() : null;
+    if (this.operatorName) {
+      const id = this.operatorCitizenId();
+      if (!id) {
+        this.createStarterPlotForOperator(this.operatorName);
+      }
+    }
     this.updateOperatorCar();
     if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
       this.exitFirstPerson();
       return;
     }
     this.emit();
+  }
+
+  private createStarterPlotForOperator(operatorName: string) {
+    const t = this.sim.state.terrain;
+    const lx = t.landing.x;
+    const ly = t.landing.y;
+
+    const roadTiles = useRoadNetwork.getState().tiles;
+    const hasRoad = Object.keys(roadTiles).length > 0;
+    if (!hasRoad) {
+      const cells = [
+        { x: lx - 2, y: ly },
+        { x: lx - 1, y: ly },
+        { x: lx, y: ly },
+        { x: lx + 1, y: ly },
+        { x: lx + 2, y: ly }
+      ];
+      useRoadNetwork.getState().plotRoad(cells, 'street');
+    }
+
+    const roadX = lx;
+    const roadY = ly;
+    const size = ESTATE;
+    const orientation = 'n';
+    const plotY = roadY + 1;
+    
+    const lotId = 'starter-plot';
+    const lot = createDynamicPlot(
+      t,
+      roadX,
+      plotY,
+      size,
+      orientation,
+      lotId,
+      'residential'
+    );
+
+    if (lot) {
+      this.neighborhood.lots.push(lot);
+      this.neighborhood.parcels.push(lot);
+      
+      const h: Household = {
+        id: `h-operator-${Date.now()}`,
+        displayName: operatorName,
+        botHandle: `${operatorName.toLowerCase()}bot`,
+        members: [{
+          name: operatorName,
+          age: 30,
+          role: 'adult',
+          occupation: 'Founder'
+        }],
+        membersSummary: '1 Founder',
+        lead: {
+          education: 'Self-taught',
+          jobHistory: 'Founder',
+          migrationMotivation: 'Building a new city'
+        },
+        originLocation: 'Earth',
+        holdings: 1000,
+        status: 'approved',
+        generated: true,
+        publicSafe: true
+      };
+
+      const plotInfo = {
+        id: lot.id,
+        name: "Starter Estate",
+        vibe: "plains" as any,
+        zone: "residential" as any,
+        x: lot.x,
+        y: lot.y,
+        description: "Your starting city estate."
+      };
+
+      const citizen = this.citizens.register(h, plotInfo, Date.now());
+      if (citizen) {
+        lot.ownerCitizenId = citizen.id;
+        citizen.homeXY = {
+          x: Math.round(lot.houseZone.x + (lot.houseZone.w - 1) / 2),
+          y: Math.round(lot.houseZone.y + (lot.houseZone.d - 1) / 2),
+        };
+        this.citizens.setTarget(citizen.id, { x: lot.doorX, y: lot.doorY });
+        
+        this.seedDeposit(citizen.id);
+        lot.built = true;
+        const doorDir = streetDoorDir(lot);
+        lot.blueprint = defaultBlueprint(lot.houseSeed, doorDir, lot.houseZone.w);
+        retargetParcelAccess(lot, doorDir);
+
+        citizen.pos = { x: lot.doorX, y: lot.doorY };
+        citizen.target = { x: lot.doorX, y: lot.doorY };
+
+        const carStoreKey = `citylife.car.${citizen.id}`;
+        if (!localStorage.getItem(carStoreKey)) {
+          const starterCar = {
+            name: "Founder Cruiser",
+            parts: ["engine_stock", "hood_stock"],
+            paint: { primary: "#57d1c4", secondary: "#1a2035" }
+          };
+          localStorage.setItem(carStoreKey, JSON.stringify(starterCar));
+        }
+      }
+    }
   }
 
   /** Player-view guard: operators/admins may step into any citizen; CITYLIFE_PLAYER may only enter their own. */
@@ -3011,6 +3131,79 @@ export class ColonyRuntime {
     return true;
   }
 
+  placeZonedPlot(
+    cx: number,
+    cy: number,
+    orientation: "n" | "s" | "e" | "w",
+    sizeName: "COMPACT" | "BIG" | "ESTATE" | "GRAND",
+    type: "residential" | "commercial"
+  ): boolean {
+    const size = sizeName === "COMPACT" ? COMPACT :
+                 sizeName === "BIG" ? BIG :
+                 sizeName === "ESTATE" ? ESTATE : GRAND;
+                 
+    const id = `dynamic-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const lot = createDynamicPlot(
+      this.sim.state.terrain,
+      cx,
+      cy,
+      size,
+      orientation,
+      id,
+      type
+    );
+    if (!lot) return false;
+    
+    this.neighborhood.lots.push(lot);
+    this.neighborhood.parcels.push(lot);
+    
+    this.emit();
+    return true;
+  }
+
+  private tickAutoZoningSettlers(dt: number) {
+    this.settlerTimer += dt;
+    if (this.settlerTimer < 5) return; // check every 5 seconds
+    this.settlerTimer = 0;
+
+    // Find any free lot in the neighborhood
+    const freeLot = this.neighborhood.lots.find(
+      (l) => !l.ownerCitizenId && !l.reservedFor && l.zone === 'residential'
+    );
+    if (!freeLot) return;
+
+    const seed = Date.now();
+    const h = generateHousehold(seed);
+    h.status = "approved";
+
+    const plotInfo = {
+      id: freeLot.id,
+      name: `Plot ${freeLot.id.split('-')[1] || 'Zoned'}`,
+      vibe: "plains" as any,
+      zone: "residential" as any,
+      x: freeLot.x,
+      y: freeLot.y,
+      description: "A dynamically zoned plot."
+    };
+    
+    const citizen = this.citizens.register(h, plotInfo, Date.now());
+    if (citizen) {
+      this.ensureKbProfile({
+        citizenId: citizen.id,
+        alias: citizen.displayName,
+        bio: `Settled in a newly zoned residential plot!`,
+        plotId: citizen.plotId,
+        address: citizen.plotName,
+        kind: "human"
+      });
+
+      this.seedDeposit(citizen.id);
+      if (this.purchaseLot(citizen.id, freeLot.id)) {
+        this.commissionLot(freeLot.id);
+      }
+    }
+  }
+
   /** The buy-time gate for PRIVATE neighbourhoods. Before the player completes a plot purchase the UI
    *  asks whether this signed-in player may buy in the lot's neighbourhood: the open primary
    *  neighbourhood (no key) always passes; a satellite hamlet is checked against the backend allowlist
@@ -3858,7 +4051,7 @@ export class ColonyRuntime {
 
   start(container: HTMLElement) {
     if (this.running) return;
-    this.renderer = new PlanetRenderer(container, this.sim);
+    this.renderer = new PlanetRenderer(container, this.sim, this);
     this.renderer.setZonesVisible(this.zonesVisible);
     // P1 — feed the renderer the live citizen avatars each frame, marking the operator's own.
     this.renderer.setAvatarSource((): AvatarView[] => {
@@ -3908,6 +4101,7 @@ export class ColonyRuntime {
     this.citizens.stepAvatars(dtReal); // P1 — walk the avatars in real time toward their targets
     this.updateFirstPersonGuidedArrival();
     this.wanderIdleCitizens(dtReal); // keep the citizens strolling so watch mode is never frozen
+    this.tickAutoZoningSettlers(dtReal);
     this.raceTick(dtReal);
     this.renderer?.frame(dtReal);
     if (now - this.lastUi > 200) {
