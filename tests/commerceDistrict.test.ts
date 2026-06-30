@@ -31,6 +31,29 @@ function footprintCells(p: {
   return out;
 }
 
+function roadClearanceKeys(p: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}): string[] {
+  const keys = new Set<string>();
+  for (let y = p.y; y < p.y + p.h; y++) {
+    for (let x = p.x; x < p.x + p.w; x++) {
+      for (const [dx, dy] of [
+        [0, 0],
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        keys.add(`${x + dx},${y + dy}`);
+      }
+    }
+  }
+  return [...keys];
+}
+
 /** Every cell a homestead occupies (fence bounding box + driveway) — what a shop must never touch. */
 function residentialCells(rt: ColonyRuntime): Set<string> {
   const s = new Set<string>();
@@ -85,6 +108,16 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
     }
   }, 30000);
 
+  it("keeps commercial shop plots road-clear on final widened roads", () => {
+    for (const seed of SEEDS) {
+      const rt = rtFor(seed);
+      const roads = new Set(rt.sim.state.roads.map((c) => `${c.x},${c.y}`));
+      for (const p of rt.commercialDistrict!.parcels) {
+        for (const c of roadClearanceKeys(p)) expect(roads.has(c)).toBe(false);
+      }
+    }
+  }, 30000);
+
   it("shop footprints never overlap each other", () => {
     for (const seed of SEEDS) {
       const seen = new Set<string>();
@@ -131,9 +164,16 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
       });
 
       const shopCells = new Set<string>();
-      for (const p of d.parcels)
+      const commercialRoadClearance = new Set<string>();
+      for (const p of d.parcels) {
         for (const c of footprintCells(p)) shopCells.add(c);
+        for (const c of roadClearanceKeys(p)) commercialRoadClearance.add(c);
+      }
       for (const c of footprintCells(d.mallPad)) shopCells.add(c);
+      for (const c of roadClearanceKeys(d.mallPad)) commercialRoadClearance.add(c);
+      if (d.garagePad)
+        for (const c of roadClearanceKeys(d.garagePad))
+          commercialRoadClearance.add(c);
       const residential = residentialCells(rt);
       const crossX = reserve.x + Math.floor(reserve.w / 2);
       const streetY = reserve.y + Math.floor(reserve.h / 2);
@@ -157,7 +197,11 @@ describe("commercial district survey (spec 079 P0/P1)", () => {
         expect(residential.has(key)).toBe(false);
         for (const dx of [-1, 0, 1]) {
           const roadKey = `${c.x + dx},${c.y}`;
-          if (!shopCells.has(roadKey) && !residential.has(roadKey))
+          if (
+            !shopCells.has(roadKey) &&
+            !residential.has(roadKey) &&
+            !commercialRoadClearance.has(roadKey)
+          )
             expect(rt.sim.state.roadKind.has(roadKey)).toBe(true);
         }
       }

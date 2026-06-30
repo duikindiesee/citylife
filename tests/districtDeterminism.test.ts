@@ -42,7 +42,7 @@ const GOLDEN: Record<
     intersection: { x: 189, y: 323 },
     reserve: { x: 145, y: 291, w: 88, h: 64 },
     mallPad: { x: 175, y: 306, w: 14, h: 10 },
-    crossStreetHash: "43d44ba8",
+    crossStreetHash: "ba3078da",
     parcelFootprintHash: "c50b9c42",
     mallPadHash: "120d1aa3",
   },

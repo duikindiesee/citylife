@@ -98,6 +98,7 @@ import { plotPriceKook, kookToZar, starterDeposit } from "./land";
 import {
   nearestNeighbourhoodLabel,
   type NamedNeighbourhood,
+  type CityLifeNeighbourhoodName,
   type NeighbourhoodLabel,
 } from "./neighbourhoodNames";
 import { loadCar, saveCar } from "./car/garageStore";
@@ -262,6 +263,8 @@ import {
 const JOE_ID = "citizen_joe";
 const JOE_BORN_MS = 0;
 const JACK_ID = "citizen_jack";
+const KOOKERBOS_FOUNDER_ID = "citizen_irwin";
+const KOOKERBOS_GERHARD_ID = "citizen_gerhard";
 // Phase-1 S1 — the night-meetup friend: a fixed, public-safe NPC pinned at the hilltop Rally Point so
 // that two players are present and the meetup completes. Not a backend identity leak; just a
 // deterministic in-world citizen (ultimately stands in for the brother you drive out to meet at night).
@@ -835,7 +838,7 @@ export class ColonyRuntime {
     // then claim the COMMERCIAL reserve off its avenue, THEN scatter satellite hamlets that avoid
     // everything already placed (a shared `taken` set), then stitch trunk roads between them. Without
     // reserving commerce first, the satellites ate its land and the shop district vanished.
-    const footprintCells = (nbhd: Neighborhood): { x: number; y: number }[] => {
+    const parcelFootprintCells = (nbhd: Neighborhood): { x: number; y: number }[] => {
       const out: { x: number; y: number }[] = [];
       for (const lot of nbhd.lots) {
         let minX = Infinity,
@@ -850,8 +853,13 @@ export class ColonyRuntime {
         }
         for (let y = minY; y <= maxY; y++)
           for (let x = minX; x <= maxX; x++) out.push({ x, y });
-        for (const d of lot.driveway) out.push({ x: d.x, y: d.y });
       }
+      return out;
+    };
+    const footprintCells = (nbhd: Neighborhood): { x: number; y: number }[] => {
+      const out = parcelFootprintCells(nbhd);
+      for (const lot of nbhd.lots)
+        for (const d of lot.driveway) out.push({ x: d.x, y: d.y });
       return out;
     };
     // `taken` = every placed cell (parcels + their roads + the commercial reserve); satellites and the
@@ -862,7 +870,22 @@ export class ColonyRuntime {
       for (const c of cells) taken.add(`${c.x},${c.y}`);
     };
     const residentialKeys = new Set<string>();
+    const residentialRoadClearanceKeys = new Set<string>();
+    const addRoadClearance = (cells: { x: number; y: number }[]) => {
+      for (const c of cells) {
+        for (const [dx, dy] of [
+          [0, 0],
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ] as const) {
+          residentialRoadClearanceKeys.add(`${c.x + dx},${c.y + dy}`);
+        }
+      }
+    };
     const primaryCells = footprintCells(this.neighborhood);
+    addRoadClearance(parcelFootprintCells(this.neighborhood));
     for (const c of this.neighborhood.verge)
       this.sim.state.roadSet.add(`${c.x},${c.y}`);
     reserveParcelLand(this.sim.state, primaryCells);
@@ -977,11 +1000,38 @@ export class ColonyRuntime {
     // Spec 086 — SATELLITE HAMLETS in the woods + hills, each routed + placed AROUND everything already
     // taken (the coast, the commercial reserve, prior hamlets), so scattered clusters never overlap.
     const satellites: Neighborhood[] = [];
-    for (const a of findSatelliteAnchors(
+    const satelliteAnchors: Cell[] = [];
+    const anchors = findSatelliteAnchors(
       t0,
       { x: t0.landing.x, y: t0.landing.y },
       6,
-    )) {
+    );
+    const kookerbosAnchor = anchors
+      .filter((a) => t0.biome[t0.idx(a.x, a.y)] === Biome.Forest)
+      .sort((a, b) => a.y - b.y || b.x - a.x)[0];
+    const fitKookerbosAnchor = (anchor: Cell): Cell => {
+      let best = anchor;
+      let bestLots = -1;
+      let bestD = Infinity;
+      for (let dy = -16; dy <= 16; dy += 4) {
+        for (let dx = -16; dx <= 16; dx += 4) {
+          const c = { x: anchor.x + dx, y: anchor.y + dy };
+          if (!t0.inBounds(c.x, c.y) || t0.biome[t0.idx(c.x, c.y)] !== Biome.Forest) continue;
+          const nbhd = makeNeighborhoodAt(t0, c, { small: true, blocked: taken });
+          const d = Math.hypot(c.x - anchor.x, c.y - anchor.y);
+          if (nbhd.lots.length > bestLots || (nbhd.lots.length === bestLots && d < bestD)) {
+            best = c;
+            bestLots = nbhd.lots.length;
+            bestD = d;
+          }
+        }
+      }
+      return best;
+    };
+    for (const rawAnchor of anchors) {
+      const a = kookerbosAnchor && rawAnchor.x === kookerbosAnchor.x && rawAnchor.y === kookerbosAnchor.y
+        ? fitKookerbosAnchor(rawAnchor)
+        : rawAnchor;
       const nbhd = makeNeighborhoodAt(t0, a, { small: true, blocked: taken });
       if (nbhd.lots.length === 0) continue;
       const b = t0.biome[t0.idx(a.x, a.y)];
@@ -989,6 +1039,7 @@ export class ColonyRuntime {
       for (const lot of nbhd.lots) lot.id = `${name}_${lot.id}`; // unique id; never collides with lot_1/lot_2
       this.neighborhood.parcels.push(...nbhd.parcels); // parcels === lots (same array ref), so lots update too
       const cells = footprintCells(nbhd);
+      addRoadClearance(parcelFootprintCells(nbhd));
       reserveParcelLand(this.sim.state, cells);
       mergeAvenue(this.sim.state, nbhd.carriage);
       for (const c of nbhd.verge) this.sim.state.roadSet.add(`${c.x},${c.y}`);
@@ -997,6 +1048,7 @@ export class ColonyRuntime {
       addCells(nbhd.verge);
       for (const c of cells) residentialKeys.add(`${c.x},${c.y}`);
       satellites.push(nbhd);
+      satelliteAnchors.push(a);
     }
     const hoodCenter = (nbhd: Neighborhood): { x: number; y: number } => {
       const cells = nbhd.carriage.length > 0 ? nbhd.carriage : nbhd.lots.map((l) => ({ x: l.x, y: l.y }));
@@ -1032,16 +1084,25 @@ export class ColonyRuntime {
         radius: 30,
       });
     }
-    const unusedSatelliteNames = new Set(["Kookerbos", "Ridgeline", "Lantern Hollow"] as const);
+    const satelliteNames = new Map<Neighborhood, CityLifeNeighbourhoodName>();
+    const satelliteByAnchor = satellites.map((nbhd, i) => ({ nbhd, anchor: satelliteAnchors[i]! }));
+    const kookerbosSatellite =
+      satelliteByAnchor
+        .filter(({ anchor }) => t0.biome[t0.idx(anchor.x, anchor.y)] === Biome.Forest)
+        .sort((a, b) => a.anchor.y - b.anchor.y || b.anchor.x - a.anchor.x)[0]?.nbhd ??
+      satelliteByAnchor.sort((a, b) => a.anchor.y - b.anchor.y || b.anchor.x - a.anchor.x)[0]?.nbhd;
+    if (kookerbosSatellite) satelliteNames.set(kookerbosSatellite, "Kookerbos Woods");
+    const unusedSatelliteNames = new Set(["Ridgeline", "Lantern Hollow"] as const);
     for (const nbhd of satellites) {
       const c = hoodCenter(nbhd);
+      const existing = satelliteNames.get(nbhd);
       const b = t0.biome[t0.idx(c.x, c.y)];
-      const preferred = b === Biome.Forest ? "Kookerbos" : b === Biome.Highland ? "Ridgeline" : "Lantern Hollow";
-      const name = unusedSatelliteNames.has(preferred)
+      const preferred: CityLifeNeighbourhoodName = b === Biome.Highland ? "Ridgeline" : "Lantern Hollow";
+      const name = existing ?? (unusedSatelliteNames.has(preferred)
         ? preferred
-        : (unusedSatelliteNames.values().next().value ?? null);
+        : (unusedSatelliteNames.values().next().value ?? null));
       if (!name) continue;
-      unusedSatelliteNames.delete(name);
+      unusedSatelliteNames.delete(name as "Ridgeline" | "Lantern Hollow");
       places.push({ name, ...c, radius: 32 });
     }
     this.neighbourhoodPlaces = places;
@@ -1136,14 +1197,28 @@ export class ColonyRuntime {
     const paveLink = (a: Cell[], b: Cell[]) => {
       if (a.length === 0 || b.length === 0) return;
       const [from, to] = nearestPair(a, b);
+      const endpointRoads = new Set([
+        ...this.sim.state.roads.map((r) => `${r.x},${r.y}`),
+        ...a.map((c) => `${c.x},${c.y}`),
+        ...b.map((c) => `${c.x},${c.y}`),
+      ]);
+      const linkRoadAllowed = (x: number, y: number) =>
+        !residentialKeys.has(`${x},${y}`) &&
+        (!residentialRoadClearanceKeys.has(`${x},${y}`) || endpointRoads.has(`${x},${y}`));
       const path =
         leastCostPath(t0, from, to, {
           slopeWeight: 0.5,
-          diagonal: true,
+          diagonal: false,
           blocked: (x, y) => residentialKeys.has(`${x},${y}`),
         }) ?? [];
       if (path.length === 0) return;
-      mergeAvenue(this.sim.state, layRoad(path, 1));
+      mergeAvenue(
+        this.sim.state,
+        [
+          ...layRoad(path, 1),
+          ...path,
+        ].filter((c) => linkRoadAllowed(c.x, c.y)),
+      );
     };
     const coast = this.neighborhood.carriage;
     for (let i = 0; i < satellites.length; i++) {
@@ -1188,24 +1263,40 @@ export class ColonyRuntime {
     if (this.commercialDistrict && this.commercialDistrict.street.length > 0) {
       const t = this.sim.state.terrain;
       const shopCells = new Set<string>();
-      for (const p of this.commercialDistrict.parcels)
-        for (let y = p.y; y < p.y + p.h; y++)
-          for (let x = p.x; x < p.x + p.w; x++) shopCells.add(`${x},${y}`);
-      const mallPad = this.commercialDistrict.mallPad;
-      for (let y = mallPad.y; y < mallPad.y + mallPad.h; y++)
-        for (let x = mallPad.x; x < mallPad.x + mallPad.w; x++)
-          shopCells.add(`${x},${y}`);
+      const commercialRoadClearanceKeys = new Set<string>();
+      const addCommercialFootprint = (r: {
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+      }) => {
+        for (let y = r.y; y < r.y + r.h; y++)
+          for (let x = r.x; x < r.x + r.w; x++) {
+            shopCells.add(`${x},${y}`);
+            for (const [dx, dy] of [
+              [0, 0],
+              [1, 0],
+              [-1, 0],
+              [0, 1],
+              [0, -1],
+            ] as const)
+              commercialRoadClearanceKeys.add(`${x + dx},${y + dy}`);
+          }
+      };
+      for (const p of this.commercialDistrict.parcels) addCommercialFootprint(p);
+      addCommercialFootprint(this.commercialDistrict.mallPad);
+      if (this.commercialDistrict.garagePad)
+        addCommercialFootprint(this.commercialDistrict.garagePad);
+      const roadAllowed = (x: number, y: number) =>
+        cellOk(t, x, y) &&
+        !residentialKeys.has(`${x},${y}`) &&
+        !commercialRoadClearanceKeys.has(`${x},${y}`);
       const widened = new Set<string>();
       for (const c of this.commercialDistrict.street)
         for (const dy of [-1, 0, 1]) {
           const x = c.x,
             y = c.y + dy;
-          if (
-            cellOk(t, x, y) &&
-            !residentialKeys.has(`${x},${y}`) &&
-            !shopCells.has(`${x},${y}`)
-          )
-            widened.add(`${x},${y}`);
+          if (roadAllowed(x, y)) widened.add(`${x},${y}`);
         }
       const streetCells = [...widened].map((k) => {
         const [x, y] = k.split(",").map(Number);
@@ -1216,12 +1307,7 @@ export class ColonyRuntime {
         for (const dx of [-1, 0, 1]) {
           const x = c.x + dx,
             y = c.y;
-          if (
-            cellOk(t, x, y) &&
-            !residentialKeys.has(`${x},${y}`) &&
-            !shopCells.has(`${x},${y}`)
-          )
-            crossWidened.add(`${x},${y}`);
+          if (roadAllowed(x, y)) crossWidened.add(`${x},${y}`);
         }
       const crossStreetCells = [...crossWidened].map((k) => {
         const [x, y] = k.split(",").map(Number);
@@ -1238,7 +1324,10 @@ export class ColonyRuntime {
           blocked: (x, y) =>
             residentialKeys.has(`${x},${y}`) || shopCells.has(`${x},${y}`),
         }) ?? [];
-      mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
+      const connectorRoadCells = layRoad(connector, 1).filter((c) =>
+        roadAllowed(c.x, c.y),
+      );
+      mergeAvenue(this.sim.state, connectorRoadCells); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
       mergeAvenue(this.sim.state, streetCells);
       mergeAvenue(this.sim.state, crossStreetCells);
     }
@@ -1348,6 +1437,7 @@ export class ColonyRuntime {
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
     // founder profile (the bug: seed-then-restore overwrote Joe's stored posts with a 1-post reset).
     this.restoreKookerbook();
+    this.reserveKookerbosPlots(); // live Kookerbos lane — two clean reserved woods plots for founder + Gerhard
     this.seedJoe(); // spec 078 — Joe the Crab takes up residence on the shore-most homestead
     this.seedViw(); // spec 083 — Viw the Builder takes the homestead beside him
     this.seedJack(); // player/UI lane — Jack is visible as an in-world reviewer avatar
@@ -2571,13 +2661,37 @@ export class ColonyRuntime {
     return this.neighborhood.lots;
   }
 
+  /** Kookerbos Woods live-lane reservation: keep two SMALL inland woods plots clean and held for the
+   *  founder plus Gerhard. They stay unowned/unbuilt so the matching reserved citizen can still buy/build
+   *  through the normal signup economy, while newcomer auto-assignment skips them via reservedFor. */
+  private reserveKookerbosPlots(): void {
+    const kookerbos = this.neighbourhoodPlaces.find((p) => p.name === "Kookerbos Woods");
+    if (!kookerbos) return;
+    const lots = this.neighborhood.lots
+      .filter((lot) => Math.hypot(lot.x - kookerbos.x, lot.y - kookerbos.y) <= kookerbos.radius)
+      .filter((lot) => lot.w <= 11 && lot.h <= 14)
+      .sort((a, b) => a.y - b.y || a.x - b.x || a.id.localeCompare(b.id));
+    const founder = lots[0];
+    const gerhard = lots[1];
+    if (founder) {
+      founder.reservedFor = KOOKERBOS_FOUNDER_ID;
+      founder.ownerCitizenId = undefined;
+      founder.built = false;
+    }
+    if (gerhard) {
+      gerhard.reservedFor = KOOKERBOS_GERHARD_ID;
+      gerhard.ownerCitizenId = undefined;
+      gerhard.built = false;
+    }
+  }
+
   /** Spec 078 — Joe the Crab, the founder. Reserve the shore-most homestead as permanently his, raise his
    *  fixed 077 house on it, and seed his crab citizen so he is always present and roams the streets. Pure +
    *  deterministic from the terrain and idempotent (the roster guards on the fixed id), so reloads reproduce
    *  the identical Joe without any new save format. The newcomer search skips reservedFor lots so Joe's plot
    *  is never handed to an arriving family. */
   private seedJoe(): void {
-    const lots = this.neighborhood.lots;
+    const lots = this.neighborhood.lots.filter((lot) => /^lot_\d+$/.test(lot.id));
     if (lots.length === 0) return;
     // Spec 084 S6 — lots renumber by distance to water, so lot_1 IS the shore-most homestead
     // (the old r<=16 search spiral degenerated to all-ties on the big world).
@@ -2622,7 +2736,7 @@ export class ColonyRuntime {
    *  demolish-proof, with the crewhouse he crafted for himself. Deterministic and idempotent like
    *  seedJoe; his real bot (OpenClaw, on the second machine) connects later via the citizen path. */
   private seedViw(): void {
-    const lots = this.neighborhood.lots;
+    const lots = this.neighborhood.lots.filter((lot) => /^lot_\d+$/.test(lot.id));
     // Spec 084 S6 — Viw takes lot_2, right beside Joe's shore plot (lots renumber by water
     // distance). His crewhouse door is fixed EAST so the S2 side-walkway lays on every boot.
     const plot = lots.length > 1 && !lots[1]!.reservedFor ? lots[1] : undefined;

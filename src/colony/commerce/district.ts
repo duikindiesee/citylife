@@ -387,7 +387,7 @@ export function findGarageSite(
         h,
         streetFrontDir: { x: sx, y: 0 },
         crossFrontDir: { x: 0, y: sy },
-        islandCell: { x: intersection.x - sx, y: intersection.y - sy },
+        islandCell: { x: intersection.x - sx * 3, y: intersection.y - sy * 3 },
       });
     }
   }

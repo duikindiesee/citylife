@@ -7,7 +7,7 @@ import {
 describe("HUD neighbourhood names", () => {
   it("uses the required public neighbourhood names", () => {
     expect(CITYLIFE_NEIGHBOURHOOD_NAMES).toEqual([
-      "Kookerbos",
+      "Kookerbos Woods",
       "Driftwood Shore",
       "Lantern Hollow",
       "Crewhouse Quarter",

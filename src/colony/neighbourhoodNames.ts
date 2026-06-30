@@ -1,5 +1,5 @@
 export const CITYLIFE_NEIGHBOURHOOD_NAMES = [
-  "Kookerbos",
+  "Kookerbos Woods",
   "Driftwood Shore",
   "Lantern Hollow",
   "Crewhouse Quarter",

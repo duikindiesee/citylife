@@ -1,4 +1,36 @@
-import type { GaragePad } from "../commerce/district";
+import type { CommercialDistrict, GaragePad } from "../commerce/district";
+
+export type PromenadeLampPosition = { x: number; y: number; side: 1 | -1 };
+
+export function commercialPromenadeLampPosition(
+  c: { x: number; y: number },
+  streetIndex: number,
+): PromenadeLampPosition {
+  const side = Math.floor(streetIndex / 5) % 2 === 0 ? 1 : -1;
+  return { x: c.x, y: c.y + side * 1.4, side };
+}
+
+function insideRect(
+  p: { x: number; y: number },
+  r: { x: number; y: number; w: number; h: number },
+  pad = 0,
+): boolean {
+  return (
+    p.x >= r.x - pad &&
+    p.x <= r.x + r.w - 1 + pad &&
+    p.y >= r.y - pad &&
+    p.y <= r.y + r.h - 1 + pad
+  );
+}
+
+export function commercialPromenadeLampAllowed(
+  p: { x: number; y: number },
+  d: Pick<CommercialDistrict, "garagePad" | "mallPad" | "parcels">,
+): boolean {
+  if (d.garagePad && insideRect(p, d.garagePad, 0)) return false;
+  if (insideRect(p, d.mallPad, 0)) return false;
+  return !d.parcels.some((parcel) => insideRect(p, parcel, 0));
+}
 
 export interface GarageAnchorShellModel {
   kind: "garage_anchor_shell";
@@ -66,36 +98,25 @@ export function buildGarageAnchorShellModel(
   const serviceBay = {
     w: footprint.w * 0.58,
     h: 2.15,
-    d: footprint.d * 0.56,
+    d: footprint.d * 0.33,
     x: footprint.w * 0.21,
-    z: -footprint.d * 0.06,
+    z: 0,
     y: 1.075,
     doorCount: 3 as const,
     bayDoorW: footprint.w * 0.135,
   };
-  const localFromGrid = (grid: { x: number; y: number }) => {
-    const dx = grid.x - center.x;
-    const dy = grid.y - center.y;
-    const cos = Math.cos(garagePad.facingAngle);
-    const sin = Math.sin(garagePad.facingAngle);
-    return {
-      x: dx * cos - dy * sin,
-      z: dx * sin + dy * cos,
-    };
-  };
-  const pylonLocal = localFromGrid(garagePad.islandCell);
   const pylon = {
-    w: 0.7,
-    h: 5.4,
-    d: 0.42,
-    x: pylonLocal.x,
-    z: pylonLocal.z,
-    y: 2.7,
+    w: serviceBay.w * 0.82,
+    h: 0.38,
+    d: 0.12,
+    x: serviceBay.x,
+    z: serviceBay.z + serviceBay.d / 2 + 0.055,
+    y: serviceBay.h - 0.18,
   };
   const forecourt = {
     w: footprint.w * 0.92,
-    d: footprint.d * 0.34,
-    frontOffset: footprint.d * 0.52,
+    d: footprint.d * 0.3,
+    frontOffset: footprint.d * 0.26,
     y: 0.045,
   };
   return {
@@ -111,8 +132,8 @@ export function buildGarageAnchorShellModel(
     pylon,
     forecourt,
     nightFloor: {
-      w: footprint.w * 0.98,
-      d: footprint.d * 0.92,
+      w: footprint.w * 0.93,
+      d: footprint.d * 0.86,
       y: 0.035,
       emissiveIntensity: { day: 0.12, night: 1.05 },
     },
