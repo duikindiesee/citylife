@@ -2,6 +2,8 @@ import { useRoadNetwork } from "../stores/useRoadNetwork";
 
 export function BuilderPanel() {
   const { builderActive, toggleBuilder, worldViewActive, toggleWorldView, builderMode, setBuilderMode, saveToDB, loadFromDB } = useRoadNetwork();
+  const activeRoadType = useRoadNetwork(state => state.activeRoadType);
+  const setActiveRoadType = useRoadNetwork(state => state.setActiveRoadType);
   
   if (!builderActive && !worldViewActive) {
     return (
@@ -29,9 +31,6 @@ export function BuilderPanel() {
       </div>
     );
   }
-
-  const activeRoadType = useRoadNetwork(state => state.activeRoadType);
-  const setActiveRoadType = useRoadNetwork(state => state.setActiveRoadType);
 
   const getCategory = () => {
     if (builderMode === 'roads') return 'roads';
