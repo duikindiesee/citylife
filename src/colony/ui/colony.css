@@ -42,6 +42,7 @@ body,
   left: 0;
   right: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
   padding: 10px 16px;
@@ -97,10 +98,11 @@ body,
 
 .hud {
   position: absolute;
-  top: 64px;
+  top: auto;
+  bottom: 24px;
   right: 16px;
   width: 226px;
-  max-height: calc(100vh - 88px);
+  max-height: calc(100vh - 140px);
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--brd);
@@ -1454,7 +1456,8 @@ body.tv-mode .radio-iframe.is-visible {
 }
 .rally-social-read {
   position: fixed;
-  top: 78px;
+  top: auto;
+  bottom: 24px;
   left: 18px;
   z-index: 49;
   display: flex;
@@ -1636,7 +1639,6 @@ body.tv-mode .radio-iframe.is-visible {
 @media (max-width: 760px) {
   .topbar {
     gap: 8px;
-    overflow-x: auto;
     padding: 8px 10px 12px;
   }
 

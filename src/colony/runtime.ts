@@ -1,12 +1,7 @@
 // Browser runtime for the colony: fixed-timestep sim loop + planet renderer + camera presets.
 import { COLONY } from "./config";
 import { ColonySim } from "./sim";
-import {
-  PlanetRenderer,
-  type CameraPreset,
-  type ViewMode,
-  type AvatarView,
-} from "./render/PlanetRenderer";
+import { PlanetRenderer, type CameraPreset, type ViewMode, type AvatarView } from "./render/R3FPlanetRenderer";
 import { Biome } from "./terrain";
 import {
   autoGrow,
@@ -124,7 +119,12 @@ import {
   carPartListingId,
 } from "./bot/carPartMarket";
 import { MockBackend, type CityLifeBackend, type Decision } from "./backend";
-import type { Household, HouseholdOverrides } from "./newcomers";
+import {
+  generateHousehold,
+  type Household,
+  type HouseholdOverrides,
+} from "./newcomers";
+import { useRoadNetwork } from "./stores/useRoadNetwork";
 import { spawnCitizenSubUser, splitName } from "./bot/citizenSpawn";
 import {
   BotService,
@@ -145,6 +145,11 @@ import {
   streetDoorDir,
   type Neighborhood,
   type Lot,
+  GRAND,
+  ESTATE,
+  BIG,
+  COMPACT,
+  createDynamicPlot,
 } from "./neighborhood";
 import {
   validateBlueprint,
@@ -822,6 +827,7 @@ export class ColonyRuntime {
   private barSeatBy: (string | null)[] = [];
   private fpNarration: string | null = null;
   private fpNarrating = false;
+  private settlerTimer = 0;
 
   constructor(seed: number = COLONY.render.seed) {
     this.worldSeed = seed;
@@ -3054,6 +3060,79 @@ export class ColonyRuntime {
     return true;
   }
 
+  placeZonedPlot(
+    cx: number,
+    cy: number,
+    orientation: "n" | "s" | "e" | "w",
+    sizeName: "COMPACT" | "BIG" | "ESTATE" | "GRAND",
+    type: "residential" | "commercial"
+  ): boolean {
+    const size = sizeName === "COMPACT" ? COMPACT :
+                 sizeName === "BIG" ? BIG :
+                 sizeName === "ESTATE" ? ESTATE : GRAND;
+                 
+    const id = `dynamic-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const lot = createDynamicPlot(
+      this.sim.state.terrain,
+      cx,
+      cy,
+      size,
+      orientation,
+      id,
+      type
+    );
+    if (!lot) return false;
+    
+    this.neighborhood.lots.push(lot);
+    this.neighborhood.parcels.push(lot);
+    
+    this.emit();
+    return true;
+  }
+
+  private tickAutoZoningSettlers(dt: number) {
+    this.settlerTimer += dt;
+    if (this.settlerTimer < 5) return; // check every 5 seconds
+    this.settlerTimer = 0;
+
+    // Find any free lot in the neighborhood
+    const freeLot = this.neighborhood.lots.find(
+      (l) => !l.ownerCitizenId && !l.reservedFor && l.zone === 'residential'
+    );
+    if (!freeLot) return;
+
+    const seed = Date.now();
+    const h = generateHousehold(seed);
+    h.status = "approved";
+
+    const plotInfo = {
+      id: freeLot.id,
+      name: `Plot ${freeLot.id.split('-')[1] || 'Zoned'}`,
+      vibe: "plains" as any,
+      zone: "residential" as any,
+      x: freeLot.x,
+      y: freeLot.y,
+      description: "A dynamically zoned plot."
+    };
+    
+    const citizen = this.citizens.register(h, plotInfo, Date.now());
+    if (citizen) {
+      this.ensureKbProfile({
+        citizenId: citizen.id,
+        alias: citizen.displayName,
+        bio: `Settled in a newly zoned residential plot!`,
+        plotId: citizen.plotId,
+        address: citizen.plotName,
+        kind: "human"
+      });
+
+      this.seedDeposit(citizen.id);
+      if (this.purchaseLot(citizen.id, freeLot.id)) {
+        this.commissionLot(freeLot.id);
+      }
+    }
+  }
+
   /** The buy-time gate for PRIVATE neighbourhoods. Before the player completes a plot purchase the UI
    *  asks whether this signed-in player may buy in the lot's neighbourhood: the open primary
    *  neighbourhood (no key) always passes; a satellite hamlet is checked against the backend allowlist
@@ -3901,7 +3980,7 @@ export class ColonyRuntime {
 
   start(container: HTMLElement) {
     if (this.running) return;
-    this.renderer = new PlanetRenderer(container, this.sim);
+    this.renderer = new PlanetRenderer(container, this.sim, this);
     this.renderer.setZonesVisible(this.zonesVisible);
     // P1 — feed the renderer the live citizen avatars each frame, marking the operator's own.
     this.renderer.setAvatarSource((): AvatarView[] => {
@@ -3951,8 +4030,9 @@ export class ColonyRuntime {
     this.citizens.stepAvatars(dtReal); // P1 — walk the avatars in real time toward their targets
     this.updateFirstPersonGuidedArrival();
     this.wanderIdleCitizens(dtReal); // keep the citizens strolling so watch mode is never frozen
+    this.tickAutoZoningSettlers(dtReal);
     this.raceTick(dtReal);
-    this.renderer?.frame();
+    this.renderer?.frame(dtReal);
     if (now - this.lastUi > 200) {
       this.lastUi = now;
       this.emit();
