@@ -52,7 +52,7 @@ export interface Parcel {
    *  here; until then defaultBlueprint() seeds a deterministic one so the merged render path is exercised. */
   blueprint?: string;
   fenceType: FenceType;
-  zone?: "residential" | "commercial";
+  zone?: 'residential' | 'commercial';
   /** The house build-zone (the voxel house sits here, set back from the street). */
   houseZone: Zone;
   /** The vegetable garden band, between house and field. */
@@ -884,9 +884,9 @@ export function createDynamicPlot(
   x0: number, // front-center x of the plot
   y0: number, // front-center y of the plot
   size: ParcelSize,
-  orientation: "n" | "s" | "e" | "w",
+  orientation: 'n' | 's' | 'e' | 'w',
   id: string,
-  type: "residential" | "commercial",
+  type: 'residential' | 'commercial'
 ): Parcel | null {
   const W = size.W;
   const D = size.D;
@@ -895,14 +895,10 @@ export function createDynamicPlot(
   // Local to world coordinate translator
   const translate = (u: number, d: number) => {
     switch (orientation) {
-      case "n":
-        return { x: x0 + u, y: y0 + d };
-      case "s":
-        return { x: x0 + u, y: y0 - d };
-      case "w":
-        return { x: x0 + d, y: y0 + u };
-      case "e":
-        return { x: x0 - d, y: y0 + u };
+      case 'n': return { x: x0 + u, y: y0 + d };
+      case 's': return { x: x0 + u, y: y0 - d };
+      case 'w': return { x: x0 + d, y: y0 + u };
+      case 'e': return { x: x0 - d, y: y0 + u };
     }
   };
 
@@ -947,12 +943,7 @@ export function createDynamicPlot(
     -(uHalf - 1),
     uHalf - 1,
   );
-  const farm = rect(
-    farmD0,
-    farmD0 + size.farmDepth - 1,
-    -(uHalf - 1),
-    uHalf - 1,
-  );
+  const farm = rect(farmD0, farmD0 + size.farmDepth - 1, -(uHalf - 1), uHalf - 1);
 
   // Door, gate, and driveway
   const doorCell = translate(0, houseD0);
@@ -980,20 +971,17 @@ export function createDynamicPlot(
   }
 
   // Determine standard door direction string
-  let doorDir: DoorDir = "s";
-  if (orientation === "n") doorDir = "n";
-  if (orientation === "s") doorDir = "s";
-  if (orientation === "e") doorDir = "e";
-  if (orientation === "w") doorDir = "w";
+  let doorDir: DoorDir = 's';
+  if (orientation === 'n') doorDir = 'n';
+  if (orientation === 's') doorDir = 's';
+  if (orientation === 'e') doorDir = 'e';
+  if (orientation === 'w') doorDir = 'w';
 
   // Construct seed
   const houseSeed = (x0 * 73856093) ^ (y0 * 19349663);
 
   // Construct default blueprint script
-  const blueprint =
-    type === "residential"
-      ? defaultBlueprint(houseSeed, doorDir, houseZone.w)
-      : undefined;
+  const blueprint = type === 'residential' ? defaultBlueprint(houseSeed, doorDir, houseZone.w) : undefined;
 
   // Center of the parcel
   const centerCell = translate(0, Math.floor(D / 2));
@@ -1002,21 +990,21 @@ export function createDynamicPlot(
     id,
     x: centerCell.x,
     y: centerCell.y,
-    w: orientation === "n" || orientation === "s" ? W : D,
-    h: orientation === "n" || orientation === "s" ? D : W,
-    side: orientation === "n" || orientation === "w" ? -1 : 1,
+    w: orientation === 'n' || orientation === 's' ? W : D,
+    h: orientation === 'n' || orientation === 's' ? D : W,
+    side: orientation === 'n' || orientation === 'w' ? -1 : 1,
     doorX: doorCell.x,
     doorY: doorCell.y,
     built: false,
     houseSeed,
     blueprint,
-    fenceType: "fence",
+    fenceType: 'fence',
     zone: type,
     houseZone,
     garden,
     farm,
     gate: gateCell,
     driveway,
-    fence,
+    fence
   };
 }

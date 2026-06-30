@@ -75,22 +75,48 @@ function ZoneManager({ sim }: { sim: ColonySim }) {
       const size = state.terrain.size;
       for (const lot of (state as any).neighborhood.lots) {
         if (lot.built) {
-          // If the microservice has a functional garage asset, use the GLB House!
-          // We wrap in ErrorBoundary + Suspense so bad models fall back to voxel houses.
-          if (assets["functional_garage"]) {
-             elements.push(
-               <ErrorBoundary 
-                 key={`res-err-${lot.id}`} 
-                 fallback={<VoxelHouseMesh lot={lot} mapSize={size} />}
-               >
-                 <React.Suspense fallback={<VoxelHouseMesh lot={lot} mapSize={size} />}>
-                   <GlbHouse assetId="functional_garage" position={[lot.houseZone.x, 0.1, lot.houseZone.y]} />
-                 </React.Suspense>
-               </ErrorBoundary>
-             );
+          if (lot.zone === "commercial") {
+            const wX = (lot.x - size / 2) * 4;
+            const wZ = (lot.y - size / 2) * 4;
+            elements.push(
+              <CommercialBlock 
+                key={`comm-${lot.id}`} 
+                position={[wX, 0, wZ]} 
+              />
+            );
           } else {
-             elements.push(<VoxelHouseMesh key={`res-${lot.id}`} lot={lot} mapSize={size} />);
+            // If the microservice has a functional garage asset, use the GLB House!
+            // We wrap in ErrorBoundary + Suspense so bad models fall back to voxel houses.
+            if (assets["functional_garage"]) {
+               elements.push(
+                 <ErrorBoundary 
+                   key={`res-err-${lot.id}`} 
+                   fallback={<VoxelHouseMesh lot={lot} mapSize={size} />}
+                 >
+                   <React.Suspense fallback={<VoxelHouseMesh lot={lot} mapSize={size} />}>
+                     <GlbHouse assetId="functional_garage" position={[lot.houseZone.x, 0.1, lot.houseZone.y]} />
+                   </React.Suspense>
+                 </ErrorBoundary>
+               );
+            } else {
+               elements.push(<VoxelHouseMesh key={`res-${lot.id}`} lot={lot} mapSize={size} />);
+            }
           }
+        } else {
+          // Render unbuilt/zoned plot ground footprint overlay
+          const wX = (lot.x - size / 2) * 4;
+          const wZ = (lot.y - size / 2) * 4;
+          const wY = state.terrain.worldY(Math.round(lot.x), Math.round(lot.y));
+          const color = lot.zone === "commercial" ? "#55cfff" : "#55ff55";
+          elements.push(
+            <mesh 
+              key={`zone-ground-${lot.id}`} 
+              position={[wX, wY + 0.1, wZ]}
+            >
+              <boxGeometry args={[lot.w * 4, 0.1, lot.h * 4]} />
+              <meshStandardMaterial color={color} opacity={0.35} transparent roughness={1.0} />
+            </mesh>
+          );
         }
       }
     }
@@ -202,7 +228,7 @@ function AerialCameraController() {
 
 
 
-function R3FWorld({ sim }: { sim: ColonySim }) {
+function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
   const terrainSize = sim.state.terrain.size;
   
   // Extract road cells for terrain leveling
@@ -234,7 +260,7 @@ function R3FWorld({ sim }: { sim: ColonySim }) {
         <R3FCloud worldSize={terrainSize} />
         
         {/* SimCity Style Road Architecture */}
-        <R3FRoadBuilder sim={sim} />
+        <R3FRoadBuilder sim={sim} runtime={runtime} />
         <R3FRoadNetwork sim={sim} />
 
         {/* Dynamic World Elements */}
@@ -264,7 +290,11 @@ export class PlanetRenderer {
   private root: Root;
   public onGroundClick?: (gx: number, gy: number) => void;
 
-  constructor(private container: HTMLElement, private sim: ColonySim) {
+  constructor(
+    private container: HTMLElement,
+    private sim: ColonySim,
+    public runtime?: any
+  ) {
     container.style.width = '100vw';
     container.style.height = '100vh';
     container.style.position = 'absolute';
@@ -275,7 +305,7 @@ export class PlanetRenderer {
     this.root = createRoot(container);
     this.root.render(
       <Canvas shadows camera={{ fov: 45, far: 1000 }}>
-        <R3FWorld sim={this.sim} />
+        <R3FWorld sim={this.sim} runtime={this.runtime} />
       </Canvas>
     );
   }

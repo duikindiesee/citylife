@@ -1961,7 +1961,12 @@ export class ColonyRuntime {
    *  (see setOperatorUserId). Still attempts a claim so an order of name-then-userId resolves either way. */
   setOperatorName(name: string | null): void {
     this.operatorName = name && name.trim() ? name.trim() : null;
-    this.claimOwnCitizen();
+    if (this.operatorName) {
+      const id = this.operatorCitizenId();
+      if (!id) {
+        this.createStarterPlotForOperator(this.operatorName);
+      }
+    }
     this.updateOperatorCar();
     if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
       this.exitFirstPerson();
@@ -1970,34 +1975,107 @@ export class ColonyRuntime {
     this.emit();
   }
 
-  /** Identity-key the player view to the authenticated kooker userId (decoded from the JWT in
-   *  authClient), NOT the display name. Stamps (claims) the citizen the player owns so own-data and
-   *  step-into resolve by user id even when names collide. Re-evaluates the step-into guard like
-   *  setOperatorName, so flipping identity drops a now-disallowed first-person session. */
-  setOperatorUserId(userId: string | null): void {
-    this.operatorUserId = userId && userId.trim() ? userId.trim() : null;
-    this.claimOwnCitizen();
-    this.updateOperatorCar();
-    if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
-      this.exitFirstPerson();
-      return;
-    }
-    this.emit();
-  }
+  private createStarterPlotForOperator(operatorName: string) {
+    const t = this.sim.state.terrain;
+    const lx = t.landing.x;
+    const ly = t.landing.y;
 
-  /** Identity claim / backfill: once both the login name and kooker userId are known, stamp the userId
-   *  onto the citizen the player owns — matched by name ONCE, then identity-keyed forever after. A
-   *  no-op if the userId is unknown, if the user already owns a stamped citizen (so a later name
-   *  collision can never re-point them), or if no unclaimed name match exists yet (the citizen may be
-   *  created later; operatorCitizenId still resolves it by the unclaimed-name fallback until claimed). */
-  private claimOwnCitizen(): void {
-    if (!this.operatorUserId) return;
-    if (this.citizens.byKookerUserId(this.operatorUserId)) return; // already claimed
-    const target = this.citizens.resolveOwnCitizenId(
-      this.operatorUserId,
-      this.operatorName,
+    const roadTiles = useRoadNetwork.getState().tiles;
+    const hasRoad = Object.keys(roadTiles).length > 0;
+    if (!hasRoad) {
+      const cells = [
+        { x: lx - 2, y: ly },
+        { x: lx - 1, y: ly },
+        { x: lx, y: ly },
+        { x: lx + 1, y: ly },
+        { x: lx + 2, y: ly }
+      ];
+      useRoadNetwork.getState().plotRoad(cells, 'street');
+    }
+
+    const roadX = lx;
+    const roadY = ly;
+    const size = ESTATE;
+    const orientation = 'n';
+    const plotY = roadY + 1;
+    
+    const lotId = 'starter-plot';
+    const lot = createDynamicPlot(
+      t,
+      roadX,
+      plotY,
+      size,
+      orientation,
+      lotId,
+      'residential'
     );
-    if (target) this.citizens.setKookerUserId(target, this.operatorUserId);
+
+    if (lot) {
+      this.neighborhood.lots.push(lot);
+      this.neighborhood.parcels.push(lot);
+      
+      const h: Household = {
+        id: `h-operator-${Date.now()}`,
+        displayName: operatorName,
+        botHandle: `${operatorName.toLowerCase()}bot`,
+        members: [{
+          name: operatorName,
+          age: 30,
+          role: 'adult',
+          occupation: 'Founder'
+        }],
+        membersSummary: '1 Founder',
+        lead: {
+          education: 'Self-taught',
+          jobHistory: 'Founder',
+          migrationMotivation: 'Building a new city'
+        },
+        originLocation: 'Earth',
+        holdings: 1000,
+        status: 'approved',
+        generated: true,
+        publicSafe: true
+      };
+
+      const plotInfo = {
+        id: lot.id,
+        name: "Starter Estate",
+        vibe: "plains" as any,
+        zone: "residential" as any,
+        x: lot.x,
+        y: lot.y,
+        description: "Your starting city estate."
+      };
+
+      const citizen = this.citizens.register(h, plotInfo, Date.now());
+      if (citizen) {
+        lot.ownerCitizenId = citizen.id;
+        citizen.homeXY = {
+          x: Math.round(lot.houseZone.x + (lot.houseZone.w - 1) / 2),
+          y: Math.round(lot.houseZone.y + (lot.houseZone.d - 1) / 2),
+        };
+        this.citizens.setTarget(citizen.id, { x: lot.doorX, y: lot.doorY });
+        
+        this.seedDeposit(citizen.id);
+        lot.built = true;
+        const doorDir = streetDoorDir(lot);
+        lot.blueprint = defaultBlueprint(lot.houseSeed, doorDir, lot.houseZone.w);
+        retargetParcelAccess(lot, doorDir);
+
+        citizen.pos = { x: lot.doorX, y: lot.doorY };
+        citizen.target = { x: lot.doorX, y: lot.doorY };
+
+        const carStoreKey = `citylife.car.${citizen.id}`;
+        if (!localStorage.getItem(carStoreKey)) {
+          const starterCar = {
+            name: "Founder Cruiser",
+            parts: ["engine_stock", "hood_stock"],
+            paint: { primary: "#57d1c4", secondary: "#1a2035" }
+          };
+          localStorage.setItem(carStoreKey, JSON.stringify(starterCar));
+        }
+      }
+    }
   }
 
   /** Player-view guard: operators/admins may step into any citizen; CITYLIFE_PLAYER may only enter their own. */
@@ -3655,17 +3733,12 @@ export class ColonyRuntime {
     cy: number,
     orientation: "n" | "s" | "e" | "w",
     sizeName: "COMPACT" | "BIG" | "ESTATE" | "GRAND",
-    type: "residential" | "commercial",
+    type: "residential" | "commercial"
   ): boolean {
-    const size =
-      sizeName === "COMPACT"
-        ? COMPACT
-        : sizeName === "BIG"
-          ? BIG
-          : sizeName === "ESTATE"
-            ? ESTATE
-            : GRAND;
-
+    const size = sizeName === "COMPACT" ? COMPACT :
+                 sizeName === "BIG" ? BIG :
+                 sizeName === "ESTATE" ? ESTATE : GRAND;
+                 
     const id = `dynamic-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const lot = createDynamicPlot(
       this.sim.state.terrain,
@@ -3674,46 +3747,13 @@ export class ColonyRuntime {
       size,
       orientation,
       id,
-      type,
+      type
     );
     if (!lot) return false;
-
+    
     this.neighborhood.lots.push(lot);
     this.neighborhood.parcels.push(lot);
-
-    this.emit();
-    return true;
-  }
-
-  demolishPlot(cx: number, cy: number): boolean {
-    // Find a lot that covers (cx, cy)
-    const lotIndex = this.neighborhood.lots.findIndex((l) => {
-      const W = l.w;
-      const H = l.h;
-      const minX = l.x - Math.floor((W - 1) / 2);
-      const maxX = l.x + Math.floor(W / 2);
-      const minY = l.y - Math.floor((H - 1) / 2);
-      const maxY = l.y + Math.floor(H / 2);
-      return cx >= minX && cx <= maxX && cy >= minY && cy <= maxY;
-    });
-
-    if (lotIndex === -1) return false;
-    const lot = this.neighborhood.lots[lotIndex];
-
-    // If it has an owner (citizen), unregister them
-    if (lot.ownerCitizenId) {
-      this.citizens.remove(lot.ownerCitizenId);
-    }
-
-    // Remove it from neighborhood lists
-    this.neighborhood.lots.splice(lotIndex, 1);
-    const parcelIndex = this.neighborhood.parcels.findIndex(
-      (p) => p.id === lot.id,
-    );
-    if (parcelIndex !== -1) {
-      this.neighborhood.parcels.splice(parcelIndex, 1);
-    }
-
+    
     this.emit();
     return true;
   }
@@ -3725,7 +3765,7 @@ export class ColonyRuntime {
 
     // Find any free lot in the neighborhood
     const freeLot = this.neighborhood.lots.find(
-      (l) => !l.ownerCitizenId && !l.reservedFor && l.zone === "residential",
+      (l) => !l.ownerCitizenId && !l.reservedFor && l.zone === 'residential'
     );
     if (!freeLot) return;
 
@@ -3735,14 +3775,14 @@ export class ColonyRuntime {
 
     const plotInfo = {
       id: freeLot.id,
-      name: `Plot ${freeLot.id.split("-")[1] || "Zoned"}`,
+      name: `Plot ${freeLot.id.split('-')[1] || 'Zoned'}`,
       vibe: "plains" as any,
       zone: "residential" as any,
       x: freeLot.x,
       y: freeLot.y,
-      description: "A dynamically zoned plot.",
+      description: "A dynamically zoned plot."
     };
-
+    
     const citizen = this.citizens.register(h, plotInfo, Date.now());
     if (citizen) {
       this.ensureKbProfile({
@@ -3751,7 +3791,7 @@ export class ColonyRuntime {
         bio: `Settled in a newly zoned residential plot!`,
         plotId: citizen.plotId,
         address: citizen.plotName,
-        kind: "human",
+        kind: "human"
       });
 
       this.seedDeposit(citizen.id);

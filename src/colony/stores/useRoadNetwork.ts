@@ -25,22 +25,26 @@ export interface RoadTile {
   x: number;
   y: number;
   mask: number; // bitmask of connections
-  type: 'street' | 'avenue' | 'highway';
+  type: 'street' | 'avenue' | 'highway' | 'gravel';
 }
+
+export type BuilderMode = 'roads' | 'raise' | 'lower' | 'flatten' | 'zoning_residential' | 'zoning_commercial' | 'bulldoze';
 
 export interface BuilderState {
   tiles: Record<string, RoadTile>;
   builderActive: boolean;
   worldViewActive: boolean;
-  builderMode: 'roads' | 'raise' | 'lower' | 'flatten';
+  builderMode: BuilderMode;
+  activeRoadType: 'street' | 'gravel';
   isDrawing: boolean;
   landscapeEdits: Map<string, number>;
   
   toggleBuilder: () => void;
   toggleWorldView: () => void;
-  setBuilderMode: (mode: 'roads' | 'raise' | 'lower' | 'flatten') => void;
+  setBuilderMode: (mode: BuilderMode) => void;
+  setActiveRoadType: (type: 'street' | 'gravel') => void;
   setIsDrawing: (isDrawing: boolean) => void;
-  plotRoad: (cells: { x: number; y: number }[], type: 'street' | 'highway') => void;
+  plotRoad: (cells: { x: number; y: number }[], type: 'street' | 'gravel') => void;
   applyLandscapeEdit: (x: number, y: number, mode: 'raise' | 'lower' | 'flatten') => void;
   
   saveToDB: () => Promise<void>;
@@ -52,6 +56,7 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
   builderActive: false,
   worldViewActive: false,
   builderMode: 'roads',
+  activeRoadType: 'street',
   isDrawing: false,
   landscapeEdits: new Map(),
 
@@ -59,6 +64,7 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
   toggleBuilder: () => set(state => ({ builderActive: !state.builderActive, worldViewActive: false })),
   toggleWorldView: () => set(state => ({ worldViewActive: !state.worldViewActive, builderActive: false })),
   setBuilderMode: (mode) => set({ builderMode: mode }),
+  setActiveRoadType: (type) => set({ activeRoadType: type }),
 
   plotRoad: (cells, type) => {
     set((state) => {
