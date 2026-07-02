@@ -47,7 +47,7 @@ import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
 import { BuilderPanel } from "./BuilderPanel";
 import "./colony.css";
-import { useRoadNetwork } from "../stores/useRoadNetwork";
+import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
 
 // Spec 089 — the CityLife HUD shows only the city-relevant stats (citizens, homesteads, the bank, the
 // commercial district, the border). The old colony-sim survival/economy dashboard (water/food/health/
@@ -624,7 +624,7 @@ export function ColonyApp() {
   }, [runtime]);
 
   // Synchronize preexisting/starter simulation roads to the React road builder store upon entering Builder Mode
-  const tiles = useRoadNetwork((state) => state.tiles);
+  const tiles = useRoadNetwork(state => state.tiles);
   useEffect(() => {
     if (builderActive && runtime && runtime.sim) {
       const sim = runtime.sim;
@@ -637,10 +637,10 @@ export function ColonyApp() {
             x: r.x,
             y: r.y,
             mask: 0,
-            type: r.kind || "street",
+            type: r.kind || 'street'
           };
         }
-
+        
         const getMask = (x: number, y: number) => {
           let mask = 0;
           if (initialTiles[`${x},${y - 1}`]) mask |= RoadMask.N;
@@ -649,12 +649,12 @@ export function ColonyApp() {
           if (initialTiles[`${x - 1},${y}`]) mask |= RoadMask.W;
           return mask;
         };
-
+        
         for (const key in initialTiles) {
           const t = initialTiles[key];
           t.mask = getMask(t.x, t.y);
         }
-
+        
         useRoadNetwork.setState({ tiles: initialTiles });
       }
     }
@@ -723,7 +723,7 @@ export function ColonyApp() {
     requestAnimationFrame(() => runtime.resize()); // re-measure after first layout
     const ro = new ResizeObserver(() => runtime.resize());
     ro.observe(el);
-
+    
     if (runtime.sim) {
       useRoadNetwork.getState().loadFromDB(runtime.sim);
     }
@@ -1034,7 +1034,7 @@ export function ColonyApp() {
             📷
           </button>
         </div>
-        <BuilderPanel />
+        <BuilderPanel runtime={runtime} sim={runtime.sim} />
         <div className="group">
           <a
             className="linkbtn"

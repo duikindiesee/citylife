@@ -3649,6 +3649,37 @@ export class ColonyRuntime {
     return true;
   }
 
+  demolishPlot(cx: number, cy: number): boolean {
+    // Find a lot that covers (cx, cy)
+    const lotIndex = this.neighborhood.lots.findIndex((l) => {
+      const W = l.w;
+      const H = l.h;
+      const minX = l.x - Math.floor((W - 1) / 2);
+      const maxX = l.x + Math.floor(W / 2);
+      const minY = l.y - Math.floor((H - 1) / 2);
+      const maxY = l.y + Math.floor(H / 2);
+      return cx >= minX && cx <= maxX && cy >= minY && cy <= maxY;
+    });
+
+    if (lotIndex === -1) return false;
+    const lot = this.neighborhood.lots[lotIndex];
+
+    // If it has an owner (citizen), unregister them
+    if (lot.ownerCitizenId) {
+      this.citizens.remove(lot.ownerCitizenId);
+    }
+
+    // Remove it from neighborhood lists
+    this.neighborhood.lots.splice(lotIndex, 1);
+    const parcelIndex = this.neighborhood.parcels.findIndex((p) => p.id === lot.id);
+    if (parcelIndex !== -1) {
+      this.neighborhood.parcels.splice(parcelIndex, 1);
+    }
+
+    this.emit();
+    return true;
+  }
+
   private tickAutoZoningSettlers(dt: number) {
     this.settlerTimer += dt;
     if (this.settlerTimer < 5) return; // check every 5 seconds

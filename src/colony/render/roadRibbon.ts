@@ -277,35 +277,20 @@ export function buildRoadRibbons(
             }
             s.add(wi);
           }
-      }
-    });
-    const junction = new Set<string>();
-    // How far back from a crossing the painted lines stop (spec 127 verify P3): JR=2 reaches
-    // past the legacy slab in the worst constructible offset tee.
-    const JR = 2;
-    for (const [k, s] of cellWays)
-      if (s.size >= 2) {
-        const [x, y] = k.split(",").map(Number);
-        for (let dx = -JR; dx <= JR; dx++)
-          for (let dy = -JR; dy <= JR; dy++)
-            junction.add(`${x + dx},${y + dy}`);
-      }
-    nearJunction = (x: number, y: number) =>
-      junction.has(`${Math.round(x)},${Math.round(y)}`);
-  }
-  const depotMouths = ways
-    .filter((way) => way.source === "depot-spur")
-    .map((way) => way.path[0])
-    .filter((p): p is { x: number; y: number } => !!p);
-  const nearDepotMouth = (x: number, y: number) =>
-    depotMouths.some((p) => Math.hypot(x - p.x, y - p.y) <= 2.2);
-  const skipPaint = (x: number, y: number) =>
-    nearJunction(x, y) ||
-    nearDepotMouth(x, y) ||
-    !roadSurfaceCellOk(opts, x, y);
-  const lifts = zones
-    ? assignWayLifts(ways.length, zones)
-    : new Array<number>(ways.length).fill(0);
+          s.add(wi);
+        }
+    }
+  });
+  const junction = new Set<string>();
+  const JR = 1; // how far back from a crossing the painted lines stop
+  for (const [k, s] of cellWays)
+    if (s.size >= 2) {
+      const [x, y] = k.split(",").map(Number);
+      for (let dx = -JR; dx <= JR; dx++)
+        for (let dy = -JR; dy <= JR; dy++) junction.add(`${x + dx},${y + dy}`);
+    }
+  const nearJunction = (x: number, y: number) =>
+    junction.has(`${Math.round(x)},${Math.round(y)}`);
   // Junctions need no flatten or slab. Every ribbon vertex takes its height from its OWN position
   // (smoothRoadY, in ribbon() below), so where two roads overlap at a crossing both surfaces evaluate the
   // same height at the same point — they are COPLANAR by construction, following the terrain. So a junction

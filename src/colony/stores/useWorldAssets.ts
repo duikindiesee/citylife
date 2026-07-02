@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getAuthClient } from '../authClient';
 
 export type AssetCategory = 'residential' | 'commercial' | 'foliage' | 'prop' | 'vehicle';
 
@@ -25,8 +26,11 @@ export const useWorldAssets = create<WorldAssetsState>((set) => ({
   fetchManifest: async () => {
     set({ loading: true, error: null });
     try {
+      const token = await getAuthClient().getValidToken();
       // kooker-service-citylife-world local dev port
-      const res = await fetch('http://localhost:3000/api/v1/assets');
+      const res = await fetch('http://localhost:3000/api/v1/assets', {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      });
       if (!res.ok) throw new Error('Failed to fetch world assets manifest');
       const data: WorldAsset[] = await res.json();
       

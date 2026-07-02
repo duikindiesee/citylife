@@ -25,7 +25,7 @@ export interface RoadTile {
   x: number;
   y: number;
   mask: number; // bitmask of connections
-  type: 'street' | 'avenue' | 'highway' | 'gravel';
+  type: 'street' | 'avenue' | 'highway' | 'gravel' | 'culdesac';
 }
 
 export type BuilderMode = 'roads' | 'raise' | 'lower' | 'flatten' | 'zoning_residential' | 'zoning_commercial' | 'bulldoze';
@@ -35,20 +35,23 @@ export interface BuilderState {
   builderActive: boolean;
   worldViewActive: boolean;
   builderMode: BuilderMode;
-  activeRoadType: 'street' | 'gravel';
+  activeRoadType: 'street' | 'gravel' | 'culdesac';
   isDrawing: boolean;
   landscapeEdits: Map<string, number>;
+  sameSessionPlacements: Set<string>; // tracks newly placed items for free bulldozer undo
   
   toggleBuilder: () => void;
   toggleWorldView: () => void;
   setBuilderMode: (mode: BuilderMode) => void;
-  setActiveRoadType: (type: 'street' | 'gravel') => void;
+  setActiveRoadType: (type: 'street' | 'gravel' | 'culdesac') => void;
   setIsDrawing: (isDrawing: boolean) => void;
-  plotRoad: (cells: { x: number; y: number }[], type: 'street' | 'gravel') => void;
+  plotRoad: (cells: { x: number; y: number }[], type: 'street' | 'gravel' | 'culdesac', sim?: any) => void;
+  removeRoad: (x: number, y: number, sim?: any) => void;
   applyLandscapeEdit: (x: number, y: number, mode: 'raise' | 'lower' | 'flatten') => void;
+  clearSessionPlacements: () => void;
   
   saveToDB: () => Promise<void>;
-  loadFromDB: () => Promise<void>;
+  loadFromDB: (sim?: any) => Promise<void>;
 }
 
 export const useRoadNetwork = create<BuilderState>((set, get) => ({
@@ -59,22 +62,34 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
   activeRoadType: 'street',
   isDrawing: false,
   landscapeEdits: new Map(),
+  sameSessionPlacements: new Set(),
 
   setIsDrawing: (isDrawing) => set({ isDrawing }),
-  toggleBuilder: () => set(state => ({ builderActive: !state.builderActive, worldViewActive: false })),
+  toggleBuilder: () => set(state => {
+    const active = !state.builderActive;
+    // Clear sameSessionPlacements when closing or opening builder
+    return { 
+      builderActive: active, 
+      worldViewActive: false,
+      sameSessionPlacements: new Set() 
+    };
+  }),
   toggleWorldView: () => set(state => ({ worldViewActive: !state.worldViewActive, builderActive: false })),
   setBuilderMode: (mode) => set({ builderMode: mode }),
   setActiveRoadType: (type) => set({ activeRoadType: type }),
+  clearSessionPlacements: () => set({ sameSessionPlacements: new Set() }),
 
-  plotRoad: (cells, type) => {
+  plotRoad: (cells, type, sim) => {
     set((state) => {
       const newTiles = { ...state.tiles };
+      const newPlacements = new Set(state.sameSessionPlacements);
       
       // Mark all incoming cells as having roads (initially without connections)
       for (const c of cells) {
         const key = `${c.x},${c.y}`;
         if (!newTiles[key]) {
           newTiles[key] = { x: c.x, y: c.y, mask: 0, type };
+          newPlacements.add(key);
         }
       }
 
@@ -113,24 +128,145 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
         }
       }
 
-      return { tiles: newTiles };
+      // Sync with simulation state
+      if (sim) {
+        const s = sim.state;
+        s.roads = [];
+        s.roadSet.clear();
+        for (const key in newTiles) {
+          const tile = newTiles[key];
+          s.roadSet.add(`${tile.x},${tile.y}`);
+          s.roads.push({ x: tile.x, y: tile.y, kind: tile.type });
+        }
+        s.roadsVersion++;
+      }
+
+      return { tiles: newTiles, sameSessionPlacements: newPlacements };
     });
   },
 
-  loadFromDB: async () => {
+  removeRoad: (x, y, sim) => {
+    set((state) => {
+      const newTiles = { ...state.tiles };
+      const key = `${x},${y}`;
+      if (!newTiles[key]) return {};
+      
+      delete newTiles[key];
+      
+      const newPlacements = new Set(state.sameSessionPlacements);
+      newPlacements.delete(key);
+
+      const getMask = (nx: number, ny: number) => {
+        let mask = 0;
+        if (newTiles[`${nx},${ny - 1}`]) mask |= RoadMask.N;
+        if (newTiles[`${nx + 1},${ny}`]) mask |= RoadMask.E;
+        if (newTiles[`${nx},${ny + 1}`]) mask |= RoadMask.S;
+        if (newTiles[`${nx - 1},${ny}`]) mask |= RoadMask.W;
+        return mask;
+      };
+
+      const neighbors = [
+        { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
+      ];
+      for (const n of neighbors) {
+        const nx = x + n.dx;
+        const ny = y + n.dy;
+        const nKey = `${nx},${ny}`;
+        if (newTiles[nKey]) {
+          newTiles[nKey] = {
+            ...newTiles[nKey],
+            mask: getMask(nx, ny)
+          };
+        }
+      }
+
+      // Sync with simulation state
+      if (sim) {
+        const s = sim.state;
+        s.roads = [];
+        s.roadSet.clear();
+        s.roadKind.clear();
+        for (const k in newTiles) {
+          const tile = newTiles[k];
+          s.roadSet.add(`${tile.x},${tile.y}`);
+          s.roads.push({ x: tile.x, y: tile.y, kind: tile.type });
+          s.roadKind.set(`${tile.x},${tile.y}`, tile.type);
+        }
+        s.roadsVersion++;
+      }
+
+      return { tiles: newTiles, sameSessionPlacements: newPlacements };
+    });
+  },
+
+  loadFromDB: async (sim?: any) => {
+    let tiles: Record<string, any> = {};
     try {
       const res = await fetch('/api/roads');
       if (res.ok) {
         const data = await res.json();
-        set({ tiles: data.tiles });
+        tiles = data.tiles || {};
       } else {
         console.warn('Failed to load roads from DB');
       }
     } catch (e) {
       console.warn('Backend not running, falling back to local storage', e);
       const local = localStorage.getItem('citylife_roads');
-      if (local) set({ tiles: JSON.parse(local) });
+      if (local) {
+        try {
+          tiles = JSON.parse(local);
+        } catch (pe) {
+          console.error('Failed to parse local storage roads', pe);
+        }
+      }
     }
+    
+    // Sync with simulation state
+    if (sim) {
+      if (Object.keys(tiles).length > 0) {
+        const s = sim.state;
+        s.roads = [];
+        s.roadSet.clear();
+        s.roadKind.clear();
+        for (const k in tiles) {
+          const tile = tiles[k];
+          s.roadSet.add(`${tile.x},${tile.y}`);
+          s.roads.push({ x: tile.x, y: tile.y, kind: tile.type });
+          s.roadKind.set(`${tile.x},${tile.y}`, tile.type);
+        }
+        s.roadsVersion++;
+      } else if (sim.state.roads && sim.state.roads.length > 0) {
+        // Load the starter simulation roads into tiles!
+        const initialTiles: Record<string, any> = {};
+        for (const r of sim.state.roads) {
+          const key = `${r.x},${r.y}`;
+          initialTiles[key] = {
+            x: r.x,
+            y: r.y,
+            mask: 0,
+            type: r.kind || 'street'
+          };
+        }
+        
+        const getMask = (x: number, y: number) => {
+          let mask = 0;
+          if (initialTiles[`${x},${y - 1}`]) mask |= RoadMask.N;
+          if (initialTiles[`${x + 1},${y}`]) mask |= RoadMask.E;
+          if (initialTiles[`${x},${y + 1}`]) mask |= RoadMask.S;
+          if (initialTiles[`${x - 1},${y}`]) mask |= RoadMask.W;
+          return mask;
+        };
+        
+        for (const key in initialTiles) {
+          const t = initialTiles[key];
+          t.mask = getMask(t.x, t.y);
+        }
+        
+        tiles = initialTiles;
+      }
+    }
+
+    set({ tiles });
   },
 
   applyLandscapeEdit: (x, y, mode) => {
@@ -176,3 +312,8 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
     }
   }
 }));
+
+if (typeof window !== 'undefined') {
+  (window as any).useRoadNetwork = useRoadNetwork;
+}
+

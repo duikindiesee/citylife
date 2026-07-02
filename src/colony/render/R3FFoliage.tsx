@@ -18,9 +18,9 @@ export function R3FFoliage({ sim }: R3FFoliageProps) {
     const { matrices: mats, colors: cols } = calculateFoliagePositions(s.terrain, s.roads, s.buildings);
     
     // Create the geometry
-    const geo = new THREE.ConeGeometry(4, 20, 5);
+    const geo = new THREE.ConeGeometry(1.5, 8, 5);
     // Lift geometry so the origin is at the base, not the center
-    geo.translate(0, 10, 0);
+    geo.translate(0, 4, 0);
 
     return { matrices: mats, colors: cols, geometry: geo };
   }, [sim.state.roadsVersion, sim.state.buildings.length]); // Note: In a real app we'd track precise signals

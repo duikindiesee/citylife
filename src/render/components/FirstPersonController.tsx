@@ -7,9 +7,19 @@ import { COLONY } from '../../colony/config';
 const MOVEMENT_SPEED = 10;
 const LOOK_SPEED = 2;
 
-export function FirstPersonController({ startPosition = [0, 2, 0] }: { startPosition?: [number, number, number] }) {
+export function FirstPersonController({ sim, startPosition = [0, 2, 0] }: { sim?: any, startPosition?: [number, number, number] }) {
   const rigidBody = useRef<RapierRigidBody>(null);
   const { camera } = useThree();
+  
+  useEffect(() => {
+    const oldFov = (camera as any).fov;
+    (camera as any).fov = 65;
+    (camera as any).updateProjectionMatrix();
+    return () => {
+      (camera as any).fov = oldFov;
+      (camera as any).updateProjectionMatrix();
+    };
+  }, [camera]);
   
   const input = useRef({
     forward: false,
@@ -119,9 +129,27 @@ export function FirstPersonController({ startPosition = [0, 2, 0] }: { startPosi
 
     // Sync Camera
     const pos = rigidBody.current.translation();
-    const minHeight = COLONY.world.seaLevel * COLONY.world.heightScale + 1.6;
-    const camY = Math.max(minHeight, pos.y + 1.6);
-    camera.position.set(pos.x, camY, pos.z); // 1.6m eye height, clamped above sea level
+
+    // Terrain height guardrail
+    const terrain = sim?.state?.terrain;
+    if (terrain) {
+      const terrainSize = terrain.size;
+      const gridX = Math.max(0, Math.min(terrainSize - 1, Math.round(pos.x / 4 + terrainSize / 2)));
+      const gridZ = Math.max(0, Math.min(terrainSize - 1, Math.round(pos.z / 4 + terrainSize / 2)));
+      const terrainHeight = terrain.worldY(gridX, gridZ);
+      
+      if (pos.y < terrainHeight - 0.5) {
+        rigidBody.current.setTranslation({
+          x: pos.x,
+          y: terrainHeight + 1.5,
+          z: pos.z
+        }, true);
+        rigidBody.current.setLinvel({ x: currentVel.x, y: 0, z: currentVel.z }, true);
+      }
+    }
+
+    const camY = pos.y + 0.6; // Raise offset to 1.6m eye height above ground
+    camera.position.set(pos.x, camY, pos.z);
     camera.quaternion.setFromEuler(rotation.current);
   });
 
