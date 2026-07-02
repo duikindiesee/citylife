@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { buildGarageAnchorShellModel } from "../src/colony/render/garageAnchorShell";
+import { buildRoadRibbons } from "../src/colony/render/roadRibbon";
 import {
   footprintTouchesRoad,
   rectFootprintCells,
@@ -13,29 +14,33 @@ function roadSet(rt: ColonyRuntime): Set<string> {
   return new Set(rt.sim.state.roads.map((r) => `${r.x},${r.y}`));
 }
 
-function garageForecourtCells(rt: ColonyRuntime): GridCell[] {
-  const garage = rt.commercialDistrict!.garagePad!;
-  const model = buildGarageAnchorShellModel(garage, () => 0);
-  const cos = Math.cos(model.facingAngle);
-  const sin = Math.sin(model.facingAngle);
-  const center = model.center;
+function renderedRoadRibbonSet(rt: ColonyRuntime): Set<string> {
+  const t = rt.sim.state.terrain;
+  return buildRoadRibbons(rt.roadWays, {
+    terrain: t,
+    wx: (x) => x,
+    wz: (y) => y,
+    roadY: (x, y) => {
+      const gx = Math.max(0, Math.min(t.size - 1, Math.round(x)));
+      const gy = Math.max(0, Math.min(t.size - 1, Math.round(y)));
+      return t.worldY(gx, gy);
+    },
+  }).cells;
+}
+
+function rotatedRectCells(
+  center: { x: number; y: number },
+  angle: number,
+  rect: { x?: number; z: number; w: number; d: number },
+): GridCell[] {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const ox = rect.x ?? 0;
   const corners = [
-    {
-      x: -model.forecourt.w / 2,
-      z: model.forecourt.frontOffset - model.forecourt.d / 2,
-    },
-    {
-      x: model.forecourt.w / 2,
-      z: model.forecourt.frontOffset - model.forecourt.d / 2,
-    },
-    {
-      x: -model.forecourt.w / 2,
-      z: model.forecourt.frontOffset + model.forecourt.d / 2,
-    },
-    {
-      x: model.forecourt.w / 2,
-      z: model.forecourt.frontOffset + model.forecourt.d / 2,
-    },
+    { x: ox - rect.w / 2, z: rect.z - rect.d / 2 },
+    { x: ox + rect.w / 2, z: rect.z - rect.d / 2 },
+    { x: ox - rect.w / 2, z: rect.z + rect.d / 2 },
+    { x: ox + rect.w / 2, z: rect.z + rect.d / 2 },
   ].map((p) => ({
     x: center.x + p.x * cos + p.z * sin,
     y: center.y - p.x * sin + p.z * cos,
@@ -52,15 +57,56 @@ function garageForecourtCells(rt: ColonyRuntime): GridCell[] {
       const localX = dx * cos - dy * sin;
       const localZ = dx * sin + dy * cos;
       if (
-        Math.abs(localX) <= model.forecourt.w / 2 + 1e-6 &&
-        localZ >= model.forecourt.frontOffset - model.forecourt.d / 2 - 1e-6 &&
-        localZ <= model.forecourt.frontOffset + model.forecourt.d / 2 + 1e-6
+        Math.abs(localX - ox) <= rect.w / 2 + 1e-6 &&
+        localZ >= rect.z - rect.d / 2 - 1e-6 &&
+        localZ <= rect.z + rect.d / 2 + 1e-6
       ) {
         cells.push({ x, y });
       }
     }
   }
   return cells;
+}
+
+function garageVisualFootprintCells(rt: ColonyRuntime): GridCell[] {
+  const garage = rt.commercialDistrict!.garagePad!;
+  const model = buildGarageAnchorShellModel(garage, () => 0);
+  return [
+    ...rotatedRectCells(model.center, model.facingAngle, {
+      z: model.forecourt.frontOffset,
+      w: model.forecourt.w,
+      d: model.forecourt.d,
+    }),
+    ...rotatedRectCells(model.center, model.facingAngle, {
+      z: 0,
+      w: model.nightFloor.w,
+      d: model.nightFloor.d,
+    }),
+    ...rotatedRectCells(model.center, model.facingAngle, {
+      x: model.pylon.x,
+      z: model.pylon.z,
+      w: model.pylon.w * 2.35,
+      d: model.pylon.d * 1.52,
+    }),
+    ...model.displayCars.flatMap((car) =>
+      rotatedRectCells(model.center, model.facingAngle, {
+        x: car.x,
+        z: car.z,
+        w: 1.26 * car.scale,
+        d: 0.62 * car.scale,
+      }),
+    ),
+  ];
+}
+
+function garageForecourtCells(rt: ColonyRuntime): GridCell[] {
+  const garage = rt.commercialDistrict!.garagePad!;
+  const model = buildGarageAnchorShellModel(garage, () => 0);
+  return rotatedRectCells(model.center, model.facingAngle, {
+    z: model.forecourt.frontOffset,
+    w: model.forecourt.w,
+    d: model.forecourt.d,
+  });
 }
 
 describe("spec 114 no floor touches final road setback invariant", () => {
@@ -76,6 +122,17 @@ describe("spec 114 no floor touches final road setback invariant", () => {
       expect(
         footprintTouchesRoad(garageForecourtCells(rt), roads),
         `seed ${seed} garage forecourt touches final road`,
+      ).toBe(false);
+    }
+  }, 30000);
+
+  it("keeps the garage visual brown forecourt sign and floor clear of rendered grey road ribbons", () => {
+    for (const seed of SEEDS) {
+      const rt = new ColonyRuntime(seed);
+      const renderedRoads = renderedRoadRibbonSet(rt);
+      expect(
+        footprintTouchesRoad(garageVisualFootprintCells(rt), renderedRoads),
+        `seed ${seed} garage visual footprint touches rendered road ribbon`,
       ).toBe(false);
     }
   }, 30000);
