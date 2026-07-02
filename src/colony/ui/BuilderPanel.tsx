@@ -1,10 +1,23 @@
+import React from "react";
 import { useRoadNetwork } from "../stores/useRoadNetwork";
 
-export function BuilderPanel() {
+interface BuilderPanelProps {
+  runtime?: any;
+  sim?: any;
+}
+
+export function BuilderPanel({ runtime, sim }: BuilderPanelProps) {
   const { builderActive, toggleBuilder, worldViewActive, toggleWorldView, builderMode, setBuilderMode, saveToDB, loadFromDB } = useRoadNetwork();
   const activeRoadType = useRoadNetwork(state => state.activeRoadType);
   const setActiveRoadType = useRoadNetwork(state => state.setActiveRoadType);
-  
+
+  const ui = runtime?.getUiState();
+  const sol = ui?.clock?.sol ?? 0;
+  const hour = ui?.clock?.hour ?? 0;
+  const min = ui?.clock?.minute ?? 0;
+  const pop = ui?.citizens?.count ?? sim?.state?.citizens?.length ?? 0;
+  const balance = ui?.bank?.balance ?? 0;
+
   if (!builderActive && !worldViewActive) {
     return (
       <div className="group">
@@ -42,206 +55,351 @@ export function BuilderPanel() {
 
   const category = getCategory();
 
-  return (
-    <>
-      <div className="group">
-        <button 
-          onClick={toggleBuilder} 
-          style={{ color: '#ff6b6b' }}
-          title="Exit City Builder"
-        >
-          Exit Builder
-        </button>
-      </div>
+  // Mechanical Button Styles
+  const getBtnStyle = (isActive: boolean) => ({
+    background: isActive 
+      ? 'linear-gradient(to bottom, #ff9f43, #d35400)' 
+      : 'linear-gradient(to bottom, #50535c, #32353a)',
+    color: isActive ? '#000' : '#e8edf7',
+    border: isActive ? '2px solid #ffbe76' : '2px solid #575c66',
+    boxShadow: isActive 
+      ? 'inset 0 2px 4px rgba(0,0,0,0.4), 0 0 8px rgba(255, 159, 67, 0.4)'
+      : '0 2px 4px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1)',
+    borderRadius: '4px',
+    padding: '10px 16px',
+    cursor: 'pointer',
+    fontWeight: 'bold' as const,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+    fontSize: '12px',
+    fontFamily: 'monospace',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '1px',
+    minWidth: '120px',
+    justifyContent: 'center',
+    transition: 'all 0.1s ease',
+  });
 
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: 0,
+      left: 0,
+      width: '100%',
+      height: '140px',
+      background: 'linear-gradient(to bottom, #4a4d53 0%, #2b2d30 40%, #151617 100%)',
+      borderTop: '5px solid #7c828d',
+      boxShadow: '0 -8px 24px rgba(0,0,0,0.7)',
+      display: 'grid',
+      gridTemplateColumns: '260px 1fr 220px',
+      zIndex: 1000,
+      fontFamily: 'monospace',
+      pointerEvents: 'auto',
+      userSelect: 'none'
+    }}>
+      {/* SECTION 1: Retro Stats / Colony LCD Panel */}
       <div style={{
-        position: 'fixed',
-        bottom: 24,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        background: 'rgba(16, 20, 30, 0.95)',
-        border: '1px solid rgba(87, 209, 196, 0.2)',
-        backdropFilter: 'blur(12px)',
-        padding: '16px 24px',
-        borderRadius: '16px',
+        padding: '12px 18px',
+        borderRight: '3px double #222325',
         display: 'flex',
         flexDirection: 'column',
-        gap: '12px',
-        alignItems: 'center',
-        zIndex: 1000,
-        boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
-        pointerEvents: 'auto',
-        transition: 'all 0.3s ease'
+        justifyContent: 'center',
+        background: '#1b1c1e',
+        boxShadow: 'inset -2px 0 5px rgba(0,0,0,0.5)',
+        gap: '4px'
       }}>
-        {/* Tier 1: Submenus */}
-        {category && category !== 'bulldoze' && (
-          <div style={{
-            display: 'flex',
-            gap: '10px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            padding: '6px 12px',
-            borderRadius: '8px',
-            border: '1px solid rgba(255, 255, 255, 0.05)',
-            alignItems: 'center'
-          }}>
-            {category === 'roads' && (
-              <>
-                <button
-                  style={{
-                    background: activeRoadType === 'street' ? '#57d1c4' : 'rgba(255, 255, 255, 0.05)',
-                    color: activeRoadType === 'street' ? '#04231f' : '#e8edf7',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '6px 12px',
-                    cursor: 'pointer',
-                    fontWeight: 600
-                  }}
-                  onClick={() => {
-                    setBuilderMode('roads');
-                    setActiveRoadType('street');
-                  }}
-                >
-                  Street 🛣️
-                </button>
-                <button
-                  style={{
-                    background: activeRoadType === 'gravel' ? '#57d1c4' : 'rgba(255, 255, 255, 0.05)',
-                    color: activeRoadType === 'gravel' ? '#04231f' : '#e8edf7',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '6px 12px',
-                    cursor: 'pointer',
-                    fontWeight: 600
-                  }}
-                  onClick={() => {
-                    setBuilderMode('roads');
-                    setActiveRoadType('gravel');
-                  }}
-                >
-                  Gravel Avenue 🪨
-                </button>
-              </>
-            )}
+        <div style={{ fontSize: '10px', color: '#8a8e98', textTransform: 'uppercase' }}>Colony Status</div>
+        
+        {/* Sol / Clock */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#57d1c4', fontSize: '13px', textShadow: '0 0 3px #57d1c4' }}>
+          <span>SOL / DAY:</span>
+          <span>{sol} ({String(hour).padStart(2, '0')}:{String(min).padStart(2, '0')})</span>
+        </div>
+        
+        {/* Population */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ff9f43', fontSize: '13px', textShadow: '0 0 3px #ff9f43' }}>
+          <span>POPULATION:</span>
+          <span>{pop} CITIZENS</span>
+        </div>
 
-            {category === 'zoning' && (
-              <>
-                <button
-                  style={{
-                    background: builderMode === 'zoning_residential' ? '#55ff55' : 'rgba(255, 255, 255, 0.05)',
-                    color: builderMode === 'zoning_residential' ? '#04231f' : '#e8edf7',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '6px 12px',
-                    cursor: 'pointer',
-                    fontWeight: 600
-                  }}
-                  onClick={() => setBuilderMode('zoning_residential')}
-                >
-                  Residential Plot 🏠
-                </button>
-                <button
-                  style={{
-                    background: builderMode === 'zoning_commercial' ? '#55cfff' : 'rgba(255, 255, 255, 0.05)',
-                    color: builderMode === 'zoning_commercial' ? '#04231f' : '#e8edf7',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '6px 12px',
-                    cursor: 'pointer',
-                    fontWeight: 600
-                  }}
-                  onClick={() => setBuilderMode('zoning_commercial')}
-                >
-                  Commercial Plot 🏢
-                </button>
-              </>
-            )}
-
-            {category === 'landscaping' && (
-              <>
-                <button
-                  style={{
-                    background: builderMode === 'raise' ? '#57d1c4' : 'rgba(255, 255, 255, 0.05)',
-                    color: builderMode === 'raise' ? '#04231f' : '#e8edf7',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '6px 12px',
-                    cursor: 'pointer',
-                    fontWeight: 600
-                  }}
-                  onClick={() => setBuilderMode('raise')}
-                >
-                  Raise 🏔️
-                </button>
-                <button
-                  style={{
-                    background: builderMode === 'lower' ? '#57d1c4' : 'rgba(255, 255, 255, 0.05)',
-                    color: builderMode === 'lower' ? '#04231f' : '#e8edf7',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '6px 12px',
-                    cursor: 'pointer',
-                    fontWeight: 600
-                  }}
-                  onClick={() => setBuilderMode('lower')}
-                >
-                  Lower 🕳️
-                </button>
-                <button
-                  style={{
-                    background: builderMode === 'flatten' ? '#57d1c4' : 'rgba(255, 255, 255, 0.05)',
-                    color: builderMode === 'flatten' ? '#04231f' : '#e8edf7',
-                    border: 'none',
-                    borderRadius: '6px',
-                    padding: '6px 12px',
-                    cursor: 'pointer',
-                    fontWeight: 600
-                  }}
-                  onClick={() => setBuilderMode('flatten')}
-                >
-                  Flatten ➖
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Tier 2: Category Selector */}
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button 
-            className={category === 'roads' ? 'on' : ''}
-            onClick={() => setBuilderMode('roads')}
-            style={{ padding: '8px 16px', fontSize: '1.1em', cursor: 'pointer', border: 'none', borderRadius: '8px' }}
-          >
-            🛣️ Roads
-          </button>
-          <button 
-            className={category === 'zoning' ? 'on' : ''}
-            onClick={() => setBuilderMode('zoning_residential')}
-            style={{ padding: '8px 16px', fontSize: '1.1em', cursor: 'pointer', border: 'none', borderRadius: '8px' }}
-          >
-            🟩 Zoning
-          </button>
-          <button 
-            className={category === 'landscaping' ? 'on' : ''}
-            onClick={() => setBuilderMode('raise')}
-            style={{ padding: '8px 16px', fontSize: '1.1em', cursor: 'pointer', border: 'none', borderRadius: '8px' }}
-          >
-            🏔️ Landscaping
-          </button>
-          <button 
-            className={category === 'bulldoze' ? 'on' : ''}
-            onClick={() => setBuilderMode('bulldoze')}
-            style={{ padding: '8px 16px', fontSize: '1.1em', cursor: 'pointer', border: 'none', borderRadius: '8px' }}
-          >
-            🚜 Bulldoze
-          </button>
-
-          <div style={{ height: '30px', width: '2px', background: 'rgba(255,255,255,0.1)', margin: '0 8px' }} />
-
-          <button onClick={saveToDB} title="Save to DB" style={{ padding: '8px 16px', cursor: 'pointer', border: 'none', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', color: '#fff' }}>💾 Save</button>
-          <button onClick={loadFromDB} title="Load from DB" style={{ padding: '8px 16px', cursor: 'pointer', border: 'none', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', color: '#fff' }}>📂 Load</button>
+        {/* Treasury */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#55ff55', fontSize: '13px', textShadow: '0 0 3px #55ff55' }}>
+          <span>FUNDS:</span>
+          <span>${balance.toLocaleString()} CC</span>
         </div>
       </div>
-    </>
+
+      {/* SECTION 2: Construction Tools / Categories */}
+      <div style={{
+        padding: '12px 24px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        gap: '12px',
+        position: 'relative'
+      }}>
+        {/* Submenu Tray (Top of tool segment) */}
+        <div style={{
+          display: 'flex',
+          gap: '10px',
+          height: '38px',
+          alignItems: 'center',
+          background: 'rgba(0,0,0,0.2)',
+          borderRadius: '4px',
+          padding: '0 12px',
+          border: '1px solid rgba(255,255,255,0.05)',
+        }}>
+          <span style={{ color: '#8a8e98', fontSize: '10px', textTransform: 'uppercase', marginRight: '6px' }}>
+            {category ? `${category} options:` : 'Select category'}
+          </span>
+          
+          {category === 'roads' && (
+            <>
+              <button
+                style={{
+                  background: activeRoadType === 'street' ? '#ff9f43' : 'rgba(255,255,255,0.05)',
+                  color: activeRoadType === 'street' ? '#000' : '#8a8e98',
+                  border: 'none',
+                  borderRadius: '3px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+                onClick={() => {
+                  setBuilderMode('roads');
+                  setActiveRoadType('street');
+                }}
+              >
+                🛣️ STREET
+              </button>
+              <button
+                style={{
+                  background: activeRoadType === 'gravel' ? '#ff9f43' : 'rgba(255,255,255,0.05)',
+                  color: activeRoadType === 'gravel' ? '#000' : '#8a8e98',
+                  border: 'none',
+                  borderRadius: '3px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+                onClick={() => {
+                  setBuilderMode('roads');
+                  setActiveRoadType('gravel');
+                }}
+              >
+                🪨 GRAVEL AVENUE
+              </button>
+              <button
+                style={{
+                  background: activeRoadType === 'culdesac' ? '#ff9f43' : 'rgba(255,255,255,0.05)',
+                  color: activeRoadType === 'culdesac' ? '#000' : '#8a8e98',
+                  border: 'none',
+                  borderRadius: '3px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+                onClick={() => {
+                  setBuilderMode('roads');
+                  setActiveRoadType('culdesac');
+                }}
+              >
+                🍩 CUL-DE-SAC
+              </button>
+            </>
+          )}
+
+          {category === 'zoning' && (
+            <>
+              <button
+                style={{
+                  background: builderMode === 'zoning_residential' ? '#55ff55' : 'rgba(255,255,255,0.05)',
+                  color: builderMode === 'zoning_residential' ? '#000' : '#8a8e98',
+                  border: 'none',
+                  borderRadius: '3px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+                onClick={() => setBuilderMode('zoning_residential')}
+              >
+                🏠 RESIDENTIAL PLOT
+              </button>
+              <button
+                style={{
+                  background: builderMode === 'zoning_commercial' ? '#55cfff' : 'rgba(255,255,255,0.05)',
+                  color: builderMode === 'zoning_commercial' ? '#000' : '#8a8e98',
+                  border: 'none',
+                  borderRadius: '3px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+                onClick={() => setBuilderMode('zoning_commercial')}
+              >
+                🏢 COMMERCIAL PLOT
+              </button>
+            </>
+          )}
+
+          {category === 'landscaping' && (
+            <>
+              <button
+                style={{
+                  background: builderMode === 'raise' ? '#ff9f43' : 'rgba(255,255,255,0.05)',
+                  color: builderMode === 'raise' ? '#000' : '#8a8e98',
+                  border: 'none',
+                  borderRadius: '3px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+                onClick={() => setBuilderMode('raise')}
+              >
+                🏔️ RAISE
+              </button>
+              <button
+                style={{
+                  background: builderMode === 'lower' ? '#ff9f43' : 'rgba(255,255,255,0.05)',
+                  color: builderMode === 'lower' ? '#000' : '#8a8e98',
+                  border: 'none',
+                  borderRadius: '3px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+                onClick={() => setBuilderMode('lower')}
+              >
+                🕳️ LOWER
+              </button>
+              <button
+                style={{
+                  background: builderMode === 'flatten' ? '#ff9f43' : 'rgba(255,255,255,0.05)',
+                  color: builderMode === 'flatten' ? '#000' : '#8a8e98',
+                  border: 'none',
+                  borderRadius: '3px',
+                  padding: '4px 10px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  fontFamily: 'monospace'
+                }}
+                onClick={() => setBuilderMode('flatten')}
+              >
+                ➖ FLATTEN
+              </button>
+            </>
+          )}
+
+          {category === 'bulldoze' && (
+            <span style={{ color: '#ff3333', fontSize: '11px', fontWeight: 'bold' }}>
+              🚜 DEMOLISHING TILES AND PLOTS
+            </span>
+          )}
+        </div>
+
+        {/* Category Selector Grid */}
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button style={getBtnStyle(category === 'roads')} onClick={() => setBuilderMode('roads')}>
+            🛣️ ROADS
+          </button>
+          <button style={getBtnStyle(category === 'zoning')} onClick={() => setBuilderMode('zoning_residential')}>
+            🟩 ZONING
+          </button>
+          <button style={getBtnStyle(category === 'landscaping')} onClick={() => setBuilderMode('raise')}>
+            🏔️ LANDSCAPING
+          </button>
+          <button style={getBtnStyle(category === 'bulldoze')} onClick={() => setBuilderMode('bulldoze')}>
+            🚜 BULLDOZE
+          </button>
+        </div>
+      </div>
+
+      {/* SECTION 3: System Actions / Save/Load/Exit */}
+      <div style={{
+        padding: '12px 18px',
+        borderLeft: '3px double #222325',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        gap: '8px',
+        background: '#1b1c1e',
+        boxShadow: 'inset 2px 0 5px rgba(0,0,0,0.5)',
+      }}>
+        {/* Save/Load side by side */}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button 
+            onClick={saveToDB} 
+            style={{
+              flex: 1,
+              background: 'linear-gradient(to bottom, #4a4d53, #2b2d30)',
+              color: '#fff',
+              border: '1px solid #7c828d',
+              borderRadius: '3px',
+              padding: '6px',
+              cursor: 'pointer',
+              fontSize: '11px',
+              fontWeight: 'bold',
+              fontFamily: 'monospace'
+            }}
+          >
+            💾 SAVE
+          </button>
+          <button 
+            onClick={loadFromDB} 
+            style={{
+              flex: 1,
+              background: 'linear-gradient(to bottom, #4a4d53, #2b2d30)',
+              color: '#fff',
+              border: '1px solid #7c828d',
+              borderRadius: '3px',
+              padding: '6px',
+              cursor: 'pointer',
+              fontSize: '11px',
+              fontWeight: 'bold',
+              fontFamily: 'monospace'
+            }}
+          >
+            📂 LOAD
+          </button>
+        </div>
+
+        {/* Exit Builder Emergency Plunger Button */}
+        <button 
+          onClick={toggleBuilder} 
+          style={{
+            background: 'linear-gradient(to bottom, #c0392b, #962d22)',
+            color: '#fff',
+            border: '2px solid #e74c3c',
+            borderRadius: '4px',
+            padding: '10px',
+            cursor: 'pointer',
+            fontWeight: 'bold',
+            fontSize: '12px',
+            letterSpacing: '1px',
+            textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+            boxShadow: '0 3px 5px rgba(0,0,0,0.4)',
+            fontFamily: 'monospace'
+          }}
+        >
+          🚨 EXIT BUILDER
+        </button>
+      </div>
+    </div>
   );
 }

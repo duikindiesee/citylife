@@ -106,7 +106,7 @@ export function buildRoadRibbons(
     }
   });
   const junction = new Set<string>();
-  const JR = 3; // how far back from a crossing the painted lines stop
+  const JR = 1; // how far back from a crossing the painted lines stop
   for (const [k, s] of cellWays)
     if (s.size >= 2) {
       const [x, y] = k.split(",").map(Number);

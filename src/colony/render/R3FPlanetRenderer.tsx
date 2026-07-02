@@ -33,6 +33,8 @@ import { R3FCloud } from './R3FCloud';
 import { R3FFoam } from './R3FFoam';
 import { R3FRoadBuilder } from './R3FRoadBuilder';
 import { R3FRoadNetwork } from './R3FRoadNetwork';
+import { buildShoreProps } from './shoreProps';
+import { buildVenueProps } from './venueProps';
 import { useTerrainLeveling } from './useTerrainLeveling';
 import { useRoadNetwork } from '../stores/useRoadNetwork';
 import { COLONY } from '../config';
@@ -278,18 +280,71 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
     }
   }, [isDrawing, builderMode, terrainLevel]);
 
+  // Construct static props (Founders' Lighthouse and Rally Overlook props)
+  const { shoreProps, venueProps } = useMemo(() => {
+    const N = sim.state.terrain.size;
+    const wx = (x: number) => (x - N / 2) * 4;
+    const wz = (y: number) => (y - N / 2) * 4;
+
+    const sp = buildShoreProps({
+      terrain: sim.state.terrain,
+      structures: sim.state.structures,
+      roadSet: sim.state.roadSet,
+      occupied: sim.state.occupied,
+      wx,
+      wz
+    });
+
+    const vp = buildVenueProps({
+      terrain: sim.state.terrain,
+      structures: sim.state.structures,
+      roadSet: sim.state.roadSet,
+      occupied: sim.state.occupied,
+      wx,
+      wz
+    });
+
+    return { shoreProps: sp, venueProps: vp };
+  }, [sim]);
+
+  // Update dynamic lights / animations on lighthouse and venue props in frame loop
+  useFrame((state) => {
+    const timeMs = state.clock.getElapsedTime() * 1000;
+    const time = sim.state.clock.hour + sim.state.clock.minute / 60;
+    let dayFactor = 0;
+    if (time > 5 && time < 7) {
+      dayFactor = (time - 5) / 2;
+    } else if (time >= 7 && time <= 17) {
+      dayFactor = 1;
+    } else if (time > 17 && time < 19) {
+      dayFactor = 1 - (time - 17) / 2;
+    }
+
+    if (shoreProps) shoreProps.update(dayFactor, timeMs);
+    if (venueProps) venueProps.update(dayFactor, timeMs);
+  });
+
   const startPos = useMemo(() => {
+    const size = sim.state.terrain.size;
+    const roads = sim.state.roads;
+    if (roads && roads.length > 0) {
+      const road = roads[0];
+      const wx = (road.x - size / 2) * 4;
+      const wz = (road.y - size / 2) * 4;
+      const wy = sim.state.terrain.worldY(road.x, road.y);
+      return [wx, wy + 2, wz] as [number, number, number];
+    }
+
     const n = (sim.state as any).neighborhood;
     const lot = n?.lots?.find((l: any) => l.id === 'starter-plot');
     if (lot) {
-      const size = sim.state.terrain.size;
       const wx = (lot.doorX - size / 2) * 4;
       const wz = (lot.doorY - size / 2) * 4;
       const wy = sim.state.terrain.worldY(Math.round(lot.doorX), Math.round(lot.doorY));
       return [wx, wy + 2, wz] as [number, number, number];
     }
     return findDrySpawn(sim.state.terrain);
-  }, [sim.state.terrain, (sim.state as any).neighborhood]);
+  }, [sim.state.terrain, (sim.state as any).neighborhood, sim.state.roadsVersion]);
 
   return (
     <>
@@ -301,9 +356,13 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
         <R3FFoam sim={sim} />
         <R3FCloud worldSize={terrainSize} />
         
+        {/* Founders' Lighthouse and Rally Overlook static props */}
+        {shoreProps && <primitive object={shoreProps.group} />}
+        {venueProps && <primitive object={venueProps.group} />}
+        
         {/* SimCity Style Road Architecture */}
         <R3FRoadBuilder sim={sim} runtime={runtime} />
-        <R3FRoadNetwork sim={sim} />
+        <R3FRoadNetwork sim={sim} runtime={runtime} />
 
         {/* Dynamic World Elements */}
         <R3FFoliage sim={sim} />
@@ -314,7 +373,7 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
         {useRoadNetwork(state => state.builderActive || state.worldViewActive) ? (
           <AerialCameraController />
         ) : (
-          <FirstPersonController startPosition={startPos} />
+          <FirstPersonController sim={sim} startPosition={startPos} />
         )}
       </Physics>
 
