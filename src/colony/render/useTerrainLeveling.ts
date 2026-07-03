@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import type { ColonySim } from '../sim';
 import { applyCoastalCommercialDryBlend } from './terrainLeveling';
+import { useSimSignal, type SimBridge } from './useSimSignal';
+import { levelingSignature } from './simSignals';
 
 // Match PlanetRenderer.ts behavior
 const RENDER_DRY_FLOOR = 0.65;
@@ -14,21 +16,19 @@ const DEADZONE = 0.6;
 export function useTerrainLeveling(
   sim: ColonySim,
   roadRibbonCells: Set<string> | null,
-  landscapeEdits: Map<string, number>
+  landscapeEdits: Map<string, number>,
+  runtime?: SimBridge
 ): Map<number, number> {
   const state = sim.state;
   const N = state.terrain.size;
 
-  // We depend on the roadsVersion, road ribbon cells, neighborhood, and commercial district.
-  // In a real reactive app, we'd depend on MobX or precise tracking.
-  // Here, we use useMemo with dependencies that reflect the rebuild signature.
+  // Subscribe to the mutable sim: the signature covers roadsVersion, built parcels and the
+  // commercial district, so the leveling map recomputes exactly when those change.
+  const levelingSig = useSimSignal(runtime, () => levelingSignature(state));
   return useMemo(() => {
     const next = new Map<number, number>();
     const t = state.terrain;
     const DRY = RENDER_DRY_FLOOR;
-    
-    // Bypass strict TS checks for these properties for now
-    const anyState = state as any;
 
     const groundY = (x: number, y: number) => {
       // simplified groundY: just terrain.worldY for now (normally PlanetRenderer caches this)
@@ -43,7 +43,7 @@ export function useTerrainLeveling(
       Math.max(groundY(hz.x + (hz.w - 1) / 2, hz.y + (hz.d - 1) / 2), DRY);
 
     // 1) Neighborhood pads
-    const nh = anyState.neighborhood;
+    const nh = state.neighborhood;
     if (nh) {
       for (const lot of nh.parcels) {
         if (!lot.built) continue;
@@ -87,7 +87,7 @@ export function useTerrainLeveling(
     }
 
     // 2) Commercial District pads
-    const cd = anyState.commercialDistrict;
+    const cd = state.commercialDistrict;
     if (cd) {
       const seats = [
         ...cd.parcels.map((p: any) => ({ x: p.x, y: p.y, w: p.w, h: p.h })),
@@ -184,10 +184,9 @@ export function useTerrainLeveling(
 
     return next;
   }, [
-    state.roadsVersion,
+    sim,
+    levelingSig,
     roadRibbonCells,
-    (state as any).neighborhood,
-    (state as any).commercialDistrict,
     landscapeEdits
   ]);
 }

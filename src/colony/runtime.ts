@@ -837,6 +837,7 @@ export class ColonyRuntime {
     // network as the paved AVENUE below — AFTER reserveParcelLand, so the parcel purge can never
     // eat it (spec 084 S3). Cars finally drive the residential street.
     this.neighborhood = makeNeighborhood(this.sim.state.terrain);
+    this.sim.state.neighborhood = this.neighborhood; // expose to the R3F renderer (same pattern as cityPlan above)
     const t0 = this.sim.state.terrain;
     // Spec 086 — the DISTRIBUTED CITY. Order matters: lay + reserve the coastal PRIMARY (founders),
     // then claim the COMMERCIAL reserve off its avenue, THEN scatter satellite hamlets that avoid
@@ -1158,6 +1159,7 @@ export class ColonyRuntime {
           blockedForShops,
         )
       : null;
+    this.sim.state.commercialDistrict = this.commercialDistrict; // expose to the R3F renderer (same pattern as cityPlan)
     // Spec 079 — CONNECT the district: widen the high-street centre-line to a carriageway + route a
     // spur from the avenue's inland terminus to its nearest end (around homesteads + shops), and merge
     // both into the network so the shops front a real, drivable street.
