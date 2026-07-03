@@ -73,13 +73,13 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
       expect(Math.abs(iy)).toBe(1);
       expect(g.crossFrontDir.x).toBe(0);
       expect(g.islandCell).toEqual({
-        x: intersection.x - ix,
-        y: intersection.y - iy,
+        x: ix < 0 ? g.x + 1 : g.x + g.w - 2,
+        y: iy < 0 ? g.y + 1 : g.y + g.h - 2,
       });
-      expect(g.x).toBe(ix < 0 ? intersection.x + 3 : intersection.x - g.w - 2);
-      expect(g.y).toBe(iy < 0 ? intersection.y + 3 : intersection.y - g.h - 2);
+      expect(g.x).toBe(ix < 0 ? intersection.x + 5 : intersection.x - g.w - 4);
+      expect(g.y).toBe(iy < 0 ? intersection.y + 5 : intersection.y - g.h - 4);
       expect(cells(g)).not.toContain(`${intersection.x},${intersection.y}`);
-      expect(cells(g)).not.toContain(`${g.islandCell.x},${g.islandCell.y}`);
+      expect(cells(g)).toContain(`${g.islandCell.x},${g.islandCell.y}`);
     }
   }, 30000);
 
