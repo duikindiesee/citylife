@@ -48,6 +48,7 @@ import { R3FPlayerCar } from "./R3FPlayerCar";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { useSimSignal, type SimBridge } from './useSimSignal';
 import { zoneSignature, spawnSignature } from './simSignals';
+import { nextBootStage } from './bootStage';
 
 function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) {
   const state = sim.state;
@@ -279,9 +280,23 @@ function findDrySpawn(terrain: any) {
   return [0, COLONY.world.seaLevel * COLONY.world.heightScale + 2, 0] as [number, number, number];
 }
 
+/** Spec 117 — staged mount. Advance the boot stage on PRESENTED frames so the first paint
+ *  (terrain + sea) is never blocked by the city or the dressing. */
+function useBootStage(): number {
+  const [stage, setStage] = useState(0);
+  const frames = useRef(0);
+  useFrame(() => {
+    frames.current += 1;
+    const next = nextBootStage(stage, frames.current);
+    if (next !== stage) setStage(next);
+  });
+  return stage;
+}
+
 function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
   const terrainSize = sim.state.terrain.size;
-  
+  const bootStage = useBootStage();
+
   // Extract road cells for terrain leveling
   const tiles = useRoadNetwork(state => state.tiles);
   const landscapeEdits = useRoadNetwork(state => state.landscapeEdits);
@@ -300,8 +315,11 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
     }
   }, [isDrawing, builderMode, terrainLevel]);
 
-  // Construct static props (Founders' Lighthouse and Rally Overlook props)
+  // Construct static props (Founders' Lighthouse and Rally Overlook props).
+  // Spec 117: built only once the dressing stage arrives — building them during the
+  // first commit blocked the first paint.
   const { shoreProps, venueProps } = useMemo(() => {
+    if (bootStage < 2) return { shoreProps: null, venueProps: null };
     const N = sim.state.terrain.size;
     const wx = (x: number) => (x - N / 2) * 4;
     const wz = (y: number) => (y - N / 2) * 4;
@@ -325,7 +343,7 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
     });
 
     return { shoreProps: sp, venueProps: vp };
-  }, [sim]);
+  }, [sim, bootStage]);
 
   // Update dynamic lights / animations on lighthouse and venue props in frame loop
   useFrame((state) => {
@@ -372,23 +390,33 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
       <DayNightCycle sim={sim} />
 
       <Physics>
+        {/* Stage 0 — the world exists: terrain, sea, camera, physics floor */}
         <R3FTerrain sim={sim} terrainLevel={debouncedTerrainLevel} />
         <R3FOcean size={terrainSize} />
-        <R3FFoam sim={sim} />
-        <R3FCloud worldSize={terrainSize} />
-        
-        {/* Founders' Lighthouse and Rally Overlook static props */}
-        {shoreProps && <primitive object={shoreProps.group} />}
-        {venueProps && <primitive object={venueProps.group} />}
-        
-        {/* SimCity Style Road Architecture */}
-        <R3FRoadBuilder sim={sim} runtime={runtime} />
-        <R3FRoadNetwork sim={sim} runtime={runtime} />
 
-        {/* Dynamic World Elements */}
-        <R3FFoliage sim={sim} runtime={runtime} />
-        <ZoneManager sim={sim} runtime={runtime} />
-        <R3FPlayerCar sim={sim} />
+        {/* Stage 1 — the city arrives (spec 117) */}
+        {bootStage >= 1 && (
+          <>
+            <R3FFoam sim={sim} />
+            {/* SimCity Style Road Architecture */}
+            <R3FRoadBuilder sim={sim} runtime={runtime} />
+            <R3FRoadNetwork sim={sim} runtime={runtime} />
+            {/* Dynamic World Elements */}
+            <R3FFoliage sim={sim} runtime={runtime} />
+            <ZoneManager sim={sim} runtime={runtime} />
+            <R3FPlayerCar sim={sim} />
+          </>
+        )}
+
+        {/* Stage 2 — the dressing lands (spec 117) */}
+        {bootStage >= 2 && (
+          <>
+            <R3FCloud worldSize={terrainSize} />
+            {/* Founders' Lighthouse and Rally Overlook static props */}
+            {shoreProps && <primitive object={shoreProps.group} />}
+            {venueProps && <primitive object={venueProps.group} />}
+          </>
+        )}
 
         {/* Toggle between aerial view and first person */}
         {useRoadNetwork(state => state.builderActive || state.worldViewActive) ? (
@@ -398,12 +426,15 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
         )}
       </Physics>
 
-      <ContactShadows resolution={1024} frames={1} scale={200} blur={2} opacity={0.4} far={20} color="#000000" />
-
-      <EffectComposer>
-        <Bloom luminanceThreshold={1} mipmapBlur intensity={1.5} />
-        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      </EffectComposer>
+      {bootStage >= 2 && (
+        <>
+          <ContactShadows resolution={1024} frames={1} scale={200} blur={2} opacity={0.4} far={20} color="#000000" />
+          <EffectComposer>
+            <Bloom luminanceThreshold={1} mipmapBlur intensity={1.5} />
+            <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+          </EffectComposer>
+        </>
+      )}
     </>
   );
 }
