@@ -28,11 +28,7 @@ export function disposeDeep(root: THREE.Object3D): void {
 function disposeMaterial(m: THREE.Material): void {
   // Free any textures the material owns before the material itself.
   for (const value of Object.values(m)) {
-    if (
-      value &&
-      typeof value === "object" &&
-      (value as THREE.Texture).isTexture
-    ) {
+    if (value && typeof value === "object" && (value as THREE.Texture).isTexture) {
       (value as THREE.Texture).dispose();
     }
   }
