@@ -173,6 +173,14 @@ function StopLine({ position, rotationY }: StopLineProps) {
   );
 }
 
+import {
+  isPitchableNS,
+  isPitchableEW,
+  isFlatRoad,
+  roadEdgeHeight,
+  pitchBetweenEdges,
+} from './roadPitch';
+
 // Bilinear interpolation for fractional grid coordinates to prevent NaN spiky geometries
 function getSmoothRoadY(terrain: any, x: number, y: number): number {
   const size = terrain.size;
@@ -215,76 +223,95 @@ export function R3FRoadNetwork({ sim, runtime }: R3FRoadNetworkProps) {
     const terrain = sim.state.terrain;
     const N = terrain.size;
     
+    // Spec 118 — shared boundary heights. Both sides of every cell boundary compute the
+    // SAME edge height (roadEdgeHeight is symmetric), and each pitched segment lands its
+    // ends exactly on those heights — no more steps between segments at grade changes.
+    const surfaceH = (x: number, y: number) => getSmoothRoadY(terrain, x, y);
+    const neighborInfo = (x: number, y: number): { h: number; flat: boolean } | null => {
+      const t2 = tiles[`${x},${y}`];
+      if (!t2) return null;
+      // Cul-de-sacs render as flat bulbs at their own height — treat as flat neighbors.
+      const flat = t2.type === 'culdesac' || isFlatRoad(t2.mask || 0);
+      return { h: surfaceH(x, y), flat };
+    };
+
     for (const k in tiles) {
       const tile = tiles[k];
       if (tile.type === 'culdesac') continue;
-      
+
       const wX = (tile.x - N / 2) * 4;
       const wZ = (tile.y - N / 2) * 4;
-      // Offset slightly to sit clean proud of terrain
-      const wY = getSmoothRoadY(terrain, tile.x, tile.y) + 0.05;
-      
-      // Calculate pitch and roll based on neighbor terrain heights to align seamlessly
-      const hN = getSmoothRoadY(terrain, tile.x, tile.y - 1);
-      const hS = getSmoothRoadY(terrain, tile.x, tile.y + 1);
-      const hE = getSmoothRoadY(terrain, tile.x + 1, tile.y);
-      const hW = getSmoothRoadY(terrain, tile.x - 1, tile.y);
-      
-      const rotX = Math.atan2(hN - hS, 8); // 8 is the distance (4m * 2) across 2 tiles
-      const rotZ = Math.atan2(hE - hW, 8);
 
       const mask = tile.mask || 0;
       const isGravel = tile.type === 'gravel';
+      const selfH = surfaceH(tile.x, tile.y);
 
       let finalRotX = 0;
       let finalRotZ = 0;
-      
-      // Restrict rotations to prevent extreme sideways rolling (rollercoaster effect)
-      // N-S roads can pitch up/down, but not roll sideways
-      if (mask === 5 || mask === 1 || mask === 4) {
-        finalRotX = rotX;
-      } 
-      // E-W roads can pitch up/down, but not roll sideways
-      else if (mask === 10 || mask === 2 || mask === 8) {
-        finalRotZ = rotZ;
+      // Offset slightly to sit clean proud of terrain
+      let wY = selfH + 0.05;
+      // Along-travel box lengths (stretched to the pitch hypotenuse so the projected
+      // footprint stays exactly one 4m cell and the ends land on the shared edges).
+      let lenX = 4;
+      let lenZ = 4;
+
+      // N-S roads pitch up/down between their SHARED north/south edges — never roll.
+      if (isPitchableNS(mask)) {
+        const nN = neighborInfo(tile.x, tile.y - 1);
+        const nS = neighborInfo(tile.x, tile.y + 1);
+        const northEdge = roadEdgeHeight(selfH, false, nN ? nN.h : null, nN ? nN.flat : false);
+        const southEdge = roadEdgeHeight(selfH, false, nS ? nS.h : null, nS ? nS.flat : false);
+        const p = pitchBetweenEdges(northEdge, southEdge);
+        finalRotX = p.rot;
+        wY = p.centerY + 0.05;
+        lenZ = p.length;
       }
-      // Intersections (3-way, 4-way, corners) stay perfectly flat to connect cleanly
-      else {
-        finalRotX = 0;
-        finalRotZ = 0;
+      // E-W roads pitch up/down between their SHARED east/west edges — never roll.
+      else if (isPitchableEW(mask)) {
+        const nE = neighborInfo(tile.x + 1, tile.y);
+        const nW = neighborInfo(tile.x - 1, tile.y);
+        const eastEdge = roadEdgeHeight(selfH, false, nE ? nE.h : null, nE ? nE.flat : false);
+        const westEdge = roadEdgeHeight(selfH, false, nW ? nW.h : null, nW ? nW.flat : false);
+        const p = pitchBetweenEdges(eastEdge, westEdge);
+        finalRotZ = p.rot;
+        wY = p.centerY + 0.05;
+        lenX = p.length;
       }
+      // Intersections (3-way, 4-way, corners) stay perfectly flat to connect cleanly —
+      // their pitched neighbors bend to meet THEM (flat wins in roadEdgeHeight).
       
-      // Dynamic Curbs (streets only, no connections!)
+      // Dynamic Curbs (streets only, no connections!) — lengths and end positions follow
+      // the pitched segment so curbs run the full stretched surface (spec 118).
       const curbs = [];
       if (!isGravel) {
         if (!(mask & RoadMask.N)) {
           curbs.push(
-            <mesh key="curb-n" position={[0, 0.08, -1.9]}>
-              <boxGeometry args={[4, 0.08, 0.2]} />
+            <mesh key="curb-n" position={[0, 0.08, -(lenZ / 2 - 0.1)]}>
+              <boxGeometry args={[lenX, 0.08, 0.2]} />
               <meshStandardMaterial color="#e8ecf2" roughness={0.6} />
             </mesh>
           );
         }
         if (!(mask & RoadMask.E)) {
           curbs.push(
-            <mesh key="curb-e" position={[1.9, 0.08, 0]}>
-              <boxGeometry args={[0.2, 0.08, 4]} />
+            <mesh key="curb-e" position={[lenX / 2 - 0.1, 0.08, 0]}>
+              <boxGeometry args={[0.2, 0.08, lenZ]} />
               <meshStandardMaterial color="#e8ecf2" roughness={0.6} />
             </mesh>
           );
         }
         if (!(mask & RoadMask.S)) {
           curbs.push(
-            <mesh key="curb-s" position={[0, 0.08, 1.9]}>
-              <boxGeometry args={[4, 0.08, 0.2]} />
+            <mesh key="curb-s" position={[0, 0.08, lenZ / 2 - 0.1]}>
+              <boxGeometry args={[lenX, 0.08, 0.2]} />
               <meshStandardMaterial color="#e8ecf2" roughness={0.6} />
             </mesh>
           );
         }
         if (!(mask & RoadMask.W)) {
           curbs.push(
-            <mesh key="curb-w" position={[-1.9, 0.08, 0]}>
-              <boxGeometry args={[0.2, 0.08, 4]} />
+            <mesh key="curb-w" position={[-(lenX / 2 - 0.1), 0.08, 0]}>
+              <boxGeometry args={[0.2, 0.08, lenZ]} />
               <meshStandardMaterial color="#e8ecf2" roughness={0.6} />
             </mesh>
           );
@@ -297,7 +324,7 @@ export function R3FRoadNetwork({ sim, runtime }: R3FRoadNetworkProps) {
         if (mask === 5 || mask === 1 || mask === 4 || mask === 0) {
           lines.push(
             <mesh key="line-ns" rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}>
-              <planeGeometry args={[0.15, 4]} />
+              <planeGeometry args={[0.15, lenZ]} />
               <meshStandardMaterial color="#f1c40f" roughness={0.8} polygonOffset polygonOffsetFactor={-2} />
             </mesh>
           );
@@ -305,7 +332,7 @@ export function R3FRoadNetwork({ sim, runtime }: R3FRoadNetworkProps) {
         else if (mask === 10 || mask === 2 || mask === 8) {
           lines.push(
             <mesh key="line-ew" rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.08, 0]}>
-              <planeGeometry args={[4, 0.15]} />
+              <planeGeometry args={[lenX, 0.15]} />
               <meshStandardMaterial color="#f1c40f" roughness={0.8} polygonOffset polygonOffsetFactor={-2} />
             </mesh>
           );
@@ -315,7 +342,7 @@ export function R3FRoadNetwork({ sim, runtime }: R3FRoadNetworkProps) {
       elements.push(
         <group key={`road-block-${k}`} position={[wX, wY, wZ]} rotation={[finalRotX, 0, finalRotZ]}>
           <mesh position={[0, 0, 0]}>
-            <boxGeometry args={[4, 0.15, 4]} />
+            <boxGeometry args={[lenX, 0.15, lenZ]} />
             <meshStandardMaterial 
               color={isGravel ? "#8d6e63" : "#3d424b"} 
               roughness={isGravel ? 0.98 : 0.88} 
