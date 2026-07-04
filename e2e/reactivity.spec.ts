@@ -28,6 +28,15 @@ test('R3F reactivity: placing and demolishing a plot updates the rendered scene'
   // The scene probe and the runtime probe must both be live.
   await page.waitForFunction(() => !!(window as any).__r3fScene && !!(window as any).__colony, undefined, { timeout: 15000 });
 
+  // Spec 117 staged mount: the city layer (ZoneManager and friends) mounts at boot stage 1,
+  // a few presented frames after the world. Wait for the stage-1 foliage mesh before
+  // asserting on zone meshes so a slow machine cannot race the staged commit.
+  await page.waitForFunction(() => {
+    let found = false;
+    (window as any).__r3fScene?.traverse((o: any) => { if (o.name === 'foliage') found = true; });
+    return found;
+  }, undefined, { timeout: 30000 });
+
   const before = await page.evaluate(`${countZoneMeshes}()`) as number;
   expect(before).toBeGreaterThanOrEqual(0);
   console.log(`Zone overlay meshes before placement: ${before}`);
