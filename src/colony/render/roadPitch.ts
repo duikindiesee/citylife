@@ -76,3 +76,23 @@ export function pitchBetweenEdges(
     length: Math.hypot(span, drop),
   };
 }
+
+/** A pitched cell rendered as ONE straight box from edge to edge dives under the cell's
+ *  own surface on a convex crest (both edges dragged down by lower neighbors — the
+ *  terrain pokes through mid-segment; found by the spec 118 adversarial verify). So a
+ *  pitched cell renders as TWO half-segments that meet at the CELL'S OWN HEIGHT in the
+ *  middle: in-edge -> selfH over the first half-cell, selfH -> out-edge over the second.
+ *  The shared-boundary no-seam invariant is untouched (the outer ends still land exactly
+ *  on the shared edge heights), and the crest guarantee returns: the surface never drops
+ *  below the cell's own sampled height at its center. */
+export function pitchCellHalves(
+  hInEdge: number,
+  selfH: number,
+  hOutEdge: number,
+  span: number = ROAD_CELL_SPAN,
+): { inHalf: SegmentPitch; outHalf: SegmentPitch } {
+  return {
+    inHalf: pitchBetweenEdges(hInEdge, selfH, span / 2),
+    outHalf: pitchBetweenEdges(selfH, hOutEdge, span / 2),
+  };
+}

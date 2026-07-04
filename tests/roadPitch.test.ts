@@ -9,6 +9,7 @@ import {
   isFlatRoad,
   roadEdgeHeight,
   pitchBetweenEdges,
+  pitchCellHalves,
 } from "../src/colony/render/roadPitch";
 
 describe("spec 118 — mask classification (Article I: pitch along travel, no roll)", () => {
@@ -91,6 +92,28 @@ describe("spec 118 — segments land exactly on their shared edges", () => {
       const bNorthEnd = b.centerY + (b.length / 2) * Math.sin(b.rot);
       expect(aSouthEnd).toBeCloseTo(bNorthEnd, 12);
     }
+  });
+
+  it("crest guarantee: half-segments pin the cell center at its OWN height", () => {
+    // A crest: the cell is higher than both its shared edges (the case the adversarial
+    // verify confirmed clipping on with a single edge-to-edge segment).
+    const selfH = 3.0, northEdge = 2.2, southEdge = 2.5;
+    const { inHalf, outHalf } = pitchCellHalves(northEdge, selfH, southEdge);
+    // outer ends land exactly on the shared edges (no-seam invariant survives the split)
+    expect(inHalf.centerY + (inHalf.length / 2) * Math.sin(inHalf.rot)).toBeCloseTo(northEdge, 12);
+    expect(outHalf.centerY - (outHalf.length / 2) * Math.sin(outHalf.rot)).toBeCloseTo(southEdge, 12);
+    // and the two halves MEET at the cell's own height — the surface never dips below it
+    expect(inHalf.centerY - (inHalf.length / 2) * Math.sin(inHalf.rot)).toBeCloseTo(selfH, 12);
+    expect(outHalf.centerY + (outHalf.length / 2) * Math.sin(outHalf.rot)).toBeCloseTo(selfH, 12);
+    // each half projects exactly half a cell
+    expect(inHalf.length * Math.cos(inHalf.rot)).toBeCloseTo(2, 12);
+    expect(outHalf.length * Math.cos(outHalf.rot)).toBeCloseTo(2, 12);
+  });
+
+  it("monotone slope: the two halves are collinear (no artificial kink mid-cell)", () => {
+    // Uniform grade: edges equidistant above/below the cell height.
+    const { inHalf, outHalf } = pitchCellHalves(2.5, 2.0, 1.5);
+    expect(inHalf.rot).toBeCloseTo(outHalf.rot, 12);
   });
 
   it("a straight meeting a flat intersection lands exactly on the intersection surface", () => {

@@ -17,11 +17,21 @@ boundary, so every grade change and every corner-on-a-slope produced a ledge.
   rot = atan2(drop, 4), centerY = midpoint, length = hypot(4, drop). Exactness identities
   (tested to 1e-12): the ends land on the edge heights and the projected footprint stays
   exactly one 4m cell (orthogonal purity).
+- **Half-segments per cell** (added after the adversarial verify CONFIRMED crest
+  clipping): a single edge-to-edge box dives under the cell's own surface on a convex
+  crest, because both edges are dragged down by lower neighbors. `pitchCellHalves` renders
+  each pitched cell as two half-segments meeting at the CELL'S OWN height in the middle —
+  outer ends still land exactly on the shared edges (the no-seam invariant survives the
+  split), and the crest guarantee returns: the surface never dips below the cell's sampled
+  height at its center. On a monotone grade the two halves are collinear (no kink).
 - Article I holds: straights pitch along travel only, roll locked at zero, intersections
-  and corners stay flat. Curbs, center lines and the surface box all stretch to the pitch
-  hypotenuse so nothing shortens or gaps on slopes.
+  and corners stay flat. Curbs, center lines and the surface boxes all stretch to the
+  pitch hypotenuse so nothing shortens or gaps on slopes.
 - Improvement over the old sampling: a road edge with NO road neighbor no longer pitches
   toward empty terrain — dead ends stay level.
+- Bonus verify finding fixed: `getSmoothRoadY`'s float loop (`dx += 0.2`) accumulated to
+  0.6000000000000001 and silently sampled an asymmetric -0.6..+0.4 footprint; integer
+  loop indices restore the symmetric +/-0.6 coverage.
 
 ## Known limitation
 
