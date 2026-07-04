@@ -40,8 +40,8 @@ export function levelingSignature(state: ColonyState): string {
   return sig;
 }
 
-/** R3FWorld's first-person spawn point — recomputes when the road network changes or lots
- *  arrive (the starter plot). Terrain itself is immutable after worldgen. */
+/** R3FWorld's first-person spawn point — recomputes when the road network changes (the spawn
+ *  snaps to the first road, else falls back to findDrySpawn over the immutable terrain). */
 export function spawnSignature(state: ColonyState): string {
-  return `r${state.roadsVersion}:l${state.neighborhood?.lots?.length ?? 0}`;
+  return `r${state.roadsVersion}`;
 }

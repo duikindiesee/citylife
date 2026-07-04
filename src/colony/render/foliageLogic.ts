@@ -10,7 +10,7 @@ const LOT_SIZE = 4;
 export function calculateFoliagePositions(
   terrain: any,
   roads: any[],
-  buildings: any[]
+  _buildings: any[]
 ): { matrices: number[][]; colors: number[] } {
   const N = terrain.size;
   const hash = (n: number) => ((n * 2654435761) >>> 0) / 4294967296;
@@ -29,16 +29,7 @@ export function calculateFoliagePositions(
   // Clear roads
   for (const r of roads) mark(r.x, r.y, 1);
 
-  // Clear buildings
-  for (const b of buildings) {
-    if (b.houseZone) {
-      const hz = b.houseZone;
-      const cx = hz.x + (hz.w - 1) / 2;
-      const cy = hz.y + (hz.d - 1) / 2;
-      const r = Math.max(hz.w, hz.d) / 2 + 1; // approx clearance
-      mark(cx, cy, r);
-    }
-  }
+  // Buildings currently do NOT cull foliage: ColonyBuilding has no footprint field (only id/x/y/artifact).
 
   const matrices: number[][] = [];
   const colors: number[] = [];
