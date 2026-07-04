@@ -21,6 +21,8 @@ import {
 import { createVisualArtifacts, type VisualArtifact } from "./artifacts";
 import { createLedger, type Ledger } from "./ledger";
 import type { CityPlan } from "./cityPlan";
+import type { Neighborhood } from "./neighborhood";
+import type { CommercialDistrict } from "./commerce/district";
 
 export type StructureKind =
   | "caravan"
@@ -430,6 +432,13 @@ export interface ColonyState {
   artifacts: VisualArtifact[];
   ledger: Ledger;
   cityPlan: CityPlan | null; // attached by the runtime after construction so the renderer can paint zones
+  /** Attached by the runtime after construction — the homestead neighbourhood the R3F renderer
+   *  reads for lot pads, zone overlays and voxel homes. The legacy renderer received this via
+   *  setNeighborhood(); the R3F port reads it straight off the state. */
+  neighborhood?: Neighborhood | null;
+  /** Attached by the runtime after construction — the shop district the R3F renderer reads for
+   *  commercial pads and terrain leveling. Legacy path was setCommercialDistrict(). */
+  commercialDistrict?: CommercialDistrict | null;
 }
 
 function daylightAt(hour: number, minute: number): number {
