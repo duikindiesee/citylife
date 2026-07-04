@@ -3,27 +3,31 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { ColonySim } from '../sim';
 import { calculateFoliagePositions } from './foliageLogic';
+import { useSimSignal, type SimBridge } from './useSimSignal';
+import { foliageSignature } from './simSignals';
 
 interface R3FFoliageProps {
   sim: ColonySim;
+  runtime?: SimBridge;
 }
 
-export function R3FFoliage({ sim }: R3FFoliageProps) {
+export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  
-  // Rebuild foliage when terrain or roads/buildings change.
-  // We use sim.state.roadsVersion and sim.state.buildings.length as cheap triggers.
+
+  // Rebuild foliage when roads or buildings change. The signature subscription is what
+  // actually triggers the re-render — sim.state is mutable and invisible to React on its own.
+  const foliageSig = useSimSignal(runtime, () => foliageSignature(sim.state));
   const { matrices, colors, geometry } = useMemo(() => {
     const s = sim.state;
     const { matrices: mats, colors: cols } = calculateFoliagePositions(s.terrain, s.roads, s.buildings);
-    
+
     // Create the geometry
     const geo = new THREE.ConeGeometry(1.5, 8, 5);
     // Lift geometry so the origin is at the base, not the center
     geo.translate(0, 4, 0);
 
     return { matrices: mats, colors: cols, geometry: geo };
-  }, [sim.state.roadsVersion, sim.state.buildings.length]); // Note: In a real app we'd track precise signals
+  }, [sim, foliageSig]);
 
   // Use a custom material that sways in the wind
   const material = useMemo(() => {
@@ -81,6 +85,7 @@ export function R3FFoliage({ sim }: R3FFoliageProps) {
   return (
     <instancedMesh
       ref={meshRef}
+      name="foliage"
       args={[geometry, material, matrices.length]}
       castShadow
       receiveShadow
