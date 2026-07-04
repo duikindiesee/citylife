@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { RigidBody, HeightfieldCollider } from '@react-three/rapier';
 import type { ColonySim } from '../sim';
 import { buildChunkedTerrain } from './terrainChunks';
+import { disposeDeep } from './disposeDeep';
 import { Biome, BIOME_COLOR } from '../terrain';
 import { COLONY } from '../config';
 
@@ -75,6 +76,11 @@ export function R3FTerrain({ sim, terrainLevel }: R3FTerrainProps) {
 
     return chunked.group;
   }, [sim, terrainLevel]);
+
+  // Spec 119 — the chunked terrain (370k+ vertices plus its material) is rebuilt wholesale
+  // on every terraform/leveling change; dispose the superseded tree or every rebuild leaks
+  // its GPU buffers. Runs when a new group replaces the old, and on unmount.
+  useEffect(() => () => disposeDeep(terrainGroup), [terrainGroup]);
 
   const heights = useMemo(() => {
     const t = sim.state.terrain;

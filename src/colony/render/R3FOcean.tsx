@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { BIOME_COLOR, Biome } from '../terrain';
@@ -19,6 +19,8 @@ export function R3FOcean({ size }: R3FOceanProps) {
     () => new THREE.RingGeometry(0.5, size * 0.99, 120, 30),
     [size]
   );
+  // Spec 119 — dispose the superseded ring when size changes, and on unmount.
+  useEffect(() => () => geometry.dispose(), [geometry]);
 
   // Spec 116 — the waves live on the GPU. The vertex shader displaces the ring and derives
   // lit normals from the wave slopes (patchOceanShader); the frame loop below only advances
@@ -37,6 +39,8 @@ export function R3FOcean({ size }: R3FOceanProps) {
     };
     return mat;
   }, []);
+  // Spec 119 — free the patched shader program on unmount.
+  useEffect(() => () => material.dispose(), [material]);
 
   useFrame((state) => {
     const shader = material.userData.shader as PatchableShader | undefined;
