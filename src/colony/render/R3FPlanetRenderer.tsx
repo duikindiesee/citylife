@@ -56,6 +56,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { useSimSignal, type SimBridge } from './useSimSignal';
 import { zoneSignature, spawnSignature } from './simSignals';
 import { nextBootStage } from './bootStage';
+import { R3FAvatars, type AvatarRefs } from './R3FAvatars';
 
 function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) {
   const state = sim.state;
@@ -300,7 +301,7 @@ function useBootStage(): number {
   return stage;
 }
 
-function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
+function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any; avatarRefs: AvatarRefs }) {
   const terrainSize = sim.state.terrain.size;
   const bootStage = useBootStage();
 
@@ -404,6 +405,7 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
             <R3FFoliage sim={sim} runtime={runtime} />
             <ZoneManager sim={sim} runtime={runtime} />
             <R3FPlayerCar sim={sim} />
+            <R3FAvatars sim={sim} refs={avatarRefs} />
           </>
         )}
 
@@ -441,6 +443,12 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
 export class PlanetRenderer {
   private root: Root;
   public onGroundClick?: (gx: number, gy: number) => void;
+  /** Spec 120 — mutable refs bridging the runtime's imperative avatar hooks into the React
+   *  tree without re-rendering it: R3FAvatars reads them in useFrame every frame. */
+  private avatarRefs: AvatarRefs = {
+    source: { current: null },
+    fpCitizenId: { current: null },
+  };
 
   constructor(
     private container: HTMLElement,
@@ -457,7 +465,7 @@ export class PlanetRenderer {
     this.root = createRoot(container);
     this.root.render(
       <Canvas shadows camera={{ fov: 45, far: 1000 }}>
-        <R3FWorld sim={this.sim} runtime={this.runtime} />
+        <R3FWorld sim={this.sim} runtime={this.runtime} avatarRefs={this.avatarRefs} />
       </Canvas>
     );
   }
@@ -475,8 +483,10 @@ export class PlanetRenderer {
   capturePNG(): string | null { return null; }
 
   setOperatorCar(_spec: CarSpec | null, _cell: { x: number; y: number } | null) {}
-  enterFirstPerson(id: string) {}
-  exitFirstPerson() {}
+  // Spec 120 — the first-person citizen is hidden from the avatar layer (the player IS
+  // that citizen), matching the legacy renderer.
+  enterFirstPerson(id: string) { this.avatarRefs.fpCitizenId.current = id; }
+  exitFirstPerson() { this.avatarRefs.fpCitizenId.current = null; }
   setRaceState(_race: RaceState | null) {}
 
   setViewMode(_mode: ViewMode) {}
@@ -486,7 +496,9 @@ export class PlanetRenderer {
   setCinematic(_on: boolean) {}
 
   setAvatarView(_avatars: AvatarView[]) {}
-  setAvatarSource(_source: () => AvatarView[]) {}
+  // Spec 120 — the runtime registers its live per-frame avatar feed here; R3FAvatars
+  // pulls it in useFrame.
+  setAvatarSource(source: () => AvatarView[]) { this.avatarRefs.source.current = source; }
   setBarState(_cells: unknown[], _occupants: unknown[], _by: unknown[]) {}
 
   syncTerrain(_t: Terrain) {}

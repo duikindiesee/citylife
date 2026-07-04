@@ -14,16 +14,17 @@ export function R3FPlayerCar({ sim }: R3FPlayerCarProps) {
     if (!groupRef.current) return;
     const carState = (sim.state as any).raceState?.car;
     if (carState) {
-      // Assuming a flat Y for now, but in reality we'd pull from terrain height
-      const y = 0.22; 
-      // Need to map world coordinates if the sim provides raw grid X/Y
-      // The old raceLayer used opts.wx(c.x) and opts.wz(c.y). 
-      // In R3FPlanetRenderer, wx = (x - size/2) * 4
+      // Spec 120 — snap the car to the terrain surface (the old hardcoded y=0.22 floated
+      // on hills and sank in valleys). Wheel clearance rides on top of the ground height.
       const size = sim.state.terrain.size;
+      const ground = Math.max(
+        sim.state.terrain.worldY(Math.round(carState.x), Math.round(carState.y)),
+        0
+      );
       const wx = (carState.x - size / 2) * 4;
       const wz = (carState.y - size / 2) * 4;
-      
-      groupRef.current.position.set(wx, y, wz);
+
+      groupRef.current.position.set(wx, ground, wz);
       groupRef.current.rotation.set(0, -carState.heading, 0);
     }
   });
