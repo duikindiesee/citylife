@@ -44,7 +44,7 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = { value: 0 };
       // Pass the uniform reference to the material object so useFrame can update it
-      (mat as any).userData.shader = shader;
+      mat.userData.shader = shader;
       
       shader.vertexShader = `
         uniform float uTime;
@@ -68,8 +68,8 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
   useEffect(() => () => material.dispose(), [material]);
 
   useFrame((state) => {
-    if (material && (material as any).userData.shader) {
-      (material as any).userData.shader.uniforms.uTime.value = state.clock.elapsedTime;
+    if (material.userData.shader) {
+      material.userData.shader.uniforms.uTime.value = state.clock.elapsedTime;
     }
   });
 

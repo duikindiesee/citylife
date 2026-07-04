@@ -8,6 +8,13 @@ import { ToneMappingMode } from 'postprocessing';
 import * as THREE from 'three';
 
 import type { ColonySim } from '../sim';
+import type { Terrain } from '../terrain';
+import type { Neighborhood } from '../neighborhood';
+import type { CommercialDistrict } from '../commerce/district';
+import type { RoadWay } from './roadRibbon';
+import type { BusRoute } from '../transit/busRoute';
+import type { RaceState } from '../racing/race';
+import type { CarSpec } from '../car/carSpec';
 import { FirstPersonController } from '../../render/components/FirstPersonController';
 import { CommercialBlock } from '../../render/components/CommercialBlock';
 import { Island } from '../../render/components/Island';
@@ -373,14 +380,6 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
       const wy = sim.state.terrain.worldY(road.x, road.y);
       return [wx, wy + 2, wz] as [number, number, number];
     }
-
-    const lot = sim.state.neighborhood?.lots?.find((l) => l.id === 'starter-plot');
-    if (lot) {
-      const wx = (lot.doorX - size / 2) * 4;
-      const wz = (lot.doorY - size / 2) * 4;
-      const wy = sim.state.terrain.worldY(Math.round(lot.doorX), Math.round(lot.doorY));
-      return [wx, wy + 2, wz] as [number, number, number];
-    }
     return findDrySpawn(sim.state.terrain);
   }, [sim, spawnSig]);
 
@@ -463,34 +462,39 @@ export class PlanetRenderer {
     );
   }
 
-  frame(dt: number) {}
-  resize(...args: any[]) {}
+  // No-op compatibility surface. R3F owns the frame loop, camera and layers, so these runtime
+  // hooks do nothing here — but they keep the signatures of the legacy canvas renderer
+  // (./PlanetRenderer.ts) so the runtime can drive either implementation.
+  // Legacy frame() takes no arguments, but the runtime passes the real dt (runtime.ts), so the
+  // parameter is kept. The PNG captures return null (never a data URL) until R3F implements them.
+  frame(_dt: number) {}
+  resize() {}
   dispose() { this.root.unmount(); }
-  
-  firstPersonPNG(...args: any[]) { return null; }
-  capturePNG() { return null; }
-  
-  setOperatorCar(car: any, cell: any) {}
+
+  firstPersonPNG(_home: { x: number; y: number }, _look: { x: number; y: number }): string | null { return null; }
+  capturePNG(): string | null { return null; }
+
+  setOperatorCar(_spec: CarSpec | null, _cell: { x: number; y: number } | null) {}
   enterFirstPerson(id: string) {}
   exitFirstPerson() {}
-  setRaceState(state: any) {}
-  
-  setViewMode(mode: any) {}
-  setView(mode: any) {}
-  setCameraPreset(preset: any) {}
-  applyPreset(preset: any) {}
-  setCinematic(enabled: boolean) {}
-  
-  setAvatarView(avatars: any[]) {}
-  setAvatarSource(source: any) {}
-  setBarState(cells: any[], occupants: any[], by: any[]) {}
-  
-  syncTerrain(t: any) {}
-  setZoningVisible(v: boolean) {}
-  setZonesVisible(v: boolean) {}
-  
-  setNeighborhood(n: any) {}
-  setCommercialDistrict(d: any) {}
-  setRoadWays(r: any) {}
-  setBusRoute(b: any) {}
+  setRaceState(_race: RaceState | null) {}
+
+  setViewMode(_mode: ViewMode) {}
+  setView(_mode: ViewMode) {}
+  setCameraPreset(_preset: CameraPreset) {}
+  applyPreset(_preset: CameraPreset) {}
+  setCinematic(_on: boolean) {}
+
+  setAvatarView(_avatars: AvatarView[]) {}
+  setAvatarSource(_source: () => AvatarView[]) {}
+  setBarState(_cells: unknown[], _occupants: unknown[], _by: unknown[]) {}
+
+  syncTerrain(_t: Terrain) {}
+  setZoningVisible(_v: boolean) {}
+  setZonesVisible(_v: boolean) {}
+
+  setNeighborhood(_n: Neighborhood) {}
+  setCommercialDistrict(_d: CommercialDistrict | null | undefined) {}
+  setRoadWays(_ways: RoadWay[] | null | undefined) {}
+  setBusRoute(_route: BusRoute | null | undefined) {}
 }
