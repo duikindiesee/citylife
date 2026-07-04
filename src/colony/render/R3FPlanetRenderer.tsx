@@ -46,18 +46,22 @@ import { GlbHouse } from "./GlbHouse";
 import { useWorldAssets } from "../stores/useWorldAssets";
 import { R3FPlayerCar } from "./R3FPlayerCar";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { useSimSignal, type SimBridge } from './useSimSignal';
+import { zoneSignature, spawnSignature } from './simSignals';
 
-function ZoneManager({ sim }: { sim: ColonySim }) {
+function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) {
   const state = sim.state;
   const { assets, fetchManifest } = useWorldAssets();
-  
+
   useEffect(() => {
     fetchManifest();
   }, []);
-  
+
+  // Subscribe to the mutable sim — a lot placed, demolished or built must re-render here.
+  const zoneSig = useSimSignal(runtime, () => zoneSignature(state));
   const buildings = useMemo(() => {
     const elements = [];
-    
+
     if (state.cityPlan) {
       const size = state.terrain.size;
       for (const plot of state.cityPlan.plots) {
@@ -74,9 +78,9 @@ function ZoneManager({ sim }: { sim: ColonySim }) {
       }
     }
     
-    if ((state as any).neighborhood?.lots) {
+    if (state.neighborhood?.lots) {
       const size = state.terrain.size;
-      for (const lot of (state as any).neighborhood.lots) {
+      for (const lot of state.neighborhood.lots) {
         if (lot.built) {
           if (lot.zone === "commercial") {
             const wX = (lot.x - size / 2) * 4;
@@ -112,8 +116,9 @@ function ZoneManager({ sim }: { sim: ColonySim }) {
           const wY = state.terrain.worldY(Math.round(lot.x), Math.round(lot.y));
           const color = lot.zone === "commercial" ? "#55cfff" : "#55ff55";
           elements.push(
-            <mesh 
-              key={`zone-ground-${lot.id}`} 
+            <mesh
+              key={`zone-ground-${lot.id}`}
+              name={`zone-ground-${lot.id}`}
               position={[wX, wY + 0.1, wZ]}
             >
               <boxGeometry args={[lot.w * 4, 0.1, lot.h * 4]} />
@@ -123,9 +128,9 @@ function ZoneManager({ sim }: { sim: ColonySim }) {
         }
       }
     }
-    
+
     return elements;
-  }, [state.cityPlan, (state as any).neighborhood, assets]);
+  }, [sim, zoneSig, assets]);
 
   return <group>{buildings}</group>;
 }
@@ -204,6 +209,21 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
   );
 }
 
+/** Live probe in the spirit of window.__colony — exposes the three.js scene so Playwright
+ *  specs (and the operator console) can assert on what is actually rendered, not just on
+ *  sim state. See e2e/reactivity.spec.ts. */
+function SceneProbe() {
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    const w = window as unknown as { __r3fScene?: THREE.Scene };
+    w.__r3fScene = scene;
+    return () => {
+      if (w.__r3fScene === scene) w.__r3fScene = undefined;
+    };
+  }, [scene]);
+  return null;
+}
+
 function AerialCameraController() {
   const { camera } = useThree();
   
@@ -269,7 +289,7 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
   const builderMode = useRoadNetwork(state => state.builderMode);
   
   const roadCells = useMemo(() => new Set(Object.keys(tiles)), [tiles]);
-  const terrainLevel = useTerrainLeveling(sim, roadCells, landscapeEdits);
+  const terrainLevel = useTerrainLeveling(sim, roadCells, landscapeEdits, runtime);
 
   // DEBOUNCE: Only rebuild the 370k-vertex terrain mesh on mouse-release when plotting roads.
   // Terraforming (Raise/Lower/Flatten) still updates live.
@@ -324,6 +344,7 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
     if (venueProps) venueProps.update(dayFactor, timeMs);
   });
 
+  const spawnSig = useSimSignal(runtime, () => spawnSignature(sim.state));
   const startPos = useMemo(() => {
     const size = sim.state.terrain.size;
     const roads = sim.state.roads;
@@ -335,8 +356,7 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
       return [wx, wy + 2, wz] as [number, number, number];
     }
 
-    const n = (sim.state as any).neighborhood;
-    const lot = n?.lots?.find((l: any) => l.id === 'starter-plot');
+    const lot = sim.state.neighborhood?.lots?.find((l) => l.id === 'starter-plot');
     if (lot) {
       const wx = (lot.doorX - size / 2) * 4;
       const wz = (lot.doorY - size / 2) * 4;
@@ -344,12 +364,13 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
       return [wx, wy + 2, wz] as [number, number, number];
     }
     return findDrySpawn(sim.state.terrain);
-  }, [sim.state.terrain, (sim.state as any).neighborhood, sim.state.roadsVersion]);
+  }, [sim, spawnSig]);
 
   return (
     <>
+      <SceneProbe />
       <DayNightCycle sim={sim} />
-      
+
       <Physics>
         <R3FTerrain sim={sim} terrainLevel={debouncedTerrainLevel} />
         <R3FOcean size={terrainSize} />
@@ -365,8 +386,8 @@ function R3FWorld({ sim, runtime }: { sim: ColonySim; runtime?: any }) {
         <R3FRoadNetwork sim={sim} runtime={runtime} />
 
         {/* Dynamic World Elements */}
-        <R3FFoliage sim={sim} />
-        <ZoneManager sim={sim} />
+        <R3FFoliage sim={sim} runtime={runtime} />
+        <ZoneManager sim={sim} runtime={runtime} />
         <R3FPlayerCar sim={sim} />
 
         {/* Toggle between aerial view and first person */}

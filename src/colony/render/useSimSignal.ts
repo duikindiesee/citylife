@@ -25,8 +25,7 @@ export function useSimSignal(
   getSignature: () => string,
 ): string {
   const subscribe = useCallback(
-    (cb: () => void) =>
-      runtime ? runtime.subscribe(cb) : intervalSubscribe(cb),
+    (cb: () => void) => (runtime ? runtime.subscribe(cb) : intervalSubscribe(cb)),
     [runtime],
   );
   return useSyncExternalStore(subscribe, getSignature);

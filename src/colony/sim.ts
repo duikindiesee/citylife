@@ -23,9 +23,6 @@ import { createLedger, type Ledger } from "./ledger";
 import type { CityPlan } from "./cityPlan";
 import type { Neighborhood } from "./neighborhood";
 import type { CommercialDistrict } from "./commerce/district";
-import type { RaceState } from "./racing/race";
-import type { RoadWay } from "./render/roadRibbon";
-import type { CarSpec } from "./car/carSpec";
 
 export type StructureKind =
   | "caravan"
@@ -625,31 +622,6 @@ export interface ColonyState {
   /** Attached by the runtime after construction — the shop district the R3F renderer reads for
    *  commercial pads and terrain leveling. Legacy path was setCommercialDistrict(). */
   commercialDistrict?: CommercialDistrict | null;
-  /** Spec 149 — the surveyed bus depot pad, attached by the runtime after siting, so terrain
-   *  leveling grades ONE flat apron the slab, the buses and the walker's ground all agree on. */
-  busDepotPad?: { x: number; y: number; w: number; h: number } | null;
-  /** Spec 149 — the depot spur road cells (excluding the loop junction). Ambient TRAFFIC skips these
-   *  so cars never drive the dead-end spur into the depot and collide with a maneuvering bus; the
-   *  buses own the spur. Empty/absent on seeds with no depot. */
-  busDepotSpurCells?: Set<string> | null;
-  /** Attached by the runtime while a Road Rally runs (null otherwise) — the R3F renderer reads
-   *  it for the race course + the player's racing car. Legacy path was setRaceState(). */
-  raceState?: RaceState | null;
-  /** Attached by the runtime after construction — the road centre-line polylines the R3F
-   *  renderer extrudes into the smooth ribbon road surfaces (spec 127). Legacy path was
-   *  setRoadWays(). Hand-drawn builder roads append here via useRoadNetwork.plotRoad. */
-  roadWays?: RoadWay[];
-  /** Attached by the renderer bridge when the signed-in operator has a car — the parked
-   *  car's spec + home cell (spec 131). Legacy path was setOperatorCar(). */
-  operatorCar?: { spec: CarSpec; cell: { x: number; y: number } } | null;
-  /** Render toggle for the zoning overlays (spec 131) — set through setZonesVisible(). */
-  zonesVisible?: boolean;
-  /** Citizens present at the hilltop Rally Point (spec 131) — public-safe filtered at the
-   *  renderer bridge; R3FRallyNameplates draws their name cards + floor circles. */
-  rallyPresence?: { id: string; displayName: string }[];
-  /** The TV-mode cinematic fly-around behind the login screen (spec 131) — set through
-   *  setCinematic(); R3FCameraDirector orbits the landing while true. */
-  cinematic?: boolean;
 }
 
 function daylightAt(hour: number, minute: number): number {
