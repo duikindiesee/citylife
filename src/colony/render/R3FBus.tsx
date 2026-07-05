@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import type { ColonySim } from '../sim';
 import type { BusRoute } from '../transit/busRoute';
 import { buildBusLayer, type BusLayer } from './busLayer';
+import { getSmoothRoadY } from './R3FRoadNetwork';
 
 // Spec 122 — the town bus (spec 088), R3F port of the legacy setBusRoute path. The route
 // is deterministic runtime state (runtime.busRoute, computed once at boot from the road
@@ -28,8 +29,10 @@ export function R3FBus({ sim, runtime }: R3FBusProps) {
     return {
       wx: (x: number) => (x - size / 2) * 4,
       wz: (y: number) => (y - size / 2) * 4,
-      roadY: (x: number, y: number) =>
-        Math.max(0, sim.state.terrain.worldY(Math.round(x), Math.round(y))),
+      // Spec 122 — ride the SAME surface the road tiles render on (getSmoothRoadY, the max
+      // over a bilinear footprint), sampled at fractional path coords, so the coach sits on
+      // the road on slopes instead of floating/sinking to the raw cell-center terrain.
+      roadY: (x: number, y: number) => Math.max(0, getSmoothRoadY(sim.state.terrain, x, y)),
     };
   }, [sim]);
 

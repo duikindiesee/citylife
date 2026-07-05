@@ -27,7 +27,16 @@ wiring, so `e2e/bus.spec.ts` is the proof: it probes the scene for the `bus` gro
 the runtime has a route (true at the live seed — 4 stops, 1680-cell loop), asserts the bus
 layer built real geometry (first run: 37 meshes — the coach + stop markers).
 
+## Road-surface height (fixed after the adversarial verify)
+
+The verify CONFIRMED that sampling raw `terrain.worldY` floated/sank the coach by up to
+~0.85u on slopes (roads render at `getSmoothRoadY + lift + pitch`, not the raw cell-center
+height). Fixed: `R3FBus` now samples `getSmoothRoadY` (exported from `R3FRoadNetwork`, the
+exact function the road tiles use) at fractional path coords, so the bus rides the same
+surface the roads render on. `buildBusLayer.update` was already dt-clamped, so a backgrounded
+tab cannot break the loop advance.
+
 ## Deferred (v2)
 
-Riding the exact road-ribbon surface height (v1 uses `terrain.worldY`); passengers; night
-route signage tied to the day/night cycle.
+Body pitch along the travel grade (the coach stays level, tracking the surface height at each
+point); passengers; night route signage tied to the day/night cycle.
