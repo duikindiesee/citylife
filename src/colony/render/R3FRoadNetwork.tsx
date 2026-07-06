@@ -181,8 +181,11 @@ import {
   pitchCellHalves,
 } from './roadPitch';
 
-// Bilinear interpolation for fractional grid coordinates to prevent NaN spiky geometries
-function getSmoothRoadY(terrain: any, x: number, y: number): number {
+// Bilinear interpolation for fractional grid coordinates to prevent NaN spiky geometries.
+// Exported (spec 122) so the bus rides the SAME surface the road tiles render on — the max
+// over a small bilinear footprint — instead of the raw cell-center terrain height, which
+// floats/sinks the coach on slopes.
+export function getSmoothRoadY(terrain: any, x: number, y: number): number {
   const size = terrain.size;
   const cl = (v: number) => Math.max(0, Math.min(size - 1, v));
   

@@ -58,6 +58,7 @@ import { zoneSignature, spawnSignature } from './simSignals';
 import { nextBootStage } from './bootStage';
 import { R3FAvatars, type AvatarRefs } from './R3FAvatars';
 import { R3FPedestrians } from './R3FPedestrians';
+import { R3FBus } from './R3FBus';
 
 function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) {
   const state = sim.state;
@@ -408,6 +409,7 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
             <R3FPlayerCar sim={sim} />
             <R3FAvatars sim={sim} refs={avatarRefs} />
             <R3FPedestrians sim={sim} />
+            <R3FBus sim={sim} runtime={runtime} />
           </>
         )}
 
