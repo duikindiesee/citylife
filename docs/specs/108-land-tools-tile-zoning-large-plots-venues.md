@@ -31,6 +31,7 @@ Conclusion: the codebase already wants this. We are turning a hidden formula int
 - Replace the `cellZone()` formula with a lookup into `zoneGrid`. Seed `zoneGrid` once from the existing formula so nothing regresses, then make it paintable.
 - Roads become paintable too: the `roadSet` already exists; allow authoring road cells directly instead of only deriving them from the block frame.
 - Add a **"Plan" view mode + an RCT-style tool palette**: zone brush, road brush, plot stamp, bulldoze. Reuse `pickGround` for cell selection. Palette must be tasteful (deep-space + cyan hairlines, per the zoning-redesign research), not the old flat overlay.
+- The v3 builder palette uses Joe's generated transparent HUD icons for the four top-level categories: roads, zoning, landscaping, and bulldozer. The canonical repo assets live under `public/assets/citylife/builder-icons/{64,256}/` so the R3F builder can use 64px buttons while future promo/help surfaces can use the 256px source set.
 
 ### Layer B — Large, variable plots
 
