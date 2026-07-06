@@ -23,12 +23,14 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     build: {
       rollupOptions: {
-        // Multipage: the colony game plus the spec-077 House Builder (town.html is the legacy v1 page).
+        // Multipage: the colony game plus the spec-077 House Builder (town.html is the legacy v1 page),
+        // and ask-kooker.html — the public Ask-Kooker board with a login-walled Your-answers panel.
         input: {
           index: "index.html",
           builder: "builder.html",
           kookerbook: "kookerbook.html",
           town: "town.html",
+          askkooker: "ask-kooker.html",
         },
       },
     },
