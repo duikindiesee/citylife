@@ -83,6 +83,16 @@ server {
         try_files /ask-kooker.html =404;
         add_header Cache-Control "no-store, no-cache, must-revalidate";
     }
+    # The extensionless form of the built filename resolves too, so a collaborator
+    # who drops the .html still lands on the board instead of the SPA login.
+    location = /ask-kooker {
+        try_files /ask-kooker.html =404;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+    }
+    location = /ask-kooker/ {
+        try_files /ask-kooker.html =404;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+    }
 
     # SPA history fallback for client-side routing only.
     location / {
