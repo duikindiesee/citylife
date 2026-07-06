@@ -295,6 +295,12 @@ export function LoginScreen({
             Sign up as a visitor
           </button>
         </div>
+        <div className="login-hint">
+          <a className="login-link" href="/ask-kooker.html">
+            Ask Kooker a question
+          </a>{" "}
+          — no account needed to ask.
+        </div>
       </form>
     </div>
   );
