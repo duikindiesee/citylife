@@ -72,6 +72,28 @@ server {
         add_header Cache-Control "public, no-transform";
     }
 
+    # /ask is the friendly path for the Ask-Kooker board (built as ask-kooker.html). Serve the page
+    # content at /ask (and /ask/) with no redirect, so the pretty URL stays in the address bar. Exact
+    # matches, so this never shadows /assets, the /kooker proxy, or the SPA fallback below.
+    location = /ask {
+        try_files /ask-kooker.html =404;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+    }
+    location = /ask/ {
+        try_files /ask-kooker.html =404;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+    }
+    # The extensionless form of the built filename resolves too, so a collaborator
+    # who drops the .html still lands on the board instead of the SPA login.
+    location = /ask-kooker {
+        try_files /ask-kooker.html =404;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+    }
+    location = /ask-kooker/ {
+        try_files /ask-kooker.html =404;
+        add_header Cache-Control "no-store, no-cache, must-revalidate";
+    }
+
     # SPA history fallback for client-side routing only.
     location / {
         try_files $uri $uri/ /index.html;
