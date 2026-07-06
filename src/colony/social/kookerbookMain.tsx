@@ -258,9 +258,22 @@ function App() {
       {/* directory */}
       <div style={{ ...panel, ...layout.directory }}>
         <h2 style={{ margin: "2px 0 4px" }}>📘 Kookerbook</h2>
-        <div style={{ opacity: 0.6, fontSize: 12, marginBottom: 12 }}>
+        <div style={{ opacity: 0.6, fontSize: 12, marginBottom: 8 }}>
           the citizens of Landing One
         </div>
+        <a
+          href="/ask-kooker.html"
+          style={{
+            display: "inline-block",
+            marginBottom: 12,
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#f0836a",
+            textDecoration: "none",
+          }}
+        >
+          Ask Kooker a question →
+        </a>
         {profiles.length === 0 && (
           <div style={{ opacity: 0.6 }}>
             No citizens yet — approve a newcomer in the colony, or visit after
