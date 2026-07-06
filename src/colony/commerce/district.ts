@@ -357,18 +357,11 @@ export function findGarageSite(
       // pole on the grey road ribbon. Inset it one cell from the two road-
       // facing edges so the visible lightbox still reads as the corner sign
       // while staying inside the brown commercial footprint.
-      x:
-        candidate.streetFrontDir.x < 0
-          ? candidate.x + 1
-          : candidate.x + w - 2,
-      y:
-        candidate.crossFrontDir.y < 0
-          ? candidate.y + 1
-          : candidate.y + h - 2,
+      x: candidate.streetFrontDir.x < 0 ? candidate.x + 1 : candidate.x + w - 2,
+      y: candidate.crossFrontDir.y < 0 ? candidate.y + 1 : candidate.y + h - 2,
     };
     const cornerDistance =
-      (pylonCell.x - cornerX) ** 2 +
-      (pylonCell.y - cornerY) ** 2;
+      (pylonCell.x - cornerX) ** 2 + (pylonCell.y - cornerY) ** 2;
     const roadDistance = Math.abs(dx) + Math.abs(dy);
     const score = cornerDistance * 100 + roadDistance;
     if (
