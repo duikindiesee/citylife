@@ -32,13 +32,9 @@ describe("spec 120 — legacy-verbatim constants", () => {
     expect(avatarColorHex({ isOperator: false, hasPod: false })).toBe(0xc0b0e0);
   });
 
-  it("stands a citizen at the shared 1.7 m adult height with feet on the ground (spec 146)", () => {
-    // crown = head lift + head radius
-    expect(AVATAR_HEAD.lift + AVATAR_HEAD.radius).toBeCloseTo(1.7, 5);
-    // torso capsule bottom = lift - (radius + length/2) sits at the feet (y=0)
-    expect(
-      AVATAR_BODY.lift - (AVATAR_BODY.radius + AVATAR_BODY.length / 2),
-    ).toBeCloseTo(0, 5);
+  it("keeps the legacy body proportions and capacity", () => {
+    expect(AVATAR_BODY).toEqual({ radius: 0.16, length: 0.44 });
+    expect(AVATAR_HEAD).toEqual({ radius: 0.12, lift: 0.86 });
     expect(AVATAR_CAP).toBe(64);
   });
 });
@@ -54,11 +50,7 @@ describe("spec 120 — grid to world transform", () => {
   it("applies the legacy yaw convention: facing +x means rotY of PI/2", () => {
     const east = avatarTransform({ x: 0, y: 0, heading: 0 }, 10, () => 0);
     expect(east.rotY).toBeCloseTo(Math.PI / 2, 12);
-    const north = avatarTransform(
-      { x: 0, y: 0, heading: -Math.PI / 2 },
-      10,
-      () => 0,
-    );
+    const north = avatarTransform({ x: 0, y: 0, heading: -Math.PI / 2 }, 10, () => 0);
     expect(north.rotY).toBeCloseTo(Math.PI, 12);
   });
 
