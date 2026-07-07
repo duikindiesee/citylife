@@ -49,6 +49,12 @@ export interface Citizen {
   /** Spec 077 P4 — the citizen's authored house blueprint (the DSL script accepted in the builder).
    *  Mirrors the parcel's stored script; the backend persistence slice syncs from here. */
   blueprint?: string;
+  /** The owning kooker user id, stamped when a signed-in player claims this citizen as their own (see
+   *  ColonyRuntime.setOperatorUserId). Identity key for the player view: own-data / step-into resolve
+   *  off this, not the display name, so a colliding name can never reach another player's citizen.
+   *  Undefined for NPCs / founders and for legacy citizens not yet claimed. NOT exposed on
+   *  {@link CitizenPublic} — it is an identity link, never shown or shared. */
+  kookerUserId?: string;
 }
 
 /** Public-safe slice of a Citizen for the HUD / UI / save file. Excludes any field that could carry
@@ -175,6 +181,45 @@ export class CitizenRoster {
   byId(citizenId: string): Citizen | undefined {
     for (const c of this.byHousehold.values()) if (c.id === citizenId) return c;
     return undefined;
+  }
+
+  /** Look up the citizen owned by a given kooker user id (the identity stamp), or undefined. */
+  byKookerUserId(kookerUserId: string): Citizen | undefined {
+    for (const c of this.byHousehold.values())
+      if (c.kookerUserId && c.kookerUserId === kookerUserId) return c;
+    return undefined;
+  }
+
+  /** Stamp the owning kooker user id onto a citizen (the player claiming their own avatar). Returns
+   *  false for an unknown citizen or a blank id; idempotent for the same id. */
+  setKookerUserId(citizenId: string, kookerUserId: string): boolean {
+    if (!kookerUserId || !kookerUserId.trim()) return false;
+    const c = this.byId(citizenId);
+    if (!c) return false;
+    c.kookerUserId = kookerUserId.trim();
+    return true;
+  }
+
+  /** Resolve the citizen owned by the signed-in player, identity FIRST. A citizen stamped with this
+   *  kookerUserId wins outright — names are irrelevant. Only when no stamped owner exists do we fall
+   *  back to a display-name match, and ONLY against an UNCLAIMED citizen (no kookerUserId), so a name
+   *  can never resolve to a citizen already owned by a different user. This is the spoof-proof
+   *  replacement for the old pure name match; the name path remains only for legacy / not-yet-claimed
+   *  citizens. Returns the citizen id or null. */
+  resolveOwnCitizenId(
+    kookerUserId: string | null,
+    displayName: string | null,
+  ): string | null {
+    if (kookerUserId) {
+      const owned = this.byKookerUserId(kookerUserId);
+      if (owned) return owned.id;
+    }
+    if (displayName && displayName.trim()) {
+      const me = displayName.trim().toLowerCase();
+      for (const c of this.byHousehold.values())
+        if (!c.kookerUserId && c.displayName.toLowerCase() === me) return c.id;
+    }
+    return null;
   }
 
   /** Mark a citizen as having a live Hermes pod, with the in-cluster gateway URL. The URL is
