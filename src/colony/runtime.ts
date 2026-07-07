@@ -2173,6 +2173,7 @@ export class ColonyRuntime {
     this.raceInput = {};
     this.raceAnalogInput = {};
     this.raceState = newRaceState(track);
+    this.sim.state.raceState = this.raceState; // expose to the R3F renderer (race course + player car)
     this.renderer?.setRaceState(this.raceState);
     this.emit();
     return true;
@@ -2189,6 +2190,7 @@ export class ColonyRuntime {
   exitRace(): void {
     if (!this.raceState) return;
     this.raceState = null;
+    this.sim.state.raceState = null; // clear the R3F race course + car
     this.raceInput = {};
     this.raceAnalogInput = {};
     this.renderer?.setRaceState(null);
@@ -2269,6 +2271,7 @@ export class ColonyRuntime {
     }
     const next = stepRace(cur, this.combinedRaceInput(), dtReal * 1000);
     this.raceState = next;
+    this.sim.state.raceState = next; // per-frame — the R3F car + course track the live race
     this.renderer?.setRaceState(next);
     if (next.mode === "finished" && next.finishedMs !== null) {
       this.bestRaceMs =
