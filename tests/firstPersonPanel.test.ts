@@ -260,6 +260,32 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).toContain("Tap arrows to roam");
   });
 
+  it("renders a KOOKER beacon Roadmap selector when the operator is near KOOKER", () => {
+    const fp = makeFirstPerson();
+    if (!fp.view) throw new Error("expected first-person view");
+    fp.view.interactionPrompt = {
+      kind: "citizen",
+      label: "Talk to KOOKER the Builder",
+      targetName: "KOOKER the Builder",
+      targetXY: { x: 216, y: 337 },
+      distance: 2.4,
+    };
+
+    const html = renderToStaticMarkup(
+      React.createElement(FirstPersonPanel, {
+        runtime: makeRuntime(),
+        fp,
+        onOpenRoadmap: () => {},
+      }),
+    );
+
+    expect(html).toContain('data-roadmap-action="open-from-kooker-beacon"');
+    expect(html).toContain(
+      'aria-label="Open CityLife roadmap from KOOKER beacon"',
+    );
+    expect(html).toContain("Roadmap");
+  });
+
   it("keeps mobile first-person controls on the edges with a compact destination strip", () => {
     const fp = makeFirstPerson();
     if (!fp.view) throw new Error("expected first-person view");

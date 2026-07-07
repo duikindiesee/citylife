@@ -318,7 +318,6 @@ export function findGarageSite(
   type Candidate = Reserve & {
     streetFrontDir: Cell;
     crossFrontDir: Cell;
-    islandCell: Cell;
   };
   let best: GaragePad | undefined;
   let bestScore = Infinity;
@@ -353,9 +352,16 @@ export function findGarageSite(
       candidate.streetFrontDir.x < 0 ? reserve.x + reserve.w - 1 : reserve.x;
     const cornerY =
       candidate.crossFrontDir.y < 0 ? reserve.y + reserve.h - 1 : reserve.y;
+    const pylonCell = {
+      // The sign is mounted on the garage pad border, not a freestanding
+      // pole on the grey road ribbon. Inset it one cell from the two road-
+      // facing edges so the visible lightbox still reads as the corner sign
+      // while staying inside the brown commercial footprint.
+      x: candidate.streetFrontDir.x < 0 ? candidate.x + 1 : candidate.x + w - 2,
+      y: candidate.crossFrontDir.y < 0 ? candidate.y + 1 : candidate.y + h - 2,
+    };
     const cornerDistance =
-      (candidate.islandCell.x - cornerX) ** 2 +
-      (candidate.islandCell.y - cornerY) ** 2;
+      (pylonCell.x - cornerX) ** 2 + (pylonCell.y - cornerY) ** 2;
     const roadDistance = Math.abs(dx) + Math.abs(dy);
     const score = cornerDistance * 100 + roadDistance;
     if (
@@ -372,7 +378,7 @@ export function findGarageSite(
         roadTarget: { ...intersection },
         streetFrontDir: { ...candidate.streetFrontDir },
         crossFrontDir: { ...candidate.crossFrontDir },
-        islandCell: { ...candidate.islandCell },
+        islandCell: pylonCell,
       };
       bestScore = score;
     }
@@ -381,16 +387,17 @@ export function findGarageSite(
   for (const sx of [-1, 1] as const) {
     for (const sy of [-1, 1] as const) {
       consider({
-        // Spec 114 — keep the floor footprint one clear cell back from both
-        // orthogonal road centre-lines before runtime widens them into the
-        // final 3-wide carriageways.
-        x: sx < 0 ? intersection.x + 3 : intersection.x - w - 2,
-        y: sy < 0 ? intersection.y + 3 : intersection.y - h - 2,
+        // Spec 114/116 — keep the whole visual garage, including the
+        // brown forecourt/night floor and the corner sign, behind the final
+        // rendered road ribbon. The ribbon is wider than the centre-line road
+        // cells, so this needs two extra clear cells beyond the old sim-only
+        // setback.
+        x: sx < 0 ? intersection.x + 5 : intersection.x - w - 4,
+        y: sy < 0 ? intersection.y + 5 : intersection.y - h - 4,
         w,
         h,
         streetFrontDir: { x: sx, y: 0 },
         crossFrontDir: { x: 0, y: sy },
-        islandCell: { x: intersection.x - sx, y: intersection.y - sy },
       });
     }
   }

@@ -43,6 +43,7 @@ import { RadioPanel } from "./RadioPanel";
 import { FirstPersonPanel } from "./FirstPersonPanel";
 import { GaragePanel } from "./GaragePanel";
 import { RaceMobileControls } from "./RaceMobileControls";
+import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
 import { BuilderPanel } from "./BuilderPanel";
 import "./colony.css";
@@ -536,6 +537,7 @@ export function ColonyApp() {
   const [pointerLockError, setPointerLockError] = useState<string | null>(null);
   const [touchCapable, setTouchCapable] = useState(detectTouchCapable);
   const [controllerConnected, setControllerConnected] = useState(false);
+  const [roadmapOpen, setRoadmapOpen] = useState(false);
   // Furniture studio (spec 088 Slice D UI) — the design-and-buy controls.
   const [furnKind, setFurnKind] = useState<FurnitureKind>("sofa");
   const [furnName, setFurnName] = useState("");
@@ -568,6 +570,9 @@ export function ColonyApp() {
   const auth = useMemo(() => new AuthClient(), []);
   useEffect(() => {
     runtime.setOperatorName(auth.operator?.id ?? null);
+    // Identity key: bind the player view to the authenticated kooker userId (from the JWT), so own-data
+    // and step-into resolve by user id, not a spoofable / collision-prone display name.
+    runtime.setOperatorUserId(auth.operator?.userId ?? null);
     // Player data isolation: a CITYLIFE_PLAYER gets the restricted own-data view (activates the dormant
     // player-view from the isolation slice); operators/admins keep the whole-colony view.
     runtime.setPlayerView(auth.isCityLifePlayer);
@@ -850,7 +855,12 @@ export function ColonyApp() {
           exitFirstPerson={() => runtime.exitFirstPerson()}
         />
       )}
-      <FirstPersonPanel runtime={runtime} fp={ui.firstPerson} />
+      <FirstPersonPanel
+        runtime={runtime}
+        fp={ui.firstPerson}
+        onOpenRoadmap={() => setRoadmapOpen(true)}
+      />
+      <RoadmapPanel open={roadmapOpen} onClose={() => setRoadmapOpen(false)} />
       {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
       {(!builderActive && !worldViewActive && rallyRead) && (
         <div

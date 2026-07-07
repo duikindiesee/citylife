@@ -786,6 +786,10 @@ export class ColonyRuntime {
   );
   // P1 — the logged-in operator's name, so we can mark which avatar is theirs + gate the step-into.
   private operatorName: string | null = null;
+  // The authenticated kooker user id (from the JWT), the IDENTITY the player view keys off. Own-data /
+  // step-into resolve to the citizen stamped with this id, not a spoofable display name. Null until a
+  // signed-in player sets it (legacy tokens with no userId claim also leave it null → name fallback).
+  private operatorUserId: string | null = null;
   // Player data isolation: false = the privileged operator/admin view (sees every citizen + wallet,
   // the default). true = a CITYLIFE_PLAYER view — the HUD then shows only the player's own data plus
   // other citizens' public presence (stubs), never their private wallet/usage. Set by the player login
@@ -1579,15 +1583,48 @@ export class ColonyRuntime {
     return this.botService.generatePersonality(magicPrompt);
   }
 
-  /** P1 — record the logged-in operator name (from auth). Marks their avatar + gates the step-into. */
+  /** P1 — record the logged-in operator name (from auth). Marks their avatar + gates the step-into.
+   *  The name is now only a label + the legacy fallback; identity is keyed off the kooker userId
+   *  (see setOperatorUserId). Still attempts a claim so an order of name-then-userId resolves either way. */
   setOperatorName(name: string | null): void {
     this.operatorName = name && name.trim() ? name.trim() : null;
+    this.claimOwnCitizen();
     this.updateOperatorCar();
     if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
       this.exitFirstPerson();
       return;
     }
     this.emit();
+  }
+
+  /** Identity-key the player view to the authenticated kooker userId (decoded from the JWT in
+   *  authClient), NOT the display name. Stamps (claims) the citizen the player owns so own-data and
+   *  step-into resolve by user id even when names collide. Re-evaluates the step-into guard like
+   *  setOperatorName, so flipping identity drops a now-disallowed first-person session. */
+  setOperatorUserId(userId: string | null): void {
+    this.operatorUserId = userId && userId.trim() ? userId.trim() : null;
+    this.claimOwnCitizen();
+    this.updateOperatorCar();
+    if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
+      this.exitFirstPerson();
+      return;
+    }
+    this.emit();
+  }
+
+  /** Identity claim / backfill: once both the login name and kooker userId are known, stamp the userId
+   *  onto the citizen the player owns — matched by name ONCE, then identity-keyed forever after. A
+   *  no-op if the userId is unknown, if the user already owns a stamped citizen (so a later name
+   *  collision can never re-point them), or if no unclaimed name match exists yet (the citizen may be
+   *  created later; operatorCitizenId still resolves it by the unclaimed-name fallback until claimed). */
+  private claimOwnCitizen(): void {
+    if (!this.operatorUserId) return;
+    if (this.citizens.byKookerUserId(this.operatorUserId)) return; // already claimed
+    const target = this.citizens.resolveOwnCitizenId(
+      this.operatorUserId,
+      this.operatorName,
+    );
+    if (target) this.citizens.setKookerUserId(target, this.operatorUserId);
   }
 
   /** Player-view guard: operators/admins may step into any citizen; CITYLIFE_PLAYER may only enter their own. */
@@ -1632,14 +1669,15 @@ export class ColonyRuntime {
     this.emit();
   }
 
-  /** P1 — the citizen the operator owns (their login name matches the citizen display name), or null. */
+  /** The citizen the signed-in player owns. Identity FIRST: the citizen stamped with the operator's
+   *  kooker userId (claimed at login). Falls back to a display-name match only for an UNCLAIMED citizen
+   *  (legacy / not-yet-claimed), so a colliding name can never resolve to another user's citizen.
+   *  Pure read with no side effects — the claim/stamp happens in setOperatorUserId / setOperatorName. */
   private operatorCitizenId(): string | null {
-    if (!this.operatorName) return null;
-    const me = this.operatorName.toLowerCase();
-    const hit = this.citizens
-      .list()
-      .find((c) => c.displayName.toLowerCase() === me);
-    return hit?.id ?? null;
+    return this.citizens.resolveOwnCitizenId(
+      this.operatorUserId,
+      this.operatorName,
+    );
   }
 
   /** Spec 096 Slice D — buy a car part with the player's in-game city coin (KCO). Records ownership so
