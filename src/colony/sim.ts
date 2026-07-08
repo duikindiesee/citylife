@@ -23,6 +23,7 @@ import { createLedger, type Ledger } from "./ledger";
 import type { CityPlan } from "./cityPlan";
 import type { Neighborhood } from "./neighborhood";
 import type { CommercialDistrict } from "./commerce/district";
+import type { RaceState } from "./racing/race";
 
 export type StructureKind =
   | "caravan"
@@ -622,6 +623,9 @@ export interface ColonyState {
   /** Attached by the runtime after construction — the shop district the R3F renderer reads for
    *  commercial pads and terrain leveling. Legacy path was setCommercialDistrict(). */
   commercialDistrict?: CommercialDistrict | null;
+  /** Attached by the runtime while a Road Rally runs (null otherwise) — the R3F renderer reads
+   *  it for the race course + the player's racing car. Legacy path was setRaceState(). */
+  raceState?: RaceState | null;
 }
 
 function daylightAt(hour: number, minute: number): number {

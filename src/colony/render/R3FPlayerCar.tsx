@@ -10,9 +10,14 @@ interface R3FPlayerCarProps {
 export function R3FPlayerCar({ sim }: R3FPlayerCarProps) {
   const groupRef = useRef<THREE.Group>(null);
 
+  // Spec 124 — the group ALWAYS mounts and its visibility is toggled per-frame from the
+  // mutable raceState. The old `return null` gate was evaluated at React-render time with no
+  // reactivity trigger, so the car never appeared when a race started mid-session (the
+  // dead-memo class). Now it shows the instant sim.state.raceState.car exists.
   useFrame(() => {
     if (!groupRef.current) return;
-    const carState = (sim.state as any).raceState?.car;
+    const carState = sim.state.raceState?.car;
+    groupRef.current.visible = !!carState;
     if (carState) {
       // Spec 120 — snap the car to the terrain surface (the old hardcoded y=0.22 floated
       // on hills and sank in valleys). Wheel clearance rides on top of the ground height.
@@ -29,11 +34,8 @@ export function R3FPlayerCar({ sim }: R3FPlayerCarProps) {
     }
   });
 
-  // If the raceState isn't active, don't render the car
-  if (!(sim.state as any).raceState?.car) return null;
-
   return (
-    <group ref={groupRef} name="R3FPlayerCar">
+    <group ref={groupRef} name="R3FPlayerCar" visible={false}>
       {/* Body */}
       <mesh position={[0, 0.22, 0]}>
         <boxGeometry args={[1.18, 0.34, 0.68]} />
