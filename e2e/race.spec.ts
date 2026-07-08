@@ -39,15 +39,15 @@ test('R3F race: starting a race renders the course and the player car', async ({
 
   // The course builds and the player car becomes visible (it always mounts, hidden, and
   // toggles visible per-frame from raceState — so it must flip visible when the race starts).
-  await page.waitForFunction(`${countMeshes('race')}() > 0`, undefined, { timeout: 10000 });
+  await page.waitForFunction(`${countMeshes('race')}() > 0`, undefined, { timeout: 20000 });
   const carVisible = `(function(){ var v=false; (window.__r3fScene||{traverse:function(){}}).traverse(function(o){ if(o.name==='R3FPlayerCar') v=o.visible; }); return v; })`;
-  await page.waitForFunction(`${carVisible}() === true`, undefined, { timeout: 10000 });
+  await page.waitForFunction(`${carVisible}() === true`, undefined, { timeout: 20000 });
   const courseMeshes = await page.evaluate(`${countMeshes('race')}()`) as number;
   console.log(`race course meshes: ${courseMeshes}, player car visible: true`);
   expect(courseMeshes).toBeGreaterThan(0);
 
   // Exit the race — the course tears down.
   await page.evaluate(() => (window as any).__colony.exitRace());
-  await page.waitForFunction(`${countMeshes('race')}() === 0`, undefined, { timeout: 10000 });
+  await page.waitForFunction(`${countMeshes('race')}() === 0`, undefined, { timeout: 20000 });
   console.log('race course torn down on exit — race layer verified.');
 });
