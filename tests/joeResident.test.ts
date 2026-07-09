@@ -26,22 +26,31 @@ const JOE = {
   plotName: "Driftwood Cove",
   home: { x: 100, y: 106 },
   kind: "crab" as const,
+  avatarKind: "crab" as const,
+  glbUrl: "/assets/citylife/avatars/joe-crab.glb",
   nowMs: 0,
   spd: 0.6,
 };
 
 describe("Spec 078 — Joe the Crab founder plumbing", () => {
-  it("ordinary citizens default to kind human and surface that in the avatar stream", () => {
+  it("ordinary citizens default to human avatarKind without a dedicated GLB", () => {
     const r = new CitizenRoster();
     const c = r.register(generateHousehold(7), plot, NOW)!;
     expect(c.kind).toBe("human");
-    expect(r.avatars()[0]!.kind).toBe("human");
+    expect(c.avatarKind).toBe("human");
+    expect(c.glbUrl).toBeUndefined();
+    const av = r.avatars()[0]!;
+    expect(av.kind).toBe("human");
+    expect(av.avatarKind).toBe("human");
+    expect(av.glbUrl).toBeUndefined();
   });
 
-  it("seedFounder seeds a permanent CRAB citizen with the given identity, home and speed", () => {
+  it("seedFounder seeds Joe with a dedicated animated GLB avatar", () => {
     const r = new CitizenRoster();
     const joe = r.seedFounder(JOE)!;
     expect(joe.kind).toBe("crab");
+    expect(joe.avatarKind).toBe("crab");
+    expect(joe.glbUrl).toBe("/assets/citylife/avatars/joe-crab.glb");
     expect(joe.id).toBe("citizen_joe");
     expect(joe.displayName).toBe("Joe the Crab");
     expect(joe.homeXY).toEqual({ x: 100, y: 106 });
@@ -52,7 +61,7 @@ describe("Spec 078 — Joe the Crab founder plumbing", () => {
     expect(r.byId("citizen_joe")).toBe(joe);
   });
 
-  it("routes Joe through the avatar stream with kind crab (so the renderer draws the crab mesh)", () => {
+  it("routes Joe through the avatar stream with glbUrl so only unnamed crabs stay instanced", () => {
     const r = new CitizenRoster();
     r.register(generateHousehold(7), plot, NOW); // a human neighbour
     r.seedFounder(JOE);
@@ -60,7 +69,11 @@ describe("Spec 078 — Joe the Crab founder plumbing", () => {
     const human = av.find((a) => a.id !== "citizen_joe")!;
     const joe = av.find((a) => a.id === "citizen_joe")!;
     expect(human.kind).toBe("human");
+    expect(human.avatarKind).toBe("human");
+    expect(human.glbUrl).toBeUndefined();
     expect(joe.kind).toBe("crab");
+    expect(joe.avatarKind).toBe("crab");
+    expect(joe.glbUrl).toBe("/assets/citylife/avatars/joe-crab.glb");
     expect(joe.displayName).toBe("Joe the Crab");
   });
 

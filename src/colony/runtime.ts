@@ -2645,10 +2645,12 @@ export class ColonyRuntime {
       plotName: "Driftwood Cove",
       home,
       kind: "crab",
+      avatarKind: "crab",
+      glbUrl: "/assets/citylife/avatars/joe-crab.glb",
       nowMs: JOE_BORN_MS,
       spd: 0.6,
     });
-    if (joe) this.citizens.setTarget(JOE_ID, { x: plot.doorX, y: plot.doorY }); // start him strolling from his door
+    if (joe) this.citizens.setTarget(JOE_ID, home); // GLB slice boots Joe in Joe_idle; the idle wander loop can move him later
     this.seedDeposit(JOE_ID); // spec 085 — founders hold a ₭ wallet too
     // Spec 082 — Joe is Kookerbook profile number one (created after restoreKookerbook would be
     // ideal, but ensureKbProfile is idempotent and restore overlays stored timelines on top).
