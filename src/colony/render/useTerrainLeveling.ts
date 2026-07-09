@@ -15,7 +15,9 @@ const DEADZONE = 0.6;
  */
 export function useTerrainLeveling(
   sim: ColonySim,
-  roadRibbonCells: Set<string> | null,
+  /** Spec 130 — ribbon coverage: cell key -> the SURFACE height the road mesh renders over
+   *  that cell (segment-bridged, not the cell's own local height). */
+  roadRibbonCells: ReadonlyMap<string, number> | null,
   landscapeEdits: Map<string, number>,
   runtime?: SimBridge
 ): Map<number, number> {
@@ -143,26 +145,65 @@ export function useTerrainLeveling(
       });
     }
 
-    // 3) Grade Roads Into
+    // 3) Grade Roads Into (spec 130 — the legacy spec-095 regrade, un-stubbed). The old code
+    // compared t.worldY against ITSELF ("approximation for now"), so the deadzone always
+    // skipped and NO ground was ever graded to the road: on any slope the ribbon (riding the
+    // max-filtered getSmoothRoadY) floated above the local terrain and the walker could see
+    // straight under the road. Grade every ribbon-covered cell to the ribbon's OWN height
+    // function where it genuinely differs (the DEADZONE keeps flat roads flush, no berms),
+    // and ramp a smoothstep SKIRT shoulder around graded cells so hill roads meet the land
+    // instead of ending in cliffs.
     if (roadRibbonCells && roadRibbonCells.size > 0) {
+      const ROAD_SKIRT = 3;
+      const ribbon = new Set<number>();
       const graded = new Map<number, number>();
-      for (const key of roadRibbonCells) {
+      for (const [key, surfaceH] of roadRibbonCells) {
         const c = key.indexOf(",");
         const x = +key.slice(0, c);
         const y = +key.slice(c + 1);
         if (x < 0 || y < 0 || x >= N || y >= N) continue;
         const i = y * N + x;
-        // Approximation of smoothRoadY for now to avoid copying the full chaikin logic here
-        // We will pass smoothRoadY into this hook if needed.
-        // But t.worldY is basically the baseline.
-        const h = Math.max(0, groundY(x, y)); 
-        const nat = Math.max(0, t.worldY(x, y));
-        if (Math.abs(h - nat) <= DEADZONE) continue;
+        ribbon.add(i);
+        const h = Math.max(0, surfaceH);
+        // Compare against the EFFECTIVE ground — pads and the coastal dry-blend may already
+        // have raised/lowered this cell, and it's the rendered surface the road must meet.
+        // (Boot roads follow least-cost paths and rarely gap raw terrain; hand-drawn roads
+        // across hills, segment-bridged dips and dry-blended coast cells are where the
+        // floating happens.)
+        const eff = next.has(i) ? next.get(i)! : Math.max(0, t.worldY(x, y));
+        if (Math.abs(h - eff) <= DEADZONE) continue;
         graded.set(i, h);
       }
-      
+
       for (const [i, h] of graded) {
         next.set(i, h);
+      }
+      // Shoulder: ramp ONLY around graded cells, nearest road height -> natural ground.
+      // Never disturb a road cell (graded or deliberately flush) or an existing pad override.
+      const skirt = new Map<number, { h: number; d: number }>();
+      for (const [i, h] of graded) {
+        const cx = i % N;
+        const cy = (i / N) | 0;
+        for (let dy = -ROAD_SKIRT; dy <= ROAD_SKIRT; dy++)
+          for (let dx = -ROAD_SKIRT; dx <= ROAD_SKIRT; dx++) {
+            const d = Math.max(Math.abs(dx), Math.abs(dy));
+            if (d === 0) continue;
+            const x = cx + dx;
+            const y = cy + dy;
+            if (x < 0 || y < 0 || x >= N || y >= N) continue;
+            const j = y * N + x;
+            if (ribbon.has(j) || next.has(j)) continue;
+            const cur = skirt.get(j);
+            if (!cur || d < cur.d) skirt.set(j, { h, d });
+          }
+      }
+      for (const [j, { h, d }] of skirt) {
+        const x = j % N;
+        const y = (j / N) | 0;
+        const nat = Math.max(0, t.worldY(x, y));
+        const t01 = d / (ROAD_SKIRT + 1);
+        const s = t01 * t01 * (3 - 2 * t01); // smoothstep road -> natural
+        next.set(j, h * (1 - s) + nat * s);
       }
     }
 

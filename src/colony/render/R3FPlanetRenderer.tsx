@@ -57,7 +57,9 @@ import { useWorldAssets } from "../stores/useWorldAssets";
 import { R3FPlayerCar } from "./R3FPlayerCar";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { useSimSignal, type SimBridge } from './useSimSignal';
-import { zoneSignature, spawnSignature } from './simSignals';
+import { zoneSignature, spawnSignature, roadwaySignature } from './simSignals';
+import { ribbonCoverage } from './roadRibbon';
+import { getSmoothRoadY } from './roadSurface';
 import { nextBootStage } from './bootStage';
 import { R3FAvatars, type AvatarRefs } from './R3FAvatars';
 import { R3FPedestrians } from './R3FPedestrians';
@@ -365,7 +367,28 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
   const isDrawing = useRoadNetwork(state => state.isDrawing);
   const builderMode = useRoadNetwork(state => state.builderMode);
   
-  const roadCells = useMemo(() => new Set(Object.keys(tiles)), [tiles]);
+  // Spec 130 — the leveling grades the cells the ribbon ACTUALLY covers, each to the
+  // SURFACE height the mesh renders there (segment-bridged over dips), unioned with the
+  // tile cells (gravel/cul-de-sacs and the dry-floor/water guards that key off them).
+  // Tile keys alone missed the ribbon's wider, curve-cutting footprint — the ungraded
+  // slopes the walker saw under.
+  const roadwaySig = useSimSignal(runtime, () => roadwaySignature(sim.state));
+  const roadCells = useMemo(() => {
+    const terrain = sim.state.terrain;
+    const cover = ribbonCoverage(
+      sim.state.roadWays ?? [],
+      terrain,
+      (x, y) => getSmoothRoadY(terrain, x, y),
+    );
+    for (const k of Object.keys(tiles)) {
+      if (!cover.has(k)) {
+        const c = k.indexOf(',');
+        cover.set(k, Math.max(0, getSmoothRoadY(terrain, +k.slice(0, c), +k.slice(c + 1))));
+      }
+    }
+    return cover;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tiles, sim, roadwaySig]);
   const terrainLevel = useTerrainLeveling(sim, roadCells, landscapeEdits, runtime);
 
   // DEBOUNCE: Only rebuild the 370k-vertex terrain mesh on mouse-release when plotting roads.
