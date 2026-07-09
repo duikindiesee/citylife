@@ -10,7 +10,7 @@ const HOUSE_TINTS = [
 ];
 const LOT_SIZE = 4;
 
-export function VoxelHouseMesh({ lot, mapSize }: { lot: Parcel; mapSize: number }) {
+export function VoxelHouseMesh({ lot, mapSize, seatY }: { lot: Parcel; mapSize: number; seatY?: number }) {
   const { geometry, material } = useMemo(() => {
     const doorDir = streetDoorDir(lot);
     const script = lot.blueprint ?? defaultBlueprint(lot.houseSeed, doorDir, lot.houseZone.w);
@@ -68,7 +68,10 @@ export function VoxelHouseMesh({ lot, mapSize }: { lot: Parcel; mapSize: number 
   const wZ = (lot.houseZone.y - mapSize / 2) * LOT_SIZE;
 
   return (
-    <group position={[wX, 0.05, wZ]}>
+    // Spec 128 — the house sits on its leveled pad (seatY, computed by ZoneManager with the
+    // exact useTerrainLeveling seat formula). The old absolute 0.05 buried every house
+    // under the terrain; the default keeps old behavior for any caller without a seat.
+    <group position={[wX, seatY ?? 0.05, wZ]}>
       <mesh geometry={geometry} material={material} castShadow receiveShadow />
     </group>
   );

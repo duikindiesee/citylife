@@ -18,12 +18,9 @@ land floating above the ground" — their read was right).
 ## Design
 
 - **Seat formula shared with the leveling**: ZoneManager computes
-  `seat = padSeatY(terrain, x, y, w, d) = max(worldYAt(pad centre), RENDER_DRY_FLOOR)` —
-  the ONE exported helper (`useTerrainLeveling.ts`) that `useTerrainLeveling` also grades
-  the pad with — and passes it to `VoxelHouseMesh` (`seatY` prop) and to the corrected
-  grid→world `GlbHouse` transform. House and pad always agree. (Originally each side
-  inlined `max(worldY(centre), RENDER_DRY_FLOOR)`; see the NaN regression below for why
-  that formula was wrong and is now centralized.)
+  `seat = max(worldY(houseZone centre), RENDER_DRY_FLOOR)` — the exact expression
+  `useTerrainLeveling` grades the pad with — and passes it to `VoxelHouseMesh` (`seatY`
+  prop) and to the corrected grid→world `GlbHouse` transform. House and pad always agree.
 - **`ZoneLotOverlay`**: one INSTANCED mesh per unbuilt lot — a thin tile per cell, each at
   its own terrain height, so the tint drapes the ground like painted land (and matches the
   operator's purchasable-land mental model). Keeps the `zone-ground-${lot.id}` name so the
@@ -45,43 +42,6 @@ land floating above the ground" — their read was right).
   INSIDE the junction slab and floated on the pad; JR=2 reaches past the slab in the worst
   constructible offset.
 
-## The NaN-seat regression (2026-07-10) — pad centres must sample bilinearly
-
-The seat formula above originally sampled `Terrain.worldY` directly at the pad CENTRE,
-`x + (w-1)/2`. `worldY` indexes the height Float32Array raw, so it is only defined on
-integer in-bounds cells: an even-width pad's centre is fractional (`*.5`), the array read
-is `undefined`, and the seat came out NaN. Every commercial-district pad has an even
-width, so at boot 23 NaN seats smeared across their footprint + skirt cells in the
-leveling map, two whole terrain chunks rendered NaN Y vertices, and
-`THREE.computeBoundingSphere` dumped the FULL serialized geometry (megabytes) to
-`console.error` twice per boot — flooding the vite client-log relay and dragging e2e runs.
-(A fractional _y_ alone was subtly worse: `y*608` stays integral at `*.5`, so it silently
-read an unrelated cell and returned a wrong-but-finite height.)
-
-Fixes, layered:
-
-- **`Terrain.worldYAt(x, y)`** — clamped bilinear over the four surrounding cells; the ONE
-  continuous ground sampler (the legacy `PlanetRenderer.groundY` maths, promoted onto
-  `Terrain`). `roadSurface.getSmoothRoadY` now delegates to it too, so roads and pads ride
-  the same ground model. The legacy `PlanetRenderer`'s private `groundY` and the inline
-  bilinear inside `smoothRoadY` were first turned into delegations, and then the whole
-  legacy module was deleted (it had no importers left on this line);
-  `tests/groundSamplerParity.test.ts` keeps the retired formulas verbatim as in-test
-  references and still pins the exact drop-in (edges included).
-  `worldY` keeps raw-index semantics with NO validity check —
-  it is the sim's hottest function, and even a DEV-only assertion slowed the suite ~50%
-  (tried and reverted); the guards below catch off-grid writes downstream instead.
-- **`padSeatY`** — the exported seat formula; `useTerrainLeveling` and ZoneManager
-  (`R3FPlanetRenderer`) both call it, so seat and pad can no longer drift. (The legacy
-  `PlanetRenderer`'s homestead + commercial seats delegated to it too — and shared
-  `RENDER_DRY_FLOOR` — until that module was deleted; the parity test carries the retired
-  seat formula verbatim.) Falls to the dry floor on a corrupt (non-finite) zone instead of
-  seating a mesh at NaN.
-- **The leveling map refuses non-finite overrides** — writes are guarded, the finished map
-  is swept (covers `applyCoastalCommercialDryBlend`, which writes with its own putter),
-  and one `console.warn` per recompute reports how many were dropped. A corrupt ribbon
-  height is also skipped before road grading so its NaN can't shadow finite shoulder ramps.
-
 ## Tests
 
 - `tests/lotFoliageAndWays.test.ts` (3): lot rect culls its forest (and the same rect grew
@@ -89,12 +49,3 @@ Fixes, layered:
 - `e2e/houses.spec.ts`: overlays are instanced + drape (every sampled instance within 0.5
   of its cell's ground), and ZERO foliage instances inside any lot rect (first run: 19
   overlays, 21 lots, 76,237 trees, 0 on lots).
-- `tests/groundSamplerParity.test.ts` (3): the retired private formulas, kept verbatim as
-  in-test references, equal `max(0, worldYAt)` / `padSeatY` across a dense island sweep,
-  at and beyond the grid edges, and on even-width (fractional-centre) pad shapes.
-- `tests/terrainLevelingFinite.test.ts` (6): worldYAt matches worldY on integer cells,
-  stays finite/bounded at fractional + out-of-range coordinates; the real boot state
-  (seed 4242) seats every commercial pad finitely and levels every footprint — a
-  regression back to NaN seats shows up as MISSING pad overrides (the guard drops them).
-- `e2e/nanGeometry.spec.ts`: a booted scene has zero `computeBoundingSphere` NaN console
-  errors and no non-finite geometry vertex or object transform anywhere.

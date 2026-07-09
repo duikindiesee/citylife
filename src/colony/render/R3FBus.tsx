@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import type { ColonySim } from '../sim';
 import type { BusRoute } from '../transit/busRoute';
 import { buildBusLayer, type BusLayer } from './busLayer';
-import { getSmoothRoadY } from './R3FRoadNetwork';
+import { getSmoothRoadY } from './roadSurface';
 
 // Spec 122 — the town bus (spec 088), R3F port of the legacy setBusRoute path. The route
 // is deterministic runtime state (runtime.busRoute, computed once at boot from the road

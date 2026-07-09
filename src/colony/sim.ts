@@ -24,6 +24,7 @@ import type { CityPlan } from "./cityPlan";
 import type { Neighborhood } from "./neighborhood";
 import type { CommercialDistrict } from "./commerce/district";
 import type { RaceState } from "./racing/race";
+import type { RoadWay } from "./render/roadRibbon";
 
 export type StructureKind =
   | "caravan"
@@ -626,6 +627,10 @@ export interface ColonyState {
   /** Attached by the runtime while a Road Rally runs (null otherwise) — the R3F renderer reads
    *  it for the race course + the player's racing car. Legacy path was setRaceState(). */
   raceState?: RaceState | null;
+  /** Attached by the runtime after construction — the road centre-line polylines the R3F
+   *  renderer extrudes into the smooth ribbon road surfaces (spec 127). Legacy path was
+   *  setRoadWays(). Hand-drawn builder roads append here via useRoadNetwork.plotRoad. */
+  roadWays?: RoadWay[];
 }
 
 function daylightAt(hour: number, minute: number): number {

@@ -17,9 +17,9 @@ export interface RoadWay {
   kind: "avenue" | "street";
   /** Carriageway width in cells. */
   width: number;
-  /** Origin tag for lifecycle/invariant checks. Builder ways can be bulldozed; the depot spur is
-   *  excluded from the conservative pre-existing-ribbon blocked-cell survey. */
-  source?: "builder" | "depot-spur";
+  /** Set on ways appended by the builder (plotRoad), so bulldozing can prune them once
+   *  their cells are gone (spec 127 verify P2). Boot ways have no source. */
+  source?: "builder";
 }
 
 export interface RoadRibbonOptions {
@@ -282,7 +282,13 @@ export function buildRoadRibbons(
     }
   });
   const junction = new Set<string>();
-  const JR = 1; // how far back from a crossing the painted lines stop
+  // How far back from a crossing the painted lines stop. 2, not 1 (spec 127 verify P3): the
+  // junction SLAB is a centroid-centred square reaching half=2.3 cells, while this suppression
+  // grows from the crossing CLUSTER — at an offset tee (a way ending 1-2 cells short of the
+  // other's centre-line, the standard connector geometry) JR=1 left a band inside the slab
+  // where the terminating arm's dashes/edges/crosswalks still painted, floating on the pad.
+  // JR=2 reaches >= 2.5 cells, past the slab in the worst constructible offset.
+  const JR = 2;
   for (const [k, s] of cellWays)
     if (s.size >= 2) {
       const [x, y] = k.split(",").map(Number);

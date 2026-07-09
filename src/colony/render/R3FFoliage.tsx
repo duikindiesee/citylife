@@ -19,7 +19,19 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
   const foliageSig = useSimSignal(runtime, () => foliageSignature(sim.state));
   const { matrices, colors } = useMemo(() => {
     const s = sim.state;
-    const { matrices: mats, colors: cols } = calculateFoliagePositions(s.terrain, s.roads, s.buildings);
+    // Spec 128 — lots and parcels clear their trees ("trees on houses is a big no"):
+    // neighborhood lots are CENTRE-anchored (bulldoze convention), commercial parcels
+    // ORIGIN-anchored (leveling convention).
+    const rects: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    for (const lot of s.neighborhood?.lots ?? []) {
+      const x0 = lot.x - Math.floor((lot.w - 1) / 2);
+      const y0 = lot.y - Math.floor((lot.h - 1) / 2);
+      rects.push({ x0, y0, x1: x0 + lot.w - 1, y1: y0 + lot.h - 1 });
+    }
+    for (const p of s.commercialDistrict?.parcels ?? []) {
+      rects.push({ x0: p.x, y0: p.y, x1: p.x + p.w - 1, y1: p.y + p.h - 1 });
+    }
+    const { matrices: mats, colors: cols } = calculateFoliagePositions(s.terrain, s.roads, s.buildings, rects);
     return { matrices: mats, colors: cols };
   }, [sim, foliageSig]);
 

@@ -31,32 +31,6 @@ held ~102k nodes (3,412 "junction" decoration groups); 7 FPS with roads visible,
   z-fight that makes main's junctions read broken — plus street furniture from
   `roadFurniture.tsx`: 4 traffic lights + 4 stop lines on a crossing, a stop sign + stop
   line per terminating arm of a tee (left-hand drive). 8 real junctions vs 3,412 false ones.
-
-  **Furniture placement revision (the mid-road bus-stop regression, 2026-07-10).** The
-  operator found a "bus stop" standing in the carriageway with yellow paint marching down
-  the road. Measured live: 8 of 12 boot-town stop lines and both stop signs stood on
-  someone's asphalt. Three rules the layout now follows: a **pass** zone (a merge or chain
-  point of collinear ways — the boot generator chains ways end-to-start along corridors)
-  gets NO furniture, only the slab; lateral offsets scale with the arm's OWN way width
-  (boot roads are 4 cells wide — the fixed 1.9-cell sign shift used to land inside the
-  side road's own carriageway); and every item is anchored to the arm's OWN smoothed
-  centre-line — walking back by arc length and offsetting perpendicular to the local
-  tangent, so own-way clearance holds by construction and only foreign carriageways
-  gate the walk (0.35-cell margin; the item is skipped when nowhere in reach clears).
-  An adversarial verify round caught the first cut walking a compass-snapped axis from
-  the flood-fill centroid instead: a few degrees of arm tilt self-blocked every step and
-  silently deleted ALL the boot towns' stop signs while count-free assertions passed
-  vacuously. Two more of its findings are law here: opposed terminating-arm pairs are a
-  chained corridor flowing THROUGH the zone and get no furniture even when a real side
-  road makes the zone a tee, and diagonal arms keep their paint on their own asphalt
-  because the offsets follow the true tangent, not the compass. Arms and items carry
-  their `wayIndex` so paint is attributed, not just counted. Pinned by
-  `tests/roadFurnitureClearance.test.ts` against three real boot towns: signs on zero
-  carriageways, every line ON its own carriageway, and signs REQUIRED wherever an
-  eligible tee approach exists. Known minor: an item that walks far down a graded
-  approach renders at the zone slab's height (sampled within 3 cells of the centroid);
-  measured walks stop within ~4.4 cells, so exposure is cosmetic and rare.
-
 - **`R3FRoadNetwork`** keeps only the cul-de-sac bulbs; its per-mesh trimesh colliders are
   gone (nothing collides road meshes — first-person, car and race ride `terrain.worldY` /
   `getSmoothRoadY`). `getSmoothRoadY` moved to `roadSurface.ts` (bus + race re-pointed).

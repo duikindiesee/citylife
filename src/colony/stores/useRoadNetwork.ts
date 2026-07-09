@@ -85,11 +85,13 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
       const newPlacements = new Set(state.sameSessionPlacements);
       
       // Mark all incoming cells as having roads (initially without connections)
+      let anyNewCell = false;
       for (const c of cells) {
         const key = `${c.x},${c.y}`;
         if (!newTiles[key]) {
           newTiles[key] = { x: c.x, y: c.y, mask: 0, type };
           newPlacements.add(key);
+          anyNewCell = true;
         }
       }
 
@@ -139,6 +141,27 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
           s.roads.push({ x: tile.x, y: tile.y, kind: tile.type });
         }
         s.roadsVersion++;
+        // Spec 127 — record the drawn road's centre-line so the ribbon surface renders it.
+        // Blueprints are Bresenham 45°-snapped straights, so [first, last] IS the centre-line;
+        // width 1 = a 4m ribbon matching a hand-drawn one-cell road. Single-cell roads are
+        // cul-de-sacs and render as bulbs instead. ONLY when the stroke created a NEW tile
+        // (verify P2): re-tracing an existing road must not append a duplicate way — a
+        // duplicated centre-line makes every cell along it read as a junction, suppressing
+        // all markings and slabbing the whole road.
+        if (cells.length >= 2 && anyNewCell) {
+          const first = cells[0];
+          const last = cells[cells.length - 1];
+          if (!s.roadWays) s.roadWays = [];
+          s.roadWays.push({
+            path: [
+              { x: first.x, y: first.y },
+              { x: last.x, y: last.y },
+            ],
+            kind: "street",
+            width: 1,
+            source: "builder",
+          });
+        }
       }
 
       return { tiles: newTiles, sameSessionPlacements: newPlacements };
@@ -193,6 +216,19 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
           s.roadKind.set(`${tile.x},${tile.y}`, tile.type);
         }
         s.roadsVersion++;
+        // Spec 127 verify P2 — prune builder-drawn ways whose endpoints are BOTH bulldozed,
+        // so a fully-removed road loses its ribbon too. A middle-cut road keeps its way
+        // (partial ghost, known limitation) until its ends go; boot ways are never pruned.
+        if (s.roadWays) {
+          s.roadWays = s.roadWays.filter((w: any) => {
+            if (w.source !== "builder") return true;
+            const a = w.path[0];
+            const b = w.path[w.path.length - 1];
+            return (
+              s.roadSet.has(`${a.x},${a.y}`) || s.roadSet.has(`${b.x},${b.y}`)
+            );
+          });
+        }
       }
 
       return { tiles: newTiles, sameSessionPlacements: newPlacements };
