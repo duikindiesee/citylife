@@ -7,10 +7,19 @@ const TREE_COLORS = [
 ];
 const LOT_SIZE = 4;
 
+/** A cell-space rectangle to clear of trees (inclusive corners). */
+export interface ClearRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
 export function calculateFoliagePositions(
   terrain: any,
   roads: any[],
-  _buildings: any[]
+  _buildings: any[],
+  clearRects: ClearRect[] = []
 ): { matrices: number[][]; colors: number[] } {
   const N = terrain.size;
   const hash = (n: number) => ((n * 2654435761) >>> 0) / 4294967296;
@@ -28,6 +37,16 @@ export function calculateFoliagePositions(
 
   // Clear roads
   for (const r of roads) mark(r.x, r.y, 1);
+
+  // Spec 128 — clear lot/parcel footprints ("trees on houses is a big no"): each rect is a
+  // zoned or built lot, cleared with a 1-cell margin so canopies don't overhang the fence.
+  for (const rc of clearRects) {
+    for (let yy = rc.y0 - 1; yy <= rc.y1 + 1; yy++) {
+      for (let xx = rc.x0 - 1; xx <= rc.x1 + 1; xx++) {
+        if (xx >= 0 && yy >= 0 && xx < N && yy < N) cleared.add(yy * N + xx);
+      }
+    }
+  }
 
   // Buildings currently do NOT cull foliage: ColonyBuilding has no footprint field (only id/x/y/artifact).
 

@@ -51,6 +51,8 @@ import { useThree, useFrame } from '@react-three/fiber';
 
 import { VoxelHouseMesh } from "./VoxelHouseMesh";
 import { GlbHouse } from "./GlbHouse";
+import { ZoneLotOverlay } from "./ZoneLotOverlay";
+import { RENDER_DRY_FLOOR } from "./useTerrainLeveling";
 import { useWorldAssets } from "../stores/useWorldAssets";
 import { R3FPlayerCar } from "./R3FPlayerCar";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -95,50 +97,54 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
     
     if (state.neighborhood?.lots) {
       const size = state.terrain.size;
+      // Spec 128 — houses SEAT on their leveled pad: the same formula useTerrainLeveling
+      // grades the pad with (max of the houseZone-centre ground and the dry floor), so the
+      // house and its pad always agree. The old absolute y=0.05 buried every house under
+      // the 8-17m-high city terrain.
+      const seatOf = (hz: { x: number; y: number; w: number; d: number }) =>
+        Math.max(
+          state.terrain.worldY(hz.x + (hz.w - 1) / 2, hz.y + (hz.d - 1) / 2),
+          RENDER_DRY_FLOOR,
+        );
       for (const lot of state.neighborhood.lots) {
         if (lot.built) {
           if (lot.zone === "commercial") {
             const wX = (lot.x - size / 2) * 4;
             const wZ = (lot.y - size / 2) * 4;
             elements.push(
-              <CommercialBlock 
-                key={`comm-${lot.id}`} 
-                position={[wX, 0, wZ]} 
+              <CommercialBlock
+                key={`comm-${lot.id}`}
+                position={[wX, 0, wZ]}
               />
             );
           } else {
+            const hz = lot.houseZone;
+            const seat = seatOf(hz);
             // If the microservice has a functional garage asset, use the GLB House!
             // We wrap in ErrorBoundary + Suspense so bad models fall back to voxel houses.
             if (assets["functional_garage"]) {
+               // grid → world transform + pad seat (spec 128): the old call passed RAW GRID
+               // coords as world position, stacking every garage near world (380, 0.1, 350).
+               const gX = (hz.x + (hz.w - 1) / 2 - size / 2) * 4;
+               const gZ = (hz.y + (hz.d - 1) / 2 - size / 2) * 4;
                elements.push(
-                 <ErrorBoundary 
-                   key={`res-err-${lot.id}`} 
-                   fallback={<VoxelHouseMesh lot={lot} mapSize={size} />}
+                 <ErrorBoundary
+                   key={`res-err-${lot.id}`}
+                   fallback={<VoxelHouseMesh lot={lot} mapSize={size} seatY={seat + 0.02} />}
                  >
-                   <React.Suspense fallback={<VoxelHouseMesh lot={lot} mapSize={size} />}>
-                     <GlbHouse assetId="functional_garage" position={[lot.houseZone.x, 0.1, lot.houseZone.y]} />
+                   <React.Suspense fallback={<VoxelHouseMesh lot={lot} mapSize={size} seatY={seat + 0.02} />}>
+                     <GlbHouse assetId="functional_garage" position={[gX, seat + 0.02, gZ]} />
                    </React.Suspense>
                  </ErrorBoundary>
                );
             } else {
-               elements.push(<VoxelHouseMesh key={`res-${lot.id}`} lot={lot} mapSize={size} />);
+               elements.push(<VoxelHouseMesh key={`res-${lot.id}`} lot={lot} mapSize={size} seatY={seat + 0.02} />);
             }
           }
         } else {
-          // Render unbuilt/zoned plot ground footprint overlay
-          const wX = (lot.x - size / 2) * 4;
-          const wZ = (lot.y - size / 2) * 4;
-          const wY = state.terrain.worldY(Math.round(lot.x), Math.round(lot.y));
-          const color = lot.zone === "commercial" ? "#55cfff" : "#55ff55";
+          // Unbuilt/zoned plot: the draped per-cell "purchasable land" tint (spec 128).
           elements.push(
-            <mesh
-              key={`zone-ground-${lot.id}`}
-              name={`zone-ground-${lot.id}`}
-              position={[wX, wY + 0.1, wZ]}
-            >
-              <boxGeometry args={[lot.w * 4, 0.1, lot.h * 4]} />
-              <meshStandardMaterial color={color} opacity={0.35} transparent roughness={1.0} />
-            </mesh>
+            <ZoneLotOverlay key={`zone-ground-${lot.id}`} lot={lot} terrain={state.terrain} />
           );
         }
       }
