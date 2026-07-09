@@ -20,21 +20,25 @@ test('R3F avatars: the citizen layer draws roster avatars in the scene', async (
     return found;
   }, undefined, { timeout: 30000 });
 
-  // The roster feed must reach the mesh: drawn instance count matches the runtime roster
-  // (capped at 64), and is at least 1 once any citizen exists.
+  // The roster feed must reach the meshes: HUMAN citizens draw as capsules, crab-kind
+  // (Joe, spec 132) draws as the crab group — capsules + crab together cover the roster.
   const counts = await page.evaluate(() => {
     let meshCount = -1;
+    let crabVisible = false;
     (window as any).__r3fScene?.traverse((o: any) => {
       if (o.name === 'avatar-bodies') meshCount = o.count;
+      if (o.name === 'avatar-crab') crabVisible = o.visible;
     });
-    const roster = (window as any).__colony?.citizens?.avatars?.()?.length ?? -1;
-    return { meshCount, roster };
+    const roster = (window as any).__colony?.citizens?.avatars?.() ?? [];
+    const crabs = roster.filter((a: any) => a.kind === 'crab').length;
+    return { meshCount, crabVisible, roster: roster.length, crabs };
   });
 
-  console.log(`avatar instances drawn: ${counts.meshCount}, roster size: ${counts.roster}`);
+  console.log(`avatar capsules drawn: ${counts.meshCount}, crabs: ${counts.crabs} (crab group visible: ${counts.crabVisible}), roster size: ${counts.roster}`);
   expect(counts.meshCount).toBeGreaterThanOrEqual(0);
   if (counts.roster > 0) {
-    expect(counts.meshCount).toBe(Math.min(counts.roster, 64));
-    expect(counts.meshCount).toBeGreaterThan(0);
+    expect(counts.meshCount).toBe(Math.min(counts.roster - counts.crabs, 64));
+    // Joe renders as the CRAB, not a capsule (spec 132)
+    if (counts.crabs > 0) expect(counts.crabVisible).toBe(true);
   }
 });
