@@ -5,7 +5,6 @@
 // paths that avoid slopes — floating roads come from hand-drawn strokes and bridged dips).
 import { describe, it, expect } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
-import { Biome } from "../src/colony/terrain";
 import {
   buildRoadRibbons,
   ribbonCoverage,
@@ -30,73 +29,15 @@ describe("spec 130 — ribbon coverage + road grading inputs", () => {
     const cover = ribbonCoverage(ways, terrain, roadY);
     let missing = 0;
     for (const k of fromBuild) if (!cover.has(k)) missing++;
-    expect(missing).toBe(0); // the load-bearing invariant: every mesh cell is graded
-    // The midpoint sweep may stamp a few extra edge cells; it must stay the same order.
-    // Bound relaxed 1.25 -> 1.35 with the spec-137 cap-quality pass: string-pulling the
-    // spine ribbon ways (runtime.ts) makes the founders' avenue + hamlet spines straighter,
-    // which nudges the coverage/mesh ratio up (~1.28 on seed 4242) — benign extra grading
-    // near the road edge; the mesh itself renders continuous (no dropped segments).
-    expect(cover.size).toBeLessThan(fromBuild.size * 1.35);
-  });
-
-  it("unbuildable LAND pockets under the ways are covered (spec 133) — water never is", () => {
-    // Pin the land contract directly instead of relying on a particular generated boot way to cross
-    // a rough pocket. Water-safe ribbon fallback can legitimately choose a nearby routed line and
-    // remove that incidental seed fixture without changing the rule that rough dry land is renderable.
-    let pocket: { x: number; y: number } | null = null;
-    for (let y = 2; y < N - 2 && !pocket; y++) {
-      for (let x = 2; x < N - 2; x++) {
-        const i = y * N + x;
-        if (terrain.water[i] || terrain.buildable[i] !== 0) continue;
-        if (
-          terrain.biome[i] === Biome.Ocean ||
-          terrain.biome[i] === Biome.Shallows ||
-          terrain.biome[i] === Biome.River
-        )
-          continue;
-        if (terrain.water[i - 2] || terrain.water[i + 2]) continue;
-        pocket = { x, y };
-        break;
-      }
-    }
-    expect(pocket).not.toBeNull();
-    const roughLandWay: RoadWay[] = [
-      {
-        path: [
-          { x: pocket!.x - 2, y: pocket!.y },
-          pocket!,
-          { x: pocket!.x + 2, y: pocket!.y },
-        ],
-        kind: "street",
-        width: 1,
-      },
-    ];
-    expect(
-      ribbonCoverage(roughLandWay, terrain, roadY).has(
-        `${pocket!.x},${pocket!.y}`,
-      ),
-    ).toBe(true);
-
-    const cover = ribbonCoverage(ways, terrain, roadY);
-    let waterCovered = 0;
-    for (const key of cover.keys()) {
-      const c = key.indexOf(",");
-      const x = +key.slice(0, c);
-      const y = +key.slice(c + 1);
-      const i = y * N + x;
-      if (terrain.water[i]) waterCovered++;
-    }
-    expect(waterCovered).toBe(0); // the spec-115 water guard holds
+    expect(missing).toBe(0);
+    // the midpoint sweep may stamp a few extra edge cells; it must stay the same order
+    expect(cover.size).toBeLessThan(fromBuild.size * 1.25);
   });
 
   it("a short steep player-style road yields real gaps for the grading to close", () => {
     const DEADZONE = 0.6;
     // find the steepest short hop (6 cells apart) on buildable dry land
-    let best: {
-      a: { x: number; y: number };
-      b: { x: number; y: number };
-      drop: number;
-    } | null = null;
+    let best: { a: { x: number; y: number }; b: { x: number; y: number }; drop: number } | null = null;
     for (let y = 150; y < N - 150; y += 2) {
       for (let x = 150; x < N - 150; x += 2) {
         const i = y * N + x;

@@ -38,26 +38,7 @@ function cellOkOn(terrain: Terrain, x: number, y: number): boolean {
     gy = Math.round(y);
   if (!terrain.inBounds(gx, gy)) return false;
   const i = terrain.idx(gx, gy);
-  // WATER-only guard (spec 133). Roads may pave over rough land — the grading reshapes it to
-  // meet them (spec 130) — but never over water (the spec-115 intent). Rough LAND (buildable 0)
-  // is allowed: the boot ways cross dozens of steep/sunken dry pockets, and excluding them left
-  // holes in the asphalt and ungraded dips the walker fell into.
-  //
-  // Spec 140 amendment (reverted here): beach is NOT excluded in this render guard. The road-off-
-  // beaches ban lives in ROUTING (pathfind roadCellOk / forbidBeach keeps every road CELL off the
-  // sand). A rendered ribbon is ~half-a-carriageway wider than its centre-line, so a road running
-  // the grass line RIGHT beside the beach has its outer edge graze a beach cell — and rejecting
-  // beach here dropped the whole cross-section, SHATTERING the ribbon into ragged holes ("the beach
-  // is breaking the roads"). The centre-line is on grass by routing; the edge may kiss the sand, and
-  // a continuous ribbon that grazes the shore beats a shattered one. Water still shatters — correctly,
-  // no asphalt over the sea.
-  const b = terrain.biome[i];
-  return (
-    b !== Biome.Ocean &&
-    b !== Biome.Shallows &&
-    b !== Biome.River &&
-    !terrain.water[i]
-  );
+  return terrain.biome[i] !== Biome.Ocean && terrain.buildable[i] !== 0;
 }
 
 function roadSurfaceCellOk(
@@ -91,7 +72,7 @@ export function ribbonCoverage(
   };
   for (const w of ways) {
     if (w.path.length < 2) continue;
-    const pts = roadRibbonRenderPath(w, terrain);
+    const pts = densify(chaikin(w.path, 2), 1.5);
     const half = w.width / 2;
     const stationH = pts.map((p) => Math.max(0, roadY(p.x, p.y)));
     // per-STATION sweep with the mesh's own CENTERED perpendicular (prev..next), so bend
