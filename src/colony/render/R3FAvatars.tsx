@@ -21,6 +21,10 @@ import {
 export interface AvatarRefs {
   source: { current: (() => AvatarView[]) | null };
   fpCitizenId: { current: string | null };
+  /** The list THIS frame's avatar pass fetched (spec 131 verify F3) — siblings that need
+   *  avatar positions (the rally nameplates) read this instead of re-running the roster
+   *  closure, which allocates a fresh array + N objects per call. */
+  lastList?: { current: AvatarView[] | null };
 }
 
 interface R3FAvatarsProps {
@@ -63,6 +67,7 @@ export function R3FAvatars({ sim, refs }: R3FAvatarsProps) {
     if (!body || !head) return;
 
     const list = refs.source.current ? refs.source.current() : [];
+    if (refs.lastList) refs.lastList.current = list;
     const drawn = drawableAvatars(list, refs.fpCitizenId.current);
     const size = sim.state.terrain.size;
     const groundY = (x: number, y: number) => sim.state.terrain.worldY(x, y);

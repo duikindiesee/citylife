@@ -78,6 +78,11 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0] }: { sim?
 
   useFrame((state, delta) => {
     if (!rigidBody.current) return;
+    // Spec 131 (verify F2) — yield the camera while the cinematic fly-around owns it. The
+    // R3FCameraDirector wins over this controller only by useFrame registration order,
+    // which flips when the builder toggle remounts this component — the explicit guard
+    // makes camera ownership deterministic instead of mount-order luck.
+    if (sim?.state?.cinematic) return;
 
     // 1. Handle Gamepad Input
     const gamepads = navigator.getGamepads();

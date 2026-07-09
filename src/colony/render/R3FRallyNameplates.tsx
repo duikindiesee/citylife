@@ -119,7 +119,11 @@ export function R3FRallyNameplates({ sim, runtime, refs }: R3FRallyNameplatesPro
 
   useFrame(() => {
     if (plates.size === 0) return;
-    const list = refs.source.current ? refs.source.current() : [];
+    // Reuse the list the avatar pass fetched this frame (verify F3) — only fall back to
+    // the roster closure if the avatar layer hasn't run yet.
+    const list =
+      refs.lastList?.current ??
+      (refs.source.current ? refs.source.current() : []);
     const t = sim.state.terrain;
     const N = t.size;
     const night = 1 - sim.state.clock.daylight;

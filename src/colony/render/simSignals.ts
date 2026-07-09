@@ -61,7 +61,9 @@ export function roadwaySignature(state: ColonyState): string {
 export function operatorCarSignature(state: ColonyState): string {
   const p = state.operatorCar;
   if (!p) return "car-";
-  return `car${p.cell.x},${p.cell.y}:${JSON.stringify(p.spec).length}`;
+  // The FULL spec JSON, not its length (spec 131 verify F4): paint palette hex values
+  // serialize to equal digit counts, so a garage repaint left the parked car stale forever.
+  return `car${p.cell.x},${p.cell.y}:${JSON.stringify(p.spec)}`;
 }
 
 /** R3FRallyNameplates — plates rebuild when who-is-present (or a display name) changes

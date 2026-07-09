@@ -572,6 +572,7 @@ export class PlanetRenderer {
   private avatarRefs: AvatarRefs = {
     source: { current: null },
     fpCitizenId: { current: null },
+    lastList: { current: null },
   };
 
   constructor(
@@ -606,12 +607,20 @@ export class PlanetRenderer {
   firstPersonPNG(_home: { x: number; y: number }, _look: { x: number; y: number }): string | null { return null; }
   capturePNG(): string | null {
     // Spec 131 — the HUD snapshot button. R3F does not preserve the drawing buffer, so
-    // render one fresh frame straight through the base renderer (no postprocessing — a
-    // clean capture) and read it out before the buffer is cleared.
+    // render one fresh frame straight through the base renderer (no postprocessing) and
+    // read it out before the buffer is cleared. The mounted EffectComposer forces
+    // gl.toneMapping to none (it tone-maps in its own pass), so reapply ACES for this one
+    // frame or the capture comes out washed out vs the on-screen look (verify F4).
     const { gl, scene, camera } = r3fProbe;
     if (!gl || !scene || !camera) return null;
-    gl.render(scene, camera);
-    return gl.domElement.toDataURL("image/png");
+    const prevToneMapping = gl.toneMapping;
+    try {
+      gl.toneMapping = THREE.ACESFilmicToneMapping;
+      gl.render(scene, camera);
+      return gl.domElement.toDataURL("image/png");
+    } finally {
+      gl.toneMapping = prevToneMapping;
+    }
   }
 
   setOperatorCar(spec: CarSpec | null, cell: { x: number; y: number } | null) {
