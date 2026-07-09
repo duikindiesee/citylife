@@ -188,8 +188,9 @@ export function buildRoadRibbons(
 }
 
 /** Corner-cutting smoothing: each iteration replaces every segment with its 1/4 and 3/4 points, so
- *  staircases round off into smooth curves. Endpoints are kept. */
-function chaikin(
+ *  staircases round off into smooth curves. Endpoints are kept. Exported (spec 127) so the
+ *  junction detector sees exactly the centre-lines the ribbon draws. */
+export function chaikin(
   path: { x: number; y: number }[],
   iterations: number,
 ): { x: number; y: number }[] {
@@ -211,7 +212,7 @@ function chaikin(
 /** Insert points along a polyline so no segment is longer than `step`. Keeps the surface stations close
  *  enough together that each flat quad hugs the terrain (so a long string-pulled segment can't span
  *  underground). Endpoints + original vertices are preserved. */
-function densify(
+export function densify(
   pts: { x: number; y: number }[],
   step: number,
 ): { x: number; y: number }[] {

@@ -4,7 +4,7 @@ import { useFrame } from '@react-three/fiber';
 import type { ColonySim } from '../sim';
 import type { RaceState } from '../racing/race';
 import { buildRaceLayer, type RaceLayer } from './raceLayer';
-import { getSmoothRoadY } from './R3FRoadNetwork';
+import { getSmoothRoadY } from './roadSurface';
 
 // Spec 124 — the Road Rally course (spec 087), R3F port of the legacy setRaceState path. The
 // race is runtime state now attached to sim.state.raceState (the runtime mirrors it at start,

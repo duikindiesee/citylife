@@ -139,6 +139,24 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
           s.roads.push({ x: tile.x, y: tile.y, kind: tile.type });
         }
         s.roadsVersion++;
+        // Spec 127 — record the drawn road's centre-line so the ribbon surface renders it.
+        // Blueprints are Bresenham 45°-snapped straights, so [first, last] IS the centre-line;
+        // width 1 = a 4m ribbon matching a hand-drawn one-cell road. Single-cell roads are
+        // cul-de-sacs and render as bulbs instead. (Known one-shot limitation, as legacy:
+        // bulldozing prunes the cells but the ribbon polyline lingers until reload.)
+        if (cells.length >= 2) {
+          const first = cells[0];
+          const last = cells[cells.length - 1];
+          if (!s.roadWays) s.roadWays = [];
+          s.roadWays.push({
+            path: [
+              { x: first.x, y: first.y },
+              { x: last.x, y: last.y },
+            ],
+            kind: "street",
+            width: 1,
+          });
+        }
       }
 
       return { tiles: newTiles, sameSessionPlacements: newPlacements };

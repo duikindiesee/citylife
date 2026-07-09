@@ -40,6 +40,7 @@ import { R3FCloud } from './R3FCloud';
 import { R3FFoam } from './R3FFoam';
 import { R3FRoadBuilder } from './R3FRoadBuilder';
 import { R3FRoadNetwork } from './R3FRoadNetwork';
+import { R3FRoadRibbons } from './R3FRoadRibbons';
 import { buildShoreProps } from './shoreProps';
 import { buildVenueProps } from './venueProps';
 import { useTerrainLeveling } from './useTerrainLeveling';
@@ -159,10 +160,30 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
   const dirLightRef = useRef<THREE.DirectionalLight>(null);
   const skyRef = useRef<any>(null); // Sky doesn't easily support ref updates for sunPosition in some versions, but we can pass it via props if we use state. But wait, useFrame is better! Let's update it.
 
+  // The shadow map used to re-render EVERY frame (three's autoUpdate default) over every
+  // castShadow caster — thousands of foliage instances, houses and crowds — because the sun
+  // light was repositioned each frame. Refresh on a 4-frame cadence instead (~15 Hz shadows
+  // for the ambient walkers, imperceptible) and only re-aim the sun when it actually moved.
+  const gl = useThree((s) => s.gl);
+  const shadowFrame = useRef(0);
+  const lastSun = useRef({ x: 9999, y: 9999 });
+  useEffect(() => {
+    gl.shadowMap.autoUpdate = false;
+    gl.shadowMap.needsUpdate = true;
+    return () => {
+      gl.shadowMap.autoUpdate = true;
+    };
+  }, [gl]);
+
   useFrame(() => {
-    // Read the sim clock directly
-    const time = sim.state.clock.hour + sim.state.clock.minute / 60;
-    
+    // Build mode always shows daylight (operator request): clamp the clock to noon while the
+    // builder or world view is open — both are working modes where night lighting makes
+    // placement unusable. getState() (not a hook) so the frame loop never re-renders React.
+    const { builderActive, worldViewActive } = useRoadNetwork.getState();
+    const time = (builderActive || worldViewActive)
+      ? 12
+      : sim.state.clock.hour + sim.state.clock.minute / 60;
+
     // Calculate sun position (0=midnight, 6=dawn, 12=noon, 18=dusk)
     const sunAngle = ((time - 6) / 24) * Math.PI * 2;
     const sunX = Math.cos(sunAngle) * 200;
@@ -192,12 +213,22 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
       ambientLightRef.current.intensity = 0.5 + dayFactor * 0.3;
     }
     if (dirLightRef.current) {
-      dirLightRef.current.position.set(sunX, sunY, sunZ);
+      // re-aim the sun (and its shadow camera) only when it moved meaningfully — the sim
+      // clock advances slowly, so during a pan the light is stationary
+      if (
+        Math.abs(sunX - lastSun.current.x) + Math.abs(sunY - lastSun.current.y) >
+        0.5
+      ) {
+        dirLightRef.current.position.set(sunX, sunY, sunZ);
+        lastSun.current.x = sunX;
+        lastSun.current.y = sunY;
+      }
       dirLightRef.current.intensity = dayFactor * 2;
     }
     if (skyRef.current?.material) {
       skyRef.current.material.uniforms.sunPosition.value.set(sunX, sunY, sunZ);
     }
+    if ((shadowFrame.current++ & 3) === 0) gl.shadowMap.needsUpdate = true;
   });
 
   return (
@@ -211,7 +242,7 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
         castShadow
         position={[0, -10, 0]}
         intensity={0}
-        shadow-mapSize={[4096, 4096]}
+        shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-200}
         shadow-camera-right={200}
         shadow-camera-top={200}
@@ -361,7 +392,12 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
   // Update dynamic lights / animations on lighthouse and venue props in frame loop
   useFrame((state) => {
     const timeMs = state.clock.getElapsedTime() * 1000;
-    const time = sim.state.clock.hour + sim.state.clock.minute / 60;
+    // Same daylight clamp as DayNightCycle — the lighthouse beacon and venue lamps must not
+    // burn their night lights while the builder forces daylight.
+    const { builderActive, worldViewActive } = useRoadNetwork.getState();
+    const time = (builderActive || worldViewActive)
+      ? 12
+      : sim.state.clock.hour + sim.state.clock.minute / 60;
     let dayFactor = 0;
     if (time > 5 && time < 7) {
       dayFactor = (time - 5) / 2;
@@ -403,8 +439,10 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
         {bootStage >= 1 && (
           <>
             <R3FFoam sim={sim} />
-            {/* SimCity Style Road Architecture */}
+            {/* SimCity Style Road Architecture — the smooth ribbon surface (spec 127) over
+                the cell data; R3FRoadNetwork keeps only the cul-de-sac bulbs */}
             <R3FRoadBuilder sim={sim} runtime={runtime} />
+            <R3FRoadRibbons sim={sim} runtime={runtime} />
             <R3FRoadNetwork sim={sim} runtime={runtime} />
             {/* Dynamic World Elements */}
             <R3FFoliage sim={sim} runtime={runtime} />
@@ -517,6 +555,11 @@ export class PlanetRenderer {
 
   setNeighborhood(_n: Neighborhood) {}
   setCommercialDistrict(_d: CommercialDistrict | null | undefined) {}
-  setRoadWays(_ways: RoadWay[] | null | undefined) {}
+  setRoadWays(ways: RoadWay[] | null | undefined) {
+    // Spec 127 — the ribbon centre-lines reach the React tree via sim.state (the raceState
+    // precedent). The runtime attaches its array in the constructor; this keeps the legacy
+    // call path working too.
+    this.sim.state.roadWays = ways ?? [];
+  }
   setBusRoute(_route: BusRoute | null | undefined) {}
 }

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import * as THREE from 'three';
 import { useRoadNetwork } from '../stores/useRoadNetwork';
 import { ThreeEvent } from '@react-three/fiber';
@@ -145,6 +145,63 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
 
   const planeRef = useRef<THREE.Mesh>(null);
 
+  // The zoning footprint preview as ONE mount-once InstancedMesh (cap = BIG 11×14 = 154).
+  // The old JSX mapped 154 fresh <mesh><boxGeometry/><meshStandardMaterial/> on every hover
+  // re-render — 154 geometry+material allocations and GPU uploads per moved cell. Now a hover
+  // change writes 154 matrices into a pre-allocated buffer. Preview color is plot-wide, so a
+  // single shared material recolors per hover.
+  const zonePreviewRef = useRef<THREE.InstancedMesh>(null);
+  const zonePreview = useMemo(
+    () => ({
+      geo: new THREE.BoxGeometry(4, 0.1, 4),
+      mat: new THREE.MeshStandardMaterial({ transparent: true, opacity: 0.4 }),
+      m4: new THREE.Matrix4(),
+    }),
+    []
+  );
+  useEffect(
+    () => () => {
+      zonePreview.geo.dispose();
+      zonePreview.mat.dispose();
+    },
+    [zonePreview]
+  );
+  const zoning = builderMode.startsWith('zoning_');
+  useEffect(() => {
+    const mesh = zonePreviewRef.current;
+    if (!mesh) return;
+    if (!zoning || !hoverCell) {
+      mesh.count = 0;
+      return;
+    }
+    const layout = getZoningLayout(hoverCell.x, hoverCell.y, builderMode, tiles);
+    if (!layout) {
+      mesh.count = 0;
+      return;
+    }
+    const landOk = layout.cells.every(c => isBuildablePlotLand(c.x, c.y));
+    const statusOk = layout.hasRoad && landOk;
+    zonePreview.mat.color.set(
+      statusOk ? (builderMode === 'zoning_residential' ? '#55ff55' : '#55cfff') : '#ff5555'
+    );
+    const cap = mesh.instanceMatrix.count;
+    let placed = 0;
+    for (const c of layout.cells) {
+      if (placed >= cap) break;
+      const cellY = sim.state.terrain.worldY(c.x, c.y);
+      zonePreview.m4.identity();
+      zonePreview.m4.setPosition(
+        (c.x - terrainSize / 2) * 4,
+        cellY + 0.05,
+        (c.y - terrainSize / 2) * 4
+      );
+      mesh.setMatrixAt(placed++, zonePreview.m4);
+    }
+    mesh.count = placed;
+    mesh.instanceMatrix.needsUpdate = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hoverCell, builderMode, tiles, zoning, zonePreview, sim, terrainSize]);
+
   const isBuildableRoadLand = (x: number, y: number) => {
     if (x < 0 || x >= terrainSize || y < 0 || y >= terrainSize) return false;
     const index = y * terrainSize + x;
@@ -212,7 +269,10 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
     if (!builderActive) return;
     e.stopPropagation();
     const cell = getCellFromEvent(e);
-    setHoverCell(cell);
+    // Cells are 4 world-units wide, so most pointer-moves stay inside one cell: returning the
+    // SAME reference makes React bail out of the re-render (the hover previews and the <Html>
+    // tooltip used to rebuild on every single pointer event).
+    setHoverCell(prev => (prev && prev.x === cell.x && prev.y === cell.y) ? prev : cell);
     
     if (!isDrawing || !startCell) return;
     
@@ -374,15 +434,21 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
         return null;
       })()}
 
-      {/* Zoning Footprint Preview */}
+      {/* Zoning Footprint Preview — the cell tint is the mount-once InstancedMesh above;
+          here only the arrow + tooltip remain (they re-render only when the cell changes) */}
+      <instancedMesh
+        ref={zonePreviewRef}
+        args={[zonePreview.geo, zonePreview.mat, BIG.W * BIG.D]}
+        frustumCulled={false}
+      />
       {builderMode.startsWith('zoning_') && hoverCell && (() => {
         const layout = getZoningLayout(hoverCell.x, hoverCell.y, builderMode, tiles);
         if (!layout) return null;
-        
+
         const wY = sim.state.terrain.worldY(hoverCell.x, hoverCell.y);
         const landOk = layout.cells.every(c => isBuildablePlotLand(c.x, c.y));
         const statusOk = layout.hasRoad && landOk;
-        
+
         const gateWorldX = (layout.gateCell.x - terrainSize / 2) * 4;
         const gateWorldZ = (layout.gateCell.y - terrainSize / 2) * 4;
         const gateWorldY = sim.state.terrain.worldY(layout.gateCell.x, layout.gateCell.y);
@@ -395,23 +461,6 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
 
         return (
           <group>
-            {layout.cells.map((c, i) => {
-              const cellY = sim.state.terrain.worldY(c.x, c.y);
-              const color = statusOk 
-                ? (builderMode === 'zoning_residential' ? "#55ff55" : "#55cfff") 
-                : "#ff5555";
-                
-              return (
-                <mesh 
-                  key={`zone-prev-${i}`} 
-                  position={[(c.x - terrainSize / 2) * 4, cellY + 0.05, (c.y - terrainSize / 2) * 4]}
-                >
-                  <boxGeometry args={[4, 0.1, 4]} />
-                  <meshStandardMaterial color={color} opacity={0.4} transparent />
-                </mesh>
-              );
-            })}
-
             {/* Direction Arrow Hint pointing to connected street */}
             {layout.hasRoad && (
               <mesh 

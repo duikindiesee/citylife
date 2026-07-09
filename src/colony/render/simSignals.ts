@@ -45,3 +45,9 @@ export function levelingSignature(state: ColonyState): string {
 export function spawnSignature(state: ColonyState): string {
   return `r${state.roadsVersion}`;
 }
+
+/** R3FRoadRibbons — the smooth road surface rebuilds when the road network changes (the
+ *  builder bumps roadsVersion and appends a centre-line way per drawn road, spec 127). */
+export function roadwaySignature(state: ColonyState): string {
+  return `r${state.roadsVersion}:w${state.roadWays?.length ?? 0}`;
+}
