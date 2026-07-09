@@ -44,6 +44,7 @@ import { R3FRoadRibbons } from './R3FRoadRibbons';
 import { buildShoreProps } from './shoreProps';
 import { buildVenueProps } from './venueProps';
 import { useTerrainLeveling } from './useTerrainLeveling';
+import { leveledWorldY } from './terrainLeveling';
 import { useRoadNetwork } from '../stores/useRoadNetwork';
 import { COLONY } from '../config';
 import { Html, MapControls } from '@react-three/drei';
@@ -460,11 +461,13 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
       const road = roads[0];
       const wx = (road.x - size / 2) * 4;
       const wz = (road.y - size / 2) * 4;
-      const wy = sim.state.terrain.worldY(road.x, road.y);
+      // Spawn on the RENDERED surface: road grading / pad leveling can move the visible mesh
+      // away from the raw sim height, and the walker must not start under (or above) it.
+      const wy = leveledWorldY(sim.state.terrain, debouncedTerrainLevel, road.x, road.y);
       return [wx, wy + 2, wz] as [number, number, number];
     }
     return findDrySpawn(sim.state.terrain);
-  }, [sim, spawnSig]);
+  }, [sim, spawnSig, debouncedTerrainLevel]);
 
   return (
     <>
@@ -512,7 +515,7 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
         {useRoadNetwork(state => state.builderActive || state.worldViewActive) ? (
           <AerialCameraController />
         ) : (
-          <FirstPersonController sim={sim} startPosition={startPos} />
+          <FirstPersonController sim={sim} startPosition={startPos} terrainLevel={debouncedTerrainLevel} />
         )}
       </Physics>
 
