@@ -67,6 +67,11 @@ import { R3FBus } from './R3FBus';
 import { R3FRace } from './R3FRace';
 import { R3FTarentaal } from './R3FTarentaal';
 import { R3FArtifacts } from './R3FArtifacts';
+import { R3FPorters } from './R3FPorters';
+import { R3FOperatorCar } from './R3FOperatorCar';
+import { R3FRallyNameplates } from './R3FRallyNameplates';
+import { R3FCameraDirector } from './R3FCameraDirector';
+import { isPublicSafe } from '../newcomers';
 
 function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) {
   const state = sim.state;
@@ -79,7 +84,8 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
   // Subscribe to the mutable sim — a lot placed, demolished or built must re-render here.
   const zoneSig = useSimSignal(runtime, () => zoneSignature(state));
   const buildings = useMemo(() => {
-    const elements = [];
+    const elements: React.ReactElement[] = [];
+    const overlays: React.ReactElement[] = [];
 
     if (state.cityPlan) {
       const size = state.terrain.size;
@@ -145,17 +151,25 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
           }
         } else {
           // Unbuilt/zoned plot: the draped per-cell "purchasable land" tint (spec 128).
-          elements.push(
+          // Gated by the HUD zones toggle (spec 131) via the zone-overlays group below.
+          overlays.push(
             <ZoneLotOverlay key={`zone-ground-${lot.id}`} lot={lot} terrain={state.terrain} />
           );
         }
       }
     }
 
-    return elements;
+    return { elements, overlays };
   }, [sim, zoneSig, assets]);
 
-  return <group>{buildings}</group>;
+  return (
+    <group>
+      {buildings.elements}
+      <group name="zone-overlays" visible={state.zonesVisible !== false}>
+        {buildings.overlays}
+      </group>
+    </group>
+  );
 }
 
 const DAY_BG = new THREE.Color('#5b9bd5'); // Softer, desaturated daytime blue
@@ -265,10 +279,19 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
 /** Live probe in the spirit of window.__colony — exposes the three.js scene so Playwright
  *  specs (and the operator console) can assert on what is actually rendered, not just on
  *  sim state. See e2e/reactivity.spec.ts. */
+/** Module-scoped bridge from the R3F store to the imperative PlanetRenderer class — the
+ *  snapshot button (capturePNG, spec 131) needs the live renderer/scene/camera. */
+const r3fProbe: {
+  gl: THREE.WebGLRenderer | null;
+  scene: THREE.Scene | null;
+  camera: THREE.Camera | null;
+} = { gl: null, scene: null, camera: null };
+
 function SceneProbe() {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls);
+  const gl = useThree((s) => s.gl);
   useEffect(() => {
     const w = window as unknown as {
       __r3fScene?: THREE.Scene;
@@ -280,12 +303,20 @@ function SceneProbe() {
     // on (screenshots of roads/junctions), not just count meshes.
     w.__r3fCamera = camera;
     w.__r3fControls = controls;
+    r3fProbe.gl = gl;
+    r3fProbe.scene = scene;
+    r3fProbe.camera = camera;
     return () => {
       if (w.__r3fScene === scene) w.__r3fScene = undefined;
       if (w.__r3fCamera === camera) w.__r3fCamera = undefined;
       if (w.__r3fControls === controls) w.__r3fControls = undefined;
+      if (r3fProbe.gl === gl) {
+        r3fProbe.gl = null;
+        r3fProbe.scene = null;
+        r3fProbe.camera = null;
+      }
     };
-  }, [scene, camera, controls]);
+  }, [scene, camera, controls, gl]);
   return null;
 }
 
@@ -495,6 +526,10 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
             <R3FRace sim={sim} />
             <R3FTarentaal sim={sim} />
             <R3FArtifacts sim={sim} />
+            <R3FPorters sim={sim} />
+            <R3FOperatorCar sim={sim} runtime={runtime} />
+            <R3FRallyNameplates sim={sim} runtime={runtime} refs={avatarRefs} />
+            <R3FCameraDirector sim={sim} />
           </>
         )}
 
@@ -569,9 +604,20 @@ export class PlanetRenderer {
   dispose() { this.root.unmount(); }
 
   firstPersonPNG(_home: { x: number; y: number }, _look: { x: number; y: number }): string | null { return null; }
-  capturePNG(): string | null { return null; }
+  capturePNG(): string | null {
+    // Spec 131 — the HUD snapshot button. R3F does not preserve the drawing buffer, so
+    // render one fresh frame straight through the base renderer (no postprocessing — a
+    // clean capture) and read it out before the buffer is cleared.
+    const { gl, scene, camera } = r3fProbe;
+    if (!gl || !scene || !camera) return null;
+    gl.render(scene, camera);
+    return gl.domElement.toDataURL("image/png");
+  }
 
-  setOperatorCar(_spec: CarSpec | null, _cell: { x: number; y: number } | null) {}
+  setOperatorCar(spec: CarSpec | null, cell: { x: number; y: number } | null) {
+    // Spec 131 — the raceState precedent: attach on sim.state, R3FOperatorCar renders it.
+    this.sim.state.operatorCar = spec && cell ? { spec, cell } : null;
+  }
   // Spec 120 — the first-person citizen is hidden from the avatar layer (the player IS
   // that citizen), matching the legacy renderer.
   enterFirstPerson(id: string) { this.avatarRefs.fpCitizenId.current = id; }
@@ -582,7 +628,17 @@ export class PlanetRenderer {
   setView(_mode: ViewMode) {}
   setCameraPreset(_preset: CameraPreset) {}
   applyPreset(_preset: CameraPreset) {}
-  setCinematic(_on: boolean) {}
+  setCinematic(on: boolean) {
+    // Spec 131 — R3FCameraDirector orbits the landing while true (the login backdrop).
+    this.sim.state.cinematic = on;
+  }
+  setRallyPresentCitizens(citizens: { id: string; displayName: string }[]) {
+    // Spec 131 — public-safe filter at the bridge (legacy behavior), then the raceState
+    // precedent: attach on sim.state, R3FRallyNameplates renders the plates.
+    this.sim.state.rallyPresence = (citizens ?? []).filter(
+      (c) => isPublicSafe(c.id) && isPublicSafe(c.displayName),
+    );
+  }
 
   setAvatarView(_avatars: AvatarView[]) {}
   // Spec 120 — the runtime registers its live per-frame avatar feed here; R3FAvatars
@@ -591,8 +647,13 @@ export class PlanetRenderer {
   setBarState(_cells: unknown[], _occupants: unknown[], _by: unknown[]) {}
 
   syncTerrain(_t: Terrain) {}
-  setZoningVisible(_v: boolean) {}
-  setZonesVisible(_v: boolean) {}
+  setZoningVisible(v: boolean) {
+    this.setZonesVisible(v);
+  }
+  setZonesVisible(v: boolean) {
+    // Spec 131 — the HUD zones toggle; ZoneManager hides the unbuilt-lot overlays.
+    this.sim.state.zonesVisible = v;
+  }
 
   setNeighborhood(_n: Neighborhood) {}
   setCommercialDistrict(_d: CommercialDistrict | null | undefined) {}
