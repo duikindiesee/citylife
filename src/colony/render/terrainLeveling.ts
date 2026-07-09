@@ -14,7 +14,7 @@ export interface CoastalCommercialDryBlendOptions {
   n: number;
   terrain: TerrainLevelingTerrain;
   rects: readonly TerrainLevelRect[];
-  roadRibbonCells?: ReadonlySet<string> | null;
+  roadRibbonCells?: { has(key: string): boolean } | null;
   dry: number;
   apron?: number;
 }

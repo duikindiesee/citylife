@@ -31,18 +31,88 @@ export interface RoadRibbonOptions {
  *  surface (not the bare terrain) when they're on a road cell — else they sink under the raised ribbon. */
 export const ROAD_RIBBON_LIFT = 0.18;
 
+function cellOkOn(terrain: Terrain, x: number, y: number): boolean {
+  const gx = Math.round(x),
+    gy = Math.round(y);
+  if (!terrain.inBounds(gx, gy)) return false;
+  const i = terrain.idx(gx, gy);
+  return terrain.biome[i] !== Biome.Ocean && terrain.buildable[i] !== 0;
+}
+
 function roadSurfaceCellOk(
   opts: RoadRibbonOptions,
   x: number,
   y: number,
 ): boolean {
-  const gx = Math.round(x),
-    gy = Math.round(y);
-  if (!opts.terrain.inBounds(gx, gy)) return false;
-  const i = opts.terrain.idx(gx, gy);
-  return (
-    opts.terrain.biome[i] !== Biome.Ocean && opts.terrain.buildable[i] !== 0
-  );
+  return cellOkOn(opts.terrain, x, y);
+}
+
+/** Spec 130 — the grid cells the ribbon surface actually covers, mapped to the SURFACE
+ *  height the mesh renders over each cell. Same smoothing + cross-section math as the mesh
+ *  (chaikin, densify, half-width sweep, the ocean/unbuildable guard), pure — no geometry.
+ *  Each cell's height is the MAX of the station heights whose segment bridges it: between
+ *  stations the mesh is a flat quad, so a dip crossed by a segment is spanned at RIM height
+ *  — grading to the cell's own local road height would leave the quad floating above the
+ *  dip floor (the "walking under the road" the operator saw). The terrain leveling grades
+ *  these cells to these heights, as legacy relevelTerrain consumed the build's cells
+ *  (spec 095). */
+export function ribbonCoverage(
+  ways: RoadWay[],
+  terrain: Terrain,
+  roadY: (x: number, y: number) => number,
+): Map<string, number> {
+  const cover = new Map<string, number>();
+  const stamp = (gx: number, gy: number, h: number) => {
+    if (!cellOkOn(terrain, gx, gy)) return;
+    const key = `${Math.round(gx)},${Math.round(gy)}`;
+    const cur = cover.get(key);
+    if (cur === undefined || h > cur) cover.set(key, h);
+  };
+  for (const w of ways) {
+    if (w.path.length < 2) continue;
+    const pts = densify(chaikin(w.path, 2), 1.5);
+    const half = w.width / 2;
+    const stationH = pts.map((p) => Math.max(0, roadY(p.x, p.y)));
+    // per-STATION sweep with the mesh's own CENTERED perpendicular (prev..next), so bend
+    // cells round into exactly the cells the build records
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i]!;
+      const prev = pts[Math.max(0, i - 1)]!,
+        next = pts[Math.min(pts.length - 1, i + 1)]!;
+      const tx = next.x - prev.x,
+        ty = next.y - prev.y;
+      const len = Math.hypot(tx, ty) || 1;
+      const px = -ty / len,
+        py = tx / len;
+      const h = Math.max(
+        stationH[i]!,
+        stationH[Math.max(0, i - 1)]!,
+        stationH[Math.min(pts.length - 1, i + 1)]!,
+      );
+      for (let k = -half; k <= half + 1e-6; k += 0.5) {
+        stamp(p.x + px * k, p.y + py * k, h);
+      }
+    }
+    // per-SEGMENT midpoint sweep so no cell column between 1.5-cell stations escapes, each
+    // at the segment-bridged height (between stations the mesh is a flat quad — a dip is
+    // spanned at rim height)
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]!,
+        b = pts[i + 1]!;
+      const hSeg = Math.max(stationH[i]!, stationH[i + 1]!);
+      const tx = b.x - a.x,
+        ty = b.y - a.y;
+      const len = Math.hypot(tx, ty) || 1;
+      const px = -ty / len,
+        py = tx / len;
+      const sx = a.x + tx * 0.5,
+        sy = a.y + ty * 0.5;
+      for (let k = -half; k <= half + 1e-6; k += 0.5) {
+        stamp(sx + px * k, sy + py * k, hSeg);
+      }
+    }
+  }
+  return cover;
 }
 
 function roadCrossSectionOk(
