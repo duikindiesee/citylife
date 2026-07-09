@@ -11,6 +11,12 @@ import {
   avatarTransform,
   drawableAvatars,
 } from './avatarLayer';
+import {
+  buildCrabGeometry,
+  buildHoverBoltGeometry,
+  CRAB_BOLT_HOVER_Y,
+  CRAB_COLORS,
+} from './crabGeometry';
 
 // Spec 120 — citizens visible in the R3F world. The runtime pushes a per-frame avatar
 // source through the PlanetRenderer class (setAvatarSource); this component pulls it in
@@ -35,6 +41,8 @@ interface R3FAvatarsProps {
 export function R3FAvatars({ sim, refs }: R3FAvatarsProps) {
   const bodyRef = useRef<THREE.InstancedMesh>(null);
   const headRef = useRef<THREE.InstancedMesh>(null);
+  const crabRef = useRef<THREE.Group>(null);
+  const boltRef = useRef<THREE.Mesh>(null);
 
   const bodyGeometry = useMemo(
     () => new THREE.CapsuleGeometry(AVATAR_BODY.radius, AVATAR_BODY.length, 4, 8),
@@ -49,19 +57,41 @@ export function R3FAvatars({ sim, refs }: R3FAvatarsProps) {
     () => new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.05 }),
     []
   );
+  // Spec 132 — Joe the Crab: the merged vertex-coloured crab (blue headset, bolts on the
+  // earcup sides) plus the animated hover bolt the component bobs above him.
+  const crabGeometry = useMemo(() => buildCrabGeometry(), []);
+  const crabMaterial = useMemo(
+    () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.04 }),
+    []
+  );
+  const boltGeometry = useMemo(() => buildHoverBoltGeometry(), []);
+  const boltMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: CRAB_COLORS.bolt,
+        emissive: CRAB_COLORS.bolt,
+        emissiveIntensity: 0.7,
+        roughness: 0.4,
+      }),
+    []
+  );
   // Spec 119 discipline — these live for the component lifetime and are freed on unmount.
   useEffect(() => () => {
     bodyGeometry.dispose();
     headGeometry.dispose();
     material.dispose();
-  }, [bodyGeometry, headGeometry, material]);
+    crabGeometry.dispose();
+    crabMaterial.dispose();
+    boltGeometry.dispose();
+    boltMaterial.dispose();
+  }, [bodyGeometry, headGeometry, material, crabGeometry, crabMaterial, boltGeometry, boltMaterial]);
 
   const scratch = useMemo(
     () => ({ m4: new THREE.Matrix4(), quat: new THREE.Quaternion(), color: new THREE.Color(), scale: new THREE.Vector3(1, 1, 1), pos: new THREE.Vector3(), axis: new THREE.Vector3(0, 1, 0) }),
     []
   );
 
-  useFrame(() => {
+  useFrame((state) => {
     const body = bodyRef.current;
     const head = headRef.current;
     if (!body || !head) return;
@@ -72,25 +102,51 @@ export function R3FAvatars({ sim, refs }: R3FAvatarsProps) {
     const size = sim.state.terrain.size;
     const groundY = (x: number, y: number) => sim.state.terrain.worldY(x, y);
 
+    // Spec 132 — crab-kind avatars draw the crab model, not a human capsule.
+    let crab: AvatarView | null = null;
+    let di = 0;
     for (let i = 0; i < drawn.length; i++) {
       const a = drawn[i];
+      if (a.kind === 'crab') {
+        if (!crab) crab = a; // Joe — one crab founder; a second would wait its turn
+        continue;
+      }
       const t = avatarTransform(a, size, groundY);
       scratch.pos.set(t.wx, t.wy, t.wz);
       scratch.quat.setFromAxisAngle(scratch.axis, t.rotY);
       scratch.m4.compose(scratch.pos, scratch.quat, scratch.scale);
-      body.setMatrixAt(i, scratch.m4);
-      head.setMatrixAt(i, scratch.m4);
+      body.setMatrixAt(di, scratch.m4);
+      head.setMatrixAt(di, scratch.m4);
       scratch.color.setHex(avatarColorHex(a));
-      body.setColorAt(i, scratch.color);
-      head.setColorAt(i, scratch.color);
+      body.setColorAt(di, scratch.color);
+      head.setColorAt(di, scratch.color);
+      di++;
     }
 
-    body.count = drawn.length;
-    head.count = drawn.length;
+    body.count = di;
+    head.count = di;
     body.instanceMatrix.needsUpdate = true;
     head.instanceMatrix.needsUpdate = true;
     if (body.instanceColor) body.instanceColor.needsUpdate = true;
     if (head.instanceColor) head.instanceColor.needsUpdate = true;
+
+    const crabGroup = crabRef.current;
+    if (crabGroup) {
+      crabGroup.visible = !!crab;
+      if (crab) {
+        const t = avatarTransform(crab, size, groundY);
+        crabGroup.position.set(t.wx, t.wy, t.wz);
+        crabGroup.rotation.y = t.rotY;
+        // the hover bolt bobs gently above Joe, tip down, slowly turning — the marker the
+        // operator asked to keep ("pointing to him")
+        const bolt = boltRef.current;
+        if (bolt) {
+          const T = state.clock.getElapsedTime();
+          bolt.position.y = CRAB_BOLT_HOVER_Y + Math.sin(T * 2.2) * 0.06;
+          bolt.rotation.y = T * 1.2;
+        }
+      }
+    }
   });
 
   return (
@@ -109,6 +165,17 @@ export function R3FAvatars({ sim, refs }: R3FAvatarsProps) {
         castShadow
         frustumCulled={false}
       />
+      <group ref={crabRef} name="avatar-crab" visible={false}>
+        <mesh geometry={crabGeometry} material={crabMaterial} castShadow />
+        <mesh
+          ref={boltRef}
+          name="crab-hover-bolt"
+          geometry={boltGeometry}
+          material={boltMaterial}
+          position={[0, CRAB_BOLT_HOVER_Y, 0]}
+          rotation={[0, 0, Math.PI]}
+        />
+      </group>
     </group>
   );
 }
