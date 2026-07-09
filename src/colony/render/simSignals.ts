@@ -12,9 +12,12 @@
 //  - Cover every mutable field the component actually renders.
 import type { ColonyState } from "../sim";
 
-/** R3FFoliage — trees rebuild when roads or buildings change (both cull foliage). */
+/** R3FFoliage — trees rebuild when roads, buildings or lots change (all cull foliage;
+ *  spec 128 added lot/parcel footprints so zoning clears its trees). */
 export function foliageSignature(state: ColonyState): string {
-  return `r${state.roadsVersion}:b${state.buildings.length}`;
+  const lots = state.neighborhood?.lots?.length ?? 0;
+  const cd = state.commercialDistrict?.parcels?.length ?? 0;
+  return `r${state.roadsVersion}:b${state.buildings.length}:l${lots}:c${cd}`;
 }
 
 /** ZoneManager — commercial blocks from the city plan, plus lot overlays / houses from the
@@ -44,4 +47,10 @@ export function levelingSignature(state: ColonyState): string {
  *  snaps to the first road, else falls back to findDrySpawn over the immutable terrain). */
 export function spawnSignature(state: ColonyState): string {
   return `r${state.roadsVersion}`;
+}
+
+/** R3FRoadRibbons — the smooth road surface rebuilds when the road network changes (the
+ *  builder bumps roadsVersion and appends a centre-line way per drawn road, spec 127). */
+export function roadwaySignature(state: ColonyState): string {
+  return `r${state.roadsVersion}:w${state.roadWays?.length ?? 0}`;
 }

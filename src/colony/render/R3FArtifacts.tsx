@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
 import type { ColonySim } from '../sim';
 import {
   ARTIFACT_KINDS,
@@ -37,7 +36,10 @@ export function R3FArtifacts({ sim }: R3FArtifactsProps) {
     []
   );
 
-  useFrame(() => {
+  // The catalog is created once at sim construction and never mutated (no artifact stepper
+  // exists), so a mount-time effect places everything — the old useFrame re-summarized and
+  // re-allocated per frame for a static scene.
+  useEffect(() => {
     const { counts, renderable } = summarizeRenderableArtifacts(sim.state.artifacts, ARTIFACT_CATALOG_SIZE);
     const size = sim.state.terrain.size;
     const groundY = (x: number, y: number) => sim.state.terrain.worldY(x, y);
@@ -61,7 +63,7 @@ export function R3FArtifacts({ sim }: R3FArtifactsProps) {
       mesh.count = counts[kind];
       mesh.instanceMatrix.needsUpdate = true;
     }
-  });
+  }, [sim, assets, scratch]);
 
   return (
     <group name="artifacts">

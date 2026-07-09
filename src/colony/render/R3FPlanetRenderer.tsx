@@ -40,6 +40,7 @@ import { R3FCloud } from './R3FCloud';
 import { R3FFoam } from './R3FFoam';
 import { R3FRoadBuilder } from './R3FRoadBuilder';
 import { R3FRoadNetwork } from './R3FRoadNetwork';
+import { R3FRoadRibbons } from './R3FRoadRibbons';
 import { buildShoreProps } from './shoreProps';
 import { buildVenueProps } from './venueProps';
 import { useTerrainLeveling } from './useTerrainLeveling';
@@ -50,6 +51,8 @@ import { useThree, useFrame } from '@react-three/fiber';
 
 import { VoxelHouseMesh } from "./VoxelHouseMesh";
 import { GlbHouse } from "./GlbHouse";
+import { ZoneLotOverlay } from "./ZoneLotOverlay";
+import { RENDER_DRY_FLOOR } from "./useTerrainLeveling";
 import { useWorldAssets } from "../stores/useWorldAssets";
 import { R3FPlayerCar } from "./R3FPlayerCar";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -94,50 +97,54 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
     
     if (state.neighborhood?.lots) {
       const size = state.terrain.size;
+      // Spec 128 — houses SEAT on their leveled pad: the same formula useTerrainLeveling
+      // grades the pad with (max of the houseZone-centre ground and the dry floor), so the
+      // house and its pad always agree. The old absolute y=0.05 buried every house under
+      // the 8-17m-high city terrain.
+      const seatOf = (hz: { x: number; y: number; w: number; d: number }) =>
+        Math.max(
+          state.terrain.worldY(hz.x + (hz.w - 1) / 2, hz.y + (hz.d - 1) / 2),
+          RENDER_DRY_FLOOR,
+        );
       for (const lot of state.neighborhood.lots) {
         if (lot.built) {
           if (lot.zone === "commercial") {
             const wX = (lot.x - size / 2) * 4;
             const wZ = (lot.y - size / 2) * 4;
             elements.push(
-              <CommercialBlock 
-                key={`comm-${lot.id}`} 
-                position={[wX, 0, wZ]} 
+              <CommercialBlock
+                key={`comm-${lot.id}`}
+                position={[wX, 0, wZ]}
               />
             );
           } else {
+            const hz = lot.houseZone;
+            const seat = seatOf(hz);
             // If the microservice has a functional garage asset, use the GLB House!
             // We wrap in ErrorBoundary + Suspense so bad models fall back to voxel houses.
             if (assets["functional_garage"]) {
+               // grid → world transform + pad seat (spec 128): the old call passed RAW GRID
+               // coords as world position, stacking every garage near world (380, 0.1, 350).
+               const gX = (hz.x + (hz.w - 1) / 2 - size / 2) * 4;
+               const gZ = (hz.y + (hz.d - 1) / 2 - size / 2) * 4;
                elements.push(
-                 <ErrorBoundary 
-                   key={`res-err-${lot.id}`} 
-                   fallback={<VoxelHouseMesh lot={lot} mapSize={size} />}
+                 <ErrorBoundary
+                   key={`res-err-${lot.id}`}
+                   fallback={<VoxelHouseMesh lot={lot} mapSize={size} seatY={seat + 0.02} />}
                  >
-                   <React.Suspense fallback={<VoxelHouseMesh lot={lot} mapSize={size} />}>
-                     <GlbHouse assetId="functional_garage" position={[lot.houseZone.x, 0.1, lot.houseZone.y]} />
+                   <React.Suspense fallback={<VoxelHouseMesh lot={lot} mapSize={size} seatY={seat + 0.02} />}>
+                     <GlbHouse assetId="functional_garage" position={[gX, seat + 0.02, gZ]} />
                    </React.Suspense>
                  </ErrorBoundary>
                );
             } else {
-               elements.push(<VoxelHouseMesh key={`res-${lot.id}`} lot={lot} mapSize={size} />);
+               elements.push(<VoxelHouseMesh key={`res-${lot.id}`} lot={lot} mapSize={size} seatY={seat + 0.02} />);
             }
           }
         } else {
-          // Render unbuilt/zoned plot ground footprint overlay
-          const wX = (lot.x - size / 2) * 4;
-          const wZ = (lot.y - size / 2) * 4;
-          const wY = state.terrain.worldY(Math.round(lot.x), Math.round(lot.y));
-          const color = lot.zone === "commercial" ? "#55cfff" : "#55ff55";
+          // Unbuilt/zoned plot: the draped per-cell "purchasable land" tint (spec 128).
           elements.push(
-            <mesh
-              key={`zone-ground-${lot.id}`}
-              name={`zone-ground-${lot.id}`}
-              position={[wX, wY + 0.1, wZ]}
-            >
-              <boxGeometry args={[lot.w * 4, 0.1, lot.h * 4]} />
-              <meshStandardMaterial color={color} opacity={0.35} transparent roughness={1.0} />
-            </mesh>
+            <ZoneLotOverlay key={`zone-ground-${lot.id}`} lot={lot} terrain={state.terrain} />
           );
         }
       }
@@ -159,10 +166,30 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
   const dirLightRef = useRef<THREE.DirectionalLight>(null);
   const skyRef = useRef<any>(null); // Sky doesn't easily support ref updates for sunPosition in some versions, but we can pass it via props if we use state. But wait, useFrame is better! Let's update it.
 
+  // The shadow map used to re-render EVERY frame (three's autoUpdate default) over every
+  // castShadow caster — thousands of foliage instances, houses and crowds — because the sun
+  // light was repositioned each frame. Refresh on a 4-frame cadence instead (~15 Hz shadows
+  // for the ambient walkers, imperceptible) and only re-aim the sun when it actually moved.
+  const gl = useThree((s) => s.gl);
+  const shadowFrame = useRef(0);
+  const lastSun = useRef({ x: 9999, y: 9999 });
+  useEffect(() => {
+    gl.shadowMap.autoUpdate = false;
+    gl.shadowMap.needsUpdate = true;
+    return () => {
+      gl.shadowMap.autoUpdate = true;
+    };
+  }, [gl]);
+
   useFrame(() => {
-    // Read the sim clock directly
-    const time = sim.state.clock.hour + sim.state.clock.minute / 60;
-    
+    // Build mode always shows daylight (operator request): clamp the clock to noon while the
+    // builder or world view is open — both are working modes where night lighting makes
+    // placement unusable. getState() (not a hook) so the frame loop never re-renders React.
+    const { builderActive, worldViewActive } = useRoadNetwork.getState();
+    const time = (builderActive || worldViewActive)
+      ? 12
+      : sim.state.clock.hour + sim.state.clock.minute / 60;
+
     // Calculate sun position (0=midnight, 6=dawn, 12=noon, 18=dusk)
     const sunAngle = ((time - 6) / 24) * Math.PI * 2;
     const sunX = Math.cos(sunAngle) * 200;
@@ -192,12 +219,22 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
       ambientLightRef.current.intensity = 0.5 + dayFactor * 0.3;
     }
     if (dirLightRef.current) {
-      dirLightRef.current.position.set(sunX, sunY, sunZ);
+      // re-aim the sun (and its shadow camera) only when it moved meaningfully — the sim
+      // clock advances slowly, so during a pan the light is stationary
+      if (
+        Math.abs(sunX - lastSun.current.x) + Math.abs(sunY - lastSun.current.y) >
+        0.5
+      ) {
+        dirLightRef.current.position.set(sunX, sunY, sunZ);
+        lastSun.current.x = sunX;
+        lastSun.current.y = sunY;
+      }
       dirLightRef.current.intensity = dayFactor * 2;
     }
     if (skyRef.current?.material) {
       skyRef.current.material.uniforms.sunPosition.value.set(sunX, sunY, sunZ);
     }
+    if ((shadowFrame.current++ & 3) === 0) gl.shadowMap.needsUpdate = true;
   });
 
   return (
@@ -211,7 +248,7 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
         castShadow
         position={[0, -10, 0]}
         intensity={0}
-        shadow-mapSize={[4096, 4096]}
+        shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-200}
         shadow-camera-right={200}
         shadow-camera-top={200}
@@ -228,13 +265,25 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
  *  sim state. See e2e/reactivity.spec.ts. */
 function SceneProbe() {
   const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls);
   useEffect(() => {
-    const w = window as unknown as { __r3fScene?: THREE.Scene };
+    const w = window as unknown as {
+      __r3fScene?: THREE.Scene;
+      __r3fCamera?: THREE.Camera;
+      __r3fControls?: unknown;
+    };
     w.__r3fScene = scene;
+    // Spec 127 — the camera + active controls too, so e2e specs can FRAME what they assert
+    // on (screenshots of roads/junctions), not just count meshes.
+    w.__r3fCamera = camera;
+    w.__r3fControls = controls;
     return () => {
       if (w.__r3fScene === scene) w.__r3fScene = undefined;
+      if (w.__r3fCamera === camera) w.__r3fCamera = undefined;
+      if (w.__r3fControls === controls) w.__r3fControls = undefined;
     };
-  }, [scene]);
+  }, [scene, camera, controls]);
   return null;
 }
 
@@ -361,7 +410,12 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
   // Update dynamic lights / animations on lighthouse and venue props in frame loop
   useFrame((state) => {
     const timeMs = state.clock.getElapsedTime() * 1000;
-    const time = sim.state.clock.hour + sim.state.clock.minute / 60;
+    // Same daylight clamp as DayNightCycle — the lighthouse beacon and venue lamps must not
+    // burn their night lights while the builder forces daylight.
+    const { builderActive, worldViewActive } = useRoadNetwork.getState();
+    const time = (builderActive || worldViewActive)
+      ? 12
+      : sim.state.clock.hour + sim.state.clock.minute / 60;
     let dayFactor = 0;
     if (time > 5 && time < 7) {
       dayFactor = (time - 5) / 2;
@@ -403,8 +457,10 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
         {bootStage >= 1 && (
           <>
             <R3FFoam sim={sim} />
-            {/* SimCity Style Road Architecture */}
+            {/* SimCity Style Road Architecture — the smooth ribbon surface (spec 127) over
+                the cell data; R3FRoadNetwork keeps only the cul-de-sac bulbs */}
             <R3FRoadBuilder sim={sim} runtime={runtime} />
+            <R3FRoadRibbons sim={sim} runtime={runtime} />
             <R3FRoadNetwork sim={sim} runtime={runtime} />
             {/* Dynamic World Elements */}
             <R3FFoliage sim={sim} runtime={runtime} />
@@ -517,6 +573,11 @@ export class PlanetRenderer {
 
   setNeighborhood(_n: Neighborhood) {}
   setCommercialDistrict(_d: CommercialDistrict | null | undefined) {}
-  setRoadWays(_ways: RoadWay[] | null | undefined) {}
+  setRoadWays(ways: RoadWay[] | null | undefined) {
+    // Spec 127 — the ribbon centre-lines reach the React tree via sim.state (the raceState
+    // precedent). The runtime attaches its array in the constructor; this keeps the legacy
+    // call path working too.
+    this.sim.state.roadWays = ways ?? [];
+  }
   setBusRoute(_route: BusRoute | null | undefined) {}
 }

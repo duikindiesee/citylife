@@ -15,6 +15,9 @@ export interface RoadWay {
   kind: "avenue" | "street";
   /** Carriageway width in cells. */
   width: number;
+  /** Set on ways appended by the builder (plotRoad), so bulldozing can prune them once
+   *  their cells are gone (spec 127 verify P2). Boot ways have no source. */
+  source?: "builder";
 }
 
 export interface RoadRibbonOptions {
@@ -140,7 +143,13 @@ export function buildRoadRibbons(
     }
   });
   const junction = new Set<string>();
-  const JR = 1; // how far back from a crossing the painted lines stop
+  // How far back from a crossing the painted lines stop. 2, not 1 (spec 127 verify P3): the
+  // junction SLAB is a centroid-centred square reaching half=2.3 cells, while this suppression
+  // grows from the crossing CLUSTER — at an offset tee (a way ending 1-2 cells short of the
+  // other's centre-line, the standard connector geometry) JR=1 left a band inside the slab
+  // where the terminating arm's dashes/edges/crosswalks still painted, floating on the pad.
+  // JR=2 reaches >= 2.5 cells, past the slab in the worst constructible offset.
+  const JR = 2;
   for (const [k, s] of cellWays)
     if (s.size >= 2) {
       const [x, y] = k.split(",").map(Number);
@@ -188,8 +197,9 @@ export function buildRoadRibbons(
 }
 
 /** Corner-cutting smoothing: each iteration replaces every segment with its 1/4 and 3/4 points, so
- *  staircases round off into smooth curves. Endpoints are kept. */
-function chaikin(
+ *  staircases round off into smooth curves. Endpoints are kept. Exported (spec 127) so the
+ *  junction detector sees exactly the centre-lines the ribbon draws. */
+export function chaikin(
   path: { x: number; y: number }[],
   iterations: number,
 ): { x: number; y: number }[] {
@@ -211,7 +221,7 @@ function chaikin(
 /** Insert points along a polyline so no segment is longer than `step`. Keeps the surface stations close
  *  enough together that each flat quad hugs the terrain (so a long string-pulled segment can't span
  *  underground). Endpoints + original vertices are preserved. */
-function densify(
+export function densify(
   pts: { x: number; y: number }[],
   step: number,
 ): { x: number; y: number }[] {

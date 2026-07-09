@@ -1263,6 +1263,10 @@ export class ColonyRuntime {
         kind: "avenue",
         width: 4,
       });
+    // Spec 127 — attach the centre-lines for the R3F ribbon renderer (the raceState
+    // precedent: live object on sim.state, read by the React tree). Shared reference, so
+    // later pushes (the rally spur) land in the same array the renderer reads.
+    this.sim.state.roadWays = this.roadWays;
     const hoodCentroid = (
       cells: { x: number; y: number }[],
     ): { x: number; y: number } => {

@@ -5,7 +5,7 @@ import { useSimSignal, type SimBridge } from './useSimSignal';
 import { levelingSignature } from './simSignals';
 
 // Match PlanetRenderer.ts behavior
-const RENDER_DRY_FLOOR = 0.65;
+export const RENDER_DRY_FLOOR = 0.65;
 const SKIRT = 4;
 const DEADZONE = 0.6;
 
