@@ -259,13 +259,25 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
  *  sim state. See e2e/reactivity.spec.ts. */
 function SceneProbe() {
   const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls);
   useEffect(() => {
-    const w = window as unknown as { __r3fScene?: THREE.Scene };
+    const w = window as unknown as {
+      __r3fScene?: THREE.Scene;
+      __r3fCamera?: THREE.Camera;
+      __r3fControls?: unknown;
+    };
     w.__r3fScene = scene;
+    // Spec 127 — the camera + active controls too, so e2e specs can FRAME what they assert
+    // on (screenshots of roads/junctions), not just count meshes.
+    w.__r3fCamera = camera;
+    w.__r3fControls = controls;
     return () => {
       if (w.__r3fScene === scene) w.__r3fScene = undefined;
+      if (w.__r3fCamera === camera) w.__r3fCamera = undefined;
+      if (w.__r3fControls === controls) w.__r3fControls = undefined;
     };
-  }, [scene]);
+  }, [scene, camera, controls]);
   return null;
 }
 

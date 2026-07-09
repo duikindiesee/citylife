@@ -10,13 +10,13 @@ import { useRoadNetwork } from "../src/colony/stores/useRoadNetwork";
 
 describe("spec 127 — roadWays reach the render state", () => {
   it("the runtime attaches its roadWays array to sim.state (shared reference)", () => {
-    const rt = new ColonyRuntime([4242, 42, 7]);
+    const rt = new ColonyRuntime(4242);
     expect(rt.sim.state.roadWays).toBe(rt.roadWays);
     expect(rt.sim.state.roadWays!.length).toBeGreaterThanOrEqual(1);
   });
 
   it("buildRoadRibbons yields a few merged meshes, not per-cell geometry", () => {
-    const rt = new ColonyRuntime([4242, 42, 7]);
+    const rt = new ColonyRuntime(4242);
     const terrain = rt.sim.state.terrain;
     const N = terrain.size;
     const { group } = buildRoadRibbons(rt.sim.state.roadWays!, {
@@ -38,7 +38,7 @@ describe("spec 127 — roadWays reach the render state", () => {
   });
 
   it("roadwaySignature changes on roadsVersion bumps and on appended ways", () => {
-    const rt = new ColonyRuntime([4242, 42, 7]);
+    const rt = new ColonyRuntime(4242);
     const s0 = roadwaySignature(rt.sim.state);
     rt.sim.state.roadsVersion++;
     const s1 = roadwaySignature(rt.sim.state);
@@ -57,7 +57,7 @@ describe("spec 127 — roadWays reach the render state", () => {
   });
 
   it("plotRoad appends the drawn centre-line so the ribbon renders builder roads", () => {
-    const rt = new ColonyRuntime([4242, 42, 7]);
+    const rt = new ColonyRuntime(4242);
     const before = rt.sim.state.roadWays!.length;
     const cells = [];
     for (let x = 20; x <= 40; x++) cells.push({ x, y: 20 });
