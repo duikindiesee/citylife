@@ -60,6 +60,7 @@ import { useSimSignal, type SimBridge } from './useSimSignal';
 import { zoneSignature, spawnSignature, roadwaySignature } from './simSignals';
 import { ribbonCoverage } from './roadRibbon';
 import { getSmoothRoadY } from './roadSurface';
+import { leveledWorldY } from './useTerrainLeveling';
 import { nextBootStage } from './bootStage';
 import { R3FAvatars, type AvatarRefs } from './R3FAvatars';
 import { R3FPedestrians } from './R3FPedestrians';
@@ -491,11 +492,13 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
       const road = roads[0];
       const wx = (road.x - size / 2) * 4;
       const wz = (road.y - size / 2) * 4;
-      const wy = sim.state.terrain.worldY(road.x, road.y);
+      // spawn on the LEVELED ground (spec 134) — a road cell may be graded up/down
+      const wy = leveledWorldY(debouncedTerrainLevel, sim.state.terrain, road.x, road.y);
       return [wx, wy + 2, wz] as [number, number, number];
     }
     return findDrySpawn(sim.state.terrain);
-  }, [sim, spawnSig]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sim, spawnSig, debouncedTerrainLevel]);
 
   return (
     <>
@@ -547,7 +550,7 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
         {useRoadNetwork(state => state.builderActive || state.worldViewActive) ? (
           <AerialCameraController />
         ) : (
-          <FirstPersonController sim={sim} startPosition={startPos} />
+          <FirstPersonController sim={sim} startPosition={startPos} terrainLevel={debouncedTerrainLevel} />
         )}
       </Physics>
 

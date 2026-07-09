@@ -6,6 +6,20 @@ import { levelingSignature } from './simSignals';
 
 // Match PlanetRenderer.ts behavior
 export const RENDER_DRY_FLOOR = 0.65;
+
+/** Spec 134 — the height of the ground AS RENDERED (and as the physics heightfield carries
+ *  it): the leveling override when one exists, else the raw terrain. Anything that stands
+ *  on, clamps to, or spawns on the visible ground must read THIS, not raw worldY — the
+ *  road grading (spec 130) cuts and fills, so the two can differ by metres. */
+export function leveledWorldY(
+  terrainLevel: ReadonlyMap<number, number> | null | undefined,
+  terrain: { size: number; worldY: (x: number, y: number) => number },
+  gx: number,
+  gy: number,
+): number {
+  const override = terrainLevel?.get(gy * terrain.size + gx);
+  return override !== undefined ? override : terrain.worldY(gx, gy);
+}
 const SKIRT = 4;
 const DEADZONE = 0.6;
 

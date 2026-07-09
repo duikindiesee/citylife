@@ -7,7 +7,7 @@ import { COLONY } from '../../colony/config';
 const MOVEMENT_SPEED = 10;
 const LOOK_SPEED = 2;
 
-export function FirstPersonController({ sim, startPosition = [0, 2, 0] }: { sim?: any, startPosition?: [number, number, number] }) {
+export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainLevel }: { sim?: any, startPosition?: [number, number, number], terrainLevel?: Map<number, number> }) {
   const rigidBody = useRef<RapierRigidBody>(null);
   const { camera } = useThree();
   
@@ -135,14 +135,20 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0] }: { sim?
     // Sync Camera
     const pos = rigidBody.current.translation();
 
-    // Terrain height guardrail
+    // Terrain height guardrail — against the LEVELED ground (spec 134), the same surface
+    // the heightfield collider carries. The old raw-worldY clamp fought the collider
+    // wherever the road grading CUT the ground below natural height (road cuttings, shore
+    // banks): the capsule stood on the graded floor, the clamp read raw terrain metres
+    // above, teleported the walker up, gravity dropped them back — the endless bounce the
+    // operator hit walking out of the water.
     const terrain = sim?.state?.terrain;
     if (terrain) {
       const terrainSize = terrain.size;
       const gridX = Math.max(0, Math.min(terrainSize - 1, Math.round(pos.x / 4 + terrainSize / 2)));
       const gridZ = Math.max(0, Math.min(terrainSize - 1, Math.round(pos.z / 4 + terrainSize / 2)));
-      const terrainHeight = terrain.worldY(gridX, gridZ);
-      
+      const override = terrainLevel?.get(gridZ * terrainSize + gridX);
+      const terrainHeight = override !== undefined ? override : terrain.worldY(gridX, gridZ);
+
       if (pos.y < terrainHeight - 0.5) {
         rigidBody.current.setTranslation({
           x: pos.x,
