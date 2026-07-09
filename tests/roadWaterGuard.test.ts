@@ -30,18 +30,29 @@ function badRibbonCellLabels(rt: ColonyRuntime): string[] {
       return t.worldY(gx, gy);
     },
   });
+  // Spec 133 — the ribbon contract is WATER-only: never over ocean/shallows/river or a
+  // water-flagged cell. Rough LAND (buildable 0) is allowed — the ways cross dozens of
+  // steep/sunken dry pockets, and excluding them left holes in the asphalt and ungraded
+  // dips the walker fell into under the spanning quads. The grading (spec 130) reshapes
+  // that ground to meet the road.
   return [...cells]
     .filter((k) => {
       const [x, y] = k.split(",").map(Number);
       if (!t.inBounds(x!, y!)) return true;
       const i = t.idx(x!, y!);
-      return t.biome[i] === Biome.Ocean || t.buildable[i] === 0;
+      const b = t.biome[i];
+      return (
+        b === Biome.Ocean ||
+        b === Biome.Shallows ||
+        b === Biome.River ||
+        t.water[i] === 1
+      );
     })
     .map((k) => {
       const [x, y] = k.split(",").map(Number);
       if (!t.inBounds(x!, y!)) return `${k}:out-of-bounds`;
       const i = t.idx(x!, y!);
-      return `${k}:${Biome[t.biome[i]!]}:buildable${t.buildable[i]}`;
+      return `${k}:${Biome[t.biome[i]!]}:water${t.water[i]}`;
     });
 }
 
