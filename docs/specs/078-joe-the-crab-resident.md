@@ -152,7 +152,10 @@ his avatar renders as the **crab** described above — orange/red shell, eyes/cl
 headset with exactly one yellow lightning earcup accent. He roams the streets via the existing loop,
 shows a findable nameplate, and can be stepped into in first-person at crab eye height. Reloading the
 page reproduces the identical Joe, parcel, and house. No newcomer is ever assigned Joe's reserved
-parcel. Typecheck + vitest pass; the scene is verified live on `:5188`. As a bonus, `firstPersonView`
+parcel. Typecheck + vitest pass; a committed Playwright Chromium test boots the real Vite app, waits
+for `/assets/citylife/avatars/joe-crab.glb`, asserts Joe is a visible `named-avatar:citizen_joe`
+playing `Joe_idle`, and proves every non-GLB citizen still occupies the matching instanced human/crab
+crowd mesh. The same browser test runs in CI via `npm run test:e2e`. As a bonus, `firstPersonView`
 for `citizen_joe` lists his own house among nearby buildings (enabling the painting loop).
 
 ## Architecture / touch points (drawn from the system maps)

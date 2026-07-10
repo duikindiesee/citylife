@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 // @ts-ignore - Vite raw import used for a renderer contract source-scan test.
 import rendererSource from "../src/colony/render/PlanetRenderer.ts?raw";
 
-// First buildable slice for the v3 named-citizen GLB loader. This is a source contract test because
-// PlanetRenderer is browser/WebGL-bound; live Playwright/browser proof covers the runtime scene.
+// Renderer source contract stays as a fast unit gate; e2e/joe-avatar.spec.ts exercises the real
+// Vite/WebGL runtime in Chromium and proves the loaded scene plus the remaining instanced crowd.
 describe("Joe v3 animated GLB renderer contract", () => {
   it("loads named citizen GLBs and keeps the unnamed crowd instanced", () => {
     expect(rendererSource).toContain("GLTFLoader");
