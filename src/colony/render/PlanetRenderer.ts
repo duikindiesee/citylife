@@ -5762,12 +5762,21 @@ export class PlanetRenderer {
       loaded: entry.loaded,
       currentAction: entry.currentAction,
     };
-    entry.group.position.set(this.wx(a.x), groundY - entry.baseMinY, this.wz(a.y));
+    entry.group.position.set(
+      this.wx(a.x),
+      groundY - entry.baseMinY,
+      this.wz(a.y),
+    );
     entry.group.rotation.set(0, -a.heading + Math.PI / 2, 0);
     const last = this.avatarLastPos.get(a.id);
-    const moving = last ? Math.hypot(a.x - last.x, a.y - last.y) > 0.002 : false;
+    const moving = last
+      ? Math.hypot(a.x - last.x, a.y - last.y) > 0.002
+      : false;
     this.avatarLastPos.set(a.id, { x: a.x, y: a.y });
-    const base = (a.displayName.split(/\s+/)[0] || a.avatarKind).replace(/[^A-Za-z0-9_]/g, "");
+    const base = (a.displayName.split(/\s+/)[0] || a.avatarKind).replace(
+      /[^A-Za-z0-9_]/g,
+      "",
+    );
     this.playNamedAvatarAction(entry, `${base}_${moving ? "walk" : "idle"}`);
   }
 
@@ -5816,14 +5825,13 @@ export class PlanetRenderer {
     return entry;
   }
 
-  private playNamedAvatarAction(
-    entry: NamedAvatarEntry,
-    wanted: string,
-  ): void {
+  private playNamedAvatarAction(entry: NamedAvatarEntry, wanted: string): void {
     if (!entry.loaded || entry.currentAction === wanted) return;
-    const action = entry.actions.get(wanted) ?? entry.actions.values().next().value;
+    const action =
+      entry.actions.get(wanted) ?? entry.actions.values().next().value;
     if (!action) return;
-    if (entry.currentAction) entry.actions.get(entry.currentAction)?.fadeOut(0.12);
+    if (entry.currentAction)
+      entry.actions.get(entry.currentAction)?.fadeOut(0.12);
     action.reset().fadeIn(0.12).play();
     entry.currentAction = wanted;
     entry.group.userData.currentAction = action.getClip().name;
@@ -5845,7 +5853,10 @@ export class PlanetRenderer {
       const mesh = obj as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.geometry?.dispose();
-      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+      const mat = mesh.material as
+        | THREE.Material
+        | THREE.Material[]
+        | undefined;
       if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
       else mat?.dispose();
     });
@@ -6010,7 +6021,8 @@ export class PlanetRenderer {
     for (const [id, plate] of [...this.rallyNameplates]) {
       this.disposeRallyNameplate(id, plate);
     }
-    for (const entry of this.namedAvatars.values()) this.disposeNamedAvatarEntry(entry);
+    for (const entry of this.namedAvatars.values())
+      this.disposeNamedAvatarEntry(entry);
     this.namedAvatars.clear();
     // Spec 093 — the chunk-grid geometries + the shared terrain material are app-side GL objects that
     // renderer.dispose() does NOT free; release them so a teardown/recreate (HMR, remount) doesn't leak.

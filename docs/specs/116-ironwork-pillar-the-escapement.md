@@ -1,7 +1,7 @@
 # Spec 116 — The Ironwork Pillar: a wheel over the works, turned one held tooth at a time
 
 - status: proposed
-- proposed-by: **Hennerik Vos, clocksmith and night gauge-reader at the Watch Nook (Landing One)** — a new citizen voice from the colony's small security-and-vigilance world (059). Where Mara Venn gave the colony aspiration (033), Hennerik gives it something quieter: the first monument to the *unseen work* that keeps a world true — and to the Wizard beyond the dark who minds his own town the same way.
+- proposed-by: **Hennerik Vos, clocksmith and night gauge-reader at the Watch Nook (Landing One)** — a new citizen voice from the colony's small security-and-vigilance world (059). Where Mara Venn gave the colony aspiration (033), Hennerik gives it something quieter: the first monument to the _unseen work_ that keeps a world true — and to the Wizard beyond the dark who minds his own town the same way.
 - date: 2026-07-10
 - depends-on: 001 (materials + labour construction), 053 (founding calendar — the Retune uses its once-per-boundary accounting idiom), 049 (the neutral-when-absent payoff discipline), 059 (the Watch Nook — Hennerik's post). Placement is bound by the road-setback invariant (114) and the roads-never-over-water guard (115).
 
