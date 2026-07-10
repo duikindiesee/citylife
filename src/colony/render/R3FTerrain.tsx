@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { RigidBody, HeightfieldCollider } from '@react-three/rapier';
 import type { ColonySim } from '../sim';
 import { buildChunkedTerrain } from './terrainChunks';
+import { computeColliderHeights, colliderScale, COLLIDER_CENTER } from './terrainCollider';
 import { disposeDeep } from './disposeDeep';
 import { Biome, BIOME_COLOR } from '../terrain';
 import { COLONY } from '../config';
@@ -91,18 +92,10 @@ export function R3FTerrain({ sim, terrainLevel }: R3FTerrainProps) {
   const editing = useRoadNetwork(
     (s) => s.builderActive || s.worldViewActive,
   );
-  const computeHeights = () => {
-    const t = sim.state.terrain;
-    const N = t.size;
-    const h = new Float32Array(N * N);
-    for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N; x++) {
-        const idx = y * N + x;
-        h[x + y * N] = terrainLevel?.get(idx) ?? t.worldY(x, y);
-      }
-    }
-    return h;
-  };
+  // Column-major fill + exact mesh-matched sizing — see terrainCollider.ts for the rapier
+  // layout contract (the old inline row-major fill mirrored the island across the diagonal).
+  const computeHeights = () =>
+    computeColliderHeights(sim.state.terrain, terrainLevel);
   const [colliderHeights, setColliderHeights] = useState<Float32Array>(computeHeights);
   useEffect(() => {
     if (editing) return; // frozen while building — recomputed when the builder closes
@@ -115,13 +108,13 @@ export function R3FTerrain({ sim, terrainLevel }: R3FTerrainProps) {
   // collider whenever anything re-renders R3FWorld (builder toggles, road edits, ...).
   const colliderArgs = useMemo(
     () =>
-      [N - 1, N - 1, Array.from(colliderHeights), { x: N * 4, y: 1, z: N * 4 }] as const,
+      [N - 1, N - 1, Array.from(colliderHeights), colliderScale(N)] as const,
     [colliderHeights, N],
   );
   return (
     <group>
       <primitive object={terrainGroup} />
-      <RigidBody type="fixed" colliders={false}>
+      <RigidBody type="fixed" colliders={false} position={COLLIDER_CENTER}>
         <HeightfieldCollider args={colliderArgs as any} />
       </RigidBody>
     </group>
