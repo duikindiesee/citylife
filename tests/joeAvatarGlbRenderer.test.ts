@@ -16,7 +16,7 @@ describe("Joe v3 animated GLB renderer contract", () => {
     expect(rendererSource).toContain("citizen-avatar-instanced-crabs");
     expect(rendererSource).toContain("this.avatarMesh.setMatrixAt");
     expect(rendererSource).toContain(
-      "this.updateNamedAvatarMixers(this.clock.getDelta())",
+      "this.updateNamedAvatarMixers(presentationDelta)",
     );
   });
 
