@@ -63,18 +63,20 @@ Fixes, layered:
 - **`Terrain.worldYAt(x, y)`** — clamped bilinear over the four surrounding cells; the ONE
   continuous ground sampler (the legacy `PlanetRenderer.groundY` maths, promoted onto
   `Terrain`). `roadSurface.getSmoothRoadY` now delegates to it too, so roads and pads ride
-  the same ground model — and so does the legacy `PlanetRenderer` itself: its private
-  `groundY` and the inline bilinear inside `smoothRoadY` are delegations now, with
-  `tests/groundSamplerParity.test.ts` pinning the exact drop-in (edges included) before the
-  private copies were removed. `worldY` keeps raw-index semantics with NO validity check —
+  the same ground model. The legacy `PlanetRenderer`'s private `groundY` and the inline
+  bilinear inside `smoothRoadY` were first turned into delegations, and then the whole
+  legacy module was deleted (it had no importers left on this line);
+  `tests/groundSamplerParity.test.ts` keeps the retired formulas verbatim as in-test
+  references and still pins the exact drop-in (edges included).
+  `worldY` keeps raw-index semantics with NO validity check —
   it is the sim's hottest function, and even a DEV-only assertion slowed the suite ~50%
   (tried and reverted); the guards below catch off-grid writes downstream instead.
-- **`padSeatY`** — the exported seat formula; `useTerrainLeveling`, ZoneManager
-  (`R3FPlanetRenderer`) and the legacy `PlanetRenderer`'s homestead + commercial seats
-  (`seatOf`/`seatY`) all call it, so seat and pad can no longer drift in either renderer
-  (the legacy module also imports the shared `RENDER_DRY_FLOOR` instead of carrying its own
-  copy). Falls to the dry floor on a corrupt (non-finite) zone instead of seating a mesh
-  at NaN.
+- **`padSeatY`** — the exported seat formula; `useTerrainLeveling` and ZoneManager
+  (`R3FPlanetRenderer`) both call it, so seat and pad can no longer drift. (The legacy
+  `PlanetRenderer`'s homestead + commercial seats delegated to it too — and shared
+  `RENDER_DRY_FLOOR` — until that module was deleted; the parity test carries the retired
+  seat formula verbatim.) Falls to the dry floor on a corrupt (non-finite) zone instead of
+  seating a mesh at NaN.
 - **The leveling map refuses non-finite overrides** — writes are guarded, the finished map
   is swept (covers `applyCoastalCommercialDryBlend`, which writes with its own putter),
   and one `console.warn` per recompute reports how many were dropped. A corrupt ribbon
