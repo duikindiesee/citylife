@@ -8,13 +8,11 @@ import {
 
 // Spec 128 follow-up — the legacy PlanetRenderer dedup. The legacy renderer carried private
 // copies of the continuous ground sampler (groundY: corner-clamped bilinear with a zero
-// floor, plus the inline bilinear inside smoothRoadY) and the pad-seat formula. Those were
-// turned into delegations to the shared Terrain.worldYAt / padSeatY, and the legacy module
-// has since been deleted — this test is now the only carrier of the retired formulas and
-// pins that the shared helpers are EXACT drop-ins — including out-of-range positions, where
-// the implementations clamp differently (legacy clamps the four corner indices; worldYAt
-// clamps the position itself). The reference below IS the old formula, kept verbatim as the
-// contract.
+// floor, plus the inline bilinear inside smoothRoadY) and the pad-seat formula. Before those
+// delegate to the shared Terrain.worldYAt / padSeatY, this test pins that the shared helpers
+// are EXACT drop-ins — including out-of-range positions, where the implementations clamp
+// differently (legacy clamps the four corner indices; worldYAt clamps the position itself).
+// The reference below IS the old formula, kept verbatim as the contract.
 function legacyGroundY(t: Terrain, x: number, y: number): number {
   const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v));
   const x0 = Math.floor(x),

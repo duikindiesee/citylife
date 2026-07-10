@@ -63,12 +63,18 @@ Fixes, layered:
 - **`Terrain.worldYAt(x, y)`** — clamped bilinear over the four surrounding cells; the ONE
   continuous ground sampler (the legacy `PlanetRenderer.groundY` maths, promoted onto
   `Terrain`). `roadSurface.getSmoothRoadY` now delegates to it too, so roads and pads ride
-  the same ground model. `worldY` keeps raw-index semantics with NO validity check — it is
-  the sim's hottest function, and even a DEV-only assertion slowed the suite ~50% (tried
-  and reverted); the guards below catch off-grid writes downstream instead.
-- **`padSeatY`** — the exported seat formula; `useTerrainLeveling` and ZoneManager
-  (`R3FPlanetRenderer`) both call it, so seat and pad can no longer drift. Falls to the
-  dry floor on a corrupt (non-finite) zone instead of seating a mesh at NaN.
+  the same ground model — and so does the legacy `PlanetRenderer` itself: its private
+  `groundY` and the inline bilinear inside `smoothRoadY` are delegations now, with
+  `tests/groundSamplerParity.test.ts` pinning the exact drop-in (edges included) before the
+  private copies were removed. `worldY` keeps raw-index semantics with NO validity check —
+  it is the sim's hottest function, and even a DEV-only assertion slowed the suite ~50%
+  (tried and reverted); the guards below catch off-grid writes downstream instead.
+- **`padSeatY`** — the exported seat formula; `useTerrainLeveling`, ZoneManager
+  (`R3FPlanetRenderer`) and the legacy `PlanetRenderer`'s homestead + commercial seats
+  (`seatOf`/`seatY`) all call it, so seat and pad can no longer drift in either renderer
+  (the legacy module also imports the shared `RENDER_DRY_FLOOR` instead of carrying its own
+  copy). Falls to the dry floor on a corrupt (non-finite) zone instead of seating a mesh
+  at NaN.
 - **The leveling map refuses non-finite overrides** — writes are guarded, the finished map
   is swept (covers `applyCoastalCommercialDryBlend`, which writes with its own putter),
   and one `console.warn` per recompute reports how many were dropped. A corrupt ribbon
@@ -81,6 +87,9 @@ Fixes, layered:
 - `e2e/houses.spec.ts`: overlays are instanced + drape (every sampled instance within 0.5
   of its cell's ground), and ZERO foliage instances inside any lot rect (first run: 19
   overlays, 21 lots, 76,237 trees, 0 on lots).
+- `tests/groundSamplerParity.test.ts` (3): the retired private formulas, kept verbatim as
+  in-test references, equal `max(0, worldYAt)` / `padSeatY` across a dense island sweep,
+  at and beyond the grid edges, and on even-width (fractional-centre) pad shapes.
 - `tests/terrainLevelingFinite.test.ts` (6): worldYAt matches worldY on integer cells,
   stays finite/bounded at fractional + out-of-range coordinates; the real boot state
   (seed 4242) seats every commercial pad finitely and levels every footprint — a
