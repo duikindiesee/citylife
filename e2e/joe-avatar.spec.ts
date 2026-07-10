@@ -12,7 +12,9 @@ test("Joe renders as an animated GLB while the crowd remains instanced", async (
 
   expect(assetResponse.status()).toBe(200);
 
-  await page.waitForFunction(() => Boolean((window as any).__colony?.renderer?.scene));
+  await page.waitForFunction(() =>
+    Boolean((window as any).__colony?.renderer?.scene),
+  );
   await page.evaluate(() => {
     const colony = (window as any).__colony;
     const joe = colony.citizens.byId("citizen_joe");
@@ -69,14 +71,12 @@ test("Joe renders as an animated GLB while the crowd remains instanced", async (
       humanInstanceCount: scene.getObjectByName("citizen-avatar-human-bodies")
         .count,
       expectedHumanInstances: crowdAvatars.filter(
-        (avatar: any) =>
-          avatar.kind !== "crab" && avatar.avatarKind !== "crab",
+        (avatar: any) => avatar.kind !== "crab" && avatar.avatarKind !== "crab",
       ).length,
       crabInstanceCount: scene.getObjectByName("citizen-avatar-instanced-crabs")
         .count,
       expectedCrabInstances: crowdAvatars.filter(
-        (avatar: any) =>
-          avatar.kind === "crab" || avatar.avatarKind === "crab",
+        (avatar: any) => avatar.kind === "crab" || avatar.avatarKind === "crab",
       ).length,
     };
   });

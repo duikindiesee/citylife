@@ -15,11 +15,13 @@ describe("Joe v3 animated GLB renderer contract", () => {
     expect(rendererSource).toContain("citizen-avatar-human-bodies");
     expect(rendererSource).toContain("citizen-avatar-instanced-crabs");
     expect(rendererSource).toContain("this.avatarMesh.setMatrixAt");
-    expect(rendererSource).toContain("this.updateNamedAvatarMixers(this.clock.getDelta())");
+    expect(rendererSource).toContain(
+      "this.updateNamedAvatarMixers(this.clock.getDelta())",
+    );
   });
 
   it("selects Joe_idle and Joe_walk from display-name plus sim movement", () => {
-    expect(rendererSource).toContain("`${base}_${moving ? \"walk\" : \"idle\"}`");
+    expect(rendererSource).toContain('`${base}_${moving ? "walk" : "idle"}`');
     expect(rendererSource).toContain("`${first}_idle`");
     expect(rendererSource).toContain("entry.group.userData.currentAction");
   });
