@@ -36,7 +36,19 @@ function cellOkOn(terrain: Terrain, x: number, y: number): boolean {
     gy = Math.round(y);
   if (!terrain.inBounds(gx, gy)) return false;
   const i = terrain.idx(gx, gy);
-  return terrain.biome[i] !== Biome.Ocean && terrain.buildable[i] !== 0;
+  // WATER-only guard (spec 133). The old guard also rejected buildable===0 LAND — steep or
+  // sunken pockets — but the boot ways cross 59 such cells on the seeded map: each one was
+  // a HOLE in the asphalt (skipped segments — the operator's ragged edge) and a hole in the
+  // terrain grading (the ground never rose, so the spanning quads floated and the walker
+  // dropped underneath). Roads may pave over rough land — the grading reshapes it to meet
+  // them (spec 130) — but never over water (the spec-115 intent, kept).
+  const b = terrain.biome[i];
+  return (
+    b !== Biome.Ocean &&
+    b !== Biome.Shallows &&
+    b !== Biome.River &&
+    !terrain.water[i]
+  );
 }
 
 function roadSurfaceCellOk(

@@ -7,6 +7,7 @@ import { levelingSignature } from './simSignals';
 
 // Match PlanetRenderer.ts behavior
 export const RENDER_DRY_FLOOR = 0.65;
+
 const SKIRT = 4;
 const DEADZONE = 0.6;
 

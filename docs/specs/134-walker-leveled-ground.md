@@ -1,4 +1,4 @@
-# Spec 131 — the walker stands on the leveled ground
+# Spec 134 — the walker stands on the leveled ground
 
 Latent-bug fix from the spec-127 adversarial verify (PR #252, verdict P1). The first-person
 walker's spawn (`R3FPlanetRenderer`'s `startPos` memo) and its ground guardrail

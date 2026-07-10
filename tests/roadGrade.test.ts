@@ -34,6 +34,25 @@ describe("spec 130 — ribbon coverage + road grading inputs", () => {
     expect(cover.size).toBeLessThan(fromBuild.size * 1.25);
   });
 
+  it("unbuildable LAND pockets under the ways are covered (spec 133) — water never is", () => {
+    // The seeded boot ways cross dozens of buildable===0 land pockets. The old guard
+    // excluded them from BOTH the mesh and the grading: holes in the asphalt and ungraded
+    // dips the walker fell into under the spanning quads (the operator's second walk-under).
+    const cover = ribbonCoverage(ways, terrain, roadY);
+    let pocketsCovered = 0;
+    let waterCovered = 0;
+    for (const key of cover.keys()) {
+      const c = key.indexOf(",");
+      const x = +key.slice(0, c);
+      const y = +key.slice(c + 1);
+      const i = y * N + x;
+      if (terrain.water[i]) waterCovered++;
+      else if (terrain.buildable[i] === 0) pocketsCovered++;
+    }
+    expect(pocketsCovered).toBeGreaterThan(0); // pockets now graded + paved
+    expect(waterCovered).toBe(0); // the spec-115 water guard holds
+  });
+
   it("a short steep player-style road yields real gaps for the grading to close", () => {
     const DEADZONE = 0.6;
     // find the steepest short hop (6 cells apart) on buildable dry land

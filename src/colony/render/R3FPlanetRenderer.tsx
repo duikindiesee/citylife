@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Canvas } from '@react-three/fiber';
-import { Sky, ContactShadows } from '@react-three/drei';
+import { ContactShadows } from '@react-three/drei';
 import { EffectComposer, Bloom, ToneMapping } from '@react-three/postprocessing';
 import { Physics, RigidBody } from '@react-three/rapier';
 import { ToneMappingMode } from 'postprocessing';
@@ -68,6 +68,13 @@ import { R3FBus } from './R3FBus';
 import { R3FRace } from './R3FRace';
 import { R3FTarentaal } from './R3FTarentaal';
 import { R3FArtifacts } from './R3FArtifacts';
+import { R3FPorters } from './R3FPorters';
+import { R3FOperatorCar } from './R3FOperatorCar';
+import { R3FRallyNameplates } from './R3FRallyNameplates';
+import { R3FCameraDirector } from './R3FCameraDirector';
+import { R3FCommercialDistrict } from './R3FCommercialDistrict';
+import { R3FDarkCity } from './R3FDarkCity';
+import { isPublicSafe } from '../newcomers';
 
 function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) {
   const state = sim.state;
@@ -80,7 +87,8 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
   // Subscribe to the mutable sim — a lot placed, demolished or built must re-render here.
   const zoneSig = useSimSignal(runtime, () => zoneSignature(state));
   const buildings = useMemo(() => {
-    const elements = [];
+    const elements: React.ReactElement[] = [];
+    const overlays: React.ReactElement[] = [];
 
     if (state.cityPlan) {
       const size = state.terrain.size;
@@ -144,17 +152,25 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
           }
         } else {
           // Unbuilt/zoned plot: the draped per-cell "purchasable land" tint (spec 128).
-          elements.push(
+          // Gated by the HUD zones toggle (spec 131) via the zone-overlays group below.
+          overlays.push(
             <ZoneLotOverlay key={`zone-ground-${lot.id}`} lot={lot} terrain={state.terrain} />
           );
         }
       }
     }
 
-    return elements;
+    return { elements, overlays };
   }, [sim, zoneSig, assets]);
 
-  return <group>{buildings}</group>;
+  return (
+    <group>
+      {buildings.elements}
+      <group name="zone-overlays" visible={state.zonesVisible !== false}>
+        {buildings.overlays}
+      </group>
+    </group>
+  );
 }
 
 const DAY_BG = new THREE.Color('#5b9bd5'); // Softer, desaturated daytime blue
@@ -165,7 +181,6 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
   const fogRef = useRef<THREE.FogExp2>(null);
   const ambientLightRef = useRef<THREE.AmbientLight>(null);
   const dirLightRef = useRef<THREE.DirectionalLight>(null);
-  const skyRef = useRef<any>(null); // Sky doesn't easily support ref updates for sunPosition in some versions, but we can pass it via props if we use state. But wait, useFrame is better! Let's update it.
 
   // The shadow map used to re-render EVERY frame (three's autoUpdate default) over every
   // castShadow caster — thousands of foliage instances, houses and crowds — because the sun
@@ -183,11 +198,12 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
   }, [gl]);
 
   useFrame(() => {
-    // Build mode always shows daylight (operator request): clamp the clock to noon while the
-    // builder or world view is open — both are working modes where night lighting makes
-    // placement unusable. getState() (not a hook) so the frame loop never re-renders React.
-    const { builderActive, worldViewActive } = useRoadNetwork.getState();
-    const time = (builderActive || worldViewActive)
+    // Build mode always shows daylight (operator request): clamp the clock to noon while
+    // the BUILDER is open. World view is NOT clamped (spec 136) — the floating-island
+    // night vista (stars, gas giant, lit roads) lives there, and clamping it made night
+    // unreachable from above. getState() (not a hook) so the frame loop never re-renders.
+    const { builderActive } = useRoadNetwork.getState();
+    const time = builderActive
       ? 12
       : sim.state.clock.hour + sim.state.clock.minute / 60;
 
@@ -232,9 +248,6 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
       }
       dirLightRef.current.intensity = dayFactor * 2;
     }
-    if (skyRef.current?.material) {
-      skyRef.current.material.uniforms.sunPosition.value.set(sunX, sunY, sunZ);
-    }
     if ((shadowFrame.current++ & 3) === 0) gl.shadowMap.needsUpdate = true;
   });
 
@@ -256,7 +269,9 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
         shadow-camera-bottom={-200}
         shadow-camera-far={500}
       />
-      <Sky ref={skyRef} turbidity={0.1} rayleigh={0.5} mieCoefficient={0.005} />
+      {/* Spec 136 — no Sky dome: the sky has always been the lerped background colour (the
+          drei Sky sat beyond the old far plane, invisible; the raised far plane let a corner
+          of its box in as a beige wall). The void + stars + gas giant ARE the sky. */}
     </>
   );
 }
@@ -264,10 +279,19 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
 /** Live probe in the spirit of window.__colony — exposes the three.js scene so Playwright
  *  specs (and the operator console) can assert on what is actually rendered, not just on
  *  sim state. See e2e/reactivity.spec.ts. */
+/** Module-scoped bridge from the R3F store to the imperative PlanetRenderer class — the
+ *  snapshot button (capturePNG, spec 131) needs the live renderer/scene/camera. */
+const r3fProbe: {
+  gl: THREE.WebGLRenderer | null;
+  scene: THREE.Scene | null;
+  camera: THREE.Camera | null;
+} = { gl: null, scene: null, camera: null };
+
 function SceneProbe() {
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls);
+  const gl = useThree((s) => s.gl);
   useEffect(() => {
     const w = window as unknown as {
       __r3fScene?: THREE.Scene;
@@ -279,12 +303,20 @@ function SceneProbe() {
     // on (screenshots of roads/junctions), not just count meshes.
     w.__r3fCamera = camera;
     w.__r3fControls = controls;
+    r3fProbe.gl = gl;
+    r3fProbe.scene = scene;
+    r3fProbe.camera = camera;
     return () => {
       if (w.__r3fScene === scene) w.__r3fScene = undefined;
       if (w.__r3fCamera === camera) w.__r3fCamera = undefined;
       if (w.__r3fControls === controls) w.__r3fControls = undefined;
+      if (r3fProbe.gl === gl) {
+        r3fProbe.gl = null;
+        r3fProbe.scene = null;
+        r3fProbe.camera = null;
+      }
     };
-  }, [scene, camera, controls]);
+  }, [scene, camera, controls, gl]);
   return null;
 }
 
@@ -432,10 +464,11 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
   // Update dynamic lights / animations on lighthouse and venue props in frame loop
   useFrame((state) => {
     const timeMs = state.clock.getElapsedTime() * 1000;
-    // Same daylight clamp as DayNightCycle — the lighthouse beacon and venue lamps must not
-    // burn their night lights while the builder forces daylight.
-    const { builderActive, worldViewActive } = useRoadNetwork.getState();
-    const time = (builderActive || worldViewActive)
+    // Same daylight clamp as DayNightCycle — the lighthouse beacon and venue lamps must
+    // not burn their night lights while the builder forces daylight. World view stays
+    // unclamped (spec 136), matching the sky.
+    const { builderActive } = useRoadNetwork.getState();
+    const time = builderActive
       ? 12
       : sim.state.clock.hour + sim.state.clock.minute / 60;
     let dayFactor = 0;
@@ -475,7 +508,10 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
       <Physics>
         {/* Stage 0 — the world exists: terrain, sea, camera, physics floor */}
         <R3FTerrain sim={sim} terrainLevel={debouncedTerrainLevel} />
-        <R3FOcean size={terrainSize} />
+        {/* Spec 136 — the ocean reaches the Dark City slab's waterline (0.72 × the world
+            width, like legacy). The old cell-count size left a 4×-too-small puddle that cut
+            through mid-island terrain and bared the void at the coasts. */}
+        <R3FOcean size={terrainSize * 2.9} />
 
         {/* Stage 1 — the city arrives (spec 117) */}
         {bootStage >= 1 && (
@@ -496,12 +532,18 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
             <R3FRace sim={sim} />
             <R3FTarentaal sim={sim} />
             <R3FArtifacts sim={sim} />
+            <R3FPorters sim={sim} />
+            <R3FOperatorCar sim={sim} runtime={runtime} />
+            <R3FRallyNameplates sim={sim} runtime={runtime} refs={avatarRefs} />
+            <R3FCameraDirector sim={sim} />
+            <R3FCommercialDistrict sim={sim} runtime={runtime} terrainLevel={debouncedTerrainLevel} />
           </>
         )}
 
         {/* Stage 2 — the dressing lands (spec 117) */}
         {bootStage >= 2 && (
           <>
+            <R3FDarkCity sim={sim} />
             <R3FCloud worldSize={terrainSize} />
             {/* Founders' Lighthouse and Rally Overlook static props */}
             {shoreProps && <primitive object={shoreProps.group} />}
@@ -538,6 +580,7 @@ export class PlanetRenderer {
   private avatarRefs: AvatarRefs = {
     source: { current: null },
     fpCitizenId: { current: null },
+    lastList: { current: null },
   };
 
   constructor(
@@ -553,8 +596,10 @@ export class PlanetRenderer {
     container.style.zIndex = '-1';
 
     this.root = createRoot(container);
+    // Spec 136 — the far plane reaches the starfields (5-6.7k) and the gas giant (3.7k);
+    // near raised to keep the depth ratio sane. The old far of 1000 culled the cosmos.
     this.root.render(
-      <Canvas shadows camera={{ fov: 45, far: 1000 }}>
+      <Canvas shadows camera={{ fov: 45, near: 0.5, far: 12000 }}>
         <R3FWorld sim={this.sim} runtime={this.runtime} avatarRefs={this.avatarRefs} />
       </Canvas>
     );
@@ -570,9 +615,28 @@ export class PlanetRenderer {
   dispose() { this.root.unmount(); }
 
   firstPersonPNG(_home: { x: number; y: number }, _look: { x: number; y: number }): string | null { return null; }
-  capturePNG(): string | null { return null; }
+  capturePNG(): string | null {
+    // Spec 131 — the HUD snapshot button. R3F does not preserve the drawing buffer, so
+    // render one fresh frame straight through the base renderer (no postprocessing) and
+    // read it out before the buffer is cleared. The mounted EffectComposer forces
+    // gl.toneMapping to none (it tone-maps in its own pass), so reapply ACES for this one
+    // frame or the capture comes out washed out vs the on-screen look (verify F4).
+    const { gl, scene, camera } = r3fProbe;
+    if (!gl || !scene || !camera) return null;
+    const prevToneMapping = gl.toneMapping;
+    try {
+      gl.toneMapping = THREE.ACESFilmicToneMapping;
+      gl.render(scene, camera);
+      return gl.domElement.toDataURL("image/png");
+    } finally {
+      gl.toneMapping = prevToneMapping;
+    }
+  }
 
-  setOperatorCar(_spec: CarSpec | null, _cell: { x: number; y: number } | null) {}
+  setOperatorCar(spec: CarSpec | null, cell: { x: number; y: number } | null) {
+    // Spec 131 — the raceState precedent: attach on sim.state, R3FOperatorCar renders it.
+    this.sim.state.operatorCar = spec && cell ? { spec, cell } : null;
+  }
   // Spec 120 — the first-person citizen is hidden from the avatar layer (the player IS
   // that citizen), matching the legacy renderer.
   enterFirstPerson(id: string) { this.avatarRefs.fpCitizenId.current = id; }
@@ -583,7 +647,17 @@ export class PlanetRenderer {
   setView(_mode: ViewMode) {}
   setCameraPreset(_preset: CameraPreset) {}
   applyPreset(_preset: CameraPreset) {}
-  setCinematic(_on: boolean) {}
+  setCinematic(on: boolean) {
+    // Spec 131 — R3FCameraDirector orbits the landing while true (the login backdrop).
+    this.sim.state.cinematic = on;
+  }
+  setRallyPresentCitizens(citizens: { id: string; displayName: string }[]) {
+    // Spec 131 — public-safe filter at the bridge (legacy behavior), then the raceState
+    // precedent: attach on sim.state, R3FRallyNameplates renders the plates.
+    this.sim.state.rallyPresence = (citizens ?? []).filter(
+      (c) => isPublicSafe(c.id) && isPublicSafe(c.displayName),
+    );
+  }
 
   setAvatarView(_avatars: AvatarView[]) {}
   // Spec 120 — the runtime registers its live per-frame avatar feed here; R3FAvatars
@@ -592,8 +666,13 @@ export class PlanetRenderer {
   setBarState(_cells: unknown[], _occupants: unknown[], _by: unknown[]) {}
 
   syncTerrain(_t: Terrain) {}
-  setZoningVisible(_v: boolean) {}
-  setZonesVisible(_v: boolean) {}
+  setZoningVisible(v: boolean) {
+    this.setZonesVisible(v);
+  }
+  setZonesVisible(v: boolean) {
+    // Spec 131 — the HUD zones toggle; ZoneManager hides the unbuilt-lot overlays.
+    this.sim.state.zonesVisible = v;
+  }
 
   setNeighborhood(_n: Neighborhood) {}
   setCommercialDistrict(_d: CommercialDistrict | null | undefined) {}
