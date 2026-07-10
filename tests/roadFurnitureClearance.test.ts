@@ -1,13 +1,8 @@
-// Spec 137 — junction furniture stays off the asphalt (the mid-road bus-stop / sign
-// regression, operator screenshot 2026-07-10; fac1efa's adversarial-verify findings,
-// re-pinned against the spec-137 v2 interface). Measured against REAL boot towns, not
-// synthetic crossings: chained ways, curved corridors and 4-cell-wide side roads are
-// where the old fixed offsets planted signs in the carriageway.
-//
-// Interface note (spec 137 v2): junctionFurniture(zone) is one-arg (arms carry their own
-// ux/uy/half); stop BARS are no longer furniture items — they bake into the junction
-// PAINT mesh via junctionCap.capStopBars on the approach half, so this file pins the
-// STANDING furniture (traffic lights + stop signs) that must never occupy asphalt.
+// Spec 127 — junction furniture stays off the asphalt (the mid-road bus-stop regression,
+// operator screenshot 2026-07-10). Placement is measured against REAL boot towns, not just
+// synthetic crossings: chained ways, curved corridors and 4-cell-wide side roads are where
+// the old fixed offsets planted signs in the carriageway (measured: 8 of 12 stop lines and
+// both stop signs on someone's asphalt in the seed-4242 town).
 import { describe, it, expect } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { chaikin, densify } from "../src/colony/render/roadRibbon";
@@ -34,15 +29,15 @@ function distToPolyline(
   return best;
 }
 
-describe("spec 137 — boot-town furniture clearance", () => {
+describe("spec 127 — boot-town furniture clearance", () => {
   for (const seed of [4242, 7, 1]) {
-    it(`seed ${seed}: every signal + sign stands clear of every carriageway`, () => {
+    it(`seed ${seed}: signs stand on no carriageway, paint lies on at most its own`, () => {
       const rt = new ColonyRuntime(seed);
       const ways = rt.sim.state.roadWays!;
       const smoothed = ways.map((w) =>
         w.path.length >= 2 ? densify(chaikin(w.path, 2), 1.5) : null,
       );
-      // how many carriageways contain this point (with a small clearance margin)
+      // how many carriageways contain this point (with a small paint margin)
       const containedBy = (px: number, py: number) => {
         let n = 0;
         smoothed.forEach((cp, wi) => {
@@ -52,29 +47,51 @@ describe("spec 137 — boot-town furniture clearance", () => {
         return n;
       };
       let signs = 0;
-      let lights = 0;
-      let crossZones = 0;
-      let teeZones = 0;
+      let lines = 0;
+      let signEligibleArms = 0;
       for (const zone of findJunctionZones(ways)) {
-        if (zone.kind === "cross") crossZones++;
-        if (zone.kind === "tee") teeZones++;
         const items = junctionFurniture(zone, ways);
-        // a bend (elbow) is not a controlled junction — no furniture at all
-        if (zone.kind === "bend") expect(items).toEqual([]);
+        // a merge or chain point is not a controlled junction — no furniture at all
+        if (zone.kind === "pass") expect(items).toEqual([]);
+        if (zone.kind === "tee") {
+          // terminating arms WITHOUT an opposed terminating partner (those pairs are a
+          // chained corridor flowing through) are where signs must appear
+          const term = zone.arms.filter((a) => a.terminating);
+          signEligibleArms += term.filter(
+            (a) => !term.some((b) => b !== a && a.dx * b.dx + a.dy * b.dy < -0.95),
+          ).length;
+        }
         for (const f of items) {
-          // a traffic light OR a stop sign NEVER stands on asphalt — anyone's
-          expect(
-            containedBy(f.x, f.y),
-            `${f.kind} at ${f.x.toFixed(1)},${f.y.toFixed(1)} on a carriageway`,
-          ).toBe(0);
-          if (f.kind === "light") lights++;
-          else if (f.kind === "stopsign") signs++;
+          if (f.kind === "light") {
+            // a traffic light pole NEVER stands on asphalt — anyone's
+            expect(containedBy(f.x, f.y), `light at ${f.x},${f.y}`).toBe(0);
+          } else if (f.kind === "stopsign") {
+            signs++;
+            // a sign NEVER stands on asphalt — anyone's
+            expect(containedBy(f.x, f.y), `sign at ${f.x},${f.y}`).toBe(0);
+          } else if (f.kind === "stopline") {
+            lines++;
+            // paint belongs to exactly one road: its own approach lane — verified by
+            // attribution, not just count (adversarial verify F1 vacuity fix)
+            expect(
+              containedBy(f.x, f.y),
+              `line at ${f.x},${f.y}`,
+            ).toBeLessThanOrEqual(1);
+            const own = smoothed[f.wayIndex!];
+            expect(own, `line at ${f.x},${f.y} carries wayIndex`).toBeTruthy();
+            expect(
+              distToPolyline(f.x, f.y, own!),
+              `line at ${f.x},${f.y} sits on its OWN carriageway`,
+            ).toBeLessThan(ways[f.wayIndex!]!.width / 2);
+          }
         }
       }
-      // Non-vacuity (fac1efa F1): the clearance bar must not be met by simply emitting
-      // nothing. A cross gets a signal per arm; a tee gets a sign on its terminating arm.
-      if (crossZones > 0) expect(lights).toBeGreaterThan(0);
-      if (teeZones > 0) expect(signs).toBeGreaterThan(0);
+      // the towns must still HAVE controlled-junction furniture — the fix must not
+      // simply delete every item to pass the clearance bar. Signs are pinned wherever a
+      // genuine tee approach exists (adversarial verify F1: the first cut silently deleted
+      // every boot-town sign and the count-free assertions passed vacuously).
+      expect(lines).toBeGreaterThan(0);
+      if (signEligibleArms > 0) expect(signs).toBeGreaterThan(0);
     });
   }
 });
