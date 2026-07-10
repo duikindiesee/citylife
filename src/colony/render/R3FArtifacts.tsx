@@ -8,7 +8,8 @@ import {
   summarizeRenderableArtifacts,
   type ArtifactKind,
 } from '../artifacts';
-import { buildArtifactAssets, artifactTransform, type ArtifactAsset } from './artifactLayer';
+import { buildArtifactAssets, artifactTransform,
+  nudgeOffRoads, type ArtifactAsset } from './artifactLayer';
 
 // Spec 126 — the civic-art artifacts. The catalog is deterministic ColonySim state
 // (sim.state.artifacts), so this reads sim.state each frame and syncs one fixed-capacity
@@ -44,17 +45,23 @@ export function R3FArtifacts({ sim, terrainLevel }: R3FArtifactsProps) {
   // exists), so a mount-time effect places everything — the old useFrame re-summarized and
   // re-allocated per frame for a static scene.
   useEffect(() => {
-    const { counts, renderable } = summarizeRenderableArtifacts(sim.state.artifacts, ARTIFACT_CATALOG_SIZE);
+    const { renderable } = summarizeRenderableArtifacts(sim.state.artifacts, ARTIFACT_CATALOG_SIZE);
     const size = sim.state.terrain.size;
     const groundY = (x: number, y: number) => leveledWorldY(sim.state.terrain, terrainLevel, x, y);
+    // Spec 126 revision — the widened carriageway paves over civic-art cells (the golden
+    // wayfinder standing in the road was the operator's "bus stop"). Nudge to the nearest
+    // unpaved cell, or hide when the block is all asphalt.
+    const isRoad = (x: number, y: number) => sim.state.roadSet?.has?.(`${x},${y}`) ?? false;
 
     for (const kind of ARTIFACT_KINDS) placed.current[kind] = 0;
     for (const item of renderable) {
       const mesh = meshes.current[item.kind as ArtifactKind];
       if (!mesh) continue;
+      const spot = nudgeOffRoads(item, isRoad, size);
+      if (!spot) continue; // fully paved over — the road won
       const idx = placed.current[item.kind as ArtifactKind]++;
       if (idx >= mesh.instanceMatrix.count) continue; // never exceed the allocated cap
-      const t = artifactTransform(item, size, groundY);
+      const t = artifactTransform({ ...item, x: spot.x, y: spot.y }, size, groundY);
       scratch.pos.set(t.wx, t.wy, t.wz);
       scratch.quat.setFromAxisAngle(scratch.axis, t.rotY);
       scratch.scale.set(t.scaleW, 1, t.scaleH);
@@ -64,7 +71,8 @@ export function R3FArtifacts({ sim, terrainLevel }: R3FArtifactsProps) {
     for (const kind of ARTIFACT_KINDS) {
       const mesh = meshes.current[kind];
       if (!mesh) continue;
-      mesh.count = counts[kind];
+      // placed count, not catalog count — nudge-skipped items must not render stale matrices
+      mesh.count = placed.current[kind];
       mesh.instanceMatrix.needsUpdate = true;
     }
   }, [sim, assets, scratch, terrainLevel]);

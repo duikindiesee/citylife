@@ -82,6 +82,12 @@ describe("spec 127 — junction furniture", () => {
     const zones = findJunctionZones(ways);
     const items = junctionFurniture(zones[0]!, ways);
     expect(items.filter((i) => i.kind === "light").length).toBe(4);
+    // every pole stands clear of BOTH carriageways (verify follow-up: lights were the one
+    // furniture kind the clearance rules never measured)
+    for (const l of items.filter((i) => i.kind === "light")) {
+      expect(Math.abs(l.y - 50)).toBeGreaterThan(2.3);
+      expect(Math.abs(l.x - 50)).toBeGreaterThan(2.3);
+    }
     expect(items.filter((i) => i.kind === "stopline").length).toBe(4);
     expect(items.filter((i) => i.kind === "stopsign").length).toBe(0);
     // each stop line sits OUTSIDE the slab on its own compass arm

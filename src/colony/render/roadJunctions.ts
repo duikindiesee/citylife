@@ -222,15 +222,6 @@ export function junctionFurniture(
   const items: FurnitureItem[] = [];
   const { cx, cy, half } = zone;
   if (zone.kind === "pass") return items;
-  if (zone.kind === "cross") {
-    const off = half + 0.4;
-    items.push(
-      { kind: "light", x: cx + off, y: cy - off, rotY: Math.PI },
-      { kind: "light", x: cx + off, y: cy + off, rotY: -Math.PI / 2 },
-      { kind: "light", x: cx - off, y: cy + off, rotY: 0 },
-      { kind: "light", x: cx - off, y: cy - off, rotY: Math.PI / 2 },
-    );
-  }
   // smoothed centre-lines, matching the geometry the ribbon actually draws
   const smoothed = ways.map((w) =>
     w.path.length >= 2 ? densify(chaikin(w.path, 2), 1.5) : null,
@@ -244,6 +235,32 @@ export function junctionFurniture(
     }
     return true;
   };
+  // Traffic lights only at a REAL crossing — one with through traffic (2+ non-terminating
+  // arms). A "cross" assembled from chained-corridor compass artifacts has none. Each pole
+  // slides outward along its corner diagonal until it stands clear of EVERY carriageway,
+  // and is skipped when nowhere within reach does — a light pole in the road was the
+  // operator's original mid-road bus-stop lookalike.
+  if (
+    zone.kind === "cross" &&
+    zone.arms.filter((a) => !a.terminating).length >= 2
+  ) {
+    const corners: Array<[number, number, number]> = [
+      [1, -1, Math.PI],
+      [1, 1, -Math.PI / 2],
+      [-1, 1, 0],
+      [-1, -1, Math.PI / 2],
+    ];
+    for (const [ux, uy, rotY] of corners) {
+      for (let off = half + 0.4; off <= half + 5; off += 0.25) {
+        const px = cx + ux * off;
+        const py = cy + uy * off;
+        if (clears(px, py, -1, false)) {
+          items.push({ kind: "light", x: px, y: py, rotY });
+          break;
+        }
+      }
+    }
+  }
   const candidates =
     zone.kind === "cross"
       ? zone.arms

@@ -62,7 +62,10 @@ describe("spec 127 — boot-town furniture clearance", () => {
           ).length;
         }
         for (const f of items) {
-          if (f.kind === "stopsign") {
+          if (f.kind === "light") {
+            // a traffic light pole NEVER stands on asphalt — anyone's
+            expect(containedBy(f.x, f.y), `light at ${f.x},${f.y}`).toBe(0);
+          } else if (f.kind === "stopsign") {
             signs++;
             // a sign NEVER stands on asphalt — anyone's
             expect(containedBy(f.x, f.y), `sign at ${f.x},${f.y}`).toBe(0);
