@@ -15,7 +15,7 @@ test('boot renders no NaN geometry and no computeBoundingSphere NaN errors', asy
       nanErrors.push(m.text().slice(0, 160));
   });
 
-  await page.goto('/');
+  await page.goto('/?skipauth=1');
   await page.waitForSelector('canvas', { timeout: 30000 });
   await page.waitForFunction(() => !!(window as any).__r3fScene && !!(window as any).__colony, undefined, { timeout: 30000 });
   // stage 1 (the city) has arrived when the ribbon layer exists (roadRibbons.spec.ts precedent);
