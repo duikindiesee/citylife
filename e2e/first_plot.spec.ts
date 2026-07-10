@@ -4,7 +4,7 @@ test('Builds a road, waits for a house to spawn, and explores in First Person', 
   test.setTimeout(300000); // Allow time for loading and simulation
 
   console.log('Navigating to CityLife...');
-  await page.goto('/');
+  await page.goto('/?skipauth=1');
 
   // Wait for the simulation to be ready by checking if the canvas is rendered
   await page.waitForSelector('canvas', { timeout: 30000 });
