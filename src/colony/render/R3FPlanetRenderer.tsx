@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { Canvas } from '@react-three/fiber';
-import { Sky, ContactShadows } from '@react-three/drei';
+import { ContactShadows } from '@react-three/drei';
 import { EffectComposer, Bloom, ToneMapping } from '@react-three/postprocessing';
 import { Physics, RigidBody } from '@react-three/rapier';
 import { ToneMappingMode } from 'postprocessing';
@@ -73,6 +73,7 @@ import { R3FOperatorCar } from './R3FOperatorCar';
 import { R3FRallyNameplates } from './R3FRallyNameplates';
 import { R3FCameraDirector } from './R3FCameraDirector';
 import { R3FCommercialDistrict } from './R3FCommercialDistrict';
+import { R3FDarkCity } from './R3FDarkCity';
 import { isPublicSafe } from '../newcomers';
 
 function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) {
@@ -182,7 +183,6 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
   const fogRef = useRef<THREE.FogExp2>(null);
   const ambientLightRef = useRef<THREE.AmbientLight>(null);
   const dirLightRef = useRef<THREE.DirectionalLight>(null);
-  const skyRef = useRef<any>(null); // Sky doesn't easily support ref updates for sunPosition in some versions, but we can pass it via props if we use state. But wait, useFrame is better! Let's update it.
 
   // The shadow map used to re-render EVERY frame (three's autoUpdate default) over every
   // castShadow caster — thousands of foliage instances, houses and crowds — because the sun
@@ -200,11 +200,12 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
   }, [gl]);
 
   useFrame(() => {
-    // Build mode always shows daylight (operator request): clamp the clock to noon while the
-    // builder or world view is open — both are working modes where night lighting makes
-    // placement unusable. getState() (not a hook) so the frame loop never re-renders React.
-    const { builderActive, worldViewActive } = useRoadNetwork.getState();
-    const time = (builderActive || worldViewActive)
+    // Build mode always shows daylight (operator request): clamp the clock to noon while
+    // the BUILDER is open. World view is NOT clamped (spec 136) — the floating-island
+    // night vista (stars, gas giant, lit roads) lives there, and clamping it made night
+    // unreachable from above. getState() (not a hook) so the frame loop never re-renders.
+    const { builderActive } = useRoadNetwork.getState();
+    const time = builderActive
       ? 12
       : sim.state.clock.hour + sim.state.clock.minute / 60;
 
@@ -249,9 +250,6 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
       }
       dirLightRef.current.intensity = dayFactor * 2;
     }
-    if (skyRef.current?.material) {
-      skyRef.current.material.uniforms.sunPosition.value.set(sunX, sunY, sunZ);
-    }
     if ((shadowFrame.current++ & 3) === 0) gl.shadowMap.needsUpdate = true;
   });
 
@@ -273,7 +271,9 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
         shadow-camera-bottom={-200}
         shadow-camera-far={500}
       />
-      <Sky ref={skyRef} turbidity={0.1} rayleigh={0.5} mieCoefficient={0.005} />
+      {/* Spec 136 — no Sky dome: the sky has always been the lerped background colour (the
+          drei Sky sat beyond the old far plane, invisible; the raised far plane let a corner
+          of its box in as a beige wall). The void + stars + gas giant ARE the sky. */}
     </>
   );
 }
@@ -466,10 +466,11 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
   // Update dynamic lights / animations on lighthouse and venue props in frame loop
   useFrame((state) => {
     const timeMs = state.clock.getElapsedTime() * 1000;
-    // Same daylight clamp as DayNightCycle — the lighthouse beacon and venue lamps must not
-    // burn their night lights while the builder forces daylight.
-    const { builderActive, worldViewActive } = useRoadNetwork.getState();
-    const time = (builderActive || worldViewActive)
+    // Same daylight clamp as DayNightCycle — the lighthouse beacon and venue lamps must
+    // not burn their night lights while the builder forces daylight. World view stays
+    // unclamped (spec 136), matching the sky.
+    const { builderActive } = useRoadNetwork.getState();
+    const time = builderActive
       ? 12
       : sim.state.clock.hour + sim.state.clock.minute / 60;
     let dayFactor = 0;
@@ -509,7 +510,10 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
       <Physics>
         {/* Stage 0 — the world exists: terrain, sea, camera, physics floor */}
         <R3FTerrain sim={sim} terrainLevel={debouncedTerrainLevel} />
-        <R3FOcean size={terrainSize} />
+        {/* Spec 136 — the ocean reaches the Dark City slab's waterline (0.72 × the world
+            width, like legacy). The old cell-count size left a 4×-too-small puddle that cut
+            through mid-island terrain and bared the void at the coasts. */}
+        <R3FOcean size={terrainSize * 2.9} />
 
         {/* Stage 1 — the city arrives (spec 117) */}
         {bootStage >= 1 && (
@@ -541,6 +545,7 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
         {/* Stage 2 — the dressing lands (spec 117) */}
         {bootStage >= 2 && (
           <>
+            <R3FDarkCity sim={sim} />
             <R3FCloud worldSize={terrainSize} />
             {/* Founders' Lighthouse and Rally Overlook static props */}
             {shoreProps && <primitive object={shoreProps.group} />}
@@ -593,8 +598,10 @@ export class PlanetRenderer {
     container.style.zIndex = '-1';
 
     this.root = createRoot(container);
+    // Spec 136 — the far plane reaches the starfields (5-6.7k) and the gas giant (3.7k);
+    // near raised to keep the depth ratio sane. The old far of 1000 culled the cosmos.
     this.root.render(
-      <Canvas shadows camera={{ fov: 45, far: 1000 }}>
+      <Canvas shadows camera={{ fov: 45, near: 0.5, far: 12000 }}>
         <R3FWorld sim={this.sim} runtime={this.runtime} avatarRefs={this.avatarRefs} />
       </Canvas>
     );
