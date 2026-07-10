@@ -29,6 +29,12 @@ port (spec 114 lineage): every legacy method is now either ported or documented 
   and reads out a PNG data URL.
 - **Zones toggle** — `setZonesVisible`/`setZoningVisible` set `sim.state.zonesVisible`;
   ZoneManager gates the unbuilt-lot overlays behind a named group (`zone-overlays`).
+- **Ask Kooker entry point** — the board link (PR #240) was a hardcoded fixed pill in
+  `index.html` at the viewport's top-right, `z-index` 9999, which sat ON TOP of the
+  topbar's Log out button and blocked it. It is now a `.linkbtn` anchor inside the
+  topbar's trailing group beside Log out (`ColonyApp.tsx`), styled like a `.group`
+  button; the login screen keeps its own `login-link` to the board, so the pre-login
+  path is unchanged.
 
 ## Retired as obsolete in v3 (no callers, or replaced by v3 systems)
 
