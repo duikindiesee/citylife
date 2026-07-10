@@ -78,11 +78,9 @@ describe("spec 127 — way-based junction zones", () => {
 
 describe("spec 127 — junction furniture", () => {
   it("a crossing gets 4 traffic lights and 4 stop lines, square on the compass", () => {
-    const zones = findJunctionZones([
-      straight(0, 50, 100, 50),
-      straight(50, 0, 50, 100),
-    ]);
-    const items = junctionFurniture(zones[0]!);
+    const ways = [straight(0, 50, 100, 50), straight(50, 0, 50, 100)];
+    const zones = findJunctionZones(ways);
+    const items = junctionFurniture(zones[0]!, ways);
     expect(items.filter((i) => i.kind === "light").length).toBe(4);
     expect(items.filter((i) => i.kind === "stopline").length).toBe(4);
     expect(items.filter((i) => i.kind === "stopsign").length).toBe(0);
@@ -95,11 +93,9 @@ describe("spec 127 — junction furniture", () => {
   });
 
   it("a tee gets a stop sign + stop line on the terminating arm only", () => {
-    const zones = findJunctionZones([
-      straight(0, 50, 100, 50),
-      straight(50, 0, 50, 49),
-    ]);
-    const items = junctionFurniture(zones[0]!);
+    const ways = [straight(0, 50, 100, 50), straight(50, 0, 50, 49)];
+    const zones = findJunctionZones(ways);
+    const items = junctionFurniture(zones[0]!, ways);
     expect(items.filter((i) => i.kind === "light").length).toBe(0);
     expect(items.filter((i) => i.kind === "stopline").length).toBe(1);
     expect(items.filter((i) => i.kind === "stopsign").length).toBe(1);
@@ -110,5 +106,42 @@ describe("spec 127 — junction furniture", () => {
     expect(line.y).toBeLessThan(z.cy);
     expect(line.x).toBeGreaterThan(z.cx);
     expect(line.rotY).toBeCloseTo(Math.atan2(0, 1), 6); // heading +y → rotY 0
+  });
+
+  // The mid-road bus-stop regression (operator screenshot, 2026-07-10): the boot generator
+  // chains ways end-to-start along one corridor. Each chain point is a "pass" zone with two
+  // collinear terminating arms — a MERGE, not a controlled junction. The old code painted a
+  // stop line per terminating arm there, marching yellow paint down the middle of what reads
+  // as one continuous road.
+  it("a chain point — way ending where the next continues — gets NO furniture", () => {
+    const ways = [straight(0, 50, 50, 50), straight(50, 50, 100, 50)];
+    const zones = findJunctionZones(ways);
+    expect(zones.length).toBe(1);
+    expect(zones[0]!.kind).toBe("pass");
+    expect(zones[0]!.arms.filter((a) => a.terminating).length).toBe(2);
+    expect(junctionFurniture(zones[0]!, ways)).toEqual([]);
+  });
+
+  // Same regression, second defect: boot side roads are width 4, and the old fixed 1.9-cell
+  // lateral shift stood the stop sign INSIDE its own carriageway (the "bus stop" in the road).
+  it("a wide side road tee keeps the sign off every carriageway and the paint on its own", () => {
+    const ways = [straight(0, 50, 100, 50, 4), straight(50, 10, 50, 48, 4)];
+    const zones = findJunctionZones(ways);
+    expect(zones.length).toBe(1);
+    expect(zones[0]!.kind).toBe("tee");
+    const items = junctionFurniture(zones[0]!, ways);
+    const sign = items.find((i) => i.kind === "stopsign")!;
+    const line = items.find((i) => i.kind === "stopline")!;
+    expect(sign).toBeTruthy();
+    expect(line).toBeTruthy();
+    // distance from a point to each way's straight centre-line
+    const distMain = (p: { x: number; y: number }) => Math.abs(p.y - 50);
+    const distSide = (p: { x: number; y: number }) => Math.abs(p.x - 50);
+    // the sign stands clear of BOTH 4-cell carriageways (half-width 2)
+    expect(distMain(sign)).toBeGreaterThan(2.25);
+    expect(distSide(sign)).toBeGreaterThan(2.25);
+    // the paint lies on its own approach lane but clear of the main road
+    expect(distSide(line)).toBeLessThan(2);
+    expect(distMain(line)).toBeGreaterThan(2.25);
   });
 });

@@ -15,6 +15,9 @@ export interface JunctionArm {
   dy: number;
   /** True when the arm's road ENDS at this junction (a T approach). */
   terminating: boolean;
+  /** Index into the ways array of the road this arm belongs to — furniture placement
+   *  needs the arm's own carriageway width. */
+  wayIndex: number;
 }
 
 export interface JunctionZone {
@@ -136,13 +139,13 @@ export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
       if (!startsInside) {
         // approach arm from the way's near side; it terminates here if the way ends inside
         const d = unit(cp[i0]!.x - cp[i0 - 1]!.x, cp[i0]!.y - cp[i0 - 1]!.y);
-        arms.push({ ...d, terminating: endsInside });
+        arms.push({ ...d, terminating: endsInside, wayIndex: wi });
       }
       if (!endsInside) {
         // far-side arm; traffic on it approaches the junction along the reverse direction.
         // It terminates here if the way STARTS inside the zone.
         const d = unit(cp[i1]!.x - cp[i1 + 1]!.x, cp[i1]!.y - cp[i1 + 1]!.y);
-        arms.push({ ...d, terminating: startsInside });
+        arms.push({ ...d, terminating: startsInside, wayIndex: wi });
       }
       // a way both starting and ending inside is a swallowed stub — no arm
     }
@@ -160,13 +163,53 @@ export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
   return zones;
 }
 
+function distToPolyline(
+  px: number,
+  py: number,
+  pts: { x: number; y: number }[],
+): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const ax = pts[i]!.x,
+      ay = pts[i]!.y;
+    const vx = pts[i + 1]!.x - ax,
+      vy = pts[i + 1]!.y - ay;
+    const L2 = vx * vx + vy * vy || 1;
+    const t = Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / L2));
+    const dx = px - (ax + t * vx),
+      dy = py - (ay + t * vy);
+    const d = dx * dx + dy * dy;
+    if (d < best) best = d;
+  }
+  return Math.sqrt(best);
+}
+
+/** How far a point may sit INSIDE a way's paint-clearance ring: furniture must clear every
+ *  foreign carriageway edge by this margin (cells). */
+const CLEAR = 0.35;
+
 /** Lay out the 3D street furniture for one junction: traffic lights on the four corners of a
  *  crossing, a stop sign + stop line on each terminating arm of a T. Left-hand drive (SA):
  *  the approach lane is LEFT of the centre-line, the sign stands on the driver's left.
- *  Positions in grid coords; rotY already in world convention (atan2(dx, dy)). */
-export function junctionFurniture(zone: JunctionZone): FurnitureItem[] {
+ *  Positions in grid coords; rotY already in world convention (atan2(dx, dy)).
+ *
+ *  The operator's mid-road bus-stop screenshot taught this function three rules it was
+ *  breaking (measured live: 8 of 12 boot-town stop lines and BOTH stop signs stood on
+ *  someone's asphalt):
+ *   - a "pass" zone is a merge or chain point of collinear ways, not a controlled junction
+ *     — it gets NO furniture (the slab alone caps the ribbon overlap there);
+ *   - offsets must scale with the arm's OWN way width — boot roads are 4 cells wide, so
+ *     the old fixed 1.9-cell sign shift planted the sign inside its own carriageway;
+ *   - the flood-fill centroid skews toward the side road, so fixed back-offs from it do
+ *     not reliably clear the through road — each item WALKS back along its approach until
+ *     it genuinely clears every foreign carriageway (and is skipped when nowhere does). */
+export function junctionFurniture(
+  zone: JunctionZone,
+  ways: RoadWay[],
+): FurnitureItem[] {
   const items: FurnitureItem[] = [];
   const { cx, cy, half } = zone;
+  if (zone.kind === "pass") return items;
   if (zone.kind === "cross") {
     const off = half + 0.4;
     items.push(
@@ -176,6 +219,19 @@ export function junctionFurniture(zone: JunctionZone): FurnitureItem[] {
       { kind: "light", x: cx - off, y: cy - off, rotY: Math.PI / 2 },
     );
   }
+  // smoothed centre-lines, matching the geometry the ribbon actually draws
+  const smoothed = ways.map((w) =>
+    w.path.length >= 2 ? densify(chaikin(w.path, 2), 1.5) : null,
+  );
+  // the point clears every way except the item's own; ownAlso demands clearing that too
+  const clears = (px: number, py: number, ownWi: number, ownAlso: boolean) => {
+    for (let wi = 0; wi < ways.length; wi++) {
+      const cp = smoothed[wi];
+      if (!cp || (wi === ownWi && !ownAlso)) continue;
+      if (distToPolyline(px, py, cp) < ways[wi]!.width / 2 + CLEAR) return false;
+    }
+    return true;
+  };
   const lineArms =
     zone.kind === "cross"
       ? zone.arms
@@ -188,19 +244,33 @@ export function junctionFurniture(zone: JunctionZone): FurnitureItem[] {
     const dirKey = `${sx},${sy}`;
     if ((sx === 0 && sy === 0) || seenDir.has(dirKey)) continue;
     seenDir.add(dirKey);
-    const back = half + 0.55; // just outside the slab edge
-    // approach point = centroid - dir*back, shifted one cell LEFT of travel ((dy,-dx))
-    const lx = cx - sx * back + sy * 1.0;
-    const ly = cy - sy * back - sx * 1.0;
+    const ownHalf = (ways[a.wayIndex]?.width ?? 1) / 2;
     const rotY = Math.atan2(sx, sy);
-    items.push({ kind: "stopline", x: lx, y: ly, rotY });
-    if (zone.kind === "tee" && a.terminating) {
-      items.push({
-        kind: "stopsign",
-        x: cx - sx * (back + 0.4) + sy * 1.9,
-        y: cy - sy * (back + 0.4) - sx * 1.9,
-        rotY: rotY + Math.PI,
-      });
+    // The stop line paints the approach LANE — the left half of the arm's own carriageway.
+    const lat = Math.max(0.25, ownHalf / 2);
+    // Walk back from the slab edge until the paint clears every FOREIGN carriageway (its
+    // own asphalt is exactly where paint belongs). Skip the item when nowhere in reach does.
+    let lineBack = -1;
+    for (let back = half + 0.55; back <= half + 6; back += 0.25) {
+      const lx = cx - sx * back + sy * lat;
+      const ly = cy - sy * back - sx * lat;
+      if (clears(lx, ly, a.wayIndex, false)) {
+        items.push({ kind: "stopline", x: lx, y: ly, rotY });
+        lineBack = back;
+        break;
+      }
+    }
+    if (zone.kind === "tee" && a.terminating && lineBack >= 0) {
+      // The sign stands on the KERB: past its own carriageway edge, clear of everyone's.
+      const signLat = ownHalf + 0.8;
+      for (let back = lineBack + 0.4; back <= lineBack + 6; back += 0.25) {
+        const px = cx - sx * back + sy * signLat;
+        const py = cy - sy * back - sx * signLat;
+        if (clears(px, py, a.wayIndex, true)) {
+          items.push({ kind: "stopsign", x: px, y: py, rotY: rotY + Math.PI });
+          break;
+        }
+      }
     }
   }
   return items;

@@ -31,6 +31,20 @@ held ~102k nodes (3,412 "junction" decoration groups); 7 FPS with roads visible,
   z-fight that makes main's junctions read broken — plus street furniture from
   `roadFurniture.tsx`: 4 traffic lights + 4 stop lines on a crossing, a stop sign + stop
   line per terminating arm of a tee (left-hand drive). 8 real junctions vs 3,412 false ones.
+
+  **Furniture placement revision (the mid-road bus-stop regression, 2026-07-10).** The
+  operator found a "bus stop" standing in the carriageway with yellow paint marching down
+  the road. Measured live: 8 of 12 boot-town stop lines and both stop signs stood on
+  someone's asphalt. Three rules the layout now follows: a **pass** zone (a merge or chain
+  point of collinear ways — the boot generator chains ways end-to-start along corridors)
+  gets NO furniture, only the slab; lateral offsets scale with the arm's OWN way width
+  (boot roads are 4 cells wide — the fixed 1.9-cell sign shift used to land inside the
+  side road's own carriageway); and every item WALKS back along its approach until it
+  clears every foreign carriageway by 0.35 cells, or is skipped when nowhere in reach
+  does (the flood-fill centroid skews toward the side road, so fixed back-offs from it
+  cannot be trusted). Arms carry their `wayIndex` so furniture knows its own road.
+  Clearance is pinned by `tests/roadFurnitureClearance.test.ts` against three real boot
+  towns: signs on zero carriageways, paint on at most its own.
 - **`R3FRoadNetwork`** keeps only the cul-de-sac bulbs; its per-mesh trimesh colliders are
   gone (nothing collides road meshes — first-person, car and race ride `terrain.worldY` /
   `getSmoothRoadY`). `getSmoothRoadY` moved to `roadSurface.ts` (bus + race re-pointed).
