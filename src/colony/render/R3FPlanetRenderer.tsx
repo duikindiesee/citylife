@@ -72,6 +72,7 @@ import { R3FPorters } from './R3FPorters';
 import { R3FOperatorCar } from './R3FOperatorCar';
 import { R3FRallyNameplates } from './R3FRallyNameplates';
 import { R3FCameraDirector } from './R3FCameraDirector';
+import { R3FCommercialDistrict } from './R3FCommercialDistrict';
 import { isPublicSafe } from '../newcomers';
 
 function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) {
@@ -533,6 +534,7 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
             <R3FOperatorCar sim={sim} runtime={runtime} />
             <R3FRallyNameplates sim={sim} runtime={runtime} refs={avatarRefs} />
             <R3FCameraDirector sim={sim} />
+            <R3FCommercialDistrict sim={sim} runtime={runtime} terrainLevel={debouncedTerrainLevel} />
           </>
         )}
 

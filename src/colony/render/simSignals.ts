@@ -72,3 +72,12 @@ export function rallyPresenceSignature(state: ColonyState): string {
   const p = state.rallyPresence ?? [];
   return `rally${p.map((c) => `${c.id}=${c.displayName}`).join("|")}`;
 }
+
+/** R3FCommercialDistrict — the strip rebuilds when the district appears or a parcel's
+ *  business assignment changes (spec 135). Geometry bakes per build; glow/labels are
+ *  per-frame refs. */
+export function commercialSignature(state: ColonyState): string {
+  const cd = state.commercialDistrict;
+  if (!cd) return "cd-";
+  return `cd${cd.parcels.length}:${cd.parcels.map((p) => p.business ?? "-").join("|")}:${cd.garagePad ? "g" : "-"}:${cd.mallPad ? "m" : "-"}`;
+}
