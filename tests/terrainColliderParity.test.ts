@@ -27,7 +27,12 @@ function mountCollider(heights: Float32Array, N: number): RAPIER.World {
     RAPIER.RigidBodyDesc.fixed().setTranslation(...COLLIDER_CENTER),
   );
   w.createCollider(
-    RAPIER.ColliderDesc.heightfield(N - 1, N - 1, heights, colliderScale(N)),
+    RAPIER.ColliderDesc.heightfield(
+      N - 1,
+      N - 1,
+      heights,
+      colliderScale(N),
+    ),
     body,
   );
   w.step(); // build broad-phase so castRay sees the collider
@@ -35,12 +40,7 @@ function mountCollider(heights: Float32Array, N: number): RAPIER.World {
 }
 
 /** Physics ground height at a CELL's mesh position, via a straight-down raycast. */
-function physicsGroundAt(
-  w: RAPIER.World,
-  x: number,
-  y: number,
-  N: number,
-): number | null {
+function physicsGroundAt(w: RAPIER.World, x: number, y: number, N: number): number | null {
   const ray = new RAPIER.Ray(
     { x: wx(x, N), y: 500, z: wx(y, N) },
     { x: 0, y: -1, z: 0 },
@@ -110,8 +110,7 @@ describe("terrain heightfield collider parity (physics ground == rendered ground
 
   it("carries terrainLevel overrides at the overridden cell", () => {
     const N = terrain.size;
-    const x = 238,
-      y = 478;
+    const x = 238, y = 478;
     const raised = terrain.worldY(x, y) + 7.5;
     const level = new Map<number, number>([[y * N + x, raised]]);
     const w = mountCollider(computeColliderHeights(terrain, level), N);
