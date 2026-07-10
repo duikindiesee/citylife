@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
 test('R3F road ribbons: merged surface, way-based junctions, builder intact', async ({ page }) => {
   test.setTimeout(180000);
 
-  await page.goto('/');
+  await page.goto('/?skipauth=1');
   await page.waitForSelector('canvas', { timeout: 30000 });
   await page.waitForFunction(() => !!(window as any).__r3fScene && !!(window as any).__colony, undefined, { timeout: 30000 });
   // stage 1 (the city) has arrived when the ribbon layer exists

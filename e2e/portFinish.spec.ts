@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
 test('R3F port-finish: porters, nameplate layer, snapshot PNG', async ({ page }) => {
   test.setTimeout(120000);
 
-  await page.goto('/');
+  await page.goto('/?skipauth=1');
   await page.waitForSelector('canvas', { timeout: 30000 });
   await page.waitForFunction(() => !!(window as any).__r3fScene && !!(window as any).__colony, undefined, { timeout: 30000 });
   await page.waitForFunction(() => {

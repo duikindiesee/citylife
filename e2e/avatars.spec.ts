@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
 test('R3F avatars: the citizen layer draws roster avatars in the scene', async ({ page }) => {
   test.setTimeout(120000);
 
-  await page.goto('/');
+  await page.goto('/?skipauth=1');
   await page.waitForSelector('canvas', { timeout: 30000 });
   await page.waitForTimeout(5000);
 

@@ -4,7 +4,7 @@ test('Zoning and building plots E2E', async ({ page }) => {
   test.setTimeout(120000); // 2 minutes timeout
 
   console.log('Navigating to CityLife...');
-  await page.goto('/');
+  await page.goto('/?skipauth=1');
 
   // Wait for the simulation to be ready by checking if the canvas is rendered
   await page.waitForSelector('canvas', { timeout: 30000 });
