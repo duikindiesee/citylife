@@ -606,8 +606,8 @@ export class PlanetRenderer {
   }
 
   // No-op compatibility surface. R3F owns the frame loop, camera and layers, so these runtime
-  // hooks do nothing here — but they keep the signatures of the legacy canvas renderer
-  // (./PlanetRenderer.ts) so the runtime can drive either implementation.
+  // hooks do nothing here — but they keep the signatures the legacy canvas renderer exposed
+  // (deleted; see spec 128) because the runtime still calls them.
   // Legacy frame() takes no arguments, but the runtime passes the real dt (runtime.ts), so the
   // parameter is kept. The PNG captures return null (never a data URL) until R3F implements them.
   frame(_dt: number) {}
