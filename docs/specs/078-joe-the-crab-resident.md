@@ -38,14 +38,14 @@ structure, one new avatar kind.
    orange/red shell, eyes on stalks, two claws, legs, and the blue-white headset with one yellow
    lightning earcup accent — built procedurally from primitives, merged into one geometry.
 5. v3 named-citizen avatars can opt into an animated GLB with `avatarKind: 'human' | 'crab' | 'spider'`
-   plus `glbUrl`. Joe currently points at `/assets/citylife/avatars/joe-crab.glb`. His canonical v3
-   asset is a polished, glossy orange-red cartoon crab with a broad rounded shell, huge expressive
-   eyes, a friendly open smile, eight two-segment walking legs, oversized rounded claws with one
-   raised in greeting, and a white/blue gaming headset with boom microphone. Exactly one yellow
-   lightning bolt is attached to the left earcup; there are no chest badges or floating bolts. When
-   `glbUrl` is present, the renderer removes that named citizen from the instanced human/crab crowd
-   meshes and loads the GLB as an individual `THREE.Group` with an `AnimationMixer`; unnamed citizens
-   stay instanced.
+   plus `glbUrl`. Joe currently points at `/assets/citylife/avatars/joe-crab.glb`. Joe's reviewed
+   radio-canonical asset keeps shell colour `0xe2562f`, a readable low-poly crab silhouette, six-leg
+   sideways scuttle, expressive eyestalks, and the right-claw hello wave. The bright blue/white Low
+   Power Radio headset carries the primary yellow lightning mark on one visible earcup. A small
+   floating bolt remains as secondary idle beat energy, pulsing/spinning with the body bob; there is
+   no shell/chest bolt badge and no dangling under-body clutter. When `glbUrl` is present, the renderer
+   removes that named citizen from the instanced human/crab crowd meshes and loads the GLB as an
+   individual `THREE.Group` with an `AnimationMixer`; unnamed citizens stay instanced.
 6. Joe **roams** using the existing avatar loop (`stepAvatars` + `wanderIdleCitizens`) with an
    optional sideways "scuttle" gait offset; he can be **stepped into** in first-person at a crab eye
    height; his nameplate makes him findable.
