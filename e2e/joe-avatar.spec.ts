@@ -34,19 +34,27 @@ test("Joe renders as an animated GLB while the crowd remains instanced", async (
         const colony = (window as any).__colony;
         const scene = colony.renderer.scene;
         const joe = scene.getObjectByName("named-avatar:citizen_joe");
+        const entry = colony.renderer.namedAvatars.get("citizen_joe");
+        let renderableMeshCount = 0;
+        joe?.traverse((object: any) => {
+          if (object.isMesh) renderableMeshCount++;
+        });
         return {
           loaded: joe?.userData.loaded ?? false,
           currentAction: joe?.userData.currentAction ?? null,
+          idleActionRunning:
+            entry?.actions.get("Joe_idle")?.isRunning() ?? false,
           visible: joe?.visible ?? false,
-          childCount: joe?.children.length ?? 0,
+          hasRenderableMesh: renderableMeshCount > 0,
         };
       }),
     )
     .toEqual({
       loaded: true,
       currentAction: "Joe_idle",
+      idleActionRunning: true,
       visible: true,
-      childCount: 1,
+      hasRenderableMesh: true,
     });
 
   const crowd = await page.evaluate(() => {
