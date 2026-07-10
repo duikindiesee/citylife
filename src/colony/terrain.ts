@@ -224,10 +224,39 @@ export class Terrain {
     }
   }
 
-  /** World-space height (units). Sea plane is at y=0; ocean cells are below it. */
+  /** World-space height (units). Sea plane is at y=0; ocean cells are below it.
+   *  INTEGER IN-BOUNDS CELLS ONLY: this indexes the height array directly, so a fractional or
+   *  out-of-range coordinate reads an undefined slot and the result is NaN (or, when the
+   *  fractional index happens to land on an integer, a silent read of an unrelated cell).
+   *  Continuous positions — pad centres at (w-1)/2 offsets, sub-cell sampling — go through
+   *  worldYAt below. */
   worldY(x: number, y: number): number {
     const e = this.elev[this.idx(x, y)]!;
     return (e - COLONY.world.seaLevel) * COLONY.world.heightScale;
+  }
+
+  /** worldY at a CONTINUOUS grid position: clamped bilinear over the four surrounding cells,
+   *  finite for every input. Even-width pad centres (x + (w-1)/2 = *.5) fed raw worldY NaN
+   *  seats that smeared across whole terrain chunks — THREE then dumped the full geometry
+   *  JSON to console.error twice per boot, flooding the vite client-log relay. Same maths as
+   *  the legacy PlanetRenderer.groundY, minus its Math.max(0, ...) so callers keep their own
+   *  floor semantics. */
+  worldYAt(x: number, y: number): number {
+    const cl = (v: number) => Math.max(0, Math.min(this.size - 1, v));
+    const x0 = Math.floor(x),
+      y0 = Math.floor(y);
+    const tx = x - x0,
+      ty = y - y0;
+    const a = this.worldY(cl(x0), cl(y0)),
+      b = this.worldY(cl(x0 + 1), cl(y0));
+    const c = this.worldY(cl(x0), cl(y0 + 1)),
+      d = this.worldY(cl(x0 + 1), cl(y0 + 1));
+    return (
+      a * (1 - tx) * (1 - ty) +
+      b * tx * (1 - ty) +
+      c * (1 - tx) * ty +
+      d * tx * ty
+    );
   }
 
   private slopeAt(x: number, y: number): number {

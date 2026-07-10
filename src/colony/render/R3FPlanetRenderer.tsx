@@ -52,7 +52,7 @@ import { useThree, useFrame } from '@react-three/fiber';
 import { VoxelHouseMesh } from "./VoxelHouseMesh";
 import { GlbHouse } from "./GlbHouse";
 import { ZoneLotOverlay } from "./ZoneLotOverlay";
-import { RENDER_DRY_FLOOR } from "./useTerrainLeveling";
+import { padSeatY } from "./useTerrainLeveling";
 import { useWorldAssets } from "../stores/useWorldAssets";
 import { R3FPlayerCar } from "./R3FPlayerCar";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -99,15 +99,13 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
     
     if (state.neighborhood?.lots) {
       const size = state.terrain.size;
-      // Spec 128 — houses SEAT on their leveled pad: the same formula useTerrainLeveling
-      // grades the pad with (max of the houseZone-centre ground and the dry floor), so the
-      // house and its pad always agree. The old absolute y=0.05 buried every house under
-      // the 8-17m-high city terrain.
+      // Spec 128 — houses SEAT on their leveled pad: the SHARED padSeatY formula
+      // useTerrainLeveling grades the pad with (max of the houseZone-centre ground and the
+      // dry floor), so the house and its pad always agree. The old absolute y=0.05 buried
+      // every house under the 8-17m-high city terrain — and the inlined copy of the formula
+      // sampled raw worldY at the fractional zone centre (NaN off the integer grid).
       const seatOf = (hz: { x: number; y: number; w: number; d: number }) =>
-        Math.max(
-          state.terrain.worldY(hz.x + (hz.w - 1) / 2, hz.y + (hz.d - 1) / 2),
-          RENDER_DRY_FLOOR,
-        );
+        padSeatY(state.terrain, hz.x, hz.y, hz.w, hz.d);
       for (const lot of state.neighborhood.lots) {
         if (lot.built) {
           if (lot.zone === "commercial") {
