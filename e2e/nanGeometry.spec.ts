@@ -27,21 +27,31 @@ test('boot renders no NaN geometry and no computeBoundingSphere NaN errors', asy
   }, undefined, { timeout: 60000 });
   await page.waitForTimeout(4000);
 
-  // Belt and braces beyond the console assertion: no mesh in the booted scene carries a
-  // non-finite position component (culling only computes bounding spheres lazily, so a NaN
-  // mesh that hasn't been culled yet would otherwise slip through).
+  // Belt and braces beyond the console assertion: no object in the booted scene carries a
+  // non-finite geometry vertex OR transform (culling only computes bounding spheres lazily,
+  // so a NaN mesh that hasn't been culled yet would slip the console check — and a NaN SEAT
+  // fed to a mesh position corrupts the render without ever touching a vertex array).
   const nanMeshes = await page.evaluate(() => {
     const bad: string[] = [];
+    const chainOf = (o: any) => {
+      const chain: string[] = [];
+      let cur = o;
+      while (cur) { chain.unshift(cur.name || cur.type); cur = cur.parent; }
+      return chain.join(' > ');
+    };
     (window as any).__r3fScene.traverse((o: any) => {
+      for (const v of [o.position, o.scale]) {
+        if (v && (!Number.isFinite(v.x) || !Number.isFinite(v.y) || !Number.isFinite(v.z))) {
+          bad.push(`${chainOf(o)} (transform ${JSON.stringify(v)})`);
+          return;
+        }
+      }
       const pos = o.geometry?.attributes?.position;
       if (!pos) return;
       const arr = pos.array as ArrayLike<number>;
       for (let i = 0; i < arr.length; i++) {
         if (!Number.isFinite(arr[i])) {
-          const chain: string[] = [];
-          let cur = o;
-          while (cur) { chain.unshift(cur.name || cur.type); cur = cur.parent; }
-          bad.push(`${chain.join(' > ')} (component ${i} = ${arr[i]})`);
+          bad.push(`${chainOf(o)} (vertex component ${i} = ${arr[i]})`);
           break;
         }
       }

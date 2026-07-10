@@ -11,12 +11,11 @@ const SKIRT = 4;
 const DEADZONE = 0.6;
 
 /** The ONE pad-seat formula (spec 128): the ground height at the pad's CENTRE, floored to the
- *  dry level. The centre of an even-width pad is fractional ((w-1)/2 = *.5), so this must
- *  sample via worldYAt — raw worldY returns NaN off the integer grid, and a NaN seat smeared
- *  across every footprint + skirt cell into the leveling map, corrupting two whole terrain
- *  chunks at boot (THREE dumped megabytes of geometry JSON to console.error for each).
- *  Exported so the house/shop renderers seat meshes with EXACTLY the height the pad is
- *  graded to — the two must never drift. */
+ *  dry level. Samples via worldYAt because an even-width pad's centre is fractional and raw
+ *  worldY is NaN there (the NaN-chunk boot regression — full story in spec 128). Exported so
+ *  the house/shop renderers seat meshes with EXACTLY the height the pad is graded to — the
+ *  two must never drift. A corrupt zone (non-finite fields) falls to the dry floor rather
+ *  than seating a mesh at NaN. */
 export function padSeatY(
   t: Terrain,
   x: number,
@@ -24,12 +23,9 @@ export function padSeatY(
   w: number,
   d: number,
 ): number {
-  return Math.max(t.worldYAt(x + (w - 1) / 2, y + (d - 1) / 2), RENDER_DRY_FLOOR);
+  const s = t.worldYAt(x + (w - 1) / 2, y + (d - 1) / 2);
+  return Number.isFinite(s) ? Math.max(s, RENDER_DRY_FLOOR) : RENDER_DRY_FLOOR;
 }
-
-// Warn once per session, not per rebuild: the guard below drops non-finite heights so they
-// can never reach the mesh again, but a silent drop would hide the producing bug entirely.
-let warnedNonFinite = false;
 
 /**
  * Replaces PlanetRenderer's relevelTerrain and gradeRoadsInto. Pure — exported for the
@@ -48,19 +44,15 @@ export function computeTerrainLeveling(
   const t = state.terrain;
   const DRY = RENDER_DRY_FLOOR;
 
-  // Every override lands here. A single non-finite height in this map renders as NaN mesh
-  // vertices (and THREE floods the console with full geometry dumps), so refuse the write —
-  // the cell falls back to its natural ground, which degrades gracefully.
+  // A single non-finite height in this map renders as NaN mesh vertices (and THREE floods
+  // the console with full geometry dumps), so refuse the write — the cell falls back to its
+  // natural ground, which degrades gracefully. Counted, and reported once per compute at the
+  // end (recomputes are event-driven and infrequent, so the log stays bounded but every new
+  // rebuild re-reports — a session-latched warning would silence the NEXT producer bug).
+  let dropped = 0;
   const putIdx = (i: number, v: number) => {
     if (!Number.isFinite(v)) {
-      if (!warnedNonFinite) {
-        warnedNonFinite = true;
-        console.warn(
-          '[citylife] terrain leveling produced a non-finite height; override dropped (cell',
-          i,
-          ')',
-        );
-      }
+      dropped++;
       return;
     }
     next.set(i, v);
@@ -193,6 +185,15 @@ export function computeTerrainLeveling(
       const i = y * N + x;
       ribbon.add(i);
       const h = Math.max(0, surfaceH);
+      // A corrupt (non-finite) ribbon height must not enter `graded`: NaN passes the
+      // deadzone test below (|NaN - eff| <= DEADZONE is false) and its skirt entries would
+      // then shadow finite neighbours in the nearest-d competition before being dropped —
+      // leaving shoulder cells with NO ramp at all. Skip it here; the cell stays in `ribbon`
+      // so the shoulder pass still never disturbs it.
+      if (!Number.isFinite(h)) {
+        dropped++;
+        continue;
+      }
       // Compare against the EFFECTIVE ground — pads and the coastal dry-blend may already
       // have raised/lowered this cell, and it's the rendered surface the road must meet.
       // (Boot roads follow least-cost paths and rarely gap raw terrain; hand-drawn roads
@@ -249,6 +250,21 @@ export function computeTerrainLeveling(
       const base = next.has(idx) ? next.get(idx)! : t.worldY(x, y);
       putIdx(idx, base + offset);
     }
+  }
+
+  // Final sweep: applyCoastalCommercialDryBlend writes into `next` with its own putter, so
+  // it (and any future producer handed the raw map) bypasses putIdx. Nothing non-finite may
+  // leave this function — the map feeds mesh vertices directly.
+  for (const [i, v] of next) {
+    if (!Number.isFinite(v)) {
+      next.delete(i);
+      dropped++;
+    }
+  }
+  if (dropped > 0) {
+    console.warn(
+      `[citylife] terrain leveling dropped ${dropped} non-finite height override(s) — an upstream height producer is emitting NaN/Infinity`,
+    );
   }
 
   return next;

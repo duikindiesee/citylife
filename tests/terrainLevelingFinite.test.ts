@@ -98,9 +98,8 @@ describe("terrain leveling map (terrainLevel) at the real boot state", () => {
           if (level.has(y * N + x)) covered++;
       expect(covered).toBeGreaterThan(0);
     }
-    for (const [i, v] of level) {
-      if (!Number.isFinite(v))
-        throw new Error(`non-finite terrainLevel override at cell ${i}: ${v}`);
-    }
+    expect(
+      [...level].filter(([, v]) => !Number.isFinite(v)),
+    ).toEqual([]);
   });
 });

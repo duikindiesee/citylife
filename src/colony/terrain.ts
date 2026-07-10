@@ -231,26 +231,35 @@ export class Terrain {
    *  Continuous positions — pad centres at (w-1)/2 offsets, sub-cell sampling — go through
    *  worldYAt below. */
   worldY(x: number, y: number): number {
+    // NO validity check here, deliberately: worldY is the sim's hottest function (pathfind
+    // slope costs, terrain classification — millions of calls per boot), and even a
+    // DEV-only integer/bounds assertion measurably slowed the whole suite (~50%, timing out
+    // rallySpur). Off-grid writes are caught downstream instead: the leveling map drops
+    // non-finite overrides, and e2e/nanGeometry.spec.ts sweeps the booted scene.
     const e = this.elev[this.idx(x, y)]!;
     return (e - COLONY.world.seaLevel) * COLONY.world.heightScale;
   }
 
-  /** worldY at a CONTINUOUS grid position: clamped bilinear over the four surrounding cells,
-   *  finite for every input. Even-width pad centres (x + (w-1)/2 = *.5) fed raw worldY NaN
-   *  seats that smeared across whole terrain chunks — THREE then dumped the full geometry
-   *  JSON to console.error twice per boot, flooding the vite client-log relay. Same maths as
-   *  the legacy PlanetRenderer.groundY, minus its Math.max(0, ...) so callers keep their own
-   *  floor semantics. */
+  /** worldY at a CONTINUOUS grid position: bilinear over the four surrounding cells, with the
+   *  position clamped into the grid first — finite for every FINITE input (a NaN coordinate
+   *  still yields NaN; callers own their inputs). This is what pad-centre lookups must use
+   *  (see padSeatY / spec 128): raw worldY is NaN at the fractional centre of any even-width
+   *  pad. Same maths as the legacy PlanetRenderer.groundY, minus its Math.max(0, ...) so
+   *  callers keep their own floor semantics. */
   worldYAt(x: number, y: number): number {
-    const cl = (v: number) => Math.max(0, Math.min(this.size - 1, v));
+    const last = this.size - 1;
+    x = Math.max(0, Math.min(last, x));
+    y = Math.max(0, Math.min(last, y));
     const x0 = Math.floor(x),
       y0 = Math.floor(y);
+    const x1 = Math.min(x0 + 1, last),
+      y1 = Math.min(y0 + 1, last);
     const tx = x - x0,
       ty = y - y0;
-    const a = this.worldY(cl(x0), cl(y0)),
-      b = this.worldY(cl(x0 + 1), cl(y0));
-    const c = this.worldY(cl(x0), cl(y0 + 1)),
-      d = this.worldY(cl(x0 + 1), cl(y0 + 1));
+    const a = this.worldY(x0, y0),
+      b = this.worldY(x1, y0);
+    const c = this.worldY(x0, y1),
+      d = this.worldY(x1, y1);
     return (
       a * (1 - tx) * (1 - ty) +
       b * tx * (1 - ty) +
