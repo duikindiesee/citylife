@@ -1261,8 +1261,13 @@ function updateCommercialBusinessLabels(C: CommercialCtx) {
   }
 
 function commercialLabelOccluders(C: CommercialCtx) {
+    // v3 perf (spec 135): occluders are the DISTRICT's own meshes, not the whole scene —
+    // legacy traversed the full scene, which in v3 means raycasting the 76k-instance
+    // foliage and the 370k-vertex terrain chunks per label per update. Shops occluding
+    // their neighbours' labels is the case that matters; a label behind a distant hill
+    // staying faintly visible is an acceptable trade.
     const occluders: THREE.Object3D[] = [];
-    C.scene.traverse((object) => {
+    C.group.traverse((object) => {
       if (object.type !== "Mesh") return;
       if (isCommercialLabelObject(C, object)) return;
       occluders.push(object);
@@ -1972,6 +1977,7 @@ export function buildCommercialDistrictLayer(opts: {
   };
   C.group.name = "commercialDistrict";
   buildCommercialDistrict(C);
+  let updateTick = 0;
   return {
     group: C.group,
     update(daylight, camera, scene, canvas) {
@@ -1989,8 +1995,13 @@ export function buildCommercialDistrictLayer(opts: {
         fm.emissiveIntensity = garageAnchorNightFloorEmissive(daylight);
       for (const fm of C.floorMats)
         fm.emissiveIntensity = commercialShopNightFloorEmissive(daylight);
-      updateCommercialBusinessLabels(C);
-      applyCommercialLabelVisibility(C);
+      // v3 perf (spec 135): label projection + occlusion on a 4-frame cadence — the fade
+      // easing hides the step, and the per-frame cost of raycast occlusion is the single
+      // heaviest item in the district's update.
+      if ((updateTick++ & 3) === 0) {
+        updateCommercialBusinessLabels(C);
+        applyCommercialLabelVisibility(C);
+      }
     },
     dispose() {
       C.group.traverse((o) => {
