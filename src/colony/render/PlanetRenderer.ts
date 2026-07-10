@@ -3,6 +3,7 @@
 // camera presets (street/district/planet) and view modes (biome/buildable/elevation).
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
@@ -93,8 +94,12 @@ export interface AvatarView {
   heading: number;
   lookPitch?: number;
   hasPod: boolean;
-  /** Spec 078 — body kind: humans draw as the capsule avatar, Joe the founder draws as the crab mesh. */
+  /** Spec 078 — legacy body kind retained for first-person height and existing callers. */
   kind: "human" | "crab";
+  /** Named-citizen avatar family. GLB-backed named citizens use this while the crowd stays instanced. */
+  avatarKind: "human" | "crab" | "spider";
+  /** Public asset URL for a named animated GLB avatar. Presence removes the citizen from instanced meshes. */
+  glbUrl?: string;
   /** True for the avatar belonging to the logged-in operator (rendered highlighted). */
   isOperator: boolean;
 }
@@ -103,6 +108,16 @@ export interface RallyPresentCitizenView {
   id: string;
   displayName: string;
 }
+
+type NamedAvatarEntry = {
+  url: string;
+  group: THREE.Group;
+  mixer?: THREE.AnimationMixer;
+  actions: Map<string, THREE.AnimationAction>;
+  currentAction?: string;
+  baseMinY: number;
+  loaded: boolean;
+};
 
 // Dark City: the colony floats on a slab of rock adrift in deep space. The "sky" is the void —
 // dark even at midday — while a local sun still sweeps light across the island for day/night.
@@ -229,6 +244,10 @@ export class PlanetRenderer {
   // Spec 078 — Joe the Crab: one merged, vertex-coloured geometry instanced like the human avatars but
   // routed here by AvatarView.kind. Shares the roster + roam loop; only the body mesh + eye height differ.
   private crabMesh!: THREE.InstancedMesh;
+  private namedAvatarGroup = new THREE.Group();
+  private namedAvatarLoader = new GLTFLoader();
+  private namedAvatars = new Map<string, NamedAvatarEntry>();
+  private avatarLastPos = new Map<string, { x: number; y: number }>();
   private avatarSource?: () => AvatarView[];
   private fpCitizenId: string | null = null;
   private rallyPresentCitizenIds = new Set<string>();
@@ -1911,6 +1930,7 @@ export class PlanetRenderer {
       AV_CAP,
     );
     this.avatarMesh.count = 0;
+    this.avatarMesh.name = "citizen-avatar-human-bodies";
     this.avatarMesh.castShadow = true;
     this.avatarMesh.frustumCulled = false;
     this.scene.add(this.avatarMesh);
@@ -1922,6 +1942,7 @@ export class PlanetRenderer {
       AV_CAP,
     );
     this.avatarHeadMesh.count = 0;
+    this.avatarHeadMesh.name = "citizen-avatar-human-heads";
     this.avatarHeadMesh.castShadow = true;
     this.avatarHeadMesh.frustumCulled = false;
     this.scene.add(this.avatarHeadMesh);
@@ -1938,9 +1959,12 @@ export class PlanetRenderer {
       AV_CAP,
     );
     this.crabMesh.count = 0;
+    this.crabMesh.name = "citizen-avatar-instanced-crabs";
     this.crabMesh.castShadow = true;
     this.crabMesh.frustumCulled = false;
     this.scene.add(this.crabMesh);
+    this.namedAvatarGroup.name = "named-citizen-glb-avatars";
+    this.scene.add(this.namedAvatarGroup);
 
     // Spec 076 — homestead ground tiles (zone pads + the spine carriageway/verge) + voxel blocks
     // (the house, fences, farm crops, garden beds, trees). Caps raised for the larger parcels.
@@ -2764,6 +2788,7 @@ export class PlanetRenderer {
     this.updateArtifacts();
     this.updatePorters(); // spec 073 — goods piled at the sheds + porter carts on the roads
     this.updateAvatars(); // P1 — the named citizen avatars at their live roster positions
+    this.updateNamedAvatarMixers(this.clock.getDelta()); // v3 — presentation-only GLB avatar clips
     this.updateNeighborhood(); // spec 075 — lot pads + voxel homes
     if (this.beaconMat) {
       const blink = Math.max(0, Math.sin((performance.now() / 1000) * 2.4));
@@ -5653,9 +5678,10 @@ export class PlanetRenderer {
     this.rallyNameplates.delete(id);
   }
 
-  /** P1 — draw the citizen avatars at their live roster positions. The one the operator owns glows cyan; the
-   *  citizen currently being stepped-into is hidden (the camera is inside it). Spec 078 — citizens whose
-   *  kind is 'crab' (Joe) draw into the crab mesh instead of the human capsule + head. */
+  /** P1/v3 — draw citizen avatars at live roster positions. The operator-owned avatar glows cyan; the
+   *  currently stepped-into citizen is hidden. Citizens with a public GLB URL are removed from the
+   *  instanced human/crab batches and rendered as named animated groups; unnamed crowd avatars remain
+   *  instanced so the deterministic sim stays unchanged and cheap. */
   private updateAvatars() {
     if (
       !this.avatarMesh ||
@@ -5667,28 +5693,37 @@ export class PlanetRenderer {
     const list = this.avatarSource();
     for (const plate of this.rallyNameplates.values())
       plate.group.visible = false;
-    const t = this.sim.state.terrain;
+    const activeNamed = new Set<string>();
     const n = Math.min(list.length, 64);
     const col = new THREE.Color();
     let drawn = 0,
       crab = 0;
     for (let i = 0; i < n; i++) {
       const a = list[i]!;
-      if (a.id === this.fpCitizenId) continue; // hide the avatar we are looking out of
+      if (a.id === this.fpCitizenId) {
+        this.hideNamedAvatar(a.id);
+        continue; // hide the avatar we are looking out of
+      }
       const wy = this.surfaceY(a.x, a.y); // stand ON the road ribbon when on a road, not under it
-      this.dummy.position.set(this.wx(a.x), wy, this.wz(a.y));
-      this.dummy.rotation.set(0, -a.heading + Math.PI / 2, 0);
-      this.dummy.scale.set(1, 1, 1);
-      this.dummy.updateMatrix();
-      if (a.kind === "crab") {
-        this.crabMesh.setMatrixAt(crab, this.dummy.matrix);
-        crab++;
+      if (a.glbUrl) {
+        activeNamed.add(a.id);
+        this.updateNamedAvatar(a, wy);
       } else {
-        this.avatarMesh.setMatrixAt(drawn, this.dummy.matrix);
-        this.avatarHeadMesh.setMatrixAt(drawn, this.dummy.matrix);
-        col.setHex(a.isOperator ? 0x66e0ff : a.hasPod ? 0x9f86d8 : 0xc0b0e0);
-        this.avatarMesh.setColorAt(drawn, col);
-        drawn++;
+        this.hideNamedAvatar(a.id);
+        this.dummy.position.set(this.wx(a.x), wy, this.wz(a.y));
+        this.dummy.rotation.set(0, -a.heading + Math.PI / 2, 0);
+        this.dummy.scale.set(1, 1, 1);
+        this.dummy.updateMatrix();
+        if (a.kind === "crab" || a.avatarKind === "crab") {
+          this.crabMesh.setMatrixAt(crab, this.dummy.matrix);
+          crab++;
+        } else {
+          this.avatarMesh.setMatrixAt(drawn, this.dummy.matrix);
+          this.avatarHeadMesh.setMatrixAt(drawn, this.dummy.matrix);
+          col.setHex(a.isOperator ? 0x66e0ff : a.hasPod ? 0x9f86d8 : 0xc0b0e0);
+          this.avatarMesh.setColorAt(drawn, col);
+          drawn++;
+        }
       }
       const plate = this.rallyPresentCitizenIds.has(a.id)
         ? this.rallyNameplates.get(a.id)
@@ -5702,6 +5737,9 @@ export class PlanetRenderer {
         plate.material.opacity = 0.72 + night * 0.28;
       }
     }
+    for (const [id, entry] of this.namedAvatars) {
+      if (!activeNamed.has(id)) entry.group.visible = false;
+    }
     this.avatarMesh.count = drawn;
     this.avatarMesh.instanceMatrix.needsUpdate = true;
     if (this.avatarMesh.instanceColor)
@@ -5710,6 +5748,107 @@ export class PlanetRenderer {
     this.avatarHeadMesh.instanceMatrix.needsUpdate = true;
     this.crabMesh.count = crab;
     this.crabMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  private updateNamedAvatar(a: AvatarView, groundY: number): void {
+    const entry = this.ensureNamedAvatar(a);
+    entry.group.visible = true;
+    entry.group.name = `named-avatar:${a.id}`;
+    entry.group.userData = {
+      citizenId: a.id,
+      displayName: a.displayName,
+      avatarKind: a.avatarKind,
+      glbUrl: a.glbUrl,
+      loaded: entry.loaded,
+      currentAction: entry.currentAction,
+    };
+    entry.group.position.set(this.wx(a.x), groundY - entry.baseMinY, this.wz(a.y));
+    entry.group.rotation.set(0, -a.heading + Math.PI / 2, 0);
+    const last = this.avatarLastPos.get(a.id);
+    const moving = last ? Math.hypot(a.x - last.x, a.y - last.y) > 0.002 : false;
+    this.avatarLastPos.set(a.id, { x: a.x, y: a.y });
+    const base = (a.displayName.split(/\s+/)[0] || a.avatarKind).replace(/[^A-Za-z0-9_]/g, "");
+    this.playNamedAvatarAction(entry, `${base}_${moving ? "walk" : "idle"}`);
+  }
+
+  private ensureNamedAvatar(a: AvatarView): NamedAvatarEntry {
+    const url = a.glbUrl!;
+    const existing = this.namedAvatars.get(a.id);
+    if (existing && existing.url === url) return existing;
+    if (existing) {
+      this.namedAvatarGroup.remove(existing.group);
+      this.disposeNamedAvatarEntry(existing);
+    }
+    const group = new THREE.Group();
+    group.name = `named-avatar:${a.id}`;
+    group.visible = false;
+    this.namedAvatarGroup.add(group);
+    const entry: NamedAvatarEntry = {
+      url,
+      group,
+      actions: new Map<string, THREE.AnimationAction>(),
+      baseMinY: 0,
+      loaded: false,
+    };
+    this.namedAvatars.set(a.id, entry);
+    void this.namedAvatarLoader.loadAsync(url).then((gltf) => {
+      if (this.disposed || this.namedAvatars.get(a.id) !== entry) return;
+      gltf.scene.name = `${a.id}:glb-scene`;
+      gltf.scene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.frustumCulled = false;
+      });
+      gltf.scene.updateMatrixWorld(true);
+      entry.baseMinY = new THREE.Box3().setFromObject(gltf.scene).min.y;
+      entry.group.add(gltf.scene);
+      entry.mixer = new THREE.AnimationMixer(gltf.scene);
+      for (const clip of gltf.animations) {
+        entry.actions.set(clip.name, entry.mixer.clipAction(clip));
+      }
+      entry.loaded = true;
+      entry.group.userData.loaded = true;
+      const first = a.displayName.split(/\s+/)[0] || a.avatarKind;
+      this.playNamedAvatarAction(entry, `${first}_idle`);
+    });
+    return entry;
+  }
+
+  private playNamedAvatarAction(
+    entry: NamedAvatarEntry,
+    wanted: string,
+  ): void {
+    if (!entry.loaded || entry.currentAction === wanted) return;
+    const action = entry.actions.get(wanted) ?? entry.actions.values().next().value;
+    if (!action) return;
+    if (entry.currentAction) entry.actions.get(entry.currentAction)?.fadeOut(0.12);
+    action.reset().fadeIn(0.12).play();
+    entry.currentAction = wanted;
+    entry.group.userData.currentAction = action.getClip().name;
+  }
+
+  private updateNamedAvatarMixers(dt: number): void {
+    if (!Number.isFinite(dt) || dt <= 0) return;
+    for (const entry of this.namedAvatars.values()) entry.mixer?.update(dt);
+  }
+
+  private hideNamedAvatar(id: string): void {
+    const entry = this.namedAvatars.get(id);
+    if (entry) entry.group.visible = false;
+  }
+
+  private disposeNamedAvatarEntry(entry: NamedAvatarEntry): void {
+    entry.mixer?.stopAllAction();
+    entry.group.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.geometry?.dispose();
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined;
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+      else mat?.dispose();
+    });
   }
 
   /** Spec 073 — the Porter Sheds made visible: goods pile up as crates (materials) + sacks (food) beside each shed, growing and
@@ -5871,6 +6010,8 @@ export class PlanetRenderer {
     for (const [id, plate] of [...this.rallyNameplates]) {
       this.disposeRallyNameplate(id, plate);
     }
+    for (const entry of this.namedAvatars.values()) this.disposeNamedAvatarEntry(entry);
+    this.namedAvatars.clear();
     // Spec 093 — the chunk-grid geometries + the shared terrain material are app-side GL objects that
     // renderer.dispose() does NOT free; release them so a teardown/recreate (HMR, remount) doesn't leak.
     this.chunkedTerrain?.dispose();

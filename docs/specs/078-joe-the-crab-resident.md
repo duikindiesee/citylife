@@ -34,15 +34,19 @@ structure, one new avatar kind.
    existing spine), marked `reservedFor: 'citizen_joe'` so no random newcomer can ever take it.
 3. The parcel is pre-built from a **fixed authored 077 blueprint** (a hand-written, validated DSL
    string — Joe "reads" the 077 builder), compiled and persisted through the existing 077 path.
-4. Joe's avatar renders as a **crab** (a new `kind: 'crab'`), distinct from the humanoid capsule:
+4. Joe's default/fallback avatar renders as a **crab** (a new `kind: 'crab'`), distinct from the humanoid capsule:
    orange/red shell, eyes on stalks, two claws, legs, and the blue-white headset with one yellow
    lightning earcup accent — built procedurally from primitives, merged into one geometry.
-5. Joe **roams** using the existing avatar loop (`stepAvatars` + `wanderIdleCitizens`) with an
+5. v3 named-citizen avatars can opt into an animated GLB with `avatarKind: 'human' | 'crab' | 'spider'`
+   plus `glbUrl`. Joe currently points at `/assets/citylife/avatars/joe-crab.glb`. When present, the
+   renderer removes that named citizen from the instanced human/crab crowd meshes and loads the GLB as
+   an individual `THREE.Group` with an `AnimationMixer`; unnamed citizens stay instanced.
+6. Joe **roams** using the existing avatar loop (`stepAvatars` + `wanderIdleCitizens`) with an
    optional sideways "scuttle" gait offset; he can be **stepped into** in first-person at a crab eye
    height; his nameplate makes him findable.
-6. Joe **persists** across reloads: the founder citizen + reserved parcel re-derive identically from
-   the seed every boot, and the `kind` survives because it is re-applied at seed time.
-7. (Bonus loop) Because Joe now has `homeXY` on a real built parcel, his daily-story `firstPersonView`
+7. Joe **persists** across reloads: the founder citizen + reserved parcel re-derive identically from
+   the seed every boot, and the `kind` / `avatarKind` / `glbUrl` survive because they are re-applied at seed time.
+8. (Bonus loop) Because Joe now has `homeXY` on a real built parcel, his daily-story `firstPersonView`
    includes his own house among `nearestBuildings`, so it can appear in his paintings.
 
 ## Rules and data
@@ -58,8 +62,13 @@ structure, one new avatar kind.
   (`Citizen` → `AvatarView` → `updateAvatars`), and the house is compiled through the _existing_ 077
   `compileBlueprint` / merged-mesh render path. Joe's roam + first-person inherit the kind-agnostic
   movement system untouched except for the eye-height and gait lookups.
-- **Avatar kind**: `Citizen.kind: 'human' | 'crab'` (default `'human'`), carried into `AvatarView`,
-  used in the renderer to pick the crab mesh pair and the crab eye height.
+- **Avatar kind**: legacy `Citizen.kind: 'human' | 'crab'` remains for first-person eye height and
+  fallback instancing. v3 adds `avatarKind: 'human' | 'crab' | 'spider'` and optional `glbUrl`; a
+  present GLB URL means the named citizen is drawn as an individual animated GLB, while citizens
+  without GLBs remain in `avatarMesh` / `avatarHeadMesh` / `crabMesh` instancing.
+- **Named animation**: the renderer chooses `<DisplayFirstToken>_idle` or `<DisplayFirstToken>_walk`
+  from presentation-only movement deltas and advances a `THREE.AnimationMixer` on the render clock.
+  No sim state, positions, needs, economy, or deterministic hashes are mutated by animation.
 - **Founder parcel**: `Parcel.reservedFor?: string`. A reserved parcel is excluded from
   auto-assignment to newcomers and pre-owned by `citizen_joe`.
 - **Crab eye height**: a low value (~0.35) so first-person reads as a crab at ground level, not a
@@ -143,7 +152,10 @@ his avatar renders as the **crab** described above — orange/red shell, eyes/cl
 headset with exactly one yellow lightning earcup accent. He roams the streets via the existing loop,
 shows a findable nameplate, and can be stepped into in first-person at crab eye height. Reloading the
 page reproduces the identical Joe, parcel, and house. No newcomer is ever assigned Joe's reserved
-parcel. Typecheck + vitest pass; the scene is verified live on `:5188`. As a bonus, `firstPersonView`
+parcel. Typecheck + vitest pass; a committed Playwright Chromium test boots the real Vite app, waits
+for `/assets/citylife/avatars/joe-crab.glb`, asserts Joe is a visible `named-avatar:citizen_joe`
+playing `Joe_idle`, and proves every non-GLB citizen still occupies the matching instanced human/crab
+crowd mesh. The same browser test runs in CI via `npm run test:e2e`. As a bonus, `firstPersonView`
 for `citizen_joe` lists his own house among nearby buildings (enabling the painting loop).
 
 ## Architecture / touch points (drawn from the system maps)
