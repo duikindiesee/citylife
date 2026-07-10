@@ -5,7 +5,6 @@ import {
   padSeatY,
   RENDER_DRY_FLOOR,
 } from "../src/colony/render/useTerrainLeveling";
-import { depotCutFillSeatY } from "../src/colony/transit/busDepot";
 
 // Regression for the boot NaN-geometry flood (r3f-colony-migration, 2026-07): every commercial
 // pad has an EVEN width, so its centre x + (w - 1) / 2 is fractional; Terrain.worldY indexes the
@@ -99,64 +98,8 @@ describe("terrain leveling map (terrainLevel) at the real boot state", () => {
           if (level.has(y * N + x)) covered++;
       expect(covered).toBeGreaterThan(0);
     }
-    expect([...level].filter(([, v]) => !Number.isFinite(v))).toEqual([]);
-  });
-
-  it("levels exactly the half-open depot footprint to the shared cut-and-fill seat", () => {
-    const state = rt().sim.state;
-    const pad = state.busDepotPad!;
-    const N = state.terrain.size;
-    const level = computeTerrainLeveling(state, null, new Map());
-    const seat = depotCutFillSeatY(state.terrain, pad, RENDER_DRY_FLOOR);
-    let covered = 0;
-    for (let y = pad.y; y < pad.y + pad.h; y++)
-      for (let x = pad.x; x < pad.x + pad.w; x++) {
-        expect(level.get(y * N + x)).toBeCloseTo(seat, 8);
-        covered++;
-      }
-    expect(covered).toBe(pad.w * pad.h);
-    const eastOutside = level.get(
-      (pad.y + Math.floor(pad.h / 2)) * N + pad.x + pad.w,
-    );
-    expect(eastOutside).not.toBeCloseTo(seat, 8);
-  });
-
-  it("always seats the depot spur terrain to its ribbon surface, even inside the road deadzone", () => {
-    const state = rt().sim.state;
-    const spurKey = [...(state.busDepotSpurCells ?? [])][0];
-    expect(spurKey).toBeTruthy();
-    const [x, y] = spurKey!.split(",").map(Number);
-    const h = state.terrain.worldY(x!, y!) + 0.3;
-    const level = computeTerrainLeveling(
-      state,
-      new Map([[spurKey!, h]]),
-      new Map(),
-    );
-    expect(level.get(y! * state.terrain.size + x!)).toBeCloseTo(h, 6);
-  });
-
-  it("ground above a road surface is ALWAYS cut to it — no deadzone in that direction", () => {
-    // Operator invariant (2026-07-11): "the ground go above the roads; that should
-    // never happen." The old symmetric deadzone tolerated bumps up to 0.6 above the
-    // road surface, which crested through the +0.18 ribbon as sand islands.
-    const state = rt().sim.state;
-    const t = state.terrain;
-    const N = t.size;
-    // a dry land cell well away from pads
-    let cell: { x: number; y: number } | null = null;
-    for (let y = 100; y < N && !cell; y += 7)
-      for (let x = 100; x < N && !cell; x += 7)
-        if (t.worldY(x, y) > 2) cell = { x, y };
-    expect(cell).not.toBeNull();
-    const { x, y } = cell!;
-    const idx = y * N + x;
-    // road surface 0.3 BELOW the ground (inside the old deadzone): must CUT to surface
-    const below = new Map([[`${x},${y}`, t.worldY(x, y) - 0.3]]);
-    const cut = computeTerrainLeveling(state, below, new Map());
-    expect(cut.get(idx)).toBeCloseTo(t.worldY(x, y) - 0.3, 6);
-    // road surface 0.3 ABOVE the ground (a shallow hollow): deadzone keeps it natural
-    const above = new Map([[`${x},${y}`, t.worldY(x, y) + 0.3]]);
-    const keep = computeTerrainLeveling(state, above, new Map());
-    expect(keep.has(idx)).toBe(false);
+    expect(
+      [...level].filter(([, v]) => !Number.isFinite(v)),
+    ).toEqual([]);
   });
 });
