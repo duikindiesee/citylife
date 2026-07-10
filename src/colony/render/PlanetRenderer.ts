@@ -42,6 +42,7 @@ import {
 } from "../commerce/businessLabels";
 import { buildCarMesh } from "../car/carMesh";
 import type { CarSpec } from "../car/carSpec";
+import { padSeatY, RENDER_DRY_FLOOR } from "./useTerrainLeveling";
 import { posterModel, paintPoster } from "../commerce/adCanvas";
 import {
   buildVoxelHouse,
@@ -133,7 +134,6 @@ const CRAB_EYE = 0.42;
 // Spec 084 S6 — raised for the estate parcels (a GRAND lot alone pads its garden + farm + walkway
 // cell by cell); the S1 dev-mode tripwires still warn the moment either cap drops scenery.
 const PAD_CAP = 4096;
-const RENDER_DRY_FLOOR = 0.65;
 const VOX_CAP = 24576;
 
 export class PlanetRenderer {
@@ -1031,7 +1031,7 @@ export class PlanetRenderer {
     const DRY = RENDER_DRY_FLOOR;
     const SKIRT = 4; // cells of graded transition from the flat pad out to natural ground
     const seatOf = (hz: { x: number; y: number; w: number; d: number }) =>
-      Math.max(this.groundY(hz.x + (hz.w - 1) / 2, hz.y + (hz.d - 1) / 2), DRY);
+      padSeatY(t, hz.x, hz.y, hz.w, hz.d);
     // Cheap fingerprint: only built lots, their footprint rect, and their seat height drive the map.
     let sig = `r${this.sim.state.roadsVersion}c${this.roadRibbonCells?.size ?? 0}|`;
     for (const lot of this.neighborhood?.parcels ?? []) {
@@ -1131,7 +1131,7 @@ export class PlanetRenderer {
           : []),
       ];
       const seatY = (r: { x: number; y: number; w: number; h: number }) =>
-        Math.max(this.groundY(r.x + (r.w - 1) / 2, r.y + (r.h - 1) / 2), DRY);
+        padSeatY(t, r.x, r.y, r.w, r.h);
       // Pass 1 — skirts (smoothstep ramp from the flat pad out to natural ground).
       for (const r of seats) {
         const py = seatY(r);
@@ -2398,60 +2398,32 @@ export class PlanetRenderer {
 
   private smoothRoadY(x: number, y: number): number {
     const t = this.sim.state.terrain;
-    const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v));
     // BILINEAR terrain sample at a CONTINUOUS position — the key to a smooth road. Sampling rounded
     // integer cells made the height a step function (flat within a cell, a riser at every boundary), so
     // on any slope the road terraced into little stairs (the operator's "stepways"). Interpolating gives
     // a height that varies continuously with position, so the surface ramps instead of stepping.
-    const bil = (fx: number, fy: number): number => {
-      const x0 = Math.floor(fx),
-        y0 = Math.floor(fy),
-        tx = fx - x0,
-        ty = fy - y0;
-      const a = t.worldY(cl(x0), cl(y0)),
-        b = t.worldY(cl(x0 + 1), cl(y0));
-      const c = t.worldY(cl(x0), cl(y0 + 1)),
-        d = t.worldY(cl(x0 + 1), cl(y0 + 1));
-      return (
-        a * (1 - tx) * (1 - ty) +
-        b * tx * (1 - ty) +
-        c * (1 - tx) * ty +
-        d * tx * ty
-      );
-    };
+    // Sampling goes through the ONE shared bilinear (Terrain.worldYAt, spec 128); the legacy roads keep
+    // their own WIDER max footprint below — the shared getSmoothRoadY footprint fits the 4m ribbon
+    // roads, not these.
     // Still take the MAX over the ~4-wide carriageway footprint so the surface rides ABOVE the ground
     // (no terrain poking up through the asphalt). Because the samples are bilinear and the centre moves
     // continuously, this max is a continuous (step-free) function — smooth AND above-terrain.
     let mx = 0;
     for (let dx = -2; dx <= 2; dx += 0.5)
       for (let dy = -2; dy <= 2; dy += 0.5) {
-        const h = bil(x + dx, y + dy);
+        const h = t.worldYAt(x + dx, y + dy);
         if (h > mx) mx = h;
       }
     return mx;
   }
 
-  /** Smooth ground height (bilinear terrain) for things that should FOLLOW the grade, not ride above it
-   *  like a road — e.g. homestead pads. Kept separate from smoothRoadY (which maxes over the carriageway
-   *  to clear the asphalt) so a pad never floats up on the road-clearance height. */
+  /** Smooth ground height for things that should FOLLOW the grade, not ride above it like a road —
+   *  e.g. homestead pads. Kept separate from smoothRoadY (which maxes over the carriageway to clear
+   *  the asphalt) so a pad never floats up on the road-clearance height. Delegates to the ONE shared
+   *  bilinear sampler (Terrain.worldYAt, spec 128) — tests/groundSamplerParity.test.ts pins that this
+   *  is an exact drop-in for the old private corner-clamped bilinear, edges included. */
   private groundY(x: number, y: number): number {
-    const t = this.sim.state.terrain;
-    const cl = (v: number) => Math.max(0, Math.min(t.size - 1, v));
-    const x0 = Math.floor(x),
-      y0 = Math.floor(y),
-      tx = x - x0,
-      ty = y - y0;
-    const a = t.worldY(cl(x0), cl(y0)),
-      b = t.worldY(cl(x0 + 1), cl(y0));
-    const c = t.worldY(cl(x0), cl(y0 + 1)),
-      d = t.worldY(cl(x0 + 1), cl(y0 + 1));
-    return Math.max(
-      0,
-      a * (1 - tx) * (1 - ty) +
-        b * tx * (1 - ty) +
-        c * (1 - tx) * ty +
-        d * tx * ty,
-    );
+    return Math.max(0, this.sim.state.terrain.worldYAt(x, y));
   }
 
   /** Spec 088 — the height of the WALKABLE surface at a cell: the road ribbon top when it's a road cell,
