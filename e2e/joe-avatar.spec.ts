@@ -3,6 +3,9 @@ import { expect, test } from "@playwright/test";
 test("Joe renders as an animated GLB while the crowd remains instanced", async ({
   page,
 }) => {
+  // Cold CI needs headroom to fetch and parse the GLB and start the idle clip;
+  // the 30s default timed out intermittently and jammed the release-bump PR.
+  test.setTimeout(120_000);
   const [assetResponse] = await Promise.all([
     page.waitForResponse((response) =>
       response.url().endsWith("/assets/citylife/avatars/joe-crab.glb"),
@@ -48,6 +51,7 @@ test("Joe renders as an animated GLB while the crowd remains instanced", async (
           hasRenderableMesh: renderableMeshCount > 0,
         };
       }),
+      { timeout: 90_000 },
     )
     .toEqual({
       loaded: true,
