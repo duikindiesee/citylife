@@ -48,10 +48,19 @@ describe("spec 127 — boot-town furniture clearance", () => {
       };
       let signs = 0;
       let lines = 0;
+      let signEligibleArms = 0;
       for (const zone of findJunctionZones(ways)) {
         const items = junctionFurniture(zone, ways);
         // a merge or chain point is not a controlled junction — no furniture at all
         if (zone.kind === "pass") expect(items).toEqual([]);
+        if (zone.kind === "tee") {
+          // terminating arms WITHOUT an opposed terminating partner (those pairs are a
+          // chained corridor flowing through) are where signs must appear
+          const term = zone.arms.filter((a) => a.terminating);
+          signEligibleArms += term.filter(
+            (a) => !term.some((b) => b !== a && a.dx * b.dx + a.dy * b.dy < -0.95),
+          ).length;
+        }
         for (const f of items) {
           if (f.kind === "stopsign") {
             signs++;
@@ -59,17 +68,27 @@ describe("spec 127 — boot-town furniture clearance", () => {
             expect(containedBy(f.x, f.y), `sign at ${f.x},${f.y}`).toBe(0);
           } else if (f.kind === "stopline") {
             lines++;
-            // paint belongs to exactly one road: its own approach lane
+            // paint belongs to exactly one road: its own approach lane — verified by
+            // attribution, not just count (adversarial verify F1 vacuity fix)
             expect(
               containedBy(f.x, f.y),
               `line at ${f.x},${f.y}`,
             ).toBeLessThanOrEqual(1);
+            const own = smoothed[f.wayIndex!];
+            expect(own, `line at ${f.x},${f.y} carries wayIndex`).toBeTruthy();
+            expect(
+              distToPolyline(f.x, f.y, own!),
+              `line at ${f.x},${f.y} sits on its OWN carriageway`,
+            ).toBeLessThan(ways[f.wayIndex!]!.width / 2);
           }
         }
       }
       // the towns must still HAVE controlled-junction furniture — the fix must not
-      // simply delete every item to pass the clearance bar
+      // simply delete every item to pass the clearance bar. Signs are pinned wherever a
+      // genuine tee approach exists (adversarial verify F1: the first cut silently deleted
+      // every boot-town sign and the count-free assertions passed vacuously).
       expect(lines).toBeGreaterThan(0);
+      if (signEligibleArms > 0) expect(signs).toBeGreaterThan(0);
     });
   }
 });

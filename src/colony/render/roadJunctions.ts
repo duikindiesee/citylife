@@ -35,6 +35,9 @@ export interface FurnitureItem {
   x: number;
   y: number;
   rotY: number;
+  /** The way this item serves (stop lines/signs) — clearance tests attribute paint to its
+   *  own carriageway through this. Lights are zone-owned and carry none. */
+  wayIndex?: number;
 }
 
 const key = (x: number, y: number) => `${x},${y}`;
@@ -201,8 +204,17 @@ const CLEAR = 0.35;
  *   - offsets must scale with the arm's OWN way width — boot roads are 4 cells wide, so
  *     the old fixed 1.9-cell sign shift planted the sign inside its own carriageway;
  *   - the flood-fill centroid skews toward the side road, so fixed back-offs from it do
- *     not reliably clear the through road — each item WALKS back along its approach until
- *     it genuinely clears every foreign carriageway (and is skipped when nowhere does). */
+ *     not reliably clear the through road.
+ *
+ *  Placement is anchored to the arm's OWN smoothed centre-line (adversarial verify F1/F3):
+ *  a first cut walked a compass-snapped axis from the centroid while checking clearance
+ *  against the true centre-line, so a few degrees of tilt self-blocked every step and the
+ *  boot towns silently lost ALL their stop signs. Each item now walks back by arc length
+ *  along the way the ribbon actually draws and offsets perpendicular to the LOCAL tangent —
+ *  own-way clearance holds by construction, and only foreign carriageways gate the walk
+ *  (an item is skipped when nowhere in reach clears). Opposed terminating-arm pairs are a
+ *  through movement — a chained corridor passing through the zone — and get no furniture
+ *  even when a genuine side road makes the zone a tee (verify F2). */
 export function junctionFurniture(
   zone: JunctionZone,
   ways: RoadWay[],
@@ -232,42 +244,123 @@ export function junctionFurniture(
     }
     return true;
   };
-  const lineArms =
+  const candidates =
     zone.kind === "cross"
       ? zone.arms
       : zone.arms.filter((a) => a.terminating);
+  // Two near-opposed TERMINATING arms are one chained corridor flowing THROUGH the zone
+  // (way ends, next way continues) — through traffic never gets a stop, even when a real
+  // side road makes this zone a tee.
+  const lineArms = candidates.filter(
+    (a) =>
+      !candidates.some(
+        (b) =>
+          b !== a && b.terminating && a.terminating &&
+          a.dx * b.dx + a.dy * b.dy < -0.95,
+      ),
+  );
   const seenDir = new Set<string>();
   for (const a of lineArms) {
-    // snap the arm to its dominant compass axis so the paint sits square on the slab
+    // the compass key only DEDUPES arms sharing an axis; placement uses true geometry
     const sx = Math.abs(a.dx) > Math.abs(a.dy) ? Math.sign(a.dx) : 0;
     const sy = sx === 0 ? Math.sign(a.dy) : 0;
     const dirKey = `${sx},${sy}`;
     if ((sx === 0 && sy === 0) || seenDir.has(dirKey)) continue;
     seenDir.add(dirKey);
+    const cp = smoothed[a.wayIndex];
+    if (!cp || cp.length < 2) continue;
     const ownHalf = (ways[a.wayIndex]?.width ?? 1) / 2;
-    const rotY = Math.atan2(sx, sy);
-    // The stop line paints the approach LANE — the left half of the arm's own carriageway.
+
+    // Anchor on the own centre-line: start at the polyline point nearest the centroid and
+    // walk AWAY from the junction — the side where stepping moves against the arm's travel
+    // direction (the arm points INTO the junction).
+    let ci = 0;
+    let best = Infinity;
+    for (let i = 0; i < cp.length; i++) {
+      const d = (cp[i]!.x - cx) ** 2 + (cp[i]!.y - cy) ** 2;
+      if (d < best) {
+        best = d;
+        ci = i;
+      }
+    }
+    const step = (i: number, w: number) =>
+      cp[Math.max(0, Math.min(cp.length - 1, i + w))]!;
+    // walking direction w: the step away from the junction opposes the travel direction
+    const wDir =
+      (step(ci, 1).x - cp[ci]!.x) * a.dx + (step(ci, 1).y - cp[ci]!.y) * a.dy < 0
+        ? 1
+        : -1;
+
+    // Stations along the own way, by arc length from the anchor. At each: position on the
+    // centre-line, local travel tangent (INTO the junction), and its left normal.
+    type Station = { x: number; y: number; tx: number; ty: number };
+    const stations: Station[] = [];
+    {
+      let acc = 0;
+      let prev = cp[ci]!;
+      for (let i = ci + wDir; i >= 0 && i < cp.length; i += wDir) {
+        const p = cp[i]!;
+        const segLen = Math.hypot(p.x - prev.x, p.y - prev.y);
+        if (segLen > 1e-9) {
+          // tangent pointing back toward the junction = direction of travel
+          const tx = (prev.x - p.x) / segLen;
+          const ty = (prev.y - p.y) / segLen;
+          const need = 0.25;
+          let along = need - (acc % need || need);
+          while (acc + along <= acc + segLen && stations.length < 64) {
+            if (along > segLen) break;
+            stations.push({
+              x: prev.x + (p.x - prev.x) * (along / segLen),
+              y: prev.y + (p.y - prev.y) * (along / segLen),
+              tx,
+              ty,
+            });
+            along += need;
+          }
+          acc += segLen;
+        }
+        prev = p;
+        if (acc > half + 8) break;
+      }
+    }
+
+    // The stop line paints the approach LANE — the left half of the own carriageway.
     const lat = Math.max(0.25, ownHalf / 2);
-    // Walk back from the slab edge until the paint clears every FOREIGN carriageway (its
-    // own asphalt is exactly where paint belongs). Skip the item when nowhere in reach does.
-    let lineBack = -1;
-    for (let back = half + 0.55; back <= half + 6; back += 0.25) {
-      const lx = cx - sx * back + sy * lat;
-      const ly = cy - sy * back - sx * lat;
+    let lineIdx = -1;
+    for (let si = 0; si < stations.length; si++) {
+      const s = stations[si]!;
+      const backFromCentroid = Math.hypot(s.x - cx, s.y - cy);
+      if (backFromCentroid < half + 0.55) continue; // still on the slab
+      const lx = s.x + s.ty * lat;
+      const ly = s.y - s.tx * lat;
       if (clears(lx, ly, a.wayIndex, false)) {
-        items.push({ kind: "stopline", x: lx, y: ly, rotY });
-        lineBack = back;
+        items.push({
+          kind: "stopline",
+          x: lx,
+          y: ly,
+          rotY: Math.atan2(s.tx, s.ty),
+          wayIndex: a.wayIndex,
+        });
+        lineIdx = si;
         break;
       }
     }
-    if (zone.kind === "tee" && a.terminating && lineBack >= 0) {
-      // The sign stands on the KERB: past its own carriageway edge, clear of everyone's.
+    if (zone.kind === "tee" && a.terminating && lineIdx >= 0) {
+      // The sign stands on the KERB: past its own carriageway edge (by construction of the
+      // perpendicular offset), clear of everyone's asphalt.
       const signLat = ownHalf + 0.8;
-      for (let back = lineBack + 0.4; back <= lineBack + 6; back += 0.25) {
-        const px = cx - sx * back + sy * signLat;
-        const py = cy - sy * back - sx * signLat;
+      for (let si = lineIdx + 1; si < stations.length; si++) {
+        const s = stations[si]!;
+        const px = s.x + s.ty * signLat;
+        const py = s.y - s.tx * signLat;
         if (clears(px, py, a.wayIndex, true)) {
-          items.push({ kind: "stopsign", x: px, y: py, rotY: rotY + Math.PI });
+          items.push({
+            kind: "stopsign",
+            x: px,
+            y: py,
+            rotY: Math.atan2(s.tx, s.ty) + Math.PI,
+            wayIndex: a.wayIndex,
+          });
           break;
         }
       }
