@@ -38,9 +38,14 @@ structure, one new avatar kind.
    orange/red shell, eyes on stalks, two claws, legs, and the blue-white headset with one yellow
    lightning earcup accent — built procedurally from primitives, merged into one geometry.
 5. v3 named-citizen avatars can opt into an animated GLB with `avatarKind: 'human' | 'crab' | 'spider'`
-   plus `glbUrl`. Joe currently points at `/assets/citylife/avatars/joe-crab.glb`. When present, the
-   renderer removes that named citizen from the instanced human/crab crowd meshes and loads the GLB as
-   an individual `THREE.Group` with an `AnimationMixer`; unnamed citizens stay instanced.
+   plus `glbUrl`. Joe currently points at `/assets/citylife/avatars/joe-crab.glb`. His canonical v3
+   asset is a polished, glossy orange-red cartoon crab with a broad rounded shell, huge expressive
+   eyes, a friendly open smile, eight two-segment walking legs, oversized rounded claws with one
+   raised in greeting, and a white/blue gaming headset with boom microphone. Exactly one yellow
+   lightning bolt is attached to the left earcup; there are no chest badges or floating bolts. When
+   `glbUrl` is present, the renderer removes that named citizen from the instanced human/crab crowd
+   meshes and loads the GLB as an individual `THREE.Group` with an `AnimationMixer`; unnamed citizens
+   stay instanced.
 6. Joe **roams** using the existing avatar loop (`stepAvatars` + `wanderIdleCitizens`) with an
    optional sideways "scuttle" gait offset; he can be **stepped into** in first-person at a crab eye
    height; his nameplate makes him findable.
