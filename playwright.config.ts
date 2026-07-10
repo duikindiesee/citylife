@@ -13,7 +13,7 @@ export default defineConfig({
   reporter: 'html',
   use: {
     actionTimeout: 0,
-    baseURL: 'http://127.0.0.1:5188',
+    baseURL: `http://127.0.0.1:${process.env.CITYLIFE_PORT ?? '5188'}`, // CITYLIFE_PORT overrides when 5188 is held by another worktree's server
     trace: 'on-first-retry',
     video: 'on',
     viewport: { width: 1280, height: 720 },

@@ -29,12 +29,6 @@ port (spec 114 lineage): every legacy method is now either ported or documented 
   and reads out a PNG data URL.
 - **Zones toggle** — `setZonesVisible`/`setZoningVisible` set `sim.state.zonesVisible`;
   ZoneManager gates the unbuilt-lot overlays behind a named group (`zone-overlays`).
-- **Ask Kooker entry point** — the board link (PR #240) was a hardcoded fixed pill in
-  `index.html` at the viewport's top-right, `z-index` 9999, which sat ON TOP of the
-  topbar's Log out button and blocked it. It is now a `.linkbtn` anchor inside the
-  topbar's trailing group beside Log out (`ColonyApp.tsx`), styled like a `.group`
-  button; the login screen keeps its own `login-link` to the board, so the pre-login
-  path is unchanged.
 
 ## Retired as obsolete in v3 (no callers, or replaced by v3 systems)
 
@@ -55,26 +49,3 @@ port (spec 114 lineage): every legacy method is now either ported or documented 
   targets, cart movement + retarget.
 - `e2e/portFinish.spec.ts`: porter + nameplate layers mount in the scene; piles render
   whenever the world has sheds + stock; `runtime.snapshot()` returns a real PNG data URL.
-
-## Auth gate restored (last port scaffolding reverted)
-
-The very first R3F setup commit on this lineage (`4374ada`, 2026-06-29) slipped an
-unconditional `return <>{children}</>;` into the top of `AuthGate`. It was never
-documented or guarded, and it disabled the ENTIRE gate — operator login, visitor signup,
-and the DEV+localhost+`VITE_LOCAL_TEST` belt-and-suspenders bypass — in every build,
-including a production `vite build` for the cluster. Lane history traces it to a
-temporary route-patch made to film the PRODUCTION site in TV/cinematic mode
-(`?skipauth=1&tv=1&…` on citylife.kooker.co.za): the dev-only skipauth guard correctly
-refuses to fire on the cluster domain, so the gate was hard-bypassed instead of building
-a sanctioned capture path. A deliberate temporary hack, never meant to land — and the
-sanctioned local-test bypass (`?skipauth=1` / `VITE_LOCAL_TEST`, dev builds on local
-hosts only) already covers local development. If cinematic capture on the deployed site
-is needed again, that must be its own reviewed mechanism (e.g. a read-only spectator
-token), not an auth bypass.
-
-Outcome: the early return is removed and `AuthGate.tsx` is byte-identical to `main`'s
-again (login gate + guarded dev bypass stand). The e2e suites, which had been mounting the
-colony through the hole, now navigate to `/?skipauth=1` explicitly — the sanctioned
-dev-only path. Verified: unauthenticated `/` renders the LoginScreen (colony
-does not mount), `.env.local` dev auto-login still signs in, `?skipauth=1` mounts the
-colony in dev, and a production build ignores `?skipauth=1` and still demands login.

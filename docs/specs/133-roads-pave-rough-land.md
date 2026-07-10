@@ -1,10 +1,5 @@
 # Spec 133 — roads pave rough land; the guard is water-only
 
-> **Amended by spec 140:** beach joined water as the second forbidden ground. The guard is
-> now water-AND-beach; rough dry land remains paveable exactly as decided here. See
-> `140-no-roads-on-beaches.md` for why beach can never hole a boot road the way the
-> rough-land rejection did (boot ways are beach-free by routing, not by the render guard).
-
 Second walk-under-the-road report (Sol 34): the operator dropped beneath the ribbon on the
 main road, next to a spot where the asphalt looked ragged on one side.
 
@@ -15,9 +10,9 @@ LAND — steep or sunken pockets — as well as water. The seeded boot ways cros
 pockets** (measured live): at each one the mesh skipped segments (the ragged holes) while
 neighbouring segments' quads bridged the pocket at rim height, AND the spec-130 grading
 skipped the same cells (same guard), so the ground never rose — an ungraded dip under a
-floating road surface. The terrain's own doc already said the intent: _"Roads stop at
+floating road surface. The terrain's own doc already said the intent: *"Roads stop at
 water (a bridge spans it later); steep land is not water, so roads may cross it and drape
-over the slope."_
+over the slope."*
 
 ## Fix
 

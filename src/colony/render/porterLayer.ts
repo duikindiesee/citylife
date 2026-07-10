@@ -90,9 +90,7 @@ export function pickRoadTarget(
         options.push({ x: ix + dx, y: iy + dy });
     }
   if (options.length === 0) return { x: cx, y: cy };
-  return options[
-    Math.min(options.length - 1, Math.floor(rng() * options.length))
-  ]!;
+  return options[Math.min(options.length - 1, Math.floor(rng() * options.length))]!;
 }
 
 /** Advance one cart one frame (legacy-verbatim): retarget when within 0.4 cells, else move

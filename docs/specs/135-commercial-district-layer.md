@@ -33,14 +33,3 @@ mass built, parcel groups named with business ids, night update, clean dispose.
 Known follow-up: the coastal ground around the district renders shallow-blue in fresh
 worlds (the dry-blend recolor path) — pre-existing, now visible because buildings stand
 there; track separately.
-
-## Superseded in part by spec 143
-
-The shop-parcel massing loop is no longer the verbatim legacy extraction: spec 143
-(commercial venue plots) replaced it with `buildShopVenue` — venues seat on the ONE
-pad-seat formula (`padSeatY`, spec 128) instead of the baked lowest-corner surface
-sample, mass in METRES on the scale constitution (the legacy loop authored cell-unit
-sizes on the 4 m/cell world — 4x too small), rotate to face their fronting road, and
-respect junction pads + ribbon coverage. The anchors, labels, promenade furniture and
-ad boards were rescaled/reseated in the same pass. The build/update/dispose lifecycle
-described here is unchanged.

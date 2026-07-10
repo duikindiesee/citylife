@@ -27,6 +27,7 @@ export function zoneSignature(state: ColonyState): string {
   const lots = state.neighborhood?.lots ?? [];
   sig += `:n${lots.length}`;
   for (const lot of lots) sig += `|${lot.id}=${lot.built ? 1 : 0}`;
+  sig += `:v${state.zonesVisible === false ? 0 : 1}`; // spec 131 — the HUD zones toggle
   return sig;
 }
 
@@ -55,4 +56,30 @@ export function spawnSignature(state: ColonyState): string {
  *  builder bumps roadsVersion and appends a centre-line way per drawn road, spec 127). */
 export function roadwaySignature(state: ColonyState): string {
   return `r${state.roadsVersion}:w${state.roadWays?.length ?? 0}`;
+}
+
+/** R3FOperatorCar — the parked car rebuilds when the operator's car or home cell changes
+ *  (spec 131). The spec is swapped whole by the runtime, so identity-ish fields suffice. */
+export function operatorCarSignature(state: ColonyState): string {
+  const p = state.operatorCar;
+  if (!p) return "car-";
+  // The FULL spec JSON, not its length (spec 131 verify F4): paint palette hex values
+  // serialize to equal digit counts, so a garage repaint left the parked car stale forever.
+  return `car${p.cell.x},${p.cell.y}:${JSON.stringify(p.spec)}`;
+}
+
+/** R3FRallyNameplates — plates rebuild when who-is-present (or a display name) changes
+ *  (spec 131). Positions track the live avatars per frame; only membership re-renders. */
+export function rallyPresenceSignature(state: ColonyState): string {
+  const p = state.rallyPresence ?? [];
+  return `rally${p.map((c) => `${c.id}=${c.displayName}`).join("|")}`;
+}
+
+/** R3FCommercialDistrict — the strip rebuilds when the district appears or a parcel's
+ *  business assignment changes (spec 135). Geometry bakes per build; glow/labels are
+ *  per-frame refs. */
+export function commercialSignature(state: ColonyState): string {
+  const cd = state.commercialDistrict;
+  if (!cd) return "cd-";
+  return `cd${cd.parcels.length}:${cd.parcels.map((p) => p.business ?? "-").join("|")}:${cd.garagePad ? "g" : "-"}:${cd.mallPad ? "m" : "-"}`;
 }
