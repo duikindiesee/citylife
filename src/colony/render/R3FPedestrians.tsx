@@ -1,3 +1,4 @@
+import { leveledWorldY } from './terrainLeveling';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
@@ -22,10 +23,13 @@ import {
 // once; the drawn count varies via mesh.count. Pure math lives in pedestrianLayer.ts.
 
 interface R3FPedestriansProps {
+  /** Spec 134 - the leveled-ground map: pads, graded roads and landscape edits reshape
+   *  the visible mesh, and anything standing on the ground must stand on THAT surface. */
+  terrainLevel?: ReadonlyMap<number, number> | null;
   sim: ColonySim;
 }
 
-export function R3FPedestrians({ sim }: R3FPedestriansProps) {
+export function R3FPedestrians({ sim, terrainLevel }: R3FPedestriansProps) {
   const bodyRef = useRef<THREE.InstancedMesh>(null);
   const headRef = useRef<THREE.InstancedMesh>(null);
   const poolRef = useRef<Ped[] | null>(null);
@@ -96,7 +100,7 @@ export function R3FPedestrians({ sim }: R3FPedestriansProps) {
     const size = terrain.size;
     const lx = terrain.landing.x, ly = terrain.landing.y;
     const roadCells = sim.state.roads;
-    const groundY = (x: number, y: number) => terrain.worldY(x, y);
+    const groundY = (x: number, y: number) => leveledWorldY(terrain, terrainLevel, x, y);
     const onLand = (x: number, y: number) => {
       const ix = Math.round(x), iy = Math.round(y);
       if (ix < 0 || iy < 0 || ix >= size || iy >= size) return false;

@@ -1,3 +1,4 @@
+import { leveledWorldY } from './terrainLeveling';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import type { ColonySim } from '../sim';
@@ -15,10 +16,13 @@ import { buildArtifactAssets, artifactTransform, type ArtifactAsset } from './ar
 // counts via summarizeRenderableArtifacts. Mount-once / vary-mesh.count idiom.
 
 interface R3FArtifactsProps {
+  /** Spec 134 - the leveled-ground map: pads, graded roads and landscape edits reshape
+   *  the visible mesh, and anything standing on the ground must stand on THAT surface. */
+  terrainLevel?: ReadonlyMap<number, number> | null;
   sim: ColonySim;
 }
 
-export function R3FArtifacts({ sim }: R3FArtifactsProps) {
+export function R3FArtifacts({ sim, terrainLevel }: R3FArtifactsProps) {
   const assets = useMemo<Record<ArtifactKind, ArtifactAsset>>(() => buildArtifactAssets(), []);
   const meshes = useRef<Partial<Record<ArtifactKind, THREE.InstancedMesh>>>({});
   const placed = useRef<Record<ArtifactKind, number>>({} as Record<ArtifactKind, number>);
@@ -42,7 +46,7 @@ export function R3FArtifacts({ sim }: R3FArtifactsProps) {
   useEffect(() => {
     const { counts, renderable } = summarizeRenderableArtifacts(sim.state.artifacts, ARTIFACT_CATALOG_SIZE);
     const size = sim.state.terrain.size;
-    const groundY = (x: number, y: number) => sim.state.terrain.worldY(x, y);
+    const groundY = (x: number, y: number) => leveledWorldY(sim.state.terrain, terrainLevel, x, y);
 
     for (const kind of ARTIFACT_KINDS) placed.current[kind] = 0;
     for (const item of renderable) {
@@ -63,7 +67,7 @@ export function R3FArtifacts({ sim }: R3FArtifactsProps) {
       mesh.count = counts[kind];
       mesh.instanceMatrix.needsUpdate = true;
     }
-  }, [sim, assets, scratch]);
+  }, [sim, assets, scratch, terrainLevel]);
 
   return (
     <group name="artifacts">

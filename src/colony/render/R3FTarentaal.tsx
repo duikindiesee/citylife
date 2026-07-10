@@ -1,3 +1,4 @@
+import { leveledWorldY } from './terrainLeveling';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
@@ -15,6 +16,9 @@ import {
 // vary-mesh.count idiom. Pure placement math lives in tarentaalLayer.ts.
 
 interface R3FTarentaalProps {
+  /** Spec 134 - the leveled-ground map: pads, graded roads and landscape edits reshape
+   *  the visible mesh, and anything standing on the ground must stand on THAT surface. */
+  terrainLevel?: ReadonlyMap<number, number> | null;
   sim: ColonySim;
 }
 
@@ -25,7 +29,7 @@ function birdGeometry(spec: typeof TARENTAAL_ADULT | typeof TARENTAAL_CHICK) {
   return geo;
 }
 
-export function R3FTarentaal({ sim }: R3FTarentaalProps) {
+export function R3FTarentaal({ sim, terrainLevel }: R3FTarentaalProps) {
   const adultRef = useRef<THREE.InstancedMesh>(null);
   const chickRef = useRef<THREE.InstancedMesh>(null);
 
@@ -53,7 +57,7 @@ export function R3FTarentaal({ sim }: R3FTarentaalProps) {
     const chick = chickRef.current;
     if (!adult || !chick) return;
     const size = sim.state.terrain.size;
-    const groundY = (x: number, y: number) => sim.state.terrain.worldY(x, y);
+    const groundY = (x: number, y: number) => leveledWorldY(sim.state.terrain, terrainLevel, x, y);
 
     let adults = 0, chicks = 0;
     for (const bird of sim.state.tarentaal) {
