@@ -1,3 +1,4 @@
+import { leveledWorldY } from './terrainLeveling';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
@@ -22,14 +23,18 @@ import {
 // idiom as the pedestrian crowd — deterministic sim state is untouched).
 
 interface R3FPortersProps {
+  /** Spec 134 - the leveled-ground map: pads, graded roads and landscape edits reshape
+   *  the visible mesh, and anything standing on the ground must stand on THAT surface. */
+  terrainLevel?: ReadonlyMap<number, number> | null;
   sim: ColonySim;
 }
 
-export function R3FPorters({ sim }: R3FPortersProps) {
+export function R3FPorters({ sim, terrainLevel }: R3FPortersProps) {
   const pileRef = useRef<THREE.InstancedMesh>(null);
   const cartRef = useRef<THREE.InstancedMesh>(null);
   const carts = useRef<PorterCart[]>([]);
   const pileSig = useRef('');
+  const levelSeen = useRef<ReadonlyMap<number, number> | null | undefined>(undefined);
   const lastT = useRef<number | null>(null);
 
   const assets = useMemo(() => {
@@ -69,10 +74,16 @@ export function R3FPorters({ sim }: R3FPortersProps) {
     // ---- piles: re-lay only when the quantised stock or the shed set changes ----
     const matUnits = pileUnits(s.materials ?? 0, COLONY.build.pilePerMaterials, COLONY.build.pileMaxUnits);
     const foodUnits = pileUnits(s.food ?? 0, COLONY.build.pilePerFood, COLONY.build.pileMaxUnits);
+    // the leveling map re-shapes the ground the piles sit on - a new map identity must
+    // re-lay them even when the stock signature is unchanged (spec 134)
+    if (levelSeen.current !== terrainLevel) {
+      levelSeen.current = terrainLevel;
+      pileSig.current = '';
+    }
     const sig = `${sheds.map((b) => `${b.x},${b.y}`).join('|')}:${matUnits}:${foodUnits}`;
     if (sig !== pileSig.current) {
       pileSig.current = sig;
-      const piles = layPiles(sheds, matUnits, foodUnits, N, (x, y) => t.worldY(x, y));
+      const piles = layPiles(sheds, matUnits, foodUnits, N, (x, y) => leveledWorldY(t, terrainLevel, x, y));
       let pi = 0;
       for (const p of piles) {
         if (pi >= pileMesh.instanceMatrix.count) break;
@@ -111,7 +122,7 @@ export function R3FPorters({ sim }: R3FPortersProps) {
     let ci = 0;
     for (const cart of carts.current) {
       const heading = stepCart(cart, dt, s.roadSet, Math.random);
-      const wy = Math.max(0, t.worldY(Math.round(cart.x), Math.round(cart.y)));
+      const wy = Math.max(0, leveledWorldY(t, terrainLevel, Math.round(cart.x), Math.round(cart.y)));
       assets.pos.set((cart.x - N / 2) * 4, wy + 0.05, (cart.y - N / 2) * 4);
       assets.quat.setFromAxisAngle(assets.axis, -heading);
       assets.m4.compose(assets.pos, assets.quat, assets.one);

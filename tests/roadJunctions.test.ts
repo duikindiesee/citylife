@@ -78,12 +78,16 @@ describe("spec 127 — way-based junction zones", () => {
 
 describe("spec 127 — junction furniture", () => {
   it("a crossing gets 4 traffic lights and 4 stop lines, square on the compass", () => {
-    const zones = findJunctionZones([
-      straight(0, 50, 100, 50),
-      straight(50, 0, 50, 100),
-    ]);
-    const items = junctionFurniture(zones[0]!);
+    const ways = [straight(0, 50, 100, 50), straight(50, 0, 50, 100)];
+    const zones = findJunctionZones(ways);
+    const items = junctionFurniture(zones[0]!, ways);
     expect(items.filter((i) => i.kind === "light").length).toBe(4);
+    // every pole stands clear of BOTH carriageways (verify follow-up: lights were the one
+    // furniture kind the clearance rules never measured)
+    for (const l of items.filter((i) => i.kind === "light")) {
+      expect(Math.abs(l.y - 50)).toBeGreaterThan(2.3);
+      expect(Math.abs(l.x - 50)).toBeGreaterThan(2.3);
+    }
     expect(items.filter((i) => i.kind === "stopline").length).toBe(4);
     expect(items.filter((i) => i.kind === "stopsign").length).toBe(0);
     // each stop line sits OUTSIDE the slab on its own compass arm
@@ -95,11 +99,9 @@ describe("spec 127 — junction furniture", () => {
   });
 
   it("a tee gets a stop sign + stop line on the terminating arm only", () => {
-    const zones = findJunctionZones([
-      straight(0, 50, 100, 50),
-      straight(50, 0, 50, 49),
-    ]);
-    const items = junctionFurniture(zones[0]!);
+    const ways = [straight(0, 50, 100, 50), straight(50, 0, 50, 49)];
+    const zones = findJunctionZones(ways);
+    const items = junctionFurniture(zones[0]!, ways);
     expect(items.filter((i) => i.kind === "light").length).toBe(0);
     expect(items.filter((i) => i.kind === "stopline").length).toBe(1);
     expect(items.filter((i) => i.kind === "stopsign").length).toBe(1);
@@ -110,5 +112,91 @@ describe("spec 127 — junction furniture", () => {
     expect(line.y).toBeLessThan(z.cy);
     expect(line.x).toBeGreaterThan(z.cx);
     expect(line.rotY).toBeCloseTo(Math.atan2(0, 1), 6); // heading +y → rotY 0
+  });
+
+  // The mid-road bus-stop regression (operator screenshot, 2026-07-10): the boot generator
+  // chains ways end-to-start along one corridor. Each chain point is a "pass" zone with two
+  // collinear terminating arms — a MERGE, not a controlled junction. The old code painted a
+  // stop line per terminating arm there, marching yellow paint down the middle of what reads
+  // as one continuous road.
+  it("a chain point — way ending where the next continues — gets NO furniture", () => {
+    const ways = [straight(0, 50, 50, 50), straight(50, 50, 100, 50)];
+    const zones = findJunctionZones(ways);
+    expect(zones.length).toBe(1);
+    expect(zones[0]!.kind).toBe("pass");
+    expect(zones[0]!.arms.filter((a) => a.terminating).length).toBe(2);
+    expect(junctionFurniture(zones[0]!, ways)).toEqual([]);
+  });
+
+  // Same regression, second defect: boot side roads are width 4, and the old fixed 1.9-cell
+  // lateral shift stood the stop sign INSIDE its own carriageway (the "bus stop" in the road).
+  it("a wide side road tee keeps the sign off every carriageway and the paint on its own", () => {
+    const ways = [straight(0, 50, 100, 50, 4), straight(50, 10, 50, 48, 4)];
+    const zones = findJunctionZones(ways);
+    expect(zones.length).toBe(1);
+    expect(zones[0]!.kind).toBe("tee");
+    const items = junctionFurniture(zones[0]!, ways);
+    const sign = items.find((i) => i.kind === "stopsign")!;
+    const line = items.find((i) => i.kind === "stopline")!;
+    expect(sign).toBeTruthy();
+    expect(line).toBeTruthy();
+    // distance from a point to each way's straight centre-line
+    const distMain = (p: { x: number; y: number }) => Math.abs(p.y - 50);
+    const distSide = (p: { x: number; y: number }) => Math.abs(p.x - 50);
+    // the sign stands clear of BOTH 4-cell carriageways (half-width 2)
+    expect(distMain(sign)).toBeGreaterThan(2.25);
+    expect(distSide(sign)).toBeGreaterThan(2.25);
+    // the paint lies on its own approach lane but clear of the main road
+    expect(distSide(line)).toBeLessThan(2);
+    expect(distMain(line)).toBeGreaterThan(2.25);
+  });
+
+  // Adversarial verify F2: a chained corridor (way ending where the next continues) passing
+  // through a REAL side-road tee must not grow stops on the through movement — only the
+  // side road gets furniture.
+  it("a chain point sharing a zone with a side-road tee stops only the side road", () => {
+    const ways = [
+      straight(0, 50, 50, 50, 4),
+      straight(50, 50, 100, 50, 4),
+      straight(50, 10, 50, 48, 4),
+    ];
+    const zones = findJunctionZones(ways);
+    expect(zones.length).toBe(1);
+    const items = junctionFurniture(zones[0]!, ways);
+    const lines = items.filter((i) => i.kind === "stopline");
+    const signs = items.filter((i) => i.kind === "stopsign");
+    expect(lines.length).toBe(1);
+    expect(signs.length).toBe(1);
+    // both belong to the side road (way 2) and sit south of the corridor, clear of it
+    expect(lines[0]!.wayIndex).toBe(2);
+    expect(signs[0]!.wayIndex).toBe(2);
+    expect(Math.abs(lines[0]!.y - 50)).toBeGreaterThan(2.25);
+    expect(Math.abs(signs[0]!.y - 50)).toBeGreaterThan(2.25);
+  });
+
+  // Adversarial verify F1/F3: placement follows the arm's OWN centre-line, so a diagonal
+  // approach keeps its paint on its own asphalt and still gets its sign (the compass-axis
+  // walk used to self-block and silently delete every boot-town sign).
+  it("a diagonal side road keeps paint on its own asphalt and still earns its sign", () => {
+    const ways = [
+      straight(0, 50, 100, 50, 4),
+      { path: [{ x: 20, y: 18 }, { x: 50, y: 48 }], kind: "street", width: 4 } as RoadWay,
+    ];
+    const zones = findJunctionZones(ways);
+    expect(zones.length).toBe(1);
+    expect(zones[0]!.kind).toBe("tee");
+    const items = junctionFurniture(zones[0]!, ways);
+    const line = items.find((i) => i.kind === "stopline")!;
+    const sign = items.find((i) => i.kind === "stopsign")!;
+    expect(line).toBeTruthy();
+    expect(sign).toBeTruthy();
+    // the diagonal centre-line runs at 45 degrees through y = x - 2; point distance to it
+    const distDiag = (p: { x: number; y: number }) =>
+      Math.abs(p.y - p.x + 2) / Math.SQRT2;
+    const distMain = (p: { x: number; y: number }) => Math.abs(p.y - 50);
+    expect(distDiag(line)).toBeLessThan(2); // paint ON its own carriageway
+    expect(distMain(line)).toBeGreaterThan(2.25); // and clear of the main road
+    expect(distDiag(sign)).toBeGreaterThan(2.25); // the sign clears BOTH
+    expect(distMain(sign)).toBeGreaterThan(2.25);
   });
 });

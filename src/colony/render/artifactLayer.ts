@@ -35,6 +35,34 @@ export function artifactTransform(
   };
 }
 
+/** Spec 126 revision (the operator's mid-road bus-stop lookalike, 2026-07-10): the widened
+ *  boot carriageway paves over civic-art cells near the landing — the live town had the
+ *  lamppost, wayfinder, bench and fountain all standing ON road cells (the golden wayfinder
+ *  panels read as a bus-stop sign in the carriageway). An artifact whose cell the road
+ *  covers slides to the nearest unpaved cell — deterministic outward ring walk, radius 3 —
+ *  or hides when the whole block is asphalt. */
+export function nudgeOffRoads(
+  item: Pick<VisualArtifact, 'x' | 'y'>,
+  isRoad: (x: number, y: number) => boolean,
+  size: number,
+): { x: number; y: number } | null {
+  const cx = Math.round(item.x),
+    cy = Math.round(item.y);
+  if (!isRoad(cx, cy)) return { x: item.x, y: item.y };
+  for (let r = 1; r <= 3; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const nx = cx + dx,
+          ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+        if (!isRoad(nx, ny)) return { x: nx, y: ny };
+      }
+    }
+  }
+  return null;
+}
+
 export interface ArtifactAsset {
   geometry: THREE.BufferGeometry;
   material: THREE.Material;

@@ -53,7 +53,14 @@ export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
         }
       return Math.max(0, mx);
     };
-    return { group, zones: zones.map((z) => ({ ...z, wY: zoneY(z) })), wx, wz };
+    return {
+      group,
+      // furniture is laid out here, where the ways are in scope — placement needs every
+      // carriageway's width to keep signs and paint off foreign asphalt
+      zones: zones.map((z) => ({ ...z, wY: zoneY(z), furniture: junctionFurniture(z, ways) })),
+      wx,
+      wz,
+    };
     // sig is the rebuild trigger for the mutable sim.state (dead-memo rule).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sim, sig]);
@@ -84,7 +91,7 @@ export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
                 <boxGeometry args={[size, SLAB_THICKNESS, size]} />
                 <meshStandardMaterial color="#5d636e" roughness={0.9} metalness={0.02} />
               </mesh>
-              {junctionFurniture(z).map((f, j) => {
+              {z.furniture.map((f, j) => {
                 const pos: [number, number, number] =
                   f.kind === 'stopline'
                     ? [wx(f.x), slabTop + 0.012, wz(f.y)]

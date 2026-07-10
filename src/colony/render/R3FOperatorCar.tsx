@@ -1,3 +1,4 @@
+import { leveledWorldY } from './terrainLeveling';
 import React, { useEffect, useMemo } from 'react';
 import type { ColonySim } from '../sim';
 import { buildCarMesh } from '../car/carMesh';
@@ -15,9 +16,12 @@ import { operatorCarSignature } from './simSignals';
 interface R3FOperatorCarProps {
   sim: ColonySim;
   runtime?: SimBridge;
+  /** Spec 134 - the leveled-ground map: pads, graded roads and landscape edits reshape
+   *  the visible mesh, and anything standing on the ground must stand on THAT surface. */
+  terrainLevel?: ReadonlyMap<number, number> | null;
 }
 
-export function R3FOperatorCar({ sim, runtime }: R3FOperatorCarProps) {
+export function R3FOperatorCar({ sim, runtime, terrainLevel }: R3FOperatorCarProps) {
   const sig = useSimSignal(runtime, () => operatorCarSignature(sim.state));
 
   const built = useMemo(() => {
@@ -30,12 +34,12 @@ export function R3FOperatorCar({ sim, runtime }: R3FOperatorCarProps) {
     const onRoad = sim.state.roadSet.has(`${Math.round(cell.x)},${Math.round(cell.y)}`);
     const y = onRoad
       ? Math.max(0, getSmoothRoadY(t, cell.x, cell.y)) + ROAD_RIBBON_LIFT
-      : Math.max(0, t.worldY(Math.round(cell.x), Math.round(cell.y))) + 0.02;
+      : Math.max(0, leveledWorldY(t, terrainLevel, Math.round(cell.x), Math.round(cell.y))) + 0.02;
     g.position.set((cell.x - N / 2) * 4, y, (cell.y - N / 2) * 4);
     g.name = 'operator-car';
     return g;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sim, sig]);
+  }, [sim, sig, terrainLevel]);
 
   // Spec 119 — the superseded car mesh is disposed on every swap and on unmount.
   useEffect(() => () => {
