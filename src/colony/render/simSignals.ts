@@ -45,7 +45,9 @@ export function levelingSignature(state: ColonyState): string {
 }
 
 /** R3FWorld's first-person spawn point — recomputes when the road network changes (the spawn
- *  snaps to the first road, else falls back to findDrySpawn over the immutable terrain). */
+ *  snaps to the first road, else falls back to findDrySpawn over the immutable terrain). The
+ *  leveled-height map (spec 131) is a React-managed value, so it rides the memo's deps
+ *  directly rather than this signature. */
 export function spawnSignature(state: ColonyState): string {
   return `r${state.roadsVersion}`;
 }

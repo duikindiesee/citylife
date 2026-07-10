@@ -3,11 +3,12 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { RigidBody, RapierRigidBody, CapsuleCollider } from '@react-three/rapier';
 import { Vector3, Euler, Quaternion } from 'three';
 import { COLONY } from '../../colony/config';
+import { leveledWorldY } from '../../colony/render/terrainLeveling';
 
 const MOVEMENT_SPEED = 10;
 const LOOK_SPEED = 2;
 
-export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainLevel }: { sim?: any, startPosition?: [number, number, number], terrainLevel?: Map<number, number> }) {
+export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainLevel }: { sim?: any, startPosition?: [number, number, number], terrainLevel?: Map<number, number> | null }) {
   const rigidBody = useRef<RapierRigidBody>(null);
   const { camera } = useThree();
   
@@ -146,9 +147,10 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainL
       const terrainSize = terrain.size;
       const gridX = Math.max(0, Math.min(terrainSize - 1, Math.round(pos.x / 4 + terrainSize / 2)));
       const gridZ = Math.max(0, Math.min(terrainSize - 1, Math.round(pos.z / 4 + terrainSize / 2)));
-      const override = terrainLevel?.get(gridZ * terrainSize + gridX);
-      const terrainHeight = override !== undefined ? override : terrain.worldY(gridX, gridZ);
-
+      // Guard against the RENDERED surface, not the raw sim height — leveling overrides
+      // (pads, graded roads, terraforming) are where the visible mesh actually is.
+      const terrainHeight = leveledWorldY(terrain, terrainLevel, gridX, gridZ);
+      
       if (pos.y < terrainHeight - 0.5) {
         rigidBody.current.setTranslation({
           x: pos.x,

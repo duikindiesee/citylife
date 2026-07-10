@@ -5,7 +5,7 @@ import {
   buildCommercialDistrictLayer,
   type CommercialDistrictLayer,
 } from './commercialDistrictLayer';
-import { leveledWorldY } from './useTerrainLeveling';
+import { leveledWorldY } from './terrainLeveling';
 import { useSimSignal, type SimBridge } from './useSimSignal';
 import { commercialSignature } from './simSignals';
 
@@ -46,7 +46,7 @@ export function R3FCommercialDistrict({ sim, runtime, terrainLevel }: R3FCommerc
       surfaceY: (x, y) =>
         Math.max(
           0,
-          leveledWorldY(levelRef.current, terrain, Math.round(x), Math.round(y)),
+          leveledWorldY(terrain, levelRef.current, Math.round(x), Math.round(y)),
         ),
     });
     // sig is the rebuild trigger for the mutable sim.state (dead-memo rule).

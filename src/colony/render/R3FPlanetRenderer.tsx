@@ -44,6 +44,7 @@ import { R3FRoadRibbons } from './R3FRoadRibbons';
 import { buildShoreProps } from './shoreProps';
 import { buildVenueProps } from './venueProps';
 import { useTerrainLeveling } from './useTerrainLeveling';
+import { leveledWorldY } from './terrainLeveling';
 import { useRoadNetwork } from '../stores/useRoadNetwork';
 import { COLONY } from '../config';
 import { Html, MapControls } from '@react-three/drei';
@@ -60,7 +61,6 @@ import { useSimSignal, type SimBridge } from './useSimSignal';
 import { zoneSignature, spawnSignature, roadwaySignature } from './simSignals';
 import { ribbonCoverage } from './roadRibbon';
 import { getSmoothRoadY } from './roadSurface';
-import { leveledWorldY } from './useTerrainLeveling';
 import { nextBootStage } from './bootStage';
 import { R3FAvatars, type AvatarRefs } from './R3FAvatars';
 import { R3FPedestrians } from './R3FPedestrians';
@@ -494,12 +494,12 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
       const road = roads[0];
       const wx = (road.x - size / 2) * 4;
       const wz = (road.y - size / 2) * 4;
-      // spawn on the LEVELED ground (spec 134) — a road cell may be graded up/down
-      const wy = leveledWorldY(debouncedTerrainLevel, sim.state.terrain, road.x, road.y);
+      // Spawn on the RENDERED surface: road grading / pad leveling can move the visible mesh
+      // away from the raw sim height, and the walker must not start under (or above) it.
+      const wy = leveledWorldY(sim.state.terrain, debouncedTerrainLevel, road.x, road.y);
       return [wx, wy + 2, wz] as [number, number, number];
     }
     return findDrySpawn(sim.state.terrain);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sim, spawnSig, debouncedTerrainLevel]);
 
   return (

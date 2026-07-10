@@ -1,26 +1,48 @@
 # Spec 134 — the walker stands on the leveled ground
 
-Operator report: "it is jumping up and down ever since I came out of the water."
+Latent-bug fix from the spec-127 adversarial verify (PR #252, verdict P1). The first-person
+walker's spawn (`R3FPlanetRenderer`'s `startPos` memo) and its ground guardrail
+(`FirstPersonController`) both read RAW sim heights via `terrain.worldY`, blind to the
+render-side leveling overrides that `useTerrainLeveling` applies for pads, graded roads and
+terraforming. Where leveling raises the rendered mesh more than ~2 m above the raw height, the
+walker spawns beneath the visible surface and the guardrail teleports it back to `rawY + 1.5`
+— still underground — in a jitter loop; over lowered terrain the guardrail fights gravity and
+the walker floats.
 
-## Root cause
+## Design
 
-The first-person guardrail clamped against RAW `terrain.worldY`, while the physics
-heightfield collider carries the LEVELED heights (pads, dry-blend, and since spec 130 the
-road grading, which both fills AND CUTS). Wherever the grading cut the ground below
-natural height — road cuttings, shore banks, exactly where a swimmer climbs out — the
-capsule stood on the graded floor, the clamp read raw terrain half a metre or more above,
-teleported the walker up to raw+1.5, gravity dropped them back to the collider, and the
-loop repeated: the endless bounce. (Flagged as latent by the spec-127 adversarial verify,
-P1; spec 130 made it commonplace.)
+One pure resolver, `leveledWorldY(terrain, terrainLevel, x, y)` in
+`src/colony/render/terrainLeveling.ts`:
 
-## Fix
+```ts
+terrainLevel?.get(y * terrain.size + x) ?? terrain.worldY(x, y)
+```
 
-`leveledWorldY(terrainLevel, terrain, x, y)` (exported from useTerrainLeveling) — override
-when the leveling reshaped the cell, raw otherwise. The FirstPersonController takes the
-`terrainLevel` map and clamps against the leveled surface; the spawn point uses it too.
-One surface of truth: what the collider stands you on is what the guardrail protects.
+Anything that stands ON the rendered surface resolves heights through it. Both walker call
+sites now do:
+
+- **Spawn** — the `startPos` memo resolves the first road cell's height through
+  `leveledWorldY` with `debouncedTerrainLevel`, which joins the memo's deps (it is a
+  React-managed map, so it rides the deps directly; `spawnSignature` still covers the mutable
+  sim side).
+- **Guardrail** — `R3FWorld` passes `debouncedTerrainLevel` to `FirstPersonController` as a
+  new optional `terrainLevel` prop; the per-frame ground check compares against the leveled
+  height, so the below-ground teleport lands ON the visible mesh and stops fighting gravity
+  over lowered terrain. `R3FCityRenderer` (v1 town) passes no map and keeps raw behaviour.
+
+The `findDrySpawn` fallback (no roads yet) still reads raw terrain: with no roads there are no
+pads or gradings, and a pre-road landscape edit at the exact spawn cell is now corrected by the
+guardrail on the first frame anyway.
 
 ## Tests
 
-`tests/leveledWorldY.test.ts` — override wins, raw fallback, and a zero-height override
-(a cut to sea level) is honoured despite being falsy.
+- `tests/terrainLeveling.test.ts` — `leveledWorldY` (5): override wins, raw fallback,
+  row-major indexing never transposes x/y, absent map reads raw, zero-height override is not
+  treated as missing.
+
+## Notes
+
+Pre-existing on every branch with the R3F walker; surfaced by spec 127's road grading because
+ribbon roads move the rendered surface further from the raw heights than the old flat roads
+did. Complements spec 130 (road ground grading): that reshapes the leveling map so the ground
+meets the ribbon; this fix makes the walker read that map wherever it stands.

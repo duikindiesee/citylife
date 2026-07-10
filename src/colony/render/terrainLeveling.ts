@@ -9,6 +9,27 @@ export interface TerrainLevelRect {
   h: number;
 }
 
+export interface LeveledTerrain extends TerrainLevelingTerrain {
+  size: number;
+}
+
+/**
+ * The RENDERED ground height at a grid cell: the terrain-leveling override where pads, graded
+ * roads or landscape edits re-shaped the visible mesh, else the raw sim height. Anything that
+ * stands ON the rendered surface (the first-person walker's spawn and its ground guardrail)
+ * must resolve heights through this, not terrain.worldY — the raw height can sit metres below
+ * (or above) the mesh the player actually sees. Keys are row-major (y * size + x), matching
+ * useTerrainLeveling.
+ */
+export function leveledWorldY(
+  terrain: LeveledTerrain,
+  terrainLevel: ReadonlyMap<number, number> | null | undefined,
+  x: number,
+  y: number,
+): number {
+  return terrainLevel?.get(y * terrain.size + x) ?? terrain.worldY(x, y);
+}
+
 export interface CoastalCommercialDryBlendOptions {
   next: Map<number, number>;
   n: number;
