@@ -53,13 +53,20 @@ function getTraffic(state: ColonyState): TrafficData {
   // roadSet also reserves undrivable cells (the neighborhood verge), and using it gave the graph
   // neighbour ids with no node — cars routed into the verge and dead-ended.
   const rk = state.roadKind;
+  // Spec 149 — the bus-depot spur is a real road but belongs to the buses; ambient cars must not
+  // drive it (a car meeting a maneuvering bus on the dead-end spur is the "bumping into cars" the
+  // operator flagged). Excluding its cells as nodes AND neighbours keeps cars on the loop.
+  const noCar = state.busDepotSpurCells;
+  const drivable = (x: number, y: number): boolean =>
+    rk.has(x + "," + y) && !(noCar != null && noCar.has(x + "," + y));
   const graph = new Map<number, number[]>();
   const intersections = new Set<number>();
   for (const r of state.roads) {
+    if (noCar != null && noCar.has(r.x + "," + r.y)) continue; // spur cells are not car nodes
     const id = r.y * W + r.x;
     const ns: number[] = [];
     for (const [dx, dy] of DIRS) {
-      if (rk.has(r.x + dx + "," + (r.y + dy)))
+      if (drivable(r.x + dx, r.y + dy))
         ns.push((r.y + dy) * W + (r.x + dx));
     }
     graph.set(id, ns);

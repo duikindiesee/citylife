@@ -308,3 +308,32 @@ typecheck + e2e green.
 Fares, capacity limits, NPC riders, multiple routes, articulated/double-decker
 variants, depot fuel/maintenance sim, bus purchase UI (the five empty bays are the
 hook, not the feature).
+
+## 9. Collision-free operations (operator hardening, 2026-07-11)
+
+Operator ask: buses must drive into the depot, park, and pull out WITHOUT bumping other
+buses or cars — "no collision in the depot" — with lanes, a random parking bay, and a
+new bus rolling out each time one reaches its second stop while the depot is not empty.
+This SUPERSEDES the §2 sketch on three points (bus-i-owns-bay-i, first-stop gate):
+
+- **Single-occupancy depot corridor (the collision fix).** The spur + gate + apron is one
+  shared lane, so `busFleet.ts` now holds a `corridorBusyBy` mutex: at most ONE bus is ever
+  inside the depot approach. A departing bus grabs it at bay-out and releases it on reaching
+  the loop (service); a returning bus grabs it only when the corridor is clear, else keeps
+  lapping and retries at the next join crossing. A departure and a return can never meet
+  head-on on the single spur. Unit-tested as an invariant across a full sim day
+  (`tests/busFleet.test.ts`: `corridorCount <= 1` at every step).
+- **Random free-bay parking.** Bays are no longer owned by bus id. `BusState.bay` is the bay a
+  bus currently holds (or -1 while on the loop); a returning bus parks in a random FREE bay
+  drawn from a seeded LCG (`makeFleet(cfg, worldSeed)`), so parking is deterministic yet
+  varied and two buses never target the same bay. Bay geometry/poses index by `b.bay`.
+- **2nd-stop continuous dispatch + fair rotation.** The spacing gate releases when the running
+  bus clears its SECOND route stop (not the first), and the depot keeps dispatching while any
+  bus is parked and in hours — buses trickle out, evenly spaced, until the depot is empty.
+  Dispatch picks the LONGEST-rested bus (smallest `breakUntil`, tie-broken by id) so no low-id
+  bus monopolises the gate and every bus gets a turn.
+- **Cars off the spur.** The depot spur is a real drivable road, so ambient traffic would drive
+  the dead-end into a maneuvering bus. The runtime records the spur cells in
+  `state.busDepotSpurCells` and `traffic.ts` excludes them from the car graph (as nodes and
+  neighbours), so cars stay on the loop and the buses own the spur. Pinned by
+  `tests/busDepotBoot.test.ts` (no car ever occupies a spur cell over a long traffic run).

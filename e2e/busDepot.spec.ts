@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test';
 
 // Spec 149 — the bus depot + fleet, asserted against the LIVE world through the __colony runtime
 // probe: buses park at the depot overnight, the first departure lands at 08:00 on the sim clock,
-// the second bus holds its bay until the first reaches its first stop (the stagger gate), and the
+// the next bus holds its bay until the running one clears its second stop (the spacing gate) with a
+// single-occupancy depot corridor (no two buses maneuvering at once — the collision fix), and the
 // player boards a dwelling bus at the depot shelter, rides it onto the route, and steps off.
 // WebGL suite — judge with --workers=1 (parallel specs crash the 4 GB GPU).
 
@@ -86,27 +87,38 @@ test.describe('spec 149 — bus depot fleet', () => {
     expect(departure).toBeGreaterThanOrEqual(8 * 60);
     expect(departure).toBeLessThan(8 * 60 + 15); // 100 ms polling at 9 sim-min/s ≈ minutes of slack
 
-    // 3. The stagger gate: bus 1 must not leave its bay until bus 0 has reached its first stop.
+    // 3. The stagger gate (spec 149 §9): bus 1 must not leave its bay until bus 0 has cleared its
+    //    SECOND route stop. Also assert the depot corridor is single-occupancy the whole time — no
+    //    two buses ever maneuvering in the depot approach at once (the collision fix).
+    const inCorridor = (m: string) =>
+      m === 'bay-out' || m === 'depot-stop-out' || m === 'spur-out' ||
+      m === 'spur-in' || m === 'depot-stop-in' || m === 'bay-in';
     await page.evaluate(() => {
       window.__colony.setSpeed(3);
       window.__staggerViolated = false;
+      (window as any).__corridorViolated = false;
     });
     await page.waitForFunction(
-      () => {
+      (inCorridorSrc: string) => {
+        const isCorridor = new Function('m', `return (${inCorridorSrc})(m)`) as (m: string) => boolean;
         const f = window.__colony.busFleet;
-        if (f.buses[1].mode !== 'parked' && !f.buses[0].reachedFirstStop)
+        if (f.buses[1].mode !== 'parked' && f.buses[0].stopsReached < 2)
           window.__staggerViolated = true;
+        if (f.buses.filter((b: any) => isCorridor(b.mode)).length > 1)
+          (window as any).__corridorViolated = true;
         return f.buses[1].mode !== 'parked';
       },
-      undefined,
+      inCorridor.toString(),
       { timeout: 180000, polling: 100 },
     );
     const stagger = await page.evaluate(() => ({
       violated: window.__staggerViolated,
-      firstReached: window.__colony.busFleet.buses[0].reachedFirstStop,
+      corridorViolated: (window as any).__corridorViolated,
+      secondReached: window.__colony.busFleet.buses[0].stopsReached >= 2,
     }));
     expect(stagger.violated).toBe(false);
-    expect(stagger.firstReached).toBe(true);
+    expect(stagger.corridorViolated).toBe(false);
+    expect(stagger.secondReached).toBe(true);
     await page.screenshot({ path: testInfo.outputPath('depot-morning-dispatch.png') });
   });
 

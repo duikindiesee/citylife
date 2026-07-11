@@ -1627,7 +1627,17 @@ export class ColonyRuntime {
             padCells.push({ x, y });
         reserveParcelLand(this.sim.state, padCells); // houses can never spawn on the depot
         // The gate spur is a REAL drivable road (ribbon-rendered) — buses ride INTO the plot on it.
-        mergeAvenue(this.sim.state, layRoad([site.roadCell, site.gate], 1));
+        const spurCells = layRoad([site.roadCell, site.gate], 1);
+        mergeAvenue(this.sim.state, spurCells);
+        // Spec 149 — the spur belongs to the BUSES. Fence it off from ambient car traffic (all its
+        // cells except the loop junction) so a car never drives the dead-end into a maneuvering bus.
+        this.sim.state.busDepotSpurCells = new Set(
+          spurCells
+            .filter(
+              (c) => !(c.x === site.roadCell.x && c.y === site.roadCell.y),
+            )
+            .map((c) => `${c.x},${c.y}`),
+        );
         const layout = depotLayout(site, {
           baysTotal: tr.baysTotal,
           laneDepth: tr.depotLaneDepth,
@@ -1667,7 +1677,7 @@ export class ColonyRuntime {
           bayPaths,
           this.busRoute.stops,
         );
-        this.busFleet = makeFleet(COLONY.transit);
+        this.busFleet = makeFleet(COLONY.transit, this.worldSeed); // seed the free-bay lottery per world
       }
     }
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
