@@ -1,7 +1,7 @@
 {
   "name": "citylife",
   "private": true,
-  "version": "0.23.0",
+  "version": "0.22.7",
   "type": "module",
   "description": "A stylized-3D, agent-driven city that runs itself and an AI governs.",
   "scripts": {
@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "@types/node": "^24.13.3",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
