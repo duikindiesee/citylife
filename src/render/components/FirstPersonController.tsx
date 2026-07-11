@@ -27,6 +27,7 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainL
     backward: false,
     left: false,
     right: false,
+    sprint: false,
     mouseX: 0,
     mouseY: 0,
   });
@@ -39,6 +40,7 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainL
       if (e.code === 'KeyS') input.current.backward = true;
       if (e.code === 'KeyA') input.current.left = true;
       if (e.code === 'KeyD') input.current.right = true;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.current.sprint = true;
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -46,6 +48,7 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainL
       if (e.code === 'KeyS') input.current.backward = false;
       if (e.code === 'KeyA') input.current.left = false;
       if (e.code === 'KeyD') input.current.right = false;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.current.sprint = false;
     };
 
     // Pointer lock for mouse look
@@ -121,7 +124,13 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainL
 
     // Apply rotation to movement vector
     movement.applyEuler(new Euler(0, rotation.current.y, 0));
-    movement.multiplyScalar(MOVEMENT_SPEED); // Velocity, so no delta
+    // Hold Shift to sprint — the multiplier is the spec-104 config value, so the slate's
+    // future sprint bar (spec 138) and this speed can never disagree. The charge/recovery
+    // budget lands WITH that HUD; silently exhausting sprint with no gauge reads as a bug.
+    const sprint = input.current.sprint
+      ? COLONY.firstPerson.sprintWalkSpeedMultiplier
+      : 1;
+    movement.multiplyScalar(MOVEMENT_SPEED * sprint); // Velocity, so no delta
 
     // Apply movement to physics body
     const currentVel = rigidBody.current.linvel();
