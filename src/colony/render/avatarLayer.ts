@@ -3,16 +3,19 @@
 // the PURE math and constants so the transforms, colors and capacity rules are pinned in
 // the node test env, and R3FAvatars.tsx stays a thin instanced-mesh syncer.
 import type { AvatarView } from './R3FPlanetRenderer';
+import { CITIZEN_HEIGHT_M, citizenFigure } from '../scale';
 
 /** Legacy capacity: at most 64 avatar instances are drawn (AV_CAP in PlanetRenderer.ts).
  *  The instanced meshes are allocated ONCE at this capacity and mesh.count varies — the
  *  max-capacity pattern avoids InstancedMesh reconstruction on roster changes. */
 export const AVATAR_CAP = 64;
 
-/** Legacy body proportions: capsule torso (radius 0.16, length 0.44) + head sphere
- *  (radius 0.12) lifted 0.86 — kept verbatim so citizens look identical across renderers. */
-export const AVATAR_BODY = { radius: 0.16, length: 0.44 } as const;
-export const AVATAR_HEAD = { radius: 0.12, lift: 0.86 } as const;
+/** Spec 137 — citizens are a real 1.7 m adult, DERIVED from the shared metric (they were a
+ *  ~1 m toddler and torso-buried before). `lift` translates the torso capsule up so its feet
+ *  sit on the ground; the head crown reaches CITIZEN_HEIGHT_M. */
+const FIGURE = citizenFigure(CITIZEN_HEIGHT_M);
+export const AVATAR_BODY = { radius: FIGURE.bodyRadius, length: FIGURE.bodyLength, lift: FIGURE.bodyLift };
+export const AVATAR_HEAD = { radius: FIGURE.headRadius, lift: FIGURE.headLift };
 
 /** Legacy identity colors, verbatim from PlanetRenderer.ts updateAvatars:
  *  cyan for the operator's own citizen, pod-purple for citizens with a live Hermes pod,

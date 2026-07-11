@@ -20,10 +20,11 @@ import {
 const alwaysLand = () => true;
 
 describe("spec 121 — legacy-verbatim constants", () => {
-  it("keeps the pool cap, proportions and palette", () => {
+  it("keeps the pool cap and palette, and stands a 1.7 m adult on the ground (spec 137)", () => {
     expect(PED_POOL_CAP).toBe(28);
-    expect(PED_BODY).toEqual({ radius: 0.13, length: 0.34, translateY: 0.33 });
-    expect(PED_HEAD).toEqual({ radius: 0.1, translateY: 0.72 });
+    // pedestrians share the citizens' 1.7 m silhouette: crown reaches 1.7, feet at 0
+    expect(PED_HEAD.translateY + PED_HEAD.radius).toBeCloseTo(1.7, 5);
+    expect(PED_BODY.translateY - (PED_BODY.radius + PED_BODY.length / 2)).toBeCloseTo(0, 5);
     expect(PED_COLORS).toHaveLength(6);
   });
 
