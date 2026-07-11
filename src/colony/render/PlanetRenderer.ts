@@ -57,6 +57,7 @@ import { defaultBlueprint, streetDoorDir, type Zone } from "../neighborhood";
 import { buildShoreProps, type ShorePropsLayer } from "./shoreProps";
 import { buildVenueProps, type VenuePropsLayer } from "./venueProps";
 import { buildGltfPropLayer, type GltfPropLayer } from "./gltfPropLayer";
+import { TarentaalGltfLayer } from "./tarentaalGltfLayer";
 import { rallyVenuePropPlacements, venuePropAssets } from "./venuePropAssets";
 import { buildFoam, type FoamLayer } from "./foamLayer";
 import { buildClouds, type CloudLayer } from "./cloudLayer";
@@ -234,6 +235,7 @@ export class PlanetRenderer {
   // Tarentaal flock — real deterministic sim birds (adults + chicks), rendered as low-poly instanced ground animals.
   private tarentaalAdultMesh!: THREE.InstancedMesh;
   private tarentaalChickMesh!: THREE.InstancedMesh;
+  private tarentaalGltfLayer!: TarentaalGltfLayer;
   // Furniture / visual artifacts — deterministic sim catalog instances, foundation for clickable Kookerbook objects.
   private artifactMeshes!: Record<ArtifactKind, THREE.InstancedMesh>;
   private artifactCap = 0;
@@ -1788,6 +1790,7 @@ export class PlanetRenderer {
       tarentaalCap,
     );
     this.tarentaalAdultMesh.count = 0;
+    this.tarentaalAdultMesh.name = "tarentaal-primitive-adults";
     this.tarentaalAdultMesh.castShadow = true;
     this.tarentaalAdultMesh.frustumCulled = false;
     this.scene.add(this.tarentaalAdultMesh);
@@ -1805,9 +1808,11 @@ export class PlanetRenderer {
       tarentaalCap,
     );
     this.tarentaalChickMesh.count = 0;
+    this.tarentaalChickMesh.name = "tarentaal-primitive-chicks";
     this.tarentaalChickMesh.castShadow = true;
     this.tarentaalChickMesh.frustumCulled = false;
     this.scene.add(this.tarentaalChickMesh);
+    this.tarentaalGltfLayer = new TarentaalGltfLayer(this.scene);
 
     const benchSeat = new THREE.BoxGeometry(1.15, 0.12, 0.38);
     benchSeat.translate(0, 0.38, 0);
@@ -2784,11 +2789,12 @@ export class PlanetRenderer {
     );
     this.updateColonyLayer();
     this.updatePedestrians();
-    this.updateTarentaal();
+    const presentationDelta = this.clock.getDelta();
+    this.updateTarentaal(presentationDelta);
     this.updateArtifacts();
     this.updatePorters(); // spec 073 — goods piled at the sheds + porter carts on the roads
     this.updateAvatars(); // P1 — the named citizen avatars at their live roster positions
-    this.updateNamedAvatarMixers(this.clock.getDelta()); // v3 — presentation-only GLB avatar clips
+    this.updateNamedAvatarMixers(presentationDelta); // v3 — presentation-only GLB avatar clips
     this.updateNeighborhood(); // spec 075 — lot pads + voxel homes
     if (this.beaconMat) {
       const blink = Math.max(0, Math.sin((performance.now() / 1000) * 2.4));
@@ -3066,8 +3072,22 @@ export class PlanetRenderer {
   }
 
   /** The tarentaal are not renderer-only ambience: positions come from the deterministic ColonySim tick. */
-  private updateTarentaal(): void {
+  private updateTarentaal(deltaSeconds: number): void {
     const birds = this.sim.state.tarentaal;
+    const glbReady = this.tarentaalGltfLayer.update(
+      birds,
+      deltaSeconds,
+      (bird) => ({
+        x: this.wx(bird.x),
+        y: this.surfaceY(bird.x, bird.y),
+        z: this.wz(bird.y),
+      }),
+    );
+    if (glbReady) {
+      this.tarentaalAdultMesh.count = 0;
+      this.tarentaalChickMesh.count = 0;
+      return;
+    }
     let adultCount = 0;
     let chickCount = 0;
     for (const bird of birds) {
@@ -6024,6 +6044,7 @@ export class PlanetRenderer {
     for (const entry of this.namedAvatars.values())
       this.disposeNamedAvatarEntry(entry);
     this.namedAvatars.clear();
+    this.tarentaalGltfLayer?.dispose();
     // Spec 093 — the chunk-grid geometries + the shared terrain material are app-side GL objects that
     // renderer.dispose() does NOT free; release them so a teardown/recreate (HMR, remount) doesn't leak.
     this.chunkedTerrain?.dispose();
