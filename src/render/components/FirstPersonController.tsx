@@ -4,6 +4,12 @@ import { RigidBody, RapierRigidBody, CapsuleCollider } from '@react-three/rapier
 import { Vector3, Euler, Quaternion } from 'three';
 import { COLONY } from '../../colony/config';
 import { leveledWorldY } from '../../colony/render/terrainLeveling';
+import {
+  PLAYER_HALF_HEIGHT,
+  PLAYER_RADIUS_M,
+  PLAYER_HALF_EXTENT,
+  PLAYER_EYE_OFFSET,
+} from '../../colony/scale';
 
 const MOVEMENT_SPEED = 10;
 const LOOK_SPEED = 2;
@@ -154,14 +160,14 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainL
       if (pos.y < terrainHeight - 0.5) {
         rigidBody.current.setTranslation({
           x: pos.x,
-          y: terrainHeight + 1.5,
+          y: terrainHeight + PLAYER_HALF_EXTENT, // body centre so the resized capsule's feet rest on the ground
           z: pos.z
         }, true);
         rigidBody.current.setLinvel({ x: currentVel.x, y: 0, z: currentVel.z }, true);
       }
     }
 
-    const camY = pos.y + 0.6; // Raise offset to 1.6m eye height above ground
+    const camY = pos.y + PLAYER_EYE_OFFSET; // eye at PLAYER_EYE_M (1.6 m) above the feet — spec 137
     camera.position.set(pos.x, camY, pos.z);
     camera.quaternion.setFromEuler(rotation.current);
   });
@@ -182,9 +188,9 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainL
       mass={1}
       friction={0}
     >
-      <CapsuleCollider args={[0.5, 1]} />
+      <CapsuleCollider args={[PLAYER_HALF_HEIGHT, PLAYER_RADIUS_M]} />
       <mesh visible={false}>
-        <capsuleGeometry args={[0.5, 1, 4]} />
+        <capsuleGeometry args={[PLAYER_RADIUS_M, PLAYER_HALF_HEIGHT * 2, 4]} />
         <meshBasicMaterial color="red" wireframe />
       </mesh>
     </RigidBody>

@@ -7,14 +7,18 @@
 //
 // The visible count tracks the REAL colonist population (capped to the pool): the streets
 // are as busy as the colony actually is — these are its people, not a fixed droid army.
+import { CITIZEN_HEIGHT_M, citizenFigure } from '../scale';
 
 /** Pool size — the legacy crowd cap. Instanced meshes allocate once at this size; the
  *  drawn count varies per frame via visiblePedCount. */
 export const PED_POOL_CAP = 28;
 
-/** Legacy figure proportions, verbatim (feet at ground: geometry pre-translated up). */
-export const PED_BODY = { radius: 0.13, length: 0.34, translateY: 0.33 } as const;
-export const PED_HEAD = { radius: 0.1, translateY: 0.72 } as const;
+/** Spec 137 — pedestrians share the citizens' 1.7 m adult silhouette, derived from the same
+ *  metric (they were ~0.8 m — shorter even than the ~1 m citizens). `translateY` pre-lifts the
+ *  torso and head so the figure's feet sit on the ground. */
+const FIGURE = citizenFigure(CITIZEN_HEIGHT_M);
+export const PED_BODY = { radius: FIGURE.bodyRadius, length: FIGURE.bodyLength, translateY: FIGURE.bodyLift };
+export const PED_HEAD = { radius: FIGURE.headRadius, translateY: FIGURE.headLift };
 /** Skin-tone head material (legacy 0xe0b48a); bodies carry the per-instance palette. */
 export const PED_HEAD_COLOR = 0xe0b48a;
 
