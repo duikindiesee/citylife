@@ -1,24 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { Biome, type Terrain } from "../src/colony/terrain";
+import {
+  buildRoadRibbons,
+  ribbonCoverage,
+} from "../src/colony/render/roadRibbon";
 import { cellOk, roadCellOk } from "../src/colony/pathfind";
 
-// Spec 140 — roads are never on beaches. The route planner treats Biome.Beach exactly like
-// water (pathfind roadCellOk / forbidBeach), so every boot road CELL — corridor spines and
-// their dilated carriageways, trunk links, the commercial high street + cross street +
-// connector, the rally spur and the landing block frames — bends inland along the grass line.
-// This pins that ROUTING contract across the same three seeds as the water guard.
-//
-// Spec 140 amendment: the ban is on the road NETWORK (state.roads cells), NOT on the rendered
-// ribbon's every pixel. A ribbon is ~half-a-carriageway wider than its centre-line, so a road
-// running the grass line right beside the beach has its outer edge graze a beach cell. The
-// render guard (roadRibbon.cellOkOn) used to drop the whole cross-section there, SHATTERING the
-// ribbon into ragged holes ("the beach is breaking the roads"); it now only shatters over water.
-// So we assert the ROUTING contract (zero road cells on Beach) — the meaningful "no roads on the
-// beach" guarantee — and no longer the over-strict "zero ribbon pixels on Beach", which cost more
-// than it bought. Beach stays legal for PLOTS (Beach Cove homesteads, the future boat-launch pad).
+// Spec 138 — roads are never on beaches. The route planner treats Biome.Beach exactly like
+// water (pathfind roadCellOk / forbidBeach), so every boot road — corridor spines and their
+// dilated carriageways, trunk links, the commercial high street + cross street + connector,
+// the rally spur and the landing block frames — bends inland along the grass line. This pins
+// the contract the same way tests/roadWaterGuard.test.ts pins the water contract, across the
+// same three seeds. Beach stays legal for PLOTS (Beach Cove homesteads, and the future
+// boat-launch pad reserved in the spec) — only pavement is banned.
 
 const SEEDS = [4242, 42, 7] as const;
+
+function roadYOf(t: Terrain) {
+  return (x: number, y: number) => {
+    const gx = Math.max(0, Math.min(t.size - 1, Math.round(x)));
+    const gy = Math.max(0, Math.min(t.size - 1, Math.round(y)));
+    return t.worldY(gx, gy);
+  };
+}
 
 function beachRoadCellLabels(rt: ColonyRuntime): string[] {
   const t = rt.sim.state.terrain;
@@ -27,12 +32,36 @@ function beachRoadCellLabels(rt: ColonyRuntime): string[] {
     .map((r) => `${r.x},${r.y}:${r.kind}`);
 }
 
-describe("road-on-beach guard (spec 140)", () => {
+function beachRibbonCellLabels(rt: ColonyRuntime): string[] {
+  const t = rt.sim.state.terrain;
+  const { cells } = buildRoadRibbons(rt.roadWays, {
+    terrain: t,
+    wx: (x) => x,
+    wz: (y) => y,
+    roadY: roadYOf(t),
+  });
+  return [...cells].filter((k) => {
+    const [x, y] = k.split(",").map(Number);
+    return t.inBounds(x!, y!) && t.biome[t.idx(x!, y!)] === Biome.Beach;
+  });
+}
+
+function beachCoverageCellLabels(rt: ColonyRuntime): string[] {
+  const t = rt.sim.state.terrain;
+  const cover = ribbonCoverage(rt.roadWays, t, roadYOf(t));
+  return [...cover.keys()].filter((k) => {
+    const [x, y] = k.split(",").map(Number);
+    return t.inBounds(x!, y!) && t.biome[t.idx(x!, y!)] === Biome.Beach;
+  });
+}
+
+describe("road-on-beach guard (spec 138)", () => {
   for (const seed of SEEDS) {
-    it(`keeps every boot road NETWORK cell off Biome.Beach for seed ${seed}`, () => {
+    it(`keeps every boot road cell, ribbon cell and graded coverage cell off Biome.Beach for seed ${seed}`, () => {
       const rt = new ColonyRuntime(seed);
-      // The routing contract: no cell in the drivable road network sits on the sand.
       expect(beachRoadCellLabels(rt)).toEqual([]);
+      expect(beachRibbonCellLabels(rt)).toEqual([]);
+      expect(beachCoverageCellLabels(rt)).toEqual([]);
     });
   }
 

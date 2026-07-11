@@ -5,6 +5,7 @@ import { ThreeEvent } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import type { ColonySim } from '../sim';
 import { COLONY } from '../config';
+import { Biome } from '../terrain';
 import { BIG, COMPACT, ParcelSize } from '../neighborhood';
 import type { Cell } from '../pathfind';
 
@@ -206,8 +207,13 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
     if (x < 0 || x >= terrainSize || y < 0 || y >= terrainSize) return false;
     const index = y * terrainSize + x;
     const t = sim.state.terrain;
-    // Roads: must not be water, and must not be extreme mountain cliffs (t.buildable[index] > 0)
-    return !t.isWater(x, y) && t.buildable[index] > 0;
+    // Roads: must not be water, must not be beach sand (spec 138 — the preview cell turns red on
+    // the sand exactly as it does on water), and must not be extreme mountain cliffs.
+    return (
+      !t.isWater(x, y) &&
+      t.biome[index] !== Biome.Beach &&
+      t.buildable[index] > 0
+    );
   };
 
   const isBuildablePlotLand = (x: number, y: number) => {

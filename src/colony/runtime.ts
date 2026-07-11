@@ -260,16 +260,7 @@ import {
   smoothOpen,
 } from "./transit/path";
 import type { RoadWay } from "./render/roadRibbon";
-import { conservativeRoadRibbonBlockedCells } from "./placementValidation";
-import { findJunctionZones } from "./render/roadJunctions";
-import {
-  barStoolGridPositions,
-  junctionZonesToPads,
-  surveyVenuePlacements,
-  venueRoadBlockedCells,
-} from "./render/venuePlacement";
 import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
-import { roadComponents } from "./roadConnectivity";
 import {
   createRadio,
   tuneTo,
@@ -1118,7 +1109,7 @@ export class ColonyRuntime {
     //     straights + diagonals and any residual step is filled by the band.
     // The trunk roads AND the commercial connector both lay through this, so no road is a raw 1-cell
     // zig-zag any more (the staircase the operator kept seeing).
-    // spec 143 — roadCellOk (not cellOk): the string-pull and the stroked band must never put a
+    // spec 138 — roadCellOk (not cellOk): the string-pull and the stroked band must never put a
     // road cell on beach sand, even where the routed centre-line merely brushes the grass line.
     const roadLandOk = (x: number, y: number) =>
       roadCellOk(t0, x, y) && !residentialSetbackKeys.has(`${x},${y}`);
@@ -1203,7 +1194,7 @@ export class ColonyRuntime {
         leastCostPath(t0, from, to, {
           slopeWeight: 0.5,
           diagonal: true,
-          forbidBeach: true, // spec 143 — trunk roads bend inland, never along the sand
+          forbidBeach: true, // spec 138 — trunk roads bend inland, never along the sand
           blocked: (x, y) => residentialSetbackKeys.has(`${x},${y}`),
         }) ?? [];
       if (path.length === 0) return;
@@ -1273,7 +1264,7 @@ export class ColonyRuntime {
           const x = c.x,
             y = c.y + dy;
           if (
-            roadCellOk(t, x, y) && // spec 143 — the widened high street never widens onto sand
+            roadCellOk(t, x, y) && // spec 138 — the widened high street never widens onto sand
             !residentialSetbackKeys.has(`${x},${y}`) &&
             !shopCells.has(`${x},${y}`)
           )
@@ -1289,7 +1280,7 @@ export class ColonyRuntime {
           const x = c.x + dx,
             y = c.y;
           if (
-            roadCellOk(t, x, y) && // spec 143 — same beach guard for the cross street
+            roadCellOk(t, x, y) && // spec 138 — same beach guard for the cross street
             !residentialSetbackKeys.has(`${x},${y}`) &&
             !shopCells.has(`${x},${y}`)
           )
@@ -1302,27 +1293,17 @@ export class ColonyRuntime {
       const car = this.neighborhood.carriage;
       // 086-P1 — connect from the founders' carriage cell NEAREST the (now coastal) district, not the
       // inland terminus, so the spur is the shortest coast road rather than a backtrack inland.
-      // Guard on a NON-EMPTY founders carriage: on some seeds (e.g. 4) the founders' neighbourhood
-      // degenerates to zero carriage cells, so nearestPair(car, …) returns [undefined, …] and
-      // leastCostPath dereferences start.x on undefined — a boot crash (spec 148 known adjacent issue).
-      // With no carriage to spur from, still widen + merge the high street below; it simply gets no
-      // founders' spur that seed. Every seed with a carriage keeps its byte-identical connector.
-      if (car.length > 0) {
-        const [terminus, near] = nearestPair(
-          car,
-          this.commercialDistrict.street,
-        );
-        const connector =
-          leastCostPath(t, terminus, near, {
-            slopeWeight: 0.5,
-            diagonal: true,
-            forbidBeach: true, // spec 143 — the coast spur runs the grass line, not the sand
-            blocked: (x, y) =>
-              residentialSetbackKeys.has(`${x},${y}`) ||
-              shopCells.has(`${x},${y}`),
-          }) ?? [];
-        mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
-      }
+      const [terminus, near] = nearestPair(car, this.commercialDistrict.street);
+      const connector =
+        leastCostPath(t, terminus, near, {
+          slopeWeight: 0.5,
+          diagonal: true,
+          forbidBeach: true, // spec 138 — the coast spur runs the grass line, not the sand
+          blocked: (x, y) =>
+            residentialSetbackKeys.has(`${x},${y}`) ||
+            shopCells.has(`${x},${y}`),
+        }) ?? [];
+      mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
       mergeAvenue(this.sim.state, streetCells);
       mergeAvenue(this.sim.state, crossStreetCells);
     }
@@ -1434,7 +1415,7 @@ export class ColonyRuntime {
           leastCostPath(t0, terminus, rallyCell, {
             slopeWeight: 0.5,
             diagonal: true,
-            forbidBeach: true, // spec 143 — the rally spur is a paved road like any other
+            forbidBeach: true, // spec 138 — the rally spur is a paved road like any other
             margin: 160, // the hilltop can need a long detour around a ridge to reach a road
           }) ?? [];
         if (path.length < 2) continue;

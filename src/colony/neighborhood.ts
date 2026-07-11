@@ -150,7 +150,7 @@ function key(x: number, y: number): string {
 /** Dilate a set of cells by their 4-neighbours that pass `ok` — turns the 1-cell spine into a
  *  ~3-wide carriageway that follows every bend, and the carriageway into its verge ring. The
  *  carriageway (paved road cells) dilates through roadCellOk so it can never widen onto beach
- *  sand (spec 140); the verge — unpaved keep-clear ground — keeps the plain cellOk gate. */
+ *  sand (spec 138); the verge — unpaved keep-clear ground — keeps the plain cellOk gate. */
 function dilate(
   t: Terrain,
   cells: Cell[],
@@ -179,7 +179,7 @@ function dilate(
 }
 
 /** Spiral outward from (cx,cy) up to `r` for the nearest cell that passes `ok`. The corridor
- *  anchors slide through roadCellOk (spec 140): a spine endpoint on the sand would make the
+ *  anchors slide through roadCellOk (spec 138): a spine endpoint on the sand would make the
  *  beach-forbidding route below fail outright instead of bending inland. */
 function slideToLand(
   t: Terrain,
@@ -218,25 +218,13 @@ function buildCorridor(
   span: number,
   taken?: ReadonlySet<string>,
 ): Corridor | null {
-  const start = slideToLand(
-    t,
-    lx - Math.floor(span / 2),
-    baselineY,
-    8,
-    roadCellOk,
-  );
-  const end = slideToLand(
-    t,
-    lx + Math.ceil(span / 2),
-    baselineY,
-    8,
-    roadCellOk,
-  );
+  const start = slideToLand(t, lx - Math.floor(span / 2), baselineY, 8, roadCellOk);
+  const end = slideToLand(t, lx + Math.ceil(span / 2), baselineY, 8, roadCellOk);
   if (!start || !end) return null;
   const avoid =
     taken && (taken.has(key(start.x, start.y)) || taken.has(key(end.x, end.y)));
   if (avoid) return null;
-  // forbidBeach (spec 140): the spine is the paved avenue's centre-line, so it must bend inland
+  // forbidBeach (spec 138): the spine is the paved avenue's centre-line, so it must bend inland
   // along the grass line instead of running the coastal sand the old routes preferred (flat beach
   // was the cheapest ground, which is exactly why the trunk roads hugged it).
   const spine = leastCostPath(t, start, end, {
@@ -247,9 +235,10 @@ function buildCorridor(
   if (!spine || spine.length < span * 0.6) return null;
   const spineSet = new Set(spine.map((c) => key(c.x, c.y)));
   const notTaken = (c: Cell) => !taken || !taken.has(key(c.x, c.y));
-  const carriage = [...spine, ...dilate(t, spine, spineSet, roadCellOk)].filter(
-    notTaken,
-  );
+  const carriage = [
+    ...spine,
+    ...dilate(t, spine, spineSet, roadCellOk),
+  ].filter(notTaken);
   const carriageSet = new Set(carriage.map((c) => key(c.x, c.y)));
   const verge = dilate(t, carriage, carriageSet).filter(notTaken);
   const blocked = new Set([...carriageSet, ...verge.map((c) => key(c.x, c.y))]);
@@ -593,9 +582,10 @@ function trimCorridor(
     }
   }
   const notFenceSetback = (c: Cell) => !fenceSetback.has(key(c.x, c.y));
-  const carriage = [...spine, ...dilate(t, spine, spineSet, roadCellOk)].filter(
-    notFenceSetback,
-  );
+  const carriage = [
+    ...spine,
+    ...dilate(t, spine, spineSet, roadCellOk),
+  ].filter(notFenceSetback);
   const carriageSet = new Set(carriage.map((c) => key(c.x, c.y)));
   const verge = dilate(t, carriage, carriageSet).filter(notFenceSetback);
   return { ...corridor, spine, carriage, verge };

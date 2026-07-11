@@ -297,7 +297,7 @@ export function initBuild(state: ColonyState): void {
       }
     }
   }
-  // Spec 140 — the caravan lands on the beach headland (pickLanding loves lowland shore), but
+  // Spec 138 — the caravan lands on the beach headland (pickLanding loves lowland shore), but
   // roads never stand on sand, so block (0,0) — whose frame used to pave the beach — now has
   // little or NO legal frame ground on most seeds. Seed the colony's first road frame on the
   // NEAREST block whose perimeter is mostly legal road ground instead: a fixed ring-by-ring
@@ -324,7 +324,7 @@ export function initBuild(state: ColonyState): void {
 
 // ── grid / block helpers ──
 
-/** Spec 140 — how many of block (bx,by)'s frame cells are legal ROAD ground (dry, in-bounds,
+/** Spec 138 — how many of block (bx,by)'s frame cells are legal ROAD ground (dry, in-bounds,
  *  off the beach — the same guard `lay` enforces). Used to pick where the FIRST frame stands. */
 function frameRoom(state: ColonyState, bx: number, by: number): number {
   const g = gridOrigin(state);
@@ -338,10 +338,8 @@ function frameRoom(state: ColonyState, bx: number, by: number): number {
     !t.isWater(x, y) &&
     t.biome[t.idx(x, y)] !== Biome.Beach;
   let room = 0;
-  for (let x = x0; x <= x1; x++)
-    room += (okAt(x, y0) ? 1 : 0) + (okAt(x, y1) ? 1 : 0);
-  for (let y = y0 + 1; y < y1; y++)
-    room += (okAt(x0, y) ? 1 : 0) + (okAt(x1, y) ? 1 : 0);
+  for (let x = x0; x <= x1; x++) room += (okAt(x, y0) ? 1 : 0) + (okAt(x, y1) ? 1 : 0);
+  for (let y = y0 + 1; y < y1; y++) room += (okAt(x0, y) ? 1 : 0) + (okAt(x1, y) ? 1 : 0);
   return room;
 }
 
@@ -368,7 +366,7 @@ function developBlock(state: ColonyState, bx: number, by: number): number {
   const lay = (x: number, y: number) => {
     if (!t.inBounds(x, y)) return;
     if (t.isWater(x, y)) return; // roads stop at water (bridges later)
-    if (t.biome[t.idx(x, y)] === Biome.Beach) return; // spec 140 — roads never on beach sand
+    if (t.biome[t.idx(x, y)] === Biome.Beach) return; // spec 138 — roads never on beach sand
     // Belt-and-suspenders: never lay a road on top of a base structure cell, even if `nearbyInterior`
     // got displaced. Keeps the rocket / solar / battery clear of the road frame.
     for (const s of state.structures) if (s.x === x && s.y === y) return;
@@ -399,7 +397,7 @@ function developBlock(state: ColonyState, bx: number, by: number): number {
         { x: bx2, y: by2 },
         {
           slopeWeight: 0.6,
-          forbidBeach: true, // spec 140 — a frame edge contours around sand like it does water
+          forbidBeach: true, // spec 138 — a frame edge contours around sand like it does water
           blocked: (x, y) => state.occupied.has(key(x, y)), // route AROUND reserved parcel land
         },
       );

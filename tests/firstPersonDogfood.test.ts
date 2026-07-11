@@ -520,7 +520,7 @@ describe("first-person route dogfood", () => {
         const candidateBlocker = { x: x + dir.x, y: y + dir.y };
         const candidateStart = { x: x + dir.x * 2, y: y + dir.y * 2 };
         // BOTH side rows around the blocker: the router detours whichever side is cheapest
-        // (equal-cost tie-breaks flipped when spec 140 moved the starter frame inland), and
+        // (equal-cost tie-breaks flipped when spec 138 moved the starter frame inland), and
         // either is a correct "around, not through" first step.
         const candidateDetour = [
           {

@@ -107,7 +107,7 @@ export function makeCommercialDistrict(
 ): CommercialDistrict {
   const streetY = reserve.y + Math.floor(reserve.h / 2);
   const street: Cell[] = [];
-  // roadCellOk (spec 140): the high street is a paved road, so its row skips beach cells — the
+  // roadCellOk (spec 138): the high street is a paved road, so its row skips beach cells — the
   // coastal reserve may reach the sand (shops and the future boat-launch pad may sit by it), but
   // the street itself stays on the grass line.
   for (let x = reserve.x; x < reserve.x + reserve.w; x++) {
@@ -166,7 +166,7 @@ export function makeCommercialDistrict(
   for (let y = reserve.y; y < reserve.y + reserve.h; y++) {
     const key = `${crossStreetX},${y}`;
     if (
-      roadCellOk(t, crossStreetX, y) && // spec 140 — the cross street is a road too
+      roadCellOk(t, crossStreetX, y) && // spec 138 — the cross street is a road too
       !shopCells.has(key) &&
       !blocked.has(key)
     )
