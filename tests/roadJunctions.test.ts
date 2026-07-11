@@ -1,10 +1,12 @@
-// Spec 127 — way-based junction detection. Junctions come from the road WAYS (centre-lines),
-// not the widened cell grid whose interior cells all look like 4-way crossings.
+// Spec 137 — junction zones from way-pair centre-line EVENTS (crossings + endpoint
+// projections), replacing the spec-127 dilated-cell blobs whose centroids drifted, whose
+// twins overlapped, and whose near-miss parallels produced phantom "pass" slabs.
 import { describe, it, expect } from "vitest";
 import type { RoadWay } from "../src/colony/render/roadRibbon";
 import {
   findJunctionZones,
   junctionFurniture,
+  axisAngle,
 } from "../src/colony/render/roadJunctions";
 
 const straight = (
@@ -22,8 +24,8 @@ const straight = (
   width,
 });
 
-describe("spec 127 — way-based junction zones", () => {
-  it("finds ONE crossing where two long ways cross, with four arms", () => {
+describe("spec 137 — junction zones from way-pair events", () => {
+  it("finds ONE crossing where two long ways cross, centred on the true intersection", () => {
     const zones = findJunctionZones([
       straight(0, 50, 100, 50),
       straight(50, 0, 50, 100),
@@ -31,172 +33,181 @@ describe("spec 127 — way-based junction zones", () => {
     expect(zones.length).toBe(1);
     const z = zones[0]!;
     expect(z.kind).toBe("cross");
-    expect(Math.round(z.cx)).toBe(50);
-    expect(Math.round(z.cy)).toBe(50);
-    // no arm terminates — both roads pass through
+    expect(z.cx).toBeCloseTo(50, 1);
+    expect(z.cy).toBeCloseTo(50, 1);
+    expect(z.arms.length).toBe(4);
     expect(z.arms.some((a) => a.terminating)).toBe(false);
+    // every arm knows its real half-width and a sane mouth distance
+    for (const a of z.arms) {
+      expect(a.half).toBe(2);
+      expect(a.mouthD).toBeGreaterThanOrEqual(2);
+      expect(a.mouthD).toBeLessThanOrEqual(6);
+    }
   });
 
-  it("classifies a road ENDING on another road as a tee with a terminating arm", () => {
+  it("classifies a road ENDING on another road as a tee centred ON the through line", () => {
+    // OFFSET tee: the stub ends 2 cells short of the through road's centre-line — the
+    // spec-127 blob centroid drifted into the gap; the event centre is the projection.
     const zones = findJunctionZones([
       straight(0, 50, 100, 50),
-      straight(50, 0, 50, 49), // ends at the horizontal road
+      straight(50, 0, 50, 48),
     ]);
     expect(zones.length).toBe(1);
     const z = zones[0]!;
     expect(z.kind).toBe("tee");
+    expect(z.cy).toBeCloseTo(50, 0.5); // ON the through way, not the blob mean
     const term = z.arms.filter((a) => a.terminating);
     expect(term.length).toBe(1);
-    // the terminator approaches heading +y (south, into the junction)
-    expect(Math.round(term[0]!.dy)).toBe(1);
-    expect(Math.round(term[0]!.dx)).toBe(0);
+    // the terminating arm points north (OUT of the junction, back up the stub)
+    expect(term[0]!.uy).toBeLessThan(-0.9);
   });
 
   it("a single way (no crossing) produces no zones", () => {
     expect(findJunctionZones([straight(0, 10, 80, 10)]).length).toBe(0);
   });
 
-  it("skips long parallel-run blobs — parallel ways are not a junction", () => {
-    // two ways running 2 cells apart for 60 cells: the dilated centre-lines touch the whole
-    // way along, which must NOT produce a 60-cell junction slab
+  it("parallel near-miss ways produce NO zones (and no phantom pass slabs)", () => {
+    // two ways running 2 cells apart for 60 cells: no intersection, no endpoint near the
+    // other line's carriageway reach at the sides -> zero events. The spec-127 detector
+    // produced a 60-cell blob here and (worse) suppressed all paint along it.
     const zones = findJunctionZones([
       straight(0, 50, 60, 50),
-      straight(0, 52, 60, 52),
+      straight(0, 53, 60, 53, 1),
     ]);
     expect(zones.length).toBe(0);
   });
 
-  it("slab half-extent follows the widest way and is capped", () => {
+  it("a hairpin crossing the same road twice keeps TWO exact zones (spec 137 v2)", () => {
+    // Two real crossings ~5.7 cells apart each get their own exact carriageway-union
+    // pad, anchored at their own crossing point — one merged star centre cannot draw
+    // honest kerb lines for two crossings (the operator's "antipattern" blob). The two
+    // pads overlap benignly along the shared road; the cap builder micro-lifts them.
+    const dogleg: RoadWay = {
+      path: [
+        { x: 40, y: 40 },
+        { x: 50, y: 54 },
+        { x: 60, y: 40 },
+      ],
+      kind: "street",
+      width: 4,
+    };
+    const zones = findJunctionZones([straight(0, 50, 100, 50), dogleg]);
+    expect(zones.length).toBe(2);
+    for (const z of zones) expect(Math.abs(z.cy - 50)).toBeLessThan(1); // ON the road
+  });
+
+  it("mixed widths keep PER-ARM half-widths (no more widest-way square)", () => {
     const zones = findJunctionZones([
       straight(0, 50, 100, 50, 4),
       straight(50, 0, 50, 100, 1),
     ]);
     expect(zones.length).toBe(1);
-    expect(zones[0]!.half).toBeCloseTo(Math.min(3, 4 / 2 + 0.3), 6);
+    const halves = zones[0]!.arms.map((a) => a.half).sort();
+    expect(halves).toEqual([0.5, 0.5, 2, 2]);
+  });
+
+  it("a 45-degree crossing keeps REAL arm headings — never compass-snapped", () => {
+    const zones = findJunctionZones([
+      straight(0, 50, 100, 50),
+      straight(20, 20, 80, 80),
+    ]);
+    expect(zones.length).toBe(1);
+    const z = zones[0]!;
+    expect(z.kind).toBe("cross");
+    const diag = z.arms.filter(
+      (a) => Math.abs(Math.abs(a.ux) - Math.abs(a.uy)) < 0.35,
+    );
+    expect(diag.length).toBeGreaterThanOrEqual(2);
+    // diagonal arms need DEEPER mouths (h/sin(45) > h)
+    for (const a of diag) expect(a.mouthD).toBeGreaterThan(2.75);
   });
 });
 
-describe("spec 127 — junction furniture", () => {
-  it("a crossing gets 4 traffic lights and 4 stop lines, square on the compass", () => {
-    const ways = [straight(0, 50, 100, 50), straight(50, 0, 50, 100)];
-    const zones = findJunctionZones(ways);
-    const items = junctionFurniture(zones[0]!, ways);
-    expect(items.filter((i) => i.kind === "light").length).toBe(4);
-    // every pole stands clear of BOTH carriageways (verify follow-up: lights were the one
-    // furniture kind the clearance rules never measured)
-    for (const l of items.filter((i) => i.kind === "light")) {
-      expect(Math.abs(l.y - 50)).toBeGreaterThan(2.3);
-      expect(Math.abs(l.x - 50)).toBeGreaterThan(2.3);
-    }
-    expect(items.filter((i) => i.kind === "stopline").length).toBe(4);
+describe("spec 137 — junction furniture from real headings", () => {
+  it("a crossing gets one signal per arm, phased by axis, none inside any carriageway", () => {
+    const zones = findJunctionZones([
+      straight(0, 50, 100, 50),
+      straight(50, 0, 50, 100),
+    ]);
+    const z = zones[0]!;
+    const items = junctionFurniture(z);
+    const lights = items.filter((i) => i.kind === "light");
+    expect(lights.length).toBe(4);
     expect(items.filter((i) => i.kind === "stopsign").length).toBe(0);
-    // each stop line sits OUTSIDE the slab on its own compass arm
-    const z = zones[0]!;
-    for (const line of items.filter((i) => i.kind === "stopline")) {
-      const d = Math.max(Math.abs(line.x - z.cx), Math.abs(line.y - z.cy));
-      expect(d).toBeGreaterThan(z.half);
+    // two per phase group: one axis goes green while the other holds red
+    expect(lights.filter((l) => l.group === "A").length).toBe(2);
+    expect(lights.filter((l) => l.group === "B").length).toBe(2);
+    // no pole stands inside ANY arm's carriageway corridor
+    for (const l of lights) {
+      for (const a of z.arms) {
+        const rx = l.x - z.cx,
+          ry = l.y - z.cy;
+        const along = rx * a.ux + ry * a.uy;
+        const across = Math.abs(rx * -a.uy + ry * a.ux);
+        const inside = along > -0.5 && along < a.mouthD + 2 && across < a.half;
+        expect(inside).toBe(false);
+      }
     }
   });
 
-  it("a tee gets a stop sign + stop line on the terminating arm only", () => {
-    const ways = [straight(0, 50, 100, 50), straight(50, 0, 50, 49)];
-    const zones = findJunctionZones(ways);
-    const items = junctionFurniture(zones[0]!, ways);
-    expect(items.filter((i) => i.kind === "light").length).toBe(0);
-    expect(items.filter((i) => i.kind === "stopline").length).toBe(1);
-    expect(items.filter((i) => i.kind === "stopsign").length).toBe(1);
-    // the terminator comes from the north heading south (+y): its stop line sits north of
-    // the junction (y < cy), one cell LEFT of travel (left of +y travel is +x... east)
-    const line = items.find((i) => i.kind === "stopline")!;
+  it("a tee gets an upright stop sign on the terminating arm's left verge", () => {
+    const zones = findJunctionZones([
+      straight(0, 50, 100, 50),
+      straight(50, 0, 50, 48),
+    ]);
     const z = zones[0]!;
-    expect(line.y).toBeLessThan(z.cy);
-    expect(line.x).toBeGreaterThan(z.cx);
-    expect(line.rotY).toBeCloseTo(Math.atan2(0, 1), 6); // heading +y → rotY 0
-  });
-
-  // The mid-road bus-stop regression (operator screenshot, 2026-07-10): the boot generator
-  // chains ways end-to-start along one corridor. Each chain point is a "pass" zone with two
-  // collinear terminating arms — a MERGE, not a controlled junction. The old code painted a
-  // stop line per terminating arm there, marching yellow paint down the middle of what reads
-  // as one continuous road.
-  it("a chain point — way ending where the next continues — gets NO furniture", () => {
-    const ways = [straight(0, 50, 50, 50), straight(50, 50, 100, 50)];
-    const zones = findJunctionZones(ways);
-    expect(zones.length).toBe(1);
-    expect(zones[0]!.kind).toBe("pass");
-    expect(zones[0]!.arms.filter((a) => a.terminating).length).toBe(2);
-    expect(junctionFurniture(zones[0]!, ways)).toEqual([]);
-  });
-
-  // Same regression, second defect: boot side roads are width 4, and the old fixed 1.9-cell
-  // lateral shift stood the stop sign INSIDE its own carriageway (the "bus stop" in the road).
-  it("a wide side road tee keeps the sign off every carriageway and the paint on its own", () => {
-    const ways = [straight(0, 50, 100, 50, 4), straight(50, 10, 50, 48, 4)];
-    const zones = findJunctionZones(ways);
-    expect(zones.length).toBe(1);
-    expect(zones[0]!.kind).toBe("tee");
-    const items = junctionFurniture(zones[0]!, ways);
-    const sign = items.find((i) => i.kind === "stopsign")!;
-    const line = items.find((i) => i.kind === "stopline")!;
-    expect(sign).toBeTruthy();
-    expect(line).toBeTruthy();
-    // distance from a point to each way's straight centre-line
-    const distMain = (p: { x: number; y: number }) => Math.abs(p.y - 50);
-    const distSide = (p: { x: number; y: number }) => Math.abs(p.x - 50);
-    // the sign stands clear of BOTH 4-cell carriageways (half-width 2)
-    expect(distMain(sign)).toBeGreaterThan(2.25);
-    expect(distSide(sign)).toBeGreaterThan(2.25);
-    // the paint lies on its own approach lane but clear of the main road
-    expect(distSide(line)).toBeLessThan(2);
-    expect(distMain(line)).toBeGreaterThan(2.25);
-  });
-
-  // Adversarial verify F2: a chained corridor (way ending where the next continues) passing
-  // through a REAL side-road tee must not grow stops on the through movement — only the
-  // side road gets furniture.
-  it("a chain point sharing a zone with a side-road tee stops only the side road", () => {
-    const ways = [
-      straight(0, 50, 50, 50, 4),
-      straight(50, 50, 100, 50, 4),
-      straight(50, 10, 50, 48, 4),
-    ];
-    const zones = findJunctionZones(ways);
-    expect(zones.length).toBe(1);
-    const items = junctionFurniture(zones[0]!, ways);
-    const lines = items.filter((i) => i.kind === "stopline");
+    const items = junctionFurniture(z);
+    expect(items.filter((i) => i.kind === "light").length).toBe(0);
     const signs = items.filter((i) => i.kind === "stopsign");
-    expect(lines.length).toBe(1);
     expect(signs.length).toBe(1);
-    // both belong to the side road (way 2) and sit south of the corridor, clear of it
-    expect(lines[0]!.wayIndex).toBe(2);
-    expect(signs[0]!.wayIndex).toBe(2);
-    expect(Math.abs(lines[0]!.y - 50)).toBeGreaterThan(2.25);
-    expect(Math.abs(signs[0]!.y - 50)).toBeGreaterThan(2.25);
+    const sign = signs[0]!;
+    // terminating arm heads north (u = -y): sign north of the junction, and LEFT of the
+    // southbound approach (left of travel t=(0,1) is (+1,0) -> east... L=(t.y,-t.x)=(1,0))
+    expect(sign.y).toBeLessThan(z.cy);
+    expect(sign.x).toBeGreaterThan(z.cx);
+    // faces the approaching driver: rotY = atan2(ux, uy) of the OUTWARD heading
+    expect(sign.rotY).toBeCloseTo(Math.atan2(0, -1), 1);
+    expect(sign.laneHalfM).toBe(8);
   });
 
-  // Adversarial verify F1/F3: placement follows the arm's OWN centre-line, so a diagonal
-  // approach keeps its paint on its own asphalt and still gets its sign (the compass-axis
-  // walk used to self-block and silently delete every boot-town sign).
-  it("a diagonal side road keeps paint on its own asphalt and still earns its sign", () => {
-    const ways = [
-      straight(0, 50, 100, 50, 4),
-      { path: [{ x: 20, y: 18 }, { x: 50, y: 48 }], kind: "street", width: 4 } as RoadWay,
-    ];
-    const zones = findJunctionZones(ways);
-    expect(zones.length).toBe(1);
-    expect(zones[0]!.kind).toBe("tee");
-    const items = junctionFurniture(zones[0]!, ways);
-    const line = items.find((i) => i.kind === "stopline")!;
-    const sign = items.find((i) => i.kind === "stopsign")!;
-    expect(line).toBeTruthy();
-    expect(sign).toBeTruthy();
-    // the diagonal centre-line runs at 45 degrees through y = x - 2; point distance to it
-    const distDiag = (p: { x: number; y: number }) =>
-      Math.abs(p.y - p.x + 2) / Math.SQRT2;
-    const distMain = (p: { x: number; y: number }) => Math.abs(p.y - 50);
-    expect(distDiag(line)).toBeLessThan(2); // paint ON its own carriageway
-    expect(distMain(line)).toBeGreaterThan(2.25); // and clear of the main road
-    expect(distDiag(sign)).toBeGreaterThan(2.25); // the sign clears BOTH
-    expect(distMain(sign)).toBeGreaterThan(2.25);
+  it("diagonal arms each keep their own stop treatment — the compass dedup is gone", () => {
+    // two diagonals sharing a dominant axis used to collapse via seenDir
+    const zones = findJunctionZones([
+      straight(0, 50, 100, 50),
+      straight(20, 20, 80, 80),
+    ]);
+    const items = junctionFurniture(zones[0]!);
+    expect(items.filter((i) => i.kind === "light").length).toBe(4);
+  });
+
+  it("bends get no furniture", () => {
+    const elbow: RoadWay = {
+      path: [
+        { x: 20, y: 50 },
+        { x: 50, y: 50 },
+      ],
+      kind: "street",
+      width: 4,
+    };
+    const elbow2: RoadWay = {
+      path: [
+        { x: 50, y: 50 },
+        { x: 75, y: 25 },
+      ],
+      kind: "street",
+      width: 4,
+    };
+    const zones = findJunctionZones([elbow, elbow2]);
+    for (const z of zones) expect(junctionFurniture(z)).toEqual([]);
+  });
+});
+
+describe("spec 137 — axisAngle", () => {
+  it("treats opposite rays as one axis and orthogonals as 90 degrees", () => {
+    expect(axisAngle({ ux: 1, uy: 0 }, { ux: -1, uy: 0 })).toBeCloseTo(0, 6);
+    expect(axisAngle({ ux: 1, uy: 0 }, { ux: 0, uy: 1 })).toBeCloseTo(
+      Math.PI / 2,
+      6,
+    );
   });
 });
