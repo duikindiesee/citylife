@@ -194,6 +194,35 @@ test.describe('spec 149 — bus depot fleet', () => {
     });
     expect(riding.gap).toBeLessThan(0.5); // the camera's citizen IS on the bus
     await page.screenshot({ path: testInfo.outputPath('riding-the-bus.png') });
+    await page.setViewportSize({ width: 700, height: 720 });
+    await page.waitForTimeout(150);
+    await expect(page.locator('.first-person-mouse-look-bar')).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.evaluate(() => window.dispatchEvent(new Event('touchstart')));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(250);
+    const mobileHud = await page.evaluate(() => {
+      const visible = (element: Element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
+      };
+      const actionRects = Array.from(document.querySelectorAll<HTMLElement>('[data-fp-action]'))
+        .filter(visible)
+        .map((element) => element.getBoundingClientRect())
+        .map((rect) => ({ width: rect.width, height: rect.height }));
+      const lookBar = document.querySelector('.first-person-mouse-look-bar');
+      return {
+        actionRects,
+        lookBarVisible: !!lookBar && visible(lookBar),
+      };
+    });
+    expect(mobileHud.lookBarVisible).toBe(false);
+    expect(mobileHud.actionRects.length).toBeGreaterThan(0);
+    expect(Math.min(...mobileHud.actionRects.map((rect) => rect.width))).toBeGreaterThanOrEqual(48);
+    expect(Math.min(...mobileHud.actionRects.map((rect) => rect.height))).toBeGreaterThanOrEqual(48);
+    await page.screenshot({ path: testInfo.outputPath('riding-the-bus-mobile.png') });
+    await page.setViewportSize({ width: 1280, height: 720 });
 
     // Step off at the next doors-open dwell (any route stop) via the same E affordance.
     await page.waitForFunction(

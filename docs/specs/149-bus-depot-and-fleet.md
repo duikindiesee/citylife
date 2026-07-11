@@ -337,3 +337,23 @@ This SUPERSEDES the §2 sketch on three points (bus-i-owns-bay-i, first-stop gat
   `state.busDepotSpurCells` and `traffic.ts` excludes them from the car graph (as nodes and
   neighbours), so cars stay on the loop and the buses own the spur. Pinned by
   `tests/busDepotBoot.test.ts` (no car ever occupies a spur cell over a long traffic run).
+
+## 10. First-person passenger interior and HUD follow-up (2026-07-11)
+
+The procedural 12 m town coach now uses an open framed shell around actual side-window and
+windscreen apertures rather than a solid body box with opaque panes. Separate double-sided
+transparent glass uses depth writes disabled, and the named passenger compartment includes a
+visible floor and aisle above the lower shell, ceiling, forward-facing seats, rails/poles,
+driver seat/dashboard, and door threshold. Interior materials remain physically lit rather
+than fully emissive so the cabin remains readable by day and night while the world stays
+visible through the glass. Fleet, route, stop, wheelbase, boarding, and physics state are
+unchanged.
+
+First-person UI reserves the centre for gameplay. Destination/status occupies an edge,
+guidance and boarding copy use the transient status lane, movement and nearby action remain at
+opposite safe-area edges, and rally/help/debug are opt-in behind Controls/HUD details. The world
+rally card is suppressed in first person and there is exactly one canonical Exit control. The
+mouse-look edge bar retains lock/error status, retry, level-view, and sensitivity controls.
+The deterministic `firstPersonHudLayout` contract pins 1280×720 and mobile safe-area/touch-target
+behaviour; bus render tests pin glazing, interior names, unobstructed floor/aisle, and the
+preserved 12 m envelope. Chromium proof covers the live bus and desktop/mobile first-person HUD.

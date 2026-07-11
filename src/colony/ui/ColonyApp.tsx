@@ -413,7 +413,6 @@ export function FirstPersonMouseLookBar({
   levelFirstPersonLook,
   mouseSensitivity,
   setMouseSensitivity,
-  exitFirstPerson,
 }: {
   citizenName: string | null;
   mouseLookLocked: boolean;
@@ -422,17 +421,17 @@ export function FirstPersonMouseLookBar({
   levelFirstPersonLook: () => void;
   mouseSensitivity: FirstPersonMouseSensitivity;
   setMouseSensitivity: (level: FirstPersonMouseSensitivity) => void;
-  exitFirstPerson: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   return (
     <div
+      className="first-person-mouse-look-bar"
       style={{
-        position: "fixed",
-        bottom: 18,
-        left: "50%",
-        transform: "translateX(-50%)",
+        right: 12,
         zIndex: 50,
         display: "flex",
+        maxWidth: "min(420px, calc(100vw - 24px))",
+        flexWrap: "wrap",
         gap: 10,
         alignItems: "center",
         background: "rgba(10,14,28,0.78)",
@@ -445,48 +444,56 @@ export function FirstPersonMouseLookBar({
       <span style={{ color: "#a0d4f0", fontSize: 13 }}>
         👁 Seeing through <b>{citizenName ?? "a citizen"}</b>&apos;s eyes
       </span>
-      <span style={{ color: "#6f86b8", fontSize: 12 }}>
-        <b>W</b>/<b>S</b> walk · <b>A</b>/<b>D</b> strafe · arrows turn ·
-        mouse-look{" "}
-        {pointerLockError
-          ? "unavailable"
-          : mouseLookLocked
-            ? "locked"
-            : "ready"}{" "}
-        · <b>Esc</b> {mouseLookLocked ? "unlock" : "exit"}
-      </span>
-      {pointerLockError && (
+      <button
+        aria-expanded={expanded}
+        style={{ padding: "3px 12px" }}
+        onClick={() => setExpanded((open) => !open)}
+      >
+        Look
+      </button>
+      {pointerLockError && !expanded && (
         <span style={{ color: "#e6c84d", fontSize: 12 }} role="status">
           {pointerLockError}
         </span>
       )}
-      <button style={{ padding: "3px 12px" }} onClick={requestMouseLook}>
-        {mouseLookLocked
-          ? "Mouse-look on"
-          : pointerLockError
-            ? "Retry mouse-look"
-            : "Lock mouse-look"}
-      </button>
-      <button style={{ padding: "3px 12px" }} onClick={levelFirstPersonLook}>
-        Level view
-      </button>
-      <span style={{ color: "#6f86b8", fontSize: 12 }}>Look sensitivity</span>
-      {MOUSE_SENSITIVITY_PRESETS.map((preset) => (
-        <button
-          key={preset.id}
-          aria-pressed={mouseSensitivity === preset.id}
-          style={{
-            padding: "3px 10px",
-            borderColor: mouseSensitivity === preset.id ? "#8be9fd" : undefined,
-          }}
-          onClick={() => setMouseSensitivity(preset.id)}
-        >
-          {preset.label}
-        </button>
-      ))}
-      <button style={{ padding: "3px 12px" }} onClick={exitFirstPerson}>
-        Exit first person
-      </button>
+      {expanded && (
+        <>
+          <span style={{ color: "#6f86b8", fontSize: 12 }}>
+            <b>W</b>/<b>S</b> walk · <b>A</b>/<b>D</b> strafe · arrows turn · mouse-look{" "}
+            {pointerLockError ? "unavailable" : mouseLookLocked ? "locked" : "ready"} ·{" "}
+            <b>Esc</b> {mouseLookLocked ? "unlock" : "exit"}
+          </span>
+          {pointerLockError && (
+            <span style={{ color: "#e6c84d", fontSize: 12 }} role="status">
+              {pointerLockError}
+            </span>
+          )}
+          <button style={{ padding: "3px 12px" }} onClick={requestMouseLook}>
+            {mouseLookLocked
+              ? "Mouse-look on"
+              : pointerLockError
+                ? "Retry mouse-look"
+                : "Lock mouse-look"}
+          </button>
+          <button style={{ padding: "3px 12px" }} onClick={levelFirstPersonLook}>
+            Level view
+          </button>
+          <span style={{ color: "#6f86b8", fontSize: 12 }}>Look sensitivity</span>
+          {MOUSE_SENSITIVITY_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              aria-pressed={mouseSensitivity === preset.id}
+              style={{
+                padding: "3px 10px",
+                borderColor: mouseSensitivity === preset.id ? "#8be9fd" : undefined,
+              }}
+              onClick={() => setMouseSensitivity(preset.id)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -841,7 +848,7 @@ export function ColonyApp() {
   return (
     <div className="colony">
       <div className="canvas-host" ref={hostRef} />
-      {ui.firstPerson.active && (
+      {ui.firstPerson.active && !touchCapable && (
         <FirstPersonMouseLookBar
           citizenName={ui.firstPerson.citizenName}
           mouseLookLocked={mouseLookLocked}
@@ -852,7 +859,6 @@ export function ColonyApp() {
           setMouseSensitivity={(level) =>
             runtime.setFirstPersonMouseSensitivity(level)
           }
-          exitFirstPerson={() => runtime.exitFirstPerson()}
         />
       )}
       <FirstPersonPanel
@@ -862,7 +868,7 @@ export function ColonyApp() {
       />
       <RoadmapPanel open={roadmapOpen} onClose={() => setRoadmapOpen(false)} />
       {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
-      {(!builderActive && !worldViewActive && rallyRead) && (
+      {(!ui.firstPerson.active && !builderActive && !worldViewActive && rallyRead) && (
         <div
           className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
           aria-label="Who is here at the rally"
@@ -938,7 +944,7 @@ export function ColonyApp() {
         isTouch={touchCapable}
       />
 
-      <header className="topbar">
+      <header className={`topbar${ui.firstPerson.active ? " topbar--first-person" : ""}`}>
         <div className="brand">
           City<span>Life</span> <em>· Colony</em>
         </div>
