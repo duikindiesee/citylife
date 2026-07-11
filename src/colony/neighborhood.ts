@@ -150,7 +150,7 @@ function key(x: number, y: number): string {
 /** Dilate a set of cells by their 4-neighbours that pass `ok` — turns the 1-cell spine into a
  *  ~3-wide carriageway that follows every bend, and the carriageway into its verge ring. The
  *  carriageway (paved road cells) dilates through roadCellOk so it can never widen onto beach
- *  sand (spec 138); the verge — unpaved keep-clear ground — keeps the plain cellOk gate. */
+ *  sand (spec 140); the verge — unpaved keep-clear ground — keeps the plain cellOk gate. */
 function dilate(
   t: Terrain,
   cells: Cell[],
@@ -179,7 +179,7 @@ function dilate(
 }
 
 /** Spiral outward from (cx,cy) up to `r` for the nearest cell that passes `ok`. The corridor
- *  anchors slide through roadCellOk (spec 138): a spine endpoint on the sand would make the
+ *  anchors slide through roadCellOk (spec 140): a spine endpoint on the sand would make the
  *  beach-forbidding route below fail outright instead of bending inland. */
 function slideToLand(
   t: Terrain,
@@ -224,7 +224,7 @@ function buildCorridor(
   const avoid =
     taken && (taken.has(key(start.x, start.y)) || taken.has(key(end.x, end.y)));
   if (avoid) return null;
-  // forbidBeach (spec 138): the spine is the paved avenue's centre-line, so it must bend inland
+  // forbidBeach (spec 140): the spine is the paved avenue's centre-line, so it must bend inland
   // along the grass line instead of running the coastal sand the old routes preferred (flat beach
   // was the cheapest ground, which is exactly why the trunk roads hugged it).
   const spine = leastCostPath(t, start, end, {

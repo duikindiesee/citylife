@@ -1,4 +1,4 @@
-# Spec 138 — no roads on beaches; a boat launch is a plot, not a road
+# Spec 140 — no roads on beaches; a boat launch is a plot, not a road
 
 Operator rule (2026-07-11): **"roads should not be on beaches, ever! we can have a place to
 put boats in yes."** Before this spec the coastal trunk roads ran along the sand — flat beach
@@ -96,8 +96,9 @@ as a surveyed, beach-adjacent PAD — the commercial-reserve pattern
 
 - `tests/roadBeachGuard.test.ts` — NEW, pins the contract across seeds 4242/42/7: zero
   `state.roads` cells on Beach, zero ribbon-mesh cells on Beach, zero `ribbonCoverage`
-  (grading) cells on Beach; plus `roadCellOk` rejecting beach cells that `cellOk` accepts
-  (the parcels/walking carve-out stays open).
+  (grading) cells on Beach, zero `capCoverageCells` (spec-137 junction-cap grading) on
+  Beach; plus `roadCellOk` rejecting beach cells that `cellOk` accepts (the parcels/walking
+  carve-out stays open).
 - `tests/roadWaterGuard.test.ts` — unchanged and still green (the spec-133 water contract).
 - Re-pinned for the rerouted worlds: `districtDeterminism` crossStreetHash (seeds 4242 + 7 —
   the cross street's on-sand cells are gone; every other golden byte-identical),
@@ -108,12 +109,16 @@ as a surveyed, beach-adjacent PAD — the commercial-reserve pattern
   (520,-738)): the coastal trunk now hugs the grass line with a clean S-bend; the sand
   carries no asphalt; live audit of the booted world confirms 0 beach road cells.
 
-## Known transitional artifact (superseded by spec 137)
+## Junction caps (spec 137) also stop at the grass line
 
-The spec-127 JUNCTION SLAB — an unrotated centroid-centred square box capping the ribbon
-overlap — can still overhang the sand by a corner at a shore-adjacent junction (seen at the
-world (532,-722) junction, seed 4242), because it is sized from the zone centroid, not from
-the carriageways. It is NOT road data (zero road cells under it) and it is deleted wholesale
-by the in-flight spec-137 junction caps, whose exact carriageway-union outline inherits this
-spec's guarantee for free: the carriageways it hulls are already beach-free by routing. Not
-patched here to avoid rewriting geometry that spec 137 replaces.
+The spec-127 slab is gone — spec 137's draped junction caps landed on
+`r3f-colony-migration` and this branch merges them. The caps hull the carriageways (already
+beach-free by routing), but a coastal crossing's mouth extension can over-reach a few cells
+past the crossing onto the sand: measured on the merged tree, seed 4242's caps graded **41
+beach cells** through `capCoverageCells` before this fix. Since a junction cap IS road
+tarmac, the beach ban must reach it too. `junctionCap.ts`'s module-local `cellOk` (the
+water-only guard the caps shared with the ribbon) gains `!== Biome.Beach`, so cap grading
+never raises sand, and `drapeCap` drops any cap triangle whose centroid sits on forbidden
+ground — trimming the visible cap to the grass line at the tessellation's ~1-cell
+resolution, exactly as the ribbon's per-cross-section guard trims itself. `roadBeachGuard`
+now pins zero cap-coverage cells on Beach across the three seeds.

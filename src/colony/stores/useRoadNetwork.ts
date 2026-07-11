@@ -82,7 +82,7 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
 
   plotRoad: (cells, type, sim) => {
     set((state) => {
-      // Spec 138 — the store is the last gate before cells enter sim road state: no road cell on
+      // Spec 140 — the store is the last gate before cells enter sim road state: no road cell on
       // beach sand, ever. The whole stroke is rejected (mirroring the builder UI, which previews
       // the offending cells in red and blocks the blueprint), so a scripted window.__colony caller
       // can't slip pavement onto the sand behind the UI's back. Water deliberately stays a UI-only
@@ -95,7 +95,7 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
             t.inBounds(c.x, c.y) && t.biome[t.idx(c.x, c.y)] === Biome.Beach,
         );
         if (bad) {
-          console.warn('plotRoad rejected: stroke crosses beach sand (spec 138)');
+          console.warn('plotRoad rejected: stroke crosses beach sand (spec 140)');
           return {};
         }
       }

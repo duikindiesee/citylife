@@ -27,7 +27,7 @@ export function cellOk(t: Terrain, x: number, y: number): boolean {
   );
 }
 
-/** A cell is good ground for a ROAD specifically: cellOk AND not beach sand. Spec 138 — roads
+/** A cell is good ground for a ROAD specifically: cellOk AND not beach sand. Spec 140 — roads
  *  never run on Biome.Beach (operator rule: no roads on beaches, ever); water was already excluded
  *  by cellOk. Beach stays legal for parcels, houses and walking (the Beach Cove plots, and the
  *  future boat-launch pad), so this is a separate gate rather than a change to cellOk. */
@@ -142,7 +142,7 @@ export function leastCostPath(
     slopeWeight?: number;
     blocked?: (x: number, y: number) => boolean;
     diagonal?: boolean;
-    /** Spec 138 — treat Biome.Beach as impassable, exactly like water. ROAD routing opts in so
+    /** Spec 140 — treat Biome.Beach as impassable, exactly like water. ROAD routing opts in so
      *  boot roads bend inland along the grass line; walking and driveway routing do not, so
      *  citizens still cross the sand on foot. Composed into `blocked`, so endpoints, neighbour
      *  steps and diagonal corner-cuts all get the same guard. */
