@@ -1,4 +1,4 @@
-# Spec 143 — Mobile Road Rally driving controls
+# Spec 147 — Mobile Road Rally driving controls
 
 Status: UPDATED · Date: 2026-06-26 · Owner: Joe / Player & UI
 
