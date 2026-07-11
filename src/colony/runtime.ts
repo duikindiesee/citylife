@@ -1052,7 +1052,7 @@ export class ColonyRuntime {
     //     straights + diagonals and any residual step is filled by the band.
     // The trunk roads AND the commercial connector both lay through this, so no road is a raw 1-cell
     // zig-zag any more (the staircase the operator kept seeing).
-    // spec 138 — roadCellOk (not cellOk): the string-pull and the stroked band must never put a
+    // spec 140 — roadCellOk (not cellOk): the string-pull and the stroked band must never put a
     // road cell on beach sand, even where the routed centre-line merely brushes the grass line.
     const roadLandOk = (x: number, y: number) =>
       roadCellOk(t0, x, y) && !residentialSetbackKeys.has(`${x},${y}`);
@@ -1123,7 +1123,7 @@ export class ColonyRuntime {
         leastCostPath(t0, from, to, {
           slopeWeight: 0.5,
           diagonal: true,
-          forbidBeach: true, // spec 138 — trunk roads bend inland, never along the sand
+          forbidBeach: true, // spec 140 — trunk roads bend inland, never along the sand
           blocked: (x, y) => residentialSetbackKeys.has(`${x},${y}`),
         }) ?? [];
       if (path.length === 0) return;
@@ -1193,7 +1193,7 @@ export class ColonyRuntime {
           const x = c.x,
             y = c.y + dy;
           if (
-            roadCellOk(t, x, y) && // spec 138 — the widened high street never widens onto sand
+            roadCellOk(t, x, y) && // spec 140 — the widened high street never widens onto sand
             !residentialSetbackKeys.has(`${x},${y}`) &&
             !shopCells.has(`${x},${y}`)
           )
@@ -1209,7 +1209,7 @@ export class ColonyRuntime {
           const x = c.x + dx,
             y = c.y;
           if (
-            roadCellOk(t, x, y) && // spec 138 — same beach guard for the cross street
+            roadCellOk(t, x, y) && // spec 140 — same beach guard for the cross street
             !residentialSetbackKeys.has(`${x},${y}`) &&
             !shopCells.has(`${x},${y}`)
           )
@@ -1227,7 +1227,7 @@ export class ColonyRuntime {
         leastCostPath(t, terminus, near, {
           slopeWeight: 0.5,
           diagonal: true,
-          forbidBeach: true, // spec 138 — the coast spur runs the grass line, not the sand
+          forbidBeach: true, // spec 140 — the coast spur runs the grass line, not the sand
           blocked: (x, y) =>
             residentialSetbackKeys.has(`${x},${y}`) ||
             shopCells.has(`${x},${y}`),
@@ -1329,7 +1329,7 @@ export class ColonyRuntime {
           leastCostPath(t0, terminus, rallyCell, {
             slopeWeight: 0.5,
             diagonal: true,
-            forbidBeach: true, // spec 138 — the rally spur is a paved road like any other
+            forbidBeach: true, // spec 140 — the rally spur is a paved road like any other
             margin: 160, // the hilltop can need a long detour around a ridge to reach a road
           }) ?? [];
         if (path.length < 2) continue;

@@ -5,9 +5,14 @@ import {
   buildRoadRibbons,
   ribbonCoverage,
 } from "../src/colony/render/roadRibbon";
+import { findJunctionZones } from "../src/colony/render/roadJunctions";
+import {
+  attachCapPolys,
+  capCoverageCells,
+} from "../src/colony/render/junctionCap";
 import { cellOk, roadCellOk } from "../src/colony/pathfind";
 
-// Spec 138 — roads are never on beaches. The route planner treats Biome.Beach exactly like
+// Spec 140 — roads are never on beaches. The route planner treats Biome.Beach exactly like
 // water (pathfind roadCellOk / forbidBeach), so every boot road — corridor spines and their
 // dilated carriageways, trunk links, the commercial high street + cross street + connector,
 // the rally spur and the landing block frames — bends inland along the grass line. This pins
@@ -55,13 +60,28 @@ function beachCoverageCellLabels(rt: ColonyRuntime): string[] {
   });
 }
 
-describe("road-on-beach guard (spec 138)", () => {
+// Spec 137's junction caps are a SEPARATE draped surface whose graded footprint (capCoverageCells)
+// keys off cellOk — which permits beach — not roadCellOk. The caps hull only the carriageways, and
+// those are beach-free by routing, so a cap can only reach sand if a junction sits right on the
+// grass/sand line. Assert it never does, the same way R3FPlanetRenderer builds the coverage.
+function beachCapCoverageCellLabels(rt: ColonyRuntime): string[] {
+  const t = rt.sim.state.terrain;
+  const zones = attachCapPolys(findJunctionZones(rt.roadWays));
+  const cover = capCoverageCells(zones, t, roadYOf(t));
+  return [...cover.keys()].filter((k) => {
+    const [x, y] = k.split(",").map(Number);
+    return t.inBounds(x!, y!) && t.biome[t.idx(x!, y!)] === Biome.Beach;
+  });
+}
+
+describe("road-on-beach guard (spec 140)", () => {
   for (const seed of SEEDS) {
     it(`keeps every boot road cell, ribbon cell and graded coverage cell off Biome.Beach for seed ${seed}`, () => {
       const rt = new ColonyRuntime(seed);
       expect(beachRoadCellLabels(rt)).toEqual([]);
       expect(beachRibbonCellLabels(rt)).toEqual([]);
       expect(beachCoverageCellLabels(rt)).toEqual([]);
+      expect(beachCapCoverageCellLabels(rt)).toEqual([]); // spec 137 junction caps, spec 140 clean
     });
   }
 

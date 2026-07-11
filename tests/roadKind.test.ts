@@ -76,7 +76,7 @@ describe("spec 084 S3 — RoadKind + the avenue merge", () => {
     const streets = sim.state.roads.filter(
       (r) => (r.kind ?? "street") === "street",
     );
-    // Spec 138 moved the starter frame inland onto the same ground the homesteads survey, so
+    // Spec 140 moved the starter frame inland onto the same ground the homesteads survey, so
     // the parcel purge can legitimately eat a frame cell and split the frame (the runtime's
     // trunk stitching reconnects the network; this harness lays none). Route across the frame's
     // LARGEST connected component — the drivable-cells contract is what this test pins.
