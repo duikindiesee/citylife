@@ -1,11 +1,11 @@
-// Spec 138 — the giant red building fix: contiguous commercial lots collapse to ONE ~100 m
+// Spec 139 — the giant red building fix: contiguous commercial lots collapse to ONE ~100 m
 // CommercialBlock at the cluster centroid instead of one overlapping scene per 4 m lot.
 import { describe, it, expect } from "vitest";
 import { clusterCommercialLots } from "../src/colony/render/commercialClusters";
 
 const lot = (id: string, x: number, y: number) => ({ id, x, y });
 
-describe("spec 138 — commercial lot clustering", () => {
+describe("spec 139 — commercial lot clustering", () => {
   it("no lots -> no clusters (the boot case, where commercial is zero)", () => {
     expect(clusterCommercialLots([])).toEqual([]);
   });

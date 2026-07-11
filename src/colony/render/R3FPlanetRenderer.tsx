@@ -91,7 +91,7 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
     const elements: React.ReactElement[] = [];
     const overlays: React.ReactElement[] = [];
 
-    // Spec 138 — the giant red building fix. CommercialBlock is a ~100 m gas-station SCENE, so
+    // Spec 139 — the giant red building fix. CommercialBlock is a ~100 m gas-station SCENE, so
     // one per 4 m lot fused into a red wall. Collect the built commercial lots and render ONE
     // block per contiguous cluster (below), instead of one per lot. (The old cityPlan-commercial
     // branch was dead code — makeCityPlan only ever emits residential plots — and is removed.)
@@ -143,7 +143,7 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
         }
       }
 
-      // Spec 138 — one CommercialBlock per contiguous commercial cluster, at its centroid, so a
+      // Spec 139 — one CommercialBlock per contiguous commercial cluster, at its centroid, so a
       // painted commercial run reads as a single street scene instead of a fused red wall.
       for (const c of clusterCommercialLots(commercialLots)) {
         elements.push(

@@ -1,4 +1,4 @@
-// Spec 138 — the giant red building fix. CommercialBlock (src/render/components/CommercialBlock.tsx)
+// Spec 139 — the giant red building fix. CommercialBlock (src/render/components/CommercialBlock.tsx)
 // is a hand-authored ~100 m gas-station/garage STREET SCENE with a red (#aa3333) canopy — NOT a
 // per-cell building. The renderer stamped one whole 100 m scene per 4 m commercial lot, so any
 // run of adjacent commercial lots fused ~25 overlapping copies into one towering red wall (the

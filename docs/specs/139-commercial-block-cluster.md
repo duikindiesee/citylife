@@ -1,4 +1,4 @@
-# Spec 138 — the giant red building fix (CommercialBlock clustering)
+# Spec 139 — the giant red building fix (CommercialBlock clustering)
 
 ## The complaint
 
