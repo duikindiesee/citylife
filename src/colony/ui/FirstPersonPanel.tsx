@@ -10,6 +10,20 @@ import type { ColonyUiState } from "../runtime";
 const STEP = 6; // cells per directional tap
 const LOW_SPRINT_CHARGE_PERCENT = 20;
 
+export function firstPersonHudLayout(width: number, height: number) {
+  const mobile = width <= 700;
+  return {
+    mobile,
+    clearCenter: true,
+    controlsCollapsed: true,
+    secondaryCardsCollapsed: true,
+    toastLane: "top-center" as const,
+    canonicalExitCount: 1,
+    minimumTouchTargetPx: mobile ? 48 : 44,
+    constrained: width <= 1280 || height <= 720,
+  };
+}
+
 function distanceLabel(distance: number): string {
   return `${distance} ${distance === 1 ? "unit" : "units"} away`;
 }
@@ -92,6 +106,7 @@ export function FirstPersonPanel({
   onOpenRoadmap?: () => void;
 }) {
   const [showDebug, setShowDebug] = useState(false);
+  const [showControls, setShowControls] = useState(false);
   if (!fp.active || !fp.citizenId) return null;
   const v = fp.view;
   const nightFriendBanner = nightFriendBannerCopy(v);
@@ -198,7 +213,15 @@ export function FirstPersonPanel({
             🧭 Roadmap
           </button>
         )}
-        {v && (
+        <button
+          className="first-person-panel__debug-toggle"
+          data-fp-action="toggle-controls"
+          aria-expanded={showControls}
+          onClick={() => setShowControls((open) => !open)}
+        >
+          Controls
+        </button>
+        {v && showControls && (
           <button
             className="first-person-panel__rally-button"
             data-fp-action="walk-to-rally"
@@ -209,7 +232,7 @@ export function FirstPersonPanel({
             🏁 Walk to Rally
           </button>
         )}
-        {v && (
+        {v && showControls && (
           <button
             className="first-person-panel__debug-toggle"
             data-fp-action="toggle-debug"
@@ -275,10 +298,11 @@ export function FirstPersonPanel({
         </div>
       )}
 
-      <div className="first-person-panel__hint">
-        WASD strafe/walk · Shift sprint · arrows turn · Tap Use to interact ·
-        Tap arrows to roam
-      </div>
+      {showControls && (
+        <div className="first-person-panel__hint">
+          WASD strafe/walk · Shift sprint · arrows turn · Tap Use to interact · Tap arrows to roam
+        </div>
+      )}
     </div>
   );
 }

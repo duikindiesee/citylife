@@ -14,20 +14,17 @@ describe("FirstPersonMouseLookBar", () => {
         requestMouseLook() {},
         levelFirstPersonLook() {},
         setMouseSensitivity() {},
-        exitFirstPerson() {},
         mouseSensitivity: "normal",
       }),
     );
 
     expect(html).toContain("Seeing through");
     expect(html).toContain("Joe");
-    expect(html).toContain("mouse-look unavailable");
-    expect(html).toContain(
-      "Mouse-look unavailable — click the city view and try again.",
-    );
-    expect(html).toContain("Retry mouse-look");
-    expect(html).toContain("Level view");
-    expect(html).toContain("Look sensitivity");
-    expect(html).toContain("Normal");
+    expect(html).toContain("aria-expanded=\"false\"");
+    expect(html).toContain("Look");
+    expect(html).toContain("Mouse-look unavailable — click the city view and try again.");
+    expect(html).not.toContain("Retry mouse-look");
+    expect(html).not.toContain("Level view");
+    expect(html).not.toContain("Look sensitivity");
   });
 });

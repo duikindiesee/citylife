@@ -89,14 +89,15 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).toContain('class="first-person-panel__destination-strip"');
     expect(html).toContain("Talk to Orin Reed");
     expect(html).toContain("Use E");
-    expect(html).toContain("Shift sprint");
+    expect(html).toContain("Controls");
+    expect(html).not.toContain("Shift sprint");
     expect(html).toContain("Sprint 42%");
     expect(html).toContain('role="progressbar"');
     expect(html).toContain('aria-label="Sprint charge 42%"');
     expect(html).toContain('aria-valuenow="42"');
     expect(html).toContain("width:42%");
     expect(html).toContain("Blocked: water");
-    expect(html).toContain("Debug");
+    expect(html).not.toContain("Debug");
     expect(html).not.toContain("Ground");
     expect(html).not.toContain("Neighbours");
     expect(html).not.toContain("grass");
@@ -256,8 +257,9 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).toContain(
       'aria-label="Use current action: Talk to Orin Reed"',
     );
-    expect(html).toContain("Tap Use to interact");
-    expect(html).toContain("Tap arrows to roam");
+    expect(html).toContain("Controls");
+    expect(html).not.toContain("Tap Use to interact");
+    expect(html).not.toContain("Tap arrows to roam");
   });
 
   it("renders a KOOKER beacon Roadmap selector when the operator is near KOOKER", () => {

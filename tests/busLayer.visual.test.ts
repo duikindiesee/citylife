@@ -44,7 +44,7 @@ describe("bus layer visual model", () => {
 
     expect(Array.from(names)).toEqual(
       expect.arrayContaining([
-        "bus-body",
+        "bus-lower-shell",
         "bus-windscreen",
         "bus-side-window-left-0",
         "bus-side-window-right-0",
@@ -80,6 +80,50 @@ describe("bus layer visual model", () => {
     expect(wheel).toBeTruthy();
     const r = (wheel.geometry as THREE.CylinderGeometry).parameters.radiusTop;
     expect(r).toBeCloseTo(COLONY.transit.busWheelRadiusM);
+  });
+
+  it("has real transparent two-sided glazing and a named passenger interior", () => {
+    const bus = buildBus();
+    const required = [
+      "bus-interior", "bus-interior-floor", "bus-interior-ceiling", "bus-interior-aisle",
+      "bus-interior-seat-left-0", "bus-interior-seat-right-0", "bus-interior-handrail-left",
+      "bus-interior-pole-front", "bus-driver-seat", "bus-dashboard", "bus-door-threshold",
+    ];
+    for (const name of required) expect(bus.getObjectByName(name), name).toBeTruthy();
+    const glass = bus.getObjectByName("bus-side-window-left-0") as THREE.Mesh;
+    const windscreen = bus.getObjectByName("bus-windscreen") as THREE.Mesh;
+    for (const pane of [glass, windscreen]) {
+      const material = pane.material as THREE.MeshStandardMaterial;
+      expect(material.transparent).toBe(true);
+      expect(material.opacity).toBeGreaterThan(0.15);
+      expect(material.opacity).toBeLessThan(0.6);
+      expect(material.side).toBe(THREE.DoubleSide);
+      expect(material.depthWrite).toBe(false);
+    }
+    expect(bus.getObjectByName("bus-body")).toBeUndefined();
+    expect(bus.getObjectByName("bus-window-frame-left-top")).toBeTruthy();
+    expect(bus.getObjectByName("bus-window-frame-right-bottom")).toBeTruthy();
+    expect(bus.getObjectByName("bus-front-frame")).toBeUndefined();
+    for (const edge of ["top", "bottom", "left", "right"]) {
+      expect(bus.getObjectByName(`bus-front-frame-${edge}`), edge).toBeTruthy();
+    }
+
+    const shellBox = new THREE.Box3().setFromObject(bus.getObjectByName("bus-lower-shell")!);
+    const floorBox = new THREE.Box3().setFromObject(bus.getObjectByName("bus-interior-floor")!);
+    const aisleBox = new THREE.Box3().setFromObject(bus.getObjectByName("bus-interior-aisle")!);
+    const roofBox = new THREE.Box3().setFromObject(bus.getObjectByName("bus-roof")!);
+    const leftTopFrameBox = new THREE.Box3().setFromObject(bus.getObjectByName("bus-window-frame-left-top")!);
+    const rightTopFrameBox = new THREE.Box3().setFromObject(bus.getObjectByName("bus-window-frame-right-top")!);
+    expect(floorBox.min.y).toBeGreaterThan(shellBox.max.y);
+    expect(aisleBox.min.y).toBeGreaterThanOrEqual(floorBox.max.y);
+    for (const frameBox of [leftTopFrameBox, rightTopFrameBox]) {
+      const verticalOverlap = Math.min(roofBox.max.y, frameBox.max.y) - Math.max(roofBox.min.y, frameBox.min.y);
+      expect(verticalOverlap).toBeGreaterThan(0);
+      expect(roofBox.min.x).toBeLessThanOrEqual(frameBox.min.x);
+      expect(roofBox.max.x).toBeGreaterThanOrEqual(frameBox.max.x);
+      expect(roofBox.min.z).toBeLessThanOrEqual(frameBox.min.z);
+      expect(roofBox.max.z).toBeGreaterThanOrEqual(frameBox.max.z);
+    }
   });
 
   it("puts the boarding door CLEAR of the front wheel (not sitting on the tyre)", () => {

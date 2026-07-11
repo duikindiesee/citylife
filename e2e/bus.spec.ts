@@ -43,6 +43,43 @@ test('R3F bus: the town coach renders when a route exists', async ({ page }) => 
     });
     console.log(`bus layer meshes: ${meshes}`);
     expect(meshes).toBeGreaterThan(0);
+
+    const interior = await page.evaluate(() => {
+      const scene = (window as any).__r3fScene;
+      const names = ["bus-interior", "bus-interior-floor", "bus-interior-seat-left-0", "bus-dashboard", "bus-windscreen"];
+      const found = Object.fromEntries(names.map((name) => [name, !!scene.getObjectByName(name)]));
+      const glass = scene.getObjectByName("bus-windscreen")?.material;
+      return { found, transparent: glass?.transparent, opacity: glass?.opacity, side: glass?.side, depthWrite: glass?.depthWrite };
+    });
+    expect(Object.values(interior.found).every(Boolean)).toBe(true);
+    expect(interior).toEqual(expect.objectContaining({ transparent: true, depthWrite: false }));
+    expect(interior.opacity).toBeLessThan(0.6);
+    await page.evaluate(() => {
+      const scene = (window as any).__r3fScene;
+      const camera = (window as any).__r3fCamera;
+      const controls = (window as any).__r3fControls;
+      (window as any).__colony?.setSpeed?.(0);
+      const interior = scene.getObjectByName("bus-interior");
+      const coach = interior?.parent?.parent;
+      if (!coach) throw new Error("live bus coach not found from interior hierarchy");
+      coach.updateWorldMatrix(true, true);
+      const e = coach.matrixWorld.elements;
+      const target = { x: e[12], y: e[13] + 1.5, z: e[14] };
+      const foliage = scene.getObjectByName("foliage");
+      if (foliage) foliage.visible = false;
+      controls?.target?.set(target.x, target.y, target.z);
+      camera.position.set(target.x + 10, target.y + 4, target.z + 10);
+      camera.lookAt(target.x, target.y, target.z);
+      controls?.update?.();
+    });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: "test-results/bus-interior-exterior-day.png" });
+    await page.evaluate(() => {
+      const colony = (window as any).__colony;
+      colony?.debugSetClock?.(0, 0);
+    });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: "test-results/bus-interior-exterior-night.png" });
   } else {
     // No route (isolated hoods) — the bus group renders empty, which is correct.
     console.log('no route at boot; bus group correctly empty');
