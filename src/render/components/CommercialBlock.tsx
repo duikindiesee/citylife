@@ -17,9 +17,26 @@ const matPump = <meshStandardMaterial color="#2266cc" roughness={0.5} metalness=
 const matLampPole = <meshStandardMaterial color="#111111" metalness={0.8} roughness={0.2} />;
 const matLampBulb = <meshStandardMaterial color="#ffffee" emissive="#ffffee" emissiveIntensity={2.0} />;
 
-export function CommercialBlock({ position, rotation }: { position?: [number, number, number], rotation?: [number, number, number] }) {
+export function CommercialBlock({
+  position,
+  rotation,
+  name,
+  userData,
+}: {
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+  name?: string;
+  userData?: Record<string, unknown>;
+}) {
   return (
-    <RigidBody type="fixed" colliders="trimesh" position={position} rotation={rotation}>
+    <RigidBody
+      type="fixed"
+      colliders="trimesh"
+      position={position}
+      rotation={rotation}
+      name={name}
+      userData={userData}
+    >
       <group>
       {/* 1. Road & Edge Markings */}
       <Plane args={[100, 12]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>

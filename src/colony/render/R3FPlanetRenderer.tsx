@@ -18,6 +18,7 @@ import type { CarSpec } from '../car/carSpec';
 import { FirstPersonController } from '../../render/components/FirstPersonController';
 import { CommercialBlock } from '../../render/components/CommercialBlock';
 import { clusterCommercialLots } from './commercialClusters';
+import { commercialBlockSeatY } from './commercialBlockSeat';
 import { Island } from '../../render/components/Island';
 
 export type ViewMode = "biome" | "buildable" | "elevation";
@@ -97,7 +98,12 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
     // one per 4 m lot fused into a red wall. Collect the built commercial lots and render ONE
     // block per contiguous cluster (below), instead of one per lot. (The old cityPlan-commercial
     // branch was dead code — makeCityPlan only ever emits residential plots — and is removed.)
-    const commercialLots: { id: string; x: number; y: number }[] = [];
+    const commercialLots: {
+      id: string;
+      x: number;
+      y: number;
+      footprint: { x: number; y: number; w: number; d: number };
+    }[] = [];
 
     if (state.neighborhood?.lots) {
       const size = state.terrain.size;
@@ -111,7 +117,13 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
       for (const lot of state.neighborhood.lots) {
         if (lot.built) {
           if (lot.zone === "commercial") {
-            commercialLots.push({ id: lot.id, x: lot.x, y: lot.y });
+            const hz = lot.houseZone;
+            commercialLots.push({
+              id: lot.id,
+              x: lot.x,
+              y: lot.y,
+              footprint: { x: hz.x, y: hz.y, w: hz.w, d: hz.d },
+            });
           } else {
             const hz = lot.houseZone;
             const seat = seatOf(hz);
@@ -146,12 +158,16 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
       }
 
       // Spec 139 — one CommercialBlock per contiguous commercial cluster, at its centroid, so a
-      // painted commercial run reads as a single street scene instead of a fused red wall.
+      // painted commercial run reads as a single street scene instead of a fused red wall. Seat
+      // the block on the union of its graded lot pads using the shared spec-128 formula.
       for (const c of clusterCommercialLots(commercialLots)) {
+        const seat = commercialBlockSeatY(state.terrain, c);
         elements.push(
           <CommercialBlock
             key={`comm-${c.id}`}
-            position={[(c.x - size / 2) * 4, 0, (c.y - size / 2) * 4]}
+            name={`commercialBlock.${c.id}`}
+            position={[(c.x - size / 2) * 4, seat, (c.y - size / 2) * 4]}
+            userData={{ commercialCluster: { id: c.id, seatY: seat, footprint: c.footprint } }}
           />
         );
       }
