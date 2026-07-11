@@ -82,6 +82,18 @@ describe("bus layer visual model", () => {
     expect(r).toBeCloseTo(COLONY.transit.busWheelRadiusM);
   });
 
+  it("puts the boarding door CLEAR of the front wheel (not sitting on the tyre)", () => {
+    // Operator review — the door was centred on the front axle and rendered on top of the wheel.
+    // Its x-footprint must not overlap the front wheel's, along the travel axis.
+    const bus = buildBus();
+    const door = bus.getObjectByName("bus-door-left") as THREE.Mesh;
+    const spinner = bus.getObjectByName("bus-wheel-spin-front-left")!;
+    const doorBox = new THREE.Box3().setFromObject(door);
+    const wheelBox = new THREE.Box3().setFromObject(spinner);
+    // Disjoint in x: the door starts ahead of where the wheel ends (front overhang).
+    expect(doorBox.min.x).toBeGreaterThan(wheelBox.max.x);
+  });
+
   it("rides the road: ribbon lift, slope pitch nose-up, wheels spin with distance, body sways", () => {
     // A 12.5% grade rising along +x (grid cells are 4 m, so roadY climbs 0.5 m per cell).
     const rig = makeBusRig({

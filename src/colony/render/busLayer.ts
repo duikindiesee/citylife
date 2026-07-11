@@ -347,7 +347,11 @@ function addRouteBoard(
 }
 
 function addDoors(bus: THREE.Group, width: number): void {
-  // The doors get their OWN material so the rig can light them when they open at a stop.
+  // Front-entrance door in the front OVERHANG, clear of the front wheel: the front axle sits at
+  // x=3.6 (wheel front edge ~4.1), so a 1.3 m door centred at 4.85 (4.2–5.5) stands ahead of the
+  // arch like a real city bus, not on top of the tyre. Doors get their OWN material so the rig can
+  // light them when they open at a stop.
+  const DOOR_X = 4.85;
   for (const [name, z] of [
     ["bus-door-left", width / 2 + 0.02],
     ["bus-door-right", -(width / 2 + 0.02)],
@@ -361,7 +365,7 @@ function addDoors(bus: THREE.Group, width: number): void {
     });
     const door = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.2, 0.06), doorMat);
     door.name = name;
-    door.position.set(4.0, 1.45, z);
+    door.position.set(DOOR_X, 1.45, z);
     bus.add(door);
   }
 }
