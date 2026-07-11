@@ -123,7 +123,7 @@ export function R3FPorters({ sim, terrainLevel }: R3FPortersProps) {
     let ci = 0;
     for (const cart of carts.current) {
       const heading = stepCart(cart, dt, s.roadSet, Math.random);
-      // spec 140 — carts run the road network, so ride the ribbon top, not the ground beneath it
+      // spec 142 — carts run the road network, so ride the ribbon top, not the ground beneath it
       const wy = Math.max(0, crowdGroundY(t, terrainLevel, s.roadSet, Math.round(cart.x), Math.round(cart.y)));
       assets.pos.set((cart.x - N / 2) * 4, wy + 0.05, (cart.y - N / 2) * 4);
       assets.quat.setFromAxisAngle(assets.axis, -heading);

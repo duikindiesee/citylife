@@ -108,7 +108,7 @@ export function R3FAvatars({ sim, refs, terrainLevel }: R3FAvatarsProps) {
     if (refs.lastList) refs.lastList.current = list;
     const drawn = drawableAvatars(list, refs.fpCitizenId.current);
     const size = sim.state.terrain.size;
-    // spec 140 — ride the road ribbon on road cells so citizens and Joe don't sink through it
+    // spec 142 — ride the road ribbon on road cells so citizens and Joe don't sink through it
     const groundY = (x: number, y: number) => crowdGroundY(sim.state.terrain, terrainLevel, sim.state.roadSet, x, y);
 
     // Spec 132 — crab-kind avatars draw the crab model, not a human capsule.
