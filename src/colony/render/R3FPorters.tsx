@@ -1,4 +1,5 @@
 import { leveledWorldY } from './terrainLeveling';
+import { crowdGroundY } from './crowdGround';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
@@ -122,7 +123,8 @@ export function R3FPorters({ sim, terrainLevel }: R3FPortersProps) {
     let ci = 0;
     for (const cart of carts.current) {
       const heading = stepCart(cart, dt, s.roadSet, Math.random);
-      const wy = Math.max(0, leveledWorldY(t, terrainLevel, Math.round(cart.x), Math.round(cart.y)));
+      // spec 140 — carts run the road network, so ride the ribbon top, not the ground beneath it
+      const wy = Math.max(0, crowdGroundY(t, terrainLevel, s.roadSet, Math.round(cart.x), Math.round(cart.y)));
       assets.pos.set((cart.x - N / 2) * 4, wy + 0.05, (cart.y - N / 2) * 4);
       assets.quat.setFromAxisAngle(assets.axis, -heading);
       assets.m4.compose(assets.pos, assets.quat, assets.one);
