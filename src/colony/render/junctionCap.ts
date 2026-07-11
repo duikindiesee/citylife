@@ -108,8 +108,67 @@ export function capPolygon(zone: JunctionZone): { x: number; y: number }[] {
     }
     // near-parallel neighbours: direct segment along the shared kerb line
   }
-  zone.poly = poly;
-  return poly;
+  zone.poly = sanitizeCapPoly(poly);
+  return zone.poly;
+}
+
+/** Do segments a-b and c-d properly cross (interiors intersect)? */
+function segsCross(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  c: { x: number; y: number },
+  d: { x: number; y: number },
+): boolean {
+  const rx = b.x - a.x,
+    ry = b.y - a.y,
+    sx = d.x - c.x,
+    sy = d.y - c.y;
+  const den = rx * sy - ry * sx;
+  if (Math.abs(den) < 1e-9) return false;
+  const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
+  const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
+  return t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6;
+}
+
+/** Spec 137 cap-quality fix (operator: "intersections not perfect", "corners maybe
+ *  inverted 90 degrees"). The exact carriageway-union walk is right for clean crossings,
+ *  but a SHALLOW/degenerate junction — two near-parallel arms, an oblique cross where the
+ *  mouth clamps at MOUTH_MAX — makes the kerb-corner intersections blow up into a
+ *  self-crossing, near-duplicate-point polygon. `pointInPoly` then returns garbage (patchy
+ *  paint suppression -> ragged edge lines), `capKerbLines` traces the self-crossing outline
+ *  (the ragged white teeth), and `drapeCap`'s centre-fan inverts triangles (the messy cap).
+ *  So: drop consecutive near-duplicate points, and if the outline still self-intersects,
+ *  fall back to the CONVEX HULL of its points — always a clean simple CCW polygon. Only the
+ *  broken degenerate cases take the hull; a valid plus-shape cross keeps its exact concave
+ *  outline (its reflex kerb corners never self-cross), so the general-case geometry the
+ *  spec-137 exact-union delivers is untouched. */
+export function sanitizeCapPoly(
+  raw: { x: number; y: number }[],
+): { x: number; y: number }[] {
+  if (raw.length < 3) return raw;
+  // 1. dedup consecutive (and wrap-around) near-duplicate vertices
+  const dedup: { x: number; y: number }[] = [];
+  for (const p of raw) {
+    const last = dedup[dedup.length - 1];
+    if (last && Math.hypot(last.x - p.x, last.y - p.y) < 0.35) continue;
+    dedup.push(p);
+  }
+  while (
+    dedup.length > 1 &&
+    Math.hypot(dedup[0]!.x - dedup[dedup.length - 1]!.x, dedup[0]!.y - dedup[dedup.length - 1]!.y) < 0.35
+  )
+    dedup.pop();
+  if (dedup.length < 3) return convexHull(raw);
+  // 2. any non-adjacent edge pair crossing => self-intersecting => hull fallback
+  const n = dedup.length;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue; // adjacent across the wrap seam
+      if (segsCross(dedup[i]!, dedup[(i + 1) % n]!, dedup[j]!, dedup[(j + 1) % n]!))
+        return convexHull(dedup);
+    }
+  }
+  return dedup;
 }
 
 /** Attach cap polygons to every zone (idempotent). The React layer calls this once so

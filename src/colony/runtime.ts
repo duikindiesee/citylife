@@ -1250,18 +1250,29 @@ export class ColonyRuntime {
     // Spec 088 — collect the remaining road centre-lines as ribbon ways (the trunk roads + connector
     // already recorded themselves through layRoad): the founders' avenue spine, each hamlet spine, and
     // the commercial high street. The smooth ribbon render draws these; traffic still uses the cells.
+    //
+    // These are RAW least-cost spines (cell-by-cell staircases), so unlike the trunk roads — which
+    // layRoad STRING-PULLS into clean straight runs before recording — their ribbons wiggled and their
+    // edge lines jittered into the ragged mess the operator saw along the founders' avenue. String-pull
+    // them the same way (simplifyPath: greedily straighten while line-of-sight stays road-able) so every
+    // ribbon centre-line, trunk or spine, is a clean polyline. Render-only: the road CELLS the traffic,
+    // bus and rally drive are untouched.
     if (this.neighborhood.spine.length >= 2)
       this.roadWays.push({
-        path: this.neighborhood.spine,
+        path: simplifyPath(this.neighborhood.spine),
         kind: "avenue",
         width: 4,
       });
     for (const s of satellites)
       if (s.spine.length >= 2)
-        this.roadWays.push({ path: s.spine, kind: "street", width: 4 });
+        this.roadWays.push({
+          path: simplifyPath(s.spine),
+          kind: "street",
+          width: 4,
+        });
     if (this.commercialDistrict && this.commercialDistrict.street.length >= 2)
       this.roadWays.push({
-        path: this.commercialDistrict.street,
+        path: simplifyPath(this.commercialDistrict.street),
         kind: "avenue",
         width: 4,
       });
