@@ -235,6 +235,28 @@ import {
   type ShopParcel,
 } from "./commerce/district";
 import { makeBusRoute, type BusRoute } from "./transit/busRoute";
+import {
+  findDepotSite,
+  depotLayout,
+  type DepotSite,
+  type DepotLayout,
+} from "./transit/busDepot";
+import {
+  makeFleet,
+  stepFleet,
+  makeFleetGeometry,
+  busPose,
+  type BusFleet,
+  type FleetGeometry,
+  type FleetPaths,
+  type BusPose,
+} from "./transit/busFleet";
+import {
+  buildPath,
+  simplifyClosed,
+  smoothClosed,
+  smoothOpen,
+} from "./transit/path";
 import type { RoadWay } from "./render/roadRibbon";
 import { findJunctionZones } from "./render/roadJunctions";
 import {
@@ -748,6 +770,15 @@ export interface ColonyUiState {
   preset: CameraPreset;
 }
 
+/** Spec 140 — camera yaw (three.js Y euler) that points the fp camera standing at `from` toward
+ *  `to`, both in GRID coords (world x = grid x, world z = grid y; camera forward is (-sin, -cos)). */
+function cameraYawToward(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): number {
+  return Math.atan2(-(to.x - from.x), -(to.y - from.y));
+}
+
 export class ColonyRuntime {
   readonly sim: ColonySim;
   private renderer: PlanetRenderer | null = null;
@@ -827,6 +858,24 @@ export class ColonyRuntime {
   commercialDistrict: CommercialDistrict | null = null;
   /** Spec 088 — the city bus route: a road loop visiting every hood (founders + each hamlet). */
   busRoute: BusRoute | null = null;
+  /** Spec 140 — the surveyed bus depot pad + its interior layout (null: seed had no fit; the
+   *  legacy single cosmetic coach keeps driving instead of the fleet). Public: e2e probes it. */
+  busDepot: { site: DepotSite; layout: DepotLayout } | null = null;
+  /** Spec 140 — the fleet dispatch machine (hours, stagger, breaks). Public for the e2e probe. */
+  busFleet: BusFleet | null = null;
+  private fleetGeom: FleetGeometry | null = null;
+  private fleetPaths: FleetPaths | null = null;
+  /** Spec 140 — the fleet bus the stepped-in player is riding, or null on foot. */
+  fpRidingBusId: number | null = null;
+  /** Spec 140 — where the first-person CAMERA capsule stands (grid coords), reported by the
+   *  renderer every frame. The v3 walker camera is a physics capsule independent of the roster
+   *  citizen, so bus interactions measure from HERE — the prompt matches what the player sees. */
+  fpCameraCell: { x: number; y: number } | null = null;
+  /** Spec 140 — one-shot teleport order for the camera capsule (FirstPersonController consumes it;
+   *  seq marks freshness). debugPlaceFirstPerson and alighting issue these. */
+  fpTeleportRequest: { x: number; y: number; yaw?: number; seq: number } | null =
+    null;
+  private fpTeleportSeq = 0;
   /** Spec 088 — road centre-lines for the smooth ribbon render (rendering only; traffic uses the cells). */
   roadWays: RoadWay[] = [];
   // Spec 079 — the Nearest bar's seat cells + who's sitting there (a night crowd; cleared by day).
@@ -1537,6 +1586,83 @@ export class ColonyRuntime {
         );
       }
     }
+    // Spec 140 — the BUS DEPOT: a surveyed pad beside the bus loop where the fleet parks overnight.
+    // Sited AFTER the bus route (so the loop is unchanged — the rally-spur discipline) and AFTER the
+    // fence cleanup (so the freshly laid gate spur is never pruned). Fail-soft: no in-margin fit means
+    // no depot and the legacy single cosmetic coach keeps driving.
+    if (this.busRoute) {
+      const tr = COLONY.transit;
+      const roadKeys = new Set(this.sim.state.roadKind.keys());
+      const depotBlocked = new Set<string>([
+        ...taken,
+        ...residentialSetbackKeys,
+        ...fenceSetbackKeys,
+        ...roadKeys,
+      ]);
+      for (const s of this.sim.state.structures)
+        depotBlocked.add(`${Math.round(s.x)},${Math.round(s.y)}`);
+      const site = findDepotSite(
+        t0,
+        this.busRoute.loop,
+        depotBlocked,
+        roadKeys,
+        {
+          longCells: tr.depotLongCells,
+          deepCells: tr.depotDeepCells,
+          minRoadGap: tr.depotMinRoadGap,
+          maxRoadGap: tr.depotMaxRoadGap,
+        },
+      );
+      if (site) {
+        const padCells: Cell[] = [];
+        for (let y = site.y; y < site.y + site.h; y++)
+          for (let x = site.x; x < site.x + site.w; x++)
+            padCells.push({ x, y });
+        reserveParcelLand(this.sim.state, padCells); // houses can never spawn on the depot
+        // The gate spur is a REAL drivable road (ribbon-rendered) — buses ride INTO the plot on it.
+        mergeAvenue(this.sim.state, layRoad([site.roadCell, site.gate], 1));
+        const layout = depotLayout(site, {
+          baysTotal: tr.baysTotal,
+          laneDepth: tr.depotLaneDepth,
+          bayDepth: tr.depotBayDepth,
+        });
+        this.busDepot = { site, layout };
+        // Terrain leveling grades the pad flat (useTerrainLeveling reads this off the state, the
+        // commercial-pad path), so slab, buses and the walker's ground share one height.
+        this.sim.state.busDepotPad = {
+          x: site.x,
+          y: site.y,
+          w: site.w,
+          h: site.h,
+        };
+        // Fleet geometry over the SAME smoothed loop the render drives, plus spur + bay paths.
+        const loopPath = buildPath(
+          smoothClosed(simplifyClosed(this.busRoute.loop, 1.5), 2),
+          true,
+        );
+        const spurPath = buildPath(
+          [
+            { x: layout.gate.x, y: layout.gate.y },
+            { x: site.roadCell.x, y: site.roadCell.y },
+          ],
+          false,
+        );
+        const bayPaths = layout.bays.map((b) => buildPath(smoothOpen(b.path, 1), false));
+        this.fleetPaths = {
+          loop: loopPath,
+          spur: spurPath,
+          bays: bayPaths,
+          gateHeading: layout.gate.headingOut,
+        };
+        this.fleetGeom = makeFleetGeometry(
+          loopPath,
+          spurPath,
+          bayPaths,
+          this.busRoute.stops,
+        );
+        this.busFleet = makeFleet(COLONY.transit);
+      }
+    }
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
     // founder profile (the bug: seed-then-restore overwrote Joe's stored posts with a 1-post reset).
@@ -2099,6 +2225,8 @@ export class ColonyRuntime {
   /** P1 — leave first-person, restoring the orbit camera. */
   exitFirstPerson(): void {
     this.fpCitizenId = null;
+    this.fpRidingBusId = null; // spec 140 — stepping out of the citizen also steps off the bus
+    this.fpCameraCell = null;
     this.fpKeys.clear();
     this.fpWalkSpeed = 0;
     this.fpLookPitch = 0;
@@ -2167,12 +2295,213 @@ export class ColonyRuntime {
     return true;
   }
 
+  /** Spec 140 — advance the bus fleet in sim-minutes (frozen while paused, scaled with sim speed,
+   *  so the 08:00–23:00 schedule stays honest against the clock) and keep a riding player PINNED
+   *  to their bus: pos, target and heading all follow the pose, so the fp camera rides along and
+   *  stepAvatars/wander can never fight the pin. */
+  private transitTick(dtReal: number): void {
+    if (!this.busFleet || !this.fleetGeom || !this.fleetPaths) return;
+    if (!this.paused) {
+      const dtMin =
+        dtReal *
+        this.speed *
+        COLONY.time.stepsPerSec *
+        COLONY.time.simMinPerStep;
+      if (dtMin > 0)
+        stepFleet(
+          this.busFleet,
+          dtMin,
+          this.sim.state.clock.totalMinutes,
+          this.fleetGeom,
+          COLONY.transit,
+        );
+    }
+    if (this.fpRidingBusId !== null && this.fpCitizenId) {
+      const pose = this.busPoseOf(this.fpRidingBusId);
+      const c = this.citizens.byId(this.fpCitizenId);
+      if (pose && c) {
+        c.pos.x = pose.x;
+        c.pos.y = pose.y;
+        c.target = { x: pose.x, y: pose.y };
+        c.heading = pose.heading;
+      } else {
+        this.fpRidingBusId = null;
+      }
+    }
+  }
+
+  /** Spec 140 — where fleet bus `id` physically is right now (grid coords), or null without a fleet. */
+  busPoseOf(id: number): BusPose | null {
+    if (!this.busFleet || !this.fleetGeom || !this.fleetPaths) return null;
+    const b = this.busFleet.buses[id];
+    return b ? busPose(b, this.fleetPaths, this.fleetGeom, COLONY.transit) : null;
+  }
+
+  /** Spec 140 — all fleet bus poses in bus-id order (the render layer draws these). */
+  busPoses(): BusPose[] {
+    if (!this.busFleet || !this.fleetGeom || !this.fleetPaths) return [];
+    return this.busFleet.buses.map((b) =>
+      busPose(b, this.fleetPaths!, this.fleetGeom!, COLONY.transit),
+    );
+  }
+
+  /** Spec 140 — the bus action available RIGHT NOW: board a dwelling (doors-open) bus in range, or
+   *  step off the one being ridden while its doors are open. Bus prompts outrank ground prompts
+   *  because the window closes when the bus pulls away. */
+  private busInteraction(): {
+    action: "board" | "exit";
+    busId: number;
+    prompt: {
+      kind: "bus";
+      label: string;
+      targetName: string;
+      targetXY: { x: number; y: number };
+      distance: number;
+    };
+  } | null {
+    if (!this.busFleet || !this.fpCitizenId) return null;
+    const c = this.citizens.byId(this.fpCitizenId);
+    if (!c) return null;
+    // Measure from the CAMERA capsule when the renderer reports one — that is where the player
+    // actually stands; the roster citizen is the data twin.
+    const at = this.fpCameraCell ?? c.pos;
+    if (this.fpRidingBusId !== null) {
+      const pose = this.busPoseOf(this.fpRidingBusId);
+      if (!pose || !pose.doorsOpen) return null;
+      return {
+        action: "exit",
+        busId: this.fpRidingBusId,
+        prompt: {
+          kind: "bus",
+          label: "Exit bus",
+          targetName: `Bus ${this.fpRidingBusId + 1}`,
+          targetXY: { x: pose.x, y: pose.y },
+          distance: 0,
+        },
+      };
+    }
+    const maxD = COLONY.transit.boardMaxDistanceCells;
+    let best: { busId: number; d: number; pose: BusPose } | null = null;
+    for (const b of this.busFleet.buses) {
+      const pose = this.busPoseOf(b.id);
+      if (!pose?.doorsOpen) continue;
+      const d = Math.hypot(pose.x - at.x, pose.y - at.y);
+      if (d <= maxD && (!best || d < best.d)) best = { busId: b.id, d, pose };
+    }
+    if (!best) return null;
+    return {
+      action: "board",
+      busId: best.busId,
+      prompt: {
+        kind: "bus",
+        label: `Board bus ${best.busId + 1}`,
+        targetName: `Bus ${best.busId + 1}`,
+        targetXY: { x: best.pose.x, y: best.pose.y },
+        distance: Number(best.d.toFixed(1)),
+      },
+    };
+  }
+
+  /** Spec 140 — step off the ridden bus onto the pavement beside its door (falls back to the bus
+   *  cell itself when the kerb side is blocked). */
+  private alightBus(c: { pos: { x: number; y: number } }): void {
+    const busId = this.fpRidingBusId;
+    this.fpRidingBusId = null;
+    const pose = busId !== null ? this.busPoseOf(busId) : null;
+    let spot = pose ? { x: pose.x, y: pose.y } : { x: c.pos.x, y: c.pos.y };
+    if (pose) {
+      const kerb = {
+        x: pose.x - Math.sin(pose.heading) * 1.5,
+        y: pose.y + Math.cos(pose.heading) * 1.5,
+      };
+      if (this.blockedStepReason(Math.round(kerb.x), Math.round(kerb.y)) === null)
+        spot = kerb;
+    }
+    c.pos.x = spot.x;
+    c.pos.y = spot.y;
+    if (this.fpCitizenId)
+      this.citizens.setTarget(this.fpCitizenId, { x: spot.x, y: spot.y });
+    // Drop the camera capsule on the kerb too, facing the departing bus.
+    this.fpTeleportRequest = {
+      x: spot.x,
+      y: spot.y,
+      ...(pose ? { yaw: cameraYawToward(spot, pose) } : {}),
+      seq: ++this.fpTeleportSeq,
+    };
+    this.fpNarrating = false;
+    this.fpNarration = "You step off the bus.";
+  }
+
+  /** Spec 140 e2e/dev helper — jump the sim clock to hh:mm on the current day. The fleet reads the
+   *  new time on its next tick; daylight refreshes on the next sim step. */
+  debugSetClock(hour: number, minute = 0): void {
+    const c = this.sim.state.clock;
+    const h = Math.max(0, Math.min(23, Math.round(hour)));
+    const m = Math.max(0, Math.min(59, Math.round(minute)));
+    c.totalMinutes = c.day * 1440 + h * 60 + m;
+    c.hour = h;
+    c.minute = m;
+    c.isDay = h >= COLONY.time.dayStartHour && h < COLONY.time.dayEndHour;
+    this.emit();
+  }
+
+  /** Spec 140 e2e/dev helper — teleport the stepped-in walker (roster citizen AND the camera
+   *  capsule) to a cell, optionally facing a target cell. */
+  debugPlaceFirstPerson(
+    x: number,
+    y: number,
+    faceX?: number,
+    faceY?: number,
+  ): boolean {
+    const id = this.fpCitizenId;
+    if (!id) return false;
+    const c = this.citizens.byId(id);
+    if (!c) return false;
+    c.pos.x = x;
+    c.pos.y = y;
+    this.citizens.setTarget(id, { x, y });
+    this.fpGuidedTarget = null;
+    this.fpTeleportRequest = {
+      x,
+      y,
+      ...(faceX !== undefined && faceY !== undefined
+        ? { yaw: cameraYawToward({ x, y }, { x: faceX, y: faceY }) }
+        : {}),
+      seq: ++this.fpTeleportSeq,
+    };
+    this.emit();
+    return true;
+  }
+
   /** Execute the current first-person Action prompt with deterministic player-facing feedback. */
   activateFirstPersonInteraction(): boolean {
     const id = this.fpCitizenId;
     if (!id) return false;
     const c = this.citizens.byId(id);
     if (!c) return false;
+    // Spec 140 — the bus branch comes first: boarding windows are time-limited (the bus leaves),
+    // and while RIDING the only ground action is stepping off.
+    const busAct = this.busInteraction();
+    if (busAct) {
+      if (busAct.action === "board") {
+        this.fpRidingBusId = busAct.busId;
+        this.fpGuidedTarget = null;
+        this.fpWalkSpeed = 0;
+        this.citizens.setTarget(id, { x: c.pos.x, y: c.pos.y });
+        this.fpNarrating = false;
+        this.fpNarration = `You board Bus ${busAct.busId + 1}. Press E at any stop to step off.`;
+      } else {
+        this.alightBus(c);
+      }
+      this.emit();
+      return true;
+    }
+    if (this.fpRidingBusId !== null) {
+      this.fpNarrating = false;
+      this.fpNarration = "The bus is moving — wait for the next stop to step off.";
+      this.emit();
+      return false;
+    }
     const view = firstPersonView(this.sim.state, id, this.citizens);
     const prompt = view?.interactionPrompt;
     if (!prompt) {
@@ -2187,6 +2516,7 @@ export class ColonyRuntime {
       civic: `You visit ${prompt.targetName}.`,
       building: `You inspect ${prompt.targetName}.`,
       road: `You follow ${prompt.targetName}.`,
+      bus: `You board ${prompt.targetName}.`, // unreachable — bus prompts are handled above; keeps the Record total
     };
     if (
       prompt.kind === "road" ||
@@ -2636,6 +2966,7 @@ export class ColonyRuntime {
   /** Drive the avatar you have stepped into, from the held keys. Turns the heading and steps the
    *  position forward/back on land; freezes its auto-walk target so it stays where you put it. */
   private driveFirstPerson(dt: number): void {
+    if (this.fpRidingBusId !== null) return; // spec 140 — the bus drives; WASD stays off the wheel
     const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
     if (!c) return;
     const k = this.fpKeys;
@@ -4244,6 +4575,7 @@ export class ColonyRuntime {
     this.wanderIdleCitizens(dtReal); // keep the citizens strolling so watch mode is never frozen
     this.tickAutoZoningSettlers(dtReal);
     this.raceTick(dtReal);
+    this.transitTick(dtReal); // spec 140 — the bus fleet rides the sim clock
     this.renderer?.frame(dtReal);
     if (now - this.lastUi > 200) {
       this.lastUi = now;
@@ -4544,7 +4876,7 @@ export class ColonyRuntime {
         const rawView = this.fpCitizenId
           ? firstPersonView(this.sim.state, this.fpCitizenId, this.citizens)
           : null;
-        const view =
+        let view =
           this.playerView && rawView
             ? {
                 ...rawView,
@@ -4554,6 +4886,14 @@ export class ColonyRuntime {
                 })),
               }
             : rawView;
+        // Spec 140 — the runtime injects bus prompts (the pure view never scans buses): a dwelling
+        // bus in range outranks ground prompts, and while RIDING only "Exit bus" (or nothing) shows.
+        if (view) {
+          const busAct = this.busInteraction();
+          if (this.fpRidingBusId !== null)
+            view = { ...view, interactionPrompt: busAct?.prompt ?? null };
+          else if (busAct) view = { ...view, interactionPrompt: busAct.prompt };
+        }
         return {
           active: this.fpCitizenId !== null,
           citizenId: this.fpCitizenId,

@@ -1,10 +1,24 @@
 import * as THREE from "three";
 import type { Terrain } from "../terrain";
 import type { BusRoute } from "../transit/busRoute";
+import {
+  simplifyClosed,
+  smoothClosed,
+  buildPath,
+  samplePath,
+  type PathData,
+} from "../transit/path";
+import { COLONY } from "../config";
 
-// Spec 088 — the render-loop BUS. A friendly little coach that drives the fixed busRoute loop between
-// the hoods, plus a stop marker at each hood. Render-only + cosmetic: it advances on wall-clock dt
-// (like the ambient cars), never touches the deterministic sim, and is rebuilt with the route.
+// Spec 088/122/140 — the render-side BUS. Spec 140 rebuilt the coach against the world metric
+// system (1 unit = 1 m, 1 cell = 4 m): a real 12 m city bus whose group origin IS the road contact
+// plane, so callers put y at the ribbon top and the tires touch asphalt. The rig adds the life the
+// operator asked for — wheels that spin with distance, slope pitch sampled from the road surface,
+// and a gentle speed-scaled body sway (wheels stay planted). buildBusLayer remains the legacy
+// self-driving single coach: the fallback when a seed has no depot (spec 140 fleets render via
+// R3FBus + the fleet machine instead). De-zigzag path math lives in transit/path.ts now.
+
+export { simplifyClosed, smoothClosed };
 
 export interface BusLayer {
   group: THREE.Group;
@@ -20,37 +34,100 @@ export interface BusLayerOptions {
   roadY: (x: number, y: number) => number; // smoothed road height
 }
 
-const SPEED = 4; // loop cells per second — an unhurried town coach, easy to follow by eye
+const SPEED = 4; // legacy coach: loop cells per second — an unhurried town coach, easy to follow by eye
 const STOP_DWELL = 1.4; // seconds paused at each stop
 const STOP_RADIUS = 1.2; // how close (cells) to a stop counts as "at the stop"
+/** How high the coach rides above the sampled road height — the rendered ribbon's top surface
+ *  (matches roadRibbon.ROAD_RIBBON_LIFT; restated here to keep this module render-math only). */
+export const BUS_ROAD_LIFT = 0.18;
+const CELL_M = 4; // metres per grid cell — converts path distance (cells) to wheel-spin metres
+
+/** A posed bus: the mesh plus the per-frame math that keeps it ON the road and alive.
+ *  Positions are GRID coords; the rig converts via wx/wz and clamps y to the road surface. */
+export interface BusRig {
+  group: THREE.Group;
+  /** Place at grid (gx, gy) facing `headingGrid`, having advanced `distDeltaCells` since the last
+   *  frame (drives wheel spin + sway; negative when reversing). */
+  place(gx: number, gy: number, headingGrid: number, distDeltaCells: number): void;
+  setDoors(open: boolean): void;
+  dispose(): void;
+}
+
+export function makeBusRig(opts: {
+  wx: (x: number) => number;
+  wz: (y: number) => number;
+  roadY: (x: number, y: number) => number;
+}): BusRig {
+  const t = COLONY.transit;
+  const group = buildBus();
+  group.rotation.order = "YZX"; // yaw around Y first, then pitch the long axis with the slope
+  const body = group.getObjectByName("bus-body-group") as THREE.Group | null;
+  const spins: THREE.Object3D[] = [];
+  group.traverse((o) => {
+    if (o.name.startsWith("bus-wheel-spin")) spins.push(o);
+  });
+  const doorMats: THREE.MeshStandardMaterial[] = [];
+  group.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh && m.name.startsWith("bus-door"))
+      doorMats.push(m.material as THREE.MeshStandardMaterial);
+  });
+  let spin = 0;
+  let swayPhase = 0;
+  const halfWheelbaseCells = t.busWheelbaseM / 2 / CELL_M;
+  return {
+    group,
+    place(gx, gy, headingGrid, distDeltaCells) {
+      const y = Math.max(0, opts.roadY(gx, gy)) + BUS_ROAD_LIFT;
+      group.position.set(opts.wx(gx), y, opts.wz(gy));
+      group.rotation.y = -headingGrid; // body is long in X; the rally car's -heading convention
+      // Pitch with the slope: sample the road a half-wheelbase ahead and behind along the heading
+      // so the coach climbs spec-130 grades nose-up instead of knifing through them.
+      const cx = Math.cos(headingGrid) * halfWheelbaseCells;
+      const cy = Math.sin(headingGrid) * halfWheelbaseCells;
+      const yA = Math.max(0, opts.roadY(gx + cx, gy + cy));
+      const yB = Math.max(0, opts.roadY(gx - cx, gy - cy));
+      group.rotation.z = Math.atan2(yA - yB, t.busWheelbaseM);
+      // Wheels roll with the ground covered; the body sways a touch when moving.
+      const distM = distDeltaCells * CELL_M;
+      spin += distM / t.busWheelRadiusM;
+      for (const s of spins) s.rotation.z = -spin;
+      if (body) {
+        swayPhase += Math.abs(distM) * 0.35;
+        const amp = Math.min(1, Math.abs(distDeltaCells) * 60) * t.swayAmpRad;
+        body.rotation.x = Math.sin(swayPhase) * amp;
+      }
+    },
+    setDoors(open) {
+      for (const m of doorMats) m.emissiveIntensity = open ? 0.9 : 0.12;
+    },
+    dispose() {
+      disposeGroup(group);
+    },
+  };
+}
 
 export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
   const raw = opts.route.loop;
   if (raw.length < 2) return null;
-  // De-zigzag the bus path. route.loop is a 4-connected BFS over road CELLS, so on diagonals it
-  // staircases. Chaikin alone rounds the sharp corners but KEEPS the staircase WEAVE (it converges to a
-  // smooth curve that still snakes through the staircase envelope), so the coach kept weaving side to
-  // side. So first STRAIGHTEN the loop with Douglas-Peucker — drop points within ~1.5 cells of the
-  // straight line, collapsing the sub-cell staircase weave into straight runs while keeping the road's
-  // real bends — THEN chaikin-smooth those bends. The bus drives straight and glides through corners.
-  // Render-only; the pure, node-tested route is untouched.
-  const loop = smoothClosed(simplifyClosed(raw, 1.5), 2);
-  const speedMul = Math.max(0.05, loop.length / raw.length); // keep ground speed ~constant despite the new point count
+  // De-zigzag the bus path: straighten the BFS staircase (Douglas-Peucker), then round the real
+  // bends (Chaikin) — see transit/path.ts. The loop is arc-length parameterised so ground speed is
+  // constant regardless of point density.
+  const loop: PathData = buildPath(
+    smoothClosed(simplifyClosed(raw, 1.5), 2),
+    true,
+  );
+  if (loop.total < 1e-3) return null;
   const group = new THREE.Group();
   group.name = "Bus";
-  const bus = buildBus();
-  group.add(bus);
+  const rig = makeBusRig(opts);
+  group.add(rig.group);
   for (const s of opts.route.stops) group.add(buildStop(opts, s));
 
-  let dist = 0; // float index into the smoothed loop
+  let dist = 0; // arc length (cells) along the loop
   let last = -1;
   let dwell = 0;
   let lastStop = ""; // the stop we last paused at, cleared once we drive clear of it
-  const place = (gx: number, gy: number, headingGrid: number) => {
-    const y = Math.max(0, opts.roadY(gx, gy)) + 0.18; // continuous height (no cell rounding) so the coach rides smoothly, sitting on the road surface
-    bus.position.set(opts.wx(gx), y, opts.wz(gy));
-    bus.rotation.y = -headingGrid; // body is long in X; match the rally car's -heading convention
-  };
 
   return {
     group,
@@ -58,19 +135,19 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
       if (last < 0) last = timeMs;
       const dt = Math.min(0.1, (timeMs - last) / 1000);
       last = timeMs;
+      let step = 0;
       if (dwell > 0) dwell = Math.max(0, dwell - dt);
-      else dist = (dist + dt * SPEED * speedMul) % loop.length;
-      const fi = Math.floor(dist) % loop.length;
-      const fa = loop[fi]!,
-        fb = loop[(fi + 1) % loop.length]!;
-      const frac = dist - Math.floor(dist);
-      const gx = fa.x + (fb.x - fa.x) * frac,
-        gy = fa.y + (fb.y - fa.y) * frac;
-      place(gx, gy, Math.atan2(fb.y - fa.y, fb.x - fa.x));
+      else {
+        step = dt * SPEED;
+        dist = (dist + step) % loop.total;
+      }
+      const p = samplePath(loop, dist);
+      rig.place(p.x, p.y, p.heading, step);
+      rig.setDoors(dwell > 0);
       // dwell briefly on arriving near a stop; re-arm once we have driven clear so each lap pauses again
       let near = "";
       for (const s of opts.route.stops)
-        if (Math.hypot(gx - s.x, gy - s.y) < STOP_RADIUS) {
+        if (Math.hypot(p.x - s.x, p.y - s.y) < STOP_RADIUS) {
           near = `${s.x},${s.y}`;
           break;
         }
@@ -81,86 +158,40 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
       if (!near) lastStop = "";
     },
     dispose() {
-      group.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.geometry) m.geometry.dispose();
-        const mt = m.material as THREE.Material | THREE.Material[] | undefined;
-        if (Array.isArray(mt)) mt.forEach((x) => x.dispose());
-        else if (mt) mt.dispose();
-      });
-      group.parent?.remove(group);
+      disposeGroup(group);
     },
   };
 }
 
-/** Ramer-Douglas-Peucker line simplification on the loop (treated as a polyline from loop[0] to its last
- *  cell; the closing segment stays implicit). Drops any point within `eps` of the straight line between
- *  kept points, so the BFS staircase weave collapses into straight runs while the road's real bends
- *  (deviation > eps) are kept. */
-function simplifyClosed(
-  loop: { x: number; y: number }[],
-  eps: number,
-): { x: number; y: number }[] {
-  if (loop.length < 4) return loop;
-  const perp = (
-    p: { x: number; y: number },
-    a: { x: number; y: number },
-    b: { x: number; y: number },
-  ): number => {
-    const dx = b.x - a.x,
-      dy = b.y - a.y,
-      l2 = dx * dx + dy * dy;
-    if (l2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
-    const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2;
-    return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
-  };
-  const rdp = (pts: { x: number; y: number }[]): { x: number; y: number }[] => {
-    if (pts.length < 3) return pts;
-    const a = pts[0]!,
-      b = pts[pts.length - 1]!;
-    let maxD = 0,
-      idx = 0;
-    for (let i = 1; i < pts.length - 1; i++) {
-      const d = perp(pts[i]!, a, b);
-      if (d > maxD) {
-        maxD = d;
-        idx = i;
-      }
-    }
-    if (maxD > eps)
-      return rdp(pts.slice(0, idx + 1))
-        .slice(0, -1)
-        .concat(rdp(pts.slice(idx)));
-    return [a, b];
-  };
-  const out = rdp(loop.map((p) => ({ x: p.x, y: p.y })));
-  return out.length >= 2 ? out : loop;
+function disposeGroup(group: THREE.Group): void {
+  group.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.geometry) m.geometry.dispose();
+    const mt = m.material as THREE.Material | THREE.Material[] | undefined;
+    if (Array.isArray(mt)) mt.forEach((x) => x.dispose());
+    else if (mt) mt.dispose();
+  });
+  group.parent?.remove(group);
 }
 
-/** Chaikin corner-cutting on a CLOSED loop: each iteration replaces every vertex with its 1/4 and 3/4
- *  points (wrapping around), rounding the BFS cell staircase into a smooth circuit. */
-function smoothClosed(
-  loop: { x: number; y: number }[],
-  iters: number,
-): { x: number; y: number }[] {
-  let pts = loop.map((p) => ({ x: p.x, y: p.y }));
-  for (let it = 0; it < iters; it++) {
-    const n = pts.length;
-    const out: { x: number; y: number }[] = [];
-    for (let i = 0; i < n; i++) {
-      const a = pts[i]!,
-        b = pts[(i + 1) % n]!;
-      out.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 });
-      out.push({ x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
-    }
-    pts = out;
-  }
-  return pts;
-}
+/** The coach body, to the metric constitution: 12 m long (X, the travel axis), 2.5 m wide, 3 m
+ *  tall, 0.5 m wheels whose tire bottoms sit at LOCAL y = 0 — the group origin is the road contact
+ *  plane. Body meshes live under `bus-body-group` (the sway group); each wheel + hub + spokes live
+ *  under a `bus-wheel-spin-*` group that rotates about the axle. */
+export function buildBus(): THREE.Group {
+  const t = COLONY.transit;
+  const L = t.busLengthM; // 12
+  const W = t.busWidthM; // 2.5
+  const H = t.busHeightM; // 3
+  const R = t.busWheelRadiusM; // 0.5
+  const axleX = t.busWheelbaseM / 2; // 3.6
 
-function buildBus(): THREE.Group {
   const g = new THREE.Group();
   g.name = "bus-coach";
+  const body = new THREE.Group();
+  body.name = "bus-body-group";
+  g.add(body);
+
   const bodyMat = new THREE.MeshStandardMaterial({
     color: 0xffb02e,
     roughness: 0.5,
@@ -214,38 +245,46 @@ function buildBus(): THREE.Group {
     roughness: 0.25,
   });
 
-  // Body — long in X (the travel axis). All details are render-only child meshes.
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2.55, 0.72, 0.86), bodyMat);
-  body.name = "bus-body";
-  body.position.y = 0.58;
+  // Shell: skirt at 0.35 m, roofline at H. All body details ride the sway group.
+  const skirtY = 0.35;
+  const shell = new THREE.Mesh(
+    new THREE.BoxGeometry(L, H - skirtY - 0.1, W),
+    bodyMat,
+  );
+  shell.name = "bus-body";
+  shell.position.y = (H - 0.1 + skirtY) / 2;
   const beltLine = new THREE.Mesh(
-    new THREE.BoxGeometry(2.62, 0.08, 0.9),
+    new THREE.BoxGeometry(L + 0.1, 0.16, W + 0.06),
     trimMat,
   );
   beltLine.name = "bus-lower-belt-line";
-  beltLine.position.y = 0.38;
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.13, 0.84), bodyMat);
+  beltLine.position.y = 1.1;
+  const roof = new THREE.Mesh(
+    new THREE.BoxGeometry(L - 0.5, 0.12, W - 0.15),
+    bodyMat,
+  );
   roof.name = "bus-roof";
-  roof.position.y = 0.98;
-  g.add(body, beltLine, roof);
+  roof.position.y = H;
+  body.add(shell, beltLine, roof);
 
-  addWindowStrip(g, glassMat, 0.45, "left");
-  addWindowStrip(g, glassMat, -0.45, "right");
-  addWindscreen(g, darkGlassMat, 1.31);
-  addRouteBoard(g, routeMat, 1.34, "front");
-  addRouteBoard(g, routeMat, -1.34, "rear");
-  addDoors(g, trimMat);
-  addWheelPair(g, wheelMat, hubMat, -0.82, "rear");
-  addWheelPair(g, wheelMat, hubMat, 0.82, "front");
-  addLights(g, headlightMat, tailLightMat);
+  addWindowStrip(body, glassMat, W / 2 + 0.01, "left", L);
+  addWindowStrip(body, glassMat, -(W / 2 + 0.01), "right", L);
+  addWindscreen(body, darkGlassMat, L / 2 + 0.02, W);
+  addRouteBoard(body, routeMat, L / 2 + 0.03, "front", H);
+  addRouteBoard(body, routeMat, -(L / 2 + 0.03), "rear", H);
+  addDoors(body, W);
+  addLights(body, headlightMat, tailLightMat, L, W);
 
   const roofMarker = new THREE.Mesh(
-    new THREE.BoxGeometry(0.42, 0.08, 0.18),
+    new THREE.BoxGeometry(1.2, 0.1, 0.5),
     routeMat,
   );
   roofMarker.name = "bus-roof-marker";
-  roofMarker.position.set(0.22, 1.09, 0);
-  g.add(roofMarker);
+  roofMarker.position.set(0.9, H + 0.1, 0);
+  body.add(roofMarker);
+
+  addWheelPair(g, wheelMat, hubMat, -axleX, "rear", R, W);
+  addWheelPair(g, wheelMat, hubMat, axleX, "front", R, W);
 
   g.traverse((o) => {
     const m = o as THREE.Mesh;
@@ -262,30 +301,35 @@ function addWindowStrip(
   material: THREE.Material,
   z: number,
   side: "left" | "right",
+  length: number,
 ): void {
-  const xs = [-0.68, -0.18, 0.34, 0.82];
-  xs.forEach((x, i) => {
+  const n = 5;
+  const w = 1.5;
+  const gap = (length - 3.4 - n * w) / (n - 1); // clear of the windscreen end
+  for (let i = 0; i < n; i++) {
+    const x = -length / 2 + 1.2 + w / 2 + i * (w + gap);
     const window = new THREE.Mesh(
-      new THREE.BoxGeometry(0.34, 0.25, 0.035),
+      new THREE.BoxGeometry(w, 0.95, 0.06),
       material,
     );
     window.name = `bus-side-window-${side}-${i}`;
-    window.position.set(x, 0.82, z);
+    window.position.set(x, 2.15, z);
     bus.add(window);
-  });
+  }
 }
 
 function addWindscreen(
   bus: THREE.Group,
   material: THREE.Material,
   x: number,
+  width: number,
 ): void {
   const windscreen = new THREE.Mesh(
-    new THREE.BoxGeometry(0.045, 0.32, 0.56),
+    new THREE.BoxGeometry(0.06, 1.15, width - 0.6),
     material,
   );
   windscreen.name = "bus-windscreen";
-  windscreen.position.set(x, 0.82, 0);
+  windscreen.position.set(x, 2.05, 0);
   bus.add(windscreen);
 }
 
@@ -294,27 +338,34 @@ function addRouteBoard(
   material: THREE.Material,
   x: number,
   end: "front" | "rear",
+  height: number,
 ): void {
-  const board = new THREE.Mesh(
-    new THREE.BoxGeometry(0.05, 0.16, 0.5),
-    material,
-  );
+  const board = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 1.7), material);
   board.name = `bus-route-board-${end}`;
-  board.position.set(x, 0.99, 0);
+  board.position.set(x, height - 0.35, 0);
   bus.add(board);
 }
 
-function addDoors(bus: THREE.Group, material: THREE.Material): void {
+function addDoors(bus: THREE.Group, width: number): void {
+  // Front-entrance door in the front OVERHANG, clear of the front wheel: the front axle sits at
+  // x=3.6 (wheel front edge ~4.1), so a 1.3 m door centred at 4.85 (4.2–5.5) stands ahead of the
+  // arch like a real city bus, not on top of the tyre. Doors get their OWN material so the rig can
+  // light them when they open at a stop.
+  const DOOR_X = 4.85;
   for (const [name, z] of [
-    ["bus-door-left", 0.463],
-    ["bus-door-right", -0.463],
+    ["bus-door-left", width / 2 + 0.02],
+    ["bus-door-right", -(width / 2 + 0.02)],
   ] as const) {
-    const door = new THREE.Mesh(
-      new THREE.BoxGeometry(0.34, 0.58, 0.035),
-      material,
-    );
+    const doorMat = new THREE.MeshStandardMaterial({
+      color: 0xe58a18,
+      roughness: 0.55,
+      metalness: 0.08,
+      emissive: 0xfff3c0,
+      emissiveIntensity: 0.12,
+    });
+    const door = new THREE.Mesh(new THREE.BoxGeometry(1.3, 2.2, 0.06), doorMat);
     door.name = name;
-    door.position.set(0.2, 0.58, z);
+    door.position.set(DOOR_X, 1.45, z);
     bus.add(door);
   }
 }
@@ -325,26 +376,41 @@ function addWheelPair(
   hubMat: THREE.Material,
   x: number,
   axle: "front" | "rear",
+  radius: number,
+  width: number,
 ): void {
+  const tyreW = 0.35;
   for (const [side, z] of [
-    ["left", 0.46],
-    ["right", -0.46],
+    ["left", width / 2 - tyreW / 2 + 0.02],
+    ["right", -(width / 2 - tyreW / 2 + 0.02)],
   ] as const) {
+    // The spin group sits at the axle; rotating it about Z rolls the wheel (spokes make it visible).
+    const spinner = new THREE.Group();
+    spinner.name = `bus-wheel-spin-${axle}-${side}`;
+    spinner.position.set(x, radius, z);
     const wheel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.18, 0.18, 0.14, 14),
+      new THREE.CylinderGeometry(radius, radius, tyreW, 18),
       wheelMat,
     );
     wheel.name = `bus-wheel-${axle}-${side}`;
     wheel.rotation.x = Math.PI / 2;
-    wheel.position.set(x, 0.2, z);
     const hub = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.08, 0.08, 0.145, 12),
+      new THREE.CylinderGeometry(radius * 0.45, radius * 0.45, tyreW + 0.02, 12),
       hubMat,
     );
     hub.name = `bus-wheel-hub-${axle}-${side}`;
     hub.rotation.x = Math.PI / 2;
-    hub.position.copy(wheel.position);
-    bus.add(wheel, hub);
+    for (const spokeAngle of [0, Math.PI / 2]) {
+      const spoke = new THREE.Mesh(
+        new THREE.BoxGeometry(radius * 1.7, 0.07, tyreW + 0.04),
+        hubMat,
+      );
+      spoke.name = `bus-wheel-spoke-${axle}-${side}-${spokeAngle > 0 ? 1 : 0}`;
+      spoke.rotation.z = spokeAngle;
+      spinner.add(spoke);
+    }
+    spinner.add(wheel, hub);
+    bus.add(spinner);
   }
 }
 
@@ -352,29 +418,31 @@ function addLights(
   bus: THREE.Group,
   headlightMat: THREE.Material,
   tailLightMat: THREE.Material,
+  length: number,
+  width: number,
 ): void {
   for (const [side, z] of [
-    ["left", 0.24],
-    ["right", -0.24],
+    ["left", width / 2 - 0.55],
+    ["right", -(width / 2 - 0.55)],
   ] as const) {
     const headlight = new THREE.Mesh(
-      new THREE.BoxGeometry(0.035, 0.1, 0.12),
+      new THREE.BoxGeometry(0.06, 0.28, 0.4),
       headlightMat,
     );
     headlight.name = `bus-headlight-${side}`;
-    headlight.position.set(1.32, 0.5, z);
+    headlight.position.set(length / 2 + 0.02, 0.85, z);
     const tailLight = new THREE.Mesh(
-      new THREE.BoxGeometry(0.035, 0.1, 0.12),
+      new THREE.BoxGeometry(0.06, 0.28, 0.4),
       tailLightMat,
     );
     tailLight.name = `bus-tail-light-${side}`;
-    tailLight.position.set(-1.32, 0.5, z);
+    tailLight.position.set(-(length / 2 + 0.02), 0.85, z);
     bus.add(headlight, tailLight);
   }
 }
 
-function buildStop(
-  opts: BusLayerOptions,
+export function buildStop(
+  opts: Pick<BusLayerOptions, "wx" | "wz" | "roadY">,
   s: { x: number; y: number },
 ): THREE.Group {
   const g = new THREE.Group();
@@ -391,13 +459,13 @@ function buildStop(
     roughness: 0.4,
   });
   const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.05, 0.06, 1.5, 8),
+    new THREE.CylinderGeometry(0.06, 0.07, 3.0, 8),
     poleMat,
   );
-  pole.position.set(0, 0.75, 1.3);
+  pole.position.set(0, 1.5, 3.2);
   pole.castShadow = true;
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.3, 0.06), signMat);
-  sign.position.set(0, 1.5, 1.3);
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.08), signMat);
+  sign.position.set(0, 3.0, 3.2);
   g.add(pole, sign);
   return g;
 }

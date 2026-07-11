@@ -4,6 +4,8 @@ import { RigidBody, RapierRigidBody, CapsuleCollider } from '@react-three/rapier
 import { Vector3, Euler, Quaternion } from 'three';
 import { COLONY } from '../../colony/config';
 import { leveledWorldY } from '../../colony/render/terrainLeveling';
+import { getSmoothRoadY } from '../../colony/render/roadSurface';
+import { BUS_ROAD_LIFT } from '../../colony/render/busLayer';
 import {
   PLAYER_HALF_HEIGHT,
   PLAYER_RADIUS_M,
@@ -13,9 +15,20 @@ import {
 
 const MOVEMENT_SPEED = 10;
 const LOOK_SPEED = 2;
+const BUS_RIDER_EYE = 2.4; // eye height above the road while seated on the 3 m coach (spec 140)
 
-export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainLevel }: { sim?: any, startPosition?: [number, number, number], terrainLevel?: Map<number, number> | null }) {
+// Spec 140 — the slice of the runtime the walker capsule talks to: ride pinning, one-shot
+// teleports, and reporting where the camera stands so bus prompts measure from the real player.
+interface FpRuntimeBridge {
+  fpRidingBusId?: number | null;
+  busPoseOf?: (id: number) => { x: number; y: number; heading: number } | null;
+  fpTeleportRequest?: { x: number; y: number; yaw?: number; seq: number } | null;
+  fpCameraCell?: { x: number; y: number } | null;
+}
+
+export function FirstPersonController({ sim, runtime, startPosition = [0, 2, 0], terrainLevel }: { sim?: any, runtime?: FpRuntimeBridge | null, startPosition?: [number, number, number], terrainLevel?: Map<number, number> | null }) {
   const rigidBody = useRef<RapierRigidBody>(null);
+  const consumedTeleport = useRef(0);
   const { camera } = useThree();
   
   useEffect(() => {
@@ -93,6 +106,56 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainL
     // which flips when the builder toggle remounts this component — the explicit guard
     // makes camera ownership deterministic instead of mount-order luck.
     if (sim?.state?.cinematic) return;
+
+    const terrainSizeForGrid = sim?.state?.terrain?.size ?? 0;
+    const toGridX = (wx: number) => wx / 4 + terrainSizeForGrid / 2;
+    const toGridZ = (wz: number) => wz / 4 + terrainSizeForGrid / 2;
+    const toWorldX = (gx: number) => (gx - terrainSizeForGrid / 2) * 4;
+    const toWorldZ = (gy: number) => (gy - terrainSizeForGrid / 2) * 4;
+
+    // Spec 140 — one-shot teleports (debug placement, stepping off a bus) land the CAPSULE, not
+    // just the roster citizen, so the player's eyes actually go there.
+    const tp = runtime?.fpTeleportRequest;
+    if (tp && tp.seq !== consumedTeleport.current && terrainSizeForGrid > 0) {
+      consumedTeleport.current = tp.seq;
+      const gx = Math.max(0, Math.min(terrainSizeForGrid - 1, Math.round(tp.x)));
+      const gz = Math.max(0, Math.min(terrainSizeForGrid - 1, Math.round(tp.y)));
+      const groundY = leveledWorldY(sim.state.terrain, terrainLevel, gx, gz);
+      rigidBody.current.setTranslation(
+        { x: toWorldX(tp.x), y: groundY + 1.5, z: toWorldZ(tp.y) },
+        true,
+      );
+      rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      if (tp.yaw !== undefined) {
+        rotation.current.y = tp.yaw;
+        rotation.current.x = 0;
+      }
+    }
+
+    // Spec 140 — riding the bus: the capsule (and so the camera) is pinned to the coach; mouse
+    // look stays free, WASD stays off the wheel. Leaving the pin (alight) drops you where it is.
+    const ridingId = runtime?.fpRidingBusId ?? null;
+    if (ridingId !== null && runtime?.busPoseOf && sim?.state?.terrain) {
+      const pose = runtime.busPoseOf(ridingId);
+      if (pose) {
+        const roadTop =
+          Math.max(0, getSmoothRoadY(sim.state.terrain, pose.x, pose.y)) +
+          BUS_ROAD_LIFT;
+        const wx = toWorldX(pose.x);
+        const wz = toWorldZ(pose.y);
+        rigidBody.current.setTranslation(
+          // Body centre below the seated eye by the SAME offset the walking path uses (spec 137
+          // metric scale), so there is no camera pop on the frame the player alights.
+          { x: wx, y: roadTop + BUS_RIDER_EYE - PLAYER_EYE_OFFSET, z: wz },
+          true,
+        );
+        rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+        camera.position.set(wx, roadTop + BUS_RIDER_EYE, wz);
+        camera.quaternion.setFromEuler(rotation.current);
+        if (runtime) runtime.fpCameraCell = { x: pose.x, y: pose.y };
+        return;
+      }
+    }
 
     // 1. Handle Gamepad Input
     const gamepads = navigator.getGamepads();
@@ -179,6 +242,10 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainL
     const camY = pos.y + PLAYER_EYE_OFFSET; // eye at PLAYER_EYE_M (1.6 m) above the feet — spec 146
     camera.position.set(pos.x, camY, pos.z);
     camera.quaternion.setFromEuler(rotation.current);
+    // Spec 140 — tell the runtime where the player's eyes are (grid coords) so bus boarding
+    // prompts measure from the capsule, not the detached roster citizen.
+    if (runtime && terrainSizeForGrid > 0)
+      runtime.fpCameraCell = { x: toGridX(pos.x), y: toGridZ(pos.z) };
   });
 
   const safeSpawn = [
