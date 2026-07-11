@@ -12,10 +12,6 @@ export interface CommercialLot {
   /** lot anchor cell (grid coords) */
   x: number;
   y: number;
-  /** graded pad footprint, in grid cells (defaults to the anchor plus w/d) */
-  footprint?: { x: number; y: number; w: number; d: number };
-  w?: number;
-  d?: number;
 }
 
 export interface CommercialCluster {
@@ -26,8 +22,6 @@ export interface CommercialCluster {
   y: number;
   /** how many lots collapsed into this cluster */
   count: number;
-  /** union of member pad footprints, used by the shared spec-128 seat formula */
-  footprint: { x: number; y: number; w: number; d: number };
 }
 
 /** Group commercial lots so lots within `thresholdCells` of a cluster's running centroid merge
@@ -39,16 +33,7 @@ export function clusterCommercialLots(
   lots: readonly CommercialLot[],
   thresholdCells = 25,
 ): CommercialCluster[] {
-  const acc: {
-    id: string;
-    sx: number;
-    sy: number;
-    n: number;
-    x0: number;
-    y0: number;
-    x1: number;
-    y1: number;
-  }[] = [];
+  const acc: { id: string; sx: number; sy: number; n: number }[] = [];
   for (const lot of lots) {
     let best = -1;
     let bestD = Infinity;
@@ -60,41 +45,13 @@ export function clusterCommercialLots(
         best = i;
       }
     }
-    const pad = lot.footprint ?? {
-      x: lot.x,
-      y: lot.y,
-      w: lot.w ?? 1,
-      d: lot.d ?? 1,
-    };
-    const x1 = pad.x + pad.w;
-    const y1 = pad.y + pad.d;
     if (best >= 0) {
-      const c = acc[best]!;
-      c.sx += lot.x;
-      c.sy += lot.y;
-      c.n += 1;
-      c.x0 = Math.min(c.x0, pad.x);
-      c.y0 = Math.min(c.y0, pad.y);
-      c.x1 = Math.max(c.x1, x1);
-      c.y1 = Math.max(c.y1, y1);
+      acc[best]!.sx += lot.x;
+      acc[best]!.sy += lot.y;
+      acc[best]!.n += 1;
     } else {
-      acc.push({
-        id: lot.id,
-        sx: lot.x,
-        sy: lot.y,
-        n: 1,
-        x0: pad.x,
-        y0: pad.y,
-        x1,
-        y1,
-      });
+      acc.push({ id: lot.id, sx: lot.x, sy: lot.y, n: 1 });
     }
   }
-  return acc.map((c) => ({
-    id: c.id,
-    x: c.sx / c.n,
-    y: c.sy / c.n,
-    count: c.n,
-    footprint: { x: c.x0, y: c.y0, w: c.x1 - c.x0, d: c.y1 - c.y0 },
-  }));
+  return acc.map((c) => ({ id: c.id, x: c.sx / c.n, y: c.sy / c.n, count: c.n }));
 }

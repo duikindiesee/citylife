@@ -21,7 +21,7 @@ wall. Two facts from the investigation:
   zones are **painted with the builder** (or grown), which is why the operator saw it at Sol 36.
 - The `if (state.cityPlan)` commercial branch was **dead code** — `cityPlan.plots` are never
   commercial (`cityPlan.test.ts` asserts this).
-- The newer commercial DISTRICT (spec 135, `R3FCommercialDistrict`) reads a _different_ field
+- The newer commercial DISTRICT (spec 135, `R3FCommercialDistrict`) reads a *different* field
   (`state.commercialDistrict`) and does not co-render, so CommercialBlock is the only visual for
   builder-painted commercial zones.
 
@@ -41,19 +41,6 @@ Deliberately minimal — the CommercialBlock asset itself is untouched (a single
 and `R3FCommercialDistrict` (independent). Fewer, non-overlapping trimesh colliders is strictly
 safer.
 
-## Pad-seat follow-up
-
-Builder-painted commercial clusters are not present at boot, but their member lots are graded by
-the same spec-128 terrain-leveling path as houses. `ZoneManager` previously mounted the clustered
-`CommercialBlock` at absolute `y=0`, which floated or buried the street scene on sloped and coastal
-terrain.
-
-Each cluster now retains the union of its member `houseZone` footprints. The renderer samples
-`padSeatY(terrain, x, y, w, d)` over that union and mounts the block at the resulting graded seat
-plus the same `0.02 m` anti-z-fighting epsilon used for houses. This keeps the block and its painted
-pad on one shared height formula without changing boot placement or the independent spec-143
-district venues.
-
 ## Not in this spec
 
 CommercialBlock is a fixed 100 m scene regardless of the painted plot size — a proper
@@ -62,9 +49,6 @@ per-building stamp path is only reachable from the old Simulation runtime, not t
 
 ## Verification
 
-`tests/commercialClusters.test.ts` pins the grouping and union footprint (empty → none; a run → one
-centroid block; far regions → separate; deterministic keys; threshold). `tests/commercialBlockSeat.test.ts`
-pins shared `padSeatY` parity, the `0.02 m` epsilon, and the ZoneManager wiring. Playwright Chromium
-paints a commercial run on a slope and asserts the live block's world Y matches its graded footprint
-seat. Live: painting a commercial run with the builder yields one clean garage scene seated flush on
-its ground, not a red wall or a floating/buried block.
+`tests/commercialClusters.test.ts` pins the grouping (empty → none; a run → one centroid block;
+far regions → separate; deterministic keys; threshold). Live: painting a commercial run with the
+builder yields one clean garage scene, not a red wall.
