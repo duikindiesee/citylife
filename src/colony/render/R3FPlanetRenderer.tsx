@@ -17,6 +17,7 @@ import type { RaceState } from '../racing/race';
 import type { CarSpec } from '../car/carSpec';
 import { FirstPersonController } from '../../render/components/FirstPersonController';
 import { CommercialBlock } from '../../render/components/CommercialBlock';
+import { clusterCommercialLots } from './commercialClusters';
 import { Island } from '../../render/components/Island';
 
 export type ViewMode = "biome" | "buildable" | "elevation";
@@ -90,22 +91,12 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
     const elements: React.ReactElement[] = [];
     const overlays: React.ReactElement[] = [];
 
-    if (state.cityPlan) {
-      const size = state.terrain.size;
-      for (const plot of state.cityPlan.plots) {
-        if (plot.zone === "commercial") {
-          const wX = (plot.x - size / 2) * 4;
-          const wZ = (plot.y - size / 2) * 4;
-          elements.push(
-            <CommercialBlock 
-              key={`comm-${plot.id}`} 
-              position={[wX, 0, wZ]} 
-            />
-          );
-        }
-      }
-    }
-    
+    // Spec 138 — the giant red building fix. CommercialBlock is a ~100 m gas-station SCENE, so
+    // one per 4 m lot fused into a red wall. Collect the built commercial lots and render ONE
+    // block per contiguous cluster (below), instead of one per lot. (The old cityPlan-commercial
+    // branch was dead code — makeCityPlan only ever emits residential plots — and is removed.)
+    const commercialLots: { id: string; x: number; y: number }[] = [];
+
     if (state.neighborhood?.lots) {
       const size = state.terrain.size;
       // Spec 128 — houses SEAT on their leveled pad: the SHARED padSeatY formula
@@ -118,14 +109,7 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
       for (const lot of state.neighborhood.lots) {
         if (lot.built) {
           if (lot.zone === "commercial") {
-            const wX = (lot.x - size / 2) * 4;
-            const wZ = (lot.y - size / 2) * 4;
-            elements.push(
-              <CommercialBlock
-                key={`comm-${lot.id}`}
-                position={[wX, 0, wZ]}
-              />
-            );
+            commercialLots.push({ id: lot.id, x: lot.x, y: lot.y });
           } else {
             const hz = lot.houseZone;
             const seat = seatOf(hz);
@@ -157,6 +141,17 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
             <ZoneLotOverlay key={`zone-ground-${lot.id}`} lot={lot} terrain={state.terrain} />
           );
         }
+      }
+
+      // Spec 138 — one CommercialBlock per contiguous commercial cluster, at its centroid, so a
+      // painted commercial run reads as a single street scene instead of a fused red wall.
+      for (const c of clusterCommercialLots(commercialLots)) {
+        elements.push(
+          <CommercialBlock
+            key={`comm-${c.id}`}
+            position={[(c.x - size / 2) * 4, 0, (c.y - size / 2) * 4]}
+          />
+        );
       }
     }
 
