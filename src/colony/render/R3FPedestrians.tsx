@@ -1,4 +1,4 @@
-import { leveledWorldY } from './terrainLeveling';
+import { crowdGroundY } from './crowdGround';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
@@ -100,7 +100,8 @@ export function R3FPedestrians({ sim, terrainLevel }: R3FPedestriansProps) {
     const size = terrain.size;
     const lx = terrain.landing.x, ly = terrain.landing.y;
     const roadCells = sim.state.roads;
-    const groundY = (x: number, y: number) => leveledWorldY(terrain, terrainLevel, x, y);
+    // spec 140 — pedestrians target road cells, so ride the ribbon top instead of sinking under it
+    const groundY = (x: number, y: number) => crowdGroundY(terrain, terrainLevel, sim.state.roadSet, x, y);
     const onLand = (x: number, y: number) => {
       const ix = Math.round(x), iy = Math.round(y);
       if (ix < 0 || iy < 0 || ix >= size || iy >= size) return false;
