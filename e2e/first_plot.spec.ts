@@ -1,7 +1,16 @@
 import { test, expect } from '@playwright/test';
 
+// This is the heaviest e2e — it drives the real builder (drag-plotting roads, waiting for a
+// neighborhood plot to spawn, then walking in first person). On the slow headless SwiftShader
+// runner each road plot triggers a full terrain-leveling + collider recompute, so building the
+// four segments alone took ~4 min and blew the old 300s budget. Two changes make it a reliable
+// release gate instead of a timeout: a 600s budget (2x the observed worst case) and NO retries
+// (the global CI retry:2 turned one 5-min run into a ~15-min triple-timeout that dominated the
+// job). It passes comfortably in a single attempt; a genuine hang fails once, fast enough.
+test.describe.configure({ retries: 0 });
+
 test('Builds a road, waits for a house to spawn, and explores in First Person', async ({ page }) => {
-  test.setTimeout(300000); // Allow time for loading and simulation
+  test.setTimeout(600000); // heavy build+sim+FP flow on the slow CI runner (see note above)
 
   console.log('Navigating to CityLife...');
   await page.goto('/?skipauth=1');
