@@ -50,11 +50,17 @@ just the renderer. Roads bend inland and follow the grass line. The ban is on pa
    enforces), falling back to the landing block on a sliver island. The caravan and base
    structures stay on the headland — the rule bans pavement, not landings — and `nextBlock`
    growth expands from wherever the first frame stood.
-5. **The render backstop** (`src/colony/render/roadRibbon.ts` `cellOkOn`): Beach joins the
-   water-only rejection for NEW geometry. Decision: yes, beach joins the render guard —
-   boot ways are beach-free by ROUTING, so unlike the spec-133 rough-land pockets this can
-   never hole a boot road; it exists so hand-drawn builder roads and legacy saved ways
-   cannot paint asphalt on sand either.
+5. **The render guard — WATER-ONLY, not beach** (`src/colony/render/roadRibbon.ts` `cellOkOn`,
+   `src/colony/render/junctionCap.ts` `cellOk`/`drapeCap`). This was briefly beach-aware and it
+   was a **mistake, since reverted**. A rendered ribbon is ~half-a-carriageway wider than its
+   centre-line, so a road running the grass line right beside the beach has its outer edge graze
+   a beach cell — and rejecting beach in the render guard dropped the ENTIRE cross-section there,
+   shattering the ribbon (and the junction caps) into ragged holes. The operator's report: *"looks
+   like the beach is breaking the roads."* Measured on seed 4242: **254 of 2,375 ribbon stations
+   were dropped, 254 of them for beach**, the centre-lines mostly on grass. The render guard is
+   back to water-only (spec 133): a ribbon that grazes the shore renders **continuously**; the
+   road NETWORK (`state.roads` cells) stays off the sand by ROUTING, which is the guarantee that
+   actually matters. Water still shatters the ribbon — correctly, no asphalt over the sea.
 6. **The hand builder** (`src/colony/render/R3FRoadBuilder.tsx` +
    `src/colony/stores/useRoadNetwork.ts`): the drag preview turns red on beach exactly as it
    does on water and the stroke is blocked on release; `plotRoad` re-checks the whole stroke
@@ -94,11 +100,11 @@ as a surveyed, beach-adjacent PAD — the commercial-reserve pattern
 
 ## Tests + evidence
 
-- `tests/roadBeachGuard.test.ts` — NEW, pins the contract across seeds 4242/42/7: zero
-  `state.roads` cells on Beach, zero ribbon-mesh cells on Beach, zero `ribbonCoverage`
-  (grading) cells on Beach, zero `capCoverageCells` (spec-137 junction-cap grading) on
-  Beach; plus `roadCellOk` rejecting beach cells that `cellOk` accepts (the parcels/walking
-  carve-out stays open).
+- `tests/roadBeachGuard.test.ts` — pins the ROUTING contract across seeds 4242/42/7: zero
+  `state.roads` (drivable network) cells on Beach; plus `roadCellOk` rejecting beach cells
+  that `cellOk` accepts (the parcels/walking carve-out stays open). The earlier
+  ribbon/coverage/cap-pixel assertions were removed with the render-guard revert — the ribbon
+  now grazes the shore by design (see the render-guard note above).
 - `tests/roadWaterGuard.test.ts` — unchanged and still green (the spec-133 water contract).
 - Re-pinned for the rerouted worlds: `districtDeterminism` crossStreetHash (seeds 4242 + 7 —
   the cross street's on-sand cells are gone; every other golden byte-identical),
@@ -109,16 +115,11 @@ as a surveyed, beach-adjacent PAD — the commercial-reserve pattern
   (520,-738)): the coastal trunk now hugs the grass line with a clean S-bend; the sand
   carries no asphalt; live audit of the booted world confirms 0 beach road cells.
 
-## Junction caps (spec 137) also stop at the grass line
+## Junction caps (spec 137) — render with the ribbon, off the road-cell ban
 
-The spec-127 slab is gone — spec 137's draped junction caps landed on
-`r3f-colony-migration` and this branch merges them. The caps hull the carriageways (already
-beach-free by routing), but a coastal crossing's mouth extension can over-reach a few cells
-past the crossing onto the sand: measured on the merged tree, seed 4242's caps graded **41
-beach cells** through `capCoverageCells` before this fix. Since a junction cap IS road
-tarmac, the beach ban must reach it too. `junctionCap.ts`'s module-local `cellOk` (the
-water-only guard the caps shared with the ribbon) gains `!== Biome.Beach`, so cap grading
-never raises sand, and `drapeCap` drops any cap triangle whose centroid sits on forbidden
-ground — trimming the visible cap to the grass line at the tessellation's ~1-cell
-resolution, exactly as the ribbon's per-cross-section guard trims itself. `roadBeachGuard`
-now pins zero cap-coverage cells on Beach across the three seeds.
+Briefly the caps' `cellOk` was made beach-aware (to keep cap grading + drape off the sand),
+the same well-intentioned mistake as the ribbon guard: it shattered coastal caps. **Reverted**
+together with the ribbon — the caps hull the carriageways, which are beach-free by ROUTING, and
+a cap that grazes the shore edge renders continuously rather than dropping triangles. The
+render guard is water-only; the "no roads on the beach" guarantee is the routed road network,
+not the cap's every graded pixel.
