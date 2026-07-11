@@ -86,18 +86,21 @@ function getTraffic(state: ColonyState): TrafficData {
   return td;
 }
 
-/** Nearest DRIVABLE road cell index to a building lot (spiral), or -1. roadKind membership, not
- *  roadSet — a verge cell would be a graph orphan (spec 084 S3). Radius 8 reaches across the wider
- *  estate setbacks. */
+/** Nearest DRIVABLE car road cell index to a building lot (spiral), or -1. roadKind membership,
+ *  not roadSet — a verge cell would be a graph orphan (spec 084 S3). Spec 149 also excludes the
+ *  bus-owned depot spur, because those cells are deliberately absent from the car graph. Radius 8
+ *  reaches across the wider estate setbacks. */
 function nearestRoadCell(state: ColonyState, bx: number, by: number): number {
   const W = state.terrain.size;
+  const noCar = state.busDepotSpurCells;
   for (let r = 1; r <= 8; r++) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const x = bx + dx;
         const y = by + dy;
-        if (state.roadKind.has(x + "," + y)) return y * W + x;
+        const key = x + "," + y;
+        if (state.roadKind.has(key) && !(noCar != null && noCar.has(key))) return y * W + x;
       }
     }
   }

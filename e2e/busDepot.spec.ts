@@ -11,6 +11,7 @@ declare global {
   interface Window {
     __colony: any;
     __staggerViolated?: boolean;
+    __dispatchLeader?: number | null;
   }
 }
 
@@ -76,7 +77,7 @@ test.describe('spec 149 — bus depot fleet', () => {
       window.__colony.debugSetClock(7, 58);
     });
     await page.waitForFunction(
-      () => window.__colony.busFleet.buses[0].mode !== 'parked',
+      () => window.__colony.busFleet.buses.some((b: any) => b.mode !== 'parked'),
       undefined,
       { timeout: 60000, polling: 100 },
     );
@@ -94,28 +95,37 @@ test.describe('spec 149 — bus depot fleet', () => {
       m === 'bay-out' || m === 'depot-stop-out' || m === 'spur-out' ||
       m === 'spur-in' || m === 'depot-stop-in' || m === 'bay-in';
     await page.evaluate(() => {
-      window.__colony.setSpeed(3);
+      const f = window.__colony.busFleet;
+      window.__dispatchLeader = f.gateHeldBy ?? f.buses.find((b: any) => b.mode !== 'parked')?.id ?? null;
       window.__staggerViolated = false;
       (window as any).__corridorViolated = false;
+      window.__colony.setSpeed(3);
     });
     await page.waitForFunction(
       (inCorridorSrc: string) => {
         const isCorridor = new Function('m', `return (${inCorridorSrc})(m)`) as (m: string) => boolean;
         const f = window.__colony.busFleet;
-        if (f.buses[1].mode !== 'parked' && f.buses[0].stopsReached < 2)
-          window.__staggerViolated = true;
+        const leaderId = (window as any).__dispatchLeader;
+        const leader = f.buses.find((b: any) => b.id === leaderId);
+        if (leader && leader.stopsReached < 2) {
+          const earlyFollower = f.buses.some((b: any) => b.id !== leaderId && b.mode !== 'parked');
+          if (earlyFollower) window.__staggerViolated = true;
+        }
         if (f.buses.filter((b: any) => isCorridor(b.mode)).length > 1)
           (window as any).__corridorViolated = true;
-        return f.buses[1].mode !== 'parked';
+        return leader && leader.stopsReached >= 2 && f.buses.some((b: any) => b.id !== leaderId && b.mode !== 'parked');
       },
       inCorridor.toString(),
       { timeout: 180000, polling: 100 },
     );
-    const stagger = await page.evaluate(() => ({
-      violated: window.__staggerViolated,
-      corridorViolated: (window as any).__corridorViolated,
-      secondReached: window.__colony.busFleet.buses[0].stopsReached >= 2,
-    }));
+    const stagger = await page.evaluate(() => {
+      const leader = window.__colony.busFleet.buses.find((b: any) => b.id === (window as any).__dispatchLeader);
+      return {
+        violated: window.__staggerViolated,
+        corridorViolated: (window as any).__corridorViolated,
+        secondReached: !!leader && leader.stopsReached >= 2,
+      };
+    });
     expect(stagger.violated).toBe(false);
     expect(stagger.corridorViolated).toBe(false);
     expect(stagger.secondReached).toBe(true);
