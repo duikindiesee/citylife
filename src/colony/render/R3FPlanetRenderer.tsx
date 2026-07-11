@@ -555,7 +555,7 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
         {useRoadNetwork(state => state.builderActive || state.worldViewActive) ? (
           <AerialCameraController />
         ) : (
-          <FirstPersonController sim={sim} startPosition={startPos} terrainLevel={debouncedTerrainLevel} />
+          <FirstPersonController sim={sim} runtime={runtime} startPosition={startPos} terrainLevel={debouncedTerrainLevel} />
         )}
       </Physics>
 

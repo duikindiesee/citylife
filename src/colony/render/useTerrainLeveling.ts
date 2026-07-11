@@ -166,6 +166,29 @@ export function computeTerrainLeveling(
     });
   }
 
+  // 2b) Bus depot pad (spec 140) — one flat apron at the pad-centre seat height with the same
+  // smoothstep skirt the commercial pads use, so the slab, the parked buses and the walker's
+  // ground guardrail all agree on ONE height instead of a max-corner slab floating over a slope.
+  const depot = state.busDepotPad;
+  if (depot) {
+    const py = padSeatY(t, depot.x, depot.y, depot.w, depot.h);
+    const fx1 = depot.x + depot.w;
+    const fy1 = depot.y + depot.h;
+    for (let y = depot.y - SKIRT + 1; y < fy1 + SKIRT; y++) {
+      for (let x = depot.x - SKIRT + 1; x < fx1 + SKIRT; x++) {
+        if (x < 0 || y < 0 || x >= N || y >= N) continue;
+        if (roadRibbonCells?.has(`${x},${y}`)) continue;
+        const dist = Math.max(0, depot.x - x, x - fx1, depot.y - y, y - fy1);
+        if (dist === 0) put(x, y, py);
+        else if (dist < SKIRT) {
+          const nat = Math.max(t.worldY(x, y), DRY);
+          const s = dist / SKIRT;
+          put(x, y, py + (nat - py) * (s * s * (3 - 2 * s)));
+        }
+      }
+    }
+  }
+
   // 3) Grade Roads Into (spec 130 — the legacy spec-095 regrade, un-stubbed). The old code
   // compared t.worldY against ITSELF ("approximation for now"), so the deadzone always
   // skipped and NO ground was ever graded to the road: on any slope the ribbon (riding the
