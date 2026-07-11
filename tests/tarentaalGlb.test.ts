@@ -9,7 +9,9 @@ describe("animated tarentaal GLB flock", () => {
   it("authors deterministic adult and chick assets with idle walk and chase clips", () => {
     expect(generatorSource).toContain('"tarentaal-adult.glb"');
     expect(generatorSource).toContain('"tarentaal-chick.glb"');
-    expect(generatorSource).toContain('const prefix = age === "adult" ? "Tarentaal" : "TarentaalChick"');
+    expect(generatorSource).toContain(
+      'const prefix = age === "adult" ? "Tarentaal" : "TarentaalChick"',
+    );
     for (const suffix of ["idle", "walk", "chase"])
       expect(generatorSource).toContain(`\`${"${prefix}"}_${suffix}\``);
     expect(generatorSource).not.toMatch(/Math\.random|Date\.now/);
