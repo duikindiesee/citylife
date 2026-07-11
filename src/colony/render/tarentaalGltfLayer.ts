@@ -31,7 +31,9 @@ export function disposeTarentaalGltfTemplate(
     const mesh = node as THREE.Mesh;
     if (!mesh.isMesh) return;
     if (mesh.geometry) geometries.add(mesh.geometry);
-    const source = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const source = Array.isArray(mesh.material)
+      ? mesh.material
+      : [mesh.material];
     for (const material of source) {
       if (!material) continue;
       materials.add(material);
@@ -59,7 +61,11 @@ export class TarentaalGltfLayer {
 
   constructor(private readonly scene: THREE.Scene) {
     this.group.name = "tarentaal-glb-flock";
-    this.group.userData = { loaded: false, adultAsset: TARANTAAL_ASSETS.adult, chickAsset: TARANTAAL_ASSETS.chick };
+    this.group.userData = {
+      loaded: false,
+      adultAsset: TARANTAAL_ASSETS.adult,
+      chickAsset: TARANTAAL_ASSETS.chick,
+    };
     this.scene.add(this.group);
     void this.load();
   }
@@ -75,7 +81,10 @@ export class TarentaalGltfLayer {
         loader.loadAsync(TARANTAAL_ASSETS.adult),
         loader.loadAsync(TARANTAAL_ASSETS.chick),
       ]);
-      if (adultResult.status === "rejected" || chickResult.status === "rejected") {
+      if (
+        adultResult.status === "rejected" ||
+        chickResult.status === "rejected"
+      ) {
         if (adultResult.status === "fulfilled")
           disposeTarentaalGltfTemplate({
             scene: adultResult.value.scene,
@@ -93,18 +102,38 @@ export class TarentaalGltfLayer {
       const adult = adultResult.value;
       const chick = chickResult.value;
       if (this.disposed) {
-        disposeTarentaalGltfTemplate({ scene: adult.scene, clips: adult.animations });
-        disposeTarentaalGltfTemplate({ scene: chick.scene, clips: chick.animations });
+        disposeTarentaalGltfTemplate({
+          scene: adult.scene,
+          clips: adult.animations,
+        });
+        disposeTarentaalGltfTemplate({
+          scene: chick.scene,
+          clips: chick.animations,
+        });
         return;
       }
-      this.templates.set("adult", { scene: adult.scene, clips: adult.animations });
-      this.templates.set("chick", { scene: chick.scene, clips: chick.animations });
+      this.templates.set("adult", {
+        scene: adult.scene,
+        clips: adult.animations,
+      });
+      this.templates.set("chick", {
+        scene: chick.scene,
+        clips: chick.animations,
+      });
       this.group.userData.loaded = true;
-      this.group.userData.adultClips = adult.animations.map((clip) => clip.name);
-      this.group.userData.chickClips = chick.animations.map((clip) => clip.name);
+      this.group.userData.adultClips = adult.animations.map(
+        (clip) => clip.name,
+      );
+      this.group.userData.chickClips = chick.animations.map(
+        (clip) => clip.name,
+      );
     } catch (error) {
-      this.group.userData.error = error instanceof Error ? error.message : String(error);
-      console.warn("[citylife] tarentaal GLB load failed; retaining primitive fallback", error);
+      this.group.userData.error =
+        error instanceof Error ? error.message : String(error);
+      console.warn(
+        "[citylife] tarentaal GLB load failed; retaining primitive fallback",
+        error,
+      );
     }
   }
 
@@ -152,7 +181,9 @@ export class TarentaalGltfLayer {
       }
     });
     const mixer = new THREE.AnimationMixer(group);
-    const actions = new Map(template.clips.map((clip) => [clip.name, mixer.clipAction(clip)]));
+    const actions = new Map(
+      template.clips.map((clip) => [clip.name, mixer.clipAction(clip)]),
+    );
     const prefix = bird.age === "adult" ? "Tarentaal" : "TarentaalChick";
     const entry = { group, mixer, actions, currentAction: "" };
     this.group.add(group);
@@ -178,7 +209,8 @@ export class TarentaalGltfLayer {
     }
     this.birds.clear();
     this.group.clear();
-    for (const template of this.templates.values()) disposeTarentaalGltfTemplate(template);
+    for (const template of this.templates.values())
+      disposeTarentaalGltfTemplate(template);
     this.templates.clear();
     this.scene.remove(this.group);
   }
