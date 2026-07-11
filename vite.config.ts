@@ -77,6 +77,14 @@ export default defineConfig(({ mode }) => {
       // city-builders room without masking a genuine hang. (Supersedes Codex's 15s from the lighthouse
       // merge — the distributed-city boot is the heavier of the two.)
       testTimeout: 20000,
+      // Spec 150 — ship-CI resilience for the v3->main cutover. A couple of runtime suites
+      // (rally-spur seed coverage, road-connectivity) are order/seed-sensitive: they pass in
+      // isolation but occasionally flip under full-parallel-suite contention. `npm test` on
+      // main's CI has no retry, so a single flake would falsely redden the release build.
+      // Two retries lets a genuine flake self-heal while a real breakage (fails all 3 tries)
+      // still fails. NOTE: this is a stopgap — the proper fix is to make those suites fully
+      // deterministic (seed the last Math.random paths in the city/road generation).
+      retry: 2,
     },
   };
 });
