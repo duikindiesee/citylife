@@ -1,4 +1,4 @@
-// Spec 140 — the crowd rides the road ribbon on road cells, the leveled ground elsewhere.
+// Spec 142 — the crowd rides the road ribbon on road cells, the leveled ground elsewhere.
 import { describe, it, expect } from "vitest";
 import { crowdGroundY } from "../src/colony/render/crowdGround";
 import { ROAD_RIBBON_LIFT } from "../src/colony/render/roadRibbon";
@@ -11,7 +11,7 @@ const flatTerrain = (h: number) => ({
 });
 const roads = (...keys: string[]) => ({ has: (k: string) => keys.includes(k) });
 
-describe("spec 140 — crowd ground surface", () => {
+describe("spec 142 — crowd ground surface", () => {
   it("on a road cell, stands on the ribbon top (getSmoothRoadY + lift), not the ground under it", () => {
     const t = flatTerrain(5);
     // getSmoothRoadY over a flat terrain is the flat height; the figure stands lift above it

@@ -1,4 +1,4 @@
-# Spec 139 — animated citizen characters + the world scale constitution (PLANNED)
+# Spec 141 — animated citizen characters + the world scale constitution (PLANNED)
 
 Operator ask (2026-07-11, walking the v3 world in first person): "do we have midget
 NPCs — plan their animated chars also … is that a door on the patio … i still feel like
@@ -96,7 +96,7 @@ origin at feet centre.
   import parses, height 1.80 ± 0.05 from bbox, slot + clip names exact, durations
   ± 0.05 s, tri budget.
 
-Queue line: `/queue jack Build citizen-base.glb per docs/specs/139-citizen-characters-scale.md §4 — 1.8 m skinned citizen with 5 clips + acceptance tests, branch jack/citizen-base-glb.`
+Queue line: `/queue jack Build citizen-base.glb per docs/specs/141-citizen-characters-scale.md §4 — 1.8 m skinned citizen with 5 clips + acceptance tests, branch jack/citizen-base-glb.`
 
 ## 5. Order of work
 
