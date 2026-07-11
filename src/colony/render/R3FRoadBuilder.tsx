@@ -207,7 +207,7 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
     if (x < 0 || x >= terrainSize || y < 0 || y >= terrainSize) return false;
     const index = y * terrainSize + x;
     const t = sim.state.terrain;
-    // Roads: must not be water, must not be beach sand (spec 138 — the preview cell turns red on
+    // Roads: must not be water, must not be beach sand (spec 140 — the preview cell turns red on
     // the sand exactly as it does on water), and must not be extreme mountain cliffs.
     return (
       !t.isWater(x, y) &&
