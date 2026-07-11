@@ -90,6 +90,23 @@ body,
 .group button:hover {
   background: rgba(255, 255, 255, 0.13);
 }
+/* Anchor styled as a .group button — the topbar's Ask Kooker link (it used to be a fixed
+   pill in index.html that covered the Log out button). */
+.group .linkbtn {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
+  color: var(--text);
+  border-radius: 7px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: none;
+  line-height: normal;
+}
+.group .linkbtn:hover {
+  background: rgba(255, 255, 255, 0.13);
+}
 .group button.on {
   background: var(--accent);
   color: #04231f;

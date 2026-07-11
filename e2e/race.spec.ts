@@ -16,7 +16,7 @@ const countMeshes = (name: string) => `(function(){
 test('R3F race: starting a race renders the course and the player car', async ({ page }) => {
   test.setTimeout(120000);
 
-  await page.goto('/');
+  await page.goto('/?skipauth=1');
   await page.waitForSelector('canvas', { timeout: 30000 });
   await page.waitForTimeout(5000);
   await page.waitForFunction(() => !!(window as any).__r3fScene && !!(window as any).__colony, undefined, { timeout: 15000 });

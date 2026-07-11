@@ -88,7 +88,7 @@ export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
     // Furniture positions need a ground height for their pole bases: the local road
     // surface (they stand on the verge beside it, close enough at 25 mm resolution).
     const furniture = zones.flatMap((z, zi) =>
-      junctionFurniture(z).map((f, fi) => ({
+      junctionFurniture(z, ways).map((f, fi) => ({
         ...f,
         key: `f-${zi}-${fi}`,
         // deterministic per-junction signal phase offset so the whole city doesn't

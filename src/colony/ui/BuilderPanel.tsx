@@ -6,6 +6,34 @@ interface BuilderPanelProps {
   sim?: any;
 }
 
+const BUILDER_ICON_BASE = "/assets/citylife/builder-icons/64";
+
+export const CATEGORY_ICONS = {
+  roads: { src: `${BUILDER_ICON_BASE}/roads.png`, alt: "Roads builder tool" },
+  zoning: { src: `${BUILDER_ICON_BASE}/zoning.png`, alt: "Zoning builder tool" },
+  landscaping: { src: `${BUILDER_ICON_BASE}/landscaping.png`, alt: "Landscaping builder tool" },
+  bulldoze: { src: `${BUILDER_ICON_BASE}/bulldozer.png`, alt: "Bulldozer builder tool" },
+} as const;
+
+function BuilderCategoryIcon({ category }: { category: keyof typeof CATEGORY_ICONS }) {
+  const icon = CATEGORY_ICONS[category];
+  return (
+    <img
+      src={icon.src}
+      alt={icon.alt}
+      width={28}
+      height={28}
+      style={{
+        display: "block",
+        width: "28px",
+        height: "28px",
+        objectFit: "contain",
+        filter: "drop-shadow(0 0 4px rgba(87, 209, 196, 0.35))",
+      }}
+    />
+  );
+}
+
 export function BuilderPanel({ runtime, sim }: BuilderPanelProps) {
   const { builderActive, toggleBuilder, worldViewActive, toggleWorldView, builderMode, setBuilderMode, saveToDB, loadFromDB } = useRoadNetwork();
   const activeRoadType = useRoadNetwork(state => state.activeRoadType);
@@ -316,16 +344,20 @@ export function BuilderPanel({ runtime, sim }: BuilderPanelProps) {
         {/* Category Selector Grid */}
         <div style={{ display: 'flex', gap: '12px' }}>
           <button style={getBtnStyle(category === 'roads')} onClick={() => setBuilderMode('roads')}>
-            🛣️ ROADS
+            <BuilderCategoryIcon category="roads" />
+            ROADS
           </button>
           <button style={getBtnStyle(category === 'zoning')} onClick={() => setBuilderMode('zoning_residential')}>
-            🟩 ZONING
+            <BuilderCategoryIcon category="zoning" />
+            ZONING
           </button>
           <button style={getBtnStyle(category === 'landscaping')} onClick={() => setBuilderMode('raise')}>
-            🏔️ LANDSCAPING
+            <BuilderCategoryIcon category="landscaping" />
+            LANDSCAPING
           </button>
           <button style={getBtnStyle(category === 'bulldoze')} onClick={() => setBuilderMode('bulldoze')}>
-            🚜 BULLDOZE
+            <BuilderCategoryIcon category="bulldoze" />
+            BULLDOZE
           </button>
         </div>
       </div>

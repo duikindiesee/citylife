@@ -334,11 +334,38 @@ export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
   return zones;
 }
 
+/** Distance from a point to a polyline (min over segments). */
+function distToPolyline(
+  px: number,
+  py: number,
+  pts: { x: number; y: number }[],
+): number {
+  let best = Infinity;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const ax = pts[i]!.x,
+      ay = pts[i]!.y;
+    const vx = pts[i + 1]!.x - ax,
+      vy = pts[i + 1]!.y - ay;
+    const L2 = vx * vx + vy * vy || 1;
+    const t = Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / L2));
+    best = Math.min(best, Math.hypot(px - (ax + t * vx), py - (ay + t * vy)));
+  }
+  return best;
+}
+
 /** Street furniture from REAL arm headings — never compass-snapped. SA left-hand drive:
  *  everything serving an approach stands on the LEFT verge of that approach (left of
  *  travel t = -u is L = (-uy, ux)). Positions in grid coords; rotY faces the approach
- *  (world yaw convention atan2(x, y), matching wx/wz). */
-export function junctionFurniture(zone: JunctionZone): FurnitureItem[] {
+ *  (world yaw convention atan2(x, y), matching wx/wz).
+ *
+ *  Pass `ways` (fac1efa's clearance finding, re-pinned in roadFurnitureClearance.test.ts):
+ *  a pole must clear EVERY carriageway in the network, not just this zone's arms — near
+ *  a twin crossing a light for one arm otherwise lands on the other crossing's road.
+ *  Without `ways` it falls back to zone-arm clearance (synthetic-crossing unit tests). */
+export function junctionFurniture(
+  zone: JunctionZone,
+  ways?: RoadWay[],
+): FurnitureItem[] {
   const items: FurnitureItem[] = [];
   if (zone.kind === "bend") return items;
 
@@ -359,19 +386,53 @@ export function junctionFurniture(zone: JunctionZone): FurnitureItem[] {
     }
     return false;
   };
+  // Global carriageway test over the whole network (only when ways given).
+  const smoothed = ways
+    ? ways.map((w) =>
+        w.path.length >= 2 ? densify(chaikin(w.path, 2), 1.5) : null,
+      )
+    : null;
+  const onAnyRoad = (px: number, py: number): boolean => {
+    if (!smoothed || !ways) return false;
+    for (let wi = 0; wi < smoothed.length; wi++) {
+      const cp = smoothed[wi];
+      if (!cp) continue;
+      if (distToPolyline(px, py, cp) < ways[wi]!.width / 2 + 0.25) return true;
+    }
+    return false;
+  };
+  const blocked = (px: number, py: number) =>
+    insideAnyCarriageway(px, py) || onAnyRoad(px, py);
+  // Nearest-clear search (fac1efa's "slide outward until clear of every carriageway",
+  // made robust for multi-road knots): prefer the intended verge spot, else spiral out
+  // in rings biased toward the left verge + radial-outward, returning the CLOSEST clear
+  // point. A single verge slide got stuck where the verge pointed into another road.
   const placeClear = (
     mx: number,
     my: number,
     lx: number,
     ly: number,
   ): { x: number; y: number } => {
-    let x = mx,
-      y = my;
-    for (let i = 0; i < 4 && insideAnyCarriageway(x, y); i++) {
-      x += lx * 0.8;
-      y += ly * 0.8;
+    if (!blocked(mx, my)) return { x: mx, y: my };
+    const rx = mx - zone.cx,
+      ry = my - zone.cy;
+    const rl = Math.hypot(rx, ry) || 1;
+    const ox = rx / rl,
+      oy = ry / rl; // radial outward from the junction centre
+    for (let r = 0.6; r <= 7; r += 0.6) {
+      for (const [dx, dy] of [
+        [lx, ly], // left verge
+        [ox, oy], // radial out
+        [lx + ox, ly + oy], // verge + out
+        [-lx, -ly], // right verge (last resort)
+      ] as const) {
+        const dl = Math.hypot(dx, dy) || 1;
+        const x = mx + (dx / dl) * r,
+          y = my + (dy / dl) * r;
+        if (!blocked(x, y)) return { x, y };
+      }
     }
-    return { x, y };
+    return { x: mx + lx * 6, y: my + ly * 6 }; // best effort (unreached in boot towns)
   };
 
   for (const a of zone.arms) {

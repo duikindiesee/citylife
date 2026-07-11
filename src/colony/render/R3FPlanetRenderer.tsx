@@ -537,14 +537,14 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
             <R3FFoliage sim={sim} runtime={runtime} />
             <ZoneManager sim={sim} runtime={runtime} />
             <R3FPlayerCar sim={sim} />
-            <R3FAvatars sim={sim} refs={avatarRefs} />
-            <R3FPedestrians sim={sim} />
+            <R3FAvatars sim={sim} refs={avatarRefs} terrainLevel={debouncedTerrainLevel} />
+            <R3FPedestrians sim={sim} terrainLevel={debouncedTerrainLevel} />
             <R3FBus sim={sim} runtime={runtime} />
             <R3FRace sim={sim} />
-            <R3FTarentaal sim={sim} />
-            <R3FArtifacts sim={sim} />
-            <R3FPorters sim={sim} />
-            <R3FOperatorCar sim={sim} runtime={runtime} />
+            <R3FTarentaal sim={sim} terrainLevel={debouncedTerrainLevel} />
+            <R3FArtifacts sim={sim} terrainLevel={debouncedTerrainLevel} />
+            <R3FPorters sim={sim} terrainLevel={debouncedTerrainLevel} />
+            <R3FOperatorCar sim={sim} runtime={runtime} terrainLevel={debouncedTerrainLevel} />
             <R3FRallyNameplates sim={sim} runtime={runtime} refs={avatarRefs} />
             <R3FCameraDirector sim={sim} />
             <R3FCommercialDistrict sim={sim} runtime={runtime} terrainLevel={debouncedTerrainLevel} />
@@ -617,8 +617,8 @@ export class PlanetRenderer {
   }
 
   // No-op compatibility surface. R3F owns the frame loop, camera and layers, so these runtime
-  // hooks do nothing here — but they keep the signatures of the legacy canvas renderer
-  // (./PlanetRenderer.ts) so the runtime can drive either implementation.
+  // hooks do nothing here — but they keep the signatures the legacy canvas renderer exposed
+  // (deleted; see spec 128) because the runtime still calls them.
   // Legacy frame() takes no arguments, but the runtime passes the real dt (runtime.ts), so the
   // parameter is kept. The PNG captures return null (never a data URL) until R3F implements them.
   frame(_dt: number) {}

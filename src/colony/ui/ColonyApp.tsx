@@ -1008,6 +1008,13 @@ export function ColonyApp() {
         </div>
         <BuilderPanel runtime={runtime} sim={runtime.sim} />
         <div className="group">
+          <a
+            className="linkbtn"
+            href="/ask-kooker.html"
+            title="Open the Ask Kooker board"
+          >
+            Ask Kooker
+          </a>
           <button
             title="Sign out of CityLife"
             onClick={() => {

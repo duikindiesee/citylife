@@ -1,3 +1,4 @@
+import { leveledWorldY } from './terrainLeveling';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
@@ -34,11 +35,14 @@ export interface AvatarRefs {
 }
 
 interface R3FAvatarsProps {
+  /** Spec 134 - the leveled-ground map: pads, graded roads and landscape edits reshape
+   *  the visible mesh, and anything standing on the ground must stand on THAT surface. */
+  terrainLevel?: ReadonlyMap<number, number> | null;
   sim: ColonySim;
   refs: AvatarRefs;
 }
 
-export function R3FAvatars({ sim, refs }: R3FAvatarsProps) {
+export function R3FAvatars({ sim, refs, terrainLevel }: R3FAvatarsProps) {
   const bodyRef = useRef<THREE.InstancedMesh>(null);
   const headRef = useRef<THREE.InstancedMesh>(null);
   const crabRef = useRef<THREE.Group>(null);
@@ -100,7 +104,7 @@ export function R3FAvatars({ sim, refs }: R3FAvatarsProps) {
     if (refs.lastList) refs.lastList.current = list;
     const drawn = drawableAvatars(list, refs.fpCitizenId.current);
     const size = sim.state.terrain.size;
-    const groundY = (x: number, y: number) => sim.state.terrain.worldY(x, y);
+    const groundY = (x: number, y: number) => leveledWorldY(sim.state.terrain, terrainLevel, x, y);
 
     // Spec 132 — crab-kind avatars draw the crab model, not a human capsule.
     let crab: AvatarView | null = null;
