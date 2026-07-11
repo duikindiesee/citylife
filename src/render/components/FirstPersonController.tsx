@@ -176,7 +176,7 @@ export function FirstPersonController({ sim, startPosition = [0, 2, 0], terrainL
       }
     }
 
-    const camY = pos.y + PLAYER_EYE_OFFSET; // eye at PLAYER_EYE_M (1.6 m) above the feet — spec 137
+    const camY = pos.y + PLAYER_EYE_OFFSET; // eye at PLAYER_EYE_M (1.6 m) above the feet — spec 146
     camera.position.set(pos.x, camY, pos.z);
     camera.quaternion.setFromEuler(rotation.current);
   });

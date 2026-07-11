@@ -1,4 +1,4 @@
-# Spec 116 — The Ironwork Pillar: a wheel over the works, turned one held tooth at a time
+# Spec 144 — The Ironwork Pillar: a wheel over the works, turned one held tooth at a time
 
 - status: proposed
 - proposed-by: **Hennerik Vos, clocksmith and night gauge-reader at the Watch Nook (Landing One)** — a new citizen voice from the colony's small security-and-vigilance world (059). Where Mara Venn gave the colony aspiration (033), Hennerik gives it something quieter: the first monument to the _unseen work_ that keeps a world true — and to the Wizard beyond the dark who minds his own town the same way.

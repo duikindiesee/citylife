@@ -10,7 +10,7 @@ import { CITIZEN_HEIGHT_M, citizenFigure } from '../scale';
  *  max-capacity pattern avoids InstancedMesh reconstruction on roster changes. */
 export const AVATAR_CAP = 64;
 
-/** Spec 137 — citizens are a real 1.7 m adult, DERIVED from the shared metric (they were a
+/** Spec 146 — citizens are a real 1.7 m adult, DERIVED from the shared metric (they were a
  *  ~1 m toddler and torso-buried before). `lift` translates the torso capsule up so its feet
  *  sit on the ground; the head crown reaches CITIZEN_HEIGHT_M. */
 const FIGURE = citizenFigure(CITIZEN_HEIGHT_M);
