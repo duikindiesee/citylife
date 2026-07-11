@@ -56,9 +56,11 @@ fence-setback prune, closes the gaps deterministically:
    first (the single nearest can be un-routable), through `leastCostPath` with `forbidBeach` (spec
    140 — the connector bends inland, never onto sand/water), a homestead-setback `blocked` gate (spec
    114 — never touches a fence border), a slope weight, and a search margin scaled to the pair's
-   distance. The found path is laid through the same string-pulled `layRoad` as every other trunk, so
-   it reads as a real road, and `mergeAvenue`d into the network.
-3. Iterate to a fixed point (bounded to 8 passes): connecting one orphan grows the main web, which may
+   distance. A candidate is **dry-run** through the same string-pulled `layRoad` as every other trunk
+   and committed only when a 4-connectivity BFS proves it TRULY merges the orphan into the main web —
+   never a diagonal LOS staircase whose blocked shoulders would leave isolated cells behind (see
+   Hardening). On commit it is `mergeAvenue`d into the network and the main web grows in place.
+3. Iterate to a fixed point (bounded to 12 passes): connecting one orphan grows the main web, which may
    then be the nearest anchor for the next.
 
 **Prefer connecting over deleting.** The pass never strands and never deletes — it only adds the road
@@ -78,8 +80,40 @@ LEGITIMATE and expected on other seeds, both verified by routing analysis:
   all sides by homestead setbacks; a route exists only if allowed to cross a fence border, which spec
   114 forbids and the final prune would strip anyway. It stays reachable on foot.
 
-The connectivity test pins the general floor at **≥99% of cells in one web**, with these two as the
-only documented exceptions.
+The connectivity test pins the general floor at **≥99% of cells in one web** for the seed suite, with
+these two as the only documented exception classes.
+
+## Hardening (post-review)
+
+An adversarial review of the first cut found a latent correctness bug: `layRoad` string-pulls its
+path into straight LOS segments, and a 45° segment can be a diagonal shortcut across a 1-cell isthmus
+the router itself went around. Its width-1 stroke fills the staircase gaps with the ±1 shoulder cells,
+but where BOTH shoulders are blocked (water/beach/setback) the laid connector is an 8-connected
+diagonal staircase — which the 4-connected flood-fill still reads as split. The original loop counted
+"a path was laid" as success, so it could believe it connected an orphan while leaving a dotted line
+of isolated single cells (re-introducing the very "roads that don't connect" symptom, and tripping the
+suite's own no-floating-cell check).
+
+The fix makes the repair HONEST: a candidate is **dry-run** (a `layRoad` mode that returns the cells
+without recording a ribbon), a 4-neighbour BFS over the current roads + the candidate's cells checks
+it actually reaches a main cell, and the connector is committed only then. Consequences, all verified:
+
+- **No isolated singletons, ever** — guaranteed by construction, not by luck. Pinned across seeds
+  4242/7/42/12/16/29/46 (the last two are fail-soft yet still singleton-free).
+- **Honest progress + termination** — a pass counts only real merges, so a failed candidate can't spin
+  the fixed-point loop; the incremental main set also stops a second, redundant connector to an orphan
+  already absorbed earlier in the same pass.
+- **More candidates, capped search** — the best 12 anchor pairs are tried (a near-collinear top-few can
+  all hit the same walled crossing), and the per-attempt `leastCostPath` margin is capped well below
+  the grid so a far, genuinely stranded orphan can never trigger a whole-grid flood on the fail path.
+
+A sweep of seeds 1–80 confirms the repair leaves NOTHING a legal road could reach: every residual
+orphan classifies as either **water-locked** (no land route exists even with beach/setback guards off
+— e.g. seed 46, three island pieces behind 39–63 water cells) or **setback-walled** (a land route
+exists only THROUGH a homestead's keep-clear ring, which spec 114 forbids — e.g. seeds 29/41). The
+capped margin loses no reachable orphan: for every residual, even an unbounded-margin route is `null`.
+Output on the pinned seeds is byte-identical to the first cut (those connectors already bridged), so
+the determinism/golden tests are unchanged; this is a robustness guarantee for the long tail of seeds.
 
 ## Cost — materials & labour
 
