@@ -100,7 +100,7 @@ export function R3FPedestrians({ sim, terrainLevel }: R3FPedestriansProps) {
     const size = terrain.size;
     const lx = terrain.landing.x, ly = terrain.landing.y;
     const roadCells = sim.state.roads;
-    // spec 140 — pedestrians target road cells, so ride the ribbon top instead of sinking under it
+    // spec 142 — pedestrians target road cells, so ride the ribbon top instead of sinking under it
     const groundY = (x: number, y: number) => crowdGroundY(terrain, terrainLevel, sim.state.roadSet, x, y);
     const onLand = (x: number, y: number) => {
       const ix = Math.round(x), iy = Math.round(y);

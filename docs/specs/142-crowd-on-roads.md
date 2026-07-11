@@ -1,4 +1,4 @@
-# Spec 140 — the crowd stands on the road, not under it
+# Spec 142 — the crowd stands on the road, not under it
 
 ## The complaint
 
