@@ -1154,16 +1154,10 @@ export class ColonyRuntime {
       // staircase the 4-connected flood-fill still sees as split). Every existing caller omits it, so
       // their ribbons + cells stay byte-identical.
       dryRun = false,
-      source?: RoadWay["source"],
     ): Cell[] => {
       const poly = simplifyPath(path);
       if (!dryRun && poly.length >= 2)
-        this.roadWays.push({
-          path: poly,
-          kind,
-          width: 4,
-          ...(source ? { source } : {}),
-        }); // 088 — smooth ribbon centre-line
+        this.roadWays.push({ path: poly, kind, width: 4 }); // 088 — smooth ribbon centre-line (chunky enough to read from the district view)
       const out = new Set<string>();
       const add = (fx: number, fy: number) => {
         const x = Math.round(fx),
@@ -1484,17 +1478,60 @@ export class ColonyRuntime {
       const size = t0.size;
       const idxToCell = (k: number): Cell => ({ x: k % size, y: (k / size) | 0 });
       const cellIndex = (c: Cell) => c.y * size + c.x;
+      // Does a candidate connector actually 4-bridge the orphan to the main web? BFS from the orphan's
+      // seed cell across the CURRENT road cells plus the candidate's cells; a bridge exists the moment
+      // it reaches any main cell. This is what keeps the repair honest: a connector is committed only
+      // when it truly merges the orphan, never when `layRoad` happened to stroke an 8-connected diagonal
+      // staircase (a simplifyPath LOS shortcut whose shoulders are all blocked) that the 4-connected
+      // flood-fill still treats as split. 4-neighbour only, matching roadComponents.
+      const bridges = (
+        startIdx: number,
+        roadIdx: ReadonlySet<number>,
+        connIdx: ReadonlySet<number>,
+        mainIdx: ReadonlySet<number>,
+      ): boolean => {
+        const seen = new Set<number>([startIdx]);
+        const stack = [startIdx];
+        while (stack.length) {
+          const k = stack.pop()!;
+          const x = k % size;
+          // +/-1 stay on the same row (no horizontal wrap); +/-size are the vertical neighbours.
+          const nbrs = [
+            x < size - 1 ? k + 1 : -1,
+            x > 0 ? k - 1 : -1,
+            k + size,
+            k - size,
+          ];
+          for (const nk of nbrs) {
+            if (nk < 0 || nk >= size * size || seen.has(nk)) continue;
+            if (!roadIdx.has(nk) && !connIdx.has(nk)) continue;
+            if (mainIdx.has(nk)) return true;
+            seen.add(nk);
+            stack.push(nk);
+          }
+        }
+        return false;
+      };
       // Iterate to a fixed point: connecting one orphan grows the main web, which may then be the
       // nearest anchor for the next. Bounded so a genuinely stranded piece can never loop forever.
-      for (let pass = 0; pass < 8; pass++) {
+      for (let pass = 0; pass < 12; pass++) {
         const comps = roadComponents(this.sim.state.roads, size);
         if (comps.length <= 1) break;
         const mainCells = comps[0]!.cells.map(idxToCell);
+        // Incremental sets, grown as orphans join, so later orphans in the SAME pass see the enlarged
+        // web (no stale-main double-connectors) and the bridge test stays cheap.
+        const roadIdx = new Set<number>(
+          this.sim.state.roads.map((r) => r.y * size + r.x),
+        );
+        const mainIdx = new Set<number>(comps[0]!.cells);
         let joinedAny = false;
         for (let ci = 1; ci < comps.length; ci++) {
-          const orphan = comps[ci]!.cells.map(idxToCell);
+          const orphanComp = comps[ci]!;
+          if (mainIdx.has(orphanComp.min)) continue; // already absorbed earlier this pass
+          const orphan = orphanComp.cells.map(idxToCell);
           // Candidate anchors: each orphan cell paired with its nearest main cell. The single nearest
-          // pair can be un-routable (its main end is beach-locked), so try the best few in order.
+          // pair can be un-routable (its main end is beach-locked, or the only crossing is walled), so
+          // try the best dozen distinct pairs in order.
           const pairs: { from: Cell; to: Cell; d: number }[] = [];
           for (const p of orphan) {
             let best: Cell | null = null,
@@ -1517,12 +1554,12 @@ export class ColonyRuntime {
               cellIndex(a.from) - cellIndex(b.from) ||
               cellIndex(a.to) - cellIndex(b.to),
           );
-          for (const { from, to, d } of pairs.slice(0, 6)) {
-            // The bounding box of a nearby pair is tiny; give the search room to bend around the mall
-            // pad or a spur of water without letting a truly-blocked route flood the whole grid.
+          for (const { from, to, d } of pairs.slice(0, 12)) {
+            // Search room to bend around the mall pad or a spur of water, capped well below the grid so
+            // a far, genuinely stranded orphan cannot trigger a whole-grid flood on the fail path.
             const margin = Math.min(
-              size,
-              Math.max(64, Math.round(Math.sqrt(d)) * 4),
+              160,
+              Math.max(64, Math.round(Math.sqrt(d)) * 2),
             );
             const path = leastCostPath(t0, from, to, {
               slopeWeight: 0.5,
@@ -1531,14 +1568,23 @@ export class ColonyRuntime {
               blocked: (x, y) => residentialSetbackKeys.has(`${x},${y}`),
               margin,
             });
-            if (path && path.length >= 2) {
-              mergeAvenue(this.sim.state, layRoad(path, 1));
-              joinedAny = true;
-              break;
+            if (!path || path.length < 2) continue;
+            // Dry-run the stroke (no ribbon side effect), then commit ONLY if it truly merges the
+            // orphan into the main web — never a staircase that leaves isolated cells behind.
+            const cells = layRoad(path, 1, "avenue", true);
+            const connIdx = new Set<number>(cells.map((c) => c.y * size + c.x));
+            if (!bridges(orphanComp.min, roadIdx, connIdx, mainIdx)) continue;
+            mergeAvenue(this.sim.state, layRoad(path, 1)); // commit for real (records the ribbon)
+            for (const k of connIdx) {
+              roadIdx.add(k);
+              mainIdx.add(k);
             }
+            for (const k of orphanComp.cells) mainIdx.add(k); // the whole orphan is now main
+            joinedAny = true;
+            break;
           }
         }
-        if (!joinedAny) break; // every remaining orphan is genuinely stranded — leave it (fail soft)
+        if (!joinedAny) break; // no orphan could be legally connected this pass — the rest are stranded
       }
       // Determinism-safe invariant (spec 148): after the repair the network is one web. A residual
       // orphan is a legitimate future-bridge/embedded-overlook exception, never a hard failure, so this
