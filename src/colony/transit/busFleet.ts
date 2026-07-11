@@ -1,32 +1,18 @@
-// Spec 149 — the bus FLEET state machine: operating hours, staggered dispatch, breaks, and the
+// Spec 140 — the bus FLEET state machine: operating hours, staggered dispatch, breaks, and the
 // depot round-trip, stepped in SIM-MINUTES over abstract arc-length geometry. Pure and
-// deterministic: no three.js, no wall clock, no Math.random — the runtime feeds it dt + the sim
-// clock (+ the world seed for the tie-broken bay lottery) and reads back per-bus poses; tests drive
-// it minute by minute in node.
+// deterministic: no three.js, no wall clock, no randomness — the runtime feeds it dt + the sim
+// clock and reads back per-bus poses; tests drive it minute by minute in node.
 //
-// A bus's day: parked -> bay-out (reverses out of its bay) -> depot-stop-out (doors open at the gate
+// A bus's day: parked -> bay-out (reverses out of its bay) -> depot-stop (doors open at the gate
 // shelter: the depot IS a boarding stop) -> spur-out (rides the spur road onto the loop) ->
-// service (laps the route, dwelling at every stop) -> spur-in -> depot-stop-in (alighting) ->
-// bay-in -> parked (break).
-//
-// TWO gates keep it collision-free and evenly spaced (spec 149 / operator hardening):
-//   1. The DEPOT CORRIDOR is single-occupancy. The spur + gate + apron is one shared lane, so at most
-//      ONE bus may be inside the depot approach at a time — a departing bus and a returning bus can
-//      never meet head-on on the spur. A bus grabs the corridor to leave (bay-out) or to come home
-//      (spur-in) and releases it once it is on the loop (service) or parked. A bus that wants home
-//      while the corridor is busy simply keeps lapping and retries at the next join crossing.
-//   2. The DISPATCH gate spaces departures on the ROUTE: a dispatched bus holds it until it reaches
-//      its SECOND route stop, and the depot keeps releasing the next parked bus while any remain in
-//      hours — so the fleet trickles out, evenly spaced, until the depot is empty.
-//
-// Bays are NOT owned by bus id: a returning bus parks in a random FREE bay (a seeded lottery, so it
-// is deterministic yet varied), and dispatch pulls whichever parked bus is ready. `BusState.bay` is
-// the bay a bus currently holds (parked / pulling out of / backing into), or -1 while out on the loop.
+// service (laps the route, dwelling at every stop) -> spur-in -> depot-stop (alighting) ->
+// bay-in -> parked (break). ONE global dispatch gate enforces the stagger: a dispatched bus holds
+// it until it reaches its FIRST route stop; nobody else may leave a bay while it is held.
 
 import { type PathData, samplePath, projectPath, type Pt } from "./path";
 
 export interface FleetConfig {
-  /** Buses the colony owns; they start parked in bays 0..n-1. baysTotal - busesOwned bays start free. */
+  /** Buses the colony owns (parked in bays 0..n-1); baysTotal - busesOwned bays stay empty. */
   busesOwned: number;
   baysTotal: number;
   /** Operating hours as minute-of-day: first departures at 08:00, streets drain by 23:00. */
@@ -50,7 +36,7 @@ export interface FleetGeometry {
   /** Loop arc length where the depot spur joins it. */
   joinT: number;
   spurLen: number;
-  /** Per-bay drive path length (gate -> lane -> bay nose), indexed by BAY (not bus id). */
+  /** Per-bay drive path length (gate -> lane -> bay nose). */
   bayLen: number[];
   /** Route stop positions as distances AFTER the join point, ascending, in (0, loopLen]. */
   stopsFromJoin: number[];
@@ -66,23 +52,9 @@ export type BusMode =
   | "depot-stop-in"
   | "bay-in";
 
-/** True while the bus is physically inside the single-lane depot approach (spur + gate + apron). */
-export function inCorridor(mode: BusMode): boolean {
-  return (
-    mode === "bay-out" ||
-    mode === "depot-stop-out" ||
-    mode === "spur-out" ||
-    mode === "spur-in" ||
-    mode === "depot-stop-in" ||
-    mode === "bay-in"
-  );
-}
-
 export interface BusState {
   id: number;
   mode: BusMode;
-  /** Bay this bus currently holds (parked / pulling out of / backing into), or -1 while on the loop. */
-  bay: number;
   /** Distance along the current path (bay path or spur), in cells. */
   t: number;
   /** Total loop distance travelled since joining at joinT (spans laps). */
@@ -91,63 +63,35 @@ export interface BusState {
   laps: number;
   /** Index into stopsFromJoin of the next stop on the current lap. */
   nextStopIdx: number;
-  /** Count of route stops reached this dispatch — the dispatch gate releases at 2. */
-  stopsReached: number;
   /** Sim-minutes of doors-open dwell remaining (at a stop or the depot gate). */
   dwell: number;
   /** Absolute sim-minute the bay break ends; dispatch-ineligible before it. */
   breakUntil: number;
+  /** True once this bus reached its first stop this dispatch (releases the gate). */
+  reachedFirstStop: boolean;
 }
 
 export interface BusFleet {
   buses: BusState[];
-  /** Bus id holding the route-spacing dispatch gate, or null when the depot may release the next. */
+  /** Bus id holding the staggered-dispatch gate, or null when the depot may release the next bus. */
   gateHeldBy: number | null;
-  /** Bus id physically occupying the depot approach corridor, or null when it is clear. */
-  corridorBusyBy: number | null;
-  /** Deterministic LCG state for the free-bay lottery (seeded from the world seed at boot). */
-  rng: number;
 }
 
-export function makeFleet(cfg: FleetConfig, seed = 1): BusFleet {
+export function makeFleet(cfg: FleetConfig): BusFleet {
   const buses: BusState[] = [];
   for (let i = 0; i < cfg.busesOwned; i++)
     buses.push({
       id: i,
       mode: "parked",
-      bay: i, // deterministic starting bays; a returning bus later parks in a random free one
       t: 0,
       lapT: 0,
       laps: 0,
       nextStopIdx: 0,
-      stopsReached: 0,
       dwell: 0,
       breakUntil: 0,
+      reachedFirstStop: false,
     });
-  return {
-    buses,
-    gateHeldBy: null,
-    corridorBusyBy: null,
-    rng: seed >>> 0 || 1,
-  };
-}
-
-/** The bays no bus currently holds — candidates for a returning bus to park in. */
-function freeBays(fleet: BusFleet, cfg: FleetConfig): number[] {
-  const held = new Set<number>();
-  for (const b of fleet.buses) if (b.bay >= 0) held.add(b.bay);
-  const out: number[] = [];
-  for (let k = 0; k < cfg.baysTotal; k++) if (!held.has(k)) out.push(k);
-  return out;
-}
-
-/** Pick a free bay via the seeded LCG (deterministic yet varied). Falls back to the lowest free bay
- *  if the lottery ever came up empty (can't happen while busesOwned <= baysTotal). */
-function pickFreeBay(fleet: BusFleet, cfg: FleetConfig): number {
-  const free = freeBays(fleet, cfg);
-  if (free.length === 0) return 0;
-  fleet.rng = (Math.imul(fleet.rng, 1664525) + 1013904223) >>> 0;
-  return free[fleet.rng % free.length]!;
+  return { buses, gateHeldBy: null };
 }
 
 /** Build the arc-length geometry from the real polylines. Stops that project onto the join point
@@ -158,10 +102,7 @@ export function makeFleetGeometry(
   bays: PathData[],
   stopCells: readonly Pt[],
 ): FleetGeometry {
-  const joinT = projectPath(
-    loop,
-    spur.pts[spur.pts.length - 1] ?? { x: 0, y: 0 },
-  );
+  const joinT = projectPath(loop, spur.pts[spur.pts.length - 1] ?? { x: 0, y: 0 });
   const loopLen = loop.total;
   const stopsFromJoin = stopCells
     .map((c) => projectPath(loop, c))
@@ -194,10 +135,6 @@ export function shiftMinutes(geom: FleetGeometry, cfg: FleetConfig): number {
 const inHours = (tod: number, cfg: FleetConfig): boolean =>
   tod >= cfg.firstDepartureMin && tod < cfg.lastServiceMin;
 
-/** The 2nd stop reached this dispatch releases the gate (route spacing). Fleets with a single stop
- *  release on that one stop; with none, release immediately on reaching service. */
-const GATE_RELEASE_STOP = 2;
-
 /** Advance the whole fleet by dtMin sim-minutes at absolute sim-minute nowMin (clock.totalMinutes).
  *  Mutates the fleet in place. Step it in small increments (the runtime steps per frame; tests step
  *  a minute at a time) — dispatch decisions are made once per call. */
@@ -212,43 +149,34 @@ export function stepFleet(
   const tod = ((nowMin % 1440) + 1440) % 1440;
   const v = Math.max(1e-6, cfg.busSpeedCellsPerMin);
 
-  // DISPATCH — release the next parked, rested bus when BOTH gates are free (route-spacing gate free
-  // AND the depot corridor clear) and the depot is open. Continuous: the gate reopens at the holder's
-  // 2nd stop, so buses keep trickling out until the depot is empty. The last dispatch of the day
-  // leaves early enough for its whole shift to finish before close.
+  // Dispatch: when the gate is free and the depot is open, release the lowest-id eligible bus.
+  // The last dispatch of the day leaves early enough for its whole shift to fit before close
+  // (never later than 23:00 minus a shift, but the morning departures are never starved).
   const lastDispatch = Math.max(
     cfg.firstDepartureMin + 1,
     cfg.lastServiceMin - shiftMinutes(geom, cfg),
   );
   if (
     fleet.gateHeldBy === null &&
-    fleet.corridorBusyBy === null &&
     tod >= cfg.firstDepartureMin &&
     tod <= lastDispatch
   ) {
-    // Fair rotation: dispatch the LONGEST-rested eligible bus (smallest breakUntil), tie-broken by id.
-    // A freshly-returned bus has a high breakUntil, so it waits behind buses that have been parked
-    // longer — every bus gets a turn instead of the lowest id monopolising the gate.
-    const next = fleet.buses
-      .filter((b) => b.mode === "parked" && nowMin >= b.breakUntil)
-      .sort((a, b) => a.breakUntil - b.breakUntil || a.id - b.id)[0];
+    const next = fleet.buses.find(
+      (b) => b.mode === "parked" && nowMin >= b.breakUntil,
+    );
     if (next) {
       next.mode = "bay-out";
       next.t = 0;
       next.lapT = 0;
       next.laps = 0;
       next.nextStopIdx = 0;
-      next.stopsReached = 0;
+      next.reachedFirstStop = false;
       fleet.gateHeldBy = next.id;
-      fleet.corridorBusyBy = next.id; // it now owns the depot approach
     }
   }
 
   const releaseGate = (b: BusState) => {
     if (fleet.gateHeldBy === b.id) fleet.gateHeldBy = null;
-  };
-  const releaseCorridor = (b: BusState) => {
-    if (fleet.corridorBusyBy === b.id) fleet.corridorBusyBy = null;
   };
 
   for (const b of fleet.buses) {
@@ -260,7 +188,7 @@ export function stepFleet(
           rem = 0;
           break;
         case "bay-out": {
-          const len = geom.bayLen[b.bay] ?? 0;
+          const len = geom.bayLen[b.id] ?? 0;
           const need = (len - b.t) / v;
           if (rem < need) {
             b.t += rem * v;
@@ -268,7 +196,6 @@ export function stepFleet(
           } else {
             rem -= need;
             b.t = 0;
-            b.bay = -1; // out of the bay — it is now free for a returning bus
             b.mode = "depot-stop-out";
             b.dwell = cfg.depotBoardMin;
           }
@@ -285,9 +212,8 @@ export function stepFleet(
               b.mode = "spur-out";
               b.t = 0;
             } else {
-              // The clock struck closing while boarding — abort the run and back into a free bay.
+              // The clock struck closing while boarding — abort the run and back into the bay.
               releaseGate(b);
-              b.bay = pickFreeBay(fleet, cfg);
               b.mode = "bay-in";
               b.t = 0;
             }
@@ -306,8 +232,7 @@ export function stepFleet(
             b.lapT = 0;
             b.laps = 0;
             b.nextStopIdx = 0;
-            releaseCorridor(b); // on the loop now — the depot approach is clear for the next bus
-            if (geom.stopsFromJoin.length === 0) releaseGate(b); // no stops -> nothing to space on
+            if (geom.stopsFromJoin.length === 0) releaseGate(b); // no stops -> nothing to stagger on
           }
           break;
         }
@@ -336,21 +261,15 @@ export function stepFleet(
             b.lapT = nextEvent;
             if (atStop) {
               b.dwell = cfg.stopDwellMin;
-              b.stopsReached++;
-              // Route spacing: the NEXT bus may leave once this one clears its 2nd stop (or its only
-              // stop on a single-stop loop).
-              if (b.stopsReached >= Math.min(GATE_RELEASE_STOP, stops.length))
+              if (!b.reachedFirstStop) {
+                b.reachedFirstStop = true; // the stagger rule: the NEXT bus may leave now
                 releaseGate(b);
+              }
               b.nextStopIdx++;
             } else {
               b.laps++;
               b.nextStopIdx = 0;
-              // End of shift (or past hours): head home, but ONLY if the depot approach is clear;
-              // otherwise keep lapping and try again next time round (no head-on on the single spur).
-              const wantHome = b.laps >= cfg.lapsPerShift || !inHours(tod, cfg);
-              if (wantHome && fleet.corridorBusyBy === null) {
-                fleet.corridorBusyBy = b.id;
-                releaseGate(b); // a bus going home can't keep spacing departures
+              if (b.laps >= cfg.lapsPerShift || !inHours(tod, cfg)) {
                 b.mode = "spur-in";
                 b.t = 0;
               }
@@ -377,14 +296,13 @@ export function stepFleet(
           } else {
             rem -= b.dwell;
             b.dwell = 0;
-            b.bay = pickFreeBay(fleet, cfg); // park in a random FREE bay, not a fixed one
             b.mode = "bay-in";
             b.t = 0;
           }
           break;
         }
         case "bay-in": {
-          const len = geom.bayLen[b.bay] ?? 0;
+          const len = geom.bayLen[b.id] ?? 0;
           const need = (len - b.t) / v;
           if (rem < need) {
             b.t += rem * v;
@@ -394,8 +312,7 @@ export function stepFleet(
             b.mode = "parked";
             b.t = 0;
             b.breakUntil = nowMin + cfg.breakMin;
-            releaseGate(b); // safety net: a parked bus can never hold a gate
-            releaseCorridor(b); // parked — the depot approach is clear again
+            releaseGate(b); // safety net: a parked bus can never hold the gate
           }
           break;
         }
@@ -406,8 +323,7 @@ export function stepFleet(
 
 // ── Poses ────────────────────────────────────────────────────────────────────────────────
 
-/** The real polylines the arc lengths refer to. `spur` runs GATE -> loop junction. `bays` is indexed
- *  by BAY (not bus id) — a bus samples paths.bays[b.bay]. */
+/** The real polylines the arc lengths refer to. `spur` runs GATE -> loop junction. */
 export interface FleetPaths {
   loop: PathData;
   spur: PathData;
@@ -435,20 +351,11 @@ export function busPose(
   geom: FleetGeometry,
   cfg: FleetConfig,
 ): BusPose {
-  // The gate cell is bays[k].pts[0] for every k, so it works even while b.bay === -1 (out on the loop).
-  const gatePath = paths.bays[0]!;
-  const bay = paths.bays[b.bay] ?? gatePath;
+  const bay = paths.bays[b.id] ?? paths.bays[0]!;
   switch (b.mode) {
     case "parked": {
       const p = samplePath(bay, bay.total);
-      return {
-        x: p.x,
-        y: p.y,
-        heading: p.heading,
-        doorsOpen: false,
-        moving: false,
-        reversing: false,
-      };
+      return { x: p.x, y: p.y, heading: p.heading, doorsOpen: false, moving: false, reversing: false };
     }
     case "bay-out": {
       const s = bay.total - b.t;
@@ -465,7 +372,7 @@ export function busPose(
     }
     case "depot-stop-out":
     case "depot-stop-in": {
-      const p = samplePath(gatePath, 0); // the gate cell — the depot's boarding stop
+      const p = samplePath(bay, 0); // the gate cell — the depot's boarding stop
       const out = b.mode === "depot-stop-out";
       return {
         x: p.x,
@@ -478,14 +385,7 @@ export function busPose(
     }
     case "spur-out": {
       const p = samplePath(paths.spur, b.t);
-      return {
-        x: p.x,
-        y: p.y,
-        heading: p.heading,
-        doorsOpen: false,
-        moving: true,
-        reversing: false,
-      };
+      return { x: p.x, y: p.y, heading: p.heading, doorsOpen: false, moving: true, reversing: false };
     }
     case "service": {
       const p = samplePath(paths.loop, geom.joinT + (b.lapT % geom.loopLen));
@@ -500,25 +400,11 @@ export function busPose(
     }
     case "spur-in": {
       const p = samplePath(paths.spur, paths.spur.total - b.t);
-      return {
-        x: p.x,
-        y: p.y,
-        heading: p.heading + Math.PI,
-        doorsOpen: false,
-        moving: true,
-        reversing: false,
-      };
+      return { x: p.x, y: p.y, heading: p.heading + Math.PI, doorsOpen: false, moving: true, reversing: false };
     }
     case "bay-in": {
       const p = samplePath(bay, b.t);
-      return {
-        x: p.x,
-        y: p.y,
-        heading: p.heading,
-        doorsOpen: false,
-        moving: true,
-        reversing: false,
-      };
+      return { x: p.x, y: p.y, heading: p.heading, doorsOpen: false, moving: true, reversing: false };
     }
   }
 }

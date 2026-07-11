@@ -41,6 +41,8 @@ export function levelingSignature(state: ColonyState): string {
   for (const p of parcels) if (p.built) sig += `|${p.id}`;
   const cd = state.commercialDistrict;
   sig += cd ? `:c${cd.parcels.length}${cd.garagePad ? "g" : ""}` : ":c-";
+  const dp = state.busDepotPad; // spec 140 — the depot apron is a leveled pad too
+  sig += dp ? `:d${dp.x},${dp.y}` : ":d-";
   return sig;
 }
 

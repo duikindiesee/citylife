@@ -1,9 +1,8 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from '@playwright/test';
 
-// Spec 149 — the bus depot + fleet, asserted against the LIVE world through the __colony runtime
+// Spec 140 — the bus depot + fleet, asserted against the LIVE world through the __colony runtime
 // probe: buses park at the depot overnight, the first departure lands at 08:00 on the sim clock,
-// the next bus holds its bay until the running one clears its second stop (the spacing gate) with a
-// single-occupancy depot corridor (no two buses maneuvering at once — the collision fix), and the
+// the second bus holds its bay until the first reaches its first stop (the stagger gate), and the
 // player boards a dwelling bus at the depot shelter, rides it onto the route, and steps off.
 // WebGL suite — judge with --workers=1 (parallel specs crash the 4 GB GPU).
 
@@ -11,30 +10,21 @@ declare global {
   interface Window {
     __colony: any;
     __staggerViolated?: boolean;
-    __dispatchLeader?: number | null;
   }
 }
 
-async function bootWithDepot(
-  page: import("@playwright/test").Page,
-): Promise<void> {
-  await page.goto("/?skipauth=1");
-  await page.waitForSelector("canvas", { timeout: 30000 });
-  await page.waitForFunction(() => !!window.__colony, undefined, {
-    timeout: 30000,
-  });
+async function bootWithDepot(page: import('@playwright/test').Page): Promise<void> {
+  await page.goto('/?skipauth=1');
+  await page.waitForSelector('canvas', { timeout: 30000 });
+  await page.waitForFunction(() => !!window.__colony, undefined, { timeout: 30000 });
   // The live seed sites a depot (tests/busDepotBoot.test.ts guards this in node); require it here
   // so a silent fall-back to the legacy coach fails loudly.
-  const hasDepot = await page.evaluate(
-    () => !!window.__colony.busDepot && !!window.__colony.busFleet,
-  );
+  const hasDepot = await page.evaluate(() => !!window.__colony.busDepot && !!window.__colony.busFleet);
   expect(hasDepot).toBe(true);
 }
 
 /** All owned buses parked, re-pinning the clock to deep night until the last one gets home. */
-async function waitAllParkedAtNight(
-  page: import("@playwright/test").Page,
-): Promise<void> {
+async function waitAllParkedAtNight(page: import('@playwright/test').Page): Promise<void> {
   await page.evaluate(() => {
     window.__colony.setSpeed(15);
     window.__colony.debugSetClock(1, 0);
@@ -44,18 +34,16 @@ async function waitAllParkedAtNight(
       const rt = window.__colony;
       // In-flight buses finish their run home; keep it night so nobody re-dispatches meanwhile.
       if (rt.sim.state.clock.hour >= 7) rt.debugSetClock(1, 0);
-      return rt.busFleet.buses.every((b: any) => b.mode === "parked");
+      return rt.busFleet.buses.every((b: any) => b.mode === 'parked');
     },
     undefined,
     { timeout: 120000, polling: 500 },
   );
 }
 
-test.describe("spec 149 — bus depot fleet", () => {
-  test("buses park at the depot overnight; first departure lands at 08:00; dispatch is staggered", async ({
-    page,
-  }, testInfo) => {
-    test.setTimeout(420000);
+test.describe('spec 140 — bus depot fleet', () => {
+  test('buses park at the depot overnight; first departure lands at 08:00; dispatch is staggered', async ({ page }, testInfo) => {
+    test.setTimeout(300000);
     await bootWithDepot(page);
 
     // 1. Night: every owned bus parked, physically inside the pad.
@@ -76,18 +64,10 @@ test.describe("spec 149 — bus depot fleet", () => {
         count: poses.length,
       };
     });
-    expect(night.modes).toEqual([
-      "parked",
-      "parked",
-      "parked",
-      "parked",
-      "parked",
-    ]);
+    expect(night.modes).toEqual(['parked', 'parked', 'parked', 'parked', 'parked']);
     expect(night.inPad).toBe(true);
     expect(night.count).toBe(5);
-    await page.screenshot({
-      path: testInfo.outputPath("depot-night-parked.png"),
-    });
+    await page.screenshot({ path: testInfo.outputPath('depot-night-parked.png') });
 
     // 2. First departure: set 07:58 and catch bus 0 leaving — at or just past 08:00 sim time.
     await page.evaluate(() => {
@@ -95,8 +75,7 @@ test.describe("spec 149 — bus depot fleet", () => {
       window.__colony.debugSetClock(7, 58);
     });
     await page.waitForFunction(
-      () =>
-        window.__colony.busFleet.buses.some((b: any) => b.mode !== "parked"),
+      () => window.__colony.busFleet.buses[0].mode !== 'parked',
       undefined,
       { timeout: 60000, polling: 100 },
     );
@@ -107,78 +86,32 @@ test.describe("spec 149 — bus depot fleet", () => {
     expect(departure).toBeGreaterThanOrEqual(8 * 60);
     expect(departure).toBeLessThan(8 * 60 + 15); // 100 ms polling at 9 sim-min/s ≈ minutes of slack
 
-    // 3. The stagger gate (spec 149 §9): bus 1 must not leave its bay until bus 0 has cleared its
-    //    SECOND route stop. Also assert the depot corridor is single-occupancy the whole time — no
-    //    two buses ever maneuvering in the depot approach at once (the collision fix).
-    const inCorridor = (m: string) =>
-      m === "bay-out" ||
-      m === "depot-stop-out" ||
-      m === "spur-out" ||
-      m === "spur-in" ||
-      m === "depot-stop-in" ||
-      m === "bay-in";
+    // 3. The stagger gate: bus 1 must not leave its bay until bus 0 has reached its first stop.
     await page.evaluate(() => {
-      const f = window.__colony.busFleet;
-      window.__dispatchLeader =
-        f.gateHeldBy ??
-        f.buses.find((b: any) => b.mode !== "parked")?.id ??
-        null;
+      window.__colony.setSpeed(3);
       window.__staggerViolated = false;
-      (window as any).__corridorViolated = false;
-      // Run the dispatch/stagger phase at 9x (was 3x) so the leader reaching its 2nd stop is bounded
-      // by SIM time, not wall clock — on a starved CI runner 3x could not get there inside 300s and
-      // the waitForFunction below timed out. The gate + single-occupancy corridor are sim-enforced,
-      // so a faster clock does not change the behaviour being asserted, only how soon it settles.
-      window.__colony.setSpeed(9);
     });
     await page.waitForFunction(
-      (inCorridorSrc: string) => {
-        const isCorridor = new Function(
-          "m",
-          `return (${inCorridorSrc})(m)`,
-        ) as (m: string) => boolean;
+      () => {
         const f = window.__colony.busFleet;
-        const leaderId = (window as any).__dispatchLeader;
-        const leader = f.buses.find((b: any) => b.id === leaderId);
-        if (leader && leader.stopsReached < 2) {
-          const earlyFollower = f.buses.some(
-            (b: any) => b.id !== leaderId && b.mode !== "parked",
-          );
-          if (earlyFollower) window.__staggerViolated = true;
-        }
-        if (f.buses.filter((b: any) => isCorridor(b.mode)).length > 1)
-          (window as any).__corridorViolated = true;
-        return (
-          leader &&
-          leader.stopsReached >= 2 &&
-          f.buses.some((b: any) => b.id !== leaderId && b.mode !== "parked")
-        );
+        if (f.buses[1].mode !== 'parked' && !f.buses[0].reachedFirstStop)
+          window.__staggerViolated = true;
+        return f.buses[1].mode !== 'parked';
       },
-      inCorridor.toString(),
-      { timeout: 300000, polling: 100 },
+      undefined,
+      { timeout: 180000, polling: 100 },
     );
-    const stagger = await page.evaluate(() => {
-      const leader = window.__colony.busFleet.buses.find(
-        (b: any) => b.id === (window as any).__dispatchLeader,
-      );
-      return {
-        violated: window.__staggerViolated,
-        corridorViolated: (window as any).__corridorViolated,
-        secondReached: !!leader && leader.stopsReached >= 2,
-      };
-    });
+    const stagger = await page.evaluate(() => ({
+      violated: window.__staggerViolated,
+      firstReached: window.__colony.busFleet.buses[0].reachedFirstStop,
+    }));
     expect(stagger.violated).toBe(false);
-    expect(stagger.corridorViolated).toBe(false);
-    expect(stagger.secondReached).toBe(true);
-    await page.screenshot({
-      path: testInfo.outputPath("depot-morning-dispatch.png"),
-    });
+    expect(stagger.firstReached).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('depot-morning-dispatch.png') });
   });
 
-  test("the player boards a dwelling bus at the depot shelter, rides it, and steps off at a stop", async ({
-    page,
-  }, testInfo) => {
-    test.setTimeout(420000);
+  test('the player boards a dwelling bus at the depot shelter, rides it, and steps off at a stop', async ({ page }, testInfo) => {
+    test.setTimeout(300000);
     await bootWithDepot(page);
     await waitAllParkedAtNight(page);
 
@@ -202,7 +135,7 @@ test.describe("spec 149 — bus depot fleet", () => {
       () => {
         const rt = window.__colony;
         const p = rt.getUiState().firstPerson.view?.interactionPrompt;
-        if (p && p.kind === "bus" && String(p.label).startsWith("Board"))
+        if (p && p.kind === 'bus' && String(p.label).startsWith('Board'))
           rt.activateFirstPersonInteraction();
         return rt.fpRidingBusId !== null;
       },
@@ -212,16 +145,10 @@ test.describe("spec 149 — bus depot fleet", () => {
     const boardedAt = await page.evaluate(() => {
       const rt = window.__colony;
       const v = rt.getUiState().firstPerson.view;
-      return {
-        x: v.citizen.positionXY.x,
-        y: v.citizen.positionXY.y,
-        bus: rt.fpRidingBusId,
-      };
+      return { x: v.citizen.positionXY.x, y: v.citizen.positionXY.y, bus: rt.fpRidingBusId };
     });
     expect(boardedAt.bus).not.toBeNull();
-    await page.screenshot({
-      path: testInfo.outputPath("boarded-at-depot.png"),
-    });
+    await page.screenshot({ path: testInfo.outputPath('boarded-at-depot.png') });
 
     // Riding: the bus pulls out (spur -> route) and the rider's position tracks it.
     await page.evaluate(() => window.__colony.setSpeed(3));
@@ -240,26 +167,23 @@ test.describe("spec 149 — bus depot fleet", () => {
       const pose = rt.busPoseOf(rt.fpRidingBusId);
       const v = rt.getUiState().firstPerson.view;
       return {
-        gap: Math.hypot(
-          pose.x - v.citizen.positionXY.x,
-          pose.y - v.citizen.positionXY.y,
-        ),
+        gap: Math.hypot(pose.x - v.citizen.positionXY.x, pose.y - v.citizen.positionXY.y),
       };
     });
     expect(riding.gap).toBeLessThan(0.5); // the camera's citizen IS on the bus
-    await page.screenshot({ path: testInfo.outputPath("riding-the-bus.png") });
+    await page.screenshot({ path: testInfo.outputPath('riding-the-bus.png') });
 
     // Step off at the next doors-open dwell (any route stop) via the same E affordance.
     await page.waitForFunction(
       () => {
         const rt = window.__colony;
         const p = rt.getUiState().firstPerson.view?.interactionPrompt;
-        if (p && p.kind === "bus" && p.label === "Exit bus")
+        if (p && p.kind === 'bus' && p.label === 'Exit bus')
           rt.activateFirstPersonInteraction();
         return rt.fpRidingBusId === null;
       },
       undefined,
-      { timeout: 300000, polling: 100 },
+      { timeout: 180000, polling: 100 },
     );
     const after = await page.evaluate(() => {
       const rt = window.__colony;
@@ -267,11 +191,7 @@ test.describe("spec 149 — bus depot fleet", () => {
       return { x: v.citizen.positionXY.x, y: v.citizen.positionXY.y };
     });
     // On foot again, away from where they boarded — they actually WENT somewhere by bus.
-    expect(
-      Math.hypot(after.x - boardedAt.x, after.y - boardedAt.y),
-    ).toBeGreaterThan(3);
-    await page.screenshot({
-      path: testInfo.outputPath("alighted-at-stop.png"),
-    });
+    expect(Math.hypot(after.x - boardedAt.x, after.y - boardedAt.y)).toBeGreaterThan(3);
+    await page.screenshot({ path: testInfo.outputPath('alighted-at-stop.png') });
   });
 });

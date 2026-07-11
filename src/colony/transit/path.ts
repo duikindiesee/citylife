@@ -1,4 +1,4 @@
-// Spec 149 — pure polyline math for the transit system. The de-zigzag helpers moved here from
+// Spec 140 — pure polyline math for the transit system. The de-zigzag helpers moved here from
 // busLayer.ts (render) so the fleet's ARC-LENGTH world — path lengths, stop projections, poses —
 // is node-testable without three.js. busLayer re-exports them for its legacy fallback coach.
 // Everything is deterministic; no Date.now / no Math.random.
@@ -96,8 +96,7 @@ export function buildPath(pts: Pt[], closed: boolean): PathData {
   const cum: number[] = [0];
   for (let i = 1; i < pts.length; i++)
     cum.push(
-      cum[i - 1]! +
-        Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.y - pts[i - 1]!.y),
+      cum[i - 1]! + Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.y - pts[i - 1]!.y),
     );
   if (closed && pts.length > 1) {
     const a = pts[pts.length - 1]!,

@@ -10,12 +10,12 @@ import {
 } from "../transit/path";
 import { COLONY } from "../config";
 
-// Spec 088/122/149 — the render-side BUS. Spec 149 rebuilt the coach against the world metric
+// Spec 088/122/140 — the render-side BUS. Spec 140 rebuilt the coach against the world metric
 // system (1 unit = 1 m, 1 cell = 4 m): a real 12 m city bus whose group origin IS the road contact
 // plane, so callers put y at the ribbon top and the tires touch asphalt. The rig adds the life the
 // operator asked for — wheels that spin with distance, slope pitch sampled from the road surface,
 // and a gentle speed-scaled body sway (wheels stay planted). buildBusLayer remains the legacy
-// self-driving single coach: the fallback when a seed has no depot (spec 149 fleets render via
+// self-driving single coach: the fallback when a seed has no depot (spec 140 fleets render via
 // R3FBus + the fleet machine instead). De-zigzag path math lives in transit/path.ts now.
 
 export { simplifyClosed, smoothClosed };
@@ -48,12 +48,7 @@ export interface BusRig {
   group: THREE.Group;
   /** Place at grid (gx, gy) facing `headingGrid`, having advanced `distDeltaCells` since the last
    *  frame (drives wheel spin + sway; negative when reversing). */
-  place(
-    gx: number,
-    gy: number,
-    headingGrid: number,
-    distDeltaCells: number,
-  ): void;
+  place(gx: number, gy: number, headingGrid: number, distDeltaCells: number): void;
   setDoors(open: boolean): void;
   dispose(): void;
 }
@@ -259,22 +254,13 @@ export function buildBus(): THREE.Group {
   });
 
   // Shell: skirt at 0.35 m, roofline at H. All body details ride the sway group.
-  // Open shell: lower body, roof rail, end frames and pillars leave real window apertures.
-  const lowerShell = new THREE.Mesh(new THREE.BoxGeometry(L, 1.05, W), bodyMat);
-  lowerShell.name = "bus-lower-shell";
-  lowerShell.position.y = 0.875;
-  const upperRail = new THREE.Mesh(new THREE.BoxGeometry(L, 0.28, W), bodyMat);
-  upperRail.name = "bus-upper-shell-rail";
-  upperRail.position.y = 2.78;
-  const frontCap = new THREE.Mesh(
-    new THREE.BoxGeometry(0.22, 1.55, W),
+  const skirtY = 0.35;
+  const shell = new THREE.Mesh(
+    new THREE.BoxGeometry(L, H - skirtY - 0.1, W),
     bodyMat,
   );
-  frontCap.name = "bus-front-shell-frame";
-  frontCap.position.set(L / 2 - 0.11, 1.96, 0);
-  const rearCap = frontCap.clone();
-  rearCap.name = "bus-rear-shell-frame";
-  rearCap.position.x = -L / 2 + 0.11;
+  shell.name = "bus-body";
+  shell.position.y = (H - 0.1 + skirtY) / 2;
   const beltLine = new THREE.Mesh(
     new THREE.BoxGeometry(L + 0.1, 0.16, W + 0.06),
     trimMat,
@@ -287,18 +273,7 @@ export function buildBus(): THREE.Group {
   );
   roof.name = "bus-roof";
   roof.position.y = H;
-  body.add(lowerShell, upperRail, frontCap, rearCap, beltLine, roof);
-  for (const x of [-4.7, -2.75, -0.8, 1.15, 3.1, 4.15]) {
-    for (const z of [-W / 2, W / 2]) {
-      const pillar = new THREE.Mesh(
-        new THREE.BoxGeometry(0.14, 1.55, 0.12),
-        trimMat,
-      );
-      pillar.name = `bus-window-pillar-${z > 0 ? "left" : "right"}-${x}`;
-      pillar.position.set(x, 1.98, z);
-      body.add(pillar);
-    }
-  }
+  body.add(shell, beltLine, roof);
 
   addWindowStrip(body, glassMat, W / 2 + 0.01, "left", L);
   addWindowStrip(body, glassMat, -(W / 2 + 0.01), "right", L);
@@ -307,7 +282,6 @@ export function buildBus(): THREE.Group {
   addRouteBoard(body, routeMat, -(L / 2 + 0.03), "rear", H);
   addDoors(body, W);
   addLights(body, headlightMat, tailLightMat, L, W);
-  addPassengerInterior(body, L, W, H);
 
   const roofMarker = new THREE.Mesh(
     new THREE.BoxGeometry(1.2, 0.1, 0.5),
@@ -546,12 +520,7 @@ function addWheelPair(
     wheel.name = `bus-wheel-${axle}-${side}`;
     wheel.rotation.x = Math.PI / 2;
     const hub = new THREE.Mesh(
-      new THREE.CylinderGeometry(
-        radius * 0.45,
-        radius * 0.45,
-        tyreW + 0.02,
-        12,
-      ),
+      new THREE.CylinderGeometry(radius * 0.45, radius * 0.45, tyreW + 0.02, 12),
       hubMat,
     );
     hub.name = `bus-wheel-hub-${axle}-${side}`;
