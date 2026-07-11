@@ -95,6 +95,21 @@ describe("bus layer visual model", () => {
   });
 
   it("rides the road: ribbon lift, slope pitch nose-up, wheels spin with distance, body sways", () => {
+    const authored = buildBus();
+    const glass = authored.getObjectByName("bus-side-window-left-0") as THREE.Mesh;
+    const glassMaterial = glass.material as THREE.MeshStandardMaterial;
+    expect(glassMaterial.transparent).toBe(true);
+    expect(glassMaterial.opacity).toBeLessThan(0.5);
+    expect(glassMaterial.depthWrite).toBe(false);
+    const names = new Set<string>();
+    authored.traverse((object) => names.add(object.name));
+    expect(Array.from(names)).toEqual(expect.arrayContaining([
+      "bus-interior-floor", "bus-interior-ceiling", "bus-seat-left-0",
+      "bus-seat-right-0", "bus-interior-aisle", "bus-handrail-left",
+      "bus-handrail-right", "bus-driver-seat", "bus-dashboard", "bus-door-threshold",
+    ]));
+    expect(authored.getObjectByName("bus-body")).toBeUndefined();
+
     // A 12.5% grade rising along +x (grid cells are 4 m, so roadY climbs 0.5 m per cell).
     const rig = makeBusRig({
       wx: (x) => x * 4,
