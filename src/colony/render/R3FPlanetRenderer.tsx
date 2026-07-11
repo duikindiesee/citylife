@@ -61,6 +61,8 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { useSimSignal, type SimBridge } from './useSimSignal';
 import { zoneSignature, spawnSignature, roadwaySignature } from './simSignals';
 import { ribbonCoverage } from './roadRibbon';
+import { findJunctionZones } from './roadJunctions';
+import { attachCapPolys, capCoverageCells } from './junctionCap';
 import { getSmoothRoadY } from './roadSurface';
 import { nextBootStage } from './bootStage';
 import { R3FAvatars, type AvatarRefs } from './R3FAvatars';
@@ -401,11 +403,20 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
   const roadwaySig = useSimSignal(runtime, () => roadwaySignature(sim.state));
   const roadCells = useMemo(() => {
     const terrain = sim.state.terrain;
-    const cover = ribbonCoverage(
-      sim.state.roadWays ?? [],
+    const roadY = (x: number, y: number) => getSmoothRoadY(terrain, x, y);
+    const cover = ribbonCoverage(sim.state.roadWays ?? [], terrain, roadY);
+    // Spec 137 — the junction caps' hull corners reach 1-3 cells beyond the ribbon
+    // sweep; union their cells so the grading rises under the corner aprons too (the
+    // old slab hovered with 1.2-2.1 m of open air under its corners).
+    const capCover = capCoverageCells(
+      attachCapPolys(findJunctionZones(sim.state.roadWays ?? [])),
       terrain,
-      (x, y) => getSmoothRoadY(terrain, x, y),
+      roadY,
     );
+    for (const [k, h] of capCover) {
+      const cur = cover.get(k);
+      if (cur === undefined || h > cur) cover.set(k, h);
+    }
     for (const k of Object.keys(tiles)) {
       if (!cover.has(k)) {
         const c = k.indexOf(',');

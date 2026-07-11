@@ -12,6 +12,8 @@ import type { Household } from "../newcomers";
 import { isPublicSafe } from "../newcomers";
 import type { Plot } from "../cityPlan";
 
+export type AvatarKind = "human" | "crab" | "spider";
+
 export interface Citizen {
   /** Stable id, derived from the household. The kooker user shares this id. */
   id: string;
@@ -43,9 +45,12 @@ export interface Citizen {
   heading: number;
   /** P1 — walk speed in cells per second. */
   spd: number;
-  /** Spec 078 — avatar body kind. Ordinary citizens are 'human'; Joe the founder is a 'crab'. Drives
-   *  which instanced mesh the renderer draws them with and the first-person eye height. */
+  /** Spec 078 — legacy body kind. Ordinary citizens are 'human'; Joe the founder was 'crab'. */
   kind: "human" | "crab";
+  /** v3 named-citizen avatar family. GLB-backed citizens can be crab/spider while the crowd stays instanced. */
+  avatarKind: AvatarKind;
+  /** Public served GLB URL for a named animated avatar; absent means use the instanced crowd mesh. */
+  glbUrl?: string;
   /** Spec 077 P4 — the citizen's authored house blueprint (the DSL script accepted in the builder).
    *  Mirrors the parcel's stored script; the backend persistence slice syncs from here. */
   blueprint?: string;
@@ -129,6 +134,7 @@ export class CitizenRoster {
       heading: 0,
       spd: 0.8,
       kind: "human",
+      avatarKind: "human",
     };
     this.byHousehold.set(h.id, c);
     return c;
@@ -145,6 +151,8 @@ export class CitizenRoster {
     plotName: string;
     home: { x: number; y: number };
     kind: "human" | "crab";
+    avatarKind?: AvatarKind;
+    glbUrl?: string;
     nowMs: number;
     spd?: number;
   }): Citizen | null {
@@ -167,6 +175,8 @@ export class CitizenRoster {
       heading: 0,
       spd: opts.spd ?? 0.7,
       kind: opts.kind,
+      avatarKind: opts.avatarKind ?? opts.kind,
+      glbUrl: opts.glbUrl,
     };
     this.byHousehold.set(opts.householdId, c);
     return c;
@@ -283,6 +293,8 @@ export class CitizenRoster {
     heading: number;
     hasPod: boolean;
     kind: "human" | "crab";
+    avatarKind: AvatarKind;
+    glbUrl?: string;
   }[] {
     return Array.from(this.byHousehold.values()).map((c) => ({
       id: c.id,
@@ -292,6 +304,8 @@ export class CitizenRoster {
       heading: c.heading,
       hasPod: c.hasPod,
       kind: c.kind,
+      avatarKind: c.avatarKind,
+      glbUrl: c.glbUrl,
     }));
   }
 

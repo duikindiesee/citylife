@@ -102,4 +102,29 @@ describe("terrain leveling map (terrainLevel) at the real boot state", () => {
       [...level].filter(([, v]) => !Number.isFinite(v)),
     ).toEqual([]);
   });
+
+  it("ground above a road surface is ALWAYS cut to it — no deadzone in that direction", () => {
+    // Operator invariant (2026-07-11): "the ground go above the roads; that should
+    // never happen." The old symmetric deadzone tolerated bumps up to 0.6 above the
+    // road surface, which crested through the +0.18 ribbon as sand islands.
+    const state = rt().sim.state;
+    const t = state.terrain;
+    const N = t.size;
+    // a dry land cell well away from pads
+    let cell: { x: number; y: number } | null = null;
+    for (let y = 100; y < N && !cell; y += 7)
+      for (let x = 100; x < N && !cell; x += 7)
+        if (t.worldY(x, y) > 2) cell = { x, y };
+    expect(cell).not.toBeNull();
+    const { x, y } = cell!;
+    const idx = y * N + x;
+    // road surface 0.3 BELOW the ground (inside the old deadzone): must CUT to surface
+    const below = new Map([[`${x},${y}`, t.worldY(x, y) - 0.3]]);
+    const cut = computeTerrainLeveling(state, below, new Map());
+    expect(cut.get(idx)).toBeCloseTo(t.worldY(x, y) - 0.3, 6);
+    // road surface 0.3 ABOVE the ground (a shallow hollow): deadzone keeps it natural
+    const above = new Map([[`${x},${y}`, t.worldY(x, y) + 0.3]]);
+    const keep = computeTerrainLeveling(state, above, new Map());
+    expect(keep.has(idx)).toBe(false);
+  });
 });

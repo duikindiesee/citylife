@@ -519,6 +519,9 @@ describe("first-person route dogfood", () => {
       ]) {
         const candidateBlocker = { x: x + dir.x, y: y + dir.y };
         const candidateStart = { x: x + dir.x * 2, y: y + dir.y * 2 };
+        // BOTH side rows around the blocker: the router detours whichever side is cheapest
+        // (equal-cost tie-breaks flipped when spec 138 moved the starter frame inland), and
+        // either is a correct "around, not through" first step.
         const candidateDetour = [
           {
             x: candidateStart.x + dir.side.x,
@@ -529,6 +532,15 @@ describe("first-person route dogfood", () => {
             y: candidateBlocker.y + dir.side.y,
           },
           { x: x + dir.side.x, y: y + dir.side.y },
+          {
+            x: candidateStart.x - dir.side.x,
+            y: candidateStart.y - dir.side.y,
+          },
+          {
+            x: candidateBlocker.x - dir.side.x,
+            y: candidateBlocker.y - dir.side.y,
+          },
+          { x: x - dir.side.x, y: y - dir.side.y },
         ];
         const allCells = [
           candidateStart,
