@@ -6,6 +6,12 @@ import { COLONY } from '../../colony/config';
 import { leveledWorldY } from '../../colony/render/terrainLeveling';
 import { getSmoothRoadY } from '../../colony/render/roadSurface';
 import { BUS_ROAD_LIFT } from '../../colony/render/busLayer';
+import {
+  PLAYER_HALF_HEIGHT,
+  PLAYER_RADIUS_M,
+  PLAYER_HALF_EXTENT,
+  PLAYER_EYE_OFFSET,
+} from '../../colony/scale';
 
 const MOVEMENT_SPEED = 10;
 const LOOK_SPEED = 2;
@@ -40,6 +46,7 @@ export function FirstPersonController({ sim, runtime, startPosition = [0, 2, 0],
     backward: false,
     left: false,
     right: false,
+    sprint: false,
     mouseX: 0,
     mouseY: 0,
   });
@@ -52,6 +59,7 @@ export function FirstPersonController({ sim, runtime, startPosition = [0, 2, 0],
       if (e.code === 'KeyS') input.current.backward = true;
       if (e.code === 'KeyA') input.current.left = true;
       if (e.code === 'KeyD') input.current.right = true;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.current.sprint = true;
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -59,6 +67,7 @@ export function FirstPersonController({ sim, runtime, startPosition = [0, 2, 0],
       if (e.code === 'KeyS') input.current.backward = false;
       if (e.code === 'KeyA') input.current.left = false;
       if (e.code === 'KeyD') input.current.right = false;
+      if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') input.current.sprint = false;
     };
 
     // Pointer lock for mouse look
@@ -135,7 +144,9 @@ export function FirstPersonController({ sim, runtime, startPosition = [0, 2, 0],
         const wx = toWorldX(pose.x);
         const wz = toWorldZ(pose.y);
         rigidBody.current.setTranslation(
-          { x: wx, y: roadTop + BUS_RIDER_EYE - 0.6, z: wz },
+          // Body centre below the seated eye by the SAME offset the walking path uses (spec 137
+          // metric scale), so there is no camera pop on the frame the player alights.
+          { x: wx, y: roadTop + BUS_RIDER_EYE - PLAYER_EYE_OFFSET, z: wz },
           true,
         );
         rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
@@ -182,7 +193,13 @@ export function FirstPersonController({ sim, runtime, startPosition = [0, 2, 0],
 
     // Apply rotation to movement vector
     movement.applyEuler(new Euler(0, rotation.current.y, 0));
-    movement.multiplyScalar(MOVEMENT_SPEED); // Velocity, so no delta
+    // Hold Shift to sprint — the multiplier is the spec-104 config value, so the slate's
+    // future sprint bar (spec 138) and this speed can never disagree. The charge/recovery
+    // budget lands WITH that HUD; silently exhausting sprint with no gauge reads as a bug.
+    const sprint = input.current.sprint
+      ? COLONY.firstPerson.sprintWalkSpeedMultiplier
+      : 1;
+    movement.multiplyScalar(MOVEMENT_SPEED * sprint); // Velocity, so no delta
 
     // Apply movement to physics body
     const currentVel = rigidBody.current.linvel();
@@ -215,14 +232,14 @@ export function FirstPersonController({ sim, runtime, startPosition = [0, 2, 0],
       if (pos.y < terrainHeight - 0.5) {
         rigidBody.current.setTranslation({
           x: pos.x,
-          y: terrainHeight + 1.5,
+          y: terrainHeight + PLAYER_HALF_EXTENT, // body centre so the resized capsule's feet rest on the ground
           z: pos.z
         }, true);
         rigidBody.current.setLinvel({ x: currentVel.x, y: 0, z: currentVel.z }, true);
       }
     }
 
-    const camY = pos.y + 0.6; // Raise offset to 1.6m eye height above ground
+    const camY = pos.y + PLAYER_EYE_OFFSET; // eye at PLAYER_EYE_M (1.6 m) above the feet — spec 146
     camera.position.set(pos.x, camY, pos.z);
     camera.quaternion.setFromEuler(rotation.current);
     // Spec 140 — tell the runtime where the player's eyes are (grid coords) so bus boarding
@@ -247,9 +264,9 @@ export function FirstPersonController({ sim, runtime, startPosition = [0, 2, 0],
       mass={1}
       friction={0}
     >
-      <CapsuleCollider args={[0.5, 1]} />
+      <CapsuleCollider args={[PLAYER_HALF_HEIGHT, PLAYER_RADIUS_M]} />
       <mesh visible={false}>
-        <capsuleGeometry args={[0.5, 1, 4]} />
+        <capsuleGeometry args={[PLAYER_RADIUS_M, PLAYER_HALF_HEIGHT * 2, 4]} />
         <meshBasicMaterial color="red" wireframe />
       </mesh>
     </RigidBody>

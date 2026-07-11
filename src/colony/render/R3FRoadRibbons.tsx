@@ -1,32 +1,67 @@
 import React, { useEffect, useMemo } from 'react';
+import * as THREE from 'three';
 import type { ColonySim } from '../sim';
 import { buildRoadRibbons } from './roadRibbon';
 import { getSmoothRoadY } from './roadSurface';
-import { findJunctionZones, junctionFurniture, type JunctionZone } from './roadJunctions';
+import { findJunctionZones, junctionFurniture } from './roadJunctions';
+import { attachCapPolys, buildJunctionCaps, CAP_LIFT } from './junctionCap';
 import { disposeDeep } from './disposeDeep';
 import { useSimSignal, type SimBridge } from './useSimSignal';
 import { roadwaySignature } from './simSignals';
-import { TrafficLight, StopSign, StopLine } from './roadFurniture';
+import { TrafficLight, StopSign } from './roadFurniture';
 
-// Spec 127 — the smooth ribbon road surface, ported from the legacy renderer (spec 088). The
-// road CELL data is a deliberately ~3-cell-wide carriageway for traffic/pathing; rendering a
-// box per cell made every road read as 2-3 parallel bordered strips and cost ~100k scene
-// nodes. The ribbon extrudes ONE terrain-draped strip per road centre-line (sim.state.roadWays,
-// attached by the runtime — the raceState precedent), with dashes, edge lines and crosswalks
-// baked into ~4 merged meshes. Junctions get a flat slab capping the coplanar ribbon overlap
-// (which z-fights on main) plus way-based street furniture — real crossings only, not the
-// per-cell false positives of the widened grid. Traffic, the bus and the rally still drive
-// the cells underneath; the data is untouched.
+// Spec 127/137 — the smooth ribbon road surface, ported from the legacy renderer (spec
+// 088). The road CELL data is a deliberately ~3-cell-wide carriageway for traffic/pathing;
+// the ribbon extrudes ONE terrain-draped strip per road centre-line (sim.state.roadWays),
+// with dashes and edge lines baked into merged meshes.
+//
+// JUNCTIONS (spec 137): the spec-127 axis-aligned MAX-height box slab is gone — measured
+// live it floated at every junction (corners with 1.2-2.1 m of air) and every arm stepped
+// up onto it (worst 1.49 m), the same reverted-in-v2 "flat plateau with hard wedges".
+// Junctions now get a DRAPED CAP: a convex arm-mouth hull, every vertex at
+// roadY + CAP_LIFT through the ribbons' own sampler — it can neither float nor step, and
+// its 25 mm constant separation (plus polygonOffset) kills the coplanar z-fight the slab
+// existed to hide. Zebra crossings and stop bars are baked into one junction-paint mesh
+// anchored at the arm MOUTHS; signals/signs stand on the verge from REAL arm headings.
 
 interface R3FRoadRibbonsProps {
   sim: ColonySim;
   runtime?: SimBridge;
 }
 
-/** How far the junction slab sits above the road height — above the ribbon surface (0.18)
- *  so it caps the overlap, below the painted markings (0.23+, suppressed at junctions anyway). */
-const SLAB_LIFT = 0.19;
-const SLAB_THICKNESS = 0.05;
+/** One junction-cap tarmac material, ribbon-identical so the cap tones and shadows like
+ *  the road (the old slab's off-tone single-sided box read as an alien patch and stayed
+ *  lit inside cast shadows). polygonOffset is depth-precision insurance at distance. */
+const capMaterial = new THREE.MeshStandardMaterial({
+  color: 0x595f6a,
+  roughness: 0.92,
+  metalness: 0.02,
+  side: THREE.DoubleSide,
+  polygonOffset: true,
+  polygonOffsetFactor: -1,
+  polygonOffsetUnits: -2,
+});
+const capPaintMaterial = new THREE.MeshStandardMaterial({
+  color: 0xe8ecf2,
+  roughness: 0.6,
+  emissive: 0xb9c0cc,
+  emissiveIntensity: 0.28,
+  side: THREE.DoubleSide,
+  polygonOffset: true,
+  polygonOffsetFactor: -2,
+  polygonOffsetUnits: -4,
+});
+
+const meshFrom = (positions: number[], mat: THREE.Material, name: string) => {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.name = name;
+  mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
+  return mesh;
+};
 
 export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
   const sig = useSimSignal(runtime, () => roadwaySignature(sim.state));
@@ -39,33 +74,36 @@ export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
     const wx = (x: number) => (x - N / 2) * 4;
     const wz = (y: number) => (y - N / 2) * 4;
     const roadY = (x: number, y: number) => getSmoothRoadY(terrain, x, y);
-    const { group } = buildRoadRibbons(ways, { terrain, wx, wz, roadY });
-    const zones = findJunctionZones(ways);
-    // The slab height: the road surface's own max over the zone, so the slab stays proud of
-    // the ribbon across the whole junction (intersections are flat — V3 constitution).
-    const zoneY = (z: JunctionZone) => {
-      let mx = 0;
-      const r = Math.ceil(z.half);
-      for (let dx = -r; dx <= r; dx++)
-        for (let dy = -r; dy <= r; dy++) {
-          const h = roadY(z.cx + dx, z.cy + dy);
-          if (h > mx) mx = h;
-        }
-      return Math.max(0, mx);
-    };
-    return {
-      group,
-      // furniture is laid out here, where the ways are in scope — placement needs every
-      // carriageway's width to keep signs and paint off foreign asphalt
-      zones: zones.map((z) => ({ ...z, wY: zoneY(z), furniture: junctionFurniture(z, ways) })),
-      wx,
-      wz,
-    };
+    const opts = { terrain, wx, wz, roadY };
+    // Zones FIRST (cap polygons attached), so the ribbon builder suppresses paint along
+    // the exact cap footprint and the cap builder anchors zebras at the same mouths —
+    // one boundary, no drift (the spec-127 JR dilation left a 16-20 m unmarked annulus).
+    const zones = attachCapPolys(findJunctionZones(ways));
+    const { group } = buildRoadRibbons(ways, opts, zones);
+    const caps = buildJunctionCaps(zones, opts);
+    if (caps.surf.length)
+      group.add(meshFrom(caps.surf, capMaterial, 'RoadJunctionCaps'));
+    if (caps.paint.length)
+      group.add(meshFrom(caps.paint, capPaintMaterial, 'RoadJunctionPaint'));
+    // Furniture positions need a ground height for their pole bases: the local road
+    // surface (they stand on the verge beside it, close enough at 25 mm resolution).
+    const furniture = zones.flatMap((z, zi) =>
+      junctionFurniture(z, ways).map((f, fi) => ({
+        ...f,
+        key: `f-${zi}-${fi}`,
+        // deterministic per-junction signal phase offset so the whole city doesn't
+        // blink in unison (hash of the zone centre)
+        phase:
+          (Math.abs(Math.sin(z.cx * 12.9898 + z.cy * 78.233)) * 16) % 16,
+        wY: Math.max(0, roadY(f.x, f.y)) + CAP_LIFT,
+      })),
+    );
+    return { group, furniture, wx, wz };
     // sig is the rebuild trigger for the mutable sim.state (dead-memo rule).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sim, sig]);
 
-  // Spec 119 — the superseded ribbon group (4 merged geometries + materials) must be
+  // Spec 119 — the superseded ribbon group (merged geometries + materials) must be
   // disposed on every rebuild and on unmount, or each road edit leaks its GPU buffers.
   useEffect(() => () => {
     if (built) disposeDeep(built.group);
@@ -78,32 +116,24 @@ export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
     <group name="RoadRibbonsLayer">
       <primitive object={built.group} />
       <group name="RoadJunctions">
-        {built.zones.map((z, i) => {
-          const slabY = z.wY + SLAB_LIFT;
-          const slabTop = slabY + SLAB_THICKNESS / 2;
-          const size = z.half * 2 * 4;
-          return (
-            <group key={`junction-${i}`}>
-              {/* Flat junction slab — one coplanar pad of open tarmac capping the ribbon
-                  overlap, so crossings read crisp instead of z-fighting (the broken look on
-                  main this hybrid replaces). */}
-              <mesh position={[wx(z.cx), slabY, wz(z.cy)]}>
-                <boxGeometry args={[size, SLAB_THICKNESS, size]} />
-                <meshStandardMaterial color="#5d636e" roughness={0.9} metalness={0.02} />
-              </mesh>
-              {z.furniture.map((f, j) => {
-                const pos: [number, number, number] =
-                  f.kind === 'stopline'
-                    ? [wx(f.x), slabTop + 0.012, wz(f.y)]
-                    : [wx(f.x), slabTop, wz(f.y)];
-                if (f.kind === 'light')
-                  return <TrafficLight key={`f-${i}-${j}`} position={pos} rotationY={f.rotY} />;
-                if (f.kind === 'stopsign')
-                  return <StopSign key={`f-${i}-${j}`} position={pos} rotationY={f.rotY} />;
-                return <StopLine key={`f-${i}-${j}`} position={pos} rotationY={f.rotY} />;
-              })}
-            </group>
-          );
+        {built.furniture.map((f) => {
+          const pos: [number, number, number] = [wx(f.x), f.wY, wz(f.y)];
+          if (f.kind === 'light')
+            return (
+              <TrafficLight
+                key={f.key}
+                position={pos}
+                rotationY={f.rotY}
+                laneHalfM={f.laneHalfM}
+                group={f.group ?? 'A'}
+                phase={f.phase}
+              />
+            );
+          if (f.kind === 'stopsign')
+            return (
+              <StopSign key={f.key} position={pos} rotationY={f.rotY} />
+            );
+          return null;
         })}
       </group>
     </group>

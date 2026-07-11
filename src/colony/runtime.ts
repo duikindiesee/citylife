@@ -258,7 +258,15 @@ import {
   smoothOpen,
 } from "./transit/path";
 import type { RoadWay } from "./render/roadRibbon";
-import { cellOk, leastCostPath, type Cell } from "./pathfind";
+import { findJunctionZones } from "./render/roadJunctions";
+import {
+  barStoolGridPositions,
+  junctionZonesToPads,
+  surveyVenuePlacements,
+  venueRoadBlockedCells,
+} from "./render/venuePlacement";
+import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
+import { roadComponents } from "./roadConnectivity";
 import {
   createRadio,
   tuneTo,
@@ -1101,14 +1109,16 @@ export class ColonyRuntime {
     //     straights + diagonals and any residual step is filled by the band.
     // The trunk roads AND the commercial connector both lay through this, so no road is a raw 1-cell
     // zig-zag any more (the staircase the operator kept seeing).
-    const roadCellOk = (x: number, y: number) =>
-      cellOk(t0, x, y) && !residentialSetbackKeys.has(`${x},${y}`);
+    // spec 143 — roadCellOk (not cellOk): the string-pull and the stroked band must never put a
+    // road cell on beach sand, even where the routed centre-line merely brushes the grass line.
+    const roadLandOk = (x: number, y: number) =>
+      roadCellOk(t0, x, y) && !residentialSetbackKeys.has(`${x},${y}`);
     const losClear = (a: Cell, b: Cell): boolean => {
       const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
       for (let s = 0; s <= steps; s++) {
         const x = Math.round(a.x + ((b.x - a.x) * s) / Math.max(1, steps));
         const y = Math.round(a.y + ((b.y - a.y) * s) / Math.max(1, steps));
-        if (!roadCellOk(x, y)) return false;
+        if (!roadLandOk(x, y)) return false;
       }
       return true;
     };
@@ -1129,14 +1139,22 @@ export class ColonyRuntime {
       path: Cell[],
       half: number,
       kind: "avenue" | "street" = "street",
+      // Spec 148 hardening — dryRun returns the cells this road WOULD occupy without the side effect
+      // of pushing a ribbon way. The connectivity repair uses it to test whether a candidate connector
+      // actually 4-bridges an orphan to the main web BEFORE committing it, so it never lays a road that
+      // fails to merge (a diagonal LOS shortcut whose shoulders are all blocked strokes an 8-connected
+      // staircase the 4-connected flood-fill still sees as split). Every existing caller omits it, so
+      // their ribbons + cells stay byte-identical.
+      dryRun = false,
     ): Cell[] => {
       const poly = simplifyPath(path);
-      if (poly.length >= 2) this.roadWays.push({ path: poly, kind, width: 4 }); // 088 — smooth ribbon centre-line (chunky enough to read from the district view)
+      if (!dryRun && poly.length >= 2)
+        this.roadWays.push({ path: poly, kind, width: 4 }); // 088 — smooth ribbon centre-line (chunky enough to read from the district view)
       const out = new Set<string>();
       const add = (fx: number, fy: number) => {
         const x = Math.round(fx),
           y = Math.round(fy);
-        if (roadCellOk(x, y)) out.add(`${x},${y}`);
+        if (roadLandOk(x, y)) out.add(`${x},${y}`);
       };
       for (let i = 0; i < poly.length - 1; i++) {
         const a = poly[i]!,
@@ -1170,6 +1188,7 @@ export class ColonyRuntime {
         leastCostPath(t0, from, to, {
           slopeWeight: 0.5,
           diagonal: true,
+          forbidBeach: true, // spec 143 — trunk roads bend inland, never along the sand
           blocked: (x, y) => residentialSetbackKeys.has(`${x},${y}`),
         }) ?? [];
       if (path.length === 0) return;
@@ -1239,7 +1258,7 @@ export class ColonyRuntime {
           const x = c.x,
             y = c.y + dy;
           if (
-            cellOk(t, x, y) &&
+            roadCellOk(t, x, y) && // spec 143 — the widened high street never widens onto sand
             !residentialSetbackKeys.has(`${x},${y}`) &&
             !shopCells.has(`${x},${y}`)
           )
@@ -1255,7 +1274,7 @@ export class ColonyRuntime {
           const x = c.x + dx,
             y = c.y;
           if (
-            cellOk(t, x, y) &&
+            roadCellOk(t, x, y) && // spec 143 — same beach guard for the cross street
             !residentialSetbackKeys.has(`${x},${y}`) &&
             !shopCells.has(`${x},${y}`)
           )
@@ -1273,6 +1292,7 @@ export class ColonyRuntime {
         leastCostPath(t, terminus, near, {
           slopeWeight: 0.5,
           diagonal: true,
+          forbidBeach: true, // spec 143 — the coast spur runs the grass line, not the sand
           blocked: (x, y) =>
             residentialSetbackKeys.has(`${x},${y}`) ||
             shopCells.has(`${x},${y}`),
@@ -1288,18 +1308,29 @@ export class ColonyRuntime {
     // Spec 088 — collect the remaining road centre-lines as ribbon ways (the trunk roads + connector
     // already recorded themselves through layRoad): the founders' avenue spine, each hamlet spine, and
     // the commercial high street. The smooth ribbon render draws these; traffic still uses the cells.
+    //
+    // These are RAW least-cost spines (cell-by-cell staircases), so unlike the trunk roads — which
+    // layRoad STRING-PULLS into clean straight runs before recording — their ribbons wiggled and their
+    // edge lines jittered into the ragged mess the operator saw along the founders' avenue. String-pull
+    // them the same way (simplifyPath: greedily straighten while line-of-sight stays road-able) so every
+    // ribbon centre-line, trunk or spine, is a clean polyline. Render-only: the road CELLS the traffic,
+    // bus and rally drive are untouched.
     if (this.neighborhood.spine.length >= 2)
       this.roadWays.push({
-        path: this.neighborhood.spine,
+        path: simplifyPath(this.neighborhood.spine),
         kind: "avenue",
         width: 4,
       });
     for (const s of satellites)
       if (s.spine.length >= 2)
-        this.roadWays.push({ path: s.spine, kind: "street", width: 4 });
+        this.roadWays.push({
+          path: simplifyPath(s.spine),
+          kind: "street",
+          width: 4,
+        });
     if (this.commercialDistrict && this.commercialDistrict.street.length >= 2)
       this.roadWays.push({
-        path: this.commercialDistrict.street,
+        path: simplifyPath(this.commercialDistrict.street),
         kind: "avenue",
         width: 4,
       });
@@ -1367,12 +1398,14 @@ export class ColonyRuntime {
         )
         .slice(0, 16);
       const roadable = (c: Cell) =>
-        cellOk(t0, c.x, c.y) && !residentialSetbackKeys.has(`${c.x},${c.y}`);
+        roadCellOk(t0, c.x, c.y) &&
+        !residentialSetbackKeys.has(`${c.x},${c.y}`);
       for (const terminus of candidates) {
         const path =
           leastCostPath(t0, terminus, rallyCell, {
             slopeWeight: 0.5,
             diagonal: true,
+            forbidBeach: true, // spec 143 — the rally spur is a paved road like any other
             margin: 160, // the hilltop can need a long detour around a ridge to reach a road
           }) ?? [];
         if (path.length < 2) continue;
@@ -1415,6 +1448,143 @@ export class ColonyRuntime {
         this.sim.state.roadKind.set(rk, r.kind ?? "street");
       }
       if (this.sim.state.roads.length !== before) this.sim.state.roadsVersion++;
+    }
+    // Spec 148 — CONNECTIVITY REPAIR. Up to here every road source (founders' avenue, satellite
+    // hamlets + their spoke/mesh trunks, the commercial high street + cross street, the rally spur)
+    // merged its cells straight into the network, but nothing GUARANTEED the pieces touched. On many
+    // seeds one merged as an island — most often the commercial cross street the mall pad severs from
+    // its own high street, or a rally stub the homesteads wall off — so World View showed roads that
+    // plainly did not connect (~97% of cells in the main web). This pass closes those gaps: it repairs
+    // the network into a SINGLE component by routing a short, coastal-legal connector (spec 140
+    // forbidBeach, never on sand/water) from each orphan to the main web, laid through the same
+    // string-pulled `layRoad` as every other trunk so it reads as a real road. An orphan that CANNOT
+    // reach the main web without crossing water/beach (a future-bridge island, spec 123/133 lineage) or
+    // a homestead setback (an embedded rally overlook, spec 097 fail-soft) is left in place — the pass
+    // never strands or deletes, it only connects what a legal road can reach. Deterministic: components
+    // and their anchor pairs are ordered canonically, and leastCostPath/layRoad are pure.
+    {
+      const size = t0.size;
+      const idxToCell = (k: number): Cell => ({ x: k % size, y: (k / size) | 0 });
+      const cellIndex = (c: Cell) => c.y * size + c.x;
+      // Does a candidate connector actually 4-bridge the orphan to the main web? BFS from the orphan's
+      // seed cell across the CURRENT road cells plus the candidate's cells; a bridge exists the moment
+      // it reaches any main cell. This is what keeps the repair honest: a connector is committed only
+      // when it truly merges the orphan, never when `layRoad` happened to stroke an 8-connected diagonal
+      // staircase (a simplifyPath LOS shortcut whose shoulders are all blocked) that the 4-connected
+      // flood-fill still treats as split. 4-neighbour only, matching roadComponents.
+      const bridges = (
+        startIdx: number,
+        roadIdx: ReadonlySet<number>,
+        connIdx: ReadonlySet<number>,
+        mainIdx: ReadonlySet<number>,
+      ): boolean => {
+        const seen = new Set<number>([startIdx]);
+        const stack = [startIdx];
+        while (stack.length) {
+          const k = stack.pop()!;
+          const x = k % size;
+          // +/-1 stay on the same row (no horizontal wrap); +/-size are the vertical neighbours.
+          const nbrs = [
+            x < size - 1 ? k + 1 : -1,
+            x > 0 ? k - 1 : -1,
+            k + size,
+            k - size,
+          ];
+          for (const nk of nbrs) {
+            if (nk < 0 || nk >= size * size || seen.has(nk)) continue;
+            if (!roadIdx.has(nk) && !connIdx.has(nk)) continue;
+            if (mainIdx.has(nk)) return true;
+            seen.add(nk);
+            stack.push(nk);
+          }
+        }
+        return false;
+      };
+      // Iterate to a fixed point: connecting one orphan grows the main web, which may then be the
+      // nearest anchor for the next. Bounded so a genuinely stranded piece can never loop forever.
+      for (let pass = 0; pass < 12; pass++) {
+        const comps = roadComponents(this.sim.state.roads, size);
+        if (comps.length <= 1) break;
+        const mainCells = comps[0]!.cells.map(idxToCell);
+        // Incremental sets, grown as orphans join, so later orphans in the SAME pass see the enlarged
+        // web (no stale-main double-connectors) and the bridge test stays cheap.
+        const roadIdx = new Set<number>(
+          this.sim.state.roads.map((r) => r.y * size + r.x),
+        );
+        const mainIdx = new Set<number>(comps[0]!.cells);
+        let joinedAny = false;
+        for (let ci = 1; ci < comps.length; ci++) {
+          const orphanComp = comps[ci]!;
+          if (mainIdx.has(orphanComp.min)) continue; // already absorbed earlier this pass
+          const orphan = orphanComp.cells.map(idxToCell);
+          // Candidate anchors: each orphan cell paired with its nearest main cell. The single nearest
+          // pair can be un-routable (its main end is beach-locked, or the only crossing is walled), so
+          // try the best dozen distinct pairs in order.
+          const pairs: { from: Cell; to: Cell; d: number }[] = [];
+          for (const p of orphan) {
+            let best: Cell | null = null,
+              bestD = Infinity;
+            for (const q of mainCells) {
+              const d = (p.x - q.x) ** 2 + (p.y - q.y) ** 2;
+              if (
+                d < bestD ||
+                (d === bestD && best && cellIndex(q) < cellIndex(best))
+              ) {
+                bestD = d;
+                best = q;
+              }
+            }
+            if (best) pairs.push({ from: p, to: best, d: bestD });
+          }
+          pairs.sort(
+            (a, b) =>
+              a.d - b.d ||
+              cellIndex(a.from) - cellIndex(b.from) ||
+              cellIndex(a.to) - cellIndex(b.to),
+          );
+          for (const { from, to, d } of pairs.slice(0, 12)) {
+            // Search room to bend around the mall pad or a spur of water, capped well below the grid so
+            // a far, genuinely stranded orphan cannot trigger a whole-grid flood on the fail path.
+            const margin = Math.min(
+              160,
+              Math.max(64, Math.round(Math.sqrt(d)) * 2),
+            );
+            const path = leastCostPath(t0, from, to, {
+              slopeWeight: 0.5,
+              diagonal: true,
+              forbidBeach: true, // spec 140 — the connector bends inland, never onto sand
+              blocked: (x, y) => residentialSetbackKeys.has(`${x},${y}`),
+              margin,
+            });
+            if (!path || path.length < 2) continue;
+            // Dry-run the stroke (no ribbon side effect), then commit ONLY if it truly merges the
+            // orphan into the main web — never a staircase that leaves isolated cells behind.
+            const cells = layRoad(path, 1, "avenue", true);
+            const connIdx = new Set<number>(cells.map((c) => c.y * size + c.x));
+            if (!bridges(orphanComp.min, roadIdx, connIdx, mainIdx)) continue;
+            mergeAvenue(this.sim.state, layRoad(path, 1)); // commit for real (records the ribbon)
+            for (const k of connIdx) {
+              roadIdx.add(k);
+              mainIdx.add(k);
+            }
+            for (const k of orphanComp.cells) mainIdx.add(k); // the whole orphan is now main
+            joinedAny = true;
+            break;
+          }
+        }
+        if (!joinedAny) break; // no orphan could be legally connected this pass — the rest are stranded
+      }
+      // Determinism-safe invariant (spec 148): after the repair the network is one web. A residual
+      // orphan is a legitimate future-bridge/embedded-overlook exception, never a hard failure, so this
+      // warns rather than throws — a boot must always complete. tests/roadConnectivity.test.ts pins the
+      // >=99% single-component floor for the seed suite.
+      const finalComps = roadComponents(this.sim.state.roads, size);
+      if (finalComps.length > 1 && typeof console !== "undefined") {
+        const orphanCells = this.sim.state.roads.length - finalComps[0]!.size;
+        console.warn(
+          `[spec148] road network has ${finalComps.length} components; ${orphanCells}/${this.sim.state.roads.length} cells stranded (largest ${((finalComps[0]!.size / this.sim.state.roads.length) * 100).toFixed(1)}%). Likely a future-bridge island or embedded rally overlook.`,
+        );
+      }
     }
     // Spec 140 — the BUS DEPOT: a surveyed pad beside the bus loop where the fleet parks overnight.
     // Sited AFTER the bus route (so the loop is unchanged — the rally-spur discipline) and AFTER the
@@ -2937,22 +3107,22 @@ export class ColonyRuntime {
     }
   }
 
-  /** Spec 079 — the bar's stool cells in sim coords (just in front of the Nearest bar, on the street
-   *  side), so citizens can walk over and sit. Cached; matches the three rendered stools. */
+  /** Spec 079/140 — the bar's stool spots in sim coords, from the SHARED venue placement
+   *  survey (venuePlacement.ts), so citizens sit at EXACTLY the stools the renderer draws.
+   *  The old inline copy parked sitters one cell toward the street — on the widened
+   *  carriageway. Cached; the survey is pure and the district never re-surveys mid-run. */
   private barSeats(): { x: number; y: number }[] {
     if (this.barSeatCells) return this.barSeatCells;
-    const bar = this.commercialDistrict?.parcels.find(
-      (p) => p.business === "nearest_bar",
-    );
-    if (!bar) return [];
-    const cx = bar.x + (bar.w - 1) / 2;
-    const front = -bar.side;
-    const frontRow = bar.side === -1 ? bar.y + bar.h - 1 : bar.y;
-    const seatY = Math.round(frontRow + front); // one cell toward the street
-    this.barSeatCells = [-1, 0, 1].map((k) => ({
-      x: Math.round(cx + k * 1.2),
-      y: seatY,
-    }));
+    const d = this.commercialDistrict;
+    if (!d) return [];
+    const pads = junctionZonesToPads(findJunctionZones(this.roadWays));
+    const placement = surveyVenuePlacements(
+      d,
+      pads,
+      venueRoadBlockedCells(this.roadWays, this.sim.state.terrain),
+    ).find((v) => v.businessId === "nearest_bar");
+    if (!placement || !placement.buildable) return [];
+    this.barSeatCells = barStoolGridPositions(placement, 3);
     return this.barSeatCells;
   }
 
@@ -2991,10 +3161,12 @@ export class ColonyRuntime {
       plotName: "Driftwood Cove",
       home,
       kind: "crab",
+      avatarKind: "crab",
+      glbUrl: "/assets/citylife/avatars/joe-crab.glb",
       nowMs: JOE_BORN_MS,
       spd: 0.6,
     });
-    if (joe) this.citizens.setTarget(JOE_ID, { x: plot.doorX, y: plot.doorY }); // start him strolling from his door
+    if (joe) this.citizens.setTarget(JOE_ID, home); // GLB slice boots Joe in Joe_idle; the idle wander loop can move him later
     this.seedDeposit(JOE_ID); // spec 085 — founders hold a ₭ wallet too
     // Spec 082 — Joe is Kookerbook profile number one (created after restoreKookerbook would be
     // ideal, but ensureKbProfile is idempotent and restore overlays stored timelines on top).

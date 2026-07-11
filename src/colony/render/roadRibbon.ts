@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import type { Terrain } from "../terrain";
+import type { JunctionZone } from "./roadJunctions";
+import { nearPoly } from "./geom2d";
 import { Biome } from "../terrain";
 
 // Spec 088 — SMOOTH ROAD RIBBONS. The roads are stored + driven as per-cell grid data (for traffic,
@@ -36,12 +38,19 @@ function cellOkOn(terrain: Terrain, x: number, y: number): boolean {
     gy = Math.round(y);
   if (!terrain.inBounds(gx, gy)) return false;
   const i = terrain.idx(gx, gy);
-  // WATER-only guard (spec 133). The old guard also rejected buildable===0 LAND — steep or
-  // sunken pockets — but the boot ways cross 59 such cells on the seeded map: each one was
-  // a HOLE in the asphalt (skipped segments — the operator's ragged edge) and a hole in the
-  // terrain grading (the ground never rose, so the spanning quads floated and the walker
-  // dropped underneath). Roads may pave over rough land — the grading reshapes it to meet
-  // them (spec 130) — but never over water (the spec-115 intent, kept).
+  // WATER-only guard (spec 133). Roads may pave over rough land — the grading reshapes it to
+  // meet them (spec 130) — but never over water (the spec-115 intent). Rough LAND (buildable 0)
+  // is allowed: the boot ways cross dozens of steep/sunken dry pockets, and excluding them left
+  // holes in the asphalt and ungraded dips the walker fell into.
+  //
+  // Spec 140 amendment (reverted here): beach is NOT excluded in this render guard. The road-off-
+  // beaches ban lives in ROUTING (pathfind roadCellOk / forbidBeach keeps every road CELL off the
+  // sand). A rendered ribbon is ~half-a-carriageway wider than its centre-line, so a road running
+  // the grass line RIGHT beside the beach has its outer edge graze a beach cell — and rejecting
+  // beach here dropped the whole cross-section, SHATTERING the ribbon into ragged holes ("the beach
+  // is breaking the roads"). The centre-line is on grass by routing; the edge may kiss the sand, and
+  // a continuous ribbon that grazes the shore beats a shattered one. Water still shatters — correctly,
+  // no asphalt over the sea.
   const b = terrain.biome[i];
   return (
     b !== Biome.Ocean &&
@@ -149,9 +158,36 @@ function roadCrossSectionOk(
 /** Build the smooth draped ribbons (+ dashed centre lines) for every road way. Returns the group and
  *  the SET of grid cells the ribbon actually covers — so avatars stand on the ribbon surface only
  *  where it really is (never floating on a road cell the ribbon happens not to reach). */
+/** Spec 137 — per-way micro-lift: greedy-color the zone-sharing graph so ways that
+ *  overlap at a junction never render depth-coincident under the cap (the systemic
+ *  backstop for the coplanar shimmer wherever the cap doesn't reach: formula misses,
+ *  concave dips, stale-way skips). <= 3 cm — invisible, but out of depth-fight range. */
+function assignWayLifts(count: number, zones: JunctionZone[]): number[] {
+  const adj: Set<number>[] = Array.from({ length: count }, () => new Set());
+  for (const z of zones)
+    for (const a of z.wayIdx)
+      for (const b of z.wayIdx)
+        if (a !== b && a < count && b < count) adj[a]!.add(b);
+  const layer = new Array<number>(count).fill(0);
+  for (let i = 0; i < count; i++) {
+    const used = new Set<number>();
+    for (const j of adj[i]!) if (j < i) used.add(layer[j]!);
+    let l = 0;
+    while (used.has(l)) l++;
+    layer[i] = Math.min(l, 3);
+  }
+  return layer.map((l) => l * 0.01);
+}
+
 export function buildRoadRibbons(
   ways: RoadWay[],
   opts: RoadRibbonOptions,
+  /** Spec 137 — junction zones (with cap polygons attached). When given, paint
+   *  suppression follows the CAP footprint (the old JR=2 cell dilation left a 16-20m
+   *  naked annulus around a 9.2m slab), crosswalks move to the cap builder (anchored at
+   *  arm mouths), and overlapping ways get the micro-lift. When absent — the legacy
+   *  v1/v2 PlanetRenderer call site — behaviour is unchanged. */
+  zones?: JunctionZone[],
 ): { group: THREE.Group; cells: Set<string> } {
   const group = new THREE.Group();
   group.name = "RoadRibbons";
@@ -201,47 +237,66 @@ export function buildRoadRibbons(
   );
   // INTERSECTIONS. Each ribbon is independent, so where two roads cross, both roads' white edges and
   // centre dashes run straight THROUGH the crossing and it reads as a messy plaid (the operator's
-  // "messed up" junctions). A cell where 2+ distinct ways' centre-lines pass is a junction; the painted
-  // markings must BREAK around it. We dilate those cells and suppress edge/dash quads inside the zone —
-  // the asphalt SURFACE still fills the junction (open tarmac), only the lines stop short, as on real roads.
-  const cellWays = new Map<string, Set<number>>();
-  paths.forEach((cp, wi) => {
-    if (!cp) return;
-    // record each centre-line cell DILATED by 1, so two ways that pass within ~2 cells of each other
-    // (a crossing, a T-junction, or a connector ending just off another road) register as a shared cell.
-    for (const p of cp) {
-      const cx = Math.round(p.x),
-        cy = Math.round(p.y);
-      for (let dx = -1; dx <= 1; dx++)
-        for (let dy = -1; dy <= 1; dy++) {
-          const k = `${cx + dx},${cy + dy}`;
-          let s = cellWays.get(k);
-          if (!s) {
-            s = new Set();
-            cellWays.set(k, s);
+  // "messed up" junctions). The painted markings must BREAK around junctions.
+  //
+  // Spec 137 path (zones given): the suppression boundary IS the cap footprint — point-in
+  // the cap's convex hull inflated by 0.6 cells (half a paint quad), with a bounding-circle
+  // early-out. Paint reaches to within ~1-2m of the junction tarmac on every arm, diagonal
+  // or not; the old JR=2 dilation's 16-20m naked annulus is structurally gone, and parallel
+  // near-miss runs (which produce NO zones) keep their paint.
+  //
+  // Legacy path (no zones — the v1/v2 PlanetRenderer call site): the original cell-dilation
+  // detector, byte-identical.
+  let nearJunction: (x: number, y: number) => boolean;
+  if (zones) {
+    nearJunction = (x: number, y: number) => {
+      for (const z of zones) {
+        const dx = x - z.cx,
+          dy = y - z.cy;
+        if (dx * dx + dy * dy > (z.rBound + 0.6) * (z.rBound + 0.6)) continue;
+        if (nearPoly(x, y, z.poly, 0.6)) return true;
+      }
+      return false;
+    };
+  } else {
+    const cellWays = new Map<string, Set<number>>();
+    paths.forEach((cp, wi) => {
+      if (!cp) return;
+      // record each centre-line cell DILATED by 1, so two ways that pass within ~2 cells of each other
+      // (a crossing, a T-junction, or a connector ending just off another road) register as a shared cell.
+      for (const p of cp) {
+        const cx = Math.round(p.x),
+          cy = Math.round(p.y);
+        for (let dx = -1; dx <= 1; dx++)
+          for (let dy = -1; dy <= 1; dy++) {
+            const k = `${cx + dx},${cy + dy}`;
+            let s = cellWays.get(k);
+            if (!s) {
+              s = new Set();
+              cellWays.set(k, s);
+            }
+            s.add(wi);
           }
-          s.add(wi);
-        }
-    }
-  });
-  const junction = new Set<string>();
-  // How far back from a crossing the painted lines stop. 2, not 1 (spec 127 verify P3): the
-  // junction SLAB is a centroid-centred square reaching half=2.3 cells, while this suppression
-  // grows from the crossing CLUSTER — at an offset tee (a way ending 1-2 cells short of the
-  // other's centre-line, the standard connector geometry) JR=1 left a band inside the slab
-  // where the terminating arm's dashes/edges/crosswalks still painted, floating on the pad.
-  // JR=2 reaches >= 2.5 cells, past the slab in the worst constructible offset.
-  const JR = 2;
-  for (const [k, s] of cellWays)
-    if (s.size >= 2) {
-      const [x, y] = k.split(",").map(Number);
-      for (let dx = -JR; dx <= JR; dx++)
-        for (let dy = -JR; dy <= JR; dy++) junction.add(`${x + dx},${y + dy}`);
-    }
-  const nearJunction = (x: number, y: number) =>
-    junction.has(`${Math.round(x)},${Math.round(y)}`);
+      }
+    });
+    const junction = new Set<string>();
+    // How far back from a crossing the painted lines stop (spec 127 verify P3): JR=2 reaches
+    // past the legacy slab in the worst constructible offset tee.
+    const JR = 2;
+    for (const [k, s] of cellWays)
+      if (s.size >= 2) {
+        const [x, y] = k.split(",").map(Number);
+        for (let dx = -JR; dx <= JR; dx++)
+          for (let dy = -JR; dy <= JR; dy++) junction.add(`${x + dx},${y + dy}`);
+      }
+    nearJunction = (x: number, y: number) =>
+      junction.has(`${Math.round(x)},${Math.round(y)}`);
+  }
   const skipPaint = (x: number, y: number) =>
     nearJunction(x, y) || !roadSurfaceCellOk(opts, x, y);
+  const lifts = zones
+    ? assignWayLifts(ways.length, zones)
+    : new Array<number>(ways.length).fill(0);
   // Junctions need no flatten or slab. Every ribbon vertex takes its height from its OWN position
   // (smoothRoadY, in ribbon() below), so where two roads overlap at a crossing both surfaces evaluate the
   // same height at the same point — they are COPLANAR by construction, following the terrain. So a junction
@@ -256,10 +311,15 @@ export function buildRoadRibbons(
       opts,
       way.kind === "avenue" ? surfA : surf,
       cells,
+      lifts[wi]!,
     );
-    dashes(pts, opts, dash, skipPaint);
-    edgeLines(pts, way.width / 2, opts, edge, skipPaint);
-    crosswalks(pts, way.width / 2, opts, edge, nearJunction, skipPaint);
+    dashes(pts, opts, dash, skipPaint, lifts[wi]!);
+    edgeLines(pts, way.width / 2, opts, edge, skipPaint, lifts[wi]!);
+    // Spec 137: with zones, zebra crossings are built by junctionCap.capCrosswalks —
+    // anchored at the arm MOUTHS instead of the blocky suppression boundary, so they
+    // always kiss the cap edge, correctly rotated on diagonal arms.
+    if (!zones)
+      crosswalks(pts, way.width / 2, opts, edge, nearJunction, skipPaint);
   }
   const add = (arr: number[], mat: THREE.Material) => {
     if (arr.length === 0) return;
@@ -331,6 +391,7 @@ function ribbon(
   opts: RoadRibbonOptions,
   out: number[],
   cells: Set<string>,
+  lift = 0,
 ): void {
   const edge = (i: number, sign: number): number[] => {
     const p = pts[i]!;
@@ -354,7 +415,7 @@ function ribbon(
     // Height from this VERTEX's own position (continuous, terrain-following). Two ribbons overlapping at a
     // junction therefore sit at the same height there — coplanar, no lips/seams — and the cross-section
     // gently follows the terrain's cross-slope instead of forcing a level plank that floats on a hillside.
-    const h = Math.max(0, opts.roadY(gx, gy)) + ROAD_RIBBON_LIFT;
+    const h = Math.max(0, opts.roadY(gx, gy)) + ROAD_RIBBON_LIFT + lift;
     return [opts.wx(gx), h, opts.wz(gy)];
   };
   const segmentOk = (i: number): boolean => {
@@ -388,6 +449,7 @@ function edgeLines(
   opts: RoadRibbonOptions,
   out: number[],
   skip: (x: number, y: number) => boolean,
+  lift = 0,
 ): void {
   const tri = (a: number[], b: number[], c: number[]) =>
     out.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!);
@@ -405,7 +467,7 @@ function edgeLines(
       py = tx / len;
     const lx = p.x + px * c,
       ly = p.y + py * c; // the edge line's own position across the road
-    const y = Math.max(0, opts.roadY(lx, ly)) + ROAD_RIBBON_LIFT + 0.05; // sit on the per-position surface
+    const y = Math.max(0, opts.roadY(lx, ly)) + ROAD_RIBBON_LIFT + 0.05 + lift; // sit on the per-position surface
     const inX = p.x + px * (c - w),
       inY = p.y + py * (c - w);
     const ouX = p.x + px * (c + w),
@@ -437,6 +499,7 @@ function dashes(
   opts: RoadRibbonOptions,
   out: number[],
   skip: (x: number, y: number) => boolean,
+  lift = 0,
 ): void {
   const tri = (a: number[], b: number[], c: number[]) =>
     out.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!);
@@ -474,7 +537,7 @@ function dashes(
   const LEN = 1.2; // painted dash length
   const w = 0.16; // dash half-width across the road
   const yOf = (x: number, y: number) =>
-    Math.max(0, opts.roadY(x, y)) + ROAD_RIBBON_LIFT + 0.06;
+    Math.max(0, opts.roadY(x, y)) + ROAD_RIBBON_LIFT + 0.06 + lift;
   for (let t = (total % PERIOD) / 2 + 0.3; t + LEN <= total; t += PERIOD) {
     const s0 = sample(t),
       s1 = sample(t + LEN);

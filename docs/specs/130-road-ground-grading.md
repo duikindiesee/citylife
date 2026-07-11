@@ -36,3 +36,15 @@ on slopes the ribbon floated above the local terrain with a visible black unders
 `tests/roadGrade.test.ts`: pure coverage misses zero build cells; the steepest 6-cell
 player-style stroke on the seeded map yields real over-deadzone gaps for the grading to
 close (boot roads alone yield none — that's why the bug hid until hand-drawn roads).
+
+## Amendment (2026-07-11, spec 137 v2 era) — the deadzone is now ASYMMETRIC
+
+Operator invariant from the live walk: "the ground go above the roads; that should
+never happen." The original symmetric deadzone (|surface - ground| <= 0.6) tolerated
+ground up to 0.6 ABOVE the road surface, but the ribbon rides only +0.18 — tolerated
+bumps crested through the asphalt as sand/grass islands. Ground above the road surface
+is now ALWAYS cut to it; only the raise direction keeps the 0.6 deadzone (a shallow
+hollow under a flush road is invisible and not worth a berm). Pinned by
+`tests/terrainLevelingFinite.test.ts` ("ground above a road surface is ALWAYS cut").
+Remaining tail: between grading cells the terrain mesh interpolates, so a sharp crest
+can still shave mid-cell on ridges — per-vertex grading is the follow-up if it shows.

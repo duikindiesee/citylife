@@ -224,7 +224,17 @@ export function computeTerrainLeveling(
       // across hills, segment-bridged dips and dry-blended coast cells are where the
       // floating happens.)
       const eff = next.has(i) ? next.get(i)! : Math.max(0, t.worldY(x, y));
-      if (Math.abs(h - eff) <= DEADZONE) continue;
+      // ASYMMETRIC deadzone (operator invariant, 2026-07-11: "the ground go above the
+      // roads; that should never happen"). The old |h - eff| <= DEADZONE tolerated
+      // ground up to 0.6 ABOVE the road surface — but the ribbon rides only +0.18, so
+      // tolerated bumps crested THROUGH the asphalt as sand/grass islands. Ground above
+      // the surface is always CUT to it; only the raise direction keeps the deadzone
+      // (small hollows under a flush road are invisible and not worth a berm).
+      if (eff > h) {
+        graded.set(i, h);
+        continue;
+      }
+      if (h - eff <= DEADZONE) continue;
       graded.set(i, h);
     }
 

@@ -17,6 +17,7 @@ import type { RaceState } from '../racing/race';
 import type { CarSpec } from '../car/carSpec';
 import { FirstPersonController } from '../../render/components/FirstPersonController';
 import { CommercialBlock } from '../../render/components/CommercialBlock';
+import { clusterCommercialLots } from './commercialClusters';
 import { Island } from '../../render/components/Island';
 
 export type ViewMode = "biome" | "buildable" | "elevation";
@@ -60,6 +61,8 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { useSimSignal, type SimBridge } from './useSimSignal';
 import { zoneSignature, spawnSignature, roadwaySignature } from './simSignals';
 import { ribbonCoverage } from './roadRibbon';
+import { findJunctionZones } from './roadJunctions';
+import { attachCapPolys, capCoverageCells } from './junctionCap';
 import { getSmoothRoadY } from './roadSurface';
 import { nextBootStage } from './bootStage';
 import { R3FAvatars, type AvatarRefs } from './R3FAvatars';
@@ -90,22 +93,12 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
     const elements: React.ReactElement[] = [];
     const overlays: React.ReactElement[] = [];
 
-    if (state.cityPlan) {
-      const size = state.terrain.size;
-      for (const plot of state.cityPlan.plots) {
-        if (plot.zone === "commercial") {
-          const wX = (plot.x - size / 2) * 4;
-          const wZ = (plot.y - size / 2) * 4;
-          elements.push(
-            <CommercialBlock 
-              key={`comm-${plot.id}`} 
-              position={[wX, 0, wZ]} 
-            />
-          );
-        }
-      }
-    }
-    
+    // Spec 139 — the giant red building fix. CommercialBlock is a ~100 m gas-station SCENE, so
+    // one per 4 m lot fused into a red wall. Collect the built commercial lots and render ONE
+    // block per contiguous cluster (below), instead of one per lot. (The old cityPlan-commercial
+    // branch was dead code — makeCityPlan only ever emits residential plots — and is removed.)
+    const commercialLots: { id: string; x: number; y: number }[] = [];
+
     if (state.neighborhood?.lots) {
       const size = state.terrain.size;
       // Spec 128 — houses SEAT on their leveled pad: the SHARED padSeatY formula
@@ -118,14 +111,7 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
       for (const lot of state.neighborhood.lots) {
         if (lot.built) {
           if (lot.zone === "commercial") {
-            const wX = (lot.x - size / 2) * 4;
-            const wZ = (lot.y - size / 2) * 4;
-            elements.push(
-              <CommercialBlock
-                key={`comm-${lot.id}`}
-                position={[wX, 0, wZ]}
-              />
-            );
+            commercialLots.push({ id: lot.id, x: lot.x, y: lot.y });
           } else {
             const hz = lot.houseZone;
             const seat = seatOf(hz);
@@ -157,6 +143,17 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
             <ZoneLotOverlay key={`zone-ground-${lot.id}`} lot={lot} terrain={state.terrain} />
           );
         }
+      }
+
+      // Spec 139 — one CommercialBlock per contiguous commercial cluster, at its centroid, so a
+      // painted commercial run reads as a single street scene instead of a fused red wall.
+      for (const c of clusterCommercialLots(commercialLots)) {
+        elements.push(
+          <CommercialBlock
+            key={`comm-${c.id}`}
+            position={[(c.x - size / 2) * 4, 0, (c.y - size / 2) * 4]}
+          />
+        );
       }
     }
 
@@ -406,11 +403,20 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
   const roadwaySig = useSimSignal(runtime, () => roadwaySignature(sim.state));
   const roadCells = useMemo(() => {
     const terrain = sim.state.terrain;
-    const cover = ribbonCoverage(
-      sim.state.roadWays ?? [],
+    const roadY = (x: number, y: number) => getSmoothRoadY(terrain, x, y);
+    const cover = ribbonCoverage(sim.state.roadWays ?? [], terrain, roadY);
+    // Spec 137 — the junction caps' hull corners reach 1-3 cells beyond the ribbon
+    // sweep; union their cells so the grading rises under the corner aprons too (the
+    // old slab hovered with 1.2-2.1 m of open air under its corners).
+    const capCover = capCoverageCells(
+      attachCapPolys(findJunctionZones(sim.state.roadWays ?? [])),
       terrain,
-      (x, y) => getSmoothRoadY(terrain, x, y),
+      roadY,
     );
+    for (const [k, h] of capCover) {
+      const cur = cover.get(k);
+      if (cur === undefined || h > cur) cover.set(k, h);
+    }
     for (const k of Object.keys(tiles)) {
       if (!cover.has(k)) {
         const c = k.indexOf(',');

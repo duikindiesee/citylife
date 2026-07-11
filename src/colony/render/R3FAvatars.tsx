@@ -1,4 +1,4 @@
-import { leveledWorldY } from './terrainLeveling';
+import { crowdGroundY } from './crowdGround';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
@@ -49,7 +49,11 @@ export function R3FAvatars({ sim, refs, terrainLevel }: R3FAvatarsProps) {
   const boltRef = useRef<THREE.Mesh>(null);
 
   const bodyGeometry = useMemo(
-    () => new THREE.CapsuleGeometry(AVATAR_BODY.radius, AVATAR_BODY.length, 4, 8),
+    () => {
+      const geo = new THREE.CapsuleGeometry(AVATAR_BODY.radius, AVATAR_BODY.length, 4, 8);
+      geo.translate(0, AVATAR_BODY.lift, 0); // spec 146 — feet on the ground, not torso buried at it
+      return geo;
+    },
     []
   );
   const headGeometry = useMemo(() => {
@@ -104,7 +108,8 @@ export function R3FAvatars({ sim, refs, terrainLevel }: R3FAvatarsProps) {
     if (refs.lastList) refs.lastList.current = list;
     const drawn = drawableAvatars(list, refs.fpCitizenId.current);
     const size = sim.state.terrain.size;
-    const groundY = (x: number, y: number) => leveledWorldY(sim.state.terrain, terrainLevel, x, y);
+    // spec 142 — ride the road ribbon on road cells so citizens and Joe don't sink through it
+    const groundY = (x: number, y: number) => crowdGroundY(sim.state.terrain, terrainLevel, sim.state.roadSet, x, y);
 
     // Spec 132 — crab-kind avatars draw the crab model, not a human capsule.
     let crab: AvatarView | null = null;

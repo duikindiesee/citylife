@@ -3,6 +3,7 @@
 // or business assignment state.
 import type { ShopParcel } from "./district";
 import { BUSINESSES, type Business } from "./businesses";
+import { shopKindWallHeightM } from "../render/commercialShopMassing";
 import { isPublicSafe } from "../newcomers";
 
 export interface BusinessLabel {
@@ -54,11 +55,10 @@ export const DEFAULT_BUSINESS_LABEL_DECLUTTER: BusinessLabelDeclutterOptions = {
 
 export const BUSINESS_LABEL_VIEWPORT_NDC_LIMIT = 0.82;
 
-const WALL_H: Record<ShopParcel["kind"], number> = {
-  kiosk: 0.9,
-  store: 1.25,
-  showroom: 1.7,
-};
+/** Clearance above the metric roofline (spec 143): the venue shells stand 3.5–7.6 m at
+ *  the eaves now, so the plate rides the SHARED massing height + headroom instead of the
+ *  legacy cell-unit copy that left labels hovering inside the new walls. */
+const LABEL_CLEARANCE_M = 3.2;
 
 const SAFE_LABEL_FALLBACK: Partial<Record<Business["id"], string>> = {
   sportifine_club: "Sports Club",
@@ -82,7 +82,7 @@ export function businessLabelModel(
     text,
     x,
     y,
-    height: WALL_H[parcel.kind] + 1.7,
+    height: shopKindWallHeightM(parcel.kind) + LABEL_CLEARANCE_M,
     color: business.palette,
     nightEmissiveFloor: 0.65,
     nightEmissivePeak: 1.45,

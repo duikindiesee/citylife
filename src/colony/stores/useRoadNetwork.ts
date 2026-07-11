@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { Biome } from '../terrain';
 
 // North = 1, East = 2, South = 4, West = 8
 export enum RoadMask {
@@ -81,6 +82,23 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
 
   plotRoad: (cells, type, sim) => {
     set((state) => {
+      // Spec 140 — the store is the last gate before cells enter sim road state: no road cell on
+      // beach sand, ever. The whole stroke is rejected (mirroring the builder UI, which previews
+      // the offending cells in red and blocks the blueprint), so a scripted window.__colony caller
+      // can't slip pavement onto the sand behind the UI's back. Water deliberately stays a UI-only
+      // gate here — that is the pre-existing contract (scripted strokes lay anywhere off-beach),
+      // and the ribbon's cellOkOn already refuses to render asphalt over water.
+      if (sim) {
+        const t = sim.state.terrain;
+        const bad = cells.some(
+          (c) =>
+            t.inBounds(c.x, c.y) && t.biome[t.idx(c.x, c.y)] === Biome.Beach,
+        );
+        if (bad) {
+          console.warn('plotRoad rejected: stroke crosses beach sand (spec 140)');
+          return {};
+        }
+      }
       const newTiles = { ...state.tiles };
       const newPlacements = new Set(state.sameSessionPlacements);
       
