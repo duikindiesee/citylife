@@ -5,7 +5,7 @@
 // the footprint is collision-checked against a claimed set so shops never overlap, and the whole thing
 // is a pure function of (terrain, reserve) with no clock or random source, so it replays identically and
 // is node-testable headless. The vibrant render + the buy/build economy layer on top of this.
-import { cellOk, type Cell } from "../pathfind";
+import { cellOk, roadCellOk, type Cell } from "../pathfind";
 import { COLONY } from "../config";
 import type { Terrain } from "../terrain";
 import { assignBusinesses, type BusinessId } from "./businesses";
@@ -107,8 +107,11 @@ export function makeCommercialDistrict(
 ): CommercialDistrict {
   const streetY = reserve.y + Math.floor(reserve.h / 2);
   const street: Cell[] = [];
+  // roadCellOk (spec 138): the high street is a paved road, so its row skips beach cells — the
+  // coastal reserve may reach the sand (shops and the future boat-launch pad may sit by it), but
+  // the street itself stays on the grass line.
   for (let x = reserve.x; x < reserve.x + reserve.w; x++) {
-    if (cellOk(t, x, streetY) && !blocked.has(`${x},${streetY}`))
+    if (roadCellOk(t, x, streetY) && !blocked.has(`${x},${streetY}`))
       street.push({ x, y: streetY });
   }
 
@@ -162,7 +165,11 @@ export function makeCommercialDistrict(
   const crossStreet: Cell[] = [];
   for (let y = reserve.y; y < reserve.y + reserve.h; y++) {
     const key = `${crossStreetX},${y}`;
-    if (cellOk(t, crossStreetX, y) && !shopCells.has(key) && !blocked.has(key))
+    if (
+      roadCellOk(t, crossStreetX, y) && // spec 138 — the cross street is a road too
+      !shopCells.has(key) &&
+      !blocked.has(key)
+    )
       crossStreet.push({ x: crossStreetX, y });
   }
 

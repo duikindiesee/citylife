@@ -36,17 +36,22 @@ function cellOkOn(terrain: Terrain, x: number, y: number): boolean {
     gy = Math.round(y);
   if (!terrain.inBounds(gx, gy)) return false;
   const i = terrain.idx(gx, gy);
-  // WATER-only guard (spec 133). The old guard also rejected buildable===0 LAND — steep or
-  // sunken pockets — but the boot ways cross 59 such cells on the seeded map: each one was
-  // a HOLE in the asphalt (skipped segments — the operator's ragged edge) and a hole in the
-  // terrain grading (the ground never rose, so the spanning quads floated and the walker
-  // dropped underneath). Roads may pave over rough land — the grading reshapes it to meet
-  // them (spec 130) — but never over water (the spec-115 intent, kept).
+  // WATER-only guard (spec 133) + the BEACH exception (spec 138). The old guard also rejected
+  // buildable===0 LAND — steep or sunken pockets — but the boot ways cross 59 such cells on
+  // the seeded map: each one was a HOLE in the asphalt (skipped segments — the operator's
+  // ragged edge) and a hole in the terrain grading (the ground never rose, so the spanning
+  // quads floated and the walker dropped underneath). Roads may pave over rough land — the
+  // grading reshapes it to meet them (spec 130) — but never over water (the spec-115 intent,
+  // kept), and since spec 138 never over beach sand either. Boot ways are beach-free by
+  // ROUTING (the planner treats Beach like water), so unlike the spec-133 pockets this
+  // rejection cannot hole a boot road; it is the render backstop that keeps hand-drawn
+  // builder roads and legacy saved ways from painting asphalt on the sand.
   const b = terrain.biome[i];
   return (
     b !== Biome.Ocean &&
     b !== Biome.Shallows &&
     b !== Biome.River &&
+    b !== Biome.Beach &&
     !terrain.water[i]
   );
 }

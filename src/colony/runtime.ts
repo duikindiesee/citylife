@@ -236,7 +236,7 @@ import {
 } from "./commerce/district";
 import { makeBusRoute, type BusRoute } from "./transit/busRoute";
 import type { RoadWay } from "./render/roadRibbon";
-import { cellOk, leastCostPath, type Cell } from "./pathfind";
+import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
 import {
   createRadio,
   tuneTo,
@@ -1052,14 +1052,16 @@ export class ColonyRuntime {
     //     straights + diagonals and any residual step is filled by the band.
     // The trunk roads AND the commercial connector both lay through this, so no road is a raw 1-cell
     // zig-zag any more (the staircase the operator kept seeing).
-    const roadCellOk = (x: number, y: number) =>
-      cellOk(t0, x, y) && !residentialSetbackKeys.has(`${x},${y}`);
+    // spec 138 — roadCellOk (not cellOk): the string-pull and the stroked band must never put a
+    // road cell on beach sand, even where the routed centre-line merely brushes the grass line.
+    const roadLandOk = (x: number, y: number) =>
+      roadCellOk(t0, x, y) && !residentialSetbackKeys.has(`${x},${y}`);
     const losClear = (a: Cell, b: Cell): boolean => {
       const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
       for (let s = 0; s <= steps; s++) {
         const x = Math.round(a.x + ((b.x - a.x) * s) / Math.max(1, steps));
         const y = Math.round(a.y + ((b.y - a.y) * s) / Math.max(1, steps));
-        if (!roadCellOk(x, y)) return false;
+        if (!roadLandOk(x, y)) return false;
       }
       return true;
     };
@@ -1087,7 +1089,7 @@ export class ColonyRuntime {
       const add = (fx: number, fy: number) => {
         const x = Math.round(fx),
           y = Math.round(fy);
-        if (roadCellOk(x, y)) out.add(`${x},${y}`);
+        if (roadLandOk(x, y)) out.add(`${x},${y}`);
       };
       for (let i = 0; i < poly.length - 1; i++) {
         const a = poly[i]!,
@@ -1121,6 +1123,7 @@ export class ColonyRuntime {
         leastCostPath(t0, from, to, {
           slopeWeight: 0.5,
           diagonal: true,
+          forbidBeach: true, // spec 138 — trunk roads bend inland, never along the sand
           blocked: (x, y) => residentialSetbackKeys.has(`${x},${y}`),
         }) ?? [];
       if (path.length === 0) return;
@@ -1190,7 +1193,7 @@ export class ColonyRuntime {
           const x = c.x,
             y = c.y + dy;
           if (
-            cellOk(t, x, y) &&
+            roadCellOk(t, x, y) && // spec 138 — the widened high street never widens onto sand
             !residentialSetbackKeys.has(`${x},${y}`) &&
             !shopCells.has(`${x},${y}`)
           )
@@ -1206,7 +1209,7 @@ export class ColonyRuntime {
           const x = c.x + dx,
             y = c.y;
           if (
-            cellOk(t, x, y) &&
+            roadCellOk(t, x, y) && // spec 138 — same beach guard for the cross street
             !residentialSetbackKeys.has(`${x},${y}`) &&
             !shopCells.has(`${x},${y}`)
           )
@@ -1224,6 +1227,7 @@ export class ColonyRuntime {
         leastCostPath(t, terminus, near, {
           slopeWeight: 0.5,
           diagonal: true,
+          forbidBeach: true, // spec 138 — the coast spur runs the grass line, not the sand
           blocked: (x, y) =>
             residentialSetbackKeys.has(`${x},${y}`) ||
             shopCells.has(`${x},${y}`),
@@ -1318,12 +1322,14 @@ export class ColonyRuntime {
         )
         .slice(0, 16);
       const roadable = (c: Cell) =>
-        cellOk(t0, c.x, c.y) && !residentialSetbackKeys.has(`${c.x},${c.y}`);
+        roadCellOk(t0, c.x, c.y) &&
+        !residentialSetbackKeys.has(`${c.x},${c.y}`);
       for (const terminus of candidates) {
         const path =
           leastCostPath(t0, terminus, rallyCell, {
             slopeWeight: 0.5,
             diagonal: true,
+            forbidBeach: true, // spec 138 — the rally spur is a paved road like any other
             margin: 160, // the hilltop can need a long detour around a ridge to reach a road
           }) ?? [];
         if (path.length < 2) continue;

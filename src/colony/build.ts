@@ -9,6 +9,7 @@ import type { ColonyState } from "./sim";
 import { gridOrigin } from "./grid";
 import { roadPath } from "./traffic";
 import { leastCostPath, cellOk } from "./pathfind";
+import { Biome } from "./terrain";
 
 export type BuildKind =
   | "habitat"
@@ -291,10 +292,51 @@ export function initBuild(state: ColonyState): void {
       }
     }
   }
-  developBlock(state, 0, 0); // the landing block
+  // Spec 138 — the caravan lands on the beach headland (pickLanding loves lowland shore), but
+  // roads never stand on sand, so block (0,0) — whose frame used to pave the beach — now has
+  // little or NO legal frame ground on most seeds. Seed the colony's first road frame on the
+  // NEAREST block whose perimeter is mostly legal road ground instead: a fixed ring-by-ring
+  // spiral from the landing block, first block with >= 75% of its frame on dry non-beach land
+  // wins. Deterministic (pure function of terrain + grid); growth then expands block by block
+  // from wherever the first frame stood (nextBlock walks developedBlocks' neighbours). Falls
+  // back to the landing block itself when nothing nearby qualifies (a sliver island), which
+  // lays whatever legal cells exist — possibly none.
+  const need = Math.ceil(4 * B * 0.75);
+  let seeded = false;
+  for (let ring = 0; ring <= 2 && !seeded; ring++) {
+    for (let by = -ring; by <= ring && !seeded; by++) {
+      for (let bx = -ring; bx <= ring && !seeded; bx++) {
+        if (Math.max(Math.abs(bx), Math.abs(by)) !== ring) continue;
+        if (frameRoom(state, bx, by) >= need) {
+          developBlock(state, bx, by);
+          seeded = true;
+        }
+      }
+    }
+  }
+  if (!seeded) developBlock(state, 0, 0); // the landing block (legacy last resort)
 }
 
 // ── grid / block helpers ──
+
+/** Spec 138 — how many of block (bx,by)'s frame cells are legal ROAD ground (dry, in-bounds,
+ *  off the beach — the same guard `lay` enforces). Used to pick where the FIRST frame stands. */
+function frameRoom(state: ColonyState, bx: number, by: number): number {
+  const g = gridOrigin(state);
+  const t = state.terrain;
+  const x0 = g.x + bx * B;
+  const y0 = g.y + by * B;
+  const x1 = x0 + B;
+  const y1 = y0 + B;
+  const okAt = (x: number, y: number): boolean =>
+    t.inBounds(x, y) &&
+    !t.isWater(x, y) &&
+    t.biome[t.idx(x, y)] !== Biome.Beach;
+  let room = 0;
+  for (let x = x0; x <= x1; x++) room += (okAt(x, y0) ? 1 : 0) + (okAt(x, y1) ? 1 : 0);
+  for (let y = y0 + 1; y < y1; y++) room += (okAt(x0, y) ? 1 : 0) + (okAt(x1, y) ? 1 : 0);
+  return room;
+}
 
 function blockKey(bx: number, by: number) {
   return bx + ":" + by;
@@ -319,6 +361,7 @@ function developBlock(state: ColonyState, bx: number, by: number): number {
   const lay = (x: number, y: number) => {
     if (!t.inBounds(x, y)) return;
     if (t.isWater(x, y)) return; // roads stop at water (bridges later)
+    if (t.biome[t.idx(x, y)] === Biome.Beach) return; // spec 138 — roads never on beach sand
     // Belt-and-suspenders: never lay a road on top of a base structure cell, even if `nearbyInterior`
     // got displaced. Keeps the rocket / solar / battery clear of the road frame.
     for (const s of state.structures) if (s.x === x && s.y === y) return;
@@ -349,6 +392,7 @@ function developBlock(state: ColonyState, bx: number, by: number): number {
         { x: bx2, y: by2 },
         {
           slopeWeight: 0.6,
+          forbidBeach: true, // spec 138 — a frame edge contours around sand like it does water
           blocked: (x, y) => state.occupied.has(key(x, y)), // route AROUND reserved parcel land
         },
       );

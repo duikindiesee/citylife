@@ -1,5 +1,10 @@
 # Spec 133 — roads pave rough land; the guard is water-only
 
+> **Amended by spec 138:** beach joined water as the second forbidden ground. The guard is
+> now water-AND-beach; rough dry land remains paveable exactly as decided here. See
+> `138-no-roads-on-beaches.md` for why beach can never hole a boot road the way the
+> rough-land rejection did (boot ways are beach-free by routing, not by the render guard).
+
 Second walk-under-the-road report (Sol 34): the operator dropped beneath the ribbon on the
 main road, next to a spot where the asphalt looked ragged on one side.
 
