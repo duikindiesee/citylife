@@ -32,11 +32,10 @@ export const CAP_LIFT = 0.205;
 /** The cap's own paint (zebras, stop bars) — top of the road paint stack. */
 export const CAP_PAINT_LIFT = 0.24;
 
-// WATER-and-BEACH guard, matching roadRibbon.cellOkOn (spec 133 + spec 140): junction
-// tarmac may pave rough land — the grading reshapes it (spec 130) — but never water, and
-// (spec 140) never beach sand. The carriageways a cap hulls are beach-free by routing, but
-// a coastal crossing's mouth extension can over-reach a few cells onto the sand; this trims
-// the cap (grading + drape) back to the grass line, exactly as the ribbon trims itself.
+// WATER-only guard, matching roadRibbon.cellOkOn (spec 133): junction tarmac may pave rough
+// land — the grading reshapes it (spec 130) — but never water. Spec 140 amendment (reverted):
+// beach is NOT excluded here, mirroring the ribbon. The road-off-beaches ban is a ROUTING rule;
+// a cap that grazes the shore renders continuously rather than shattering (see roadRibbon.cellOkOn).
 const cellOk = (t: Terrain, x: number, y: number): boolean => {
   const gx = Math.round(x),
     gy = Math.round(y);
@@ -47,7 +46,6 @@ const cellOk = (t: Terrain, x: number, y: number): boolean => {
     b !== Biome.Ocean &&
     b !== Biome.Shallows &&
     b !== Biome.River &&
-    b !== Biome.Beach &&
     !t.water[i]
   );
 };
@@ -182,11 +180,6 @@ export function drapeCap(
   const y = (x: number, gy: number) =>
     Math.max(0, opts.roadY(x, gy)) + CAP_LIFT;
   for (const [a, b, c] of tessellate(poly, { x: zone.cx, y: zone.cy })) {
-    // Spec 140 — drop any cap triangle centred on forbidden ground (beach/water). The
-    // tessellation is <= 1.5-cell edges, so the centroid test trims the cap to the grass
-    // line at ~1-cell resolution, matching the ribbon's per-cross-section guard.
-    if (!cellOk(opts.terrain, (a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3))
-      continue;
     out.push(
       opts.wx(a.x), y(a.x, a.y), opts.wz(a.y),
       opts.wx(b.x), y(b.x, b.y), opts.wz(b.y),

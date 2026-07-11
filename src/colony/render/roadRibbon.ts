@@ -38,22 +38,24 @@ function cellOkOn(terrain: Terrain, x: number, y: number): boolean {
     gy = Math.round(y);
   if (!terrain.inBounds(gx, gy)) return false;
   const i = terrain.idx(gx, gy);
-  // WATER-only guard (spec 133) + the BEACH exception (spec 140). The old guard also rejected
-  // buildable===0 LAND — steep or sunken pockets — but the boot ways cross 59 such cells on
-  // the seeded map: each one was a HOLE in the asphalt (skipped segments — the operator's
-  // ragged edge) and a hole in the terrain grading (the ground never rose, so the spanning
-  // quads floated and the walker dropped underneath). Roads may pave over rough land — the
-  // grading reshapes it to meet them (spec 130) — but never over water (the spec-115 intent,
-  // kept), and since spec 140 never over beach sand either. Boot ways are beach-free by
-  // ROUTING (the planner treats Beach like water), so unlike the spec-133 pockets this
-  // rejection cannot hole a boot road; it is the render backstop that keeps hand-drawn
-  // builder roads and legacy saved ways from painting asphalt on the sand.
+  // WATER-only guard (spec 133). Roads may pave over rough land — the grading reshapes it to
+  // meet them (spec 130) — but never over water (the spec-115 intent). Rough LAND (buildable 0)
+  // is allowed: the boot ways cross dozens of steep/sunken dry pockets, and excluding them left
+  // holes in the asphalt and ungraded dips the walker fell into.
+  //
+  // Spec 140 amendment (reverted here): beach is NOT excluded in this render guard. The road-off-
+  // beaches ban lives in ROUTING (pathfind roadCellOk / forbidBeach keeps every road CELL off the
+  // sand). A rendered ribbon is ~half-a-carriageway wider than its centre-line, so a road running
+  // the grass line RIGHT beside the beach has its outer edge graze a beach cell — and rejecting
+  // beach here dropped the whole cross-section, SHATTERING the ribbon into ragged holes ("the beach
+  // is breaking the roads"). The centre-line is on grass by routing; the edge may kiss the sand, and
+  // a continuous ribbon that grazes the shore beats a shattered one. Water still shatters — correctly,
+  // no asphalt over the sea.
   const b = terrain.biome[i];
   return (
     b !== Biome.Ocean &&
     b !== Biome.Shallows &&
     b !== Biome.River &&
-    b !== Biome.Beach &&
     !terrain.water[i]
   );
 }
