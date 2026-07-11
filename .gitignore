@@ -19,3 +19,7 @@ provision-citizen.sh
 
 # Local QA-rig artifacts (Floyd flyby captures, inspection JSON, screenshots)
 .flyby/
+
+# Playwright runtime artifacts
+playwright-report/
+test-results/
