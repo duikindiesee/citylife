@@ -49,7 +49,11 @@ export function R3FAvatars({ sim, refs, terrainLevel }: R3FAvatarsProps) {
   const boltRef = useRef<THREE.Mesh>(null);
 
   const bodyGeometry = useMemo(
-    () => new THREE.CapsuleGeometry(AVATAR_BODY.radius, AVATAR_BODY.length, 4, 8),
+    () => {
+      const geo = new THREE.CapsuleGeometry(AVATAR_BODY.radius, AVATAR_BODY.length, 4, 8);
+      geo.translate(0, AVATAR_BODY.lift, 0); // spec 137 — feet on the ground, not torso buried at it
+      return geo;
+    },
     []
   );
   const headGeometry = useMemo(() => {

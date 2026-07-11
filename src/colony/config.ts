@@ -6,7 +6,7 @@ export const COLONY = {
     // them the buildable-mask thresholds — keep their meaning; noise frequencies stay untouched,
     // so the same landforms simply become 3.17x wider. That IS the roomy feel the operator asked
     // for. Everything here re-baselines the seed-4242 layout in ONE commit (the 084 plan).
-    size: 608, // heightfield resolution AND region width in world units (1 cell = 1 unit)
+    size: 608, // heightfield resolution in CELLS; the render layers place each cell at CELL_SIZE (4) world units, so the region spans 608*4 = ~2432 world units (~2.4 km at 1 unit = 1 m). See src/colony/scale.ts.
     heightScale: 54, // world-units of relief from sea level to highest peak (54/608 == 17/192)
     seaLevel: 0.34, // normalised elevation below which is ocean
     planetRadius: 4800, // the "ball" the flat region sits on (apex at y=0)
