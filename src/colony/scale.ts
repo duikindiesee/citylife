@@ -1,4 +1,4 @@
-// Spec 137 — the world metric system. ONE source of truth for how the CityLife world maps to
+// Spec 146 — the world metric system. ONE source of truth for how the CityLife world maps to
 // real-world size, so props stop being sized by copy-pasted magic numbers that drift apart.
 //
 // THE ANCHOR: 1 world unit = 1 metre. This is not an arbitrary choice — roadPitch.ts already
@@ -6,7 +6,7 @@
 // of the world already correct at this scale: terrain (608 cells -> ~2.4 km region), trees
 // (~8 m), houses post spec-129 (~6-16 m eaves), and per-building commercial massing (~7 m).
 // The things that were WRONG were sized against no anchor at all: the first-person player
-// (a 3 m giant) and the citizen/pedestrian figures (~1 m toddlers). Spec 137 pins every
+// (a 3 m giant) and the citizen/pedestrian figures (~1 m toddlers). Spec 146 pins every
 // character dimension to this file so they read as real humans against the correct world.
 
 /** Metres per world unit. The whole point of the file: everything below is in metres, and at

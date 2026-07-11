@@ -1,4 +1,4 @@
-# Ironwork Pillar (spec 116) — build brief: design, geometry, placement, ship path
+# Ironwork Pillar (spec 144) — build brief: design, geometry, placement, ship path
 
 # The Ironwork Pillar — "The Escapement"
 

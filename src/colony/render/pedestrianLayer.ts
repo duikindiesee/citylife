@@ -13,7 +13,7 @@ import { CITIZEN_HEIGHT_M, citizenFigure } from '../scale';
  *  drawn count varies per frame via visiblePedCount. */
 export const PED_POOL_CAP = 28;
 
-/** Spec 137 — pedestrians share the citizens' 1.7 m adult silhouette, derived from the same
+/** Spec 146 — pedestrians share the citizens' 1.7 m adult silhouette, derived from the same
  *  metric (they were ~0.8 m — shorter even than the ~1 m citizens). `translateY` pre-lifts the
  *  torso and head so the figure's feet sit on the ground. */
 const FIGURE = citizenFigure(CITIZEN_HEIGHT_M);
