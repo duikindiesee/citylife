@@ -1,7 +1,11 @@
 import { test, expect } from '@playwright/test';
 
 test('Zoning and building plots E2E', async ({ page }) => {
-  test.setTimeout(120000); // 2 minutes timeout
+  // Heavy build-interaction flow (open zoning menus, drag a plot, wait for the sim to build it).
+  // On the slow headless CI runner the drag + per-plot terrain/collider recompute overran the 2 min
+  // budget (it reached "Zoning mode active" then timed out placing the plot). Same class as
+  // first_plot — 5 min gives it comfortable headroom in a single attempt (global retries are 0).
+  test.setTimeout(300000);
 
   console.log('Navigating to CityLife...');
   await page.goto('/?skipauth=1');
