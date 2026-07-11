@@ -25,21 +25,21 @@ shore-hugging trunk was itself a fragile thread. The real defect is older and st
 boot road source merges its cells straight into `state.roads` with nothing guaranteeing the pieces
 touch.** On seed 4242 the network flood-fills into **4 components** (4-neighbour):
 
-| cells | grid centroid | what it actually is                                                                    |
-| ----: | ------------- | -------------------------------------------------------------------------------------- |
-|  3919 | (335, 338)    | the main web — founders' avenue + all 3 satellite hamlets + the commercial high street |
-|    75 | (125, 284)    | the commercial **cross street** (lower half), severed                                  |
-|    29 | (125, 250)    | the commercial **cross street** (upper half), severed                                  |
-|    18 | (309, 310)    | the **rally spur** stub (spec 097 fail-soft)                                           |
+| cells | grid centroid | what it actually is |
+|------:|---------------|---------------------|
+| 3919  | (335, 338)    | the main web — founders' avenue + all 3 satellite hamlets + the commercial high street |
+| 75    | (125, 284)    | the commercial **cross street** (lower half), severed |
+| 29    | (125, 250)    | the commercial **cross street** (upper half), severed |
+| 18    | (309, 310)    | the **rally spur** stub (spec 097 fail-soft) |
 
-The first hypothesis — that the two western fragments were a stranded _hamlet_ whose only path
+The first hypothesis — that the two western fragments were a stranded *hamlet* whose only path
 crossed a now-forbidden beach — was **wrong**, and the investigation is worth recording so the next
 reader does not re-chase it. All three satellite hamlets connect fine (one hamlet's spoke-to-coast
 fails on the beach ban, but its mesh cross-link rescues it). The two "western" fragments are the
 commercial district's **cross street**: a vertical road at `crossStreetX` that the mall pad and shop
 footprints occupy across the intersection row, splitting it into two islands that never rejoin their
 own high street. Each island sits a **clean 6–7 cells** from the main web — no water, no beach, no
-setback between them — so nothing _blocked_ the connection; it was simply never routed. The 18-cell
+setback between them — so nothing *blocked* the connection; it was simply never routed. The 18-cell
 piece is the rally spur, which by design (spec 097) paves only the clean knoll suffix and fails soft
 when a homestead setback walls it off.
 
@@ -56,11 +56,9 @@ fence-setback prune, closes the gaps deterministically:
    first (the single nearest can be un-routable), through `leastCostPath` with `forbidBeach` (spec
    140 — the connector bends inland, never onto sand/water), a homestead-setback `blocked` gate (spec
    114 — never touches a fence border), a slope weight, and a search margin scaled to the pair's
-   distance. A candidate is **dry-run** through the same string-pulled `layRoad` as every other trunk
-   and committed only when a 4-connectivity BFS proves it TRULY merges the orphan into the main web —
-   never a diagonal LOS staircase whose blocked shoulders would leave isolated cells behind (see
-   Hardening). On commit it is `mergeAvenue`d into the network and the main web grows in place.
-3. Iterate to a fixed point (bounded to 12 passes): connecting one orphan grows the main web, which may
+   distance. The found path is laid through the same string-pulled `layRoad` as every other trunk, so
+   it reads as a real road, and `mergeAvenue`d into the network.
+3. Iterate to a fixed point (bounded to 8 passes): connecting one orphan grows the main web, which may
    then be the nearest anchor for the next.
 
 **Prefer connecting over deleting.** The pass never strands and never deletes — it only adds the road
@@ -80,40 +78,8 @@ LEGITIMATE and expected on other seeds, both verified by routing analysis:
   all sides by homestead setbacks; a route exists only if allowed to cross a fence border, which spec
   114 forbids and the final prune would strip anyway. It stays reachable on foot.
 
-The connectivity test pins the general floor at **≥99% of cells in one web** for the seed suite, with
-these two as the only documented exception classes.
-
-## Hardening (post-review)
-
-An adversarial review of the first cut found a latent correctness bug: `layRoad` string-pulls its
-path into straight LOS segments, and a 45° segment can be a diagonal shortcut across a 1-cell isthmus
-the router itself went around. Its width-1 stroke fills the staircase gaps with the ±1 shoulder cells,
-but where BOTH shoulders are blocked (water/beach/setback) the laid connector is an 8-connected
-diagonal staircase — which the 4-connected flood-fill still reads as split. The original loop counted
-"a path was laid" as success, so it could believe it connected an orphan while leaving a dotted line
-of isolated single cells (re-introducing the very "roads that don't connect" symptom, and tripping the
-suite's own no-floating-cell check).
-
-The fix makes the repair HONEST: a candidate is **dry-run** (a `layRoad` mode that returns the cells
-without recording a ribbon), a 4-neighbour BFS over the current roads + the candidate's cells checks
-it actually reaches a main cell, and the connector is committed only then. Consequences, all verified:
-
-- **No isolated singletons, ever** — guaranteed by construction, not by luck. Pinned across seeds
-  4242/7/42/12/16/29/46 (the last two are fail-soft yet still singleton-free).
-- **Honest progress + termination** — a pass counts only real merges, so a failed candidate can't spin
-  the fixed-point loop; the incremental main set also stops a second, redundant connector to an orphan
-  already absorbed earlier in the same pass.
-- **More candidates, capped search** — the best 12 anchor pairs are tried (a near-collinear top-few can
-  all hit the same walled crossing), and the per-attempt `leastCostPath` margin is capped well below
-  the grid so a far, genuinely stranded orphan can never trigger a whole-grid flood on the fail path.
-
-A sweep of seeds 1–80 confirms the repair leaves NOTHING a legal road could reach: every residual
-orphan classifies as either **water-locked** (no land route exists even with beach/setback guards off
-— e.g. seed 46, three island pieces behind 39–63 water cells) or **setback-walled** (a land route
-exists only THROUGH a homestead's keep-clear ring, which spec 114 forbids — e.g. seeds 29/41). The
-capped margin loses no reachable orphan: for every residual, even an unbounded-margin route is `null`.
-Output on the pinned seeds is byte-identical to the first cut (those connectors already bridged), so
-the determinism/golden tests are unchanged; this is a robustness guarantee for the long tail of seeds.
+The connectivity test pins the general floor at **≥99% of cells in one web**, with these two as the
+only documented exceptions.
 
 ## Cost — materials & labour
 
@@ -140,28 +106,8 @@ no pinned path shifted. The full suite (150 files / 1277 tests) is green.
   two floating islands before, is one connected web after; and a data-accurate top-down component map
   (before: 4 components / 96.98%, after: 1 / 100%).
 
-### Rendered-continuity hardening
-
-The connected cell graph is not enough if its smooth ribbon disappears. A seed-4242 link into
-Woods1 remained connected in `roadKind`, but Chaikin corner smoothing bowed its visible centre-line
-across a narrow inlet. The water guard correctly omitted those mesh segments, leaving an apparent
-gap of roughly ten metres even though traffic could still traverse the underlying cells.
-
-`roadRibbonRenderPath` now keeps the smoothed dense path only while all of its segment samples remain
-on renderable land. If smoothing cuts water, that way falls back to the densified source polyline that
-the land-aware router already proved legal. This changes no road, parcel, route or race coordinates;
-it only makes the renderer honour the connected topology. `ribbonCoverage` and the mesh builder use
-the same selected path so terrain grading, foliage clearance and visible asphalt cannot disagree.
-
-`tests/roadWaterGuard.test.ts` pins both the pure near-water bend and the seed-4242 Woods1 connector.
-
 ## Known adjacent issue (out of scope, flagged separately)
 
 Booting some other seeds (e.g. seed 4) throws in the PRE-EXISTING commercial connector
 (`nearestPair` on an empty founders `carriage` → `leastCostPath` on `undefined`), before this pass
 runs. It is unrelated to connectivity repair and left for its own fix.
-
-FIXED (follow-up): the commercial connector now guards the founders' spur on a non-empty `carriage`
-(`runtime.ts`) — an empty carriage skips only the spur and still widens + merges the high street.
-Regression: `tests/colonyBootSeeds.test.ts` boots seeds 1..24 (seed 4 was the reproducer) without
-throwing.
