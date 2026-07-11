@@ -43,6 +43,21 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
         y1: Math.ceil(z.cy + r),
       });
     }
+    // Spec 149 — the bus depot pad clears its trees too (same class as lots/parcels/junctions):
+    // conifers otherwise grow across the apron and parking bays, half-burying the parked fleet.
+    // ORIGIN-anchored AABB (same field the terrain leveling grades in useTerrainLeveling §2b, so
+    // trees and grading agree on ONE footprint); the whole depot GLB + bays sit inside it, and the
+    // gate spur is a real road already cleared by the roads pass above. The 1-cell canopy margin is
+    // added by calculateFoliagePositions, exactly as for the commercial parcels.
+    const depot = s.busDepotPad;
+    if (depot) {
+      rects.push({
+        x0: depot.x,
+        y0: depot.y,
+        x1: depot.x + depot.w - 1,
+        y1: depot.y + depot.h - 1,
+      });
+    }
     const { matrices: mats, colors: cols } = calculateFoliagePositions(s.terrain, s.roads, s.buildings, rects);
     return { matrices: mats, colors: cols };
   }, [sim, foliageSig]);
