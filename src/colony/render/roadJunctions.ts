@@ -131,12 +131,38 @@ export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
     events.push({ x, y, ways: new Set([wi, wj]) });
   };
 
+  // AABB per path so pairs that never come near skip the O(n*m) segment sweep — keeps
+  // hand-built cities (dozens of ways, rebuilt on every road edit) snappy.
+  const boxes = paths.map((p) => {
+    if (!p) return null;
+    let minX = Infinity,
+      maxX = -Infinity,
+      minY = Infinity,
+      maxY = -Infinity;
+    for (const q of p) {
+      if (q.x < minX) minX = q.x;
+      if (q.x > maxX) maxX = q.x;
+      if (q.y < minY) minY = q.y;
+      if (q.y > maxY) maxY = q.y;
+    }
+    return { minX, maxX, minY, maxY };
+  });
   for (let i = 0; i < ways.length; i++) {
     const pi = paths[i];
     if (!pi) continue;
     for (let j = i + 1; j < ways.length; j++) {
       const pj = paths[j];
       if (!pj) continue;
+      const bi = boxes[i]!,
+        bj = boxes[j]!;
+      const gap = ways[i]!.width / 2 + ways[j]!.width / 2 + 1;
+      if (
+        bi.minX > bj.maxX + gap ||
+        bj.minX > bi.maxX + gap ||
+        bi.minY > bj.maxY + gap ||
+        bj.minY > bi.maxY + gap
+      )
+        continue;
       // (a) true centre-line crossings
       for (let a = 0; a < pi.length - 1; a++) {
         for (let b = 0; b < pj.length - 1; b++) {
@@ -181,8 +207,12 @@ export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
     }
   }
 
-  // Merge clusters whose caps would overlap — but only when they SHARE a way (a pure
-  // distance rule chain-merges genuinely distinct junctions in dense builder grids).
+  // Merge only TRUE same-crossing duplicates (multi-hits of one crossing that escaped
+  // the addEvent fold). Distant twins on the same ways stay SEPARATE zones: the exact
+  // carriageway union (spec 137 v2) is drawn per crossing point — one star centre
+  // cannot draw honest kerb lines for two crossings, which is exactly how the merged
+  // blob the operator called an antipattern happened. Adjacent exact pads overlap
+  // benignly along the shared road (per-zone micro-lift in the cap builder).
   let merged = true;
   while (merged) {
     merged = false;
@@ -194,7 +224,7 @@ export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
         for (const w of ea.ways) if (eb.ways.has(w)) shared++;
         if (shared === 0) continue;
         const d = Math.hypot(ea.x - eb.x, ea.y - eb.y);
-        if (d <= (shared >= 2 ? 8 : 4)) {
+        if (d <= (shared >= 2 ? 3 : 2.5)) {
           ea.x = (ea.x + eb.x) / 2;
           ea.y = (ea.y + eb.y) / 2;
           for (const w of eb.ways) ea.ways.add(w);
@@ -255,16 +285,20 @@ export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
     }
     if (arms.length < 2) continue;
 
-    // Mouth distances: far enough along arm i to clear every other arm's carriageway,
-    // plus an apron. Shallow pairs are floored at SIN_MIN (28 deg) — their overlap tips
-    // are covered by the kerb-corner fillet points in junctionCap.capPolygon.
+    // Mouth distances: the pad's side edges run EXACTLY along each arm's kerb lines, and
+    // adjacent arms' kerbs intersect at t = (h_other + h_self*cos(delta)) / sin(delta)
+    // along the arm (the true kerb corner). The mouth must sit past every such corner
+    // plus an apron, so the mouth edge is a clean square cut across the carriageway.
+    // Shallow pairs are floored at SIN_MIN (28 deg); past MOUTH_MAX the corner walk in
+    // junctionCap falls back to a straight chamfer.
     for (const a of arms) {
       let need = 0;
       for (const b of arms) {
         if (b === a) continue;
         const ang = axisAngle({ ux: a.ux, uy: a.uy }, { ux: b.ux, uy: b.uy });
         if (ang < 1e-3) continue; // same axis (the opposite arm of a through way)
-        need = Math.max(need, b.half / Math.max(Math.sin(ang), SIN_MIN));
+        const s = Math.max(Math.sin(ang), SIN_MIN);
+        need = Math.max(need, (b.half + a.half * Math.cos(ang)) / s);
       }
       a.mouthD = Math.min(
         MOUTH_MAX,

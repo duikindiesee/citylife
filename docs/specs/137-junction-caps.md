@@ -35,12 +35,23 @@ surface (`junctionCap.ts`, pure):
   per-arm half-widths, and a MOUTH distance `d = apron + max(h_other/sin(angle))` so the
   junction tarmac clears every crossing carriageway (28-degree sine floor; shallower
   overlap tips are covered by the kerb-corner fillet points).
-- **Cap = convex hull** of arm-mouth corners + kerb-corner fillet intersections, fan-
-  tessellated to <=1.5-cell edges and DRAPED: every vertex at
-  `roadY + CAP_LIFT (0.205)` through `getSmoothRoadY` — the cap can neither float nor
-  step; the worst perimeter discontinuity is the 25 mm paint lip. Stack preserved:
-  ribbon 0.18 < cap 0.205 < markings 0.23+. Material is ribbon-identical (tone, shadows,
-  DoubleSide) + polygonOffset; one merged mesh (`RoadJunctionCaps`).
+- **Cap = the EXACT carriageway union** (v2, operator directive after the live review:
+  "find the sides of the road ends, and exactly draw it mathematically" — the v1 convex
+  hull over-covered, worst on merged zones, "this is antipattern"). The outline is a
+  CCW walk over the arms: a square MOUTH edge across each carriageway at `mouthD`, side
+  edges COLLINEAR with each arm's kerb lines, corners at the true kerb-line
+  intersections `(h_j + h_i cos Δ)/sin Δ` (near-parallel neighbours connect straight
+  along the shared kerb; out-of-reach corners chamfer). Generally NON-convex (reflex
+  plus-shape corners), star-shaped around the crossing — fan-tessellated from the zone
+  CENTRE to <=1.5-cell edges and DRAPED: every vertex at `roadY + CAP_LIFT (0.205)`.
+  The road's painted edge flows into the pad edge with no jog, and the corner fields
+  the hull used to pave are grass again. Stack preserved: ribbon 0.18 < cap 0.205 <
+  markings 0.23+. Material is ribbon-identical + polygonOffset; one merged mesh
+  (`RoadJunctionCaps`). Twin crossings on one road are NO LONGER merged (a single star
+  centre cannot draw honest kerbs for two crossing points): each gets its own exact
+  pad, anchored at its own event, overlapping benignly along the shared road under a
+  per-zone 0/4/8 mm micro-lift. Way pairs are AABB-pruned before the segment sweep so
+  hand-built cities rebuild fast.
 - **Micro-lift backstop** (`assignWayLifts`): ways sharing a zone are greedy-colored and
   lifted `layer * 0.01` (<= 0.03) so overlapping ribbons are never depth-coincident even
   where a cap is skipped (stale ways, water guard) — the systemic end of the shimmer.

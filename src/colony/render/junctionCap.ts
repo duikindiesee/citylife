@@ -15,10 +15,10 @@
 // Pure geometry — node-testable; R3FRoadRibbons draws the merged output.
 import type { Terrain } from "../terrain";
 import type { JunctionZone } from "./roadJunctions";
-import { convexHull, pointInConvexPoly } from "./geom2d";
+import { convexHull, pointInConvexPoly, pointInPoly, nearPoly } from "./geom2d";
 import { Biome } from "../terrain";
 
-export { convexHull, pointInConvexPoly };
+export { convexHull, pointInConvexPoly, pointInPoly, nearPoly };
 
 export interface CapBuildOptions {
   terrain: Terrain;
@@ -48,49 +48,64 @@ const cellOk = (t: Terrain, x: number, y: number): boolean => {
   );
 };
 
-/** Build the cap outline for a zone: mouth corners + kerb-corner fillet points, hulled.
- *  Mutates zone.poly (zones are plain data owned by the caller). */
+/** Build the cap outline for a zone as the EXACT union of the arm carriageways
+ *  (operator directive, 2026-07-11: "find the sides of the road ends, and exactly draw
+ *  it mathematically" — the convex hull over-covered, worst on merged zones).
+ *
+ *  Walk the arms in angular (CCW) order. Per arm the boundary crosses the MOUTH edge —
+ *  a square cut across the carriageway at mouthD — and between adjacent arms it runs
+ *  along arm i's left kerb LINE into the true kerb-corner intersection with arm j's
+ *  right kerb line, then back out. Every side edge is therefore COLLINEAR with a road's
+ *  painted edge line; the road flows into the pad with no jog. Near-parallel neighbours
+ *  (a through road's two collinear arms) connect mouth-corner to mouth-corner straight
+ *  along the shared kerb; corners that land beyond the mouths (very shallow crossings,
+ *  clamped upstream) fall back to the same straight chamfer. The result is generally
+ *  NON-convex (the plus-shape's kerb corners are reflex) and star-shaped around the
+ *  zone centre. Mutates zone.poly. */
 export function capPolygon(zone: JunctionZone): { x: number; y: number }[] {
-  const pts: { x: number; y: number }[] = [];
   const { cx, cy } = zone;
-  for (const a of zone.arms) {
-    const px = -a.uy,
-      py = a.ux; // arm perpendicular
+  if (zone.arms.length < 2) {
+    zone.poly = [];
+    return zone.poly;
+  }
+  const arms = [...zone.arms].sort(
+    (a, b) => Math.atan2(a.uy, a.ux) - Math.atan2(b.uy, b.ux),
+  );
+  const poly: { x: number; y: number }[] = [];
+  for (let i = 0; i < arms.length; i++) {
+    const a = arms[i]!;
+    const nx = -a.uy,
+      ny = a.ux; // left perpendicular (CCW) of the outward heading
     const mx = cx + a.ux * a.mouthD,
       my = cy + a.uy * a.mouthD;
-    pts.push({ x: mx + px * a.half, y: my + py * a.half });
-    pts.push({ x: mx - px * a.half, y: my - py * a.half });
-  }
-  // Kerb-corner fillets: for each arm pair, the intersection of arm i's kerb line with
-  // arm j's kerb line — the true pavement corner between adjacent approaches. Cover the
-  // overlap tips the mouth corners miss on shallow crossings; skip near-parallel pairs
-  // whose intersection runs away (chord fallback — reads as a kerb chamfer).
-  for (let i = 0; i < zone.arms.length; i++) {
-    for (let j = i + 1; j < zone.arms.length; j++) {
-      const a = zone.arms[i]!,
-        b = zone.arms[j]!;
-      const denom = a.ux * b.uy - a.uy * b.ux; // cross of headings
-      if (Math.abs(denom) < 0.2) continue; // near-parallel
-      const cap = 2 * Math.max(a.mouthD, b.mouthD);
-      // Corner K = C + perpA*sa*halfA + t*uA, with K also on B's kerb line
-      // C + perpB*sb*halfB + s*uB — solve the 2x2 for t, keep |t| within reach.
-      for (const sa of [-1, 1]) {
-        for (const sb of [-1, 1]) {
-          const ax = cx + -a.uy * sa * a.half,
-            ay = cy + a.ux * sa * a.half;
-          const bx = cx + -b.uy * sb * b.half,
-            by = cy + b.ux * sb * b.half;
-          // ax + t*a.ux = bx + s*b.ux ; ay + t*a.uy = by + s*b.uy
-          const dx = bx - ax,
-            dy = by - ay;
-          const t = (dx * b.uy - dy * b.ux) / denom;
-          if (!Number.isFinite(t) || Math.abs(t) > cap) continue;
-          pts.push({ x: ax + a.ux * t, y: ay + a.uy * t });
-        }
+    // CCW traversal crosses the mouth from the right kerb corner to the left.
+    poly.push({ x: mx - nx * a.half, y: my - ny * a.half });
+    poly.push({ x: mx + nx * a.half, y: my + ny * a.half });
+    // Boundary between arm i's LEFT kerb and the next arm's RIGHT kerb: their exact
+    // line intersection, kept only when it lies between the two mouths.
+    const b = arms[(i + 1) % arms.length]!;
+    const denom = a.ux * b.uy - a.uy * b.ux;
+    if (Math.abs(denom) > 0.08) {
+      const ax = cx + nx * a.half,
+        ay = cy + ny * a.half; // point on a's left kerb line
+      const bx = cx + b.uy * b.half,
+        by = cy - b.ux * b.half; // point on b's RIGHT kerb line (-perp side)
+      const dx = bx - ax,
+        dy = by - ay;
+      const t = (dx * b.uy - dy * b.ux) / denom; // along a's heading from (ax, ay)
+      const s = (dx * a.uy - dy * a.ux) / denom; // along b's heading from (bx, by)
+      if (
+        Number.isFinite(t) &&
+        t > -Math.max(a.half, b.half) - 1 &&
+        t < a.mouthD - 1e-6 &&
+        s < b.mouthD - 1e-6
+      ) {
+        poly.push({ x: ax + a.ux * t, y: ay + a.uy * t });
       }
+      // else: straight chamfer — the next arm's right mouth corner follows directly
     }
+    // near-parallel neighbours: direct segment along the shared kerb line
   }
-  const poly = convexHull(pts);
   zone.poly = poly;
   return poly;
 }
@@ -102,23 +117,16 @@ export function attachCapPolys(zones: JunctionZone[]): JunctionZone[] {
   return zones;
 }
 
-const centroidOf = (poly: { x: number; y: number }[]) => {
-  let x = 0,
-    y = 0;
-  for (const p of poly) {
-    x += p.x;
-    y += p.y;
-  }
-  return { x: x / poly.length, y: y / poly.length };
-};
-
-/** Fan-triangulate the convex polygon and bisect until every edge <= maxEdge cells, so
- *  the drape follows the terrain at the ribbons' own station resolution. */
+/** Fan-triangulate the (possibly non-convex, star-shaped) polygon from the zone CENTRE
+ *  and bisect until every edge <= maxEdge cells, so the drape follows the terrain at
+ *  the ribbons' own station resolution. The exact-union outline is star-shaped around
+ *  the crossing point by construction, so the centre fan is always valid. */
 export function tessellate(
   poly: { x: number; y: number }[],
+  centre: { x: number; y: number },
   maxEdge = 1.5,
 ): Array<[{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }]> {
-  const c = centroidOf(poly);
+  const c = centre;
   let tris: Array<
     [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }]
   > = [];
@@ -169,7 +177,7 @@ export function drapeCap(
   if (!cellOk(opts.terrain, zone.cx, zone.cy)) return; // stale-way fail-soft
   const y = (x: number, gy: number) =>
     Math.max(0, opts.roadY(x, gy)) + CAP_LIFT;
-  for (const [a, b, c] of tessellate(poly)) {
+  for (const [a, b, c] of tessellate(poly, { x: zone.cx, y: zone.cy })) {
     out.push(
       opts.wx(a.x), y(a.x, a.y), opts.wz(a.y),
       opts.wx(b.x), y(b.x, b.y), opts.wz(b.y),
@@ -352,7 +360,7 @@ export function capCoverageCells(
     }
     for (let y = Math.floor(minY); y <= Math.ceil(maxY); y++) {
       for (let x = Math.floor(minX); x <= Math.ceil(maxX); x++) {
-        if (!pointInConvexPoly(x, y, poly, 0.5)) continue;
+        if (!nearPoly(x, y, poly, 0.5)) continue;
         if (!cellOk(terrain, x, y)) continue;
         const h = Math.max(0, roadY(x, y));
         const k = `${x},${y}`;
@@ -386,7 +394,10 @@ export interface JunctionCapsBuild {
   paint: number[];
 }
 
-/** Build everything mesh-shaped for all zones. */
+/** Build everything mesh-shaped for all zones. Adjacent zones (un-merged twins on one
+ *  road) get a per-zone micro-lift (0/4/8 mm cycle) so their exact pads overlap along
+ *  the shared carriageway without depth-coincidence — the seam is invisible at paint
+ *  thickness, and the union of the two honest pads IS the correct tarmac shape. */
 export function buildJunctionCaps(
   zones: JunctionZone[],
   opts: CapBuildOptions,
@@ -394,11 +405,16 @@ export function buildJunctionCaps(
   attachCapPolys(zones);
   const surf: number[] = [];
   const paint: number[] = [];
-  for (const z of zones) {
-    drapeCap(z, opts, surf);
-    capCrosswalks(z, opts, paint);
-    capStopBars(z, opts, paint);
-    capKerbLines(z, opts, paint);
-  }
+  zones.forEach((z, zi) => {
+    const lift = (zi % 3) * 0.004;
+    const zOpts: CapBuildOptions = {
+      ...opts,
+      roadY: (x, y) => opts.roadY(x, y) + lift,
+    };
+    drapeCap(z, zOpts, surf);
+    capCrosswalks(z, zOpts, paint);
+    capStopBars(z, zOpts, paint);
+    capKerbLines(z, zOpts, paint);
+  });
   return { surf, paint };
 }

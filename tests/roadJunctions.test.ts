@@ -77,12 +77,11 @@ describe("spec 137 — junction zones from way-pair events", () => {
     expect(zones.length).toBe(0);
   });
 
-  it("twin events on one crossing merge into a single zone", () => {
-    // a hairpin way crosses the same avenue twice ~5.7 cells apart — near enough that
-    // the caps would collide (the spec-127 blobs rendered two overlapping squares with a
-    // step seam there). Crossings farther apart than both caps' reach stay two zones by
-    // design. (Peak 54: the chaikin-smoothed crest sits at 50.5, so the line still
-    // crosses y=50 twice, close together.)
+  it("a hairpin crossing the same road twice keeps TWO exact zones (spec 137 v2)", () => {
+    // Two real crossings ~5.7 cells apart each get their own exact carriageway-union
+    // pad, anchored at their own crossing point — one merged star centre cannot draw
+    // honest kerb lines for two crossings (the operator's "antipattern" blob). The two
+    // pads overlap benignly along the shared road; the cap builder micro-lifts them.
     const dogleg: RoadWay = {
       path: [
         { x: 40, y: 40 },
@@ -93,7 +92,8 @@ describe("spec 137 — junction zones from way-pair events", () => {
       width: 4,
     };
     const zones = findJunctionZones([straight(0, 50, 100, 50), dogleg]);
-    expect(zones.length).toBe(1);
+    expect(zones.length).toBe(2);
+    for (const z of zones) expect(Math.abs(z.cy - 50)).toBeLessThan(1); // ON the road
   });
 
   it("mixed widths keep PER-ARM half-widths (no more widest-way square)", () => {

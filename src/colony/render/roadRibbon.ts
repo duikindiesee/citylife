@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import type { Terrain } from "../terrain";
 import type { JunctionZone } from "./roadJunctions";
-import { pointInConvexPoly } from "./geom2d";
+import { nearPoly } from "./geom2d";
 import { Biome } from "../terrain";
 
 // Spec 088 — SMOOTH ROAD RIBBONS. The roads are stored + driven as per-cell grid data (for traffic,
@@ -247,7 +247,7 @@ export function buildRoadRibbons(
         const dx = x - z.cx,
           dy = y - z.cy;
         if (dx * dx + dy * dy > (z.rBound + 0.6) * (z.rBound + 0.6)) continue;
-        if (pointInConvexPoly(x, y, z.poly, 0.6)) return true;
+        if (nearPoly(x, y, z.poly, 0.6)) return true;
       }
       return false;
     };

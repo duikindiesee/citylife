@@ -58,7 +58,10 @@ test('R3F road ribbons: merged surface, draped junction caps, builder intact', a
         const gx = pos.getX(i) / 4 + N / 2;
         const gy = pos.getZ(i) / 4 + N / 2;
         const expected = Math.max(0, roadY(gx, gy)) + 0.205;
-        maxDrapeError = Math.max(maxDrapeError, Math.abs(pos.getY(i) - expected));
+        // per-zone anti-coincidence micro-lift adds 0..8mm above the nominal drape
+        const dev = pos.getY(i) - expected;
+        const err = dev < 0 ? -dev : Math.max(0, dev - 0.009);
+        maxDrapeError = Math.max(maxDrapeError, err);
         sampled++;
       }
     }

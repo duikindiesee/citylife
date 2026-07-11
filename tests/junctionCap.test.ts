@@ -11,7 +11,7 @@ import {
   capCoverageCells,
   capPolygon,
   CAP_LIFT,
-  pointInConvexPoly,
+  pointInPoly,
 } from "../src/colony/render/junctionCap";
 import { signalState } from "../src/colony/render/roadFurniture";
 
@@ -49,24 +49,55 @@ const straight = (
 
 const zonesFor = (ways: RoadWay[]) => attachCapPolys(findJunctionZones(ways));
 
-describe("spec 137 — cap polygon", () => {
-  it("a 90-degree cross yields a convex hull containing the full overlap square", () => {
+describe("spec 137 — cap polygon (exact carriageway union)", () => {
+  it("a 90-degree cross is the exact plus-shape: overlap paved, corner fields NOT", () => {
     const [z] = zonesFor([straight(0, 50, 100, 50), straight(50, 0, 50, 100)]);
     const poly = z!.poly;
-    expect(poly.length).toBeGreaterThanOrEqual(4);
-    // the ribbon-overlap square is half x half around the centre — all inside
+    expect(poly.length).toBeGreaterThanOrEqual(8); // 4 mouth edges + 4 kerb corners
+    // the ribbon-overlap square (h=2 both ways) is fully paved
     for (const [dx, dy] of [
-      [-2, -2],
-      [2, -2],
-      [2, 2],
-      [-2, 2],
+      [-1.8, -1.8],
+      [1.8, -1.8],
+      [1.8, 1.8],
+      [-1.8, 1.8],
       [0, 0],
+      [2.5, 0], // inside the east arm past the overlap
+      [0, -2.5],
     ] as const) {
-      expect(pointInConvexPoly(z!.cx + dx, z!.cy + dy, poly)).toBe(true);
+      expect(pointInPoly(z!.cx + dx, z!.cy + dy, poly)).toBe(true);
+    }
+    // the exact-union directive: the diagonal corner FIELDS the old convex hull paved
+    // are OUTSIDE the pad — the boundary follows the kerb lines, not chords.
+    for (const [dx, dy] of [
+      [2.6, 2.6],
+      [-2.6, 2.6],
+      [2.6, -2.6],
+      [-2.6, -2.6],
+    ] as const) {
+      expect(pointInPoly(z!.cx + dx, z!.cy + dy, poly)).toBe(false);
     }
   });
 
-  it("a 45-degree crossing's hull contains the analytic overlap parallelogram", () => {
+  it("cap side edges are COLLINEAR with the arms' kerb lines", () => {
+    const [z] = zonesFor([straight(0, 50, 100, 50), straight(50, 0, 50, 100)]);
+    const poly = z!.poly;
+    // every polygon vertex lies on SOME arm's kerb line (|perp offset| == half) or on a
+    // mouth edge (distance along the arm == mouthD) — nothing is invented geometry.
+    for (const p of poly) {
+      let onRoadEdge = false;
+      for (const a of z!.arms) {
+        const rx = p.x - z!.cx,
+          ry = p.y - z!.cy;
+        const across = Math.abs(rx * -a.uy + ry * a.ux);
+        const along = rx * a.ux + ry * a.uy;
+        if (Math.abs(across - a.half) < 1e-6 && along > -a.half - 1.5) onRoadEdge = true;
+        if (Math.abs(along - a.mouthD) < 1e-6 && across <= a.half + 1e-6) onRoadEdge = true;
+      }
+      expect(onRoadEdge).toBe(true);
+    }
+  });
+
+  it("a 45-degree crossing's pad contains the analytic overlap parallelogram", () => {
     const [z] = zonesFor([straight(0, 50, 100, 50), straight(20, 20, 80, 80)]);
     expect(z).toBeTruthy();
     const poly = z!.poly;
@@ -78,7 +109,7 @@ describe("spec 137 — cap polygon", () => {
       for (let t = -0.9; t <= 0.9; t += 0.3) {
         const px = z!.cx + u1.x * s * 2.8 + u2.x * t * 2.8;
         const py = z!.cy + u1.y * s * 2.8 + u2.y * t * 2.8;
-        expect(pointInConvexPoly(px, py, poly, 0.25)).toBe(true);
+        expect(pointInPoly(px, py, poly)).toBe(true);
       }
     }
   });
@@ -137,24 +168,31 @@ describe("spec 137 — cap coverage feeds the grading", () => {
     }
   });
 
-  it("hull corner cells beyond the plain arm sweep are included (the old float zone)", () => {
+  it("coverage never leaves the carriageways: every cell hugs some arm's corridor", () => {
+    // The exact-union directive inverted the old hull expectation: coverage must NOT
+    // include corner fields beyond the kerb lines (the sprawling graded aprons the
+    // operator called an antipattern).
     const zones = zonesFor([
       straight(0, 50, 100, 50),
       straight(20, 20, 80, 80),
     ]);
     const cover = capCoverageCells(zones, fakeTerrain, roadY);
     const z = zones[0]!;
-    // at least one covered cell farther than half+1 from BOTH centre-lines' axes
-    let cornerCells = 0;
     for (const k of cover.keys()) {
       const c = k.indexOf(",");
       const x = +k.slice(0, c),
         y = +k.slice(c + 1);
-      const d1 = Math.abs(y - z.cy); // distance from horizontal way
-      const d2 = Math.abs((y - z.cy) - (x - z.cx)) / Math.SQRT2; // from diagonal way
-      if (d1 > 2.5 && d2 > 2.5) cornerCells++;
+      let nearArm = false;
+      for (const a of z.arms) {
+        const rx = x - z.cx,
+          ry = y - z.cy;
+        const across = Math.abs(rx * -a.uy + ry * a.ux);
+        const along = rx * a.ux + ry * a.uy;
+        if (across <= a.half + 1.2 && along >= -a.half - 1.2 && along <= a.mouthD + 1.2)
+          nearArm = true;
+      }
+      expect(nearArm).toBe(true);
     }
-    expect(cornerCells).toBeGreaterThan(0);
   });
 });
 
