@@ -12,7 +12,6 @@ import {
   capPolygon,
   CAP_LIFT,
   pointInPoly,
-  sanitizeCapPoly,
 } from "../src/colony/render/junctionCap";
 import { signalState } from "../src/colony/render/roadFurniture";
 
@@ -49,58 +48,6 @@ const straight = (
 });
 
 const zonesFor = (ways: RoadWay[]) => attachCapPolys(findJunctionZones(ways));
-
-describe("spec 137 cap-quality — sanitizeCapPoly", () => {
-  const selfIntersects = (poly: { x: number; y: number }[]): boolean => {
-    const n = poly.length;
-    const cross = (a: any, b: any, c: any, d: any) => {
-      const rx = b.x - a.x,
-        ry = b.y - a.y,
-        sx = d.x - c.x,
-        sy = d.y - c.y;
-      const den = rx * sy - ry * sx;
-      if (Math.abs(den) < 1e-9) return false;
-      const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
-      const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
-      return t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6;
-    };
-    for (let i = 0; i < n; i++)
-      for (let j = i + 2; j < n; j++) {
-        if (i === 0 && j === n - 1) continue;
-        if (cross(poly[i], poly[(i + 1) % n], poly[j], poly[(j + 1) % n]))
-          return true;
-      }
-    return false;
-  };
-
-  it("leaves a valid concave plus-shape (a real 90-degree cross) untouched", () => {
-    const [z] = zonesFor([straight(0, 50, 100, 50), straight(50, 0, 50, 100)]);
-    const before = z!.poly.map((p) => ({ ...p }));
-    const after = sanitizeCapPoly(before);
-    expect(after.length).toBe(before.length); // no dedup, no hull fallback
-    expect(selfIntersects(after)).toBe(false);
-  });
-
-  it("repairs a self-intersecting / near-duplicate degenerate outline via the convex hull", () => {
-    // the shallow-crossing mess measured live at seed 4242 Z0: zigzag + duplicate points
-    const bad = [
-      { x: 491.6, y: 364.0 },
-      { x: 492.6, y: 367.9 },
-      { x: 492.1, y: 365.1 },
-      { x: 492.5, y: 369.1 },
-      { x: 487.1, y: 369.5 },
-      { x: 482.9, y: 372.9 },
-      { x: 480.4, y: 369.8 },
-      { x: 482.9, y: 372.8 },
-      { x: 480.4, y: 369.7 },
-      { x: 485.4, y: 365.7 },
-    ];
-    expect(selfIntersects(bad)).toBe(true); // the raw outline is broken
-    const fixed = sanitizeCapPoly(bad);
-    expect(fixed.length).toBeGreaterThanOrEqual(3);
-    expect(selfIntersects(fixed)).toBe(false); // repaired into a simple polygon
-  });
-});
 
 describe("spec 137 — cap polygon (exact carriageway union)", () => {
   it("a 90-degree cross is the exact plus-shape: overlap paved, corner fields NOT", () => {
@@ -143,10 +90,8 @@ describe("spec 137 — cap polygon (exact carriageway union)", () => {
           ry = p.y - z!.cy;
         const across = Math.abs(rx * -a.uy + ry * a.ux);
         const along = rx * a.ux + ry * a.uy;
-        if (Math.abs(across - a.half) < 1e-6 && along > -a.half - 1.5)
-          onRoadEdge = true;
-        if (Math.abs(along - a.mouthD) < 1e-6 && across <= a.half + 1e-6)
-          onRoadEdge = true;
+        if (Math.abs(across - a.half) < 1e-6 && along > -a.half - 1.5) onRoadEdge = true;
+        if (Math.abs(along - a.mouthD) < 1e-6 && across <= a.half + 1e-6) onRoadEdge = true;
       }
       expect(onRoadEdge).toBe(true);
     }
@@ -243,11 +188,7 @@ describe("spec 137 — cap coverage feeds the grading", () => {
           ry = y - z.cy;
         const across = Math.abs(rx * -a.uy + ry * a.ux);
         const along = rx * a.ux + ry * a.uy;
-        if (
-          across <= a.half + 1.2 &&
-          along >= -a.half - 1.2 &&
-          along <= a.mouthD + 1.2
-        )
+        if (across <= a.half + 1.2 && along >= -a.half - 1.2 && along <= a.mouthD + 1.2)
           nearArm = true;
       }
       expect(nearArm).toBe(true);

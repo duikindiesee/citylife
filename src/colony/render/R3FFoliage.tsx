@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import type { ColonySim } from '../sim';
 import { calculateFoliagePositions } from './foliageLogic';
+import { findJunctionZones } from './roadJunctions';
 import { useSimSignal, type SimBridge } from './useSimSignal';
 import { foliageSignature } from './simSignals';
 
@@ -30,6 +31,17 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
     }
     for (const p of s.commercialDistrict?.parcels ?? []) {
       rects.push({ x0: p.x, y0: p.y, x1: p.x + p.w - 1, y1: p.y + p.h - 1 });
+    }
+    // Spec 137 — junctions clear their trees too: conifers grew straight through the
+    // old slab (and now would through the draped cap), dead-centre in the crossing.
+    for (const z of findJunctionZones(s.roadWays ?? [])) {
+      const r = z.rBound + 1;
+      rects.push({
+        x0: Math.floor(z.cx - r),
+        y0: Math.floor(z.cy - r),
+        x1: Math.ceil(z.cx + r),
+        y1: Math.ceil(z.cy + r),
+      });
     }
     const { matrices: mats, colors: cols } = calculateFoliagePositions(s.terrain, s.roads, s.buildings, rects);
     return { matrices: mats, colors: cols };

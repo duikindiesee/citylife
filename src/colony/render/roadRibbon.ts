@@ -270,26 +270,26 @@ export function buildRoadRibbons(
             }
             s.add(wi);
           }
-          s.add(wi);
-        }
-    }
-  });
-  const junction = new Set<string>();
-  // How far back from a crossing the painted lines stop. 2, not 1 (spec 127 verify P3): the
-  // junction SLAB is a centroid-centred square reaching half=2.3 cells, while this suppression
-  // grows from the crossing CLUSTER — at an offset tee (a way ending 1-2 cells short of the
-  // other's centre-line, the standard connector geometry) JR=1 left a band inside the slab
-  // where the terminating arm's dashes/edges/crosswalks still painted, floating on the pad.
-  // JR=2 reaches >= 2.5 cells, past the slab in the worst constructible offset.
-  const JR = 2;
-  for (const [k, s] of cellWays)
-    if (s.size >= 2) {
-      const [x, y] = k.split(",").map(Number);
-      for (let dx = -JR; dx <= JR; dx++)
-        for (let dy = -JR; dy <= JR; dy++) junction.add(`${x + dx},${y + dy}`);
-    }
-  const nearJunction = (x: number, y: number) =>
-    junction.has(`${Math.round(x)},${Math.round(y)}`);
+      }
+    });
+    const junction = new Set<string>();
+    // How far back from a crossing the painted lines stop (spec 127 verify P3): JR=2 reaches
+    // past the legacy slab in the worst constructible offset tee.
+    const JR = 2;
+    for (const [k, s] of cellWays)
+      if (s.size >= 2) {
+        const [x, y] = k.split(",").map(Number);
+        for (let dx = -JR; dx <= JR; dx++)
+          for (let dy = -JR; dy <= JR; dy++) junction.add(`${x + dx},${y + dy}`);
+      }
+    nearJunction = (x: number, y: number) =>
+      junction.has(`${Math.round(x)},${Math.round(y)}`);
+  }
+  const skipPaint = (x: number, y: number) =>
+    nearJunction(x, y) || !roadSurfaceCellOk(opts, x, y);
+  const lifts = zones
+    ? assignWayLifts(ways.length, zones)
+    : new Array<number>(ways.length).fill(0);
   // Junctions need no flatten or slab. Every ribbon vertex takes its height from its OWN position
   // (smoothRoadY, in ribbon() below), so where two roads overlap at a crossing both surfaces evaluate the
   // same height at the same point — they are COPLANAR by construction, following the terrain. So a junction

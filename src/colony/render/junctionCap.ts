@@ -32,10 +32,8 @@ export const CAP_LIFT = 0.205;
 /** The cap's own paint (zebras, stop bars) — top of the road paint stack. */
 export const CAP_PAINT_LIFT = 0.24;
 
-// WATER-only guard, matching roadRibbon.cellOkOn (spec 133): junction tarmac may pave rough
-// land — the grading reshapes it (spec 130) — but never water. Spec 140 amendment (reverted):
-// beach is NOT excluded here, mirroring the ribbon. The road-off-beaches ban is a ROUTING rule;
-// a cap that grazes the shore renders continuously rather than shattering (see roadRibbon.cellOkOn).
+// WATER-only guard, matching roadRibbon.cellOkOn (spec 133): junction tarmac may pave
+// rough land — the grading reshapes it (spec 130) — but never water.
 const cellOk = (t: Terrain, x: number, y: number): boolean => {
   const gx = Math.round(x),
     gy = Math.round(y);
@@ -108,77 +106,8 @@ export function capPolygon(zone: JunctionZone): { x: number; y: number }[] {
     }
     // near-parallel neighbours: direct segment along the shared kerb line
   }
-  zone.poly = sanitizeCapPoly(poly);
-  return zone.poly;
-}
-
-/** Do segments a-b and c-d properly cross (interiors intersect)? */
-function segsCross(
-  a: { x: number; y: number },
-  b: { x: number; y: number },
-  c: { x: number; y: number },
-  d: { x: number; y: number },
-): boolean {
-  const rx = b.x - a.x,
-    ry = b.y - a.y,
-    sx = d.x - c.x,
-    sy = d.y - c.y;
-  const den = rx * sy - ry * sx;
-  if (Math.abs(den) < 1e-9) return false;
-  const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
-  const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
-  return t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6;
-}
-
-/** Spec 137 cap-quality fix (operator: "intersections not perfect", "corners maybe
- *  inverted 90 degrees"). The exact carriageway-union walk is right for clean crossings,
- *  but a SHALLOW/degenerate junction — two near-parallel arms, an oblique cross where the
- *  mouth clamps at MOUTH_MAX — makes the kerb-corner intersections blow up into a
- *  self-crossing, near-duplicate-point polygon. `pointInPoly` then returns garbage (patchy
- *  paint suppression -> ragged edge lines), `capKerbLines` traces the self-crossing outline
- *  (the ragged white teeth), and `drapeCap`'s centre-fan inverts triangles (the messy cap).
- *  So: drop consecutive near-duplicate points, and if the outline still self-intersects,
- *  fall back to the CONVEX HULL of its points — always a clean simple CCW polygon. Only the
- *  broken degenerate cases take the hull; a valid plus-shape cross keeps its exact concave
- *  outline (its reflex kerb corners never self-cross), so the general-case geometry the
- *  spec-137 exact-union delivers is untouched. */
-export function sanitizeCapPoly(
-  raw: { x: number; y: number }[],
-): { x: number; y: number }[] {
-  if (raw.length < 3) return raw;
-  // 1. dedup consecutive (and wrap-around) near-duplicate vertices
-  const dedup: { x: number; y: number }[] = [];
-  for (const p of raw) {
-    const last = dedup[dedup.length - 1];
-    if (last && Math.hypot(last.x - p.x, last.y - p.y) < 0.35) continue;
-    dedup.push(p);
-  }
-  while (
-    dedup.length > 1 &&
-    Math.hypot(
-      dedup[0]!.x - dedup[dedup.length - 1]!.x,
-      dedup[0]!.y - dedup[dedup.length - 1]!.y,
-    ) < 0.35
-  )
-    dedup.pop();
-  if (dedup.length < 3) return convexHull(raw);
-  // 2. any non-adjacent edge pair crossing => self-intersecting => hull fallback
-  const n = dedup.length;
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 2; j < n; j++) {
-      if (i === 0 && j === n - 1) continue; // adjacent across the wrap seam
-      if (
-        segsCross(
-          dedup[i]!,
-          dedup[(i + 1) % n]!,
-          dedup[j]!,
-          dedup[(j + 1) % n]!,
-        )
-      )
-        return convexHull(dedup);
-    }
-  }
-  return dedup;
+  zone.poly = poly;
+  return poly;
 }
 
 /** Attach cap polygons to every zone (idempotent). The React layer calls this once so
@@ -196,16 +125,10 @@ export function tessellate(
   poly: { x: number; y: number }[],
   centre: { x: number; y: number },
   maxEdge = 1.5,
-): Array<
-  [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }]
-> {
+): Array<[{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }]> {
   const c = centre;
   let tris: Array<
-    [
-      { x: number; y: number },
-      { x: number; y: number },
-      { x: number; y: number },
-    ]
+    [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }]
   > = [];
   for (let i = 0; i < poly.length; i++)
     tris.push([c, poly[i]!, poly[(i + 1) % poly.length]!]);
@@ -256,15 +179,9 @@ export function drapeCap(
     Math.max(0, opts.roadY(x, gy)) + CAP_LIFT;
   for (const [a, b, c] of tessellate(poly, { x: zone.cx, y: zone.cy })) {
     out.push(
-      opts.wx(a.x),
-      y(a.x, a.y),
-      opts.wz(a.y),
-      opts.wx(b.x),
-      y(b.x, b.y),
-      opts.wz(b.y),
-      opts.wx(c.x),
-      y(c.x, c.y),
-      opts.wz(c.y),
+      opts.wx(a.x), y(a.x, a.y), opts.wz(a.y),
+      opts.wx(b.x), y(b.x, b.y), opts.wz(b.y),
+      opts.wx(c.x), y(c.x, c.y), opts.wz(c.y),
     );
   }
 }
@@ -277,7 +194,10 @@ const quad = (
   wz: (y: number) => number,
 ) => {
   const w = corners.map(([gx, gy]) => [wx(gx), yOf(gx, gy), wz(gy)] as const);
-  out.push(...w[0]!, ...w[1]!, ...w[2]!, ...w[0]!, ...w[2]!, ...w[3]!);
+  out.push(
+    ...w[0]!, ...w[1]!, ...w[2]!,
+    ...w[0]!, ...w[2]!, ...w[3]!,
+  );
 };
 
 /** Zebra crossings anchored to the arm MOUTHS (never the old blocky suppression edge):
@@ -313,22 +233,10 @@ export function capCrosswalks(
       quad(
         out,
         [
-          [
-            sx + a.ux * (depth / 2) + px * sw,
-            sy + a.uy * (depth / 2) + py * sw,
-          ],
-          [
-            sx + a.ux * (depth / 2) - px * sw,
-            sy + a.uy * (depth / 2) - py * sw,
-          ],
-          [
-            sx - a.ux * (depth / 2) - px * sw,
-            sy - a.uy * (depth / 2) - py * sw,
-          ],
-          [
-            sx - a.ux * (depth / 2) + px * sw,
-            sy - a.uy * (depth / 2) + py * sw,
-          ],
+          [sx + a.ux * (depth / 2) + px * sw, sy + a.uy * (depth / 2) + py * sw],
+          [sx + a.ux * (depth / 2) - px * sw, sy + a.uy * (depth / 2) - py * sw],
+          [sx - a.ux * (depth / 2) - px * sw, sy - a.uy * (depth / 2) - py * sw],
+          [sx - a.ux * (depth / 2) + px * sw, sy - a.uy * (depth / 2) + py * sw],
         ],
         yOf,
         opts.wx,
@@ -365,22 +273,10 @@ export function capStopBars(
     quad(
       out,
       [
-        [
-          bx + Lx * halfLen + a.ux * halfDepth,
-          by + Ly * halfLen + a.uy * halfDepth,
-        ],
-        [
-          bx - Lx * halfLen + a.ux * halfDepth,
-          by - Ly * halfLen + a.uy * halfDepth,
-        ],
-        [
-          bx - Lx * halfLen - a.ux * halfDepth,
-          by - Ly * halfLen - a.uy * halfDepth,
-        ],
-        [
-          bx + Lx * halfLen - a.ux * halfDepth,
-          by + Ly * halfLen - a.uy * halfDepth,
-        ],
+        [bx + Lx * halfLen + a.ux * halfDepth, by + Ly * halfLen + a.uy * halfDepth],
+        [bx - Lx * halfLen + a.ux * halfDepth, by - Ly * halfLen + a.uy * halfDepth],
+        [bx - Lx * halfLen - a.ux * halfDepth, by - Ly * halfLen - a.uy * halfDepth],
+        [bx + Lx * halfLen - a.ux * halfDepth, by + Ly * halfLen - a.uy * halfDepth],
       ],
       yOf,
       opts.wx,
