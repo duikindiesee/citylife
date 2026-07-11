@@ -17,7 +17,8 @@ import type { ColonyState } from "../sim";
 export function foliageSignature(state: ColonyState): string {
   const lots = state.neighborhood?.lots?.length ?? 0;
   const cd = state.commercialDistrict?.parcels?.length ?? 0;
-  return `r${state.roadsVersion}:b${state.buildings.length}:l${lots}:c${cd}`;
+  const dp = state.busDepotPad; // spec 149 — the depot apron clears its trees too
+  return `r${state.roadsVersion}:b${state.buildings.length}:l${lots}:c${cd}${dp ? `:d${dp.x},${dp.y}` : ":d-"}`;
 }
 
 /** ZoneManager — commercial blocks from the city plan, plus lot overlays / houses from the

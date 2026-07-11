@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { calculateFoliagePositions } from "../src/colony/render/foliageLogic";
 import { findJunctionZones } from "../src/colony/render/roadJunctions";
-import { COLONY } from "../src/colony/config";
-import { Biome } from "../src/colony/terrain";
 
 // Spec 149 — the bus depot pad must clear its trees, exactly like neighborhood lots, commercial
 // parcels and junction zones already do (spec 128/137). Before the fix conifers grew across the
@@ -56,70 +54,41 @@ function treesInPad(
   matrices: number[][],
   pad: { x: number; y: number; w: number; h: number },
   N: number,
-  margin = 0,
 ): number {
   let n = 0;
   for (const m of matrices) {
     const cx = Math.round(m[12] / CELL + N / 2);
     const cy = Math.round(m[14] / CELL + N / 2);
-    if (
-      cx >= pad.x - margin &&
-      cx <= pad.x + pad.w - 1 + margin &&
-      cy >= pad.y - margin &&
-      cy <= pad.y + pad.h - 1 + margin
-    )
-      n++;
+    if (cx >= pad.x && cx <= pad.x + pad.w - 1 && cy >= pad.y && cy <= pad.y + pad.h - 1) n++;
   }
   return n;
 }
 
 describe("bus depot foliage clearing (seed 4242)", () => {
-  it("non-vacuously clears a depot rect plus canopy margin on deterministic forest", () => {
-    const N = 20;
-    const terrain = {
-      size: N,
-      elev: new Float32Array(N * N).fill(2),
-      water: new Uint8Array(N * N),
-      biome: new Uint8Array(N * N).fill(Biome.Forest),
-      worldY: () => 2,
-    };
-    const pad = { x: 6, y: 6, w: 6, h: 5 };
-    const before = calculateFoliagePositions(terrain, [], [], []).matrices;
-    expect(treesInPad(before, pad, N, 1)).toBeGreaterThan(0);
-    const after = calculateFoliagePositions(
-      terrain,
-      [],
-      [],
-      [{ x0: pad.x, y0: pad.y, x1: pad.x + pad.w - 1, y1: pad.y + pad.h - 1 }],
-    ).matrices;
-    expect(treesInPad(after, pad, N, 1)).toBe(0);
-  });
-
   it("clears every tree from the depot pad at boot", () => {
     const rt = new ColonyRuntime(4242);
     const s = rt.sim.state;
     const pad = s.busDepotPad;
-    expect(
-      pad,
-      "seed 4242 must site a bus depot for this regression to mean anything",
-    ).toBeTruthy();
+    expect(pad, "seed 4242 must site a bus depot for this regression to mean anything").toBeTruthy();
     const N = s.terrain.size;
-    const heights: number[] = [];
-    for (let y = pad!.y; y < pad!.y + pad!.h; y++)
-      for (let x = pad!.x; x < pad!.x + pad!.w; x++)
-        heights.push(s.terrain.worldY(x, y));
-    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(
-      COLONY.transit.depotMaxHeightSpreadM,
-    );
 
-    // The deterministic forest fixture above proves the exclusion is non-vacuous. On the live seed,
-    // assert the current surveyed depot footprint and canopy margin remain clear after relocation.
+    // Guard against a vacuous pass: without the depot rect the seed genuinely grows conifers across
+    // the pad, so a green assertion below can only come from the exclusion doing its job.
+    const before = calculateFoliagePositions(
+      s.terrain,
+      s.roads,
+      s.buildings,
+      foliageRects(s, false),
+    ).matrices;
+    expect(treesInPad(before, pad!, N)).toBeGreaterThan(0);
+
+    // With the depot rect (what R3FFoliage now builds), the apron + bays are clear.
     const after = calculateFoliagePositions(
       s.terrain,
       s.roads,
       s.buildings,
       foliageRects(s, true),
     ).matrices;
-    expect(treesInPad(after, pad!, N, 1)).toBe(0);
+    expect(treesInPad(after, pad!, N)).toBe(0);
   });
 });

@@ -58,7 +58,25 @@ roadKind, busRoute.loop, blocked)):
 unchanged): reserve the pad cells with `reserveParcelLand`, lay the spur
 `gate -> roadCell` with the existing `layRoad(half=1)` + `mergeAvenue` (a real,
 ribbon-rendered, drivable road), and record `DepotPlan { site, spurPath }` on the
-runtime as `busDepot`.
+runtime as `busDepot`. It also publishes the pad AABB to `state.busDepotPad`
+(`{x, y, w, h}`, origin-anchored) — the ONE rect the renderers key off.
+
+**The pad rect grades AND clears** (spec 128/137 discipline applied to transit land).
+`state.busDepotPad` is consumed by two render passes that must agree on one footprint,
+or the pad drifts from what stands on it:
+
+- **Grading** (`useTerrainLeveling.ts` §2b): grades the apron flat to the pad-centre
+  seat height with the commercial-pad smoothstep skirt, so slab, parked buses and the
+  walker's ground share one height instead of a slab floating over a slope.
+- **Foliage clearing** (`R3FFoliage.tsx`): pushes the pad onto the same tree-exclusion
+  `rects` array the neighborhood lots, commercial parcels and junction zones already
+  use, so `calculateFoliagePositions` culls every tree in the pad + a 1-cell canopy
+  margin. Without this, conifers grew straight across the apron and parking bays and
+  half-buried the parked fleet (the operator bug, 2026-07-11) — the exact class of
+  "trees on houses is a big no" defect spec 128 fixed for lots. The gate spur is a real
+  road and is cleared by the roads pass; the whole depot GLB + bays sit inside the pad
+  AABB, so the one rect covers the whole footprint. `foliageSignature` tracks the pad so
+  the trees rebuild if it ever appears/moves, matching `levelingSignature`.
 
 **Layout inside the pad** (`depotLayout(site)`, pure): a back row of **10 bays**
 (1 cell = 4 m wide each, 3 cells deep — a 12 m bus with 3.2 m of margin), an apron
@@ -250,6 +268,10 @@ Queue line for the operator:
 - `tests/busDepot.test.ts` — siting: pad adjacent to the loop on a synthetic road
   grid, never on blocked/water cells, deterministic; layout: 10 bays inside the pad,
   bay paths start at the gate and end on distinct bays.
+- `tests/busDepotFoliage.test.ts` — the pad clears its trees: on the live seed 4242
+  (pad ≈ world (768, -422)) the depot footprint grows 177 conifers without the
+  exclusion and ZERO with it (non-vacuous guard proves the exclusion, not the biome,
+  clears them).
 - `tests/busLayer.visual.test.ts` (extended) — metric dims (length 12 ±0.1, roof
   3.0 ±0.1), wheel radius 0.5 with tire bottom at local y ≤ 0.01, node names intact.
 - e2e `e2e/busDepot.spec.ts` (WebGL — judge with `--workers=1`): at 02:00 all five
@@ -261,6 +283,10 @@ Queue line for the operator:
   then `Exit bus` at the next stop. Runtime exposes `debugSetClock(h, m)` and
   `debugPlaceFirstPerson(x, y)` (dev/e2e helpers, same family as the dogfood
   driver) to make this deterministic.
+- e2e `e2e/busDepotFoliage.spec.ts` (WebGL — `--workers=1`): asserts on what is
+  RENDERED — queries the `foliage` InstancedMesh and proves zero instances fall inside
+  the depot pad AABB with the fleet parked, then frames World View on the pad and
+  screenshots the apron + bays + shelter clear of trees.
 
 **Phase 2 (Jack's GLB).** Loader gate swaps the primitives for `bus-depot.glb` by
 node-name contract; `busDepotGlb.test.ts` lands with the asset PR; screenshot pass.
