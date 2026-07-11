@@ -327,16 +327,21 @@ function AerialCameraController() {
   }, [camera]);
 
   return (
-    <MapControls 
-      makeDefault 
-      dampingFactor={0.1} 
-      maxPolarAngle={Math.PI / 2.2} 
-      minDistance={10} 
-      maxDistance={2500} 
+    <MapControls
+      makeDefault
+      dampingFactor={0.1}
+      enableRotate
+      minPolarAngle={0}
+      maxPolarAngle={Math.PI / 2.2}
+      minDistance={10}
+      maxDistance={2500}
       mouseButtons={{
+        // Spec 148 — the operator missed tilting the view: no button was bound to ROTATE, so
+        // the camera was stuck top-down. LEFT stays reserved for road building; RIGHT-drag now
+        // TILTS/orbits (down to ~82°), MIDDLE-drag pans, and the wheel still zooms.
         LEFT: undefined as any, // Reserved for building roads
-        MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: THREE.MOUSE.PAN
+        MIDDLE: THREE.MOUSE.PAN,
+        RIGHT: THREE.MOUSE.ROTATE
       }}
     />
   );
