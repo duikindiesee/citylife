@@ -39,19 +39,28 @@ describe("road connectivity — one connected web (spec 148)", () => {
     });
   }
 
-  it("every road cell has a 4-neighbour on the network (no floating single cells)", () => {
-    const rt = new ColonyRuntime(4242);
-    const set = new Set(rt.sim.state.roads.map((r) => `${r.x},${r.y}`));
-    let isolated = 0;
-    for (const r of rt.sim.state.roads) {
-      const linked =
-        set.has(`${r.x + 1},${r.y}`) ||
-        set.has(`${r.x - 1},${r.y}`) ||
-        set.has(`${r.x},${r.y + 1}`) ||
-        set.has(`${r.x},${r.y - 1}`);
-      if (!linked) isolated++;
+  it("no road cell is ever an isolated singleton — the honest-connector guarantee", () => {
+    // Spec 148 hardening: the repair commits a connector ONLY after a 4-connectivity BFS proves it
+    // truly merges the orphan into the main web, so it can never lay a diagonal LOS staircase whose
+    // blocked shoulders leave a dotted line of single cells behind. This must hold on EVERY seed —
+    // including the fail-soft ones (46 water-locked, 29 setback-walled) whose orphans stay as separate
+    // MULTI-cell components but must never fragment into singletons.
+    for (const seed of [4242, 7, 42, 12, 16, 29, 46]) {
+      const rt = new ColonyRuntime(seed);
+      const set = new Set(rt.sim.state.roads.map((r) => `${r.x},${r.y}`));
+      let isolated = 0;
+      for (const r of rt.sim.state.roads) {
+        const linked =
+          set.has(`${r.x + 1},${r.y}`) ||
+          set.has(`${r.x - 1},${r.y}`) ||
+          set.has(`${r.x},${r.y + 1}`) ||
+          set.has(`${r.x},${r.y - 1}`);
+        if (!linked) isolated++;
+      }
+      expect(isolated, `seed ${seed} has ${isolated} isolated road cells`).toBe(
+        0,
+      );
     }
-    expect(isolated).toBe(0);
   });
 
   it("the connectivity repair is deterministic — the same seed lays the identical network", () => {
