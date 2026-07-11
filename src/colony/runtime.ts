@@ -1287,17 +1287,24 @@ export class ColonyRuntime {
       const car = this.neighborhood.carriage;
       // 086-P1 — connect from the founders' carriage cell NEAREST the (now coastal) district, not the
       // inland terminus, so the spur is the shortest coast road rather than a backtrack inland.
-      const [terminus, near] = nearestPair(car, this.commercialDistrict.street);
-      const connector =
-        leastCostPath(t, terminus, near, {
-          slopeWeight: 0.5,
-          diagonal: true,
-          forbidBeach: true, // spec 143 — the coast spur runs the grass line, not the sand
-          blocked: (x, y) =>
-            residentialSetbackKeys.has(`${x},${y}`) ||
-            shopCells.has(`${x},${y}`),
-        }) ?? [];
-      mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
+      // Guard on a NON-EMPTY founders carriage: on some seeds (e.g. 4) the founders' neighbourhood
+      // degenerates to zero carriage cells, so nearestPair(car, …) returns [undefined, …] and
+      // leastCostPath dereferences start.x on undefined — a boot crash (spec 148 known adjacent issue).
+      // With no carriage to spur from, still widen + merge the high street below; it simply gets no
+      // founders' spur that seed. Every seed with a carriage keeps its byte-identical connector.
+      if (car.length > 0) {
+        const [terminus, near] = nearestPair(car, this.commercialDistrict.street);
+        const connector =
+          leastCostPath(t, terminus, near, {
+            slopeWeight: 0.5,
+            diagonal: true,
+            forbidBeach: true, // spec 143 — the coast spur runs the grass line, not the sand
+            blocked: (x, y) =>
+              residentialSetbackKeys.has(`${x},${y}`) ||
+              shopCells.has(`${x},${y}`),
+          }) ?? [];
+        mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
+      }
       mergeAvenue(this.sim.state, streetCells);
       mergeAvenue(this.sim.state, crossStreetCells);
     }
