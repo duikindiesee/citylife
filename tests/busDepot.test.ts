@@ -5,7 +5,7 @@ import {
   type DepotTerrain,
 } from "../src/colony/transit/busDepot";
 
-// Spec 140 — depot siting is a pure function of (terrain, loop, blocked): the pad lands beside the
+// Spec 149 — depot siting is a pure function of (terrain, loop, blocked): the pad lands beside the
 // bus loop on dry unclaimed ground, its gate lines up with the junction road cell, and the interior
 // layout keeps all ten bays (and their drive paths) inside the pad.
 

@@ -17,7 +17,7 @@ import { buildBusDepotLayer } from './busDepotLayer';
 import { getSmoothRoadY } from './roadSurface';
 import { padSeatY } from './useTerrainLeveling';
 
-// Spec 122/140 — the town bus render. With a depot (spec 140) this draws the FLEET: the runtime's
+// Spec 122/140 — the town bus render. With a depot (spec 149) this draws the FLEET: the runtime's
 // dispatch machine says where every bus is (grid poses) and this component dresses those poses —
 // road-clamped height, slope pitch, spinning wheels, sway, door light — plus the depot pad and the
 // route stop markers. Without a depot (seed had no fit) it falls back to the legacy single
@@ -88,7 +88,7 @@ export function R3FBus({ sim, runtime }: R3FBusProps) {
       builtDepot.current = depot;
       if (route && containerRef.current) {
         if (depot && runtime?.busPoses) {
-          // Fleet mode. The pad is graded FLAT by terrain leveling (spec 140, useTerrainLeveling
+          // Fleet mode. The pad is graded FLAT by terrain leveling (spec 149, useTerrainLeveling
           // 2b) at the padSeatY height; the slab sits a kerb's 0.12 m proud of that, and inside
           // the pad the buses ride the slab top instead of the road sampler.
           const { site, layout } = depot;

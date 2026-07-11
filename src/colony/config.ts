@@ -1061,7 +1061,7 @@ export const COLONY = {
     matByKind: { kiosk: 12, store: 24, showroom: 40 },
   },
 
-  // Spec 140 — the bus depot + fleet. Distances in grid cells (1 cell = 4 m), times in sim-minutes,
+  // Spec 149 — the bus depot + fleet. Distances in grid cells (1 cell = 4 m), times in sim-minutes,
   // bus body in metres (= world units, the metric anchor).
   transit: {
     depotLongCells: 12, // pad edge holding the 10-bay row (48 m)

@@ -1,4 +1,4 @@
-// Spec 140 — the BUS DEPOT plot: siting + internal layout. Pure and deterministic in
+// Spec 149 — the BUS DEPOT plot: siting + internal layout. Pure and deterministic in
 // (terrain, bus loop, blocked cells) — the commercial-reserve discipline (district.ts) applied to
 // transit land: a surveyed pad the buses physically drive into, never a decal. The runtime reserves
 // the winning pad (reserveParcelLand) and lays a real spur road gate -> roadCell; the renderer draws

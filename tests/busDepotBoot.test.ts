@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { COLONY } from "../src/colony/config";
 
-// Spec 140 — the LIVE seed must actually get its depot: the pad is surveyed and reserved, the gate
+// Spec 149 — the LIVE seed must actually get its depot: the pad is surveyed and reserved, the gate
 // spur is real road, and the five owned buses boot parked inside the pad. If a config or siting
 // change ever fails this seed, the fleet silently degrades to the legacy single coach — this test
 // makes that regression loud.

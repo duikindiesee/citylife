@@ -1,4 +1,4 @@
-// Spec 140 — the bus FLEET state machine: operating hours, staggered dispatch, breaks, and the
+// Spec 149 — the bus FLEET state machine: operating hours, staggered dispatch, breaks, and the
 // depot round-trip, stepped in SIM-MINUTES over abstract arc-length geometry. Pure and
 // deterministic: no three.js, no wall clock, no randomness — the runtime feeds it dt + the sim
 // clock and reads back per-bus poses; tests drive it minute by minute in node.

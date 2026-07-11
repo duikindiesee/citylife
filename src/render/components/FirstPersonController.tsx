@@ -15,9 +15,9 @@ import {
 
 const MOVEMENT_SPEED = 10;
 const LOOK_SPEED = 2;
-const BUS_RIDER_EYE = 2.4; // eye height above the road while seated on the 3 m coach (spec 140)
+const BUS_RIDER_EYE = 2.4; // eye height above the road while seated on the 3 m coach (spec 149)
 
-// Spec 140 — the slice of the runtime the walker capsule talks to: ride pinning, one-shot
+// Spec 149 — the slice of the runtime the walker capsule talks to: ride pinning, one-shot
 // teleports, and reporting where the camera stands so bus prompts measure from the real player.
 interface FpRuntimeBridge {
   fpRidingBusId?: number | null;
@@ -113,7 +113,7 @@ export function FirstPersonController({ sim, runtime, startPosition = [0, 2, 0],
     const toWorldX = (gx: number) => (gx - terrainSizeForGrid / 2) * 4;
     const toWorldZ = (gy: number) => (gy - terrainSizeForGrid / 2) * 4;
 
-    // Spec 140 — one-shot teleports (debug placement, stepping off a bus) land the CAPSULE, not
+    // Spec 149 — one-shot teleports (debug placement, stepping off a bus) land the CAPSULE, not
     // just the roster citizen, so the player's eyes actually go there.
     const tp = runtime?.fpTeleportRequest;
     if (tp && tp.seq !== consumedTeleport.current && terrainSizeForGrid > 0) {
@@ -132,7 +132,7 @@ export function FirstPersonController({ sim, runtime, startPosition = [0, 2, 0],
       }
     }
 
-    // Spec 140 — riding the bus: the capsule (and so the camera) is pinned to the coach; mouse
+    // Spec 149 — riding the bus: the capsule (and so the camera) is pinned to the coach; mouse
     // look stays free, WASD stays off the wheel. Leaving the pin (alight) drops you where it is.
     const ridingId = runtime?.fpRidingBusId ?? null;
     if (ridingId !== null && runtime?.busPoseOf && sim?.state?.terrain) {
@@ -242,7 +242,7 @@ export function FirstPersonController({ sim, runtime, startPosition = [0, 2, 0],
     const camY = pos.y + PLAYER_EYE_OFFSET; // eye at PLAYER_EYE_M (1.6 m) above the feet — spec 146
     camera.position.set(pos.x, camY, pos.z);
     camera.quaternion.setFromEuler(rotation.current);
-    // Spec 140 — tell the runtime where the player's eyes are (grid coords) so bus boarding
+    // Spec 149 — tell the runtime where the player's eyes are (grid coords) so bus boarding
     // prompts measure from the capsule, not the detached roster citizen.
     if (runtime && terrainSizeForGrid > 0)
       runtime.fpCameraCell = { x: toGridX(pos.x), y: toGridZ(pos.z) };

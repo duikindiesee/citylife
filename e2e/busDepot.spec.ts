@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-// Spec 140 — the bus depot + fleet, asserted against the LIVE world through the __colony runtime
+// Spec 149 — the bus depot + fleet, asserted against the LIVE world through the __colony runtime
 // probe: buses park at the depot overnight, the first departure lands at 08:00 on the sim clock,
 // the second bus holds its bay until the first reaches its first stop (the stagger gate), and the
 // player boards a dwelling bus at the depot shelter, rides it onto the route, and steps off.
@@ -41,7 +41,7 @@ async function waitAllParkedAtNight(page: import('@playwright/test').Page): Prom
   );
 }
 
-test.describe('spec 140 — bus depot fleet', () => {
+test.describe('spec 149 — bus depot fleet', () => {
   test('buses park at the depot overnight; first departure lands at 08:00; dispatch is staggered', async ({ page }, testInfo) => {
     test.setTimeout(300000);
     await bootWithDepot(page);
