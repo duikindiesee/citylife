@@ -145,3 +145,8 @@ no pinned path shifted. The full suite (150 files / 1277 tests) is green.
 Booting some other seeds (e.g. seed 4) throws in the PRE-EXISTING commercial connector
 (`nearestPair` on an empty founders `carriage` → `leastCostPath` on `undefined`), before this pass
 runs. It is unrelated to connectivity repair and left for its own fix.
+
+FIXED (follow-up): the commercial connector now guards the founders' spur on a non-empty `carriage`
+(`runtime.ts`) — an empty carriage skips only the spur and still widens + merges the high street.
+Regression: `tests/colonyBootSeeds.test.ts` boots seeds 1..24 (seed 4 was the reproducer) without
+throwing.
