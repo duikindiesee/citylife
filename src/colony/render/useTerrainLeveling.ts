@@ -166,7 +166,7 @@ export function computeTerrainLeveling(
     });
   }
 
-  // 2b) Bus depot pad (spec 140) — one flat apron at the pad-centre seat height with the same
+  // 2b) Bus depot pad (spec 149) — one flat apron at the pad-centre seat height with the same
   // smoothstep skirt the commercial pads use, so the slab, the parked buses and the walker's
   // ground guardrail all agree on ONE height instead of a max-corner slab floating over a slope.
   const depot = state.busDepotPad;

@@ -12,7 +12,7 @@ import {
 } from "../src/colony/transit/busFleet";
 import { buildPath } from "../src/colony/transit/path";
 
-// Spec 140 — the pure dispatch machine: operating hours, the staggered-dispatch gate, dwells,
+// Spec 149 — the pure dispatch machine: operating hours, the staggered-dispatch gate, dwells,
 // break rotation and the overnight return, stepped a sim-minute at a time like the runtime does.
 
 const geom: FleetGeometry = {

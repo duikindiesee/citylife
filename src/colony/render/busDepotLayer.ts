@@ -1,9 +1,9 @@
 import * as THREE from "three";
 import type { DepotSite, DepotLayout } from "../transit/busDepot";
 
-// Spec 140 Phase 1 — the PRIMITIVE bus depot: apron slab, ten painted bays, office, boarding
+// Spec 149 Phase 1 — the PRIMITIVE bus depot: apron slab, ten painted bays, office, boarding
 // shelter and a lit BUS sign. Node names are the CODE CONTRACT Jack's bus-depot.glb replaces
-// mesh-for-mesh (spec 140 §6): Depot_Apron, Depot_Bay_00..09, Depot_Office, Depot_Shelter,
+// mesh-for-mesh (spec 149 §6): Depot_Apron, Depot_Bay_00..09, Depot_Office, Depot_Shelter,
 // Depot_Sign. Render-only; the fleet machine never reads this.
 
 const CELL = 4; // world metres per grid cell

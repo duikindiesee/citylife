@@ -625,7 +625,7 @@ export interface ColonyState {
   /** Attached by the runtime after construction — the shop district the R3F renderer reads for
    *  commercial pads and terrain leveling. Legacy path was setCommercialDistrict(). */
   commercialDistrict?: CommercialDistrict | null;
-  /** Spec 140 — the surveyed bus depot pad, attached by the runtime after siting, so terrain
+  /** Spec 149 — the surveyed bus depot pad, attached by the runtime after siting, so terrain
    *  leveling grades ONE flat apron the slab, the buses and the walker's ground all agree on. */
   busDepotPad?: { x: number; y: number; w: number; h: number } | null;
   /** Attached by the runtime while a Road Rally runs (null otherwise) — the R3F renderer reads
