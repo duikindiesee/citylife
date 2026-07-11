@@ -208,6 +208,36 @@ Riding on the road, not through it:
 
 All tunables live in `COLONY.transit` (config.ts, AGENTS rule — no magic numbers).
 
+### 4.1 Passenger compartment and transparent glazing follow-up
+
+The first-person follow-up replaces the former solid orange box plus opaque blue pane
+illusion with an authored open shell. The lower shell, roof rail, front/rear frames and
+side pillars form real window openings; side glass and windscreen are double-sided,
+transparent, low-opacity materials with depth writes disabled, so the world is visible
+through glass from a seat or the aisle without z-fighting.
+
+The compartment now names and renders a non-emissive floor and aisle, pale ceiling
+lining, five forward-facing seat pairs around a clear centre aisle, longitudinal yellow
+handrails and grab poles, a driver seat/dashboard/partition, and a door threshold. The
+interior remains inside the existing 12 x 2.5 x 3 m envelope and above the boarding
+contact plane, preserving fleet pose, doors, cameras and route behaviour. Only small
+emissive floors on seats, rails and dashboard retain night legibility; the compartment
+does not glow as one fully emissive volume.
+
+### 4.2 First-person HUD composition follow-up
+
+First-person mode owns a dedicated edge HUD instead of stacking the legacy lower-centre
+mouse/settings bar, rally card and full operator HUD. Nearby Use remains the primary
+context action; one canonical Exit remains beside it. Rally navigation is represented by
+the compact destination strip rather than a second permanent rally button. Controls copy
+and telemetry are opt-in through `Help / Controls` and `HUD details`; both are closed by
+default. The mobile layout keeps 40–54 px touch targets and safe-area insets while the
+desktop 1280x720 layout reserves the centre as an unobstructed view corridor.
+
+The rally card is suppressed while first-person is active and the operator HUD retains
+its existing collapsed/drawer treatment. Transient status remains in the destination
+status lane, never over the movement or contextual-action docks.
+
 ## 5. Rendering
 
 `R3FBus.tsx` keeps its mount point and `bus` group name but now renders the FLEET:

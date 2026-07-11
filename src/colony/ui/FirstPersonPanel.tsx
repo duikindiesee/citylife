@@ -86,12 +86,17 @@ export function FirstPersonPanel({
   runtime,
   fp,
   onOpenRoadmap,
+  onRequestMouseLook,
+  onLevelView,
 }: {
   runtime: ColonyRuntime;
   fp: ColonyUiState["firstPerson"];
   onOpenRoadmap?: () => void;
+  onRequestMouseLook?: () => void;
+  onLevelView?: () => void;
 }) {
   const [showDebug, setShowDebug] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   if (!fp.active || !fp.citizenId) return null;
   const v = fp.view;
   const nightFriendBanner = nightFriendBannerCopy(v);
@@ -200,26 +205,20 @@ export function FirstPersonPanel({
         )}
         {v && (
           <button
-            className="first-person-panel__rally-button"
-            data-fp-action="walk-to-rally"
-            title="Guided walk to the hilltop rally point"
-            aria-label="Walk to the rally point"
-            onClick={() => runtime.goToRallyPoint()}
-          >
-            🏁 Walk to Rally
-          </button>
-        )}
-        {v && (
-          <button
             className="first-person-panel__debug-toggle"
-            data-fp-action="toggle-debug"
-            aria-label="Toggle first-person debug details"
-            title="Toggle first-person debug details"
+            data-fp-action="toggle-details"
+            aria-label="Toggle HUD details"
             onClick={() => setShowDebug((open) => !open)}
           >
-            Debug
+            HUD details
           </button>
         )}
+        <button
+          className="first-person-panel__help-toggle"
+          data-fp-action="toggle-help"
+          aria-expanded={showHelp}
+          onClick={() => setShowHelp((open) => !open)}
+        >Help / Controls</button>
         <button
           className="first-person-panel__exit-button"
           data-fp-action="exit"
@@ -275,10 +274,11 @@ export function FirstPersonPanel({
         </div>
       )}
 
-      <div className="first-person-panel__hint">
-        WASD strafe/walk · Shift sprint · arrows turn · Tap Use to interact ·
-        Tap arrows to roam
-      </div>
+      {showHelp && <div className="first-person-panel__hint">
+        <span>WASD walk · Shift sprint · arrows turn · Tap Use to interact</span>
+        {onRequestMouseLook && <button onClick={onRequestMouseLook}>Mouse look</button>}
+        {onLevelView && <button onClick={onLevelView}>Level view</button>}
+      </div>}
     </div>
   );
 }
