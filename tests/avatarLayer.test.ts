@@ -32,7 +32,7 @@ describe("spec 120 — legacy-verbatim constants", () => {
     expect(avatarColorHex({ isOperator: false, hasPod: false })).toBe(0xc0b0e0);
   });
 
-  it("stands a citizen at the shared 1.7 m adult height with feet on the ground (spec 137)", () => {
+  it("stands a citizen at the shared 1.7 m adult height with feet on the ground (spec 146)", () => {
     // crown = head lift + head radius
     expect(AVATAR_HEAD.lift + AVATAR_HEAD.radius).toBeCloseTo(1.7, 5);
     // torso capsule bottom = lift - (radius + length/2) sits at the feet (y=0)

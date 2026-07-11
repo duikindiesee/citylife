@@ -1,4 +1,4 @@
-# Spec 117 — Animated Tarentaal GLB Flocks
+# Spec 145 — Animated Tarentaal GLB Flocks
 
 **Status:** proposed
 **Lane:** World & Build

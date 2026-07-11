@@ -1,4 +1,4 @@
-# Spec 137 — the world metric system (proper scale for the player and the crowd)
+# Spec 146 — the world metric system (proper scale for the player and the crowd)
 
 ## The complaint
 
