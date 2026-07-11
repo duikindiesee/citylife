@@ -76,8 +76,37 @@ describe("spec 084 S3 — RoadKind + the avenue merge", () => {
     const streets = sim.state.roads.filter(
       (r) => (r.kind ?? "street") === "street",
     );
-    const a = streets[0]!;
-    const b = streets[streets.length - 1]!;
+    // Spec 138 moved the starter frame inland onto the same ground the homesteads survey, so
+    // the parcel purge can legitimately eat a frame cell and split the frame (the runtime's
+    // trunk stitching reconnects the network; this harness lays none). Route across the frame's
+    // LARGEST connected component — the drivable-cells contract is what this test pins.
+    const set = new Set(streets.map((r) => `${r.x},${r.y}`));
+    const seen = new Set<string>();
+    let largest: { x: number; y: number }[] = [];
+    for (const r of streets) {
+      const k0 = `${r.x},${r.y}`;
+      if (seen.has(k0)) continue;
+      const comp: { x: number; y: number }[] = [];
+      const stack = [k0];
+      while (stack.length) {
+        const k = stack.pop()!;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const [x, y] = k.split(",").map(Number);
+        comp.push({ x: x!, y: y! });
+        for (const n of [
+          `${x! + 1},${y}`,
+          `${x! - 1},${y}`,
+          `${x},${y! + 1}`,
+          `${x},${y! - 1}`,
+        ])
+          if (set.has(n) && !seen.has(n)) stack.push(n);
+      }
+      if (comp.length > largest.length) largest = comp;
+    }
+    expect(largest.length).toBeGreaterThan(4); // a real frame run, not a stub
+    const a = largest[0]!;
+    const b = largest[largest.length - 1]!;
     const path = roadPath(sim.state, a.x, a.y, b.x, b.y);
     expect(path.length).toBeGreaterThan(0);
     const W = sim.state.terrain.size;
