@@ -244,6 +244,7 @@ import {
   venueRoadBlockedCells,
 } from "./render/venuePlacement";
 import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
+import { roadComponents } from "./roadConnectivity";
 import {
   createRadio,
   tuneTo,
@@ -1390,6 +1391,91 @@ export class ColonyRuntime {
         this.sim.state.roadKind.set(rk, r.kind ?? "street");
       }
       if (this.sim.state.roads.length !== before) this.sim.state.roadsVersion++;
+    }
+    // Spec 148 — CONNECTIVITY REPAIR. Up to here every road source (founders' avenue, satellite
+    // hamlets + their spoke/mesh trunks, the commercial high street + cross street, the rally spur)
+    // merged its cells straight into the network, but nothing GUARANTEED the pieces touched. On many
+    // seeds one merged as an island — most often the commercial cross street the mall pad severs from
+    // its own high street, or a rally stub the homesteads wall off — so World View showed roads that
+    // plainly did not connect (~97% of cells in the main web). This pass closes those gaps: it repairs
+    // the network into a SINGLE component by routing a short, coastal-legal connector (spec 140
+    // forbidBeach, never on sand/water) from each orphan to the main web, laid through the same
+    // string-pulled `layRoad` as every other trunk so it reads as a real road. An orphan that CANNOT
+    // reach the main web without crossing water/beach (a future-bridge island, spec 123/133 lineage) or
+    // a homestead setback (an embedded rally overlook, spec 097 fail-soft) is left in place — the pass
+    // never strands or deletes, it only connects what a legal road can reach. Deterministic: components
+    // and their anchor pairs are ordered canonically, and leastCostPath/layRoad are pure.
+    {
+      const size = t0.size;
+      const idxToCell = (k: number): Cell => ({ x: k % size, y: (k / size) | 0 });
+      const cellIndex = (c: Cell) => c.y * size + c.x;
+      // Iterate to a fixed point: connecting one orphan grows the main web, which may then be the
+      // nearest anchor for the next. Bounded so a genuinely stranded piece can never loop forever.
+      for (let pass = 0; pass < 8; pass++) {
+        const comps = roadComponents(this.sim.state.roads, size);
+        if (comps.length <= 1) break;
+        const mainCells = comps[0]!.cells.map(idxToCell);
+        let joinedAny = false;
+        for (let ci = 1; ci < comps.length; ci++) {
+          const orphan = comps[ci]!.cells.map(idxToCell);
+          // Candidate anchors: each orphan cell paired with its nearest main cell. The single nearest
+          // pair can be un-routable (its main end is beach-locked), so try the best few in order.
+          const pairs: { from: Cell; to: Cell; d: number }[] = [];
+          for (const p of orphan) {
+            let best: Cell | null = null,
+              bestD = Infinity;
+            for (const q of mainCells) {
+              const d = (p.x - q.x) ** 2 + (p.y - q.y) ** 2;
+              if (
+                d < bestD ||
+                (d === bestD && best && cellIndex(q) < cellIndex(best))
+              ) {
+                bestD = d;
+                best = q;
+              }
+            }
+            if (best) pairs.push({ from: p, to: best, d: bestD });
+          }
+          pairs.sort(
+            (a, b) =>
+              a.d - b.d ||
+              cellIndex(a.from) - cellIndex(b.from) ||
+              cellIndex(a.to) - cellIndex(b.to),
+          );
+          for (const { from, to, d } of pairs.slice(0, 6)) {
+            // The bounding box of a nearby pair is tiny; give the search room to bend around the mall
+            // pad or a spur of water without letting a truly-blocked route flood the whole grid.
+            const margin = Math.min(
+              size,
+              Math.max(64, Math.round(Math.sqrt(d)) * 4),
+            );
+            const path = leastCostPath(t0, from, to, {
+              slopeWeight: 0.5,
+              diagonal: true,
+              forbidBeach: true, // spec 140 — the connector bends inland, never onto sand
+              blocked: (x, y) => residentialSetbackKeys.has(`${x},${y}`),
+              margin,
+            });
+            if (path && path.length >= 2) {
+              mergeAvenue(this.sim.state, layRoad(path, 1));
+              joinedAny = true;
+              break;
+            }
+          }
+        }
+        if (!joinedAny) break; // every remaining orphan is genuinely stranded — leave it (fail soft)
+      }
+      // Determinism-safe invariant (spec 148): after the repair the network is one web. A residual
+      // orphan is a legitimate future-bridge/embedded-overlook exception, never a hard failure, so this
+      // warns rather than throws — a boot must always complete. tests/roadConnectivity.test.ts pins the
+      // >=99% single-component floor for the seed suite.
+      const finalComps = roadComponents(this.sim.state.roads, size);
+      if (finalComps.length > 1 && typeof console !== "undefined") {
+        const orphanCells = this.sim.state.roads.length - finalComps[0]!.size;
+        console.warn(
+          `[spec148] road network has ${finalComps.length} components; ${orphanCells}/${this.sim.state.roads.length} cells stranded (largest ${((finalComps[0]!.size / this.sim.state.roads.length) * 100).toFixed(1)}%). Likely a future-bridge island or embedded rally overlook.`,
+        );
+      }
     }
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
