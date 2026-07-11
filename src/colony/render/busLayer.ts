@@ -10,12 +10,12 @@ import {
 } from "../transit/path";
 import { COLONY } from "../config";
 
-// Spec 088/122/140 — the render-side BUS. Spec 140 rebuilt the coach against the world metric
+// Spec 088/122/149 — the render-side BUS. Spec 149 rebuilt the coach against the world metric
 // system (1 unit = 1 m, 1 cell = 4 m): a real 12 m city bus whose group origin IS the road contact
 // plane, so callers put y at the ribbon top and the tires touch asphalt. The rig adds the life the
 // operator asked for — wheels that spin with distance, slope pitch sampled from the road surface,
 // and a gentle speed-scaled body sway (wheels stay planted). buildBusLayer remains the legacy
-// self-driving single coach: the fallback when a seed has no depot (spec 140 fleets render via
+// self-driving single coach: the fallback when a seed has no depot (spec 149 fleets render via
 // R3FBus + the fleet machine instead). De-zigzag path math lives in transit/path.ts now.
 
 export { simplifyClosed, smoothClosed };

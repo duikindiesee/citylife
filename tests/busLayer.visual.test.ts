@@ -63,7 +63,7 @@ describe("bus layer visual model", () => {
   });
 
   it("is a METRIC city bus: ~12 m long, ~3 m tall, 0.5 m wheels with tires touching local y=0", () => {
-    // Spec 140 — the metric constitution (1 unit = 1 m): the group origin IS the road contact
+    // Spec 149 — the metric constitution (1 unit = 1 m): the group origin IS the road contact
     // plane, so the mesh's minY is the tire bottom and must sit on 0, not float 0.2 m up.
     const bus = buildBus();
     const box = new THREE.Box3().setFromObject(bus);

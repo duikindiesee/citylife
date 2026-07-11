@@ -22,7 +22,7 @@ export interface FirstPersonView {
     heading: number;
   };
   /** The nearest useful thing the player can interact with from this live position.
-   *  `bus` prompts are injected by the runtime (spec 140 — a dwelling fleet bus in boarding range);
+   *  `bus` prompts are injected by the runtime (spec 149 — a dwelling fleet bus in boarding range);
    *  this pure view never scans buses itself. */
   interactionPrompt: {
     kind: "citizen" | "civic" | "building" | "road" | "bus";

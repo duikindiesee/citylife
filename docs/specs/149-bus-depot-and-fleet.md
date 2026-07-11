@@ -1,4 +1,4 @@
-# Spec 140 — the Bus Depot: a real fleet with a home, hours, and a door for the player
+# Spec 149 — the Bus Depot: a real fleet with a home, hours, and a door for the player
 
 Operator ask (2026-07-11): give the town bus a DEPOT it parks at overnight, operating
 hours on the sim clock (first departures 08:00, service until 23:00), breaks at the
@@ -7,9 +7,11 @@ its first stop), boarding at the depot, and first-person boarding for the player
 fix the bus's physical presence: it is far too small and floats above the road instead
 of riding on its tires.
 
-Numbering: 137 is contested by two sibling v3 branches (junction caps / world metric
-system) and 138 is the Colony Slate, so this spec takes 140 and leaves 139 for the
-renumber when those merge.
+Numbering: this shipped first as spec 149, but by the time it merged the sibling v3
+branches had landed `140-no-roads-on-beaches.md` on the same number, so it was renumbered
+to 149 (the next free slot after 148) in a follow-up. Code comments and tests were updated
+to match; the base's spec-140 (no-roads-on-beaches / `forbidBeach`) references are a
+different spec and stay 140.
 
 Status: **built in the same PR** (Phase 1, primitive depot). Jack's `bus-depot.glb`
 (work order §6) swaps in later without code changes beyond the loader gate.
@@ -234,7 +236,7 @@ all 15 named nodes present; `sign` material slot exists; apron bounding box with
 0.5 m of 48 x 28; bay meshes ≥ 4 m wide; triangle budget respected.
 
 Queue line for the operator:
-`/queue jack Build bus-depot.glb per docs/specs/140-bus-depot-and-fleet.md §6 — 48x28 m drive-in bus depot, 10 marked 4x13 m bays, office + boarding shelter + lit BUS sign, exact node names, on branch jack/bus-depot.`
+`/queue jack Build bus-depot.glb per docs/specs/149-bus-depot-and-fleet.md §6 — 48x28 m drive-in bus depot, 10 marked 4x13 m bays, office + boarding shelter + lit BUS sign, exact node names, on branch jack/bus-depot.`
 
 ## 7. Phases, tests, acceptance
 
