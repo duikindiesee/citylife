@@ -16,6 +16,7 @@ export interface Cell {
 export interface DepotTerrain {
   inBounds(x: number, y: number): boolean;
   isWater(x: number, y: number): boolean;
+  worldY(x: number, y: number): number;
 }
 
 export interface DepotSite {
@@ -33,16 +34,45 @@ export interface DepotSite {
 }
 
 export interface DepotSiteConfig {
-  /** Pad long-axis length in cells (holds the 10-bay row). */
+  /** Pad long-axis length in cells; active fleet bays are spread across this edge. */
   longCells: number;
   /** Pad depth in cells (gate edge -> bay backs). */
   deepCells: number;
   /** Smallest / largest clear gap between the loop road cell and the gate edge. */
   minRoadGap: number;
   maxRoadGap: number;
+  /** Maximum raw terrain relief accepted across the full pad footprint. */
+  maxHeightSpreadM: number;
 }
 
 const key = (x: number, y: number) => `${x},${y}`;
+
+export function depotPadHeightRange(
+  t: Pick<DepotTerrain, "worldY">,
+  s: Pick<DepotSite, "x" | "y" | "w" | "h">,
+): { min: number; max: number; spread: number } {
+  let min = Infinity;
+  let max = -Infinity;
+  for (let y = s.y; y < s.y + s.h; y++)
+    for (let x = s.x; x < s.x + s.w; x++) {
+      const h = t.worldY(x, y);
+      if (!Number.isFinite(h)) return { min: NaN, max: NaN, spread: Infinity };
+      min = Math.min(min, h);
+      max = Math.max(max, h);
+    }
+  return { min, max, spread: max - min };
+}
+
+/** Balanced cut-and-fill plane: halfway between the natural low and high pad edges. */
+export function depotCutFillSeatY(
+  t: Pick<DepotTerrain, "worldY">,
+  s: Pick<DepotSite, "x" | "y" | "w" | "h">,
+  dryFloor = 0,
+): number {
+  const range = depotPadHeightRange(t, s);
+  if (!Number.isFinite(range.min) || !Number.isFinite(range.max)) return dryFloor;
+  return Math.max(dryFloor, (range.min + range.max) / 2);
+}
 
 /** Find the depot pad: scan gaps small-to-large, then the loop cells in route order, then the four
  *  cardinal orientations — first pad whose every cell is in-bounds, dry and unclaimed wins, provided
@@ -67,7 +97,7 @@ export function findDepotSite(
     for (const r of loop) {
       for (const d of dirs) {
         const site = padAt(r, d, g, L, D);
-        if (!padClear(t, site, blocked)) continue;
+        if (!padClear(t, site, blocked, cfg.maxHeightSpreadM)) continue;
         if (!corridorClear(t, r, site.gate, blocked, roadKeys)) continue;
         return site;
       }
@@ -109,13 +139,20 @@ function padClear(
   t: DepotTerrain,
   s: DepotSite,
   blocked: ReadonlySet<string>,
+  maxHeightSpreadM: number,
 ): boolean {
+  let minY = Infinity;
+  let maxY = -Infinity;
   for (let y = s.y; y < s.y + s.h; y++)
     for (let x = s.x; x < s.x + s.w; x++) {
       if (!t.inBounds(x, y) || t.isWater(x, y)) return false;
       if (blocked.has(key(x, y))) return false;
+      const h = t.worldY(x, y);
+      if (!Number.isFinite(h)) return false;
+      minY = Math.min(minY, h);
+      maxY = Math.max(maxY, h);
     }
-  return true;
+  return maxY - minY <= maxHeightSpreadM;
 }
 
 /** The gap between road and gate becomes the spur road — it must be dry and cross nothing that is not
@@ -188,9 +225,13 @@ export function depotLayout(
   const lane = cfg.laneDepth;
   const deep = cfg.bayDepth;
   const bays: DepotLayout["bays"] = [];
-  const margin = (long - cfg.baysTotal) / 2; // centre the bay row on the long edge
+  // Spread the active fleet across the usable row instead of packing coaches at one-cell pitch.
+  // Keep a one-cell end margin and cap at two cells (8 m) so 12 m coaches remain visually distinct.
+  const pitch =
+    cfg.baysTotal > 1 ? Math.min(2, (long - 2) / (cfg.baysTotal - 1)) : 0;
+  const firstI = (long - pitch * Math.max(0, cfg.baysTotal - 1)) / 2;
   for (let k = 0; k < cfg.baysTotal; k++) {
-    const i = margin + k + 0.5;
+    const i = firstI + k * pitch;
     const path: Pt[] = [toGrid(gateI, 0)];
     if (Math.abs(i - gateI) > 1e-6) path.push(toGrid(gateI, lane));
     path.push(toGrid(i, lane), toGrid(i, deep));

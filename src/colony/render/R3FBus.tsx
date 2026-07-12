@@ -15,7 +15,9 @@ import {
 } from './busLayer';
 import { buildBusDepotLayer } from './busDepotLayer';
 import { getSmoothRoadY } from './roadSurface';
-import { padSeatY } from './useTerrainLeveling';
+import { ROAD_RIBBON_LIFT } from './roadRibbon';
+import { RENDER_DRY_FLOOR } from './useTerrainLeveling';
+import { depotCutFillSeatY, depotPadHeightRange } from '../transit/busDepot';
 
 // Spec 122/140 — the town bus render. With a depot (spec 149) this draws the FLEET: the runtime's
 // dispatch machine says where every bus is (grid poses) and this component dresses those poses —
@@ -88,12 +90,17 @@ export function R3FBus({ sim, runtime }: R3FBusProps) {
       builtDepot.current = depot;
       if (route && containerRef.current) {
         if (depot && runtime?.busPoses) {
-          // Fleet mode. The pad is graded FLAT by terrain leveling (spec 149, useTerrainLeveling
-          // 2b) at the padSeatY height; the slab sits a kerb's 0.12 m proud of that, and inside
-          // the pad the buses ride the slab top instead of the road sampler.
+          // Fleet mode. Terrain leveling balances cut-and-fill at the natural pad mid-range; the
+          // drive slab sits 0.12 m proud and extends below the lowest natural edge as a foundation.
           const { site, layout } = depot;
-          const padTopY =
-            padSeatY(sim.state.terrain, site.x, site.y, site.w, site.h) + 0.12;
+          const padSeat = depotCutFillSeatY(
+            sim.state.terrain,
+            site,
+            RENDER_DRY_FLOOR,
+          );
+          const padTopY = padSeat + 0.12;
+          const natural = depotPadHeightRange(sim.state.terrain, site);
+          const foundationBottomY = Math.min(padSeat - 0.18, natural.min - 0.18);
           const inPad = (x: number, y: number) =>
             x >= site.x - 0.6 &&
             x <= site.x + site.w - 0.4 &&
@@ -104,7 +111,15 @@ export function R3FBus({ sim, runtime }: R3FBusProps) {
           const group = new THREE.Group();
           group.name = 'bus-fleet';
           group.add(
-            buildBusDepotLayer({ site, layout, wx: world.wx, wz: world.wz, padTopY }),
+            buildBusDepotLayer({
+              site,
+              layout,
+              wx: world.wx,
+              wz: world.wz,
+              padTopY,
+              foundationBottomY,
+              roadTopY: world.roadY(site.roadCell.x, site.roadCell.y) + ROAD_RIBBON_LIFT,
+            }),
           );
           for (const s of route.stops)
             group.add(buildStop({ wx: world.wx, wz: world.wz, roadY: world.roadY }, s));

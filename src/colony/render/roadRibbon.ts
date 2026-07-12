@@ -17,9 +17,9 @@ export interface RoadWay {
   kind: "avenue" | "street";
   /** Carriageway width in cells. */
   width: number;
-  /** Set on ways appended by the builder (plotRoad), so bulldozing can prune them once
-   *  their cells are gone (spec 127 verify P2). Boot ways have no source. */
-  source?: "builder";
+  /** Origin tag for lifecycle/invariant checks. Builder ways can be bulldozed; the depot spur is
+   *  excluded from the conservative pre-existing-ribbon blocked-cell survey. */
+  source?: "builder" | "depot-spur";
 }
 
 export interface RoadRibbonOptions {
@@ -292,8 +292,14 @@ export function buildRoadRibbons(
     nearJunction = (x: number, y: number) =>
       junction.has(`${Math.round(x)},${Math.round(y)}`);
   }
+  const depotMouths = ways
+    .filter((way) => way.source === "depot-spur")
+    .map((way) => way.path[0])
+    .filter((p): p is { x: number; y: number } => !!p);
+  const nearDepotMouth = (x: number, y: number) =>
+    depotMouths.some((p) => Math.hypot(x - p.x, y - p.y) <= 2.2);
   const skipPaint = (x: number, y: number) =>
-    nearJunction(x, y) || !roadSurfaceCellOk(opts, x, y);
+    nearJunction(x, y) || nearDepotMouth(x, y) || !roadSurfaceCellOk(opts, x, y);
   const lifts = zones
     ? assignWayLifts(ways.length, zones)
     : new Array<number>(ways.length).fill(0);
@@ -305,6 +311,9 @@ export function buildRoadRibbons(
     const pts = paths[wi];
     if (!pts) continue;
     const way = ways[wi]!;
+    // The depot spur remains in simulation/map topology, but its visible surface is the authored
+    // flared Depot_Driveway. Rendering a second generic ribbon here created the doubled, cracked join.
+    if (way.source === "depot-spur") continue;
     ribbon(
       pts,
       way.width / 2,

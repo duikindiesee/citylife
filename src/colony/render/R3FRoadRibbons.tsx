@@ -78,7 +78,8 @@ export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
     // Zones FIRST (cap polygons attached), so the ribbon builder suppresses paint along
     // the exact cap footprint and the cap builder anchors zebras at the same mouths —
     // one boundary, no drift (the spec-127 JR dilation left a 16-20 m unmarked annulus).
-    const zones = attachCapPolys(findJunctionZones(ways));
+    const publicWays = ways.filter((way) => way.source !== 'depot-spur');
+    const zones = attachCapPolys(findJunctionZones(publicWays));
     const { group } = buildRoadRibbons(ways, opts, zones);
     const caps = buildJunctionCaps(zones, opts);
     if (caps.surf.length)
@@ -88,7 +89,7 @@ export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
     // Furniture positions need a ground height for their pole bases: the local road
     // surface (they stand on the verge beside it, close enough at 25 mm resolution).
     const furniture = zones.flatMap((z, zi) =>
-      junctionFurniture(z, ways).map((f, fi) => ({
+      junctionFurniture(z, publicWays).map((f, fi) => ({
         ...f,
         key: `f-${zi}-${fi}`,
         // deterministic per-junction signal phase offset so the whole city doesn't

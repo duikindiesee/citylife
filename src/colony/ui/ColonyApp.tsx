@@ -46,6 +46,7 @@ import { RaceMobileControls } from "./RaceMobileControls";
 import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
 import { BuilderPanel } from "./BuilderPanel";
+import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
 import "./colony.css";
 import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
 
@@ -1014,6 +1015,7 @@ export function ColonyApp() {
           </button>
         </div>
       </header>
+      <BusNetworkMiniMap runtime={runtime} />
       {(!builderActive && !worldViewActive) && (
         <aside
           className={hudClassName(ui.firstPerson.active)}
