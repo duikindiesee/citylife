@@ -437,6 +437,21 @@ export const COLONY = {
     spireStageComponents: [80, 220, 170, 160],
     spireStageReels: [0, 60, 50, 100],
     spireStageLinen: [0, 120, 140, 0],
+    // Ironwork Pillar (spec 144): the mechanics half of the Escapement. Three opt-in stages,
+    // deliberately inert at stage 0; no market, wage, immigration, or visual coupling here.
+    pillarStageCount: 3,
+    pillarStageCrew: 5,
+    pillarStageBuildHours: 36,
+    pillarStartColonists: 18,
+    pillarSurplusMargin: 2,
+    pillarTreasuryMargin: 3500,
+    pillarUnrestReliefPerDay: 0.06,
+    retuneNightRelief: 0.02,
+    pillarStageTreasury: [900, 1400, 2200],
+    pillarStageMaterials: [120, 80, 40],
+    pillarStageComponents: [60, 150, 180],
+    pillarStageReels: [0, 35, 70],
+    pillarStageLinen: [0, 80, 120],
     // Stormwatch Shelter (spec 034): the colony's first EXTERNAL danger. A Cloudsea Front periodically rolls in from
     // beyond the island; a staffed Stormwatch Shelter braces the colony (and the Spire's Sky Beacon warns earlier), so a
     // braced colony takes far less damage than an unprepared one (spoiled goods + a wear spike). Fronts only begin once

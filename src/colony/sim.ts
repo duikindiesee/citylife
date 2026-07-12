@@ -33,7 +33,8 @@ export type StructureKind =
   | "battery"
   | "rocket"
   | "lighthouse"
-  | "rally";
+  | "rally"
+  | "ironworkPillar";
 export interface SeedStructure {
   kind: StructureKind;
   x: number;
@@ -154,6 +155,89 @@ export interface RallyPlacementOptions {
   anchor?: { x: number; y: number };
   used?: readonly { x: number; y: number }[];
   maxRadius?: number;
+}
+
+export interface IronworkPillarPlacementOptions {
+  anchor?: { x: number; y: number };
+  used?: readonly { x: number; y: number }[];
+  maxRadius?: number;
+}
+
+/** Spec 144 — the Ironwork Pillar survey reservation: a deterministic 3x3 on-land plot
+ *  near Landing One, modestly sloped, off the colony road frame and away from other landmarks.
+ *  Stage 0 is invisible; only the reservation exists so later roads/parcels route around it. */
+export function findIronworkPillarSite(
+  terrain: Terrain,
+  options: IronworkPillarPlacementOptions = {},
+): { x: number; y: number } | null {
+  const anchor = options.anchor ?? terrain.landing;
+  const used = options.used ?? [];
+  const maxRadius =
+    options.maxRadius ?? Math.max(24, Math.min(80, Math.round(terrain.size * 0.14)));
+  const B = COLONY.build.block;
+  const half = B >> 1;
+  const onRoadFrame = (px: number, py: number): boolean => {
+    const mx = (((px - (anchor.x - half)) % B) + B) % B;
+    const my = (((py - (anchor.y - half)) % B) + B) % B;
+    return mx === 0 || my === 0;
+  };
+  const usedClear = (x: number, y: number): boolean => {
+    for (const u of used) {
+      if (Math.max(Math.abs(u.x - x), Math.abs(u.y - y)) <= 6) return false;
+    }
+    return true;
+  };
+  const footprintClear = (x: number, y: number): boolean => {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx,
+          ny = y + dy;
+        if (!terrain.inBounds(nx, ny)) return false;
+        if (terrain.isWater(nx, ny)) return false;
+        if (terrain.buildable[terrain.idx(nx, ny)] === 0) return false;
+        if (onRoadFrame(nx, ny)) return false;
+        const b = terrain.biome[terrain.idx(nx, ny)];
+        if (b === Biome.Mountain || b === Biome.Peak || b === Biome.Ocean || b === Biome.Shallows)
+          return false;
+      }
+    }
+    return true;
+  };
+  let best: { x: number; y: number; score: number } | null = null;
+  for (let y = Math.max(2, anchor.y - maxRadius); y <= Math.min(terrain.size - 3, anchor.y + maxRadius); y++) {
+    for (let x = Math.max(2, anchor.x - maxRadius); x <= Math.min(terrain.size - 3, anchor.x + maxRadius); x++) {
+      const d = Math.hypot(x - anchor.x, y - anchor.y);
+      if (d > maxRadius || d < 10) continue;
+      if (!usedClear(x, y) || !footprintClear(x, y)) continue;
+      let minH = Infinity, maxH = -Infinity;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const h = terrain.worldY(x + dx, y + dy);
+          minH = Math.min(minH, h);
+          maxH = Math.max(maxH, h);
+        }
+      }
+      const slope = maxH - minH;
+      if (slope > 0.9) continue;
+      let roadDistance = 9;
+      for (let r = 1; r <= 9 && roadDistance === 9; r++) {
+        for (let oy = -r; oy <= r && roadDistance === 9; oy++) {
+          for (let ox = -r; ox <= r; ox++) {
+            if (Math.max(Math.abs(ox), Math.abs(oy)) !== r) continue;
+            if (onRoadFrame(x + ox, y + oy)) {
+              roadDistance = r;
+              break;
+            }
+          }
+        }
+      }
+      const score = -Math.abs(d - 22) * 2 - slope * 12 - roadDistance * 0.8 + (terrain.buildable[terrain.idx(x, y)] === 2 ? 4 : 0);
+      if (!best || score > best.score || (score === best.score && (y < best.y || (y === best.y && x < best.x)))) {
+        best = { x, y, score };
+      }
+    }
+  }
+  return best ? { x: best.x, y: best.y } : null;
 }
 
 /** Spec 097 — the Rally Overlook: a deterministic HILLTOP with a commanding view of the colony,
@@ -419,6 +503,10 @@ export interface ColonyState {
   spireStage: number; // spec 033 — completed stages of the Horizon Spire (0..4)
   spireProgress: number; // spec 033 — 0..1 progress on the stage currently under construction
   spireBuilding: boolean; // spec 033 — true while a Spire stage is being raised (its crew is reserved)
+  pillarStage: number; // spec 144 — completed stages of the Ironwork Pillar (0..3)
+  pillarProgress: number; // spec 144 — 0..1 progress on the stage currently under construction
+  pillarBuilding: boolean; // spec 144 — true while a Pillar stage reserves its 5-hand crew
+  lastRetuneDay: number; // spec 144 — last sim day whose 00:00 retune relief was applied
   frontTimer: number; // spec 034 — sim-minutes until the next Cloudsea Front strikes (counts down once established)
   importOrder: "materials" | "components" | "food" | "linen" | "reels" | null; // spec 036 — standing import order the council sets; inert until an Import Office stands
   rosterMode: "essentials" | "balanced" | "industry"; // spec 038 — labour-priority mode the council sets; only bites with a staffed Roster Office under a shortage ('balanced' = today's even split)
@@ -516,6 +604,11 @@ export class ColonySim {
       structures.push({ kind: "rally", x: rally.x, y: rally.y });
       used.push(rally);
     }
+    const pillar = findIronworkPillarSite(terrain, { used });
+    if (pillar) {
+      structures.push({ kind: "ironworkPillar", x: pillar.x, y: pillar.y });
+      used.push(pillar);
+    }
 
     this.state = {
       name: COLONY.seed.name,
@@ -581,6 +674,10 @@ export class ColonySim {
       spireStage: 0, // spec 033 — no Horizon Spire raised at founding
       spireProgress: 0,
       spireBuilding: false,
+      pillarStage: 0, // spec 144 — Ironwork Pillar survey only; no visible/economic effect at stage 0
+      pillarProgress: 0,
+      pillarBuilding: false,
+      lastRetuneDay: 0,
       frontTimer: 0, // spec 034 — set to the first-front delay in initBuild
       importOrder: null, // spec 036 — no standing import order until the council sets one
       rosterMode: "balanced", // spec 038 — even labour split by default; the lever only bites with a staffed Roster Office

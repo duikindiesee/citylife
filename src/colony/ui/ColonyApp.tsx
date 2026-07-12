@@ -1526,6 +1526,21 @@ export function ColonyApp() {
                   </b>
                 </div>
               )}
+              {(ui.colony.pillar.stage > 0 || ui.colony.pillar.building) && (
+                <div className="row">
+                  <span>Ironwork Pillar</span>
+                  <b
+                    style={{
+                      color: ui.colony.pillar.complete ? "#ffc568" : "#b98c3a",
+                    }}
+                    title="A pillar over the works. Two hands, one wheel — the colony sleeps easier under a minded world."
+                  >
+                    {ui.colony.pillar.complete
+                      ? `Stage ${ui.colony.pillar.total}/${ui.colony.pillar.total} · Retune 00:00`
+                      : `Stage ${ui.colony.pillar.stage}/${ui.colony.pillar.total}${ui.colony.pillar.building ? ` · ${Math.round(ui.colony.pillar.progress * 100)}%` : ""}`}
+                  </b>
+                </div>
+              )}
               {ui.colony.front.established && (
                 <div className="row">
                   <span>Cloudsea</span>

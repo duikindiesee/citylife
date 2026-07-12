@@ -261,6 +261,10 @@ export function initBuild(state: ColonyState): void {
   state.spireStage = 0; // spec 033 — the Horizon Spire is unbuilt
   state.spireProgress = 0;
   state.spireBuilding = false;
+  state.pillarStage = 0; // spec 144 — the Ironwork Pillar is only a reserved site at founding
+  state.pillarProgress = 0;
+  state.pillarBuilding = false;
+  state.lastRetuneDay = state.clock.day;
   state.frontTimer = COLONY.build.frontFirstDelayDays * 24 * 60; // spec 034 — the calm before the first Cloudsea Front
   state.importOrder = null; // spec 036 — no standing import order until the council sets one
   state.rosterMode = "balanced"; // spec 038 — even labour split until the council sets a priority mode
@@ -286,8 +290,9 @@ export function initBuild(state: ColonyState): void {
   // would visually intrude on them — reserving the halo keeps the dropship a clear landing plaza and
   // prevents the "rocket inside a house" overlap.
   for (const s of state.structures) {
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
+    const halo = s.kind === "ironworkPillar" ? 2 : 1;
+    for (let dy = -halo; dy <= halo; dy++) {
+      for (let dx = -halo; dx <= halo; dx++) {
         state.occupied.add(key(s.x + dx, s.y + dy));
       }
     }
@@ -3286,6 +3291,7 @@ function reservedCrew(state: ColonyState): number {
   let n = 0;
   for (const j of state.jobs) n += j.artifact.crew;
   if (state.spireBuilding) n += COLONY.build.spireStageCrew; // spec 033 — a Spire stage ties up its crew
+  if (state.pillarBuilding) n += COLONY.build.pillarStageCrew; // spec 144 — a Pillar stage ties up its crew
   return n;
 }
 
@@ -4255,6 +4261,7 @@ function unrestStep(state: ColonyState, dtMin: number): void {
   )
     u += COLONY.build.standingUnrestPerDay * frac; // spec 032 — disrepute breeds reputational unrest
   if (spireComplete(state)) u -= COLONY.build.spireUnrestReliefPerDay * frac; // spec 033 — pride in the great work calms the colony
+  if (pillarComplete(state)) u -= COLONY.build.pillarUnrestReliefPerDay * frac; // spec 144 — the minded world eases disorder
   if (foundersHallActive(state)) u -= COLONY.build.foundersUnrestRelief * frac; // spec 035 — pride in who built this steadies the colony
   const solace = solaceCoverage(state);
   if (solace > 0) u -= COLONY.build.solaceCalmPerDay * solace * frac; // spec 037 — consoled homes fray slower under a squeeze
@@ -4609,6 +4616,120 @@ function spireStep(state: ColonyState, dtMin: number): void {
   ) {
     fundSpireStage(state);
   }
+}
+
+
+export const PILLAR_TEETH = 12;
+
+function pillarHash(a: number, b: number, salt: number): number {
+  let h = Math.imul((a | 0) ^ salt, 0x9e3779b1);
+  h ^= Math.imul((b | 0) + 0x85ebca6b, 0xc2b2ae35);
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x7feb352d);
+  h ^= h >>> 15;
+  return ((h >>> 0) & 0xffffff) / 0x1000000;
+}
+
+export function restingToothIndex(day: number, hour: number): number {
+  const phase = Math.floor(pillarHash(Math.floor(day), 0, 0x116) * PILLAR_TEETH);
+  return (((Math.floor(hour) * 7 + phase) % PILLAR_TEETH) + PILLAR_TEETH) % PILLAR_TEETH;
+}
+
+export function undercroftBarPhase(day: number, hour: number): number {
+  return pillarHash(Math.floor(day), Math.floor(hour), 0x9a1);
+}
+
+export function isRetuneHour(hour: number): boolean {
+  return Math.floor(hour) === 0;
+}
+
+function pillarComplete(state: ColonyState): boolean {
+  return (state.pillarStage ?? 0) >= COLONY.build.pillarStageCount;
+}
+
+function pillarStageBundle(stage: number) {
+  return {
+    treasury: COLONY.build.pillarStageTreasury[stage] ?? 0,
+    materials: COLONY.build.pillarStageMaterials[stage] ?? 0,
+    components: COLONY.build.pillarStageComponents[stage] ?? 0,
+    reels: COLONY.build.pillarStageReels[stage] ?? 0,
+    linen: COLONY.build.pillarStageLinen[stage] ?? 0,
+  };
+}
+
+function pillarAfford(state: ColonyState, margin: number): boolean {
+  const stage = state.pillarStage ?? 0;
+  if (stage >= COLONY.build.pillarStageCount || state.pillarBuilding) return false;
+  const b = pillarStageBundle(stage);
+  return (
+    state.treasury >= b.treasury &&
+    state.materials >= b.materials * margin &&
+    state.components >= b.components * margin &&
+    state.reels >= b.reels * margin &&
+    (state.linen ?? 0) >= b.linen * margin &&
+    freeLabour(state) >= COLONY.build.pillarStageCrew
+  );
+}
+
+export function fundIronworkStage(state: ColonyState): boolean {
+  if (!pillarAfford(state, 1)) return false;
+  const b = pillarStageBundle(state.pillarStage ?? 0);
+  state.treasury -= b.treasury;
+  state.materials -= b.materials;
+  state.components -= b.components;
+  state.reels -= b.reels;
+  state.linen = Math.max(0, (state.linen ?? 0) - b.linen);
+  state.pillarBuilding = true;
+  state.pillarProgress = 0;
+  return true;
+}
+
+function pillarStep(state: ColonyState, dtMin: number): void {
+  if (state.pillarBuilding) {
+    state.pillarProgress =
+      (state.pillarProgress ?? 0) + dtMin / (COLONY.build.pillarStageBuildHours * 60);
+    if (state.pillarProgress >= 1) {
+      state.pillarStage = (state.pillarStage ?? 0) + 1;
+      state.pillarBuilding = false;
+      state.pillarProgress = 0;
+    }
+    return;
+  }
+  if (
+    state.colonists >= COLONY.build.pillarStartColonists &&
+    state.treasury >=
+      pillarStageBundle(state.pillarStage ?? 0).treasury +
+        COLONY.build.pillarTreasuryMargin &&
+    pillarAfford(state, COLONY.build.pillarSurplusMargin)
+  ) {
+    fundIronworkStage(state);
+  }
+}
+
+function retuneStep(state: ColonyState): void {
+  if (!pillarComplete(state)) return;
+  if (!isRetuneHour(state.clock.hour)) return;
+  if ((state.lastRetuneDay ?? -1) === state.clock.day) return;
+  state.unrest = Math.max(0, (state.unrest ?? 0) - COLONY.build.retuneNightRelief);
+  state.lastRetuneDay = state.clock.day;
+}
+
+export function pillarStatus(state: ColonyState): {
+  stage: number;
+  total: number;
+  progress: number;
+  building: boolean;
+  complete: boolean;
+  retuneTonight: boolean;
+} {
+  return {
+    stage: state.pillarStage ?? 0,
+    total: COLONY.build.pillarStageCount,
+    progress: state.pillarProgress ?? 0,
+    building: state.pillarBuilding ?? false,
+    complete: pillarComplete(state),
+    retuneTonight: pillarComplete(state) && isRetuneHour(state.clock.hour) && (state.lastRetuneDay ?? -1) !== state.clock.day,
+  };
 }
 
 /** Spec 033 — Spire readout for the HUD: which stage, progress, whether it's rising, and whether it's finished. */
@@ -6532,6 +6653,8 @@ export function stepBuild(state: ColonyState, rng: RNG, dtMin: number): void {
   feastStep(state, dtMin); // spec 030 — count down an active feast, or auto-throw one for a wealthy, restless colony
   requestStep(state, dtMin); // spec 032 — the Kookerverse issues/judges Civic Requests; standing drifts without an office
   spireStep(state, dtMin); // spec 033 — raise the Horizon Spire stage by stage when the colony can spare the surplus
+  pillarStep(state, dtMin); // spec 144 — raise the Ironwork Pillar stage by stage, inert until funded
+  retuneStep(state); // spec 144 — once per 00:00 boundary after completion
   frontStep(state, dtMin); // spec 034 — count down to the next Cloudsea Front; strike (braced or not) at impact
   produceMaterials(state, dtMin);
   produceFibre(state, dtMin); // spec 031 — gather skyflax fibre (the second extractor)
