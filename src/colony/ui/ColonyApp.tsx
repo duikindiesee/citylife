@@ -841,28 +841,16 @@ export function ColonyApp() {
   return (
     <div className="colony">
       <div className="canvas-host" ref={hostRef} />
-      {ui.firstPerson.active && (
-        <FirstPersonMouseLookBar
-          citizenName={ui.firstPerson.citizenName}
-          mouseLookLocked={mouseLookLocked}
-          pointerLockError={pointerLockError}
-          requestMouseLook={requestMouseLook}
-          levelFirstPersonLook={() => runtime.levelFirstPersonLook()}
-          mouseSensitivity={ui.firstPerson.mouseSensitivity}
-          setMouseSensitivity={(level) =>
-            runtime.setFirstPersonMouseSensitivity(level)
-          }
-          exitFirstPerson={() => runtime.exitFirstPerson()}
-        />
-      )}
       <FirstPersonPanel
         runtime={runtime}
         fp={ui.firstPerson}
         onOpenRoadmap={() => setRoadmapOpen(true)}
+        onRequestMouseLook={requestMouseLook}
+        onLevelView={() => runtime.levelFirstPersonLook()}
       />
       <RoadmapPanel open={roadmapOpen} onClose={() => setRoadmapOpen(false)} />
       {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
-      {(!builderActive && !worldViewActive && rallyRead) && (
+      {(!ui.firstPerson.active && !builderActive && !worldViewActive && rallyRead) && (
         <div
           className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
           aria-label="Who is here at the rally"

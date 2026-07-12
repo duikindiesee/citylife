@@ -1406,6 +1406,7 @@ body.tv-mode .radio-iframe.is-visible {
 .first-person-panel__action-button,
 .first-person-panel__rally-button,
 .first-person-panel__debug-toggle,
+.first-person-panel__help-toggle,
 .first-person-panel__exit-button {
   border-radius: 10px;
   border: 1px solid rgba(111, 208, 255, 0.28);
@@ -1433,6 +1434,7 @@ body.tv-mode .radio-iframe.is-visible {
   color: #9fd4a6;
 }
 .first-person-panel__debug-toggle,
+.first-person-panel__help-toggle,
 .first-person-panel__exit-button {
   min-height: 32px;
   background: rgba(255, 255, 255, 0.05);
@@ -1744,6 +1746,7 @@ body.tv-mode .radio-iframe.is-visible {
     min-height: 54px;
   }
   .first-person-panel__debug-toggle,
+  .first-person-panel__help-toggle,
   .first-person-panel__exit-button {
     min-height: 40px;
   }
