@@ -1,7 +1,13 @@
 import { test, expect } from '@playwright/test';
 
 test('builder-painted CommercialBlock seats on its graded sloped pad', async ({ page }) => {
-  test.setTimeout(180000);
+  // Heavy builder + terrain-grading flow. It passed under the old 180s budget until the bus depot
+  // (spec 149 follow-up) and ironwork pillars (spec 144) added scene meshes, which made every
+  // per-plot terrain-level + collider recompute on the slow headless runner heavier and tipped
+  // this one just over 180s (it reached the last waitForTimeout before dying). Give it the same
+  // headroom the sibling builder specs already carry (zoning 300s, first_plot 600s); global
+  // retries are 0 so a genuine hang still fails once, fast.
+  test.setTimeout(420000);
   await page.goto('/?skipauth=1');
   await page.waitForSelector('canvas', { timeout: 30000 });
   await page.waitForFunction(
