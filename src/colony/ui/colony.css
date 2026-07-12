@@ -1662,10 +1662,18 @@ body.tv-mode .radio-iframe.is-visible {
   }
 
   .hud {
-    top: 58px;
+    /* Narrow screens are pinned at BOTH ends: the topbar wraps to a tall block at the top,
+       and the rally card lives bottom-left (min-width 190px). Two ~190px cards can't share
+       the bottom row at 375px, and top-anchoring collides with the wrapped topbar — so dock
+       this panel to the middle of the right edge, the one region clear of both. Centring with
+       translateY keeps it clear however the topbar wraps or whether the rally card shows;
+       max-height + overflow-y bound it if the detail stack is expanded. */
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
     right: 8px;
     width: min(190px, calc(100vw - 16px));
-    max-height: calc(100vh - 76px);
+    max-height: calc(100vh - 132px);
     padding: 9px;
   }
   .hud[data-hud-expanded="true"] {
@@ -1679,10 +1687,15 @@ body.tv-mode .radio-iframe.is-visible {
   }
 
   .hud--first-person-mobile-drawer {
+    /* Pin the vertical anchoring the drawer needs (it slides horizontally via translateX),
+       so the centred non-first-person .hud rule above does not leak top:50%/translateY into
+       this shared-class element. Restores the original full-height right-edge drawer. */
+    top: 58px;
+    bottom: 24px;
+    transform: translateX(calc(100% - 42px));
     right: 0;
     width: min(248px, 74vw);
     max-height: calc(100vh - 78px);
-    transform: translateX(calc(100% - 42px));
     opacity: 0.28;
     transition:
       transform 180ms ease,
