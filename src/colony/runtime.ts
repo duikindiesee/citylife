@@ -35,6 +35,8 @@ import {
   fulfillRequest,
   spireStatus,
   fundSpireStage,
+  pillarStatus,
+  fundIronworkStage,
   frontStatus,
   foundersStatus,
   importStatus,
@@ -472,6 +474,14 @@ export interface ColonyUiState {
       progress: number;
       building: boolean;
       complete: boolean;
+    };
+    pillar: {
+      stage: number;
+      total: number;
+      progress: number;
+      building: boolean;
+      complete: boolean;
+      retuneTonight: boolean;
     };
     front: {
       timerDays: number;
@@ -4466,6 +4476,13 @@ export class ColonyRuntime {
     if (ok) this.emit();
     return ok;
   }
+
+  /** Spec 144 — fund the next Ironwork Pillar stage. Mechanics only; renderer lane reads the stage later. */
+  fundIronworkStage(): boolean {
+    const ok = fundIronworkStage(this.sim.state);
+    if (ok) this.emit();
+    return ok;
+  }
   /** Spec 036 — set (or clear) the standing import order (only buys with a built, staffed Import Office). */
   setImportOrder(good: ImportGood | null): void {
     this.sim.state.importOrder = good;
@@ -4720,6 +4737,7 @@ export class ColonyRuntime {
         feast: feastStatus(s),
         liaison: liaisonStatus(s),
         spire: spireStatus(s),
+        pillar: pillarStatus(s),
         front: frontStatus(s),
         founders: foundersStatus(s),
         imports: importStatus(s),
