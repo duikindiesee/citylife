@@ -1899,3 +1899,46 @@ body.tv-mode .radio-iframe.is-visible {
     border-bottom: 1px solid rgba(255, 219, 112, 0.22);
   }
 }
+
+.bus-network-minimap {
+  position: fixed;
+  z-index: 48;
+  left: max(12px, env(safe-area-inset-left));
+  top: calc(58px + env(safe-area-inset-top));
+  width: 216px;
+  padding: 7px;
+  border: 1px solid rgba(133, 214, 255, 0.38);
+  border-radius: 12px;
+  background: rgba(5, 12, 22, 0.88);
+  box-shadow: 0 7px 26px rgba(0, 0, 0, 0.44);
+  pointer-events: none;
+  backdrop-filter: blur(7px);
+}
+.bus-network-minimap__title {
+  display: flex;
+  justify-content: space-between;
+  color: #bdefff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  padding: 0 3px 5px;
+}
+.bus-network-minimap svg { display: block; width: 100%; height: auto; }
+.bus-network-minimap text { fill: #fff; font: 700 6px/1 system-ui; }
+.bus-network-minimap__ground { fill: rgba(8, 22, 29, 0.96); }
+.bus-network-minimap__road,
+.bus-network-minimap__spur {
+  fill: none;
+  stroke: #718696;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.bus-network-minimap__spur { stroke: #ffb84a; stroke-width: 2.8; }
+.bus-network-minimap__stop { fill: #ffe174; stroke: #332800; stroke-width: 0.8; }
+.bus-network-minimap__depot { fill: #ff9f35; stroke: #fff0c9; stroke-width: 1; }
+.bus-network-minimap__bus { fill: #2ddfff; stroke: #fff; stroke-width: 1.2; }
+@media (max-width: 700px) {
+  .bus-network-minimap { width: 168px; top: calc(52px + env(safe-area-inset-top)); }
+  .bus-network-minimap__title { font-size: 8px; }
+}

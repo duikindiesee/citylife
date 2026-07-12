@@ -4,6 +4,7 @@ import type { Terrain } from '../terrain';
 import { applyCoastalCommercialDryBlend } from './terrainLeveling';
 import { useSimSignal, type SimBridge } from './useSimSignal';
 import { levelingSignature } from './simSignals';
+import { depotCutFillSeatY } from '../transit/busDepot';
 
 // Match PlanetRenderer.ts behavior
 export const RENDER_DRY_FLOOR = 0.65;
@@ -166,19 +167,19 @@ export function computeTerrainLeveling(
     });
   }
 
-  // 2b) Bus depot pad (spec 149) — one flat apron at the pad-centre seat height with the same
-  // smoothstep skirt the commercial pads use, so the slab, the parked buses and the walker's
-  // ground guardrail all agree on ONE height instead of a max-corner slab floating over a slope.
+  // 2b) Bus depot pad (spec 149) — balanced cut-and-fill at the midpoint of the natural pad
+  // height range. The footprint is flat; its smoothstep skirt meets surrounding land, while the
+  // render layer's deep foundation closes every exposed downhill edge.
   const depot = state.busDepotPad;
   if (depot) {
-    const py = padSeatY(t, depot.x, depot.y, depot.w, depot.h);
-    const fx1 = depot.x + depot.w;
-    const fy1 = depot.y + depot.h;
-    for (let y = depot.y - SKIRT + 1; y < fy1 + SKIRT; y++) {
-      for (let x = depot.x - SKIRT + 1; x < fx1 + SKIRT; x++) {
+    const py = depotCutFillSeatY(t, depot, DRY);
+    const x1 = depot.x + depot.w - 1;
+    const y1 = depot.y + depot.h - 1;
+    for (let y = depot.y - SKIRT + 1; y <= y1 + SKIRT - 1; y++) {
+      for (let x = depot.x - SKIRT + 1; x <= x1 + SKIRT - 1; x++) {
         if (x < 0 || y < 0 || x >= N || y >= N) continue;
         if (roadRibbonCells?.has(`${x},${y}`)) continue;
-        const dist = Math.max(0, depot.x - x, x - fx1, depot.y - y, y - fy1);
+        const dist = Math.max(0, depot.x - x, x - x1, depot.y - y, y - y1);
         if (dist === 0) put(x, y, py);
         else if (dist < SKIRT) {
           const nat = Math.max(t.worldY(x, y), DRY);
@@ -224,6 +225,12 @@ export function computeTerrainLeveling(
       // across hills, segment-bridged dips and dry-blended coast cells are where the
       // floating happens.)
       const eff = next.has(i) ? next.get(i)! : Math.max(0, t.worldY(x, y));
+      // The depot spur must meet its ribbon exactly at the apron gate. Do not apply the generic
+      // shallow-fill deadzone here: even a 0.3 m hollow produces a visible torn seam beside the slab.
+      if (state.busDepotSpurCells?.has(key)) {
+        graded.set(i, h);
+        continue;
+      }
       // ASYMMETRIC deadzone (operator invariant, 2026-07-11: "the ground go above the
       // roads; that should never happen"). The old |h - eff| <= DEADZONE tolerated
       // ground up to 0.6 ABOVE the road surface — but the ribbon rides only +0.18, so

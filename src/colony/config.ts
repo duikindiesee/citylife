@@ -1064,13 +1064,15 @@ export const COLONY = {
   // Spec 149 — the bus depot + fleet. Distances in grid cells (1 cell = 4 m), times in sim-minutes,
   // bus body in metres (= world units, the metric anchor).
   transit: {
-    depotLongCells: 12, // pad edge holding the 10-bay row (48 m)
+    depotLongCells: 12, // 48 m pad edge; five owned bays span it at 8 m pitch
     depotDeepCells: 7, // gate edge -> bay backs (28 m)
     depotMinRoadGap: 2, // smallest clear driveway between the loop and the gate edge
     depotMaxRoadGap: 6, // widest gap the spur search accepts before failing soft
+    depotMaxHeightSpreadM: 1.5, // reject steep pads before cut-and-fill; keep scanning, then fail soft
+    depotRoadRibbonClearanceCells: 0, // conservative rendered-ribbon footprint is forbidden inside the plot
     depotLaneDepth: 2.0, // apron lane the buses maneuver along (local cells from the gate edge)
     depotBayDepth: 4.8, // bay CENTRE depth — a 12 m bus parked here stays inside the 7-deep pad
-    baysTotal: 10, // marked bays — five hold the owned buses, five await future purchases
+    baysTotal: 5, // size the marked row to the five owned coaches; future purchases expand the depot
     busesOwned: 5,
     firstDepartureMin: 8 * 60, // depot opens: the first bus pulls out at 08:00
     lastServiceMin: 23 * 60, // streets drain by 23:00; overnight every bus parks at the depot

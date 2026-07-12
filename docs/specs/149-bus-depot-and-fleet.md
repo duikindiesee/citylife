@@ -42,13 +42,23 @@ Three principles:
 **Siting** (`src/colony/transit/busDepot.ts`, pure + deterministic in (terrain,
 roadKind, busRoute.loop, blocked)):
 
-- Pad size `COLONY.transit.depotW x depotH` = **12 x 7 cells** (48 x 28 m).
+- Pad size `COLONY.transit.depotLongCells x depotDeepCells` remains **12 x 7 cells**
+  (48 x 28 m), but the active bay row is sized to the five owned coaches rather than ten
+  speculative purchases.
 - Scan the bus-route loop cells in order; for each, try pad placements adjacent to
-  that cell in the four cardinal orientations (gate edge facing the road). First pad
-  where every cell is in-bounds, non-water, slope-sane (`cellOk` discipline) and not
-  in `blocked` (parcels + roads + commercial reserve + shop cells) wins — the scan
-  order is fixed, so the site is a pure function of the inputs. If no adjacent fit
-  exists, widen the search ring up to `depotMaxRoadGap` = 6 cells from the loop.
+  that cell in the four cardinal orientations. A candidate must be in-bounds, dry,
+  unclaimed **and flat enough**: the maximum minus minimum raw `terrain.worldY` over
+  every footprint cell may not exceed `depotMaxHeightSpreadM` = **1.5 m**. A steep
+  candidate is rejected and scanning continues through gaps, loop cells and orientations.
+- `roadKind` centre cells are not enough: smoothed four-cell `roadWays` ribbons can cover
+  nearby cells that are absent from the logical road set. The shared
+  `placementValidation.ts` contract computes a conservative blocked-cell approximation from
+  `ribbonCoverage` smoothing/width samples; `plotRoadOverlapCells` rejects every rectangular
+  plot/pad with a non-empty result. Runtime feeds that footprint into the forbidden depot set
+  before scanning. The depot footprint must be disjoint from every pre-existing conservatively
+  sampled ribbon cell; the separately tagged `depot-spur`, created only after a site wins, is the
+  single named access exception. Seed 4242 permanently checks this after the old cell-only guard
+  allowed **18 road-covered cells beneath the apron**.
 - Returns `DepotSite { x, y, w, h, gate: Cell, roadCell: Cell, facing: 0|1|2|3 }` —
   `gate` is the pad-edge cell the buses drive through, `roadCell` the loop cell the
   spur meets. Null when no site fits (that seed keeps the legacy single cosmetic bus;
@@ -65,9 +75,21 @@ runtime as `busDepot`. It also publishes the pad AABB to `state.busDepotPad`
 `state.busDepotPad` is consumed by two render passes that must agree on one footprint,
 or the pad drifts from what stands on it:
 
-- **Grading** (`useTerrainLeveling.ts` §2b): grades the apron flat to the pad-centre
-  seat height with the commercial-pad smoothstep skirt, so slab, parked buses and the
-  walker's ground share one height instead of a slab floating over a slope.
+- **Grading** (`useTerrainLeveling.ts` §2b) is balanced cut-and-fill. The drive plane
+  is the midpoint of the footprint's natural minimum and maximum (dry-floor clamped),
+  so the uphill half is cut and the downhill half is filled instead of seating from one
+  arbitrary centre sample. A separate `Depot_Foundation` retaining volume extends from
+  beneath the thin `Depot_Apron` course to below the lowest natural pad edge. Their small
+  overlap and the foundation's wider footprint prevent floating downhill edges, sand
+  breakthrough, torn asphalt shards and full-seam z-fighting.
+- **Driveway seam.** Every `state.busDepotSpurCells` terrain cell is seated exactly to its
+  road-ribbon surface. The generic shallow-fill deadzone is deliberately disabled for
+  this bus-owned spur, so even a sub-0.6 m hollow cannot open a visible gap at the gate.
+  The tagged spur remains in simulation and minimap topology but is not drawn as a second
+  generic marked ribbon. One named `Depot_Driveway` mesh supplies the visible connection:
+  a shallow flared throat meeting the apron boundary and overlapping the carriageway while public
+  edge paint is suppressed at its mouth. This avoids the old doubled asphalt, zebra paint and
+  square seam.
 - **Foliage clearing** (`R3FFoliage.tsx`): pushes the pad onto the same tree-exclusion
   `rects` array the neighborhood lots, commercial parcels and junction zones already
   use, so `calculateFoliagePositions` culls every tree in the pad + a 1-cell canopy
@@ -78,12 +100,11 @@ or the pad drifts from what stands on it:
   AABB, so the one rect covers the whole footprint. `foliageSignature` tracks the pad so
   the trees rebuild if it ever appears/moves, matching `levelingSignature`.
 
-**Layout inside the pad** (`depotLayout(site)`, pure): a back row of **10 bays**
-(1 cell = 4 m wide each, 3 cells deep — a 12 m bus with 3.2 m of margin), an apron
-lane between bays and gate for maneuvering, a **boarding shelter + sign** beside the
-gate lane (the depot's bus-stop), and a small office pad in the gate-side corner.
-`bayPath(k)`: the polyline gate -> apron -> bay k a bus drives to park (reversed to
-leave). All in fractional grid coords; the renderer converts to world.
+**Layout inside the pad** (`depotLayout(site)`, pure): a centred row of **5 bays**,
+one per owned coach. Their centres span the long edge at a 2-cell / 8 m pitch (with a
+one-cell end margin), so adjacent 2.5 m-wide coach bodies retain a plainly visible gap
+from oblique ground views instead of fusing into one yellow block. The apron lane,
+boarding shelter + sign and office remain inside the shared pad AABB.
 
 ## 2. The fleet state machine
 
@@ -124,8 +145,9 @@ and `breakUntil` (sim-minute-of-day the bay break ends).
 - **Breaks.** Parking after a shift sets `breakUntil = clockMin + breakMin`. A bus is
   dispatch-eligible only when parked, past `breakUntil`, inside hours, and the gate is
   free — so buses rotate: out, one lap, home for a break, out again.
-- **Fleet size.** `busesOwned` = 5 of `baysTotal` = 10. Bays 5–9 render as empty
-  markings — the purchase hook for a future spec (the colony buys bus 6).
+- **Fleet size.** `busesOwned` = `baysTotal` = 5. The visual depot is sized to the
+  fleet that actually exists; a future purchase spec must expand the layout deliberately
+  rather than reserving five dark, permanently empty bays today.
 
 **Time coupling.** The runtime steps the fleet from its rAF loop with
 `dtMin = dtReal * speed * stepsPerSec * simMinPerStep` (= 9 sim-min/s at 1x), zero
@@ -217,11 +239,12 @@ markers, and the depot; when there is no depot site (or no route) it falls back 
 the legacy single self-driving coach, so old seeds and the existing `bus.spec.ts`
 behaviour survive.
 
-**Depot placeholder (Phase 1, primitives)** `busDepotLayer.ts`: apron slab, 10
-painted bay boxes (occupied bays read through the parked buses standing on them),
-office block, boarding shelter + emissive `BUS` sign. Node names match Jack's GLB
-contract (§6) — `Depot_Apron`, `Depot_Bay_00..09`, `Depot_Office`, `Depot_Shelter`,
-`Depot_Sign` — so the asset swap is a loader change, not a rewire.
+**Depot placeholder (Phase 1, primitives)** `busDepotLayer.ts`: a deep cut-and-fill
+apron surface plus `Depot_Foundation`, 5 painted owned-fleet bay boxes, office, boarding
+shelter and emissive `BUS` sign. Runtime node names are `Depot_Apron`,
+`Depot_Foundation`, `Depot_Bay_00..04`, `Depot_Office`, `Depot_Shelter`, `Depot_Sign`.
+The authored GLB may retain spare bay nodes, but a loader must only expose the active
+fleet-sized row.
 
 ## 6. Jack's work order — `bus-depot.glb`
 
@@ -264,10 +287,13 @@ Queue line for the operator:
   first dispatch at 08:00; bus 2 stays in its bay until bus 1 passes its first stop;
   all five dispatch in order; dwells at stops; break rotation (home after
   `lapsPerShift`, waits `breakMin`, redispatches through the gate); everyone home
-  and parked after 23:00; bays 5–9 never occupied.
-- `tests/busDepot.test.ts` — siting: pad adjacent to the loop on a synthetic road
-  grid, never on blocked/water cells, deterministic; layout: 10 bays inside the pad,
-  bay paths start at the gate and end on distinct bays.
+  and parked after 23:00; all five bays remain single-occupancy.
+- `tests/busDepot.test.ts` — siting: pad adjacent to the loop, never on blocked/water
+  cells, deterministic, rejects >1.5 m footprint relief and remains fail-soft; layout:
+  five active bays inside the pad at >=1.5-cell pitch with distinct bay paths.
+- `tests/busDepotLayer.visual.test.ts` — apron top equals the shared drive plane,
+  foundation bottom reaches below the lowest natural edge, and exactly five separated
+  bay meshes render.
 - `tests/busDepotFoliage.test.ts` — the pad clears its trees: on the live seed 4242
   (pad ≈ world (768, -422)) the depot footprint grows 177 conifers without the
   exclusion and ZERO with it (non-vacuous guard proves the exclusion, not the biome,
@@ -287,6 +313,9 @@ Queue line for the operator:
   RENDERED — queries the `foliage` InstancedMesh and proves zero instances fall inside
   the depot pad AABB with the fleet parked, then frames World View on the pad and
   screenshots the apron + bays + shelter clear of trees.
+- e2e `e2e/busNetworkMiniMap.spec.ts` (WebGL — `--workers=1`): proves the compact
+  map remains visible in street and World View, contains every road way, every route stop,
+  the depot and all five coaches, and observes a live coach marker move during service.
 
 **Phase 2 (Jack's GLB).** Loader gate swaps the primitives for `bus-depot.glb` by
 node-name contract; `busDepotGlb.test.ts` lands with the asset PR; screenshot pass.
@@ -295,10 +324,11 @@ node-name contract; `busDepotGlb.test.ts` lands with the asset PR; screenshot pa
 seated during dwells; route timetable on the shelter board; the slate (spec 138)
 showing next-bus ETA.
 
-**Acceptance (operator walk-test):** at night the depot holds five parked buses and
-five empty bays; at 08:00 the first bus pulls out of its bay, pauses at the shelter,
-rides the spur onto the loop; the second leaves only after the first reaches its
-first stop; a bus next to the walker is a real 12 m, 3 m-tall vehicle with turning
+**Acceptance (operator walk-test):** at night the depot holds five visibly separated
+parked buses in five marked bays on a flush, grounded apron; at 08:00 the first bus
+pulls out of its bay, pauses at the shelter,
+rides the driveway onto the loop; the second leaves only after the first reaches its
+second stop; a bus next to the walker is a real 12 m, 3 m-tall vehicle with turning
 wheels sitting ON the asphalt; E at a dwelling bus boards, the camera rides, E at any
 later stop steps off; at 23:00 the streets drain and the bays refill; suite +
 typecheck + e2e green.
@@ -306,8 +336,8 @@ typecheck + e2e green.
 ## 8. Non-goals (v1)
 
 Fares, capacity limits, NPC riders, multiple routes, articulated/double-decker
-variants, depot fuel/maintenance sim, bus purchase UI (the five empty bays are the
-hook, not the feature).
+variants, depot fuel/maintenance sim, bus purchase UI (a future purchase spec expands
+the physical depot and bay row together).
 
 ## 9. Collision-free operations (operator hardening, 2026-07-11)
 

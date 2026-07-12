@@ -258,6 +258,7 @@ import {
   smoothOpen,
 } from "./transit/path";
 import type { RoadWay } from "./render/roadRibbon";
+import { conservativeRoadRibbonBlockedCells } from "./placementValidation";
 import { findJunctionZones } from "./render/roadJunctions";
 import {
   barStoolGridPositions,
@@ -1146,10 +1147,11 @@ export class ColonyRuntime {
       // staircase the 4-connected flood-fill still sees as split). Every existing caller omits it, so
       // their ribbons + cells stay byte-identical.
       dryRun = false,
+      source?: RoadWay["source"],
     ): Cell[] => {
       const poly = simplifyPath(path);
       if (!dryRun && poly.length >= 2)
-        this.roadWays.push({ path: poly, kind, width: 4 }); // 088 — smooth ribbon centre-line (chunky enough to read from the district view)
+        this.roadWays.push({ path: poly, kind, width: 4, ...(source ? { source } : {}) }); // 088 — smooth ribbon centre-line
       const out = new Set<string>();
       const add = (fx: number, fy: number) => {
         const x = Math.round(fx),
@@ -1608,6 +1610,16 @@ export class ColonyRuntime {
       ]);
       for (const s of this.sim.state.structures)
         depotBlocked.add(`${Math.round(s.x)},${Math.round(s.y)}`);
+      // Cell roads are not the rendered road footprint: smooth, multi-cell ribbons can cut across
+      // cells that are absent from `roadKind`. Conservatively reserve the ribbon's smoothing/width
+      // blocked-cell approximation before siting any plot, otherwise a logically cell-clean depot
+      // can still overlap visible road geometry (seed 4242 regression, spec 149).
+      const ribbonCells = conservativeRoadRibbonBlockedCells(
+        this.roadWays,
+        t0,
+        tr.depotRoadRibbonClearanceCells,
+      );
+      for (const k of ribbonCells) depotBlocked.add(k);
       const site = findDepotSite(
         t0,
         this.busRoute.loop,
@@ -1618,6 +1630,7 @@ export class ColonyRuntime {
           deepCells: tr.depotDeepCells,
           minRoadGap: tr.depotMinRoadGap,
           maxRoadGap: tr.depotMaxRoadGap,
+          maxHeightSpreadM: tr.depotMaxHeightSpreadM,
         },
       );
       if (site) {
@@ -1627,7 +1640,19 @@ export class ColonyRuntime {
             padCells.push({ x, y });
         reserveParcelLand(this.sim.state, padCells); // houses can never spawn on the depot
         // The gate spur is a REAL drivable road (ribbon-rendered) — buses ride INTO the plot on it.
-        const spurCells = layRoad([site.roadCell, site.gate], 1);
+        const spurCells = layRoad([site.roadCell, site.gate], 1, "street", false, "depot-spur");
+        // The surveyed gate is dry/in-bounds by the siting contract but may fail the generic
+        // `roadCellOk` shoulder/slope filter at a cut edge. The centre-line ribbon still reaches it;
+        // pin both endpoints into the drivable graph so the apron seam can never become a visual-only
+        // road that fleet logic cannot enter.
+        const spurKeys = new Set(spurCells.map((c) => `${c.x},${c.y}`));
+        for (const endpoint of [site.roadCell, site.gate]) {
+          const k = `${endpoint.x},${endpoint.y}`;
+          if (!spurKeys.has(k)) {
+            spurCells.push({ ...endpoint });
+            spurKeys.add(k);
+          }
+        }
         mergeAvenue(this.sim.state, spurCells);
         // Spec 149 — the spur belongs to the BUSES. Fence it off from ambient car traffic (all its
         // cells except the loop junction) so a car never drives the dead-end into a maneuvering bus.

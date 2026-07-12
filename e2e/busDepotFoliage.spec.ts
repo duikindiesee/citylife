@@ -67,15 +67,53 @@ test.describe('spec 149 — bus depot foliage clearing', () => {
           if (gx >= rect.x0 && gx <= rect.x1 && gy >= rect.y0 && gy <= rect.y1) treesInDepot++;
         }
       }
-      const parked = rt.busPoses().length;
-      return { pad, treesInDepot, foliageCount: foliage ? foliage.count : -1, parked };
+      const poses = rt.busPoses();
+      let minBusGap = Infinity;
+      for (let i = 0; i < poses.length; i++)
+        for (let j = i + 1; j < poses.length; j++)
+          minBusGap = Math.min(minBusGap, Math.hypot(poses[i].x - poses[j].x, poses[i].y - poses[j].y));
+      const heights: number[] = [];
+      for (let y = pad.y; y < pad.y + pad.h; y++)
+        for (let x = pad.x; x < pad.x + pad.w; x++) heights.push(s.terrain.worldY(x, y));
+      let apron: any = null;
+      let foundation: any = null;
+      let driveway: any = null;
+      const bays: any[] = [];
+      window.__r3fScene.traverse((o: any) => {
+        if (o.name === 'Depot_Apron') apron = o;
+        if (o.name === 'Depot_Foundation') foundation = o;
+        if (o.name === 'Depot_Driveway') driveway = o;
+        if (/^Depot_Bay_\d{2}$/.test(o.name)) bays.push(o);
+      });
+      return {
+        pad,
+        treesInDepot,
+        foliageCount: foliage ? foliage.count : -1,
+        parked: poses.length,
+        rawHeightSpread: Math.max(...heights) - Math.min(...heights),
+        minNaturalY: Math.min(...heights),
+        minBusGap,
+        bayCount: bays.length,
+        driveway: !!driveway,
+        foundationBottomY: foundation?.userData?.foundationBottomY,
+        foundationTopY: foundation?.userData?.foundationTopY,
+        padTopY: apron?.userData?.padTopY,
+      };
     });
     console.log(`depot foliage probe: ${JSON.stringify(probe)}`);
 
     // The whole point: trees on the depot is a big no, same as trees on lots.
     expect(probe.foliageCount).toBeGreaterThan(0);
-    expect(probe.parked).toBeGreaterThan(0);
+    expect(probe.parked).toBe(5);
     expect(probe.treesInDepot).toBe(0);
+    expect(probe.rawHeightSpread).toBeLessThanOrEqual(1.5);
+    expect(probe.bayCount).toBe(5);
+    expect(probe.driveway).toBe(true);
+    expect(probe.minBusGap).toBeGreaterThanOrEqual(1.5);
+    expect(probe.foundationBottomY).toBeLessThan(probe.minNaturalY);
+    expect(probe.foundationTopY).toBeGreaterThan(probe.padTopY - 0.18);
+    expect(probe.foundationTopY).toBeLessThan(probe.padTopY);
+    expect(probe.padTopY).toBeGreaterThan(probe.foundationBottomY);
 
     // Freeze the fleet in the bays (pause) and set a daytime clock for a legible shot — world view
     // is not clock-clamped (spec 136), so lighting follows state.clock even while paused.
@@ -115,6 +153,9 @@ test.describe('spec 149 — bus depot foliage clearing', () => {
     });
     // Let MapControls settle (damping) on the new pose.
     await page.waitForTimeout(800);
-    await page.screenshot({ path: testInfo.outputPath('depot-cleared-of-trees.png') });
+    await page.screenshot({ path: testInfo.outputPath('depot-cut-fill-day.png') });
+    await page.evaluate(() => window.__colony.debugSetClock(1, 0));
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: testInfo.outputPath('depot-cut-fill-night.png') });
   });
 });
