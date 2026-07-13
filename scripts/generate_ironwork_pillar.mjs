@@ -39,23 +39,23 @@ const material = (name, color, options = {}) => {
   return value;
 };
 
-const mountainRock = material("Pillar_Mountain_Rock", 0x252a2c, {
+const mountainRock = material("Pillar_Mountain_Rock", 0x343839, {
   roughness: 0.96,
   metalness: 0.01,
 });
-const obsidian = material("Pillar_Obsidian_Skin", 0x0d1215, {
-  roughness: 0.5,
-  metalness: 0.48,
+const obsidian = material("Pillar_Obsidian_Skin", 0x27383c, {
+  roughness: 0.34,
+  metalness: 0.62,
 });
-const blackIron = material("Pillar_Black_Iron", 0x171b1d, {
-  roughness: 0.4,
-  metalness: 0.8,
+const blackIron = material("Pillar_Black_Iron", 0x424b4b, {
+  roughness: 0.36,
+  metalness: 0.82,
 });
-const oldBrass = material("Pillar_Old_Brass", 0x77633d, {
+const oldBrass = material("Pillar_Old_Brass", 0x927747, {
   roughness: 0.43,
   metalness: 0.9,
 });
-const paleSeam = material("Pillar_Seam_Emissive", 0x82908c, {
+const paleSeam = material("Pillar_Seam_Emissive", 0xa8bbb6, {
   roughness: 0.24,
   metalness: 0.25,
   emissive: 0xbde7dc,
@@ -94,12 +94,44 @@ stage1.name = "Pillar_Stage_1";
 root.add(stage1);
 
 mesh(
+  "Pillar_Summit_Apron",
+  new THREE.CylinderGeometry(11.5, 12.7, 0.8, 12),
+  mountainRock,
+  stage1,
+  [0, -0.65, 0],
+);
+mesh(
+  "Pillar_Summit_Terrace",
+  new THREE.CylinderGeometry(9.8, 10.8, 0.72, 12),
+  mountainRock,
+  stage1,
+  [0, -0.08, 0],
+);
+mesh(
   "Pillar_Buried_Dais",
   new THREE.CylinderGeometry(8.2, 9.1, 1.2, 10),
   mountainRock,
   stage1,
   [0, 0.15, 0],
 );
+mesh(
+  "Pillar_Obsidian_Table",
+  new THREE.CylinderGeometry(7.5, 8.1, 0.26, 12),
+  obsidian,
+  stage1,
+  [0, 0.86, 0],
+);
+for (let index = 0; index < 8; index++) {
+  const angle = (index / 8) * Math.PI * 2;
+  const rune = mesh(
+    `Pillar_Dais_Rune_${String(index + 1).padStart(2, "0")}`,
+    new THREE.BoxGeometry(0.17, 0.08, 2.7),
+    paleSeam,
+    stage1,
+    [Math.sin(angle) * 6.25, 1.03, Math.cos(angle) * 6.25],
+  );
+  rune.rotation.y = angle;
+}
 mesh(
   "Pillar_Foundation_Collar",
   new THREE.CylinderGeometry(5.6, 6.7, 2.3, 8),
@@ -114,6 +146,21 @@ mesh(
   stage1,
   [0, 2.45, 0],
 );
+// Seven uneven guardian stones form an incomplete summit circle. The deliberate opening on local
+// +Z receives the hiking path and makes the dais read as an ancient destination rather than a pad.
+const sentinelAngles = [0.72, 1.48, 2.22, 2.98, 3.72, 4.46, 5.2];
+for (let index = 0; index < sentinelAngles.length; index++) {
+  const angle = sentinelAngles[index];
+  const sentinel = mesh(
+    `Pillar_Sentinel_${String(index + 1).padStart(2, "0")}`,
+    new THREE.DodecahedronGeometry(1, 0),
+    mountainRock,
+    stage1,
+    [Math.sin(angle) * 10.35, 2.15 + (index % 3) * 0.22, Math.cos(angle) * 10.35],
+  );
+  sentinel.scale.set(0.78 + (index % 2) * 0.12, 3.2 + (index % 3) * 0.42, 0.9);
+  sentinel.rotation.set(index * 0.07, angle + index * 0.13, Math.sin(angle) * -0.13);
+}
 for (let index = 0; index < 6; index++) {
   const angle = (index / 6) * Math.PI * 2 + 0.18;
   const rootMesh = mesh(
@@ -169,6 +216,32 @@ mesh(
 );
 for (let side = 0; side < 4; side++) {
   const angle = side * Math.PI * 0.5 + Math.PI * 0.25;
+  const rib = mesh(
+    `Pillar_Lower_Rib_${side + 1}`,
+    new THREE.BoxGeometry(0.62, 27.5, 0.7),
+    blackIron,
+    stage2,
+    [Math.sin(angle) * 3.78, 19.1, Math.cos(angle) * 3.78],
+  );
+  rib.rotation.y = angle;
+  rib.rotation.z = side % 2 ? -0.018 : 0.018;
+}
+mesh(
+  "Pillar_Lower_Brass_Band",
+  new THREE.CylinderGeometry(4.28, 4.36, 0.42, 8),
+  oldBrass,
+  stage2,
+  [0, 14.1, 0],
+);
+mesh(
+  "Pillar_Upper_Brass_Band",
+  new THREE.CylinderGeometry(3.64, 3.72, 0.38, 8),
+  oldBrass,
+  stage2,
+  [0, 27.15, 0],
+);
+for (let side = 0; side < 4; side++) {
+  const angle = side * Math.PI * 0.5 + Math.PI * 0.25;
   const seam = mesh(
     `Pillar_Lower_Seam_${side + 1}`,
     new THREE.BoxGeometry(0.18, 24, 0.12),
@@ -190,6 +263,23 @@ mesh(
   oldBrass,
   ring,
 );
+mesh(
+  "Pillar_Retune_Ring_Inner",
+  new THREE.TorusGeometry(4.72, 0.11, 8, 48),
+  paleSeam,
+  ring,
+);
+for (let brace = 0; brace < 4; brace++) {
+  const angle = brace * Math.PI * 0.5;
+  const part = mesh(
+    `Pillar_Retune_Brace_${brace + 1}`,
+    new THREE.BoxGeometry(0.24, 2.7, 0.22),
+    blackIron,
+    ring,
+    [Math.cos(angle) * 3.95, Math.sin(angle) * 3.95, 0],
+  );
+  part.rotation.z = angle - Math.PI * 0.5;
+}
 for (let tooth = 0; tooth < 12; tooth++) {
   const angle = (tooth / 12) * Math.PI * 2;
   const part = mesh(
@@ -228,6 +318,32 @@ mesh(
 );
 for (let side = 0; side < 4; side++) {
   const angle = side * Math.PI * 0.5 + Math.PI * 0.25;
+  const rib = mesh(
+    `Pillar_Upper_Rib_${side + 1}`,
+    new THREE.BoxGeometry(0.38, 17.8, 0.46),
+    blackIron,
+    stage3,
+    [Math.sin(angle) * 2.28, 47.9, Math.cos(angle) * 2.28],
+  );
+  rib.rotation.y = angle;
+  rib.rotation.z = side % 2 ? -0.02 : 0.02;
+}
+mesh(
+  "Pillar_Needle_Collar_Lower",
+  new THREE.CylinderGeometry(1.42, 1.48, 0.32, 8),
+  oldBrass,
+  stage3,
+  [0, 60.35, 0],
+);
+mesh(
+  "Pillar_Needle_Collar_Upper",
+  new THREE.CylinderGeometry(0.68, 0.74, 0.28, 8),
+  oldBrass,
+  stage3,
+  [0, 62.55, 0],
+);
+for (let side = 0; side < 4; side++) {
+  const angle = side * Math.PI * 0.5 + Math.PI * 0.25;
   const seam = mesh(
     `Pillar_Upper_Seam_${side + 1}`,
     new THREE.BoxGeometry(0.12, 17.5, 0.08),
@@ -242,6 +358,27 @@ const crown = new THREE.Group();
 crown.name = "Pillar_Crown_Iris";
 crown.position.set(0, 58.9, 0);
 stage3.add(crown);
+const crownHalo = new THREE.Group();
+crownHalo.name = "Pillar_Crown_Halo";
+crown.add(crownHalo);
+const outerHaloArc = new THREE.TorusGeometry(4.35, 0.26, 10, 18, 1.52);
+const innerHaloArc = new THREE.TorusGeometry(3.82, 0.1, 8, 16, 1.24);
+for (let index = 0; index < 3; index++) {
+  const outer = mesh(
+    `Pillar_Crown_Halo_Outer_Arc_${index + 1}`,
+    outerHaloArc,
+    oldBrass,
+    crownHalo,
+  );
+  outer.rotation.z = index * (Math.PI * 2 / 3) + 0.14;
+  const inner = mesh(
+    `Pillar_Crown_Halo_Inner_Arc_${index + 1}`,
+    innerHaloArc,
+    paleSeam,
+    crownHalo,
+  );
+  inner.rotation.z = index * (Math.PI * 2 / 3) + 0.48;
+}
 for (const side of [-1, 1]) {
   const iris = mesh(
     side < 0 ? "Pillar_Iris_Left" : "Pillar_Iris_Right",
@@ -268,6 +405,16 @@ for (const side of [-1, 1]) {
     [side * 2.05, 57.4, 0],
   );
   fin.rotation.z = side * -0.08;
+}
+for (const side of [-1, 1]) {
+  const fin = mesh(
+    side < 0 ? "Pillar_Crown_Fin_North" : "Pillar_Crown_Fin_South",
+    new THREE.BoxGeometry(2.2, 7.3, 0.52),
+    blackIron,
+    stage3,
+    [0, 57.25, side * 2.02],
+  );
+  fin.rotation.x = side * 0.08;
 }
 
 const scene = new THREE.Scene();

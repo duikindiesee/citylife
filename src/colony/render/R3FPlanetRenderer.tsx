@@ -335,7 +335,7 @@ function SceneProbe() {
 }
 
 function AerialCameraController({ sim }: { sim: ColonySim }) {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   const controls = useThree((state) => state.controls) as
     | { target?: THREE.Vector3; update?: () => void }
     | undefined;
@@ -359,15 +359,20 @@ function AerialCameraController({ sim }: { sim: ColonySim }) {
     const awayX = pillar.x - terrain.landing.x;
     const awayZ = pillar.y - terrain.landing.y;
     const length = Math.hypot(awayX, awayZ) || 1;
+    const portrait = size.height > size.width * 1.2;
+    const distance = portrait ? 178 : 118;
+    const lateral = portrait ? 28 : 34;
+    // Frame from the colony side so the hike enters from the foreground and the monolith rises
+    // against the remote highland. A small lateral offset keeps the route and silhouette separate.
     camera.position.set(
-      px + (awayX / length) * 145 - (awayZ / length) * 48,
-      py + 102,
-      pz + (awayZ / length) * 145 + (awayX / length) * 48,
+      px - (awayX / length) * distance - (awayZ / length) * lateral,
+      py + (portrait ? 96 : 68),
+      pz - (awayZ / length) * distance + (awayX / length) * lateral,
     );
-    controls.target.set(px, py + 24, pz);
+    controls.target.set(px, py + (portrait ? 39 : 27), pz);
     controls.update();
     camera.updateMatrixWorld();
-  }, [camera, controls, sim]);
+  }, [camera, controls, sim, size.height, size.width]);
 
   return (
     <MapControls

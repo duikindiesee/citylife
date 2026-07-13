@@ -53,13 +53,19 @@ const REQUIRED_NODES = [
   "Pillar_Stage_1",
   "Pillar_Stage_2",
   "Pillar_Stage_3",
+  "Pillar_Summit_Apron",
+  "Pillar_Obsidian_Table",
+  "Pillar_Dais_Rune_01",
+  "Pillar_Sentinel_01",
   "Pillar_Buried_Dais",
   "Pillar_Outcrop_3",
   "Pillar_Lower_Monolith",
   "Pillar_Upper_Monolith",
   "Pillar_Sky_Needle",
   "Pillar_Retune_Ring",
+  "Pillar_Retune_Ring_Inner",
   "Pillar_Crown_Iris",
+  "Pillar_Crown_Halo",
   "Pillar_Crown_Core",
   "Pillar_Iris_Left",
   "Pillar_Iris_Right",
@@ -75,13 +81,13 @@ describe("ironwork-pillar.glb", () => {
   it("commits a compact three-stage GLB with the dynamic retune contract", () => {
     const names = json.nodes.map((node) => node.name);
     for (const required of REQUIRED_NODES) expect(names).toContain(required);
-    expect(json.meshes).toHaveLength(45);
+    expect(json.meshes).toHaveLength(84);
     expect(json.images ?? []).toHaveLength(0);
     expect(json.textures ?? []).toHaveLength(0);
     expect(json.cameras ?? []).toHaveLength(0);
     expect(pillarBytes.byteLength).toBeLessThan(300 * 1024);
     expect(createHash("sha256").update(pillarBytes).digest("hex")).toBe(
-      "eaad47e9556018aaec95e69c2645bc2b65f105b6d46d543fe4250e1591ac71ca",
+      "bea8ea94afd4e01e59d5a42d6b641166df4de445560d9be3b229596cb3723336",
     );
   });
 

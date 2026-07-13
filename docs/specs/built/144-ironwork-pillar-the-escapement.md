@@ -62,8 +62,8 @@ penalty. Reserved land is avoided where possible, with a terrain-only fallback f
 saves.
 
 The route is a footpath, not a road. It does not enter `roadKind` and is not drivable. The R3F layer
-renders a narrow terrain-following gravel strip with sparse stone markers. Foliage is cleared along
-the tread and around the destination.
+renders terrain-following shoulder and worn-tread ribbons, irregular centre stones, and paired
+waystones with pale night slits. Foliage is cleared along the tread and around the destination.
 
 ## Render contract
 
@@ -74,13 +74,14 @@ The source asset is `public/assets/citylife/props/ironwork-pillar.glb`, regenera
 `scripts/generate_ironwork_pillar.mjs`. Required named nodes include:
 
 - `Pillar_Stage_1`, `Pillar_Stage_2`, `Pillar_Stage_3`
+- `Pillar_Summit_Apron`, `Pillar_Obsidian_Table`, `Pillar_Dais_Rune_01`, `Pillar_Sentinel_01`
 - `Pillar_Retune_Ring`
 - `Pillar_Crown_Iris`, `Pillar_Iris_Left`, `Pillar_Iris_Right`
-- `Pillar_Crown_Core`
+- `Pillar_Crown_Core`, `Pillar_Crown_Halo`
 
-The GLB is a solid tapered monolith, not a see-through gantry. It is 66.5 metres high, contains 45
-meshes, uses six PBR materials, and has no images, textures, cameras, or lights. Emissive seams and
-the core are driven by the existing world bloom.
+The GLB is a solid tapered monolith, not a see-through gantry. It is 66.5 metres high, contains 84
+meshes, uses six PBR materials, and has no images, textures, cameras, or lights. Emissive seams,
+summit runes, retune mechanism, and crown are driven by the existing world bloom.
 
 At stage 0 the model and trail are absent. A building stage grows with `pillarProgress`; completed
 stages stay at full scale. At stage 3 midnight, the iris opens, the pale light rises, and the ring

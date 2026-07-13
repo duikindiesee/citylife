@@ -20,9 +20,9 @@ and reaches a walkable highland dais beside Mountain/Peak rock.
 - R3F mount: dressing stage in `src/colony/render/R3FPlanetRenderer.tsx`
 - Height: 66.5 world metres from buried dais to sky needle
 - Footprint: walkable 3x3 highland dais with a reserved two-cell halo
-- Runtime budget: one cached GLB instance, one trail strip, one instanced marker mesh, no textures
+- Runtime budget: one cached GLB, two trail ribbons, three instanced trail meshes, no textures
 
-The committed GLB is about 135 KB and has 45 meshes. It has no cameras, lights, images, or texture
+The committed GLB is about 264 KB and has 84 meshes. It has no cameras, lights, images, or texture
 dependencies. The generator is deterministic and uses the repository's installed Three.js
 `GLTFExporter`; Blender is not required to reproduce it.
 
@@ -30,23 +30,26 @@ dependencies. The generator is deterministic and uses the repository's installed
 
 ### Stage 1 - buried foundation
 
-`Pillar_Stage_1` contains the decagonal stone dais, iron foundation collar, undercroft core, six
-fractured stone roots, and five asymmetrical outcrop masses on the mountain side. The roots sit below
-grade and the outcrop rises behind the shaft, making the structure continue into the mountain rather
-than stand on a decorative plinth; the hiking approach remains open on the colony side.
+`Pillar_Stage_1` contains stepped twelve-sided summit terraces, an obsidian table, eight restrained
+floor runes, seven uneven sentinel stones, the iron foundation collar, undercroft core, six fractured
+stone roots, and five asymmetrical outcrop masses on the mountain side. The roots sit below grade and
+the outcrop rises behind the shaft, making the structure continue into the mountain rather than stand
+on a decorative plinth; the hiking approach remains open on the colony side.
 
 ### Stage 2 - lower monolith
 
-`Pillar_Stage_2` raises the solid lower shaft and its four pale seams. The shaft is faceted obsidian
-and black iron, not a see-through gantry. `Pillar_Retune_Ring` is a single vertical old-brass ring
-with twelve named teeth; it rests on the deterministic sim-clock tooth outside the retune hour.
+`Pillar_Stage_2` raises the solid lower shaft, four pale seams, four structural ribs, two brass bands,
+and four braces around a pale inner retune ring. The shaft is faceted obsidian and black iron, not a
+see-through gantry. `Pillar_Retune_Ring` is a single vertical old-brass ring with twelve named teeth;
+it rests on the deterministic sim-clock tooth outside the retune hour.
 
 ### Stage 3 - skyline crown
 
-`Pillar_Stage_3` raises the upper monolith and narrow sky needle. `Pillar_Crown_Iris`,
-`Pillar_Iris_Left`, `Pillar_Iris_Right`, and `Pillar_Crown_Core` are retained runtime nodes. At
-midnight the iris parts, the core and seams pulse, and the retune ring completes its presentation-only
-free run. At other hours it settles on `restingToothIndex(day, hour)`.
+`Pillar_Stage_3` raises the upper monolith, four upper ribs, narrow sky needle, and broken crown halo.
+`Pillar_Crown_Iris`, `Pillar_Iris_Left`, `Pillar_Iris_Right`, `Pillar_Crown_Halo`, and
+`Pillar_Crown_Core` are retained runtime nodes. At midnight the iris parts, the core and seams pulse,
+the broken aperture turns, and the retune ring completes its presentation-only free run. At other
+hours it settles on `restingToothIndex(day, hour)`.
 
 Stage 0 remains genuinely invisible. While a stage is actively building, that stage grows vertically
 with `pillarProgress`; completed sections remain at full scale.
@@ -76,9 +79,10 @@ beach, water, Mountain, Peak, and unbuildable cells. The first pass also avoids 
 terrain-only fallback preserves reachability for older saves whose later development encloses every
 clean trailhead.
 
-The renderer turns the cell path into a centripetal Catmull-Rom strip sampled against continuous
-terrain height. It is deliberately narrow and non-drivable, with sparse instanced stone markers.
-`R3FFoliage` clears the tread and summit so trees do not hide or intersect the route.
+The renderer turns the cell path into terrain-following shoulder and worn-tread ribbons sampled from
+a centripetal Catmull-Rom curve. It is deliberately narrow and non-drivable, with irregular centre
+stones and paired waystones whose pale vertical slits become legible at night. `R3FFoliage` clears
+the tread and summit so trees do not hide or intersect the route.
 
 ## Materials and night behavior
 
@@ -89,8 +93,9 @@ terrain height. It is deliberately narrow and non-drivable, with sparse instance
 - `Pillar_Seam_Emissive`: pale green-white seams
 - `Pillar_Core_Emissive`: crown and undercroft light
 
-The palette avoids a saturated science-fiction glow. Daylight emphasizes the silhouette and mountain
-roots; darkness reveals a controlled pale internal light. Bloom comes from the world's existing
+The palette avoids a saturated science-fiction glow. Daylight emphasizes the silhouette, faceting,
+and mountain roots with a restrained local side light; darkness reveals a controlled pale internal
+light in the summit runes, waystones, seams, and broken crown. Bloom comes from the world's existing
 post-processing pass.
 
 ## Verification contract
