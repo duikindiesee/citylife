@@ -6,6 +6,7 @@ import { calculateFoliagePositions } from './foliageLogic';
 import { findJunctionZones } from './roadJunctions';
 import { useSimSignal, type SimBridge } from './useSimSignal';
 import { foliageSignature } from './simSignals';
+import { buildIronworkHikePath, ironworkPillarCell } from '../ironworkPillar';
 
 interface R3FFoliageProps {
   sim: ColonySim;
@@ -56,6 +57,21 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
         y0: depot.y,
         x1: depot.x + depot.w - 1,
         y1: depot.y + depot.h - 1,
+      });
+    }
+    // Spec 144 — the highland route is a footpath, not a road, so it does not enter `roads`.
+    // Clear its narrow tread and the mountain dais explicitly or conifers hide the destination
+    // and grow through the gravel ribbon.
+    for (const cell of buildIronworkHikePath(s)) {
+      rects.push({ x0: cell.x, y0: cell.y, x1: cell.x, y1: cell.y });
+    }
+    const pillar = ironworkPillarCell(s.structures);
+    if (pillar) {
+      rects.push({
+        x0: pillar.x - 3,
+        y0: pillar.y - 3,
+        x1: pillar.x + 3,
+        y1: pillar.y + 3,
       });
     }
     const { matrices: mats, colors: cols } = calculateFoliagePositions(s.terrain, s.roads, s.buildings, rects);

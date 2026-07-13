@@ -155,16 +155,62 @@ export interface RallyPlacementOptions {
   anchor?: { x: number; y: number };
   used?: readonly { x: number; y: number }[];
   maxRadius?: number;
+  reachable?: Uint8Array;
 }
 
 export interface IronworkPillarPlacementOptions {
   anchor?: { x: number; y: number };
   used?: readonly { x: number; y: number }[];
+  minRadius?: number;
   maxRadius?: number;
+  reachable?: Uint8Array;
 }
 
-/** Spec 144 — the Ironwork Pillar survey reservation: a deterministic 3x3 on-land plot
- *  near Landing One, modestly sloped, off the colony road frame and away from other landmarks.
+function traversableLandComponent(
+  terrain: Terrain,
+  anchor: { x: number; y: number },
+): Uint8Array {
+  const reachable = new Uint8Array(terrain.size * terrain.size);
+  const queue = new Int32Array(terrain.size * terrain.size);
+  let head = 0;
+  let tail = 0;
+  const traversable = (x: number, y: number): boolean => {
+    if (!terrain.inBounds(x, y)) return false;
+    const i = terrain.idx(x, y);
+    if (terrain.buildable[i] === 0 || terrain.isWater(x, y)) return false;
+    const b = terrain.biome[i];
+    return b !== Biome.Mountain && b !== Biome.Peak;
+  };
+  if (traversable(anchor.x, anchor.y)) {
+    const start = terrain.idx(anchor.x, anchor.y);
+    reachable[start] = 1;
+    queue[tail++] = start;
+  }
+  while (head < tail) {
+    const ci = queue[head++]!;
+    const cx = ci % terrain.size;
+    const cy = (ci / terrain.size) | 0;
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (!traversable(nx, ny)) continue;
+      const ni = terrain.idx(nx, ny);
+      if (reachable[ni]) continue;
+      reachable[ni] = 1;
+      queue[tail++] = ni;
+    }
+  }
+  return reachable;
+}
+
+/** Spec 144 — the Ironwork Pillar survey reservation: a deterministic 3x3 highland plot on a
+ *  reachable mountain shoulder. It is intentionally remote from Landing One, high on the skyline,
+ *  and biased toward Peak/Mountain rock without placing the walkable dais on impassable terrain.
  *  Stage 0 is invisible; only the reservation exists so later roads/parcels route around it. */
 export function findIronworkPillarSite(
   terrain: Terrain,
@@ -173,7 +219,11 @@ export function findIronworkPillarSite(
   const anchor = options.anchor ?? terrain.landing;
   const used = options.used ?? [];
   const maxRadius =
-    options.maxRadius ?? Math.max(24, Math.min(80, Math.round(terrain.size * 0.14)));
+    options.maxRadius ??
+    Math.max(96, Math.min(190, Math.round(terrain.size * 0.3)));
+  const minRadius =
+    options.minRadius ??
+    Math.min(maxRadius * 0.55, Math.max(48, Math.round(terrain.size * 0.11)));
   const B = COLONY.build.block;
   const half = B >> 1;
   const onRoadFrame = (px: number, py: number): boolean => {
@@ -183,7 +233,7 @@ export function findIronworkPillarSite(
   };
   const usedClear = (x: number, y: number): boolean => {
     for (const u of used) {
-      if (Math.max(Math.abs(u.x - x), Math.abs(u.y - y)) <= 6) return false;
+      if (Math.max(Math.abs(u.x - x), Math.abs(u.y - y)) <= 12) return false;
     }
     return true;
   };
@@ -203,13 +253,60 @@ export function findIronworkPillarSite(
     }
     return true;
   };
+  // Only score sites in the landing's walkable land component. The shoulder may touch bare
+  // mountain rock, but the dais and the complete hike must remain reachable in first person.
+  const reachable =
+    options.reachable ?? traversableLandComponent(terrain, anchor);
+  // A summed-area map keeps the wide mountain survey cheap. Without it, every candidate
+  // rescans a 21x21 neighbourhood and makes multi-seed boot tests needlessly expensive.
+  const prefixStride = terrain.size + 1;
+  const rockPrefix = new Int32Array(prefixStride * prefixStride);
+  for (let py = 0; py < terrain.size; py++) {
+    let rowRocks = 0;
+    for (let px = 0; px < terrain.size; px++) {
+      const pi = terrain.idx(px, py);
+      const b = terrain.biome[pi];
+      if (
+        b === Biome.Mountain ||
+        b === Biome.Peak ||
+        terrain.buildable[pi] === 0
+      ) {
+        rowRocks++;
+      }
+      rockPrefix[(py + 1) * prefixStride + px + 1] =
+        rockPrefix[py * prefixStride + px + 1]! + rowRocks;
+    }
+  }
+  const rockCount = (x: number, y: number, radius: number): number => {
+    const x0 = Math.max(0, x - radius);
+    const y0 = Math.max(0, y - radius);
+    const x1 = Math.min(terrain.size - 1, x + radius) + 1;
+    const y1 = Math.min(terrain.size - 1, y + radius) + 1;
+    return (
+      rockPrefix[y1 * prefixStride + x1]! -
+      rockPrefix[y0 * prefixStride + x1]! -
+      rockPrefix[y1 * prefixStride + x0]! +
+      rockPrefix[y0 * prefixStride + x0]!
+    );
+  };
   let best: { x: number; y: number; score: number } | null = null;
-  for (let y = Math.max(2, anchor.y - maxRadius); y <= Math.min(terrain.size - 3, anchor.y + maxRadius); y++) {
-    for (let x = Math.max(2, anchor.x - maxRadius); x <= Math.min(terrain.size - 3, anchor.x + maxRadius); x++) {
+  for (
+    let y = Math.max(2, anchor.y - maxRadius);
+    y <= Math.min(terrain.size - 3, anchor.y + maxRadius);
+    y += 2
+  ) {
+    for (
+      let x = Math.max(2, anchor.x - maxRadius);
+      x <= Math.min(terrain.size - 3, anchor.x + maxRadius);
+      x += 2
+    ) {
       const d = Math.hypot(x - anchor.x, y - anchor.y);
-      if (d > maxRadius || d < 10) continue;
+      if (d > maxRadius || d < minRadius) continue;
       if (!usedClear(x, y) || !footprintClear(x, y)) continue;
-      let minH = Infinity, maxH = -Infinity;
+      const i = terrain.idx(x, y);
+      if (!reachable[i]) continue;
+      let minH = Infinity;
+      let maxH = -Infinity;
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
           const h = terrain.worldY(x + dx, y + dy);
@@ -218,21 +315,53 @@ export function findIronworkPillarSite(
         }
       }
       const slope = maxH - minH;
-      if (slope > 0.9) continue;
-      let roadDistance = 9;
-      for (let r = 1; r <= 9 && roadDistance === 9; r++) {
-        for (let oy = -r; oy <= r && roadDistance === 9; oy++) {
-          for (let ox = -r; ox <= r; ox++) {
-            if (Math.max(Math.abs(ox), Math.abs(oy)) !== r) continue;
-            if (onRoadFrame(x + ox, y + oy)) {
-              roadDistance = r;
-              break;
-            }
-          }
-        }
+      if (slope > 1.25) continue;
+
+      const rough = rockCount(x, y, 10);
+      const roughWidth =
+        Math.min(terrain.size - 1, x + 10) - Math.max(0, x - 10) + 1;
+      const roughHeight =
+        Math.min(terrain.size - 1, y + 10) - Math.max(0, y - 10) + 1;
+      const ruggedness = rough / (roughWidth * roughHeight);
+      const rockNear = rockCount(x, y, 4);
+      let rockDistance = 12;
+      for (let radius = 0; radius <= 10; radius++) {
+        if (rockCount(x, y, radius) === 0) continue;
+        rockDistance = radius;
+        break;
       }
-      const score = -Math.abs(d - 22) * 2 - slope * 12 - roadDistance * 0.8 + (terrain.buildable[terrain.idx(x, y)] === 2 ? 4 : 0);
-      if (!best || score > best.score || (score === best.score && (y < best.y || (y === best.y && x < best.x)))) {
+      const elev = terrain.worldY(x, y);
+      let around = 0;
+      let aroundCount = 0;
+      for (const [dx, dy] of [
+        [5, 0],
+        [-5, 0],
+        [0, 5],
+        [0, -5],
+      ] as const) {
+        if (!terrain.inBounds(x + dx, y + dy)) continue;
+        around += terrain.worldY(x + dx, y + dy);
+        aroundCount++;
+      }
+      const prominence = aroundCount ? elev - around / aroundCount : 0;
+      const biome = terrain.biome[i];
+      const highlandBonus =
+        biome === Biome.Highland ? 32 : biome === Biome.Forest ? 7 : 0;
+      const targetDistance = maxRadius * 0.78;
+      const score =
+        elev * 3.5 +
+        prominence * 3 +
+        highlandBonus +
+        Math.min(ruggedness, 0.34) * 135 +
+        Math.min(rockNear, 8) * 2.2 -
+        rockDistance * 1.4 -
+        Math.abs(d - targetDistance) * 0.1 -
+        slope * 7;
+      if (
+        !best ||
+        score > best.score ||
+        (score === best.score && (y < best.y || (y === best.y && x < best.x)))
+      ) {
         best = { x, y, score };
       }
     }
@@ -285,48 +414,9 @@ export function findRallyOverlookSite(
   // rule pathfind cellOk uses: not Mountain / Peak / water / unbuildable). A rally on an isolated
   // Highland patch ringed by Mountain is useless — no spur road or guided walk could ever climb to it —
   // so only cells in this connected component qualify.
-  const N2 = terrain.size;
-  const trav = (x: number, y: number): boolean => {
-    if (x < 0 || y < 0 || x >= N2 || y >= N2) return false;
-    const i = terrain.idx(x, y);
-    if (terrain.buildable[i] === 0) return false;
-    if (terrain.isWater(x, y)) return false;
-    const b = terrain.biome[i];
-    return (
-      b !== Biome.Mountain &&
-      b !== Biome.Peak &&
-      b !== Biome.Ocean &&
-      b !== Biome.Shallows
-    );
-  };
-  const reachable = new Uint8Array(N2 * N2);
-  let reachCount = 0;
-  if (trav(anchor.x, anchor.y)) {
-    const queue = [terrain.idx(anchor.x, anchor.y)];
-    reachable[queue[0]!] = 1;
-    reachCount = 1;
-    for (let head = 0; head < queue.length; head++) {
-      const ci = queue[head]!;
-      const cx = ci % N2,
-        cy = (ci / N2) | 0;
-      for (const [dx, dy] of [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ] as const) {
-        const nx = cx + dx,
-          ny = cy + dy;
-        if (nx < 0 || ny < 0 || nx >= N2 || ny >= N2) continue;
-        const ni = terrain.idx(nx, ny);
-        if (reachable[ni] || !trav(nx, ny)) continue;
-        reachable[ni] = 1;
-        reachCount++;
-        queue.push(ni);
-      }
-    }
-  }
-  const haveReachable = reachCount > 0;
+  const reachable =
+    options.reachable ?? traversableLandComponent(terrain, anchor);
+  const haveReachable = reachable[terrain.idx(anchor.x, anchor.y)] === 1;
   let best: { x: number; y: number; score: number } | null = null;
   const y0 = Math.max(1, anchor.y - maxRadius),
     y1 = Math.min(terrain.size - 2, anchor.y + maxRadius);
@@ -599,12 +689,21 @@ export class ColonySim {
     }
     // Spec 097 — the hilltop Rally Overlook (race rendezvous), placed after the lighthouse so it
     // avoids it via `used`. A spur road reaches it later (runtime), like the commercial connector.
-    const rally = findRallyOverlookSite(terrain, { used });
+    // Rally and Pillar both require the landing's walkable land component. Compute it once per
+    // boot and share it; the 608-cell world must not pay for two whole-island flood fills.
+    const landmarkReachable = traversableLandComponent(terrain, terrain.landing);
+    const rally = findRallyOverlookSite(terrain, {
+      used,
+      reachable: landmarkReachable,
+    });
     if (rally) {
       structures.push({ kind: "rally", x: rally.x, y: rally.y });
       used.push(rally);
     }
-    const pillar = findIronworkPillarSite(terrain, { used });
+    const pillar = findIronworkPillarSite(terrain, {
+      used,
+      reachable: landmarkReachable,
+    });
     if (pillar) {
       structures.push({ kind: "ironworkPillar", x: pillar.x, y: pillar.y });
       used.push(pillar);

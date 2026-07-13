@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 
 // Spec 097 R3.5 — a spur road connects the hilltop Rally Point to the colony road network, mirroring
@@ -48,16 +48,22 @@ describe("rally spur road (097 R3.5)", () => {
     expect(rt.sim.state.terrain.worldY(cell.x, cell.y)).toBeGreaterThan(5);
   });
 
-  it("connects the rally on most seeds; an embedded overlook fails soft, never throwing", () => {
+  describe("multi-seed connection survey", () => {
     const seeds = [1, 7, 12, 55, 99, 808, 1234, 2026, 4242, 314];
     let connected = 0;
+
     for (const seed of seeds) {
-      const rt = new ColonyRuntime(seed);
-      const cell = rallyCell(rt);
-      expect(cell).not.toBeNull(); // the rally is always placed; construction never throws
-      if (cell && nearestRoadDist(rt, cell) <= 1.5) connected++;
+      it(`seed ${seed}: connects or fails soft without throwing`, () => {
+        const rt = new ColonyRuntime(seed);
+        const cell = rallyCell(rt);
+        expect(cell).not.toBeNull(); // the rally is always placed; construction never throws
+        if (cell && nearestRoadDist(rt, cell) <= 1.5) connected++;
+      });
     }
-    // the rough-shoulder bias connects the clear majority; the rare embedded overlook fails soft
-    expect(connected).toBeGreaterThanOrEqual(9);
+
+    afterAll(() => {
+      // The rough-shoulder bias connects the clear majority; the rare embedded overlook fails soft.
+      expect(connected).toBeGreaterThanOrEqual(9);
+    });
   });
 });

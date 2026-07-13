@@ -86,3 +86,9 @@ export function commercialSignature(state: ColonyState): string {
   if (!cd) return "cd-";
   return `cd${cd.parcels.length}:${cd.parcels.map((p) => p.business ?? "-").join("|")}:${cd.garagePad ? "g" : "-"}:${cd.mallPad ? "m" : "-"}`;
 }
+
+/** R3FIronworkPillar — stage/progress changes reveal GLB sections; road changes can move the
+ *  deterministic trailhead while the mountain site itself remains immutable for the seed. */
+export function pillarSignature(state: ColonyState): string {
+  return `pillar${state.pillarStage}:${state.pillarBuilding ? 1 : 0}:${Math.round(state.pillarProgress * 1000)}:r${state.roadsVersion}`;
+}
