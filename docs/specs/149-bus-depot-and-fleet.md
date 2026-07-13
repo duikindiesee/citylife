@@ -59,6 +59,13 @@ roadKind, busRoute.loop, blocked)):
   sampled ribbon cell; the separately tagged `depot-spur`, created only after a site wins, is the
   single named access exception. Seed 4242 permanently checks this after the old cell-only guard
   allowed **18 road-covered cells beneath the apron**.
+- The same shared contract validates the exact half-open footprint against terrain:
+  `plotTerrainInvalidCells` rejects an out-of-bounds, non-finite, water, or
+  `buildable === 0` cell, and `plotClearsBuildableTerrain` passes only when no invalid
+  cells remain. The seed-4242 placement regression deliberately fails a `20 x 14`
+  rectangle at `(104,234)` that crosses the sea and accepts the dry candidate at
+  `(127,283)`. This contract is shared with future campus/plot siting rather than relying
+  on a centre-point sample or screenshot review.
 - Returns `DepotSite { x, y, w, h, gate: Cell, roadCell: Cell, facing: 0|1|2|3 }` —
   `gate` is the pad-edge cell the buses drive through, `roadCell` the loop cell the
   spur meets. Null when no site fits (that seed keeps the legacy single cosmetic bus;
