@@ -18,11 +18,13 @@ and reaches a walkable highland dais beside Mountain/Peak rock.
 - Runtime component: `src/colony/render/R3FIronworkPillar.tsx`
 - Placement and hike utilities: `src/colony/sim.ts`, `src/colony/ironworkPillar.ts`
 - R3F mount: dressing stage in `src/colony/render/R3FPlanetRenderer.tsx`
-- Height: 66.5 world metres from buried dais to sky needle
+- Visual height: 622 world metres (about 2,040 feet) from buried dais to sky needle
+- Playable height: the original lower 64 metres retain the summit, mechanism, and collision contract
 - Footprint: walkable 3x3 highland dais with a reserved two-cell halo
 - Runtime budget: one cached GLB, two trail ribbons, three instanced trail meshes, no textures
 
-The committed GLB is about 264 KB and has 84 meshes. It has no cameras, lights, images, or texture
+The committed GLB is about 271 KB and has 86 mesh resources across 93 mesh nodes. It has no cameras,
+lights, images, or texture
 dependencies. The generator is deterministic and uses the repository's installed Three.js
 `GLTFExporter`; Blender is not required to reproduce it.
 
@@ -45,11 +47,18 @@ it rests on the deterministic sim-clock tooth outside the retune hour.
 
 ### Stage 3 - skyline crown
 
-`Pillar_Stage_3` raises the upper monolith, four upper ribs, narrow sky needle, and broken crown halo.
-`Pillar_Crown_Iris`, `Pillar_Iris_Left`, `Pillar_Iris_Right`, `Pillar_Crown_Halo`, and
-`Pillar_Crown_Core` are retained runtime nodes. At midnight the iris parts, the core and seams pulse,
-the broken aperture turns, and the retune ring completes its presentation-only free run. At other
-hours it settles on `restingToothIndex(day, hour)`.
+`Pillar_Stage_3` raises the upper monolith, four upper ribs, and the 525 metre
+`Pillar_Distant_Monolith` continuation before terminating in a narrow sky needle and broken crown
+halo at 622 metres. Eight widely separated `Pillar_Sky_Glyph_*` marks interrupt the otherwise minimal
+faceted surface. `Pillar_Crown_Iris`, `Pillar_Iris_Left`, `Pillar_Iris_Right`,
+`Pillar_Crown_Halo`, and `Pillar_Crown_Core` remain runtime nodes. At midnight the iris parts, the
+core and seams pulse, the broken aperture turns, and the retune ring completes its presentation-only
+free run. At other hours it settles on `restingToothIndex(day, hour)`.
+
+The extension is deliberately visual-only above the original construction. Normal gameplay keeps
+the existing hike, summit footprint, lower collider, movement, and platformer-scale interactions.
+The ordinary camera crops the upper shaft and lets distance fog consume it; dedicated proof requires
+the base on-screen and the crown above the viewport rather than zooming out to display the whole prop.
 
 Stage 0 remains genuinely invisible. While a stage is actively building, that stage grows vertically
 with `pillarProgress`; completed sections remain at full scale.
@@ -106,7 +115,8 @@ post-processing pass.
   node names, verifies emissive materials, height, size budget, deterministic hash, and public URL.
 - `npm run typecheck`, focused Vitest, full Vitest, and `npm run build` must pass.
 - Live browser verification must force stage 3 once in daylight and once during the 00:00 retune,
-  inspect screenshots at desktop and mobile viewports, and confirm the WebGL canvas is nonblank.
+  inspect screenshots at desktop and mobile viewports, confirm the WebGL canvas is nonblank, and
+  prove in camera space that the base is visible while the crown remains above the viewport.
 
 ## Ownership
 

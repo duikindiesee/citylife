@@ -24,7 +24,8 @@ a five-person crew for 36 sim-hours:
 
 1. Buried Foundation - the dais, collar, undercroft light, and roots entering the mountain.
 2. Lower Monolith - the solid black shaft, pale seams, and twelve-tooth retune ring.
-3. Skyline Crown - the upper shaft, iris, core, and 66.5 metre sky needle.
+3. Skyline Crown - the original upper mechanism plus a visual-only 622 metre Planet Builder shaft,
+   sparse distant glyphs, iris, core, and sky needle.
 
 `pillarStage`, `pillarProgress`, `pillarBuilding`, and `lastRetuneDay` live on `ColonyState`. Stage 0
 is economically and visually inert. Funding remains gated by population, surplus goods, treasury,
@@ -75,13 +76,17 @@ The source asset is `public/assets/citylife/props/ironwork-pillar.glb`, regenera
 
 - `Pillar_Stage_1`, `Pillar_Stage_2`, `Pillar_Stage_3`
 - `Pillar_Summit_Apron`, `Pillar_Obsidian_Table`, `Pillar_Dais_Rune_01`, `Pillar_Sentinel_01`
+- `Pillar_Distant_Monolith`, `Pillar_Sky_Glyph_01`
 - `Pillar_Retune_Ring`
 - `Pillar_Crown_Iris`, `Pillar_Iris_Left`, `Pillar_Iris_Right`
 - `Pillar_Crown_Core`, `Pillar_Crown_Halo`
 
-The GLB is a solid tapered monolith, not a see-through gantry. It is 66.5 metres high, contains 84
-meshes, uses six PBR materials, and has no images, textures, cameras, or lights. Emissive seams,
-summit runes, retune mechanism, and crown are driven by the existing world bloom.
+The GLB is a solid tapered monolith, not a see-through gantry. It is 622 metres high, contains 86
+mesh resources across 93 mesh nodes, uses seven PBR materials, and has no images, textures, cameras,
+or lights. The original lower
+64 metres retain gameplay collision and the reachable summit; the extreme upper shaft is a visual
+setpiece so platformer movement and level readability do not change. Emissive seams, summit runes,
+retune mechanism, distant glyphs, and crown are driven by the existing world bloom.
 
 At stage 0 the model and trail are absent. A building stage grows with `pillarProgress`; completed
 stages stay at full scale. At stage 3 midnight, the iris opens, the pale light rises, and the ring

@@ -61,6 +61,8 @@ const REQUIRED_NODES = [
   "Pillar_Outcrop_3",
   "Pillar_Lower_Monolith",
   "Pillar_Upper_Monolith",
+  "Pillar_Distant_Monolith",
+  "Pillar_Sky_Glyph_01",
   "Pillar_Sky_Needle",
   "Pillar_Retune_Ring",
   "Pillar_Retune_Ring_Inner",
@@ -81,25 +83,28 @@ describe("ironwork-pillar.glb", () => {
   it("commits a compact three-stage GLB with the dynamic retune contract", () => {
     const names = json.nodes.map((node) => node.name);
     for (const required of REQUIRED_NODES) expect(names).toContain(required);
-    expect(json.meshes).toHaveLength(84);
+    expect(json.meshes).toHaveLength(86);
     expect(json.images ?? []).toHaveLength(0);
     expect(json.textures ?? []).toHaveLength(0);
     expect(json.cameras ?? []).toHaveLength(0);
     expect(pillarBytes.byteLength).toBeLessThan(300 * 1024);
     expect(createHash("sha256").update(pillarBytes).digest("hex")).toBe(
-      "bea8ea94afd4e01e59d5a42d6b641166df4de445560d9be3b229596cb3723336",
+      "553fb05c242e6a1463a95bf0053769a2a9dffbde4f59cc0805cf42dfd9b9d6d0",
     );
   });
 
-  it("keeps the skyline needle above sixty metres and the crown emissive", () => {
+  it("keeps the skyline needle above six hundred metres and the crown emissive", () => {
     const needle = json.nodes.find((node) => node.name === "Pillar_Sky_Needle")!;
     const needleY = needle.translation?.[1] ?? needle.matrix?.[13];
-    expect(needleY).toBeGreaterThan(60);
+    expect(needleY).toBeGreaterThan(600);
+    const root = json.nodes.find((node) => node.name === "Ironwork_Pillar_Root")!;
+    expect(root.extras?.heightMeters).toBe(622);
     const emissiveNames = (json.materials ?? [])
       .filter((material) => material.emissiveFactor?.some((channel) => channel > 0))
       .map((material) => material.name);
     expect(emissiveNames).toContain("Pillar_Core_Emissive");
     expect(emissiveNames).toContain("Pillar_Seam_Emissive");
+    expect(emissiveNames).toContain("Pillar_Sky_Glyph_Emissive");
   });
 
   it("keeps generation deterministic and the runtime on the committed asset URL", () => {

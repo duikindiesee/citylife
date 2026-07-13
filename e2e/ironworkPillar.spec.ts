@@ -4,6 +4,7 @@ declare global {
   interface Window {
     __colony: any;
     __r3fScene?: any;
+    __r3fCamera?: any;
   }
 }
 
@@ -89,6 +90,7 @@ test.describe("spec 144 Ironwork Pillar live R3F landmark", () => {
 
     const daylight = await page.evaluate(() => {
       const found: Record<string, any> = {};
+      const references: Record<string, any> = {};
       window.__r3fScene?.traverse((node: any) => {
         if (
           [
@@ -102,6 +104,8 @@ test.describe("spec 144 Ironwork Pillar live R3F landmark", () => {
             "Pillar_Stage_1",
             "Pillar_Stage_2",
             "Pillar_Stage_3",
+            "Pillar_Distant_Monolith",
+            "Pillar_Sky_Glyph_01",
             "Pillar_Summit_Apron",
             "Pillar_Sentinel_01",
             "Pillar_Retune_Ring",
@@ -112,6 +116,7 @@ test.describe("spec 144 Ironwork Pillar live R3F landmark", () => {
             "IronworkFacetLight",
           ].includes(node.name)
         ) {
+          references[node.name] = node;
           found[node.name] = {
             visible: node.visible,
             positionCount: node.geometry?.attributes?.position?.count ?? 0,
@@ -124,11 +129,21 @@ test.describe("spec 144 Ironwork Pillar live R3F landmark", () => {
       const pillar = state.structures.find(
         (structure: any) => structure.kind === "ironworkPillar",
       );
+      const project = (node: any) => {
+        const point = node.position.clone();
+        node.getWorldPosition(point);
+        point.project(window.__r3fCamera);
+        return { x: point.x, y: point.y, z: point.z };
+      };
       return {
         stage: state.pillarStage,
         hour: state.clock.hour,
         pillar,
         found,
+        projection: {
+          base: project(references.IronworkPillar),
+          crown: project(references.Pillar_Crown_Halo),
+        },
       };
     });
     expect(daylight.stage).toBe(3);
@@ -140,6 +155,8 @@ test.describe("spec 144 Ironwork Pillar live R3F landmark", () => {
       "Pillar_Stage_1",
       "Pillar_Stage_2",
       "Pillar_Stage_3",
+      "Pillar_Distant_Monolith",
+      "Pillar_Sky_Glyph_01",
       "Pillar_Summit_Apron",
       "Pillar_Sentinel_01",
       "Pillar_Retune_Ring",
@@ -156,6 +173,11 @@ test.describe("spec 144 Ironwork Pillar live R3F landmark", () => {
     expect(daylight.found.IronworkCrownLight).toBeTruthy();
     expect(daylight.found.IronworkUndercroftLight).toBeTruthy();
     expect(daylight.found.IronworkFacetLight?.intensity).toBeGreaterThan(20);
+    expect(daylight.projection.base.x).toBeGreaterThan(-1);
+    expect(daylight.projection.base.x).toBeLessThan(1);
+    expect(daylight.projection.base.y).toBeGreaterThan(-1);
+    expect(daylight.projection.base.y).toBeLessThan(1);
+    expect(Math.abs(daylight.projection.crown.y)).toBeGreaterThan(1);
     const daylightPixels = await captureAndSample(
       page,
       testInfo.outputPath("ironwork-pillar-day.jpg"),
@@ -167,11 +189,31 @@ test.describe("spec 144 Ironwork Pillar live R3F landmark", () => {
     await page.waitForTimeout(300);
     const mobileDay = await page.evaluate(() => {
       const canvas = document.querySelector("canvas");
-      return canvas
-        ? { width: canvas.clientWidth, height: canvas.clientHeight }
+      let pillar: any;
+      let crown: any;
+      window.__r3fScene?.traverse((node: any) => {
+        if (node.name === "IronworkPillar") pillar = node;
+        if (node.name === "Pillar_Crown_Halo") crown = node;
+      });
+      const projectY = (node: any) => {
+        const point = node.position.clone();
+        node.getWorldPosition(point);
+        point.project(window.__r3fCamera);
+        return point.y;
+      };
+      return canvas && pillar && crown
+        ? {
+            width: canvas.clientWidth,
+            height: canvas.clientHeight,
+            baseY: projectY(pillar),
+            crownY: projectY(crown),
+          }
         : null;
     });
-    expect(mobileDay).toEqual({ width: 390, height: 844 });
+    expect(mobileDay).toMatchObject({ width: 390, height: 844 });
+    expect(mobileDay!.baseY).toBeGreaterThan(-1);
+    expect(mobileDay!.baseY).toBeLessThan(1);
+    expect(Math.abs(mobileDay!.crownY)).toBeGreaterThan(1);
     const mobileDayPixels = await captureAndSample(
       page,
       testInfo.outputPath("ironwork-pillar-day-mobile.jpg"),

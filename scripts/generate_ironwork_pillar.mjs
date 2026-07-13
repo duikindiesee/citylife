@@ -69,6 +69,13 @@ const coreLight = material("Pillar_Core_Emissive", 0xa8cfc4, {
   emissiveIntensity: 4.1,
   flatShading: false,
 });
+const skyGlyphMaterial = material("Pillar_Sky_Glyph_Emissive", 0x53645f, {
+  roughness: 0.42,
+  metalness: 0.38,
+  emissive: 0x72958c,
+  emissiveIntensity: 0.22,
+  flatShading: false,
+});
 
 const mesh = (name, geometry, mat, parent, position = [0, 0, 0]) => {
   const value = new THREE.Mesh(geometry, mat);
@@ -85,7 +92,7 @@ root.name = "Ironwork_Pillar_Root";
 root.userData = {
   asset: "ironwork-pillar",
   stages: 3,
-  heightMeters: 66.5,
+  heightMeters: 622,
   authoredBy: "Vesper",
 };
 
@@ -304,17 +311,24 @@ stage3.name = "Pillar_Stage_3";
 root.add(stage3);
 mesh(
   "Pillar_Upper_Monolith",
-  new THREE.CylinderGeometry(1.55, 3.15, 24, 8),
+  new THREE.CylinderGeometry(2.55, 3.15, 24, 8),
   obsidian,
   stage3,
   [0, 47.7, 0],
 );
 mesh(
-  "Pillar_Sky_Needle",
-  new THREE.CylinderGeometry(0.08, 1.55, 7.2, 8),
+  "Pillar_Distant_Monolith",
+  new THREE.CylinderGeometry(1.15, 2.55, 525, 8),
   obsidian,
   stage3,
-  [0, 63.3, 0],
+  [0, 322.3, 0],
+);
+mesh(
+  "Pillar_Sky_Needle",
+  new THREE.CylinderGeometry(0.08, 1.15, 37, 8),
+  obsidian,
+  stage3,
+  [0, 603.5, 0],
 );
 for (let side = 0; side < 4; side++) {
   const angle = side * Math.PI * 0.5 + Math.PI * 0.25;
@@ -333,14 +347,14 @@ mesh(
   new THREE.CylinderGeometry(1.42, 1.48, 0.32, 8),
   oldBrass,
   stage3,
-  [0, 60.35, 0],
+  [0, 584.7, 0],
 );
 mesh(
   "Pillar_Needle_Collar_Upper",
   new THREE.CylinderGeometry(0.68, 0.74, 0.28, 8),
   oldBrass,
   stage3,
-  [0, 62.55, 0],
+  [0, 587.15, 0],
 );
 for (let side = 0; side < 4; side++) {
   const angle = side * Math.PI * 0.5 + Math.PI * 0.25;
@@ -354,9 +368,37 @@ for (let side = 0; side < 4; side++) {
   seam.rotation.y = angle;
   seam.rotation.z = side % 2 ? -0.022 : 0.022;
 }
+// These marks are deliberately vast in world units but sparse over the 525 metre sky shaft.
+// From normal play they register as uncertain construction seams rather than readable signage.
+const skyGlyphGeometry = new THREE.BoxGeometry(0.2, 8.5, 0.09);
+const skyGlyphs = [
+  [106, 0.25, 0.72],
+  [148, 2.42, 1.35],
+  [214, 4.58, 0.9],
+  [286, 1.04, 1.7],
+  [354, 3.22, 0.8],
+  [418, 5.36, 1.25],
+  [486, 1.92, 0.68],
+  [542, 4.08, 1.5],
+];
+for (let index = 0; index < skyGlyphs.length; index++) {
+  const [y, angle, heightScale] = skyGlyphs[index];
+  const rise = THREE.MathUtils.clamp((y - 60) / 525, 0, 1);
+  const radius = THREE.MathUtils.lerp(2.55, 1.15, rise) + 0.035;
+  const glyph = mesh(
+    `Pillar_Sky_Glyph_${String(index + 1).padStart(2, "0")}`,
+    skyGlyphGeometry,
+    skyGlyphMaterial,
+    stage3,
+    [Math.sin(angle) * radius, y, Math.cos(angle) * radius],
+  );
+  glyph.rotation.y = angle;
+  glyph.rotation.z = index % 2 ? 0.045 : -0.035;
+  glyph.scale.y = heightScale;
+}
 const crown = new THREE.Group();
 crown.name = "Pillar_Crown_Iris";
-crown.position.set(0, 58.9, 0);
+crown.position.set(0, 579.2, 0);
 stage3.add(crown);
 const crownHalo = new THREE.Group();
 crownHalo.name = "Pillar_Crown_Halo";
@@ -402,7 +444,7 @@ for (const side of [-1, 1]) {
     new THREE.BoxGeometry(0.6, 8.5, 2.2),
     obsidian,
     stage3,
-    [side * 2.05, 57.4, 0],
+    [side * 2.05, 577.7, 0],
   );
   fin.rotation.z = side * -0.08;
 }
@@ -412,7 +454,7 @@ for (const side of [-1, 1]) {
     new THREE.BoxGeometry(2.2, 7.3, 0.52),
     blackIron,
     stage3,
-    [0, 57.25, side * 2.02],
+    [0, 577.55, side * 2.02],
   );
   fin.rotation.x = side * 0.08;
 }

@@ -29,6 +29,7 @@ interface PillarModel {
   core: THREE.Object3D | null;
   halo: THREE.Object3D | null;
   emissive: THREE.MeshStandardMaterial[];
+  skyGlyphs: THREE.MeshStandardMaterial[];
   brass: THREE.MeshStandardMaterial[];
   dispose(): void;
 }
@@ -43,6 +44,7 @@ function clonePillar(source: THREE.Group): PillarModel {
   const scene = source.clone(true);
   scene.name = "IronworkPillarGLB";
   const emissive: THREE.MeshStandardMaterial[] = [];
+  const skyGlyphs: THREE.MeshStandardMaterial[] = [];
   const brass: THREE.MeshStandardMaterial[] = [];
   const clonedMaterials = new Set<THREE.Material>();
   scene.traverse((node) => {
@@ -58,7 +60,8 @@ function clonePillar(source: THREE.Group): PillarModel {
         cloned instanceof THREE.MeshStandardMaterial &&
         cloned.emissive.getHex() !== 0
       ) {
-        emissive.push(cloned);
+        if (cloned.name === "Pillar_Sky_Glyph_Emissive") skyGlyphs.push(cloned);
+        else emissive.push(cloned);
       }
       if (
         cloned instanceof THREE.MeshStandardMaterial &&
@@ -81,6 +84,7 @@ function clonePillar(source: THREE.Group): PillarModel {
     core: scene.getObjectByName("Pillar_Crown_Core") ?? null,
     halo: scene.getObjectByName("Pillar_Crown_Halo") ?? null,
     emissive,
+    skyGlyphs,
     brass,
     dispose: () => clonedMaterials.forEach((material) => material.dispose()),
   };
@@ -362,6 +366,9 @@ export function R3FIronworkPillar({
     for (const material of model.emissive) {
       material.emissiveIntensity = 1 + pulse * 4.2;
     }
+    for (const material of model.skyGlyphs) {
+      material.emissiveIntensity = 0.08 + night * 0.38 + (midnight ? 0.22 : 0);
+    }
     for (const material of model.brass) {
       material.emissive.setHex(midnight ? 0x789f94 : 0x000000);
       material.emissiveIntensity = midnight ? 1.8 : 0;
@@ -448,9 +455,9 @@ export function R3FIronworkPillar({
             <pointLight
               ref={crownLight}
               name="IronworkCrownLight"
-              position={[0, 59, 0]}
+              position={[0, 579, 0]}
               color={0xc8fff0}
-              distance={82}
+              distance={150}
               decay={2}
             />
             <pointLight
