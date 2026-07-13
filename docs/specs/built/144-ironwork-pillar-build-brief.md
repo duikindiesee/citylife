@@ -32,11 +32,13 @@ dependencies. The generator is deterministic and uses the repository's installed
 
 ### Stage 1 - buried foundation
 
-`Pillar_Stage_1` contains stepped twelve-sided summit terraces, an obsidian table, eight restrained
-floor runes, seven uneven sentinel stones, the iron foundation collar, undercroft core, six fractured
-stone roots, and five asymmetrical outcrop masses on the mountain side. The roots sit below grade and
-the outcrop rises behind the shaft, making the structure continue into the mountain rather than stand
-on a decorative plinth; the hiking approach remains open on the colony side.
+`Pillar_Stage_1` contains a broad 34.8 metre twelve-sided mountain apron, a second 29.2 metre terrace,
+an obsidian table, eight restrained floor runes, seven uneven sentinel stones, a 17.2 metre iron
+foundation collar, undercroft core, six fractured stone roots, and five asymmetrical outcrop masses
+on the mountain side. The wider roots and collar give the 622 metre shaft credible visual weight.
+The roots sit below grade and the outcrop rises behind the shaft, making the structure continue into
+the mountain rather than stand on a decorative plinth; the hiking approach remains open on the
+colony side.
 
 ### Stage 2 - lower monolith
 
@@ -112,7 +114,8 @@ post-processing pass.
 - `tests/ironworkPillar.test.ts` proves deterministic placement, distance, elevation, rugged
   adjacency, occupied reservation, and a repeatable dry walkable hike from a real road cell.
 - `tests/ironworkPillarGlb.test.ts` parses the committed GLB, checks the three stage groups and dynamic
-  node names, verifies emissive materials, height, size budget, deterministic hash, and public URL.
+  node names, verifies emissive materials, height, foundation width, size budget, deterministic hash,
+  and public URL.
 - `npm run typecheck`, focused Vitest, full Vitest, and `npm run build` must pass.
 - Live browser verification must force stage 3 once in daylight and once during the 00:00 retune,
   inspect screenshots at desktop and mobile viewports, confirm the WebGL canvas is nonblank, and

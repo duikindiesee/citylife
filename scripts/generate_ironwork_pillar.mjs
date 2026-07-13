@@ -102,56 +102,56 @@ root.add(stage1);
 
 mesh(
   "Pillar_Summit_Apron",
-  new THREE.CylinderGeometry(11.5, 12.7, 0.8, 12),
+  new THREE.CylinderGeometry(15.2, 17.4, 1, 12),
   mountainRock,
   stage1,
-  [0, -0.65, 0],
+  [0, -0.72, 0],
 );
 mesh(
   "Pillar_Summit_Terrace",
-  new THREE.CylinderGeometry(9.8, 10.8, 0.72, 12),
+  new THREE.CylinderGeometry(12.8, 14.6, 0.82, 12),
   mountainRock,
   stage1,
-  [0, -0.08, 0],
+  [0, -0.05, 0],
 );
 mesh(
   "Pillar_Buried_Dais",
-  new THREE.CylinderGeometry(8.2, 9.1, 1.2, 10),
+  new THREE.CylinderGeometry(10.2, 11.6, 1.35, 10),
   mountainRock,
   stage1,
-  [0, 0.15, 0],
+  [0, 0.2, 0],
 );
 mesh(
   "Pillar_Obsidian_Table",
-  new THREE.CylinderGeometry(7.5, 8.1, 0.26, 12),
+  new THREE.CylinderGeometry(9.5, 10.3, 0.3, 12),
   obsidian,
   stage1,
-  [0, 0.86, 0],
+  [0, 0.92, 0],
 );
 for (let index = 0; index < 8; index++) {
   const angle = (index / 8) * Math.PI * 2;
   const rune = mesh(
     `Pillar_Dais_Rune_${String(index + 1).padStart(2, "0")}`,
-    new THREE.BoxGeometry(0.17, 0.08, 2.7),
+    new THREE.BoxGeometry(0.19, 0.08, 3.4),
     paleSeam,
     stage1,
-    [Math.sin(angle) * 6.25, 1.03, Math.cos(angle) * 6.25],
+    [Math.sin(angle) * 8.2, 1.09, Math.cos(angle) * 8.2],
   );
   rune.rotation.y = angle;
 }
 mesh(
   "Pillar_Foundation_Collar",
-  new THREE.CylinderGeometry(5.6, 6.7, 2.3, 8),
+  new THREE.CylinderGeometry(7.3, 8.6, 2.8, 8),
   blackIron,
   stage1,
-  [0, 1.25, 0],
+  [0, 1.5, 0],
 );
 mesh(
   "Pillar_Undercroft_Core",
-  new THREE.CylinderGeometry(2.9, 3.4, 0.8, 8),
+  new THREE.CylinderGeometry(4.1, 4.7, 0.9, 8),
   coreLight,
   stage1,
-  [0, 2.45, 0],
+  [0, 2.75, 0],
 );
 // Seven uneven guardian stones form an incomplete summit circle. The deliberate opening on local
 // +Z receives the hiking path and makes the dais read as an ancient destination rather than a pad.
@@ -163,7 +163,7 @@ for (let index = 0; index < sentinelAngles.length; index++) {
     new THREE.DodecahedronGeometry(1, 0),
     mountainRock,
     stage1,
-    [Math.sin(angle) * 10.35, 2.15 + (index % 3) * 0.22, Math.cos(angle) * 10.35],
+    [Math.sin(angle) * 13.7, 2.15 + (index % 3) * 0.22, Math.cos(angle) * 13.7],
   );
   sentinel.scale.set(0.78 + (index % 2) * 0.12, 3.2 + (index % 3) * 0.42, 0.9);
   sentinel.rotation.set(index * 0.07, angle + index * 0.13, Math.sin(angle) * -0.13);
@@ -172,10 +172,10 @@ for (let index = 0; index < 6; index++) {
   const angle = (index / 6) * Math.PI * 2 + 0.18;
   const rootMesh = mesh(
     `Pillar_Mountain_Root_${index + 1}`,
-    new THREE.BoxGeometry(3.2, 2.3, 13.5),
+    new THREE.BoxGeometry(3.6, 2.5, 16),
     mountainRock,
     stage1,
-    [Math.sin(angle) * 6.2, -0.25 - (index % 2) * 0.35, Math.cos(angle) * 6.2],
+    [Math.sin(angle) * 7.5, -0.3 - (index % 2) * 0.35, Math.cos(angle) * 7.5],
   );
   rootMesh.rotation.y = angle;
   rootMesh.rotation.x = index % 2 ? 0.1 : -0.08;

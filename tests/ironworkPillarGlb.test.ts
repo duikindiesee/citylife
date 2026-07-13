@@ -18,7 +18,10 @@ interface GltfJson {
     matrix?: number[];
     extras?: Record<string, unknown>;
   }>;
-  meshes: unknown[];
+  meshes: Array<{
+    primitives: Array<{ attributes: { POSITION: number } }>;
+  }>;
+  accessors?: Array<{ min?: number[]; max?: number[] }>;
   materials?: Array<{ name?: string; emissiveFactor?: number[] }>;
   images?: unknown[];
   textures?: unknown[];
@@ -77,6 +80,13 @@ const pillarBytes = readFileSync(
   new URL("../public/assets/citylife/props/ironwork-pillar.glb", import.meta.url),
 );
 
+function meshWidth(json: GltfJson, nodeName: string): number {
+  const node = json.nodes.find((candidate) => candidate.name === nodeName)!;
+  const mesh = json.meshes[node.mesh!]!;
+  const accessor = json.accessors?.[mesh.primitives[0]!.attributes.POSITION];
+  return (accessor?.max?.[0] ?? 0) - (accessor?.min?.[0] ?? 0);
+}
+
 describe("ironwork-pillar.glb", () => {
   const json = parseGltfJson(pillarGlbRaw);
 
@@ -89,7 +99,7 @@ describe("ironwork-pillar.glb", () => {
     expect(json.cameras ?? []).toHaveLength(0);
     expect(pillarBytes.byteLength).toBeLessThan(300 * 1024);
     expect(createHash("sha256").update(pillarBytes).digest("hex")).toBe(
-      "553fb05c242e6a1463a95bf0053769a2a9dffbde4f59cc0805cf42dfd9b9d6d0",
+      "d7e7e6c7340c23f49b216aecdeffd5058174f2c4a210b73de80c6a27454c5023",
     );
   });
 
@@ -105,6 +115,11 @@ describe("ironwork-pillar.glb", () => {
     expect(emissiveNames).toContain("Pillar_Core_Emissive");
     expect(emissiveNames).toContain("Pillar_Seam_Emissive");
     expect(emissiveNames).toContain("Pillar_Sky_Glyph_Emissive");
+  });
+
+  it("keeps a broad mountain foundation beneath the extreme shaft", () => {
+    expect(meshWidth(json, "Pillar_Summit_Apron")).toBeGreaterThan(32);
+    expect(meshWidth(json, "Pillar_Foundation_Collar")).toBeGreaterThan(16);
   });
 
   it("keeps generation deterministic and the runtime on the committed asset URL", () => {

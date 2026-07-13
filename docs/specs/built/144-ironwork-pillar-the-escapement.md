@@ -53,7 +53,8 @@ One. `findIronworkPillarSite`:
 - uses deterministic score, `y`, then `x` tie-breaking.
 
 The dais stays traversable because shared pathfinding rejects Mountain and Peak. The authored GLB's
-six buried roots extend below and outside the dais, visually joining the monument to the mountain.
+34.8 metre summit apron, 17.2 metre structural collar, and six buried roots extend below and outside
+the dais, giving the extreme shaft a substantial footing and visually joining it to the mountain.
 
 ## Hike
 

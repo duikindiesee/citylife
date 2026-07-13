@@ -434,7 +434,7 @@ export function R3FIronworkPillar({
       {visible && (
         <group name="IronworkPillar" position={position} rotation-y={rotation}>
           <RigidBody type="fixed" colliders={false}>
-            <CuboidCollider args={[4.6, 32, 4.6]} position={[0, 32, 0]} />
+            <CuboidCollider args={[6.2, 32, 6.2]} position={[0, 32, 0]} />
             <primitive object={model.scene} />
             <mesh
               name="IronworkSummitVeil"
