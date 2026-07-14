@@ -21,9 +21,7 @@ describe("production gateway proxy contract", () => {
     (operation) => {
       const path = `/api/auth/${operation}`;
       const block = exactLocation(path);
-      expect(block).toContain(
-        `proxy_pass ${"${KOOKER_GATEWAY}"}${path};`,
-      );
+      expect(block).toContain(`proxy_pass ${"${KOOKER_GATEWAY}"}${path};`);
       expect(block).toContain("proxy_set_header Host ${KOOKER_HOST};");
     },
   );
