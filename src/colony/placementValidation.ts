@@ -27,6 +27,45 @@ export function conservativeRoadRibbonBlockedCells(
   return out;
 }
 
+export type TerrainPlacementFailure =
+  | "out-of-bounds"
+  | "non-finite"
+  | "water"
+  | "non-buildable";
+
+export interface TerrainInvalidCell {
+  key: string;
+  reason: TerrainPlacementFailure;
+}
+
+/** Exact half-open footprint terrain gate shared by every plot/pad survey. */
+export function plotTerrainInvalidCells(rect: PlotRect, terrain: Terrain): TerrainInvalidCell[] {
+  const invalid: TerrainInvalidCell[] = [];
+  for (let y = rect.y; y < rect.y + rect.h; y++)
+    for (let x = rect.x; x < rect.x + rect.w; x++) {
+      const key = `${x},${y}`;
+      if (!terrain.inBounds(x, y)) {
+        invalid.push({ key, reason: "out-of-bounds" });
+        continue;
+      }
+      if (!Number.isFinite(terrain.worldY(x, y))) {
+        invalid.push({ key, reason: "non-finite" });
+        continue;
+      }
+      if (terrain.isWater(x, y)) {
+        invalid.push({ key, reason: "water" });
+        continue;
+      }
+      if (terrain.buildable[terrain.idx(x, y)] === 0)
+        invalid.push({ key, reason: "non-buildable" });
+    }
+  return invalid;
+}
+
+export function plotClearsBuildableTerrain(rect: PlotRect, terrain: Terrain): boolean {
+  return plotTerrainInvalidCells(rect, terrain).length === 0;
+}
+
 /** Shared placement invariant for every rectangular plot/pad survey. */
 export function plotRoadOverlapCells(rect: PlotRect, roadCells: ReadonlySet<string>): string[] {
   const overlaps: string[] = [];
