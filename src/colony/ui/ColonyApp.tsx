@@ -350,6 +350,37 @@ function useRuntime(): ColonyRuntime {
   const ref = useRef<ColonyRuntime | null>(null);
   if (!ref.current) {
     ref.current = new ColonyRuntime();
+    // Local dev visual fixture for landmark screenshots. Production bundles and non-local hosts can
+    // never enter this branch; ordinary local play is unchanged unless the explicit query is present.
+    if (
+      import.meta.env.DEV &&
+      ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)
+    ) {
+      const query = new URLSearchParams(window.location.search);
+      const requestedStage = Number(query.get("pillarStage"));
+      if (
+        query.has("pillarStage") &&
+        Number.isInteger(requestedStage) &&
+        requestedStage >= 0 &&
+        requestedStage <= 3
+      ) {
+        ref.current.sim.state.pillarStage = requestedStage;
+        ref.current.sim.state.pillarBuilding = false;
+        ref.current.sim.state.pillarProgress = 0;
+      }
+      const clockMatch = query.get("clock")?.match(/^(\d{1,2}):(\d{2})$/);
+      if (clockMatch) {
+        const hour = Math.max(0, Math.min(23, Number(clockMatch[1])));
+        const minute = Math.max(0, Math.min(59, Number(clockMatch[2])));
+        ref.current.debugSetClock(hour, minute);
+        const t = hour + minute / 60;
+        ref.current.sim.state.clock.daylight = Math.max(
+          0,
+          Math.sin(((t - 6) / 13) * Math.PI),
+        );
+        ref.current.setSpeed(0);
+      }
+    }
     (window as unknown as { __colony: ColonyRuntime }).__colony = ref.current;
   }
   const [, force] = useReducer((x) => x + 1, 0);
@@ -509,6 +540,15 @@ function detectTouchCapable(): boolean {
 export function ColonyApp() {
   const { builderActive, worldViewActive } = useRoadNetwork();
   const runtime = useRuntime();
+  useEffect(() => {
+    if (
+      import.meta.env.DEV &&
+      ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname) &&
+      new URLSearchParams(window.location.search).get("pillarView") === "1"
+    ) {
+      useRoadNetwork.setState({ builderActive: false, worldViewActive: true });
+    }
+  }, []);
   const hostRef = useRef<HTMLDivElement>(null);
   const ui: ColonyUiState = runtime.getUiState();
   const citizenCopy = citizenHudCopy({

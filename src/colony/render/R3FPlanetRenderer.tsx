@@ -78,6 +78,7 @@ import { R3FRallyNameplates } from './R3FRallyNameplates';
 import { R3FCameraDirector } from './R3FCameraDirector';
 import { R3FCommercialDistrict } from './R3FCommercialDistrict';
 import { R3FDarkCity } from './R3FDarkCity';
+import { R3FIronworkPillar } from './R3FIronworkPillar';
 import { isPublicSafe } from '../newcomers';
 
 function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) {
@@ -333,14 +334,45 @@ function SceneProbe() {
   return null;
 }
 
-function AerialCameraController() {
-  const { camera } = useThree();
+function AerialCameraController({ sim }: { sim: ColonySim }) {
+  const { camera, size } = useThree();
+  const controls = useThree((state) => state.controls) as
+    | { target?: THREE.Vector3; update?: () => void }
+    | undefined;
   
   useEffect(() => {
     // Position camera high up looking down
     camera.position.set(0, 150, 0);
     camera.rotation.set(-Math.PI / 2, 0, 0);
   }, [camera]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !controls?.target || !controls.update) return;
+    if (!["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)) return;
+    if (new URLSearchParams(window.location.search).get("pillarView") !== "1") return;
+    const pillar = sim.state.structures.find((structure) => structure.kind === "ironworkPillar");
+    if (!pillar) return;
+    const terrain = sim.state.terrain;
+    const px = (pillar.x - terrain.size / 2) * 4;
+    const pz = (pillar.y - terrain.size / 2) * 4;
+    const py = Math.max(0, terrain.worldY(pillar.x, pillar.y));
+    const awayX = pillar.x - terrain.landing.x;
+    const awayZ = pillar.y - terrain.landing.y;
+    const length = Math.hypot(awayX, awayZ) || 1;
+    const portrait = size.height > size.width * 1.2;
+    const distance = portrait ? 178 : 118;
+    const lateral = portrait ? 28 : 34;
+    // Frame from the colony side so the hike enters from the foreground and the monolith rises
+    // against the remote highland. A small lateral offset keeps the route and silhouette separate.
+    camera.position.set(
+      px - (awayX / length) * distance - (awayZ / length) * lateral,
+      py + (portrait ? 96 : 68),
+      pz - (awayZ / length) * distance + (awayX / length) * lateral,
+    );
+    controls.target.set(px, py + (portrait ? 39 : 27), pz);
+    controls.update();
+    camera.updateMatrixWorld();
+  }, [camera, controls, sim, size.height, size.width]);
 
   return (
     <MapControls
@@ -575,12 +607,17 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
             {/* Founders' Lighthouse and Rally Overlook static props */}
             {shoreProps && <primitive object={shoreProps.group} />}
             {venueProps && <primitive object={venueProps.group} />}
+            <R3FIronworkPillar
+              sim={sim}
+              runtime={runtime}
+              terrainLevel={debouncedTerrainLevel}
+            />
           </>
         )}
 
         {/* Toggle between aerial view and first person */}
         {useRoadNetwork(state => state.builderActive || state.worldViewActive) ? (
-          <AerialCameraController />
+          <AerialCameraController sim={sim} />
         ) : (
           <FirstPersonController sim={sim} runtime={runtime} startPosition={startPos} terrainLevel={debouncedTerrainLevel} />
         )}

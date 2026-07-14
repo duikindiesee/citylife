@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { COLONY } from "../src/colony/config";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { ColonySim, findIronworkPillarSite } from "../src/colony/sim";
+import { buildIronworkHikePath } from "../src/colony/ironworkPillar";
+import { Biome } from "../src/colony/terrain";
 import {
   fundIronworkStage,
   freeLabour,
@@ -52,6 +54,58 @@ describe("spec 144 Ironwork Pillar mechanics", () => {
     for (let dy = -2; dy <= 2; dy++) {
       for (let dx = -2; dx <= 2; dx++) {
         expect(sim.state.occupied.has(`${pillar!.x + dx},${pillar!.y + dy}`)).toBe(true);
+      }
+    }
+    const terrain = sim.state.terrain;
+    expect(
+      Math.hypot(pillar!.x - terrain.landing.x, pillar!.y - terrain.landing.y),
+    ).toBeGreaterThan(48);
+    expect(terrain.worldY(pillar!.x, pillar!.y)).toBeGreaterThan(
+      terrain.worldY(terrain.landing.x, terrain.landing.y),
+    );
+    expect(terrain.biome[terrain.idx(pillar!.x, pillar!.y)]).toBe(Biome.Highland);
+    let ruggedCells = 0;
+    let adjacentRock = 0;
+    for (let dy = -10; dy <= 10; dy++) {
+      for (let dx = -10; dx <= 10; dx++) {
+        if (dx * dx + dy * dy > 100) continue;
+        const x = pillar!.x + dx;
+        const y = pillar!.y + dy;
+        if (!terrain.inBounds(x, y)) continue;
+        const index = terrain.idx(x, y);
+        if (
+          terrain.biome[index] === Biome.Mountain ||
+          terrain.biome[index] === Biome.Peak ||
+          terrain.buildable[index] === 0
+        ) {
+          ruggedCells++;
+          if (dx * dx + dy * dy <= 25) adjacentRock++;
+        }
+      }
+    }
+    expect(ruggedCells).toBeGreaterThan(0);
+    expect(adjacentRock).toBeGreaterThan(0);
+  });
+
+  it("routes a deterministic walkable hike from a colony road to the mountain dais", () => {
+    const sim = new ColonySim(4242);
+    const pillar = sim.state.structures.find((s) => s.kind === "ironworkPillar")!;
+    const first = buildIronworkHikePath(sim.state);
+    const second = buildIronworkHikePath(sim.state);
+    expect(first).toEqual(second);
+    expect(first.length).toBeGreaterThan(12);
+    expect(sim.state.roadSet.has(`${first[0]!.x},${first[0]!.y}`)).toBe(true);
+    expect(first.at(-1)).toEqual({ x: pillar.x, y: pillar.y });
+    for (let index = 0; index < first.length; index++) {
+      const cell = first[index]!;
+      const terrainIndex = sim.state.terrain.idx(cell.x, cell.y);
+      expect(sim.state.terrain.isWater(cell.x, cell.y)).toBe(false);
+      expect(sim.state.terrain.buildable[terrainIndex]).toBeGreaterThan(0);
+      expect(sim.state.terrain.biome[terrainIndex]).not.toBe(Biome.Mountain);
+      expect(sim.state.terrain.biome[terrainIndex]).not.toBe(Biome.Peak);
+      if (index > 0) {
+        const prior = first[index - 1]!;
+        expect(Math.max(Math.abs(cell.x - prior.x), Math.abs(cell.y - prior.y))).toBe(1);
       }
     }
   });
