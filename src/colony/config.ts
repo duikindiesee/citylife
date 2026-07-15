@@ -6,7 +6,7 @@ export const COLONY = {
     // them the buildable-mask thresholds — keep their meaning; noise frequencies stay untouched,
     // so the same landforms simply become 3.17x wider. That IS the roomy feel the operator asked
     // for. Everything here re-baselines the seed-4242 layout in ONE commit (the 084 plan).
-    size: 608, // heightfield resolution AND region width in world units (1 cell = 1 unit)
+    size: 608, // heightfield resolution in CELLS; the render layers place each cell at CELL_SIZE (4) world units, so the region spans 608*4 = ~2432 world units (~2.4 km at 1 unit = 1 m). See src/colony/scale.ts.
     heightScale: 54, // world-units of relief from sea level to highest peak (54/608 == 17/192)
     seaLevel: 0.34, // normalised elevation below which is ocean
     planetRadius: 4800, // the "ball" the flat region sits on (apex at y=0)
@@ -437,6 +437,21 @@ export const COLONY = {
     spireStageComponents: [80, 220, 170, 160],
     spireStageReels: [0, 60, 50, 100],
     spireStageLinen: [0, 120, 140, 0],
+    // Ironwork Pillar (spec 144): the mechanics half of the Escapement. Three opt-in stages,
+    // deliberately inert at stage 0; no market, wage, immigration, or visual coupling here.
+    pillarStageCount: 3,
+    pillarStageCrew: 5,
+    pillarStageBuildHours: 36,
+    pillarStartColonists: 18,
+    pillarSurplusMargin: 2,
+    pillarTreasuryMargin: 3500,
+    pillarUnrestReliefPerDay: 0.06,
+    retuneNightRelief: 0.02,
+    pillarStageTreasury: [900, 1400, 2200],
+    pillarStageMaterials: [120, 80, 40],
+    pillarStageComponents: [60, 150, 180],
+    pillarStageReels: [0, 35, 70],
+    pillarStageLinen: [0, 80, 120],
     // Stormwatch Shelter (spec 034): the colony's first EXTERNAL danger. A Cloudsea Front periodically rolls in from
     // beyond the island; a staffed Stormwatch Shelter braces the colony (and the Spire's Sky Beacon warns earlier), so a
     // braced colony takes far less damage than an unprepared one (spoiled goods + a wear spike). Fronts only begin once
@@ -1059,6 +1074,40 @@ export const COLONY = {
     garagePadH: 11,
     plotPriceK: { kiosk: 220, store: 420, showroom: 720 },
     matByKind: { kiosk: 12, store: 24, showroom: 40 },
+  },
+
+  // Spec 149 — the bus depot + fleet. Distances in grid cells (1 cell = 4 m), times in sim-minutes,
+  // bus body in metres (= world units, the metric anchor).
+  transit: {
+    depotLongCells: 12, // 48 m pad edge; five owned bays span it at 8 m pitch
+    depotDeepCells: 7, // gate edge -> bay backs (28 m)
+    depotMinRoadGap: 2, // smallest clear driveway between the loop and the gate edge
+    depotMaxRoadGap: 6, // widest gap the spur search accepts before failing soft
+    depotMaxHeightSpreadM: 1.5, // reject steep pads before cut-and-fill; keep scanning, then fail soft
+    depotRoadRibbonClearanceCells: 0, // conservative rendered-ribbon footprint is forbidden inside the plot
+    depotLaneDepth: 2.0, // apron lane the buses maneuver along (local cells from the gate edge)
+    depotBayDepth: 4.8, // bay CENTRE depth — a 12 m bus parked here stays inside the 7-deep pad
+    baysTotal: 5, // size the marked row to the five owned coaches; future purchases expand the depot
+    busesOwned: 5,
+    firstDepartureMin: 8 * 60, // depot opens: the first bus pulls out at 08:00
+    lastServiceMin: 23 * 60, // streets drain by 23:00; overnight every bus parks at the depot
+    // The live loop is ~1350 cells (5.4 km) and a whole day is a 160 s time-lapse — the bus keeps
+    // pace with the CLOCK, not the eye. 3.5 cells/sim-min fits a full lap + dwells inside the
+    // 08:00-23:00 day with a ~6 h dispatch window, so all five buses roll out staggered by ~13:00
+    // and the last is home parked before close (shiftMinutes in busFleet.ts is the gatekeeper).
+    busSpeedCellsPerMin: 3.5,
+    stopDwellMin: 25, // doors-open dwell at each route stop (~3 wall-seconds at 1x to press E)
+    depotBoardMin: 25, // doors-open dwell at the depot gate shelter on the way out and home
+    breakMin: 45, // bay break between shifts
+    lapsPerShift: 1, // laps before a bus heads home for its break
+    bayPullOutCells: 2.8, // the straight bay leg (bayDepth - laneDepth) a bus REVERSES along leaving its bay
+    busLengthM: 12, // a real city bus — not the 2.55 m toy the spec-088 coach shipped as
+    busWidthM: 2.5,
+    busHeightM: 3.0,
+    busWheelRadiusM: 0.5,
+    busWheelbaseM: 7.2,
+    swayAmpRad: 0.015, // gentle speed-scaled body roll; wheels stay planted
+    boardMaxDistanceCells: 3, // walker-to-bus distance that surfaces the Board/Exit prompt (12 m)
   },
 
   traffic: {

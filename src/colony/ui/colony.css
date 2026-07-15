@@ -42,9 +42,10 @@ body,
   left: 0;
   right: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 16px;
-  padding: 10px 16px;
+  padding: 10px 16px 10px 112px;
   background: linear-gradient(rgba(5, 8, 18, 0.72), rgba(5, 8, 18, 0));
 }
 .brand {
@@ -89,6 +90,23 @@ body,
 .group button:hover {
   background: rgba(255, 255, 255, 0.13);
 }
+/* Anchor styled as a .group button — the topbar's Ask Kooker link (it used to be a fixed
+   pill in index.html that covered the Log out button). */
+.group .linkbtn {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid transparent;
+  color: var(--text);
+  border-radius: 7px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  text-decoration: none;
+  line-height: normal;
+}
+.group .linkbtn:hover {
+  background: rgba(255, 255, 255, 0.13);
+}
 .group button.on {
   background: var(--accent);
   color: #04231f;
@@ -97,10 +115,11 @@ body,
 
 .hud {
   position: absolute;
-  top: 64px;
+  top: auto;
+  bottom: 24px;
   right: 16px;
   width: 226px;
-  max-height: calc(100vh - 88px);
+  max-height: calc(100vh - 140px);
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--brd);
@@ -1387,6 +1406,7 @@ body.tv-mode .radio-iframe.is-visible {
 .first-person-panel__action-button,
 .first-person-panel__rally-button,
 .first-person-panel__debug-toggle,
+.first-person-panel__help-toggle,
 .first-person-panel__exit-button {
   border-radius: 10px;
   border: 1px solid rgba(111, 208, 255, 0.28);
@@ -1414,6 +1434,7 @@ body.tv-mode .radio-iframe.is-visible {
   color: #9fd4a6;
 }
 .first-person-panel__debug-toggle,
+.first-person-panel__help-toggle,
 .first-person-panel__exit-button {
   min-height: 32px;
   background: rgba(255, 255, 255, 0.05);
@@ -1454,7 +1475,8 @@ body.tv-mode .radio-iframe.is-visible {
 }
 .rally-social-read {
   position: fixed;
-  top: 78px;
+  top: auto;
+  bottom: 24px;
   left: 18px;
   z-index: 49;
   display: flex;
@@ -1635,16 +1657,58 @@ body.tv-mode .radio-iframe.is-visible {
 
 @media (max-width: 760px) {
   .topbar {
-    gap: 8px;
+    left: 0;
+    gap: 4px;
+    flex-wrap: nowrap;
+    padding: 7px 10px 7px 96px;
     overflow-x: auto;
-    padding: 8px 10px 12px;
+    scrollbar-width: none;
+  }
+  .topbar::-webkit-scrollbar {
+    display: none;
+  }
+  .topbar .brand,
+  .topbar .spacer {
+    display: none;
+  }
+  .topbar .clock {
+    flex: 0 0 auto;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+  .topbar .group {
+    flex: 0 0 auto;
+    border-radius: 8px;
+    padding: 3px;
+  }
+  .topbar .group button,
+  .topbar .group .linkbtn {
+    padding: 4px 5px;
+    font-size: 12px;
+  }
+  .radio-strip {
+    top: 7px;
+    left: 10px;
+    gap: 6px;
+  }
+  .radio-pill {
+    padding: 6px 10px;
+    font-size: 12px;
   }
 
   .hud {
-    top: 58px;
+    /* Narrow screens are pinned at BOTH ends: the topbar wraps to a tall block at the top,
+       and the rally card lives bottom-left (min-width 190px). Two ~190px cards can't share
+       the bottom row at 375px, and top-anchoring collides with the wrapped topbar — so dock
+       this panel to the middle of the right edge, the one region clear of both. Centring with
+       translateY keeps it clear however the topbar wraps or whether the rally card shows;
+       max-height + overflow-y bound it if the detail stack is expanded. */
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
     right: 8px;
     width: min(190px, calc(100vw - 16px));
-    max-height: calc(100vh - 76px);
+    max-height: calc(100vh - 132px);
     padding: 9px;
   }
   .hud[data-hud-expanded="true"] {
@@ -1658,10 +1722,15 @@ body.tv-mode .radio-iframe.is-visible {
   }
 
   .hud--first-person-mobile-drawer {
+    /* Pin the vertical anchoring the drawer needs (it slides horizontally via translateX),
+       so the centred non-first-person .hud rule above does not leak top:50%/translateY into
+       this shared-class element. Restores the original full-height right-edge drawer. */
+    top: 58px;
+    bottom: 24px;
+    transform: translateX(calc(100% - 42px));
     right: 0;
     width: min(248px, 74vw);
     max-height: calc(100vh - 78px);
-    transform: translateX(calc(100% - 42px));
     opacity: 0.28;
     transition:
       transform 180ms ease,
@@ -1725,6 +1794,7 @@ body.tv-mode .radio-iframe.is-visible {
     min-height: 54px;
   }
   .first-person-panel__debug-toggle,
+  .first-person-panel__help-toggle,
   .first-person-panel__exit-button {
     min-height: 40px;
   }
@@ -1879,4 +1949,47 @@ body.tv-mode .radio-iframe.is-visible {
     background: rgba(7, 12, 24, 0.96);
     border-bottom: 1px solid rgba(255, 219, 112, 0.22);
   }
+}
+
+.bus-network-minimap {
+  position: fixed;
+  z-index: 48;
+  left: max(12px, env(safe-area-inset-left));
+  top: calc(58px + env(safe-area-inset-top));
+  width: 216px;
+  padding: 7px;
+  border: 1px solid rgba(133, 214, 255, 0.38);
+  border-radius: 12px;
+  background: rgba(5, 12, 22, 0.88);
+  box-shadow: 0 7px 26px rgba(0, 0, 0, 0.44);
+  pointer-events: none;
+  backdrop-filter: blur(7px);
+}
+.bus-network-minimap__title {
+  display: flex;
+  justify-content: space-between;
+  color: #bdefff;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  padding: 0 3px 5px;
+}
+.bus-network-minimap svg { display: block; width: 100%; height: auto; }
+.bus-network-minimap text { fill: #fff; font: 700 6px/1 system-ui; }
+.bus-network-minimap__ground { fill: rgba(8, 22, 29, 0.96); }
+.bus-network-minimap__road,
+.bus-network-minimap__spur {
+  fill: none;
+  stroke: #718696;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.bus-network-minimap__spur { stroke: #ffb84a; stroke-width: 2.8; }
+.bus-network-minimap__stop { fill: #ffe174; stroke: #332800; stroke-width: 0.8; }
+.bus-network-minimap__depot { fill: #ff9f35; stroke: #fff0c9; stroke-width: 1; }
+.bus-network-minimap__bus { fill: #2ddfff; stroke: #fff; stroke-width: 1.2; }
+@media (max-width: 700px) {
+  .bus-network-minimap { width: 168px; top: calc(52px + env(safe-area-inset-top)); }
+  .bus-network-minimap__title { font-size: 8px; }
 }

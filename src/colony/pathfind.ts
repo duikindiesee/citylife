@@ -27,6 +27,14 @@ export function cellOk(t: Terrain, x: number, y: number): boolean {
   );
 }
 
+/** A cell is good ground for a ROAD specifically: cellOk AND not beach sand. Spec 140 — roads
+ *  never run on Biome.Beach (operator rule: no roads on beaches, ever); water was already excluded
+ *  by cellOk. Beach stays legal for parcels, houses and walking (the Beach Cove plots, and the
+ *  future boat-launch pad), so this is a separate gate rather than a change to cellOk. */
+export function roadCellOk(t: Terrain, x: number, y: number): boolean {
+  return cellOk(t, x, y) && t.biome[t.idx(x, y)] !== Biome.Beach;
+}
+
 /** Traversal cost of standing on a cell: 1 on flat ground (buildable 2), 3 on a grade (buildable 1),
  *  Infinity on anything blocked, wet or rocky. Roads physically cannot route over Infinity, so the
  *  water barrier holds by construction. */
@@ -134,6 +142,11 @@ export function leastCostPath(
     slopeWeight?: number;
     blocked?: (x: number, y: number) => boolean;
     diagonal?: boolean;
+    /** Spec 140 — treat Biome.Beach as impassable, exactly like water. ROAD routing opts in so
+     *  boot roads bend inland along the grass line; walking and driveway routing do not, so
+     *  citizens still cross the sand on foot. Composed into `blocked`, so endpoints, neighbour
+     *  steps and diagonal corner-cuts all get the same guard. */
+    forbidBeach?: boolean;
     /** Half-width of the search rect around the start/goal bounding box. Defaults to 40 — every
      *  existing caller omits it, so their routes stay byte-identical. A remote spur (e.g. the rally
      *  overlook, which can need a long detour around a ridge) opts into a larger margin. */
@@ -141,7 +154,13 @@ export function leastCostPath(
   } = {},
 ): Cell[] | null {
   const slopeWeight = opts.slopeWeight ?? 0;
-  const blocked = opts.blocked;
+  let blocked = opts.blocked;
+  if (opts.forbidBeach) {
+    const user = blocked;
+    const beach = (x: number, y: number) =>
+      t.biome[t.idx(x, y)] === Biome.Beach;
+    blocked = user ? (x, y) => beach(x, y) || user(x, y) : beach;
+  }
   const neigh = opts.diagonal ? NEIGH8 : NEIGH;
   const SQRT2 = Math.SQRT2;
   if (!cellOk(t, start.x, start.y) || !cellOk(t, goal.x, goal.y)) return null;

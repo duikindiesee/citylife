@@ -9,7 +9,7 @@ import {
   type DecisionRecord,
   type ProviderName,
 } from "../ai/governor";
-import { CityRenderer } from "../render/CityRenderer";
+import { R3FCityRenderer } from "../render/R3FCityRenderer";
 import type { Commodity } from "../engine/types";
 
 export interface UiState {
@@ -63,7 +63,9 @@ export class Runtime {
   readonly sim: Simulation;
   readonly api: GameAPI;
   readonly governor: Governor;
-  private renderer: CityRenderer | null = null;
+  private renderer: R3FCityRenderer | null = null;
+  private running = false;
+  private governorTimer: ReturnType<typeof setInterval> | null = null;
 
   private raf = 0;
   private lastFrame = 0;
@@ -71,11 +73,9 @@ export class Runtime {
   private accumulator = 0;
   private speed = 1;
   private paused = false;
-  private running = false;
 
   private governorEnabled = true;
   private intervalMs = CONFIG.governor.defaultIntervalMs;
-  private governorTimer: ReturnType<typeof setInterval> | null = null;
   private nextCheckInAt = 0;
 
   private listeners = new Set<() => void>();
@@ -89,7 +89,7 @@ export class Runtime {
   // ── lifecycle ──
   start(container: HTMLElement) {
     if (this.running) return;
-    this.renderer = new CityRenderer(container, this.sim);
+    this.renderer = new R3FCityRenderer(container, this.sim);
     this.running = true;
     this.lastFrame = performance.now();
     this.lastUi = this.lastFrame;

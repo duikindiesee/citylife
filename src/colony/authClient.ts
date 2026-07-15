@@ -244,6 +244,16 @@ export class AuthClient {
     return !OPERATOR_ROLES.some((r) => roles.includes(r));
   }
 
+  get isCityLifeAdmin(): boolean {
+    const roles = this.operator?.roles ?? [];
+    return roles.includes("ADMIN") || roles.includes("KOOKER_ADMIN") || roles.includes("CITYLIFE_ADMIN");
+  }
+
+  get isCityLifeModerator(): boolean {
+    const roles = this.operator?.roles ?? [];
+    return roles.includes("CITYLIFE_MODERATOR") || this.isCityLifeAdmin;
+  }
+
   /** Sign in with a kooker account. Async — POSTs to the kooker auth service. */
   async login(email: string, password: string): Promise<LoginResult> {
     const id = email.trim().toLowerCase();

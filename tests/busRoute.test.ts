@@ -50,6 +50,20 @@ describe("088 bus route", () => {
       expect(loopKeys.has(`${s.x},${s.y}`)).toBe(true);
   });
 
+  it("serves the commercial garage at its road-facing target", () => {
+    for (const seed of SEEDS) {
+      const rt = rtFor(seed);
+      const target =
+        rt.commercialDistrict?.garagePad?.roadTarget ??
+        rt.commercialDistrict?.intersection;
+      expect(target).toBeDefined();
+      expect(rt.busRoute!.stops).toContainEqual(target);
+      expect(rt.busRoute!.loop).toContainEqual(target);
+      expect(rt.sim.state.roadKind.has(`${target!.x},${target!.y}`)).toBe(true);
+      expect(rt.sim.state.terrain.isWater(target!.x, target!.y)).toBe(false);
+    }
+  });
+
   it("is deterministic — same road graph + anchors yields an identical route", () => {
     const rt = rtFor(4242);
     const anchors = rt.busRoute!.stops.map((s) => ({ x: s.x, y: s.y }));

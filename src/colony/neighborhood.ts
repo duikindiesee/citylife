@@ -9,7 +9,7 @@
 import type { Terrain } from "./terrain";
 import { Biome } from "./terrain";
 import type { DoorDir } from "./voxelHouse";
-import { cellOk, leastCostPath, type Cell } from "./pathfind";
+import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
 
 export type FenceType = "fence" | "hedge" | "wall";
 
@@ -52,6 +52,7 @@ export interface Parcel {
    *  here; until then defaultBlueprint() seeds a deterministic one so the merged render path is exercised. */
   blueprint?: string;
   fenceType: FenceType;
+  zone?: 'residential' | 'commercial';
   /** The house build-zone (the voxel house sits here, set back from the street). */
   houseZone: Zone;
   /** The vegetable garden band, between house and field. */
@@ -89,7 +90,7 @@ export interface Neighborhood {
 // border (1). Width W: a 1-cell fence border each side, the house inset `inset` more cells each
 // side — the estate tiers inset one EXTRA cell, creating the clear side strip the spec-084 S2
 // L-walkway needs to reach east/west doors.
-interface ParcelSize {
+export interface ParcelSize {
   W: number; // frontage (along the street)
   D: number; // depth (away from the street)
   setback: number; // front-yard cells between the front fence and the house
@@ -100,7 +101,7 @@ interface ParcelSize {
 }
 // Spec 084 S6 — the estate tiers of WORLD v2. Odd widths keep the compiled door's centre column on
 // the parcel axis, so the n/s driveway column never shifts on a redesign.
-const GRAND: ParcelSize = {
+export const GRAND: ParcelSize = {
   W: 27,
   D: 33,
   setback: 4,
@@ -109,7 +110,7 @@ const GRAND: ParcelSize = {
   farmDepth: 5,
   inset: 2,
 }; // houseZone 23x16 — founders + waterfront
-const ESTATE: ParcelSize = {
+export const ESTATE: ParcelSize = {
   W: 23,
   D: 29,
   setback: 3,
@@ -119,7 +120,7 @@ const ESTATE: ParcelSize = {
   inset: 2,
 }; // houseZone 19x14 — the standard plot
 // The legacy tiers remain the small-ground fallback (their houses abut the side fence).
-const BIG: ParcelSize = {
+export const BIG: ParcelSize = {
   W: 11,
   D: 14,
   setback: 2,
@@ -128,7 +129,7 @@ const BIG: ParcelSize = {
   farmDepth: 2,
   inset: 1,
 };
-const COMPACT: ParcelSize = {
+export const COMPACT: ParcelSize = {
   W: 9,
   D: 11,
   setback: 1,
@@ -146,9 +147,16 @@ function key(x: number, y: number): string {
   return `${x},${y}`;
 }
 
-/** Dilate a set of cells by their 4-neighbours that pass cellOk — turns the 1-cell spine into a
- *  ~3-wide carriageway that follows every bend, and the carriageway into its verge ring. */
-function dilate(t: Terrain, cells: Cell[], have: Set<string>): Cell[] {
+/** Dilate a set of cells by their 4-neighbours that pass `ok` — turns the 1-cell spine into a
+ *  ~3-wide carriageway that follows every bend, and the carriageway into its verge ring. The
+ *  carriageway (paved road cells) dilates through roadCellOk so it can never widen onto beach
+ *  sand (spec 140); the verge — unpaved keep-clear ground — keeps the plain cellOk gate. */
+function dilate(
+  t: Terrain,
+  cells: Cell[],
+  have: Set<string>,
+  ok: (t: Terrain, x: number, y: number) => boolean = cellOk,
+): Cell[] {
   const out: Cell[] = [];
   const seen = new Set<string>();
   for (const c of cells) {
@@ -162,7 +170,7 @@ function dilate(t: Terrain, cells: Cell[], have: Set<string>): Cell[] {
         y = c.y + dy;
       const k = key(x, y);
       if (have.has(k) || seen.has(k)) continue;
-      if (!cellOk(t, x, y)) continue;
+      if (!ok(t, x, y)) continue;
       seen.add(k);
       out.push({ x, y });
     }
@@ -170,13 +178,21 @@ function dilate(t: Terrain, cells: Cell[], have: Set<string>): Cell[] {
   return out;
 }
 
-/** Spiral outward from (cx,cy) up to `r` for the nearest cell that passes cellOk. */
-function slideToLand(t: Terrain, cx: number, cy: number, r = 8): Cell | null {
+/** Spiral outward from (cx,cy) up to `r` for the nearest cell that passes `ok`. The corridor
+ *  anchors slide through roadCellOk (spec 140): a spine endpoint on the sand would make the
+ *  beach-forbidding route below fail outright instead of bending inland. */
+function slideToLand(
+  t: Terrain,
+  cx: number,
+  cy: number,
+  r = 8,
+  ok: (t: Terrain, x: number, y: number) => boolean = cellOk,
+): Cell | null {
   for (let rr = 0; rr <= r; rr++) {
     for (let dy = -rr; dy <= rr; dy++) {
       for (let dx = -rr; dx <= rr; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== rr) continue;
-        if (cellOk(t, cx + dx, cy + dy)) return { x: cx + dx, y: cy + dy };
+        if (ok(t, cx + dx, cy + dy)) return { x: cx + dx, y: cy + dy };
       }
     }
   }
@@ -202,20 +218,27 @@ function buildCorridor(
   span: number,
   taken?: ReadonlySet<string>,
 ): Corridor | null {
-  const start = slideToLand(t, lx - Math.floor(span / 2), baselineY);
-  const end = slideToLand(t, lx + Math.ceil(span / 2), baselineY);
+  const start = slideToLand(t, lx - Math.floor(span / 2), baselineY, 8, roadCellOk);
+  const end = slideToLand(t, lx + Math.ceil(span / 2), baselineY, 8, roadCellOk);
   if (!start || !end) return null;
   const avoid =
     taken && (taken.has(key(start.x, start.y)) || taken.has(key(end.x, end.y)));
   if (avoid) return null;
+  // forbidBeach (spec 140): the spine is the paved avenue's centre-line, so it must bend inland
+  // along the grass line instead of running the coastal sand the old routes preferred (flat beach
+  // was the cheapest ground, which is exactly why the trunk roads hugged it).
   const spine = leastCostPath(t, start, end, {
     slopeWeight: 0.6,
+    forbidBeach: true,
     blocked: taken ? (x, y) => taken.has(key(x, y)) : undefined,
   });
   if (!spine || spine.length < span * 0.6) return null;
   const spineSet = new Set(spine.map((c) => key(c.x, c.y)));
   const notTaken = (c: Cell) => !taken || !taken.has(key(c.x, c.y));
-  const carriage = [...spine, ...dilate(t, spine, spineSet)].filter(notTaken);
+  const carriage = [
+    ...spine,
+    ...dilate(t, spine, spineSet, roadCellOk),
+  ].filter(notTaken);
   const carriageSet = new Set(carriage.map((c) => key(c.x, c.y)));
   const verge = dilate(t, carriage, carriageSet).filter(notTaken);
   const blocked = new Set([...carriageSet, ...verge.map((c) => key(c.x, c.y))]);
@@ -559,9 +582,10 @@ function trimCorridor(
     }
   }
   const notFenceSetback = (c: Cell) => !fenceSetback.has(key(c.x, c.y));
-  const carriage = [...spine, ...dilate(t, spine, spineSet)].filter(
-    notFenceSetback,
-  );
+  const carriage = [
+    ...spine,
+    ...dilate(t, spine, spineSet, roadCellOk),
+  ].filter(notFenceSetback);
   const carriageSet = new Set(carriage.map((c) => key(c.x, c.y)));
   const verge = dilate(t, carriage, carriageSet).filter(notFenceSetback);
   return { ...corridor, spine, carriage, verge };
@@ -843,4 +867,134 @@ export function defaultBlueprint(
       `room{kind:${r.kind} x:${r.x} y:${r.y} w:${r.w} d:${r.d} win:${r.win}}`,
   );
   return `house{w:${w} d:${d} wallH:${wallH} door:${doorDir}} ${roomStr.join(" ")}`;
+}
+
+export function createDynamicPlot(
+  t: Terrain,
+  x0: number, // front-center x of the plot
+  y0: number, // front-center y of the plot
+  size: ParcelSize,
+  orientation: 'n' | 's' | 'e' | 'w',
+  id: string,
+  type: 'residential' | 'commercial'
+): Parcel | null {
+  const W = size.W;
+  const D = size.D;
+  const uHalf = (W - 1) / 2;
+
+  // Local to world coordinate translator
+  const translate = (u: number, d: number) => {
+    switch (orientation) {
+      case 'n': return { x: x0 + u, y: y0 + d };
+      case 's': return { x: x0 + u, y: y0 - d };
+      case 'w': return { x: x0 + d, y: y0 + u };
+      case 'e': return { x: x0 - d, y: y0 + u };
+    }
+  };
+
+  // Validate the whole footprint: every cell good ground
+  for (let d = 0; d < D; d++) {
+    for (let u = -uHalf; u <= uHalf; u++) {
+      const cell = translate(u, d);
+      if (!cellOk(t, cell.x, cell.y)) return null;
+    }
+  }
+
+  // Depth bands from the street inward
+  const houseD0 = 1 + size.setback;
+  const gardenD0 = houseD0 + size.houseDepth;
+  const farmD0 = gardenD0 + size.gardenDepth;
+
+  const rect = (dA: number, dB: number, uA: number, uB: number): Zone => {
+    const cA = translate(uA, dA);
+    const cB = translate(uB, dB);
+    const minX = Math.min(cA.x, cB.x);
+    const minY = Math.min(cA.y, cB.y);
+    const maxX = Math.max(cA.x, cB.x);
+    const maxY = Math.max(cA.y, cB.y);
+    return {
+      x: minX,
+      y: minY,
+      w: maxX - minX + 1,
+      d: maxY - minY + 1,
+    };
+  };
+
+  const houseUHalf = uHalf - size.inset;
+  const houseZone = rect(
+    houseD0,
+    houseD0 + size.houseDepth - 1,
+    -houseUHalf,
+    houseUHalf,
+  );
+  const garden = rect(
+    gardenD0,
+    gardenD0 + size.gardenDepth - 1,
+    -(uHalf - 1),
+    uHalf - 1,
+  );
+  const farm = rect(farmD0, farmD0 + size.farmDepth - 1, -(uHalf - 1), uHalf - 1);
+
+  // Door, gate, and driveway
+  const doorCell = translate(0, houseD0);
+  const gateCell = translate(0, 0);
+
+  // The driveway runs from the road cell through the gate to the door
+  const driveway: Cell[] = [];
+  for (let d = -1; d <= houseD0; d++) {
+    const cell = translate(0, d);
+    driveway.push(cell);
+  }
+
+  // Fence ring minus gate
+  const fence: Cell[] = [];
+  for (let u = -uHalf; u <= uHalf; u++) {
+    for (const d of [0, D - 1]) {
+      const cell = translate(u, d);
+      if (cell.x === gateCell.x && cell.y === gateCell.y) continue;
+      fence.push(cell);
+    }
+  }
+  for (let d = 1; d < D - 1; d++) {
+    fence.push(translate(-uHalf, d));
+    fence.push(translate(uHalf, d));
+  }
+
+  // Determine standard door direction string
+  let doorDir: DoorDir = 's';
+  if (orientation === 'n') doorDir = 'n';
+  if (orientation === 's') doorDir = 's';
+  if (orientation === 'e') doorDir = 'e';
+  if (orientation === 'w') doorDir = 'w';
+
+  // Construct seed
+  const houseSeed = (x0 * 73856093) ^ (y0 * 19349663);
+
+  // Construct default blueprint script
+  const blueprint = type === 'residential' ? defaultBlueprint(houseSeed, doorDir, houseZone.w) : undefined;
+
+  // Center of the parcel
+  const centerCell = translate(0, Math.floor(D / 2));
+
+  return {
+    id,
+    x: centerCell.x,
+    y: centerCell.y,
+    w: orientation === 'n' || orientation === 's' ? W : D,
+    h: orientation === 'n' || orientation === 's' ? D : W,
+    side: orientation === 'n' || orientation === 'w' ? -1 : 1,
+    doorX: doorCell.x,
+    doorY: doorCell.y,
+    built: false,
+    houseSeed,
+    blueprint,
+    fenceType: 'fence',
+    zone: type,
+    houseZone,
+    garden,
+    farm,
+    gate: gateCell,
+    driveway,
+    fence
+  };
 }

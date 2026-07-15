@@ -1,0 +1,158 @@
+import { describe, expect, it } from "vitest";
+import { ColonyRuntime } from "../src/colony/runtime";
+import {
+  computeTerrainLeveling,
+  padSeatY,
+  RENDER_DRY_FLOOR,
+} from "../src/colony/render/useTerrainLeveling";
+import { depotCutFillSeatY } from "../src/colony/transit/busDepot";
+
+// Regression for the boot NaN-geometry flood (r3f-colony-migration, 2026-07): every commercial
+// pad has an EVEN width, so its centre x + (w - 1) / 2 is fractional; Terrain.worldY indexes the
+// height array directly and returns NaN off the integer grid. The NaN seat smeared across every
+// footprint + skirt cell of the leveling map, two whole terrain chunks rendered NaN Y vertices,
+// and THREE.computeBoundingSphere dumped the full serialized geometry (megabytes) to
+// console.error twice per boot — flooding the vite client-log relay during e2e runs.
+
+// Drive the REAL runtime boot rather than reconstructing the layout (commerceDistrict.test.ts
+// precedent) — no drift between test and production. 4242 is the live dev-server seed. Booting
+// is expensive, so build lazily and share across tests.
+let _rt: ColonyRuntime | null = null;
+const rt = () => (_rt ??= new ColonyRuntime(4242));
+
+describe("Terrain.worldYAt (continuous ground sampling)", () => {
+  it("matches worldY exactly on integer cells", () => {
+    const t = rt().sim.state.terrain;
+    const last = t.size - 1;
+    for (const [x, y] of [
+      [0, 0],
+      [10, 250],
+      [last, last],
+    ] as const) {
+      expect(t.worldYAt(x, y)).toBeCloseTo(t.worldY(x, y), 10);
+    }
+  });
+
+  it("is finite at fractional coordinates where raw worldY is not", () => {
+    const t = rt().sim.state.terrain;
+    // The even-width pad-centre shape: *.5 in both axes. Raw worldY reads an undefined array
+    // slot there — the footgun this whole file guards.
+    expect(Number.isFinite(t.worldY(102.5, 261.5))).toBe(false);
+    const v = t.worldYAt(102.5, 261.5);
+    expect(Number.isFinite(v)).toBe(true);
+    // Bilinear stays inside the envelope of the four surrounding cells.
+    const hs = [
+      t.worldY(102, 261),
+      t.worldY(103, 261),
+      t.worldY(102, 262),
+      t.worldY(103, 262),
+    ];
+    expect(v).toBeGreaterThanOrEqual(Math.min(...hs) - 1e-9);
+    expect(v).toBeLessThanOrEqual(Math.max(...hs) + 1e-9);
+  });
+
+  it("clamps out-of-range coordinates instead of reading off the grid", () => {
+    const t = rt().sim.state.terrain;
+    expect(Number.isFinite(t.worldYAt(-7.3, 3.4))).toBe(true);
+    expect(Number.isFinite(t.worldYAt(t.size + 20, t.size + 20.7))).toBe(true);
+    expect(t.worldYAt(-100, -100)).toBeCloseTo(t.worldY(0, 0), 10);
+  });
+});
+
+describe("terrain leveling map (terrainLevel) at the real boot state", () => {
+  it("the boot commercial district has even-width pads — the NaN trigger shape", () => {
+    const cd = rt().sim.state.commercialDistrict;
+    expect(cd).toBeTruthy();
+    expect(
+      cd!.parcels.some(
+        (p: { w: number; h: number }) => p.w % 2 === 0 || p.h % 2 === 0,
+      ),
+    ).toBe(true);
+  });
+
+  it("every pad seat is finite and floored at the dry level", () => {
+    const t = rt().sim.state.terrain;
+    const cd = rt().sim.state.commercialDistrict!;
+    const pads = [
+      ...cd.parcels,
+      cd.mallPad,
+      ...(cd.garagePad ? [cd.garagePad] : []),
+    ];
+    for (const p of pads) {
+      const seat = padSeatY(t, p.x, p.y, p.w, p.h);
+      expect(Number.isFinite(seat)).toBe(true);
+      expect(seat).toBeGreaterThanOrEqual(RENDER_DRY_FLOOR);
+    }
+  });
+
+  it("levels every commercial footprint and writes no non-finite override", () => {
+    const state = rt().sim.state;
+    const N = state.terrain.size;
+    const level = computeTerrainLeveling(state, null, new Map());
+    expect(level.size).toBeGreaterThan(0);
+    // Presence matters, not just finiteness: computeTerrainLeveling now REFUSES non-finite
+    // writes, so a regression back to NaN seats shows up as MISSING pad overrides.
+    for (const p of state.commercialDistrict!.parcels) {
+      let covered = 0;
+      for (let y = p.y; y <= p.y + p.h; y++)
+        for (let x = p.x; x <= p.x + p.w; x++)
+          if (level.has(y * N + x)) covered++;
+      expect(covered).toBeGreaterThan(0);
+    }
+    expect(
+      [...level].filter(([, v]) => !Number.isFinite(v)),
+    ).toEqual([]);
+  });
+
+  it("levels exactly the half-open depot footprint to the shared cut-and-fill seat", () => {
+    const state = rt().sim.state;
+    const pad = state.busDepotPad!;
+    const N = state.terrain.size;
+    const level = computeTerrainLeveling(state, null, new Map());
+    const seat = depotCutFillSeatY(state.terrain, pad, RENDER_DRY_FLOOR);
+    let covered = 0;
+    for (let y = pad.y; y < pad.y + pad.h; y++)
+      for (let x = pad.x; x < pad.x + pad.w; x++) {
+        expect(level.get(y * N + x)).toBeCloseTo(seat, 8);
+        covered++;
+      }
+    expect(covered).toBe(pad.w * pad.h);
+    const eastOutside = level.get((pad.y + Math.floor(pad.h / 2)) * N + pad.x + pad.w);
+    expect(eastOutside).not.toBeCloseTo(seat, 8);
+  });
+
+  it("always seats the depot spur terrain to its ribbon surface, even inside the road deadzone", () => {
+    const state = rt().sim.state;
+    const spurKey = [...(state.busDepotSpurCells ?? [])][0];
+    expect(spurKey).toBeTruthy();
+    const [x, y] = spurKey!.split(",").map(Number);
+    const h = state.terrain.worldY(x!, y!) + 0.3;
+    const level = computeTerrainLeveling(state, new Map([[spurKey!, h]]), new Map());
+    expect(level.get(y! * state.terrain.size + x!)).toBeCloseTo(h, 6);
+  });
+
+  it("ground above a road surface is ALWAYS cut to it — no deadzone in that direction", () => {
+    // Operator invariant (2026-07-11): "the ground go above the roads; that should
+    // never happen." The old symmetric deadzone tolerated bumps up to 0.6 above the
+    // road surface, which crested through the +0.18 ribbon as sand islands.
+    const state = rt().sim.state;
+    const t = state.terrain;
+    const N = t.size;
+    // a dry land cell well away from pads
+    let cell: { x: number; y: number } | null = null;
+    for (let y = 100; y < N && !cell; y += 7)
+      for (let x = 100; x < N && !cell; x += 7)
+        if (t.worldY(x, y) > 2) cell = { x, y };
+    expect(cell).not.toBeNull();
+    const { x, y } = cell!;
+    const idx = y * N + x;
+    // road surface 0.3 BELOW the ground (inside the old deadzone): must CUT to surface
+    const below = new Map([[`${x},${y}`, t.worldY(x, y) - 0.3]]);
+    const cut = computeTerrainLeveling(state, below, new Map());
+    expect(cut.get(idx)).toBeCloseTo(t.worldY(x, y) - 0.3, 6);
+    // road surface 0.3 ABOVE the ground (a shallow hollow): deadzone keeps it natural
+    const above = new Map([[`${x},${y}`, t.worldY(x, y) + 0.3]]);
+    const keep = computeTerrainLeveling(state, above, new Map());
+    expect(keep.has(idx)).toBe(false);
+  });
+});

@@ -20,7 +20,7 @@ describe("player neighborhood HUD privacy", () => {
     });
 
     expect(copy.label).toBe("Home site 7 · Occupied");
-    expect(copy.title).toBe(
+    expect(copy.title?.replace(/\u00a0/g, ",")).toBe(
       "Home site price 240 ₭ (≈ R1,200) — larger and shore-side sites cost more",
     );
     expect(`${copy.label} ${copy.title}`).not.toMatch(
@@ -42,7 +42,7 @@ describe("player neighborhood HUD privacy", () => {
     });
 
     expect(copy.label).toBe("Plot 7 · Mira");
-    expect(copy.title).toBe(
+    expect(copy.title?.replace(/\u00a0/g, ",")).toBe(
       "Plot price 240 ₭ (≈ R1,200) — bigger and shore-ward land costs more",
     );
   });

@@ -21,9 +21,11 @@ export interface FirstPersonView {
     /** Current facing in radians, so narration/rendering can reason about direction. */
     heading: number;
   };
-  /** The nearest useful thing the player can interact with from this live position. */
+  /** The nearest useful thing the player can interact with from this live position.
+   *  `bus` prompts are injected by the runtime (spec 149 — a dwelling fleet bus in boarding range);
+   *  this pure view never scans buses itself. */
   interactionPrompt: {
-    kind: "citizen" | "civic" | "building" | "road";
+    kind: "citizen" | "civic" | "building" | "road" | "bus";
     label: string;
     targetName: string;
     targetXY: { x: number; y: number };

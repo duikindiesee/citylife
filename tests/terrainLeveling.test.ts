@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { applyCoastalCommercialDryBlend } from "../src/colony/render/terrainLeveling";
+import {
+  applyCoastalCommercialDryBlend,
+  leveledWorldY,
+} from "../src/colony/render/terrainLeveling";
 
 class FakeTerrain {
   constructor(private readonly heights: Map<string, number>) {}
@@ -72,5 +75,39 @@ describe("coastal commercial terrain leveling", () => {
     expect(get(next, n, 11, 12)).toBeUndefined();
     expect(get(next, n, 9, 12)).toBeUndefined();
     expect(get(next, n, 8, 12)).toBeUndefined();
+  });
+});
+
+describe("leveledWorldY — the walker's ground resolution (spec 131)", () => {
+  const n = 8;
+  const terrain = { size: n, worldY: (x: number, y: number) => x + y * 10 };
+
+  it("returns the leveling override where the rendered terrain was re-graded", () => {
+    const level = new Map<number, number>([[3 * n + 2, 7.25]]);
+    expect(leveledWorldY(terrain, level, 2, 3)).toBe(7.25);
+  });
+
+  it("falls back to the raw sim height where no override exists", () => {
+    const level = new Map<number, number>([[3 * n + 2, 7.25]]);
+    expect(leveledWorldY(terrain, level, 4, 1)).toBe(14);
+  });
+
+  it("indexes the override map row-major so x and y never transpose", () => {
+    // Override at (x=5, y=1); a transposed x*n+y lookup would land on the decoy at (x=1, y=5).
+    const level = new Map<number, number>([
+      [1 * n + 5, 9],
+      [5 * n + 1, -9],
+    ]);
+    expect(leveledWorldY(terrain, level, 5, 1)).toBe(9);
+  });
+
+  it("reads raw terrain when the map is absent", () => {
+    expect(leveledWorldY(terrain, null, 2, 3)).toBe(32);
+    expect(leveledWorldY(terrain, undefined, 2, 3)).toBe(32);
+  });
+
+  it("honours a zero-height override instead of falling through to raw", () => {
+    const level = new Map<number, number>([[0, 0]]);
+    expect(leveledWorldY(terrain, level, 0, 0)).toBe(0);
   });
 });

@@ -21,6 +21,11 @@ import {
 import { createVisualArtifacts, type VisualArtifact } from "./artifacts";
 import { createLedger, type Ledger } from "./ledger";
 import type { CityPlan } from "./cityPlan";
+import type { Neighborhood } from "./neighborhood";
+import type { CommercialDistrict } from "./commerce/district";
+import type { RaceState } from "./racing/race";
+import type { RoadWay } from "./render/roadRibbon";
+import type { CarSpec } from "./car/carSpec";
 
 export type StructureKind =
   | "caravan"
@@ -28,7 +33,8 @@ export type StructureKind =
   | "battery"
   | "rocket"
   | "lighthouse"
-  | "rally";
+  | "rally"
+  | "ironworkPillar";
 export interface SeedStructure {
   kind: StructureKind;
   x: number;
@@ -149,6 +155,218 @@ export interface RallyPlacementOptions {
   anchor?: { x: number; y: number };
   used?: readonly { x: number; y: number }[];
   maxRadius?: number;
+  reachable?: Uint8Array;
+}
+
+export interface IronworkPillarPlacementOptions {
+  anchor?: { x: number; y: number };
+  used?: readonly { x: number; y: number }[];
+  minRadius?: number;
+  maxRadius?: number;
+  reachable?: Uint8Array;
+}
+
+function traversableLandComponent(
+  terrain: Terrain,
+  anchor: { x: number; y: number },
+): Uint8Array {
+  const reachable = new Uint8Array(terrain.size * terrain.size);
+  const queue = new Int32Array(terrain.size * terrain.size);
+  let head = 0;
+  let tail = 0;
+  const traversable = (x: number, y: number): boolean => {
+    if (!terrain.inBounds(x, y)) return false;
+    const i = terrain.idx(x, y);
+    if (terrain.buildable[i] === 0 || terrain.isWater(x, y)) return false;
+    const b = terrain.biome[i];
+    return b !== Biome.Mountain && b !== Biome.Peak;
+  };
+  if (traversable(anchor.x, anchor.y)) {
+    const start = terrain.idx(anchor.x, anchor.y);
+    reachable[start] = 1;
+    queue[tail++] = start;
+  }
+  while (head < tail) {
+    const ci = queue[head++]!;
+    const cx = ci % terrain.size;
+    const cy = (ci / terrain.size) | 0;
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (!traversable(nx, ny)) continue;
+      const ni = terrain.idx(nx, ny);
+      if (reachable[ni]) continue;
+      reachable[ni] = 1;
+      queue[tail++] = ni;
+    }
+  }
+  return reachable;
+}
+
+/** Spec 144 — the Ironwork Pillar survey reservation: a deterministic 3x3 highland plot on a
+ *  reachable mountain shoulder. It is intentionally remote from Landing One, high on the skyline,
+ *  and biased toward Peak/Mountain rock without placing the walkable dais on impassable terrain.
+ *  Stage 0 is invisible; only the reservation exists so later roads/parcels route around it. */
+export function findIronworkPillarSite(
+  terrain: Terrain,
+  options: IronworkPillarPlacementOptions = {},
+): { x: number; y: number } | null {
+  const anchor = options.anchor ?? terrain.landing;
+  const used = options.used ?? [];
+  const maxRadius =
+    options.maxRadius ??
+    Math.max(96, Math.min(190, Math.round(terrain.size * 0.3)));
+  const minRadius =
+    options.minRadius ??
+    Math.min(maxRadius * 0.55, Math.max(48, Math.round(terrain.size * 0.11)));
+  const B = COLONY.build.block;
+  const half = B >> 1;
+  const onRoadFrame = (px: number, py: number): boolean => {
+    const mx = (((px - (anchor.x - half)) % B) + B) % B;
+    const my = (((py - (anchor.y - half)) % B) + B) % B;
+    return mx === 0 || my === 0;
+  };
+  const usedClear = (x: number, y: number): boolean => {
+    for (const u of used) {
+      if (Math.max(Math.abs(u.x - x), Math.abs(u.y - y)) <= 12) return false;
+    }
+    return true;
+  };
+  const footprintClear = (x: number, y: number): boolean => {
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx,
+          ny = y + dy;
+        if (!terrain.inBounds(nx, ny)) return false;
+        if (terrain.isWater(nx, ny)) return false;
+        if (terrain.buildable[terrain.idx(nx, ny)] === 0) return false;
+        if (onRoadFrame(nx, ny)) return false;
+        const b = terrain.biome[terrain.idx(nx, ny)];
+        if (b === Biome.Mountain || b === Biome.Peak || b === Biome.Ocean || b === Biome.Shallows)
+          return false;
+      }
+    }
+    return true;
+  };
+  // Only score sites in the landing's walkable land component. The shoulder may touch bare
+  // mountain rock, but the dais and the complete hike must remain reachable in first person.
+  const reachable =
+    options.reachable ?? traversableLandComponent(terrain, anchor);
+  // A summed-area map keeps the wide mountain survey cheap. Without it, every candidate
+  // rescans a 21x21 neighbourhood and makes multi-seed boot tests needlessly expensive.
+  const prefixStride = terrain.size + 1;
+  const rockPrefix = new Int32Array(prefixStride * prefixStride);
+  for (let py = 0; py < terrain.size; py++) {
+    let rowRocks = 0;
+    for (let px = 0; px < terrain.size; px++) {
+      const pi = terrain.idx(px, py);
+      const b = terrain.biome[pi];
+      if (
+        b === Biome.Mountain ||
+        b === Biome.Peak ||
+        terrain.buildable[pi] === 0
+      ) {
+        rowRocks++;
+      }
+      rockPrefix[(py + 1) * prefixStride + px + 1] =
+        rockPrefix[py * prefixStride + px + 1]! + rowRocks;
+    }
+  }
+  const rockCount = (x: number, y: number, radius: number): number => {
+    const x0 = Math.max(0, x - radius);
+    const y0 = Math.max(0, y - radius);
+    const x1 = Math.min(terrain.size - 1, x + radius) + 1;
+    const y1 = Math.min(terrain.size - 1, y + radius) + 1;
+    return (
+      rockPrefix[y1 * prefixStride + x1]! -
+      rockPrefix[y0 * prefixStride + x1]! -
+      rockPrefix[y1 * prefixStride + x0]! +
+      rockPrefix[y0 * prefixStride + x0]!
+    );
+  };
+  let best: { x: number; y: number; score: number } | null = null;
+  for (
+    let y = Math.max(2, anchor.y - maxRadius);
+    y <= Math.min(terrain.size - 3, anchor.y + maxRadius);
+    y += 2
+  ) {
+    for (
+      let x = Math.max(2, anchor.x - maxRadius);
+      x <= Math.min(terrain.size - 3, anchor.x + maxRadius);
+      x += 2
+    ) {
+      const d = Math.hypot(x - anchor.x, y - anchor.y);
+      if (d > maxRadius || d < minRadius) continue;
+      if (!usedClear(x, y) || !footprintClear(x, y)) continue;
+      const i = terrain.idx(x, y);
+      if (!reachable[i]) continue;
+      let minH = Infinity;
+      let maxH = -Infinity;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const h = terrain.worldY(x + dx, y + dy);
+          minH = Math.min(minH, h);
+          maxH = Math.max(maxH, h);
+        }
+      }
+      const slope = maxH - minH;
+      if (slope > 1.25) continue;
+
+      const rough = rockCount(x, y, 10);
+      const roughWidth =
+        Math.min(terrain.size - 1, x + 10) - Math.max(0, x - 10) + 1;
+      const roughHeight =
+        Math.min(terrain.size - 1, y + 10) - Math.max(0, y - 10) + 1;
+      const ruggedness = rough / (roughWidth * roughHeight);
+      const rockNear = rockCount(x, y, 4);
+      let rockDistance = 12;
+      for (let radius = 0; radius <= 10; radius++) {
+        if (rockCount(x, y, radius) === 0) continue;
+        rockDistance = radius;
+        break;
+      }
+      const elev = terrain.worldY(x, y);
+      let around = 0;
+      let aroundCount = 0;
+      for (const [dx, dy] of [
+        [5, 0],
+        [-5, 0],
+        [0, 5],
+        [0, -5],
+      ] as const) {
+        if (!terrain.inBounds(x + dx, y + dy)) continue;
+        around += terrain.worldY(x + dx, y + dy);
+        aroundCount++;
+      }
+      const prominence = aroundCount ? elev - around / aroundCount : 0;
+      const biome = terrain.biome[i];
+      const highlandBonus =
+        biome === Biome.Highland ? 32 : biome === Biome.Forest ? 7 : 0;
+      const targetDistance = maxRadius * 0.78;
+      const score =
+        elev * 3.5 +
+        prominence * 3 +
+        highlandBonus +
+        Math.min(ruggedness, 0.34) * 135 +
+        Math.min(rockNear, 8) * 2.2 -
+        rockDistance * 1.4 -
+        Math.abs(d - targetDistance) * 0.1 -
+        slope * 7;
+      if (
+        !best ||
+        score > best.score ||
+        (score === best.score && (y < best.y || (y === best.y && x < best.x)))
+      ) {
+        best = { x, y, score };
+      }
+    }
+  }
+  return best ? { x: best.x, y: best.y } : null;
 }
 
 /** Spec 097 — the Rally Overlook: a deterministic HILLTOP with a commanding view of the colony,
@@ -196,48 +414,9 @@ export function findRallyOverlookSite(
   // rule pathfind cellOk uses: not Mountain / Peak / water / unbuildable). A rally on an isolated
   // Highland patch ringed by Mountain is useless — no spur road or guided walk could ever climb to it —
   // so only cells in this connected component qualify.
-  const N2 = terrain.size;
-  const trav = (x: number, y: number): boolean => {
-    if (x < 0 || y < 0 || x >= N2 || y >= N2) return false;
-    const i = terrain.idx(x, y);
-    if (terrain.buildable[i] === 0) return false;
-    if (terrain.isWater(x, y)) return false;
-    const b = terrain.biome[i];
-    return (
-      b !== Biome.Mountain &&
-      b !== Biome.Peak &&
-      b !== Biome.Ocean &&
-      b !== Biome.Shallows
-    );
-  };
-  const reachable = new Uint8Array(N2 * N2);
-  let reachCount = 0;
-  if (trav(anchor.x, anchor.y)) {
-    const queue = [terrain.idx(anchor.x, anchor.y)];
-    reachable[queue[0]!] = 1;
-    reachCount = 1;
-    for (let head = 0; head < queue.length; head++) {
-      const ci = queue[head]!;
-      const cx = ci % N2,
-        cy = (ci / N2) | 0;
-      for (const [dx, dy] of [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ] as const) {
-        const nx = cx + dx,
-          ny = cy + dy;
-        if (nx < 0 || ny < 0 || nx >= N2 || ny >= N2) continue;
-        const ni = terrain.idx(nx, ny);
-        if (reachable[ni] || !trav(nx, ny)) continue;
-        reachable[ni] = 1;
-        reachCount++;
-        queue.push(ni);
-      }
-    }
-  }
-  const haveReachable = reachCount > 0;
+  const reachable =
+    options.reachable ?? traversableLandComponent(terrain, anchor);
+  const haveReachable = reachable[terrain.idx(anchor.x, anchor.y)] === 1;
   let best: { x: number; y: number; score: number } | null = null;
   const y0 = Math.max(1, anchor.y - maxRadius),
     y1 = Math.min(terrain.size - 2, anchor.y + maxRadius);
@@ -414,6 +593,10 @@ export interface ColonyState {
   spireStage: number; // spec 033 — completed stages of the Horizon Spire (0..4)
   spireProgress: number; // spec 033 — 0..1 progress on the stage currently under construction
   spireBuilding: boolean; // spec 033 — true while a Spire stage is being raised (its crew is reserved)
+  pillarStage: number; // spec 144 — completed stages of the Ironwork Pillar (0..3)
+  pillarProgress: number; // spec 144 — 0..1 progress on the stage currently under construction
+  pillarBuilding: boolean; // spec 144 — true while a Pillar stage reserves its 5-hand crew
+  lastRetuneDay: number; // spec 144 — last sim day whose 00:00 retune relief was applied
   frontTimer: number; // spec 034 — sim-minutes until the next Cloudsea Front strikes (counts down once established)
   importOrder: "materials" | "components" | "food" | "linen" | "reels" | null; // spec 036 — standing import order the council sets; inert until an Import Office stands
   rosterMode: "essentials" | "balanced" | "industry"; // spec 038 — labour-priority mode the council sets; only bites with a staffed Roster Office under a shortage ('balanced' = today's even split)
@@ -430,6 +613,38 @@ export interface ColonyState {
   artifacts: VisualArtifact[];
   ledger: Ledger;
   cityPlan: CityPlan | null; // attached by the runtime after construction so the renderer can paint zones
+  /** Attached by the runtime after construction — the homestead neighbourhood the R3F renderer
+   *  reads for lot pads, zone overlays and voxel homes. The legacy renderer received this via
+   *  setNeighborhood(); the R3F port reads it straight off the state. */
+  neighborhood?: Neighborhood | null;
+  /** Attached by the runtime after construction — the shop district the R3F renderer reads for
+   *  commercial pads and terrain leveling. Legacy path was setCommercialDistrict(). */
+  commercialDistrict?: CommercialDistrict | null;
+  /** Spec 149 — the surveyed bus depot pad, attached by the runtime after siting, so terrain
+   *  leveling grades ONE flat apron the slab, the buses and the walker's ground all agree on. */
+  busDepotPad?: { x: number; y: number; w: number; h: number } | null;
+  /** Spec 149 — the depot spur road cells (excluding the loop junction). Ambient TRAFFIC skips these
+   *  so cars never drive the dead-end spur into the depot and collide with a maneuvering bus; the
+   *  buses own the spur. Empty/absent on seeds with no depot. */
+  busDepotSpurCells?: Set<string> | null;
+  /** Attached by the runtime while a Road Rally runs (null otherwise) — the R3F renderer reads
+   *  it for the race course + the player's racing car. Legacy path was setRaceState(). */
+  raceState?: RaceState | null;
+  /** Attached by the runtime after construction — the road centre-line polylines the R3F
+   *  renderer extrudes into the smooth ribbon road surfaces (spec 127). Legacy path was
+   *  setRoadWays(). Hand-drawn builder roads append here via useRoadNetwork.plotRoad. */
+  roadWays?: RoadWay[];
+  /** Attached by the renderer bridge when the signed-in operator has a car — the parked
+   *  car's spec + home cell (spec 131). Legacy path was setOperatorCar(). */
+  operatorCar?: { spec: CarSpec; cell: { x: number; y: number } } | null;
+  /** Render toggle for the zoning overlays (spec 131) — set through setZonesVisible(). */
+  zonesVisible?: boolean;
+  /** Citizens present at the hilltop Rally Point (spec 131) — public-safe filtered at the
+   *  renderer bridge; R3FRallyNameplates draws their name cards + floor circles. */
+  rallyPresence?: { id: string; displayName: string }[];
+  /** The TV-mode cinematic fly-around behind the login screen (spec 131) — set through
+   *  setCinematic(); R3FCameraDirector orbits the landing while true. */
+  cinematic?: boolean;
 }
 
 function daylightAt(hour: number, minute: number): number {
@@ -474,10 +689,24 @@ export class ColonySim {
     }
     // Spec 097 — the hilltop Rally Overlook (race rendezvous), placed after the lighthouse so it
     // avoids it via `used`. A spur road reaches it later (runtime), like the commercial connector.
-    const rally = findRallyOverlookSite(terrain, { used });
+    // Rally and Pillar both require the landing's walkable land component. Compute it once per
+    // boot and share it; the 608-cell world must not pay for two whole-island flood fills.
+    const landmarkReachable = traversableLandComponent(terrain, terrain.landing);
+    const rally = findRallyOverlookSite(terrain, {
+      used,
+      reachable: landmarkReachable,
+    });
     if (rally) {
       structures.push({ kind: "rally", x: rally.x, y: rally.y });
       used.push(rally);
+    }
+    const pillar = findIronworkPillarSite(terrain, {
+      used,
+      reachable: landmarkReachable,
+    });
+    if (pillar) {
+      structures.push({ kind: "ironworkPillar", x: pillar.x, y: pillar.y });
+      used.push(pillar);
     }
 
     this.state = {
@@ -544,6 +773,10 @@ export class ColonySim {
       spireStage: 0, // spec 033 — no Horizon Spire raised at founding
       spireProgress: 0,
       spireBuilding: false,
+      pillarStage: 0, // spec 144 — Ironwork Pillar survey only; no visible/economic effect at stage 0
+      pillarProgress: 0,
+      pillarBuilding: false,
+      lastRetuneDay: 0,
       frontTimer: 0, // spec 034 — set to the first-front delay in initBuild
       importOrder: null, // spec 036 — no standing import order until the council sets one
       rosterMode: "balanced", // spec 038 — even labour split by default; the lever only bites with a staffed Roster Office

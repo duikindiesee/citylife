@@ -53,13 +53,20 @@ function getTraffic(state: ColonyState): TrafficData {
   // roadSet also reserves undrivable cells (the neighborhood verge), and using it gave the graph
   // neighbour ids with no node — cars routed into the verge and dead-ended.
   const rk = state.roadKind;
+  // Spec 149 — the bus-depot spur is a real road but belongs to the buses; ambient cars must not
+  // drive it (a car meeting a maneuvering bus on the dead-end spur is the "bumping into cars" the
+  // operator flagged). Excluding its cells as nodes AND neighbours keeps cars on the loop.
+  const noCar = state.busDepotSpurCells;
+  const drivable = (x: number, y: number): boolean =>
+    rk.has(x + "," + y) && !(noCar != null && noCar.has(x + "," + y));
   const graph = new Map<number, number[]>();
   const intersections = new Set<number>();
   for (const r of state.roads) {
+    if (noCar != null && noCar.has(r.x + "," + r.y)) continue; // spur cells are not car nodes
     const id = r.y * W + r.x;
     const ns: number[] = [];
     for (const [dx, dy] of DIRS) {
-      if (rk.has(r.x + dx + "," + (r.y + dy)))
+      if (drivable(r.x + dx, r.y + dy))
         ns.push((r.y + dy) * W + (r.x + dx));
     }
     graph.set(id, ns);
@@ -79,18 +86,21 @@ function getTraffic(state: ColonyState): TrafficData {
   return td;
 }
 
-/** Nearest DRIVABLE road cell index to a building lot (spiral), or -1. roadKind membership, not
- *  roadSet — a verge cell would be a graph orphan (spec 084 S3). Radius 8 reaches across the wider
- *  estate setbacks. */
+/** Nearest DRIVABLE car road cell index to a building lot (spiral), or -1. roadKind membership,
+ *  not roadSet — a verge cell would be a graph orphan (spec 084 S3). Spec 149 also excludes the
+ *  bus-owned depot spur, because those cells are deliberately absent from the car graph. Radius 8
+ *  reaches across the wider estate setbacks. */
 function nearestRoadCell(state: ColonyState, bx: number, by: number): number {
   const W = state.terrain.size;
+  const noCar = state.busDepotSpurCells;
   for (let r = 1; r <= 8; r++) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const x = bx + dx;
         const y = by + dy;
-        if (state.roadKind.has(x + "," + y)) return y * W + x;
+        const key = x + "," + y;
+        if (state.roadKind.has(key) && !(noCar != null && noCar.has(key))) return y * W + x;
       }
     }
   }

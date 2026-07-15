@@ -22,11 +22,14 @@ const GOLDEN: Record<
     mallPadHash: string;
   }
 > = {
+  // Spec 140 — crossStreetHash re-pinned for seeds 4242 + 7: the cross street's seaward rows
+  // used to run onto Biome.Beach; the road-off-beaches guard drops exactly those cells. Every
+  // other golden (intersection, reserve, mall pad, parcels) is byte-identical to before.
   4242: {
     intersection: { x: 125, y: 265 },
     reserve: { x: 81, y: 233, w: 88, h: 64 },
     mallPad: { x: 111, y: 248, w: 14, h: 10 },
-    crossStreetHash: "4757aca8",
+    crossStreetHash: "91f1b2d0",
     parcelFootprintHash: "81dcfeea",
     mallPadHash: "e58bb703",
   },
@@ -42,7 +45,7 @@ const GOLDEN: Record<
     intersection: { x: 189, y: 323 },
     reserve: { x: 145, y: 291, w: 88, h: 64 },
     mallPad: { x: 175, y: 306, w: 14, h: 10 },
-    crossStreetHash: "43d44ba8",
+    crossStreetHash: "5432568b",
     parcelFootprintHash: "e21b827c",
     mallPadHash: "120d1aa3",
   },

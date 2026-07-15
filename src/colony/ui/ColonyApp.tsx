@@ -45,7 +45,10 @@ import { GaragePanel } from "./GaragePanel";
 import { RaceMobileControls } from "./RaceMobileControls";
 import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
+import { BuilderPanel } from "./BuilderPanel";
+import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
 import "./colony.css";
+import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
 
 // Spec 089 — the CityLife HUD shows only the city-relevant stats (citizens, homesteads, the bank, the
 // commercial district, the border). The old colony-sim survival/economy dashboard (water/food/health/
@@ -226,8 +229,8 @@ export function lotHudCopy(args: {
       : "Founder plot — permanently reserved; never assigned to newcomers and protected from demolition."
     : args.price !== null
       ? args.playerScoped
-        ? `Home site price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString()}) — larger and shore-side sites cost more`
-        : `Plot price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString()}) — bigger and shore-ward land costs more`
+        ? `Home site price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString("en-US")}) — larger and shore-side sites cost more`
+        : `Plot price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString("en-US")}) — bigger and shore-ward land costs more`
       : undefined;
   return { label: `${siteLabel} · ${ownerLabel}`, title };
 }
@@ -347,6 +350,37 @@ function useRuntime(): ColonyRuntime {
   const ref = useRef<ColonyRuntime | null>(null);
   if (!ref.current) {
     ref.current = new ColonyRuntime();
+    // Local dev visual fixture for landmark screenshots. Production bundles and non-local hosts can
+    // never enter this branch; ordinary local play is unchanged unless the explicit query is present.
+    if (
+      import.meta.env.DEV &&
+      ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)
+    ) {
+      const query = new URLSearchParams(window.location.search);
+      const requestedStage = Number(query.get("pillarStage"));
+      if (
+        query.has("pillarStage") &&
+        Number.isInteger(requestedStage) &&
+        requestedStage >= 0 &&
+        requestedStage <= 3
+      ) {
+        ref.current.sim.state.pillarStage = requestedStage;
+        ref.current.sim.state.pillarBuilding = false;
+        ref.current.sim.state.pillarProgress = 0;
+      }
+      const clockMatch = query.get("clock")?.match(/^(\d{1,2}):(\d{2})$/);
+      if (clockMatch) {
+        const hour = Math.max(0, Math.min(23, Number(clockMatch[1])));
+        const minute = Math.max(0, Math.min(59, Number(clockMatch[2])));
+        ref.current.debugSetClock(hour, minute);
+        const t = hour + minute / 60;
+        ref.current.sim.state.clock.daylight = Math.max(
+          0,
+          Math.sin(((t - 6) / 13) * Math.PI),
+        );
+        ref.current.setSpeed(0);
+      }
+    }
     (window as unknown as { __colony: ColonyRuntime }).__colony = ref.current;
   }
   const [, force] = useReducer((x) => x + 1, 0);
@@ -504,7 +538,17 @@ function detectTouchCapable(): boolean {
 }
 
 export function ColonyApp() {
+  const { builderActive, worldViewActive } = useRoadNetwork();
   const runtime = useRuntime();
+  useEffect(() => {
+    if (
+      import.meta.env.DEV &&
+      ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname) &&
+      new URLSearchParams(window.location.search).get("pillarView") === "1"
+    ) {
+      useRoadNetwork.setState({ builderActive: false, worldViewActive: true });
+    }
+  }, []);
   const hostRef = useRef<HTMLDivElement>(null);
   const ui: ColonyUiState = runtime.getUiState();
   const citizenCopy = citizenHudCopy({
@@ -580,6 +624,43 @@ export function ColonyApp() {
     runtime.flushLedgerSync();
   }, [runtime]);
 
+  // Synchronize preexisting/starter simulation roads to the React road builder store upon entering Builder Mode
+  const tiles = useRoadNetwork(state => state.tiles);
+  useEffect(() => {
+    if (builderActive && runtime && runtime.sim) {
+      const sim = runtime.sim;
+      const keys = Object.keys(tiles);
+      if (keys.length === 0 && sim.state.roads && sim.state.roads.length > 0) {
+        const initialTiles: Record<string, any> = {};
+        for (const r of sim.state.roads) {
+          const key = `${r.x},${r.y}`;
+          initialTiles[key] = {
+            x: r.x,
+            y: r.y,
+            mask: 0,
+            type: r.kind || 'street'
+          };
+        }
+        
+        const getMask = (x: number, y: number) => {
+          let mask = 0;
+          if (initialTiles[`${x},${y - 1}`]) mask |= RoadMask.N;
+          if (initialTiles[`${x + 1},${y}`]) mask |= RoadMask.E;
+          if (initialTiles[`${x},${y + 1}`]) mask |= RoadMask.S;
+          if (initialTiles[`${x - 1},${y}`]) mask |= RoadMask.W;
+          return mask;
+        };
+        
+        for (const key in initialTiles) {
+          const t = initialTiles[key];
+          t.mask = getMask(t.x, t.y);
+        }
+        
+        useRoadNetwork.setState({ tiles: initialTiles });
+      }
+    }
+  }, [builderActive, runtime, tiles]);
+
   useEffect(() => {
     const coarsePointer = window.matchMedia?.("(pointer: coarse)");
     const updateTouchCapable = () => setTouchCapable(detectTouchCapable());
@@ -643,6 +724,11 @@ export function ColonyApp() {
     requestAnimationFrame(() => runtime.resize()); // re-measure after first layout
     const ro = new ResizeObserver(() => runtime.resize());
     ro.observe(el);
+    
+    if (runtime.sim) {
+      useRoadNetwork.getState().loadFromDB(runtime.sim);
+    }
+
     return () => {
       ro.disconnect();
       runtime.stop();
@@ -796,28 +882,16 @@ export function ColonyApp() {
   return (
     <div className="colony">
       <div className="canvas-host" ref={hostRef} />
-      {ui.firstPerson.active && (
-        <FirstPersonMouseLookBar
-          citizenName={ui.firstPerson.citizenName}
-          mouseLookLocked={mouseLookLocked}
-          pointerLockError={pointerLockError}
-          requestMouseLook={requestMouseLook}
-          levelFirstPersonLook={() => runtime.levelFirstPersonLook()}
-          mouseSensitivity={ui.firstPerson.mouseSensitivity}
-          setMouseSensitivity={(level) =>
-            runtime.setFirstPersonMouseSensitivity(level)
-          }
-          exitFirstPerson={() => runtime.exitFirstPerson()}
-        />
-      )}
       <FirstPersonPanel
         runtime={runtime}
         fp={ui.firstPerson}
         onOpenRoadmap={() => setRoadmapOpen(true)}
+        onRequestMouseLook={requestMouseLook}
+        onLevelView={() => runtime.levelFirstPersonLook()}
       />
       <RoadmapPanel open={roadmapOpen} onClose={() => setRoadmapOpen(false)} />
       {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
-      {rallyRead && (
+      {(!ui.firstPerson.active && !builderActive && !worldViewActive && rallyRead) && (
         <div
           className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
           aria-label="Who is here at the rally"
@@ -961,7 +1035,15 @@ export function ColonyApp() {
             📷
           </button>
         </div>
+        <BuilderPanel runtime={runtime} sim={runtime.sim} />
         <div className="group">
+          <a
+            className="linkbtn"
+            href="/ask-kooker.html"
+            title="Open the Ask Kooker board"
+          >
+            Ask Kooker
+          </a>
           <button
             title="Sign out of CityLife"
             onClick={() => {
@@ -973,23 +1055,14 @@ export function ColonyApp() {
           </button>
         </div>
       </header>
-
-      <aside
-        className={hudClassName(ui.firstPerson.active)}
-        data-hud-expanded={rightHudOpen ? "true" : "false"}
-      >
-        <div className="hud-essentials" aria-label="City HUD essentials">
-          <h2>{ui.name}</h2>
-          <div className="hud-essential-row">
-            <span>Site</span>
-            <b>{ui.biome}</b>
-          </div>
-          <div className="hud-essential-row">
-            <span>Pop</span>
-            <b>
-              {ui.colonists}/{ui.colony.capacity}
-            </b>
-          </div>
+      <BusNetworkMiniMap runtime={runtime} />
+      {(!builderActive && !worldViewActive) && (
+        <aside
+          className={hudClassName(ui.firstPerson.active)}
+          data-hud-expanded={rightHudOpen ? "true" : "false"}
+        >
+          <div className="hud-essentials" aria-label="City HUD essentials">
+            <h2>{ui.name}</h2>
           <button
             className="hud-detail-toggle"
             type="button"
@@ -1490,6 +1563,21 @@ export function ColonyApp() {
                     {ui.colony.spire.complete
                       ? "★ complete"
                       : `Stage ${ui.colony.spire.stage}/${ui.colony.spire.total}${ui.colony.spire.building ? ` · ${Math.round(ui.colony.spire.progress * 100)}%` : ""}`}
+                  </b>
+                </div>
+              )}
+              {(ui.colony.pillar.stage > 0 || ui.colony.pillar.building) && (
+                <div className="row">
+                  <span>Ironwork Pillar</span>
+                  <b
+                    style={{
+                      color: ui.colony.pillar.complete ? "#ffc568" : "#b98c3a",
+                    }}
+                    title="A pillar over the works. Two hands, one wheel — the colony sleeps easier under a minded world."
+                  >
+                    {ui.colony.pillar.complete
+                      ? `Stage ${ui.colony.pillar.total}/${ui.colony.pillar.total} · Retune 00:00`
+                      : `Stage ${ui.colony.pillar.stage}/${ui.colony.pillar.total}${ui.colony.pillar.building ? ` · ${Math.round(ui.colony.pillar.progress * 100)}%` : ""}`}
                   </b>
                 </div>
               )}
@@ -2991,6 +3079,7 @@ export function ColonyApp() {
             })()}
         </div>
       </aside>
+      )}
 
       <RadioPanel runtime={runtime} radio={ui.radio} tv={ui.tv} />
 
