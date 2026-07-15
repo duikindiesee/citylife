@@ -140,6 +140,21 @@ no pinned path shifted. The full suite (150 files / 1277 tests) is green.
   two floating islands before, is one connected web after; and a data-accurate top-down component map
   (before: 4 components / 96.98%, after: 1 / 100%).
 
+### Rendered-continuity hardening
+
+The connected cell graph is not enough if its smooth ribbon disappears. A seed-4242 link into
+Woods1 remained connected in `roadKind`, but Chaikin corner smoothing bowed its visible centre-line
+across a narrow inlet. The water guard correctly omitted those mesh segments, leaving an apparent
+gap of roughly ten metres even though traffic could still traverse the underlying cells.
+
+`roadRibbonRenderPath` now keeps the smoothed dense path only while all of its segment samples remain
+on renderable land. If smoothing cuts water, that way falls back to the densified source polyline that
+the land-aware router already proved legal. This changes no road, parcel, route or race coordinates;
+it only makes the renderer honour the connected topology. `ribbonCoverage` and the mesh builder use
+the same selected path so terrain grading, foliage clearance and visible asphalt cannot disagree.
+
+`tests/roadWaterGuard.test.ts` pins both the pure near-water bend and the seed-4242 Woods1 connector.
+
 ## Known adjacent issue (out of scope, flagged separately)
 
 Booting some other seeds (e.g. seed 4) throws in the PRE-EXISTING commercial connector

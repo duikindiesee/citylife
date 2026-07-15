@@ -91,7 +91,7 @@ export function ribbonCoverage(
   };
   for (const w of ways) {
     if (w.path.length < 2) continue;
-    const pts = densify(chaikin(w.path, 2), 1.5);
+    const pts = roadRibbonRenderPath(w, terrain);
     const half = w.width / 2;
     const stationH = pts.map((p) => Math.max(0, roadY(p.x, p.y)));
     // per-STATION sweep with the mesh's own CENTERED perpendicular (prev..next), so bend
@@ -233,7 +233,7 @@ export function buildRoadRibbons(
   // ~120 cells, so chaikin leaves segments up to ~30 cells long, and the ribbon's one flat quad per
   // segment dives underground mid-span on a slope (the dash-only gaps). Short stations drape the terrain.
   const paths = ways.map((w) =>
-    w.path.length >= 2 ? densify(chaikin(w.path, 2), 1.5) : null,
+    w.path.length >= 2 ? roadRibbonRenderPath(w, opts.terrain) : null,
   );
   // INTERSECTIONS. Each ribbon is independent, so where two roads cross, both roads' white edges and
   // centre dashes run straight THROUGH the crossing and it reads as a messy plaid (the operator's
@@ -390,6 +390,34 @@ export function densify(
       });
   }
   return out;
+}
+
+/** Select the visible centre-line for one routed way. Chaikin makes long roads read naturally, but
+ * it cuts inside corners and can therefore bow a legally routed land path across a narrow inlet.
+ * The mesh guard then omits those water-touching segments, producing a visible road gap while the
+ * simulation remains connected. Keep smoothing only when its dense samples remain dry; otherwise
+ * render the already land-routed source polyline at the same station density. */
+export function roadRibbonRenderPath(
+  way: RoadWay,
+  terrain: Terrain,
+): { x: number; y: number }[] {
+  if (way.path.length < 2) return way.path.map((p) => ({ ...p }));
+  const smooth = densify(chaikin(way.path, 2), 1.5);
+  for (let i = 0; i < smooth.length - 1; i++) {
+    const a = smooth[i]!,
+      b = smooth[i + 1]!;
+    for (const f of [0, 0.5, 1] as const) {
+      if (
+        !cellOkOn(
+          terrain,
+          a.x + (b.x - a.x) * f,
+          a.y + (b.y - a.y) * f,
+        )
+      )
+        return densify(way.path, 1.5);
+    }
+  }
+  return smooth;
 }
 
 /** Extrude a triangle strip of half-width `half` perpendicular to the smoothed polyline, draped on the
