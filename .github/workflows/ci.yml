@@ -15,7 +15,13 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # Never execute fork-authored code on kooker1. Same-repository branches are
+    # the trusted contributor lane; pushes to main remain covered as well.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Windows, X64, citylife-webgl, kooker1-gpu]
+    timeout-minutes: 60
+    env:
+      CITYLIFE_HARDWARE_WEBGL: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,7 +29,7 @@ jobs:
           node-version: "24"
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:e2e
