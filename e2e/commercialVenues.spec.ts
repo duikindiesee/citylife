@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
 // Spec 143 — commercial venue plots. Asserts in the LIVE booted world that every built
 // venue massing (a) seats its shell exactly on its parcel's pad seat (the ONE padSeatY
@@ -10,24 +10,30 @@ import { test, expect } from '@playwright/test';
 // caps bake their footprint into merged geometry buffers, so there is no per-junction
 // mesh to bbox here anymore.
 
-test('commercial venues: shells seat on their pads and clear every road', async ({ page }) => {
+test("commercial venues: shells seat on their pads and clear every road", async ({
+  page,
+}) => {
   test.setTimeout(180000);
 
-  await page.goto('/?skipauth=1');
-  await page.waitForSelector('canvas', { timeout: 30000 });
+  await page.goto("/?skipauth=1");
+  await page.waitForSelector("canvas", { timeout: 30000 });
   await page.waitForFunction(
     () => !!(window as any).__r3fScene && !!(window as any).__colony,
     undefined,
     { timeout: 60000 },
   );
   // stage 1 (the city) has arrived when the commercial district layer exists
-  await page.waitForFunction(() => {
-    let found = false;
-    (window as any).__r3fScene?.traverse((o: any) => {
-      if (o.name === 'commercialDistrict') found = true;
-    });
-    return found;
-  }, undefined, { timeout: 90000 });
+  await page.waitForFunction(
+    () => {
+      let found = false;
+      (window as any).__r3fScene?.traverse((o: any) => {
+        if (o.name === "commercialDistrict") found = true;
+      });
+      return found;
+    },
+    undefined,
+    { timeout: 90000 },
+  );
   await page.waitForTimeout(3000); // staged mount + grading settle
 
   const probe = await page.evaluate(() => {
@@ -63,7 +69,7 @@ test('commercial venues: shells seat on their pads and clear every road', async 
 
     const venues: any[] = [];
     scene.traverse((o: any) => {
-      if (!o.name?.startsWith('venue.') || !o.userData?.venue) return;
+      if (!o.name?.startsWith("venue.") || !o.userData?.venue) return;
       const v = o.userData.venue;
       const rec: any = {
         name: o.name,
@@ -76,7 +82,7 @@ test('commercial venues: shells seat on their pads and clear every road', async 
       if (v.buildable) {
         let shell: any = null;
         o.traverse((m: any) => {
-          if (m.name === 'venueShell') shell = m;
+          if (m.name === "venueShell") shell = m;
         });
         if (shell) {
           const b = bboxOf(shell);
@@ -91,7 +97,8 @@ test('commercial venues: shells seat on their pads and clear every road', async 
           ]) {
             const gx = Math.round(wx / 4 + t.size / 2);
             const gy = Math.round(wz / 4 + t.size / 2);
-            if (roadSet.has(`${gx},${gy}`)) rec.cornersOnRoad.push(`${gx},${gy}`);
+            if (roadSet.has(`${gx},${gy}`))
+              rec.cornersOnRoad.push(`${gx},${gy}`);
           }
         }
       }

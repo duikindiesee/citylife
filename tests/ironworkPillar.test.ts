@@ -37,7 +37,9 @@ describe("spec 144 Ironwork Pillar mechanics", () => {
   it("cycles the resting tooth through all twelve deterministic states", () => {
     const teeth = new Set<number>();
     for (let hour = 0; hour < 12; hour++) teeth.add(restingToothIndex(7, hour));
-    expect([...teeth].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect([...teeth].sort((a, b) => a - b)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+    ]);
     expect(undercroftBarPhase(7, 3)).toBe(undercroftBarPhase(7, 3));
     expect(isRetuneHour(0)).toBe(true);
     expect(isRetuneHour(1)).toBe(false);
@@ -45,7 +47,9 @@ describe("spec 144 Ironwork Pillar mechanics", () => {
 
   it("places an invisible reserved pillar site at founding", () => {
     const sim = new ColonySim(4242);
-    const pillar = sim.state.structures.find((s) => s.kind === "ironworkPillar");
+    const pillar = sim.state.structures.find(
+      (s) => s.kind === "ironworkPillar",
+    );
     expect(pillar).toBeTruthy();
     const found = findIronworkPillarSite(sim.state.terrain, {
       used: sim.state.structures.filter((s) => s.kind !== "ironworkPillar"),
@@ -53,7 +57,9 @@ describe("spec 144 Ironwork Pillar mechanics", () => {
     expect(found).toEqual({ x: pillar!.x, y: pillar!.y });
     for (let dy = -2; dy <= 2; dy++) {
       for (let dx = -2; dx <= 2; dx++) {
-        expect(sim.state.occupied.has(`${pillar!.x + dx},${pillar!.y + dy}`)).toBe(true);
+        expect(
+          sim.state.occupied.has(`${pillar!.x + dx},${pillar!.y + dy}`),
+        ).toBe(true);
       }
     }
     const terrain = sim.state.terrain;
@@ -63,7 +69,9 @@ describe("spec 144 Ironwork Pillar mechanics", () => {
     expect(terrain.worldY(pillar!.x, pillar!.y)).toBeGreaterThan(
       terrain.worldY(terrain.landing.x, terrain.landing.y),
     );
-    expect(terrain.biome[terrain.idx(pillar!.x, pillar!.y)]).toBe(Biome.Highland);
+    expect(terrain.biome[terrain.idx(pillar!.x, pillar!.y)]).toBe(
+      Biome.Highland,
+    );
     let ruggedCells = 0;
     let adjacentRock = 0;
     for (let dy = -10; dy <= 10; dy++) {
@@ -89,7 +97,9 @@ describe("spec 144 Ironwork Pillar mechanics", () => {
 
   it("routes a deterministic walkable hike from a colony road to the mountain dais", () => {
     const sim = new ColonySim(4242);
-    const pillar = sim.state.structures.find((s) => s.kind === "ironworkPillar")!;
+    const pillar = sim.state.structures.find(
+      (s) => s.kind === "ironworkPillar",
+    )!;
     const first = buildIronworkHikePath(sim.state);
     const second = buildIronworkHikePath(sim.state);
     expect(first).toEqual(second);
@@ -105,7 +115,9 @@ describe("spec 144 Ironwork Pillar mechanics", () => {
       expect(sim.state.terrain.biome[terrainIndex]).not.toBe(Biome.Peak);
       if (index > 0) {
         const prior = first[index - 1]!;
-        expect(Math.max(Math.abs(cell.x - prior.x), Math.abs(cell.y - prior.y))).toBe(1);
+        expect(
+          Math.max(Math.abs(cell.x - prior.x), Math.abs(cell.y - prior.y)),
+        ).toBe(1);
       }
     }
   });
@@ -128,7 +140,11 @@ describe("spec 144 Ironwork Pillar mechanics", () => {
     expect(s.components).toBe(1000 - COLONY.build.pillarStageComponents[0]);
     expect(freeLabour(s)).toBe(beforeLabour - COLONY.build.pillarStageCrew);
     const ui = rt.getUiState().colony.pillar;
-    expect(ui).toMatchObject({ stage: 0, total: COLONY.build.pillarStageCount, building: true });
+    expect(ui).toMatchObject({
+      stage: 0,
+      total: COLONY.build.pillarStageCount,
+      building: true,
+    });
   });
 
   it("keeps stage zero economy byte-identical to a world with the pillar disabled", () => {
@@ -159,12 +175,14 @@ describe("spec 144 Ironwork Pillar mechanics", () => {
     expect(s.lastRetuneDay).toBe(1);
     rt.sim.step();
     expect(s.unrest).toBe(afterMidnight);
-    const saved = JSON.parse(JSON.stringify({
-      pillarStage: s.pillarStage,
-      pillarProgress: s.pillarProgress,
-      pillarBuilding: s.pillarBuilding,
-      lastRetuneDay: s.lastRetuneDay,
-    }));
+    const saved = JSON.parse(
+      JSON.stringify({
+        pillarStage: s.pillarStage,
+        pillarProgress: s.pillarProgress,
+        pillarBuilding: s.pillarBuilding,
+        lastRetuneDay: s.lastRetuneDay,
+      }),
+    );
     const restored = new ColonyRuntime(4242);
     Object.assign(restored.sim.state, saved);
     expect(pillarStatus(restored.sim.state)).toMatchObject({

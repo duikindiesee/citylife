@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from "three";
 
 // Spec 136 — DARK CITY: the colony floats on a slab of rock adrift in deep space, and the
 // sky is the void. Ported verbatim from the legacy buildPlanet (PlanetRenderer ~542-672):
@@ -15,7 +15,7 @@ const SLAB_ROCK = 0x24242f;
 /** worldN — the island's world width in units (terrain.size * 4 in v3). */
 export function buildDarkCity(worldN: number): THREE.Group {
   const group = new THREE.Group();
-  group.name = 'darkCity';
+  group.name = "darkCity";
 
   // Dark City: a tapered slab of rock drops from just under the waterline into the void,
   // so the island clearly floats in space instead of sitting on a planet.
@@ -31,14 +31,21 @@ export function buildDarkCity(worldN: number): THREE.Group {
       flatShading: true,
     }),
   );
-  rock.name = 'darkCity-slab';
+  rock.name = "darkCity-slab";
   rock.position.set(0, -height / 2 - 1.6, 0);
   group.add(rock);
 
   // Additive glow at the waterline — a tight bright rim plus a taller, fainter halo that
   // bleeds up into the void (Dark City energy).
   const rim = new THREE.Mesh(
-    new THREE.CylinderGeometry(top * 1.01, top * 0.9, worldN * 0.06, 9, 1, true),
+    new THREE.CylinderGeometry(
+      top * 1.01,
+      top * 0.9,
+      worldN * 0.06,
+      9,
+      1,
+      true,
+    ),
     new THREE.MeshBasicMaterial({
       color: 0x3aa6c8,
       transparent: true,
@@ -48,11 +55,18 @@ export function buildDarkCity(worldN: number): THREE.Group {
       depthWrite: false,
     }),
   );
-  rim.name = 'darkCity-rim';
+  rim.name = "darkCity-rim";
   rim.position.set(0, -2.4, 0);
   group.add(rim);
   const rimHalo = new THREE.Mesh(
-    new THREE.CylinderGeometry(top * 1.09, top * 0.98, worldN * 0.17, 9, 1, true),
+    new THREE.CylinderGeometry(
+      top * 1.09,
+      top * 0.98,
+      worldN * 0.17,
+      9,
+      1,
+      true,
+    ),
     new THREE.MeshBasicMaterial({
       color: 0x256b8a,
       transparent: true,
@@ -62,7 +76,7 @@ export function buildDarkCity(worldN: number): THREE.Group {
       depthWrite: false,
     }),
   );
-  rimHalo.name = 'darkCity-rim-halo';
+  rimHalo.name = "darkCity-rim-halo";
   rimHalo.position.set(0, -1.44, 0);
   group.add(rimHalo);
 
@@ -89,7 +103,7 @@ export function buildDarkCity(worldN: number): THREE.Group {
       pos[i * 3 + 1] = y * r;
       pos[i * 3 + 2] = Math.sin(theta) * rad * r;
     }
-    sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    sg.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     const points = new THREE.Points(
       sg,
       new THREE.PointsMaterial({
@@ -102,7 +116,7 @@ export function buildDarkCity(worldN: number): THREE.Group {
         depthWrite: false,
       }),
     );
-    points.name = seed === 0 ? 'darkCity-stardust' : 'darkCity-stars';
+    points.name = seed === 0 ? "darkCity-stardust" : "darkCity-stars";
     points.matrixAutoUpdate = false;
     group.add(points);
   };
@@ -122,7 +136,7 @@ export function buildDarkCity(worldN: number): THREE.Group {
       fog: false,
     }),
   );
-  giant.name = 'darkCity-gas-giant';
+  giant.name = "darkCity-gas-giant";
   giant.position.set(-1400, -100, -3400);
   group.add(giant);
   const giantAtmo = new THREE.Mesh(
@@ -137,7 +151,7 @@ export function buildDarkCity(worldN: number): THREE.Group {
       fog: false,
     }),
   );
-  giantAtmo.name = 'darkCity-gas-giant-atmo';
+  giantAtmo.name = "darkCity-gas-giant-atmo";
   giantAtmo.position.copy(giant.position);
   group.add(giantAtmo);
 

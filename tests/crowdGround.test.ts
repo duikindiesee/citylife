@@ -15,7 +15,10 @@ describe("spec 142 — crowd ground surface", () => {
   it("on a road cell, stands on the ribbon top (getSmoothRoadY + lift), not the ground under it", () => {
     const t = flatTerrain(5);
     // getSmoothRoadY over a flat terrain is the flat height; the figure stands lift above it
-    expect(crowdGroundY(t, null, roads("5,5"), 5, 5)).toBeCloseTo(5 + ROAD_RIBBON_LIFT, 5);
+    expect(crowdGroundY(t, null, roads("5,5"), 5, 5)).toBeCloseTo(
+      5 + ROAD_RIBBON_LIFT,
+      5,
+    );
   });
 
   it("off a road cell, stands on the leveled ground (no ribbon lift)", () => {
@@ -28,7 +31,10 @@ describe("spec 142 — crowd ground surface", () => {
     const level = new Map<number, number>([[9 * t.size + 9, 12]]); // graded pad at (9,9)
     expect(crowdGroundY(t, level, roads(), 9, 9)).toBeCloseTo(12, 5);
     // but a road cell ignores the override and takes the ribbon surface
-    expect(crowdGroundY(t, level, roads("9,9"), 9, 9)).toBeCloseTo(5 + ROAD_RIBBON_LIFT, 5);
+    expect(crowdGroundY(t, level, roads("9,9"), 9, 9)).toBeCloseTo(
+      5 + ROAD_RIBBON_LIFT,
+      5,
+    );
   });
 
   it("a null roadSet falls back to the leveled ground everywhere", () => {

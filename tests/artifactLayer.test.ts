@@ -4,14 +4,23 @@
 import { describe, it, expect } from "vitest";
 import type { VisualArtifact } from "../src/colony/artifacts";
 import { ARTIFACT_KINDS } from "../src/colony/artifacts";
-import { artifactTransform, buildArtifactAssets,
+import {
+  artifactTransform,
+  buildArtifactAssets,
   nudgeOffRoads,
 } from "../src/colony/render/artifactLayer";
 
 function art(p: Partial<VisualArtifact>): VisualArtifact {
   return {
-    id: "a", kind: "bench", x: 0, y: 0, rot: 0, footprint: { w: 1, h: 1 },
-    category: "seating" as VisualArtifact["category"], isPublicSafe: true, ...p,
+    id: "a",
+    kind: "bench",
+    x: 0,
+    y: 0,
+    rot: 0,
+    footprint: { w: 1, h: 1 },
+    category: "seating" as VisualArtifact["category"],
+    isPublicSafe: true,
+    ...p,
   };
 }
 
@@ -20,7 +29,7 @@ describe("spec 126 — artifact placement transform", () => {
     const t = artifactTransform(
       art({ x: 10, y: 20, rot: Math.PI / 2, footprint: { w: 2, h: 3 } }),
       40,
-      () => 2.5
+      () => 2.5,
     );
     expect(t.wx).toBe((10 - 20) * 4);
     expect(t.wz).toBe((20 - 20) * 4);
@@ -40,7 +49,9 @@ describe("spec 126 — geometry builder", () => {
     const assets = buildArtifactAssets();
     for (const kind of ARTIFACT_KINDS) {
       expect(assets[kind]).toBeTruthy();
-      expect(assets[kind].geometry.getAttribute("position").count).toBeGreaterThan(0);
+      expect(
+        assets[kind].geometry.getAttribute("position").count,
+      ).toBeGreaterThan(0);
       expect(assets[kind].material).toBeTruthy();
     }
     // clean up (the component disposes these; the test owns its own copies)
@@ -57,19 +68,24 @@ describe("spec 126 revision — artifacts stay off the carriageway", () => {
     return (x: number, y: number) => s.has(`${x},${y}`);
   };
   it("an artifact off the road keeps its exact spot", () => {
-    expect(nudgeOffRoads({ x: 10, y: 10 }, isRoadFrom(["5,5"]), 100)).toEqual({ x: 10, y: 10 });
+    expect(nudgeOffRoads({ x: 10, y: 10 }, isRoadFrom(["5,5"]), 100)).toEqual({
+      x: 10,
+      y: 10,
+    });
   });
   it("an artifact ON the road slides to the nearest unpaved cell", () => {
     // a 3-wide vertical carriageway through x=9..11; the artifact stands mid-lane
     const road: string[] = [];
-    for (let y = 0; y < 30; y++) for (let x = 9; x <= 11; x++) road.push(`${x},${y}`);
+    for (let y = 0; y < 30; y++)
+      for (let x = 9; x <= 11; x++) road.push(`${x},${y}`);
     const spot = nudgeOffRoads({ x: 10, y: 10 }, isRoadFrom(road), 100);
     expect(spot).toBeTruthy();
     expect(spot!.x === 8 || spot!.x === 12).toBe(true); // first unpaved ring cell
   });
   it("an artifact drowned in asphalt hides instead of standing in the lane", () => {
     const road: string[] = [];
-    for (let y = 0; y < 30; y++) for (let x = 0; x < 30; x++) road.push(`${x},${y}`);
+    for (let y = 0; y < 30; y++)
+      for (let x = 0; x < 30; x++) road.push(`${x},${y}`);
     expect(nudgeOffRoads({ x: 10, y: 10 }, isRoadFrom(road), 30)).toBeNull();
   });
 });

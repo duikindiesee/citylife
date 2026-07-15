@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
-import type { ColonySim } from '../sim';
-import type { BusRoute } from '../transit/busRoute';
-import type { DepotSite, DepotLayout } from '../transit/busDepot';
-import type { BusPose } from '../transit/busFleet';
+import React, { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
+import type { ColonySim } from "../sim";
+import type { BusRoute } from "../transit/busRoute";
+import type { DepotSite, DepotLayout } from "../transit/busDepot";
+import type { BusPose } from "../transit/busFleet";
 import {
   buildBusLayer,
   buildStop,
@@ -12,12 +12,12 @@ import {
   BUS_ROAD_LIFT,
   type BusLayer,
   type BusRig,
-} from './busLayer';
-import { buildBusDepotLayer } from './busDepotLayer';
-import { getSmoothRoadY } from './roadSurface';
-import { ROAD_RIBBON_LIFT } from './roadRibbon';
-import { RENDER_DRY_FLOOR } from './useTerrainLeveling';
-import { depotCutFillSeatY, depotPadHeightRange } from '../transit/busDepot';
+} from "./busLayer";
+import { buildBusDepotLayer } from "./busDepotLayer";
+import { getSmoothRoadY } from "./roadSurface";
+import { ROAD_RIBBON_LIFT } from "./roadRibbon";
+import { RENDER_DRY_FLOOR } from "./useTerrainLeveling";
+import { depotCutFillSeatY, depotPadHeightRange } from "../transit/busDepot";
 
 // Spec 122/140 — the town bus render. With a depot (spec 149) this draws the FLEET: the runtime's
 // dispatch machine says where every bus is (grid poses) and this component dresses those poses —
@@ -45,7 +45,9 @@ export function R3FBus({ sim, runtime }: R3FBusProps) {
     lastPose: (BusPose | null)[];
   } | null>(null);
   const builtRoute = useRef<BusRoute | null>(null);
-  const builtDepot = useRef<{ site: DepotSite; layout: DepotLayout } | null>(null);
+  const builtDepot = useRef<{ site: DepotSite; layout: DepotLayout } | null>(
+    null,
+  );
 
   const world = useMemo(() => {
     const size = sim.state.terrain.size;
@@ -55,7 +57,8 @@ export function R3FBus({ sim, runtime }: R3FBusProps) {
       // Spec 122 — ride the SAME surface the road tiles render on (getSmoothRoadY, the max
       // over a bilinear footprint), sampled at fractional path coords, so the coach sits on
       // the road on slopes instead of floating/sinking to the raw cell-center terrain.
-      roadY: (x: number, y: number) => Math.max(0, getSmoothRoadY(sim.state.terrain, x, y)),
+      roadY: (x: number, y: number) =>
+        Math.max(0, getSmoothRoadY(sim.state.terrain, x, y)),
     };
   }, [sim]);
 
@@ -100,7 +103,10 @@ export function R3FBus({ sim, runtime }: R3FBusProps) {
           );
           const padTopY = padSeat + 0.12;
           const natural = depotPadHeightRange(sim.state.terrain, site);
-          const foundationBottomY = Math.min(padSeat - 0.18, natural.min - 0.18);
+          const foundationBottomY = Math.min(
+            padSeat - 0.18,
+            natural.min - 0.18,
+          );
           const inPad = (x: number, y: number) =>
             x >= site.x - 0.6 &&
             x <= site.x + site.w - 0.4 &&
@@ -109,7 +115,7 @@ export function R3FBus({ sim, runtime }: R3FBusProps) {
           const fleetRoadY = (x: number, y: number) =>
             inPad(x, y) ? padTopY - BUS_ROAD_LIFT : world.roadY(x, y);
           const group = new THREE.Group();
-          group.name = 'bus-fleet';
+          group.name = "bus-fleet";
           group.add(
             buildBusDepotLayer({
               site,
@@ -118,15 +124,23 @@ export function R3FBus({ sim, runtime }: R3FBusProps) {
               wz: world.wz,
               padTopY,
               foundationBottomY,
-              roadTopY: world.roadY(site.roadCell.x, site.roadCell.y) + ROAD_RIBBON_LIFT,
+              roadTopY:
+                world.roadY(site.roadCell.x, site.roadCell.y) +
+                ROAD_RIBBON_LIFT,
             }),
           );
           for (const s of route.stops)
-            group.add(buildStop({ wx: world.wx, wz: world.wz, roadY: world.roadY }, s));
+            group.add(
+              buildStop({ wx: world.wx, wz: world.wz, roadY: world.roadY }, s),
+            );
           const poses = runtime.busPoses();
           const rigs: BusRig[] = [];
           for (let i = 0; i < poses.length; i++) {
-            const rig = makeBusRig({ wx: world.wx, wz: world.wz, roadY: fleetRoadY });
+            const rig = makeBusRig({
+              wx: world.wx,
+              wz: world.wz,
+              roadY: fleetRoadY,
+            });
             rig.group.name = `bus-coach-${i}`;
             rigs.push(rig);
             group.add(rig.group);

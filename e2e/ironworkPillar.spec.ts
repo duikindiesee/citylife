@@ -8,7 +8,10 @@ declare global {
   }
 }
 
-async function bootPillar(page: import("@playwright/test").Page, clock: string) {
+async function bootPillar(
+  page: import("@playwright/test").Page,
+  clock: string,
+) {
   await page.goto(
     `/?skipauth=1&pillarStage=3&clock=${encodeURIComponent(clock)}&pillarView=1`,
   );
@@ -169,9 +172,15 @@ test.describe("spec 144 Ironwork Pillar live R3F landmark", () => {
       expect(daylight.found[name]?.visible, name).toBe(true);
     }
     expect(daylight.found.IronworkHikePath?.positionCount).toBeGreaterThan(50);
-    expect(daylight.found.IronworkHikeShoulder?.positionCount).toBeGreaterThan(50);
-    expect(daylight.found.IronworkTrailTreadStones?.instanceCount).toBeGreaterThan(5);
-    expect(daylight.found.IronworkTrailRuneSlits?.instanceCount).toBeGreaterThan(8);
+    expect(daylight.found.IronworkHikeShoulder?.positionCount).toBeGreaterThan(
+      50,
+    );
+    expect(
+      daylight.found.IronworkTrailTreadStones?.instanceCount,
+    ).toBeGreaterThan(5);
+    expect(
+      daylight.found.IronworkTrailRuneSlits?.instanceCount,
+    ).toBeGreaterThan(8);
     expect(daylight.found.IronworkSummitVeil).toBeTruthy();
     expect(daylight.found.IronworkCrownLight).toBeTruthy();
     expect(daylight.found.IronworkUndercroftLight).toBeTruthy();
@@ -244,11 +253,14 @@ test.describe("spec 144 Ironwork Pillar live R3F landmark", () => {
       window.__r3fScene?.traverse((node: any) => {
         if (node.name === "Pillar_Retune_Ring_Hoop")
           result.ringEmissive = node.material?.emissiveIntensity ?? 0;
-        if (node.name === "IronworkCrownLight") result.crownIntensity = node.intensity;
+        if (node.name === "IronworkCrownLight")
+          result.crownIntensity = node.intensity;
         if (node.name === "IronworkUndercroftLight")
           result.undercroftIntensity = node.intensity;
-        if (node.name === "Pillar_Iris_Left") result.irisLeftX = node.position.x;
-        if (node.name === "Pillar_Iris_Right") result.irisRightX = node.position.x;
+        if (node.name === "Pillar_Iris_Left")
+          result.irisLeftX = node.position.x;
+        if (node.name === "Pillar_Iris_Right")
+          result.irisRightX = node.position.x;
       });
       return result;
     });

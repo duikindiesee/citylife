@@ -1,11 +1,11 @@
-import { leveledWorldY } from './terrainLeveling';
-import { crowdGroundY } from './crowdGround';
-import React, { useEffect, useMemo, useRef } from 'react';
-import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
-import type { ColonySim } from '../sim';
-import { porterStatus } from '../build';
-import { COLONY } from '../config';
+import { leveledWorldY } from "./terrainLeveling";
+import { crowdGroundY } from "./crowdGround";
+import React, { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
+import type { ColonySim } from "../sim";
+import { porterStatus } from "../build";
+import { COLONY } from "../config";
 import {
   PORTER_PILE_CAP,
   PORTER_CART_CAP,
@@ -15,7 +15,7 @@ import {
   pileUnits,
   stepCart,
   type PorterCart,
-} from './porterLayer';
+} from "./porterLayer";
 
 // Spec 131 — the porter economy made visible (legacy spec 073). Crates + sacks pile up at
 // each Porter Shed quantised to the live materials/food stock (grow AND shrink), and porter
@@ -34,8 +34,10 @@ export function R3FPorters({ sim, terrainLevel }: R3FPortersProps) {
   const pileRef = useRef<THREE.InstancedMesh>(null);
   const cartRef = useRef<THREE.InstancedMesh>(null);
   const carts = useRef<PorterCart[]>([]);
-  const pileSig = useRef('');
-  const levelSeen = useRef<ReadonlyMap<number, number> | null | undefined>(undefined);
+  const pileSig = useRef("");
+  const levelSeen = useRef<ReadonlyMap<number, number> | null | undefined>(
+    undefined,
+  );
   const lastT = useRef<number | null>(null);
 
   const assets = useMemo(() => {
@@ -46,8 +48,16 @@ export function R3FPorters({ sim, terrainLevel }: R3FPortersProps) {
     return {
       crateGeo,
       cartGeo,
-      pileMat: new THREE.MeshStandardMaterial({ roughness: 0.85, metalness: 0, flatShading: true }),
-      cartMat: new THREE.MeshStandardMaterial({ color: CART.color, roughness: 0.6, metalness: 0.1 }),
+      pileMat: new THREE.MeshStandardMaterial({
+        roughness: 0.85,
+        metalness: 0,
+        flatShading: true,
+      }),
+      cartMat: new THREE.MeshStandardMaterial({
+        color: CART.color,
+        roughness: 0.6,
+        metalness: 0.1,
+      }),
       m4: new THREE.Matrix4(),
       quat: new THREE.Quaternion(),
       pos: new THREE.Vector3(),
@@ -56,35 +66,48 @@ export function R3FPorters({ sim, terrainLevel }: R3FPortersProps) {
       color: new THREE.Color(),
     };
   }, []);
-  useEffect(() => () => {
-    assets.crateGeo.dispose();
-    assets.cartGeo.dispose();
-    assets.pileMat.dispose();
-    assets.cartMat.dispose();
-  }, [assets]);
+  useEffect(
+    () => () => {
+      assets.crateGeo.dispose();
+      assets.cartGeo.dispose();
+      assets.pileMat.dispose();
+      assets.cartMat.dispose();
+    },
+    [assets],
+  );
 
   useFrame(() => {
     const s = sim.state;
     const t = s.terrain;
     const N = t.size;
-    const sheds = s.buildings.filter((b) => b.artifact.kind === 'porter');
+    const sheds = s.buildings.filter((b) => b.artifact.kind === "porter");
     const pileMesh = pileRef.current;
     const cartMesh = cartRef.current;
     if (!pileMesh || !cartMesh) return;
 
     // ---- piles: re-lay only when the quantised stock or the shed set changes ----
-    const matUnits = pileUnits(s.materials ?? 0, COLONY.build.pilePerMaterials, COLONY.build.pileMaxUnits);
-    const foodUnits = pileUnits(s.food ?? 0, COLONY.build.pilePerFood, COLONY.build.pileMaxUnits);
+    const matUnits = pileUnits(
+      s.materials ?? 0,
+      COLONY.build.pilePerMaterials,
+      COLONY.build.pileMaxUnits,
+    );
+    const foodUnits = pileUnits(
+      s.food ?? 0,
+      COLONY.build.pilePerFood,
+      COLONY.build.pileMaxUnits,
+    );
     // the leveling map re-shapes the ground the piles sit on - a new map identity must
     // re-lay them even when the stock signature is unchanged (spec 134)
     if (levelSeen.current !== terrainLevel) {
       levelSeen.current = terrainLevel;
-      pileSig.current = '';
+      pileSig.current = "";
     }
-    const sig = `${sheds.map((b) => `${b.x},${b.y}`).join('|')}:${matUnits}:${foodUnits}`;
+    const sig = `${sheds.map((b) => `${b.x},${b.y}`).join("|")}:${matUnits}:${foodUnits}`;
     if (sig !== pileSig.current) {
       pileSig.current = sig;
-      const piles = layPiles(sheds, matUnits, foodUnits, N, (x, y) => leveledWorldY(t, terrainLevel, x, y));
+      const piles = layPiles(sheds, matUnits, foodUnits, N, (x, y) =>
+        leveledWorldY(t, terrainLevel, x, y),
+      );
       let pi = 0;
       for (const p of piles) {
         if (pi >= pileMesh.instanceMatrix.count) break;
@@ -103,7 +126,10 @@ export function R3FPorters({ sim, terrainLevel }: R3FPortersProps) {
 
     // ---- carts: handcarts on the roads while the sheds are staffed ----
     const status = porterStatus(s);
-    const want = sheds.length && status.working ? Math.min(PORTER_CART_CAP, status.porters) : 0;
+    const want =
+      sheds.length && status.working
+        ? Math.min(PORTER_CART_CAP, status.porters)
+        : 0;
     while (carts.current.length < want) {
       const shed = sheds[carts.current.length % sheds.length]!;
       carts.current.push({
@@ -117,14 +143,25 @@ export function R3FPorters({ sim, terrainLevel }: R3FPortersProps) {
     if (carts.current.length > want) carts.current.length = want;
 
     const now = performance.now();
-    const dt = lastT.current ? Math.min(0.05, (now - lastT.current) / 1000) : 1 / 60;
+    const dt = lastT.current
+      ? Math.min(0.05, (now - lastT.current) / 1000)
+      : 1 / 60;
     lastT.current = now;
 
     let ci = 0;
     for (const cart of carts.current) {
       const heading = stepCart(cart, dt, s.roadSet, Math.random);
       // spec 142 — carts run the road network, so ride the ribbon top, not the ground beneath it
-      const wy = Math.max(0, crowdGroundY(t, terrainLevel, s.roadSet, Math.round(cart.x), Math.round(cart.y)));
+      const wy = Math.max(
+        0,
+        crowdGroundY(
+          t,
+          terrainLevel,
+          s.roadSet,
+          Math.round(cart.x),
+          Math.round(cart.y),
+        ),
+      );
       assets.pos.set((cart.x - N / 2) * 4, wy + 0.05, (cart.y - N / 2) * 4);
       assets.quat.setFromAxisAngle(assets.axis, -heading);
       assets.m4.compose(assets.pos, assets.quat, assets.one);

@@ -247,7 +247,12 @@ export function findIronworkPillarSite(
         if (terrain.buildable[terrain.idx(nx, ny)] === 0) return false;
         if (onRoadFrame(nx, ny)) return false;
         const b = terrain.biome[terrain.idx(nx, ny)];
-        if (b === Biome.Mountain || b === Biome.Peak || b === Biome.Ocean || b === Biome.Shallows)
+        if (
+          b === Biome.Mountain ||
+          b === Biome.Peak ||
+          b === Biome.Ocean ||
+          b === Biome.Shallows
+        )
           return false;
       }
     }
@@ -691,7 +696,10 @@ export class ColonySim {
     // avoids it via `used`. A spur road reaches it later (runtime), like the commercial connector.
     // Rally and Pillar both require the landing's walkable land component. Compute it once per
     // boot and share it; the 608-cell world must not pay for two whole-island flood fills.
-    const landmarkReachable = traversableLandComponent(terrain, terrain.landing);
+    const landmarkReachable = traversableLandComponent(
+      terrain,
+      terrain.landing,
+    );
     const rally = findRallyOverlookSite(terrain, {
       used,
       reachable: landmarkReachable,

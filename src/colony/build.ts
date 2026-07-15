@@ -338,8 +338,10 @@ function frameRoom(state: ColonyState, bx: number, by: number): number {
     !t.isWater(x, y) &&
     t.biome[t.idx(x, y)] !== Biome.Beach;
   let room = 0;
-  for (let x = x0; x <= x1; x++) room += (okAt(x, y0) ? 1 : 0) + (okAt(x, y1) ? 1 : 0);
-  for (let y = y0 + 1; y < y1; y++) room += (okAt(x0, y) ? 1 : 0) + (okAt(x1, y) ? 1 : 0);
+  for (let x = x0; x <= x1; x++)
+    room += (okAt(x, y0) ? 1 : 0) + (okAt(x, y1) ? 1 : 0);
+  for (let y = y0 + 1; y < y1; y++)
+    room += (okAt(x0, y) ? 1 : 0) + (okAt(x1, y) ? 1 : 0);
   return room;
 }
 
@@ -4618,7 +4620,6 @@ function spireStep(state: ColonyState, dtMin: number): void {
   }
 }
 
-
 export const PILLAR_TEETH = 12;
 
 function pillarHash(a: number, b: number, salt: number): number {
@@ -4631,8 +4632,13 @@ function pillarHash(a: number, b: number, salt: number): number {
 }
 
 export function restingToothIndex(day: number, hour: number): number {
-  const phase = Math.floor(pillarHash(Math.floor(day), 0, 0x116) * PILLAR_TEETH);
-  return (((Math.floor(hour) * 7 + phase) % PILLAR_TEETH) + PILLAR_TEETH) % PILLAR_TEETH;
+  const phase = Math.floor(
+    pillarHash(Math.floor(day), 0, 0x116) * PILLAR_TEETH,
+  );
+  return (
+    (((Math.floor(hour) * 7 + phase) % PILLAR_TEETH) + PILLAR_TEETH) %
+    PILLAR_TEETH
+  );
 }
 
 export function undercroftBarPhase(day: number, hour: number): number {
@@ -4659,7 +4665,8 @@ function pillarStageBundle(stage: number) {
 
 function pillarAfford(state: ColonyState, margin: number): boolean {
   const stage = state.pillarStage ?? 0;
-  if (stage >= COLONY.build.pillarStageCount || state.pillarBuilding) return false;
+  if (stage >= COLONY.build.pillarStageCount || state.pillarBuilding)
+    return false;
   const b = pillarStageBundle(stage);
   return (
     state.treasury >= b.treasury &&
@@ -4687,7 +4694,8 @@ export function fundIronworkStage(state: ColonyState): boolean {
 function pillarStep(state: ColonyState, dtMin: number): void {
   if (state.pillarBuilding) {
     state.pillarProgress =
-      (state.pillarProgress ?? 0) + dtMin / (COLONY.build.pillarStageBuildHours * 60);
+      (state.pillarProgress ?? 0) +
+      dtMin / (COLONY.build.pillarStageBuildHours * 60);
     if (state.pillarProgress >= 1) {
       state.pillarStage = (state.pillarStage ?? 0) + 1;
       state.pillarBuilding = false;
@@ -4710,7 +4718,10 @@ function retuneStep(state: ColonyState): void {
   if (!pillarComplete(state)) return;
   if (!isRetuneHour(state.clock.hour)) return;
   if ((state.lastRetuneDay ?? -1) === state.clock.day) return;
-  state.unrest = Math.max(0, (state.unrest ?? 0) - COLONY.build.retuneNightRelief);
+  state.unrest = Math.max(
+    0,
+    (state.unrest ?? 0) - COLONY.build.retuneNightRelief,
+  );
   state.lastRetuneDay = state.clock.day;
 }
 
@@ -4728,7 +4739,10 @@ export function pillarStatus(state: ColonyState): {
     progress: state.pillarProgress ?? 0,
     building: state.pillarBuilding ?? false,
     complete: pillarComplete(state),
-    retuneTonight: pillarComplete(state) && isRetuneHour(state.clock.hour) && (state.lastRetuneDay ?? -1) !== state.clock.day,
+    retuneTonight:
+      pillarComplete(state) &&
+      isRetuneHour(state.clock.hour) &&
+      (state.lastRetuneDay ?? -1) !== state.clock.day,
   };
 }
 

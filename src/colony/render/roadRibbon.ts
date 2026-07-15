@@ -287,7 +287,8 @@ export function buildRoadRibbons(
       if (s.size >= 2) {
         const [x, y] = k.split(",").map(Number);
         for (let dx = -JR; dx <= JR; dx++)
-          for (let dy = -JR; dy <= JR; dy++) junction.add(`${x + dx},${y + dy}`);
+          for (let dy = -JR; dy <= JR; dy++)
+            junction.add(`${x + dx},${y + dy}`);
       }
     nearJunction = (x: number, y: number) =>
       junction.has(`${Math.round(x)},${Math.round(y)}`);
@@ -299,7 +300,9 @@ export function buildRoadRibbons(
   const nearDepotMouth = (x: number, y: number) =>
     depotMouths.some((p) => Math.hypot(x - p.x, y - p.y) <= 2.2);
   const skipPaint = (x: number, y: number) =>
-    nearJunction(x, y) || nearDepotMouth(x, y) || !roadSurfaceCellOk(opts, x, y);
+    nearJunction(x, y) ||
+    nearDepotMouth(x, y) ||
+    !roadSurfaceCellOk(opts, x, y);
   const lifts = zones
     ? assignWayLifts(ways.length, zones)
     : new Array<number>(ways.length).fill(0);
@@ -407,13 +410,7 @@ export function roadRibbonRenderPath(
     const a = smooth[i]!,
       b = smooth[i + 1]!;
     for (const f of [0, 0.5, 1] as const) {
-      if (
-        !cellOkOn(
-          terrain,
-          a.x + (b.x - a.x) * f,
-          a.y + (b.y - a.y) * f,
-        )
-      )
+      if (!cellOkOn(terrain, a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f))
         return densify(way.path, 1.5);
     }
   }

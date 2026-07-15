@@ -77,7 +77,10 @@ const REQUIRED_NODES = [
 ];
 
 const pillarBytes = readFileSync(
-  new URL("../public/assets/citylife/props/ironwork-pillar.glb", import.meta.url),
+  new URL(
+    "../public/assets/citylife/props/ironwork-pillar.glb",
+    import.meta.url,
+  ),
 );
 
 function meshWidth(json: GltfJson, nodeName: string): number {
@@ -104,13 +107,19 @@ describe("ironwork-pillar.glb", () => {
   });
 
   it("keeps the skyline needle above six hundred metres and the crown emissive", () => {
-    const needle = json.nodes.find((node) => node.name === "Pillar_Sky_Needle")!;
+    const needle = json.nodes.find(
+      (node) => node.name === "Pillar_Sky_Needle",
+    )!;
     const needleY = needle.translation?.[1] ?? needle.matrix?.[13];
     expect(needleY).toBeGreaterThan(600);
-    const root = json.nodes.find((node) => node.name === "Ironwork_Pillar_Root")!;
+    const root = json.nodes.find(
+      (node) => node.name === "Ironwork_Pillar_Root",
+    )!;
     expect(root.extras?.heightMeters).toBe(622);
     const emissiveNames = (json.materials ?? [])
-      .filter((material) => material.emissiveFactor?.some((channel) => channel > 0))
+      .filter((material) =>
+        material.emissiveFactor?.some((channel) => channel > 0),
+      )
       .map((material) => material.name);
     expect(emissiveNames).toContain("Pillar_Core_Emissive");
     expect(emissiveNames).toContain("Pillar_Seam_Emissive");
@@ -123,7 +132,9 @@ describe("ironwork-pillar.glb", () => {
   });
 
   it("keeps generation deterministic and the runtime on the committed asset URL", () => {
-    expect(generatorSource).not.toMatch(/Math\.random|Date\.now|performance\.now/);
+    expect(generatorSource).not.toMatch(
+      /Math\.random|Date\.now|performance\.now/,
+    );
     expect(generatorSource).toContain('root.name = "Ironwork_Pillar_Root"');
     expect(generatorSource).toContain('"ironwork-pillar.glb"');
     expect(IRONWORK_PILLAR_ASSET_URL).toBe(

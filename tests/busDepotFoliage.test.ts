@@ -86,9 +86,12 @@ describe("bus depot foliage clearing (seed 4242)", () => {
     const pad = { x: 6, y: 6, w: 6, h: 5 };
     const before = calculateFoliagePositions(terrain, [], [], []).matrices;
     expect(treesInPad(before, pad, N, 1)).toBeGreaterThan(0);
-    const after = calculateFoliagePositions(terrain, [], [], [
-      { x0: pad.x, y0: pad.y, x1: pad.x + pad.w - 1, y1: pad.y + pad.h - 1 },
-    ]).matrices;
+    const after = calculateFoliagePositions(
+      terrain,
+      [],
+      [],
+      [{ x0: pad.x, y0: pad.y, x1: pad.x + pad.w - 1, y1: pad.y + pad.h - 1 }],
+    ).matrices;
     expect(treesInPad(after, pad, N, 1)).toBe(0);
   });
 
@@ -96,11 +99,15 @@ describe("bus depot foliage clearing (seed 4242)", () => {
     const rt = new ColonyRuntime(4242);
     const s = rt.sim.state;
     const pad = s.busDepotPad;
-    expect(pad, "seed 4242 must site a bus depot for this regression to mean anything").toBeTruthy();
+    expect(
+      pad,
+      "seed 4242 must site a bus depot for this regression to mean anything",
+    ).toBeTruthy();
     const N = s.terrain.size;
     const heights: number[] = [];
     for (let y = pad!.y; y < pad!.y + pad!.h; y++)
-      for (let x = pad!.x; x < pad!.x + pad!.w; x++) heights.push(s.terrain.worldY(x, y));
+      for (let x = pad!.x; x < pad!.x + pad!.w; x++)
+        heights.push(s.terrain.worldY(x, y));
     expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(
       COLONY.transit.depotMaxHeightSpreadM,
     );

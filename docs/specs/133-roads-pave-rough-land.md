@@ -15,9 +15,9 @@ LAND — steep or sunken pockets — as well as water. The seeded boot ways cros
 pockets** (measured live): at each one the mesh skipped segments (the ragged holes) while
 neighbouring segments' quads bridged the pocket at rim height, AND the spec-130 grading
 skipped the same cells (same guard), so the ground never rose — an ungraded dip under a
-floating road surface. The terrain's own doc already said the intent: *"Roads stop at
+floating road surface. The terrain's own doc already said the intent: _"Roads stop at
 water (a bridge spans it later); steep land is not water, so roads may cross it and drape
-over the slope."*
+over the slope."_
 
 ## Fix
 

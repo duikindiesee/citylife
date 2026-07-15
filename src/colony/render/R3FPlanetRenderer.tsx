@@ -1,25 +1,29 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { createRoot, Root } from 'react-dom/client';
-import { Canvas } from '@react-three/fiber';
-import { ContactShadows } from '@react-three/drei';
-import { EffectComposer, Bloom, ToneMapping } from '@react-three/postprocessing';
-import { Physics, RigidBody } from '@react-three/rapier';
-import { ToneMappingMode } from 'postprocessing';
-import * as THREE from 'three';
+import React, { useEffect, useState, useMemo, useRef } from "react";
+import { createRoot, Root } from "react-dom/client";
+import { Canvas } from "@react-three/fiber";
+import { ContactShadows } from "@react-three/drei";
+import {
+  EffectComposer,
+  Bloom,
+  ToneMapping,
+} from "@react-three/postprocessing";
+import { Physics, RigidBody } from "@react-three/rapier";
+import { ToneMappingMode } from "postprocessing";
+import * as THREE from "three";
 
-import type { ColonySim } from '../sim';
-import type { Terrain } from '../terrain';
-import type { Neighborhood } from '../neighborhood';
-import type { CommercialDistrict } from '../commerce/district';
-import type { RoadWay } from './roadRibbon';
-import type { BusRoute } from '../transit/busRoute';
-import type { RaceState } from '../racing/race';
-import type { CarSpec } from '../car/carSpec';
-import { FirstPersonController } from '../../render/components/FirstPersonController';
-import { CommercialBlock } from '../../render/components/CommercialBlock';
-import { clusterCommercialLots } from './commercialClusters';
-import { commercialBlockSeatY } from './commercialBlockSeat';
-import { Island } from '../../render/components/Island';
+import type { ColonySim } from "../sim";
+import type { Terrain } from "../terrain";
+import type { Neighborhood } from "../neighborhood";
+import type { CommercialDistrict } from "../commerce/district";
+import type { RoadWay } from "./roadRibbon";
+import type { BusRoute } from "../transit/busRoute";
+import type { RaceState } from "../racing/race";
+import type { CarSpec } from "../car/carSpec";
+import { FirstPersonController } from "../../render/components/FirstPersonController";
+import { CommercialBlock } from "../../render/components/CommercialBlock";
+import { clusterCommercialLots } from "./commercialClusters";
+import { commercialBlockSeatY } from "./commercialBlockSeat";
+import { Island } from "../../render/components/Island";
 
 export type ViewMode = "biome" | "buildable" | "elevation";
 export type CameraPreset = "street" | "district" | "planet";
@@ -35,24 +39,24 @@ export interface AvatarView {
   isOperator: boolean;
 }
 
-import { R3FTerrain } from './R3FTerrain';
-import { R3FOcean } from './R3FOcean';
-import { R3FFoliage } from './R3FFoliage';
-import { R3FCloud } from './R3FCloud';
-import { R3FFoam } from './R3FFoam';
-import { R3FRoadBuilder } from './R3FRoadBuilder';
-import { R3FRoadNetwork } from './R3FRoadNetwork';
-import { R3FRoadRibbons } from './R3FRoadRibbons';
-import { buildShoreProps } from './shoreProps';
-import { buildVenueProps } from './venueProps';
-import { buildLandingCamp } from './landingCampLayer';
-import { buildAmbient } from './ambientLayer';
-import { useTerrainLeveling } from './useTerrainLeveling';
-import { leveledWorldY } from './terrainLeveling';
-import { useRoadNetwork } from '../stores/useRoadNetwork';
-import { COLONY } from '../config';
-import { Html, MapControls } from '@react-three/drei';
-import { useThree, useFrame } from '@react-three/fiber';
+import { R3FTerrain } from "./R3FTerrain";
+import { R3FOcean } from "./R3FOcean";
+import { R3FFoliage } from "./R3FFoliage";
+import { R3FCloud } from "./R3FCloud";
+import { R3FFoam } from "./R3FFoam";
+import { R3FRoadBuilder } from "./R3FRoadBuilder";
+import { R3FRoadNetwork } from "./R3FRoadNetwork";
+import { R3FRoadRibbons } from "./R3FRoadRibbons";
+import { buildShoreProps } from "./shoreProps";
+import { buildVenueProps } from "./venueProps";
+import { buildLandingCamp } from "./landingCampLayer";
+import { buildAmbient } from "./ambientLayer";
+import { useTerrainLeveling } from "./useTerrainLeveling";
+import { leveledWorldY } from "./terrainLeveling";
+import { useRoadNetwork } from "../stores/useRoadNetwork";
+import { COLONY } from "../config";
+import { Html, MapControls } from "@react-three/drei";
+import { useThree, useFrame } from "@react-three/fiber";
 
 import { VoxelHouseMesh } from "./VoxelHouseMesh";
 import { GlbHouse } from "./GlbHouse";
@@ -61,30 +65,36 @@ import { padSeatY } from "./useTerrainLeveling";
 import { useWorldAssets } from "../stores/useWorldAssets";
 import { R3FPlayerCar } from "./R3FPlayerCar";
 import { ErrorBoundary } from "./ErrorBoundary";
-import { useSimSignal, type SimBridge } from './useSimSignal';
-import { zoneSignature, spawnSignature, roadwaySignature } from './simSignals';
-import { ribbonCoverage } from './roadRibbon';
-import { findJunctionZones } from './roadJunctions';
-import { attachCapPolys, capCoverageCells } from './junctionCap';
-import { getSmoothRoadY } from './roadSurface';
-import { nextBootStage } from './bootStage';
-import { R3FAvatars, type AvatarRefs } from './R3FAvatars';
-import { R3FPedestrians } from './R3FPedestrians';
-import { R3FBus } from './R3FBus';
-import { R3FRace } from './R3FRace';
-import { R3FTarentaal } from './R3FTarentaal';
-import { R3FArtifacts } from './R3FArtifacts';
-import { R3FPorters } from './R3FPorters';
-import { R3FOperatorCar } from './R3FOperatorCar';
-import { R3FRallyNameplates } from './R3FRallyNameplates';
-import { R3FCameraDirector } from './R3FCameraDirector';
-import { R3FCommercialDistrict } from './R3FCommercialDistrict';
-import { R3FDarkCity } from './R3FDarkCity';
-import { R3FIronworkPillar } from './R3FIronworkPillar';
-import { isPublicSafe } from '../newcomers';
-import { aerialMouseButtons } from './panControls';
+import { useSimSignal, type SimBridge } from "./useSimSignal";
+import { zoneSignature, spawnSignature, roadwaySignature } from "./simSignals";
+import { ribbonCoverage } from "./roadRibbon";
+import { findJunctionZones } from "./roadJunctions";
+import { attachCapPolys, capCoverageCells } from "./junctionCap";
+import { getSmoothRoadY } from "./roadSurface";
+import { nextBootStage } from "./bootStage";
+import { R3FAvatars, type AvatarRefs } from "./R3FAvatars";
+import { R3FPedestrians } from "./R3FPedestrians";
+import { R3FBus } from "./R3FBus";
+import { R3FRace } from "./R3FRace";
+import { R3FTarentaal } from "./R3FTarentaal";
+import { R3FArtifacts } from "./R3FArtifacts";
+import { R3FPorters } from "./R3FPorters";
+import { R3FOperatorCar } from "./R3FOperatorCar";
+import { R3FRallyNameplates } from "./R3FRallyNameplates";
+import { R3FCameraDirector } from "./R3FCameraDirector";
+import { R3FCommercialDistrict } from "./R3FCommercialDistrict";
+import { R3FDarkCity } from "./R3FDarkCity";
+import { R3FIronworkPillar } from "./R3FIronworkPillar";
+import { isPublicSafe } from "../newcomers";
+import { aerialMouseButtons } from "./panControls";
 
-function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) {
+function ZoneManager({
+  sim,
+  runtime,
+}: {
+  sim: ColonySim;
+  runtime?: SimBridge;
+}) {
   const state = sim.state;
   const { assets, fetchManifest } = useWorldAssets();
 
@@ -134,29 +144,57 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
             // If the microservice has a functional garage asset, use the GLB House!
             // We wrap in ErrorBoundary + Suspense so bad models fall back to voxel houses.
             if (assets["functional_garage"]) {
-               // grid → world transform + pad seat (spec 128): the old call passed RAW GRID
-               // coords as world position, stacking every garage near world (380, 0.1, 350).
-               const gX = (hz.x + (hz.w - 1) / 2 - size / 2) * 4;
-               const gZ = (hz.y + (hz.d - 1) / 2 - size / 2) * 4;
-               elements.push(
-                 <ErrorBoundary
-                   key={`res-err-${lot.id}`}
-                   fallback={<VoxelHouseMesh lot={lot} mapSize={size} seatY={seat + 0.02} />}
-                 >
-                   <React.Suspense fallback={<VoxelHouseMesh lot={lot} mapSize={size} seatY={seat + 0.02} />}>
-                     <GlbHouse assetId="functional_garage" position={[gX, seat + 0.02, gZ]} />
-                   </React.Suspense>
-                 </ErrorBoundary>
-               );
+              // grid → world transform + pad seat (spec 128): the old call passed RAW GRID
+              // coords as world position, stacking every garage near world (380, 0.1, 350).
+              const gX = (hz.x + (hz.w - 1) / 2 - size / 2) * 4;
+              const gZ = (hz.y + (hz.d - 1) / 2 - size / 2) * 4;
+              elements.push(
+                <ErrorBoundary
+                  key={`res-err-${lot.id}`}
+                  fallback={
+                    <VoxelHouseMesh
+                      lot={lot}
+                      mapSize={size}
+                      seatY={seat + 0.02}
+                    />
+                  }
+                >
+                  <React.Suspense
+                    fallback={
+                      <VoxelHouseMesh
+                        lot={lot}
+                        mapSize={size}
+                        seatY={seat + 0.02}
+                      />
+                    }
+                  >
+                    <GlbHouse
+                      assetId="functional_garage"
+                      position={[gX, seat + 0.02, gZ]}
+                    />
+                  </React.Suspense>
+                </ErrorBoundary>,
+              );
             } else {
-               elements.push(<VoxelHouseMesh key={`res-${lot.id}`} lot={lot} mapSize={size} seatY={seat + 0.02} />);
+              elements.push(
+                <VoxelHouseMesh
+                  key={`res-${lot.id}`}
+                  lot={lot}
+                  mapSize={size}
+                  seatY={seat + 0.02}
+                />,
+              );
             }
           }
         } else {
           // Unbuilt/zoned plot: the draped per-cell "purchasable land" tint (spec 128).
           // Gated by the HUD zones toggle (spec 131) via the zone-overlays group below.
           overlays.push(
-            <ZoneLotOverlay key={`zone-ground-${lot.id}`} lot={lot} terrain={state.terrain} />
+            <ZoneLotOverlay
+              key={`zone-ground-${lot.id}`}
+              lot={lot}
+              terrain={state.terrain}
+            />,
           );
         }
       }
@@ -171,8 +209,14 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
             key={`comm-${c.id}`}
             name={`commercialBlock.${c.id}`}
             position={[(c.x - size / 2) * 4, seat, (c.y - size / 2) * 4]}
-            userData={{ commercialCluster: { id: c.id, seatY: seat, footprint: c.footprint } }}
-          />
+            userData={{
+              commercialCluster: {
+                id: c.id,
+                seatY: seat,
+                footprint: c.footprint,
+              },
+            }}
+          />,
         );
       }
     }
@@ -190,8 +234,8 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
   );
 }
 
-const DAY_BG = new THREE.Color('#5b9bd5'); // Softer, desaturated daytime blue
-const NIGHT_BG = new THREE.Color('#1a2035'); // Brightened from #050510 to a deep dusk/moonlight blue
+const DAY_BG = new THREE.Color("#5b9bd5"); // Softer, desaturated daytime blue
+const NIGHT_BG = new THREE.Color("#1a2035"); // Brightened from #050510 to a deep dusk/moonlight blue
 
 function DayNightCycle({ sim }: { sim: ColonySim }) {
   const bgRef = useRef<THREE.Color>(null);
@@ -256,7 +300,8 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
       // re-aim the sun (and its shadow camera) only when it moved meaningfully — the sim
       // clock advances slowly, so during a pan the light is stationary
       if (
-        Math.abs(sunX - lastSun.current.x) + Math.abs(sunY - lastSun.current.y) >
+        Math.abs(sunX - lastSun.current.x) +
+          Math.abs(sunY - lastSun.current.y) >
         0.5
       ) {
         dirLightRef.current.position.set(sunX, sunY, sunZ);
@@ -270,9 +315,9 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
 
   return (
     <>
-      <color ref={bgRef} attach="background" args={['#050510']} />
-      <fogExp2 ref={fogRef} attach="fog" args={['#050510', 0.005]} />
-      
+      <color ref={bgRef} attach="background" args={["#050510"]} />
+      <fogExp2 ref={fogRef} attach="fog" args={["#050510", 0.005]} />
+
       <ambientLight ref={ambientLightRef} intensity={0.2} />
       <directionalLight
         ref={dirLightRef}
@@ -343,7 +388,7 @@ function AerialCameraController({ sim }: { sim: ColonySim }) {
   const controls = useThree((state) => state.controls) as
     | { target?: THREE.Vector3; update?: () => void }
     | undefined;
-  
+
   useEffect(() => {
     // Position camera high up looking down
     camera.position.set(0, 150, 0);
@@ -352,9 +397,13 @@ function AerialCameraController({ sim }: { sim: ColonySim }) {
 
   useEffect(() => {
     if (!import.meta.env.DEV || !controls?.target || !controls.update) return;
-    if (!["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)) return;
-    if (new URLSearchParams(window.location.search).get("pillarView") !== "1") return;
-    const pillar = sim.state.structures.find((structure) => structure.kind === "ironworkPillar");
+    if (!["localhost", "127.0.0.1", "::1"].includes(window.location.hostname))
+      return;
+    if (new URLSearchParams(window.location.search).get("pillarView") !== "1")
+      return;
+    const pillar = sim.state.structures.find(
+      (structure) => structure.kind === "ironworkPillar",
+    );
     if (!pillar) return;
     const terrain = sim.state.terrain;
     const px = (pillar.x - terrain.size / 2) * 4;
@@ -393,18 +442,16 @@ function AerialCameraController({ sim }: { sim: ColonySim }) {
   );
 }
 
-
-
 function findDrySpawn(terrain: any) {
   const N = terrain.size;
   const cx = terrain.landing.x;
   const cz = terrain.landing.y;
-  
+
   const isLand = (x: number, y: number) => {
     const i = y * N + x;
     return terrain.elev[i] >= COLONY.world.seaLevel && !terrain.water[i];
   };
-  
+
   for (let r = 0; r < N; r++) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
@@ -413,14 +460,18 @@ function findDrySpawn(terrain: any) {
         const y = Math.round(cz + dy);
         if (x < 0 || y < 0 || x >= N || y >= N) continue;
         if (isLand(x, y)) {
-          const wx = (x - N/2) * 4;
-          const wz = (y - N/2) * 4;
+          const wx = (x - N / 2) * 4;
+          const wz = (y - N / 2) * 4;
           return [wx, terrain.worldY(x, y) + 2, wz] as [number, number, number];
         }
       }
     }
   }
-  return [0, COLONY.world.seaLevel * COLONY.world.heightScale + 2, 0] as [number, number, number];
+  return [0, COLONY.world.seaLevel * COLONY.world.heightScale + 2, 0] as [
+    number,
+    number,
+    number,
+  ];
 }
 
 /** Spec 117 — staged mount. Advance the boot stage on PRESENTED frames so the first paint
@@ -436,16 +487,24 @@ function useBootStage(): number {
   return stage;
 }
 
-function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any; avatarRefs: AvatarRefs }) {
+function R3FWorld({
+  sim,
+  runtime,
+  avatarRefs,
+}: {
+  sim: ColonySim;
+  runtime?: any;
+  avatarRefs: AvatarRefs;
+}) {
   const terrainSize = sim.state.terrain.size;
   const bootStage = useBootStage();
 
   // Extract road cells for terrain leveling
-  const tiles = useRoadNetwork(state => state.tiles);
-  const landscapeEdits = useRoadNetwork(state => state.landscapeEdits);
-  const isDrawing = useRoadNetwork(state => state.isDrawing);
-  const builderMode = useRoadNetwork(state => state.builderMode);
-  
+  const tiles = useRoadNetwork((state) => state.tiles);
+  const landscapeEdits = useRoadNetwork((state) => state.landscapeEdits);
+  const isDrawing = useRoadNetwork((state) => state.isDrawing);
+  const builderMode = useRoadNetwork((state) => state.builderMode);
+
   // Spec 130 — the leveling grades the cells the ribbon ACTUALLY covers, each to the
   // SURFACE height the mesh renders there (segment-bridged over dips), unioned with the
   // tile cells (gravel/cul-de-sacs and the dry-floor/water guards that key off them).
@@ -470,20 +529,29 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
     }
     for (const k of Object.keys(tiles)) {
       if (!cover.has(k)) {
-        const c = k.indexOf(',');
-        cover.set(k, Math.max(0, getSmoothRoadY(terrain, +k.slice(0, c), +k.slice(c + 1))));
+        const c = k.indexOf(",");
+        cover.set(
+          k,
+          Math.max(0, getSmoothRoadY(terrain, +k.slice(0, c), +k.slice(c + 1))),
+        );
       }
     }
     return cover;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tiles, sim, roadwaySig]);
-  const terrainLevel = useTerrainLeveling(sim, roadCells, landscapeEdits, runtime);
+  const terrainLevel = useTerrainLeveling(
+    sim,
+    roadCells,
+    landscapeEdits,
+    runtime,
+  );
 
   // DEBOUNCE: Only rebuild the 370k-vertex terrain mesh on mouse-release when plotting roads.
   // Terraforming (Raise/Lower/Flatten) still updates live.
-  const [debouncedTerrainLevel, setDebouncedTerrainLevel] = useState(terrainLevel);
+  const [debouncedTerrainLevel, setDebouncedTerrainLevel] =
+    useState(terrainLevel);
   useEffect(() => {
-    if (!isDrawing || builderMode !== 'roads') {
+    if (!isDrawing || builderMode !== "roads") {
       setDebouncedTerrainLevel(terrainLevel);
     }
   }, [isDrawing, builderMode, terrainLevel]);
@@ -497,7 +565,7 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
         shoreProps: null,
         venueProps: null,
         landingCamp: null,
-        ambient: null
+        ambient: null,
       };
     const N = sim.state.terrain.size;
     const wx = (x: number) => (x - N / 2) * 4;
@@ -509,7 +577,7 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
       roadSet: sim.state.roadSet,
       occupied: sim.state.occupied,
       wx,
-      wz
+      wz,
     });
 
     const vp = buildVenueProps({
@@ -518,7 +586,7 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
       roadSet: sim.state.roadSet,
       occupied: sim.state.occupied,
       wx,
-      wz
+      wz,
     });
 
     // Spec 151 — the founders' landing camp (caravan/rocket/solar/battery), unported until now.
@@ -526,7 +594,7 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
       terrain: sim.state.terrain,
       structures: sim.state.structures,
       wx,
-      wz
+      wz,
     });
 
     // Spec 092 — ambient gulls over the sea (ported layer had been left orphaned).
@@ -570,7 +638,12 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
       const wz = (road.y - size / 2) * 4;
       // Spawn on the RENDERED surface: road grading / pad leveling can move the visible mesh
       // away from the raw sim height, and the walker must not start under (or above) it.
-      const wy = leveledWorldY(sim.state.terrain, debouncedTerrainLevel, road.x, road.y);
+      const wy = leveledWorldY(
+        sim.state.terrain,
+        debouncedTerrainLevel,
+        road.x,
+        road.y,
+      );
       return [wx, wy + 2, wz] as [number, number, number];
     }
     return findDrySpawn(sim.state.terrain);
@@ -602,17 +675,29 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
             <R3FFoliage sim={sim} runtime={runtime} />
             <ZoneManager sim={sim} runtime={runtime} />
             <R3FPlayerCar sim={sim} />
-            <R3FAvatars sim={sim} refs={avatarRefs} terrainLevel={debouncedTerrainLevel} />
+            <R3FAvatars
+              sim={sim}
+              refs={avatarRefs}
+              terrainLevel={debouncedTerrainLevel}
+            />
             <R3FPedestrians sim={sim} terrainLevel={debouncedTerrainLevel} />
             <R3FBus sim={sim} runtime={runtime} />
             <R3FRace sim={sim} />
             <R3FTarentaal sim={sim} terrainLevel={debouncedTerrainLevel} />
             <R3FArtifacts sim={sim} terrainLevel={debouncedTerrainLevel} />
             <R3FPorters sim={sim} terrainLevel={debouncedTerrainLevel} />
-            <R3FOperatorCar sim={sim} runtime={runtime} terrainLevel={debouncedTerrainLevel} />
+            <R3FOperatorCar
+              sim={sim}
+              runtime={runtime}
+              terrainLevel={debouncedTerrainLevel}
+            />
             <R3FRallyNameplates sim={sim} runtime={runtime} refs={avatarRefs} />
             <R3FCameraDirector sim={sim} />
-            <R3FCommercialDistrict sim={sim} runtime={runtime} terrainLevel={debouncedTerrainLevel} />
+            <R3FCommercialDistrict
+              sim={sim}
+              runtime={runtime}
+              terrainLevel={debouncedTerrainLevel}
+            />
           </>
         )}
 
@@ -635,16 +720,31 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
         )}
 
         {/* Toggle between aerial view and first person */}
-        {useRoadNetwork(state => state.builderActive || state.worldViewActive) ? (
+        {useRoadNetwork(
+          (state) => state.builderActive || state.worldViewActive,
+        ) ? (
           <AerialCameraController sim={sim} />
         ) : (
-          <FirstPersonController sim={sim} runtime={runtime} startPosition={startPos} terrainLevel={debouncedTerrainLevel} />
+          <FirstPersonController
+            sim={sim}
+            runtime={runtime}
+            startPosition={startPos}
+            terrainLevel={debouncedTerrainLevel}
+          />
         )}
       </Physics>
 
       {bootStage >= 2 && (
         <>
-          <ContactShadows resolution={1024} frames={1} scale={200} blur={2} opacity={0.4} far={20} color="#000000" />
+          <ContactShadows
+            resolution={1024}
+            frames={1}
+            scale={200}
+            blur={2}
+            opacity={0.4}
+            far={20}
+            color="#000000"
+          />
           <EffectComposer>
             <Bloom luminanceThreshold={1} mipmapBlur intensity={1.5} />
             <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
@@ -669,22 +769,26 @@ export class PlanetRenderer {
   constructor(
     private container: HTMLElement,
     private sim: ColonySim,
-    public runtime?: any
+    public runtime?: any,
   ) {
-    container.style.width = '100vw';
-    container.style.height = '100vh';
-    container.style.position = 'absolute';
-    container.style.top = '0';
-    container.style.left = '0';
-    container.style.zIndex = '-1';
+    container.style.width = "100vw";
+    container.style.height = "100vh";
+    container.style.position = "absolute";
+    container.style.top = "0";
+    container.style.left = "0";
+    container.style.zIndex = "-1";
 
     this.root = createRoot(container);
     // Spec 136 — the far plane reaches the starfields (5-6.7k) and the gas giant (3.7k);
     // near raised to keep the depth ratio sane. The old far of 1000 culled the cosmos.
     this.root.render(
       <Canvas shadows camera={{ fov: 45, near: 0.5, far: 12000 }}>
-        <R3FWorld sim={this.sim} runtime={this.runtime} avatarRefs={this.avatarRefs} />
-      </Canvas>
+        <R3FWorld
+          sim={this.sim}
+          runtime={this.runtime}
+          avatarRefs={this.avatarRefs}
+        />
+      </Canvas>,
     );
   }
 
@@ -695,9 +799,16 @@ export class PlanetRenderer {
   // parameter is kept. The PNG captures return null (never a data URL) until R3F implements them.
   frame(_dt: number) {}
   resize() {}
-  dispose() { this.root.unmount(); }
+  dispose() {
+    this.root.unmount();
+  }
 
-  firstPersonPNG(_home: { x: number; y: number }, _look: { x: number; y: number }): string | null { return null; }
+  firstPersonPNG(
+    _home: { x: number; y: number },
+    _look: { x: number; y: number },
+  ): string | null {
+    return null;
+  }
   capturePNG(): string | null {
     // Spec 131 — the HUD snapshot button. R3F does not preserve the drawing buffer, so
     // render one fresh frame straight through the base renderer (no postprocessing) and
@@ -722,8 +833,12 @@ export class PlanetRenderer {
   }
   // Spec 120 — the first-person citizen is hidden from the avatar layer (the player IS
   // that citizen), matching the legacy renderer.
-  enterFirstPerson(id: string) { this.avatarRefs.fpCitizenId.current = id; }
-  exitFirstPerson() { this.avatarRefs.fpCitizenId.current = null; }
+  enterFirstPerson(id: string) {
+    this.avatarRefs.fpCitizenId.current = id;
+  }
+  exitFirstPerson() {
+    this.avatarRefs.fpCitizenId.current = null;
+  }
   setRaceState(_race: RaceState | null) {}
 
   setViewMode(_mode: ViewMode) {}
@@ -745,7 +860,9 @@ export class PlanetRenderer {
   setAvatarView(_avatars: AvatarView[]) {}
   // Spec 120 — the runtime registers its live per-frame avatar feed here; R3FAvatars
   // pulls it in useFrame.
-  setAvatarSource(source: () => AvatarView[]) { this.avatarRefs.source.current = source; }
+  setAvatarSource(source: () => AvatarView[]) {
+    this.avatarRefs.source.current = source;
+  }
   setBarState(_cells: unknown[], _occupants: unknown[], _by: unknown[]) {}
 
   syncTerrain(_t: Terrain) {}

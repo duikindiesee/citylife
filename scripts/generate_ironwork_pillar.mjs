@@ -166,7 +166,11 @@ for (let index = 0; index < sentinelAngles.length; index++) {
     [Math.sin(angle) * 13.7, 2.15 + (index % 3) * 0.22, Math.cos(angle) * 13.7],
   );
   sentinel.scale.set(0.78 + (index % 2) * 0.12, 3.2 + (index % 3) * 0.42, 0.9);
-  sentinel.rotation.set(index * 0.07, angle + index * 0.13, Math.sin(angle) * -0.13);
+  sentinel.rotation.set(
+    index * 0.07,
+    angle + index * 0.13,
+    Math.sin(angle) * -0.13,
+  );
 }
 for (let index = 0; index < 6; index++) {
   const angle = (index / 6) * Math.PI * 2 + 0.18;
@@ -412,14 +416,14 @@ for (let index = 0; index < 3; index++) {
     oldBrass,
     crownHalo,
   );
-  outer.rotation.z = index * (Math.PI * 2 / 3) + 0.14;
+  outer.rotation.z = index * ((Math.PI * 2) / 3) + 0.14;
   const inner = mesh(
     `Pillar_Crown_Halo_Inner_Arc_${index + 1}`,
     innerHaloArc,
     paleSeam,
     crownHalo,
   );
-  inner.rotation.z = index * (Math.PI * 2 / 3) + 0.48;
+  inner.rotation.z = index * ((Math.PI * 2) / 3) + 0.48;
 }
 for (const side of [-1, 1]) {
   const iris = mesh(

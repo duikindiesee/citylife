@@ -29,12 +29,14 @@ describe("canonical CityLife clock — four six-hour sols per Johannesburg day",
       solOfEarthDay: 1,
       hour: 0,
     });
-    expect(canonicalSolClock(CITYLIFE_EPOCH_MS + 4 * MS_PER_SOL)).toMatchObject({
-      sol: 4,
-      earthDay: 1,
-      solOfEarthDay: 0,
-      hour: 0,
-    });
+    expect(canonicalSolClock(CITYLIFE_EPOCH_MS + 4 * MS_PER_SOL)).toMatchObject(
+      {
+        sol: 4,
+        earthDay: 1,
+        solOfEarthDay: 0,
+        hour: 0,
+      },
+    );
   });
 
   it("compresses a full 24-hour sol into six real hours", () => {
@@ -50,9 +52,8 @@ describe("canonical CityLife clock — four six-hour sols per Johannesburg day",
 
   it("uses the same daylight boundary as the colony", () => {
     const at = (inSolHour: number) =>
-      canonicalSolClock(
-        CITYLIFE_EPOCH_MS + (inSolHour / 24) * MS_PER_SOL,
-      ).isDay;
+      canonicalSolClock(CITYLIFE_EPOCH_MS + (inSolHour / 24) * MS_PER_SOL)
+        .isDay;
     expect(at(5)).toBe(false);
     expect(at(6)).toBe(true);
     expect(at(19)).toBe(true);

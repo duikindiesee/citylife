@@ -56,6 +56,7 @@ held ~102k nodes (3,412 "junction" decoration groups); 7 FPS with roads visible,
   eligible tee approach exists. Known minor: an item that walks far down a graded
   approach renders at the zone slab's height (sampled within 3 cells of the centroid);
   measured walks stop within ~4.4 cells, so exposure is cosmetic and rare.
+
 - **`R3FRoadNetwork`** keeps only the cul-de-sac bulbs; its per-mesh trimesh colliders are
   gone (nothing collides road meshes — first-person, car and race ride `terrain.worldY` /
   `getSmoothRoadY`). `getSmoothRoadY` moved to `roadSurface.ts` (bus + race re-pointed).

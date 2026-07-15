@@ -99,9 +99,7 @@ describe("terrain leveling map (terrainLevel) at the real boot state", () => {
           if (level.has(y * N + x)) covered++;
       expect(covered).toBeGreaterThan(0);
     }
-    expect(
-      [...level].filter(([, v]) => !Number.isFinite(v)),
-    ).toEqual([]);
+    expect([...level].filter(([, v]) => !Number.isFinite(v))).toEqual([]);
   });
 
   it("levels exactly the half-open depot footprint to the shared cut-and-fill seat", () => {
@@ -117,7 +115,9 @@ describe("terrain leveling map (terrainLevel) at the real boot state", () => {
         covered++;
       }
     expect(covered).toBe(pad.w * pad.h);
-    const eastOutside = level.get((pad.y + Math.floor(pad.h / 2)) * N + pad.x + pad.w);
+    const eastOutside = level.get(
+      (pad.y + Math.floor(pad.h / 2)) * N + pad.x + pad.w,
+    );
     expect(eastOutside).not.toBeCloseTo(seat, 8);
   });
 
@@ -127,7 +127,11 @@ describe("terrain leveling map (terrainLevel) at the real boot state", () => {
     expect(spurKey).toBeTruthy();
     const [x, y] = spurKey!.split(",").map(Number);
     const h = state.terrain.worldY(x!, y!) + 0.3;
-    const level = computeTerrainLeveling(state, new Map([[spurKey!, h]]), new Map());
+    const level = computeTerrainLeveling(
+      state,
+      new Map([[spurKey!, h]]),
+      new Map(),
+    );
     expect(level.get(y! * state.terrain.size + x!)).toBeCloseTo(h, 6);
   });
 

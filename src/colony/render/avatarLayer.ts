@@ -2,8 +2,8 @@
 // runtime feeds a per-frame avatar source (runtime.ts setAvatarSource); this module holds
 // the PURE math and constants so the transforms, colors and capacity rules are pinned in
 // the node test env, and R3FAvatars.tsx stays a thin instanced-mesh syncer.
-import type { AvatarView } from './R3FPlanetRenderer';
-import { CITIZEN_HEIGHT_M, citizenFigure } from '../scale';
+import type { AvatarView } from "./R3FPlanetRenderer";
+import { CITIZEN_HEIGHT_M, citizenFigure } from "../scale";
 
 /** Legacy capacity: at most 64 avatar instances are drawn (AV_CAP in PlanetRenderer.ts).
  *  The instanced meshes are allocated ONCE at this capacity and mesh.count varies — the
@@ -14,13 +14,19 @@ export const AVATAR_CAP = 64;
  *  ~1 m toddler and torso-buried before). `lift` translates the torso capsule up so its feet
  *  sit on the ground; the head crown reaches CITIZEN_HEIGHT_M. */
 const FIGURE = citizenFigure(CITIZEN_HEIGHT_M);
-export const AVATAR_BODY = { radius: FIGURE.bodyRadius, length: FIGURE.bodyLength, lift: FIGURE.bodyLift };
+export const AVATAR_BODY = {
+  radius: FIGURE.bodyRadius,
+  length: FIGURE.bodyLength,
+  lift: FIGURE.bodyLift,
+};
 export const AVATAR_HEAD = { radius: FIGURE.headRadius, lift: FIGURE.headLift };
 
 /** Legacy identity colors, verbatim from PlanetRenderer.ts updateAvatars:
  *  cyan for the operator's own citizen, pod-purple for citizens with a live Hermes pod,
  *  pale lavender for everyone else. */
-export function avatarColorHex(a: Pick<AvatarView, 'isOperator' | 'hasPod'>): number {
+export function avatarColorHex(
+  a: Pick<AvatarView, "isOperator" | "hasPod">,
+): number {
   return a.isOperator ? 0x66e0ff : a.hasPod ? 0x9f86d8 : 0xc0b0e0;
 }
 
@@ -36,7 +42,7 @@ export interface AvatarTransform {
 /** Grid cell -> world transform for one avatar. groundY resolves the surface height
  *  (v1: terrain.worldY; road-ribbon and house-pad overrides are a v2 refinement). */
 export function avatarTransform(
-  a: Pick<AvatarView, 'x' | 'y' | 'heading'>,
+  a: Pick<AvatarView, "x" | "y" | "heading">,
   size: number,
   groundY: (x: number, y: number) => number,
 ): AvatarTransform {

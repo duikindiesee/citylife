@@ -48,7 +48,12 @@ export interface BusRig {
   group: THREE.Group;
   /** Place at grid (gx, gy) facing `headingGrid`, having advanced `distDeltaCells` since the last
    *  frame (drives wheel spin + sway; negative when reversing). */
-  place(gx: number, gy: number, headingGrid: number, distDeltaCells: number): void;
+  place(
+    gx: number,
+    gy: number,
+    headingGrid: number,
+    distDeltaCells: number,
+  ): void;
   setDoors(open: boolean): void;
   dispose(): void;
 }
@@ -261,7 +266,10 @@ export function buildBus(): THREE.Group {
   const upperRail = new THREE.Mesh(new THREE.BoxGeometry(L, 0.28, W), bodyMat);
   upperRail.name = "bus-upper-shell-rail";
   upperRail.position.y = 2.78;
-  const frontCap = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.55, W), bodyMat);
+  const frontCap = new THREE.Mesh(
+    new THREE.BoxGeometry(0.22, 1.55, W),
+    bodyMat,
+  );
   frontCap.name = "bus-front-shell-frame";
   frontCap.position.set(L / 2 - 0.11, 1.96, 0);
   const rearCap = frontCap.clone();
@@ -282,7 +290,10 @@ export function buildBus(): THREE.Group {
   body.add(lowerShell, upperRail, frontCap, rearCap, beltLine, roof);
   for (const x of [-4.7, -2.75, -0.8, 1.15, 3.1, 4.15]) {
     for (const z of [-W / 2, W / 2]) {
-      const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.55, 0.12), trimMat);
+      const pillar = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 1.55, 0.12),
+        trimMat,
+      );
       pillar.name = `bus-window-pillar-${z > 0 ? "left" : "right"}-${x}`;
       pillar.position.set(x, 1.98, z);
       body.add(pillar);
@@ -319,46 +330,121 @@ export function buildBus(): THREE.Group {
   return g;
 }
 
-function addPassengerInterior(bus: THREE.Group, length: number, width: number, height: number): void {
-  const lining = new THREE.MeshStandardMaterial({ color: 0xd9d2bb, roughness: 0.85, side: THREE.DoubleSide });
-  const floorMat = new THREE.MeshStandardMaterial({ color: 0x313944, roughness: 0.92 });
-  const aisleMat = new THREE.MeshStandardMaterial({ color: 0x68717a, roughness: 0.86 });
-  const seatMat = new THREE.MeshStandardMaterial({ color: 0x276b78, roughness: 0.72, emissive: 0x071c20, emissiveIntensity: 0.18 });
-  const railMat = new THREE.MeshStandardMaterial({ color: 0xffd54a, roughness: 0.38, metalness: 0.32, emissive: 0x4a3300, emissiveIntensity: 0.18 });
-  const dashMat = new THREE.MeshStandardMaterial({ color: 0x252c32, roughness: 0.68, emissive: 0x143243, emissiveIntensity: 0.24 });
-  const addBox = (name: string, size: [number, number, number], pos: [number, number, number], mat: THREE.Material) => {
+function addPassengerInterior(
+  bus: THREE.Group,
+  length: number,
+  width: number,
+  height: number,
+): void {
+  const lining = new THREE.MeshStandardMaterial({
+    color: 0xd9d2bb,
+    roughness: 0.85,
+    side: THREE.DoubleSide,
+  });
+  const floorMat = new THREE.MeshStandardMaterial({
+    color: 0x313944,
+    roughness: 0.92,
+  });
+  const aisleMat = new THREE.MeshStandardMaterial({
+    color: 0x68717a,
+    roughness: 0.86,
+  });
+  const seatMat = new THREE.MeshStandardMaterial({
+    color: 0x276b78,
+    roughness: 0.72,
+    emissive: 0x071c20,
+    emissiveIntensity: 0.18,
+  });
+  const railMat = new THREE.MeshStandardMaterial({
+    color: 0xffd54a,
+    roughness: 0.38,
+    metalness: 0.32,
+    emissive: 0x4a3300,
+    emissiveIntensity: 0.18,
+  });
+  const dashMat = new THREE.MeshStandardMaterial({
+    color: 0x252c32,
+    roughness: 0.68,
+    emissive: 0x143243,
+    emissiveIntensity: 0.24,
+  });
+  const addBox = (
+    name: string,
+    size: [number, number, number],
+    pos: [number, number, number],
+    mat: THREE.Material,
+  ) => {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), mat);
     mesh.name = name;
     mesh.position.set(...pos);
     bus.add(mesh);
     return mesh;
   };
-  addBox("bus-interior-floor", [length - 0.5, 0.12, width - 0.18], [0, 1.08, 0], floorMat);
-  addBox("bus-interior-aisle", [length - 2.1, 0.025, 0.62], [-0.55, 1.15, 0], aisleMat);
-  addBox("bus-interior-ceiling", [length - 0.55, 0.08, width - 0.2], [0, height - 0.12, 0], lining);
-  for (const [side, z] of [["left", 0.82], ["right", -0.82]] as const) {
+  addBox(
+    "bus-interior-floor",
+    [length - 0.5, 0.12, width - 0.18],
+    [0, 1.08, 0],
+    floorMat,
+  );
+  addBox(
+    "bus-interior-aisle",
+    [length - 2.1, 0.025, 0.62],
+    [-0.55, 1.15, 0],
+    aisleMat,
+  );
+  addBox(
+    "bus-interior-ceiling",
+    [length - 0.55, 0.08, width - 0.2],
+    [0, height - 0.12, 0],
+    lining,
+  );
+  for (const [side, z] of [
+    ["left", 0.82],
+    ["right", -0.82],
+  ] as const) {
     for (let i = 0; i < 5; i++) {
       const x = -4.25 + i * 1.55;
       addBox(`bus-seat-${side}-${i}`, [0.55, 0.5, 0.52], [x, 1.43, z], seatMat);
-      const back = addBox(`bus-seat-back-${side}-${i}`, [0.16, 0.78, 0.58], [x - 0.24, 1.72, z], seatMat);
+      const back = addBox(
+        `bus-seat-back-${side}-${i}`,
+        [0.16, 0.78, 0.58],
+        [x - 0.24, 1.72, z],
+        seatMat,
+      );
       back.rotation.z = -0.08;
     }
-    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, length - 1.2, 8), railMat);
+    const rail = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.025, length - 1.2, 8),
+      railMat,
+    );
     rail.name = `bus-handrail-${side}`;
     rail.rotation.z = Math.PI / 2;
     rail.position.set(-0.25, 2.48, z * 0.64);
     bus.add(rail);
   }
   for (const x of [-3.6, -1.3, 1.0, 3.25]) {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 1.34, 8), railMat);
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.025, 1.34, 8),
+      railMat,
+    );
     pole.name = `bus-grab-pole-${x}`;
     pole.position.set(x, 1.82, 0.34);
     bus.add(pole);
   }
   addBox("bus-driver-seat", [0.62, 0.55, 0.62], [4.45, 1.46, 0.72], seatMat);
   addBox("bus-dashboard", [0.55, 0.48, 1.02], [5.35, 1.56, 0.55], dashMat);
-  addBox("bus-driver-partition", [0.08, 1.35, 0.74], [3.92, 1.88, 0.38], lining);
-  addBox("bus-door-threshold", [1.35, 0.08, 0.62], [4.85, 1.12, -0.91], railMat);
+  addBox(
+    "bus-driver-partition",
+    [0.08, 1.35, 0.74],
+    [3.92, 1.88, 0.38],
+    lining,
+  );
+  addBox(
+    "bus-door-threshold",
+    [1.35, 0.08, 0.62],
+    [4.85, 1.12, -0.91],
+    railMat,
+  );
 }
 
 function addWindowStrip(
@@ -460,7 +546,12 @@ function addWheelPair(
     wheel.name = `bus-wheel-${axle}-${side}`;
     wheel.rotation.x = Math.PI / 2;
     const hub = new THREE.Mesh(
-      new THREE.CylinderGeometry(radius * 0.45, radius * 0.45, tyreW + 0.02, 12),
+      new THREE.CylinderGeometry(
+        radius * 0.45,
+        radius * 0.45,
+        tyreW + 0.02,
+        12,
+      ),
       hubMat,
     );
     hub.name = `bus-wheel-hub-${axle}-${side}`;

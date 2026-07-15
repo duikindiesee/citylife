@@ -125,11 +125,11 @@ computed once at boot from the smoothed loop + spur + bay paths):
 
 ```ts
 interface FleetGeometry {
-  loopLen: number;      // length of the SMOOTHED loop (what buses drive)
-  joinT: number;        // loop distance where the spur meets it
+  loopLen: number; // length of the SMOOTHED loop (what buses drive)
+  joinT: number; // loop distance where the spur meets it
   spurLen: number;
-  bayLen: number[];     // per-bay path length, gate -> bay
-  stopsT: number[];     // stop positions as loop distances, ascending
+  bayLen: number[]; // per-bay path length, gate -> bay
+  stopsT: number[]; // stop positions as loop distances, ascending
 }
 ```
 
@@ -216,13 +216,13 @@ boarding affordance is player-first. A future spec can seat pedestrians during d
 `buildBus()` (busLayer.ts) is rebuilt against the metric anchor, keeping every node
 name the visual test asserts:
 
-| thing | old | new |
-| --- | --- | --- |
-| body length | 2.55 m | **12.0 m** (three 4 m cells) |
-| body width | 0.86 m | **2.5 m** |
-| roof height | ~1.05 m | **3.0 m** |
-| wheels | r 0.18 m, floating 0.2 m up | **r 0.5 m**, tire bottom at local y=0 |
-| axles | x ±0.82 | x **±3.6** (7.2 m wheelbase) |
+| thing       | old                         | new                                   |
+| ----------- | --------------------------- | ------------------------------------- |
+| body length | 2.55 m                      | **12.0 m** (three 4 m cells)          |
+| body width  | 0.86 m                      | **2.5 m**                             |
+| roof height | ~1.05 m                     | **3.0 m**                             |
+| wheels      | r 0.18 m, floating 0.2 m up | **r 0.5 m**, tire bottom at local y=0 |
+| axles       | x ±0.82                     | x **±3.6** (7.2 m wheelbase)          |
 
 The group origin IS the road contact plane: `place()` sets
 `y = max(0, getSmoothRoadY(x,y)) + ROAD_RIBBON_LIFT` — the top of the rendered road

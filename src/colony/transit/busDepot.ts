@@ -70,7 +70,8 @@ export function depotCutFillSeatY(
   dryFloor = 0,
 ): number {
   const range = depotPadHeightRange(t, s);
-  if (!Number.isFinite(range.min) || !Number.isFinite(range.max)) return dryFloor;
+  if (!Number.isFinite(range.min) || !Number.isFinite(range.max))
+    return dryFloor;
   return Math.max(dryFloor, (range.min + range.max) / 2);
 }
 

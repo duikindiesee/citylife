@@ -16,7 +16,9 @@ export interface IronworkHikeState {
 export function ironworkPillarCell(
   structures: readonly SeedStructure[],
 ): Cell | null {
-  const pillar = structures.find((structure) => structure.kind === "ironworkPillar");
+  const pillar = structures.find(
+    (structure) => structure.kind === "ironworkPillar",
+  );
   return pillar ? { x: Math.round(pillar.x), y: Math.round(pillar.y) } : null;
 }
 
@@ -55,9 +57,10 @@ function routeFromCandidates(
 export function buildIronworkHikePath(state: IronworkHikeState): Cell[] {
   const pillar = ironworkPillarCell(state.structures);
   if (!pillar) return [];
-  const starts = (state.roads.length > 0
-    ? state.roads.map((road) => ({ x: road.x, y: road.y }))
-    : [state.terrain.landing]
+  const starts = (
+    state.roads.length > 0
+      ? state.roads.map((road) => ({ x: road.x, y: road.y }))
+      : [state.terrain.landing]
   )
     .sort(
       (a, b) =>

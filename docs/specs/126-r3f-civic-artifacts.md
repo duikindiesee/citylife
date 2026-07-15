@@ -13,6 +13,7 @@ instanced mesh per kind (7), placing each item and setting per-kind counts via t
 `ARTIFACT_CATALOG_SIZE`. Mount-once / vary-`mesh.count` idiom.
 
 `artifactLayer.ts` holds:
+
 - `artifactTransform` (pure, node-tested): 4m grid, a 0.015 lift above the ground, `-rot`
   yaw, and the per-item footprint scale (`w`/`h`), matching the legacy `placeArtifact`.
 - `buildArtifactAssets`: the 7 legacy-verbatim geometries (each a `mergeGeometries` of

@@ -1,14 +1,14 @@
-import { leveledWorldY } from './terrainLeveling';
-import React, { useEffect, useMemo, useRef } from 'react';
-import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
-import type { ColonySim } from '../sim';
-import { COLONY } from '../config';
+import { leveledWorldY } from "./terrainLeveling";
+import React, { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
+import type { ColonySim } from "../sim";
+import { COLONY } from "../config";
 import {
   TARENTAAL_ADULT,
   TARENTAAL_CHICK,
   tarentaalTransform,
-} from './tarentaalLayer';
+} from "./tarentaalLayer";
 
 // Spec 125 — the tarentaal flock. Positions come from the deterministic sim tick
 // (sim.state.tarentaal, stepped by stepTarentaalFlock), so this reads sim.state each frame
@@ -36,20 +36,44 @@ export function R3FTarentaal({ sim, terrainLevel }: R3FTarentaalProps) {
   const adultGeo = useMemo(() => birdGeometry(TARENTAAL_ADULT), []);
   const chickGeo = useMemo(() => birdGeometry(TARENTAAL_CHICK), []);
   const adultMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: TARENTAAL_ADULT.color, roughness: 0.9, metalness: 0.02, flatShading: true }),
-    []
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: TARENTAAL_ADULT.color,
+        roughness: 0.9,
+        metalness: 0.02,
+        flatShading: true,
+      }),
+    [],
   );
   const chickMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: TARENTAAL_CHICK.color, roughness: 0.95, metalness: 0, flatShading: true }),
-    []
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: TARENTAAL_CHICK.color,
+        roughness: 0.95,
+        metalness: 0,
+        flatShading: true,
+      }),
+    [],
   );
-  useEffect(() => () => {
-    adultGeo.dispose(); chickGeo.dispose(); adultMat.dispose(); chickMat.dispose();
-  }, [adultGeo, chickGeo, adultMat, chickMat]);
+  useEffect(
+    () => () => {
+      adultGeo.dispose();
+      chickGeo.dispose();
+      adultMat.dispose();
+      chickMat.dispose();
+    },
+    [adultGeo, chickGeo, adultMat, chickMat],
+  );
 
   const scratch = useMemo(
-    () => ({ m4: new THREE.Matrix4(), quat: new THREE.Quaternion(), scale: new THREE.Vector3(), pos: new THREE.Vector3(), axis: new THREE.Vector3(0, 1, 0) }),
-    []
+    () => ({
+      m4: new THREE.Matrix4(),
+      quat: new THREE.Quaternion(),
+      scale: new THREE.Vector3(),
+      pos: new THREE.Vector3(),
+      axis: new THREE.Vector3(0, 1, 0),
+    }),
+    [],
   );
 
   useFrame(() => {
@@ -57,11 +81,13 @@ export function R3FTarentaal({ sim, terrainLevel }: R3FTarentaalProps) {
     const chick = chickRef.current;
     if (!adult || !chick) return;
     const size = sim.state.terrain.size;
-    const groundY = (x: number, y: number) => leveledWorldY(sim.state.terrain, terrainLevel, x, y);
+    const groundY = (x: number, y: number) =>
+      leveledWorldY(sim.state.terrain, terrainLevel, x, y);
 
-    let adults = 0, chicks = 0;
+    let adults = 0,
+      chicks = 0;
     for (const bird of sim.state.tarentaal) {
-      const isAdult = bird.age === 'adult';
+      const isAdult = bird.age === "adult";
       const mesh = isAdult ? adult : chick;
       const idx = isAdult ? adults++ : chicks++;
       if (idx >= mesh.instanceMatrix.count) continue; // never exceed the allocated cap
@@ -80,8 +106,20 @@ export function R3FTarentaal({ sim, terrainLevel }: R3FTarentaalProps) {
 
   return (
     <group name="tarentaal">
-      <instancedMesh ref={adultRef} name="tarentaal-adults" args={[adultGeo, adultMat, COLONY.tarentaal.adults]} castShadow frustumCulled={false} />
-      <instancedMesh ref={chickRef} name="tarentaal-chicks" args={[chickGeo, chickMat, COLONY.tarentaal.chicks]} castShadow frustumCulled={false} />
+      <instancedMesh
+        ref={adultRef}
+        name="tarentaal-adults"
+        args={[adultGeo, adultMat, COLONY.tarentaal.adults]}
+        castShadow
+        frustumCulled={false}
+      />
+      <instancedMesh
+        ref={chickRef}
+        name="tarentaal-chicks"
+        args={[chickGeo, chickMat, COLONY.tarentaal.chicks]}
+        castShadow
+        frustumCulled={false}
+      />
     </group>
   );
 }

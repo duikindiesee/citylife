@@ -11,11 +11,15 @@ import {
 describe("plot/pad placement versus rendered roads", () => {
   it("fails every plot/pad rectangle that overlaps a conservative road-footprint cell", () => {
     const roadCells = new Set(["10,10", "11,10", "12,10"]);
-    expect(plotClearsRoadFootprint({ x: 8, y: 8, w: 3, h: 3 }, roadCells)).toBe(false);
-    expect(plotRoadOverlapCells({ x: 8, y: 8, w: 3, h: 3 }, roadCells)).toEqual([
-      "10,10",
-    ]);
-    expect(plotClearsRoadFootprint({ x: 2, y: 2, w: 3, h: 3 }, roadCells)).toBe(true);
+    expect(plotClearsRoadFootprint({ x: 8, y: 8, w: 3, h: 3 }, roadCells)).toBe(
+      false,
+    );
+    expect(plotRoadOverlapCells({ x: 8, y: 8, w: 3, h: 3 }, roadCells)).toEqual(
+      ["10,10"],
+    );
+    expect(plotClearsRoadFootprint({ x: 2, y: 2, w: 3, h: 3 }, roadCells)).toBe(
+      true,
+    );
   });
 
   it("keeps the live seed depot pad outside the conservative pre-existing ribbon footprint", () => {
@@ -24,7 +28,10 @@ describe("plot/pad placement versus rendered roads", () => {
     const preExistingWays = (rt.sim.state.roadWays ?? []).filter(
       (way) => way.source !== "depot-spur",
     );
-    const roadCells = conservativeRoadRibbonBlockedCells(preExistingWays, rt.sim.state.terrain);
+    const roadCells = conservativeRoadRibbonBlockedCells(
+      preExistingWays,
+      rt.sim.state.terrain,
+    );
     expect(plotRoadOverlapCells(pad, roadCells)).toEqual([]);
   });
 });

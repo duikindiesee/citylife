@@ -69,7 +69,10 @@ export function distToPolyEdge(
     const vx = b.x - a.x,
       vy = b.y - a.y;
     const len2 = vx * vx + vy * vy || 1;
-    const t = Math.max(0, Math.min(1, ((px - a.x) * vx + (py - a.y) * vy) / len2));
+    const t = Math.max(
+      0,
+      Math.min(1, ((px - a.x) * vx + (py - a.y) * vy) / len2),
+    );
     const dx = px - (a.x + vx * t),
       dy = py - (a.y + vy * t);
     const d = dx * dx + dy * dy;

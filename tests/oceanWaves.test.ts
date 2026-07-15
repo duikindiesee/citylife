@@ -67,7 +67,9 @@ describe("spec 116 — patchOceanShader wires the field into a standard material
   it("declares the uniform before the shader body", () => {
     const shader = fakeShader();
     patchOceanShader(shader);
-    expect(shader.vertexShader.startsWith(`uniform float ${OCEAN_TIME_UNIFORM};`)).toBe(true);
+    expect(
+      shader.vertexShader.startsWith(`uniform float ${OCEAN_TIME_UNIFORM};`),
+    ).toBe(true);
   });
 
   it("displaces transformed.z after begin_vertex", () => {
@@ -82,7 +84,9 @@ describe("spec 116 — patchOceanShader wires the field into a standard material
   it("replaces objectNormal with the analytic surface normal after beginnormal_vertex", () => {
     const shader = fakeShader();
     patchOceanShader(shader);
-    const normalIdx = shader.vertexShader.indexOf("#include <beginnormal_vertex>");
+    const normalIdx = shader.vertexShader.indexOf(
+      "#include <beginnormal_vertex>",
+    );
     const beginIdx = shader.vertexShader.indexOf("#include <begin_vertex>");
     const between = shader.vertexShader.slice(normalIdx, beginIdx);
     expect(between).toContain("objectNormal = normalize(vec3(-(");

@@ -92,7 +92,11 @@ describe("spec 130 — ribbon coverage + road grading inputs", () => {
   it("a short steep player-style road yields real gaps for the grading to close", () => {
     const DEADZONE = 0.6;
     // find the steepest short hop (6 cells apart) on buildable dry land
-    let best: { a: { x: number; y: number }; b: { x: number; y: number }; drop: number } | null = null;
+    let best: {
+      a: { x: number; y: number };
+      b: { x: number; y: number };
+      drop: number;
+    } | null = null;
     for (let y = 150; y < N - 150; y += 2) {
       for (let x = 150; x < N - 150; x += 2) {
         const i = y * N + x;

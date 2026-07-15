@@ -55,8 +55,8 @@ just the renderer. Roads bend inland and follow the grass line. The ban is on pa
    was a **mistake, since reverted**. A rendered ribbon is ~half-a-carriageway wider than its
    centre-line, so a road running the grass line right beside the beach has its outer edge graze
    a beach cell — and rejecting beach in the render guard dropped the ENTIRE cross-section there,
-   shattering the ribbon (and the junction caps) into ragged holes. The operator's report: *"looks
-   like the beach is breaking the roads."* Measured on seed 4242: **254 of 2,375 ribbon stations
+   shattering the ribbon (and the junction caps) into ragged holes. The operator's report: _"looks
+   like the beach is breaking the roads."_ Measured on seed 4242: **254 of 2,375 ribbon stations
    were dropped, 254 of them for beach**, the centre-lines mostly on grass. The render guard is
    back to water-only (spec 133): a ribbon that grazes the shore renders **continuously**; the
    road NETWORK (`state.roads` cells) stays off the sand by ROUTING, which is the guarantee that

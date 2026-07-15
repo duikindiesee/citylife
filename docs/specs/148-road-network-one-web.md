@@ -25,21 +25,21 @@ shore-hugging trunk was itself a fragile thread. The real defect is older and st
 boot road source merges its cells straight into `state.roads` with nothing guaranteeing the pieces
 touch.** On seed 4242 the network flood-fills into **4 components** (4-neighbour):
 
-| cells | grid centroid | what it actually is |
-|------:|---------------|---------------------|
-| 3919  | (335, 338)    | the main web — founders' avenue + all 3 satellite hamlets + the commercial high street |
-| 75    | (125, 284)    | the commercial **cross street** (lower half), severed |
-| 29    | (125, 250)    | the commercial **cross street** (upper half), severed |
-| 18    | (309, 310)    | the **rally spur** stub (spec 097 fail-soft) |
+| cells | grid centroid | what it actually is                                                                    |
+| ----: | ------------- | -------------------------------------------------------------------------------------- |
+|  3919 | (335, 338)    | the main web — founders' avenue + all 3 satellite hamlets + the commercial high street |
+|    75 | (125, 284)    | the commercial **cross street** (lower half), severed                                  |
+|    29 | (125, 250)    | the commercial **cross street** (upper half), severed                                  |
+|    18 | (309, 310)    | the **rally spur** stub (spec 097 fail-soft)                                           |
 
-The first hypothesis — that the two western fragments were a stranded *hamlet* whose only path
+The first hypothesis — that the two western fragments were a stranded _hamlet_ whose only path
 crossed a now-forbidden beach — was **wrong**, and the investigation is worth recording so the next
 reader does not re-chase it. All three satellite hamlets connect fine (one hamlet's spoke-to-coast
 fails on the beach ban, but its mesh cross-link rescues it). The two "western" fragments are the
 commercial district's **cross street**: a vertical road at `crossStreetX` that the mall pad and shop
 footprints occupy across the intersection row, splitting it into two islands that never rejoin their
 own high street. Each island sits a **clean 6–7 cells** from the main web — no water, no beach, no
-setback between them — so nothing *blocked* the connection; it was simply never routed. The 18-cell
+setback between them — so nothing _blocked_ the connection; it was simply never routed. The 18-cell
 piece is the rally spur, which by design (spec 097) paves only the clean knoll suffix and fails soft
 when a homestead setback walls it off.
 

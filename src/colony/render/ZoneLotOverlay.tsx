@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import * as THREE from 'three';
+import React, { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
 
 // Spec 128 — the "purchasable land" overlay. The old zone-ground overlay was ONE flat
 // lot-sized box (up to 44×56m) at the lot-CENTRE height: on any slope it floated mid-air /
@@ -10,30 +10,42 @@ import * as THREE from 'three';
 // placed/demolished plot reaches the render.
 
 interface ZoneLotOverlayProps {
-  lot: { id: string | number; x: number; y: number; w: number; h: number; zone?: string };
+  lot: {
+    id: string | number;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    zone?: string;
+  };
   terrain: { size: number; worldY: (x: number, y: number) => number };
 }
 
 export function ZoneLotOverlay({ lot, terrain }: ZoneLotOverlayProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
   const cap = lot.w * lot.h;
-  const color = lot.zone === 'commercial' ? '#55cfff' : '#55ff55';
+  const color = lot.zone === "commercial" ? "#55cfff" : "#55ff55";
 
   const assets = useMemo(
     () => ({
       geo: new THREE.BoxGeometry(4, 0.1, 4),
-      mat: new THREE.MeshStandardMaterial({ color, opacity: 0.35, transparent: true, roughness: 1.0 }),
+      mat: new THREE.MeshStandardMaterial({
+        color,
+        opacity: 0.35,
+        transparent: true,
+        roughness: 1.0,
+      }),
       m4: new THREE.Matrix4(),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [],
   );
   useEffect(
     () => () => {
       assets.geo.dispose();
       assets.mat.dispose();
     },
-    [assets]
+    [assets],
   );
 
   useEffect(() => {

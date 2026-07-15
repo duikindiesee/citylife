@@ -10,13 +10,27 @@ const HOUSE_TINTS = [
 ];
 const LOT_SIZE = 4;
 
-export function VoxelHouseMesh({ lot, mapSize, seatY }: { lot: Parcel; mapSize: number; seatY?: number }) {
+export function VoxelHouseMesh({
+  lot,
+  mapSize,
+  seatY,
+}: {
+  lot: Parcel;
+  mapSize: number;
+  seatY?: number;
+}) {
   const { geometry, material } = useMemo(() => {
     const doorDir = streetDoorDir(lot);
-    const script = lot.blueprint ?? defaultBlueprint(lot.houseSeed, doorDir, lot.houseZone.w);
+    const script =
+      lot.blueprint ??
+      defaultBlueprint(lot.houseSeed, doorDir, lot.houseZone.w);
     let compiled;
     try {
-      compiled = compileBlueprint(script, { w: lot.houseZone.w, d: lot.houseZone.d, seed: lot.houseSeed });
+      compiled = compileBlueprint(script, {
+        w: lot.houseZone.w,
+        d: lot.houseZone.d,
+        seed: lot.houseSeed,
+      });
     } catch {
       return { geometry: null, material: null };
     }
@@ -32,13 +46,15 @@ export function VoxelHouseMesh({ lot, mapSize, seatY }: { lot: Parcel; mapSize: 
       voxelY: VOXEL_Y * LOT_SIZE,
     });
 
-    const cAttr = geo.getAttribute("color") as THREE.BufferAttribute | undefined;
+    const cAttr = geo.getAttribute("color") as
+      | THREE.BufferAttribute
+      | undefined;
     if (cAttr) {
       const tint = new THREE.Color(
         HOUSE_TINTS[
           ((lot.houseSeed % HOUSE_TINTS.length) + HOUSE_TINTS.length) %
             HOUSE_TINTS.length
-        ]!
+        ]!,
       );
       const a = cAttr.array as Float32Array;
       const k = 0.42;

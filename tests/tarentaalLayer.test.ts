@@ -13,8 +13,15 @@ import {
 
 function bird(p: Partial<TarentaalBird>): TarentaalBird {
   return {
-    id: 1, age: "adult", x: 0, y: 0, heading: 0, behavior: "forage",
-    followId: null, isPublicSafe: true, ...p,
+    id: 1,
+    age: "adult",
+    x: 0,
+    y: 0,
+    heading: 0,
+    behavior: "forage",
+    followId: null,
+    isPublicSafe: true,
+    ...p,
   };
 }
 
@@ -40,7 +47,11 @@ describe("spec 125 — behavior flourishes", () => {
 
 describe("spec 125 — grid to world transform", () => {
   it("maps through the 4m grid with the bob on top of the ground", () => {
-    const t = tarentaalTransform(bird({ x: 10, y: 20, behavior: "forage" }), 40, () => 2.5);
+    const t = tarentaalTransform(
+      bird({ x: 10, y: 20, behavior: "forage" }),
+      40,
+      () => 2.5,
+    );
     expect(t.wx).toBe((10 - 20) * 4);
     expect(t.wz).toBe((20 - 20) * 4);
     expect(t.wy).toBeCloseTo(2.51, 6); // ground 2.5 + forage bob 0.01
@@ -48,7 +59,11 @@ describe("spec 125 — grid to world transform", () => {
   });
 
   it("uses -heading yaw (legacy) and never sinks below sea level", () => {
-    const t = tarentaalTransform(bird({ heading: Math.PI / 3, behavior: "chase" }), 10, () => -5);
+    const t = tarentaalTransform(
+      bird({ heading: Math.PI / 3, behavior: "chase" }),
+      10,
+      () => -5,
+    );
     expect(t.rotY).toBeCloseTo(-Math.PI / 3, 6);
     expect(t.wy).toBeCloseTo(0.035, 6); // floored ground 0 + chase bob
     expect(t.stride).toBe(1.18);
