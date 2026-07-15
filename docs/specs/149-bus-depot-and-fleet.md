@@ -16,6 +16,11 @@ different spec and stay 140.
 Status: **built in the same PR** (Phase 1, primitive depot). Jack's `bus-depot.glb`
 (work order §6) swaps in later without code changes beyond the loader gate.
 
+Spec 150 extends the route with a fifth, deterministic commercial stop at the Gearbox
+Auto Hub road target. Fleet scheduling remains on the simulation clock in this slice;
+the canonical public six-hour-sol clock is presentation-only until offline and missed-
+boundary behaviour is specified.
+
 ## 0. Design thesis
 
 The spec-088/122 bus is a screensaver: one toy-sized coach, conjured onto the loop at

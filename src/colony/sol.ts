@@ -1,41 +1,59 @@
-// Sols — the colony measures its age in REAL days (operator directive: every real day is a sol).
+// Canonical CityLife time.
 //
-// The sim's internal clock (sim.ts ColonyClock) keeps stepping at its fast cadence so the economy stays
-// alive and watchable for a 24/7 broadcast. The SOL is a separate, wall-clock count of real days since the
-// colony was founded, so the audience sees an honest "Landing One is N sols old" that advances once per real
-// day and survives reloads / tab-throttle / a 24/7 deploy. Pure + deterministic so it is unit-testable
-// without a real clock (the runtime feeds Date.now()).
+// The epoch is the START of the Johannesburg calendar day containing CityLife's first
+// git commit (c19aa9bd, authored 2026-05-30 09:52:49 +02:00). One CityLife sol lasts
+// six real hours, so every Johannesburg day contains exactly four sols. Within each
+// sol the familiar 24-hour game clock is compressed: fifteen real minutes equal one
+// in-sol hour. This clock is fixed for every browser and deployment; no localStorage.
 
-export const MS_PER_SOL = 86_400_000; // one real day
+export const CITYLIFE_EPOCH_MS = 1_780_092_000_000;
+export const MS_PER_SOL = 6 * 60 * 60 * 1000;
+export const SOLS_PER_EARTH_DAY = 4;
+export const MINUTES_PER_SOL = 24 * 60;
 
-/** How many whole sols (real days) have elapsed since the founding instant. Never negative; 0 on the
- *  founding day. Returns 0 for non-finite inputs so a missing/garbage founding stamp can never crash the HUD. */
+export interface CanonicalSolClock {
+  sol: number;
+  earthDay: number;
+  solOfEarthDay: number;
+  hour: number;
+  minute: number;
+  isDay: boolean;
+}
+
+/** Derive the public CityLife clock from one immutable epoch. Pre-epoch/garbage input
+ * clamps to the founding instant so the HUD can never show a negative or invalid sol. */
+export function canonicalSolClock(nowMs: number): CanonicalSolClock {
+  const safeNow = Number.isFinite(nowMs)
+    ? Math.max(CITYLIFE_EPOCH_MS, nowMs)
+    : CITYLIFE_EPOCH_MS;
+  const elapsed = safeNow - CITYLIFE_EPOCH_MS;
+  const sol = Math.floor(elapsed / MS_PER_SOL);
+  const withinSol = elapsed % MS_PER_SOL;
+  const minuteOfSol = Math.floor(
+    (withinSol * MINUTES_PER_SOL) / MS_PER_SOL,
+  );
+  const hour = Math.floor(minuteOfSol / 60);
+  const minute = minuteOfSol % 60;
+  return {
+    sol,
+    earthDay: Math.floor(sol / SOLS_PER_EARTH_DAY),
+    solOfEarthDay: sol % SOLS_PER_EARTH_DAY,
+    hour,
+    minute,
+    isDay: hour >= 6 && hour < 20,
+  };
+}
+
+/** Generic elapsed-sol helper retained for callers/tests that compare arbitrary epochs. */
 export function solCount(foundingMs: number, nowMs: number): number {
   if (!Number.isFinite(foundingMs) || !Number.isFinite(nowMs)) return 0;
   return Math.max(0, Math.floor((nowMs - foundingMs) / MS_PER_SOL));
 }
 
-/** Real seconds left until the sol counter ticks over to the next sol (for a countdown in the HUD). */
+/** Real seconds left until the next six-hour sol boundary. */
 export function secondsToNextSol(foundingMs: number, nowMs: number): number {
   if (!Number.isFinite(foundingMs) || !Number.isFinite(nowMs)) return 0;
   const elapsed = nowMs - foundingMs;
   if (elapsed < 0) return Math.ceil(-elapsed / 1000);
   return Math.ceil((MS_PER_SOL - (elapsed % MS_PER_SOL)) / 1000);
-}
-
-/** Resolve (and lazily persist) the colony founding instant. For a 24/7 deploy the founding date is fixed
- *  on first boot and sols accumulate in real time from there. Falls back to nowMs when storage is absent. */
-export function resolveFoundingMs(
-  store:
-    | { getItem(k: string): string | null; setItem(k: string, v: string): void }
-    | undefined,
-  nowMs: number,
-  key = "citylife_founding_ms",
-): number {
-  if (!store) return nowMs;
-  const saved = store.getItem(key);
-  const n = saved === null ? NaN : Number(saved);
-  if (Number.isFinite(n) && n > 0) return n;
-  store.setItem(key, String(nowMs));
-  return nowMs;
 }
