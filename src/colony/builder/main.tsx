@@ -25,10 +25,12 @@ if (!auth.isCityLifePlayer) {
         color: "#333",
       }}
     >
-      <h1 style={{ fontSize: "1.35rem", margin: "0 0 10px" }}>Builder restricted</h1>
+      <h1 style={{ fontSize: "1.35rem", margin: "0 0 10px" }}>
+        Builder restricted
+      </h1>
       <p style={{ lineHeight: 1.55, color: "#555" }}>
-        The house builder is available to CityLife administrators only. Sign in with an
-        administrator account to open it.
+        The house builder is available to CityLife administrators only. Sign in
+        with an administrator account to open it.
       </p>
     </div>,
   );
