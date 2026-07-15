@@ -22,7 +22,7 @@ describe("visitorClient (public, token-free)", () => {
     });
     const r = await signupVisitor("v@test.com", "secret123", "kooker_v");
     expect(r).toEqual({ userId: 7, status: "PENDING" });
-    expect(calls[0].url).toContain("/api/v1/citylife/visitor/signup");
+    expect(calls[0].url).toBe("/kooker/api/v1/citylife/visitor/signup");
     expect(JSON.parse(calls[0].init.body as string)).toEqual({
       email: "v@test.com",
       password: "secret123",
@@ -42,7 +42,7 @@ describe("visitorClient (public, token-free)", () => {
     });
     const r = await redeemUnlockCode("v@test.com", "ABCDEF0123456789");
     expect(r).toEqual({ userId: 7, active: true });
-    expect(calls[0].url).toContain("/api/v1/citylife/visitor/unlock");
+    expect(calls[0].url).toBe("/kooker/api/v1/citylife/visitor/unlock");
     const body = JSON.parse(calls[0].init.body as string);
     expect(body).toEqual({ email: "v@test.com", code: "ABCDEF0123456789" });
     expect(body.password).toBeUndefined();

@@ -1,0 +1,3 @@
+# Historical false positive: an old HANDOVER sentence lists an API host followed by
+# an operation name. The narrow fingerprint keeps every other generic-api-key finding active.
+2566d497928fe669fe14750aefc45c444d2c1dc8:docs/HANDOVER.md:generic-api-key:84
