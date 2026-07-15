@@ -20,6 +20,9 @@ interface ShorePropsOptions {
 
 const ROCKERY_RADIUS = 20;
 const PROP_CAP = 72;
+// The lighthouse geometry is ~8.9m tall; at 1 m/unit that read as small beside the 1.8m player and the
+// houses. Scale the whole tower (beam included) up to a believable landmark height (~20m).
+const LIGHTHOUSE_SCALE = 2.2;
 
 export function buildShoreProps(
   opts: ShorePropsOptions,
@@ -38,6 +41,7 @@ export function buildShoreProps(
     baseY + 0.03,
     opts.wz(lighthouse.y),
   );
+  tower.scale.setScalar(LIGHTHOUSE_SCALE);
   group.add(tower);
   addRockeryBeach(group, opts, lighthouse);
 
