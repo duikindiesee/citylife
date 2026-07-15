@@ -19,8 +19,28 @@
 
 ### V3 Renderer (R3F port)
 
-- **Shipped** ✅ R3F PlanetRenderer migration `#227` · finish the port (porters, nameplates, cars) `#256` · delete the legacy renderer, parity tests carry it `#264` · metric world + player proportion `#275` · smooth road ribbons `#252`
-- **Merging** 🔨 NaN bounding-sphere boot fix `#259` · ship-PR lane sync into main `#286`
+> The full migration of the imperative legacy `PlanetRenderer` (5,855 lines, deleted in `#264`) to a
+> React Three Fiber renderer. Every legacy system is now ported or explicitly retired (`spec131`);
+> only ambient gulls + the founders' camp were later found unported and are closed by `#328`. The
+> slices below are ✅ shipped to the lane `r3f-colony-migration`; the whole port is 🔨 **in review**
+> for `main` via the cutover PR `#220`. Backfilled 2026-07-15.
+
+- **Shipped** ✅ **Core migration** — R3F PlanetRenderer migration `#227` · sim-reactivity bridge, the dead-memo fix `spec115` · staged mount, 17s→2.6s first world `spec117` · GPU resource disposal `spec119` · delete the legacy renderer, parity tests carry its formulas `#264` · finish the port — porters, operator car, nameplates, cameras, snapshot `#256 · spec131`
+- **Shipped** ✅ **Terrain, water & sky** — GPU ocean waves `spec116` · road-ground grading `spec130` · walker on leveled ground `spec134` · dark-city cosmos, void + stars + gas giant `spec136` · metric world + player proportion `#275 · spec146`
+- **Shipped** ✅ **Roads & junctions (port)** — smooth road ribbons `#252 · spec127` · road-seam continuity `spec118` · road-on-water guard `spec123` · roads pave rough land `spec133` · junction caps `spec137` · no roads on beaches `spec140` · one connected web `#289 · spec148` · world-view tilt `#293 · spec148`
+- **Shipped** ✅ **Crowd & characters** — citizen avatars `spec120` · citizen character scale `spec141` · ambient pedestrians `spec121` · crowd stands on the ribbon `spec142` · Joe the Crab, blue headset `spec132`
+- **Shipped** ✅ **Transit & racing** — town bus `spec122` · bus depot + fleet + first-person boarding `#307 · spec149` · bus interior + HUD declutter `#301 · spec149` · Road Rally course `spec124` · mobile Road Rally controls `spec147`
+- **Shipped** ✅ **Wildlife & civic art** — tarentaal flock `spec125` · animated tarentaal GLB flocks `spec145` · civic artifacts, 7 props `spec126` · ironwork pillar landmark `#309 · spec144` · founders' landing camp + ambient gulls `#328 · spec151 · spec092`
+- **Shipped** ✅ **Houses & commercial** — seated houses + draped lots `spec128` · house voxel scale `spec129` · first-person slate `spec138` · commercial district layer `spec135` · commercial block cluster, the red-wall fix `spec139` · commercial venue plots `spec143` · commercial blocks seated on graded pads `#292 · spec139`
+- **Shipped** ✅ **HUD, clock & UX** — roadmap HUD `spec112` · canonical Sol clock + commercial transit `spec150` · narrow-width world-view HUD fix `#310`
+- **Shipped** ✅ **Ship-CI hardening** — e2e headroom + flaky-suite retries `#299 · #300 · #303 · #311 · #328` · repository secret-scanning gate `#326`
+- **Merging** 🔨 **v3 → main cutover (in review)** — the whole R3F renderer ships to `main` via `#220` · NaN bounding-sphere boot fix `#259` · main-drift real-merges into the lane `#286 · cf74112 · 9340e7e`
+
+> **Deliberately retired in v3 (not ported, per `spec131`):** biome/buildable/elevation view-tints ·
+> street/district/planet camera presets · the gradient sky dome (replaced by the dark-city cosmos) ·
+> the bar scene (`setBarState`) · `firstPersonPNG` (deferred with the bot lane). **Still stubbed:** the
+> authored-GLB asset pipeline (`useWorldAssets` → `kooker-service-citylife-world`) is wired but consumed
+> for one model only; the world is otherwise procedural — the real remaining enhancement.
 
 ### Roads & Junctions
 
