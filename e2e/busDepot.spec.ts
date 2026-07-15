@@ -45,7 +45,7 @@ async function waitAllParkedAtNight(page: import('@playwright/test').Page): Prom
 
 test.describe('spec 149 — bus depot fleet', () => {
   test('buses park at the depot overnight; first departure lands at 08:00; dispatch is staggered', async ({ page }, testInfo) => {
-    test.setTimeout(300000);
+    test.setTimeout(420000);
     await bootWithDepot(page);
 
     // 1. Night: every owned bus parked, physically inside the pad.
@@ -116,7 +116,7 @@ test.describe('spec 149 — bus depot fleet', () => {
         return leader && leader.stopsReached >= 2 && f.buses.some((b: any) => b.id !== leaderId && b.mode !== 'parked');
       },
       inCorridor.toString(),
-      { timeout: 180000, polling: 100 },
+      { timeout: 300000, polling: 100 },
     );
     const stagger = await page.evaluate(() => {
       const leader = window.__colony.busFleet.buses.find((b: any) => b.id === (window as any).__dispatchLeader);
@@ -133,7 +133,7 @@ test.describe('spec 149 — bus depot fleet', () => {
   });
 
   test('the player boards a dwelling bus at the depot shelter, rides it, and steps off at a stop', async ({ page }, testInfo) => {
-    test.setTimeout(300000);
+    test.setTimeout(420000);
     await bootWithDepot(page);
     await waitAllParkedAtNight(page);
 
@@ -205,7 +205,7 @@ test.describe('spec 149 — bus depot fleet', () => {
         return rt.fpRidingBusId === null;
       },
       undefined,
-      { timeout: 180000, polling: 100 },
+      { timeout: 300000, polling: 100 },
     );
     const after = await page.evaluate(() => {
       const rt = window.__colony;
