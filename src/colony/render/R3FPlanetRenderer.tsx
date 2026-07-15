@@ -128,7 +128,11 @@ function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) 
                    fallback={<VoxelHouseMesh lot={lot} mapSize={size} seatY={seat + 0.02} />}
                  >
                    <React.Suspense fallback={<VoxelHouseMesh lot={lot} mapSize={size} seatY={seat + 0.02} />}>
-                     <GlbHouse assetId="functional_garage" position={[gX, seat + 0.02, gZ]} />
+                    <GlbHouse
+                      assetId="functional_garage"
+                      position={[gX, seat + 0.02, gZ]}
+                      footprint={hz}
+                    />
                    </React.Suspense>
                  </ErrorBoundary>
                );
