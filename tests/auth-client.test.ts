@@ -215,13 +215,25 @@ describe("AuthClient (kooker login gate)", () => {
   it("accepts a valid login and attaches a Bearer token", async () => {
     const now = 1_000_000_000;
     const token = fakeJwt(now + 1000 * 60 * 60 * 8);
-    mockFetchOk(token);
+    const fetchSpy = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        accessToken: token,
+        user: { email: "mayor@test.com", name: "Mayor" },
+      }),
+    }));
+    vi.stubGlobal("fetch", fetchSpy);
     const a = new AuthClient({ now: () => now });
     const r = await a.login("mayor@test.com", "correct");
     expect(r).toEqual({ ok: true });
     expect(a.isAuthenticated).toBe(true);
     expect(a.operator?.id).toBe("Mayor"); // uses name from user object
     expect(a.authHeader().Authorization?.startsWith("Bearer ")).toBe(true);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/kooker/api/auth/basic",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("reads session expiry from the JWT exp claim and fails closed after it passes", async () => {
@@ -429,7 +441,7 @@ describe("AuthClient (token refresh)", () => {
     t += 1000 * 60 * 5; // 5 min later — access token expired
     const tok = await a.getValidToken();
     expect(tok).toBe(fresh);
-    expect(calls.some((u) => u.includes("/auth/refresh"))).toBe(true);
+    expect(calls).toContain("/kooker/api/auth/refresh");
     expect(a.isAuthenticated).toBe(true);
   });
 

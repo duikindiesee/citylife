@@ -49,6 +49,28 @@ server {
         proxy_set_header X-Kooker-Tier external;
     }
 
+    # Compatibility for a CityLife tab that loaded the former bare auth paths before the frontend
+    # moved all gateway calls behind /kooker. Keep this deliberately limited to the two auth calls:
+    # proxying the whole /api tree would create a second, easy-to-forget public gateway surface.
+    # New bundles use /kooker/api/auth/* and flow through the generic block below.
+    location = /api/auth/basic {
+        proxy_pass ${KOOKER_GATEWAY}/api/auth/basic;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${KOOKER_HOST};
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /api/auth/refresh {
+        proxy_pass ${KOOKER_GATEWAY}/api/auth/refresh;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host ${KOOKER_HOST};
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # All other kooker API calls (registration, etc.) — proxied WITHOUT injected auth.
     location /kooker/ {
         proxy_pass ${KOOKER_GATEWAY}/;
