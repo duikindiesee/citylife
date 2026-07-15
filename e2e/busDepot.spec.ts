@@ -99,7 +99,11 @@ test.describe('spec 149 — bus depot fleet', () => {
       window.__dispatchLeader = f.gateHeldBy ?? f.buses.find((b: any) => b.mode !== 'parked')?.id ?? null;
       window.__staggerViolated = false;
       (window as any).__corridorViolated = false;
-      window.__colony.setSpeed(3);
+      // Run the dispatch/stagger phase at 9x (was 3x) so the leader reaching its 2nd stop is bounded
+      // by SIM time, not wall clock — on a starved CI runner 3x could not get there inside 300s and
+      // the waitForFunction below timed out. The gate + single-occupancy corridor are sim-enforced,
+      // so a faster clock does not change the behaviour being asserted, only how soon it settles.
+      window.__colony.setSpeed(9);
     });
     await page.waitForFunction(
       (inCorridorSrc: string) => {
