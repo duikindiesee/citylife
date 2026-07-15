@@ -137,7 +137,7 @@ import {
 import { makeCityPlan, type CityPlan, type Plot } from "./cityPlan";
 import { CitizenRoster, type CitizenPublic } from "./bot/citizenRoster";
 import { firstPersonView, type FirstPersonView } from "./bot/firstPersonView";
-import { solCount, resolveFoundingMs } from "./sol";
+import { canonicalSolClock } from "./sol";
 import {
   makeNeighborhood,
   makeNeighborhoodAt,
@@ -828,12 +828,6 @@ export class ColonyRuntime {
   // (see docs/research/2026-06-01-zoning-redesign.md).
   private zonesVisible = false;
   private adInterval: ReturnType<typeof setInterval> | null = null;
-  // Sol = real days since founding (operator directive: every real day is a sol). Fixed on first boot and
-  // accumulated in wall-clock time, decoupled from the fast sim economy clock — so a 24/7 colony ages honestly.
-  private foundingMs: number = resolveFoundingMs(
-    typeof localStorage === "undefined" ? undefined : localStorage,
-    Date.now(),
-  );
   // P1 — the logged-in operator's name, so we can mark which avatar is theirs + gate the step-into.
   private operatorName: string | null = null;
   // The authenticated kooker user id (from the JWT), the IDENTITY the player view keys off. Own-data /
@@ -1380,9 +1374,13 @@ export class ColonyRuntime {
         y: Math.round(sy / Math.max(1, cells.length)),
       };
     };
+    const commercialStop =
+      this.commercialDistrict?.garagePad?.roadTarget ??
+      this.commercialDistrict?.intersection;
     const busAnchors = [
       hoodCentroid(this.neighborhood.carriage),
       ...satellites.map((s) => hoodCentroid(s.carriage)),
+      ...(commercialStop ? [commercialStop] : []),
     ];
     this.busRoute = makeBusRoute(
       { roadKind: this.sim.state.roadKind },
@@ -4679,6 +4677,7 @@ export class ColonyRuntime {
 
   getUiState(): ColonyUiState {
     const s = this.sim.state;
+    const canonicalClock = canonicalSolClock(Date.now());
     const li = s.terrain.idx(s.terrain.landing.x, s.terrain.landing.y);
     const p = s.power;
     const playerViewerId = this.playerView ? this.operatorCitizenId() : null;
@@ -4697,11 +4696,11 @@ export class ColonyRuntime {
       paused: this.paused,
       speed: this.speed,
       clock: {
-        day: s.clock.day,
-        hour: s.clock.hour,
-        minute: s.clock.minute,
-        isDay: s.clock.isDay,
-        sol: solCount(this.foundingMs, Date.now()),
+        day: canonicalClock.earthDay,
+        hour: canonicalClock.hour,
+        minute: canonicalClock.minute,
+        isDay: canonicalClock.isDay,
+        sol: canonicalClock.sol,
       },
       power: {
         solarW: p.solarW,
