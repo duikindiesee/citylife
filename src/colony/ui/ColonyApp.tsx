@@ -229,8 +229,8 @@ export function lotHudCopy(args: {
       : "Founder plot — permanently reserved; never assigned to newcomers and protected from demolition."
     : args.price !== null
       ? args.playerScoped
-        ? `Home site price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString()}) — larger and shore-side sites cost more`
-        : `Plot price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString()}) — bigger and shore-ward land costs more`
+        ? `Home site price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString("en-US")}) — larger and shore-side sites cost more`
+        : `Plot price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString("en-US")}) — bigger and shore-ward land costs more`
       : undefined;
   return { label: `${siteLabel} · ${ownerLabel}`, title };
 }
