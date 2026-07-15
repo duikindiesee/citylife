@@ -62,6 +62,9 @@ export function BuilderPanel({ runtime, sim }: BuilderPanelProps) {
   if (worldViewActive) {
     return (
       <div className="group">
+        <span style={{ color: '#a0b5c6', fontSize: '11px' }}>
+          Drag to pan · Right-drag to tilt · Wheel to zoom
+        </span>
         <button 
           onClick={toggleWorldView} 
           style={{ color: '#ff6b6b' }}

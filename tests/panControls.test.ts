@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import {
+  aerialMouseButtons,
   grabPlane,
   planeHit,
   grabPanDelta,
@@ -21,6 +22,19 @@ function ndcOf(cam: THREE.Camera, world: THREE.Vector3): THREE.Vector2 {
 }
 
 describe("grab-the-world pan", () => {
+  it("gives World View a normal left-drag pan without stealing the builder gesture", () => {
+    expect(aerialMouseButtons(true)).toEqual({
+      LEFT: THREE.MOUSE.PAN,
+      MIDDLE: THREE.MOUSE.PAN,
+      RIGHT: THREE.MOUSE.ROTATE,
+    });
+    expect(aerialMouseButtons(false)).toEqual({
+      LEFT: undefined,
+      MIDDLE: THREE.MOUSE.PAN,
+      RIGHT: THREE.MOUSE.ROTATE,
+    });
+  });
+
   it("yields zero delta when the cursor has not moved off the grabbed point", () => {
     const cam = makeCamera();
     const grab = new THREE.Vector3(20, 0, -10);

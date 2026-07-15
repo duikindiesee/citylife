@@ -15,9 +15,14 @@ way to actually orbit/tilt the camera. It could only pan and zoom, flat.
 
 Rebind so tilting has a control, without stealing the road-building button:
 
-- `LEFT` — still reserved for building roads.
+- `LEFT` — pans naturally in World View; still reserved for building roads in City Builder.
 - `RIGHT` — now `ROTATE`: drag to **tilt/orbit** the camera (top-down `0` down to ~82°).
-- `MIDDLE` — now `PAN` (the wheel still zooms, so the dedicated dolly button was redundant).
+- `MIDDLE` — remains a `PAN` fallback in either aerial mode (the wheel still zooms, so the dedicated
+  dolly button was redundant).
+
+The mode-aware binding matters: reserving `LEFT` globally made the tilt fix technically correct but
+left World View panning accessible only through a middle-button drag. World View performs no road
+placement, so it can safely use the familiar left-drag gesture without weakening builder input.
 
 `enableRotate` and `minPolarAngle: 0` are set explicitly so top-down remains reachable and the
 tilt range is unambiguous.
@@ -25,4 +30,5 @@ tilt range is unambiguous.
 ## Verification
 
 Live: entering World View and driving the controls tilts the camera from polar 0 (top-down) to
-1.31 rad (~75°), rendering a proper oblique view of the island. `tsc` clean.
+1.31 rad (~75°), rendering a proper oblique view of the island. Left-drag changes the camera target
+across both map axes, while City Builder retains its road-placement gesture. `tsc` clean.

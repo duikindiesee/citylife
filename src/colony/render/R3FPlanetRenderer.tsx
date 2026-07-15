@@ -80,6 +80,7 @@ import { R3FCommercialDistrict } from './R3FCommercialDistrict';
 import { R3FDarkCity } from './R3FDarkCity';
 import { R3FIronworkPillar } from './R3FIronworkPillar';
 import { isPublicSafe } from '../newcomers';
+import { aerialMouseButtons } from './panControls';
 
 function ZoneManager({ sim, runtime }: { sim: ColonySim; runtime?: SimBridge }) {
   const state = sim.state;
@@ -336,6 +337,7 @@ function SceneProbe() {
 
 function AerialCameraController({ sim }: { sim: ColonySim }) {
   const { camera, size } = useThree();
+  const worldViewActive = useRoadNetwork((state) => state.worldViewActive);
   const controls = useThree((state) => state.controls) as
     | { target?: THREE.Vector3; update?: () => void }
     | undefined;
@@ -378,19 +380,13 @@ function AerialCameraController({ sim }: { sim: ColonySim }) {
     <MapControls
       makeDefault
       dampingFactor={0.1}
+      enablePan
       enableRotate
       minPolarAngle={0}
       maxPolarAngle={Math.PI / 2.2}
       minDistance={10}
       maxDistance={2500}
-      mouseButtons={{
-        // Spec 148 — the operator missed tilting the view: no button was bound to ROTATE, so
-        // the camera was stuck top-down. LEFT stays reserved for road building; RIGHT-drag now
-        // TILTS/orbits (down to ~82°), MIDDLE-drag pans, and the wheel still zooms.
-        LEFT: undefined as any, // Reserved for building roads
-        MIDDLE: THREE.MOUSE.PAN,
-        RIGHT: THREE.MOUSE.ROTATE
-      }}
+      mouseButtons={aerialMouseButtons(worldViewActive)}
     />
   );
 }

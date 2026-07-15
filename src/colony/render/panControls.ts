@@ -8,6 +8,17 @@ import * as THREE from "three";
 
 const UP = new THREE.Vector3(0, 1, 0);
 
+/** Mouse contract for the shared aerial controls. World View has no placement gesture, so the
+ * familiar left-drag pans the map. City Builder must keep left-drag free for road placement, with
+ * middle-drag retained as its pan fallback. Right-drag always owns tilt/orbit. */
+export function aerialMouseButtons(worldViewActive: boolean) {
+  return {
+    LEFT: worldViewActive ? THREE.MOUSE.PAN : (undefined as any),
+    MIDDLE: THREE.MOUSE.PAN,
+    RIGHT: THREE.MOUSE.ROTATE,
+  };
+}
+
 /** The horizontal plane through a grabbed ground point that a grab-pan anchors to. */
 export function grabPlane(point: THREE.Vector3): THREE.Plane {
   return new THREE.Plane().setFromNormalAndCoplanarPoint(UP, point);
