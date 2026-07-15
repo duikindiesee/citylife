@@ -16,6 +16,14 @@ social-export/
 provision-citizen.sh
 .env
 
+# Private keys and signing containers must never enter the public repository.
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
 
 # Local QA-rig artifacts (Floyd flyby captures, inspection JSON, screenshots)
 .flyby/
