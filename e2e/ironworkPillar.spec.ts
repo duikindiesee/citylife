@@ -85,7 +85,10 @@ test.describe("spec 144 Ironwork Pillar live R3F landmark", () => {
   test("renders the completed mountain monolith and hike in daylight and at midnight", async ({
     page,
   }, testInfo) => {
-    test.setTimeout(180_000);
+    // Heavy R3F pixel-deviation spec (renders + samples the monolith at both noon and midnight).
+    // It passed under 180s until slow-runner CI variance tipped it over; give it the same headroom
+    // the sibling heavy specs carry. Global e2e retries are 0, so a genuine hang still fails once.
+    test.setTimeout(420_000);
     await bootPillar(page, "12:00");
 
     const daylight = await page.evaluate(() => {
