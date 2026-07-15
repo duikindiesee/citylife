@@ -45,6 +45,8 @@ import { R3FRoadNetwork } from './R3FRoadNetwork';
 import { R3FRoadRibbons } from './R3FRoadRibbons';
 import { buildShoreProps } from './shoreProps';
 import { buildVenueProps } from './venueProps';
+import { buildLandingCamp } from './landingCampLayer';
+import { buildAmbient } from './ambientLayer';
 import { useTerrainLeveling } from './useTerrainLeveling';
 import { leveledWorldY } from './terrainLeveling';
 import { useRoadNetwork } from '../stores/useRoadNetwork';
@@ -489,8 +491,14 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
   // Construct static props (Founders' Lighthouse and Rally Overlook props).
   // Spec 117: built only once the dressing stage arrives — building them during the
   // first commit blocked the first paint.
-  const { shoreProps, venueProps } = useMemo(() => {
-    if (bootStage < 2) return { shoreProps: null, venueProps: null };
+  const { shoreProps, venueProps, landingCamp, ambient } = useMemo(() => {
+    if (bootStage < 2)
+      return {
+        shoreProps: null,
+        venueProps: null,
+        landingCamp: null,
+        ambient: null
+      };
     const N = sim.state.terrain.size;
     const wx = (x: number) => (x - N / 2) * 4;
     const wz = (y: number) => (y - N / 2) * 4;
@@ -513,7 +521,18 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
       wz
     });
 
-    return { shoreProps: sp, venueProps: vp };
+    // Spec 151 — the founders' landing camp (caravan/rocket/solar/battery), unported until now.
+    const lc = buildLandingCamp({
+      terrain: sim.state.terrain,
+      structures: sim.state.structures,
+      wx,
+      wz
+    });
+
+    // Spec 092 — ambient gulls over the sea (ported layer had been left orphaned).
+    const amb = buildAmbient({ worldSize: N });
+
+    return { shoreProps: sp, venueProps: vp, landingCamp: lc, ambient: amb };
   }, [sim, bootStage]);
 
   // Update dynamic lights / animations on lighthouse and venue props in frame loop
@@ -537,6 +556,8 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
 
     if (shoreProps) shoreProps.update(dayFactor, timeMs);
     if (venueProps) venueProps.update(dayFactor, timeMs);
+    if (landingCamp) landingCamp.update(timeMs);
+    if (ambient) ambient.update(timeMs);
   });
 
   const spawnSig = useSimSignal(runtime, () => spawnSignature(sim.state));
@@ -603,6 +624,8 @@ function R3FWorld({ sim, runtime, avatarRefs }: { sim: ColonySim; runtime?: any;
             {/* Founders' Lighthouse and Rally Overlook static props */}
             {shoreProps && <primitive object={shoreProps.group} />}
             {venueProps && <primitive object={venueProps.group} />}
+            {landingCamp && <primitive object={landingCamp.group} />}
+            {ambient && <primitive object={ambient.group} />}
             <R3FIronworkPillar
               sim={sim}
               runtime={runtime}
