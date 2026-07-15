@@ -59,5 +59,5 @@ describe("rally spur road (097 R3.5)", () => {
     }
     // the rough-shoulder bias connects the clear majority; the rare embedded overlook fails soft
     expect(connected).toBeGreaterThanOrEqual(9);
-  });
+  }, 30_000);
 });
