@@ -5,6 +5,7 @@
 // paths that avoid slopes — floating roads come from hand-drawn strokes and bridged dips).
 import { describe, it, expect } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
+import { Biome } from "../src/colony/terrain";
 import {
   buildRoadRibbons,
   ribbonCoverage,
@@ -39,11 +40,44 @@ describe("spec 130 — ribbon coverage + road grading inputs", () => {
   });
 
   it("unbuildable LAND pockets under the ways are covered (spec 133) — water never is", () => {
-    // The seeded boot ways cross dozens of buildable===0 land pockets. The old guard
-    // excluded them from BOTH the mesh and the grading: holes in the asphalt and ungraded
-    // dips the walker fell into under the spanning quads (the operator's second walk-under).
+    // Pin the land contract directly instead of relying on a particular generated boot way to cross
+    // a rough pocket. Water-safe ribbon fallback can legitimately choose a nearby routed line and
+    // remove that incidental seed fixture without changing the rule that rough dry land is renderable.
+    let pocket: { x: number; y: number } | null = null;
+    for (let y = 2; y < N - 2 && !pocket; y++) {
+      for (let x = 2; x < N - 2; x++) {
+        const i = y * N + x;
+        if (terrain.water[i] || terrain.buildable[i] !== 0) continue;
+        if (
+          terrain.biome[i] === Biome.Ocean ||
+          terrain.biome[i] === Biome.Shallows ||
+          terrain.biome[i] === Biome.River
+        )
+          continue;
+        if (terrain.water[i - 2] || terrain.water[i + 2]) continue;
+        pocket = { x, y };
+        break;
+      }
+    }
+    expect(pocket).not.toBeNull();
+    const roughLandWay: RoadWay[] = [
+      {
+        path: [
+          { x: pocket!.x - 2, y: pocket!.y },
+          pocket!,
+          { x: pocket!.x + 2, y: pocket!.y },
+        ],
+        kind: "street",
+        width: 1,
+      },
+    ];
+    expect(
+      ribbonCoverage(roughLandWay, terrain, roadY).has(
+        `${pocket!.x},${pocket!.y}`,
+      ),
+    ).toBe(true);
+
     const cover = ribbonCoverage(ways, terrain, roadY);
-    let pocketsCovered = 0;
     let waterCovered = 0;
     for (const key of cover.keys()) {
       const c = key.indexOf(",");
@@ -51,9 +85,7 @@ describe("spec 130 — ribbon coverage + road grading inputs", () => {
       const y = +key.slice(c + 1);
       const i = y * N + x;
       if (terrain.water[i]) waterCovered++;
-      else if (terrain.buildable[i] === 0) pocketsCovered++;
     }
-    expect(pocketsCovered).toBeGreaterThan(0); // pockets now graded + paved
     expect(waterCovered).toBe(0); // the spec-115 water guard holds
   });
 
