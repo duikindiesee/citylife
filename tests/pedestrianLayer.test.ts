@@ -24,7 +24,9 @@ describe("spec 121 — legacy-verbatim constants", () => {
     expect(PED_POOL_CAP).toBe(28);
     // pedestrians share the citizens' 1.7 m silhouette: crown reaches 1.7, feet at 0
     expect(PED_HEAD.translateY + PED_HEAD.radius).toBeCloseTo(1.7, 5);
-    expect(PED_BODY.translateY - (PED_BODY.radius + PED_BODY.length / 2)).toBeCloseTo(0, 5);
+    expect(
+      PED_BODY.translateY - (PED_BODY.radius + PED_BODY.length / 2),
+    ).toBeCloseTo(0, 5);
     expect(PED_COLORS).toHaveLength(6);
   });
 
@@ -90,7 +92,15 @@ describe("spec 121 — target picking", () => {
 describe("spec 121 — stepping a figure", () => {
   it("moves toward the target and advances the bob phase", () => {
     const p: Ped = { x: 0, y: 0, tx: 10, ty: 0, spd: 1, phase: 0 };
-    const { heading, bob } = stepPed(p, 0.1, 0, 0, [], makePedRng(1), alwaysLand);
+    const { heading, bob } = stepPed(
+      p,
+      0.1,
+      0,
+      0,
+      [],
+      makePedRng(1),
+      alwaysLand,
+    );
     expect(p.x).toBeCloseTo(0.1, 6); // spd 1 * dt 0.1
     expect(p.y).toBeCloseTo(0, 6);
     expect(heading).toBeCloseTo(0, 6); // heading toward +x

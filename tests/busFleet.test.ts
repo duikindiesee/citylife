@@ -242,7 +242,13 @@ describe("fleet geometry + poses", () => {
     expect(Math.cos(backing.heading)).toBeCloseTo(0, 5);
     expect(Math.sin(backing.heading)).toBeCloseTo(-1, 5);
     const dwelling = busPose(
-      { ...makeFleet(cfg).buses[0]!, mode: "service", bay: -1, lapT: 10, dwell: 2 },
+      {
+        ...makeFleet(cfg).buses[0]!,
+        mode: "service",
+        bay: -1,
+        lapT: 10,
+        dwell: 2,
+      },
       paths,
       g,
       cfg,

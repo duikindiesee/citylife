@@ -2,7 +2,11 @@
 // stage), gated on presented frames (never advance before the world has painted), and
 // terminal at the final stage.
 import { describe, it, expect } from "vitest";
-import { BOOT_STAGE_FRAMES, BOOT_STAGE_FINAL, nextBootStage } from "../src/colony/render/bootStage";
+import {
+  BOOT_STAGE_FRAMES,
+  BOOT_STAGE_FINAL,
+  nextBootStage,
+} from "../src/colony/render/bootStage";
 
 describe("spec 117 — boot stage progression", () => {
   it("holds stage 0 until the world has actually presented", () => {

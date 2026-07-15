@@ -1,8 +1,8 @@
-import { crowdGroundY } from './crowdGround';
-import React, { useEffect, useMemo, useRef } from 'react';
-import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
-import type { ColonySim } from '../sim';
+import { crowdGroundY } from "./crowdGround";
+import React, { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
+import type { ColonySim } from "../sim";
 import {
   PED_POOL_CAP,
   PED_BODY,
@@ -15,7 +15,7 @@ import {
   pedTransform,
   makePedRng,
   type Ped,
-} from './pedestrianLayer';
+} from "./pedestrianLayer";
 
 // Spec 121 — the ambient pedestrian crowd. A self-contained decorative layer: it owns a
 // pool of 28 figures, steps them toward nearby road cells each frame, and draws as many as
@@ -37,7 +37,12 @@ export function R3FPedestrians({ sim, terrainLevel }: R3FPedestriansProps) {
   const lastT = useRef<number | null>(null);
 
   const bodyGeometry = useMemo(() => {
-    const geo = new THREE.CapsuleGeometry(PED_BODY.radius, PED_BODY.length, 3, 6);
+    const geo = new THREE.CapsuleGeometry(
+      PED_BODY.radius,
+      PED_BODY.length,
+      3,
+      6,
+    );
     geo.translate(0, PED_BODY.translateY, 0);
     return geo;
   }, []);
@@ -48,23 +53,37 @@ export function R3FPedestrians({ sim, terrainLevel }: R3FPedestriansProps) {
   }, []);
   const bodyMaterial = useMemo(
     () => new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.05 }),
-    []
+    [],
   );
   const headMaterial = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: PED_HEAD_COLOR, roughness: 0.85 }),
-    []
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: PED_HEAD_COLOR,
+        roughness: 0.85,
+      }),
+    [],
   );
   // Spec 119 discipline — free the GPU resources on unmount.
-  useEffect(() => () => {
-    bodyGeometry.dispose();
-    headGeometry.dispose();
-    bodyMaterial.dispose();
-    headMaterial.dispose();
-  }, [bodyGeometry, headGeometry, bodyMaterial, headMaterial]);
+  useEffect(
+    () => () => {
+      bodyGeometry.dispose();
+      headGeometry.dispose();
+      bodyMaterial.dispose();
+      headMaterial.dispose();
+    },
+    [bodyGeometry, headGeometry, bodyMaterial, headMaterial],
+  );
 
   const scratch = useMemo(
-    () => ({ m4: new THREE.Matrix4(), quat: new THREE.Quaternion(), color: new THREE.Color(), scale: new THREE.Vector3(1, 1, 1), pos: new THREE.Vector3(), axis: new THREE.Vector3(0, 1, 0) }),
-    []
+    () => ({
+      m4: new THREE.Matrix4(),
+      quat: new THREE.Quaternion(),
+      color: new THREE.Color(),
+      scale: new THREE.Vector3(1, 1, 1),
+      pos: new THREE.Vector3(),
+      axis: new THREE.Vector3(0, 1, 0),
+    }),
+    [],
   );
 
   useFrame((state) => {
@@ -78,8 +97,10 @@ export function R3FPedestrians({ sim, terrainLevel }: R3FPedestriansProps) {
       const rand = makePedRng(0x9e3779b9 ^ terrain.size);
       randRef.current = rand;
       const onLand = (x: number, y: number) => {
-        const ix = Math.round(x), iy = Math.round(y);
-        if (ix < 0 || iy < 0 || ix >= terrain.size || iy >= terrain.size) return false;
+        const ix = Math.round(x),
+          iy = Math.round(y);
+        if (ix < 0 || iy < 0 || ix >= terrain.size || iy >= terrain.size)
+          return false;
         return !terrain.isWater(ix, iy);
       };
       poolRef.current = initPedPool(terrain.landing, rand, onLand);
@@ -94,16 +115,20 @@ export function R3FPedestrians({ sim, terrainLevel }: R3FPedestriansProps) {
     const pool = poolRef.current;
     const rand = randRef.current!;
     const now = state.clock.elapsedTime;
-    const dt = lastT.current === null ? 1 / 60 : Math.min(0.05, now - lastT.current);
+    const dt =
+      lastT.current === null ? 1 / 60 : Math.min(0.05, now - lastT.current);
     lastT.current = now;
 
     const size = terrain.size;
-    const lx = terrain.landing.x, ly = terrain.landing.y;
+    const lx = terrain.landing.x,
+      ly = terrain.landing.y;
     const roadCells = sim.state.roads;
     // spec 142 — pedestrians target road cells, so ride the ribbon top instead of sinking under it
-    const groundY = (x: number, y: number) => crowdGroundY(terrain, terrainLevel, sim.state.roadSet, x, y);
+    const groundY = (x: number, y: number) =>
+      crowdGroundY(terrain, terrainLevel, sim.state.roadSet, x, y);
     const onLand = (x: number, y: number) => {
-      const ix = Math.round(x), iy = Math.round(y);
+      const ix = Math.round(x),
+        iy = Math.round(y);
       if (ix < 0 || iy < 0 || ix >= size || iy >= size) return false;
       return !terrain.isWater(ix, iy);
     };

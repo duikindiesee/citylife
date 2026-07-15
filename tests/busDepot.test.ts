@@ -27,7 +27,8 @@ function makeTerrain(
   height: (x: number, y: number) => number = () => 0,
 ): DepotTerrain {
   const terrain = {
-    inBounds: (x: number, y: number) => x >= 0 && y >= 0 && x < size && y < size,
+    inBounds: (x: number, y: number) =>
+      x >= 0 && y >= 0 && x < size && y < size,
     isWater: (x: number, y: number) => (water ? water(x, y) : false),
     worldY: height,
   };
@@ -46,9 +47,9 @@ describe("bus depot siting", () => {
     expect(site).not.toBeNull();
     const s = site!;
     // The gate edge faces the road across the min gap and the gate lines up with the junction.
-    expect(Math.abs(s.gate.x - s.roadCell.x) + Math.abs(s.gate.y - s.roadCell.y)).toBe(
-      CFG.minRoadGap,
-    );
+    expect(
+      Math.abs(s.gate.x - s.roadCell.x) + Math.abs(s.gate.y - s.roadCell.y),
+    ).toBe(CFG.minRoadGap);
     expect(roadKeys.has(`${s.roadCell.x},${s.roadCell.y}`)).toBe(true);
     for (let y = s.y; y < s.y + s.h; y++)
       for (let x = s.x; x < s.x + s.w; x++) {
@@ -77,7 +78,10 @@ describe("bus depot siting", () => {
     const first = findDepotSite(flat, road, roadKeys, roadKeys, CFG)!;
     const slope = makeTerrain(40, undefined, (x, y) => {
       const inFirst =
-        x >= first.x && x < first.x + first.w && y >= first.y && y < first.y + first.h;
+        x >= first.x &&
+        x < first.x + first.w &&
+        y >= first.y &&
+        y < first.y + first.h;
       return inFirst ? (x - first.x) * 0.4 : 0;
     });
     const site = findDepotSite(slope, road, roadKeys, roadKeys, CFG);
@@ -85,24 +89,48 @@ describe("bus depot siting", () => {
     expect(site).not.toEqual(first);
     const heights: number[] = [];
     for (let y = site!.y; y < site!.y + site!.h; y++)
-      for (let x = site!.x; x < site!.x + site!.w; x++) heights.push((slope as any).worldY(x, y));
-    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(CFG.maxHeightSpreadM);
+      for (let x = site!.x; x < site!.x + site!.w; x++)
+        heights.push((slope as any).worldY(x, y));
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(
+      CFG.maxHeightSpreadM,
+    );
   });
 
   it("accepts exactly 1.5 m relief and rejects the first candidate above the threshold", () => {
-    const first = findDepotSite(makeTerrain(40), road, roadKeys, roadKeys, CFG)!;
+    const first = findDepotSite(
+      makeTerrain(40),
+      road,
+      roadKeys,
+      roadKeys,
+      CFG,
+    )!;
     const terrainAtRelief = (relief: number) =>
       makeTerrain(40, undefined, (x, y) => {
         const inFirst =
-          x >= first.x && x < first.x + first.w && y >= first.y && y < first.y + first.h;
-        return inFirst ? ((x - first.x) / Math.max(1, first.w - 1)) * relief : 0;
+          x >= first.x &&
+          x < first.x + first.w &&
+          y >= first.y &&
+          y < first.y + first.h;
+        return inFirst
+          ? ((x - first.x) / Math.max(1, first.w - 1)) * relief
+          : 0;
       });
-    expect(findDepotSite(terrainAtRelief(1.5), road, roadKeys, roadKeys, CFG)).toEqual(first);
-    expect(findDepotSite(terrainAtRelief(1.500001), road, roadKeys, roadKeys, CFG)).not.toEqual(first);
+    expect(
+      findDepotSite(terrainAtRelief(1.5), road, roadKeys, roadKeys, CFG),
+    ).toEqual(first);
+    expect(
+      findDepotSite(terrainAtRelief(1.500001), road, roadKeys, roadKeys, CFG),
+    ).not.toEqual(first);
   });
 
   it("rejects non-finite footprint samples and continues scanning", () => {
-    const first = findDepotSite(makeTerrain(40), road, roadKeys, roadKeys, CFG)!;
+    const first = findDepotSite(
+      makeTerrain(40),
+      road,
+      roadKeys,
+      roadKeys,
+      CFG,
+    )!;
     const corrupt = makeTerrain(40, undefined, (x, y) =>
       x === first.x && y === first.y ? Number.NaN : 0,
     );
@@ -133,10 +161,16 @@ describe("bus depot siting", () => {
 describe("bus depot cut-and-fill seat", () => {
   it("uses the natural footprint mid-range so cut and fill stay balanced", () => {
     const t = makeTerrain(40, undefined, (x, y) => 10 + x * 0.1 + y * 0.02);
-    const site = findDepotSite(t, road, roadKeys, roadKeys, { ...CFG, maxHeightSpreadM: 5 })!;
+    const site = findDepotSite(t, road, roadKeys, roadKeys, {
+      ...CFG,
+      maxHeightSpreadM: 5,
+    })!;
     const range = depotPadHeightRange(t, site);
     expect(range.spread).toBeGreaterThan(0);
-    expect(depotCutFillSeatY(t, site, 0.65)).toBeCloseTo((range.min + range.max) / 2, 10);
+    expect(depotCutFillSeatY(t, site, 0.65)).toBeCloseTo(
+      (range.min + range.max) / 2,
+      10,
+    );
   });
 });
 
@@ -148,7 +182,9 @@ describe("bus depot layout", () => {
     const axis = layout.u.x !== 0 ? "x" : "y";
     const positions = layout.bays.map((bay) => bay.park[axis]);
     for (let i = 1; i < positions.length; i++) {
-      expect(Math.abs(positions[i]! - positions[i - 1]!)).toBeGreaterThanOrEqual(1.5);
+      expect(
+        Math.abs(positions[i]! - positions[i - 1]!),
+      ).toBeGreaterThanOrEqual(1.5);
     }
   });
 

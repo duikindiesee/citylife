@@ -8,7 +8,7 @@ they crossed a road — only the top of Joe's head and headset poked above the t
 ## Root cause
 
 The road **ribbon** (spec 127) renders as a raised carriageway at `getSmoothRoadY + ROAD_RIBBON_LIFT`.
-But the moving figures grounded on `leveledWorldY` — the terrain *under* the ribbon:
+But the moving figures grounded on `leveledWorldY` — the terrain _under_ the ribbon:
 
 - citizens + Joe: `R3FAvatars` `groundY`
 - ambient pedestrians: `R3FPedestrians` `groundY`
@@ -29,7 +29,7 @@ crowd layers call it instead of `leveledWorldY`. Figures now stand exactly where
 terrain heightfield collider (the leveled ground); lifting it onto the ribbon would re-open the
 guardrail-vs-collider bounce (spec 134). The crowd figures are placed directly each frame with no
 physics, so riding the ribbon is safe for them. (If the ribbon floats far above the collider on a
-graded section, that is a *leveling* gap to close separately, so the player collider and the ribbon
+graded section, that is a _leveling_ gap to close separately, so the player collider and the ribbon
 agree — tracked, not fixed here.)
 
 ## Verification

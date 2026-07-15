@@ -66,8 +66,7 @@ function getTraffic(state: ColonyState): TrafficData {
     const id = r.y * W + r.x;
     const ns: number[] = [];
     for (const [dx, dy] of DIRS) {
-      if (drivable(r.x + dx, r.y + dy))
-        ns.push((r.y + dy) * W + (r.x + dx));
+      if (drivable(r.x + dx, r.y + dy)) ns.push((r.y + dy) * W + (r.x + dx));
     }
     graph.set(id, ns);
     if (mod(r.x - g.x, B) === 0 && mod(r.y - g.y, B) === 0)
@@ -100,7 +99,8 @@ function nearestRoadCell(state: ColonyState, bx: number, by: number): number {
         const x = bx + dx;
         const y = by + dy;
         const key = x + "," + y;
-        if (state.roadKind.has(key) && !(noCar != null && noCar.has(key))) return y * W + x;
+        if (state.roadKind.has(key) && !(noCar != null && noCar.has(key)))
+          return y * W + x;
       }
     }
   }

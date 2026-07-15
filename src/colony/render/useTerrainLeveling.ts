@@ -1,10 +1,10 @@
-import { useMemo } from 'react';
-import type { ColonySim } from '../sim';
-import type { Terrain } from '../terrain';
-import { applyCoastalCommercialDryBlend } from './terrainLeveling';
-import { useSimSignal, type SimBridge } from './useSimSignal';
-import { levelingSignature } from './simSignals';
-import { depotCutFillSeatY } from '../transit/busDepot';
+import { useMemo } from "react";
+import type { ColonySim } from "../sim";
+import type { Terrain } from "../terrain";
+import { applyCoastalCommercialDryBlend } from "./terrainLeveling";
+import { useSimSignal, type SimBridge } from "./useSimSignal";
+import { levelingSignature } from "./simSignals";
+import { depotCutFillSeatY } from "../transit/busDepot";
 
 // Match PlanetRenderer.ts behavior
 export const RENDER_DRY_FLOOR = 0.65;
@@ -35,7 +35,7 @@ export function padSeatY(
  * Returns a Map of overridden cell heights (terrainLevel).
  */
 export function computeTerrainLeveling(
-  state: ColonySim['state'],
+  state: ColonySim["state"],
   /** Spec 130 — ribbon coverage: cell key -> the SURFACE height the road mesh renders over
    *  that cell (segment-bridged, not the cell's own local height). */
   roadRibbonCells: ReadonlyMap<string, number> | null,
@@ -75,10 +75,15 @@ export function computeTerrainLeveling(
       const py = seatOf(hz);
 
       // Dry footprint
-      let x0 = hz.x, x1 = hz.x + hz.w, y0 = hz.y, y1 = hz.y + hz.d;
+      let x0 = hz.x,
+        x1 = hz.x + hz.w,
+        y0 = hz.y,
+        y1 = hz.y + hz.d;
       const ext = (x: number, y: number) => {
-        if (x < x0) x0 = x; if (x > x1) x1 = x;
-        if (y < y0) y0 = y; if (y > y1) y1 = y;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
       };
       for (const f of lot.fence) ext(f.x, f.y);
       for (const d of lot.driveway) ext(d.x, d.y);
@@ -116,7 +121,16 @@ export function computeTerrainLeveling(
     const seats = [
       ...cd.parcels.map((p: any) => ({ x: p.x, y: p.y, w: p.w, h: p.h })),
       { x: cd.mallPad.x, y: cd.mallPad.y, w: cd.mallPad.w, h: cd.mallPad.h },
-      ...(cd.garagePad ? [{ x: cd.garagePad.x, y: cd.garagePad.y, w: cd.garagePad.w, h: cd.garagePad.h }] : []),
+      ...(cd.garagePad
+        ? [
+            {
+              x: cd.garagePad.x,
+              y: cd.garagePad.y,
+              w: cd.garagePad.w,
+              h: cd.garagePad.h,
+            },
+          ]
+        : []),
     ];
 
     const seatY = (r: { x: number; y: number; w: number; h: number }) =>
@@ -158,9 +172,23 @@ export function computeTerrainLeveling(
       n: N,
       terrain: t,
       rects: [
-        ...cd.parcels.map((p: any) => ({ x: p.x - 1, y: p.y - 1, w: p.w + 2, h: p.h + 2 })),
+        ...cd.parcels.map((p: any) => ({
+          x: p.x - 1,
+          y: p.y - 1,
+          w: p.w + 2,
+          h: p.h + 2,
+        })),
         { x: cd.mallPad.x, y: cd.mallPad.y, w: cd.mallPad.w, h: cd.mallPad.h },
-        ...(cd.garagePad ? [{ x: cd.garagePad.x, y: cd.garagePad.y, w: cd.garagePad.w, h: cd.garagePad.h }] : []),
+        ...(cd.garagePad
+          ? [
+              {
+                x: cd.garagePad.x,
+                y: cd.garagePad.y,
+                w: cd.garagePad.w,
+                h: cd.garagePad.h,
+              },
+            ]
+          : []),
       ],
       roadRibbonCells,
       dry: DRY,
@@ -280,7 +308,7 @@ export function computeTerrainLeveling(
   // 4) Apply user landscape edits (raise/lower/flatten)
   for (const [key, offset] of landscapeEdits.entries()) {
     if (offset === 0) continue;
-    const [xStr, yStr] = key.split(',');
+    const [xStr, yStr] = key.split(",");
     const x = parseInt(xStr, 10);
     const y = parseInt(yStr, 10);
 
@@ -321,7 +349,7 @@ export function useTerrainLeveling(
    *  that cell (segment-bridged, not the cell's own local height). */
   roadRibbonCells: ReadonlyMap<string, number> | null,
   landscapeEdits: Map<string, number>,
-  runtime?: SimBridge
+  runtime?: SimBridge,
 ): Map<number, number> {
   const state = sim.state;
 
@@ -332,11 +360,6 @@ export function useTerrainLeveling(
     () => computeTerrainLeveling(state, roadRibbonCells, landscapeEdits),
     // levelingSig is the rebuild trigger for the mutable sim.state (dead-memo rule).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      sim,
-      levelingSig,
-      roadRibbonCells,
-      landscapeEdits
-    ]
+    [sim, levelingSig, roadRibbonCells, landscapeEdits],
   );
 }

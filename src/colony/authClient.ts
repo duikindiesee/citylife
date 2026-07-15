@@ -246,7 +246,11 @@ export class AuthClient {
 
   get isCityLifeAdmin(): boolean {
     const roles = this.operator?.roles ?? [];
-    return roles.includes("ADMIN") || roles.includes("KOOKER_ADMIN") || roles.includes("CITYLIFE_ADMIN");
+    return (
+      roles.includes("ADMIN") ||
+      roles.includes("KOOKER_ADMIN") ||
+      roles.includes("CITYLIFE_ADMIN")
+    );
   }
 
   get isCityLifeModerator(): boolean {

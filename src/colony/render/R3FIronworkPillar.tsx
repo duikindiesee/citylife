@@ -52,7 +52,9 @@ function clonePillar(source: THREE.Group): PillarModel {
     const value = node as THREE.Mesh;
     value.castShadow = true;
     value.receiveShadow = true;
-    const originals = Array.isArray(value.material) ? value.material : [value.material];
+    const originals = Array.isArray(value.material)
+      ? value.material
+      : [value.material];
     const materials = originals.map((entry) => {
       const cloned = entry.clone();
       clonedMaterials.add(cloned);
@@ -97,9 +99,16 @@ function buildTrailLayer(sim: ColonySim): TrailLayer | null {
   const terrain = state.terrain;
   const size = terrain.size;
   const controls = path
-    .filter((_, index) => index === 0 || index === path.length - 1 || index % 4 === 0)
+    .filter(
+      (_, index) => index === 0 || index === path.length - 1 || index % 4 === 0,
+    )
     .map((cell) => new THREE.Vector3(cell.x, 0, cell.y));
-  const curve = new THREE.CatmullRomCurve3(controls, false, "centripetal", 0.28);
+  const curve = new THREE.CatmullRomCurve3(
+    controls,
+    false,
+    "centripetal",
+    0.28,
+  );
   const samples = Math.max(48, path.length * 3);
   const shoulderPositions: number[] = [];
   const treadPositions: number[] = [];
@@ -185,7 +194,10 @@ function buildTrailLayer(sim: ColonySim): TrailLayer | null {
     new THREE.Float32BufferAttribute(normals, 3),
   );
   trailGeometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-  trailGeometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  trailGeometry.setAttribute(
+    "color",
+    new THREE.Float32BufferAttribute(colors, 3),
+  );
   trailGeometry.setIndex(indices);
   trailGeometry.computeBoundingSphere();
   const trailMaterial = new THREE.MeshStandardMaterial({
@@ -246,7 +258,11 @@ function buildTrailLayer(sim: ColonySim): TrailLayer | null {
     emissive: 0xbde7dc,
     emissiveIntensity: 1.1,
   });
-  const runes = new THREE.InstancedMesh(runeGeometry, runeMaterial, markerCount);
+  const runes = new THREE.InstancedMesh(
+    runeGeometry,
+    runeMaterial,
+    markerCount,
+  );
   runes.name = "IronworkTrailRuneSlits";
   const runeMatrix = new THREE.Matrix4();
   for (let index = 0; index < markerCount; index++) {
@@ -379,16 +395,20 @@ export function R3FIronworkPillar({
         : 0.65 + night * 1.45;
     }
     if (crownLight.current) {
-      crownLight.current.intensity = stage >= 3 ? (midnight ? 105 : night * 28) : 0;
+      crownLight.current.intensity =
+        stage >= 3 ? (midnight ? 105 : night * 28) : 0;
     }
     if (undercroftLight.current) {
-      undercroftLight.current.intensity = stage >= 1 ? (midnight ? 62 : night * 16) : 0;
+      undercroftLight.current.intensity =
+        stage >= 1 ? (midnight ? 62 : night * 16) : 0;
     }
     if (facetLight.current) {
-      facetLight.current.intensity = stage >= 2 ? 180 + night * 36 + (midnight ? 24 : 0) : 0;
+      facetLight.current.intensity =
+        stage >= 2 ? 180 + night * 36 + (midnight ? 24 : 0) : 0;
     }
     if (summitVeil.current) {
-      summitVeil.current.opacity = stage >= 1 ? 0.035 + night * 0.12 + (midnight ? 0.1 : 0) : 0;
+      summitVeil.current.opacity =
+        stage >= 1 ? 0.035 + night * 0.12 + (midnight ? 0.1 : 0) : 0;
     }
     if (model.ring && stage >= 2) {
       const tooth = restingToothIndex(colonyClock.day, colonyClock.hour);
@@ -403,7 +423,9 @@ export function R3FIronworkPillar({
       );
     }
     if (model.core && stage >= 3) {
-      const coreScale = midnight ? 1.1 + Math.sin(clock.elapsedTime * 3.5) * 0.18 : 1;
+      const coreScale = midnight
+        ? 1.1 + Math.sin(clock.elapsedTime * 3.5) * 0.18
+        : 1;
       model.core.scale.setScalar(coreScale);
     }
     if (model.halo && stage >= 3) {

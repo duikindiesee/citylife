@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
 // QA hardening — the "dead memo" fix. Before the useSimSignal bridge, the R3F components never
 // re-rendered when the mutable sim.state changed: placing a plot grew the lot list but the world
@@ -17,27 +17,39 @@ const countZoneMeshes = `(function () {
   return n;
 })`;
 
-test('R3F reactivity: placing and demolishing a plot updates the rendered scene', async ({ page }) => {
+test("R3F reactivity: placing and demolishing a plot updates the rendered scene", async ({
+  page,
+}) => {
   test.setTimeout(120000);
 
-  console.log('Navigating to CityLife...');
-  await page.goto('/?skipauth=1');
-  await page.waitForSelector('canvas', { timeout: 30000 });
+  console.log("Navigating to CityLife...");
+  await page.goto("/?skipauth=1");
+  await page.waitForSelector("canvas", { timeout: 30000 });
   await page.waitForTimeout(5000); // Give the renderer time to boot up and initialize
 
   // The scene probe and the runtime probe must both be live.
-  await page.waitForFunction(() => !!(window as any).__r3fScene && !!(window as any).__colony, undefined, { timeout: 15000 });
+  await page.waitForFunction(
+    () => !!(window as any).__r3fScene && !!(window as any).__colony,
+    undefined,
+    { timeout: 15000 },
+  );
 
   // Spec 117 staged mount: the city layer (ZoneManager and friends) mounts at boot stage 1,
   // a few presented frames after the world. Wait for the stage-1 foliage mesh before
   // asserting on zone meshes so a slow machine cannot race the staged commit.
-  await page.waitForFunction(() => {
-    let found = false;
-    (window as any).__r3fScene?.traverse((o: any) => { if (o.name === 'foliage') found = true; });
-    return found;
-  }, undefined, { timeout: 30000 });
+  await page.waitForFunction(
+    () => {
+      let found = false;
+      (window as any).__r3fScene?.traverse((o: any) => {
+        if (o.name === "foliage") found = true;
+      });
+      return found;
+    },
+    undefined,
+    { timeout: 30000 },
+  );
 
-  const before = await page.evaluate(`${countZoneMeshes}()`) as number;
+  const before = (await page.evaluate(`${countZoneMeshes}()`)) as number;
   expect(before).toBeGreaterThanOrEqual(0);
   console.log(`Zone overlay meshes before placement: ${before}`);
 
@@ -57,7 +69,10 @@ test('R3F reactivity: placing and demolishing a plot updates the rendered scene'
         let ok = true;
         for (let dy = -15; dy <= 15 && ok; dy++) {
           for (let dx = -15; dx <= 15; dx++) {
-            if (!cellOkLocal(x + dx, y + dy)) { ok = false; break; }
+            if (!cellOkLocal(x + dx, y + dy)) {
+              ok = false;
+              break;
+            }
           }
         }
         if (ok) return { x, y };
@@ -71,27 +86,39 @@ test('R3F reactivity: placing and demolishing a plot updates the rendered scene'
   console.log(`Buildable center: ${bx},${by}`);
 
   // Street frontage for the plot, then the plot itself — all through the public runtime api.
-  await page.evaluate(({ rx, ry }) => {
-    const cells = [] as { x: number; y: number }[];
-    for (let x = rx - 5; x <= rx + 5; x++) cells.push({ x, y: ry });
-    (window as any).useRoadNetwork.getState().plotRoad(cells, 'street');
-  }, { rx: bx, ry: by });
+  await page.evaluate(
+    ({ rx, ry }) => {
+      const cells = [] as { x: number; y: number }[];
+      for (let x = rx - 5; x <= rx + 5; x++) cells.push({ x, y: ry });
+      (window as any).useRoadNetwork.getState().plotRoad(cells, "street");
+    },
+    { rx: bx, ry: by },
+  );
 
   // A COMMERCIAL plot: auto-settlers only claim residential lots, so the unbuilt overlay
   // stays deterministically visible for the assertion window.
-  const placed = await page.evaluate(({ px, py }) => {
-    return (window as any).__colony.placeZonedPlot(px, py + 1, 'n', 'BIG', 'commercial');
-  }, { px: bx, py: by });
+  const placed = await page.evaluate(
+    ({ px, py }) => {
+      return (window as any).__colony.placeZonedPlot(
+        px,
+        py + 1,
+        "n",
+        "BIG",
+        "commercial",
+      );
+    },
+    { px: bx, py: by },
+  );
   expect(placed).toBe(true);
-  console.log('Plot placed. Waiting for the overlay mesh to appear in the scene...');
+  console.log(
+    "Plot placed. Waiting for the overlay mesh to appear in the scene...",
+  );
 
   // THE dead-memo assertion: the mutation must reach the rendered scene graph.
-  await page.waitForFunction(
-    `${countZoneMeshes}() > ${before}`,
-    undefined,
-    { timeout: 10000 },
-  );
-  console.log('Overlay mesh appeared — sim mutation reached the render.');
+  await page.waitForFunction(`${countZoneMeshes}() > ${before}`, undefined, {
+    timeout: 10000,
+  });
+  console.log("Overlay mesh appeared — sim mutation reached the render.");
 
   // And the reverse: demolish through the public api, the overlay must leave the scene.
   // A dynamic plot records x,y as its CENTER cell — demolish at exactly that.
@@ -102,10 +129,10 @@ test('R3F reactivity: placing and demolishing a plot updates the rendered scene'
   });
   expect(demolished).toBe(true);
 
-  await page.waitForFunction(
-    `${countZoneMeshes}() <= ${before}`,
-    undefined,
-    { timeout: 10000 },
+  await page.waitForFunction(`${countZoneMeshes}() <= ${before}`, undefined, {
+    timeout: 10000,
+  });
+  console.log(
+    "Overlay mesh removed — demolition reached the render. Reactivity verified.",
   );
-  console.log('Overlay mesh removed — demolition reached the render. Reactivity verified.');
 });

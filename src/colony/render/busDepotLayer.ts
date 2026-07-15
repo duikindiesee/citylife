@@ -78,7 +78,11 @@ export function buildBusDepotLayer(opts: BusDepotLayerOptions): THREE.Group {
   const cx = wx(site.x + (site.w - 1) / 2);
   const cz = wz(site.y + (site.h - 1) / 2);
   const foundation = new THREE.Mesh(
-    new THREE.BoxGeometry(site.w * CELL + 0.4, foundationDepth, site.h * CELL + 0.4),
+    new THREE.BoxGeometry(
+      site.w * CELL + 0.4,
+      foundationDepth,
+      site.h * CELL + 0.4,
+    ),
     foundationMat,
   );
   foundation.name = "Depot_Foundation";
@@ -110,7 +114,12 @@ export function buildBusDepotLayer(opts: BusDepotLayerOptions): THREE.Group {
   const end = road.clone().addScaledVector(dir, 1.2);
   const padMouthWidthM = 7.4;
   const roadMouthWidthM = 5.8;
-  const vertex = (p: THREE.Vector2, side: number, halfWidth: number, y: number) => [
+  const vertex = (
+    p: THREE.Vector2,
+    side: number,
+    halfWidth: number,
+    y: number,
+  ) => [
     p.x + perp.x * side * halfWidth,
     y + 0.025,
     p.y + perp.y * side * halfWidth,
@@ -146,11 +155,7 @@ export function buildBusDepotLayer(opts: BusDepotLayerOptions): THREE.Group {
   const [ow, od] = dims(6, 4);
   const office = new THREE.Mesh(new THREE.BoxGeometry(ow, 3.5, od), officeMat);
   office.name = "Depot_Office";
-  office.position.set(
-    wx(layout.office.x),
-    padTopY + 1.75,
-    wz(layout.office.y),
-  );
+  office.position.set(wx(layout.office.x), padTopY + 1.75, wz(layout.office.y));
   office.castShadow = true;
   office.receiveShadow = true;
   g.add(office);
@@ -159,10 +164,7 @@ export function buildBusDepotLayer(opts: BusDepotLayerOptions): THREE.Group {
   const shelter = new THREE.Group();
   shelter.name = "Depot_Shelter";
   const [sw, sd] = dims(6, 2.5);
-  const roof = new THREE.Mesh(
-    new THREE.BoxGeometry(sw, 0.15, sd),
-    shelterMat,
-  );
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(sw, 0.15, sd), shelterMat);
   roof.position.y = 2.7;
   roof.castShadow = true;
   const postOff = alongX ? [2.6, 0] : [0, 2.6];

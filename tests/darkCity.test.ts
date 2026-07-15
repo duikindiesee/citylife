@@ -9,7 +9,9 @@ describe("spec 136 — Dark City", () => {
   const g = buildDarkCity(worldN);
   const byName = (n: string) => {
     let hit: THREE.Object3D | null = null;
-    g.traverse((o) => { if (o.name === n && !hit) hit = o; });
+    g.traverse((o) => {
+      if (o.name === n && !hit) hit = o;
+    });
     return hit as unknown as THREE.Object3D | null;
   };
 
@@ -37,8 +39,12 @@ describe("spec 136 — Dark City", () => {
       // deterministic: a second build produces identical positions
       const again = buildDarkCity(worldN);
       let pts2: THREE.Points | null = null;
-      again.traverse((o) => { if (o.name === name && !pts2) pts2 = o as THREE.Points; });
-      const pos2 = (pts2 as unknown as THREE.Points).geometry.getAttribute("position");
+      again.traverse((o) => {
+        if (o.name === name && !pts2) pts2 = o as THREE.Points;
+      });
+      const pos2 = (pts2 as unknown as THREE.Points).geometry.getAttribute(
+        "position",
+      );
       expect(pos2.getX(7)).toBe(pos.getX(7));
     }
   });
@@ -48,7 +54,9 @@ describe("spec 136 — Dark City", () => {
     const atmo = byName("darkCity-gas-giant-atmo") as THREE.Mesh | null;
     expect(giant).toBeTruthy();
     expect(atmo).toBeTruthy();
-    expect((giant as THREE.Mesh).position.distanceTo((atmo as THREE.Mesh).position)).toBe(0);
+    expect(
+      (giant as THREE.Mesh).position.distanceTo((atmo as THREE.Mesh).position),
+    ).toBe(0);
     // beyond the orbit cap, inside the raised far plane
     const d = (giant as THREE.Mesh).position.length();
     expect(d).toBeGreaterThan(2500);

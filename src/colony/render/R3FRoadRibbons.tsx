@@ -1,14 +1,14 @@
-import React, { useEffect, useMemo } from 'react';
-import * as THREE from 'three';
-import type { ColonySim } from '../sim';
-import { buildRoadRibbons } from './roadRibbon';
-import { getSmoothRoadY } from './roadSurface';
-import { findJunctionZones, junctionFurniture } from './roadJunctions';
-import { attachCapPolys, buildJunctionCaps, CAP_LIFT } from './junctionCap';
-import { disposeDeep } from './disposeDeep';
-import { useSimSignal, type SimBridge } from './useSimSignal';
-import { roadwaySignature } from './simSignals';
-import { TrafficLight, StopSign } from './roadFurniture';
+import React, { useEffect, useMemo } from "react";
+import * as THREE from "three";
+import type { ColonySim } from "../sim";
+import { buildRoadRibbons } from "./roadRibbon";
+import { getSmoothRoadY } from "./roadSurface";
+import { findJunctionZones, junctionFurniture } from "./roadJunctions";
+import { attachCapPolys, buildJunctionCaps, CAP_LIFT } from "./junctionCap";
+import { disposeDeep } from "./disposeDeep";
+import { useSimSignal, type SimBridge } from "./useSimSignal";
+import { roadwaySignature } from "./simSignals";
+import { TrafficLight, StopSign } from "./roadFurniture";
 
 // Spec 127/137 — the smooth ribbon road surface, ported from the legacy renderer (spec
 // 088). The road CELL data is a deliberately ~3-cell-wide carriageway for traffic/pathing;
@@ -54,7 +54,7 @@ const capPaintMaterial = new THREE.MeshStandardMaterial({
 
 const meshFrom = (positions: number[], mat: THREE.Material, name: string) => {
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, mat);
   mesh.name = name;
@@ -78,14 +78,14 @@ export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
     // Zones FIRST (cap polygons attached), so the ribbon builder suppresses paint along
     // the exact cap footprint and the cap builder anchors zebras at the same mouths —
     // one boundary, no drift (the spec-127 JR dilation left a 16-20 m unmarked annulus).
-    const publicWays = ways.filter((way) => way.source !== 'depot-spur');
+    const publicWays = ways.filter((way) => way.source !== "depot-spur");
     const zones = attachCapPolys(findJunctionZones(publicWays));
     const { group } = buildRoadRibbons(ways, opts, zones);
     const caps = buildJunctionCaps(zones, opts);
     if (caps.surf.length)
-      group.add(meshFrom(caps.surf, capMaterial, 'RoadJunctionCaps'));
+      group.add(meshFrom(caps.surf, capMaterial, "RoadJunctionCaps"));
     if (caps.paint.length)
-      group.add(meshFrom(caps.paint, capPaintMaterial, 'RoadJunctionPaint'));
+      group.add(meshFrom(caps.paint, capPaintMaterial, "RoadJunctionPaint"));
     // Furniture positions need a ground height for their pole bases: the local road
     // surface (they stand on the verge beside it, close enough at 25 mm resolution).
     const furniture = zones.flatMap((z, zi) =>
@@ -94,8 +94,7 @@ export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
         key: `f-${zi}-${fi}`,
         // deterministic per-junction signal phase offset so the whole city doesn't
         // blink in unison (hash of the zone centre)
-        phase:
-          (Math.abs(Math.sin(z.cx * 12.9898 + z.cy * 78.233)) * 16) % 16,
+        phase: (Math.abs(Math.sin(z.cx * 12.9898 + z.cy * 78.233)) * 16) % 16,
         wY: Math.max(0, roadY(f.x, f.y)) + CAP_LIFT,
       })),
     );
@@ -106,9 +105,12 @@ export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
 
   // Spec 119 — the superseded ribbon group (merged geometries + materials) must be
   // disposed on every rebuild and on unmount, or each road edit leaks its GPU buffers.
-  useEffect(() => () => {
-    if (built) disposeDeep(built.group);
-  }, [built]);
+  useEffect(
+    () => () => {
+      if (built) disposeDeep(built.group);
+    },
+    [built],
+  );
 
   if (!built) return null;
   const { wx, wz } = built;
@@ -119,21 +121,19 @@ export function R3FRoadRibbons({ sim, runtime }: R3FRoadRibbonsProps) {
       <group name="RoadJunctions">
         {built.furniture.map((f) => {
           const pos: [number, number, number] = [wx(f.x), f.wY, wz(f.y)];
-          if (f.kind === 'light')
+          if (f.kind === "light")
             return (
               <TrafficLight
                 key={f.key}
                 position={pos}
                 rotationY={f.rotY}
                 laneHalfM={f.laneHalfM}
-                group={f.group ?? 'A'}
+                group={f.group ?? "A"}
                 phase={f.phase}
               />
             );
-          if (f.kind === 'stopsign')
-            return (
-              <StopSign key={f.key} position={pos} rotationY={f.rotY} />
-            );
+          if (f.kind === "stopsign")
+            return <StopSign key={f.key} position={pos} rotationY={f.rotY} />;
           return null;
         })}
       </group>

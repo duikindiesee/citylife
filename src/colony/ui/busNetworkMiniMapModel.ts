@@ -1,8 +1,15 @@
 import type { RoadWay } from "../render/roadRibbon";
 
-export interface MiniMapPoint { x: number; y: number }
-export interface MiniMapBusPoint extends MiniMapPoint { id: number }
-export interface MiniMapBusCluster extends MiniMapPoint { ids: number[] }
+export interface MiniMapPoint {
+  x: number;
+  y: number;
+}
+export interface MiniMapBusPoint extends MiniMapPoint {
+  id: number;
+}
+export interface MiniMapBusCluster extends MiniMapPoint {
+  ids: number[];
+}
 export interface BusNetworkMiniMapModel {
   roads: { points: string; source: RoadWay["source"] }[];
   stops: MiniMapPoint[];
@@ -22,7 +29,9 @@ interface Input {
   padding: number;
 }
 
-export function buildBusNetworkMiniMapModel(input: Input): BusNetworkMiniMapModel {
+export function buildBusNetworkMiniMapModel(
+  input: Input,
+): BusNetworkMiniMapModel {
   const all = [
     ...input.ways.flatMap((way) => way.path),
     ...input.routeStops,
@@ -51,7 +60,9 @@ export function buildBusNetworkMiniMapModel(input: Input): BusNetworkMiniMapMode
   const buses = input.buses.map((b) => ({ id: b.id, ...project(b) }));
   const busClusters: MiniMapBusCluster[] = [];
   for (const bus of buses) {
-    const cluster = busClusters.find((c) => Math.hypot(c.x - bus.x, c.y - bus.y) < 8);
+    const cluster = busClusters.find(
+      (c) => Math.hypot(c.x - bus.x, c.y - bus.y) < 8,
+    );
     if (!cluster) busClusters.push({ x: bus.x, y: bus.y, ids: [bus.id] });
     else {
       const n = cluster.ids.length;
@@ -63,10 +74,12 @@ export function buildBusNetworkMiniMapModel(input: Input): BusNetworkMiniMapMode
   return {
     roads: input.ways.map((way) => ({
       source: way.source,
-      points: way.path.map((p) => {
-        const q = project(p);
-        return `${q.x.toFixed(1)},${q.y.toFixed(1)}`;
-      }).join(" "),
+      points: way.path
+        .map((p) => {
+          const q = project(p);
+          return `${q.x.toFixed(1)},${q.y.toFixed(1)}`;
+        })
+        .join(" "),
     })),
     stops: input.routeStops.map(project),
     depot: input.depot ? project(input.depot) : null,

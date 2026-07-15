@@ -49,7 +49,9 @@ function phase(w: OceanWave): string {
 
 /** GLSL expression for the wave height z(x, y, t) — geometry-local Z (the ring lies in XY). */
 export function oceanHeightGlsl(): string {
-  return OCEAN_WAVES.map((w) => `sin(${phase(w)}) * ${glslFloat(w.amp)}`).join(" + ");
+  return OCEAN_WAVES.map((w) => `sin(${phase(w)}) * ${glslFloat(w.amp)}`).join(
+    " + ",
+  );
 }
 
 /** GLSL expression for dz/dx — the x-phased and diagonal waves contribute. */

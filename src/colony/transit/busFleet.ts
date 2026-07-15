@@ -128,7 +128,7 @@ export function makeFleet(cfg: FleetConfig, seed = 1): BusFleet {
     buses,
     gateHeldBy: null,
     corridorBusyBy: null,
-    rng: (seed >>> 0) || 1,
+    rng: seed >>> 0 || 1,
   };
 }
 
@@ -158,7 +158,10 @@ export function makeFleetGeometry(
   bays: PathData[],
   stopCells: readonly Pt[],
 ): FleetGeometry {
-  const joinT = projectPath(loop, spur.pts[spur.pts.length - 1] ?? { x: 0, y: 0 });
+  const joinT = projectPath(
+    loop,
+    spur.pts[spur.pts.length - 1] ?? { x: 0, y: 0 },
+  );
   const loopLen = loop.total;
   const stopsFromJoin = stopCells
     .map((c) => projectPath(loop, c))
@@ -336,9 +339,7 @@ export function stepFleet(
               b.stopsReached++;
               // Route spacing: the NEXT bus may leave once this one clears its 2nd stop (or its only
               // stop on a single-stop loop).
-              if (
-                b.stopsReached >= Math.min(GATE_RELEASE_STOP, stops.length)
-              )
+              if (b.stopsReached >= Math.min(GATE_RELEASE_STOP, stops.length))
                 releaseGate(b);
               b.nextStopIdx++;
             } else {
@@ -440,7 +441,14 @@ export function busPose(
   switch (b.mode) {
     case "parked": {
       const p = samplePath(bay, bay.total);
-      return { x: p.x, y: p.y, heading: p.heading, doorsOpen: false, moving: false, reversing: false };
+      return {
+        x: p.x,
+        y: p.y,
+        heading: p.heading,
+        doorsOpen: false,
+        moving: false,
+        reversing: false,
+      };
     }
     case "bay-out": {
       const s = bay.total - b.t;
@@ -470,7 +478,14 @@ export function busPose(
     }
     case "spur-out": {
       const p = samplePath(paths.spur, b.t);
-      return { x: p.x, y: p.y, heading: p.heading, doorsOpen: false, moving: true, reversing: false };
+      return {
+        x: p.x,
+        y: p.y,
+        heading: p.heading,
+        doorsOpen: false,
+        moving: true,
+        reversing: false,
+      };
     }
     case "service": {
       const p = samplePath(paths.loop, geom.joinT + (b.lapT % geom.loopLen));
@@ -485,11 +500,25 @@ export function busPose(
     }
     case "spur-in": {
       const p = samplePath(paths.spur, paths.spur.total - b.t);
-      return { x: p.x, y: p.y, heading: p.heading + Math.PI, doorsOpen: false, moving: true, reversing: false };
+      return {
+        x: p.x,
+        y: p.y,
+        heading: p.heading + Math.PI,
+        doorsOpen: false,
+        moving: true,
+        reversing: false,
+      };
     }
     case "bay-in": {
       const p = samplePath(bay, b.t);
-      return { x: p.x, y: p.y, heading: p.heading, doorsOpen: false, moving: true, reversing: false };
+      return {
+        x: p.x,
+        y: p.y,
+        heading: p.heading,
+        doorsOpen: false,
+        moving: true,
+        reversing: false,
+      };
     }
   }
 }

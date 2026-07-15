@@ -218,7 +218,9 @@ export function FirstPersonPanel({
           data-fp-action="toggle-help"
           aria-expanded={showHelp}
           onClick={() => setShowHelp((open) => !open)}
-        >Help / Controls</button>
+        >
+          Help / Controls
+        </button>
         <button
           className="first-person-panel__exit-button"
           data-fp-action="exit"
@@ -274,11 +276,17 @@ export function FirstPersonPanel({
         </div>
       )}
 
-      {showHelp && <div className="first-person-panel__hint">
-        <span>WASD walk · Shift sprint · arrows turn · Tap Use to interact</span>
-        {onRequestMouseLook && <button onClick={onRequestMouseLook}>Mouse look</button>}
-        {onLevelView && <button onClick={onLevelView}>Level view</button>}
-      </div>}
+      {showHelp && (
+        <div className="first-person-panel__hint">
+          <span>
+            WASD walk · Shift sprint · arrows turn · Tap Use to interact
+          </span>
+          {onRequestMouseLook && (
+            <button onClick={onRequestMouseLook}>Mouse look</button>
+          )}
+          {onLevelView && <button onClick={onLevelView}>Level view</button>}
+        </div>
+      )}
     </div>
   );
 }

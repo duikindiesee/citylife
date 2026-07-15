@@ -24,6 +24,8 @@ describe("spec 139 CommercialBlock pad seat", () => {
 
   it("wires ZoneManager to the shared cluster seat instead of absolute y zero", () => {
     expect(rendererSource).toContain("commercialBlockSeatY(state.terrain, c)");
-    expect(rendererSource).not.toContain("position={[(c.x - size / 2) * 4, 0, (c.y - size / 2) * 4]}");
+    expect(rendererSource).not.toContain(
+      "position={[(c.x - size / 2) * 4, 0, (c.y - size / 2) * 4]}",
+    );
   });
 });

@@ -97,7 +97,9 @@ function segIntersect(
 function arcLengths(p: { x: number; y: number }[]): number[] {
   const cum = [0];
   for (let i = 0; i < p.length - 1; i++)
-    cum.push(cum[i]! + Math.hypot(p[i + 1]!.x - p[i]!.x, p[i + 1]!.y - p[i]!.y));
+    cum.push(
+      cum[i]! + Math.hypot(p[i + 1]!.x - p[i]!.x, p[i + 1]!.y - p[i]!.y),
+    );
   return cum;
 }
 
@@ -186,7 +188,10 @@ export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
           const len2 = vx * vx + vy * vy || 1;
           const t = Math.max(
             0,
-            Math.min(1, ((endpoint.x - ax) * vx + (endpoint.y - ay) * vy) / len2),
+            Math.min(
+              1,
+              ((endpoint.x - ax) * vx + (endpoint.y - ay) * vy) / len2,
+            ),
           );
           const px = ax + vx * t,
             py = ay + vy * t;
@@ -271,7 +276,8 @@ export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
         let k = si;
         while (k > 0 && cum[k]! > target) k--;
         while (k < cp.length - 1 && cum[k + 1]! < target) k++;
-        const p = cp[Math.max(0, Math.min(cp.length - 1, k + (dir === 1 ? 1 : 0)))]!;
+        const p =
+          cp[Math.max(0, Math.min(cp.length - 1, k + (dir === 1 ? 1 : 0)))]!;
         const u = unit(p.x - e.x, p.y - e.y);
         arms.push({
           ux: u.x,
@@ -300,10 +306,7 @@ export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
         const s = Math.max(Math.sin(ang), SIN_MIN);
         need = Math.max(need, (b.half + a.half * Math.cos(ang)) / s);
       }
-      a.mouthD = Math.min(
-        MOUTH_MAX,
-        Math.max(2, a.half + 0.5, need + APRON),
-      );
+      a.mouthD = Math.min(MOUTH_MAX, Math.max(2, a.half + 0.5, need + APRON));
     }
 
     // Classify. Two near-collinear arms are just a way passing a projection event —
@@ -319,8 +322,7 @@ export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
       if (ang < (25 * Math.PI) / 180) continue; // straight continuation — no zone
       kind = "bend";
     }
-    const rBound =
-      Math.max(...arms.map((a) => a.mouthD + a.half)) + 0.6;
+    const rBound = Math.max(...arms.map((a) => a.mouthD + a.half)) + 0.6;
     zones.push({
       cx: e.x,
       cy: e.y,

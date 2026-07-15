@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
-import type { ColonySim } from '../sim';
-import { useSimSignal, type SimBridge } from './useSimSignal';
-import { rallyPresenceSignature } from './simSignals';
-import type { AvatarRefs } from './R3FAvatars';
+import React, { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
+import type { ColonySim } from "../sim";
+import { useSimSignal, type SimBridge } from "./useSimSignal";
+import { rallyPresenceSignature } from "./simSignals";
+import type { AvatarRefs } from "./R3FAvatars";
 
 // Spec 131 — rally nameplates (legacy S3/spec 097): citizens present at the hilltop Rally
 // Point get a glowing name card floating over their head and a soft gold circle at their
@@ -30,26 +30,26 @@ interface Plate {
 
 /** Legacy-verbatim plate: a rounded dark card with a glowing gold first name. */
 function makePlate(displayName: string): Plate {
-  const canvas = document.createElement('canvas');
+  const canvas = document.createElement("canvas");
   canvas.width = 256;
   canvas.height = 72;
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext("2d");
   if (ctx) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = 'rgba(5, 8, 18, 0.82)';
-    ctx.strokeStyle = 'rgba(255, 226, 120, 0.96)';
+    ctx.fillStyle = "rgba(5, 8, 18, 0.82)";
+    ctx.strokeStyle = "rgba(255, 226, 120, 0.96)";
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.roundRect(8, 10, 240, 48, 18);
     ctx.fill();
     ctx.stroke();
-    ctx.font = '700 28px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(255, 226, 120, 0.95)';
+    ctx.font = "700 28px monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(255, 226, 120, 0.95)";
     ctx.shadowBlur = 12;
-    ctx.fillStyle = '#fff1a8';
-    ctx.fillText(displayName.split(' ')[0] ?? displayName, 128, 35, 220);
+    ctx.fillStyle = "#fff1a8";
+    ctx.fillText(displayName.split(" ")[0] ?? displayName, 128, 35, 220);
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -77,7 +77,7 @@ function makePlate(displayName: string): Plate {
   floor.rotation.x = -Math.PI / 2;
   floor.renderOrder = 19;
   const group = new THREE.Group();
-  group.name = 'rally-nameplate';
+  group.name = "rally-nameplate";
   group.visible = false;
   group.add(floor);
   group.add(sprite);
@@ -91,7 +91,11 @@ function disposePlate(p: Plate) {
   p.floorMaterial.dispose();
 }
 
-export function R3FRallyNameplates({ sim, runtime, refs }: R3FRallyNameplatesProps) {
+export function R3FRallyNameplates({
+  sim,
+  runtime,
+  refs,
+}: R3FRallyNameplatesProps) {
   const sig = useSimSignal(runtime, () => rallyPresenceSignature(sim.state));
   const groupRef = useRef<THREE.Group>(null);
 

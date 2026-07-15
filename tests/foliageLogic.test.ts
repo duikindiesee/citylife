@@ -11,7 +11,7 @@ describe("foliage logic", () => {
       elev: new Float32Array(size * size),
       water: new Uint8Array(size * size),
       biome: new Uint8Array(size * size),
-      worldY: (x: number, y: number) => x < 8 ? 0.2 : -0.2
+      worldY: (x: number, y: number) => (x < 8 ? 0.2 : -0.2),
     };
 
     // Make left half plains (needs trees), right half ocean
@@ -23,7 +23,7 @@ describe("foliage logic", () => {
     }
 
     const { matrices, colors } = calculateFoliagePositions(terrain, [], []);
-    
+
     // We expect some trees to be generated
     expect(matrices.length).toBeGreaterThan(0);
     expect(matrices.length).toEqual(colors.length);
@@ -31,7 +31,7 @@ describe("foliage logic", () => {
     // Ensure NO trees were placed on x >= 8
     // A matrix in THREE is a 16-element array, position X is at index 12
     for (let i = 0; i < matrices.length; i++) {
-      const xPos = matrices[i][12]; 
+      const xPos = matrices[i][12];
       // The world X is (cellX - size/2) * LOT_SIZE.
       // So if cellX < 8, worldX < 0.
       expect(xPos).toBeLessThan(0);
@@ -45,7 +45,7 @@ describe("foliage logic", () => {
       elev: new Float32Array(size * size).fill(0.4), // All land
       water: new Uint8Array(size * size).fill(0),
       biome: new Uint8Array(size * size).fill(Biome.Forest), // Dense trees
-      worldY: (x: number, y: number) => 0.4
+      worldY: (x: number, y: number) => 0.4,
     };
 
     const roads = [{ x: 8, y: 8 }];
@@ -59,15 +59,16 @@ describe("foliage logic", () => {
       const xPos = matrices[i][12];
       const zPos = matrices[i][14];
 
-      const cellX = (xPos / 4) + size / 2;
-      const cellY = (zPos / 4) + size / 2;
+      const cellX = xPos / 4 + size / 2;
+      const cellY = zPos / 4 + size / 2;
 
       // Road is at 8,8. We clear a 1-cell radius, so 7..9 is cleared
       const inRoadZone = cellX >= 7 && cellX <= 9 && cellY >= 7 && cellY <= 9;
       expect(inRoadZone).toBe(false);
 
       // Building is at 4,4 — trees there are EXPECTED (buildings have no clearance yet).
-      if (cellX >= 3 && cellX <= 6 && cellY >= 3 && cellY <= 6) treesNearBuilding++;
+      if (cellX >= 3 && cellX <= 6 && cellY >= 3 && cellY <= 6)
+        treesNearBuilding++;
     }
     expect(treesNearBuilding).toBeGreaterThan(0);
   });

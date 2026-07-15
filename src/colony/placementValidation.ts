@@ -39,7 +39,10 @@ export interface TerrainInvalidCell {
 }
 
 /** Exact half-open footprint terrain gate shared by every plot/pad survey. */
-export function plotTerrainInvalidCells(rect: PlotRect, terrain: Terrain): TerrainInvalidCell[] {
+export function plotTerrainInvalidCells(
+  rect: PlotRect,
+  terrain: Terrain,
+): TerrainInvalidCell[] {
   const invalid: TerrainInvalidCell[] = [];
   for (let y = rect.y; y < rect.y + rect.h; y++)
     for (let x = rect.x; x < rect.x + rect.w; x++) {
@@ -62,12 +65,18 @@ export function plotTerrainInvalidCells(rect: PlotRect, terrain: Terrain): Terra
   return invalid;
 }
 
-export function plotClearsBuildableTerrain(rect: PlotRect, terrain: Terrain): boolean {
+export function plotClearsBuildableTerrain(
+  rect: PlotRect,
+  terrain: Terrain,
+): boolean {
   return plotTerrainInvalidCells(rect, terrain).length === 0;
 }
 
 /** Shared placement invariant for every rectangular plot/pad survey. */
-export function plotRoadOverlapCells(rect: PlotRect, roadCells: ReadonlySet<string>): string[] {
+export function plotRoadOverlapCells(
+  rect: PlotRect,
+  roadCells: ReadonlySet<string>,
+): string[] {
   const overlaps: string[] = [];
   for (let y = rect.y; y < rect.y + rect.h; y++)
     for (let x = rect.x; x < rect.x + rect.w; x++) {

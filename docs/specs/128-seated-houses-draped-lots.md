@@ -55,7 +55,7 @@ width, so at boot 23 NaN seats smeared across their footprint + skirt cells in t
 leveling map, two whole terrain chunks rendered NaN Y vertices, and
 `THREE.computeBoundingSphere` dumped the FULL serialized geometry (megabytes) to
 `console.error` twice per boot — flooding the vite client-log relay and dragging e2e runs.
-(A fractional *y* alone was subtly worse: `y*608` stays integral at `*.5`, so it silently
+(A fractional _y_ alone was subtly worse: `y*608` stays integral at `*.5`, so it silently
 read an unrelated cell and returned a wrong-but-finite height.)
 
 Fixes, layered:

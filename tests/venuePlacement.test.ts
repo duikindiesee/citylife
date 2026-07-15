@@ -127,7 +127,7 @@ describe("venue placement survey (spec 143)", () => {
         // fails a genuinely backward-facing building while tolerating that curve.
         const maxWalk =
           p.footprint.d / 2 / CELL_M +
-          (FRONT_STRIP_M / CELL_M) +
+          FRONT_STRIP_M / CELL_M +
           ROAD_HALF_CELLS +
           4;
         const perp = { x: -p.frontDir.y, y: p.frontDir.x }; // frontage-axis unit
@@ -136,8 +136,12 @@ describe("venue placement survey (spec 143)", () => {
           const fwd = p.footprint.d / 2 / CELL_M + step;
           const spread = Math.min(4, Math.ceil(step)); // cone half-width in cells
           for (let off = -spread; off <= spread && !hit; off++) {
-            const gx = Math.round(p.centerGX + p.frontDir.x * fwd + perp.x * off);
-            const gy = Math.round(p.centerGY + p.frontDir.y * fwd + perp.y * off);
+            const gx = Math.round(
+              p.centerGX + p.frontDir.x * fwd + perp.x * off,
+            );
+            const gy = Math.round(
+              p.centerGY + p.frontDir.y * fwd + perp.y * off,
+            );
             if (roadSet.has(`${gx},${gy}`)) hit = true;
           }
         }
@@ -153,14 +157,24 @@ describe("venue placement survey (spec 143)", () => {
       for (const p of buildable) {
         const parcelArea = p.parcel.w * CELL_M * (p.parcel.h * CELL_M);
         const coverage = (p.footprint.w * p.footprint.d) / parcelArea;
-        expect(coverage, `${p.parcelId} coverage ${coverage}`).toBeGreaterThanOrEqual(0.3);
-        expect(coverage, `${p.parcelId} coverage ${coverage}`).toBeLessThanOrEqual(0.85);
+        expect(
+          coverage,
+          `${p.parcelId} coverage ${coverage}`,
+        ).toBeGreaterThanOrEqual(0.3);
+        expect(
+          coverage,
+          `${p.parcelId} coverage ${coverage}`,
+        ).toBeLessThanOrEqual(0.85);
         // a venue is a walk-in building now: at least one storey at the eaves
         expect(p.wallHM).toBeGreaterThanOrEqual(3.5);
       }
       // the strip overall hits the 50 %+ mark (kiosks sit at ~0.5, stores/showrooms above)
       const median = buildable
-        .map((p) => (p.footprint.w * p.footprint.d) / (p.parcel.w * CELL_M * p.parcel.h * CELL_M))
+        .map(
+          (p) =>
+            (p.footprint.w * p.footprint.d) /
+            (p.parcel.w * CELL_M * p.parcel.h * CELL_M),
+        )
         .sort((a, b) => a - b)[Math.floor(buildable.length / 2)]!;
       expect(median).toBeGreaterThanOrEqual(0.5);
     });
@@ -176,8 +190,14 @@ describe("venue placement survey (spec 143)", () => {
       for (const p of placements.filter((v) => v.buildable)) {
         for (const probe of footprintProbes(p)) {
           const key = `${Math.round(probe.x)},${Math.round(probe.y)}`;
-          expect(roadSet.has(key), `${p.parcelId} probe ${key} on a road cell`).toBe(false);
-          expect(ribbon.has(key), `${p.parcelId} probe ${key} under the ribbon`).toBe(false);
+          expect(
+            roadSet.has(key),
+            `${p.parcelId} probe ${key} on a road cell`,
+          ).toBe(false);
+          expect(
+            ribbon.has(key),
+            `${p.parcelId} probe ${key} under the ribbon`,
+          ).toBe(false);
         }
         // rect-vs-circle against every junction pad bound
         const hw = p.footprint.w / 2 / CELL_M;
@@ -237,8 +257,14 @@ describe("venue placement survey (spec 143)", () => {
       const hw = v.footprint.w / 2 / CELL_M;
       const hd = v.footprint.d / 2 / CELL_M;
       const alongX = v.frontDir.y !== 0;
-      const dx = Math.max(Math.abs(pad.cx - v.centerGX) - (alongX ? hw : hd), 0);
-      const dy = Math.max(Math.abs(pad.cy - v.centerGY) - (alongX ? hd : hw), 0);
+      const dx = Math.max(
+        Math.abs(pad.cx - v.centerGX) - (alongX ? hw : hd),
+        0,
+      );
+      const dy = Math.max(
+        Math.abs(pad.cy - v.centerGY) - (alongX ? hd : hw),
+        0,
+      );
       expect(dx * dx + dy * dy).toBeGreaterThanOrEqual(pad.r * pad.r);
     } else {
       expect(v.footprint.w * v.footprint.d === 0 || !v.buildable).toBe(true);

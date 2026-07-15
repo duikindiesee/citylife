@@ -625,7 +625,7 @@ export function ColonyApp() {
   }, [runtime]);
 
   // Synchronize preexisting/starter simulation roads to the React road builder store upon entering Builder Mode
-  const tiles = useRoadNetwork(state => state.tiles);
+  const tiles = useRoadNetwork((state) => state.tiles);
   useEffect(() => {
     if (builderActive && runtime && runtime.sim) {
       const sim = runtime.sim;
@@ -638,10 +638,10 @@ export function ColonyApp() {
             x: r.x,
             y: r.y,
             mask: 0,
-            type: r.kind || 'street'
+            type: r.kind || "street",
           };
         }
-        
+
         const getMask = (x: number, y: number) => {
           let mask = 0;
           if (initialTiles[`${x},${y - 1}`]) mask |= RoadMask.N;
@@ -650,12 +650,12 @@ export function ColonyApp() {
           if (initialTiles[`${x - 1},${y}`]) mask |= RoadMask.W;
           return mask;
         };
-        
+
         for (const key in initialTiles) {
           const t = initialTiles[key];
           t.mask = getMask(t.x, t.y);
         }
-        
+
         useRoadNetwork.setState({ tiles: initialTiles });
       }
     }
@@ -724,7 +724,7 @@ export function ColonyApp() {
     requestAnimationFrame(() => runtime.resize()); // re-measure after first layout
     const ro = new ResizeObserver(() => runtime.resize());
     ro.observe(el);
-    
+
     if (runtime.sim) {
       useRoadNetwork.getState().loadFromDB(runtime.sim);
     }
@@ -891,22 +891,27 @@ export function ColonyApp() {
       />
       <RoadmapPanel open={roadmapOpen} onClose={() => setRoadmapOpen(false)} />
       {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
-      {(!ui.firstPerson.active && !builderActive && !worldViewActive && rallyRead) && (
-        <div
-          className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
-          aria-label="Who is here at the rally"
-        >
-          <span className="rally-social-read__eyebrow">{rallyRead.title}</span>
-          <b>{rallyRead.summary}</b>
-          <span className="rally-social-read__status">
-            {ui.rally?.ready
-              ? "Friend present · race ready"
-              : ui.rally && ui.rally.present > 0
-                ? "Waiting for a friend"
-                : "Rally point empty"}
-          </span>
-        </div>
-      )}
+      {!ui.firstPerson.active &&
+        !builderActive &&
+        !worldViewActive &&
+        rallyRead && (
+          <div
+            className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
+            aria-label="Who is here at the rally"
+          >
+            <span className="rally-social-read__eyebrow">
+              {rallyRead.title}
+            </span>
+            <b>{rallyRead.summary}</b>
+            <span className="rally-social-read__status">
+              {ui.rally?.ready
+                ? "Friend present · race ready"
+                : ui.rally && ui.rally.present > 0
+                  ? "Waiting for a friend"
+                  : "Rally point empty"}
+            </span>
+          </div>
+        )}
       {ui.race.mode !== "idle" && (
         <div
           style={{
@@ -1056,1814 +1061,1997 @@ export function ColonyApp() {
         </div>
       </header>
       <BusNetworkMiniMap runtime={runtime} />
-      {(!builderActive && !worldViewActive) && (
+      {!builderActive && !worldViewActive && (
         <aside
           className={hudClassName(ui.firstPerson.active)}
           data-hud-expanded={rightHudOpen ? "true" : "false"}
         >
           <div className="hud-essentials" aria-label="City HUD essentials">
             <h2>{ui.name}</h2>
-          <button
-            className="hud-detail-toggle"
-            type="button"
-            aria-expanded={rightHudOpen}
-            onClick={() => setRightHudOpen((open) => !open)}
-            title={rightHudOpen ? rightHud.collapseLabel : rightHud.expandLabel}
-          >
-            {rightHudOpen ? "▴ Hide details" : "▾ HUD details"}
-          </button>
-        </div>
-        {ui.courier.on && ui.courier.headline && (
-          <div
-            className="courier-ticker"
-            title="The Kookerverse Courier — the colony's own news, from the Broadcast Mast"
-            style={{
-              fontSize: 12,
-              color: "#6fd0ff",
-              fontStyle: "italic",
-              lineHeight: 1.35,
-              margin: "2px 0 10px",
-              borderLeft: "2px solid #6fd0ff",
-              paddingLeft: 8,
-            }}
-          >
-            📻 {ui.courier.headline}
+            <button
+              className="hud-detail-toggle"
+              type="button"
+              aria-expanded={rightHudOpen}
+              onClick={() => setRightHudOpen((open) => !open)}
+              title={
+                rightHudOpen ? rightHud.collapseLabel : rightHud.expandLabel
+              }
+            >
+              {rightHudOpen ? "▴ Hide details" : "▾ HUD details"}
+            </button>
           </div>
-        )}
-        <div className="hud-detail-stack" hidden={!rightHudOpen}>
-          <div className="row">
-            <span>Site</span>
-            <b>{ui.biome}</b>
-          </div>
-          <div className="row">
-            <span>Colonists</span>
-            <b>
-              {ui.colonists} / {ui.colony.capacity}
-            </b>
-          </div>
-          {/* Spec 089 — the old colony-sim survival/economy dashboard is hidden in the CityLife HUD. */}
-          {OLD_WORLD_STATS && (
-            <>
-              <div className="row">
-                <span>Homes watered</span>
-                <b
-                  style={{
-                    color: ui.colony.watered < 60 ? "#e6c84d" : undefined,
-                  }}
-                >
-                  {ui.colony.watered}%
-                </b>
-              </div>
-              <div className="row">
-                <span>Homes fed</span>
-                <b
-                  style={{
-                    color: ui.colony.provisioned < 60 ? "#e6c84d" : undefined,
-                  }}
-                >
-                  {ui.colony.provisioned}%
-                </b>
-              </div>
-              <div className="row">
-                <span>Homes healthy</span>
-                <b
-                  style={{
-                    color: ui.colony.health < 60 ? "#e6c84d" : undefined,
-                  }}
-                >
-                  {ui.colony.health}%
-                </b>
-              </div>
-              <div className="row">
-                <span>Homes cultured</span>
-                <b
-                  style={{
-                    color:
-                      ui.colony.culture < 40 || !ui.colony.cultureFuelled
-                        ? "#e6c84d"
-                        : undefined,
-                  }}
-                  title={
-                    !ui.colony.cultureFuelled
-                      ? "Theatres are out of reels — culture pull halved"
-                      : undefined
-                  }
-                >
-                  {ui.colony.culture}%
-                  {!ui.colony.cultureFuelled ? " · reels out" : ""}
-                </b>
-              </div>
-              {ui.colony.housewares > 0 && (
+          {ui.courier.on && ui.courier.headline && (
+            <div
+              className="courier-ticker"
+              title="The Kookerverse Courier — the colony's own news, from the Broadcast Mast"
+              style={{
+                fontSize: 12,
+                color: "#6fd0ff",
+                fontStyle: "italic",
+                lineHeight: 1.35,
+                margin: "2px 0 10px",
+                borderLeft: "2px solid #6fd0ff",
+                paddingLeft: 8,
+              }}
+            >
+              📻 {ui.courier.headline}
+            </div>
+          )}
+          <div className="hud-detail-stack" hidden={!rightHudOpen}>
+            <div className="row">
+              <span>Site</span>
+              <b>{ui.biome}</b>
+            </div>
+            <div className="row">
+              <span>Colonists</span>
+              <b>
+                {ui.colonists} / {ui.colony.capacity}
+              </b>
+            </div>
+            {/* Spec 089 — the old colony-sim survival/economy dashboard is hidden in the CityLife HUD. */}
+            {OLD_WORLD_STATS && (
+              <>
                 <div className="row">
-                  <span>Homes stocked</span>
+                  <span>Homes watered</span>
                   <b
                     style={{
-                      color: ui.colony.housewares < 60 ? "#e6c84d" : undefined,
+                      color: ui.colony.watered < 60 ? "#e6c84d" : undefined,
                     }}
-                    title="Housewares Market coverage — manufactured wares delivered to homes. The top tier needs luxury wares (reels)."
                   >
-                    {ui.colony.housewares}%
+                    {ui.colony.watered}%
                   </b>
                 </div>
-              )}
-              {ui.colony.smog > 0 && (
                 <div className="row">
-                  <span>Homes smoggy</span>
-                  <b
-                    style={{ color: "#e0844d" }}
-                    title="Homes near mines/foundries breathe smog — build Air Scrubber Gardens to clear it"
-                  >
-                    {ui.colony.smog}%
-                  </b>
-                </div>
-              )}
-              <div className="row">
-                <span>Liveability</span>
-                <b
-                  style={{
-                    color: ui.colony.liveability < 40 ? "#e6c84d" : undefined,
-                  }}
-                >
-                  {ui.colony.surveyed
-                    ? `${ui.colony.liveability}%`
-                    : "— locked"}
-                </b>
-              </div>
-              <div className="row">
-                <span>Free labour</span>
-                <b
-                  style={{
-                    color: ui.colony.freeLabour === 0 ? "#e6c84d" : undefined,
-                  }}
-                >
-                  {ui.colony.freeLabour}
-                </b>
-              </div>
-              <div className="row">
-                <span>Jobs</span>
-                <b>
-                  {ui.colony.jobs} · {ui.colony.employed}% empl.
-                </b>
-              </div>
-              {ui.colony.commute.demand > 0 && (
-                <div className="row">
-                  <span>Commute</span>
+                  <span>Homes fed</span>
                   <b
                     style={{
-                      color: ui.colony.commute.congested
-                        ? "#e0844d"
-                        : undefined,
+                      color: ui.colony.provisioned < 60 ? "#e6c84d" : undefined,
                     }}
-                    title={
-                      ui.colony.commute.congested
-                        ? "Congested — workers arrive late, all production slows. Build a Skybridge Transit Depot."
-                        : "Commute capacity: workers vs transit"
-                    }
                   >
-                    {ui.colony.commute.demand}/{ui.colony.commute.capacity}
-                    {ui.colony.commute.congested ? " ⚠" : ""}
+                    {ui.colony.provisioned}%
                   </b>
                 </div>
-              )}
-              {ui.colony.maintenance.worst > 0 && (
                 <div className="row">
-                  <span>Upkeep</span>
+                  <span>Homes healthy</span>
+                  <b
+                    style={{
+                      color: ui.colony.health < 60 ? "#e6c84d" : undefined,
+                    }}
+                  >
+                    {ui.colony.health}%
+                  </b>
+                </div>
+                <div className="row">
+                  <span>Homes cultured</span>
                   <b
                     style={{
                       color:
-                        ui.colony.maintenance.needing > 0
-                          ? "#e0844d"
-                          : undefined,
-                    }}
-                    title={
-                      ui.colony.maintenance.needing > 0
-                        ? `${ui.colony.maintenance.needing} worn building(s) losing output — build a Maintenance Shed. ${ui.colony.maintenance.sheds} shed(s) running.`
-                        : `Worst building wear; ${ui.colony.maintenance.sheds} Maintenance Shed(s) running.`
-                    }
-                  >
-                    {ui.colony.maintenance.worst}% worn
-                    {ui.colony.maintenance.needing > 0
-                      ? ` · ${ui.colony.maintenance.needing} ⚠`
-                      : ""}
-                  </b>
-                </div>
-              )}
-              {(ui.colony.incidents.active > 0 ||
-                ui.colony.incidents.capacity > 0) && (
-                <div className="row">
-                  <span>Incidents</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.incidents.active >
-                        ui.colony.incidents.capacity
-                          ? "#e0584d"
-                          : ui.colony.incidents.active > 0
-                            ? "#e0844d"
-                            : undefined,
-                    }}
-                    title={
-                      ui.colony.incidents.active > 0
-                        ? `${ui.colony.incidents.active} active emergency — unanswered incidents leave the building worn-out and destroy stored goods. Bellhouse capacity ${ui.colony.incidents.capacity}.`
-                        : `No active incidents. Emergency Bellhouse response capacity ${ui.colony.incidents.capacity}.`
-                    }
-                  >
-                    {ui.colony.incidents.active > 0
-                      ? `${ui.colony.incidents.active} active`
-                      : "clear"}{" "}
-                    · cap {ui.colony.incidents.capacity}
-                    {ui.colony.incidents.active > ui.colony.incidents.capacity
-                      ? " ⚠"
-                      : ""}
-                  </b>
-                </div>
-              )}
-              {(ui.colony.fever.level > 0 || ui.colony.fever.contained) && (
-                <div className="row">
-                  <span>Outbreak</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.fever.level >= 20
-                          ? "#e0584d"
-                          : ui.colony.fever.level > 0
-                            ? "#e0844d"
-                            : undefined,
-                    }}
-                    title={
-                      ui.colony.fever.level > 0
-                        ? `${ui.colony.fever.level}% of the colony is unwell${ui.colony.fever.contained ? " — a Fever Watch is containing it." : " — build a Fever Watch Post to contain the spread."}`
-                        : "No outbreak. A Fever Watch Post stands ready."
-                    }
-                  >
-                    {ui.colony.fever.level > 0
-                      ? `${ui.colony.fever.level}% ill`
-                      : "clear"}
-                    {ui.colony.fever.contained
-                      ? " · watched"
-                      : ui.colony.fever.level >= 20
-                        ? " ⚠"
-                        : ""}
-                  </b>
-                </div>
-              )}
-              {(ui.colony.order.unrest > 0 || ui.colony.order.warded) && (
-                <div className="row">
-                  <span>Unrest</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.order.unrest >= 20
-                          ? "#e0584d"
-                          : ui.colony.order.unrest > 0
-                            ? "#e0844d"
-                            : undefined,
-                    }}
-                    title={
-                      ui.colony.order.unrest > 0
-                        ? `${ui.colony.order.unrest}% disorder — idle, squeezed blocks refuse the levy and slow the work${ui.colony.order.warded ? ". A Ward Post is on patrol." : " — build a Ward Post, ease the levy, or put people to work."}`
-                        : "Orderly. A Ward Post keeps the peace."
-                    }
-                  >
-                    {ui.colony.order.unrest > 0
-                      ? `${ui.colony.order.unrest}% disorder`
-                      : "orderly"}
-                    {ui.colony.order.warded
-                      ? " · warded"
-                      : ui.colony.order.unrest >= 20
-                        ? " ⚠"
-                        : ""}
-                  </b>
-                </div>
-              )}
-              <div className="row">
-                <span>Pollution</span>
-                <b
-                  style={{
-                    color:
-                      ui.colony.pollution > 60
-                        ? "#e0584d"
-                        : ui.colony.pollution > 25
+                        ui.colony.culture < 40 || !ui.colony.cultureFuelled
                           ? "#e6c84d"
                           : undefined,
-                  }}
-                >
-                  {ui.colony.pollution}
-                </b>
-              </div>
-              <div className="row">
-                <span>Treasury</span>
-                <b>${ui.colony.treasury.toLocaleString()}</b>
-              </div>
-              {ui.colony.arrears.office && ui.colony.arrears.debt > 0 && (
-                <div className="row">
-                  <span>Debt</span>
-                  <b
-                    style={{
-                      color: ui.colony.arrears.unmanaged
-                        ? "#e0584d"
-                        : ui.colony.arrears.strain
-                          ? "#e0844d"
-                          : "#e6c84d",
                     }}
                     title={
-                      ui.colony.arrears.unmanaged
-                        ? `Unmanaged arrears — the Comptroller's Office is unstaffed and interest is doubling. Debt ${ui.colony.arrears.debt} of ${ui.colony.arrears.ceiling}. Staff it and pay down.`
-                        : ui.colony.arrears.strain
-                          ? `Arrears strain — debt past half the ceiling. Settlers slow and unrest creeps until it is paid down. Debt ${ui.colony.arrears.debt} of ${ui.colony.arrears.ceiling}.`
-                          : `The colony is running a managed deficit. Debt ${ui.colony.arrears.debt} of ${ui.colony.arrears.ceiling}; interest accrues each payday.`
+                      !ui.colony.cultureFuelled
+                        ? "Theatres are out of reels — culture pull halved"
+                        : undefined
                     }
                   >
-                    -${ui.colony.arrears.debt.toLocaleString()}
-                    {ui.colony.arrears.unmanaged
-                      ? " ⚠ unmanaged"
-                      : ui.colony.arrears.strain
+                    {ui.colony.culture}%
+                    {!ui.colony.cultureFuelled ? " · reels out" : ""}
+                  </b>
+                </div>
+                {ui.colony.housewares > 0 && (
+                  <div className="row">
+                    <span>Homes stocked</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.housewares < 60 ? "#e6c84d" : undefined,
+                      }}
+                      title="Housewares Market coverage — manufactured wares delivered to homes. The top tier needs luxury wares (reels)."
+                    >
+                      {ui.colony.housewares}%
+                    </b>
+                  </div>
+                )}
+                {ui.colony.smog > 0 && (
+                  <div className="row">
+                    <span>Homes smoggy</span>
+                    <b
+                      style={{ color: "#e0844d" }}
+                      title="Homes near mines/foundries breathe smog — build Air Scrubber Gardens to clear it"
+                    >
+                      {ui.colony.smog}%
+                    </b>
+                  </div>
+                )}
+                <div className="row">
+                  <span>Liveability</span>
+                  <b
+                    style={{
+                      color: ui.colony.liveability < 40 ? "#e6c84d" : undefined,
+                    }}
+                  >
+                    {ui.colony.surveyed
+                      ? `${ui.colony.liveability}%`
+                      : "— locked"}
+                  </b>
+                </div>
+                <div className="row">
+                  <span>Free labour</span>
+                  <b
+                    style={{
+                      color: ui.colony.freeLabour === 0 ? "#e6c84d" : undefined,
+                    }}
+                  >
+                    {ui.colony.freeLabour}
+                  </b>
+                </div>
+                <div className="row">
+                  <span>Jobs</span>
+                  <b>
+                    {ui.colony.jobs} · {ui.colony.employed}% empl.
+                  </b>
+                </div>
+                {ui.colony.commute.demand > 0 && (
+                  <div className="row">
+                    <span>Commute</span>
+                    <b
+                      style={{
+                        color: ui.colony.commute.congested
+                          ? "#e0844d"
+                          : undefined,
+                      }}
+                      title={
+                        ui.colony.commute.congested
+                          ? "Congested — workers arrive late, all production slows. Build a Skybridge Transit Depot."
+                          : "Commute capacity: workers vs transit"
+                      }
+                    >
+                      {ui.colony.commute.demand}/{ui.colony.commute.capacity}
+                      {ui.colony.commute.congested ? " ⚠" : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.maintenance.worst > 0 && (
+                  <div className="row">
+                    <span>Upkeep</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.maintenance.needing > 0
+                            ? "#e0844d"
+                            : undefined,
+                      }}
+                      title={
+                        ui.colony.maintenance.needing > 0
+                          ? `${ui.colony.maintenance.needing} worn building(s) losing output — build a Maintenance Shed. ${ui.colony.maintenance.sheds} shed(s) running.`
+                          : `Worst building wear; ${ui.colony.maintenance.sheds} Maintenance Shed(s) running.`
+                      }
+                    >
+                      {ui.colony.maintenance.worst}% worn
+                      {ui.colony.maintenance.needing > 0
+                        ? ` · ${ui.colony.maintenance.needing} ⚠`
+                        : ""}
+                    </b>
+                  </div>
+                )}
+                {(ui.colony.incidents.active > 0 ||
+                  ui.colony.incidents.capacity > 0) && (
+                  <div className="row">
+                    <span>Incidents</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.incidents.active >
+                          ui.colony.incidents.capacity
+                            ? "#e0584d"
+                            : ui.colony.incidents.active > 0
+                              ? "#e0844d"
+                              : undefined,
+                      }}
+                      title={
+                        ui.colony.incidents.active > 0
+                          ? `${ui.colony.incidents.active} active emergency — unanswered incidents leave the building worn-out and destroy stored goods. Bellhouse capacity ${ui.colony.incidents.capacity}.`
+                          : `No active incidents. Emergency Bellhouse response capacity ${ui.colony.incidents.capacity}.`
+                      }
+                    >
+                      {ui.colony.incidents.active > 0
+                        ? `${ui.colony.incidents.active} active`
+                        : "clear"}{" "}
+                      · cap {ui.colony.incidents.capacity}
+                      {ui.colony.incidents.active > ui.colony.incidents.capacity
                         ? " ⚠"
                         : ""}
+                    </b>
+                  </div>
+                )}
+                {(ui.colony.fever.level > 0 || ui.colony.fever.contained) && (
+                  <div className="row">
+                    <span>Outbreak</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.fever.level >= 20
+                            ? "#e0584d"
+                            : ui.colony.fever.level > 0
+                              ? "#e0844d"
+                              : undefined,
+                      }}
+                      title={
+                        ui.colony.fever.level > 0
+                          ? `${ui.colony.fever.level}% of the colony is unwell${ui.colony.fever.contained ? " — a Fever Watch is containing it." : " — build a Fever Watch Post to contain the spread."}`
+                          : "No outbreak. A Fever Watch Post stands ready."
+                      }
+                    >
+                      {ui.colony.fever.level > 0
+                        ? `${ui.colony.fever.level}% ill`
+                        : "clear"}
+                      {ui.colony.fever.contained
+                        ? " · watched"
+                        : ui.colony.fever.level >= 20
+                          ? " ⚠"
+                          : ""}
+                    </b>
+                  </div>
+                )}
+                {(ui.colony.order.unrest > 0 || ui.colony.order.warded) && (
+                  <div className="row">
+                    <span>Unrest</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.order.unrest >= 20
+                            ? "#e0584d"
+                            : ui.colony.order.unrest > 0
+                              ? "#e0844d"
+                              : undefined,
+                      }}
+                      title={
+                        ui.colony.order.unrest > 0
+                          ? `${ui.colony.order.unrest}% disorder — idle, squeezed blocks refuse the levy and slow the work${ui.colony.order.warded ? ". A Ward Post is on patrol." : " — build a Ward Post, ease the levy, or put people to work."}`
+                          : "Orderly. A Ward Post keeps the peace."
+                      }
+                    >
+                      {ui.colony.order.unrest > 0
+                        ? `${ui.colony.order.unrest}% disorder`
+                        : "orderly"}
+                      {ui.colony.order.warded
+                        ? " · warded"
+                        : ui.colony.order.unrest >= 20
+                          ? " ⚠"
+                          : ""}
+                    </b>
+                  </div>
+                )}
+                <div className="row">
+                  <span>Pollution</span>
+                  <b
+                    style={{
+                      color:
+                        ui.colony.pollution > 60
+                          ? "#e0584d"
+                          : ui.colony.pollution > 25
+                            ? "#e6c84d"
+                            : undefined,
+                    }}
+                  >
+                    {ui.colony.pollution}
                   </b>
                 </div>
-              )}
-              {ui.colony.trade > 0 && (
                 <div className="row">
-                  <span>Trade</span>
-                  <b style={{ color: "#5fd0a0" }}>
-                    +${ui.colony.trade.toLocaleString()}/day
-                  </b>
+                  <span>Treasury</span>
+                  <b>${ui.colony.treasury.toLocaleString()}</b>
                 </div>
-              )}
-              {ui.colony.levy.active && (
-                <div className="row">
-                  <span>Levy</span>
-                  <span style={{ display: "flex", gap: 4 }}>
-                    {(["low", "normal", "high"] as const).map((r) => (
+                {ui.colony.arrears.office && ui.colony.arrears.debt > 0 && (
+                  <div className="row">
+                    <span>Debt</span>
+                    <b
+                      style={{
+                        color: ui.colony.arrears.unmanaged
+                          ? "#e0584d"
+                          : ui.colony.arrears.strain
+                            ? "#e0844d"
+                            : "#e6c84d",
+                      }}
+                      title={
+                        ui.colony.arrears.unmanaged
+                          ? `Unmanaged arrears — the Comptroller's Office is unstaffed and interest is doubling. Debt ${ui.colony.arrears.debt} of ${ui.colony.arrears.ceiling}. Staff it and pay down.`
+                          : ui.colony.arrears.strain
+                            ? `Arrears strain — debt past half the ceiling. Settlers slow and unrest creeps until it is paid down. Debt ${ui.colony.arrears.debt} of ${ui.colony.arrears.ceiling}.`
+                            : `The colony is running a managed deficit. Debt ${ui.colony.arrears.debt} of ${ui.colony.arrears.ceiling}; interest accrues each payday.`
+                      }
+                    >
+                      -${ui.colony.arrears.debt.toLocaleString()}
+                      {ui.colony.arrears.unmanaged
+                        ? " ⚠ unmanaged"
+                        : ui.colony.arrears.strain
+                          ? " ⚠"
+                          : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.trade > 0 && (
+                  <div className="row">
+                    <span>Trade</span>
+                    <b style={{ color: "#5fd0a0" }}>
+                      +${ui.colony.trade.toLocaleString()}/day
+                    </b>
+                  </div>
+                )}
+                {ui.colony.levy.active && (
+                  <div className="row">
+                    <span>Levy</span>
+                    <span style={{ display: "flex", gap: 4 }}>
+                      {(["low", "normal", "high"] as const).map((r) => (
+                        <button
+                          key={r}
+                          className={ui.colony.levy.rate === r ? "on" : ""}
+                          style={{
+                            padding: "1px 6px",
+                            fontSize: 11,
+                            textTransform: "capitalize",
+                          }}
+                          onClick={() => runtime.setLevy(r)}
+                          title={
+                            r === "low"
+                              ? "Gentle dues — slower treasury, faster immigration"
+                              : r === "high"
+                                ? "Hard levy — fatter treasury, settlers slow to a trickle"
+                                : "Steady — today’s economy"
+                          }
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                )}
+                {ui.colony.wage.active && (
+                  <div className="row">
+                    <span>Wage</span>
+                    <span style={{ display: "flex", gap: 4 }}>
+                      {(["low", "standard", "generous"] as const).map((r) => (
+                        <button
+                          key={r}
+                          className={ui.colony.wage.rate === r ? "on" : ""}
+                          style={{ padding: "1px 5px", fontSize: 11 }}
+                          onClick={() => runtime.setWage(r)}
+                          title={
+                            r === "low"
+                              ? "Cheap payroll, but feeds unrest and slows settlers"
+                              : r === "generous"
+                                ? "Costly payroll, but eases unrest and draws settlers faster"
+                                : "Fair pay — a steady workforce"
+                          }
+                        >
+                          {r === "low"
+                            ? "Low"
+                            : r === "standard"
+                              ? "Std"
+                              : "Gen"}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                )}
+                {ui.colony.wage.active && ui.colony.wage.payroll > 0 && (
+                  <div className="row">
+                    <span>Payroll</span>
+                    <b
+                      style={{ color: "#e0844d" }}
+                      title="The colony's daily wage bill — employed workers times the wage rate."
+                    >
+                      -${ui.colony.wage.payroll.toLocaleString()}/day
+                    </b>
+                  </div>
+                )}
+                {ui.colony.roster.active && (
+                  <div className="row">
+                    <span>Labour</span>
+                    <span style={{ display: "flex", gap: 4 }}>
+                      {(["essentials", "balanced", "industry"] as const).map(
+                        (m) => (
+                          <button
+                            key={m}
+                            className={ui.colony.roster.mode === m ? "on" : ""}
+                            style={{ padding: "1px 5px", fontSize: 10 }}
+                            onClick={() => runtime.setRosterMode(m)}
+                            title={
+                              m === "essentials"
+                                ? "Essentials first — under a labour shortage the Roster Office fills Food, Safety and Services before Industry and Trade"
+                                : m === "industry"
+                                  ? "Industry first — under a shortage it fills Industry, Logistics and Trade before Food and Services"
+                                  : "Balanced — the even split across all sectors (today’s behaviour)"
+                            }
+                          >
+                            {m === "essentials"
+                              ? "Ess"
+                              : m === "industry"
+                                ? "Ind"
+                                : "Bal"}
+                          </button>
+                        ),
+                      )}
+                    </span>
+                  </div>
+                )}
+                {(ui.colony.feast.active || ui.colony.feast.canCall) && (
+                  <div className="row">
+                    <span>Feast</span>
+                    {ui.colony.feast.active ? (
+                      <b
+                        style={{ color: "#f0b840" }}
+                        title="A Civic Feast is on — unrest eases and settlers arrive faster while it runs."
+                      >
+                        🎉 {ui.colony.feast.daysLeft}d left
+                      </b>
+                    ) : (
                       <button
-                        key={r}
-                        className={ui.colony.levy.rate === r ? "on" : ""}
+                        style={{ padding: "1px 8px", fontSize: 11 }}
+                        onClick={() => runtime.callFeast()}
+                        title="Fund a Civic Feast — spend treasury + rations + housewares to lift morale and ease unrest for a few days."
+                      >
+                        Hold feast
+                      </button>
+                    )}
+                  </div>
+                )}
+                {ui.colony.liaison.active && (
+                  <div className="row">
+                    <span>Standing</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.liaison.standing < 0.3
+                            ? "#e0584d"
+                            : ui.colony.liaison.standing > 0.7
+                              ? "#5fd0a0"
+                              : undefined,
+                      }}
+                      title="Kookerverse Standing — fulfil Civic Requests to raise it. High standing draws settlers; low standing repels them and breeds unrest."
+                    >
+                      {Math.round(ui.colony.liaison.standing * 100)}%
+                    </b>
+                  </div>
+                )}
+                {ui.colony.liaison.request && (
+                  <div className="row">
+                    <span>Request</span>
+                    {ui.colony.liaison.canFulfil ? (
+                      <button
                         style={{
                           padding: "1px 6px",
                           fontSize: 11,
                           textTransform: "capitalize",
                         }}
-                        onClick={() => runtime.setLevy(r)}
-                        title={
-                          r === "low"
-                            ? "Gentle dues — slower treasury, faster immigration"
-                            : r === "high"
-                              ? "Hard levy — fatter treasury, settlers slow to a trickle"
-                              : "Steady — today’s economy"
-                        }
+                        onClick={() => runtime.fulfillRequest()}
+                        title={`The Kookerverse asks for ${ui.colony.liaison.request.amount} ${ui.colony.liaison.request.good} (${ui.colony.liaison.request.daysLeft}d left). Fulfil to raise standing.`}
                       >
-                        {r}
+                        Send {ui.colony.liaison.request.amount}{" "}
+                        {ui.colony.liaison.request.good}
                       </button>
-                    ))}
-                  </span>
-                </div>
-              )}
-              {ui.colony.wage.active && (
-                <div className="row">
-                  <span>Wage</span>
-                  <span style={{ display: "flex", gap: 4 }}>
-                    {(["low", "standard", "generous"] as const).map((r) => (
-                      <button
-                        key={r}
-                        className={ui.colony.wage.rate === r ? "on" : ""}
-                        style={{ padding: "1px 5px", fontSize: 11 }}
-                        onClick={() => runtime.setWage(r)}
-                        title={
-                          r === "low"
-                            ? "Cheap payroll, but feeds unrest and slows settlers"
-                            : r === "generous"
-                              ? "Costly payroll, but eases unrest and draws settlers faster"
-                              : "Fair pay — a steady workforce"
-                        }
+                    ) : (
+                      <b
+                        style={{ color: "#e0844d" }}
+                        title="Not enough goods to fulfil this Civic Request — standing falls if it lapses."
                       >
-                        {r === "low" ? "Low" : r === "standard" ? "Std" : "Gen"}
-                      </button>
-                    ))}
-                  </span>
-                </div>
-              )}
-              {ui.colony.wage.active && ui.colony.wage.payroll > 0 && (
-                <div className="row">
-                  <span>Payroll</span>
-                  <b
-                    style={{ color: "#e0844d" }}
-                    title="The colony's daily wage bill — employed workers times the wage rate."
-                  >
-                    -${ui.colony.wage.payroll.toLocaleString()}/day
-                  </b>
-                </div>
-              )}
-              {ui.colony.roster.active && (
-                <div className="row">
-                  <span>Labour</span>
-                  <span style={{ display: "flex", gap: 4 }}>
-                    {(["essentials", "balanced", "industry"] as const).map(
-                      (m) => (
-                        <button
-                          key={m}
-                          className={ui.colony.roster.mode === m ? "on" : ""}
-                          style={{ padding: "1px 5px", fontSize: 10 }}
-                          onClick={() => runtime.setRosterMode(m)}
-                          title={
-                            m === "essentials"
-                              ? "Essentials first — under a labour shortage the Roster Office fills Food, Safety and Services before Industry and Trade"
-                              : m === "industry"
-                                ? "Industry first — under a shortage it fills Industry, Logistics and Trade before Food and Services"
-                                : "Balanced — the even split across all sectors (today’s behaviour)"
-                          }
-                        >
-                          {m === "essentials"
-                            ? "Ess"
-                            : m === "industry"
-                              ? "Ind"
-                              : "Bal"}
-                        </button>
-                      ),
+                        {ui.colony.liaison.request.amount}{" "}
+                        {ui.colony.liaison.request.good} ·{" "}
+                        {ui.colony.liaison.request.daysLeft}d ⚠
+                      </b>
                     )}
-                  </span>
-                </div>
-              )}
-              {(ui.colony.feast.active || ui.colony.feast.canCall) && (
-                <div className="row">
-                  <span>Feast</span>
-                  {ui.colony.feast.active ? (
-                    <b
-                      style={{ color: "#f0b840" }}
-                      title="A Civic Feast is on — unrest eases and settlers arrive faster while it runs."
-                    >
-                      🎉 {ui.colony.feast.daysLeft}d left
-                    </b>
-                  ) : (
-                    <button
-                      style={{ padding: "1px 8px", fontSize: 11 }}
-                      onClick={() => runtime.callFeast()}
-                      title="Fund a Civic Feast — spend treasury + rations + housewares to lift morale and ease unrest for a few days."
-                    >
-                      Hold feast
-                    </button>
-                  )}
-                </div>
-              )}
-              {ui.colony.liaison.active && (
-                <div className="row">
-                  <span>Standing</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.liaison.standing < 0.3
-                          ? "#e0584d"
-                          : ui.colony.liaison.standing > 0.7
-                            ? "#5fd0a0"
-                            : undefined,
-                    }}
-                    title="Kookerverse Standing — fulfil Civic Requests to raise it. High standing draws settlers; low standing repels them and breeds unrest."
-                  >
-                    {Math.round(ui.colony.liaison.standing * 100)}%
-                  </b>
-                </div>
-              )}
-              {ui.colony.liaison.request && (
-                <div className="row">
-                  <span>Request</span>
-                  {ui.colony.liaison.canFulfil ? (
-                    <button
-                      style={{
-                        padding: "1px 6px",
-                        fontSize: 11,
-                        textTransform: "capitalize",
-                      }}
-                      onClick={() => runtime.fulfillRequest()}
-                      title={`The Kookerverse asks for ${ui.colony.liaison.request.amount} ${ui.colony.liaison.request.good} (${ui.colony.liaison.request.daysLeft}d left). Fulfil to raise standing.`}
-                    >
-                      Send {ui.colony.liaison.request.amount}{" "}
-                      {ui.colony.liaison.request.good}
-                    </button>
-                  ) : (
-                    <b
-                      style={{ color: "#e0844d" }}
-                      title="Not enough goods to fulfil this Civic Request — standing falls if it lapses."
-                    >
-                      {ui.colony.liaison.request.amount}{" "}
-                      {ui.colony.liaison.request.good} ·{" "}
-                      {ui.colony.liaison.request.daysLeft}d ⚠
-                    </b>
-                  )}
-                </div>
-              )}
-              {(ui.colony.spire.stage > 0 || ui.colony.spire.building) && (
-                <div className="row">
-                  <span>Spire</span>
-                  <b
-                    style={{
-                      color: ui.colony.spire.complete ? "#f0b840" : "#8fc8e0",
-                    }}
-                    title="The Horizon Spire — a grand multi-stage monument. When all four stages stand, it permanently lifts standing, immigration, and order."
-                  >
-                    {ui.colony.spire.complete
-                      ? "★ complete"
-                      : `Stage ${ui.colony.spire.stage}/${ui.colony.spire.total}${ui.colony.spire.building ? ` · ${Math.round(ui.colony.spire.progress * 100)}%` : ""}`}
-                  </b>
-                </div>
-              )}
-              {(ui.colony.pillar.stage > 0 || ui.colony.pillar.building) && (
-                <div className="row">
-                  <span>Ironwork Pillar</span>
-                  <b
-                    style={{
-                      color: ui.colony.pillar.complete ? "#ffc568" : "#b98c3a",
-                    }}
-                    title="A pillar over the works. Two hands, one wheel — the colony sleeps easier under a minded world."
-                  >
-                    {ui.colony.pillar.complete
-                      ? `Stage ${ui.colony.pillar.total}/${ui.colony.pillar.total} · Retune 00:00`
-                      : `Stage ${ui.colony.pillar.stage}/${ui.colony.pillar.total}${ui.colony.pillar.building ? ` · ${Math.round(ui.colony.pillar.progress * 100)}%` : ""}`}
-                  </b>
-                </div>
-              )}
-              {ui.colony.front.established && (
-                <div className="row">
-                  <span>Cloudsea</span>
-                  <b
-                    style={{
-                      color: ui.colony.front.incoming
-                        ? ui.colony.front.braced
-                          ? "#5fd0a0"
-                          : "#e0584d"
-                        : ui.colony.front.watching
-                          ? undefined
-                          : "#e0844d",
-                    }}
-                    title={
-                      ui.colony.front.incoming
-                        ? ui.colony.front.braced
-                          ? "A Cloudsea Front is incoming — the Stormwatch has sounded the Brace Order; damage will be slight."
-                          : "A Cloudsea Front is incoming and NO Stormwatch is braced — build/staff a Stormwatch Shelter or take heavy damage."
-                        : ui.colony.front.watching
-                          ? `The Stormwatch scans the cloudsea — next front in ~${ui.colony.front.timerDays}d.`
-                          : `No Stormwatch on watch — the next front (~${ui.colony.front.timerDays}d) will hit unbraced. Build a Stormwatch Shelter.`
-                    }
-                  >
-                    {ui.colony.front.incoming
-                      ? ui.colony.front.braced
-                        ? "front · braced"
-                        : "FRONT ⚠"
-                      : `${ui.colony.front.watching ? "watched" : "unwatched"} · ${ui.colony.front.timerDays}d`}
-                  </b>
-                </div>
-              )}
-              {ui.colony.founders.active && (
-                <div className="row">
-                  <span>Founders</span>
-                  <b
-                    style={{ color: "#e8c862" }}
-                    title={`The Founders' Hall seats the Living Roster — ${ui.colony.founders.seated} founders, each a named colonist with a post. Settlers arrive faster, standing earns more, and unrest eases.${ui.colony.founders.notable ? ` ${ui.colony.founders.notable.name}, ${ui.colony.founders.notable.role}, keeps the Hall.` : ""}`}
-                  >
-                    ★ {ui.colony.founders.seated} seated
-                    {ui.colony.founders.notable
-                      ? ` · ${ui.colony.founders.notable.name}`
-                      : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.prosperity.active && (
-                <div className="row">
-                  <span>Prosperity</span>
-                  <b
-                    style={{
-                      color: ui.colony.prosperity.recognised
-                        ? "#f0b840"
-                        : ui.colony.prosperity.rank >= 3
-                          ? "#5fd0a0"
-                          : ui.colony.prosperity.rank <= 1
-                            ? "#e0844d"
-                            : undefined,
-                    }}
-                    title={`The Census Hall reads the whole colony — liveability, housing tiers, employment, Kookerverse standing and Treasury solvency — as one Prosperity score (${ui.colony.prosperity.score}/100). ${ui.colony.prosperity.recognised ? "At the top rank, Landing One is a Recognised Sky-Colony." : "High prosperity draws settlers a little faster."}`}
-                  >
-                    {ui.colony.prosperity.rankName} ·{" "}
-                    {ui.colony.prosperity.score}
-                    {ui.colony.prosperity.recognised ? " ★" : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.education.schools > 0 && (
-                <div className="row">
-                  <span>Education</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.education.coverage >= 60
-                          ? "#d98f5a"
-                          : ui.colony.education.coverage > 0
-                            ? undefined
-                            : "#e0844d",
-                    }}
-                    title="Little Schoolrooms teach the homes within reach — schooled homes draw settlers a little faster and let the Skillhouse Academy train skilled workers quicker."
-                  >
-                    {ui.colony.education.coverage}%
-                  </b>
-                </div>
-              )}
-              {ui.colony.solace.shrines > 0 && (
-                <div className="row">
-                  <span>Solace</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.solace.coverage >= 60
-                          ? "#b6a8e0"
-                          : ui.colony.solace.coverage > 0
-                            ? undefined
-                            : "#e0844d",
-                    }}
-                    title="Mooring Shrines carry Solace to nearby homes — consoled homes draw settlers a little faster and shed unrest more slowly. Solace dims if the shrines run out of linen."
-                  >
-                    {ui.colony.solace.coverage}%
-                    {ui.colony.solace.coverage === 0 ? " (dim)" : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.departures.pressure > 0 && (
-                <div className="row">
-                  <span>Departures</span>
-                  <b
-                    style={{
-                      color: ui.colony.departures.atRisk
-                        ? "#e0584d"
-                        : "#e0844d",
-                    }}
-                    title={
-                      ui.colony.departures.atRisk
-                        ? `Households are leaving the failing decks — ${ui.colony.departures.cause}. Restore water, food, health, order or wages to drain the pressure before more pack up.`
-                        : `Some strain in the homes (${ui.colony.departures.cause}); keep the services up and it settles before anyone leaves.`
-                    }
-                  >
-                    {ui.colony.departures.pressure}%
-                    {ui.colony.departures.atRisk ? " ⚠ leaving" : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.confidence.slowed && (
-                <div className="row">
-                  <span>Confidence</span>
-                  <b
-                    style={{
-                      color: ui.colony.confidence.halted
-                        ? "#e0584d"
-                        : "#e0844d",
-                    }}
-                    title={
-                      ui.colony.confidence.halted
-                        ? "Settler Confidence has collapsed — word of the colony has soured, and immigration has halted even with beds empty. Calm the unrest, clear the arrears, pay the wages and feed the homes to win it back."
-                        : "Settler Confidence is low — disorder, debt, stingy wages or empty rations have slowed how fast newcomers risk the crossing. Set the colony right and arrivals speed back up."
-                    }
-                  >
-                    {Math.round(ui.colony.confidence.confidence * 100)}%
-                    {ui.colony.confidence.halted ? " ⚠ halted" : " · slowed"}
-                  </b>
-                </div>
-              )}
-              {ui.colony.calendar.office && (
-                <div className="row">
-                  <span>Calendar</span>
-                  <b
-                    style={{ color: "#d9c089" }}
-                    title="The Founding Calendar — a staffed Calendar Office counts the colony's age. Every year-turn is Founders' Day, a small free morale lift (unlike the council-funded Civic Feast). This is the colony's own birthday."
-                  >
-                    Year {ui.colony.calendar.year}, Month{" "}
-                    {ui.colony.calendar.month} · Founders&apos; Day in{" "}
-                    {ui.colony.calendar.monthsToFounders}mo
-                  </b>
-                </div>
-              )}
-              {ui.colony.season.active && (
-                <div className="row">
-                  <span>Season</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.season.modifier > 0
-                          ? "#7fc08a"
-                          : ui.colony.season.modifier < 0
-                            ? "#d59a6a"
-                            : "#c8c0a0",
-                    }}
-                    title="Mild Seasons + Seasonal Solar — once the colony keeps a calendar, the skyfarms yield and the solar farms both follow the year (more in Bloom/Highsun, less in Grey/Frost). Each averages to no annual change, so store the surplus food and battery charge from the good months, and lean on wind turbines, to ride out the lean ones."
-                  >
-                    {ui.colony.season.name}{" "}
-                    {ui.colony.season.modifier > 0 ? "+" : ""}
-                    {ui.colony.season.modifier}% food ·{" "}
-                    {ui.colony.season.solarModifier > 0 ? "+" : ""}
-                    {ui.colony.season.solarModifier}% sun
-                  </b>
-                </div>
-              )}
-              {(ui.colony.ledger.hall || ui.colony.ledger.turning) && (
-                <div className="row">
-                  <span>Long Ledger</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.ledger.lastPassings > 0
-                          ? "#9a8fb0"
-                          : "#8a9ab0",
-                    }}
-                    title="The Long Ledger — colonists live a long span, then a gentle natural turnover begins, capped so it can never out-pace the colony's births and arrivals. A Hall of Names records the elders and comforts the colony after a loss. Keep births and newcomers flowing to renew across the generations."
-                  >
-                    {ui.colony.ledger.turning
-                      ? `turning${ui.colony.ledger.lastPassings > 0 ? ` · ${ui.colony.ledger.lastPassings} remembered` : ""}`
-                      : `settled (${ui.colony.ledger.onset - ui.colony.ledger.ageYears}yr to turn)`}
-                    {ui.colony.ledger.hall ? " · Hall" : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.births.growing && (
-                <div className="row">
-                  <span>Children</span>
-                  <b
-                    style={{ color: "#8ad0a8" }}
-                    title="Household Births — stable mid-tier homes that are watered, fed and on a calm deck slowly raise children. Each child eats half a colonist's rations and gives no labour until, with a home to live in, it grows up into a free colonist. Wreck the rations or spike unrest and the families stop raising."
-                  >
-                    {ui.colony.births.children}
-                    {ui.colony.births.homes > 0
-                      ? ` · ${ui.colony.births.homes} homes`
-                      : ""}
-                  </b>
-                </div>
-              )}
-              {(ui.colony.footprint.camp || ui.colony.footprint.claims > 0) && (
-                <div className="row">
-                  <span>Footprint</span>
-                  <b
-                    style={{
-                      color: ui.colony.footprint.atEdge ? "#8ec0d8" : "#c8a25a",
-                    }}
-                    title="Build footprint — a staffed Survey Camp runs Outer Claims, each pushing the colony's build radius one deck-ring further onto the island. Each claim takes days of survey work and spends materials + components; it waits if the colony cannot pay."
-                  >
-                    radius {ui.colony.footprint.radius} ·{" "}
-                    {ui.colony.footprint.claims}/{ui.colony.footprint.maxClaims}
-                    {ui.colony.footprint.atEdge
-                      ? " (island edge)"
-                      : ` · claim ${Math.round(ui.colony.footprint.progress * 100)}%`}
-                  </b>
-                </div>
-              )}
-              {ui.colony.veins.mines > 0 && ui.colony.veins.poorest < 1 && (
-                <div className="row">
-                  <span>Ore veins</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.veins.poorest <= 0.25
-                          ? "#e0584d"
-                          : ui.colony.veins.poorest < 0.6
-                            ? "#e0844d"
-                            : "#caa86a",
-                    }}
-                    title="Vein Ledger — every mine digs a finite vein. A fresh pit runs at full for months, then fades by bands to a 25% trickle as its vein runs down. This shows the poorest pit's output; claim new ground (Survey Camp) and sink a fresh shaft when the old veins thin."
-                  >
-                    poorest {Math.round(ui.colony.veins.poorest * 100)}%
-                  </b>
-                </div>
-              )}
-              {ui.colony.imports.active && (
-                <div className="row">
-                  <span>Import</span>
-                  <span style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                    {(
-                      [
-                        ["Off", null],
-                        ["Mat", "materials"],
-                        ["Comp", "components"],
-                        ["Food", "food"],
-                        ["Linen", "linen"],
-                        ["Reels", "reels"],
-                      ] as const
-                    ).map(([label, good]) => (
-                      <button
-                        key={label}
-                        className={ui.colony.imports.order === good ? "on" : ""}
-                        style={{ padding: "1px 4px", fontSize: 10 }}
-                        onClick={() => runtime.setImportOrder(good)}
-                        title={
-                          good
-                            ? `Place a standing order to buy ${good} at a premium — the Import Office spends treasury to land it in storage`
-                            : "Stop importing — clear the standing order"
-                        }
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </span>
-                </div>
-              )}
-              {ui.colony.imports.active &&
-                ui.colony.imports.order &&
-                ui.colony.imports.dailySpend > 0 && (
+                  </div>
+                )}
+                {(ui.colony.spire.stage > 0 || ui.colony.spire.building) && (
                   <div className="row">
-                    <span>Buying</span>
+                    <span>Spire</span>
                     <b
-                      style={{ color: "#e0844d" }}
-                      title={`The Import Office is landing about ${ui.colony.imports.perDay} ${ui.colony.imports.order} per day, at a premium over the Exchange price.`}
+                      style={{
+                        color: ui.colony.spire.complete ? "#f0b840" : "#8fc8e0",
+                      }}
+                      title="The Horizon Spire — a grand multi-stage monument. When all four stages stand, it permanently lifts standing, immigration, and order."
                     >
-                      -${ui.colony.imports.dailySpend.toLocaleString()}/day
+                      {ui.colony.spire.complete
+                        ? "★ complete"
+                        : `Stage ${ui.colony.spire.stage}/${ui.colony.spire.total}${ui.colony.spire.building ? ` · ${Math.round(ui.colony.spire.progress * 100)}%` : ""}`}
                     </b>
                   </div>
                 )}
-              {ui.colony.storage.fill >= 50 && (
-                <div className="row">
-                  <span>Storage</span>
-                  <b
-                    style={{
-                      color: ui.colony.storage.full
-                        ? "#e0584d"
-                        : ui.colony.storage.fill >= 90
-                          ? "#e0844d"
-                          : undefined,
-                    }}
-                    title={
-                      ui.colony.storage.full
-                        ? `Storage full (${ui.colony.storage.tightest}) — overflow is lost overboard. Build a Storehouse Platform.`
-                        : `Fullest store: ${ui.colony.storage.tightest} at ${ui.colony.storage.fill}% of cap`
-                    }
-                  >
-                    {ui.colony.storage.fill}% full
-                    {ui.colony.storage.full ? " ⚠" : ""}
-                  </b>
-                </div>
-              )}
-              <div className="row">
-                <span>Materials</span>
-                <b
-                  style={{
-                    color: ui.colony.materials < 6 ? "#e0584d" : undefined,
-                  }}
-                >
-                  {ui.colony.materials}
-                </b>
-              </div>
-              <div className="row">
-                <span>Components</span>
-                <b>{ui.colony.components}</b>
-              </div>
-              <div className="row">
-                <span>Food</span>
-                <b
-                  style={{
-                    color: ui.colony.food === 0 ? "#e6c84d" : undefined,
-                  }}
-                >
-                  {ui.colony.food}
-                </b>
-              </div>
-              {ui.colony.reels > 0 && (
-                <div className="row">
-                  <span>Reels</span>
-                  <b style={{ color: "#9a8fe0" }}>{ui.colony.reels}</b>
-                </div>
-              )}
-              {ui.colony.fibre > 0 && (
-                <div className="row">
-                  <span>Fibre</span>
-                  <b
-                    style={{ color: "#9ec0a0" }}
-                    title="Skyflax fibre — gathered from the rims by Flax Skimmer Docks, woven into linen by Weaveries."
-                  >
-                    {ui.colony.fibre}
-                  </b>
-                </div>
-              )}
-              {ui.colony.linen > 0 && (
-                <div className="row">
-                  <span>Linen</span>
-                  <b
-                    style={{ color: "#d8c8a0" }}
-                    title="Linen bolts — the top housing tier needs it, and clinics use it as bandage cloth (more during a fever)."
-                  >
-                    {ui.colony.linen}
-                  </b>
-                </div>
-              )}
-              {ui.colony.water.cisterns > 0 && (
-                <div className="row">
-                  <span>Water</span>
-                  <b
-                    style={{
-                      color: ui.colony.water.dry ? "#e0584d" : "#5aa6d8",
-                    }}
-                    title="Stored water — Mist Condenser Cisterns fill the tank and the Water Hubs draw it to serve homes. A dry tank (lost power, a storm, or too few cisterns) weakens water coverage and breeds fever + unrest."
-                  >
-                    {ui.colony.water.stored}/{ui.colony.water.cap}
-                    {ui.colony.water.dry ? " ⚠ dry" : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.tools.cribs > 0 && (
-                <div className="row">
-                  <span>Tools</span>
-                  <b
-                    style={{
-                      color: ui.colony.tools.short ? "#e0584d" : "#d59a4a",
-                    }}
-                    title="Tool-kits — Tool Cribs turn components into kits, and the mines, workshops, skyfarms, fitters and turbines draw them as they work. A drained rack (too few cribs, no spare components, or a brownout) weakens every tooled workplace together toward a half-speed floor."
-                  >
-                    {ui.colony.tools.stored}/{ui.colony.tools.cap}
-                    {ui.colony.tools.short ? " ⚠ short" : ""}
-                  </b>
-                </div>
-              )}
-              {(ui.colony.security.active || ui.colony.security.nooks > 0) && (
-                <div className="row">
-                  <span>Watch</span>
-                  <b
-                    style={{
-                      color: ui.colony.security.active ? "#d8a64a" : "#7faf7a",
-                    }}
-                    title="The Watch Nook — a rich, populous, unguarded colony loses a small trickle of treasury to petty theft (never enough to bankrupt it, and none during a storm or shortage). Staff a Watch Nook to cut it; a second stops it entirely."
-                  >
-                    {ui.colony.security.nooks > 0
-                      ? `${ui.colony.security.nooks} nook${ui.colony.security.nooks > 1 ? "s" : ""}`
-                      : "unguarded"}
-                    {ui.colony.security.active
-                      ? ` · -${ui.colony.security.lossPerDay}/day`
-                      : ui.colony.security.nooks > 0
-                        ? " · secure"
-                        : ""}
-                  </b>
-                </div>
-              )}
-              {(ui.colony.waste.harmful || ui.colony.waste.posts > 0) && (
-                <div className="row">
-                  <span>Waste</span>
-                  <b
-                    style={{
-                      color: ui.colony.waste.fevered
-                        ? "#e0584d"
-                        : ui.colony.waste.harmful
-                          ? "#d59a6a"
-                          : "#8aa07e",
-                    }}
-                    title="Household Waste — the everyday filth a growing population makes (the air-scrubbers only clean industrial smog). Harmless below 25%, but above it desirability slips, and above 50% it breeds fever. Staff Sanitation Posts to clear it on their rounds."
-                  >
-                    {ui.colony.waste.level}%
-                    {ui.colony.waste.fevered
-                      ? " ⚠ breeding fever"
-                      : ui.colony.waste.harmful
-                        ? " · filthy"
-                        : ""}
-                    {ui.colony.waste.posts > 0
-                      ? ` · ${ui.colony.waste.posts} post${ui.colony.waste.posts > 1 ? "s" : ""}`
-                      : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.rimfish.docks > 0 && (
-                <div className="row">
-                  <span>Rimfish</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.rimfish.stock > 0 ? "#4fb0a6" : "#7a9a96",
-                    }}
-                    title="Rimfish — a second food netted from the cloudsea rim by Cloudsea Net Docks, stored apart from skygrain. When on hand it covers a portion of the colony's meals and spares skygrain, so the grain lasts longer through a lean Frost season, and the varied table draws settlers a little faster. It is not subject to the skyfarm seasons — that is the buffer."
-                  >
-                    {ui.colony.rimfish.stock}
-                    {ui.colony.rimfish.varied ? " · varied table" : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.festival.board && (
-                <div className="row">
-                  <span>Festival</span>
-                  <b
-                    style={{
-                      color: ui.colony.festival.active ? "#e2a93f" : "#9a8a5a",
-                    }}
-                    title="The Highsun Lantern Supper — a Festival Board lays a once-a-year supper from the colony's own stores (greens + fish + linen + materials). A well-supplied supper grants Lantern Cheer: a lift to settler confidence for the month, a calmer colony, and a little standing with the wider Kookerverse. A thin year simply passes — no penalty."
-                  >
-                    {ui.colony.festival.active
-                      ? `Lantern Cheer +${ui.colony.festival.bonus} · ${ui.colony.festival.cheerDays}d`
-                      : "awaiting Highsun"}
-                  </b>
-                </div>
-              )}
-              {ui.colony.reclaim.plants > 0 && (
-                <div className="row">
-                  <span>Reclaim</span>
-                  <b
-                    style={{
-                      color: ui.colony.reclaim.active ? "#4fb0c0" : "#7a9aa0",
-                    }}
-                    title="Greywater Reclaimer — a staffed utility plant that treats a share of the colony's daily used water back into the tanks at a 2:1 loss. It runs on power (halves in a brownout), needs a little linen for filters, and idles when the tanks are nearly full. Not new water, just some of our own back — a steadier tank through storm and brownout weeks."
-                  >
-                    {ui.colony.reclaim.plants} plant
-                    {ui.colony.reclaim.plants > 1 ? "s" : ""}
-                    {ui.colony.reclaim.active
-                      ? ` · +${ui.colony.reclaim.perDay}/day`
-                      : " · idle"}
-                  </b>
-                </div>
-              )}
-              {ui.colony.fire.posts > 0 && (
-                <div className="row">
-                  <span>Fire</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.fire.active > 0
-                          ? "#e0584d"
-                          : !ui.colony.fire.watered
-                            ? "#d8a64a"
-                            : "#7faf7a",
-                    }}
-                    title="Fire-Watch — staffed Posts watch a fire district. Worn, packed, power-stressed buildings in the warm season slowly build fire risk; a staffed, watered Post drains it and puts out sparks. Let the tanks run dry or the crew leave and a fire spreads deck-to-deck and burns a building down. A maintained, well-watered colony never catches."
-                  >
-                    {ui.colony.fire.active > 0
-                      ? `${ui.colony.fire.active} alight!`
-                      : `risk ${ui.colony.fire.risk}%`}
-                    {ui.colony.fire.watered ? "" : " · dry"}
-                  </b>
-                </div>
-              )}
-              {ui.colony.stalls.stalls > 0 && (
-                <div className="row">
-                  <span>Market</span>
-                  <b
-                    style={{
-                      color: ui.colony.stalls.open ? "#e0b34a" : "#9a8a5a",
-                    }}
-                    title="Market Stalls — the colony's own home market. Staffed stalls sell surplus linen and folios (above a reserve) to paid colonists, returning a little coin to the treasury each day. They never sell below the reserve, so they never rob the export trade, and custom dries up if wages fall into arrears."
-                  >
-                    {ui.colony.stalls.stalls} stall
-                    {ui.colony.stalls.stalls > 1 ? "s" : ""}
-                    {ui.colony.stalls.open
-                      ? ` · +${ui.colony.stalls.coinPerDay}/day`
-                      : " · quiet"}
-                  </b>
-                </div>
-              )}
-              {ui.colony.porter.sheds > 0 && (
-                <div className="row">
-                  <span>Porters</span>
-                  <b
-                    style={{
-                      color: ui.colony.porter.working ? "#c79a5a" : "#8a7a5a",
-                    }}
-                    title="Porter Sheds — the first building whose whole point is to let you SEE the economy. While staffed, porters run handcarts along the roads between buildings, and the colony's goods pile up in crates and sacks that grow when a store fills and shrink as it is used. It invents no new good and changes no number, it gives the economy a body on the island. No porter ever crosses open water."
-                  >
-                    {ui.colony.porter.sheds} shed
-                    {ui.colony.porter.sheds > 1 ? "s" : ""}
-                    {ui.colony.porter.working
-                      ? ` · ${ui.colony.porter.porters} carts`
-                      : " · idle"}
-                  </b>
-                </div>
-              )}
-              {ui.colony.avatar.foundries > 0 && (
-                <div className="row">
-                  <span>Avatar Foundry</span>
-                  <b
-                    style={{
-                      color: ui.colony.avatar.staffed ? "#9f86d8" : "#7a6e8a",
-                    }}
-                    title={avatarCopy.title}
-                  >
-                    {avatarCopy.summary}
-                  </b>
-                </div>
-              )}
-            </>
-          )}
-          {ui.citizens.count > 0 && (
-            <div className="row">
-              <span>Kookerbook</span>
-              <b>
-                <a
-                  href="/kookerbook.html"
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ color: "#8fb6e8", textDecoration: "none" }}
-                  title="The bot social network — every citizen has a profile page with their home and timeline"
-                >
-                  📘 open the Book
-                </a>
-              </b>
-            </div>
-          )}
-          {ui.citizens.count > 0 && (
-            <div className="row">
-              <span>Citizens</span>
-              <b
-                style={{ color: ui.citizens.awake > 0 ? "#a0d4f0" : "#7a8a9a" }}
-                title={citizenCopy.title}
-              >
-                {citizenCopy.summary}
-              </b>
-            </div>
-          )}
-          {ui.citizens.count > 0 && !ui.firstPerson.active && (
-            <div className="row">
-              <span>Step in</span>
-              <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                {ui.citizens.list
-                  .filter((c) => ui.firstPerson.stepInCitizenIds.includes(c.id))
-                  .slice(0, 4)
-                  .map((c) => (
-                    <button
-                      key={c.id}
-                      className={
-                        c.id === ui.firstPerson.operatorCitizenId ? "on" : ""
-                      }
-                      style={{ padding: "1px 6px", fontSize: 11 }}
-                      onClick={() => runtime.enterFirstPerson(c.id)}
-                      title={
-                        c.id === ui.firstPerson.operatorCitizenId
-                          ? `This is your citizen — see the world through ${c.displayName}'s eyes`
-                          : `Step into ${c.displayName} for a first-person view`
-                      }
-                    >
-                      👁 {c.displayName.split(" ")[0]}
-                      {c.id === ui.firstPerson.operatorCitizenId
-                        ? " (you)"
-                        : ""}
-                    </button>
-                  ))}
-              </span>
-            </div>
-          )}
-          {ui.neighborhood.lots.length > 0 && (
-            <div className="row">
-              <span>Homesteads</span>
-              <b
-                style={{ color: "#9fd0a0" }}
-                title={homesteadHudTitle({
-                  playerScoped: ui.bank.scope === "player",
-                })}
-              >
-                {ui.neighborhood.built} built · {ui.neighborhood.free} free
-              </b>
-            </div>
-          )}
-          {buyNotice && (
-            <div
-              className="row"
-              role="status"
-              style={{ color: "#e8a06a", fontSize: 11, lineHeight: 1.3 }}
-            >
-              🔒 {buyNotice}
-            </div>
-          )}
-          {ui.neighborhood.lots.length > 0 && (
-            <div
-              className="row"
-              style={{ flexDirection: "column", alignItems: "stretch", gap: 3 }}
-            >
-              {ui.neighborhood.lots.slice(0, 8).map((l) => {
-                const firstFree = ui.citizens.list.find(
-                  (c) => !ui.neighborhood.lots.some((x) => x.ownerId === c.id),
-                );
-                const lotCopy = lotHudCopy({
-                  id: l.id,
-                  owner: l.owner,
-                  built: l.built,
-                  reserved: l.reserved,
-                  price: l.price,
-                  priceZar: l.priceZar,
-                  playerScoped: ui.bank.scope === "player",
-                });
-                const lotActions = homesteadActionVisibility({
-                  playerScoped: ui.bank.scope === "player",
-                  ownerId: l.ownerId,
-                  operatorCitizenId: ui.firstPerson.operatorCitizenId,
-                  occupied: l.occupied,
-                  built: l.built,
-                  reserved: l.reserved,
-                });
-                return (
-                  <div
-                    key={l.id}
-                    style={{
-                      display: "flex",
-                      gap: 5,
-                      alignItems: "center",
-                      fontSize: 11,
-                    }}
-                  >
-                    <span
-                      style={{
-                        flex: 1,
-                        color: l.reserved
-                          ? "#e8a06a"
-                          : l.built
-                            ? "#cdbf9e"
-                            : l.owner
-                              ? "#c9a23a"
-                              : "#7a8a7a",
-                      }}
-                      title={lotCopy.title}
-                    >
-                      {lotCopy.label}
-                      {l.reserved
-                        ? `${l.owner?.includes("Crab") ? " 🦀" : " 🛠️"} · Founder`
-                        : l.built
-                          ? " 🏠"
-                          : ""}
-                    </span>
-                    {l.built && (
-                      <span
-                        title={workstationMarkerTitle({
-                          playerScoped: ui.bank.scope === "player",
-                        })}
-                        style={{ fontSize: 11, opacity: 0.9 }}
-                      >
-                        💻
-                      </span>
-                    )}
-                    {!l.occupied &&
-                      !l.reserved &&
-                      firstFree &&
-                      (() => {
-                        const canBuy =
-                          l.price !== null &&
-                          (ui.citizens.wallets[firstFree.id] ?? 0) >= l.price;
-                        return (
-                          <button
-                            style={{
-                              padding: "0 6px",
-                              fontSize: 10,
-                              color: canBuy ? "#8fd0a6" : "#7a6a5a",
-                              opacity: canBuy ? 1 : 0.5,
-                              cursor: canBuy ? "pointer" : "not-allowed",
-                            }}
-                            disabled={!canBuy}
-                            onClick={() => {
-                              setBuyNotice(null);
-                              // Gate PRIVATE neighbourhoods: the open primary lots (no key) pass
-                              // instantly; a satellite hamlet is checked against the backend allowlist
-                              // before the purchase completes. Fails closed on a network blip.
-                              void runtime
-                                .canBuyLotByAccess(l.id)
-                                .then((decision) => {
-                                  if (decision.allowed) {
-                                    runtime.purchaseLot(firstFree.id, l.id);
-                                  } else {
-                                    setBuyNotice(
-                                      decision.reason ??
-                                        "You can't buy in this neighbourhood",
-                                    );
-                                  }
-                                });
-                            }}
-                            title={buyPlotButtonTitle({
-                              playerScoped: ui.bank.scope === "player",
-                              canBuy,
-                              buyerName: firstFree.displayName,
-                              wallet: ui.citizens.wallets[firstFree.id] ?? 0,
-                              price: l.price ?? 0,
-                            })}
-                          >
-                            {l.neighbourhoodKey ? "🔒 " : ""}Buy {l.price} ₭
-                          </button>
-                        );
-                      })()}
-                    {lotActions.showDesign && (
-                      <button
-                        style={{
-                          padding: "0 6px",
-                          fontSize: 10,
-                          color: "#8fd0a6",
-                        }}
-                        onClick={() => runtime.openBuilder(l.id)}
-                        title={
-                          l.built
-                            ? "Re-design this house in the House Builder — the current blueprint loads for editing and Accept rebuilds it"
-                            : "Design this house in the House Builder — Accept stores the blueprint and raises the house"
-                        }
-                      >
-                        {l.built ? "Re-design" : "Design"}
-                      </button>
-                    )}
-                    {lotActions.showCommission && (
-                      <button
-                        style={{
-                          padding: "0 6px",
-                          fontSize: 10,
-                          color: "#d8a85a",
-                        }}
-                        onClick={() => runtime.commissionLot(l.id)}
-                        title="Hire KOOKER the Builder — the citizen dreams a home, KOOKER quotes, they haggle, and the agreed house rises. The deal lands on both their Kookerbook pages."
-                      >
-                        🛠️ Hire KOOKER
-                      </button>
-                    )}
-                    {lotActions.showBuild && (
-                      <button
-                        style={{ padding: "0 6px", fontSize: 10 }}
-                        onClick={() => runtime.buildHouse(l.id)}
-                        title={ui.neighborhood.buildHint}
-                      >
-                        Build
-                      </button>
-                    )}
-                    {lotActions.showDemolish && (
-                      <button
-                        style={{ padding: "0 6px", fontSize: 10 }}
-                        onClick={() => runtime.demolishLot(l.id)}
-                        title="Tear the house down, keep the citizen"
-                      >
-                        Demolish
-                      </button>
-                    )}
-                    {lotActions.showEvict && (
-                      <button
-                        style={{
-                          padding: "0 6px",
-                          fontSize: 10,
-                          color: "#e0584d",
-                        }}
-                        onClick={() => runtime.demolishLotAndCitizen(l.id)}
-                        title="Raze the home AND destroy the citizen and their Hermes agent"
-                      >
-                        Evict
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {OLD_WORLD_STATS && (
-            <>
-              {ui.colony.gallery.galleries > 0 && (
-                <div className="row">
-                  <span>Gallery</span>
-                  <b
-                    style={{
-                      color: ui.colony.gallery.open ? "#e0a83c" : "#9a8a5a",
-                    }}
-                    title="The Skydeck Gallery — a viewing hall on the mooring deck that charges Kookerverse travellers to see the colony. Its visitor coin scales with how worth-seeing the colony actually is: its liveability, lifted by a finished Horizon Spire and by the Prosperity standing. It is the first income the colony earns purely for being a good place to live, so every coin spent on Planter Squares, clean homes and the monument finally pays its own way. Must be staffed to open."
-                  >
-                    {ui.colony.gallery.galleries} gallery
-                    {ui.colony.gallery.open
-                      ? ` · +${ui.colony.gallery.coinPerDay}/day`
-                      : " · quiet"}
-                  </b>
-                </div>
-              )}
-              {ui.colony.planters.squares > 0 && (
-                <div className="row">
-                  <span>Planters</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.planters.blooming > 0 ? "#6fae5a" : "#7a8a6a",
-                    }}
-                    title="Planter Squares — the colony's first deliberate beauty. A Square in Bloom (tended by a groundskeeper and watered for most of the last ten days) lifts the desirability of homes around it, raising their liveability and drawing settlers to a colony that looks cared for. Untended or unwatered, it simply gives nothing."
-                  >
-                    {ui.colony.planters.blooming}/{ui.colony.planters.squares}{" "}
-                    blooming
-                  </b>
-                </div>
-              )}
-              {ui.colony.labour.active && (
-                <div className="row">
-                  <span>Employment</span>
-                  <b
-                    style={{
-                      color: ui.colony.labour.dragging
-                        ? "#e0584d"
-                        : ui.colony.labour.unemployment > 0.1
-                          ? "#d8a64a"
-                          : "#7faf7a",
-                    }}
-                    title="The Labour Registry Desk — it keeps an honest count of working-age idle hands. Chronic unemployment (above 10% held a week, or 20% held a fortnight) drags the Prosperity Rank a step or two, and clears once the colony sits below 5% for a week. Without a Registry, idleness never shows in the books."
-                  >
-                    {Math.round((1 - ui.colony.labour.unemployment) * 100)}%
-                    employed
-                    {ui.colony.labour.dragging
-                      ? ` · Prosperity -${ui.colony.labour.penalty}`
-                      : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.duskcap.cellars > 0 && (
-                <div className="row">
-                  <span>Duskcap</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.duskcap.stock > 0 ? "#9a86a6" : "#7a6e82",
-                    }}
-                    title="Duskcap — a hardy third food grown by Fungus Cellars on the cool dark under-decks. It needs no sunlight, no season and barely any power, so it keeps coming through a lean Frost or a brownout when the greenhouses falter and the rim nets fall idle. The homes eat it as a third protein course after the fish, sparing skygrain, and it counts as a varied-table dish so a fish-short colony can still keep a Varied Diet."
-                  >
-                    {ui.colony.duskcap.stock} · {ui.colony.duskcap.cellars}{" "}
-                    cellar
-                    {ui.colony.duskcap.cellars > 1 ? "s" : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.bathhouse.baths > 0 && (
-                <div className="row">
-                  <span>Hygiene</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.bathhouse.hygiene > 0.66
-                          ? "#6fb6cf"
-                          : ui.colony.bathhouse.hygiene > 0.33
-                            ? "#8aa6b0"
-                            : "#9a8a7a",
-                    }}
-                    title="Hygiene — Steam Bathhouses on the cistern line keep the colony clean. Hygiene rises with how many baths serve the head-count, how well they are staffed, whether the tanks hold water, and a little power to heat them. It is preventive: a clean colony slows how fast a fever takes hold (up to 40% at full hygiene), so fewer outbreaks start. It also earns the Clean-Home Standing (spec 070) — a washed colony draws settlers a touch better and its served homes climb the housing ladder a little faster. The baths draw stored water each day, a real customer for the cisterns and the reclaimer. It does not cure a fever already running — that stays the Fever Watch and the clinic."
-                  >
-                    {Math.round(ui.colony.bathhouse.hygiene * 100)}% ·{" "}
-                    {ui.colony.bathhouse.baths} bath
-                    {ui.colony.bathhouse.baths > 1 ? "s" : ""}
-                    {ui.colony.bathhouse.drawBonus > 0
-                      ? ` · +${Math.round(ui.colony.bathhouse.drawBonus * 100)}% draw`
-                      : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.library.libraries > 0 && (
-                <div className="row">
-                  <span>Library</span>
-                  <b
-                    style={{
-                      color: ui.colony.library.lending ? "#d6b85a" : "#9a8a5a",
-                    }}
-                    title="The Folio Library — a reading room stocked with the colony's own folios, lent to the homes as culture. It is folio-fed the way the holo-theatres are reel-fed, so it gives the homes a second way to stay cultured that needs no reels. It draws a folio a day from the stores to lend, the first domestic demand to compete with the export trade, so shipping every folio out leaves the shelves bare. Inert with no Library."
-                  >
-                    {ui.colony.library.libraries} librar
-                    {ui.colony.library.libraries > 1 ? "ies" : "y"}
-                    {ui.colony.library.lending
-                      ? ` · lending · -${ui.colony.library.foliosPerDay}/day`
-                      : " · shelves bare"}
-                  </b>
-                </div>
-              )}
-              {ui.colony.driedFish.racks > 0 && (
-                <div className="row">
-                  <span>Dried fish</span>
-                  <b
-                    style={{
-                      color:
-                        ui.colony.driedFish.stock > 0 ? "#9fb4a0" : "#7a8a7a",
-                    }}
-                    title="Dried rimfish — Rimfish Drying Racks dry the surplus fresh catch (above a working reserve) into a shelf-stable food, banked in the storehouses. The homes eat fresh rimfish first and fall back on this reserve, so fish stays on the table and the diet stays varied through a net-dock outage or a lean Frost. Drying loses weight: 8 dried per 12 fresh."
-                  >
-                    {ui.colony.driedFish.stock}/{ui.colony.driedFish.cap} ·{" "}
-                    {ui.colony.driedFish.racks} rack
-                    {ui.colony.driedFish.racks > 1 ? "s" : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.diet.counters > 0 && (
-                <div className="row">
-                  <span>Diet</span>
-                  <b
-                    style={{
-                      color: ui.colony.diet.varied ? "#d98c5f" : "#9a8a7a",
-                    }}
-                    title="The Variety Ration Counter — homes fed both skyfarm greens and rimfish over the last 20 days earn a Varied Diet, which lifts the colony's draw on newcomers and helps served homes climb the ladder a touch faster. One counter serves 80 residents. With only one food on the table there is no bonus and no penalty; if a counter loses its crew or power the standing holds five days, then fades."
-                  >
-                    {ui.colony.diet.served} served
-                    {ui.colony.diet.varied ? " · varied" : " · one food"}
-                  </b>
-                </div>
-              )}
-              {ui.colony.seed.lofts > 0 && (
-                <div className="row">
-                  <span>Seed</span>
-                  <b
-                    style={{
-                      color: ui.colony.seed.short ? "#e0584d" : "#7fae57",
-                    }}
-                    title="Seed-stock — Seed Lofts dry saved harvest (food, plus water once cisterns stand) into seed the skyfarms plant. A drained bin (too few lofts, thin food, or a brownout) cuts every skyfarm's yield together toward a half-harvest floor."
-                  >
-                    {ui.colony.seed.stored}/{ui.colony.seed.cap}
-                    {ui.colony.seed.short ? " ⚠ short" : ""}
-                  </b>
-                </div>
-              )}
-              {ui.colony.folios > 0 && (
-                <div className="row">
-                  <span>Folios</span>
-                  <b
-                    style={{ color: "#e6c462" }}
-                    title="Skybound folios — the colony's signature finished export, bound from 1 reel + 1 linen by Folio Houses and sold by the Exchange well above either input."
-                  >
-                    {ui.colony.folios}
-                  </b>
-                </div>
-              )}
-              {ui.colony.skilled > 0 && (
-                <div className="row">
-                  <span>Skilled</span>
-                  <b
-                    style={{ color: "#5fd0c0" }}
-                    title="Skilled workers trained by Skillhouse Academies — the advanced trades run faster with them"
-                  >
-                    {ui.colony.skilled}
-                  </b>
-                </div>
-              )}
-              <div className="row">
-                <span>Homes</span>
-                <b>{`T1×${ui.colony.tiers[0]} · T2×${ui.colony.tiers[1]} · T3×${ui.colony.tiers[2]}`}</b>
-              </div>
-              <div className="row">
-                <span>Buildings</span>
-                <b>{ui.colony.buildings}</b>
-              </div>
-              <div className="row">
-                <span>Building</span>
-                <b>{ui.colony.building}</b>
-              </div>
-              <div className="row">
-                <span>Solar</span>
-                <b>{ui.power.solarW.toFixed(1)} kW</b>
-              </div>
-              {ui.power.windW > 0 && (
-                <div className="row">
-                  <span>Wind</span>
-                  <b
-                    style={{ color: "#8fb8d0" }}
-                    title="Wind-Shear Turbine Masts — steady generation that feeds the grid day and night (no daylight dip), scaled by staffing. Build more to outrun brownouts as the colony grows."
-                  >
-                    {ui.power.windW.toFixed(1)} kW
-                  </b>
-                </div>
-              )}
-              <div className="row">
-                <span>Load</span>
-                <b
-                  style={{
-                    color:
-                      ui.power.loadW > ui.power.solarW ? "#e0584d" : undefined,
-                  }}
-                >
-                  {ui.power.loadW.toFixed(1)} kW
-                </b>
-              </div>
-              {ui.power.brownout && (
-                <div className="row">
-                  <span style={{ color: "#e6c84d" }}>⚡ Brownout</span>
-                  <b
-                    style={{ color: "#e6c84d" }}
-                    title="Grid over capacity + battery low — heavy industry at 50% until more solar is built"
-                  >
-                    industry 50%
-                  </b>
-                </div>
-              )}
-              <div className="batt">
-                <div className="batt-head">
-                  <span>Battery</span>
-                  <b>
-                    {pct}% · {Math.round(ui.power.batteryCapWh)}Wh
-                  </b>
-                </div>
-                <div className="bar">
-                  <div style={{ width: `${pct}%`, background: battColor }} />
-                </div>
-              </div>
-            </>
-          )}
-          <div className="row" style={{ marginTop: 10 }}>
-            <span>Settlers</span>
-            <b>{settlerCopy.count}</b>
-          </div>
-          {settlerCopy.recent.length > 0 && (
-            <div className="settler-list">
-              {settlerCopy.recent.map((label) => (
-                <span key={label} className="chip">
-                  {label}
-                </span>
-              ))}
-            </div>
-          )}
-          {showBorderControl && (
-            <button className="immigbtn" onClick={() => setBorderOpen(true)}>
-              🛂 Border Control
-            </button>
-          )}
-
-          {(() => {
-            const bankCopy = bankPanelCopy(ui.bank);
-            return (
-              <>
-                <h2 style={{ marginTop: 18 }}>{bankCopy.title}</h2>
-                {bankCopy.rows.map((row) => (
-                  <div className="row" key={row.label}>
-                    <span>{row.label}</span>
+                {(ui.colony.pillar.stage > 0 || ui.colony.pillar.building) && (
+                  <div className="row">
+                    <span>Ironwork Pillar</span>
                     <b
-                      style={
-                        row.status === "pending"
-                          ? { color: "#e0a14d" }
-                          : row.status === "ok"
-                            ? { color: "#39d353" }
-                            : undefined
-                      }
+                      style={{
+                        color: ui.colony.pillar.complete
+                          ? "#ffc568"
+                          : "#b98c3a",
+                      }}
+                      title="A pillar over the works. Two hands, one wheel — the colony sleeps easier under a minded world."
                     >
-                      {row.value}
+                      {ui.colony.pillar.complete
+                        ? `Stage ${ui.colony.pillar.total}/${ui.colony.pillar.total} · Retune 00:00`
+                        : `Stage ${ui.colony.pillar.stage}/${ui.colony.pillar.total}${ui.colony.pillar.building ? ` · ${Math.round(ui.colony.pillar.progress * 100)}%` : ""}`}
                     </b>
                   </div>
-                ))}
-                {bankCopy.ledgerRows.length > 0 && (
-                  <div className="ledger">
-                    {bankCopy.ledgerRows.map((memo, index) => (
-                      <div key={`${index}-${memo}`} className="ledger-row">
-                        {memo}
-                      </div>
-                    ))}
+                )}
+                {ui.colony.front.established && (
+                  <div className="row">
+                    <span>Cloudsea</span>
+                    <b
+                      style={{
+                        color: ui.colony.front.incoming
+                          ? ui.colony.front.braced
+                            ? "#5fd0a0"
+                            : "#e0584d"
+                          : ui.colony.front.watching
+                            ? undefined
+                            : "#e0844d",
+                      }}
+                      title={
+                        ui.colony.front.incoming
+                          ? ui.colony.front.braced
+                            ? "A Cloudsea Front is incoming — the Stormwatch has sounded the Brace Order; damage will be slight."
+                            : "A Cloudsea Front is incoming and NO Stormwatch is braced — build/staff a Stormwatch Shelter or take heavy damage."
+                          : ui.colony.front.watching
+                            ? `The Stormwatch scans the cloudsea — next front in ~${ui.colony.front.timerDays}d.`
+                            : `No Stormwatch on watch — the next front (~${ui.colony.front.timerDays}d) will hit unbraced. Build a Stormwatch Shelter.`
+                      }
+                    >
+                      {ui.colony.front.incoming
+                        ? ui.colony.front.braced
+                          ? "front · braced"
+                          : "FRONT ⚠"
+                        : `${ui.colony.front.watching ? "watched" : "unwatched"} · ${ui.colony.front.timerDays}d`}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.founders.active && (
+                  <div className="row">
+                    <span>Founders</span>
+                    <b
+                      style={{ color: "#e8c862" }}
+                      title={`The Founders' Hall seats the Living Roster — ${ui.colony.founders.seated} founders, each a named colonist with a post. Settlers arrive faster, standing earns more, and unrest eases.${ui.colony.founders.notable ? ` ${ui.colony.founders.notable.name}, ${ui.colony.founders.notable.role}, keeps the Hall.` : ""}`}
+                    >
+                      ★ {ui.colony.founders.seated} seated
+                      {ui.colony.founders.notable
+                        ? ` · ${ui.colony.founders.notable.name}`
+                        : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.prosperity.active && (
+                  <div className="row">
+                    <span>Prosperity</span>
+                    <b
+                      style={{
+                        color: ui.colony.prosperity.recognised
+                          ? "#f0b840"
+                          : ui.colony.prosperity.rank >= 3
+                            ? "#5fd0a0"
+                            : ui.colony.prosperity.rank <= 1
+                              ? "#e0844d"
+                              : undefined,
+                      }}
+                      title={`The Census Hall reads the whole colony — liveability, housing tiers, employment, Kookerverse standing and Treasury solvency — as one Prosperity score (${ui.colony.prosperity.score}/100). ${ui.colony.prosperity.recognised ? "At the top rank, Landing One is a Recognised Sky-Colony." : "High prosperity draws settlers a little faster."}`}
+                    >
+                      {ui.colony.prosperity.rankName} ·{" "}
+                      {ui.colony.prosperity.score}
+                      {ui.colony.prosperity.recognised ? " ★" : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.education.schools > 0 && (
+                  <div className="row">
+                    <span>Education</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.education.coverage >= 60
+                            ? "#d98f5a"
+                            : ui.colony.education.coverage > 0
+                              ? undefined
+                              : "#e0844d",
+                      }}
+                      title="Little Schoolrooms teach the homes within reach — schooled homes draw settlers a little faster and let the Skillhouse Academy train skilled workers quicker."
+                    >
+                      {ui.colony.education.coverage}%
+                    </b>
+                  </div>
+                )}
+                {ui.colony.solace.shrines > 0 && (
+                  <div className="row">
+                    <span>Solace</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.solace.coverage >= 60
+                            ? "#b6a8e0"
+                            : ui.colony.solace.coverage > 0
+                              ? undefined
+                              : "#e0844d",
+                      }}
+                      title="Mooring Shrines carry Solace to nearby homes — consoled homes draw settlers a little faster and shed unrest more slowly. Solace dims if the shrines run out of linen."
+                    >
+                      {ui.colony.solace.coverage}%
+                      {ui.colony.solace.coverage === 0 ? " (dim)" : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.departures.pressure > 0 && (
+                  <div className="row">
+                    <span>Departures</span>
+                    <b
+                      style={{
+                        color: ui.colony.departures.atRisk
+                          ? "#e0584d"
+                          : "#e0844d",
+                      }}
+                      title={
+                        ui.colony.departures.atRisk
+                          ? `Households are leaving the failing decks — ${ui.colony.departures.cause}. Restore water, food, health, order or wages to drain the pressure before more pack up.`
+                          : `Some strain in the homes (${ui.colony.departures.cause}); keep the services up and it settles before anyone leaves.`
+                      }
+                    >
+                      {ui.colony.departures.pressure}%
+                      {ui.colony.departures.atRisk ? " ⚠ leaving" : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.confidence.slowed && (
+                  <div className="row">
+                    <span>Confidence</span>
+                    <b
+                      style={{
+                        color: ui.colony.confidence.halted
+                          ? "#e0584d"
+                          : "#e0844d",
+                      }}
+                      title={
+                        ui.colony.confidence.halted
+                          ? "Settler Confidence has collapsed — word of the colony has soured, and immigration has halted even with beds empty. Calm the unrest, clear the arrears, pay the wages and feed the homes to win it back."
+                          : "Settler Confidence is low — disorder, debt, stingy wages or empty rations have slowed how fast newcomers risk the crossing. Set the colony right and arrivals speed back up."
+                      }
+                    >
+                      {Math.round(ui.colony.confidence.confidence * 100)}%
+                      {ui.colony.confidence.halted ? " ⚠ halted" : " · slowed"}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.calendar.office && (
+                  <div className="row">
+                    <span>Calendar</span>
+                    <b
+                      style={{ color: "#d9c089" }}
+                      title="The Founding Calendar — a staffed Calendar Office counts the colony's age. Every year-turn is Founders' Day, a small free morale lift (unlike the council-funded Civic Feast). This is the colony's own birthday."
+                    >
+                      Year {ui.colony.calendar.year}, Month{" "}
+                      {ui.colony.calendar.month} · Founders&apos; Day in{" "}
+                      {ui.colony.calendar.monthsToFounders}mo
+                    </b>
+                  </div>
+                )}
+                {ui.colony.season.active && (
+                  <div className="row">
+                    <span>Season</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.season.modifier > 0
+                            ? "#7fc08a"
+                            : ui.colony.season.modifier < 0
+                              ? "#d59a6a"
+                              : "#c8c0a0",
+                      }}
+                      title="Mild Seasons + Seasonal Solar — once the colony keeps a calendar, the skyfarms yield and the solar farms both follow the year (more in Bloom/Highsun, less in Grey/Frost). Each averages to no annual change, so store the surplus food and battery charge from the good months, and lean on wind turbines, to ride out the lean ones."
+                    >
+                      {ui.colony.season.name}{" "}
+                      {ui.colony.season.modifier > 0 ? "+" : ""}
+                      {ui.colony.season.modifier}% food ·{" "}
+                      {ui.colony.season.solarModifier > 0 ? "+" : ""}
+                      {ui.colony.season.solarModifier}% sun
+                    </b>
+                  </div>
+                )}
+                {(ui.colony.ledger.hall || ui.colony.ledger.turning) && (
+                  <div className="row">
+                    <span>Long Ledger</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.ledger.lastPassings > 0
+                            ? "#9a8fb0"
+                            : "#8a9ab0",
+                      }}
+                      title="The Long Ledger — colonists live a long span, then a gentle natural turnover begins, capped so it can never out-pace the colony's births and arrivals. A Hall of Names records the elders and comforts the colony after a loss. Keep births and newcomers flowing to renew across the generations."
+                    >
+                      {ui.colony.ledger.turning
+                        ? `turning${ui.colony.ledger.lastPassings > 0 ? ` · ${ui.colony.ledger.lastPassings} remembered` : ""}`
+                        : `settled (${ui.colony.ledger.onset - ui.colony.ledger.ageYears}yr to turn)`}
+                      {ui.colony.ledger.hall ? " · Hall" : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.births.growing && (
+                  <div className="row">
+                    <span>Children</span>
+                    <b
+                      style={{ color: "#8ad0a8" }}
+                      title="Household Births — stable mid-tier homes that are watered, fed and on a calm deck slowly raise children. Each child eats half a colonist's rations and gives no labour until, with a home to live in, it grows up into a free colonist. Wreck the rations or spike unrest and the families stop raising."
+                    >
+                      {ui.colony.births.children}
+                      {ui.colony.births.homes > 0
+                        ? ` · ${ui.colony.births.homes} homes`
+                        : ""}
+                    </b>
+                  </div>
+                )}
+                {(ui.colony.footprint.camp ||
+                  ui.colony.footprint.claims > 0) && (
+                  <div className="row">
+                    <span>Footprint</span>
+                    <b
+                      style={{
+                        color: ui.colony.footprint.atEdge
+                          ? "#8ec0d8"
+                          : "#c8a25a",
+                      }}
+                      title="Build footprint — a staffed Survey Camp runs Outer Claims, each pushing the colony's build radius one deck-ring further onto the island. Each claim takes days of survey work and spends materials + components; it waits if the colony cannot pay."
+                    >
+                      radius {ui.colony.footprint.radius} ·{" "}
+                      {ui.colony.footprint.claims}/
+                      {ui.colony.footprint.maxClaims}
+                      {ui.colony.footprint.atEdge
+                        ? " (island edge)"
+                        : ` · claim ${Math.round(ui.colony.footprint.progress * 100)}%`}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.veins.mines > 0 && ui.colony.veins.poorest < 1 && (
+                  <div className="row">
+                    <span>Ore veins</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.veins.poorest <= 0.25
+                            ? "#e0584d"
+                            : ui.colony.veins.poorest < 0.6
+                              ? "#e0844d"
+                              : "#caa86a",
+                      }}
+                      title="Vein Ledger — every mine digs a finite vein. A fresh pit runs at full for months, then fades by bands to a 25% trickle as its vein runs down. This shows the poorest pit's output; claim new ground (Survey Camp) and sink a fresh shaft when the old veins thin."
+                    >
+                      poorest {Math.round(ui.colony.veins.poorest * 100)}%
+                    </b>
+                  </div>
+                )}
+                {ui.colony.imports.active && (
+                  <div className="row">
+                    <span>Import</span>
+                    <span style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                      {(
+                        [
+                          ["Off", null],
+                          ["Mat", "materials"],
+                          ["Comp", "components"],
+                          ["Food", "food"],
+                          ["Linen", "linen"],
+                          ["Reels", "reels"],
+                        ] as const
+                      ).map(([label, good]) => (
+                        <button
+                          key={label}
+                          className={
+                            ui.colony.imports.order === good ? "on" : ""
+                          }
+                          style={{ padding: "1px 4px", fontSize: 10 }}
+                          onClick={() => runtime.setImportOrder(good)}
+                          title={
+                            good
+                              ? `Place a standing order to buy ${good} at a premium — the Import Office spends treasury to land it in storage`
+                              : "Stop importing — clear the standing order"
+                          }
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                )}
+                {ui.colony.imports.active &&
+                  ui.colony.imports.order &&
+                  ui.colony.imports.dailySpend > 0 && (
+                    <div className="row">
+                      <span>Buying</span>
+                      <b
+                        style={{ color: "#e0844d" }}
+                        title={`The Import Office is landing about ${ui.colony.imports.perDay} ${ui.colony.imports.order} per day, at a premium over the Exchange price.`}
+                      >
+                        -${ui.colony.imports.dailySpend.toLocaleString()}/day
+                      </b>
+                    </div>
+                  )}
+                {ui.colony.storage.fill >= 50 && (
+                  <div className="row">
+                    <span>Storage</span>
+                    <b
+                      style={{
+                        color: ui.colony.storage.full
+                          ? "#e0584d"
+                          : ui.colony.storage.fill >= 90
+                            ? "#e0844d"
+                            : undefined,
+                      }}
+                      title={
+                        ui.colony.storage.full
+                          ? `Storage full (${ui.colony.storage.tightest}) — overflow is lost overboard. Build a Storehouse Platform.`
+                          : `Fullest store: ${ui.colony.storage.tightest} at ${ui.colony.storage.fill}% of cap`
+                      }
+                    >
+                      {ui.colony.storage.fill}% full
+                      {ui.colony.storage.full ? " ⚠" : ""}
+                    </b>
+                  </div>
+                )}
+                <div className="row">
+                  <span>Materials</span>
+                  <b
+                    style={{
+                      color: ui.colony.materials < 6 ? "#e0584d" : undefined,
+                    }}
+                  >
+                    {ui.colony.materials}
+                  </b>
+                </div>
+                <div className="row">
+                  <span>Components</span>
+                  <b>{ui.colony.components}</b>
+                </div>
+                <div className="row">
+                  <span>Food</span>
+                  <b
+                    style={{
+                      color: ui.colony.food === 0 ? "#e6c84d" : undefined,
+                    }}
+                  >
+                    {ui.colony.food}
+                  </b>
+                </div>
+                {ui.colony.reels > 0 && (
+                  <div className="row">
+                    <span>Reels</span>
+                    <b style={{ color: "#9a8fe0" }}>{ui.colony.reels}</b>
+                  </div>
+                )}
+                {ui.colony.fibre > 0 && (
+                  <div className="row">
+                    <span>Fibre</span>
+                    <b
+                      style={{ color: "#9ec0a0" }}
+                      title="Skyflax fibre — gathered from the rims by Flax Skimmer Docks, woven into linen by Weaveries."
+                    >
+                      {ui.colony.fibre}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.linen > 0 && (
+                  <div className="row">
+                    <span>Linen</span>
+                    <b
+                      style={{ color: "#d8c8a0" }}
+                      title="Linen bolts — the top housing tier needs it, and clinics use it as bandage cloth (more during a fever)."
+                    >
+                      {ui.colony.linen}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.water.cisterns > 0 && (
+                  <div className="row">
+                    <span>Water</span>
+                    <b
+                      style={{
+                        color: ui.colony.water.dry ? "#e0584d" : "#5aa6d8",
+                      }}
+                      title="Stored water — Mist Condenser Cisterns fill the tank and the Water Hubs draw it to serve homes. A dry tank (lost power, a storm, or too few cisterns) weakens water coverage and breeds fever + unrest."
+                    >
+                      {ui.colony.water.stored}/{ui.colony.water.cap}
+                      {ui.colony.water.dry ? " ⚠ dry" : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.tools.cribs > 0 && (
+                  <div className="row">
+                    <span>Tools</span>
+                    <b
+                      style={{
+                        color: ui.colony.tools.short ? "#e0584d" : "#d59a4a",
+                      }}
+                      title="Tool-kits — Tool Cribs turn components into kits, and the mines, workshops, skyfarms, fitters and turbines draw them as they work. A drained rack (too few cribs, no spare components, or a brownout) weakens every tooled workplace together toward a half-speed floor."
+                    >
+                      {ui.colony.tools.stored}/{ui.colony.tools.cap}
+                      {ui.colony.tools.short ? " ⚠ short" : ""}
+                    </b>
+                  </div>
+                )}
+                {(ui.colony.security.active ||
+                  ui.colony.security.nooks > 0) && (
+                  <div className="row">
+                    <span>Watch</span>
+                    <b
+                      style={{
+                        color: ui.colony.security.active
+                          ? "#d8a64a"
+                          : "#7faf7a",
+                      }}
+                      title="The Watch Nook — a rich, populous, unguarded colony loses a small trickle of treasury to petty theft (never enough to bankrupt it, and none during a storm or shortage). Staff a Watch Nook to cut it; a second stops it entirely."
+                    >
+                      {ui.colony.security.nooks > 0
+                        ? `${ui.colony.security.nooks} nook${ui.colony.security.nooks > 1 ? "s" : ""}`
+                        : "unguarded"}
+                      {ui.colony.security.active
+                        ? ` · -${ui.colony.security.lossPerDay}/day`
+                        : ui.colony.security.nooks > 0
+                          ? " · secure"
+                          : ""}
+                    </b>
+                  </div>
+                )}
+                {(ui.colony.waste.harmful || ui.colony.waste.posts > 0) && (
+                  <div className="row">
+                    <span>Waste</span>
+                    <b
+                      style={{
+                        color: ui.colony.waste.fevered
+                          ? "#e0584d"
+                          : ui.colony.waste.harmful
+                            ? "#d59a6a"
+                            : "#8aa07e",
+                      }}
+                      title="Household Waste — the everyday filth a growing population makes (the air-scrubbers only clean industrial smog). Harmless below 25%, but above it desirability slips, and above 50% it breeds fever. Staff Sanitation Posts to clear it on their rounds."
+                    >
+                      {ui.colony.waste.level}%
+                      {ui.colony.waste.fevered
+                        ? " ⚠ breeding fever"
+                        : ui.colony.waste.harmful
+                          ? " · filthy"
+                          : ""}
+                      {ui.colony.waste.posts > 0
+                        ? ` · ${ui.colony.waste.posts} post${ui.colony.waste.posts > 1 ? "s" : ""}`
+                        : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.rimfish.docks > 0 && (
+                  <div className="row">
+                    <span>Rimfish</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.rimfish.stock > 0 ? "#4fb0a6" : "#7a9a96",
+                      }}
+                      title="Rimfish — a second food netted from the cloudsea rim by Cloudsea Net Docks, stored apart from skygrain. When on hand it covers a portion of the colony's meals and spares skygrain, so the grain lasts longer through a lean Frost season, and the varied table draws settlers a little faster. It is not subject to the skyfarm seasons — that is the buffer."
+                    >
+                      {ui.colony.rimfish.stock}
+                      {ui.colony.rimfish.varied ? " · varied table" : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.festival.board && (
+                  <div className="row">
+                    <span>Festival</span>
+                    <b
+                      style={{
+                        color: ui.colony.festival.active
+                          ? "#e2a93f"
+                          : "#9a8a5a",
+                      }}
+                      title="The Highsun Lantern Supper — a Festival Board lays a once-a-year supper from the colony's own stores (greens + fish + linen + materials). A well-supplied supper grants Lantern Cheer: a lift to settler confidence for the month, a calmer colony, and a little standing with the wider Kookerverse. A thin year simply passes — no penalty."
+                    >
+                      {ui.colony.festival.active
+                        ? `Lantern Cheer +${ui.colony.festival.bonus} · ${ui.colony.festival.cheerDays}d`
+                        : "awaiting Highsun"}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.reclaim.plants > 0 && (
+                  <div className="row">
+                    <span>Reclaim</span>
+                    <b
+                      style={{
+                        color: ui.colony.reclaim.active ? "#4fb0c0" : "#7a9aa0",
+                      }}
+                      title="Greywater Reclaimer — a staffed utility plant that treats a share of the colony's daily used water back into the tanks at a 2:1 loss. It runs on power (halves in a brownout), needs a little linen for filters, and idles when the tanks are nearly full. Not new water, just some of our own back — a steadier tank through storm and brownout weeks."
+                    >
+                      {ui.colony.reclaim.plants} plant
+                      {ui.colony.reclaim.plants > 1 ? "s" : ""}
+                      {ui.colony.reclaim.active
+                        ? ` · +${ui.colony.reclaim.perDay}/day`
+                        : " · idle"}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.fire.posts > 0 && (
+                  <div className="row">
+                    <span>Fire</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.fire.active > 0
+                            ? "#e0584d"
+                            : !ui.colony.fire.watered
+                              ? "#d8a64a"
+                              : "#7faf7a",
+                      }}
+                      title="Fire-Watch — staffed Posts watch a fire district. Worn, packed, power-stressed buildings in the warm season slowly build fire risk; a staffed, watered Post drains it and puts out sparks. Let the tanks run dry or the crew leave and a fire spreads deck-to-deck and burns a building down. A maintained, well-watered colony never catches."
+                    >
+                      {ui.colony.fire.active > 0
+                        ? `${ui.colony.fire.active} alight!`
+                        : `risk ${ui.colony.fire.risk}%`}
+                      {ui.colony.fire.watered ? "" : " · dry"}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.stalls.stalls > 0 && (
+                  <div className="row">
+                    <span>Market</span>
+                    <b
+                      style={{
+                        color: ui.colony.stalls.open ? "#e0b34a" : "#9a8a5a",
+                      }}
+                      title="Market Stalls — the colony's own home market. Staffed stalls sell surplus linen and folios (above a reserve) to paid colonists, returning a little coin to the treasury each day. They never sell below the reserve, so they never rob the export trade, and custom dries up if wages fall into arrears."
+                    >
+                      {ui.colony.stalls.stalls} stall
+                      {ui.colony.stalls.stalls > 1 ? "s" : ""}
+                      {ui.colony.stalls.open
+                        ? ` · +${ui.colony.stalls.coinPerDay}/day`
+                        : " · quiet"}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.porter.sheds > 0 && (
+                  <div className="row">
+                    <span>Porters</span>
+                    <b
+                      style={{
+                        color: ui.colony.porter.working ? "#c79a5a" : "#8a7a5a",
+                      }}
+                      title="Porter Sheds — the first building whose whole point is to let you SEE the economy. While staffed, porters run handcarts along the roads between buildings, and the colony's goods pile up in crates and sacks that grow when a store fills and shrink as it is used. It invents no new good and changes no number, it gives the economy a body on the island. No porter ever crosses open water."
+                    >
+                      {ui.colony.porter.sheds} shed
+                      {ui.colony.porter.sheds > 1 ? "s" : ""}
+                      {ui.colony.porter.working
+                        ? ` · ${ui.colony.porter.porters} carts`
+                        : " · idle"}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.avatar.foundries > 0 && (
+                  <div className="row">
+                    <span>Avatar Foundry</span>
+                    <b
+                      style={{
+                        color: ui.colony.avatar.staffed ? "#9f86d8" : "#7a6e8a",
+                      }}
+                      title={avatarCopy.title}
+                    >
+                      {avatarCopy.summary}
+                    </b>
                   </div>
                 )}
               </>
-            );
-          })()}
-
-          {ui.commerce.plots > 0 &&
-            (() => {
-              const priceOf = (kind: "kiosk" | "store" | "showroom") =>
-                ui.commerce.parcels.find((p) => p.kind === kind)?.price ?? 0;
-              const row = (
-                label: string,
-                kind: "kiosk" | "store" | "showroom",
-              ) =>
-                ui.commerce.byKind[kind] > 0 ? (
+            )}
+            {ui.citizens.count > 0 && (
+              <div className="row">
+                <span>Kookerbook</span>
+                <b>
+                  <a
+                    href="/kookerbook.html"
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{ color: "#8fb6e8", textDecoration: "none" }}
+                    title="The bot social network — every citizen has a profile page with their home and timeline"
+                  >
+                    📘 open the Book
+                  </a>
+                </b>
+              </div>
+            )}
+            {ui.citizens.count > 0 && (
+              <div className="row">
+                <span>Citizens</span>
+                <b
+                  style={{
+                    color: ui.citizens.awake > 0 ? "#a0d4f0" : "#7a8a9a",
+                  }}
+                  title={citizenCopy.title}
+                >
+                  {citizenCopy.summary}
+                </b>
+              </div>
+            )}
+            {ui.citizens.count > 0 && !ui.firstPerson.active && (
+              <div className="row">
+                <span>Step in</span>
+                <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {ui.citizens.list
+                    .filter((c) =>
+                      ui.firstPerson.stepInCitizenIds.includes(c.id),
+                    )
+                    .slice(0, 4)
+                    .map((c) => (
+                      <button
+                        key={c.id}
+                        className={
+                          c.id === ui.firstPerson.operatorCitizenId ? "on" : ""
+                        }
+                        style={{ padding: "1px 6px", fontSize: 11 }}
+                        onClick={() => runtime.enterFirstPerson(c.id)}
+                        title={
+                          c.id === ui.firstPerson.operatorCitizenId
+                            ? `This is your citizen — see the world through ${c.displayName}'s eyes`
+                            : `Step into ${c.displayName} for a first-person view`
+                        }
+                      >
+                        👁 {c.displayName.split(" ")[0]}
+                        {c.id === ui.firstPerson.operatorCitizenId
+                          ? " (you)"
+                          : ""}
+                      </button>
+                    ))}
+                </span>
+              </div>
+            )}
+            {ui.neighborhood.lots.length > 0 && (
+              <div className="row">
+                <span>Homesteads</span>
+                <b
+                  style={{ color: "#9fd0a0" }}
+                  title={homesteadHudTitle({
+                    playerScoped: ui.bank.scope === "player",
+                  })}
+                >
+                  {ui.neighborhood.built} built · {ui.neighborhood.free} free
+                </b>
+              </div>
+            )}
+            {buyNotice && (
+              <div
+                className="row"
+                role="status"
+                style={{ color: "#e8a06a", fontSize: 11, lineHeight: 1.3 }}
+              >
+                🔒 {buyNotice}
+              </div>
+            )}
+            {ui.neighborhood.lots.length > 0 && (
+              <div
+                className="row"
+                style={{
+                  flexDirection: "column",
+                  alignItems: "stretch",
+                  gap: 3,
+                }}
+              >
+                {ui.neighborhood.lots.slice(0, 8).map((l) => {
+                  const firstFree = ui.citizens.list.find(
+                    (c) =>
+                      !ui.neighborhood.lots.some((x) => x.ownerId === c.id),
+                  );
+                  const lotCopy = lotHudCopy({
+                    id: l.id,
+                    owner: l.owner,
+                    built: l.built,
+                    reserved: l.reserved,
+                    price: l.price,
+                    priceZar: l.priceZar,
+                    playerScoped: ui.bank.scope === "player",
+                  });
+                  const lotActions = homesteadActionVisibility({
+                    playerScoped: ui.bank.scope === "player",
+                    ownerId: l.ownerId,
+                    operatorCitizenId: ui.firstPerson.operatorCitizenId,
+                    occupied: l.occupied,
+                    built: l.built,
+                    reserved: l.reserved,
+                  });
+                  return (
+                    <div
+                      key={l.id}
+                      style={{
+                        display: "flex",
+                        gap: 5,
+                        alignItems: "center",
+                        fontSize: 11,
+                      }}
+                    >
+                      <span
+                        style={{
+                          flex: 1,
+                          color: l.reserved
+                            ? "#e8a06a"
+                            : l.built
+                              ? "#cdbf9e"
+                              : l.owner
+                                ? "#c9a23a"
+                                : "#7a8a7a",
+                        }}
+                        title={lotCopy.title}
+                      >
+                        {lotCopy.label}
+                        {l.reserved
+                          ? `${l.owner?.includes("Crab") ? " 🦀" : " 🛠️"} · Founder`
+                          : l.built
+                            ? " 🏠"
+                            : ""}
+                      </span>
+                      {l.built && (
+                        <span
+                          title={workstationMarkerTitle({
+                            playerScoped: ui.bank.scope === "player",
+                          })}
+                          style={{ fontSize: 11, opacity: 0.9 }}
+                        >
+                          💻
+                        </span>
+                      )}
+                      {!l.occupied &&
+                        !l.reserved &&
+                        firstFree &&
+                        (() => {
+                          const canBuy =
+                            l.price !== null &&
+                            (ui.citizens.wallets[firstFree.id] ?? 0) >= l.price;
+                          return (
+                            <button
+                              style={{
+                                padding: "0 6px",
+                                fontSize: 10,
+                                color: canBuy ? "#8fd0a6" : "#7a6a5a",
+                                opacity: canBuy ? 1 : 0.5,
+                                cursor: canBuy ? "pointer" : "not-allowed",
+                              }}
+                              disabled={!canBuy}
+                              onClick={() => {
+                                setBuyNotice(null);
+                                // Gate PRIVATE neighbourhoods: the open primary lots (no key) pass
+                                // instantly; a satellite hamlet is checked against the backend allowlist
+                                // before the purchase completes. Fails closed on a network blip.
+                                void runtime
+                                  .canBuyLotByAccess(l.id)
+                                  .then((decision) => {
+                                    if (decision.allowed) {
+                                      runtime.purchaseLot(firstFree.id, l.id);
+                                    } else {
+                                      setBuyNotice(
+                                        decision.reason ??
+                                          "You can't buy in this neighbourhood",
+                                      );
+                                    }
+                                  });
+                              }}
+                              title={buyPlotButtonTitle({
+                                playerScoped: ui.bank.scope === "player",
+                                canBuy,
+                                buyerName: firstFree.displayName,
+                                wallet: ui.citizens.wallets[firstFree.id] ?? 0,
+                                price: l.price ?? 0,
+                              })}
+                            >
+                              {l.neighbourhoodKey ? "🔒 " : ""}Buy {l.price} ₭
+                            </button>
+                          );
+                        })()}
+                      {lotActions.showDesign && (
+                        <button
+                          style={{
+                            padding: "0 6px",
+                            fontSize: 10,
+                            color: "#8fd0a6",
+                          }}
+                          onClick={() => runtime.openBuilder(l.id)}
+                          title={
+                            l.built
+                              ? "Re-design this house in the House Builder — the current blueprint loads for editing and Accept rebuilds it"
+                              : "Design this house in the House Builder — Accept stores the blueprint and raises the house"
+                          }
+                        >
+                          {l.built ? "Re-design" : "Design"}
+                        </button>
+                      )}
+                      {lotActions.showCommission && (
+                        <button
+                          style={{
+                            padding: "0 6px",
+                            fontSize: 10,
+                            color: "#d8a85a",
+                          }}
+                          onClick={() => runtime.commissionLot(l.id)}
+                          title="Hire KOOKER the Builder — the citizen dreams a home, KOOKER quotes, they haggle, and the agreed house rises. The deal lands on both their Kookerbook pages."
+                        >
+                          🛠️ Hire KOOKER
+                        </button>
+                      )}
+                      {lotActions.showBuild && (
+                        <button
+                          style={{ padding: "0 6px", fontSize: 10 }}
+                          onClick={() => runtime.buildHouse(l.id)}
+                          title={ui.neighborhood.buildHint}
+                        >
+                          Build
+                        </button>
+                      )}
+                      {lotActions.showDemolish && (
+                        <button
+                          style={{ padding: "0 6px", fontSize: 10 }}
+                          onClick={() => runtime.demolishLot(l.id)}
+                          title="Tear the house down, keep the citizen"
+                        >
+                          Demolish
+                        </button>
+                      )}
+                      {lotActions.showEvict && (
+                        <button
+                          style={{
+                            padding: "0 6px",
+                            fontSize: 10,
+                            color: "#e0584d",
+                          }}
+                          onClick={() => runtime.demolishLotAndCitizen(l.id)}
+                          title="Raze the home AND destroy the citizen and their Hermes agent"
+                        >
+                          Evict
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {OLD_WORLD_STATS && (
+              <>
+                {ui.colony.gallery.galleries > 0 && (
                   <div className="row">
-                    <span>{label}</span>
-                    <b>
-                      {ui.bank.currency}
-                      {priceOf(kind).toLocaleString()} ×
-                      {ui.commerce.byKind[kind]}
+                    <span>Gallery</span>
+                    <b
+                      style={{
+                        color: ui.colony.gallery.open ? "#e0a83c" : "#9a8a5a",
+                      }}
+                      title="The Skydeck Gallery — a viewing hall on the mooring deck that charges Kookerverse travellers to see the colony. Its visitor coin scales with how worth-seeing the colony actually is: its liveability, lifted by a finished Horizon Spire and by the Prosperity standing. It is the first income the colony earns purely for being a good place to live, so every coin spent on Planter Squares, clean homes and the monument finally pays its own way. Must be staffed to open."
+                    >
+                      {ui.colony.gallery.galleries} gallery
+                      {ui.colony.gallery.open
+                        ? ` · +${ui.colony.gallery.coinPerDay}/day`
+                        : " · quiet"}
                     </b>
                   </div>
-                ) : null;
-              const commerceCopy = commercePanelCopy({
-                commerce: ui.commerce,
-                currency: ui.bank.currency,
-                playerScoped: ui.bank.scope === "player",
-              });
+                )}
+                {ui.colony.planters.squares > 0 && (
+                  <div className="row">
+                    <span>Planters</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.planters.blooming > 0
+                            ? "#6fae5a"
+                            : "#7a8a6a",
+                      }}
+                      title="Planter Squares — the colony's first deliberate beauty. A Square in Bloom (tended by a groundskeeper and watered for most of the last ten days) lifts the desirability of homes around it, raising their liveability and drawing settlers to a colony that looks cared for. Untended or unwatered, it simply gives nothing."
+                    >
+                      {ui.colony.planters.blooming}/{ui.colony.planters.squares}{" "}
+                      blooming
+                    </b>
+                  </div>
+                )}
+                {ui.colony.labour.active && (
+                  <div className="row">
+                    <span>Employment</span>
+                    <b
+                      style={{
+                        color: ui.colony.labour.dragging
+                          ? "#e0584d"
+                          : ui.colony.labour.unemployment > 0.1
+                            ? "#d8a64a"
+                            : "#7faf7a",
+                      }}
+                      title="The Labour Registry Desk — it keeps an honest count of working-age idle hands. Chronic unemployment (above 10% held a week, or 20% held a fortnight) drags the Prosperity Rank a step or two, and clears once the colony sits below 5% for a week. Without a Registry, idleness never shows in the books."
+                    >
+                      {Math.round((1 - ui.colony.labour.unemployment) * 100)}%
+                      employed
+                      {ui.colony.labour.dragging
+                        ? ` · Prosperity -${ui.colony.labour.penalty}`
+                        : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.duskcap.cellars > 0 && (
+                  <div className="row">
+                    <span>Duskcap</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.duskcap.stock > 0 ? "#9a86a6" : "#7a6e82",
+                      }}
+                      title="Duskcap — a hardy third food grown by Fungus Cellars on the cool dark under-decks. It needs no sunlight, no season and barely any power, so it keeps coming through a lean Frost or a brownout when the greenhouses falter and the rim nets fall idle. The homes eat it as a third protein course after the fish, sparing skygrain, and it counts as a varied-table dish so a fish-short colony can still keep a Varied Diet."
+                    >
+                      {ui.colony.duskcap.stock} · {ui.colony.duskcap.cellars}{" "}
+                      cellar
+                      {ui.colony.duskcap.cellars > 1 ? "s" : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.bathhouse.baths > 0 && (
+                  <div className="row">
+                    <span>Hygiene</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.bathhouse.hygiene > 0.66
+                            ? "#6fb6cf"
+                            : ui.colony.bathhouse.hygiene > 0.33
+                              ? "#8aa6b0"
+                              : "#9a8a7a",
+                      }}
+                      title="Hygiene — Steam Bathhouses on the cistern line keep the colony clean. Hygiene rises with how many baths serve the head-count, how well they are staffed, whether the tanks hold water, and a little power to heat them. It is preventive: a clean colony slows how fast a fever takes hold (up to 40% at full hygiene), so fewer outbreaks start. It also earns the Clean-Home Standing (spec 070) — a washed colony draws settlers a touch better and its served homes climb the housing ladder a little faster. The baths draw stored water each day, a real customer for the cisterns and the reclaimer. It does not cure a fever already running — that stays the Fever Watch and the clinic."
+                    >
+                      {Math.round(ui.colony.bathhouse.hygiene * 100)}% ·{" "}
+                      {ui.colony.bathhouse.baths} bath
+                      {ui.colony.bathhouse.baths > 1 ? "s" : ""}
+                      {ui.colony.bathhouse.drawBonus > 0
+                        ? ` · +${Math.round(ui.colony.bathhouse.drawBonus * 100)}% draw`
+                        : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.library.libraries > 0 && (
+                  <div className="row">
+                    <span>Library</span>
+                    <b
+                      style={{
+                        color: ui.colony.library.lending
+                          ? "#d6b85a"
+                          : "#9a8a5a",
+                      }}
+                      title="The Folio Library — a reading room stocked with the colony's own folios, lent to the homes as culture. It is folio-fed the way the holo-theatres are reel-fed, so it gives the homes a second way to stay cultured that needs no reels. It draws a folio a day from the stores to lend, the first domestic demand to compete with the export trade, so shipping every folio out leaves the shelves bare. Inert with no Library."
+                    >
+                      {ui.colony.library.libraries} librar
+                      {ui.colony.library.libraries > 1 ? "ies" : "y"}
+                      {ui.colony.library.lending
+                        ? ` · lending · -${ui.colony.library.foliosPerDay}/day`
+                        : " · shelves bare"}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.driedFish.racks > 0 && (
+                  <div className="row">
+                    <span>Dried fish</span>
+                    <b
+                      style={{
+                        color:
+                          ui.colony.driedFish.stock > 0 ? "#9fb4a0" : "#7a8a7a",
+                      }}
+                      title="Dried rimfish — Rimfish Drying Racks dry the surplus fresh catch (above a working reserve) into a shelf-stable food, banked in the storehouses. The homes eat fresh rimfish first and fall back on this reserve, so fish stays on the table and the diet stays varied through a net-dock outage or a lean Frost. Drying loses weight: 8 dried per 12 fresh."
+                    >
+                      {ui.colony.driedFish.stock}/{ui.colony.driedFish.cap} ·{" "}
+                      {ui.colony.driedFish.racks} rack
+                      {ui.colony.driedFish.racks > 1 ? "s" : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.diet.counters > 0 && (
+                  <div className="row">
+                    <span>Diet</span>
+                    <b
+                      style={{
+                        color: ui.colony.diet.varied ? "#d98c5f" : "#9a8a7a",
+                      }}
+                      title="The Variety Ration Counter — homes fed both skyfarm greens and rimfish over the last 20 days earn a Varied Diet, which lifts the colony's draw on newcomers and helps served homes climb the ladder a touch faster. One counter serves 80 residents. With only one food on the table there is no bonus and no penalty; if a counter loses its crew or power the standing holds five days, then fades."
+                    >
+                      {ui.colony.diet.served} served
+                      {ui.colony.diet.varied ? " · varied" : " · one food"}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.seed.lofts > 0 && (
+                  <div className="row">
+                    <span>Seed</span>
+                    <b
+                      style={{
+                        color: ui.colony.seed.short ? "#e0584d" : "#7fae57",
+                      }}
+                      title="Seed-stock — Seed Lofts dry saved harvest (food, plus water once cisterns stand) into seed the skyfarms plant. A drained bin (too few lofts, thin food, or a brownout) cuts every skyfarm's yield together toward a half-harvest floor."
+                    >
+                      {ui.colony.seed.stored}/{ui.colony.seed.cap}
+                      {ui.colony.seed.short ? " ⚠ short" : ""}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.folios > 0 && (
+                  <div className="row">
+                    <span>Folios</span>
+                    <b
+                      style={{ color: "#e6c462" }}
+                      title="Skybound folios — the colony's signature finished export, bound from 1 reel + 1 linen by Folio Houses and sold by the Exchange well above either input."
+                    >
+                      {ui.colony.folios}
+                    </b>
+                  </div>
+                )}
+                {ui.colony.skilled > 0 && (
+                  <div className="row">
+                    <span>Skilled</span>
+                    <b
+                      style={{ color: "#5fd0c0" }}
+                      title="Skilled workers trained by Skillhouse Academies — the advanced trades run faster with them"
+                    >
+                      {ui.colony.skilled}
+                    </b>
+                  </div>
+                )}
+                <div className="row">
+                  <span>Homes</span>
+                  <b>{`T1×${ui.colony.tiers[0]} · T2×${ui.colony.tiers[1]} · T3×${ui.colony.tiers[2]}`}</b>
+                </div>
+                <div className="row">
+                  <span>Buildings</span>
+                  <b>{ui.colony.buildings}</b>
+                </div>
+                <div className="row">
+                  <span>Building</span>
+                  <b>{ui.colony.building}</b>
+                </div>
+                <div className="row">
+                  <span>Solar</span>
+                  <b>{ui.power.solarW.toFixed(1)} kW</b>
+                </div>
+                {ui.power.windW > 0 && (
+                  <div className="row">
+                    <span>Wind</span>
+                    <b
+                      style={{ color: "#8fb8d0" }}
+                      title="Wind-Shear Turbine Masts — steady generation that feeds the grid day and night (no daylight dip), scaled by staffing. Build more to outrun brownouts as the colony grows."
+                    >
+                      {ui.power.windW.toFixed(1)} kW
+                    </b>
+                  </div>
+                )}
+                <div className="row">
+                  <span>Load</span>
+                  <b
+                    style={{
+                      color:
+                        ui.power.loadW > ui.power.solarW
+                          ? "#e0584d"
+                          : undefined,
+                    }}
+                  >
+                    {ui.power.loadW.toFixed(1)} kW
+                  </b>
+                </div>
+                {ui.power.brownout && (
+                  <div className="row">
+                    <span style={{ color: "#e6c84d" }}>⚡ Brownout</span>
+                    <b
+                      style={{ color: "#e6c84d" }}
+                      title="Grid over capacity + battery low — heavy industry at 50% until more solar is built"
+                    >
+                      industry 50%
+                    </b>
+                  </div>
+                )}
+                <div className="batt">
+                  <div className="batt-head">
+                    <span>Battery</span>
+                    <b>
+                      {pct}% · {Math.round(ui.power.batteryCapWh)}Wh
+                    </b>
+                  </div>
+                  <div className="bar">
+                    <div style={{ width: `${pct}%`, background: battColor }} />
+                  </div>
+                </div>
+              </>
+            )}
+            <div className="row" style={{ marginTop: 10 }}>
+              <span>Settlers</span>
+              <b>{settlerCopy.count}</b>
+            </div>
+            {settlerCopy.recent.length > 0 && (
+              <div className="settler-list">
+                {settlerCopy.recent.map((label) => (
+                  <span key={label} className="chip">
+                    {label}
+                  </span>
+                ))}
+              </div>
+            )}
+            {showBorderControl && (
+              <button className="immigbtn" onClick={() => setBorderOpen(true)}>
+                🛂 Border Control
+              </button>
+            )}
+
+            {(() => {
+              const bankCopy = bankPanelCopy(ui.bank);
               return (
                 <>
-                  <h2 style={{ marginTop: 18 }}>Commercial district</h2>
-                  <div className="row">
-                    <span>Shop plots</span>
-                    <b>
-                      {ui.commerce.plots} · {ui.commerce.free} free
-                    </b>
-                  </div>
-                  {row("Showrooms", "showroom")}
-                  {row("Stores", "store")}
-                  {row("Kiosks", "kiosk")}
-                  {ui.commerce.free > 0 && (
-                    <button
-                      className="immigbtn"
-                      disabled={!ui.commerce.canClaim}
-                      onClick={() => runtime.claimNextShop()}
-                      title={commerceCopy.claimTitle}
-                    >
-                      {commerceCopy.claimButtonLabel}
-                    </button>
+                  <h2 style={{ marginTop: 18 }}>{bankCopy.title}</h2>
+                  {bankCopy.rows.map((row) => (
+                    <div className="row" key={row.label}>
+                      <span>{row.label}</span>
+                      <b
+                        style={
+                          row.status === "pending"
+                            ? { color: "#e0a14d" }
+                            : row.status === "ok"
+                              ? { color: "#39d353" }
+                              : undefined
+                        }
+                      >
+                        {row.value}
+                      </b>
+                    </div>
+                  ))}
+                  {bankCopy.ledgerRows.length > 0 && (
+                    <div className="ledger">
+                      {bankCopy.ledgerRows.map((memo, index) => (
+                        <div key={`${index}-${memo}`} className="ledger-row">
+                          {memo}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </>
               );
             })()}
 
-          {/* Furniture studio (spec 088 Slice D/F UI) — the signed-in player designs a piece (a catalog
+            {ui.commerce.plots > 0 &&
+              (() => {
+                const priceOf = (kind: "kiosk" | "store" | "showroom") =>
+                  ui.commerce.parcels.find((p) => p.kind === kind)?.price ?? 0;
+                const row = (
+                  label: string,
+                  kind: "kiosk" | "store" | "showroom",
+                ) =>
+                  ui.commerce.byKind[kind] > 0 ? (
+                    <div className="row">
+                      <span>{label}</span>
+                      <b>
+                        {ui.bank.currency}
+                        {priceOf(kind).toLocaleString()} ×
+                        {ui.commerce.byKind[kind]}
+                      </b>
+                    </div>
+                  ) : null;
+                const commerceCopy = commercePanelCopy({
+                  commerce: ui.commerce,
+                  currency: ui.bank.currency,
+                  playerScoped: ui.bank.scope === "player",
+                });
+                return (
+                  <>
+                    <h2 style={{ marginTop: 18 }}>Commercial district</h2>
+                    <div className="row">
+                      <span>Shop plots</span>
+                      <b>
+                        {ui.commerce.plots} · {ui.commerce.free} free
+                      </b>
+                    </div>
+                    {row("Showrooms", "showroom")}
+                    {row("Stores", "store")}
+                    {row("Kiosks", "kiosk")}
+                    {ui.commerce.free > 0 && (
+                      <button
+                        className="immigbtn"
+                        disabled={!ui.commerce.canClaim}
+                        onClick={() => runtime.claimNextShop()}
+                        title={commerceCopy.claimTitle}
+                      >
+                        {commerceCopy.claimButtonLabel}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
+
+            {/* Furniture studio (spec 088 Slice D/F UI) — the signed-in player designs a piece (a catalog
             kind + their own name) and buys it from the studio; it lands in their inventory. Shown only
             for a player who owns a citizen (operatorCitizenId). */}
-          {ui.firstPerson.operatorCitizenId &&
-            (() => {
-              const me = ui.firstPerson.operatorCitizenId!;
-              const wallet = ui.citizens.wallets[me] ?? 0;
-              const inv = ownedBy(loadInventoryLocal(), me);
-              const myLot = runtime.lotForCitizen(me); // their home, for placing furniture
-              const price = furniturePriceK(furnKind);
-              const canBuy = wallet >= price;
-              return (
-                <div data-build-area="furniture-studio">
-                  <h2 style={{ marginTop: 18 }}>Furniture studio</h2>
-                  <div className="row">
-                    <span>Your wallet</span>
-                    <b>
-                      {ui.bank.currency}
-                      {wallet.toLocaleString()}
-                    </b>
-                  </div>
-                  {inv.length > 0 ? (
-                    inv.map((s) => (
-                      <div
-                        className="row"
-                        key={s.id}
-                        data-build-area={`inv-${s.id}`}
-                      >
-                        <span>
-                          {FURNITURE_CATALOG[s.kind].icon} {s.name}
-                        </span>
-                        <span
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
-                        >
-                          <b>×{s.qty}</b>
-                          <button
-                            className="furn-place"
-                            data-build-action={`place-item-${s.id}`}
-                            disabled={!myLot}
-                            title={
-                              myLot
-                                ? "Place one in your house at a free spot"
-                                : "Buy a plot first to furnish a home"
-                            }
-                            onClick={() => runtime.placeFurnitureAuto(me, s.id)}
-                          >
-                            place ↪
-                          </button>
-                          <button
-                            className="furn-place"
-                            data-build-action={`list-item-${s.id}`}
-                            title="List this design on the marketplace"
-                            onClick={() =>
-                              runtime.listFurnitureForSale(me, s.kind, s.name)
-                            }
-                          >
-                            list ⊕
-                          </button>
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="row" style={{ opacity: 0.6 }}>
-                      <span>No furniture yet — design a piece below</span>
+            {ui.firstPerson.operatorCitizenId &&
+              (() => {
+                const me = ui.firstPerson.operatorCitizenId!;
+                const wallet = ui.citizens.wallets[me] ?? 0;
+                const inv = ownedBy(loadInventoryLocal(), me);
+                const myLot = runtime.lotForCitizen(me); // their home, for placing furniture
+                const price = furniturePriceK(furnKind);
+                const canBuy = wallet >= price;
+                return (
+                  <div data-build-area="furniture-studio">
+                    <h2 style={{ marginTop: 18 }}>Furniture studio</h2>
+                    <div className="row">
+                      <span>Your wallet</span>
+                      <b>
+                        {ui.bank.currency}
+                        {wallet.toLocaleString()}
+                      </b>
                     </div>
-                  )}
-                  <div className="furn-design">
-                    <select
-                      className="furn-field"
-                      data-build-action="furniture-kind"
-                      value={furnKind}
-                      onChange={(e) =>
-                        setFurnKind(e.target.value as FurnitureKind)
+                    {inv.length > 0 ? (
+                      inv.map((s) => (
+                        <div
+                          className="row"
+                          key={s.id}
+                          data-build-area={`inv-${s.id}`}
+                        >
+                          <span>
+                            {FURNITURE_CATALOG[s.kind].icon} {s.name}
+                          </span>
+                          <span
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <b>×{s.qty}</b>
+                            <button
+                              className="furn-place"
+                              data-build-action={`place-item-${s.id}`}
+                              disabled={!myLot}
+                              title={
+                                myLot
+                                  ? "Place one in your house at a free spot"
+                                  : "Buy a plot first to furnish a home"
+                              }
+                              onClick={() =>
+                                runtime.placeFurnitureAuto(me, s.id)
+                              }
+                            >
+                              place ↪
+                            </button>
+                            <button
+                              className="furn-place"
+                              data-build-action={`list-item-${s.id}`}
+                              title="List this design on the marketplace"
+                              onClick={() =>
+                                runtime.listFurnitureForSale(me, s.kind, s.name)
+                              }
+                            >
+                              list ⊕
+                            </button>
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="row" style={{ opacity: 0.6 }}>
+                        <span>No furniture yet — design a piece below</span>
+                      </div>
+                    )}
+                    <div className="furn-design">
+                      <select
+                        className="furn-field"
+                        data-build-action="furniture-kind"
+                        value={furnKind}
+                        onChange={(e) =>
+                          setFurnKind(e.target.value as FurnitureKind)
+                        }
+                      >
+                        {FURNITURE_KINDS.map((k) => (
+                          <option key={k} value={k}>
+                            {FURNITURE_CATALOG[k].icon}{" "}
+                            {FURNITURE_CATALOG[k].label} · {ui.bank.currency}
+                            {furniturePriceK(k)}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        className="furn-field"
+                        data-build-action="furniture-name"
+                        value={furnName}
+                        onChange={(e) => setFurnName(e.target.value)}
+                        placeholder="name your design…"
+                        maxLength={40}
+                      />
+                    </div>
+                    <button
+                      className="buildbtn"
+                      data-build-action="buy-furniture"
+                      disabled={!canBuy}
+                      title={
+                        canBuy
+                          ? "Design and buy this piece — it lands in your inventory"
+                          : "Not enough city coin for this piece"
                       }
-                    >
-                      {FURNITURE_KINDS.map((k) => (
-                        <option key={k} value={k}>
-                          {FURNITURE_CATALOG[k].icon}{" "}
-                          {FURNITURE_CATALOG[k].label} · {ui.bank.currency}
-                          {furniturePriceK(k)}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      className="furn-field"
-                      data-build-action="furniture-name"
-                      value={furnName}
-                      onChange={(e) => setFurnName(e.target.value)}
-                      placeholder="name your design…"
-                      maxLength={40}
-                    />
-                  </div>
-                  <button
-                    className="buildbtn"
-                    data-build-action="buy-furniture"
-                    disabled={!canBuy}
-                    title={
-                      canBuy
-                        ? "Design and buy this piece — it lands in your inventory"
-                        : "Not enough city coin for this piece"
-                    }
-                    onClick={() => {
-                      if (
-                        runtime.buyFurniture(
-                          me,
-                          furnKind,
-                          furnName.trim() || furnKind,
+                      onClick={() => {
+                        if (
+                          runtime.buyFurniture(
+                            me,
+                            furnKind,
+                            furnName.trim() || furnKind,
+                          )
                         )
-                      )
-                        setFurnName("");
-                    }}
-                  >
-                    {FURNITURE_CATALOG[furnKind].icon} Design + buy ·{" "}
-                    {ui.bank.currency}
-                    {price}
-                  </button>
-                  {/* Rearrange home (spec 089) — move/rotate/restack/remove the furniture already placed in
+                          setFurnName("");
+                      }}
+                    >
+                      {FURNITURE_CATALOG[furnKind].icon} Design + buy ·{" "}
+                      {ui.bank.currency}
+                      {price}
+                    </button>
+                    {/* Rearrange home (spec 089) — move/rotate/restack/remove the furniture already placed in
                     your house, any time. The index handle re-reads from placedFurniture each render. */}
-                  {myLot &&
-                    (() => {
-                      const placed = runtime.placedFurniture(myLot.id);
-                      if (placed.length === 0) return null;
-                      const storeys = runtime.houseStoreys(myLot.id);
-                      const lid = myLot.id;
+                    {myLot &&
+                      (() => {
+                        const placed = runtime.placedFurniture(myLot.id);
+                        if (placed.length === 0) return null;
+                        const storeys = runtime.houseStoreys(myLot.id);
+                        const lid = myLot.id;
+                        return (
+                          <div
+                            data-build-area="furniture-arrange"
+                            style={{
+                              borderTop: "1px solid var(--brd)",
+                              marginTop: 10,
+                              paddingTop: 8,
+                            }}
+                          >
+                            <div className="row" style={{ opacity: 0.7 }}>
+                              <span>🔧 Rearrange home</span>
+                              <b>{placed.length} placed</b>
+                            </div>
+                            {placed.map((p) => (
+                              <div
+                                key={p.index}
+                                data-build-area={`placed-${p.index}`}
+                                style={{
+                                  padding: "3px 0",
+                                  borderBottom:
+                                    "1px solid rgba(255,255,255,0.04)",
+                                }}
+                              >
+                                <div style={{ fontSize: 12, marginBottom: 3 }}>
+                                  {FURNITURE_CATALOG[p.kind].icon} {p.kind}{" "}
+                                  <small style={{ opacity: 0.5 }}>
+                                    {p.x},{p.y}
+                                    {storeys > 1 ? ` · fl${p.z}` : ""}
+                                  </small>
+                                </div>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    gap: 3,
+                                  }}
+                                >
+                                  {(
+                                    [
+                                      ["left", "←", -1, 0],
+                                      ["right", "→", 1, 0],
+                                      ["up", "↑", 0, -1],
+                                      ["down", "↓", 0, 1],
+                                    ] as const
+                                  ).map(([dir, glyph, dx, dy]) => (
+                                    <button
+                                      key={dir}
+                                      className="arrange-btn"
+                                      data-build-action={`arrange-move-${p.index}-${dir}`}
+                                      title={`move ${dir}`}
+                                      onClick={() =>
+                                        runtime.moveArrangedFurniture(
+                                          me,
+                                          lid,
+                                          p.index,
+                                          dx,
+                                          dy,
+                                        )
+                                      }
+                                    >
+                                      {glyph}
+                                    </button>
+                                  ))}
+                                  <button
+                                    className="arrange-btn"
+                                    data-build-action={`arrange-rotate-${p.index}`}
+                                    title="rotate"
+                                    onClick={() =>
+                                      runtime.rotateArrangedFurniture(
+                                        me,
+                                        lid,
+                                        p.index,
+                                      )
+                                    }
+                                  >
+                                    ↻
+                                  </button>
+                                  {storeys > 1 && (
+                                    <>
+                                      <button
+                                        className="arrange-btn"
+                                        data-build-action={`arrange-floor-${p.index}-up`}
+                                        title="up a floor"
+                                        onClick={() =>
+                                          runtime.restackArrangedFurniture(
+                                            me,
+                                            lid,
+                                            p.index,
+                                            1,
+                                          )
+                                        }
+                                      >
+                                        ▲
+                                      </button>
+                                      <button
+                                        className="arrange-btn"
+                                        data-build-action={`arrange-floor-${p.index}-down`}
+                                        title="down a floor"
+                                        onClick={() =>
+                                          runtime.restackArrangedFurniture(
+                                            me,
+                                            lid,
+                                            p.index,
+                                            -1,
+                                          )
+                                        }
+                                      >
+                                        ▼
+                                      </button>
+                                    </>
+                                  )}
+                                  <button
+                                    className="arrange-btn"
+                                    data-build-action={`arrange-remove-${p.index}`}
+                                    title="take it back to your inventory"
+                                    style={{ color: "#e0584d" }}
+                                    onClick={() =>
+                                      runtime.removeArrangedFurniture(
+                                        me,
+                                        lid,
+                                        p.index,
+                                      )
+                                    }
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    {/* Marketplace (spec 088 Slice F UI) — the public board: browse listings, buy your own
+                    copy from the studio, and unlist your own. Listing is the "list ⊕" button per stack. */}
+                    {(() => {
+                      const listings = runtime.marketListings();
+                      if (listings.length === 0) return null;
+                      const nameOf = (cid: string) =>
+                        furnitureMarketplaceSellerLabel({
+                          sellerCitizenId: cid,
+                          viewerCitizenId: me,
+                          sellerDisplayName: ui.citizens.list.find(
+                            (x) => x.id === cid,
+                          )?.displayName,
+                          playerScoped: ui.bank.scope === "player",
+                        });
                       return (
                         <div
-                          data-build-area="furniture-arrange"
+                          data-build-area="furniture-market"
                           style={{
                             borderTop: "1px solid var(--brd)",
                             marginTop: 10,
@@ -2871,214 +3059,70 @@ export function ColonyApp() {
                           }}
                         >
                           <div className="row" style={{ opacity: 0.7 }}>
-                            <span>🔧 Rearrange home</span>
-                            <b>{placed.length} placed</b>
+                            <span>🏷️ Marketplace</span>
+                            <b>{listings.length} listed</b>
                           </div>
-                          {placed.map((p) => (
+                          {listings.map((l) => (
                             <div
-                              key={p.index}
-                              data-build-area={`placed-${p.index}`}
-                              style={{
-                                padding: "3px 0",
-                                borderBottom:
-                                  "1px solid rgba(255,255,255,0.04)",
-                              }}
+                              className="row"
+                              key={l.id}
+                              data-build-area={`listing-${l.id}`}
                             >
-                              <div style={{ fontSize: 12, marginBottom: 3 }}>
-                                {FURNITURE_CATALOG[p.kind].icon} {p.kind}{" "}
-                                <small style={{ opacity: 0.5 }}>
-                                  {p.x},{p.y}
-                                  {storeys > 1 ? ` · fl${p.z}` : ""}
+                              <span>
+                                {FURNITURE_CATALOG[l.kind].icon} {l.name}{" "}
+                                <small style={{ opacity: 0.55 }}>
+                                  · {nameOf(l.sellerCitizenId)}
                                 </small>
-                              </div>
-                              <div
+                              </span>
+                              <span
                                 style={{
                                   display: "flex",
-                                  flexWrap: "wrap",
-                                  gap: 3,
+                                  alignItems: "center",
+                                  gap: 6,
                                 }}
                               >
-                                {(
-                                  [
-                                    ["left", "←", -1, 0],
-                                    ["right", "→", 1, 0],
-                                    ["up", "↑", 0, -1],
-                                    ["down", "↓", 0, 1],
-                                  ] as const
-                                ).map(([dir, glyph, dx, dy]) => (
+                                <b>
+                                  {ui.bank.currency}
+                                  {l.price}
+                                </b>
+                                <button
+                                  className="furn-place"
+                                  data-build-action={`buy-listing-${l.id}`}
+                                  disabled={wallet < l.price}
+                                  title={
+                                    wallet < l.price
+                                      ? "Not enough city coin"
+                                      : "Buy your own copy from the studio"
+                                  }
+                                  onClick={() =>
+                                    runtime.buyFromMarket(me, l.id)
+                                  }
+                                >
+                                  buy
+                                </button>
+                                {l.sellerCitizenId === me && (
                                   <button
-                                    key={dir}
-                                    className="arrange-btn"
-                                    data-build-action={`arrange-move-${p.index}-${dir}`}
-                                    title={`move ${dir}`}
+                                    className="furn-place"
+                                    data-build-action={`unlist-${l.id}`}
+                                    title="Remove your listing"
                                     onClick={() =>
-                                      runtime.moveArrangedFurniture(
-                                        me,
-                                        lid,
-                                        p.index,
-                                        dx,
-                                        dy,
-                                      )
+                                      runtime.unlistFurniture(me, l.id)
                                     }
                                   >
-                                    {glyph}
+                                    ✕
                                   </button>
-                                ))}
-                                <button
-                                  className="arrange-btn"
-                                  data-build-action={`arrange-rotate-${p.index}`}
-                                  title="rotate"
-                                  onClick={() =>
-                                    runtime.rotateArrangedFurniture(
-                                      me,
-                                      lid,
-                                      p.index,
-                                    )
-                                  }
-                                >
-                                  ↻
-                                </button>
-                                {storeys > 1 && (
-                                  <>
-                                    <button
-                                      className="arrange-btn"
-                                      data-build-action={`arrange-floor-${p.index}-up`}
-                                      title="up a floor"
-                                      onClick={() =>
-                                        runtime.restackArrangedFurniture(
-                                          me,
-                                          lid,
-                                          p.index,
-                                          1,
-                                        )
-                                      }
-                                    >
-                                      ▲
-                                    </button>
-                                    <button
-                                      className="arrange-btn"
-                                      data-build-action={`arrange-floor-${p.index}-down`}
-                                      title="down a floor"
-                                      onClick={() =>
-                                        runtime.restackArrangedFurniture(
-                                          me,
-                                          lid,
-                                          p.index,
-                                          -1,
-                                        )
-                                      }
-                                    >
-                                      ▼
-                                    </button>
-                                  </>
                                 )}
-                                <button
-                                  className="arrange-btn"
-                                  data-build-action={`arrange-remove-${p.index}`}
-                                  title="take it back to your inventory"
-                                  style={{ color: "#e0584d" }}
-                                  onClick={() =>
-                                    runtime.removeArrangedFurniture(
-                                      me,
-                                      lid,
-                                      p.index,
-                                    )
-                                  }
-                                >
-                                  ✕
-                                </button>
-                              </div>
+                              </span>
                             </div>
                           ))}
                         </div>
                       );
                     })()}
-                  {/* Marketplace (spec 088 Slice F UI) — the public board: browse listings, buy your own
-                    copy from the studio, and unlist your own. Listing is the "list ⊕" button per stack. */}
-                  {(() => {
-                    const listings = runtime.marketListings();
-                    if (listings.length === 0) return null;
-                    const nameOf = (cid: string) =>
-                      furnitureMarketplaceSellerLabel({
-                        sellerCitizenId: cid,
-                        viewerCitizenId: me,
-                        sellerDisplayName: ui.citizens.list.find(
-                          (x) => x.id === cid,
-                        )?.displayName,
-                        playerScoped: ui.bank.scope === "player",
-                      });
-                    return (
-                      <div
-                        data-build-area="furniture-market"
-                        style={{
-                          borderTop: "1px solid var(--brd)",
-                          marginTop: 10,
-                          paddingTop: 8,
-                        }}
-                      >
-                        <div className="row" style={{ opacity: 0.7 }}>
-                          <span>🏷️ Marketplace</span>
-                          <b>{listings.length} listed</b>
-                        </div>
-                        {listings.map((l) => (
-                          <div
-                            className="row"
-                            key={l.id}
-                            data-build-area={`listing-${l.id}`}
-                          >
-                            <span>
-                              {FURNITURE_CATALOG[l.kind].icon} {l.name}{" "}
-                              <small style={{ opacity: 0.55 }}>
-                                · {nameOf(l.sellerCitizenId)}
-                              </small>
-                            </span>
-                            <span
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                              }}
-                            >
-                              <b>
-                                {ui.bank.currency}
-                                {l.price}
-                              </b>
-                              <button
-                                className="furn-place"
-                                data-build-action={`buy-listing-${l.id}`}
-                                disabled={wallet < l.price}
-                                title={
-                                  wallet < l.price
-                                    ? "Not enough city coin"
-                                    : "Buy your own copy from the studio"
-                                }
-                                onClick={() => runtime.buyFromMarket(me, l.id)}
-                              >
-                                buy
-                              </button>
-                              {l.sellerCitizenId === me && (
-                                <button
-                                  className="furn-place"
-                                  data-build-action={`unlist-${l.id}`}
-                                  title="Remove your listing"
-                                  onClick={() =>
-                                    runtime.unlistFurniture(me, l.id)
-                                  }
-                                >
-                                  ✕
-                                </button>
-                              )}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
-              );
-            })()}
-        </div>
-      </aside>
+                  </div>
+                );
+              })()}
+          </div>
+        </aside>
       )}
 
       <RadioPanel runtime={runtime} radio={ui.radio} tv={ui.tv} />

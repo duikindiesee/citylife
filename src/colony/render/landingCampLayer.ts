@@ -51,8 +51,7 @@ export function buildLandingCamp(
     update(timeMs: number) {
       // The landed dropship still has power — its nav beacon pulses red.
       const pulse = (Math.sin((timeMs / 1000) * 2.2) + 1) * 0.5;
-      for (const mat of beaconMats)
-        mat.emissiveIntensity = 0.9 + pulse * 1.4;
+      for (const mat of beaconMats) mat.emissiveIntensity = 0.9 + pulse * 1.4;
     },
     dispose() {
       group.traverse((obj) => {

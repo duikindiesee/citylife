@@ -39,12 +39,12 @@ active, so no cost in aerial/builder modes.
 
 **Placement (camera space, metres; 1 world unit = 1 m, spec 118).**
 
-| thing            | value                                            |
-| ---------------- | ------------------------------------------------ |
-| rig anchor       | position `(0.24, -0.26, -0.5)` (right, down, forward) |
-| rig base tilt    | rotY `-0.18`, rotX `+0.12` (screen angled toward the eye) |
-| slate size       | body `0.30 x 0.21 x 0.015`; screen inset `0.27 x 0.18` |
-| forearm          | ~`0.34` long, enters bottom-right of frame       |
+| thing            | value                                                                   |
+| ---------------- | ----------------------------------------------------------------------- |
+| rig anchor       | position `(0.24, -0.26, -0.5)` (right, down, forward)                   |
+| rig base tilt    | rotY `-0.18`, rotX `+0.12` (screen angled toward the eye)               |
+| slate size       | body `0.30 x 0.21 x 0.015`; screen inset `0.27 x 0.18`                  |
+| forearm          | ~`0.34` long, enters bottom-right of frame                              |
 | near clip safety | nothing closer than `0.32` to the camera (near plane 0.1 + sway margin) |
 
 **Render isolation.** The rig must never clip through walls when the player stands
@@ -56,7 +56,7 @@ The slate screen (emissive) renders at `renderOrder = 901` so it always sits on 
 slate body. Shadows: cast OFF, receive OFF for the whole rig.
 
 **Procedural motion (code, not clips — cheap and tunable).** Driven per-frame in
-`useFrame` from the capsule's planar speed `v` (0..maxWalkSpeed*sprint):
+`useFrame` from the capsule's planar speed `v` (0..maxWalkSpeed\*sprint):
 
 - bob: `y += 0.006 * sin(t * 2π * stepHz) * min(1, v/maxWalk)`, `stepHz = 1.9` at walk,
   `2.4` sprinting (matches Joe_walk's 0.7 s cadence family);
@@ -69,14 +69,14 @@ slate body. Shadows: cast OFF, receive OFF for the whole rig.
 **States** (mixer clips from Jack layered UNDER the procedural motion — procedural
 offsets apply to the rig group, clips animate the skeleton inside it):
 
-| state       | clip         | trigger                                          |
-| ----------- | ------------ | ------------------------------------------------ |
-| hidden      | —            | not in first person, or cinematic owns the camera |
-| raising     | `Slate_raise`| entering FP, or Tab from lowered                 |
-| idle        | `Slate_idle` | v < 0.2 for 0.4 s                                |
-| walk        | `Slate_walk` | v ≥ 0.2                                          |
-| tap         | `Slate_tap`  | page change / interaction confirm (one-shot over idle/walk) |
-| lowered     | `Slate_lower`→ hold last frame | player presses `H` (hide slate; arms drop out of frame) |
+| state   | clip                           | trigger                                                     |
+| ------- | ------------------------------ | ----------------------------------------------------------- |
+| hidden  | —                              | not in first person, or cinematic owns the camera           |
+| raising | `Slate_raise`                  | entering FP, or Tab from lowered                            |
+| idle    | `Slate_idle`                   | v < 0.2 for 0.4 s                                           |
+| walk    | `Slate_walk`                   | v ≥ 0.2                                                     |
+| tap     | `Slate_tap`                    | page change / interaction confirm (one-shot over idle/walk) |
+| lowered | `Slate_lower`→ hold last frame | player presses `H` (hide slate; arms drop out of frame)     |
 
 ## 2. The slate screen (the actual HUD)
 
@@ -146,7 +146,7 @@ soft-keys drawn pressed for 150 ms after a tap.
   file existence (`useGLTF` with error boundary falling back to the placeholder, the
   GlbHouse/VoxelHouse precedent).
 - `src/colony/config.ts` — `COLONY.firstPerson.slate = { screenHz: 5, bobAmp: 0.006,
-  swayAmp: 0.01, raiseSeconds: 0.35, anchor: [0.24, -0.26, -0.5], tilt: [-0.18, 0.12] }`
+swayAmp: 0.01, raiseSeconds: 0.35, anchor: [0.24, -0.26, -0.5], tilt: [-0.18, 0.12] }`
   (all tunables in config, AGENTS.md rule — no magic numbers in the rig).
 - Keybinds `Tab`/`H` handled in FirstPersonController's existing key listeners; both
   no-ops outside FP. `Tab` must `preventDefault` (focus stealing).
@@ -179,14 +179,14 @@ Branch `jack/fp-arms-slate`, PR to `r3f-colony-migration`. File:
 
 **Animation clips** (exact names + durations; loop flags in GLB metadata; 24 fps ok):
 
-| clip          | length | loop | content                                                       |
-| ------------- | ------ | ---- | -------------------------------------------------------------- |
-| `Slate_idle`  | 2.5 s  | yes  | micro breathing sway, thumb shifts grip once per loop           |
+| clip          | length | loop | content                                                                                                   |
+| ------------- | ------ | ---- | --------------------------------------------------------------------------------------------------------- |
+| `Slate_idle`  | 2.5 s  | yes  | micro breathing sway, thumb shifts grip once per loop                                                     |
 | `Slate_walk`  | 0.7 s  | yes  | grip counter-sway matching a 0.7 s stride (Joe_walk cadence); keep amplitude SMALL — code adds bob on top |
-| `Slate_raise` | 0.35 s | no   | from below-frame to rest pose (this is the FP entry moment)     |
-| `Slate_lower` | 0.35 s | no   | reverse of raise; last frame = arms fully out of frame          |
-| `Slate_tap`   | 0.4 s  | no   | left hand enters low-left, index taps screen centre-bottom (the soft-key row), retreats |
-| `Slate_point` | 0.6 s  | no   | (stretch) right thumb points past the slate — for future guided-walk confirmations |
+| `Slate_raise` | 0.35 s | no   | from below-frame to rest pose (this is the FP entry moment)                                               |
+| `Slate_lower` | 0.35 s | no   | reverse of raise; last frame = arms fully out of frame                                                    |
+| `Slate_tap`   | 0.4 s  | no   | left hand enters low-left, index taps screen centre-bottom (the soft-key row), retreats                   |
+| `Slate_point` | 0.6 s  | no   | (stretch) right thumb points past the slate — for future guided-walk confirmations                        |
 
 **Jack's acceptance tests to ship in the same PR** (mirror joeAvatarGlbRenderer):
 `tests/fpArmsSlateGlb.test.ts` — raw import parses; node names exactly as above;
@@ -220,7 +220,8 @@ slate.
 believably with look-drag; the prompt is readable on the screen at 1080p without
 leaning in; Tab pages with a visible left-hand tap; H gives a clean frame; nothing
 clips through walls when nose-to-wall; nothing renders in aerial/builder modes; suite
-+ e2e green.
+
+- e2e green.
 
 ## 7. Non-goals (v1)
 

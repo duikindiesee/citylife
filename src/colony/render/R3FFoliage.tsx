@@ -1,12 +1,12 @@
-import React, { useEffect, useMemo, useRef, useLayoutEffect } from 'react';
-import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
-import type { ColonySim } from '../sim';
-import { calculateFoliagePositions } from './foliageLogic';
-import { findJunctionZones } from './roadJunctions';
-import { useSimSignal, type SimBridge } from './useSimSignal';
-import { foliageSignature } from './simSignals';
-import { buildIronworkHikePath, ironworkPillarCell } from '../ironworkPillar';
+import React, { useEffect, useMemo, useRef, useLayoutEffect } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
+import type { ColonySim } from "../sim";
+import { calculateFoliagePositions } from "./foliageLogic";
+import { findJunctionZones } from "./roadJunctions";
+import { useSimSignal, type SimBridge } from "./useSimSignal";
+import { foliageSignature } from "./simSignals";
+import { buildIronworkHikePath, ironworkPillarCell } from "../ironworkPillar";
 
 interface R3FFoliageProps {
   sim: ColonySim;
@@ -74,7 +74,12 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
         y1: pillar.y + 3,
       });
     }
-    const { matrices: mats, colors: cols } = calculateFoliagePositions(s.terrain, s.roads, s.buildings, rects);
+    const { matrices: mats, colors: cols } = calculateFoliagePositions(
+      s.terrain,
+      s.roads,
+      s.buildings,
+      rects,
+    );
     return { matrices: mats, colors: cols };
   }, [sim, foliageSig]);
 
@@ -95,12 +100,12 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
       roughness: 0.8,
       metalness: 0.05,
     });
-    
+
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = { value: 0 };
       // Pass the uniform reference to the material object so useFrame can update it
       mat.userData.shader = shader;
-      
+
       shader.vertexShader = `
         uniform float uTime;
         ${shader.vertexShader}
@@ -114,7 +119,7 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
         float sway = sin(uTime * 1.5 + worldPos.x * 0.1 + worldPos.z * 0.1) * 0.1;
         // Only sway the top of the tree
         transformed.x += sway * position.y;
-        `
+        `,
       );
     };
     return mat;

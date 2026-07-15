@@ -1974,9 +1974,18 @@ body.tv-mode .radio-iframe.is-visible {
   letter-spacing: 0.12em;
   padding: 0 3px 5px;
 }
-.bus-network-minimap svg { display: block; width: 100%; height: auto; }
-.bus-network-minimap text { fill: #fff; font: 700 6px/1 system-ui; }
-.bus-network-minimap__ground { fill: rgba(8, 22, 29, 0.96); }
+.bus-network-minimap svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.bus-network-minimap text {
+  fill: #fff;
+  font: 700 6px/1 system-ui;
+}
+.bus-network-minimap__ground {
+  fill: rgba(8, 22, 29, 0.96);
+}
 .bus-network-minimap__road,
 .bus-network-minimap__spur {
   fill: none;
@@ -1985,11 +1994,31 @@ body.tv-mode .radio-iframe.is-visible {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.bus-network-minimap__spur { stroke: #ffb84a; stroke-width: 2.8; }
-.bus-network-minimap__stop { fill: #ffe174; stroke: #332800; stroke-width: 0.8; }
-.bus-network-minimap__depot { fill: #ff9f35; stroke: #fff0c9; stroke-width: 1; }
-.bus-network-minimap__bus { fill: #2ddfff; stroke: #fff; stroke-width: 1.2; }
+.bus-network-minimap__spur {
+  stroke: #ffb84a;
+  stroke-width: 2.8;
+}
+.bus-network-minimap__stop {
+  fill: #ffe174;
+  stroke: #332800;
+  stroke-width: 0.8;
+}
+.bus-network-minimap__depot {
+  fill: #ff9f35;
+  stroke: #fff0c9;
+  stroke-width: 1;
+}
+.bus-network-minimap__bus {
+  fill: #2ddfff;
+  stroke: #fff;
+  stroke-width: 1.2;
+}
 @media (max-width: 700px) {
-  .bus-network-minimap { width: 168px; top: calc(52px + env(safe-area-inset-top)); }
-  .bus-network-minimap__title { font-size: 8px; }
+  .bus-network-minimap {
+    width: 168px;
+    top: calc(52px + env(safe-area-inset-top));
+  }
+  .bus-network-minimap__title {
+    font-size: 8px;
+  }
 }

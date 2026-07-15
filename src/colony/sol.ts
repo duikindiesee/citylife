@@ -29,9 +29,7 @@ export function canonicalSolClock(nowMs: number): CanonicalSolClock {
   const elapsed = safeNow - CITYLIFE_EPOCH_MS;
   const sol = Math.floor(elapsed / MS_PER_SOL);
   const withinSol = elapsed % MS_PER_SOL;
-  const minuteOfSol = Math.floor(
-    (withinSol * MINUTES_PER_SOL) / MS_PER_SOL,
-  );
+  const minuteOfSol = Math.floor((withinSol * MINUTES_PER_SOL) / MS_PER_SOL);
   const hour = Math.floor(minuteOfSol / 60);
   const minute = minuteOfSol % 60;
   return {

@@ -20,8 +20,12 @@ describe("bus depot on the live seed", () => {
     expect(rt.busDepot).not.toBeNull();
     const { site } = rt.busDepot!;
     // The gate spur was laid as real drivable road.
-    expect(rt.sim.state.roadKind.has(`${site.gate.x},${site.gate.y}`)).toBe(true);
-    expect(rt.sim.state.busDepotSpurCells?.has(`${site.gate.x},${site.gate.y}`)).toBe(true);
+    expect(rt.sim.state.roadKind.has(`${site.gate.x},${site.gate.y}`)).toBe(
+      true,
+    );
+    expect(
+      rt.sim.state.busDepotSpurCells?.has(`${site.gate.x},${site.gate.y}`),
+    ).toBe(true);
     expect(
       rt.sim.state.roadKind.has(`${site.roadCell.x},${site.roadCell.y}`),
     ).toBe(true);

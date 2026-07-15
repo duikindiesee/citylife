@@ -98,7 +98,9 @@ describe("road-on-water guard", () => {
 
     const smoothed = densify(chaikin(way.path, 2), 1.5);
     expect(
-      smoothed.some((p) => water[Math.round(p.y) * size + Math.round(p.x)] === 1),
+      smoothed.some(
+        (p) => water[Math.round(p.y) * size + Math.round(p.x)] === 1,
+      ),
     ).toBe(true);
     expect(roadRibbonRenderPath(way, terrain)).toEqual(densify(way.path, 1.5));
   });
@@ -110,13 +112,12 @@ describe("road-on-water guard", () => {
       const start = candidate.path[0];
       const end = candidate.path.at(-1);
       return (
-        start?.x === 179 &&
-        start.y === 467 &&
-        end?.x === 487 &&
-        end.y === 367
+        start?.x === 179 && start.y === 467 && end?.x === 487 && end.y === 367
       );
     });
     expect(way).toBeDefined();
-    expect(roadRibbonRenderPath(way!, terrain)).toEqual(densify(way!.path, 1.5));
+    expect(roadRibbonRenderPath(way!, terrain)).toEqual(
+      densify(way!.path, 1.5),
+    );
   });
 });

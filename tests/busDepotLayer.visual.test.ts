@@ -16,7 +16,11 @@ describe("bus depot cut-and-fill foundation", () => {
     roadCell: { x: 26, y: 28 },
     inward: { x: 0, y: 1 },
   };
-  const layout = depotLayout(site, { baysTotal: 5, laneDepth: 2, bayDepth: 4.8 });
+  const layout = depotLayout(site, {
+    baysTotal: 5,
+    laneDepth: 2,
+    bayDepth: 4.8,
+  });
   const padTopY = 10.82;
   const foundationBottomY = 9.1;
   const layer = buildBusDepotLayer({
@@ -40,7 +44,9 @@ describe("bus depot cut-and-fill foundation", () => {
     expect(foundationBox.max.y).toBeGreaterThan(apronBox.min.y);
     expect(foundationBox.min.y).toBeLessThanOrEqual(foundationBottomY + 1e-6);
     expect(apron.userData.padTopY).toBe(padTopY);
-    expect(foundation.userData.foundationBottomY).toBeLessThanOrEqual(foundationBottomY);
+    expect(foundation.userData.foundationBottomY).toBeLessThanOrEqual(
+      foundationBottomY,
+    );
   });
 
   it("renders only the five owned-fleet bays at visibly separated centres", () => {
@@ -49,7 +55,9 @@ describe("bus depot cut-and-fill foundation", () => {
       .sort((a, b) => a.name.localeCompare(b.name));
     expect(bays).toHaveLength(5);
     for (let i = 1; i < bays.length; i++) {
-      expect(bays[i]!.position.distanceTo(bays[i - 1]!.position)).toBeGreaterThanOrEqual(6);
+      expect(
+        bays[i]!.position.distanceTo(bays[i - 1]!.position),
+      ).toBeGreaterThanOrEqual(6);
     }
   });
 
@@ -57,10 +65,18 @@ describe("bus depot cut-and-fill foundation", () => {
     const driveway = layer.getObjectByName("Depot_Driveway") as THREE.Mesh;
     expect(driveway).toBeTruthy();
     const box = new THREE.Box3().setFromObject(driveway);
-    expect(box.containsPoint(new THREE.Vector3(site.gate.x * 4, padTopY, site.gate.y * 4))).toBe(true);
     expect(
       box.containsPoint(
-        new THREE.Vector3(site.roadCell.x * 4, (box.min.y + box.max.y) / 2, site.roadCell.y * 4),
+        new THREE.Vector3(site.gate.x * 4, padTopY, site.gate.y * 4),
+      ),
+    ).toBe(true);
+    expect(
+      box.containsPoint(
+        new THREE.Vector3(
+          site.roadCell.x * 4,
+          (box.min.y + box.max.y) / 2,
+          site.roadCell.y * 4,
+        ),
       ),
     ).toBe(true);
     expect(box.min.y).toBeCloseTo(10.765, 4);

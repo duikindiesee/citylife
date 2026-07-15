@@ -60,7 +60,12 @@ export function clusterCommercialLots(
         best = i;
       }
     }
-    const pad = lot.footprint ?? { x: lot.x, y: lot.y, w: lot.w ?? 1, d: lot.d ?? 1 };
+    const pad = lot.footprint ?? {
+      x: lot.x,
+      y: lot.y,
+      w: lot.w ?? 1,
+      d: lot.d ?? 1,
+    };
     const x1 = pad.x + pad.w;
     const y1 = pad.y + pad.d;
     if (best >= 0) {

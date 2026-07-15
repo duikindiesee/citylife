@@ -21,7 +21,7 @@ wall. Two facts from the investigation:
   zones are **painted with the builder** (or grown), which is why the operator saw it at Sol 36.
 - The `if (state.cityPlan)` commercial branch was **dead code** — `cityPlan.plots` are never
   commercial (`cityPlan.test.ts` asserts this).
-- The newer commercial DISTRICT (spec 135, `R3FCommercialDistrict`) reads a *different* field
+- The newer commercial DISTRICT (spec 135, `R3FCommercialDistrict`) reads a _different_ field
   (`state.commercialDistrict`) and does not co-render, so CommercialBlock is the only visual for
   builder-painted commercial zones.
 

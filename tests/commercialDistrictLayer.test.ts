@@ -14,14 +14,17 @@ describe("spec 135 — commercial district layer", () => {
     district: s.commercialDistrict!,
     wx: (x) => (x - N / 2) * 4,
     wz: (y) => (y - N / 2) * 4,
-    surfaceY: (x, y) => Math.max(0, s.terrain.worldY(Math.round(x), Math.round(y))),
+    surfaceY: (x, y) =>
+      Math.max(0, s.terrain.worldY(Math.round(x), Math.round(y))),
   });
 
   it("builds the district group with real mass", () => {
     expect(s.commercialDistrict).toBeTruthy();
     expect(layer.group.name).toBe("commercialDistrict");
     let meshes = 0;
-    layer.group.traverse((o: any) => { if (o.isMesh) meshes++; });
+    layer.group.traverse((o: any) => {
+      if (o.isMesh) meshes++;
+    });
     // 21 parcels + mall + garage: dozens of meshes at least
     expect(meshes).toBeGreaterThan(30);
   });
@@ -29,7 +32,11 @@ describe("spec 135 — commercial district layer", () => {
   it("names parcel groups with their business ids and glows at night", () => {
     const names: string[] = [];
     layer.group.traverse((o: any) => {
-      if (typeof o.name === "string" && o.name.startsWith("commercialDistrict.")) names.push(o.name);
+      if (
+        typeof o.name === "string" &&
+        o.name.startsWith("commercialDistrict.")
+      )
+        names.push(o.name);
     });
     expect(names.length).toBeGreaterThan(0);
     // night update flares the signage
