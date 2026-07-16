@@ -89,15 +89,15 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
         x: road.x,
         y: road.y,
         kind:
-          road.kind === "avenue" || road.kind === "path"
-            ? road.kind
-            : "street",
+          road.kind === "avenue" || road.kind === "path" ? road.kind : "street",
       })),
     );
     expect(runtime.sim.state.roadWays).toEqual(hydrated.roadWays);
-    expect(useRoadNetwork.getState().landscapeEdits.get("10,10")).toBeCloseTo(
-      0.25,
+    expect(runtime.sim.state.terrain.worldY(10, 10)).toBeCloseTo(
+      editedElevation,
+      4,
     );
+    expect(useRoadNetwork.getState().landscapeEdits.has("10,10")).toBe(false);
     expect(runtime.surveyRoadPlacement([], "street").layoutRevision).toBe(
       hydrated.layoutRevision,
     );
@@ -105,7 +105,9 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
     expect(survey.frames.has(libraryFrameId)).toBe(true);
     expect(survey.portals.has("portal:library-door")).toBe(true);
     expect(
-      document.placements.every((placement) => survey.records.has(placement.id)),
+      document.placements.every((placement) =>
+        survey.records.has(placement.id),
+      ),
     ).toBe(true);
     expect(runtime.captureWorldLayout().revision.contentHash).toBe(
       document.revision.contentHash,
@@ -200,9 +202,7 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
     runtime.hydrateWorldLayout(imported);
     const unchanged = runtime.captureWorldLayout();
 
-    expect(unchanged.revision.contentHash).toBe(
-      imported.revision.contentHash,
-    );
+    expect(unchanged.revision.contentHash).toBe(imported.revision.contentHash);
     expect(unchanged.roads.map((road) => road.id)).toEqual(
       imported.roads.map((road) => road.id),
     );
@@ -214,7 +214,8 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
       runtime.sim.state.roads.map((road) => `${road.x},${road.y}`),
     );
     let added = { x: 0, y: 0 };
-    while (occupied.has(`${added.x},${added.y}`)) added = { x: added.x + 1, y: 0 };
+    while (occupied.has(`${added.x},${added.y}`))
+      added = { x: added.x + 1, y: 0 };
     runtime.sim.state.roads.push({ ...added, kind: "street" });
     runtime.sim.state.roadSet.add(`${added.x},${added.y}`);
     runtime.sim.state.roadKind.set(`${added.x},${added.y}`, "street");
@@ -232,13 +233,15 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
     }));
 
     const recaptured = runtime.captureWorldLayout();
-    const unchangedRoad = imported.roads.find((road) => road.kind !== "street")!;
-    const originalStreet = imported.roads.find((road) => road.kind === "street")!;
+    const unchangedRoad = imported.roads.find(
+      (road) => road.kind !== "street",
+    )!;
+    const originalStreet = imported.roads.find(
+      (road) => road.kind === "street",
+    )!;
 
     expect(recaptured.revision.number).toBe(imported.revision.number + 1);
-    expect(recaptured.revision.parentHash).toBe(
-      imported.revision.contentHash,
-    );
+    expect(recaptured.revision.parentHash).toBe(imported.revision.contentHash);
     expect(recaptured.revision.contentHash).not.toBe(
       imported.revision.contentHash,
     );
@@ -255,6 +258,11 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
     expect(recaptured.portals).toEqual(imported.portals);
     expect(recaptured.placements).toEqual(imported.placements);
     expect(recaptured.terrainEdits).toContainEqual({
+      id: `terrain:${
+        imported.frames.find(
+          (frame) => frame.kind === "region" && frame.layer === "surface",
+        )!.id
+      }:10,10`,
       frameId: imported.frames.find(
         (frame) => frame.kind === "region" && frame.layer === "surface",
       )!.id,
@@ -265,13 +273,33 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
     expect(JSON.stringify(imported)).toBe(importedSnapshot);
   });
 
-  it("rejects generic placements that cannot be reconstructed without partially publishing", () => {
+  it("materializes generic placements as authoritative registry and placement-policy truth", () => {
     const runtime = new ColonyRuntime(4242);
     const base = runtime.captureWorldLayout();
     const surface = base.frames.find(
       (frame) => frame.kind === "region" && frame.layer === "surface",
     )!;
-    const beforeRoads = runtime.sim.state.roads.map((road) => ({ ...road }));
+    const occupied = new Set([
+      ...base.roads.flatMap((road) =>
+        road.cells.map((cell) => `${cell.x},${cell.y}`),
+      ),
+      ...base.placements.flatMap((placement) =>
+        placement.cells.map((cell) => `${cell.x},${cell.y}`),
+      ),
+    ]);
+    let libraryCell: { x: number; y: number } | undefined;
+    const terrain = runtime.sim.state.terrain;
+    for (let y = 2; y < terrain.size - 2 && !libraryCell; y++)
+      for (let x = 2; x < terrain.size - 2 && !libraryCell; x++) {
+        const index = terrain.idx(x, y);
+        if (
+          !occupied.has(`${x},${y}`) &&
+          !terrain.isWater(x, y) &&
+          terrain.buildable[index]! >= 1
+        )
+          libraryCell = { x, y };
+      }
+    if (!libraryCell) throw new Error("no valid generic placement cell");
     const unsupported = createWorldLayoutDocument({
       worldId: base.worldId,
       seed: base.seed,
@@ -288,8 +316,8 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
           frameId: surface.id,
           layer: "surface",
           source: "import",
-          cells: [{ x: 1, y: 1 }],
-          bounds: { x: 1, y: 1, w: 1, h: 1 },
+          cells: [libraryCell],
+          bounds: { x: libraryCell.x, y: libraryCell.y, w: 1, h: 1 },
           vertical: {
             min: 0,
             max: 8,
@@ -305,12 +333,24 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
       portals: base.portals,
     });
 
-    expect(() => runtime.hydrateWorldLayout(unsupported)).toThrow(
-      /cannot reconstruct/,
-    );
-    expect(runtime.worldLayoutDocument()).toBeNull();
-    expect(runtime.sim.state.roads).toEqual(beforeRoads);
-    expect(useRoadNetwork.getState().tiles).toEqual({});
+    const hydrated = runtime.hydrateWorldLayout(unsupported);
+    expect(runtime.worldLayoutDocument()).toEqual(unsupported);
+    expect(runtime.worldSurvey().records.get("placement:imported-library")).toMatchObject({
+      kind: "commercial-plot",
+      metadata: {
+        definitionId: "commercial-plot:library",
+        persisted: true,
+      },
+    });
+    expect(
+      runtime
+        .surveyRoadPlacement(
+          [libraryCell],
+          "street",
+          hydrated.layoutRevision,
+        )
+        .failures.map((failure) => failure.code),
+    ).toContain("RESERVED_VOLUME");
   });
 
   it("adopts a saved child revision while running without replacing live spatial state", () => {

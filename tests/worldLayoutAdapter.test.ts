@@ -141,6 +141,7 @@ describe("WB.1d world layout runtime adapter", () => {
     );
     expect(document.portals).toHaveLength(1);
     expect(document.terrainEdits[0]).toEqual({
+      id: "terrain:surface:4,5",
       frameId: "surface",
       cell: { x: 4, y: 5 },
       elevation: 2.25,
@@ -303,8 +304,18 @@ describe("WB.1d world layout runtime adapter", () => {
     );
 
     expect(edits).toEqual([
-      { frameId: "surface", cell: { x: 4, y: 5 }, elevation: 4.75 },
-      { frameId: "surface", cell: { x: -2, y: 8 }, elevation: -1.7 },
+      {
+        id: "terrain:surface:4,5",
+        frameId: "surface",
+        cell: { x: 4, y: 5 },
+        elevation: 4.75,
+      },
+      {
+        id: "terrain:surface:-2,8",
+        frameId: "surface",
+        cell: { x: -2, y: 8 },
+        elevation: -1.7,
+      },
     ]);
     expect(landscapeOffsetsFromTerrainEdits(edits, elevationAt)).toEqual(
       offsets,

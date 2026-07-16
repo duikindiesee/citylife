@@ -1,8 +1,13 @@
 // @ts-ignore - Vitest runs in Node; project tsconfig intentionally omits Node globals.
 import { createHash } from "node:crypto";
+// @ts-ignore - Vitest runs in Node; project tsconfig intentionally omits Node globals.
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   WORLD_LAYOUT_SCHEMA_VERSION,
+  WORLD_LAYOUT_LEGACY_NUMERIC_SCHEMA_VERSION,
+  WORLD_LAYOUT_V0_SCHEMA_VERSION,
+  LEGACY_WORLD_LAYOUT_PROVENANCE,
   WorldLayoutDocumentError,
   canonicalizeWorldLayoutDocument,
   computeWorldLayoutContentHash,
@@ -176,7 +181,8 @@ function input(): WorldLayoutDocumentInput {
     portals: [
       {
         id: "portal:hq-front-door",
-        address: "spatial://citylife/world/colony-primary/surface/hq/front-door",
+        address:
+          "spatial://citylife/world/colony-primary/surface/hq/front-door",
         fromFrameId: "surface",
         toFrameId: "surface:building:hq",
         from: { x: 8, y: 0, z: 9 },
@@ -192,6 +198,22 @@ function json(document: WorldLayoutDocument): Record<string, unknown> {
     string,
     unknown
   >;
+}
+
+function canonicalJson(value: unknown): string {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "string" ||
+    typeof value === "number"
+  )
+    return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+    .join(",")}}`;
 }
 
 function expectDocumentError(
@@ -215,6 +237,16 @@ describe("WB.1d WorldLayoutDocument", () => {
   it("creates a strict v1 document with an independently reproducible SHA-256 revision", () => {
     const document = createWorldLayoutDocument(input());
     expect(document.schemaVersion).toBe(WORLD_LAYOUT_SCHEMA_VERSION);
+    expect(document.layoutId).toBe("colony-primary");
+    expect(document.worldId).toBe(document.layoutId);
+    expect(Object.keys(document)).not.toContain("worldId");
+    expect(Object.getOwnPropertyDescriptor(document, "layoutId")).toMatchObject(
+      {
+        enumerable: true,
+        writable: false,
+        configurable: false,
+      },
+    );
     expect(document.frames.map(({ id }) => id)).toEqual([
       "surface",
       "surface:building:hq",
@@ -243,7 +275,7 @@ describe("WB.1d WorldLayoutDocument", () => {
       },
     };
     const independent = createHash("sha256")
-      .update(JSON.stringify(content))
+      .update(canonicalJson(content))
       .digest("hex");
     expect(document.revision.contentHash).toBe(independent);
     expect(computeWorldLayoutContentHash(document)).toBe(independent);
@@ -262,23 +294,85 @@ describe("WB.1d WorldLayoutDocument", () => {
     expect(migrateWorldLayoutDocument(JSON.parse(wire))).toEqual(document);
   });
 
+  it("verifies and deterministically migrates the committed v0 fixture", () => {
+    const fixture = readFileSync(
+      new URL("./fixtures/world-layout-v0.json", import.meta.url),
+      "utf8",
+    );
+    expect(JSON.parse(fixture).schemaVersion).toBe(
+      WORLD_LAYOUT_V0_SCHEMA_VERSION,
+    );
+    const migrated = migrateWorldLayoutDocument(fixture);
+    expect(migrated.schemaVersion).toBe(WORLD_LAYOUT_SCHEMA_VERSION);
+    expect(migrated.layoutId).toBe("legacy-fixture");
+    expect(migrated.worldId).toBe(migrated.layoutId);
+    expect(migrated.roads[0]!.id).toBe("road:surface:street");
+    expect(migrated.roads[0]!.provenance).toBe(LEGACY_WORLD_LAYOUT_PROVENANCE);
+    expect(migrated.terrainEdits).toEqual([
+      {
+        id: "terrain:surface:3,3",
+        frameId: "surface",
+        cell: { x: 3, y: 3 },
+        elevation: 1.25,
+        provenance: LEGACY_WORLD_LAYOUT_PROVENANCE,
+      },
+    ]);
+    expect(
+      serializeWorldLayoutDocument(migrateWorldLayoutDocument(fixture)),
+    ).toBe(serializeWorldLayoutDocument(migrated));
+
+    const tampered = JSON.parse(fixture) as Record<string, unknown>;
+    tampered.seed = 4243;
+    expectDocumentError(
+      () => migrateWorldLayoutDocument(tampered),
+      "CONTENT_HASH_MISMATCH",
+      "$v0.revision.contentHash",
+    );
+  });
+
+  it("verifies the pushed numeric-v1 codec before migrating its semantic payload", () => {
+    const fixture = readFileSync(
+      new URL("./fixtures/world-layout-numeric-v1.json", import.meta.url),
+      "utf8",
+    );
+    expect(JSON.parse(fixture).schemaVersion).toBe(
+      WORLD_LAYOUT_LEGACY_NUMERIC_SCHEMA_VERSION,
+    );
+    const migrated = migrateWorldLayoutDocument(fixture);
+    expect(migrated.schemaVersion).toBe(WORLD_LAYOUT_SCHEMA_VERSION);
+    expect(migrated.layoutId).toBe("legacy-fixture");
+    expect(migrated.terrainEdits[0]).toMatchObject({
+      id: "terrain:surface:3,3",
+      provenance: LEGACY_WORLD_LAYOUT_PROVENANCE,
+    });
+    expect(migrated.revision.contentHash).not.toBe(
+      "43b554fa2d9082bc1ac9c8c587aae1de1d9d6798d16f7f6a016b26694a2647b4",
+    );
+
+    const tampered = JSON.parse(fixture) as Record<string, unknown>;
+    tampered.seed = 4243;
+    expectDocumentError(
+      () => migrateWorldLayoutDocument(tampered),
+      "CONTENT_HASH_MISMATCH",
+      "$numericV1.revision.contentHash",
+    );
+  });
+
   it("canonicalizes set order while revision number and parent hash remain immutable lineage", () => {
     const firstInput = input();
     const first = createWorldLayoutDocument(firstInput);
     const second = createWorldLayoutDocument({
       ...firstInput,
       frames: [...firstInput.frames].reverse(),
-      placements: [...firstInput.placements]
-        .reverse()
-        .map((item) => ({
-          ...item,
-          cells: [...item.cells].reverse(),
-          anchors: [...item.anchors].reverse(),
-        })),
+      placements: [...firstInput.placements].reverse().map((item) => ({
+        ...item,
+        cells: [...item.cells].reverse(),
+        anchors: [...item.anchors].reverse(),
+      })),
       roads: [...firstInput.roads]
         .reverse()
         .map((item) => ({ ...item, cells: [...item.cells].reverse() })),
-      terrainEdits: [...firstInput.terrainEdits].reverse(),
+      terrainEdits: firstInput.terrainEdits,
       portals: firstInput.portals.map((item) => ({
         ...item,
         modes: [...item.modes].reverse(),
@@ -309,6 +403,17 @@ describe("WB.1d WorldLayoutDocument", () => {
     expect(pathChanged.revision.contentHash).not.toBe(
       first.revision.contentHash,
     );
+
+    const terrainOrderChanged = createWorldLayoutDocument({
+      ...firstInput,
+      terrainEdits: [...firstInput.terrainEdits].reverse(),
+    });
+    expect(terrainOrderChanged.revision.contentHash).not.toBe(
+      first.revision.contentHash,
+    );
+    expect(terrainOrderChanged.terrainEdits.map(({ id }) => id)).toEqual(
+      [...first.terrainEdits].reverse().map(({ id }) => id),
+    );
   });
 
   it("detects content or revision tampering", () => {
@@ -332,7 +437,7 @@ describe("WB.1d WorldLayoutDocument", () => {
 
   it("rejects unknown versions and malformed JSON through the explicit dispatcher", () => {
     const document = json(createWorldLayoutDocument(input()));
-    document.schemaVersion = 2;
+    document.schemaVersion = "citylife.world-layout/v2";
     expectDocumentError(
       () => migrateWorldLayoutDocument(document),
       "UNKNOWN_VERSION",
@@ -432,9 +537,7 @@ describe("WB.1d WorldLayoutDocument", () => {
     const looseBounds: WorldLayoutDocumentInput = {
       ...looseBoundsBase,
       placements: looseBoundsBase.placements.map((item, index) =>
-        index === 0
-          ? { ...item, bounds: { x: 7, y: 9, w: 2, h: 1 } }
-          : item,
+        index === 0 ? { ...item, bounds: { x: 7, y: 9, w: 2, h: 1 } } : item,
       ),
     };
     expectDocumentError(
@@ -454,7 +557,154 @@ describe("WB.1d WorldLayoutDocument", () => {
     expectDocumentError(
       () => createWorldLayoutDocument(duplicateEdits),
       "REFERENTIAL_INTEGRITY",
-      "$.terrainEdits[1]",
+      "$.terrainEdits[2]",
+    );
+  });
+
+  it("uses strict V1 wire identity, uint32 seeds and rejects negative zero", () => {
+    const document = createWorldLayoutDocument({
+      ...input(),
+      layoutId: "colony-primary",
+      worldId: "colony-primary",
+    });
+    const wire = serializeWorldLayoutDocument(document);
+    expect(wire).toContain('"layoutId":"colony-primary"');
+    expect(wire).not.toContain('"worldId"');
+    expect(Object.keys(JSON.parse(wire))).toEqual([
+      "frames",
+      "generator",
+      "layoutId",
+      "networks",
+      "placements",
+      "portals",
+      "reservations",
+      "revision",
+      "roads",
+      "schemaVersion",
+      "seed",
+      "terrainEdits",
+      "ways",
+      "zones",
+    ]);
+    const compatibilityWire = JSON.parse(wire) as Record<string, unknown>;
+    compatibilityWire.worldId = compatibilityWire.layoutId;
+    delete compatibilityWire.layoutId;
+    expectDocumentError(
+      () => parseWorldLayoutDocument(JSON.stringify(compatibilityWire)),
+      "INVALID_DOCUMENT",
+      "$.worldId",
+    );
+    const { worldId: _worldId, ...layoutOnly } = input();
+    expect(
+      createWorldLayoutDocument({ ...layoutOnly, layoutId: "colony-primary" })
+        .layoutId,
+    ).toBe("colony-primary");
+
+    expectDocumentError(
+      () => createWorldLayoutDocument({ ...input(), seed: 0x1_0000_0000 }),
+      "INVALID_DOCUMENT",
+      "$.seed",
+    );
+    expectDocumentError(
+      () => createWorldLayoutDocument({ ...input(), seed: -0 }),
+      "INVALID_DOCUMENT",
+      "$.seed",
+    );
+    const negativeZeroTransform = input();
+    expectDocumentError(
+      () =>
+        createWorldLayoutDocument({
+          ...negativeZeroTransform,
+          frames: negativeZeroTransform.frames.map((item) =>
+            item.id === "universe"
+              ? {
+                  ...item,
+                  transform: {
+                    ...item.transform,
+                    position: { ...item.transform.position, x: -0 },
+                  },
+                }
+              : item,
+          ),
+        }),
+      "INVALID_DOCUMENT",
+      "$.frames[4].transform.position.x",
+    );
+    expectDocumentError(
+      () =>
+        createWorldLayoutDocument({
+          ...input(),
+          layoutId: "other-layout",
+        }),
+      "INVALID_DOCUMENT",
+      "$.layoutId",
+    );
+  });
+
+  it("treats frame IDs as global and rejects overlapping zone or reservation volumes", () => {
+    const frameCollision = input();
+    expectDocumentError(
+      () =>
+        createWorldLayoutDocument({
+          ...frameCollision,
+          roads: frameCollision.roads.map((item, index) =>
+            index === 0 ? { ...item, id: "surface" } : item,
+          ),
+        }),
+      "REFERENTIAL_INTEGRITY",
+      "$.roads",
+    );
+
+    const overlappingZones = input();
+    expectDocumentError(
+      () =>
+        createWorldLayoutDocument({
+          ...overlappingZones,
+          zones: [
+            {
+              id: "zone:a",
+              frameId: "surface",
+              kind: "commercial",
+              cells: [{ x: 4, y: 4 }],
+              vertical: VERTICAL,
+            },
+            {
+              id: "zone:b",
+              frameId: "surface",
+              kind: "civic",
+              cells: [{ x: 4, y: 4 }],
+              vertical: VERTICAL,
+            },
+          ],
+        }),
+      "REFERENTIAL_INTEGRITY",
+      "$.zones[1].cells",
+    );
+
+    const overlappingReservations = input();
+    expectDocumentError(
+      () =>
+        createWorldLayoutDocument({
+          ...overlappingReservations,
+          reservations: [
+            {
+              id: "reservation:a",
+              frameId: "surface",
+              purpose: "first",
+              cells: [{ x: 5, y: 5 }],
+              vertical: VERTICAL,
+            },
+            {
+              id: "reservation:b",
+              frameId: "surface",
+              purpose: "second",
+              cells: [{ x: 5, y: 5 }],
+              vertical: VERTICAL,
+            },
+          ],
+        }),
+      "REFERENTIAL_INTEGRITY",
+      "$.reservations[1].cells",
     );
   });
 });

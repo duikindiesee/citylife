@@ -8,14 +8,22 @@ import type {
   VerticalRange,
 } from "../worldSurvey";
 import {
+  LEGACY_WORLD_LAYOUT_PROVENANCE,
+  WORLD_LAYOUT_GENERATOR,
   createWorldLayoutDocument,
   parseWorldLayoutDocument,
   worldLayoutRevisionId,
   type WorldLayoutAnchor,
   type WorldLayoutDocument,
+  type WorldLayoutGenerator,
+  type WorldLayoutNetwork,
   type WorldLayoutPlacementSource,
+  type WorldLayoutProvenance,
   type WorldLayoutRoadKind,
+  type WorldLayoutReservation,
   type WorldLayoutTerrainEdit,
+  type WorldLayoutTerrainEditInput,
+  type WorldLayoutZone,
 } from "./worldLayoutDocument";
 
 /**
@@ -42,6 +50,7 @@ export interface RuntimeRoadCell extends GridCell {
 export interface WorldLayoutRuntimeSource {
   readonly worldId: string;
   readonly seed: number;
+  readonly generator?: WorldLayoutGenerator;
   readonly revision: {
     readonly number: number;
     readonly parentHash: string | null;
@@ -49,7 +58,10 @@ export interface WorldLayoutRuntimeSource {
   readonly surfaceFrameId: string;
   readonly frames: readonly SpatialFrame[];
   readonly portals: readonly SpatialPortal[];
-  readonly terrainEdits: readonly WorldLayoutTerrainEdit[];
+  readonly zones?: readonly WorldLayoutZone[];
+  readonly reservations?: readonly WorldLayoutReservation[];
+  readonly networks?: readonly WorldLayoutNetwork[];
+  readonly terrainEdits: readonly WorldLayoutTerrainEditInput[];
   readonly zonedPlacements: readonly RuntimeZonedPlacement[];
   readonly roads: readonly RuntimeRoadCell[];
   readonly roadWays: readonly RoadWay[];
@@ -60,10 +72,14 @@ export interface WorldLayoutRuntimeSource {
 export interface HydratedWorldLayout {
   readonly worldId: string;
   readonly seed: number;
+  readonly generator: WorldLayoutGenerator;
   readonly layoutRevision: string;
   readonly revision: WorldLayoutDocument["revision"];
   readonly frames: readonly SpatialFrame[];
   readonly portals: readonly SpatialPortal[];
+  readonly zones: readonly WorldLayoutZone[];
+  readonly reservations: readonly WorldLayoutReservation[];
+  readonly networks: readonly WorldLayoutNetwork[];
   readonly terrainEdits: readonly WorldLayoutTerrainEdit[];
   readonly zonedPlacements: readonly RuntimeZonedPlacement[];
   readonly roads: readonly RuntimeRoadCell[];
@@ -104,6 +120,19 @@ function roadId(frameId: string, kind: WorldLayoutRoadKind): string {
   return `road:${frameId}:${kind}`;
 }
 
+function terrainEditId(frameId: string, cell: GridCell): string {
+  return `terrain:${frameId}:${cell.x},${cell.y}`;
+}
+
+function compareLegacyTerrainEdit(
+  a: WorldLayoutTerrainEditInput,
+  b: WorldLayoutTerrainEditInput,
+): number {
+  const aId = a.id ?? terrainEditId(a.frameId, a.cell);
+  const bId = b.id ?? terrainEditId(b.frameId, b.cell);
+  return aId < bId ? -1 : aId > bId ? 1 : 0;
+}
+
 /** A short deterministic identifier for runtime ways, which do not yet carry their own stable id. */
 function wayFingerprint(way: RoadWay): string {
   const value = `${way.kind}|${way.width}|${way.path
@@ -121,8 +150,9 @@ function wayFingerprint(way: RoadWay): string {
  * Capture the runtime's durable spatial intent. Derived roadSet/roadKind indexes, way source tags,
  * frame metadata and portal metadata are intentionally ignored.
  */
-export function captureWorldLayoutDocument(
+function captureWorldLayoutDocumentWithProvenance(
   source: WorldLayoutRuntimeSource,
+  provenance?: WorldLayoutProvenance,
 ): WorldLayoutDocument {
   const roadsByKind = new Map<WorldLayoutRoadKind, Map<string, GridCell>>();
   for (const road of source.roads) {
@@ -157,6 +187,7 @@ export function captureWorldLayoutDocument(
   return createWorldLayoutDocument({
     worldId: source.worldId,
     seed: source.seed,
+    generator: source.generator ?? WORLD_LAYOUT_GENERATOR,
     revision: source.revision,
     frames: source.frames.map((frame) => ({
       id: frame.id,
@@ -180,6 +211,8 @@ export function captureWorldLayoutDocument(
           }
         : {}),
     })),
+    zones: source.zones ?? [],
+    reservations: source.reservations ?? [],
     placements: source.zonedPlacements.map((placement) => ({
       id: placement.id,
       definitionId: placement.definitionId,
@@ -193,9 +226,7 @@ export function captureWorldLayoutDocument(
         id: anchor.id,
         cell: copyCell(anchor.cell),
       })),
-      ...(placement.orientation
-        ? { orientation: placement.orientation }
-        : {}),
+      ...(placement.orientation ? { orientation: placement.orientation } : {}),
     })),
     roads: [...roadsByKind.entries()].map(([kind, cells]) => ({
       id: roadId(source.surfaceFrameId, kind),
@@ -204,6 +235,7 @@ export function captureWorldLayoutDocument(
       kind,
       cells: [...cells.values()],
       vertical: copyVertical(source.roadVertical),
+      ...(provenance ? { provenance } : {}),
     })),
     ways: source.roadWays.map((way) => {
       const fingerprint = wayFingerprint(way);
@@ -227,9 +259,14 @@ export function captureWorldLayoutDocument(
               ),
             }
           : {}),
+        ...(provenance ? { provenance } : {}),
       };
     }),
-    terrainEdits: source.terrainEdits.map((edit) => ({
+    terrainEdits: (provenance
+      ? [...source.terrainEdits].sort(compareLegacyTerrainEdit)
+      : source.terrainEdits
+    ).map((edit) => ({
+      ...(edit.id ? { id: edit.id } : {}),
       frameId: edit.frameId,
       cell: copyCell(edit.cell),
       ...(edit.elevation !== undefined ? { elevation: edit.elevation } : {}),
@@ -237,7 +274,13 @@ export function captureWorldLayoutDocument(
       ...(edit.buildability !== undefined
         ? { buildability: edit.buildability }
         : {}),
+      ...(provenance
+        ? { provenance }
+        : edit.provenance
+          ? { provenance: edit.provenance }
+          : {}),
     })),
+    networks: source.networks ?? [],
     portals: source.portals.map((portal) => ({
       id: portal.id,
       address: portal.address,
@@ -248,6 +291,27 @@ export function captureWorldLayoutDocument(
       modes: [...portal.modes],
     })),
   });
+}
+
+export function captureWorldLayoutDocument(
+  source: WorldLayoutRuntimeSource,
+): WorldLayoutDocument {
+  return captureWorldLayoutDocumentWithProvenance(source);
+}
+
+/**
+ * The sole boot-time bridge from the pre-document v3 world. It reads only the caller's canonical
+ * logical roads, authored ways and sparse terrain edits; derived roadSet/roadKind/tile/ribbon views
+ * are intentionally absent from the input type. Stable IDs and provenance are therefore both
+ * reproducible from the durable source rather than whatever a renderer happened to cache.
+ */
+export function importLegacyWorldLayoutDocument(
+  source: WorldLayoutRuntimeSource,
+): WorldLayoutDocument {
+  return captureWorldLayoutDocumentWithProvenance(
+    source,
+    LEGACY_WORLD_LAYOUT_PROVENANCE,
+  );
 }
 
 /**
@@ -283,6 +347,7 @@ export function applyWorldLayoutDocument(
   const candidate: HydratedWorldLayout = {
     worldId: document.worldId,
     seed: document.seed,
+    generator: { ...document.generator },
     layoutRevision: worldLayoutRevisionId(document.revision),
     revision: { ...document.revision },
     frames: document.frames.map((frame) => ({
@@ -295,6 +360,30 @@ export function applyWorldLayoutDocument(
       ...(frame.grid
         ? { grid: { ...frame.grid, origin: { ...frame.grid.origin } } }
         : {}),
+    })),
+    zones: document.zones.map((zone) => ({
+      ...zone,
+      cells: zone.cells.map(copyCell),
+      vertical: copyVertical(zone.vertical),
+    })),
+    reservations: document.reservations.map((reservation) => ({
+      ...reservation,
+      cells: reservation.cells.map(copyCell),
+      vertical: copyVertical(reservation.vertical),
+    })),
+    networks: document.networks.map((network) => ({
+      ...network,
+      modes: [...network.modes],
+      nodes: network.nodes.map((node) => ({
+        ...node,
+        position: { ...node.position },
+        ...(node.spatialIds ? { spatialIds: [...node.spatialIds] } : {}),
+      })),
+      edges: network.edges.map((edge) => ({
+        ...edge,
+        modes: [...edge.modes],
+        ...(edge.spatialIds ? { spatialIds: [...edge.spatialIds] } : {}),
+      })),
     })),
     portals: document.portals.map((portal) => ({
       ...portal,
@@ -350,7 +439,12 @@ export function terrainEditsFromLandscapeOffsets(
         "INVALID_RUNTIME_STATE",
         `invalid base elevation for ${key}`,
       );
-    return { frameId, cell: { x, y }, elevation: base + offset };
+    return {
+      id: terrainEditId(frameId, { x, y }),
+      frameId,
+      cell: { x, y },
+      elevation: base + offset,
+    };
   });
 }
 
@@ -445,8 +539,7 @@ export function zonedPlacementFromParcel(
   if (parcel.gate && occupied.has(cellKey(parcel.gate)))
     anchors.push({ id: "gate", cell: copyCell(parcel.gate) });
   const door = { x: parcel.doorX, y: parcel.doorY };
-  if (occupied.has(cellKey(door)))
-    anchors.push({ id: "entrance", cell: door });
+  if (occupied.has(cellKey(door))) anchors.push({ id: "entrance", cell: door });
   const orientation = orientationFromGate(parcel.gate, bounds);
   return {
     id: `placement:${parcel.id}`,

@@ -17,24 +17,35 @@ import type {
   VerticalRange,
 } from "../worldSurvey";
 
-export const WORLD_LAYOUT_SCHEMA_VERSION = 1 as const;
+export const WORLD_LAYOUT_SCHEMA_VERSION = "citylife.world-layout/v1" as const;
+export const WORLD_LAYOUT_V0_SCHEMA_VERSION =
+  "citylife.world-layout/v0" as const;
+/** Exact wire discriminator emitted by the already-pushed 5eeb814 codec. */
+export const WORLD_LAYOUT_LEGACY_NUMERIC_SCHEMA_VERSION = 1 as const;
 export const WORLD_LAYOUT_HASH_ALGORITHM = "sha256" as const;
+export const LEGACY_WORLD_LAYOUT_PROVENANCE = "legacy-seed-v3" as const;
+export const WORLD_LAYOUT_GENERATOR = Object.freeze({
+  id: "citylife-v3" as const,
+  version: "3",
+  placeableCatalogVersion: "1",
+});
 
 const EMPTY_HASH = "0".repeat(64);
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 
 export type WorldLayoutPlacementSource =
-  | "seed"
-  | "builder"
-  | "simulation"
-  | "import";
+  "seed" | "builder" | "simulation" | "import";
 
 export type WorldLayoutRoadKind =
-  | "avenue"
-  | "street"
-  | "path"
-  | "gravel"
-  | "culdesac";
+  "avenue" | "street" | "path" | "gravel" | "culdesac";
+
+export type WorldLayoutProvenance = typeof LEGACY_WORLD_LAYOUT_PROVENANCE;
+
+export interface WorldLayoutGenerator {
+  readonly id: typeof WORLD_LAYOUT_GENERATOR.id;
+  readonly version: string;
+  readonly placeableCatalogVersion: string;
+}
 
 export interface WorldLayoutAnchor {
   readonly id: string;
@@ -72,6 +83,7 @@ export interface WorldLayoutRoad {
   readonly kind: WorldLayoutRoadKind;
   readonly cells: readonly GridCell[];
   readonly vertical: VerticalRange;
+  readonly provenance?: WorldLayoutProvenance;
 }
 
 /** A rendered or navigable way. Cell order is meaningful and is deliberately preserved. */
@@ -84,15 +96,77 @@ export interface WorldLayoutWay {
   readonly cells: readonly GridCell[];
   /** Optional logical-road membership. Every listed id must resolve in `roads`. */
   readonly roadIds?: readonly string[];
+  readonly provenance?: WorldLayoutProvenance;
 }
 
 /** Sparse exact override; omitted terrain properties continue to derive from the world seed. */
 export interface WorldLayoutTerrainEdit {
+  readonly id: string;
   readonly frameId: string;
   readonly cell: GridCell;
   readonly elevation?: number;
   readonly biome?: Biome;
   readonly buildability?: Buildable;
+  readonly provenance?: WorldLayoutProvenance;
+}
+
+export type WorldLayoutZoneKind =
+  | "residential"
+  | "commercial"
+  | "industrial"
+  | "civic"
+  | "protected"
+  | "mixed-use"
+  | "transport";
+
+export interface WorldLayoutZone {
+  readonly id: string;
+  readonly frameId: string;
+  readonly kind: WorldLayoutZoneKind;
+  readonly cells: readonly GridCell[];
+  readonly vertical: VerticalRange;
+  /** Opaque authorization principal only; display/account data is forbidden. */
+  readonly ownerRef?: string;
+}
+
+export interface WorldLayoutReservation {
+  readonly id: string;
+  readonly frameId: string;
+  readonly purpose: string;
+  readonly cells: readonly GridCell[];
+  readonly vertical: VerticalRange;
+  /** Opaque authorization principal only; display/account data is forbidden. */
+  readonly ownerRef?: string;
+}
+
+export type WorldLayoutNetworkKind = "transport" | "utility";
+export type WorldLayoutNetworkMode =
+  NavigationMode | "power" | "water" | "data";
+
+export interface WorldLayoutNetworkNode {
+  readonly id: string;
+  readonly frameId: string;
+  readonly position: Vec3;
+  /** Optional references to stable layout records, never live entities. */
+  readonly spatialIds?: readonly string[];
+}
+
+export interface WorldLayoutNetworkEdge {
+  readonly id: string;
+  readonly fromNodeId: string;
+  readonly toNodeId: string;
+  readonly modes: readonly WorldLayoutNetworkMode[];
+  readonly bidirectional: boolean;
+  /** Optional references to stable layout records, never vehicles or occupants. */
+  readonly spatialIds?: readonly string[];
+}
+
+export interface WorldLayoutNetwork {
+  readonly id: string;
+  readonly kind: WorldLayoutNetworkKind;
+  readonly modes: readonly WorldLayoutNetworkMode[];
+  readonly nodes: readonly WorldLayoutNetworkNode[];
+  readonly edges: readonly WorldLayoutNetworkEdge[];
 }
 
 export interface WorldLayoutPortal {
@@ -116,24 +190,62 @@ export interface WorldLayoutRevision {
 
 export interface WorldLayoutDocumentV1 {
   readonly schemaVersion: typeof WORLD_LAYOUT_SCHEMA_VERSION;
+  /** Immutable repository identity written on the wire. */
+  readonly layoutId: string;
+  /**
+   * Non-enumerable compatibility alias for runtime/store call sites. It is always exactly layoutId
+   * and is never serialized or hashed.
+   */
   readonly worldId: string;
   readonly seed: number;
+  readonly generator: WorldLayoutGenerator;
   readonly revision: WorldLayoutRevision;
   readonly frames: readonly WorldLayoutFrame[];
+  readonly zones: readonly WorldLayoutZone[];
+  readonly reservations: readonly WorldLayoutReservation[];
   readonly placements: readonly WorldLayoutPlacement[];
   readonly roads: readonly WorldLayoutRoad[];
   readonly ways: readonly WorldLayoutWay[];
   readonly terrainEdits: readonly WorldLayoutTerrainEdit[];
+  readonly networks: readonly WorldLayoutNetwork[];
   readonly portals: readonly WorldLayoutPortal[];
 }
 
 export type WorldLayoutDocument = WorldLayoutDocumentV1;
 
+export type WorldLayoutTerrainEditInput = Omit<WorldLayoutTerrainEdit, "id"> & {
+  readonly id?: string;
+};
+
 export type WorldLayoutDocumentInput = Omit<
   WorldLayoutDocumentV1,
-  "schemaVersion" | "revision"
+  | "schemaVersion"
+  | "revision"
+  | "layoutId"
+  | "worldId"
+  | "generator"
+  | "zones"
+  | "reservations"
+  | "terrainEdits"
+  | "networks"
 > & {
   readonly revision: Omit<WorldLayoutRevision, "contentHash">;
+  readonly layoutId?: string;
+  /** Compatibility input alias. When layoutId is also present they must match exactly. */
+  readonly worldId: string;
+  readonly generator?: WorldLayoutGenerator;
+  readonly zones?: readonly WorldLayoutZone[];
+  readonly reservations?: readonly WorldLayoutReservation[];
+  readonly terrainEdits: readonly WorldLayoutTerrainEditInput[];
+  readonly networks?: readonly WorldLayoutNetwork[];
+};
+
+export type WorldLayoutDocumentLayoutIdInput = Omit<
+  WorldLayoutDocumentInput,
+  "worldId" | "layoutId"
+> & {
+  readonly layoutId: string;
+  readonly worldId?: never;
 };
 
 export type WorldLayoutDocumentErrorCode =
@@ -141,7 +253,8 @@ export type WorldLayoutDocumentErrorCode =
   | "INVALID_DOCUMENT"
   | "UNKNOWN_VERSION"
   | "CONTENT_HASH_MISMATCH"
-  | "REFERENTIAL_INTEGRITY";
+  | "REFERENTIAL_INTEGRITY"
+  | "MIGRATION_FAILED";
 
 export class WorldLayoutDocumentError extends Error {
   constructor(
@@ -196,6 +309,25 @@ const ROAD_KINDS = new Set<WorldLayoutRoadKind>([
   "gravel",
   "culdesac",
 ]);
+const PROVENANCE_VALUES = new Set<WorldLayoutProvenance>([
+  LEGACY_WORLD_LAYOUT_PROVENANCE,
+]);
+const ZONE_KINDS = new Set<WorldLayoutZoneKind>([
+  "residential",
+  "commercial",
+  "industrial",
+  "civic",
+  "protected",
+  "mixed-use",
+  "transport",
+]);
+const NETWORK_KINDS = new Set<WorldLayoutNetworkKind>(["transport", "utility"]);
+const NETWORK_MODES = new Set<WorldLayoutNetworkMode>([
+  ...NAVIGATION_MODES,
+  "power",
+  "water",
+  "data",
+]);
 
 function fail(
   path: string,
@@ -232,14 +364,27 @@ function array(value: unknown, path: string): unknown[] {
 function string(value: unknown, path: string): string {
   if (typeof value !== "string" || value.length === 0)
     fail(path, "must be a non-empty string");
-  if (value.trim() !== value) fail(path, "must not have surrounding whitespace");
+  if (value.trim() !== value)
+    fail(path, "must not have surrounding whitespace");
+  for (let index = 0; index < value.length; index++) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff))
+        fail(path, "must not contain an unpaired Unicode surrogate");
+      index++;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      fail(path, "must not contain an unpaired Unicode surrogate");
+    }
+  }
   return value;
 }
 
 function finite(value: unknown, path: string): number {
   if (typeof value !== "number" || !Number.isFinite(value))
     fail(path, "must be a finite number");
-  return Object.is(value, -0) ? 0 : value;
+  if (Object.is(value, -0)) fail(path, "must not be negative zero");
+  return value;
 }
 
 function integer(value: unknown, path: string): number {
@@ -251,6 +396,12 @@ function integer(value: unknown, path: string): number {
 function nonNegativeInteger(value: unknown, path: string): number {
   const parsed = integer(value, path);
   if (parsed < 0) fail(path, "must not be negative");
+  return parsed;
+}
+
+function uint32(value: unknown, path: string): number {
+  const parsed = nonNegativeInteger(value, path);
+  if (parsed > 0xffff_ffff) fail(path, "must be an unsigned 32-bit integer");
   return parsed;
 }
 
@@ -299,12 +450,7 @@ function gridBounds(value: unknown, path: string): GridBounds {
 
 function verticalRange(value: unknown, path: string): VerticalRange {
   const raw = object(value, path);
-  exactKeys(raw, path, [
-    "min",
-    "max",
-    "clearanceBelow",
-    "clearanceAbove",
-  ]);
+  exactKeys(raw, path, ["min", "max", "clearanceBelow", "clearanceAbove"]);
   const vertical = {
     min: finite(raw.min, `${path}.min`),
     max: finite(raw.max, `${path}.max`),
@@ -314,6 +460,11 @@ function verticalRange(value: unknown, path: string): VerticalRange {
   if (vertical.max < vertical.min) fail(path, "max must be at least min");
   if (vertical.clearanceBelow < 0 || vertical.clearanceAbove < 0)
     fail(path, "clearances must not be negative");
+  if (
+    !Number.isFinite(vertical.min - vertical.clearanceBelow) ||
+    !Number.isFinite(vertical.max + vertical.clearanceAbove)
+  )
+    fail(path, "effective vertical envelope must remain finite");
   return vertical;
 }
 
@@ -345,8 +496,7 @@ function grid(value: unknown, path: string): SpatialGrid {
 }
 
 const cellKey = (cell: GridCell): string => `${cell.x},${cell.y}`;
-const sortCells = (a: GridCell, b: GridCell): number =>
-  a.y - b.y || a.x - b.x;
+const sortCells = (a: GridCell, b: GridCell): number => a.y - b.y || a.x - b.x;
 /** Code-unit ordering is identical across browser/Node locales and ICU versions. */
 const compareString = (a: string, b: string): number =>
   a < b ? -1 : a > b ? 1 : 0;
@@ -469,7 +619,12 @@ function placement(value: unknown, path: string): WorldLayoutPlacement {
 
 function road(value: unknown, path: string): WorldLayoutRoad {
   const raw = object(value, path);
-  exactKeys(raw, path, ["id", "frameId", "layer", "kind", "cells", "vertical"]);
+  exactKeys(
+    raw,
+    path,
+    ["id", "frameId", "layer", "kind", "cells", "vertical"],
+    ["provenance"],
+  );
   return {
     id: string(raw.id, `${path}.id`),
     frameId: string(raw.frameId, `${path}.frameId`),
@@ -477,6 +632,15 @@ function road(value: unknown, path: string): WorldLayoutRoad {
     kind: enumeration(raw.kind, ROAD_KINDS, `${path}.kind`),
     cells: cells(raw.cells, `${path}.cells`, { ordered: false }),
     vertical: verticalRange(raw.vertical, `${path}.vertical`),
+    ...(raw.provenance !== undefined
+      ? {
+          provenance: enumeration(
+            raw.provenance,
+            PROVENANCE_VALUES,
+            `${path}.provenance`,
+          ),
+        }
+      : {}),
   };
 }
 
@@ -486,7 +650,7 @@ function way(value: unknown, path: string): WorldLayoutWay {
     raw,
     path,
     ["id", "frameId", "layer", "kind", "width", "cells"],
-    ["roadIds"],
+    ["roadIds", "provenance"],
   );
   const kind = enumeration(
     raw.kind,
@@ -514,16 +678,26 @@ function way(value: unknown, path: string): WorldLayoutWay {
       minimum: 2,
     }),
     ...(roadIds !== undefined ? { roadIds } : {}),
+    ...(raw.provenance !== undefined
+      ? {
+          provenance: enumeration(
+            raw.provenance,
+            PROVENANCE_VALUES,
+            `${path}.provenance`,
+          ),
+        }
+      : {}),
   };
 }
 
 function terrainEdit(value: unknown, path: string): WorldLayoutTerrainEdit {
   const raw = object(value, path);
-  exactKeys(raw, path, ["frameId", "cell"], [
-    "elevation",
-    "biome",
-    "buildability",
-  ]);
+  exactKeys(
+    raw,
+    path,
+    ["id", "frameId", "cell"],
+    ["elevation", "biome", "buildability", "provenance"],
+  );
   if (
     raw.elevation === undefined &&
     raw.biome === undefined &&
@@ -546,6 +720,7 @@ function terrainEdit(value: unknown, path: string): WorldLayoutTerrainEdit {
   )
     fail(`${path}.buildability`, "must be 0, 1 or 2");
   return {
+    id: string(raw.id, `${path}.id`),
     frameId: string(raw.frameId, `${path}.frameId`),
     cell: gridCell(raw.cell, `${path}.cell`),
     ...(raw.elevation !== undefined
@@ -555,7 +730,158 @@ function terrainEdit(value: unknown, path: string): WorldLayoutTerrainEdit {
     ...(buildability !== undefined
       ? { buildability: buildability as Buildable }
       : {}),
+    ...(raw.provenance !== undefined
+      ? {
+          provenance: enumeration(
+            raw.provenance,
+            PROVENANCE_VALUES,
+            `${path}.provenance`,
+          ),
+        }
+      : {}),
   };
+}
+
+function opaqueOwnerRef(value: unknown, path: string): string {
+  const ref = string(value, path);
+  if (!/^principal:[A-Za-z0-9._:-]+$/.test(ref))
+    fail(path, "must be an opaque principal: reference");
+  return ref;
+}
+
+function zone(value: unknown, path: string): WorldLayoutZone {
+  const raw = object(value, path);
+  exactKeys(
+    raw,
+    path,
+    ["id", "frameId", "kind", "cells", "vertical"],
+    ["ownerRef"],
+  );
+  return {
+    id: string(raw.id, `${path}.id`),
+    frameId: string(raw.frameId, `${path}.frameId`),
+    kind: enumeration(raw.kind, ZONE_KINDS, `${path}.kind`),
+    cells: cells(raw.cells, `${path}.cells`, { ordered: false }),
+    vertical: verticalRange(raw.vertical, `${path}.vertical`),
+    ...(raw.ownerRef !== undefined
+      ? { ownerRef: opaqueOwnerRef(raw.ownerRef, `${path}.ownerRef`) }
+      : {}),
+  };
+}
+
+function reservation(value: unknown, path: string): WorldLayoutReservation {
+  const raw = object(value, path);
+  exactKeys(
+    raw,
+    path,
+    ["id", "frameId", "purpose", "cells", "vertical"],
+    ["ownerRef"],
+  );
+  return {
+    id: string(raw.id, `${path}.id`),
+    frameId: string(raw.frameId, `${path}.frameId`),
+    purpose: string(raw.purpose, `${path}.purpose`),
+    cells: cells(raw.cells, `${path}.cells`, { ordered: false }),
+    vertical: verticalRange(raw.vertical, `${path}.vertical`),
+    ...(raw.ownerRef !== undefined
+      ? { ownerRef: opaqueOwnerRef(raw.ownerRef, `${path}.ownerRef`) }
+      : {}),
+  };
+}
+
+function stringSet(value: unknown, path: string): string[] {
+  const result = array(value, path)
+    .map((item, index) => string(item, `${path}[${index}]`))
+    .sort(compareString);
+  if (new Set(result).size !== result.length)
+    fail(path, "must not contain duplicates");
+  return result;
+}
+
+function networkModes(value: unknown, path: string): WorldLayoutNetworkMode[] {
+  const result = array(value, path)
+    .map((item, index) => enumeration(item, NETWORK_MODES, `${path}[${index}]`))
+    .sort(compareString);
+  if (result.length === 0) fail(path, "must not be empty");
+  if (new Set(result).size !== result.length)
+    fail(path, "must not contain duplicates");
+  return result;
+}
+
+function networkNode(value: unknown, path: string): WorldLayoutNetworkNode {
+  const raw = object(value, path);
+  exactKeys(raw, path, ["id", "frameId", "position"], ["spatialIds"]);
+  return {
+    id: string(raw.id, `${path}.id`),
+    frameId: string(raw.frameId, `${path}.frameId`),
+    position: vec3(raw.position, `${path}.position`),
+    ...(raw.spatialIds !== undefined
+      ? { spatialIds: stringSet(raw.spatialIds, `${path}.spatialIds`) }
+      : {}),
+  };
+}
+
+function networkEdge(value: unknown, path: string): WorldLayoutNetworkEdge {
+  const raw = object(value, path);
+  exactKeys(
+    raw,
+    path,
+    ["id", "fromNodeId", "toNodeId", "modes", "bidirectional"],
+    ["spatialIds"],
+  );
+  if (typeof raw.bidirectional !== "boolean")
+    fail(`${path}.bidirectional`, "must be a boolean");
+  return {
+    id: string(raw.id, `${path}.id`),
+    fromNodeId: string(raw.fromNodeId, `${path}.fromNodeId`),
+    toNodeId: string(raw.toNodeId, `${path}.toNodeId`),
+    modes: networkModes(raw.modes, `${path}.modes`),
+    bidirectional: raw.bidirectional,
+    ...(raw.spatialIds !== undefined
+      ? { spatialIds: stringSet(raw.spatialIds, `${path}.spatialIds`) }
+      : {}),
+  };
+}
+
+function network(value: unknown, path: string): WorldLayoutNetwork {
+  const raw = object(value, path);
+  exactKeys(raw, path, ["id", "kind", "modes", "nodes", "edges"]);
+  const modes = networkModes(raw.modes, `${path}.modes`);
+  const nodes = array(raw.nodes, `${path}.nodes`)
+    .map((item, index) => networkNode(item, `${path}.nodes[${index}]`))
+    .sort((a, b) => compareString(a.id, b.id));
+  const edges = array(raw.edges, `${path}.edges`)
+    .map((item, index) => networkEdge(item, `${path}.edges[${index}]`))
+    .sort((a, b) => compareString(a.id, b.id));
+  return {
+    id: string(raw.id, `${path}.id`),
+    kind: enumeration(raw.kind, NETWORK_KINDS, `${path}.kind`),
+    modes,
+    nodes,
+    edges,
+  };
+}
+
+function generator(value: unknown, path: string): WorldLayoutGenerator {
+  const raw = object(value, path);
+  exactKeys(raw, path, ["id", "version", "placeableCatalogVersion"]);
+  if (raw.id !== WORLD_LAYOUT_GENERATOR.id)
+    fail(`${path}.id`, `unsupported generator ${JSON.stringify(raw.id)}`);
+  const parsed = {
+    id: WORLD_LAYOUT_GENERATOR.id,
+    version: string(raw.version, `${path}.version`),
+    placeableCatalogVersion: string(
+      raw.placeableCatalogVersion,
+      `${path}.placeableCatalogVersion`,
+    ),
+  };
+  if (
+    parsed.version !== WORLD_LAYOUT_GENERATOR.version ||
+    parsed.placeableCatalogVersion !==
+      WORLD_LAYOUT_GENERATOR.placeableCatalogVersion
+  )
+    fail(path, "unsupported generator or placeable catalog version");
+  return parsed;
 }
 
 function portal(value: unknown, path: string): WorldLayoutPortal {
@@ -603,6 +929,40 @@ function uniqueIds(
     result.set(value.id, index);
   }
   return result;
+}
+
+function validateNonOverlappingVolumes(
+  values: readonly {
+    readonly frameId: string;
+    readonly cells: readonly GridCell[];
+    readonly vertical: VerticalRange;
+  }[],
+  path: "zones" | "reservations",
+): void {
+  const occupied = new Map<
+    string,
+    { readonly index: number; readonly vertical: VerticalRange }[]
+  >();
+  for (const [index, value] of values.entries())
+    for (const cell of value.cells) {
+      const key = `${value.frameId}:${cellKey(cell)}`;
+      const prior = occupied.get(key) ?? [];
+      for (const entry of prior) {
+        const valueMin = value.vertical.min - value.vertical.clearanceBelow;
+        const valueMax = value.vertical.max + value.vertical.clearanceAbove;
+        const entryMin = entry.vertical.min - entry.vertical.clearanceBelow;
+        const entryMax = entry.vertical.max + entry.vertical.clearanceAbove;
+        const overlaps = valueMin < entryMax && entryMin < valueMax;
+        if (overlaps)
+          fail(
+            `$.${path}[${index}].cells`,
+            `${path.slice(0, -1)} volume conflicts with $.${path}[${entry.index}] at ${key}`,
+            "REFERENTIAL_INTEGRITY",
+          );
+      }
+      prior.push({ index, vertical: value.vertical });
+      occupied.set(key, prior);
+    }
 }
 
 function validateReferences(document: WorldLayoutDocumentV1): void {
@@ -653,15 +1013,36 @@ function validateReferences(document: WorldLayoutDocumentV1): void {
     }
   }
 
+  const terrainKeys = new Set<string>();
+  document.terrainEdits.forEach((item, index) => {
+    const key = `${item.frameId}:${cellKey(item.cell)}`;
+    if (terrainKeys.has(key))
+      fail(
+        `$.terrainEdits[${index}]`,
+        `duplicate sparse terrain edit ${key}`,
+        "REFERENTIAL_INTEGRITY",
+      );
+    terrainKeys.add(key);
+  });
+
   const placementIds = uniqueIds(document.placements, "$.placements");
+  const zoneIds = uniqueIds(document.zones, "$.zones");
+  const reservationIds = uniqueIds(document.reservations, "$.reservations");
   const roadIds = uniqueIds(document.roads, "$.roads");
   const wayIds = uniqueIds(document.ways, "$.ways");
+  const terrainEditIds = uniqueIds(document.terrainEdits, "$.terrainEdits");
+  const networkIds = uniqueIds(document.networks, "$.networks");
   const portalIds = uniqueIds(document.portals, "$.portals");
   const globalIds = new Map<string, string>();
   for (const [path, ids] of [
+    ["frames", frameIndexes],
+    ["zones", zoneIds],
+    ["reservations", reservationIds],
     ["placements", placementIds],
     ["roads", roadIds],
     ["ways", wayIds],
+    ["terrainEdits", terrainEditIds],
+    ["networks", networkIds],
     ["portals", portalIds],
   ] as const)
     for (const id of ids.keys()) {
@@ -698,6 +1079,29 @@ function validateReferences(document: WorldLayoutDocumentV1): void {
         "REFERENTIAL_INTEGRITY",
       );
   };
+  const requirePositionInFrame = (
+    frameId: string,
+    position: Vec3,
+    path: string,
+  ): void => {
+    const frame = frameById.get(frameId);
+    if (!frame?.grid) return;
+    const minX = frame.grid.origin.x;
+    const minZ = frame.grid.origin.z;
+    const maxX = minX + frame.grid.width * frame.grid.cellSize;
+    const maxZ = minZ + frame.grid.height * frame.grid.cellSize;
+    if (
+      position.x < minX ||
+      position.x >= maxX ||
+      position.z < minZ ||
+      position.z >= maxZ
+    )
+      fail(
+        path,
+        `position (${position.x}, ${position.y}, ${position.z}) is outside frame grid ${frameId}`,
+        "REFERENTIAL_INTEGRITY",
+      );
+  };
   document.placements.forEach((item, index) => {
     requireFrame(item.frameId, `$.placements[${index}].frameId`);
     item.cells.forEach((cell, cellIndex) =>
@@ -708,6 +1112,28 @@ function validateReferences(document: WorldLayoutDocumentV1): void {
       ),
     );
   });
+  document.zones.forEach((item, index) => {
+    requireFrame(item.frameId, `$.zones[${index}].frameId`);
+    item.cells.forEach((cell, cellIndex) =>
+      requireCellInFrame(
+        item.frameId,
+        cell,
+        `$.zones[${index}].cells[${cellIndex}]`,
+      ),
+    );
+  });
+  document.reservations.forEach((item, index) => {
+    requireFrame(item.frameId, `$.reservations[${index}].frameId`);
+    item.cells.forEach((cell, cellIndex) =>
+      requireCellInFrame(
+        item.frameId,
+        cell,
+        `$.reservations[${index}].cells[${cellIndex}]`,
+      ),
+    );
+  });
+  validateNonOverlappingVolumes(document.zones, "zones");
+  validateNonOverlappingVolumes(document.reservations, "reservations");
   document.roads.forEach((item, index) => {
     requireFrame(item.frameId, `$.roads[${index}].frameId`);
     item.cells.forEach((cell, cellIndex) =>
@@ -736,7 +1162,6 @@ function validateReferences(document: WorldLayoutDocumentV1): void {
         );
     });
   });
-  const terrainKeys = new Set<string>();
   document.terrainEdits.forEach((item, index) => {
     requireFrame(item.frameId, `$.terrainEdits[${index}].frameId`);
     requireCellInFrame(
@@ -744,18 +1169,91 @@ function validateReferences(document: WorldLayoutDocumentV1): void {
       item.cell,
       `$.terrainEdits[${index}].cell`,
     );
-    const key = `${item.frameId}:${cellKey(item.cell)}`;
-    if (terrainKeys.has(key))
-      fail(
-        `$.terrainEdits[${index}]`,
-        `duplicate sparse terrain edit ${key}`,
-        "REFERENTIAL_INTEGRITY",
+  });
+  const stableSpatialIds = new Set(globalIds.keys());
+  document.networks.forEach((item, networkIndex) => {
+    const nodeIds = uniqueIds(item.nodes, `$.networks[${networkIndex}].nodes`);
+    const edgeIds = uniqueIds(item.edges, `$.networks[${networkIndex}].edges`);
+    const localIds = new Set<string>();
+    for (const [kind, ids] of [
+      ["nodes", nodeIds],
+      ["edges", edgeIds],
+    ] as const)
+      for (const id of ids.keys()) {
+        if (localIds.has(id) || stableSpatialIds.has(id))
+          fail(
+            `$.networks[${networkIndex}].${kind}`,
+            `duplicate global spatial id ${id}`,
+            "REFERENTIAL_INTEGRITY",
+          );
+        localIds.add(id);
+      }
+    for (const [nodeIndex, node] of item.nodes.entries()) {
+      requireFrame(
+        node.frameId,
+        `$.networks[${networkIndex}].nodes[${nodeIndex}].frameId`,
       );
-    terrainKeys.add(key);
+      requirePositionInFrame(
+        node.frameId,
+        node.position,
+        `$.networks[${networkIndex}].nodes[${nodeIndex}].position`,
+      );
+      node.spatialIds?.forEach((spatialId, spatialIndex) => {
+        if (!stableSpatialIds.has(spatialId))
+          fail(
+            `$.networks[${networkIndex}].nodes[${nodeIndex}].spatialIds[${spatialIndex}]`,
+            `unknown spatial record ${spatialId}`,
+            "REFERENTIAL_INTEGRITY",
+          );
+      });
+    }
+    const declaredModes = new Set(item.modes);
+    for (const [edgeIndex, edge] of item.edges.entries()) {
+      if (!nodeIds.has(edge.fromNodeId) || !nodeIds.has(edge.toNodeId))
+        fail(
+          `$.networks[${networkIndex}].edges[${edgeIndex}]`,
+          "edge endpoints must resolve within the network",
+          "REFERENTIAL_INTEGRITY",
+        );
+      if (edge.fromNodeId === edge.toNodeId)
+        fail(
+          `$.networks[${networkIndex}].edges[${edgeIndex}]`,
+          "edge endpoints must be distinct",
+          "REFERENTIAL_INTEGRITY",
+        );
+      for (const mode of edge.modes)
+        if (!declaredModes.has(mode))
+          fail(
+            `$.networks[${networkIndex}].edges[${edgeIndex}].modes`,
+            `edge mode ${mode} is not declared by its network`,
+            "REFERENTIAL_INTEGRITY",
+          );
+      edge.spatialIds?.forEach((spatialId, spatialIndex) => {
+        if (!stableSpatialIds.has(spatialId))
+          fail(
+            `$.networks[${networkIndex}].edges[${edgeIndex}].spatialIds[${spatialIndex}]`,
+            `unknown spatial record ${spatialId}`,
+            "REFERENTIAL_INTEGRITY",
+          );
+      });
+    }
+    for (const id of localIds) stableSpatialIds.add(id);
   });
   document.portals.forEach((item, index) => {
     requireFrame(item.fromFrameId, `$.portals[${index}].fromFrameId`);
     requireFrame(item.toFrameId, `$.portals[${index}].toFrameId`);
+    if (item.fromFrameId === item.toFrameId)
+      fail(
+        `$.portals[${index}]`,
+        "portal endpoints must belong to distinct frames",
+        "REFERENTIAL_INTEGRITY",
+      );
+    requirePositionInFrame(
+      item.fromFrameId,
+      item.from,
+      `$.portals[${index}].from`,
+    );
+    requirePositionInFrame(item.toFrameId, item.to, `$.portals[${index}].to`);
     if (addresses.has(item.address))
       fail(
         `$.portals[${index}].address`,
@@ -766,7 +1264,10 @@ function validateReferences(document: WorldLayoutDocumentV1): void {
   });
 }
 
-type WorldLayoutHashProjection = Omit<WorldLayoutDocumentV1, "revision"> & {
+type WorldLayoutHashProjection = Omit<
+  WorldLayoutDocumentV1,
+  "revision" | "worldId"
+> & {
   readonly revision: Omit<WorldLayoutRevision, "contentHash">;
 };
 
@@ -775,17 +1276,21 @@ function canonicalPayload(
 ): WorldLayoutHashProjection {
   return {
     schemaVersion: document.schemaVersion,
-    worldId: document.worldId,
+    layoutId: document.layoutId,
     seed: document.seed,
+    generator: document.generator,
     revision: {
       number: document.revision.number,
       parentHash: document.revision.parentHash,
     },
     frames: document.frames,
+    zones: document.zones,
+    reservations: document.reservations,
     placements: document.placements,
     roads: document.roads,
     ways: document.ways,
     terrainEdits: document.terrainEdits,
+    networks: document.networks,
     portals: document.portals,
   };
 }
@@ -803,45 +1308,43 @@ function sha256(value: string): string {
   view.setUint32(paddedLength - 4, bitLength >>> 0);
 
   const constants = new Uint32Array([
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b,
-    0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01,
-    0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7,
-    0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
-    0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152,
-    0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
-    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
-    0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819,
-    0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08,
-    0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f,
-    0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
+    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
     0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
   ]);
   const state = new Uint32Array([
-    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c,
+    0x1f83d9ab, 0x5be0cd19,
   ]);
   const schedule = new Uint32Array(64);
   const rotateRight = (word: number, shift: number): number =>
     (word >>> shift) | (word << (32 - shift));
 
   for (let offset = 0; offset < paddedLength; offset += 64) {
-    for (let i = 0; i < 16; i++)
-      schedule[i] = view.getUint32(offset + i * 4);
+    for (let i = 0; i < 16; i++) schedule[i] = view.getUint32(offset + i * 4);
     for (let i = 16; i < 64; i++) {
       const x = schedule[i - 15]!;
       const y = schedule[i - 2]!;
       const s0 = rotateRight(x, 7) ^ rotateRight(x, 18) ^ (x >>> 3);
       const s1 = rotateRight(y, 17) ^ rotateRight(y, 19) ^ (y >>> 10);
-      schedule[i] =
-        (schedule[i - 16]! + s0 + schedule[i - 7]! + s1) >>> 0;
+      schedule[i] = (schedule[i - 16]! + s0 + schedule[i - 7]! + s1) >>> 0;
     }
     let [a, b, c, d, e, f, g, h] = state;
     for (let i = 0; i < 64; i++) {
-      const sum1 = rotateRight(e!, 6) ^ rotateRight(e!, 11) ^ rotateRight(e!, 25);
+      const sum1 =
+        rotateRight(e!, 6) ^ rotateRight(e!, 11) ^ rotateRight(e!, 25);
       const choice = (e! & f!) ^ (~e! & g!);
       const temp1 = (h! + sum1 + choice + constants[i]! + schedule[i]!) >>> 0;
-      const sum0 = rotateRight(a!, 2) ^ rotateRight(a!, 13) ^ rotateRight(a!, 22);
+      const sum0 =
+        rotateRight(a!, 2) ^ rotateRight(a!, 13) ^ rotateRight(a!, 22);
       const majority = (a! & b!) ^ (a! & c!) ^ (b! & c!);
       const temp2 = (sum0 + majority) >>> 0;
       h = g;
@@ -865,8 +1368,31 @@ function sha256(value: string): string {
   return [...state].map((word) => word.toString(16).padStart(8, "0")).join("");
 }
 
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value === "boolean" || typeof value === "string")
+    return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || Object.is(value, -0))
+      throw new TypeError(
+        "canonical JSON only accepts finite non-negative-zero numbers",
+      );
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value))
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort(compareString)
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(",")}}`;
+  }
+  throw new TypeError(`canonical JSON cannot encode ${typeof value}`);
+}
+
 function contentHashForCanonical(document: WorldLayoutDocumentV1): string {
-  return sha256(JSON.stringify(canonicalPayload(document)));
+  return sha256(canonicalJson(canonicalPayload(document)));
 }
 
 function revision(value: unknown, path: string): WorldLayoutRevision {
@@ -878,10 +1404,16 @@ function revision(value: unknown, path: string): WorldLayoutRevision {
       ? null
       : string(raw.parentHash, `${path}.parentHash`);
   if (parentHash !== null && !HASH_PATTERN.test(parentHash))
-    fail(`${path}.parentHash`, "must be null or a lowercase 64-character SHA-256 digest");
+    fail(
+      `${path}.parentHash`,
+      "must be null or a lowercase 64-character SHA-256 digest",
+    );
   const contentHash = string(raw.contentHash, `${path}.contentHash`);
   if (!HASH_PATTERN.test(contentHash))
-    fail(`${path}.contentHash`, "must be a lowercase 64-character SHA-256 digest");
+    fail(
+      `${path}.contentHash`,
+      "must be a lowercase 64-character SHA-256 digest",
+    );
   return { number, parentHash, contentHash };
 }
 
@@ -889,14 +1421,18 @@ function parseV1(value: unknown, verifyHash: boolean): WorldLayoutDocumentV1 {
   const raw = object(value, "$");
   exactKeys(raw, "$", [
     "schemaVersion",
-    "worldId",
+    "layoutId",
     "seed",
+    "generator",
     "revision",
     "frames",
+    "zones",
+    "reservations",
     "placements",
     "roads",
     "ways",
     "terrainEdits",
+    "networks",
     "portals",
   ]);
   if (raw.schemaVersion !== WORLD_LAYOUT_SCHEMA_VERSION)
@@ -907,11 +1443,19 @@ function parseV1(value: unknown, verifyHash: boolean): WorldLayoutDocumentV1 {
     );
   const document: WorldLayoutDocumentV1 = {
     schemaVersion: WORLD_LAYOUT_SCHEMA_VERSION,
-    worldId: string(raw.worldId, "$.worldId"),
-    seed: nonNegativeInteger(raw.seed, "$.seed"),
+    layoutId: string(raw.layoutId, "$.layoutId"),
+    worldId: "",
+    seed: uint32(raw.seed, "$.seed"),
+    generator: generator(raw.generator, "$.generator"),
     revision: revision(raw.revision, "$.revision"),
     frames: array(raw.frames, "$.frames")
       .map((item, index) => frame(item, `$.frames[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+    zones: array(raw.zones, "$.zones")
+      .map((item, index) => zone(item, `$.zones[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+    reservations: array(raw.reservations, "$.reservations")
+      .map((item, index) => reservation(item, `$.reservations[${index}]`))
       .sort((a, b) => compareString(a.id, b.id)),
     placements: array(raw.placements, "$.placements")
       .map((item, index) => placement(item, `$.placements[${index}]`))
@@ -922,18 +1466,28 @@ function parseV1(value: unknown, verifyHash: boolean): WorldLayoutDocumentV1 {
     ways: array(raw.ways, "$.ways")
       .map((item, index) => way(item, `$.ways[${index}]`))
       .sort((a, b) => compareString(a.id, b.id)),
-    terrainEdits: array(raw.terrainEdits, "$.terrainEdits")
-      .map((item, index) => terrainEdit(item, `$.terrainEdits[${index}]`))
-      .sort(
-        (a, b) =>
-          compareString(a.frameId, b.frameId) ||
-          a.cell.y - b.cell.y ||
-          a.cell.x - b.cell.x,
-      ),
+    terrainEdits: array(raw.terrainEdits, "$.terrainEdits").map((item, index) =>
+      terrainEdit(item, `$.terrainEdits[${index}]`),
+    ),
+    networks: array(raw.networks, "$.networks")
+      .map((item, index) => network(item, `$.networks[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
     portals: array(raw.portals, "$.portals")
       .map((item, index) => portal(item, `$.portals[${index}]`))
       .sort((a, b) => compareString(a.id, b.id)),
   };
+  Object.defineProperty(document, "layoutId", {
+    value: document.layoutId,
+    enumerable: true,
+    writable: false,
+    configurable: false,
+  });
+  Object.defineProperty(document, "worldId", {
+    value: document.layoutId,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
   validateReferences(document);
   if (verifyHash) {
     const expected = contentHashForCanonical(document);
@@ -947,14 +1501,332 @@ function parseV1(value: unknown, verifyHash: boolean): WorldLayoutDocumentV1 {
   return document;
 }
 
+type WorldLayoutTerrainEditV0 = Omit<
+  WorldLayoutTerrainEdit,
+  "id" | "provenance"
+>;
+
+interface WorldLayoutDocumentV0 {
+  readonly schemaVersion: typeof WORLD_LAYOUT_V0_SCHEMA_VERSION;
+  readonly worldId: string;
+  readonly seed: number;
+  readonly revision: WorldLayoutRevision;
+  readonly frames: readonly WorldLayoutFrame[];
+  readonly placements: readonly WorldLayoutPlacement[];
+  readonly roads: readonly WorldLayoutRoad[];
+  readonly ways: readonly WorldLayoutWay[];
+  readonly terrainEdits: readonly WorldLayoutTerrainEditV0[];
+  readonly portals: readonly WorldLayoutPortal[];
+}
+
+interface WorldLayoutLegacyNumericV1 {
+  readonly schemaVersion: typeof WORLD_LAYOUT_LEGACY_NUMERIC_SCHEMA_VERSION;
+  readonly worldId: string;
+  readonly seed: number;
+  readonly revision: WorldLayoutRevision;
+  readonly frames: readonly WorldLayoutFrame[];
+  readonly placements: readonly WorldLayoutPlacement[];
+  readonly roads: readonly WorldLayoutRoad[];
+  readonly ways: readonly WorldLayoutWay[];
+  readonly terrainEdits: readonly WorldLayoutTerrainEditV0[];
+  readonly portals: readonly WorldLayoutPortal[];
+}
+
+function roadV0(value: unknown, path: string): WorldLayoutRoad {
+  const raw = object(value, path);
+  exactKeys(raw, path, ["id", "frameId", "layer", "kind", "cells", "vertical"]);
+  return road(raw, path);
+}
+
+function wayV0(value: unknown, path: string): WorldLayoutWay {
+  const raw = object(value, path);
+  exactKeys(
+    raw,
+    path,
+    ["id", "frameId", "layer", "kind", "width", "cells"],
+    ["roadIds"],
+  );
+  return way(raw, path);
+}
+
+function terrainEditV0(value: unknown, path: string): WorldLayoutTerrainEditV0 {
+  const raw = object(value, path);
+  exactKeys(
+    raw,
+    path,
+    ["frameId", "cell"],
+    ["elevation", "biome", "buildability"],
+  );
+  const parsed = terrainEdit(
+    {
+      ...raw,
+      id: `terrain:${String(raw.frameId)}:migration-placeholder`,
+    },
+    path,
+  );
+  const { id: _id, provenance: _provenance, ...legacy } = parsed;
+  return legacy;
+}
+
+function normalizeLegacyNegativeZero(value: unknown): unknown {
+  if (typeof value === "number") return Object.is(value, -0) ? 0 : value;
+  if (Array.isArray(value)) return value.map(normalizeLegacyNegativeZero);
+  if (value !== null && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        normalizeLegacyNegativeZero(item),
+      ]),
+    );
+  return value;
+}
+
+/**
+ * Verifier for the numeric schemaVersion:1 document emitted by commit 5eeb814.
+ *
+ * Its digest deliberately uses the predecessor's insertion-ordered JSON.stringify projection,
+ * not the current recursive RFC 8785 canonicalizer. Keeping this parser separate prevents a
+ * later codec cleanup from silently changing what historical bytes are accepted.
+ */
+function parseLegacyNumericV1(value: unknown): WorldLayoutLegacyNumericV1 {
+  const raw = object(normalizeLegacyNegativeZero(value), "$numericV1");
+  exactKeys(raw, "$numericV1", [
+    "schemaVersion",
+    "worldId",
+    "seed",
+    "revision",
+    "frames",
+    "placements",
+    "roads",
+    "ways",
+    "terrainEdits",
+    "portals",
+  ]);
+  if (raw.schemaVersion !== WORLD_LAYOUT_LEGACY_NUMERIC_SCHEMA_VERSION)
+    fail(
+      "$numericV1.schemaVersion",
+      `unsupported legacy numeric schema version ${JSON.stringify(raw.schemaVersion)}`,
+      "UNKNOWN_VERSION",
+    );
+  const parsed: WorldLayoutLegacyNumericV1 = {
+    schemaVersion: WORLD_LAYOUT_LEGACY_NUMERIC_SCHEMA_VERSION,
+    worldId: string(raw.worldId, "$numericV1.worldId"),
+    seed: nonNegativeInteger(raw.seed, "$numericV1.seed"),
+    revision: revision(raw.revision, "$numericV1.revision"),
+    frames: array(raw.frames, "$numericV1.frames")
+      .map((item, index) => frame(item, `$numericV1.frames[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+    placements: array(raw.placements, "$numericV1.placements")
+      .map((item, index) => placement(item, `$numericV1.placements[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+    roads: array(raw.roads, "$numericV1.roads")
+      .map((item, index) => roadV0(item, `$numericV1.roads[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+    ways: array(raw.ways, "$numericV1.ways")
+      .map((item, index) => wayV0(item, `$numericV1.ways[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+    terrainEdits: array(raw.terrainEdits, "$numericV1.terrainEdits")
+      .map((item, index) =>
+        terrainEditV0(item, `$numericV1.terrainEdits[${index}]`),
+      )
+      .sort(
+        (a, b) =>
+          compareString(a.frameId, b.frameId) ||
+          a.cell.y - b.cell.y ||
+          a.cell.x - b.cell.x,
+      ),
+    portals: array(raw.portals, "$numericV1.portals")
+      .map((item, index) => portal(item, `$numericV1.portals[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+  };
+  const payload = {
+    schemaVersion: parsed.schemaVersion,
+    worldId: parsed.worldId,
+    seed: parsed.seed,
+    revision: {
+      number: parsed.revision.number,
+      parentHash: parsed.revision.parentHash,
+    },
+    frames: parsed.frames,
+    placements: parsed.placements,
+    roads: parsed.roads,
+    ways: parsed.ways,
+    terrainEdits: parsed.terrainEdits,
+    portals: parsed.portals,
+  };
+  const expectedHash = sha256(JSON.stringify(payload));
+  if (parsed.revision.contentHash !== expectedHash)
+    fail(
+      "$numericV1.revision.contentHash",
+      `digest mismatch; expected ${expectedHash}`,
+      "CONTENT_HASH_MISMATCH",
+    );
+  return parsed;
+}
+
+/**
+ * Verify and migrate one predecessor row. Later revisions require the caller to supply the
+ * recalculated parent hash from the preceding migrated row; standalone decoding only accepts the
+ * unambiguous initial revision.
+ */
+export function migrateLegacyNumericWorldLayoutDocument(
+  serializedOrValue: string | unknown,
+  migratedParentHash?: string | null,
+): WorldLayoutDocument {
+  const source = parseLegacyNumericV1(decoded(serializedOrValue));
+  if (source.seed > 0xffffffff)
+    fail(
+      "$numericV1.seed",
+      "legacy seed cannot be represented by the current uint32 contract",
+      "MIGRATION_FAILED",
+    );
+  let parentHash: string | null;
+  if (source.revision.number === 0) {
+    if (
+      source.revision.parentHash !== null ||
+      (migratedParentHash !== undefined && migratedParentHash !== null)
+    )
+      fail(
+        "$numericV1.revision",
+        "initial legacy revision must have null source and migrated parents",
+        "MIGRATION_FAILED",
+      );
+    parentHash = null;
+  } else {
+    if (
+      source.revision.parentHash === null ||
+      migratedParentHash === undefined ||
+      migratedParentHash === null
+    )
+      fail(
+        "$numericV1.revision",
+        "later legacy revision requires verified repository migration context",
+        "MIGRATION_FAILED",
+      );
+    parentHash = migratedParentHash;
+  }
+  return createWorldLayoutDocument({
+    layoutId: source.worldId,
+    seed: source.seed,
+    revision: { number: source.revision.number, parentHash },
+    frames: source.frames,
+    placements: source.placements,
+    roads: source.roads.map((item) => ({
+      ...item,
+      provenance: LEGACY_WORLD_LAYOUT_PROVENANCE,
+    })),
+    ways: source.ways.map((item) => ({
+      ...item,
+      provenance: LEGACY_WORLD_LAYOUT_PROVENANCE,
+    })),
+    terrainEdits: source.terrainEdits.map((item) => ({
+      ...item,
+      provenance: LEGACY_WORLD_LAYOUT_PROVENANCE,
+    })),
+    portals: source.portals,
+  });
+}
+
+function parseV0(value: unknown): WorldLayoutDocumentV0 {
+  const raw = object(value, "$v0");
+  exactKeys(raw, "$v0", [
+    "schemaVersion",
+    "worldId",
+    "seed",
+    "revision",
+    "frames",
+    "placements",
+    "roads",
+    "ways",
+    "terrainEdits",
+    "portals",
+  ]);
+  if (raw.schemaVersion !== WORLD_LAYOUT_V0_SCHEMA_VERSION)
+    fail(
+      "$v0.schemaVersion",
+      `unsupported world layout schema version ${JSON.stringify(raw.schemaVersion)}`,
+      "UNKNOWN_VERSION",
+    );
+  const parsed: WorldLayoutDocumentV0 = {
+    schemaVersion: WORLD_LAYOUT_V0_SCHEMA_VERSION,
+    worldId: string(raw.worldId, "$v0.worldId"),
+    seed: uint32(raw.seed, "$v0.seed"),
+    revision: revision(raw.revision, "$v0.revision"),
+    frames: array(raw.frames, "$v0.frames")
+      .map((item, index) => frame(item, `$v0.frames[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+    placements: array(raw.placements, "$v0.placements")
+      .map((item, index) => placement(item, `$v0.placements[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+    roads: array(raw.roads, "$v0.roads")
+      .map((item, index) => roadV0(item, `$v0.roads[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+    ways: array(raw.ways, "$v0.ways")
+      .map((item, index) => wayV0(item, `$v0.ways[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+    terrainEdits: array(raw.terrainEdits, "$v0.terrainEdits").map(
+      (item, index) => terrainEditV0(item, `$v0.terrainEdits[${index}]`),
+    ),
+    portals: array(raw.portals, "$v0.portals")
+      .map((item, index) => portal(item, `$v0.portals[${index}]`))
+      .sort((a, b) => compareString(a.id, b.id)),
+  };
+  const payload = {
+    ...parsed,
+    revision: {
+      number: parsed.revision.number,
+      parentHash: parsed.revision.parentHash,
+    },
+  };
+  const expectedHash = sha256(canonicalJson(payload));
+  if (parsed.revision.contentHash !== expectedHash)
+    fail(
+      "$v0.revision.contentHash",
+      `digest mismatch; expected ${expectedHash}`,
+      "CONTENT_HASH_MISMATCH",
+    );
+  return parsed;
+}
+
+function migrateV0ToV1(value: unknown): WorldLayoutDocument {
+  const source = parseV0(value);
+  if (source.revision.number !== 0 || source.revision.parentHash !== null)
+    fail(
+      "$v0.revision",
+      "v0 migration supports only the unambiguous initial revision",
+      "MIGRATION_FAILED",
+    );
+  return createWorldLayoutDocument({
+    layoutId: source.worldId,
+    seed: source.seed,
+    revision: { number: 0, parentHash: null },
+    frames: source.frames,
+    placements: source.placements,
+    roads: source.roads.map((item) => ({
+      ...item,
+      provenance: LEGACY_WORLD_LAYOUT_PROVENANCE,
+    })),
+    ways: source.ways.map((item) => ({
+      ...item,
+      provenance: LEGACY_WORLD_LAYOUT_PROVENANCE,
+    })),
+    terrainEdits: source.terrainEdits.map((item) => ({
+      ...item,
+      provenance: LEGACY_WORLD_LAYOUT_PROVENANCE,
+    })),
+    portals: source.portals,
+  });
+}
+
 type Migration = (value: unknown) => WorldLayoutDocument;
 
 /**
- * Explicit dispatcher. A future schema adds a numbered migration here; unknown versions never
+ * Explicit dispatcher. A future schema adds a versioned migration here; unknown versions never
  * fall through to a best-effort parse that could silently lose world data.
  */
-export const WORLD_LAYOUT_MIGRATIONS: Readonly<Record<number, Migration>> =
+export const WORLD_LAYOUT_MIGRATIONS: Readonly<Record<string, Migration>> =
   Object.freeze({
+    [WORLD_LAYOUT_V0_SCHEMA_VERSION]: migrateV0ToV1,
     [WORLD_LAYOUT_SCHEMA_VERSION]: (value: unknown) => parseV1(value, true),
   });
 
@@ -977,9 +1849,11 @@ export function migrateWorldLayoutDocument(
   const value = decoded(serializedOrValue);
   const raw = object(value, "$");
   const version = raw.schemaVersion;
-  if (!Number.isSafeInteger(version))
-    fail("$.schemaVersion", "must be a safe integer", "UNKNOWN_VERSION");
-  const migration = WORLD_LAYOUT_MIGRATIONS[version as number];
+  if (version === WORLD_LAYOUT_LEGACY_NUMERIC_SCHEMA_VERSION)
+    return migrateLegacyNumericWorldLayoutDocument(raw);
+  if (typeof version !== "string" || version.length === 0)
+    fail("$.schemaVersion", "must be a version identifier", "UNKNOWN_VERSION");
+  const migration = WORLD_LAYOUT_MIGRATIONS[version];
   if (!migration)
     fail(
       "$.schemaVersion",
@@ -989,7 +1863,9 @@ export function migrateWorldLayoutDocument(
   return migration(raw);
 }
 
-export function parseWorldLayoutDocument(serialized: string): WorldLayoutDocument {
+export function parseWorldLayoutDocument(
+  serialized: string,
+): WorldLayoutDocument {
   return migrateWorldLayoutDocument(serialized);
 }
 
@@ -1003,9 +1879,10 @@ export function canonicalizeWorldLayoutDocument(
 export function computeWorldLayoutContentHash(
   value: WorldLayoutDocument,
 ): string {
+  const { worldId: _worldId, ...wireValue } = value;
   const canonical = parseV1(
     {
-      ...value,
+      ...wireValue,
       revision: { ...value.revision, contentHash: EMPTY_HASH },
     },
     false,
@@ -1014,33 +1891,90 @@ export function computeWorldLayoutContentHash(
 }
 
 export function createWorldLayoutDocument(
-  input: WorldLayoutDocumentInput,
+  input: WorldLayoutDocumentInput | WorldLayoutDocumentLayoutIdInput,
 ): WorldLayoutDocument {
+  const layoutId = input.layoutId ?? input.worldId;
+  if (layoutId === undefined)
+    fail("$.layoutId", "layoutId or compatibility worldId is required");
+  if (
+    input.layoutId !== undefined &&
+    input.worldId !== undefined &&
+    input.layoutId !== input.worldId
+  )
+    fail(
+      "$.layoutId",
+      "layoutId and compatibility worldId must identify the same layout",
+    );
+  const { layoutId: _layoutId, worldId: _worldId, ...durableInput } = input;
+  const terrainEdits = input.terrainEdits.map((edit) => ({
+    ...edit,
+    id: edit.id ?? `terrain:${edit.frameId}:${edit.cell.x},${edit.cell.y}`,
+  }));
   const canonical = parseV1(
     {
       schemaVersion: WORLD_LAYOUT_SCHEMA_VERSION,
-      ...input,
+      ...durableInput,
+      layoutId,
+      generator: input.generator ?? WORLD_LAYOUT_GENERATOR,
+      zones: input.zones ?? [],
+      reservations: input.reservations ?? [],
+      terrainEdits,
+      networks: input.networks ?? [],
       revision: { ...input.revision, contentHash: EMPTY_HASH },
     },
     false,
   );
   const contentHash = contentHashForCanonical(canonical);
-  return {
-    ...canonical,
-    revision: { ...canonical.revision, contentHash },
-  };
+  return parseV1(
+    {
+      ...canonical,
+      revision: { ...canonical.revision, contentHash },
+    },
+    true,
+  );
 }
 
 /** External immutable revision identifier used by storage/CAS boundaries. */
-export function worldLayoutRevisionId(
-  revision: WorldLayoutRevision,
-): string {
+export function worldLayoutRevisionId(revision: WorldLayoutRevision): string {
   return `wl:v1:${revision.number}:${revision.contentHash}`;
+}
+
+/**
+ * Constant-size cryptographic accumulator for pruned immutable revision evidence.
+ * The checkpoint commits every removed revision in order without retaining its full snapshot.
+ */
+export function computeWorldLayoutHistoryEvidenceHash(
+  previousEvidenceHash: string,
+  sequence: number,
+  layoutRevision: string,
+  contentHash: string,
+  parentHash: string | null,
+): string {
+  if (!HASH_PATTERN.test(previousEvidenceHash))
+    throw new TypeError("previousEvidenceHash must be a SHA-256 digest");
+  if (!Number.isSafeInteger(sequence) || sequence < 0)
+    throw new TypeError("sequence must be a non-negative safe integer");
+  if (typeof layoutRevision !== "string" || layoutRevision.length === 0)
+    throw new TypeError("layoutRevision must be non-empty");
+  if (!HASH_PATTERN.test(contentHash))
+    throw new TypeError("contentHash must be a SHA-256 digest");
+  if (parentHash !== null && !HASH_PATTERN.test(parentHash))
+    throw new TypeError("parentHash must be null or a SHA-256 digest");
+  return sha256(
+    canonicalJson({
+      algorithm: "citylife.world-layout-history/sha256-chain-v1",
+      contentHash,
+      layoutRevision,
+      parentHash,
+      previousEvidenceHash,
+      sequence,
+    }),
+  );
 }
 
 /** Canonical single-line wire form suitable for storage, signing and equality checks. */
 export function serializeWorldLayoutDocument(
   document: WorldLayoutDocument,
 ): string {
-  return JSON.stringify(canonicalizeWorldLayoutDocument(document));
+  return canonicalJson(canonicalizeWorldLayoutDocument(document));
 }

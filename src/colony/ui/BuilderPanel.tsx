@@ -21,6 +21,33 @@ export type WorldLayoutOperatorAction =
   | "export"
   | "import";
 
+export const WORLD_LAYOUT_IMPORT_MAX_BYTES = 5 * 1024 * 1024;
+
+export interface WorldLayoutHistoryEntry {
+  readonly revisionNumber: number;
+  readonly revisionId: string;
+  readonly active: boolean;
+}
+
+/** Browser-side boundary before any untrusted import bytes are read into memory. */
+export function validateWorldLayoutImportFile(
+  file: Pick<File, "name" | "size" | "type">,
+): void {
+  if (!file.name.toLowerCase().endsWith(".json"))
+    throw new Error("World layout imports must use a .json file");
+  if (!Number.isSafeInteger(file.size) || file.size <= 0)
+    throw new Error("World layout import is empty or has an invalid size");
+  if (file.size > WORLD_LAYOUT_IMPORT_MAX_BYTES)
+    throw new Error("World layout import exceeds the 5 MiB safety limit");
+  const mediaType = file.type.split(";", 1)[0]!.trim().toLowerCase();
+  if (
+    mediaType &&
+    mediaType !== "application/json" &&
+    !mediaType.endsWith("+json")
+  )
+    throw new Error("World layout import must have a JSON media type");
+}
+
 /**
  * Parent-owned operator boundary for the authoritative world-layout repository.
  *
@@ -34,8 +61,8 @@ export interface WorldLayoutOperatorControls {
   readonly status: WorldLayoutOperatorStatus;
   readonly message?: string;
   readonly onSave?: () => void | Promise<void>;
-  readonly onShowHistory?: () => void | Promise<void>;
-  readonly onRollback?: () => void | Promise<void>;
+  readonly onShowHistory?: () => Promise<readonly WorldLayoutHistoryEntry[]>;
+  readonly onRollback?: (targetLayoutRevision: string) => void | Promise<void>;
   readonly onExport?: () => void | Promise<void>;
   /** The parent must validate the complete document before hydrating or persisting it. */
   readonly onValidateAndImport?: (
@@ -141,9 +168,15 @@ export function WorldLayoutRevisionControls({
   controls?: WorldLayoutOperatorControls;
 }) {
   const importInput = React.useRef<HTMLInputElement>(null);
+  const actionInFlight = React.useRef(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [localBusy, setLocalBusy] = React.useState(false);
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [historyEntries, setHistoryEntries] = React.useState<
+    readonly WorldLayoutHistoryEntry[]
+  >([]);
   const status = controls?.status ?? "unavailable";
-  const busy = status === "saving";
+  const busy = status === "saving" || localBusy;
   const revisionLabel =
     controls?.revisionNumber === null || controls?.revisionNumber === undefined
       ? "R—"
@@ -162,15 +195,22 @@ export function WorldLayoutRevisionControls({
     actionName: WorldLayoutOperatorAction,
     action?: () => void | Promise<void>,
   ) => {
-    if (!action || busy) return;
+    if (!action || busy || actionInFlight.current) return;
+    actionInFlight.current = true;
+    setLocalBusy(true);
     setActionError(null);
     void runWorldLayoutOperatorAction(
       actionName,
       action,
       controls?.onActionError,
-    ).then((result) => {
-      if (!result.ok) setActionError(result.message);
-    });
+    )
+      .then((result) => {
+        if (!result.ok) setActionError(result.message);
+      })
+      .finally(() => {
+        actionInFlight.current = false;
+        setLocalBusy(false);
+      });
   };
   const buttonStyle = (enabled: boolean): React.CSSProperties => ({
     ...revisionActionStyle,
@@ -179,7 +219,7 @@ export function WorldLayoutRevisionControls({
   });
 
   return (
-    <section aria-label="World layout revision controls">
+    <section aria-label="World layout revision controls" aria-busy={busy}>
       <div
         style={{
           display: "flex",
@@ -215,7 +255,18 @@ export function WorldLayoutRevisionControls({
         </button>
         <button
           type="button"
-          onClick={() => invoke("history", controls?.onShowHistory)}
+          onClick={() =>
+            invoke(
+              "history",
+              controls?.onShowHistory
+                ? async () => {
+                    const entries = await controls.onShowHistory?.();
+                    setHistoryEntries(entries ?? []);
+                    setHistoryOpen(true);
+                  }
+                : undefined,
+            )
+          }
           disabled={!controls?.onShowHistory || busy}
           style={buttonStyle(Boolean(controls?.onShowHistory))}
         >
@@ -223,9 +274,22 @@ export function WorldLayoutRevisionControls({
         </button>
         <button
           type="button"
-          onClick={() => invoke("rollback", controls?.onRollback)}
-          disabled={!controls?.onRollback || busy}
-          style={buttonStyle(Boolean(controls?.onRollback))}
+          onClick={() =>
+            invoke(
+              "history",
+              controls?.onShowHistory
+                ? async () => {
+                    const entries = await controls.onShowHistory?.();
+                    setHistoryEntries(entries ?? []);
+                    setHistoryOpen(true);
+                  }
+                : undefined,
+            )
+          }
+          disabled={!controls?.onShowHistory || !controls?.onRollback || busy}
+          style={buttonStyle(
+            Boolean(controls?.onShowHistory && controls?.onRollback),
+          )}
         >
           ROLLBACK
         </button>
@@ -258,9 +322,7 @@ export function WorldLayoutRevisionControls({
             fontSize: "8px",
             lineHeight: "10px",
             marginTop: "3px",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            overflowWrap: "anywhere",
           }}
         >
           ACTION FAILED: {actionError}
@@ -277,12 +339,113 @@ export function WorldLayoutRevisionControls({
           const file = input.files?.[0];
           if (!file || !controls?.onValidateAndImport) return;
           invoke("import", async () => {
+            validateWorldLayoutImportFile(file);
             const serialized = await file.text();
             await controls.onValidateAndImport?.(serialized, file.name);
           });
           input.value = "";
         }}
       />
+      {historyOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="World layout immutable revision history"
+          style={{
+            position: "fixed",
+            inset: "10% 18%",
+            zIndex: 1400,
+            display: "flex",
+            flexDirection: "column",
+            padding: "16px",
+            border: "1px solid #57d1c4",
+            borderRadius: "8px",
+            background: "rgba(8, 17, 24, 0.98)",
+            color: "#dce8ef",
+            boxShadow: "0 18px 60px rgba(0,0,0,0.75)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <strong style={{ color: "#57d1c4" }}>
+              IMMUTABLE WORLD HISTORY
+            </strong>
+            <span style={{ color: "#91a6b4", fontSize: "11px" }}>
+              newest first · at most 50 revisions
+            </span>
+            <button
+              type="button"
+              style={{ ...revisionActionStyle, marginLeft: "auto" }}
+              onClick={() => setHistoryOpen(false)}
+              disabled={busy}
+            >
+              CLOSE
+            </button>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gap: "6px",
+              marginTop: "12px",
+              overflow: "auto",
+            }}
+          >
+            {historyEntries.length === 0 ? (
+              <p role="status">No durable revisions exist for this world.</p>
+            ) : (
+              historyEntries.map((entry) => (
+                <div
+                  key={entry.revisionId}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "80px 1fr auto",
+                    alignItems: "center",
+                    gap: "10px",
+                    padding: "8px",
+                    border: "1px solid #31434e",
+                    borderRadius: "4px",
+                    background: entry.active
+                      ? "rgba(87, 209, 196, 0.12)"
+                      : "rgba(255,255,255,0.03)",
+                  }}
+                >
+                  <strong>R{entry.revisionNumber}</strong>
+                  <code style={{ color: "#91a6b4" }}>
+                    …{entry.revisionId.slice(-12)}
+                  </code>
+                  {entry.active ? (
+                    <span style={{ color: "#57d1c4" }}>CURRENT</span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy || !controls?.onRollback}
+                      style={buttonStyle(Boolean(controls?.onRollback))}
+                      onClick={() => {
+                        if (
+                          !window.confirm(
+                            `Create a new revision from the content of R${entry.revisionNumber}? Unsaved map edits will not be included.`,
+                          )
+                        )
+                          return;
+                        invoke(
+                          "rollback",
+                          controls?.onRollback
+                            ? async () => {
+                                await controls.onRollback?.(entry.revisionId);
+                                setHistoryOpen(false);
+                              }
+                            : undefined,
+                        );
+                      }}
+                    >
+                      RESTORE AS NEW REV
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

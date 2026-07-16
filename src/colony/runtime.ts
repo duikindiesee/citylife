@@ -7,7 +7,7 @@ import {
   type ViewMode,
   type AvatarView,
 } from "./render/R3FPlanetRenderer";
-import { Biome } from "./terrain";
+import { Biome, type Terrain } from "./terrain";
 import {
   autoGrow,
   freeLabour,
@@ -288,7 +288,7 @@ import {
 import {
   applyWorldLayoutDocument,
   captureWorldLayoutDocument as captureRuntimeWorldLayout,
-  landscapeOffsetsFromTerrainEdits,
+  importLegacyWorldLayoutDocument,
   terrainEditsFromLandscapeOffsets,
   zonedPlacementFromParcel,
   type HydratedWorldLayout,
@@ -301,20 +301,29 @@ import {
   serializeWorldLayoutDocument,
   worldLayoutRevisionId,
   type WorldLayoutDocument,
+  type WorldLayoutNetwork,
+  type WorldLayoutNetworkMode,
+  type WorldLayoutReservation,
   type WorldLayoutRoad,
   type WorldLayoutTerrainEdit,
   type WorldLayoutWay,
+  type WorldLayoutZone,
+  type WorldLayoutZoneKind,
 } from "./spatial/worldLayoutDocument";
 import { createPlacementContext } from "./placement/runtimeContext";
 import {
   ROAD_PLACEABLES,
   zonedPlotDefinition,
+  type PlaceableDefinition,
+  type PlacementZone,
   type ZonedPlotSize,
 } from "./placement/placeableCatalog";
 import {
+  surveyPlacement,
   surveyRoadStroke,
   surveyZonedPlot as runZonedPlotSurvey,
   type PlacementCommitResult,
+  type PlacementFailure,
   type PlacementSurveyResult,
 } from "./placement/surveyPlacement";
 import {
@@ -837,6 +846,55 @@ function cameraYawToward(
   return Math.atan2(-(to.x - from.x), -(to.y - from.y));
 }
 
+type RuntimeLayoutZone = Readonly<{
+  id: string;
+  kind: WorldLayoutZoneKind;
+}>;
+
+type RuntimeNetworkHop = Readonly<{
+  edgeId: string;
+  toNodeId: string;
+  modes: readonly WorldLayoutNetworkMode[];
+}>;
+
+interface RuntimeNetworkGraph {
+  readonly modes: ReadonlySet<WorldLayoutNetworkMode>;
+  readonly nodeIds: ReadonlySet<string>;
+  readonly adjacency: ReadonlyMap<string, readonly RuntimeNetworkHop[]>;
+}
+
+interface MaterializedLayoutAuthority {
+  readonly zones: readonly WorldLayoutZone[];
+  readonly reservations: readonly WorldLayoutReservation[];
+  readonly networks: readonly WorldLayoutNetwork[];
+  readonly zonesByCell: ReadonlyMap<string, readonly RuntimeLayoutZone[]>;
+  readonly reservationIdsByCell: ReadonlyMap<string, readonly string[]>;
+  readonly networkGraphs: ReadonlyMap<string, RuntimeNetworkGraph>;
+}
+
+interface MaterializedTerrainAuthority {
+  readonly elevation: Float32Array;
+  readonly biome: Uint8Array;
+  readonly water: Uint8Array;
+  readonly buildability: Uint8Array;
+  readonly distanceToWater: Int32Array;
+}
+
+function compareCodeUnits(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+export class WorldLayoutPreflightError extends Error {
+  constructor(
+    readonly placementId: string | null,
+    readonly evidence: readonly string[],
+    message: string,
+  ) {
+    super(message);
+    this.name = "WorldLayoutPreflightError";
+  }
+}
+
 export class ColonyRuntime {
   readonly sim: ColonySim;
   private renderer: PlanetRenderer | null = null;
@@ -948,14 +1006,39 @@ export class ColonyRuntime {
    *  runtime until a document is loaded; no whole ColonyState snapshot is ever stored here. */
   private activeWorldLayout: WorldLayoutDocument | null = null;
   private layoutFrames: readonly SpatialFrame[] | null = null;
+  private layoutPrimarySurfaceFrameId: string | null = null;
   private layoutPortals: readonly SpatialPortal[] = [];
   private layoutTerrainEdits: readonly WorldLayoutTerrainEdit[] = [];
   private layoutZonedPlacements: readonly RuntimeZonedPlacement[] | null = null;
   private layoutRoads: readonly RuntimeRoadCell[] | null = null;
+  private layoutZones: readonly WorldLayoutZone[] = [];
+  private layoutReservations: readonly WorldLayoutReservation[] = [];
+  private layoutNetworks: readonly WorldLayoutNetwork[] = [];
+  private layoutZonesByCell: ReadonlyMap<
+    string,
+    readonly RuntimeLayoutZone[]
+  > = new Map();
+  private layoutReservationIdsByCell: ReadonlyMap<
+    string,
+    readonly string[]
+  > = new Map();
+  private layoutNetworkGraphs: ReadonlyMap<string, RuntimeNetworkGraph> =
+    new Map();
+  /** Immutable procedural baseline used by every hydration, including same-runtime rollback. */
+  private readonly seededTerrainAuthority: MaterializedTerrainAuthority;
+  /** Exact legacy placement payloads allowed to replay while their old shore/ribbon debt is fixed. */
+  private seededPlacementSignatures: ReadonlySet<string> | null = null;
 
   constructor(seed: number = COLONY.render.seed) {
     this.worldSeed = seed;
     this.sim = new ColonySim(seed);
+    this.seededTerrainAuthority = {
+      elevation: new Float32Array(this.sim.state.terrain.elev),
+      biome: new Uint8Array(this.sim.state.terrain.biome),
+      water: new Uint8Array(this.sim.state.terrain.water),
+      buildability: new Uint8Array(this.sim.state.terrain.buildable),
+      distanceToWater: new Int32Array(this.sim.state.terrain.distToWater),
+    };
     restoreColony(this.sim.state); // re-place settlers + restore the Kookerverse ledger
     this.cityPlan = makeCityPlan(this.sim.state.terrain);
     this.sim.state.cityPlan = this.cityPlan; // expose to the renderer for the zone tint + plot markers
@@ -2590,7 +2673,9 @@ export class ColonyRuntime {
     });
   }
 
-  private worldLayoutPlacementVertical(cells: readonly { x: number; y: number }[]) {
+  private worldLayoutPlacementVertical(
+    cells: readonly { x: number; y: number }[],
+  ) {
     const policy = zonedPlotDefinition("residential", "COMPACT").vertical;
     const elevations = cells.map((cell) =>
       this.sim.state.terrain.worldY(cell.x, cell.y),
@@ -2605,7 +2690,9 @@ export class ColonyRuntime {
     };
   }
 
-  private runtimeZonedPlacements(surfaceFrameId: string): RuntimeZonedPlacement[] {
+  private runtimeZonedPlacements(
+    surfaceFrameId: string,
+  ): RuntimeZonedPlacement[] {
     const parcels = [
       ...this.neighborhood.parcels,
       ...(this.commercialDistrict?.parcels ?? []),
@@ -2632,32 +2719,13 @@ export class ColonyRuntime {
     });
   }
 
-  private worldLayoutPlacementSignature(
-    placements: readonly RuntimeZonedPlacement[],
-  ): string {
-    return JSON.stringify(
-      placements
-        .map((placement) => ({
-          id: placement.id,
-          definitionId: placement.definitionId,
-          frameId: placement.frameId,
-          layer: placement.layer,
-          source: placement.source,
-          cells: [...placement.cells].sort(
-            (a, b) => a.y - b.y || a.x - b.x,
-          ),
-          bounds: placement.bounds,
-          vertical: placement.vertical,
-          anchors: [...placement.anchors].sort((a, b) =>
-            a.id.localeCompare(b.id),
-          ),
-          orientation: placement.orientation ?? null,
-        }))
-        .sort((a, b) => a.id.localeCompare(b.id)),
-    );
-  }
-
   private currentWorldLayoutRoads(): RuntimeRoadCell[] {
+    if (!this.activeWorldLayout)
+      return this.sim.state.roads.map((road) => ({
+        x: road.x,
+        y: road.y,
+        kind: road.kind ?? "street",
+      }));
     const tiles = useRoadNetwork.getState().tiles;
     return this.sim.state.roads.map((road) => {
       const tileType = tiles[`${road.x},${road.y}`]?.type;
@@ -2666,7 +2734,7 @@ export class ColonyRuntime {
         tileType === "gravel" ||
         tileType === "culdesac"
           ? tileType
-          : road.kind ?? "street";
+          : (road.kind ?? "street");
       return { x: road.x, y: road.y, kind };
     });
   }
@@ -2676,6 +2744,13 @@ export class ColonyRuntime {
   ): RoadWay[] {
     const logical = new Set(roads.map((road) => `${road.x},${road.y}`));
     const source = this.sim.state.roadWays ?? this.roadWays;
+    if (!this.activeWorldLayout)
+      return source.map((way) => ({
+        path: way.path.map((cell) => ({ ...cell })),
+        kind: way.kind,
+        width: way.width,
+        ...(way.source ? { source: way.source } : {}),
+      }));
     const ways: RoadWay[] = [];
     for (const way of source) {
       let segment: { x: number; y: number }[] = [];
@@ -2715,19 +2790,27 @@ export class ColonyRuntime {
         edits.set(key, { ...edit, cell: { ...edit.cell } });
         continue;
       }
-      if (edit.biome !== undefined || edit.buildability !== undefined)
-        edits.set(key, {
-          frameId: edit.frameId,
-          cell: { ...edit.cell },
-          ...(edit.biome !== undefined ? { biome: edit.biome } : {}),
-          ...(edit.buildability !== undefined
-            ? { buildability: edit.buildability }
-            : {}),
-        });
+      edits.set(key, {
+        id: edit.id,
+        frameId: edit.frameId,
+        cell: { ...edit.cell },
+        ...(edit.elevation !== undefined ? { elevation: edit.elevation } : {}),
+        ...(edit.biome !== undefined ? { biome: edit.biome } : {}),
+        ...(edit.buildability !== undefined
+          ? { buildability: edit.buildability }
+          : {}),
+        ...(edit.provenance ? { provenance: edit.provenance } : {}),
+      });
     }
     for (const edit of elevations) {
       const key = `${edit.frameId}:${edit.cell.x},${edit.cell.y}`;
-      edits.set(key, { ...edits.get(key), ...edit, cell: { ...edit.cell } });
+      const prior = edits.get(key);
+      edits.set(key, {
+        ...prior,
+        ...edit,
+        cell: { ...edit.cell },
+        ...(prior?.provenance ? { provenance: prior.provenance } : {}),
+      });
     }
     return [...edits.values()];
   }
@@ -2782,11 +2865,15 @@ export class ColonyRuntime {
     return JSON.stringify({
       worldId: document.worldId,
       seed: document.seed,
+      generator: document.generator,
       frames: document.frames,
+      zones: document.zones,
+      reservations: document.reservations,
       placements: document.placements,
       roads: document.roads,
       ways: document.ways,
       terrainEdits: document.terrainEdits,
+      networks: document.networks,
       portals: document.portals,
     });
   }
@@ -2802,9 +2889,13 @@ export class ColonyRuntime {
     const roadWays = this.currentWorldLayoutRoadWays(roads);
     const roadPolicy = ROAD_PLACEABLES.street.vertical;
     const active = this.activeWorldLayout;
-    const captured = captureRuntimeWorldLayout({
+    const capture = active
+      ? captureRuntimeWorldLayout
+      : importLegacyWorldLayoutDocument;
+    const captured = capture({
       worldId: `seed-${this.worldSeed}`,
       seed: this.worldSeed,
+      ...(active ? { generator: active.generator } : {}),
       revision: active
         ? {
             number: active.revision.number,
@@ -2814,6 +2905,13 @@ export class ColonyRuntime {
       surfaceFrameId,
       frames: this.layoutFrames ?? [...seedRegistry.frames.values()],
       portals: this.layoutPortals,
+      ...(active
+        ? {
+            zones: active.zones,
+            reservations: active.reservations,
+            networks: active.networks,
+          }
+        : {}),
       terrainEdits,
       zonedPlacements:
         this.layoutZonedPlacements ??
@@ -2847,7 +2945,11 @@ export class ColonyRuntime {
         usedRoadIds,
       );
       roadIdMap.set(road.id, id);
-      return { ...road, id };
+      return {
+        ...road,
+        id,
+        ...(prior?.provenance ? { provenance: prior.provenance } : {}),
+      };
     });
 
     const activeWays = new Map<string, WorldLayoutWay[]>();
@@ -2869,6 +2971,7 @@ export class ColonyRuntime {
       return {
         ...way,
         id,
+        ...(prior?.provenance ? { provenance: prior.provenance } : {}),
         ...(way.roadIds
           ? { roadIds: way.roadIds.map((roadId) => roadIdMap.get(roadId)!) }
           : {}),
@@ -2878,15 +2981,19 @@ export class ColonyRuntime {
     const sameRevision = createWorldLayoutDocument({
       worldId: captured.worldId,
       seed: captured.seed,
+      generator: captured.generator,
       revision: {
         number: active.revision.number,
         parentHash: active.revision.parentHash,
       },
       frames: captured.frames,
+      zones: captured.zones,
+      reservations: captured.reservations,
       placements: captured.placements,
       roads: preservedRoads,
       ways: preservedWays,
       terrainEdits: captured.terrainEdits,
+      networks: captured.networks,
       portals: captured.portals,
     });
     if (
@@ -2898,15 +3005,19 @@ export class ColonyRuntime {
     return createWorldLayoutDocument({
       worldId: sameRevision.worldId,
       seed: sameRevision.seed,
+      generator: sameRevision.generator,
       revision: {
         number: active.revision.number + 1,
         parentHash: active.revision.contentHash,
       },
       frames: sameRevision.frames,
+      zones: sameRevision.zones,
+      reservations: sameRevision.reservations,
       placements: sameRevision.placements,
       roads: sameRevision.roads,
       ways: sameRevision.ways,
       terrainEdits: sameRevision.terrainEdits,
+      networks: sameRevision.networks,
       portals: sameRevision.portals,
     });
   }
@@ -2920,15 +3031,466 @@ export class ColonyRuntime {
       : null;
   }
 
-  /** WB.1d — validate and fully materialize a candidate before publishing it. This method is a boot
-   *  seam: a renderer/simulation already running may never observe a half-replaced layout. */
-  hydrateWorldLayout(document: WorldLayoutDocument): HydratedWorldLayout {
-    if (this.running)
-      throw new Error("world layout hydration must complete before runtime start");
+  private worldLayoutCellKey(
+    frameId: string,
+    cell: { x: number; y: number },
+  ): string {
+    return `${frameId}:${cell.x},${cell.y}`;
+  }
 
+  private materializeLayoutAuthority(
+    candidate: HydratedWorldLayout,
+  ): MaterializedLayoutAuthority {
+    const zonesByCell = new Map<string, RuntimeLayoutZone[]>();
+    for (const zone of candidate.zones)
+      for (const cell of zone.cells) {
+        const key = this.worldLayoutCellKey(zone.frameId, cell);
+        const values = zonesByCell.get(key) ?? [];
+        values.push({ id: zone.id, kind: zone.kind });
+        zonesByCell.set(key, values);
+      }
+    const canonicalZonesByCell = new Map<
+      string,
+      readonly RuntimeLayoutZone[]
+    >();
+    for (const [key, zones] of zonesByCell)
+      canonicalZonesByCell.set(
+        key,
+        zones.sort((left, right) => compareCodeUnits(left.id, right.id)),
+      );
+
+    const reservationsByCell = new Map<string, string[]>();
+    for (const reservation of candidate.reservations)
+      for (const cell of reservation.cells) {
+        const key = this.worldLayoutCellKey(reservation.frameId, cell);
+        const ids = reservationsByCell.get(key) ?? [];
+        ids.push(reservation.id);
+        reservationsByCell.set(key, ids);
+      }
+    const canonicalReservationsByCell = new Map<
+      string,
+      readonly string[]
+    >();
+    for (const [key, ids] of reservationsByCell)
+      canonicalReservationsByCell.set(key, ids.sort(compareCodeUnits));
+
+    const networkGraphs = new Map<string, RuntimeNetworkGraph>();
+    for (const network of candidate.networks) {
+      const adjacency = new Map<string, RuntimeNetworkHop[]>();
+      for (const node of network.nodes) adjacency.set(node.id, []);
+      for (const edge of network.edges) {
+        adjacency.get(edge.fromNodeId)!.push({
+          edgeId: edge.id,
+          toNodeId: edge.toNodeId,
+          modes: [...edge.modes],
+        });
+        if (edge.bidirectional)
+          adjacency.get(edge.toNodeId)!.push({
+            edgeId: edge.id,
+            toNodeId: edge.fromNodeId,
+            modes: [...edge.modes],
+          });
+      }
+      const canonicalAdjacency = new Map<
+        string,
+        readonly RuntimeNetworkHop[]
+      >();
+      for (const [nodeId, hops] of adjacency)
+        canonicalAdjacency.set(
+          nodeId,
+          hops.sort(
+            (left, right) =>
+              compareCodeUnits(left.toNodeId, right.toNodeId) ||
+              compareCodeUnits(left.edgeId, right.edgeId),
+          ),
+        );
+      networkGraphs.set(network.id, {
+        modes: new Set(network.modes),
+        nodeIds: new Set(network.nodes.map((node) => node.id)),
+        adjacency: canonicalAdjacency,
+      });
+    }
+
+    return {
+      zones: candidate.zones,
+      reservations: candidate.reservations,
+      networks: candidate.networks,
+      zonesByCell: canonicalZonesByCell,
+      reservationIdsByCell: canonicalReservationsByCell,
+      networkGraphs,
+    };
+  }
+
+  private materializeTerrainAuthority(
+    edits: readonly WorldLayoutTerrainEdit[],
+    surfaceFrameId: string,
+  ): MaterializedTerrainAuthority {
+    const terrain = this.sim.state.terrain;
+    const elevation = new Float32Array(this.seededTerrainAuthority.elevation);
+    const biome = new Uint8Array(this.seededTerrainAuthority.biome);
+    const water = new Uint8Array(this.seededTerrainAuthority.water);
+    const buildability = new Uint8Array(
+      this.seededTerrainAuthority.buildability,
+    );
+    let waterTruthChanged = false;
+
+    for (const edit of edits) {
+      if (edit.frameId !== surfaceFrameId) continue;
+      if (
+        !Number.isSafeInteger(edit.cell.x) ||
+        !Number.isSafeInteger(edit.cell.y) ||
+        !terrain.inBounds(edit.cell.x, edit.cell.y)
+      )
+        throw new Error(
+          `world layout terrain edit ${edit.id} is outside the primary surface`,
+        );
+      const index = terrain.idx(edit.cell.x, edit.cell.y);
+      if (edit.elevation !== undefined) {
+        const normalized =
+          edit.elevation / COLONY.world.heightScale + COLONY.world.seaLevel;
+        if (!Number.isFinite(Math.fround(normalized)))
+          throw new Error(
+            `world layout terrain edit ${edit.id} has an unsupported elevation`,
+          );
+        elevation[index] = normalized;
+        waterTruthChanged = true;
+      }
+      if (edit.biome !== undefined) {
+        biome[index] = edit.biome;
+        water[index] =
+          edit.biome === Biome.Ocean ||
+          edit.biome === Biome.Shallows ||
+          edit.biome === Biome.River
+            ? 1
+            : 0;
+        waterTruthChanged = true;
+      }
+      if (edit.buildability !== undefined)
+        buildability[index] = edit.buildability;
+    }
+
+    const distanceToWater = new Int32Array(
+      this.seededTerrainAuthority.distanceToWater,
+    );
+    if (waterTruthChanged) {
+      distanceToWater.fill(-1);
+      const queue = new Int32Array(terrain.size * terrain.size);
+      let read = 0;
+      let write = 0;
+      for (let index = 0; index < elevation.length; index++)
+        if (
+          water[index] === 1 ||
+          elevation[index]! < COLONY.world.seaLevel
+        ) {
+          distanceToWater[index] = 0;
+          queue[write++] = index;
+        }
+      while (read < write) {
+        const index = queue[read++]!;
+        const x = index % terrain.size;
+        const y = Math.floor(index / terrain.size);
+        const distance = distanceToWater[index]! + 1;
+        for (const [dx, dy] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ] as const) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (!terrain.inBounds(nx, ny)) continue;
+          const neighbor = terrain.idx(nx, ny);
+          if (distanceToWater[neighbor] !== -1) continue;
+          distanceToWater[neighbor] = distance;
+          queue[write++] = neighbor;
+        }
+      }
+    }
+    return { elevation, biome, water, buildability, distanceToWater };
+  }
+
+  /** Build an isolated Terrain view over preflight arrays without touching the live simulation. */
+  private preflightTerrain(
+    authority: MaterializedTerrainAuthority,
+  ): Terrain {
+    const live = this.sim.state.terrain;
+    return Object.assign(Object.create(Object.getPrototypeOf(live)), {
+      size: live.size,
+      elev: authority.elevation,
+      moisture: new Float32Array(live.moisture),
+      biome: authority.biome,
+      water: authority.water,
+      buildable: authority.buildability,
+      distToWater: authority.distanceToWater,
+      landing: { ...live.landing },
+    }) as Terrain;
+  }
+
+  private catalogPlacement(
+    definitionId: string,
+  ):
+    | {
+        readonly definition: PlaceableDefinition;
+        readonly zone: PlacementZone;
+      }
+    | null {
+    const match = /^zoned-plot:(residential|commercial):(compact|big|estate|grand)$/.exec(
+      definitionId,
+    );
+    if (!match) return null;
+    const zone = match[1] as PlacementZone;
+    const sizeName = match[2]!.toUpperCase() as ZonedPlotSize;
+    return { definition: zonedPlotDefinition(zone, sizeName), zone };
+  }
+
+  private placementSignature(placement: RuntimeZonedPlacement): string {
+    return JSON.stringify({
+      id: placement.id,
+      definitionId: placement.definitionId,
+      frameId: placement.frameId,
+      layer: placement.layer,
+      source: placement.source,
+      cells: [...placement.cells].sort((left, right) =>
+        left.y - right.y || left.x - right.x,
+      ),
+      bounds: placement.bounds,
+      vertical: placement.vertical,
+      anchors: [...placement.anchors].sort((left, right) =>
+        compareCodeUnits(left.id, right.id),
+      ),
+      ...(placement.orientation ? { orientation: placement.orientation } : {}),
+    });
+  }
+
+  private validateAuthoritativePlacements(
+    candidate: HydratedWorldLayout,
+    surfaceFrameId: string,
+    terrainAuthority: MaterializedTerrainAuthority,
+  ): void {
+    const terrain = this.preflightTerrain(terrainAuthority);
+    if (this.seededPlacementSignatures === null)
+      this.seededPlacementSignatures = new Set(
+        this.runtimeZonedPlacements(surfaceFrameId).map((placement) =>
+          this.placementSignature(placement),
+        ),
+      );
+    const surfaceRoadCells = new Set(
+      candidate.roads.map((road) => `${road.x},${road.y}`),
+    );
+    const renderedRoadCells = conservativeRoadRibbonBlockedCells(
+      [...candidate.roadWays],
+      terrain,
+    );
+    const reservationsByCell = new Map<string, WorldLayoutReservation[]>();
+    for (const reservation of candidate.reservations)
+      for (const cell of reservation.cells) {
+        const key = this.worldLayoutCellKey(reservation.frameId, cell);
+        const values = reservationsByCell.get(key) ?? [];
+        values.push(reservation);
+        reservationsByCell.set(key, values);
+      }
+    const zonesByCell = new Map<string, WorldLayoutZone[]>();
+    for (const zone of candidate.zones)
+      for (const cell of zone.cells) {
+        const key = this.worldLayoutCellKey(zone.frameId, cell);
+        const values = zonesByCell.get(key) ?? [];
+        values.push(zone);
+        zonesByCell.set(key, values);
+      }
+
+    const occupiedVolumes = new Map<
+      string,
+      { readonly id: string; readonly vertical: RuntimeZonedPlacement["vertical"] }[]
+    >();
+    const volumeOverlaps = (
+      left: RuntimeZonedPlacement["vertical"],
+      right: RuntimeZonedPlacement["vertical"],
+    ): boolean =>
+      left.min - left.clearanceBelow < right.max + right.clearanceAbove &&
+      right.min - right.clearanceBelow < left.max + left.clearanceAbove;
+
+    for (const placement of candidate.zonedPlacements) {
+      const evidence: string[] = [];
+      const exactLegacySeed = this.seededPlacementSignatures.has(
+        this.placementSignature(placement),
+      );
+      const catalog = this.catalogPlacement(placement.definitionId);
+      if (placement.definitionId.startsWith("zoned-plot:") && !catalog)
+        evidence.push("UNKNOWN_CATALOG_DEFINITION");
+
+      if (catalog) {
+        if (!placement.orientation) evidence.push("ORIENTATION_REQUIRED");
+        else {
+          const footprint = catalog.definition.footprint;
+          if (footprint.type !== "front-centred-rectangle")
+            evidence.push("CATALOG_FOOTPRINT_TYPE_MISMATCH");
+          else {
+            const width =
+              placement.orientation === "n" || placement.orientation === "s"
+                ? footprint.width
+                : footprint.depth;
+            const height =
+              placement.orientation === "n" || placement.orientation === "s"
+                ? footprint.depth
+                : footprint.width;
+            const cellKeys = new Set(
+              placement.cells.map((cell) => `${cell.x},${cell.y}`),
+            );
+            if (
+              placement.bounds.w !== width ||
+              placement.bounds.h !== height ||
+              placement.cells.length !== width * height
+            )
+              evidence.push("CATALOG_FOOTPRINT_MISMATCH");
+            else
+              for (
+                let y = placement.bounds.y;
+                y < placement.bounds.y + height;
+                y++
+              )
+                for (
+                  let x = placement.bounds.x;
+                  x < placement.bounds.x + width;
+                  x++
+                )
+                  if (!cellKeys.has(`${x},${y}`))
+                    evidence.push("CATALOG_FOOTPRINT_MISMATCH");
+          }
+        }
+      }
+
+      if (placement.frameId === surfaceFrameId) {
+        const overlappingOccupiedCells = new Set<string>();
+        const overlappingReservedCells = new Set<string>();
+        for (const cell of placement.cells) {
+          const spatialKey = this.worldLayoutCellKey(placement.frameId, cell);
+          const cellKey = `${cell.x},${cell.y}`;
+          if (
+            (occupiedVolumes.get(spatialKey) ?? []).some((prior) =>
+              volumeOverlaps(placement.vertical, prior.vertical),
+            )
+          )
+            overlappingOccupiedCells.add(cellKey);
+          if (
+            (reservationsByCell.get(spatialKey) ?? []).some((reservation) =>
+              volumeOverlaps(placement.vertical, reservation.vertical),
+            )
+          )
+            overlappingReservedCells.add(cellKey);
+        }
+        const genericDefinition: PlaceableDefinition = catalog?.definition ?? {
+          id: placement.definitionId,
+          kind: "zoned-plot",
+          footprint: { type: "supplied-cells" },
+          vertical: {
+            minOffset: 0,
+            maxOffset: 0,
+            clearanceBelow: placement.vertical.clearanceBelow,
+            clearanceAbove: placement.vertical.clearanceAbove,
+          },
+          terrain: {
+            water: "forbid",
+            shore: "allow",
+            minBuildability: 1,
+          },
+          requiresRoadConnection: false,
+          renderedRoadClearanceCells: 0,
+        };
+        // Connectivity is a separate network invariant. Persisted footprints still use the exact
+        // catalog terrain/volume policy, but do not invent a transient road anchor on import.
+        const definition = {
+          ...genericDefinition,
+          requiresRoadConnection: false,
+        };
+        const survey = surveyPlacement({
+          definition,
+          context: {
+            terrain,
+            layoutRevision: candidate.layoutRevision,
+            logicalRoadCells: surfaceRoadCells,
+            renderedRoadCells,
+            occupiedCells: overlappingOccupiedCells,
+            reservedCells: overlappingReservedCells,
+          },
+          cells: placement.cells,
+          ...(placement.orientation
+            ? { orientation: placement.orientation }
+            : {}),
+          anchors: placement.anchors
+            .filter((anchor) =>
+              ["gate", "road", "centre"].includes(anchor.id),
+            )
+            .map((anchor) => ({
+              id: anchor.id as "gate" | "road" | "centre",
+              cell: anchor.cell,
+            })),
+          ...(catalog ? { zone: catalog.zone } : {}),
+        });
+        // Existing seeded parcels predate the exact shore/ribbon contract. Grandfather only their
+        // byte-for-byte durable payload; any edited or newly imported placement is fully surveyed.
+        if (!exactLegacySeed)
+          evidence.push(...survey.failures.map((failure) => failure.code));
+        if (catalog) {
+          const sameVertical =
+            Math.abs(survey.vertical.min - placement.vertical.min) < 1e-5 &&
+            Math.abs(survey.vertical.max - placement.vertical.max) < 1e-5 &&
+            survey.vertical.clearanceBelow ===
+              placement.vertical.clearanceBelow &&
+            survey.vertical.clearanceAbove ===
+              placement.vertical.clearanceAbove;
+          if (!sameVertical) evidence.push("CATALOG_VERTICAL_MISMATCH");
+        }
+      }
+
+      for (const cell of placement.cells) {
+        const key = this.worldLayoutCellKey(placement.frameId, cell);
+        for (const prior of occupiedVolumes.get(key) ?? [])
+          if (volumeOverlaps(placement.vertical, prior.vertical))
+            evidence.push(`PLACEMENT_COLLISION:${prior.id}`);
+        for (const reservation of reservationsByCell.get(key) ?? [])
+          if (volumeOverlaps(placement.vertical, reservation.vertical))
+            evidence.push(`RESERVED_VOLUME:${reservation.id}`);
+
+        const zones = zonesByCell.get(key) ?? [];
+        for (const zone of zones) {
+          if (!volumeOverlaps(placement.vertical, zone.vertical)) continue;
+          if (zone.kind === "protected")
+            evidence.push(`ZONE_MISMATCH:${zone.id}:protected`);
+          else if (
+            catalog &&
+            zone.kind !== catalog.zone &&
+            zone.kind !== "mixed-use"
+          )
+            evidence.push(`ZONE_MISMATCH:${zone.id}:${zone.kind}`);
+        }
+      }
+
+      if (evidence.length > 0) {
+        const canonicalEvidence = [...new Set(evidence)].sort(compareCodeUnits);
+        throw new WorldLayoutPreflightError(
+          placement.id,
+          canonicalEvidence,
+          `world layout placement ${placement.id} failed preflight: ${canonicalEvidence.join(", ")}`,
+        );
+      }
+
+      for (const cell of placement.cells) {
+        const key = this.worldLayoutCellKey(placement.frameId, cell);
+        const values = occupiedVolumes.get(key) ?? [];
+        values.push({ id: placement.id, vertical: placement.vertical });
+        occupiedVolumes.set(key, values);
+      }
+    }
+  }
+
+  /** Complete side-effect-free candidate validation shared by import CAS and boot hydration. */
+  preflightWorldLayout(document: WorldLayoutDocument): HydratedWorldLayout {
     const candidate = applyWorldLayoutDocument(document);
     const expectedWorldId = `seed-${this.worldSeed}`;
-    if (candidate.worldId !== expectedWorldId || candidate.seed !== this.worldSeed)
+    if (
+      candidate.worldId !== expectedWorldId ||
+      candidate.seed !== this.worldSeed
+    )
       throw new Error(
         `world layout identity mismatch: expected ${expectedWorldId}/${this.worldSeed}`,
       );
@@ -2949,20 +3511,102 @@ export class ColonyRuntime {
         );
     }
 
-    // V1 runtime can faithfully materialize the seeded Parcel/Shop records but cannot yet construct
-    // a brand-new Parcel/Shop from generic persisted placement geometry. Refuse such a document
-    // before publishing any roads, terrain edits or frames instead of presenting split truth to the
-    // renderer, survey and placement validator.
-    const runtimePlacements = this.runtimeZonedPlacements(
+    // Materialize every derived authority here even when the caller only wants an import dry-run.
+    // This catches float overflow, malformed graph state and placement policy before any CAS write.
+    this.materializeLayoutAuthority(candidate);
+    const terrainAuthority = this.materializeTerrainAuthority(
+      candidate.terrainEdits,
       seedRegistry.surfaceFrameId,
     );
+    this.validateAuthoritativePlacements(
+      candidate,
+      seedRegistry.surfaceFrameId,
+      terrainAuthority,
+    );
+    return candidate;
+  }
+
+  /** Public-safe policy lookup: ownerRef and reservation purpose never cross this boundary. */
+  worldLayoutZonesAt(
+    frameId: string,
+    x: number,
+    y: number,
+  ): readonly RuntimeLayoutZone[] {
+    return (this.layoutZonesByCell.get(`${frameId}:${x},${y}`) ?? []).map(
+      (zone) => ({ ...zone }),
+    );
+  }
+
+  /** Public-safe reservation lookup: only stable spatial IDs are exposed. */
+  worldLayoutReservationIdsAt(
+    frameId: string,
+    x: number,
+    y: number,
+  ): readonly string[] {
+    return [...(this.layoutReservationIdsByCell.get(`${frameId}:${x},${y}`) ?? [])];
+  }
+
+  /** Stable public-safe network registry projection; graph internals remain runtime-owned. */
+  worldLayoutNetworkIds(): readonly string[] {
+    return this.layoutNetworks
+      .map((network) => network.id)
+      .sort(compareCodeUnits);
+  }
+
+  /** Deterministic graph traversal over the authoritative network registry. */
+  worldLayoutNetworkRoute(
+    networkId: string,
+    fromNodeId: string,
+    toNodeId: string,
+    mode?: WorldLayoutNetworkMode,
+  ): readonly string[] | null {
+    const graph = this.layoutNetworkGraphs.get(networkId);
     if (
-      this.worldLayoutPlacementSignature(candidate.zonedPlacements) !==
-      this.worldLayoutPlacementSignature(runtimePlacements)
+      !graph ||
+      !graph.nodeIds.has(fromNodeId) ||
+      !graph.nodeIds.has(toNodeId) ||
+      (mode !== undefined && !graph.modes.has(mode))
     )
+      return null;
+    if (fromNodeId === toNodeId) return [fromNodeId];
+    const queue = [fromNodeId];
+    const previous = new Map<string, string | null>([[fromNodeId, null]]);
+    for (let read = 0; read < queue.length; read++) {
+      const nodeId = queue[read]!;
+      for (const hop of graph.adjacency.get(nodeId) ?? []) {
+        if (mode !== undefined && !hop.modes.includes(mode)) continue;
+        if (previous.has(hop.toNodeId)) continue;
+        previous.set(hop.toNodeId, nodeId);
+        if (hop.toNodeId === toNodeId) {
+          const route: string[] = [];
+          let cursor: string | null = toNodeId;
+          while (cursor !== null) {
+            route.push(cursor);
+            cursor = previous.get(cursor) ?? null;
+          }
+          return route.reverse();
+        }
+        queue.push(hop.toNodeId);
+      }
+    }
+    return null;
+  }
+
+  /** WB.1d — validate and fully materialize a candidate before publishing it. This method is a boot
+   *  seam: a renderer/simulation already running may never observe a half-replaced layout. */
+  hydrateWorldLayout(document: WorldLayoutDocument): HydratedWorldLayout {
+    if (this.running)
       throw new Error(
-        "world layout contains zoned placements this runtime cannot reconstruct",
+        "world layout hydration must complete before runtime start",
       );
+
+    const candidate = this.preflightWorldLayout(document);
+    const seedRegistry = this.seededWorldSurvey();
+    const authority = this.materializeLayoutAuthority(candidate);
+    const terrainAuthority = this.materializeTerrainAuthority(
+      candidate.terrainEdits,
+      seedRegistry.surfaceFrameId,
+    );
 
     const roadCells = candidate.roads.map((road) => ({
       x: road.x,
@@ -2995,22 +3639,30 @@ export class ColonyRuntime {
       if (tiles[tileKey({ x: tile.x, y: tile.y + 1 })]) tile.mask |= RoadMask.S;
       if (tiles[tileKey({ x: tile.x - 1, y: tile.y })]) tile.mask |= RoadMask.W;
     }
-    const landscapeEdits = landscapeOffsetsFromTerrainEdits(
-      candidate.terrainEdits,
-      (x, y) => this.sim.state.terrain.worldY(x, y),
-    );
     const canonical = parseWorldLayoutDocument(
       serializeWorldLayoutDocument(document),
     );
 
     // One synchronous publish boundary. Everything above is isolated and may throw without changing
     // the currently observable runtime or builder store.
+    this.sim.state.terrain.elev.set(terrainAuthority.elevation);
+    this.sim.state.terrain.biome.set(terrainAuthority.biome);
+    this.sim.state.terrain.water.set(terrainAuthority.water);
+    this.sim.state.terrain.buildable.set(terrainAuthority.buildability);
+    this.sim.state.terrain.distToWater.set(terrainAuthority.distanceToWater);
     this.activeWorldLayout = canonical;
     this.layoutFrames = candidate.frames;
+    this.layoutPrimarySurfaceFrameId = seedRegistry.surfaceFrameId;
     this.layoutPortals = candidate.portals;
     this.layoutTerrainEdits = candidate.terrainEdits;
     this.layoutZonedPlacements = candidate.zonedPlacements;
     this.layoutRoads = candidate.roads;
+    this.layoutZones = authority.zones;
+    this.layoutReservations = authority.reservations;
+    this.layoutNetworks = authority.networks;
+    this.layoutZonesByCell = authority.zonesByCell;
+    this.layoutReservationIdsByCell = authority.reservationIdsByCell;
+    this.layoutNetworkGraphs = authority.networkGraphs;
     this.roadWays = candidate.roadWays.map((way) => ({
       ...way,
       path: way.path.map((cell) => ({ ...cell })),
@@ -3021,7 +3673,10 @@ export class ColonyRuntime {
     this.sim.state.roadWays = this.roadWays;
     this.sim.state.roadsVersion++;
     this.lastPlacementSurvey = null;
-    useRoadNetwork.setState({ tiles, landscapeEdits: new Map(landscapeEdits) });
+    // Terrain arrays now hold the absolute durable truth. Reapplying a renderer offset here would
+    // double the edit; future builder offsets start from this hydrated base and capture back to an
+    // absolute elevation on save.
+    useRoadNetwork.setState({ tiles, landscapeEdits: new Map() });
     return candidate;
   }
 
@@ -3035,10 +3690,14 @@ export class ColonyRuntime {
 
     const candidate = applyWorldLayoutDocument(document);
     const expectedWorldId = `seed-${this.worldSeed}`;
-    if (candidate.worldId !== expectedWorldId || candidate.seed !== this.worldSeed)
+    if (
+      candidate.worldId !== expectedWorldId ||
+      candidate.seed !== this.worldSeed
+    )
       throw new Error(
         `world layout identity mismatch: expected ${expectedWorldId}/${this.worldSeed}`,
       );
+    const authority = this.materializeLayoutAuthority(candidate);
     const canonical = parseWorldLayoutDocument(
       serializeWorldLayoutDocument(document),
     );
@@ -3059,7 +3718,9 @@ export class ColonyRuntime {
       canonical.revision.number === active.revision.number + 1 &&
       canonical.revision.parentHash === active.revision.contentHash;
     if (!sameHead && !nextHead)
-      throw new Error("saved world layout revision does not extend the active head");
+      throw new Error(
+        "saved world layout revision does not extend the active head",
+      );
 
     // One metadata-only publish boundary. Candidate arrays are already isolated copies produced by
     // the adapter; no simulation, Zustand or renderer-owned value is touched here.
@@ -3069,6 +3730,12 @@ export class ColonyRuntime {
     this.layoutTerrainEdits = candidate.terrainEdits;
     this.layoutZonedPlacements = candidate.zonedPlacements;
     this.layoutRoads = candidate.roads;
+    this.layoutZones = authority.zones;
+    this.layoutReservations = authority.reservations;
+    this.layoutNetworks = authority.networks;
+    this.layoutZonesByCell = authority.zonesByCell;
+    this.layoutReservationIdsByCell = authority.reservationIdsByCell;
+    this.layoutNetworkGraphs = authority.networkGraphs;
     return parseWorldLayoutDocument(serializeWorldLayoutDocument(canonical));
   }
 
@@ -3085,19 +3752,40 @@ export class ColonyRuntime {
       const index = pending.findIndex(
         (frame) => !frame.parentId || registry.frames.has(frame.parentId),
       );
-      if (index < 0) throw new Error("world layout contains an unresolved frame graph");
+      if (index < 0)
+        throw new Error("world layout contains an unresolved frame graph");
       const [frame] = pending.splice(index, 1);
       registry.addFrame({ ...frame!, metadata: {} });
     }
-    const surfaceAddress = registry.frames.get(registry.surfaceFrameId)!.address;
-    const orientationYaw = { n: 0, e: Math.PI / 2, s: Math.PI, w: -Math.PI / 2 };
+    const surfaceAddress = registry.frames.get(
+      registry.surfaceFrameId,
+    )!.address;
+    const orientationYaw = {
+      n: 0,
+      e: Math.PI / 2,
+      s: Math.PI,
+      w: -Math.PI / 2,
+    };
     for (const placement of this.layoutZonedPlacements ?? []) {
-      const kind = placement.definitionId.includes("commercial")
+      const definition = placement.definitionId.toLowerCase();
+      const kind = definition.includes("commercial")
         ? ("commercial-plot" as const)
-        : ("residential-plot" as const);
+        : definition.startsWith("zoned-plot:residential")
+          ? ("residential-plot" as const)
+          : definition.includes("garage")
+            ? ("garage" as const)
+            : definition.includes("mall")
+              ? ("mall" as const)
+              : definition.includes("building") ||
+                  definition.includes("kooker-hq") ||
+                  definition.includes("library")
+                ? ("building" as const)
+                : ("structure" as const);
+      const frameAddress =
+        registry.frames.get(placement.frameId)?.address ?? surfaceAddress;
       registry.addRecord({
         id: placement.id,
-        address: `${surfaceAddress}/placement/${placement.id}`,
+        address: `${frameAddress}/placement/${placement.id}`,
         frameId: placement.frameId,
         layer: placement.layer,
         kind,
@@ -3105,7 +3793,9 @@ export class ColonyRuntime {
           type: "footprint",
           bounds: { ...placement.bounds },
           elevation: placement.vertical.min,
-          yaw: placement.orientation ? orientationYaw[placement.orientation] : 0,
+          yaw: placement.orientation
+            ? orientationYaw[placement.orientation]
+            : 0,
           vertical: { ...placement.vertical },
         },
         metadata: {
@@ -4309,13 +4999,55 @@ export class ColonyRuntime {
     if (!this.activeWorldLayout) return context;
 
     const reservedCells = new Set(context.reservedCells);
+    const surfaceFrameId =
+      this.layoutPrimarySurfaceFrameId ?? this.seededWorldSurvey().surfaceFrameId;
     for (const placement of this.layoutZonedPlacements ?? [])
-      for (const cell of placement.cells)
-        reservedCells.add(`${cell.x},${cell.y}`);
+      if (placement.frameId === surfaceFrameId)
+        for (const cell of placement.cells)
+          reservedCells.add(`${cell.x},${cell.y}`);
+    for (const reservation of this.layoutReservations)
+      if (reservation.frameId === surfaceFrameId)
+        for (const cell of reservation.cells)
+          reservedCells.add(`${cell.x},${cell.y}`);
     return {
       ...context,
       layoutRevision: worldLayoutRevisionId(this.activeWorldLayout.revision),
       reservedCells,
+    };
+  }
+
+  private applyWorldLayoutZonePolicy(
+    survey: PlacementSurveyResult,
+    requested: "residential" | "commercial",
+  ): PlacementSurveyResult {
+    if (!this.activeWorldLayout || this.layoutZones.length === 0) return survey;
+    const surfaceFrameId =
+      this.layoutPrimarySurfaceFrameId ?? this.seededWorldSurvey().surfaceFrameId;
+    const allowed = new Set<WorldLayoutZoneKind>([requested, "mixed-use"]);
+    const zoneFailures: PlacementFailure[] = [];
+    for (const cell of survey.cells) {
+      const zones = this.layoutZonesByCell.get(
+        this.worldLayoutCellKey(surfaceFrameId, cell),
+      );
+      if (!zones || !zones.some((zone) => allowed.has(zone.kind)))
+        zoneFailures.push({
+          code: "ZONE_MISMATCH",
+          cell: { ...cell },
+          detail: zones?.length
+            ? `authored zones ${zones.map((zone) => zone.kind).join(",")} do not allow ${requested}`
+            : `no authored zone allows ${requested}`,
+        });
+    }
+    if (zoneFailures.length === 0) return survey;
+    return {
+      ...survey,
+      ok: false,
+      failures: [...survey.failures, ...zoneFailures].sort(
+        (left, right) =>
+          (left.cell?.y ?? -Infinity) - (right.cell?.y ?? -Infinity) ||
+          (left.cell?.x ?? -Infinity) - (right.cell?.x ?? -Infinity) ||
+          compareCodeUnits(left.code, right.code),
+      ),
     };
   }
 
@@ -4329,7 +5061,7 @@ export class ColonyRuntime {
     type: "residential" | "commercial",
     expectedLayoutRevision?: string,
   ): PlacementSurveyResult {
-    const survey = runZonedPlotSurvey({
+    const surveyed = runZonedPlotSurvey({
       context: this.placementContext(),
       x: cx,
       y: cy,
@@ -4338,6 +5070,7 @@ export class ColonyRuntime {
       zone: type,
       ...(expectedLayoutRevision ? { expectedLayoutRevision } : {}),
     });
+    const survey = this.applyWorldLayoutZonePolicy(surveyed, type);
     this.lastPlacementSurvey = survey;
     return survey;
   }
@@ -4417,6 +5150,34 @@ export class ColonyRuntime {
     this.neighborhood.parcels.push(lot);
     if (this.neighborhood.lots !== this.neighborhood.parcels)
       this.neighborhood.lots.push(lot);
+
+    if (this.activeWorldLayout) {
+      const surfaceFrameId =
+        this.layoutPrimarySurfaceFrameId ??
+        this.seededWorldSurvey().surfaceFrameId;
+      const placementId = `placement:${id}`;
+      const nextPlacement: RuntimeZonedPlacement = {
+        id: placementId,
+        definitionId: survey.definitionId,
+        frameId: surfaceFrameId,
+        layer: "surface",
+        source: "builder",
+        cells: survey.cells.map((cell) => ({ ...cell })),
+        bounds: { ...survey.bounds },
+        vertical: { ...survey.vertical },
+        anchors: survey.anchors.map((anchor) => ({
+          id: anchor.id,
+          cell: { ...anchor.cell },
+        })),
+        orientation,
+      };
+      this.layoutZonedPlacements = [
+        ...(this.layoutZonedPlacements ?? []).filter(
+          (placement) => placement.id !== placementId,
+        ),
+        nextPlacement,
+      ].sort((left, right) => compareCodeUnits(left.id, right.id));
+    }
 
     this.emit();
     return { ok: true, survey, placedId: id };

@@ -47,6 +47,8 @@ import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
 import {
   BuilderPanel,
+  WORLD_LAYOUT_IMPORT_MAX_BYTES,
+  type WorldLayoutHistoryEntry,
   type WorldLayoutOperatorControls,
   type WorldLayoutOperatorStatus,
 } from "./BuilderPanel";
@@ -62,6 +64,7 @@ import {
   type WorldLayoutSaveInput,
 } from "../worldLayoutStore";
 import {
+  parseWorldLayoutDocument,
   serializeWorldLayoutDocument,
   type WorldLayoutDocument,
 } from "../spatial/worldLayoutDocument";
@@ -368,13 +371,84 @@ function worldLayoutSaveInput(
   return {
     worldId: document.worldId,
     seed: document.seed,
+    generator: document.generator,
     frames: document.frames,
+    zones: document.zones,
+    reservations: document.reservations,
     placements: document.placements,
     roads: document.roads,
     ways: document.ways,
     terrainEdits: document.terrainEdits,
+    networks: document.networks,
     portals: document.portals,
   };
+}
+
+function sameCanonicalValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/**
+ * Strict import boundary for the currently supported runtime.
+ *
+ * The document parser verifies exact schema keys, referential integrity and its declared SHA-256
+ * hash. These compatibility checks additionally prevent an import from changing world identity or
+ * the generator-owned universe/world/region frames. Generic durable placements are validated and
+ * materialized by the runtime boot barrier, so an import may legitimately change them. No store
+ * write occurs until this function returns successfully.
+ */
+export function validatedWorldLayoutImportSaveInput(
+  serialized: string,
+  current: WorldLayoutDocument,
+  preflight: (document: WorldLayoutDocument) => void,
+): WorldLayoutSaveInput {
+  if (
+    new TextEncoder().encode(serialized).byteLength >
+    WORLD_LAYOUT_IMPORT_MAX_BYTES
+  )
+    throw new Error("World layout import exceeds the 5 MiB safety limit");
+  const imported = parseWorldLayoutDocument(serialized);
+  if (imported.worldId !== current.worldId)
+    throw new Error(
+      `World layout import belongs to ${imported.worldId}, not ${current.worldId}`,
+    );
+  if (imported.seed !== current.seed)
+    throw new Error(
+      `World layout import seed ${imported.seed} does not match ${current.seed}`,
+    );
+  if (!sameCanonicalValue(imported.generator, current.generator))
+    throw new Error(
+      `World layout import generator ${imported.generator.id}/${imported.generator.version}/${imported.generator.placeableCatalogVersion} is incompatible with the active world`,
+    );
+
+  const importedFrames = new Map(
+    imported.frames.map((frame) => [frame.id, frame] as const),
+  );
+  for (const frame of current.frames) {
+    if (!["universe", "world", "region"].includes(frame.kind)) continue;
+    if (!sameCanonicalValue(importedFrames.get(frame.id), frame))
+      throw new Error(
+        `World layout import is incompatible with generator frame ${frame.id}`,
+      );
+  }
+  // The caller supplies the runtime's complete pure preflight so seeded terrain, catalog and
+  // collision policy close before the CAS transaction is opened.
+  preflight(imported);
+  return worldLayoutSaveInput(imported);
+}
+
+export function publicWorldLayoutHistoryEntries(
+  revisions: readonly {
+    readonly layoutRevision: string;
+    readonly document: WorldLayoutDocument;
+  }[],
+  activeLayoutRevision: string,
+): readonly WorldLayoutHistoryEntry[] {
+  return revisions.map((revision) => ({
+    revisionNumber: revision.document.revision.number,
+    revisionId: revision.layoutRevision,
+    active: revision.layoutRevision === activeLayoutRevision,
+  }));
 }
 
 function useRuntime(): ColonyRuntime {
@@ -613,7 +687,7 @@ export function ColonyApp() {
       > | null;
       readonly message?: string;
     }>({ status: null });
-  const worldLayoutSaveInFlight = useRef(false);
+  const worldLayoutMutationInFlight = useRef(false);
   useEffect(() => {
     if (
       import.meta.env.DEV &&
@@ -1029,7 +1103,8 @@ export function ColonyApp() {
       (worldLayoutHead ? (worldLayoutDirty ? "dirty" : "clean") : "unavailable");
 
   const saveWorldLayoutRevision = async (): Promise<void> => {
-    if (worldLayoutSaveInFlight.current) return;
+    if (worldLayoutMutationInFlight.current)
+      throw new Error("A world layout mutation is already in progress");
     if (!worldLayoutPersistence.store || !worldLayoutHead) {
       setWorldLayoutOperatorFeedback({
         status: "error",
@@ -1037,7 +1112,7 @@ export function ColonyApp() {
       });
       return;
     }
-    worldLayoutSaveInFlight.current = true;
+    worldLayoutMutationInFlight.current = true;
     setWorldLayoutOperatorFeedback({
       status: "saving",
       message: "Validating and saving a new immutable revision…",
@@ -1077,7 +1152,207 @@ export function ColonyApp() {
             : "World layout revision save failed",
       });
     } finally {
-      worldLayoutSaveInFlight.current = false;
+      worldLayoutMutationInFlight.current = false;
+    }
+  };
+
+  const loadWorldLayoutHistory = async (): Promise<
+    readonly WorldLayoutHistoryEntry[]
+  > => {
+    if (worldLayoutMutationInFlight.current)
+      throw new Error("A world layout mutation is already in progress");
+    if (!worldLayoutPersistence.store || !worldLayoutHead)
+      throw new Error("World layout persistence is unavailable");
+    setWorldLayoutOperatorFeedback({
+      status: "saving",
+      message: "Loading bounded immutable history…",
+    });
+    try {
+      const revisions = await worldLayoutPersistence.store.history(
+        worldLayoutHead.document.worldId,
+        50,
+      );
+      const entries = publicWorldLayoutHistoryEntries(
+        revisions,
+        revisions[0]?.layoutRevision ?? worldLayoutHead.revisionId,
+      );
+      const durableHead = revisions[0]?.layoutRevision ?? null;
+      if (durableHead !== worldLayoutHead.revisionId) {
+        setWorldLayoutOperatorFeedback({
+          status: "conflict",
+          message:
+            "The durable world head changed in another session. History is current; reload before writing.",
+        });
+        return entries;
+      }
+      setWorldLayoutOperatorFeedback({
+        status: null,
+        message: `Loaded ${entries.length} immutable revision${entries.length === 1 ? "" : "s"}.`,
+      });
+      return entries;
+    } catch (error: unknown) {
+      setWorldLayoutOperatorFeedback({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "World layout history could not be loaded",
+      });
+      throw error;
+    }
+  };
+
+  const assertNoUnsavedWorldLayoutEdits = (): WorldLayoutDocument => {
+    if (!worldLayoutHead)
+      throw new Error("World layout persistence is unavailable");
+    const captured = runtime.captureWorldLayout();
+    if (
+      captured.revision.contentHash !==
+      worldLayoutHead.document.revision.contentHash
+    )
+      throw new Error(
+        "Save or discard the current map edits before replacing the durable layout",
+      );
+    return captured;
+  };
+
+  const rehydrateCommittedWorldLayout = (
+    revisionId: string,
+    document: WorldLayoutDocument,
+    message: string,
+  ): void => {
+    // Do not metadata-adopt a changed payload. Enter the boot barrier immediately; its effect
+    // cleanup stops the current runtime, then fully validates and hydrates the committed head before
+    // simulation/render subscriptions restart.
+    if (!worldLayoutPersistence.coordinator)
+      throw new Error("World layout persistence is unavailable");
+    worldLayoutPersistence.coordinator.invalidateCompletedAttempt();
+    setWorldLayoutHead({ revisionId, document });
+    setWorldLayoutOperatorFeedback({ status: "saving", message });
+    setWorldLayoutBoot({ status: "loading" });
+    retryWorldLayoutBoot();
+  };
+
+  const rollbackWorldLayout = async (
+    targetLayoutRevision: string,
+  ): Promise<void> => {
+    if (worldLayoutMutationInFlight.current)
+      throw new Error("A world layout mutation is already in progress");
+    if (!worldLayoutPersistence.store || !worldLayoutHead)
+      throw new Error("World layout persistence is unavailable");
+    assertNoUnsavedWorldLayoutEdits();
+    worldLayoutMutationInFlight.current = true;
+    setWorldLayoutOperatorFeedback({
+      status: "saving",
+      message: "Validating rollback and appending it as a new revision…",
+    });
+    try {
+      const result = await worldLayoutPersistence.store.rollback(
+        worldLayoutHead.document.worldId,
+        targetLayoutRevision,
+        worldLayoutHead.revisionId,
+      );
+      if (result.status === "conflict") {
+        const message = `Rollback conflict: expected ${result.expectedLayoutRevision ?? "no head"}, current durable head is ${result.actualLayoutRevision ?? "none"}. Reload before retrying.`;
+        setWorldLayoutOperatorFeedback({ status: "conflict", message });
+        throw new Error(message);
+      }
+      if (result.status === "noop") {
+        runtime.adoptWorldLayoutRevision(result.revision.document);
+        setWorldLayoutHead({
+          revisionId: result.revision.layoutRevision,
+          document: result.revision.document,
+        });
+        setWorldLayoutOperatorFeedback({
+          status: null,
+          message: `R${result.revision.document.revision.number} already contains that layout; no duplicate was written.`,
+        });
+        return;
+      }
+      rehydrateCommittedWorldLayout(
+        result.revision.layoutRevision,
+        result.revision.document,
+        `Rollback committed as R${result.revision.document.revision.number}; rehydrating the complete layout…`,
+      );
+    } catch (error: unknown) {
+      setWorldLayoutOperatorFeedback((feedback) =>
+        feedback.status === "conflict"
+          ? feedback
+          : {
+              status: "error",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "World layout rollback failed",
+            },
+      );
+      throw error;
+    } finally {
+      worldLayoutMutationInFlight.current = false;
+    }
+  };
+
+  const importWorldLayout = async (serialized: string): Promise<void> => {
+    if (worldLayoutMutationInFlight.current)
+      throw new Error("A world layout mutation is already in progress");
+    if (!worldLayoutPersistence.store || !worldLayoutHead)
+      throw new Error("World layout persistence is unavailable");
+    const current = assertNoUnsavedWorldLayoutEdits();
+    // Strict hash/schema/identity/generator compatibility validation happens before the write.
+    const input = validatedWorldLayoutImportSaveInput(
+      serialized,
+      current,
+      (document) => {
+        runtime.preflightWorldLayout(document);
+      },
+    );
+    worldLayoutMutationInFlight.current = true;
+    setWorldLayoutOperatorFeedback({
+      status: "saving",
+      message: "Import is valid; committing it as a new immutable revision…",
+    });
+    try {
+      const result = await worldLayoutPersistence.store.save(
+        input,
+        worldLayoutHead.revisionId,
+      );
+      if (result.status === "conflict") {
+        const message = `Import conflict: expected ${result.expectedLayoutRevision ?? "no head"}, current durable head is ${result.actualLayoutRevision ?? "none"}. Reload before retrying.`;
+        setWorldLayoutOperatorFeedback({ status: "conflict", message });
+        throw new Error(message);
+      }
+      if (result.status === "noop") {
+        runtime.adoptWorldLayoutRevision(result.revision.document);
+        setWorldLayoutHead({
+          revisionId: result.revision.layoutRevision,
+          document: result.revision.document,
+        });
+        setWorldLayoutOperatorFeedback({
+          status: null,
+          message: `The imported layout already matches R${result.revision.document.revision.number}; no duplicate was written.`,
+        });
+        return;
+      }
+      rehydrateCommittedWorldLayout(
+        result.revision.layoutRevision,
+        result.revision.document,
+        `Import committed as R${result.revision.document.revision.number}; rehydrating the complete layout…`,
+      );
+    } catch (error: unknown) {
+      setWorldLayoutOperatorFeedback((feedback) =>
+        feedback.status === "conflict"
+          ? feedback
+          : {
+              status: "error",
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "World layout import failed",
+            },
+      );
+      throw error;
+    } finally {
+      worldLayoutMutationInFlight.current = false;
     }
   };
 
@@ -1125,7 +1400,7 @@ export function ColonyApp() {
       (worldLayoutDirty
         ? "The authored map differs from the durable head."
         : worldLayoutOperatorFeedback.message ??
-          "History, rollback and import are not enabled in this first persistence slice."),
+          "Immutable history, rollback-as-new-revision and validated JSON import are ready."),
     onSave:
       worldLayoutBoot.status === "ready" && !captureError
         ? saveWorldLayoutRevision
@@ -1133,6 +1408,18 @@ export function ColonyApp() {
     onExport:
       worldLayoutBoot.status === "ready" && !captureError
         ? exportWorldLayout
+        : undefined,
+    onShowHistory:
+      worldLayoutBoot.status === "ready" && !captureError
+        ? loadWorldLayoutHistory
+        : undefined,
+    onRollback:
+      worldLayoutBoot.status === "ready" && !captureError
+        ? rollbackWorldLayout
+        : undefined,
+    onValidateAndImport:
+      worldLayoutBoot.status === "ready" && !captureError
+        ? importWorldLayout
         : undefined,
   };
 

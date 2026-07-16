@@ -1,3 +1,4 @@
+import { applyWorldLayoutDocument } from "./spatial/worldLayoutAdapter";
 import {
   parseWorldLayoutDocument,
   worldLayoutRevisionId,
@@ -23,9 +24,7 @@ export interface WorldLayoutBootStore {
  */
 export interface WorldLayoutBootRuntime {
   captureWorldLayout(): WorldLayoutDocument | Promise<WorldLayoutDocument>;
-  hydrateWorldLayout(
-    document: WorldLayoutDocument,
-  ): void | Promise<void>;
+  hydrateWorldLayout(document: WorldLayoutDocument): void | Promise<void>;
 }
 
 export interface WorldLayoutBootOptions {
@@ -44,9 +43,7 @@ export interface WorldLayoutBootResult {
 export class WorldLayoutBootError extends Error {
   constructor(
     readonly code:
-      | "WORLD_ID_MISMATCH"
-      | "REVISION_MISMATCH"
-      | "CONFLICT_WITHOUT_HEAD",
+      "WORLD_ID_MISMATCH" | "REVISION_MISMATCH" | "CONFLICT_WITHOUT_HEAD",
     message: string,
   ) {
     super(message);
@@ -64,11 +61,15 @@ function saveInput(document: WorldLayoutDocument): WorldLayoutSaveInput {
   return {
     worldId: document.worldId,
     seed: document.seed,
+    generator: document.generator,
     frames: document.frames,
+    zones: document.zones,
+    reservations: document.reservations,
     placements: document.placements,
     roads: document.roads,
     ways: document.ways,
     terrainEdits: document.terrainEdits,
+    networks: document.networks,
     portals: document.portals,
   };
 }
@@ -99,15 +100,18 @@ function abortError(): DOMException {
   return new DOMException("World layout boot wait was aborted", "AbortError");
 }
 
-function waitForAttempt<T>(attempt: Promise<T>, signal?: AbortSignal): Promise<T> {
+function waitForAttempt<T>(
+  attempt: Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
   if (signal === undefined) return attempt;
   if (signal.aborted) return Promise.reject(abortError());
   return new Promise<T>((resolve, reject) => {
     const onAbort = (): void => reject(abortError());
     signal.addEventListener("abort", onAbort, { once: true });
-    attempt.then(resolve, reject).finally(() =>
-      signal.removeEventListener("abort", onAbort),
-    );
+    attempt
+      .then(resolve, reject)
+      .finally(() => signal.removeEventListener("abort", onAbort));
   });
 }
 
@@ -127,6 +131,7 @@ export class WorldLayoutBootCoordinator {
   private readonly store: WorldLayoutBootStore;
   private readonly runtime: WorldLayoutBootRuntime;
   private attempt?: Promise<WorldLayoutBootResult>;
+  private attemptSettled = true;
 
   constructor(options: WorldLayoutBootOptions) {
     this.worldId = requiredWorldId(options.worldId);
@@ -137,13 +142,35 @@ export class WorldLayoutBootCoordinator {
   boot(signal?: AbortSignal): Promise<WorldLayoutBootResult> {
     if (signal?.aborted) return Promise.reject(abortError());
     if (this.attempt === undefined) {
-      const attempt = this.run().catch((error: unknown) => {
-        if (this.attempt === attempt) this.attempt = undefined;
-        throw error;
-      });
+      this.attemptSettled = false;
+      const attempt = this.run().then(
+        (result) => {
+          if (this.attempt === attempt) this.attemptSettled = true;
+          return result;
+        },
+        (error: unknown) => {
+          if (this.attempt === attempt) {
+            this.attempt = undefined;
+            this.attemptSettled = true;
+          }
+          throw error;
+        },
+      );
       this.attempt = attempt;
     }
     return waitForAttempt(this.attempt, signal);
+  }
+
+  /**
+   * Forget a completed boot so the next call re-reads the durable head. Import and rollback use
+   * this only after their CAS transaction commits and before restarting the runtime boot barrier.
+   * Refusing to invalidate an active attempt prevents two hydrations from racing each other.
+   */
+  invalidateCompletedAttempt(): void {
+    if (this.attempt !== undefined && !this.attemptSettled)
+      throw new Error("Cannot invalidate an active world layout boot attempt");
+    this.attempt = undefined;
+    this.attemptSettled = true;
   }
 
   private async run(): Promise<WorldLayoutBootResult> {
@@ -158,6 +185,11 @@ export class WorldLayoutBootCoordinator {
         "WORLD_ID_MISMATCH",
         `Captured world layout ${captured.worldId} cannot initialize world ${this.worldId}`,
       );
+
+    // Exercise the exact adapter validation used by hydration before opening the persistence
+    // transaction. A malformed legacy way/road/reference candidate can therefore neither mutate
+    // the runtime nor strand an unusable first head in IndexedDB.
+    applyWorldLayoutDocument(captured);
 
     const result = await this.store.save(saveInput(captured), null);
     if (result.status === "saved")

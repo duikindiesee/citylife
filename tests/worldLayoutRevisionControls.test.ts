@@ -25,7 +25,7 @@ describe("WorldLayoutRevisionControls", () => {
       revisionId: `wl:v1:12:${"a".repeat(64)}`,
       status: "dirty",
       onSave: () => undefined,
-      onShowHistory: () => undefined,
+      onShowHistory: async () => [],
       onExport: () => undefined,
     };
 

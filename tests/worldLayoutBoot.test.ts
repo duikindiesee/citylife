@@ -205,6 +205,55 @@ describe("WorldLayoutBootCoordinator", () => {
     expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledTimes(1);
   });
 
+  it("re-reads and hydrates a newly committed head after explicit invalidation", async () => {
+    const first = stored(document("primary", 1));
+    const changed = stored(document("primary", 2));
+    const load = vi
+      .fn<WorldLayoutBootStore["load"]>()
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(changed);
+    const bootRuntime = runtime();
+    const coordinator = new WorldLayoutBootCoordinator({
+      worldId: "primary",
+      store: store({ load }),
+      runtime: bootRuntime,
+    });
+
+    await expect(coordinator.boot()).resolves.toMatchObject({
+      revision: first.layoutRevision,
+    });
+    coordinator.invalidateCompletedAttempt();
+    await expect(coordinator.boot()).resolves.toMatchObject({
+      revision: changed.layoutRevision,
+    });
+
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(bootRuntime.hydrateWorldLayout).toHaveBeenNthCalledWith(
+      1,
+      first.document,
+    );
+    expect(bootRuntime.hydrateWorldLayout).toHaveBeenNthCalledWith(
+      2,
+      changed.document,
+    );
+  });
+
+  it("refuses to invalidate an active shared boot attempt", async () => {
+    const pending = deferred<StoredWorldLayoutRevision | null>();
+    const coordinator = new WorldLayoutBootCoordinator({
+      worldId: "primary",
+      store: store({ load: vi.fn(() => pending.promise) }),
+      runtime: runtime(),
+    });
+
+    const boot = coordinator.boot();
+    expect(() => coordinator.invalidateCompletedAttempt()).toThrow(
+      "active world layout boot attempt",
+    );
+    pending.resolve(stored());
+    await expect(boot).resolves.toMatchObject({ ready: true });
+  });
+
   it("loses an initialization race safely and hydrates the winning durable head", async () => {
     const captured = document("primary", 1);
     const winner = stored(document("primary", 2));
