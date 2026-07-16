@@ -275,6 +275,7 @@ import {
 } from "./render/venuePlacement";
 import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
 import { roadComponents } from "./roadConnectivity";
+import { createWorldSurvey, type WorldSurveyRegistry } from "./worldSurvey";
 import {
   createRadio,
   tuneTo,
@@ -2512,6 +2513,35 @@ export class ColonyRuntime {
     };
     this.fpNarrating = false;
     this.fpNarration = "You step off the bus.";
+  }
+
+  /** Spec 152 — build a read-only authoritative registry from the same live state consumed by
+   *  runtime placement and the R3F renderer. The snapshot owns no browser state, so tests and
+   *  future persistence/export paths can consume the identical addresses and network graph. */
+  worldSurvey(): WorldSurveyRegistry {
+    const state = this.sim.state;
+    return createWorldSurvey({
+      terrain: state.terrain,
+      worldId: `seed-${this.worldSeed}`,
+      structures: state.structures,
+      buildings: state.buildings,
+      cityPlan: state.cityPlan,
+      neighborhood: state.neighborhood,
+      commercialDistrict: this.commercialDistrict,
+      roads: state.roads,
+      roadKind: state.roadKind,
+      roadWays: this.roadWays,
+      busRoute: this.busRoute,
+      busDepotPad: state.busDepotPad,
+    });
+  }
+
+  /** Focus the live aerial camera on an exact surveyed grid cell. Returns false before the R3F
+   *  scene/controls are mounted, allowing the map to remain a safe read-only inspector. */
+  focusSurveyCell(x: number, y: number): boolean {
+    if (!this.sim.state.terrain.inBounds(Math.round(x), Math.round(y)))
+      return false;
+    return this.renderer?.focusSurveyCell({ x, y }) ?? false;
   }
 
   /** Spec 149 e2e/dev helper — jump the sim clock to hh:mm on the current day. The fleet reads the
