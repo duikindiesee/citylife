@@ -39,9 +39,7 @@ afterEach(async () => {
   store = undefined;
 });
 
-function documentInput(
-  terrainElevation?: number,
-): WorldLayoutDocumentInput {
+function documentInput(terrainElevation?: number): WorldLayoutDocumentInput {
   return {
     worldId: "seed-4242",
     seed: 4242,
@@ -133,7 +131,9 @@ describe("world layout history and import controls", () => {
     const candidate = importDocument(current, 7);
     const serialized = serializeWorldLayoutDocument(candidate);
 
-    expect(validatedWorldLayoutImportSaveInput(serialized, current)).toMatchObject({
+    expect(
+      validatedWorldLayoutImportSaveInput(serialized, current),
+    ).toMatchObject({
       worldId: current.worldId,
       seed: current.seed,
       generator: current.generator,
@@ -141,9 +141,9 @@ describe("world layout history and import controls", () => {
     });
 
     const tampered = serialized.replace('"elevation":7', '"elevation":8');
-    expect(() => validatedWorldLayoutImportSaveInput(tampered, current)).toThrow(
-      /hash/i,
-    );
+    expect(() =>
+      validatedWorldLayoutImportSaveInput(tampered, current),
+    ).toThrow(/hash/i);
 
     const privatePayload = JSON.parse(serialized) as Record<string, unknown>;
     privatePayload.privateBotState = { token: "must-never-persist" };
@@ -172,10 +172,7 @@ describe("world layout history and import controls", () => {
       importDocument(current, 4),
     ).replace('"version":"3"', '"version":"future"');
     expect(() =>
-      validatedWorldLayoutImportSaveInput(
-        incompatibleGenerator,
-        current,
-      ),
+      validatedWorldLayoutImportSaveInput(incompatibleGenerator, current),
     ).toThrow("generator");
 
     const movedFrame = createWorldLayoutDocument({
@@ -251,7 +248,9 @@ describe("world layout history and import controls", () => {
     if (first.status !== "saved") throw new Error("expected first revision");
     const second = await store.save(
       validatedWorldLayoutImportSaveInput(
-        serializeWorldLayoutDocument(importDocument(first.revision.document, 8)),
+        serializeWorldLayoutDocument(
+          importDocument(first.revision.document, 8),
+        ),
         first.revision.document,
       ),
       first.revision.layoutRevision,
@@ -259,7 +258,9 @@ describe("world layout history and import controls", () => {
     if (second.status !== "saved") throw new Error("expected second revision");
 
     const history = await store.history(first.revision.worldId, 50);
-    expect(publicWorldLayoutHistoryEntries(history, second.revision.layoutRevision)).toEqual([
+    expect(
+      publicWorldLayoutHistoryEntries(history, second.revision.layoutRevision),
+    ).toEqual([
       {
         revisionNumber: 1,
         revisionId: second.revision.layoutRevision,
@@ -289,7 +290,8 @@ describe("world layout history and import controls", () => {
       first.revision.layoutRevision,
       second.revision.layoutRevision,
     );
-    if (rollback.status !== "saved") throw new Error("expected rollback revision");
+    if (rollback.status !== "saved")
+      throw new Error("expected rollback revision");
     expect(rollback.revision.sequence).toBe(2);
     expect(rollback.revision.layoutRevision).not.toBe(
       first.revision.layoutRevision,

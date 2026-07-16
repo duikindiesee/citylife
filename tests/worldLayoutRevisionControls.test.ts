@@ -16,7 +16,7 @@ describe("WorldLayoutRevisionControls", () => {
     expect(html).toContain("WORLD LAYOUT R—");
     expect(html).toContain("UNAVAILABLE");
     expect(html).not.toContain("&gt;LOAD&lt;");
-    expect((html.match(/disabled=""/g) ?? [])).toHaveLength(5);
+    expect(html.match(/disabled=""/g) ?? []).toHaveLength(5);
   });
 
   it("renders the parent-owned revision and enables only supplied actions", () => {
@@ -39,7 +39,7 @@ describe("WorldLayoutRevisionControls", () => {
     expect(html).toContain("HISTORY");
     expect(html).toContain("ROLLBACK");
     expect(html).toContain("VALIDATE + IMPORT");
-    expect((html.match(/disabled=""/g) ?? [])).toHaveLength(2);
+    expect(html.match(/disabled=""/g) ?? []).toHaveLength(2);
   });
 
   it("closes rejected action and import-file boundaries and reports their failures", async () => {

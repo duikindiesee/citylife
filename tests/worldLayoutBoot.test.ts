@@ -22,7 +22,10 @@ const IDENTITY = {
   scale: { x: 1, y: 1, z: 1 },
 } as const;
 
-function document(worldId = "primary", elevation?: number): WorldLayoutDocument {
+function document(
+  worldId = "primary",
+  elevation?: number,
+): WorldLayoutDocument {
   return createWorldLayoutDocument({
     worldId,
     seed: 4242,
@@ -76,12 +79,13 @@ function runtime(captured = document()): WorldLayoutBootRuntime & {
     captureWorldLayout: vi.fn<WorldLayoutBootRuntime["captureWorldLayout"]>(
       () => captured,
     ),
-    hydrateWorldLayout:
-      vi.fn<WorldLayoutBootRuntime["hydrateWorldLayout"]>(),
+    hydrateWorldLayout: vi.fn<WorldLayoutBootRuntime["hydrateWorldLayout"]>(),
   };
 }
 
-function store(overrides: Partial<WorldLayoutBootStore> = {}): WorldLayoutBootStore {
+function store(
+  overrides: Partial<WorldLayoutBootStore> = {},
+): WorldLayoutBootStore {
   return {
     load: vi.fn(async () => null),
     save: vi.fn(async () => {
@@ -261,11 +265,13 @@ describe("WorldLayoutBootCoordinator", () => {
       .fn<WorldLayoutBootStore["load"]>()
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(winner);
-    const save = vi.fn(async (): Promise<WorldLayoutSaveResult> => ({
-      status: "conflict",
-      expectedLayoutRevision: null,
-      actualLayoutRevision: winner.layoutRevision,
-    }));
+    const save = vi.fn(
+      async (): Promise<WorldLayoutSaveResult> => ({
+        status: "conflict",
+        expectedLayoutRevision: null,
+        actualLayoutRevision: winner.layoutRevision,
+      }),
+    );
     const bootRuntime = runtime(captured);
 
     const result = await new WorldLayoutBootCoordinator({
@@ -276,7 +282,9 @@ describe("WorldLayoutBootCoordinator", () => {
 
     expect(result.source).toBe("stored");
     expect(result.revision).toBe(winner.layoutRevision);
-    expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(winner.document);
+    expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(
+      winner.document,
+    );
   });
 
   it("rejects invalid durable revision metadata before hydration", async () => {
@@ -305,7 +313,9 @@ describe("WorldLayoutBootCoordinator", () => {
       runtime: bootRuntime,
     });
 
-    await expect(coordinator.boot()).rejects.toBeInstanceOf(WorldLayoutBootError);
+    await expect(coordinator.boot()).rejects.toBeInstanceOf(
+      WorldLayoutBootError,
+    );
     await expect(coordinator.boot()).rejects.toMatchObject({
       code: "WORLD_ID_MISMATCH",
     });
@@ -325,7 +335,9 @@ describe("WorldLayoutBootCoordinator", () => {
       runtime: bootRuntime,
     });
 
-    await expect(coordinator.boot()).rejects.toThrow("atomic hydration rejected");
+    await expect(coordinator.boot()).rejects.toThrow(
+      "atomic hydration rejected",
+    );
     await expect(coordinator.boot()).resolves.toMatchObject({ ready: true });
     expect(load).toHaveBeenCalledTimes(2);
     expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledTimes(2);

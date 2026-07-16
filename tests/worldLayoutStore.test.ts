@@ -14,10 +14,7 @@ let databaseName: string;
 let indexedDB: IDBFactory;
 let store: WorldLayoutStore | undefined;
 
-function layout(
-  worldId: string,
-  elevation?: number,
-): WorldLayoutSaveInput {
+function layout(worldId: string, elevation?: number): WorldLayoutSaveInput {
   return {
     worldId,
     seed: 4242,
@@ -134,7 +131,8 @@ describe("WorldLayoutStore", () => {
       else delete (globalThis as { indexedDB?: IDBFactory }).indexedDB;
       if (keyRangeDescriptor)
         Object.defineProperty(globalThis, "IDBKeyRange", keyRangeDescriptor);
-      else delete (globalThis as { IDBKeyRange?: typeof IDBKeyRange }).IDBKeyRange;
+      else
+        delete (globalThis as { IDBKeyRange?: typeof IDBKeyRange }).IDBKeyRange;
     }
   });
 
