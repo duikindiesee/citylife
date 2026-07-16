@@ -25,21 +25,21 @@ shore-hugging trunk was itself a fragile thread. The real defect is older and st
 boot road source merges its cells straight into `state.roads` with nothing guaranteeing the pieces
 touch.** On seed 4242 the network flood-fills into **4 components** (4-neighbour):
 
-| cells | grid centroid | what it actually is                                                                    |
-| ----: | ------------- | -------------------------------------------------------------------------------------- |
-|  3919 | (335, 338)    | the main web — founders' avenue + all 3 satellite hamlets + the commercial high street |
-|    75 | (125, 284)    | the commercial **cross street** (lower half), severed                                  |
-|    29 | (125, 250)    | the commercial **cross street** (upper half), severed                                  |
-|    18 | (309, 310)    | the **rally spur** stub (spec 097 fail-soft)                                           |
+| cells | grid centroid | what it actually is |
+|------:|---------------|---------------------|
+| 3919  | (335, 338)    | the main web — founders' avenue + all 3 satellite hamlets + the commercial high street |
+| 75    | (125, 284)    | the commercial **cross street** (lower half), severed |
+| 29    | (125, 250)    | the commercial **cross street** (upper half), severed |
+| 18    | (309, 310)    | the **rally spur** stub (spec 097 fail-soft) |
 
-The first hypothesis — that the two western fragments were a stranded _hamlet_ whose only path
+The first hypothesis — that the two western fragments were a stranded *hamlet* whose only path
 crossed a now-forbidden beach — was **wrong**, and the investigation is worth recording so the next
 reader does not re-chase it. All three satellite hamlets connect fine (one hamlet's spoke-to-coast
 fails on the beach ban, but its mesh cross-link rescues it). The two "western" fragments are the
 commercial district's **cross street**: a vertical road at `crossStreetX` that the mall pad and shop
 footprints occupy across the intersection row, splitting it into two islands that never rejoin their
 own high street. Each island sits a **clean 6–7 cells** from the main web — no water, no beach, no
-setback between them — so nothing _blocked_ the connection; it was simply never routed. The 18-cell
+setback between them — so nothing *blocked* the connection; it was simply never routed. The 18-cell
 piece is the rally spur, which by design (spec 097) paves only the clean knoll suffix and fails soft
 when a homestead setback walls it off.
 
@@ -139,21 +139,6 @@ no pinned path shifted. The full suite (150 files / 1277 tests) is green.
 - Playwright World View (seed 4242, aerial camera) before/after: the western commercial cross street,
   two floating islands before, is one connected web after; and a data-accurate top-down component map
   (before: 4 components / 96.98%, after: 1 / 100%).
-
-### Rendered-continuity hardening
-
-The connected cell graph is not enough if its smooth ribbon disappears. A seed-4242 link into
-Woods1 remained connected in `roadKind`, but Chaikin corner smoothing bowed its visible centre-line
-across a narrow inlet. The water guard correctly omitted those mesh segments, leaving an apparent
-gap of roughly ten metres even though traffic could still traverse the underlying cells.
-
-`roadRibbonRenderPath` now keeps the smoothed dense path only while all of its segment samples remain
-on renderable land. If smoothing cuts water, that way falls back to the densified source polyline that
-the land-aware router already proved legal. This changes no road, parcel, route or race coordinates;
-it only makes the renderer honour the connected topology. `ribbonCoverage` and the mesh builder use
-the same selected path so terrain grading, foliage clearance and visible asphalt cannot disagree.
-
-`tests/roadWaterGuard.test.ts` pins both the pure near-water bend and the seed-4242 Woods1 connector.
 
 ## Known adjacent issue (out of scope, flagged separately)
 

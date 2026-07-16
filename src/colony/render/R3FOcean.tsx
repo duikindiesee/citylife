@@ -1,13 +1,13 @@
-import React, { useEffect, useMemo } from "react";
-import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
-import { BIOME_COLOR, Biome } from "../terrain";
+import React, { useEffect, useMemo } from 'react';
+import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
+import { BIOME_COLOR, Biome } from '../terrain';
 import {
   patchOceanShader,
   OCEAN_TIME_SCALE,
   OCEAN_TIME_UNIFORM,
   type PatchableShader,
-} from "./oceanWaves";
+} from './oceanWaves';
 
 interface R3FOceanProps {
   size: number;
@@ -17,7 +17,7 @@ export function R3FOcean({ size }: R3FOceanProps) {
   const geometry = useMemo(
     // RingGeometry creates in X,Y so we must rotate the mesh to lie flat in X,Z
     () => new THREE.RingGeometry(0.5, size * 0.99, 120, 30),
-    [size],
+    [size]
   );
   // Spec 119 — dispose the superseded ring when size changes, and on unmount.
   useEffect(() => () => geometry.dispose(), [geometry]);

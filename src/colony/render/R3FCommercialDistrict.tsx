@@ -1,13 +1,13 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { useFrame, useThree } from "@react-three/fiber";
-import type { ColonySim } from "../sim";
+import React, { useEffect, useMemo, useRef } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
+import type { ColonySim } from '../sim';
 import {
   buildCommercialDistrictLayer,
   type CommercialDistrictLayer,
-} from "./commercialDistrictLayer";
-import { leveledWorldY } from "./terrainLeveling";
-import { useSimSignal, type SimBridge } from "./useSimSignal";
-import { commercialSignature } from "./simSignals";
+} from './commercialDistrictLayer';
+import { leveledWorldY } from './terrainLeveling';
+import { useSimSignal, type SimBridge } from './useSimSignal';
+import { commercialSignature } from './simSignals';
 
 // Spec 135 — the commercial district in v3. The runtime attaches the district on
 // sim.state (spec 116 lineage) but nothing ever RENDERED it in R3F: the neon strip, the
@@ -22,11 +22,7 @@ interface R3FCommercialDistrictProps {
   terrainLevel?: Map<number, number>;
 }
 
-export function R3FCommercialDistrict({
-  sim,
-  runtime,
-  terrainLevel,
-}: R3FCommercialDistrictProps) {
+export function R3FCommercialDistrict({ sim, runtime, terrainLevel }: R3FCommercialDistrictProps) {
   const camera = useThree((s) => s.camera);
   const scene = useThree((s) => s.scene);
   const gl = useThree((s) => s.gl);
@@ -50,12 +46,7 @@ export function R3FCommercialDistrict({
       surfaceY: (x, y) =>
         Math.max(
           0,
-          leveledWorldY(
-            terrain,
-            levelRef.current,
-            Math.round(x),
-            Math.round(y),
-          ),
+          leveledWorldY(terrain, levelRef.current, Math.round(x), Math.round(y)),
         ),
     });
     // sig is the rebuild trigger for the mutable sim.state (dead-memo rule).
@@ -64,12 +55,9 @@ export function R3FCommercialDistrict({
 
   // Spec 119 — the superseded layer (geometry, materials, label CanvasTextures) is
   // disposed on every rebuild and on unmount.
-  useEffect(
-    () => () => {
-      layer?.dispose();
-    },
-    [layer],
-  );
+  useEffect(() => () => {
+    layer?.dispose();
+  }, [layer]);
 
   useFrame(() => {
     if (!layer) return;

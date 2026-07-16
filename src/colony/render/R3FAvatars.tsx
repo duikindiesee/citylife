@@ -1,9 +1,9 @@
-import { crowdGroundY } from "./crowdGround";
-import React, { useEffect, useMemo, useRef } from "react";
-import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
-import type { ColonySim } from "../sim";
-import type { AvatarView } from "./R3FPlanetRenderer";
+import { crowdGroundY } from './crowdGround';
+import React, { useEffect, useMemo, useRef } from 'react';
+import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
+import type { ColonySim } from '../sim';
+import type { AvatarView } from './R3FPlanetRenderer';
 import {
   AVATAR_CAP,
   AVATAR_BODY,
@@ -11,13 +11,13 @@ import {
   avatarColorHex,
   avatarTransform,
   drawableAvatars,
-} from "./avatarLayer";
+} from './avatarLayer';
 import {
   buildCrabGeometry,
   buildHoverBoltGeometry,
   CRAB_BOLT_HOVER_Y,
   CRAB_COLORS,
-} from "./crabGeometry";
+} from './crabGeometry';
 
 // Spec 120 — citizens visible in the R3F world. The runtime pushes a per-frame avatar
 // source through the PlanetRenderer class (setAvatarSource); this component pulls it in
@@ -48,16 +48,14 @@ export function R3FAvatars({ sim, refs, terrainLevel }: R3FAvatarsProps) {
   const crabRef = useRef<THREE.Group>(null);
   const boltRef = useRef<THREE.Mesh>(null);
 
-  const bodyGeometry = useMemo(() => {
-    const geo = new THREE.CapsuleGeometry(
-      AVATAR_BODY.radius,
-      AVATAR_BODY.length,
-      4,
-      8,
-    );
-    geo.translate(0, AVATAR_BODY.lift, 0); // spec 146 — feet on the ground, not torso buried at it
-    return geo;
-  }, []);
+  const bodyGeometry = useMemo(
+    () => {
+      const geo = new THREE.CapsuleGeometry(AVATAR_BODY.radius, AVATAR_BODY.length, 4, 8);
+      geo.translate(0, AVATAR_BODY.lift, 0); // spec 146 — feet on the ground, not torso buried at it
+      return geo;
+    },
+    []
+  );
   const headGeometry = useMemo(() => {
     const geo = new THREE.SphereGeometry(AVATAR_HEAD.radius, 10, 8);
     geo.translate(0, AVATAR_HEAD.lift, 0);
@@ -65,19 +63,14 @@ export function R3FAvatars({ sim, refs, terrainLevel }: R3FAvatarsProps) {
   }, []);
   const material = useMemo(
     () => new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.05 }),
-    [],
+    []
   );
   // Spec 132 — Joe the Crab: the merged vertex-coloured crab (blue headset, bolts on the
   // earcup sides) plus the animated hover bolt the component bobs above him.
   const crabGeometry = useMemo(() => buildCrabGeometry(), []);
   const crabMaterial = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        vertexColors: true,
-        roughness: 0.8,
-        metalness: 0.04,
-      }),
-    [],
+    () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.04 }),
+    []
   );
   const boltGeometry = useMemo(() => buildHoverBoltGeometry(), []);
   const boltMaterial = useMemo(
@@ -88,40 +81,22 @@ export function R3FAvatars({ sim, refs, terrainLevel }: R3FAvatarsProps) {
         emissiveIntensity: 0.7,
         roughness: 0.4,
       }),
-    [],
+    []
   );
   // Spec 119 discipline — these live for the component lifetime and are freed on unmount.
-  useEffect(
-    () => () => {
-      bodyGeometry.dispose();
-      headGeometry.dispose();
-      material.dispose();
-      crabGeometry.dispose();
-      crabMaterial.dispose();
-      boltGeometry.dispose();
-      boltMaterial.dispose();
-    },
-    [
-      bodyGeometry,
-      headGeometry,
-      material,
-      crabGeometry,
-      crabMaterial,
-      boltGeometry,
-      boltMaterial,
-    ],
-  );
+  useEffect(() => () => {
+    bodyGeometry.dispose();
+    headGeometry.dispose();
+    material.dispose();
+    crabGeometry.dispose();
+    crabMaterial.dispose();
+    boltGeometry.dispose();
+    boltMaterial.dispose();
+  }, [bodyGeometry, headGeometry, material, crabGeometry, crabMaterial, boltGeometry, boltMaterial]);
 
   const scratch = useMemo(
-    () => ({
-      m4: new THREE.Matrix4(),
-      quat: new THREE.Quaternion(),
-      color: new THREE.Color(),
-      scale: new THREE.Vector3(1, 1, 1),
-      pos: new THREE.Vector3(),
-      axis: new THREE.Vector3(0, 1, 0),
-    }),
-    [],
+    () => ({ m4: new THREE.Matrix4(), quat: new THREE.Quaternion(), color: new THREE.Color(), scale: new THREE.Vector3(1, 1, 1), pos: new THREE.Vector3(), axis: new THREE.Vector3(0, 1, 0) }),
+    []
   );
 
   useFrame((state) => {
@@ -134,15 +109,14 @@ export function R3FAvatars({ sim, refs, terrainLevel }: R3FAvatarsProps) {
     const drawn = drawableAvatars(list, refs.fpCitizenId.current);
     const size = sim.state.terrain.size;
     // spec 142 — ride the road ribbon on road cells so citizens and Joe don't sink through it
-    const groundY = (x: number, y: number) =>
-      crowdGroundY(sim.state.terrain, terrainLevel, sim.state.roadSet, x, y);
+    const groundY = (x: number, y: number) => crowdGroundY(sim.state.terrain, terrainLevel, sim.state.roadSet, x, y);
 
     // Spec 132 — crab-kind avatars draw the crab model, not a human capsule.
     let crab: AvatarView | null = null;
     let di = 0;
     for (let i = 0; i < drawn.length; i++) {
       const a = drawn[i];
-      if (a.kind === "crab") {
+      if (a.kind === 'crab') {
         if (!crab) crab = a; // Joe — one crab founder; a second would wait its turn
         continue;
       }

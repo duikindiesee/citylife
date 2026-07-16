@@ -30,7 +30,7 @@ jobs:
       # The host keeps npm's cache between jobs; actions/setup-node's cache-save
       # post-step can hang on Windows self-hosted runners.
       - run: npm ci
-      - run: npx playwright install chromium
+      - run: npx playwright install --with-deps chromium
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:e2e

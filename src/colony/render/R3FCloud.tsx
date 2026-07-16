@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
-import * as THREE from "three";
-import { buildClouds, CloudLayer } from "./cloudLayer";
+import React, { useEffect, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import * as THREE from 'three';
+import { buildClouds, CloudLayer } from './cloudLayer';
 
 export function R3FCloud({ worldSize }: { worldSize: number }) {
   const groupRef = useRef<THREE.Group>(null);

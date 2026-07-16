@@ -338,10 +338,8 @@ function frameRoom(state: ColonyState, bx: number, by: number): number {
     !t.isWater(x, y) &&
     t.biome[t.idx(x, y)] !== Biome.Beach;
   let room = 0;
-  for (let x = x0; x <= x1; x++)
-    room += (okAt(x, y0) ? 1 : 0) + (okAt(x, y1) ? 1 : 0);
-  for (let y = y0 + 1; y < y1; y++)
-    room += (okAt(x0, y) ? 1 : 0) + (okAt(x1, y) ? 1 : 0);
+  for (let x = x0; x <= x1; x++) room += (okAt(x, y0) ? 1 : 0) + (okAt(x, y1) ? 1 : 0);
+  for (let y = y0 + 1; y < y1; y++) room += (okAt(x0, y) ? 1 : 0) + (okAt(x1, y) ? 1 : 0);
   return room;
 }
 

@@ -29,8 +29,7 @@ describe("spec 129 — voxel house scale", () => {
 
   it("matches legacy proportions at 4x world scale", () => {
     const legacy = bboxOf(
-      greedyMesh(compiled.blocks, { n: compiled.n, cell: 1, voxelY: VOXEL_Y })
-        .geometry,
+      greedyMesh(compiled.blocks, { n: compiled.n, cell: 1, voxelY: VOXEL_Y }).geometry,
     );
     const r3f = bboxOf(
       greedyMesh(compiled.blocks, {
@@ -60,11 +59,7 @@ describe("spec 129 — voxel house scale", () => {
 
   it("the OLD params were the pancake (regression guard)", () => {
     const broken = bboxOf(
-      greedyMesh(compiled.blocks, {
-        n: compiled.n,
-        cell: LOT_SIZE,
-        voxelY: VOXEL_Y,
-      }).geometry,
+      greedyMesh(compiled.blocks, { n: compiled.n, cell: LOT_SIZE, voxelY: VOXEL_Y }).geometry,
     );
     const fixed = bboxOf(
       greedyMesh(compiled.blocks, {

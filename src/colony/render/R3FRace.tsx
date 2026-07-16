@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
-import type { ColonySim } from "../sim";
-import type { RaceState } from "../racing/race";
-import { buildRaceLayer, type RaceLayer } from "./raceLayer";
-import { getSmoothRoadY } from "./roadSurface";
+import React, { useEffect, useMemo, useRef } from 'react';
+import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
+import type { ColonySim } from '../sim';
+import type { RaceState } from '../racing/race';
+import { buildRaceLayer, type RaceLayer } from './raceLayer';
+import { getSmoothRoadY } from './roadSurface';
 
 // Spec 124 — the Road Rally course (spec 087), R3F port of the legacy setRaceState path. The
 // race is runtime state now attached to sim.state.raceState (the runtime mirrors it at start,
@@ -20,7 +20,7 @@ interface R3FRaceProps {
 export function R3FRace({ sim }: R3FRaceProps) {
   const containerRef = useRef<THREE.Group>(null);
   const layerRef = useRef<RaceLayer | null>(null);
-  const builtTrack = useRef<RaceState["track"] | null>(null);
+  const builtTrack = useRef<RaceState['track'] | null>(null);
 
   const world = useMemo(() => {
     const size = sim.state.terrain.size;
@@ -29,8 +29,7 @@ export function R3FRace({ sim }: R3FRaceProps) {
       wz: (y: number) => (y - size / 2) * 4,
       // Ride the rendered road surface (getSmoothRoadY, as the road tiles and the bus use)
       // so the course sits on the road on slopes instead of the raw cell-center terrain.
-      roadSurfaceY: (x: number, y: number) =>
-        Math.max(0, getSmoothRoadY(sim.state.terrain, x, y)),
+      roadSurfaceY: (x: number, y: number) => Math.max(0, getSmoothRoadY(sim.state.terrain, x, y)),
     };
   }, [sim]);
 
@@ -47,7 +46,7 @@ export function R3FRace({ sim }: R3FRaceProps) {
 
   useFrame((state) => {
     const race = sim.state.raceState ?? null;
-    const active = race != null && race.mode !== "idle";
+    const active = race != null && race.mode !== 'idle';
 
     if (!active) {
       // Race ended or never started — tear the course down.

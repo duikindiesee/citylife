@@ -3,12 +3,12 @@
 Operator report 2026-07-04: the game "loads super slow". Boot profiling (Playwright probe,
 prod build served locally) attributed the cost precisely:
 
-| phase                                    | before |
-| ---------------------------------------- | ------ |
-| canvas in DOM                            | 1.4s   |
-| worldgen done (`window.__colony`)        | 1.5s   |
-| R3F tree committed (`window.__r3fScene`) | 10.0s  |
-| first real frame (canvas sized)          | 17.1s  |
+| phase | before |
+|---|---|
+| canvas in DOM | 1.4s |
+| worldgen done (`window.__colony`) | 1.5s |
+| R3F tree committed (`window.__r3fScene`) | 10.0s |
+| first real frame (canvas sized) | 17.1s |
 
 The sim and worldgen are fast. ~16 of ~18 seconds went to mounting the ENTIRE R3F tree in
 one synchronous commit — terrain chunk build, foliage scan, road meshes, zone meshes,
@@ -33,10 +33,10 @@ the first commit was part of the blockage.
 
 ## Measured result (same probe, prod build)
 
-| phase              | before | after    |
-| ------------------ | ------ | -------- |
-| R3F tree committed | 10.0s  | **2.5s** |
-| first real frame   | 17.1s  | **2.6s** |
+| phase | before | after |
+|---|---|---|
+| R3F tree committed | 10.0s | **2.5s** |
+| first real frame | 17.1s | **2.6s** |
 
 The stage-1/2 mounts still cost their build time, but they land AFTER the player is
 looking at a live world (brief hitches at frames ~5 and ~20 in exchange for a 6.5x faster

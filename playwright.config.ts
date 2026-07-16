@@ -15,18 +15,7 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: {
-        ...devices["Desktop Chrome"],
-        launchOptions: process.env.CITYLIFE_HARDWARE_WEBGL
-          ? {
-              args: [
-                "--enable-gpu",
-                "--ignore-gpu-blocklist",
-                "--use-angle=d3d11",
-              ],
-            }
-          : undefined,
-      },
+      use: { ...devices["Desktop Chrome"] },
     },
   ],
   webServer: {

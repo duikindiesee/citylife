@@ -1,7 +1,7 @@
 {
   "name": "citylife",
   "private": true,
-  "version": "0.23.0",
+  "version": "0.22.7",
   "type": "module",
   "description": "A stylized-3D, agent-driven city that runs itself and an AI governs.",
   "scripts": {
@@ -17,12 +17,12 @@
     "@react-three/fiber": "^9.6.1",
     "@react-three/postprocessing": "^3.0.4",
     "@react-three/rapier": "^2.2.0",
-    "@types/three": "^0.185.0",
+    "@types/three": "^0.184.1",
     "postprocessing": "^6.39.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "simplex-noise": "^4.0.3",
-    "three": "^0.185.0",
+    "three": "^0.184.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

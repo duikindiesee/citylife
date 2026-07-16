@@ -9,10 +9,10 @@
 //    with an all-red inter-green, offset per junction so the city doesn't blink in unison.
 // Stop LINES are painted road geometry now — baked into the merged RoadJunctionPaint mesh
 // by junctionCap.capStopBars (lane-wide, arm-aligned), not a drei component.
-import React from "react";
-import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
-import { Text } from "@react-three/drei";
+import React from 'react';
+import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
+import { Text } from '@react-three/drei';
 
 interface FurnitureProps {
   position: [number, number, number];
@@ -57,37 +57,28 @@ interface TrafficLightProps extends FurnitureProps {
   /** The served approach's half-width in metres — the mast reaches over its lane. */
   laneHalfM: number;
   /** Phase group: A-axis arms are green while B-axis arms are red, and vice versa. */
-  group: "A" | "B";
+  group: 'A' | 'B';
   /** Per-junction cycle offset in seconds (0..CYCLE). */
   phase: number;
 }
 
 const CYCLE = 16;
-const OFF = new THREE.Color("#2d3436");
-const RED = new THREE.Color("#ff7675");
-const AMBER = new THREE.Color("#ffeaa7");
-const GREEN = new THREE.Color("#55efc4");
+const OFF = new THREE.Color('#2d3436');
+const RED = new THREE.Color('#ff7675');
+const AMBER = new THREE.Color('#ffeaa7');
+const GREEN = new THREE.Color('#55efc4');
 
 /** Signal state for one group at cycle time t: green [0,6.5) amber [6.5,8) red [8,16),
  *  group B shifted half a cycle — an all-red inter-green in both changeovers. Exported
  *  pure for the phasing unit test (never both groups green, both red at changeover). */
-export function signalState(
-  t: number,
-  group: "A" | "B",
-): "red" | "amber" | "green" {
-  const local = group === "A" ? t : (t + CYCLE / 2) % CYCLE;
-  if (local < 6.5) return "green";
-  if (local < 8) return "amber";
-  return "red";
+export function signalState(t: number, group: 'A' | 'B'): 'red' | 'amber' | 'green' {
+  const local = group === 'A' ? t : (t + CYCLE / 2) % CYCLE;
+  if (local < 6.5) return 'green';
+  if (local < 8) return 'amber';
+  return 'red';
 }
 
-export function TrafficLight({
-  position,
-  rotationY,
-  laneHalfM,
-  group,
-  phase,
-}: TrafficLightProps) {
+export function TrafficLight({ position, rotationY, laneHalfM, group, phase }: TrafficLightProps) {
   const mast = Math.min(6, laneHalfM / 2 + 1.6);
   const redRef = React.useRef<THREE.MeshStandardMaterial>(null);
   const amberRef = React.useRef<THREE.MeshStandardMaterial>(null);
@@ -107,9 +98,9 @@ export function TrafficLight({
       m.emissive.copy(lit ? color : OFF);
       m.emissiveIntensity = lit ? 1.8 : 0;
     };
-    set(redRef, state === "red", RED);
-    set(amberRef, state === "amber", AMBER);
-    set(greenRef, state === "green", GREEN);
+    set(redRef, state === 'red', RED);
+    set(amberRef, state === 'amber', AMBER);
+    set(greenRef, state === 'green', GREEN);
   });
 
   return (
@@ -128,11 +119,7 @@ export function TrafficLight({
       <group position={[mast, 4.8, 0]}>
         <mesh>
           <boxGeometry args={[0.5, 1.3, 0.35]} />
-          <meshStandardMaterial
-            color="#232a2e"
-            roughness={0.6}
-            metalness={0.15}
-          />
+          <meshStandardMaterial color="#232a2e" roughness={0.6} metalness={0.15} />
         </mesh>
         <mesh position={[0, 0.42, 0.19]}>
           <sphereGeometry args={[0.16, 10, 10]} />

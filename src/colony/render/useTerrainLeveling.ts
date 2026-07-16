@@ -1,10 +1,9 @@
-import { useMemo } from "react";
-import type { ColonySim } from "../sim";
-import type { Terrain } from "../terrain";
-import { applyCoastalCommercialDryBlend } from "./terrainLeveling";
-import { useSimSignal, type SimBridge } from "./useSimSignal";
-import { levelingSignature } from "./simSignals";
-import { depotCutFillSeatY } from "../transit/busDepot";
+import { useMemo } from 'react';
+import type { ColonySim } from '../sim';
+import type { Terrain } from '../terrain';
+import { applyCoastalCommercialDryBlend } from './terrainLeveling';
+import { useSimSignal, type SimBridge } from './useSimSignal';
+import { levelingSignature } from './simSignals';
 
 // Match PlanetRenderer.ts behavior
 export const RENDER_DRY_FLOOR = 0.65;
@@ -35,7 +34,7 @@ export function padSeatY(
  * Returns a Map of overridden cell heights (terrainLevel).
  */
 export function computeTerrainLeveling(
-  state: ColonySim["state"],
+  state: ColonySim['state'],
   /** Spec 130 — ribbon coverage: cell key -> the SURFACE height the road mesh renders over
    *  that cell (segment-bridged, not the cell's own local height). */
   roadRibbonCells: ReadonlyMap<string, number> | null,
@@ -75,15 +74,10 @@ export function computeTerrainLeveling(
       const py = seatOf(hz);
 
       // Dry footprint
-      let x0 = hz.x,
-        x1 = hz.x + hz.w,
-        y0 = hz.y,
-        y1 = hz.y + hz.d;
+      let x0 = hz.x, x1 = hz.x + hz.w, y0 = hz.y, y1 = hz.y + hz.d;
       const ext = (x: number, y: number) => {
-        if (x < x0) x0 = x;
-        if (x > x1) x1 = x;
-        if (y < y0) y0 = y;
-        if (y > y1) y1 = y;
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
       };
       for (const f of lot.fence) ext(f.x, f.y);
       for (const d of lot.driveway) ext(d.x, d.y);
@@ -121,16 +115,7 @@ export function computeTerrainLeveling(
     const seats = [
       ...cd.parcels.map((p: any) => ({ x: p.x, y: p.y, w: p.w, h: p.h })),
       { x: cd.mallPad.x, y: cd.mallPad.y, w: cd.mallPad.w, h: cd.mallPad.h },
-      ...(cd.garagePad
-        ? [
-            {
-              x: cd.garagePad.x,
-              y: cd.garagePad.y,
-              w: cd.garagePad.w,
-              h: cd.garagePad.h,
-            },
-          ]
-        : []),
+      ...(cd.garagePad ? [{ x: cd.garagePad.x, y: cd.garagePad.y, w: cd.garagePad.w, h: cd.garagePad.h }] : []),
     ];
 
     const seatY = (r: { x: number; y: number; w: number; h: number }) =>
@@ -172,42 +157,28 @@ export function computeTerrainLeveling(
       n: N,
       terrain: t,
       rects: [
-        ...cd.parcels.map((p: any) => ({
-          x: p.x - 1,
-          y: p.y - 1,
-          w: p.w + 2,
-          h: p.h + 2,
-        })),
+        ...cd.parcels.map((p: any) => ({ x: p.x - 1, y: p.y - 1, w: p.w + 2, h: p.h + 2 })),
         { x: cd.mallPad.x, y: cd.mallPad.y, w: cd.mallPad.w, h: cd.mallPad.h },
-        ...(cd.garagePad
-          ? [
-              {
-                x: cd.garagePad.x,
-                y: cd.garagePad.y,
-                w: cd.garagePad.w,
-                h: cd.garagePad.h,
-              },
-            ]
-          : []),
+        ...(cd.garagePad ? [{ x: cd.garagePad.x, y: cd.garagePad.y, w: cd.garagePad.w, h: cd.garagePad.h }] : []),
       ],
       roadRibbonCells,
       dry: DRY,
     });
   }
 
-  // 2b) Bus depot pad (spec 149) — balanced cut-and-fill at the midpoint of the natural pad
-  // height range. The footprint is flat; its smoothstep skirt meets surrounding land, while the
-  // render layer's deep foundation closes every exposed downhill edge.
+  // 2b) Bus depot pad (spec 149) — one flat apron at the pad-centre seat height with the same
+  // smoothstep skirt the commercial pads use, so the slab, the parked buses and the walker's
+  // ground guardrail all agree on ONE height instead of a max-corner slab floating over a slope.
   const depot = state.busDepotPad;
   if (depot) {
-    const py = depotCutFillSeatY(t, depot, DRY);
-    const x1 = depot.x + depot.w - 1;
-    const y1 = depot.y + depot.h - 1;
-    for (let y = depot.y - SKIRT + 1; y <= y1 + SKIRT - 1; y++) {
-      for (let x = depot.x - SKIRT + 1; x <= x1 + SKIRT - 1; x++) {
+    const py = padSeatY(t, depot.x, depot.y, depot.w, depot.h);
+    const fx1 = depot.x + depot.w;
+    const fy1 = depot.y + depot.h;
+    for (let y = depot.y - SKIRT + 1; y < fy1 + SKIRT; y++) {
+      for (let x = depot.x - SKIRT + 1; x < fx1 + SKIRT; x++) {
         if (x < 0 || y < 0 || x >= N || y >= N) continue;
         if (roadRibbonCells?.has(`${x},${y}`)) continue;
-        const dist = Math.max(0, depot.x - x, x - x1, depot.y - y, y - y1);
+        const dist = Math.max(0, depot.x - x, x - fx1, depot.y - y, y - fy1);
         if (dist === 0) put(x, y, py);
         else if (dist < SKIRT) {
           const nat = Math.max(t.worldY(x, y), DRY);
@@ -253,12 +224,6 @@ export function computeTerrainLeveling(
       // across hills, segment-bridged dips and dry-blended coast cells are where the
       // floating happens.)
       const eff = next.has(i) ? next.get(i)! : Math.max(0, t.worldY(x, y));
-      // The depot spur must meet its ribbon exactly at the apron gate. Do not apply the generic
-      // shallow-fill deadzone here: even a 0.3 m hollow produces a visible torn seam beside the slab.
-      if (state.busDepotSpurCells?.has(key)) {
-        graded.set(i, h);
-        continue;
-      }
       // ASYMMETRIC deadzone (operator invariant, 2026-07-11: "the ground go above the
       // roads; that should never happen"). The old |h - eff| <= DEADZONE tolerated
       // ground up to 0.6 ABOVE the road surface — but the ribbon rides only +0.18, so
@@ -308,7 +273,7 @@ export function computeTerrainLeveling(
   // 4) Apply user landscape edits (raise/lower/flatten)
   for (const [key, offset] of landscapeEdits.entries()) {
     if (offset === 0) continue;
-    const [xStr, yStr] = key.split(",");
+    const [xStr, yStr] = key.split(',');
     const x = parseInt(xStr, 10);
     const y = parseInt(yStr, 10);
 
@@ -349,7 +314,7 @@ export function useTerrainLeveling(
    *  that cell (segment-bridged, not the cell's own local height). */
   roadRibbonCells: ReadonlyMap<string, number> | null,
   landscapeEdits: Map<string, number>,
-  runtime?: SimBridge,
+  runtime?: SimBridge
 ): Map<number, number> {
   const state = sim.state;
 
@@ -360,6 +325,11 @@ export function useTerrainLeveling(
     () => computeTerrainLeveling(state, roadRibbonCells, landscapeEdits),
     // levelingSig is the rebuild trigger for the mutable sim.state (dead-memo rule).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sim, levelingSig, roadRibbonCells, landscapeEdits],
+    [
+      sim,
+      levelingSig,
+      roadRibbonCells,
+      landscapeEdits
+    ]
   );
 }

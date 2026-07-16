@@ -1,8 +1,8 @@
-import React, { useMemo } from "react";
-import * as THREE from "three";
-import { useRoadNetwork } from "../stores/useRoadNetwork";
-import { getSmoothRoadY } from "./roadSurface";
-import type { ColonySim } from "../sim";
+import React, { useMemo } from 'react';
+import * as THREE from 'three';
+import { useRoadNetwork } from '../stores/useRoadNetwork';
+import { getSmoothRoadY } from './roadSurface';
+import type { ColonySim } from '../sim';
 
 // Spec 127 — this component used to draw the committed road surface as one bordered box PER
 // CELL, plus per-cell junction decorations detected off tile-neighbour counts. The road cell
@@ -22,7 +22,7 @@ interface R3FRoadNetworkProps {
 }
 
 export function R3FRoadNetwork({ sim }: R3FRoadNetworkProps) {
-  const tiles = useRoadNetwork((state) => state.tiles);
+  const tiles = useRoadNetwork(state => state.tiles);
 
   const culDeSacs = useMemo(() => {
     const elements = [];
@@ -33,7 +33,7 @@ export function R3FRoadNetwork({ sim }: R3FRoadNetworkProps) {
 
     for (const k of keys) {
       const tile = tiles[k];
-      if (tile.type === "culdesac") {
+      if (tile.type === 'culdesac') {
         const wX = (tile.x - N / 2) * 4;
         const wZ = (tile.y - N / 2) * 4;
         const wY = getSmoothRoadY(terrain, tile.x, tile.y) + 0.18;
@@ -43,28 +43,23 @@ export function R3FRoadNetwork({ sim }: R3FRoadNetworkProps) {
             {/* Asphalt turnaround bulb */}
             <mesh rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[0, 3.2]} />
-              <meshStandardMaterial
-                color="#595f6a"
-                roughness={0.92}
-                metalness={0.02}
-                side={THREE.DoubleSide}
-              />
+              <meshStandardMaterial color="#595f6a" roughness={0.92} metalness={0.02} side={THREE.DoubleSide} />
             </mesh>
             {/* White outer curb */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.005, 0]}>
               <ringGeometry args={[3.1, 3.3]} />
-              <meshStandardMaterial
-                color="#e8ecf2"
-                roughness={0.6}
-                side={THREE.DoubleSide}
-              />
+              <meshStandardMaterial color="#e8ecf2" roughness={0.6} side={THREE.DoubleSide} />
             </mesh>
-          </group>,
+          </group>
         );
       }
     }
     return elements;
   }, [tiles, sim]);
 
-  return <group name="RoadNetwork">{culDeSacs}</group>;
+  return (
+    <group name="RoadNetwork">
+      {culDeSacs}
+    </group>
+  );
 }

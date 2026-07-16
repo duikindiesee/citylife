@@ -26,15 +26,9 @@ describe("spec 137 — the metric anchor", () => {
 describe("spec 137 — the player derives consistently", () => {
   it("a Rapier capsule of [halfHeight, radius] is exactly PLAYER_HEIGHT_M tall", () => {
     // capsule total height = 2 * (halfHeight + radius)
-    expect(2 * (PLAYER_HALF_HEIGHT + PLAYER_RADIUS_M)).toBeCloseTo(
-      PLAYER_HEIGHT_M,
-      5,
-    );
+    expect(2 * (PLAYER_HALF_HEIGHT + PLAYER_RADIUS_M)).toBeCloseTo(PLAYER_HEIGHT_M, 5);
     // half-extent (centre to foot) = halfHeight + radius = height/2
-    expect(PLAYER_HALF_HEIGHT + PLAYER_RADIUS_M).toBeCloseTo(
-      PLAYER_HALF_EXTENT,
-      5,
-    );
+    expect(PLAYER_HALF_HEIGHT + PLAYER_RADIUS_M).toBeCloseTo(PLAYER_HALF_EXTENT, 5);
   });
   it("the camera eye offset lands the eye at PLAYER_EYE_M above the feet", () => {
     // eye above feet = half-extent (centre above feet) + eye offset (eye above centre)

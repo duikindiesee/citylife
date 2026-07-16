@@ -33,10 +33,7 @@ describe("spec 128 — lot footprints cull foliage", () => {
       const gx = m[12]! / 4 + N / 2;
       const gy = m[14]! / 4 + N / 2;
       return (
-        gx >= rect.x0 - 1 &&
-        gx <= rect.x1 + 1 &&
-        gy >= rect.y0 - 1 &&
-        gy <= rect.y1 + 1
+        gx >= rect.x0 - 1 && gx <= rect.x1 + 1 && gy >= rect.y0 - 1 && gy <= rect.y1 + 1
       );
     };
     expect(withCull.matrices.some(inRect)).toBe(false);
@@ -61,12 +58,9 @@ describe("spec 127 verify P2 — builder ways are bounded", () => {
     for (let x = 60; x <= 66; x++) cells.push({ x, y: 60 });
     useRoadNetwork.getState().plotRoad(cells, "street", rt.sim);
     const withWay = rt.sim.state.roadWays!.length;
-    for (const c of cells)
-      useRoadNetwork.getState().removeRoad(c.x, c.y, rt.sim);
+    for (const c of cells) useRoadNetwork.getState().removeRoad(c.x, c.y, rt.sim);
     expect(rt.sim.state.roadWays!.length).toBe(withWay - 1);
     // boot ways are never pruned
-    expect(
-      rt.sim.state.roadWays!.every((w) => w.source !== "builder" || true),
-    ).toBe(true);
+    expect(rt.sim.state.roadWays!.every((w) => w.source !== "builder" || true)).toBe(true);
   });
 });

@@ -155,10 +155,7 @@ export function sanitizeCapPoly(
   }
   while (
     dedup.length > 1 &&
-    Math.hypot(
-      dedup[0]!.x - dedup[dedup.length - 1]!.x,
-      dedup[0]!.y - dedup[dedup.length - 1]!.y,
-    ) < 0.35
+    Math.hypot(dedup[0]!.x - dedup[dedup.length - 1]!.x, dedup[0]!.y - dedup[dedup.length - 1]!.y) < 0.35
   )
     dedup.pop();
   if (dedup.length < 3) return convexHull(raw);
@@ -167,14 +164,7 @@ export function sanitizeCapPoly(
   for (let i = 0; i < n; i++) {
     for (let j = i + 2; j < n; j++) {
       if (i === 0 && j === n - 1) continue; // adjacent across the wrap seam
-      if (
-        segsCross(
-          dedup[i]!,
-          dedup[(i + 1) % n]!,
-          dedup[j]!,
-          dedup[(j + 1) % n]!,
-        )
-      )
+      if (segsCross(dedup[i]!, dedup[(i + 1) % n]!, dedup[j]!, dedup[(j + 1) % n]!))
         return convexHull(dedup);
     }
   }
@@ -196,16 +186,10 @@ export function tessellate(
   poly: { x: number; y: number }[],
   centre: { x: number; y: number },
   maxEdge = 1.5,
-): Array<
-  [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }]
-> {
+): Array<[{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }]> {
   const c = centre;
   let tris: Array<
-    [
-      { x: number; y: number },
-      { x: number; y: number },
-      { x: number; y: number },
-    ]
+    [{ x: number; y: number }, { x: number; y: number }, { x: number; y: number }]
   > = [];
   for (let i = 0; i < poly.length; i++)
     tris.push([c, poly[i]!, poly[(i + 1) % poly.length]!]);
@@ -256,15 +240,9 @@ export function drapeCap(
     Math.max(0, opts.roadY(x, gy)) + CAP_LIFT;
   for (const [a, b, c] of tessellate(poly, { x: zone.cx, y: zone.cy })) {
     out.push(
-      opts.wx(a.x),
-      y(a.x, a.y),
-      opts.wz(a.y),
-      opts.wx(b.x),
-      y(b.x, b.y),
-      opts.wz(b.y),
-      opts.wx(c.x),
-      y(c.x, c.y),
-      opts.wz(c.y),
+      opts.wx(a.x), y(a.x, a.y), opts.wz(a.y),
+      opts.wx(b.x), y(b.x, b.y), opts.wz(b.y),
+      opts.wx(c.x), y(c.x, c.y), opts.wz(c.y),
     );
   }
 }
@@ -277,7 +255,10 @@ const quad = (
   wz: (y: number) => number,
 ) => {
   const w = corners.map(([gx, gy]) => [wx(gx), yOf(gx, gy), wz(gy)] as const);
-  out.push(...w[0]!, ...w[1]!, ...w[2]!, ...w[0]!, ...w[2]!, ...w[3]!);
+  out.push(
+    ...w[0]!, ...w[1]!, ...w[2]!,
+    ...w[0]!, ...w[2]!, ...w[3]!,
+  );
 };
 
 /** Zebra crossings anchored to the arm MOUTHS (never the old blocky suppression edge):
@@ -313,22 +294,10 @@ export function capCrosswalks(
       quad(
         out,
         [
-          [
-            sx + a.ux * (depth / 2) + px * sw,
-            sy + a.uy * (depth / 2) + py * sw,
-          ],
-          [
-            sx + a.ux * (depth / 2) - px * sw,
-            sy + a.uy * (depth / 2) - py * sw,
-          ],
-          [
-            sx - a.ux * (depth / 2) - px * sw,
-            sy - a.uy * (depth / 2) - py * sw,
-          ],
-          [
-            sx - a.ux * (depth / 2) + px * sw,
-            sy - a.uy * (depth / 2) + py * sw,
-          ],
+          [sx + a.ux * (depth / 2) + px * sw, sy + a.uy * (depth / 2) + py * sw],
+          [sx + a.ux * (depth / 2) - px * sw, sy + a.uy * (depth / 2) - py * sw],
+          [sx - a.ux * (depth / 2) - px * sw, sy - a.uy * (depth / 2) - py * sw],
+          [sx - a.ux * (depth / 2) + px * sw, sy - a.uy * (depth / 2) + py * sw],
         ],
         yOf,
         opts.wx,
@@ -365,22 +334,10 @@ export function capStopBars(
     quad(
       out,
       [
-        [
-          bx + Lx * halfLen + a.ux * halfDepth,
-          by + Ly * halfLen + a.uy * halfDepth,
-        ],
-        [
-          bx - Lx * halfLen + a.ux * halfDepth,
-          by - Ly * halfLen + a.uy * halfDepth,
-        ],
-        [
-          bx - Lx * halfLen - a.ux * halfDepth,
-          by - Ly * halfLen - a.uy * halfDepth,
-        ],
-        [
-          bx + Lx * halfLen - a.ux * halfDepth,
-          by + Ly * halfLen - a.uy * halfDepth,
-        ],
+        [bx + Lx * halfLen + a.ux * halfDepth, by + Ly * halfLen + a.uy * halfDepth],
+        [bx - Lx * halfLen + a.ux * halfDepth, by - Ly * halfLen + a.uy * halfDepth],
+        [bx - Lx * halfLen - a.ux * halfDepth, by - Ly * halfLen - a.uy * halfDepth],
+        [bx + Lx * halfLen - a.ux * halfDepth, by + Ly * halfLen - a.uy * halfDepth],
       ],
       yOf,
       opts.wx,

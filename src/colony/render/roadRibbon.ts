@@ -17,9 +17,9 @@ export interface RoadWay {
   kind: "avenue" | "street";
   /** Carriageway width in cells. */
   width: number;
-  /** Origin tag for lifecycle/invariant checks. Builder ways can be bulldozed; the depot spur is
-   *  excluded from the conservative pre-existing-ribbon blocked-cell survey. */
-  source?: "builder" | "depot-spur";
+  /** Set on ways appended by the builder (plotRoad), so bulldozing can prune them once
+   *  their cells are gone (spec 127 verify P2). Boot ways have no source. */
+  source?: "builder";
 }
 
 export interface RoadRibbonOptions {
@@ -91,7 +91,7 @@ export function ribbonCoverage(
   };
   for (const w of ways) {
     if (w.path.length < 2) continue;
-    const pts = roadRibbonRenderPath(w, terrain);
+    const pts = densify(chaikin(w.path, 2), 1.5);
     const half = w.width / 2;
     const stationH = pts.map((p) => Math.max(0, roadY(p.x, p.y)));
     // per-STATION sweep with the mesh's own CENTERED perpendicular (prev..next), so bend
@@ -287,22 +287,13 @@ export function buildRoadRibbons(
       if (s.size >= 2) {
         const [x, y] = k.split(",").map(Number);
         for (let dx = -JR; dx <= JR; dx++)
-          for (let dy = -JR; dy <= JR; dy++)
-            junction.add(`${x + dx},${y + dy}`);
+          for (let dy = -JR; dy <= JR; dy++) junction.add(`${x + dx},${y + dy}`);
       }
     nearJunction = (x: number, y: number) =>
       junction.has(`${Math.round(x)},${Math.round(y)}`);
   }
-  const depotMouths = ways
-    .filter((way) => way.source === "depot-spur")
-    .map((way) => way.path[0])
-    .filter((p): p is { x: number; y: number } => !!p);
-  const nearDepotMouth = (x: number, y: number) =>
-    depotMouths.some((p) => Math.hypot(x - p.x, y - p.y) <= 2.2);
   const skipPaint = (x: number, y: number) =>
-    nearJunction(x, y) ||
-    nearDepotMouth(x, y) ||
-    !roadSurfaceCellOk(opts, x, y);
+    nearJunction(x, y) || !roadSurfaceCellOk(opts, x, y);
   const lifts = zones
     ? assignWayLifts(ways.length, zones)
     : new Array<number>(ways.length).fill(0);

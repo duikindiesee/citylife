@@ -15,7 +15,7 @@ One pure resolver, `leveledWorldY(terrain, terrainLevel, x, y)` in
 `src/colony/render/terrainLeveling.ts`:
 
 ```ts
-terrainLevel?.get(y * terrain.size + x) ?? terrain.worldY(x, y);
+terrainLevel?.get(y * terrain.size + x) ?? terrain.worldY(x, y)
 ```
 
 Anything that stands ON the rendered surface resolves heights through it. Both walker call

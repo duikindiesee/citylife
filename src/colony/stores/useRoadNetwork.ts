@@ -1,5 +1,5 @@
-import { create } from "zustand";
-import { Biome } from "../terrain";
+import { create } from 'zustand';
+import { Biome } from '../terrain';
 
 // North = 1, East = 2, South = 4, West = 8
 export enum RoadMask {
@@ -16,56 +16,41 @@ export enum RoadMask {
   CornerSW = 12, // S | W
   CornerNW = 9, // N | W
   T_N = 11, // N | E | W
-  T_E = 7, // N | E | S
+  T_E = 7,  // N | E | S
   T_S = 14, // E | S | W
   T_W = 13, // N | S | W
-  Cross = 15, // N | E | S | W
+  Cross = 15 // N | E | S | W
 }
 
 export interface RoadTile {
   x: number;
   y: number;
   mask: number; // bitmask of connections
-  type: "street" | "avenue" | "highway" | "gravel" | "culdesac";
+  type: 'street' | 'avenue' | 'highway' | 'gravel' | 'culdesac';
 }
 
-export type BuilderMode =
-  | "roads"
-  | "raise"
-  | "lower"
-  | "flatten"
-  | "zoning_residential"
-  | "zoning_commercial"
-  | "bulldoze";
+export type BuilderMode = 'roads' | 'raise' | 'lower' | 'flatten' | 'zoning_residential' | 'zoning_commercial' | 'bulldoze';
 
 export interface BuilderState {
   tiles: Record<string, RoadTile>;
   builderActive: boolean;
   worldViewActive: boolean;
   builderMode: BuilderMode;
-  activeRoadType: "street" | "gravel" | "culdesac";
+  activeRoadType: 'street' | 'gravel' | 'culdesac';
   isDrawing: boolean;
   landscapeEdits: Map<string, number>;
   sameSessionPlacements: Set<string>; // tracks newly placed items for free bulldozer undo
-
+  
   toggleBuilder: () => void;
   toggleWorldView: () => void;
   setBuilderMode: (mode: BuilderMode) => void;
-  setActiveRoadType: (type: "street" | "gravel" | "culdesac") => void;
+  setActiveRoadType: (type: 'street' | 'gravel' | 'culdesac') => void;
   setIsDrawing: (isDrawing: boolean) => void;
-  plotRoad: (
-    cells: { x: number; y: number }[],
-    type: "street" | "gravel" | "culdesac",
-    sim?: any,
-  ) => void;
+  plotRoad: (cells: { x: number; y: number }[], type: 'street' | 'gravel' | 'culdesac', sim?: any) => void;
   removeRoad: (x: number, y: number, sim?: any) => void;
-  applyLandscapeEdit: (
-    x: number,
-    y: number,
-    mode: "raise" | "lower" | "flatten",
-  ) => void;
+  applyLandscapeEdit: (x: number, y: number, mode: 'raise' | 'lower' | 'flatten') => void;
   clearSessionPlacements: () => void;
-
+  
   saveToDB: () => Promise<void>;
   loadFromDB: (sim?: any) => Promise<void>;
 }
@@ -74,28 +59,23 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
   tiles: {},
   builderActive: false,
   worldViewActive: false,
-  builderMode: "roads",
-  activeRoadType: "street",
+  builderMode: 'roads',
+  activeRoadType: 'street',
   isDrawing: false,
   landscapeEdits: new Map(),
   sameSessionPlacements: new Set(),
 
   setIsDrawing: (isDrawing) => set({ isDrawing }),
-  toggleBuilder: () =>
-    set((state) => {
-      const active = !state.builderActive;
-      // Clear sameSessionPlacements when closing or opening builder
-      return {
-        builderActive: active,
-        worldViewActive: false,
-        sameSessionPlacements: new Set(),
-      };
-    }),
-  toggleWorldView: () =>
-    set((state) => ({
-      worldViewActive: !state.worldViewActive,
-      builderActive: false,
-    })),
+  toggleBuilder: () => set(state => {
+    const active = !state.builderActive;
+    // Clear sameSessionPlacements when closing or opening builder
+    return { 
+      builderActive: active, 
+      worldViewActive: false,
+      sameSessionPlacements: new Set() 
+    };
+  }),
+  toggleWorldView: () => set(state => ({ worldViewActive: !state.worldViewActive, builderActive: false })),
   setBuilderMode: (mode) => set({ builderMode: mode }),
   setActiveRoadType: (type) => set({ activeRoadType: type }),
   clearSessionPlacements: () => set({ sameSessionPlacements: new Set() }),
@@ -115,15 +95,13 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
             t.inBounds(c.x, c.y) && t.biome[t.idx(c.x, c.y)] === Biome.Beach,
         );
         if (bad) {
-          console.warn(
-            "plotRoad rejected: stroke crosses beach sand (spec 140)",
-          );
+          console.warn('plotRoad rejected: stroke crosses beach sand (spec 140)');
           return {};
         }
       }
       const newTiles = { ...state.tiles };
       const newPlacements = new Set(state.sameSessionPlacements);
-
+      
       // Mark all incoming cells as having roads (initially without connections)
       let anyNewCell = false;
       for (const c of cells) {
@@ -147,19 +125,16 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
 
       for (const c of cells) {
         // Update the cell itself
-        newTiles[`${c.x},${c.y}`] = {
-          ...newTiles[`${c.x},${c.y}`],
-          mask: getMask(c.x, c.y),
+        newTiles[`${c.x},${c.y}`] = { 
+          ...newTiles[`${c.x},${c.y}`], 
+          mask: getMask(c.x, c.y) 
         };
-
+        
         // Update its neighbours
         const neighbors = [
-          { dx: 0, dy: -1 },
-          { dx: 1, dy: 0 },
-          { dx: 0, dy: 1 },
-          { dx: -1, dy: 0 },
+          { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
         ];
-
+        
         for (const n of neighbors) {
           const nx = c.x + n.dx;
           const ny = c.y + n.dy;
@@ -167,7 +142,7 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
           if (newTiles[nKey]) {
             newTiles[nKey] = {
               ...newTiles[nKey],
-              mask: getMask(nx, ny),
+              mask: getMask(nx, ny)
             };
           }
         }
@@ -216,9 +191,9 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
       const newTiles = { ...state.tiles };
       const key = `${x},${y}`;
       if (!newTiles[key]) return {};
-
+      
       delete newTiles[key];
-
+      
       const newPlacements = new Set(state.sameSessionPlacements);
       newPlacements.delete(key);
 
@@ -232,10 +207,7 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
       };
 
       const neighbors = [
-        { dx: 0, dy: -1 },
-        { dx: 1, dy: 0 },
-        { dx: 0, dy: 1 },
-        { dx: -1, dy: 0 },
+        { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: -1, dy: 0 }
       ];
       for (const n of neighbors) {
         const nx = x + n.dx;
@@ -244,7 +216,7 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
         if (newTiles[nKey]) {
           newTiles[nKey] = {
             ...newTiles[nKey],
-            mask: getMask(nx, ny),
+            mask: getMask(nx, ny)
           };
         }
       }
@@ -284,25 +256,25 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
   loadFromDB: async (sim?: any) => {
     let tiles: Record<string, any> = {};
     try {
-      const res = await fetch("/api/roads");
+      const res = await fetch('/api/roads');
       if (res.ok) {
         const data = await res.json();
         tiles = data.tiles || {};
       } else {
-        console.warn("Failed to load roads from DB");
+        console.warn('Failed to load roads from DB');
       }
     } catch (e) {
-      console.warn("Backend not running, falling back to local storage", e);
-      const local = localStorage.getItem("citylife_roads");
+      console.warn('Backend not running, falling back to local storage', e);
+      const local = localStorage.getItem('citylife_roads');
       if (local) {
         try {
           tiles = JSON.parse(local);
         } catch (pe) {
-          console.error("Failed to parse local storage roads", pe);
+          console.error('Failed to parse local storage roads', pe);
         }
       }
     }
-
+    
     // Sync with simulation state
     if (sim) {
       if (Object.keys(tiles).length > 0) {
@@ -326,10 +298,10 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
             x: r.x,
             y: r.y,
             mask: 0,
-            type: r.kind || "street",
+            type: r.kind || 'street'
           };
         }
-
+        
         const getMask = (x: number, y: number) => {
           let mask = 0;
           if (initialTiles[`${x},${y - 1}`]) mask |= RoadMask.N;
@@ -338,12 +310,12 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
           if (initialTiles[`${x - 1},${y}`]) mask |= RoadMask.W;
           return mask;
         };
-
+        
         for (const key in initialTiles) {
           const t = initialTiles[key];
           t.mask = getMask(t.x, t.y);
         }
-
+        
         tiles = initialTiles;
       }
     }
@@ -361,12 +333,12 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
           const cy = y + dy;
           const key = `${cx},${cy}`;
           const currentOffset = newEdits.get(key) || 0;
-
-          if (mode === "raise") {
+          
+          if (mode === 'raise') {
             newEdits.set(key, currentOffset + 0.1);
-          } else if (mode === "lower") {
+          } else if (mode === 'lower') {
             newEdits.set(key, currentOffset - 0.1);
-          } else if (mode === "flatten") {
+          } else if (mode === 'flatten') {
             // Flatten sets the target radius to exactly the center cell's current height offset
             // We'd need to know the base terrain height to truly flatten to world height,
             // but for simplicity, we just set the offset of neighbors to match the center cell's offset.
@@ -383,18 +355,19 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
   saveToDB: async () => {
     const tiles = get().tiles;
     try {
-      await fetch("/api/roads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tiles }),
+      await fetch('/api/roads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tiles })
       });
     } catch (e) {
-      console.warn("Backend not running, saving to local storage", e);
-      localStorage.setItem("citylife_roads", JSON.stringify(tiles));
+      console.warn('Backend not running, saving to local storage', e);
+      localStorage.setItem('citylife_roads', JSON.stringify(tiles));
     }
-  },
+  }
 }));
 
-if (typeof window !== "undefined") {
+if (typeof window !== 'undefined') {
   (window as any).useRoadNetwork = useRoadNetwork;
 }
+

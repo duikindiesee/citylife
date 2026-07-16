@@ -5,7 +5,6 @@ import {
   padSeatY,
   RENDER_DRY_FLOOR,
 } from "../src/colony/render/useTerrainLeveling";
-import { depotCutFillSeatY } from "../src/colony/transit/busDepot";
 
 // Regression for the boot NaN-geometry flood (r3f-colony-migration, 2026-07): every commercial
 // pad has an EVEN width, so its centre x + (w - 1) / 2 is fractional; Terrain.worldY indexes the
@@ -99,40 +98,9 @@ describe("terrain leveling map (terrainLevel) at the real boot state", () => {
           if (level.has(y * N + x)) covered++;
       expect(covered).toBeGreaterThan(0);
     }
-    expect([...level].filter(([, v]) => !Number.isFinite(v))).toEqual([]);
-  });
-
-  it("levels exactly the half-open depot footprint to the shared cut-and-fill seat", () => {
-    const state = rt().sim.state;
-    const pad = state.busDepotPad!;
-    const N = state.terrain.size;
-    const level = computeTerrainLeveling(state, null, new Map());
-    const seat = depotCutFillSeatY(state.terrain, pad, RENDER_DRY_FLOOR);
-    let covered = 0;
-    for (let y = pad.y; y < pad.y + pad.h; y++)
-      for (let x = pad.x; x < pad.x + pad.w; x++) {
-        expect(level.get(y * N + x)).toBeCloseTo(seat, 8);
-        covered++;
-      }
-    expect(covered).toBe(pad.w * pad.h);
-    const eastOutside = level.get(
-      (pad.y + Math.floor(pad.h / 2)) * N + pad.x + pad.w,
-    );
-    expect(eastOutside).not.toBeCloseTo(seat, 8);
-  });
-
-  it("always seats the depot spur terrain to its ribbon surface, even inside the road deadzone", () => {
-    const state = rt().sim.state;
-    const spurKey = [...(state.busDepotSpurCells ?? [])][0];
-    expect(spurKey).toBeTruthy();
-    const [x, y] = spurKey!.split(",").map(Number);
-    const h = state.terrain.worldY(x!, y!) + 0.3;
-    const level = computeTerrainLeveling(
-      state,
-      new Map([[spurKey!, h]]),
-      new Map(),
-    );
-    expect(level.get(y! * state.terrain.size + x!)).toBeCloseTo(h, 6);
+    expect(
+      [...level].filter(([, v]) => !Number.isFinite(v)),
+    ).toEqual([]);
   });
 
   it("ground above a road surface is ALWAYS cut to it — no deadzone in that direction", () => {

@@ -36,9 +36,7 @@ describe("spec 120 — legacy-verbatim constants", () => {
     // crown = head lift + head radius
     expect(AVATAR_HEAD.lift + AVATAR_HEAD.radius).toBeCloseTo(1.7, 5);
     // torso capsule bottom = lift - (radius + length/2) sits at the feet (y=0)
-    expect(
-      AVATAR_BODY.lift - (AVATAR_BODY.radius + AVATAR_BODY.length / 2),
-    ).toBeCloseTo(0, 5);
+    expect(AVATAR_BODY.lift - (AVATAR_BODY.radius + AVATAR_BODY.length / 2)).toBeCloseTo(0, 5);
     expect(AVATAR_CAP).toBe(64);
   });
 });
@@ -54,11 +52,7 @@ describe("spec 120 — grid to world transform", () => {
   it("applies the legacy yaw convention: facing +x means rotY of PI/2", () => {
     const east = avatarTransform({ x: 0, y: 0, heading: 0 }, 10, () => 0);
     expect(east.rotY).toBeCloseTo(Math.PI / 2, 12);
-    const north = avatarTransform(
-      { x: 0, y: 0, heading: -Math.PI / 2 },
-      10,
-      () => 0,
-    );
+    const north = avatarTransform({ x: 0, y: 0, heading: -Math.PI / 2 }, 10, () => 0);
     expect(north.rotY).toBeCloseTo(Math.PI, 12);
   });
 

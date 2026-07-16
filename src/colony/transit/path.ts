@@ -96,8 +96,7 @@ export function buildPath(pts: Pt[], closed: boolean): PathData {
   const cum: number[] = [0];
   for (let i = 1; i < pts.length; i++)
     cum.push(
-      cum[i - 1]! +
-        Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.y - pts[i - 1]!.y),
+      cum[i - 1]! + Math.hypot(pts[i]!.x - pts[i - 1]!.x, pts[i]!.y - pts[i - 1]!.y),
     );
   if (closed && pts.length > 1) {
     const a = pts[pts.length - 1]!,

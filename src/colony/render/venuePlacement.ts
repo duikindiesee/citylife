@@ -174,8 +174,10 @@ export function venueRoadBlockedCells(
   ways: readonly RoadWay[] | undefined,
   t: Terrain,
 ): ReadonlySet<string> {
-  const cover = ribbonCoverage((ways ?? []) as RoadWay[], t, (x, y) =>
-    getSmoothRoadY(t, x, y),
+  const cover = ribbonCoverage(
+    (ways ?? []) as RoadWay[],
+    t,
+    (x, y) => getSmoothRoadY(t, x, y),
   );
   return new Set(cover.keys());
 }

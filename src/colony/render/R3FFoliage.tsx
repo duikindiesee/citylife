@@ -1,12 +1,11 @@
-import React, { useEffect, useMemo, useRef, useLayoutEffect } from "react";
-import * as THREE from "three";
-import { useFrame } from "@react-three/fiber";
-import type { ColonySim } from "../sim";
-import { calculateFoliagePositions } from "./foliageLogic";
-import { findJunctionZones } from "./roadJunctions";
-import { useSimSignal, type SimBridge } from "./useSimSignal";
-import { foliageSignature } from "./simSignals";
-import { buildIronworkHikePath, ironworkPillarCell } from "../ironworkPillar";
+import React, { useEffect, useMemo, useRef, useLayoutEffect } from 'react';
+import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
+import type { ColonySim } from '../sim';
+import { calculateFoliagePositions } from './foliageLogic';
+import { findJunctionZones } from './roadJunctions';
+import { useSimSignal, type SimBridge } from './useSimSignal';
+import { foliageSignature } from './simSignals';
 
 interface R3FFoliageProps {
   sim: ColonySim;
@@ -59,27 +58,7 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
         y1: depot.y + depot.h - 1,
       });
     }
-    // Spec 144 — the highland route is a footpath, not a road, so it does not enter `roads`.
-    // Clear its narrow tread and the mountain dais explicitly or conifers hide the destination
-    // and grow through the gravel ribbon.
-    for (const cell of buildIronworkHikePath(s)) {
-      rects.push({ x0: cell.x, y0: cell.y, x1: cell.x, y1: cell.y });
-    }
-    const pillar = ironworkPillarCell(s.structures);
-    if (pillar) {
-      rects.push({
-        x0: pillar.x - 3,
-        y0: pillar.y - 3,
-        x1: pillar.x + 3,
-        y1: pillar.y + 3,
-      });
-    }
-    const { matrices: mats, colors: cols } = calculateFoliagePositions(
-      s.terrain,
-      s.roads,
-      s.buildings,
-      rects,
-    );
+    const { matrices: mats, colors: cols } = calculateFoliagePositions(s.terrain, s.roads, s.buildings, rects);
     return { matrices: mats, colors: cols };
   }, [sim, foliageSig]);
 
@@ -100,12 +79,12 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
       roughness: 0.8,
       metalness: 0.05,
     });
-
+    
     mat.onBeforeCompile = (shader) => {
       shader.uniforms.uTime = { value: 0 };
       // Pass the uniform reference to the material object so useFrame can update it
       mat.userData.shader = shader;
-
+      
       shader.vertexShader = `
         uniform float uTime;
         ${shader.vertexShader}
@@ -119,7 +98,7 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
         float sway = sin(uTime * 1.5 + worldPos.x * 0.1 + worldPos.z * 0.1) * 0.1;
         // Only sway the top of the tree
         transformed.x += sway * position.y;
-        `,
+        `
       );
     };
     return mat;

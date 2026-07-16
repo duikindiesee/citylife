@@ -628,10 +628,6 @@ export interface ColonyState {
   /** Spec 149 — the surveyed bus depot pad, attached by the runtime after siting, so terrain
    *  leveling grades ONE flat apron the slab, the buses and the walker's ground all agree on. */
   busDepotPad?: { x: number; y: number; w: number; h: number } | null;
-  /** Spec 149 — the depot spur road cells (excluding the loop junction). Ambient TRAFFIC skips these
-   *  so cars never drive the dead-end spur into the depot and collide with a maneuvering bus; the
-   *  buses own the spur. Empty/absent on seeds with no depot. */
-  busDepotSpurCells?: Set<string> | null;
   /** Attached by the runtime while a Road Rally runs (null otherwise) — the R3F renderer reads
    *  it for the race course + the player's racing car. Legacy path was setRaceState(). */
   raceState?: RaceState | null;

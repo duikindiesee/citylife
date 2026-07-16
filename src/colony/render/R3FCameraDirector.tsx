@@ -1,8 +1,8 @@
-import { useMemo, useRef } from "react";
-import * as THREE from "three";
-import { useFrame, useThree } from "@react-three/fiber";
-import type { ColonySim } from "../sim";
-import { useRoadNetwork } from "../stores/useRoadNetwork";
+import { useMemo, useRef } from 'react';
+import * as THREE from 'three';
+import { useFrame, useThree } from '@react-three/fiber';
+import type { ColonySim } from '../sim';
+import { useRoadNetwork } from '../stores/useRoadNetwork';
 
 // Spec 131 — the two legacy camera behaviors the R3F port dropped:
 //
@@ -22,14 +22,11 @@ interface R3FCameraDirectorProps {
 
 export function R3FCameraDirector({ sim }: R3FCameraDirectorProps) {
   const camera = useThree((s) => s.camera);
-  const controls = useThree((s) => s.controls) as {
-    target?: THREE.Vector3;
-    update?: () => void;
-  } | null;
+  const controls = useThree((s) => s.controls) as { target?: THREE.Vector3; update?: () => void } | null;
   const cinematicT0 = useRef<number | null>(null);
   const scratch = useMemo(
     () => ({ target: new THREE.Vector3(), behind: new THREE.Vector3() }),
-    [],
+    []
   );
 
   useFrame(() => {
@@ -49,11 +46,7 @@ export function R3FCameraDirector({ sim }: R3FCameraDirectorProps) {
       const wide = Math.pow(Math.sin(T * 0.1571) * 0.5 + 0.5, 3);
       const radius = 28 + Math.sin(T / 22) * 14 + wide * 120;
       const height = 12 + Math.sin(T / 15) * 8 + wide * 78;
-      camera.position.set(
-        cx + Math.cos(angle) * radius,
-        cy + height,
-        cz + Math.sin(angle) * radius,
-      );
+      camera.position.set(cx + Math.cos(angle) * radius, cy + height, cz + Math.sin(angle) * radius);
       scratch.target.set(cx, cy + 1.2 + wide * 6, cz);
       if (controls?.target) controls.target.copy(scratch.target);
       camera.lookAt(scratch.target);
@@ -63,7 +56,7 @@ export function R3FCameraDirector({ sim }: R3FCameraDirectorProps) {
 
     // --- race chase cam (aerial modes only; FP keeps its own camera) ---
     const race = sim.state.raceState;
-    if (!race || race.mode === "idle") return;
+    if (!race || race.mode === 'idle') return;
     const { builderActive, worldViewActive } = useRoadNetwork.getState();
     if (!builderActive && !worldViewActive) return;
     const c = race.car;
@@ -72,7 +65,7 @@ export function R3FCameraDirector({ sim }: R3FCameraDirectorProps) {
     scratch.behind.set(
       wx(c.x - Math.cos(c.heading) * 7.5),
       ground + 5.8 + Math.min(3.5, Math.abs(c.speed) * 0.25),
-      wz(c.y - Math.sin(c.heading) * 7.5),
+      wz(c.y - Math.sin(c.heading) * 7.5)
     );
     camera.position.lerp(scratch.behind, 0.16);
     if (controls?.target) {

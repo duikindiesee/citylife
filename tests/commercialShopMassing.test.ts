@@ -12,11 +12,7 @@ import {
 import { BUSINESSES, type BusinessId } from "../src/colony/commerce/businesses";
 import type { ShopParcel, ShopKind } from "../src/colony/commerce/district";
 
-function parcel(
-  kind: ShopKind,
-  business: BusinessId,
-  index: number,
-): ShopParcel {
+function parcel(kind: ShopKind, business: BusinessId, index: number): ShopParcel {
   const w = kind === "showroom" ? 8 : kind === "store" ? 6 : 4;
   const h = kind === "showroom" ? 6 : kind === "store" ? 5 : 4;
   return {

@@ -1,12 +1,7 @@
 // Browser runtime for the colony: fixed-timestep sim loop + planet renderer + camera presets.
 import { COLONY } from "./config";
 import { ColonySim } from "./sim";
-import {
-  PlanetRenderer,
-  type CameraPreset,
-  type ViewMode,
-  type AvatarView,
-} from "./render/R3FPlanetRenderer";
+import { PlanetRenderer, type CameraPreset, type ViewMode, type AvatarView } from "./render/R3FPlanetRenderer";
 import { Biome } from "./terrain";
 import {
   autoGrow,
@@ -265,7 +260,6 @@ import {
   smoothOpen,
 } from "./transit/path";
 import type { RoadWay } from "./render/roadRibbon";
-import { conservativeRoadRibbonBlockedCells } from "./placementValidation";
 import { findJunctionZones } from "./render/roadJunctions";
 import {
   barStoolGridPositions,
@@ -883,12 +877,8 @@ export class ColonyRuntime {
   fpCameraCell: { x: number; y: number } | null = null;
   /** Spec 149 — one-shot teleport order for the camera capsule (FirstPersonController consumes it;
    *  seq marks freshness). debugPlaceFirstPerson and alighting issue these. */
-  fpTeleportRequest: {
-    x: number;
-    y: number;
-    yaw?: number;
-    seq: number;
-  } | null = null;
+  fpTeleportRequest: { x: number; y: number; yaw?: number; seq: number } | null =
+    null;
   private fpTeleportSeq = 0;
   /** Spec 088 — road centre-lines for the smooth ribbon render (rendering only; traffic uses the cells). */
   roadWays: RoadWay[] = [];
@@ -1160,16 +1150,10 @@ export class ColonyRuntime {
       // staircase the 4-connected flood-fill still sees as split). Every existing caller omits it, so
       // their ribbons + cells stay byte-identical.
       dryRun = false,
-      source?: RoadWay["source"],
     ): Cell[] => {
       const poly = simplifyPath(path);
       if (!dryRun && poly.length >= 2)
-        this.roadWays.push({
-          path: poly,
-          kind,
-          width: 4,
-          ...(source ? { source } : {}),
-        }); // 088 — smooth ribbon centre-line
+        this.roadWays.push({ path: poly, kind, width: 4 }); // 088 — smooth ribbon centre-line (chunky enough to read from the district view)
       const out = new Set<string>();
       const add = (fx: number, fy: number) => {
         const x = Math.round(fx),
@@ -1313,10 +1297,7 @@ export class ColonyRuntime {
       // With no carriage to spur from, still widen + merge the high street below; it simply gets no
       // founders' spur that seed. Every seed with a carriage keeps its byte-identical connector.
       if (car.length > 0) {
-        const [terminus, near] = nearestPair(
-          car,
-          this.commercialDistrict.street,
-        );
+        const [terminus, near] = nearestPair(car, this.commercialDistrict.street);
         const connector =
           leastCostPath(t, terminus, near, {
             slopeWeight: 0.5,
@@ -1498,10 +1479,7 @@ export class ColonyRuntime {
     // and their anchor pairs are ordered canonically, and leastCostPath/layRoad are pure.
     {
       const size = t0.size;
-      const idxToCell = (k: number): Cell => ({
-        x: k % size,
-        y: (k / size) | 0,
-      });
+      const idxToCell = (k: number): Cell => ({ x: k % size, y: (k / size) | 0 });
       const cellIndex = (c: Cell) => c.y * size + c.x;
       // Does a candidate connector actually 4-bridge the orphan to the main web? BFS from the orphan's
       // seed cell across the CURRENT road cells plus the candidate's cells; a bridge exists the moment
@@ -1638,16 +1616,6 @@ export class ColonyRuntime {
       ]);
       for (const s of this.sim.state.structures)
         depotBlocked.add(`${Math.round(s.x)},${Math.round(s.y)}`);
-      // Cell roads are not the rendered road footprint: smooth, multi-cell ribbons can cut across
-      // cells that are absent from `roadKind`. Conservatively reserve the ribbon's smoothing/width
-      // blocked-cell approximation before siting any plot, otherwise a logically cell-clean depot
-      // can still overlap visible road geometry (seed 4242 regression, spec 149).
-      const ribbonCells = conservativeRoadRibbonBlockedCells(
-        this.roadWays,
-        t0,
-        tr.depotRoadRibbonClearanceCells,
-      );
-      for (const k of ribbonCells) depotBlocked.add(k);
       const site = findDepotSite(
         t0,
         this.busRoute.loop,
@@ -1658,7 +1626,6 @@ export class ColonyRuntime {
           deepCells: tr.depotDeepCells,
           minRoadGap: tr.depotMinRoadGap,
           maxRoadGap: tr.depotMaxRoadGap,
-          maxHeightSpreadM: tr.depotMaxHeightSpreadM,
         },
       );
       if (site) {
@@ -1668,35 +1635,7 @@ export class ColonyRuntime {
             padCells.push({ x, y });
         reserveParcelLand(this.sim.state, padCells); // houses can never spawn on the depot
         // The gate spur is a REAL drivable road (ribbon-rendered) — buses ride INTO the plot on it.
-        const spurCells = layRoad(
-          [site.roadCell, site.gate],
-          1,
-          "street",
-          false,
-          "depot-spur",
-        );
-        // The surveyed gate is dry/in-bounds by the siting contract but may fail the generic
-        // `roadCellOk` shoulder/slope filter at a cut edge. The centre-line ribbon still reaches it;
-        // pin both endpoints into the drivable graph so the apron seam can never become a visual-only
-        // road that fleet logic cannot enter.
-        const spurKeys = new Set(spurCells.map((c) => `${c.x},${c.y}`));
-        for (const endpoint of [site.roadCell, site.gate]) {
-          const k = `${endpoint.x},${endpoint.y}`;
-          if (!spurKeys.has(k)) {
-            spurCells.push({ ...endpoint });
-            spurKeys.add(k);
-          }
-        }
-        mergeAvenue(this.sim.state, spurCells);
-        // Spec 149 — the spur belongs to the BUSES. Fence it off from ambient car traffic (all its
-        // cells except the loop junction) so a car never drives the dead-end into a maneuvering bus.
-        this.sim.state.busDepotSpurCells = new Set(
-          spurCells
-            .filter(
-              (c) => !(c.x === site.roadCell.x && c.y === site.roadCell.y),
-            )
-            .map((c) => `${c.x},${c.y}`),
-        );
+        mergeAvenue(this.sim.state, layRoad([site.roadCell, site.gate], 1));
         const layout = depotLayout(site, {
           baysTotal: tr.baysTotal,
           laneDepth: tr.depotLaneDepth,
@@ -1723,9 +1662,7 @@ export class ColonyRuntime {
           ],
           false,
         );
-        const bayPaths = layout.bays.map((b) =>
-          buildPath(smoothOpen(b.path, 1), false),
-        );
+        const bayPaths = layout.bays.map((b) => buildPath(smoothOpen(b.path, 1), false));
         this.fleetPaths = {
           loop: loopPath,
           spur: spurPath,
@@ -1738,7 +1675,7 @@ export class ColonyRuntime {
           bayPaths,
           this.busRoute.stops,
         );
-        this.busFleet = makeFleet(COLONY.transit, this.worldSeed); // seed the free-bay lottery per world
+        this.busFleet = makeFleet(COLONY.transit);
       }
     }
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
@@ -1966,43 +1903,12 @@ export class ColonyRuntime {
    *  (see setOperatorUserId). Still attempts a claim so an order of name-then-userId resolves either way. */
   setOperatorName(name: string | null): void {
     this.operatorName = name && name.trim() ? name.trim() : null;
-    this.claimOwnCitizen();
     this.updateOperatorCar();
     if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
       this.exitFirstPerson();
       return;
     }
     this.emit();
-  }
-
-  /** Identity-key the player view to the authenticated kooker userId (decoded from the JWT in
-   *  authClient), NOT the display name. Stamps (claims) the citizen the player owns so own-data and
-   *  step-into resolve by user id even when names collide. Re-evaluates the step-into guard like
-   *  setOperatorName, so flipping identity drops a now-disallowed first-person session. */
-  setOperatorUserId(userId: string | null): void {
-    this.operatorUserId = userId && userId.trim() ? userId.trim() : null;
-    this.claimOwnCitizen();
-    this.updateOperatorCar();
-    if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
-      this.exitFirstPerson();
-      return;
-    }
-    this.emit();
-  }
-
-  /** Identity claim / backfill: once both the login name and kooker userId are known, stamp the userId
-   *  onto the citizen the player owns — matched by name ONCE, then identity-keyed forever after. A
-   *  no-op if the userId is unknown, if the user already owns a stamped citizen (so a later name
-   *  collision can never re-point them), or if no unclaimed name match exists yet (the citizen may be
-   *  created later; operatorCitizenId still resolves it by the unclaimed-name fallback until claimed). */
-  private claimOwnCitizen(): void {
-    if (!this.operatorUserId) return;
-    if (this.citizens.byKookerUserId(this.operatorUserId)) return; // already claimed
-    const target = this.citizens.resolveOwnCitizenId(
-      this.operatorUserId,
-      this.operatorName,
-    );
-    if (target) this.citizens.setKookerUserId(target, this.operatorUserId);
   }
 
   /** Player-view guard: operators/admins may step into any citizen; CITYLIFE_PLAYER may only enter their own. */
@@ -2412,9 +2318,7 @@ export class ColonyRuntime {
   busPoseOf(id: number): BusPose | null {
     if (!this.busFleet || !this.fleetGeom || !this.fleetPaths) return null;
     const b = this.busFleet.buses[id];
-    return b
-      ? busPose(b, this.fleetPaths, this.fleetGeom, COLONY.transit)
-      : null;
+    return b ? busPose(b, this.fleetPaths, this.fleetGeom, COLONY.transit) : null;
   }
 
   /** Spec 149 — all fleet bus poses in bus-id order (the render layer draws these). */
@@ -2494,9 +2398,7 @@ export class ColonyRuntime {
         x: pose.x - Math.sin(pose.heading) * 1.5,
         y: pose.y + Math.cos(pose.heading) * 1.5,
       };
-      if (
-        this.blockedStepReason(Math.round(kerb.x), Math.round(kerb.y)) === null
-      )
+      if (this.blockedStepReason(Math.round(kerb.x), Math.round(kerb.y)) === null)
         spot = kerb;
     }
     c.pos.x = spot.x;
@@ -2580,8 +2482,7 @@ export class ColonyRuntime {
     }
     if (this.fpRidingBusId !== null) {
       this.fpNarrating = false;
-      this.fpNarration =
-        "The bus is moving — wait for the next stop to step off.";
+      this.fpNarration = "The bus is moving — wait for the next stop to step off.";
       this.emit();
       return false;
     }
@@ -3660,17 +3561,12 @@ export class ColonyRuntime {
     cy: number,
     orientation: "n" | "s" | "e" | "w",
     sizeName: "COMPACT" | "BIG" | "ESTATE" | "GRAND",
-    type: "residential" | "commercial",
+    type: "residential" | "commercial"
   ): boolean {
-    const size =
-      sizeName === "COMPACT"
-        ? COMPACT
-        : sizeName === "BIG"
-          ? BIG
-          : sizeName === "ESTATE"
-            ? ESTATE
-            : GRAND;
-
+    const size = sizeName === "COMPACT" ? COMPACT :
+                 sizeName === "BIG" ? BIG :
+                 sizeName === "ESTATE" ? ESTATE : GRAND;
+                 
     const id = `dynamic-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const lot = createDynamicPlot(
       this.sim.state.terrain,
@@ -3679,13 +3575,13 @@ export class ColonyRuntime {
       size,
       orientation,
       id,
-      type,
+      type
     );
     if (!lot) return false;
-
+    
     this.neighborhood.lots.push(lot);
     this.neighborhood.parcels.push(lot);
-
+    
     this.emit();
     return true;
   }
@@ -3712,9 +3608,7 @@ export class ColonyRuntime {
 
     // Remove it from neighborhood lists
     this.neighborhood.lots.splice(lotIndex, 1);
-    const parcelIndex = this.neighborhood.parcels.findIndex(
-      (p) => p.id === lot.id,
-    );
+    const parcelIndex = this.neighborhood.parcels.findIndex((p) => p.id === lot.id);
     if (parcelIndex !== -1) {
       this.neighborhood.parcels.splice(parcelIndex, 1);
     }
@@ -3730,7 +3624,7 @@ export class ColonyRuntime {
 
     // Find any free lot in the neighborhood
     const freeLot = this.neighborhood.lots.find(
-      (l) => !l.ownerCitizenId && !l.reservedFor && l.zone === "residential",
+      (l) => !l.ownerCitizenId && !l.reservedFor && l.zone === 'residential'
     );
     if (!freeLot) return;
 
@@ -3740,14 +3634,14 @@ export class ColonyRuntime {
 
     const plotInfo = {
       id: freeLot.id,
-      name: `Plot ${freeLot.id.split("-")[1] || "Zoned"}`,
+      name: `Plot ${freeLot.id.split('-')[1] || 'Zoned'}`,
       vibe: "plains" as any,
       zone: "residential" as any,
       x: freeLot.x,
       y: freeLot.y,
-      description: "A dynamically zoned plot.",
+      description: "A dynamically zoned plot."
     };
-
+    
     const citizen = this.citizens.register(h, plotInfo, Date.now());
     if (citizen) {
       this.ensureKbProfile({
@@ -3756,7 +3650,7 @@ export class ColonyRuntime {
         bio: `Settled in a newly zoned residential plot!`,
         plotId: citizen.plotId,
         address: citizen.plotName,
-        kind: "human",
+        kind: "human"
       });
 
       this.seedDeposit(citizen.id);
