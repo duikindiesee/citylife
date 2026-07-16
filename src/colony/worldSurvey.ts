@@ -25,7 +25,11 @@ export type SpatialLayer =
   | "deep-space";
 
 export type SpatialFrameKind =
-  "universe" | "world" | "region" | "building" | "room";
+  | "universe"
+  | "world"
+  | "region"
+  | "building"
+  | "room";
 
 export type SpatialRecordKind =
   | "structure"
@@ -43,7 +47,14 @@ export type SpatialRecordKind =
   | "portal";
 
 export type NavigationMode =
-  "walk" | "road" | "bus" | "rail" | "tunnel" | "portal" | "air" | "space";
+  | "walk"
+  | "road"
+  | "bus"
+  | "rail"
+  | "tunnel"
+  | "portal"
+  | "air"
+  | "space";
 
 export interface Vec3 {
   x: number;
