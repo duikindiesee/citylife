@@ -906,8 +906,7 @@ export function ColonyApp() {
         setWorldLayoutBoot({ status: "ready", result });
       } catch (error: unknown) {
         if (abort.signal.aborted) return;
-        if (resizeFrame !== undefined)
-          window.cancelAnimationFrame(resizeFrame);
+        if (resizeFrame !== undefined) window.cancelAnimationFrame(resizeFrame);
         resizeObserver?.disconnect();
         unsubscribe?.();
         unsubscribe = undefined;
@@ -923,8 +922,7 @@ export function ColonyApp() {
 
     return () => {
       abort.abort();
-      if (resizeFrame !== undefined)
-        window.cancelAnimationFrame(resizeFrame);
+      if (resizeFrame !== undefined) window.cancelAnimationFrame(resizeFrame);
       resizeObserver?.disconnect();
       unsubscribe?.();
       if (started) runtime.stop();
@@ -1099,8 +1097,12 @@ export function ColonyApp() {
   );
   const worldLayoutOperatorStatus: WorldLayoutOperatorStatus = captureError
     ? "error"
-    : worldLayoutOperatorFeedback.status ??
-      (worldLayoutHead ? (worldLayoutDirty ? "dirty" : "clean") : "unavailable");
+    : (worldLayoutOperatorFeedback.status ??
+      (worldLayoutHead
+        ? worldLayoutDirty
+          ? "dirty"
+          : "clean"
+        : "unavailable"));
 
   const saveWorldLayoutRevision = async (): Promise<void> => {
     if (worldLayoutMutationInFlight.current)
@@ -1376,9 +1378,7 @@ export function ColonyApp() {
       setWorldLayoutOperatorFeedback({
         status: "error",
         message:
-          error instanceof Error
-            ? error.message
-            : "World layout export failed",
+          error instanceof Error ? error.message : "World layout export failed",
       });
     }
   };
@@ -1390,7 +1390,7 @@ export function ColonyApp() {
     revisionId:
       captureError || worldLayoutOperatorFeedback.status
         ? null
-        : worldLayoutHead?.revisionId ?? null,
+        : (worldLayoutHead?.revisionId ?? null),
     status: worldLayoutOperatorStatus,
     message:
       captureError ??
@@ -1399,8 +1399,8 @@ export function ColonyApp() {
         : undefined) ??
       (worldLayoutDirty
         ? "The authored map differs from the durable head."
-        : worldLayoutOperatorFeedback.message ??
-          "Immutable history, rollback-as-new-revision and validated JSON import are ready."),
+        : (worldLayoutOperatorFeedback.message ??
+          "Immutable history, rollback-as-new-revision and validated JSON import are ready.")),
     onSave:
       worldLayoutBoot.status === "ready" && !captureError
         ? saveWorldLayoutRevision

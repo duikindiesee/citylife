@@ -34,10 +34,17 @@ const EMPTY_HASH = "0".repeat(64);
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 
 export type WorldLayoutPlacementSource =
-  "seed" | "builder" | "simulation" | "import";
+  | "seed"
+  | "builder"
+  | "simulation"
+  | "import";
 
 export type WorldLayoutRoadKind =
-  "avenue" | "street" | "path" | "gravel" | "culdesac";
+  | "avenue"
+  | "street"
+  | "path"
+  | "gravel"
+  | "culdesac";
 
 export type WorldLayoutProvenance = typeof LEGACY_WORLD_LAYOUT_PROVENANCE;
 
@@ -141,7 +148,10 @@ export interface WorldLayoutReservation {
 
 export type WorldLayoutNetworkKind = "transport" | "utility";
 export type WorldLayoutNetworkMode =
-  NavigationMode | "power" | "water" | "data";
+  | NavigationMode
+  | "power"
+  | "water"
+  | "data";
 
 export interface WorldLayoutNetworkNode {
   readonly id: string;

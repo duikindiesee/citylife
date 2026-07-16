@@ -148,7 +148,9 @@ export async function runWorldLayoutOperatorAction(
   action: WorldLayoutOperatorAction,
   operation: () => void | Promise<void>,
   onActionError?: WorldLayoutOperatorControls["onActionError"],
-): Promise<{ readonly ok: true } | { readonly ok: false; readonly message: string }> {
+): Promise<
+  { readonly ok: true } | { readonly ok: false; readonly message: string }
+> {
   try {
     await operation();
     return { ok: true };

@@ -1014,14 +1014,10 @@ export class ColonyRuntime {
   private layoutZones: readonly WorldLayoutZone[] = [];
   private layoutReservations: readonly WorldLayoutReservation[] = [];
   private layoutNetworks: readonly WorldLayoutNetwork[] = [];
-  private layoutZonesByCell: ReadonlyMap<
-    string,
-    readonly RuntimeLayoutZone[]
-  > = new Map();
-  private layoutReservationIdsByCell: ReadonlyMap<
-    string,
-    readonly string[]
-  > = new Map();
+  private layoutZonesByCell: ReadonlyMap<string, readonly RuntimeLayoutZone[]> =
+    new Map();
+  private layoutReservationIdsByCell: ReadonlyMap<string, readonly string[]> =
+    new Map();
   private layoutNetworkGraphs: ReadonlyMap<string, RuntimeNetworkGraph> =
     new Map();
   /** Immutable procedural baseline used by every hydration, including same-runtime rollback. */
@@ -3067,10 +3063,7 @@ export class ColonyRuntime {
         ids.push(reservation.id);
         reservationsByCell.set(key, ids);
       }
-    const canonicalReservationsByCell = new Map<
-      string,
-      readonly string[]
-    >();
+    const canonicalReservationsByCell = new Map<string, readonly string[]>();
     for (const [key, ids] of reservationsByCell)
       canonicalReservationsByCell.set(key, ids.sort(compareCodeUnits));
 
@@ -3178,10 +3171,7 @@ export class ColonyRuntime {
       let read = 0;
       let write = 0;
       for (let index = 0; index < elevation.length; index++)
-        if (
-          water[index] === 1 ||
-          elevation[index]! < COLONY.world.seaLevel
-        ) {
+        if (water[index] === 1 || elevation[index]! < COLONY.world.seaLevel) {
           distanceToWater[index] = 0;
           queue[write++] = index;
         }
@@ -3210,9 +3200,7 @@ export class ColonyRuntime {
   }
 
   /** Build an isolated Terrain view over preflight arrays without touching the live simulation. */
-  private preflightTerrain(
-    authority: MaterializedTerrainAuthority,
-  ): Terrain {
+  private preflightTerrain(authority: MaterializedTerrainAuthority): Terrain {
     const live = this.sim.state.terrain;
     return Object.assign(Object.create(Object.getPrototypeOf(live)), {
       size: live.size,
@@ -3226,17 +3214,14 @@ export class ColonyRuntime {
     }) as Terrain;
   }
 
-  private catalogPlacement(
-    definitionId: string,
-  ):
-    | {
-        readonly definition: PlaceableDefinition;
-        readonly zone: PlacementZone;
-      }
-    | null {
-    const match = /^zoned-plot:(residential|commercial):(compact|big|estate|grand)$/.exec(
-      definitionId,
-    );
+  private catalogPlacement(definitionId: string): {
+    readonly definition: PlaceableDefinition;
+    readonly zone: PlacementZone;
+  } | null {
+    const match =
+      /^zoned-plot:(residential|commercial):(compact|big|estate|grand)$/.exec(
+        definitionId,
+      );
     if (!match) return null;
     const zone = match[1] as PlacementZone;
     const sizeName = match[2]!.toUpperCase() as ZonedPlotSize;
@@ -3250,8 +3235,8 @@ export class ColonyRuntime {
       frameId: placement.frameId,
       layer: placement.layer,
       source: placement.source,
-      cells: [...placement.cells].sort((left, right) =>
-        left.y - right.y || left.x - right.x,
+      cells: [...placement.cells].sort(
+        (left, right) => left.y - right.y || left.x - right.x,
       ),
       bounds: placement.bounds,
       vertical: placement.vertical,
@@ -3300,7 +3285,10 @@ export class ColonyRuntime {
 
     const occupiedVolumes = new Map<
       string,
-      { readonly id: string; readonly vertical: RuntimeZonedPlacement["vertical"] }[]
+      {
+        readonly id: string;
+        readonly vertical: RuntimeZonedPlacement["vertical"];
+      }[]
     >();
     const volumeOverlaps = (
       left: RuntimeZonedPlacement["vertical"],
@@ -3417,9 +3405,7 @@ export class ColonyRuntime {
             ? { orientation: placement.orientation }
             : {}),
           anchors: placement.anchors
-            .filter((anchor) =>
-              ["gate", "road", "centre"].includes(anchor.id),
-            )
+            .filter((anchor) => ["gate", "road", "centre"].includes(anchor.id))
             .map((anchor) => ({
               id: anchor.id as "gate" | "road" | "centre",
               cell: anchor.cell,
@@ -3503,8 +3489,10 @@ export class ColonyRuntime {
         frame.parentId !== required.parentId ||
         frame.kind !== required.kind ||
         frame.layer !== required.layer ||
-        JSON.stringify(frame.transform) !== JSON.stringify(required.transform) ||
-        JSON.stringify(frame.grid ?? null) !== JSON.stringify(required.grid ?? null)
+        JSON.stringify(frame.transform) !==
+          JSON.stringify(required.transform) ||
+        JSON.stringify(frame.grid ?? null) !==
+          JSON.stringify(required.grid ?? null)
       )
         throw new Error(
           `world layout changed the original island frame ${required.id}`,
@@ -3543,7 +3531,9 @@ export class ColonyRuntime {
     x: number,
     y: number,
   ): readonly string[] {
-    return [...(this.layoutReservationIdsByCell.get(`${frameId}:${x},${y}`) ?? [])];
+    return [
+      ...(this.layoutReservationIdsByCell.get(`${frameId}:${x},${y}`) ?? []),
+    ];
   }
 
   /** Stable public-safe network registry projection; graph internals remain runtime-owned. */
@@ -5000,7 +4990,8 @@ export class ColonyRuntime {
 
     const reservedCells = new Set(context.reservedCells);
     const surfaceFrameId =
-      this.layoutPrimarySurfaceFrameId ?? this.seededWorldSurvey().surfaceFrameId;
+      this.layoutPrimarySurfaceFrameId ??
+      this.seededWorldSurvey().surfaceFrameId;
     for (const placement of this.layoutZonedPlacements ?? [])
       if (placement.frameId === surfaceFrameId)
         for (const cell of placement.cells)
@@ -5022,7 +5013,8 @@ export class ColonyRuntime {
   ): PlacementSurveyResult {
     if (!this.activeWorldLayout || this.layoutZones.length === 0) return survey;
     const surfaceFrameId =
-      this.layoutPrimarySurfaceFrameId ?? this.seededWorldSurvey().surfaceFrameId;
+      this.layoutPrimarySurfaceFrameId ??
+      this.seededWorldSurvey().surfaceFrameId;
     const allowed = new Set<WorldLayoutZoneKind>([requested, "mixed-use"]);
     const zoneFailures: PlacementFailure[] = [];
     for (const cell of survey.cells) {

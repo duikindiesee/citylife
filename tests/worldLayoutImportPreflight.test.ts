@@ -47,7 +47,11 @@ function surveyedPlacement(
   valid: boolean,
 ): WorldLayoutPlacement {
   const orientations = ["n", "s", "e", "w"] as const;
-  const candidates: { x: number; y: number; orientation: (typeof orientations)[number] }[] = [];
+  const candidates: {
+    x: number;
+    y: number;
+    orientation: (typeof orientations)[number];
+  }[] = [];
   if (valid)
     for (const road of base.roads)
       for (const cell of road.cells)
@@ -76,13 +80,14 @@ function surveyedPlacement(
     );
     const terrainFailure = survey.failures.some(
       (failure) =>
-        failure.code === "WATER_FORBIDDEN" ||
-        failure.code === "NON_BUILDABLE",
+        failure.code === "WATER_FORBIDDEN" || failure.code === "NON_BUILDABLE",
     );
     if ((valid && !survey.ok) || (!valid && !terrainFailure)) continue;
     const cellKeys = new Set(survey.cells.map((cell) => `${cell.x},${cell.y}`));
     return {
-      id: valid ? "placement:zz-preflight-control" : "placement:zz-preflight-invalid",
+      id: valid
+        ? "placement:zz-preflight-control"
+        : "placement:zz-preflight-invalid",
       definitionId: survey.definitionId,
       frameId: base.frames.find(
         (frame) => frame.kind === "region" && frame.layer === "surface",
@@ -151,11 +156,15 @@ describe("world layout import runtime preflight", () => {
       runtime.preflightWorldLayout(imported);
     } catch (error) {
       expect((error as WorldLayoutPreflightError).evidence).toEqual(
-        expect.arrayContaining([expect.stringMatching(/WATER_FORBIDDEN|NON_BUILDABLE/)]),
+        expect.arrayContaining([
+          expect.stringMatching(/WATER_FORBIDDEN|NON_BUILDABLE/),
+        ]),
       );
     }
     expect(save).not.toHaveBeenCalled();
-    expect(serializeWorldLayoutDocument(runtime.worldLayoutDocument()!)).toBe(before);
+    expect(serializeWorldLayoutDocument(runtime.worldLayoutDocument()!)).toBe(
+      before,
+    );
     expect(runtime.sim.state.terrain.elev).toEqual(elevationBefore);
   });
 
@@ -164,7 +173,9 @@ describe("world layout import runtime preflight", () => {
     const base = runtime.captureWorldLayout();
     runtime.hydrateWorldLayout(base);
     const valid = surveyedPlacement(runtime, base, true);
-    const validImport = child(base, { placements: [...base.placements, valid] });
+    const validImport = child(base, {
+      placements: [...base.placements, valid],
+    });
     expect(
       validatedWorldLayoutImportSaveInput(
         serializeWorldLayoutDocument(validImport),
@@ -214,18 +225,22 @@ describe("world layout import runtime preflight", () => {
     for (const testCase of cases) {
       const candidate = child(base, {
         placements: [...base.placements, placement],
-        reservations: [{
-          id: `reservation:${testCase.label}`,
-          frameId: placement.frameId,
-          purpose: testCase.label,
-          cells: [cell],
-          vertical: vertical(testCase.min, testCase.max),
-        }],
+        reservations: [
+          {
+            id: `reservation:${testCase.label}`,
+            frameId: placement.frameId,
+            purpose: testCase.label,
+            cells: [cell],
+            vertical: vertical(testCase.min, testCase.max),
+          },
+        ],
       });
       if (testCase.accepted)
         expect(() => runtime.preflightWorldLayout(candidate)).not.toThrow();
       else
-        expect(() => runtime.preflightWorldLayout(candidate)).toThrow(/RESERVED_VOLUME/);
+        expect(() => runtime.preflightWorldLayout(candidate)).toThrow(
+          /RESERVED_VOLUME/,
+        );
     }
   }, 60_000);
 
@@ -254,7 +269,9 @@ describe("world layout import runtime preflight", () => {
       if (testCase.accepted)
         expect(() => runtime.preflightWorldLayout(candidate)).not.toThrow();
       else
-        expect(() => runtime.preflightWorldLayout(candidate)).toThrow(/PLACEMENT_COLLISION/);
+        expect(() => runtime.preflightWorldLayout(candidate)).toThrow(
+          /PLACEMENT_COLLISION/,
+        );
     }
   }, 60_000);
 });

@@ -43,7 +43,9 @@ export interface WorldLayoutBootResult {
 export class WorldLayoutBootError extends Error {
   constructor(
     readonly code:
-      "WORLD_ID_MISMATCH" | "REVISION_MISMATCH" | "CONFLICT_WITHOUT_HEAD",
+      | "WORLD_ID_MISMATCH"
+      | "REVISION_MISMATCH"
+      | "CONFLICT_WITHOUT_HEAD",
     message: string,
   ) {
     super(message);

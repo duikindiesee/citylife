@@ -335,7 +335,9 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
 
     const hydrated = runtime.hydrateWorldLayout(unsupported);
     expect(runtime.worldLayoutDocument()).toEqual(unsupported);
-    expect(runtime.worldSurvey().records.get("placement:imported-library")).toMatchObject({
+    expect(
+      runtime.worldSurvey().records.get("placement:imported-library"),
+    ).toMatchObject({
       kind: "commercial-plot",
       metadata: {
         definitionId: "commercial-plot:library",
@@ -344,11 +346,7 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
     });
     expect(
       runtime
-        .surveyRoadPlacement(
-          [libraryCell],
-          "street",
-          hydrated.layoutRevision,
-        )
+        .surveyRoadPlacement([libraryCell], "street", hydrated.layoutRevision)
         .failures.map((failure) => failure.code),
     ).toContain("RESERVED_VOLUME");
   });

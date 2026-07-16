@@ -423,17 +423,15 @@ describe("WB.1d runtime authority replay", () => {
   it("rehydrates every revision from the procedural baseline instead of leaking prior terrain state", () => {
     const fixture = authorityDocument();
     const baselineRuntime = new ColonyRuntime(4242);
-    const baseline = baselineRuntime.worldSurvey().terrainCell(
-      fixture.terrainCell.x,
-      fixture.terrainCell.y,
-    )!;
+    const baseline = baselineRuntime
+      .worldSurvey()
+      .terrainCell(fixture.terrainCell.x, fixture.terrainCell.y)!;
     const runtime = new ColonyRuntime(4242);
     runtime.hydrateWorldLayout(fixture.document);
     expect(
-      runtime.worldSurvey().terrainCell(
-        fixture.terrainCell.x,
-        fixture.terrainCell.y,
-      )?.biome,
+      runtime
+        .worldSurvey()
+        .terrainCell(fixture.terrainCell.x, fixture.terrainCell.y)?.biome,
     ).toBe(Biome.Ocean);
 
     const reverted = createWorldLayoutDocument({
@@ -460,10 +458,9 @@ describe("WB.1d runtime authority replay", () => {
     });
     runtime.hydrateWorldLayout(reverted);
     expect(
-      runtime.worldSurvey().terrainCell(
-        fixture.terrainCell.x,
-        fixture.terrainCell.y,
-      ),
+      runtime
+        .worldSurvey()
+        .terrainCell(fixture.terrainCell.x, fixture.terrainCell.y),
     ).toMatchObject({
       biome: baseline.biome,
       water: baseline.water,
