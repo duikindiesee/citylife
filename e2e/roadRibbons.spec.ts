@@ -126,9 +126,31 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
     const rt = (window as any).__colony;
     const store = (window as any).useRoadNetwork.getState();
     const before = rt.sim.state.roadWays.length;
-    const cells = [];
-    for (let x = 150; x <= 165; x++) cells.push({ x, y: 150 });
-    store.plotRoad(cells, "street", rt.sim);
+    const t = rt.sim.state.terrain;
+    const roadSet = rt.sim.state.roadSet as Set<string>;
+    let candidate: {
+      cells: { x: number; y: number }[];
+      layoutRevision: string;
+    } | null = null;
+    for (let y = 30; y < t.size - 30 && !candidate; y += 3) {
+      for (let x = 30; x < t.size - 46; x += 3) {
+        const cells = [] as { x: number; y: number }[];
+        for (let rx = x; rx < x + 16; rx++) cells.push({ x: rx, y });
+        if (cells.some((cell) => roadSet.has(`${cell.x},${cell.y}`))) continue;
+        const survey = rt.surveyRoadPlacement(cells, "street");
+        if (!survey.ok) continue;
+        candidate = { cells, layoutRevision: survey.layoutRevision };
+        break;
+      }
+    }
+    if (!candidate) throw new Error("no validator-approved road stroke found");
+    store.plotRoad(
+      candidate.cells,
+      "street",
+      rt.sim,
+      candidate.layoutRevision,
+      rt,
+    );
     return { before, after: rt.sim.state.roadWays.length };
   });
   console.log(`plotRoad ways: ${grown.before} -> ${grown.after}`);

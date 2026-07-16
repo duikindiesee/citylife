@@ -53,32 +53,45 @@ test("R3F reactivity: placing and demolishing a plot updates the rendered scene"
   expect(before).toBeGreaterThanOrEqual(0);
   console.log(`Zone overlay meshes before placement: ${before}`);
 
-  // Find a flat, dry, buildable area (same scan the zoning spec uses).
+  // Find a validator-approved road stroke and adjacent plot. Before the road exists, the exact
+  // plot survey may fail only for its missing frontage; every terrain/collision check must pass.
   const buildableCenter = await page.evaluate(() => {
-    const t = (window as any).__colony?.sim?.state?.terrain;
-    if (!t) return null;
-    const cellOkLocal = (gx: number, gy: number) => {
-      if (gx < 0 || gy < 0 || gx >= t.size || gy >= t.size) return false;
-      const idx = gy * t.size + gx;
-      if (t.buildable?.[idx] === 0) return false;
-      const b = t.biome?.[idx];
-      return b !== 4 && b !== 5 && b !== 6 && b !== 7;
-    };
-    for (let y = 100; y < t.size - 100; y += 10) {
-      for (let x = 100; x < t.size - 100; x += 10) {
-        let ok = true;
-        for (let dy = -15; dy <= 15 && ok; dy++) {
-          for (let dx = -15; dx <= 15; dx++) {
-            if (!cellOkLocal(x + dx, y + dy)) {
-              ok = false;
-              break;
-            }
-          }
+    const rt = (window as any).__colony;
+    const t = rt?.sim?.state?.terrain;
+    if (!rt || !t) return null;
+    const roadSet = rt.sim.state.roadSet as Set<string>;
+    for (let y = 30; y < t.size - 30; y += 3) {
+      for (let x = 30; x < t.size - 30; x += 3) {
+        // A single logical frontage cell is sufficient for zoning and intentionally creates no
+        // ribbon way. A multi-cell ribbon has a rendered shoulder beside the centre-line, which
+        // the exact plot survey correctly treats as overlap.
+        const road = [{ x, y }];
+        if (road.some((cell) => roadSet.has(`${cell.x},${cell.y}`))) continue;
+        const roadSurvey = rt.surveyRoadPlacement(road, "street");
+        if (!roadSurvey.ok) continue;
+        const plotSurvey = rt.surveyZonedPlot(
+          x,
+          y + 1,
+          "n",
+          "BIG",
+          "commercial",
+        );
+        if (
+          plotSurvey.failures.length > 0 &&
+          plotSurvey.failures.every(
+            (failure: any) => failure.code === "ROAD_CONNECTION_REQUIRED",
+          )
+        ) {
+          return {
+            x,
+            y,
+            road,
+            roadRevision: roadSurvey.layoutRevision,
+          };
         }
-        if (ok) return { x, y };
       }
     }
-    return { x: t.landing.x, y: t.landing.y };
+    return null;
   });
   expect(buildableCenter).not.toBeNull();
   const bx = buildableCenter!.x;
@@ -86,26 +99,27 @@ test("R3F reactivity: placing and demolishing a plot updates the rendered scene"
   console.log(`Buildable center: ${bx},${by}`);
 
   // Street frontage for the plot, then the plot itself — all through the public runtime api.
-  await page.evaluate(
-    ({ rx, ry }) => {
-      const cells = [] as { x: number; y: number }[];
-      for (let x = rx - 5; x <= rx + 5; x++) cells.push({ x, y: ry });
-      (window as any).useRoadNetwork.getState().plotRoad(cells, "street");
-    },
-    { rx: bx, ry: by },
-  );
+  await page.evaluate(({ road, roadRevision }) => {
+    const rt = (window as any).__colony;
+    (window as any).useRoadNetwork
+      .getState()
+      .plotRoad(road, "street", rt.sim, roadRevision, rt);
+  }, buildableCenter);
 
   // A COMMERCIAL plot: auto-settlers only claim residential lots, so the unbuilt overlay
   // stays deterministically visible for the assertion window.
   const placed = await page.evaluate(
     ({ px, py }) => {
-      return (window as any).__colony.placeZonedPlot(
+      const rt = (window as any).__colony;
+      const survey = rt.surveyZonedPlot(px, py + 1, "n", "BIG", "commercial");
+      return rt.commitZonedPlot(
         px,
         py + 1,
         "n",
         "BIG",
         "commercial",
-      );
+        survey.layoutRevision,
+      ).ok;
     },
     { px: bx, py: by },
   );
