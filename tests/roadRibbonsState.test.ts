@@ -60,17 +60,21 @@ describe("spec 127 — roadWays reach the render state", () => {
     const rt = new ColonyRuntime(4242);
     const before = rt.sim.state.roadWays!.length;
     const cells = [];
-    for (let x = 20; x <= 40; x++) cells.push({ x, y: 20 });
+    // Seed 4242 dry/buildable fixture. The authoritative placement gate intentionally rejects
+    // the old (20,20) ocean stroke that this renderer-only regression used before WB.1c.
+    for (let x = 230; x <= 250; x++) cells.push({ x, y: 120 });
     useRoadNetwork.getState().plotRoad(cells, "street", rt.sim);
     const ways = rt.sim.state.roadWays!;
     expect(ways.length).toBe(before + 1);
     const added = ways[ways.length - 1]!;
     expect(added.width).toBe(1);
-    expect(added.path[0]).toEqual({ x: 20, y: 20 });
-    expect(added.path[added.path.length - 1]).toEqual({ x: 40, y: 20 });
+    expect(added.path[0]).toEqual({ x: 230, y: 120 });
+    expect(added.path[added.path.length - 1]).toEqual({ x: 250, y: 120 });
     // a single-cell road (cul-de-sac) appends NO way — the bulb renders it
     const before2 = ways.length;
-    useRoadNetwork.getState().plotRoad([{ x: 60, y: 60 }], "culdesac", rt.sim);
+    useRoadNetwork
+      .getState()
+      .plotRoad([{ x: 225, y: 130 }], "culdesac", rt.sim);
     expect(rt.sim.state.roadWays!.length).toBe(before2);
   });
 });

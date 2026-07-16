@@ -276,6 +276,14 @@ import {
 import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
 import { roadComponents } from "./roadConnectivity";
 import { createWorldSurvey, type WorldSurveyRegistry } from "./worldSurvey";
+import { createPlacementContext } from "./placement/runtimeContext";
+import type { ZonedPlotSize } from "./placement/placeableCatalog";
+import {
+  surveyRoadStroke,
+  surveyZonedPlot as runZonedPlotSurvey,
+  type PlacementCommitResult,
+  type PlacementSurveyResult,
+} from "./placement/surveyPlacement";
 import {
   createRadio,
   tuneTo,
@@ -900,6 +908,9 @@ export class ColonyRuntime {
   private fpNarration: string | null = null;
   private fpNarrating = false;
   private settlerTimer = 0;
+  /** WB.1c — the last exact builder survey. It is transient evidence for the Survey Map ghost,
+   *  never persisted as world layout; WB.1d will own persisted revisions. */
+  private lastPlacementSurvey: PlacementSurveyResult | null = null;
 
   constructor(seed: number = COLONY.render.seed) {
     this.worldSeed = seed;
@@ -2533,6 +2544,7 @@ export class ColonyRuntime {
       roadWays: this.roadWays,
       busRoute: this.busRoute,
       busDepotPad: state.busDepotPad,
+      placementSurvey: this.lastPlacementSurvey,
     });
   }
 
@@ -3692,6 +3704,93 @@ export class ColonyRuntime {
     sizeName: "COMPACT" | "BIG" | "ESTATE" | "GRAND",
     type: "residential" | "commercial",
   ): boolean {
+    return this.commitZonedPlot(
+      cx,
+      cy,
+      orientation,
+      sizeName,
+      type,
+      this.placementContext().layoutRevision,
+    ).ok;
+  }
+
+  /** WB.1c — one exact placement context for preview, runtime commit and tests. */
+  private placementContext() {
+    return createPlacementContext({
+      state: this.sim.state,
+      neighborhood: this.neighborhood,
+      commercialDistrict: this.commercialDistrict,
+      roadWays: this.roadWays,
+    });
+  }
+
+  /** WB.1c — survey a plot without mutating the world. The result is also exposed as the
+   *  transient Survey Map ghost, so the map and world preview consume identical evidence. */
+  surveyZonedPlot(
+    cx: number,
+    cy: number,
+    orientation: "n" | "s" | "e" | "w" | undefined,
+    sizeName: ZonedPlotSize,
+    type: "residential" | "commercial",
+    expectedLayoutRevision?: string,
+  ): PlacementSurveyResult {
+    const survey = runZonedPlotSurvey({
+      context: this.placementContext(),
+      x: cx,
+      y: cy,
+      ...(orientation ? { orientation } : {}),
+      sizeName,
+      zone: type,
+      ...(expectedLayoutRevision ? { expectedLayoutRevision } : {}),
+    });
+    this.lastPlacementSurvey = survey;
+    return survey;
+  }
+
+  /** WB.1c — survey a road stroke against the same terrain, collision and revision truth. */
+  surveyRoadPlacement(
+    cells: readonly { x: number; y: number }[],
+    roadType: "street" | "gravel" | "culdesac",
+    expectedLayoutRevision?: string,
+  ): PlacementSurveyResult {
+    const survey = surveyRoadStroke({
+      context: this.placementContext(),
+      cells,
+      roadType,
+      ...(expectedLayoutRevision ? { expectedLayoutRevision } : {}),
+    });
+    this.lastPlacementSurvey = survey;
+    return survey;
+  }
+
+  /** WB.1c — revalidate immediately before mutation. A stale or invalid ghost can never commit. */
+  commitZonedPlot(
+    cx: number,
+    cy: number,
+    orientation: "n" | "s" | "e" | "w",
+    sizeName: ZonedPlotSize,
+    type: "residential" | "commercial",
+    expectedLayoutRevision: string,
+  ): PlacementCommitResult {
+    const survey = this.surveyZonedPlot(
+      cx,
+      cy,
+      orientation,
+      sizeName,
+      type,
+      expectedLayoutRevision,
+    );
+    if (!survey.ok)
+      return {
+        ok: false,
+        survey,
+        reason: survey.failures.some(
+          (failure) => failure.code === "STALE_LAYOUT_REVISION",
+        )
+          ? "stale-revision"
+          : "invalid",
+      };
+
     const size =
       sizeName === "COMPACT"
         ? COMPACT
@@ -3700,8 +3799,14 @@ export class ColonyRuntime {
           : sizeName === "ESTATE"
             ? ESTATE
             : GRAND;
-
-    const id = `dynamic-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const id = [
+      "dynamic",
+      type,
+      sizeName.toLowerCase(),
+      orientation,
+      cx,
+      cy,
+    ].join("-");
     const lot = createDynamicPlot(
       this.sim.state.terrain,
       cx,
@@ -3711,13 +3816,15 @@ export class ColonyRuntime {
       id,
       type,
     );
-    if (!lot) return false;
+    if (!lot) return { ok: false, survey, reason: "runtime-rejected" };
 
-    this.neighborhood.lots.push(lot);
+    // Primary neighbourhood assembly aliases lots and parcels. Commit exactly once in that case.
     this.neighborhood.parcels.push(lot);
+    if (this.neighborhood.lots !== this.neighborhood.parcels)
+      this.neighborhood.lots.push(lot);
 
     this.emit();
-    return true;
+    return { ok: true, survey, placedId: id };
   }
 
   demolishPlot(cx: number, cy: number): boolean {
@@ -3742,12 +3849,13 @@ export class ColonyRuntime {
 
     // Remove it from neighborhood lists
     this.neighborhood.lots.splice(lotIndex, 1);
-    const parcelIndex = this.neighborhood.parcels.findIndex(
-      (p) => p.id === lot.id,
-    );
-    if (parcelIndex !== -1) {
-      this.neighborhood.parcels.splice(parcelIndex, 1);
+    if (this.neighborhood.parcels !== this.neighborhood.lots) {
+      const parcelIndex = this.neighborhood.parcels.findIndex(
+        (p) => p.id === lot.id,
+      );
+      if (parcelIndex !== -1) this.neighborhood.parcels.splice(parcelIndex, 1);
     }
+    this.lastPlacementSurvey = null;
 
     this.emit();
     return true;

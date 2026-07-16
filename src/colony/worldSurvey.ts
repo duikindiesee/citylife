@@ -8,6 +8,7 @@
 import type { CityPlan } from "./cityPlan";
 import type { CommercialDistrict } from "./commerce/district";
 import type { Neighborhood } from "./neighborhood";
+import type { PlacementSurveyResult } from "./placement/surveyPlacement";
 import { CELL_SIZE } from "./scale";
 import { Biome, type Buildable, type Terrain } from "./terrain";
 import type { BusRoute } from "./transit/busRoute";
@@ -24,11 +25,7 @@ export type SpatialLayer =
   | "deep-space";
 
 export type SpatialFrameKind =
-  | "universe"
-  | "world"
-  | "region"
-  | "building"
-  | "room";
+  "universe" | "world" | "region" | "building" | "room";
 
 export type SpatialRecordKind =
   | "structure"
@@ -42,17 +39,11 @@ export type SpatialRecordKind =
   | "bus-route"
   | "bus-stop"
   | "bus-depot"
+  | "placement-ghost"
   | "portal";
 
 export type NavigationMode =
-  | "walk"
-  | "road"
-  | "bus"
-  | "rail"
-  | "tunnel"
-  | "portal"
-  | "air"
-  | "space";
+  "walk" | "road" | "bus" | "rail" | "tunnel" | "portal" | "air" | "space";
 
 export interface Vec3 {
   x: number;
@@ -234,6 +225,8 @@ export interface WorldSurveySource {
   roadWays?: readonly SurveyRoadWay[];
   busRoute?: BusRoute | null;
   busDepotPad?: GridBounds | null;
+  /** Last shared-contract builder survey. Transient map evidence, never persisted world layout. */
+  placementSurvey?: PlacementSurveyResult | null;
 }
 
 const ZERO_TRANSFORM: SpatialTransform = {
@@ -926,6 +919,71 @@ function addBusNetwork(
   }
 }
 
+/**
+ * Project the last builder survey into the same registry consumed by the Survey Map.
+ *
+ * The record deliberately remains transient and non-navigable: it is evidence of a proposed
+ * placement, not committed world state. Every nested value is copied so a registry snapshot cannot
+ * drift if a caller replaces its live preview object after this function returns.
+ */
+function addPlacementGhost(
+  registry: WorldSurveyRegistry,
+  survey: PlacementSurveyResult | null | undefined,
+): void {
+  if (!survey) return;
+  const id = `${registry.surfaceFrameId}:placement-ghost:last`;
+  const address = `${registry.frames.get(registry.surfaceFrameId)!.address}/placement-ghost/last`;
+  const cells = survey.cells.map((cell) => ({ ...cell }));
+  const anchors = survey.anchors.map((anchor) => ({
+    id: anchor.id,
+    cell: { ...anchor.cell },
+  }));
+  const failures = survey.failures.map((failure) => ({
+    code: failure.code,
+    ...(failure.cell ? { cell: { ...failure.cell } } : {}),
+    ...(failure.detail !== undefined ? { detail: failure.detail } : {}),
+  }));
+  const vertical = { ...survey.vertical };
+  const metadata: Readonly<Record<string, unknown>> = {
+    placementGhost: true,
+    transient: true,
+    valid: survey.ok,
+    definitionId: survey.definitionId,
+    definitionKind: survey.definitionKind,
+    layoutRevision: survey.layoutRevision,
+    revision: survey.layoutRevision,
+    ...(survey.orientation ? { orientation: survey.orientation } : {}),
+    cells,
+    anchors,
+    failures,
+    failureCodes: failures.map((failure) => failure.code),
+  };
+  registry.addRecord({
+    id,
+    address,
+    frameId: registry.surfaceFrameId,
+    layer: "surface",
+    kind: "placement-ghost",
+    geometry:
+      survey.definitionKind === "road"
+        ? {
+            type: "polyline",
+            cells,
+            closed: false,
+            vertical,
+          }
+        : {
+            type: "footprint",
+            bounds: { ...survey.bounds },
+            elevation: vertical.min,
+            // The surveyed cells/bounds are already expressed in their final orientation.
+            yaw: 0,
+            vertical,
+          },
+    metadata,
+  });
+}
+
 /** Build the deterministic current-world registry. No renderer or browser state is consulted. */
 export function createWorldSurvey(
   source: WorldSurveySource,
@@ -1151,5 +1209,6 @@ export function createWorldSurvey(
     addFootprint(registry, "bus-depot", "main", source.busDepotPad, {});
   addRoadNetwork(registry, source);
   addBusNetwork(registry, source);
+  addPlacementGhost(registry, source.placementSurvey);
   return registry;
 }

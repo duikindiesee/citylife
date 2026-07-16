@@ -38,58 +38,116 @@ test("builder-painted CommercialBlock seats on its graded sloped pad", async ({
   const painted = await page.evaluate(() => {
     const rt = (window as any).__colony;
     const t = rt.sim.state.terrain;
-    const ok = (x: number, y: number) => {
-      if (x < 0 || y < 0 || x >= t.size || y >= t.size) return false;
-      return t.buildable[y * t.size + x] !== 0;
-    };
+    const store = (window as any).useRoadNetwork.getState();
+    const roadSet = rt.sim.state.roadSet as Set<string>;
+    const onlyMissingRoad = (survey: any) =>
+      survey.failures.every(
+        (failure: any) => failure.code === "ROAD_CONNECTION_REQUIRED",
+      );
 
-    let target: { x: number; y: number; relief: number } | null = null;
-    for (let y = 80; y < t.size - 80 && !target; y += 4) {
-      for (let x = 80; x < t.size - 80; x += 4) {
-        let valid = true;
-        let lo = Infinity;
-        let hi = -Infinity;
-        for (let dy = 0; dy < 18 && valid; dy++) {
-          for (let dx = -12; dx <= 12; dx++) {
-            if (!ok(x + dx, y + dy)) {
-              valid = false;
-              break;
-            }
-            const h = t.worldY(x + dx, y + dy);
-            lo = Math.min(lo, h);
-            hi = Math.max(hi, h);
-          }
-        }
-        if (valid && hi - lo >= 0.6) {
-          target = { x, y, relief: hi - lo };
-          break;
-        }
+    let target: {
+      x: number;
+      y: number;
+      relief: number;
+      roadCells: { x: number; y: number }[];
+    } | null = null;
+    for (let y = 40; y < t.size - 40 && !target; y += 3) {
+      for (let x = 40; x < t.size - 40; x += 3) {
+        // Keep each frontage marker a separate one-cell placement. Joining them into a ribbon
+        // adds a rendered shoulder on the plots' first row, which exact overlap checks reject.
+        const roadCells = [
+          { x: x - 5, y },
+          { x: x + 5, y },
+        ];
+        if (roadCells.some((cell) => roadSet.has(`${cell.x},${cell.y}`)))
+          continue;
+        if (
+          roadCells.some((cell) => !rt.surveyRoadPlacement([cell], "street").ok)
+        )
+          continue;
+
+        const left = rt.surveyZonedPlot(
+          x - 5,
+          y + 1,
+          "n",
+          "COMPACT",
+          "commercial",
+        );
+        const right = rt.surveyZonedPlot(
+          x + 5,
+          y + 1,
+          "n",
+          "COMPACT",
+          "commercial",
+        );
+        if (!onlyMissingRoad(left) || !onlyMissingRoad(right)) continue;
+
+        const heights = [...left.cells, ...right.cells].map((cell: any) =>
+          t.worldY(cell.x, cell.y),
+        );
+        const relief = Math.max(...heights) - Math.min(...heights);
+        if (relief < 0.6) continue;
+        target = {
+          x,
+          y,
+          relief,
+          roadCells,
+        };
+        break;
       }
     }
     if (!target) throw new Error("no sloped builder-safe commercial run found");
 
     const before = new Set(rt.neighborhood.lots.map((lot: any) => lot.id));
-    const road = [];
-    for (let x = target.x - 14; x <= target.x + 14; x++)
-      road.push({ x, y: target.y - 1 });
-    (window as any).useRoadNetwork.getState().plotRoad(road, "street");
+    for (const roadCell of target.roadCells) {
+      const roadSurvey = rt.surveyRoadPlacement([roadCell], "street");
+      if (!roadSurvey.ok)
+        throw new Error(
+          `frontage survey failed: ${JSON.stringify(roadSurvey)}`,
+        );
+      store.plotRoad(
+        [roadCell],
+        "street",
+        rt.sim,
+        roadSurvey.layoutRevision,
+        rt,
+      );
+    }
 
-    const first = rt.placeZonedPlot(
-      target.x - 4,
-      target.y,
+    const firstSurvey = rt.surveyZonedPlot(
+      target.x - 5,
+      target.y + 1,
       "n",
       "COMPACT",
       "commercial",
     );
-    const second = rt.placeZonedPlot(
-      target.x + 4,
-      target.y,
+    const first = rt.commitZonedPlot(
+      target.x - 5,
+      target.y + 1,
+      "n",
+      "COMPACT",
+      "commercial",
+      firstSurvey.layoutRevision,
+    );
+    const secondSurvey = rt.surveyZonedPlot(
+      target.x + 5,
+      target.y + 1,
       "n",
       "COMPACT",
       "commercial",
     );
-    if (!first || !second)
-      throw new Error(`commercial paint failed: ${first}/${second}`);
+    const second = rt.commitZonedPlot(
+      target.x + 5,
+      target.y + 1,
+      "n",
+      "COMPACT",
+      "commercial",
+      secondSurvey.layoutRevision,
+    );
+    if (!first.ok || !second.ok)
+      throw new Error(
+        `commercial paint failed: ${JSON.stringify(first)}/${JSON.stringify(second)}`,
+      );
     const lots = rt.neighborhood.lots.filter((lot: any) => !before.has(lot.id));
     for (const lot of lots) lot.built = true;
     rt.emit();

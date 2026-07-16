@@ -36,38 +36,44 @@ test("Zoning and building plots E2E", async ({ page }) => {
   await expect(gravelBtn).toBeVisible();
   console.log("Category submenus for roads are successfully displayed.");
 
-  // Find a flat, dry, buildable area in the terrain
+  // Find an authoritative road + plot pair. The future plot may fail only for missing frontage;
+  // all exact-footprint terrain, shore, reservation and collision checks already have to pass.
   const buildableCenter = await page.evaluate(() => {
-    const t = (window as any).__colony?.sim?.state?.terrain;
-    if (!t) return null;
-
-    // Serialized-safe cellOk emulator
-    const cellOkLocal = (gx: number, gy: number) => {
-      if (gx < 0 || gy < 0 || gx >= t.size || gy >= t.size) return false;
-      const idx = gy * t.size + gx;
-      if (t.buildable?.[idx] === 0) return false;
-      const b = t.biome?.[idx];
-      // Exclude Mountain (4), Peak (5), Ocean (6), Shallows (7)
-      return b !== 4 && b !== 5 && b !== 6 && b !== 7;
-    };
-
-    // Scan for a 30x30 flat buildable block
-    for (let y = 100; y < t.size - 100; y += 10) {
-      for (let x = 100; x < t.size - 100; x += 10) {
-        let ok = true;
-        for (let dy = -15; dy <= 15; dy++) {
-          for (let dx = -15; dx <= 15; dx++) {
-            if (!cellOkLocal(x + dx, y + dy)) {
-              ok = false;
-              break;
-            }
-          }
-          if (!ok) break;
+    const rt = (window as any).__colony;
+    const t = rt?.sim?.state?.terrain;
+    if (!rt || !t) return null;
+    const roadSet = rt.sim.state.roadSet as Set<string>;
+    for (let y = 30; y < t.size - 30; y += 3) {
+      for (let x = 30; x < t.size - 30; x += 3) {
+        // Use one logical frontage cell. Multi-cell builder strokes add a rendered ribbon whose
+        // shoulder occupies the immediately adjacent row, so an exact plot must not overlap it.
+        const road = [{ x, y }];
+        if (road.some((cell) => roadSet.has(`${cell.x},${cell.y}`))) continue;
+        const roadSurvey = rt.surveyRoadPlacement(road, "street");
+        if (!roadSurvey.ok) continue;
+        const plotSurvey = rt.surveyZonedPlot(
+          x,
+          y + 1,
+          "n",
+          "BIG",
+          "residential",
+        );
+        if (
+          plotSurvey.failures.length > 0 &&
+          plotSurvey.failures.every(
+            (failure: any) => failure.code === "ROAD_CONNECTION_REQUIRED",
+          )
+        ) {
+          return {
+            x,
+            y,
+            road,
+            roadRevision: roadSurvey.layoutRevision,
+          };
         }
-        if (ok) return { x, y };
       }
     }
-    return { x: t.landing.x, y: t.landing.y };
+    return null;
   });
 
   console.log(`Found buildable center at: ${JSON.stringify(buildableCenter)}`);
@@ -76,16 +82,12 @@ test("Zoning and building plots E2E", async ({ page }) => {
   const by = buildableCenter!.y;
 
   // Plot road programmatically at the buildable center
-  await page.evaluate(
-    ({ rx, ry }) => {
-      const cells = [];
-      for (let x = rx - 5; x <= rx + 5; x++) {
-        cells.push({ x, y: ry });
-      }
-      (window as any).useRoadNetwork.getState().plotRoad(cells, "street");
-    },
-    { rx: bx, ry: by },
-  );
+  await page.evaluate(({ road, roadRevision }) => {
+    const rt = (window as any).__colony;
+    (window as any).useRoadNetwork
+      .getState()
+      .plotRoad(road, "street", rt.sim, roadRevision, rt);
+  }, buildableCenter);
   console.log("Road plotted programmatically.");
 
   // Switch to Zoning Mode
@@ -123,13 +125,16 @@ test("Zoning and building plots E2E", async ({ page }) => {
   console.log("Placing the plot next to the road programmatically...");
   const placementResult = await page.evaluate(
     ({ px, py }) => {
-      return (window as any).__colony.placeZonedPlot(
+      const rt = (window as any).__colony;
+      const survey = rt.surveyZonedPlot(px, py + 1, "n", "BIG", "residential");
+      return rt.commitZonedPlot(
         px,
         py + 1,
         "n",
         "BIG",
         "residential",
-      );
+        survey.layoutRevision,
+      ).ok;
     },
     { px: bx, py: by },
   );

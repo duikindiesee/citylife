@@ -1,5 +1,9 @@
 import { create } from "zustand";
-import { Biome } from "../terrain";
+import { createPlacementContext } from "../placement/runtimeContext";
+import {
+  surveyRoadStroke,
+  type PlacementSurveyResult,
+} from "../placement/surveyPlacement";
 
 // North = 1, East = 2, South = 4, West = 8
 export enum RoadMask {
@@ -57,6 +61,8 @@ export interface BuilderState {
     cells: { x: number; y: number }[],
     type: "street" | "gravel" | "culdesac",
     sim?: any,
+    expectedLayoutRevision?: string,
+    placementRuntime?: any,
   ) => void;
   removeRoad: (x: number, y: number, sim?: any) => void;
   applyLandscapeEdit: (
@@ -100,24 +106,34 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
   setActiveRoadType: (type) => set({ activeRoadType: type }),
   clearSessionPlacements: () => set({ sameSessionPlacements: new Set() }),
 
-  plotRoad: (cells, type, sim) => {
+  plotRoad: (cells, type, sim, expectedLayoutRevision, placementRuntime) => {
     set((state) => {
-      // Spec 140 — the store is the last gate before cells enter sim road state: no road cell on
-      // beach sand, ever. The whole stroke is rejected (mirroring the builder UI, which previews
-      // the offending cells in red and blocks the blueprint), so a scripted window.__colony caller
-      // can't slip pavement onto the sand behind the UI's back. Water deliberately stays a UI-only
-      // gate here — that is the pre-existing contract (scripted strokes lay anywhere off-beach),
-      // and the ribbon's cellOkOn already refuses to render asphalt over water.
+      // WB.1c — this store is the final mutation gate. Re-run the same pure survey used by the
+      // builder preview, runtime and tests so scripted callers cannot bypass water, shore,
+      // collision or stale-revision checks.
       if (sim) {
-        const t = sim.state.terrain;
-        const bad = cells.some(
-          (c) =>
-            t.inBounds(c.x, c.y) && t.biome[t.idx(c.x, c.y)] === Biome.Beach,
-        );
-        if (bad) {
-          console.warn(
-            "plotRoad rejected: stroke crosses beach sand (spec 140)",
-          );
+        const survey: PlacementSurveyResult =
+          typeof placementRuntime?.surveyRoadPlacement === "function"
+            ? placementRuntime.surveyRoadPlacement(
+                cells,
+                type,
+                expectedLayoutRevision,
+              )
+            : surveyRoadStroke({
+                context: createPlacementContext({
+                  state: sim.state,
+                  neighborhood: sim.state.neighborhood,
+                  roadWays: sim.state.roadWays,
+                }),
+                cells,
+                roadType: type,
+                ...(expectedLayoutRevision ? { expectedLayoutRevision } : {}),
+              });
+        if (!survey.ok) {
+          console.warn("plotRoad rejected by authoritative placement survey", {
+            failures: survey.failures.map((failure) => failure.code),
+            layoutRevision: survey.layoutRevision,
+          });
           return {};
         }
       }
@@ -178,10 +194,12 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
         const s = sim.state;
         s.roads = [];
         s.roadSet.clear();
+        s.roadKind.clear();
         for (const key in newTiles) {
           const tile = newTiles[key];
           s.roadSet.add(`${tile.x},${tile.y}`);
           s.roads.push({ x: tile.x, y: tile.y, kind: tile.type });
+          s.roadKind.set(`${tile.x},${tile.y}`, tile.type);
         }
         s.roadsVersion++;
         // Spec 127 — record the drawn road's centre-line so the ribbon surface renders it.
