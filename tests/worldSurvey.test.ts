@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { RNG } from "../src/engine/rng";
 import { CELL_SIZE } from "../src/colony/scale";
 import { Terrain } from "../src/colony/terrain";
+import type { PlacementSurveyResult } from "../src/colony/placement/surveyPlacement";
 import {
   createWorldSurvey,
   gridToWorld,
@@ -279,5 +280,134 @@ describe("authoritative world survey", () => {
       ),
     ).toHaveLength(0);
     expect(survey.edges.size).toBe(0);
+  }, 15_000);
+
+  it("maps an invalid rectangular placement survey as exact transient ghost evidence", () => {
+    const terrain = new Terrain(new RNG(31));
+    const landing = terrain.landing;
+    const placementSurvey: PlacementSurveyResult = {
+      ok: false,
+      definitionId: "zoned-plot:commercial:big",
+      definitionKind: "zoned-plot",
+      layoutRevision: "layout:roads-18:lots-7",
+      orientation: "e",
+      cells: [
+        { x: landing.x, y: landing.y },
+        { x: landing.x + 1, y: landing.y },
+      ],
+      bounds: { x: landing.x, y: landing.y, w: 2, h: 1 },
+      vertical: {
+        min: terrain.worldY(landing.x, landing.y),
+        max: terrain.worldY(landing.x + 1, landing.y) + 16,
+        clearanceBelow: 0,
+        clearanceAbove: 2,
+      },
+      anchors: [
+        { id: "gate", cell: { x: landing.x, y: landing.y } },
+        { id: "road", cell: { x: landing.x - 1, y: landing.y } },
+      ],
+      failures: [
+        {
+          code: "RENDERED_ROAD_OVERLAP",
+          cell: { x: landing.x, y: landing.y },
+          detail: "ribbon cell",
+        },
+        {
+          code: "ROAD_CONNECTION_REQUIRED",
+          cell: { x: landing.x - 1, y: landing.y },
+        },
+      ],
+    };
+
+    const survey = createWorldSurvey({ terrain, placementSurvey });
+    const ghost = survey.records.get(
+      `${survey.surfaceFrameId}:placement-ghost:last`,
+    );
+
+    expect(ghost).toMatchObject({
+      id: `${survey.surfaceFrameId}:placement-ghost:last`,
+      address: `${survey.frames.get(survey.surfaceFrameId)!.address}/placement-ghost/last`,
+      frameId: survey.surfaceFrameId,
+      layer: "surface",
+      kind: "placement-ghost",
+      geometry: {
+        type: "footprint",
+        bounds: placementSurvey.bounds,
+        elevation: placementSurvey.vertical.min,
+        yaw: 0,
+        vertical: placementSurvey.vertical,
+      },
+      metadata: {
+        placementGhost: true,
+        transient: true,
+        valid: false,
+        definitionId: placementSurvey.definitionId,
+        definitionKind: "zoned-plot",
+        layoutRevision: placementSurvey.layoutRevision,
+        revision: placementSurvey.layoutRevision,
+        orientation: "e",
+        cells: placementSurvey.cells,
+        anchors: placementSurvey.anchors,
+        failures: placementSurvey.failures,
+        failureCodes: ["RENDERED_ROAD_OVERLAP", "ROAD_CONNECTION_REQUIRED"],
+      },
+    });
+    expect(ghost && spatialRecordsConflict(ghost, ghost)).toBe(true);
+
+    const replay = createWorldSurvey({ terrain, placementSurvey }).records.get(
+      `${survey.surfaceFrameId}:placement-ghost:last`,
+    );
+    expect(replay).toEqual(ghost);
+  }, 15_000);
+
+  it("maps a valid road placement survey as a deterministic transient polyline", () => {
+    const terrain = new Terrain(new RNG(37));
+    const landing = terrain.landing;
+    const cells = [
+      { x: landing.x - 1, y: landing.y },
+      { x: landing.x, y: landing.y },
+      { x: landing.x + 1, y: landing.y },
+    ];
+    const elevations = cells.map((cell) => terrain.worldY(cell.x, cell.y));
+    const placementSurvey: PlacementSurveyResult = {
+      ok: true,
+      definitionId: "road:street",
+      definitionKind: "road",
+      layoutRevision: "layout:roads-19:lots-7",
+      cells,
+      bounds: { x: landing.x - 1, y: landing.y, w: 3, h: 1 },
+      vertical: {
+        min: Math.min(...elevations),
+        max: Math.max(...elevations) + 0.5,
+        clearanceBelow: 1,
+        clearanceAbove: 4.5,
+      },
+      anchors: [{ id: "centre", cell: { ...landing } }],
+      failures: [],
+    };
+
+    const survey = createWorldSurvey({ terrain, placementSurvey });
+    const ghost = survey.records.get(
+      `${survey.surfaceFrameId}:placement-ghost:last`,
+    )!;
+
+    expect(ghost.geometry).toEqual({
+      type: "polyline",
+      cells,
+      closed: false,
+      vertical: placementSurvey.vertical,
+    });
+    expect(ghost.metadata).toMatchObject({
+      placementGhost: true,
+      transient: true,
+      valid: true,
+      definitionId: "road:street",
+      definitionKind: "road",
+      layoutRevision: placementSurvey.layoutRevision,
+      cells,
+      anchors: placementSurvey.anchors,
+      failures: [],
+      failureCodes: [],
+    });
   }, 15_000);
 });

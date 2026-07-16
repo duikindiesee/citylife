@@ -14,6 +14,12 @@ epic `c9cc4107-1069-4a4d-9e23-84c440a8d259`.
 The operator has activated implementation. The previously parked discovery gate
 is satisfied by the merged v3 renderer and placement-contract foundations.
 
+WB.1a and WB.1b shipped in CityLife PR 338. WB.1c is implemented on the
+`codex/world-placement-parity` review branch: the shared placeable catalog,
+explainable placement survey, stale-preview revalidation, runtime/store mutation
+gates and transient Survey Map ghost now consume one footprint and revision.
+WB.1d persistence and WB.1e nested-world occupancy remain follow-on slices.
+
 ## Product rule
 
 CityLife has one authoritative spatial registry. The renderer, builder preview,
@@ -31,8 +37,11 @@ observable universe
   -> world / celestial body
     -> region / island
       -> surface, subsurface and air frames
-      -> building frame
-        -> floor / room / interior-mini-world frame
+      -> parcel / site frame
+        -> building / enterable-mini-world frame
+          -> floor frame
+            -> room frame
+              -> seat / desk / work / interaction anchor
     -> orbital frame
   -> deep-space frame
 ```
@@ -46,6 +55,27 @@ The current island is immutable in address space. Its existing grid remains
 `CELL_SIZE = 4m` and retains the current grid-to-world transform. Adding ocean,
 land, islands, sky volumes, orbit or another world adds frames and connections;
 it never moves today's ground or rewrites existing object IDs.
+
+Kooker HQ is the reference nested-world proof. Entering the building loads an
+interior scene, but reception, boardroom, offices, floors, rooms, doors, seats,
+manifesto walls and work anchors retain addresses beneath the exterior HQ site.
+The scene boundary is therefore a streaming boundary, never a coordinate or
+identity reset.
+
+## Presence and occupancy addresses
+
+A bot or human has one current presence address pointing at the smallest known
+frame or anchor. For example, an occupant may be addressed at a boardroom seat
+inside Kooker HQ on another island while the operator remains on the original
+island. The presence record carries the complete ancestor chain, local pose,
+active portal/route transition and visibility policy.
+
+Moving through a door, lift, tunnel, dock or orbital transfer atomically changes
+the presence address from one frame to another. There is no duplicate or ghost
+occupancy in both scenes. Viewers may resolve the address to a coarse public
+location such as building or neighbourhood while authorized systems resolve the
+exact room and anchor. Presence and object addresses use the same frame graph,
+so schedules, meetings, buses and future agent work can target real places.
 
 ## Spatial address and volume
 

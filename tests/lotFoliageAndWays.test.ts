@@ -48,7 +48,7 @@ describe("spec 127 verify P2 — builder ways are bounded", () => {
   it("re-tracing an existing road appends NO duplicate way", () => {
     const rt = new ColonyRuntime(4242);
     const cells = [];
-    for (let x = 30; x <= 45; x++) cells.push({ x, y: 30 });
+    for (let x = 395; x <= 410; x++) cells.push({ x, y: 130 });
     useRoadNetwork.getState().plotRoad(cells, "street", rt.sim);
     const after1 = rt.sim.state.roadWays!.length;
     useRoadNetwork.getState().plotRoad(cells, "street", rt.sim); // exact re-trace
@@ -58,7 +58,7 @@ describe("spec 127 verify P2 — builder ways are bounded", () => {
   it("bulldozing a drawn road's cells prunes its way once the endpoints are gone", () => {
     const rt = new ColonyRuntime(4242);
     const cells = [];
-    for (let x = 60; x <= 66; x++) cells.push({ x, y: 60 });
+    for (let x = 220; x <= 226; x++) cells.push({ x, y: 140 });
     useRoadNetwork.getState().plotRoad(cells, "street", rt.sim);
     const withWay = rt.sim.state.roadWays!.length;
     for (const c of cells)

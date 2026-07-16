@@ -5,9 +5,12 @@ import { ThreeEvent } from "@react-three/fiber";
 import { Html } from "@react-three/drei";
 import type { ColonySim } from "../sim";
 import { COLONY } from "../config";
-import { Biome } from "../terrain";
 import { BIG, COMPACT, ParcelSize } from "../neighborhood";
 import type { Cell } from "../pathfind";
+import {
+  placementFailureMessage,
+  type PlacementSurveyResult,
+} from "../placement/surveyPlacement";
 
 // Bresenham's line algorithm to get all cells between two points
 function getCellsOnLine(x0: number, y0: number, x1: number, y1: number) {
@@ -205,25 +208,63 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
     [zonePreview],
   );
   const zoning = builderMode.startsWith("zoning_");
+  const zoningType =
+    builderMode === "zoning_commercial" ? "commercial" : "residential";
+  const zoningSurvey = useMemo<PlacementSurveyResult | null>(() => {
+    if (!zoning || !hoverCell || typeof runtime?.surveyZonedPlot !== "function")
+      return null;
+    return runtime.surveyZonedPlot(
+      hoverCell.x,
+      hoverCell.y,
+      undefined,
+      "BIG",
+      zoningType,
+    ) as PlacementSurveyResult;
+  }, [
+    builderMode,
+    hoverCell,
+    runtime,
+    sim.state.roadsVersion,
+    tiles,
+    zoning,
+    zoningType,
+  ]);
+  const roadPreviewCells = useMemo(
+    () =>
+      builderMode === "roads"
+        ? isDrawing
+          ? currentBlueprint
+          : hoverCell
+            ? [hoverCell]
+            : []
+        : [],
+    [builderMode, currentBlueprint, hoverCell, isDrawing],
+  );
+  const roadSurvey = useMemo<PlacementSurveyResult | null>(() => {
+    if (
+      roadPreviewCells.length === 0 ||
+      typeof runtime?.surveyRoadPlacement !== "function"
+    )
+      return null;
+    return runtime.surveyRoadPlacement(
+      roadPreviewCells,
+      activeRoadType,
+    ) as PlacementSurveyResult;
+  }, [
+    activeRoadType,
+    roadPreviewCells,
+    runtime,
+    sim.state.roadsVersion,
+    tiles,
+  ]);
   useEffect(() => {
     const mesh = zonePreviewRef.current;
     if (!mesh) return;
-    if (!zoning || !hoverCell) {
+    if (!zoning || !hoverCell || !zoningSurvey) {
       mesh.count = 0;
       return;
     }
-    const layout = getZoningLayout(
-      hoverCell.x,
-      hoverCell.y,
-      builderMode,
-      tiles,
-    );
-    if (!layout) {
-      mesh.count = 0;
-      return;
-    }
-    const landOk = layout.cells.every((c) => isBuildablePlotLand(c.x, c.y));
-    const statusOk = layout.hasRoad && landOk;
+    const statusOk = zoningSurvey.ok;
     zonePreview.mat.color.set(
       statusOk
         ? builderMode === "zoning_residential"
@@ -233,8 +274,9 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
     );
     const cap = mesh.instanceMatrix.count;
     let placed = 0;
-    for (const c of layout.cells) {
+    for (const c of zoningSurvey.cells) {
       if (placed >= cap) break;
+      if (!sim.state.terrain.inBounds(c.x, c.y)) continue;
       const cellY = sim.state.terrain.worldY(c.x, c.y);
       zonePreview.m4.identity();
       zonePreview.m4.setPosition(
@@ -247,29 +289,15 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
     mesh.count = placed;
     mesh.instanceMatrix.needsUpdate = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hoverCell, builderMode, tiles, zoning, zonePreview, sim, terrainSize]);
-
-  const isBuildableRoadLand = (x: number, y: number) => {
-    if (x < 0 || x >= terrainSize || y < 0 || y >= terrainSize) return false;
-    const index = y * terrainSize + x;
-    const t = sim.state.terrain;
-    // Roads: must not be water, must not be beach sand (spec 140 — the preview cell turns red on
-    // the sand exactly as it does on water), and must not be extreme mountain cliffs.
-    return (
-      !t.isWater(x, y) &&
-      t.biome[index] !== Biome.Beach &&
-      t.buildable[index] > 0
-    );
-  };
-
-  const isBuildablePlotLand = (x: number, y: number) => {
-    if (x < 0 || x >= terrainSize || y < 0 || y >= terrainSize) return false;
-    const index = y * terrainSize + x;
-    const t = sim.state.terrain;
-    const wY = t.worldY(x, y);
-    // Plots: must not be water, must not be extreme cliffs, and must be dry ground above the beach (wY >= 0.2)
-    return !t.isWater(x, y) && t.buildable[index] > 0 && wY >= 0.2;
-  };
+  }, [
+    hoverCell,
+    builderMode,
+    zoning,
+    zoningSurvey,
+    zonePreview,
+    sim,
+    terrainSize,
+  ]);
 
   const getCellFromEvent = (e: ThreeEvent<PointerEvent>) => {
     const x = Math.round(e.point.x / 4 + terrainSize / 2);
@@ -298,19 +326,29 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
     if (builderMode.startsWith("zoning_")) {
       const type =
         builderMode === "zoning_residential" ? "residential" : "commercial";
-      const layout = getZoningLayout(cell.x, cell.y, builderMode, tiles);
-      if (layout && layout.hasRoad) {
-        // Validate all cells are buildable land
-        const allOk = layout.cells.every((c) => isBuildablePlotLand(c.x, c.y));
-        if (!allOk) return; // Block placement silently
-        runtime?.placeZonedPlot(
-          cell.x,
-          cell.y,
-          layout.orientation,
-          "BIG",
-          type,
-        );
-      }
+      if (
+        typeof runtime?.surveyZonedPlot !== "function" ||
+        typeof runtime?.commitZonedPlot !== "function"
+      )
+        return;
+      // Confirm uses the same exact survey as the ghost. The revision from this fresh survey is
+      // carried into commit, where runtime re-surveys and rejects a stale world before mutation.
+      const survey = runtime.surveyZonedPlot(
+        cell.x,
+        cell.y,
+        undefined,
+        "BIG",
+        type,
+      ) as PlacementSurveyResult;
+      if (!survey.ok || !survey.orientation) return;
+      runtime.commitZonedPlot(
+        cell.x,
+        cell.y,
+        survey.orientation,
+        "BIG",
+        type,
+        survey.layoutRevision,
+      );
       return;
     }
 
@@ -375,17 +413,28 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
     e.stopPropagation();
 
     if (builderMode === "roads" && currentBlueprint.length > 0) {
-      // Validate all cells in blueprint are buildable land
-      const allOk = currentBlueprint.every((c) =>
-        isBuildableRoadLand(c.x, c.y),
-      );
-      if (!allOk) {
+      const survey =
+        typeof runtime?.surveyRoadPlacement === "function"
+          ? (runtime.surveyRoadPlacement(
+              currentBlueprint,
+              activeRoadType,
+            ) as PlacementSurveyResult)
+          : null;
+      if (!survey?.ok) {
         setIsDrawing(false);
         setStartCell(null);
         setCurrentBlueprint([]);
-        return; // Block placement silently
+        return;
       }
-      plotRoad(currentBlueprint, activeRoadType, sim);
+      // The store remains the road mutation owner. Its optional revision argument lets it reject
+      // the stroke if another placement changed the surveyed layout before this synchronous commit.
+      plotRoad(
+        currentBlueprint,
+        activeRoadType,
+        sim,
+        survey.layoutRevision,
+        runtime,
+      );
     }
 
     setIsDrawing(false);
@@ -420,14 +469,17 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
       {/* Road Preview (Hover & Blueprint) */}
       {builderMode === "roads" &&
         (() => {
-          const previewCells = isDrawing
-            ? currentBlueprint
-            : hoverCell
-              ? [hoverCell]
-              : [];
-          return previewCells.map((c, i) => {
-            const wY = sim.state.terrain.worldY(c.x, c.y);
-            const valid = isBuildableRoadLand(c.x, c.y);
+          const failedCells = new Set(
+            (roadSurvey?.failures ?? [])
+              .filter((failure) => failure.cell)
+              .map((failure) => `${failure.cell!.x},${failure.cell!.y}`),
+          );
+          const globalFailure =
+            !roadSurvey || roadSurvey.failures.some((failure) => !failure.cell);
+          return roadPreviewCells.map((c, i) => {
+            const inBounds = sim.state.terrain.inBounds(c.x, c.y);
+            const wY = inBounds ? sim.state.terrain.worldY(c.x, c.y) : 0;
+            const valid = !globalFailure && !failedCells.has(`${c.x},${c.y}`);
             return (
               <mesh
                 key={i}
@@ -541,37 +593,39 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
       {builderMode.startsWith("zoning_") &&
         hoverCell &&
         (() => {
-          const layout = getZoningLayout(
+          if (!zoningSurvey) return null;
+          const gateCell =
+            zoningSurvey.anchors.find((anchor) => anchor.id === "gate")?.cell ??
+            hoverCell;
+          const hasRoad = !zoningSurvey.failures.some(
+            (failure) => failure.code === "ROAD_CONNECTION_REQUIRED",
+          );
+          const statusOk = zoningSurvey.ok;
+          const firstFailure = zoningSurvey.failures[0];
+          const centreInBounds = sim.state.terrain.inBounds(
             hoverCell.x,
             hoverCell.y,
-            builderMode,
-            tiles,
           );
-          if (!layout) return null;
+          const wY = centreInBounds
+            ? sim.state.terrain.worldY(hoverCell.x, hoverCell.y)
+            : 0;
 
-          const wY = sim.state.terrain.worldY(hoverCell.x, hoverCell.y);
-          const landOk = layout.cells.every((c) =>
-            isBuildablePlotLand(c.x, c.y),
-          );
-          const statusOk = layout.hasRoad && landOk;
-
-          const gateWorldX = (layout.gateCell.x - terrainSize / 2) * 4;
-          const gateWorldZ = (layout.gateCell.y - terrainSize / 2) * 4;
-          const gateWorldY = sim.state.terrain.worldY(
-            layout.gateCell.x,
-            layout.gateCell.y,
-          );
+          const gateWorldX = (gateCell.x - terrainSize / 2) * 4;
+          const gateWorldZ = (gateCell.y - terrainSize / 2) * 4;
+          const gateWorldY = sim.state.terrain.inBounds(gateCell.x, gateCell.y)
+            ? sim.state.terrain.worldY(gateCell.x, gateCell.y)
+            : 0;
 
           let arrowRotY = 0;
-          if (layout.orientation === "n") arrowRotY = Math.PI;
-          if (layout.orientation === "s") arrowRotY = 0;
-          if (layout.orientation === "w") arrowRotY = -Math.PI / 2;
-          if (layout.orientation === "e") arrowRotY = Math.PI / 2;
+          if (zoningSurvey.orientation === "n") arrowRotY = Math.PI;
+          if (zoningSurvey.orientation === "s") arrowRotY = 0;
+          if (zoningSurvey.orientation === "w") arrowRotY = -Math.PI / 2;
+          if (zoningSurvey.orientation === "e") arrowRotY = Math.PI / 2;
 
           return (
             <group>
               {/* Direction Arrow Hint pointing to connected street */}
-              {layout.hasRoad && (
+              {hasRoad && (
                 <mesh
                   position={[gateWorldX, gateWorldY + 0.6, gateWorldZ]}
                   rotation={[Math.PI / 2, arrowRotY, 0]}
@@ -613,10 +667,8 @@ export function R3FRoadBuilder({ sim, runtime }: R3FRoadBuilderProps) {
                   }}
                 >
                   {statusOk
-                    ? `Ready: Faces ${layout.orientation.toUpperCase()}`
-                    : !landOk
-                      ? "⚠️ Cannot build on water/beach"
-                      : "⚠️ Needs Road Connection"}
+                    ? `Ready: Faces ${zoningSurvey.orientation?.toUpperCase() ?? "ROAD"}`
+                    : `⚠️ ${firstFailure ? placementFailureMessage(firstFailure.code) : "Placement rejected."}`}
                 </div>
               </Html>
             </group>
