@@ -45,10 +45,26 @@ import { GaragePanel } from "./GaragePanel";
 import { RaceMobileControls } from "./RaceMobileControls";
 import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
-import { BuilderPanel } from "./BuilderPanel";
+import {
+  BuilderPanel,
+  type WorldLayoutOperatorControls,
+  type WorldLayoutOperatorStatus,
+} from "./BuilderPanel";
 import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
 import "./colony.css";
 import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
+import {
+  WorldLayoutBootCoordinator,
+  type WorldLayoutBootResult,
+} from "../worldLayoutBoot";
+import {
+  WorldLayoutStore,
+  type WorldLayoutSaveInput,
+} from "../worldLayoutStore";
+import {
+  serializeWorldLayoutDocument,
+  type WorldLayoutDocument,
+} from "../spatial/worldLayoutDocument";
 
 // Spec 089 — the CityLife HUD shows only the city-relevant stats (citizens, homesteads, the bank, the
 // commercial district, the border). The old colony-sim survival/economy dashboard (water/food/health/
@@ -346,6 +362,21 @@ const raceTime = (ms: number | null) => {
   return `${m}:${String(s).padStart(2, "0")}.${d}`;
 };
 
+function worldLayoutSaveInput(
+  document: WorldLayoutDocument,
+): WorldLayoutSaveInput {
+  return {
+    worldId: document.worldId,
+    seed: document.seed,
+    frames: document.frames,
+    placements: document.placements,
+    roads: document.roads,
+    ways: document.ways,
+    terrainEdits: document.terrainEdits,
+    portals: document.portals,
+  };
+}
+
 function useRuntime(): ColonyRuntime {
   const ref = useRef<ColonyRuntime | null>(null);
   if (!ref.current) {
@@ -383,8 +414,6 @@ function useRuntime(): ColonyRuntime {
     }
     (window as unknown as { __colony: ColonyRuntime }).__colony = ref.current;
   }
-  const [, force] = useReducer((x) => x + 1, 0);
-  useEffect(() => ref.current!.subscribe(force), []);
   return ref.current!;
 }
 
@@ -540,6 +569,51 @@ function detectTouchCapable(): boolean {
 export function ColonyApp() {
   const { builderActive, worldViewActive } = useRoadNetwork();
   const runtime = useRuntime();
+  const [, forceRuntimeRender] = useReducer((x) => x + 1, 0);
+  const worldLayoutPersistence = useMemo(() => {
+    try {
+      const store = new WorldLayoutStore();
+      const worldId = runtime.captureWorldLayout().worldId;
+      return {
+        store,
+        coordinator: new WorldLayoutBootCoordinator({
+          worldId,
+          store,
+          runtime: {
+            captureWorldLayout: () => runtime.captureWorldLayout(),
+            hydrateWorldLayout: (document) => {
+              runtime.hydrateWorldLayout(document);
+            },
+          },
+        }),
+        error: null,
+      };
+    } catch (error: unknown) {
+      return { store: null, coordinator: null, error };
+    }
+  }, [runtime]);
+  const [worldLayoutBoot, setWorldLayoutBoot] = useState<
+    | { status: "loading" }
+    | { status: "ready"; result: WorldLayoutBootResult }
+    | { status: "error"; message: string }
+  >({ status: "loading" });
+  const [worldLayoutBootAttempt, retryWorldLayoutBoot] = useReducer(
+    (attempt) => attempt + 1,
+    0,
+  );
+  const [worldLayoutHead, setWorldLayoutHead] = useState<{
+    readonly revisionId: string;
+    readonly document: WorldLayoutDocument;
+  } | null>(null);
+  const [worldLayoutOperatorFeedback, setWorldLayoutOperatorFeedback] =
+    useState<{
+      readonly status: Extract<
+        WorldLayoutOperatorStatus,
+        "saving" | "conflict" | "error"
+      > | null;
+      readonly message?: string;
+    }>({ status: null });
+  const worldLayoutSaveInFlight = useRef(false);
   useEffect(() => {
     if (
       import.meta.env.DEV &&
@@ -720,21 +794,73 @@ export function ColonyApp() {
   useEffect(() => {
     const el = hostRef.current;
     if (!el) return;
-    runtime.start(el);
-    requestAnimationFrame(() => runtime.resize()); // re-measure after first layout
-    const ro = new ResizeObserver(() => runtime.resize());
-    ro.observe(el);
 
-    if (runtime.sim) {
-      useRoadNetwork.getState().loadFromDB(runtime.sim);
-    }
+    const abort = new AbortController();
+    let unsubscribe: (() => void) | undefined;
+    let resizeObserver: ResizeObserver | undefined;
+    let resizeFrame: number | undefined;
+    let started = false;
+
+    setWorldLayoutBoot({ status: "loading" });
+    setWorldLayoutHead(null);
+    setWorldLayoutOperatorFeedback({ status: null });
+    void (async () => {
+      try {
+        if (worldLayoutPersistence.error) throw worldLayoutPersistence.error;
+        if (!worldLayoutPersistence.coordinator)
+          throw new Error("World layout persistence is unavailable");
+
+        // WB.1d boot barrier: durable truth is loaded (or initialized), validated and hydrated
+        // before either the renderer/simulation or its React render subscription can observe it.
+        const result = await worldLayoutPersistence.coordinator.boot(
+          abort.signal,
+        );
+        if (abort.signal.aborted) return;
+        const document = runtime.worldLayoutDocument();
+        if (!document)
+          throw new Error(
+            "World layout boot completed without publishing an active revision",
+          );
+        setWorldLayoutHead({ revisionId: result.revision, document });
+
+        unsubscribe = runtime.subscribe(forceRuntimeRender);
+        runtime.start(el);
+        started = true;
+        resizeFrame = window.requestAnimationFrame(() => runtime.resize());
+        resizeObserver = new ResizeObserver(() => runtime.resize());
+        resizeObserver.observe(el);
+        setWorldLayoutBoot({ status: "ready", result });
+      } catch (error: unknown) {
+        if (abort.signal.aborted) return;
+        if (resizeFrame !== undefined)
+          window.cancelAnimationFrame(resizeFrame);
+        resizeObserver?.disconnect();
+        unsubscribe?.();
+        unsubscribe = undefined;
+        if (started) {
+          runtime.stop();
+          started = false;
+        }
+        const message =
+          error instanceof Error ? error.message : "World layout boot failed";
+        setWorldLayoutBoot({ status: "error", message });
+      }
+    })();
 
     return () => {
-      ro.disconnect();
-      runtime.stop();
+      abort.abort();
+      if (resizeFrame !== undefined)
+        window.cancelAnimationFrame(resizeFrame);
+      resizeObserver?.disconnect();
+      unsubscribe?.();
+      if (started) runtime.stop();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [
+    forceRuntimeRender,
+    runtime,
+    worldLayoutBootAttempt,
+    worldLayoutPersistence,
+  ]);
 
   useEffect(() => {
     const onPointerLockChange = () => {
@@ -878,6 +1004,179 @@ export function ColonyApp() {
         ? "#e6c84d"
         : "#e0584d";
   const rightHud = rightHudDeclutterModel(ui);
+
+  let capturedWorldLayout: WorldLayoutDocument | null = null;
+  let captureError: string | null = null;
+  if (worldLayoutBoot.status === "ready") {
+    try {
+      capturedWorldLayout = runtime.captureWorldLayout();
+    } catch (error: unknown) {
+      captureError =
+        error instanceof Error
+          ? error.message
+          : "The current world layout could not be captured";
+    }
+  }
+  const worldLayoutDirty = Boolean(
+    capturedWorldLayout &&
+      worldLayoutHead &&
+      capturedWorldLayout.revision.contentHash !==
+        worldLayoutHead.document.revision.contentHash,
+  );
+  const worldLayoutOperatorStatus: WorldLayoutOperatorStatus = captureError
+    ? "error"
+    : worldLayoutOperatorFeedback.status ??
+      (worldLayoutHead ? (worldLayoutDirty ? "dirty" : "clean") : "unavailable");
+
+  const saveWorldLayoutRevision = async (): Promise<void> => {
+    if (worldLayoutSaveInFlight.current) return;
+    if (!worldLayoutPersistence.store || !worldLayoutHead) {
+      setWorldLayoutOperatorFeedback({
+        status: "error",
+        message: "World layout persistence is unavailable",
+      });
+      return;
+    }
+    worldLayoutSaveInFlight.current = true;
+    setWorldLayoutOperatorFeedback({
+      status: "saving",
+      message: "Validating and saving a new immutable revision…",
+    });
+    try {
+      const captured = runtime.captureWorldLayout();
+      const result = await worldLayoutPersistence.store.save(
+        worldLayoutSaveInput(captured),
+        worldLayoutHead.revisionId,
+      );
+      if (result.status === "conflict") {
+        setWorldLayoutOperatorFeedback({
+          status: "conflict",
+          message: `Save conflict: expected ${result.expectedLayoutRevision ?? "no head"}, current durable head is ${result.actualLayoutRevision ?? "none"}. Reload before retrying.`,
+        });
+        return;
+      }
+
+      runtime.adoptWorldLayoutRevision(result.revision.document);
+      setWorldLayoutHead({
+        revisionId: result.revision.layoutRevision,
+        document: result.revision.document,
+      });
+      setWorldLayoutOperatorFeedback({
+        status: null,
+        message:
+          result.status === "saved"
+            ? `Saved revision R${result.revision.document.revision.number}.`
+            : `Revision R${result.revision.document.revision.number} is already current; no duplicate was written.`,
+      });
+    } catch (error: unknown) {
+      setWorldLayoutOperatorFeedback({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "World layout revision save failed",
+      });
+    } finally {
+      worldLayoutSaveInFlight.current = false;
+    }
+  };
+
+  const exportWorldLayout = async (): Promise<void> => {
+    try {
+      const document = runtime.captureWorldLayout();
+      const serialized = serializeWorldLayoutDocument(document);
+      const blobUrl = URL.createObjectURL(
+        new Blob([serialized], { type: "application/json" }),
+      );
+      const link = window.document.createElement("a");
+      link.href = blobUrl;
+      link.download = `${document.worldId}-layout-r${document.revision.number}.json`;
+      link.click();
+      URL.revokeObjectURL(blobUrl);
+      setWorldLayoutOperatorFeedback({
+        status: null,
+        message: `Exported canonical revision R${document.revision.number}; durable storage was not changed.`,
+      });
+    } catch (error: unknown) {
+      setWorldLayoutOperatorFeedback({
+        status: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "World layout export failed",
+      });
+    }
+  };
+
+  const worldLayoutControls: WorldLayoutOperatorControls = {
+    revisionNumber: worldLayoutHead?.document.revision.number ?? null,
+    // BuilderPanel uses revisionId as its normal tooltip and falls back to message. Suppress the
+    // token while reporting a failure so the actionable conflict/error detail remains discoverable.
+    revisionId:
+      captureError || worldLayoutOperatorFeedback.status
+        ? null
+        : worldLayoutHead?.revisionId ?? null,
+    status: worldLayoutOperatorStatus,
+    message:
+      captureError ??
+      (worldLayoutOperatorFeedback.status
+        ? worldLayoutOperatorFeedback.message
+        : undefined) ??
+      (worldLayoutDirty
+        ? "The authored map differs from the durable head."
+        : worldLayoutOperatorFeedback.message ??
+          "History, rollback and import are not enabled in this first persistence slice."),
+    onSave:
+      worldLayoutBoot.status === "ready" && !captureError
+        ? saveWorldLayoutRevision
+        : undefined,
+    onExport:
+      worldLayoutBoot.status === "ready" && !captureError
+        ? exportWorldLayout
+        : undefined,
+  };
+
+  if (worldLayoutBoot.status !== "ready") {
+    return (
+      <div className="colony" data-world-layout-boot={worldLayoutBoot.status}>
+        <div className="canvas-host" ref={hostRef} aria-hidden="true" />
+        <main
+          role={worldLayoutBoot.status === "error" ? "alert" : "status"}
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100,
+            display: "grid",
+            placeContent: "center",
+            gap: 12,
+            padding: 24,
+            textAlign: "center",
+            color: "#d8e6ff",
+            background: "#07111f",
+          }}
+        >
+          <strong>
+            {worldLayoutBoot.status === "error"
+              ? "City map could not be opened"
+              : "Opening the authoritative city map…"}
+          </strong>
+          {worldLayoutBoot.status === "error" && (
+            <>
+              <span>{worldLayoutBoot.message}</span>
+              <button
+                type="button"
+                onClick={() => retryWorldLayoutBoot()}
+                style={{ justifySelf: "center" }}
+              >
+                Retry
+              </button>
+            </>
+          )}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="colony">
@@ -1040,7 +1339,11 @@ export function ColonyApp() {
             📷
           </button>
         </div>
-        <BuilderPanel runtime={runtime} sim={runtime.sim} />
+        <BuilderPanel
+          runtime={runtime}
+          sim={runtime.sim}
+          worldLayoutControls={worldLayoutControls}
+        />
         <div className="group">
           <a
             className="linkbtn"

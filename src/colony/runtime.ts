@@ -131,7 +131,11 @@ import {
   type Household,
   type HouseholdOverrides,
 } from "./newcomers";
-import { useRoadNetwork } from "./stores/useRoadNetwork";
+import {
+  RoadMask,
+  useRoadNetwork,
+  type RoadTile,
+} from "./stores/useRoadNetwork";
 import { spawnCitizenSubUser, splitName } from "./bot/citizenSpawn";
 import {
   BotService,
@@ -275,9 +279,38 @@ import {
 } from "./render/venuePlacement";
 import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
 import { roadComponents } from "./roadConnectivity";
-import { createWorldSurvey, type WorldSurveyRegistry } from "./worldSurvey";
+import {
+  createWorldSurvey,
+  type SpatialFrame,
+  type SpatialPortal,
+  type WorldSurveyRegistry,
+} from "./worldSurvey";
+import {
+  applyWorldLayoutDocument,
+  captureWorldLayoutDocument as captureRuntimeWorldLayout,
+  landscapeOffsetsFromTerrainEdits,
+  terrainEditsFromLandscapeOffsets,
+  zonedPlacementFromParcel,
+  type HydratedWorldLayout,
+  type RuntimeRoadCell,
+  type RuntimeZonedPlacement,
+} from "./spatial/worldLayoutAdapter";
+import {
+  createWorldLayoutDocument,
+  parseWorldLayoutDocument,
+  serializeWorldLayoutDocument,
+  worldLayoutRevisionId,
+  type WorldLayoutDocument,
+  type WorldLayoutRoad,
+  type WorldLayoutTerrainEdit,
+  type WorldLayoutWay,
+} from "./spatial/worldLayoutDocument";
 import { createPlacementContext } from "./placement/runtimeContext";
-import type { ZonedPlotSize } from "./placement/placeableCatalog";
+import {
+  ROAD_PLACEABLES,
+  zonedPlotDefinition,
+  type ZonedPlotSize,
+} from "./placement/placeableCatalog";
 import {
   surveyRoadStroke,
   surveyZonedPlot as runZonedPlotSurvey,
@@ -911,6 +944,14 @@ export class ColonyRuntime {
   /** WB.1c — the last exact builder survey. It is transient evidence for the Survey Map ghost,
    *  never persisted as world layout; WB.1d will own persisted revisions. */
   private lastPlacementSurvey: PlacementSurveyResult | null = null;
+  /** WB.1d — one validated durable spatial head. Null deliberately preserves the seeded legacy
+   *  runtime until a document is loaded; no whole ColonyState snapshot is ever stored here. */
+  private activeWorldLayout: WorldLayoutDocument | null = null;
+  private layoutFrames: readonly SpatialFrame[] | null = null;
+  private layoutPortals: readonly SpatialPortal[] = [];
+  private layoutTerrainEdits: readonly WorldLayoutTerrainEdit[] = [];
+  private layoutZonedPlacements: readonly RuntimeZonedPlacement[] | null = null;
+  private layoutRoads: readonly RuntimeRoadCell[] | null = null;
 
   constructor(seed: number = COLONY.render.seed) {
     this.worldSeed = seed;
@@ -2526,10 +2567,9 @@ export class ColonyRuntime {
     this.fpNarration = "You step off the bus.";
   }
 
-  /** Spec 152 — build a read-only authoritative registry from the same live state consumed by
-   *  runtime placement and the R3F renderer. The snapshot owns no browser state, so tests and
-   *  future persistence/export paths can consume the identical addresses and network graph. */
-  worldSurvey(): WorldSurveyRegistry {
+  /** Build the current root/frame graph without consulting persisted layout state. Hydration uses
+   *  this isolated registry to prove that the original island's identity and transform survive. */
+  private seededWorldSurvey(): WorldSurveyRegistry {
     const state = this.sim.state;
     return createWorldSurvey({
       terrain: state.terrain,
@@ -2537,8 +2577,10 @@ export class ColonyRuntime {
       structures: state.structures,
       buildings: state.buildings,
       cityPlan: state.cityPlan,
-      neighborhood: state.neighborhood,
-      commercialDistrict: this.commercialDistrict,
+      neighborhood: this.activeWorldLayout ? null : state.neighborhood,
+      commercialDistrict: this.activeWorldLayout
+        ? null
+        : this.commercialDistrict,
       roads: state.roads,
       roadKind: state.roadKind,
       roadWays: this.roadWays,
@@ -2546,6 +2588,536 @@ export class ColonyRuntime {
       busDepotPad: state.busDepotPad,
       placementSurvey: this.lastPlacementSurvey,
     });
+  }
+
+  private worldLayoutPlacementVertical(cells: readonly { x: number; y: number }[]) {
+    const policy = zonedPlotDefinition("residential", "COMPACT").vertical;
+    const elevations = cells.map((cell) =>
+      this.sim.state.terrain.worldY(cell.x, cell.y),
+    );
+    const groundMin = elevations.length > 0 ? Math.min(...elevations) : 0;
+    const groundMax = elevations.length > 0 ? Math.max(...elevations) : 0;
+    return {
+      min: groundMin + policy.minOffset,
+      max: groundMax + policy.maxOffset,
+      clearanceBelow: policy.clearanceBelow,
+      clearanceAbove: policy.clearanceAbove,
+    };
+  }
+
+  private runtimeZonedPlacements(surfaceFrameId: string): RuntimeZonedPlacement[] {
+    const parcels = [
+      ...this.neighborhood.parcels,
+      ...(this.commercialDistrict?.parcels ?? []),
+    ];
+    return parcels.map((parcel) => {
+      const bounds =
+        "kind" in parcel
+          ? { x: parcel.x, y: parcel.y, w: parcel.w, h: parcel.h }
+          : {
+              x: parcel.x - Math.floor((parcel.w - 1) / 2),
+              y: parcel.y - Math.floor((parcel.h - 1) / 2),
+              w: parcel.w,
+              h: parcel.h,
+            };
+      const cells: { x: number; y: number }[] = [];
+      for (let y = bounds.y; y < bounds.y + bounds.h; y++)
+        for (let x = bounds.x; x < bounds.x + bounds.w; x++)
+          cells.push({ x, y });
+      return zonedPlacementFromParcel(
+        parcel,
+        surfaceFrameId,
+        this.worldLayoutPlacementVertical(cells),
+      );
+    });
+  }
+
+  private worldLayoutPlacementSignature(
+    placements: readonly RuntimeZonedPlacement[],
+  ): string {
+    return JSON.stringify(
+      placements
+        .map((placement) => ({
+          id: placement.id,
+          definitionId: placement.definitionId,
+          frameId: placement.frameId,
+          layer: placement.layer,
+          source: placement.source,
+          cells: [...placement.cells].sort(
+            (a, b) => a.y - b.y || a.x - b.x,
+          ),
+          bounds: placement.bounds,
+          vertical: placement.vertical,
+          anchors: [...placement.anchors].sort((a, b) =>
+            a.id.localeCompare(b.id),
+          ),
+          orientation: placement.orientation ?? null,
+        }))
+        .sort((a, b) => a.id.localeCompare(b.id)),
+    );
+  }
+
+  private currentWorldLayoutRoads(): RuntimeRoadCell[] {
+    const tiles = useRoadNetwork.getState().tiles;
+    return this.sim.state.roads.map((road) => {
+      const tileType = tiles[`${road.x},${road.y}`]?.type;
+      const kind =
+        tileType === "avenue" ||
+        tileType === "gravel" ||
+        tileType === "culdesac"
+          ? tileType
+          : road.kind ?? "street";
+      return { x: road.x, y: road.y, kind };
+    });
+  }
+
+  private currentWorldLayoutRoadWays(
+    roads: readonly RuntimeRoadCell[],
+  ): RoadWay[] {
+    const logical = new Set(roads.map((road) => `${road.x},${road.y}`));
+    const source = this.sim.state.roadWays ?? this.roadWays;
+    const ways: RoadWay[] = [];
+    for (const way of source) {
+      let segment: { x: number; y: number }[] = [];
+      const flush = (): void => {
+        if (segment.length > 0)
+          ways.push({
+            path: segment,
+            kind: way.kind,
+            width: way.width,
+            ...(way.source ? { source: way.source } : {}),
+          });
+        segment = [];
+      };
+      for (const cell of way.path) {
+        if (logical.has(`${cell.x},${cell.y}`)) segment.push({ ...cell });
+        else flush();
+      }
+      flush();
+    }
+    return ways;
+  }
+
+  private currentWorldLayoutTerrainEdits(
+    surfaceFrameId: string,
+  ): WorldLayoutTerrainEdit[] {
+    const elevations = terrainEditsFromLandscapeOffsets(
+      useRoadNetwork.getState().landscapeEdits,
+      surfaceFrameId,
+      (x, y) => this.sim.state.terrain.worldY(x, y),
+    );
+    if (!this.activeWorldLayout) return [...elevations];
+
+    const edits = new Map<string, WorldLayoutTerrainEdit>();
+    for (const edit of this.layoutTerrainEdits) {
+      const key = `${edit.frameId}:${edit.cell.x},${edit.cell.y}`;
+      if (edit.frameId !== surfaceFrameId) {
+        edits.set(key, { ...edit, cell: { ...edit.cell } });
+        continue;
+      }
+      if (edit.biome !== undefined || edit.buildability !== undefined)
+        edits.set(key, {
+          frameId: edit.frameId,
+          cell: { ...edit.cell },
+          ...(edit.biome !== undefined ? { biome: edit.biome } : {}),
+          ...(edit.buildability !== undefined
+            ? { buildability: edit.buildability }
+            : {}),
+        });
+    }
+    for (const edit of elevations) {
+      const key = `${edit.frameId}:${edit.cell.x},${edit.cell.y}`;
+      edits.set(key, { ...edits.get(key), ...edit, cell: { ...edit.cell } });
+    }
+    return [...edits.values()];
+  }
+
+  private worldLayoutRoadSignature(road: WorldLayoutRoad): string {
+    return JSON.stringify({
+      frameId: road.frameId,
+      layer: road.layer,
+      kind: road.kind,
+      cells: road.cells,
+      vertical: road.vertical,
+    });
+  }
+
+  private worldLayoutWaySignature(way: WorldLayoutWay): string {
+    return JSON.stringify({
+      frameId: way.frameId,
+      layer: way.layer,
+      kind: way.kind,
+      width: way.width,
+      cells: way.cells,
+    });
+  }
+
+  private worldLayoutStableSuffix(value: string): string {
+    let hash = 0x811c9dc5;
+    for (let index = 0; index < value.length; index++) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0");
+  }
+
+  private uniqueWorldLayoutId(
+    preferred: string,
+    signature: string,
+    used: Set<string>,
+  ): string {
+    if (!used.has(preferred)) {
+      used.add(preferred);
+      return preferred;
+    }
+    const stem = `${preferred}:${this.worldLayoutStableSuffix(signature)}`;
+    let candidate = stem;
+    let occurrence = 1;
+    while (used.has(candidate)) candidate = `${stem}:${occurrence++}`;
+    used.add(candidate);
+    return candidate;
+  }
+
+  private worldLayoutDurableSignature(document: WorldLayoutDocument): string {
+    return JSON.stringify({
+      worldId: document.worldId,
+      seed: document.seed,
+      frames: document.frames,
+      placements: document.placements,
+      roads: document.roads,
+      ways: document.ways,
+      terrainEdits: document.terrainEdits,
+      portals: document.portals,
+    });
+  }
+
+  /** WB.1d — capture only durable spatial intent. The codec/adapter strict allow-list prevents
+   *  citizens, occupants, wallets, blueprints, renderer objects or the rest of ColonyState leaking
+   *  into the document. */
+  captureWorldLayout(): WorldLayoutDocument {
+    const seedRegistry = this.seededWorldSurvey();
+    const surfaceFrameId = seedRegistry.surfaceFrameId;
+    const terrainEdits = this.currentWorldLayoutTerrainEdits(surfaceFrameId);
+    const roads = this.currentWorldLayoutRoads();
+    const roadWays = this.currentWorldLayoutRoadWays(roads);
+    const roadPolicy = ROAD_PLACEABLES.street.vertical;
+    const active = this.activeWorldLayout;
+    const captured = captureRuntimeWorldLayout({
+      worldId: `seed-${this.worldSeed}`,
+      seed: this.worldSeed,
+      revision: active
+        ? {
+            number: active.revision.number,
+            parentHash: active.revision.parentHash,
+          }
+        : { number: 0, parentHash: null },
+      surfaceFrameId,
+      frames: this.layoutFrames ?? [...seedRegistry.frames.values()],
+      portals: this.layoutPortals,
+      terrainEdits,
+      zonedPlacements:
+        this.layoutZonedPlacements ??
+        this.runtimeZonedPlacements(surfaceFrameId),
+      roads,
+      roadWays,
+      roadVertical: {
+        min: roadPolicy.minOffset,
+        max: roadPolicy.maxOffset,
+        clearanceBelow: roadPolicy.clearanceBelow,
+        clearanceAbove: roadPolicy.clearanceAbove,
+      },
+    });
+    if (!active) return captured;
+
+    const activeRoads = new Map<string, WorldLayoutRoad[]>();
+    for (const road of active.roads) {
+      const signature = this.worldLayoutRoadSignature(road);
+      const matches = activeRoads.get(signature) ?? [];
+      matches.push(road);
+      activeRoads.set(signature, matches);
+    }
+    const usedRoadIds = new Set<string>();
+    const roadIdMap = new Map<string, string>();
+    const preservedRoads = captured.roads.map((road) => {
+      const signature = this.worldLayoutRoadSignature(road);
+      const prior = activeRoads.get(signature)?.shift();
+      const id = this.uniqueWorldLayoutId(
+        prior?.id ?? road.id,
+        signature,
+        usedRoadIds,
+      );
+      roadIdMap.set(road.id, id);
+      return { ...road, id };
+    });
+
+    const activeWays = new Map<string, WorldLayoutWay[]>();
+    for (const way of active.ways) {
+      const signature = this.worldLayoutWaySignature(way);
+      const matches = activeWays.get(signature) ?? [];
+      matches.push(way);
+      activeWays.set(signature, matches);
+    }
+    const usedWayIds = new Set<string>();
+    const preservedWays = captured.ways.map((way) => {
+      const signature = this.worldLayoutWaySignature(way);
+      const prior = activeWays.get(signature)?.shift();
+      const id = this.uniqueWorldLayoutId(
+        prior?.id ?? way.id,
+        signature,
+        usedWayIds,
+      );
+      return {
+        ...way,
+        id,
+        ...(way.roadIds
+          ? { roadIds: way.roadIds.map((roadId) => roadIdMap.get(roadId)!) }
+          : {}),
+      };
+    });
+
+    const sameRevision = createWorldLayoutDocument({
+      worldId: captured.worldId,
+      seed: captured.seed,
+      revision: {
+        number: active.revision.number,
+        parentHash: active.revision.parentHash,
+      },
+      frames: captured.frames,
+      placements: captured.placements,
+      roads: preservedRoads,
+      ways: preservedWays,
+      terrainEdits: captured.terrainEdits,
+      portals: captured.portals,
+    });
+    if (
+      this.worldLayoutDurableSignature(sameRevision) ===
+      this.worldLayoutDurableSignature(active)
+    )
+      return parseWorldLayoutDocument(serializeWorldLayoutDocument(active));
+
+    return createWorldLayoutDocument({
+      worldId: sameRevision.worldId,
+      seed: sameRevision.seed,
+      revision: {
+        number: active.revision.number + 1,
+        parentHash: active.revision.contentHash,
+      },
+      frames: sameRevision.frames,
+      placements: sameRevision.placements,
+      roads: sameRevision.roads,
+      ways: sameRevision.ways,
+      terrainEdits: sameRevision.terrainEdits,
+      portals: sameRevision.portals,
+    });
+  }
+
+  /** Current immutable layout head, or null while the legacy seeded world is authoritative. */
+  worldLayoutDocument(): WorldLayoutDocument | null {
+    return this.activeWorldLayout
+      ? parseWorldLayoutDocument(
+          serializeWorldLayoutDocument(this.activeWorldLayout),
+        )
+      : null;
+  }
+
+  /** WB.1d — validate and fully materialize a candidate before publishing it. This method is a boot
+   *  seam: a renderer/simulation already running may never observe a half-replaced layout. */
+  hydrateWorldLayout(document: WorldLayoutDocument): HydratedWorldLayout {
+    if (this.running)
+      throw new Error("world layout hydration must complete before runtime start");
+
+    const candidate = applyWorldLayoutDocument(document);
+    const expectedWorldId = `seed-${this.worldSeed}`;
+    if (candidate.worldId !== expectedWorldId || candidate.seed !== this.worldSeed)
+      throw new Error(
+        `world layout identity mismatch: expected ${expectedWorldId}/${this.worldSeed}`,
+      );
+
+    const seedRegistry = this.seededWorldSurvey();
+    for (const required of seedRegistry.frames.values()) {
+      const frame = candidate.frames.find((item) => item.id === required.id);
+      if (
+        !frame ||
+        frame.parentId !== required.parentId ||
+        frame.kind !== required.kind ||
+        frame.layer !== required.layer ||
+        JSON.stringify(frame.transform) !== JSON.stringify(required.transform) ||
+        JSON.stringify(frame.grid ?? null) !== JSON.stringify(required.grid ?? null)
+      )
+        throw new Error(
+          `world layout changed the original island frame ${required.id}`,
+        );
+    }
+
+    // V1 runtime can faithfully materialize the seeded Parcel/Shop records but cannot yet construct
+    // a brand-new Parcel/Shop from generic persisted placement geometry. Refuse such a document
+    // before publishing any roads, terrain edits or frames instead of presenting split truth to the
+    // renderer, survey and placement validator.
+    const runtimePlacements = this.runtimeZonedPlacements(
+      seedRegistry.surfaceFrameId,
+    );
+    if (
+      this.worldLayoutPlacementSignature(candidate.zonedPlacements) !==
+      this.worldLayoutPlacementSignature(runtimePlacements)
+    )
+      throw new Error(
+        "world layout contains zoned placements this runtime cannot reconstruct",
+      );
+
+    const roadCells = candidate.roads.map((road) => ({
+      x: road.x,
+      y: road.y,
+      kind:
+        road.kind === "avenue" || road.kind === "path"
+          ? road.kind
+          : ("street" as const),
+    }));
+    const roadKind = new Map(
+      roadCells.map((road) => [`${road.x},${road.y}`, road.kind] as const),
+    );
+    const roadSet = new Set(roadKind.keys());
+    const tileKind = (kind: RuntimeRoadCell["kind"]): RoadTile["type"] =>
+      kind === "avenue" || kind === "gravel" || kind === "culdesac"
+        ? kind
+        : "street";
+    const tileKey = (cell: { x: number; y: number }) => `${cell.x},${cell.y}`;
+    const tiles: Record<string, RoadTile> = {};
+    for (const road of candidate.roads)
+      tiles[tileKey(road)] = {
+        x: road.x,
+        y: road.y,
+        mask: RoadMask.None,
+        type: tileKind(road.kind),
+      };
+    for (const tile of Object.values(tiles)) {
+      if (tiles[tileKey({ x: tile.x, y: tile.y - 1 })]) tile.mask |= RoadMask.N;
+      if (tiles[tileKey({ x: tile.x + 1, y: tile.y })]) tile.mask |= RoadMask.E;
+      if (tiles[tileKey({ x: tile.x, y: tile.y + 1 })]) tile.mask |= RoadMask.S;
+      if (tiles[tileKey({ x: tile.x - 1, y: tile.y })]) tile.mask |= RoadMask.W;
+    }
+    const landscapeEdits = landscapeOffsetsFromTerrainEdits(
+      candidate.terrainEdits,
+      (x, y) => this.sim.state.terrain.worldY(x, y),
+    );
+    const canonical = parseWorldLayoutDocument(
+      serializeWorldLayoutDocument(document),
+    );
+
+    // One synchronous publish boundary. Everything above is isolated and may throw without changing
+    // the currently observable runtime or builder store.
+    this.activeWorldLayout = canonical;
+    this.layoutFrames = candidate.frames;
+    this.layoutPortals = candidate.portals;
+    this.layoutTerrainEdits = candidate.terrainEdits;
+    this.layoutZonedPlacements = candidate.zonedPlacements;
+    this.layoutRoads = candidate.roads;
+    this.roadWays = candidate.roadWays.map((way) => ({
+      ...way,
+      path: way.path.map((cell) => ({ ...cell })),
+    }));
+    this.sim.state.roads = roadCells;
+    this.sim.state.roadKind = roadKind;
+    this.sim.state.roadSet = roadSet;
+    this.sim.state.roadWays = this.roadWays;
+    this.sim.state.roadsVersion++;
+    this.lastPlacementSurvey = null;
+    useRoadNetwork.setState({ tiles, landscapeEdits: new Map(landscapeEdits) });
+    return candidate;
+  }
+
+  /** Adopt a store-confirmed revision for the already-published live spatial payload. Unlike boot
+   *  hydration this is safe while running: it cannot replace roads, terrain, renderer inputs or
+   *  builder state, only the validated immutable head and its matching layout metadata. */
+  adoptWorldLayoutRevision(document: WorldLayoutDocument): WorldLayoutDocument {
+    const active = this.activeWorldLayout;
+    if (!active)
+      throw new Error("cannot adopt a world layout revision before hydration");
+
+    const candidate = applyWorldLayoutDocument(document);
+    const expectedWorldId = `seed-${this.worldSeed}`;
+    if (candidate.worldId !== expectedWorldId || candidate.seed !== this.worldSeed)
+      throw new Error(
+        `world layout identity mismatch: expected ${expectedWorldId}/${this.worldSeed}`,
+      );
+    const canonical = parseWorldLayoutDocument(
+      serializeWorldLayoutDocument(document),
+    );
+    const currentIntent = this.captureWorldLayout();
+    if (
+      this.worldLayoutDurableSignature(canonical) !==
+      this.worldLayoutDurableSignature(currentIntent)
+    )
+      throw new Error(
+        "saved world layout payload does not match current runtime intent",
+      );
+
+    const sameHead =
+      canonical.revision.number === active.revision.number &&
+      canonical.revision.parentHash === active.revision.parentHash &&
+      canonical.revision.contentHash === active.revision.contentHash;
+    const nextHead =
+      canonical.revision.number === active.revision.number + 1 &&
+      canonical.revision.parentHash === active.revision.contentHash;
+    if (!sameHead && !nextHead)
+      throw new Error("saved world layout revision does not extend the active head");
+
+    // One metadata-only publish boundary. Candidate arrays are already isolated copies produced by
+    // the adapter; no simulation, Zustand or renderer-owned value is touched here.
+    this.activeWorldLayout = canonical;
+    this.layoutFrames = candidate.frames;
+    this.layoutPortals = candidate.portals;
+    this.layoutTerrainEdits = candidate.terrainEdits;
+    this.layoutZonedPlacements = candidate.zonedPlacements;
+    this.layoutRoads = candidate.roads;
+    return parseWorldLayoutDocument(serializeWorldLayoutDocument(canonical));
+  }
+
+  /** Spec 152 — build a read-only registry from the active durable head when present. Custom child
+   *  frames and portals remain addressable even though their streamed scenes are not loaded yet. */
+  worldSurvey(): WorldSurveyRegistry {
+    const registry = this.seededWorldSurvey();
+    if (!this.activeWorldLayout || !this.layoutFrames) return registry;
+
+    const pending = this.layoutFrames.filter(
+      (frame) => !registry.frames.has(frame.id),
+    );
+    while (pending.length > 0) {
+      const index = pending.findIndex(
+        (frame) => !frame.parentId || registry.frames.has(frame.parentId),
+      );
+      if (index < 0) throw new Error("world layout contains an unresolved frame graph");
+      const [frame] = pending.splice(index, 1);
+      registry.addFrame({ ...frame!, metadata: {} });
+    }
+    const surfaceAddress = registry.frames.get(registry.surfaceFrameId)!.address;
+    const orientationYaw = { n: 0, e: Math.PI / 2, s: Math.PI, w: -Math.PI / 2 };
+    for (const placement of this.layoutZonedPlacements ?? []) {
+      const kind = placement.definitionId.includes("commercial")
+        ? ("commercial-plot" as const)
+        : ("residential-plot" as const);
+      registry.addRecord({
+        id: placement.id,
+        address: `${surfaceAddress}/placement/${placement.id}`,
+        frameId: placement.frameId,
+        layer: placement.layer,
+        kind,
+        geometry: {
+          type: "footprint",
+          bounds: { ...placement.bounds },
+          elevation: placement.vertical.min,
+          yaw: placement.orientation ? orientationYaw[placement.orientation] : 0,
+          vertical: { ...placement.vertical },
+        },
+        metadata: {
+          definitionId: placement.definitionId,
+          source: placement.source,
+          persisted: true,
+        },
+      });
+    }
+    for (const portal of this.layoutPortals)
+      if (!registry.portals.has(portal.id)) registry.addPortal(portal);
+    return registry;
   }
 
   /** Focus the live aerial camera on an exact surveyed grid cell. Returns false before the R3F
@@ -3716,12 +4288,35 @@ export class ColonyRuntime {
 
   /** WB.1c — one exact placement context for preview, runtime commit and tests. */
   private placementContext() {
-    return createPlacementContext({
+    const emptyNeighborhood: Neighborhood = {
+      spine: [],
+      carriage: [],
+      verge: [],
+      street: [],
+      parcels: [],
+      lots: [],
+    };
+    const context = createPlacementContext({
       state: this.sim.state,
-      neighborhood: this.neighborhood,
-      commercialDistrict: this.commercialDistrict,
+      neighborhood: this.activeWorldLayout
+        ? emptyNeighborhood
+        : this.neighborhood,
+      commercialDistrict: this.activeWorldLayout
+        ? null
+        : this.commercialDistrict,
       roadWays: this.roadWays,
     });
+    if (!this.activeWorldLayout) return context;
+
+    const reservedCells = new Set(context.reservedCells);
+    for (const placement of this.layoutZonedPlacements ?? [])
+      for (const cell of placement.cells)
+        reservedCells.add(`${cell.x},${cell.y}`);
+    return {
+      ...context,
+      layoutRevision: worldLayoutRevisionId(this.activeWorldLayout.revision),
+      reservedCells,
+    };
   }
 
   /** WB.1c — survey a plot without mutating the world. The result is also exposed as the

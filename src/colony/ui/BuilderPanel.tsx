@@ -6,9 +6,52 @@ import type {
   SurveyTerrainLayer,
 } from "./worldSurveyMapModel";
 
-interface BuilderPanelProps {
+export type WorldLayoutOperatorStatus =
+  | "unavailable"
+  | "clean"
+  | "dirty"
+  | "saving"
+  | "conflict"
+  | "error";
+
+export type WorldLayoutOperatorAction =
+  | "save"
+  | "history"
+  | "rollback"
+  | "export"
+  | "import";
+
+/**
+ * Parent-owned operator boundary for the authoritative world-layout repository.
+ *
+ * BuilderPanel deliberately does not instantiate WorldLayoutStore or infer persistence from
+ * runtime state. Import validation, CAS saves, history and rollback remain orchestration
+ * responsibilities of the parent that owns the active world revision.
+ */
+export interface WorldLayoutOperatorControls {
+  readonly revisionNumber?: number | null;
+  readonly revisionId?: string | null;
+  readonly status: WorldLayoutOperatorStatus;
+  readonly message?: string;
+  readonly onSave?: () => void | Promise<void>;
+  readonly onShowHistory?: () => void | Promise<void>;
+  readonly onRollback?: () => void | Promise<void>;
+  readonly onExport?: () => void | Promise<void>;
+  /** The parent must validate the complete document before hydrating or persisting it. */
+  readonly onValidateAndImport?: (
+    serializedDocument: string,
+    fileName: string,
+  ) => void | Promise<void>;
+  readonly onActionError?: (
+    error: unknown,
+    action: WorldLayoutOperatorAction,
+  ) => void;
+}
+
+export interface BuilderPanelProps {
   runtime?: any;
   sim?: any;
+  worldLayoutControls?: WorldLayoutOperatorControls;
 }
 
 const BUILDER_ICON_BASE = "/assets/citylife/builder-icons/64";
@@ -52,7 +95,203 @@ function BuilderCategoryIcon({
   );
 }
 
-export function BuilderPanel({ runtime, sim }: BuilderPanelProps) {
+const revisionActionStyle: React.CSSProperties = {
+  background: "linear-gradient(to bottom, #4a4d53, #2b2d30)",
+  color: "#fff",
+  border: "1px solid #7c828d",
+  borderRadius: "3px",
+  padding: "4px 5px",
+  cursor: "pointer",
+  fontSize: "9px",
+  fontWeight: "bold",
+  fontFamily: "monospace",
+};
+
+function actionErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0)
+    return error.message;
+  return String(error || "Unknown world-layout action failure");
+}
+
+/**
+ * Close the async UI boundary: action and observer failures must never become unhandled promise
+ * rejections. The boolean result lets the component expose failure without changing parent state.
+ */
+export async function runWorldLayoutOperatorAction(
+  action: WorldLayoutOperatorAction,
+  operation: () => void | Promise<void>,
+  onActionError?: WorldLayoutOperatorControls["onActionError"],
+): Promise<{ readonly ok: true } | { readonly ok: false; readonly message: string }> {
+  try {
+    await operation();
+    return { ok: true };
+  } catch (error) {
+    try {
+      onActionError?.(error, action);
+    } catch {
+      // Error reporting is advisory; a failing observer must not reopen the async boundary.
+    }
+    return { ok: false, message: actionErrorMessage(error) };
+  }
+}
+
+export function WorldLayoutRevisionControls({
+  controls,
+}: {
+  controls?: WorldLayoutOperatorControls;
+}) {
+  const importInput = React.useRef<HTMLInputElement>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
+  const status = controls?.status ?? "unavailable";
+  const busy = status === "saving";
+  const revisionLabel =
+    controls?.revisionNumber === null || controls?.revisionNumber === undefined
+      ? "R—"
+      : `R${controls.revisionNumber}`;
+  const statusColor =
+    status === "clean"
+      ? "#57d1c4"
+      : status === "dirty"
+        ? "#ffcf55"
+        : status === "saving"
+          ? "#55cfff"
+          : status === "unavailable"
+            ? "#8a8e98"
+            : "#ff6b6b";
+  const invoke = (
+    actionName: WorldLayoutOperatorAction,
+    action?: () => void | Promise<void>,
+  ) => {
+    if (!action || busy) return;
+    setActionError(null);
+    void runWorldLayoutOperatorAction(
+      actionName,
+      action,
+      controls?.onActionError,
+    ).then((result) => {
+      if (!result.ok) setActionError(result.message);
+    });
+  };
+  const buttonStyle = (enabled: boolean): React.CSSProperties => ({
+    ...revisionActionStyle,
+    opacity: enabled && !busy ? 1 : 0.45,
+    cursor: enabled && !busy ? "pointer" : "not-allowed",
+  });
+
+  return (
+    <section aria-label="World layout revision controls">
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "baseline",
+          color: statusColor,
+          fontSize: "10px",
+          marginBottom: "5px",
+        }}
+        title={
+          controls?.revisionId ??
+          controls?.message ??
+          "World layout controls are not wired"
+        }
+      >
+        <strong>WORLD LAYOUT {revisionLabel}</strong>
+        <span>{status.toUpperCase()}</span>
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+          gap: "4px",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => invoke("save", controls?.onSave)}
+          disabled={!controls?.onSave || busy}
+          style={buttonStyle(Boolean(controls?.onSave))}
+        >
+          SAVE REV
+        </button>
+        <button
+          type="button"
+          onClick={() => invoke("history", controls?.onShowHistory)}
+          disabled={!controls?.onShowHistory || busy}
+          style={buttonStyle(Boolean(controls?.onShowHistory))}
+        >
+          HISTORY
+        </button>
+        <button
+          type="button"
+          onClick={() => invoke("rollback", controls?.onRollback)}
+          disabled={!controls?.onRollback || busy}
+          style={buttonStyle(Boolean(controls?.onRollback))}
+        >
+          ROLLBACK
+        </button>
+        <button
+          type="button"
+          onClick={() => invoke("export", controls?.onExport)}
+          disabled={!controls?.onExport || busy}
+          style={buttonStyle(Boolean(controls?.onExport))}
+        >
+          EXPORT
+        </button>
+        <button
+          type="button"
+          onClick={() => importInput.current?.click()}
+          disabled={!controls?.onValidateAndImport || busy}
+          style={{
+            ...buttonStyle(Boolean(controls?.onValidateAndImport)),
+            gridColumn: "span 2",
+          }}
+        >
+          VALIDATE + IMPORT
+        </button>
+      </div>
+      {actionError && (
+        <div
+          role="alert"
+          title={actionError}
+          style={{
+            color: "#ff6b6b",
+            fontSize: "8px",
+            lineHeight: "10px",
+            marginTop: "3px",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          ACTION FAILED: {actionError}
+        </div>
+      )}
+      <input
+        ref={importInput}
+        type="file"
+        accept="application/json,.json"
+        aria-label="Choose world layout document to validate and import"
+        hidden
+        onChange={(event) => {
+          const input = event.currentTarget;
+          const file = input.files?.[0];
+          if (!file || !controls?.onValidateAndImport) return;
+          invoke("import", async () => {
+            const serialized = await file.text();
+            await controls.onValidateAndImport?.(serialized, file.name);
+          });
+          input.value = "";
+        }}
+      />
+    </section>
+  );
+}
+
+export function BuilderPanel({
+  runtime,
+  sim,
+  worldLayoutControls,
+}: BuilderPanelProps) {
   const {
     builderActive,
     toggleBuilder,
@@ -60,8 +299,6 @@ export function BuilderPanel({ runtime, sim }: BuilderPanelProps) {
     toggleWorldView,
     builderMode,
     setBuilderMode,
-    saveToDB,
-    loadFromDB,
   } = useRoadNetwork();
   const activeRoadType = useRoadNetwork((state) => state.activeRoadType);
   const setActiveRoadType = useRoadNetwork((state) => state.setActiveRoadType);
@@ -634,43 +871,7 @@ export function BuilderPanel({ runtime, sim }: BuilderPanelProps) {
             boxShadow: "inset 2px 0 5px rgba(0,0,0,0.5)",
           }}
         >
-          {/* Save/Load side by side */}
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button
-              onClick={saveToDB}
-              style={{
-                flex: 1,
-                background: "linear-gradient(to bottom, #4a4d53, #2b2d30)",
-                color: "#fff",
-                border: "1px solid #7c828d",
-                borderRadius: "3px",
-                padding: "6px",
-                cursor: "pointer",
-                fontSize: "11px",
-                fontWeight: "bold",
-                fontFamily: "monospace",
-              }}
-            >
-              💾 SAVE
-            </button>
-            <button
-              onClick={loadFromDB}
-              style={{
-                flex: 1,
-                background: "linear-gradient(to bottom, #4a4d53, #2b2d30)",
-                color: "#fff",
-                border: "1px solid #7c828d",
-                borderRadius: "3px",
-                padding: "6px",
-                cursor: "pointer",
-                fontSize: "11px",
-                fontWeight: "bold",
-                fontFamily: "monospace",
-              }}
-            >
-              📂 LOAD
-            </button>
-          </div>
+          <WorldLayoutRevisionControls controls={worldLayoutControls} />
 
           {/* Exit Builder Emergency Plunger Button */}
           <button
