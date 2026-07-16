@@ -1,0 +1,167 @@
+{
+  "time": "2026-07-16T12:43:27.574Z",
+  "url": "http://127.0.0.1:5188/?skipauth=1",
+  "worldSeed": 4242,
+  "terrainSize": 608,
+  "garagePad": {
+    "x": 130,
+    "y": 270,
+    "w": 16,
+    "h": 11,
+    "streetFrontDir": {
+      "x": -1,
+      "y": 0
+    },
+    "crossFrontDir": {
+      "x": 0,
+      "y": -1
+    },
+    "facingAngle": 3.141592653589793,
+    "roadTarget": {
+      "x": 125,
+      "y": 265
+    },
+    "islandCell": {
+      "x": 131,
+      "y": 271
+    },
+    "centerCell": {
+      "x": 137.5,
+      "y": 275
+    },
+    "centerWorld": {
+      "x": -666,
+      "z": -116
+    },
+    "frontStreetCell": {
+      "x": 135.5,
+      "y": 275
+    },
+    "frontStreetWorld": {
+      "x": -674,
+      "z": -116
+    },
+    "frontCrossWorld": {
+      "x": -666,
+      "z": -120.79999999999995
+    }
+  },
+  "fp": {
+    "requestedCitizen": "citizen_joe",
+    "entered": true,
+    "teleported": true,
+    "afterUi": {
+      "active": true,
+      "citizenId": "citizen_joe",
+      "citizenName": "Joe the Crab",
+      "operatorCitizenId": null,
+      "stepInCitizenIds": [
+        "citizen_joe",
+        "citizen_viw",
+        "citizen_jack",
+        "citizen_rally_friend"
+      ],
+      "view": {
+        "citizen": {
+          "id": "citizen_joe",
+          "displayName": "Joe the Crab",
+          "plotName": "Driftwood Cove",
+          "homeXY": {
+            "x": 235,
+            "y": 299
+          },
+          "positionXY": {
+            "x": 135.5,
+            "y": 275
+          },
+          "heading": 0
+        },
+        "interactionPrompt": null,
+        "ground": {
+          "biome": "plains",
+          "elevation": 0.478,
+          "isWater": false,
+          "distToWater": 35
+        },
+        "nearestRoad": {
+          "x": 135,
+          "y": 266,
+          "distance": 9.013878188659973
+        },
+        "neighbours": [
+          {
+            "displayName": "KOOKER the Builder",
+            "plotName": "Crewhouse Yard",
+            "x": 219.49327999999997,
+            "y": 332,
+            "distance": 101.50798532705885
+          },
+          {
+            "displayName": "Jack the Rabbit",
+            "plotName": "Signal Burrow",
+            "x": 235.55494,
+            "y": 306,
+            "distance": 104.74727212869841
+          },
+          {
+            "displayName": "Cole the Racer",
+            "plotName": "Rally Overlook",
+            "x": 425,
+            "y": 326,
+            "distance": 293.95790514969997
+          }
+        ],
+        "nearestBuildings": [],
+        "nearestCivic": [],
+        "clock": {
+          "day": 0,
+          "hour": 10,
+          "minute": 4,
+          "isDay": true
+        },
+        "mood": {
+          "liveability": 0,
+          "hygiene": 0,
+          "fever": 0,
+          "unrest": 0,
+          "brownout": false,
+          "hungry": true
+        }
+      },
+      "lookPitch": 0,
+      "mouseSensitivity": "normal",
+      "sprintCharge": 100,
+      "guidedTarget": null,
+      "blockedReason": null,
+      "narration": null,
+      "narrating": false
+    },
+    "fpCitizenCell": {
+      "x": 307,
+      "y": 306
+    },
+    "stepInCitizenIds": [
+      "citizen_joe",
+      "citizen_viw",
+      "citizen_jack",
+      "citizen_rally_friend"
+    ]
+  },
+  "notes": [
+    "front.street = two cells out from pad center toward streetFrontDir",
+    "debugPlaceFirstPerson target = pad center => facing toward garage",
+    "world-cell to world-unit conversion used in CityLife terrain: (g - terrain.size/2) * 4"
+  ],
+  "screenshot": "/Users/joehermesbot/spec111-garagepad-front-at-garage.png",
+  "imageSize": {
+    "width": 1600,
+    "height": 1000
+  },
+  "afterPose": {
+    "fpCameraCell": {
+      "x": 135.5,
+      "y": 275
+    },
+    "sprintCharge": 100
+  }
+}

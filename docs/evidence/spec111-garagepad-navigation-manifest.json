@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "citylife-task-evidence-v1",
+  "taskApi": "WB.1",
+  "taskId": "ea73f1c1-b25c-45af-9c40-295174e840f7",
+  "timestampUtc": "2026-07-16T12:43:27.574Z",
+  "lane": "CityLife World+Build",
+  "district": {
+    "id": "commercialDistrict",
+    "name": "commercialDistrict",
+    "anchorPath": "commercialDistrict.garagePad.garageAnchorShell"
+  },
+  "target": {
+    "targetPadId": "garagePad",
+    "targetCell": {
+      "x": 130,
+      "y": 270,
+      "w": 16,
+      "h": 11,
+      "streetFrontDir": {
+        "x": -1,
+        "y": 0
+      },
+      "crossFrontDir": {
+        "x": 0,
+        "y": -1
+      },
+      "facingAngle": 3.141592653589793,
+      "centerCell": {
+        "x": 137.5,
+        "y": 275
+      }
+    },
+    "centerWorld": {
+      "x": -666,
+      "z": -116
+    }
+  },
+  "placement": {
+    "cameraCell": {
+      "x": 135.5,
+      "y": 275
+    },
+    "cameraWorld": {
+      "x": -674,
+      "z": -116
+    },
+    "lookTargetCell": {
+      "x": 137.5,
+      "y": 275
+    },
+    "lookTargetWorld": {
+      "x": -666,
+      "z": -116
+    },
+    "yawDeg": 0.0,
+    "pitchDeg": 0.0,
+    "rollDeg": 0.0,
+    "yawRad": 0.0,
+    "pitchRad": 0.0,
+    "rollRad": 0.0,
+    "distanceToTarget": 8.0,
+    "route": {
+      "version": "citylife-debug-place-fp-v1",
+      "calls": [
+        "setPlayerView(false)",
+        "enterFirstPerson('citizen_joe')",
+        "debugPlaceFirstPerson(135.5, 275, 137.5, 275)"
+      ]
+    }
+  },
+  "screenshot": {
+    "path": "docs/evidence/spec111-garagepad-front-at-garage.png",
+    "url": null,
+    "sha256": "11fdd0262472c5a05784ccf9252898e0d7347e02dc6bda6873bcc103b2f518f9",
+    "byteSize": 123562,
+    "mime": "image/png",
+    "dimensions": {
+      "width": 1600,
+      "height": 1000
+    },
+    "mtimeEpoch": 1784206114,
+    "capturedBy": {
+      "script": "spec111-garagepad-navigation-log.json"
+    }
+  },
+  "runtimeEvidencePath": "docs/evidence/spec111-garagepad-navigation-log.json",
+  "evidenceVersion": "wb1-garagepad-deterministic-2026-07-16",
+  "world": {
+    "seed": 4242,
+    "terrainSize": 608,
+    "url": "http://127.0.0.1:5188/?skipauth=1",
+    "seedSource": "deterministic boot via URL"
+  }
+}
