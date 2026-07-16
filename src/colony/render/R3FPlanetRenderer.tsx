@@ -395,7 +395,8 @@ function AerialCameraController({ sim }: { sim: ColonySim }) {
   const { camera, size } = useThree();
   const worldViewActive = useRoadNetwork((state) => state.worldViewActive);
   const controls = useThree((state) => state.controls) as
-    { target?: THREE.Vector3; update?: () => void } | undefined;
+    | { target?: THREE.Vector3; update?: () => void }
+    | undefined;
 
   useEffect(() => {
     // Position camera high up looking down
