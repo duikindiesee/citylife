@@ -299,74 +299,15 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
     });
   },
 
-  loadFromDB: async (sim?: any) => {
-    let tiles: Record<string, any> = {};
-    try {
-      const res = await fetch("/api/roads");
-      if (res.ok) {
-        const data = await res.json();
-        tiles = data.tiles || {};
-      } else {
-        console.warn("Failed to load roads from DB");
-      }
-    } catch (e) {
-      console.warn("Backend not running, falling back to local storage", e);
-      const local = localStorage.getItem("citylife_roads");
-      if (local) {
-        try {
-          tiles = JSON.parse(local);
-        } catch (pe) {
-          console.error("Failed to parse local storage roads", pe);
-        }
-      }
-    }
-
-    // Sync with simulation state
-    if (sim) {
-      if (Object.keys(tiles).length > 0) {
-        const s = sim.state;
-        s.roads = [];
-        s.roadSet.clear();
-        s.roadKind.clear();
-        for (const k in tiles) {
-          const tile = tiles[k];
-          s.roadSet.add(`${tile.x},${tile.y}`);
-          s.roads.push({ x: tile.x, y: tile.y, kind: tile.type });
-          s.roadKind.set(`${tile.x},${tile.y}`, tile.type);
-        }
-        s.roadsVersion++;
-      } else if (sim.state.roads && sim.state.roads.length > 0) {
-        // Load the starter simulation roads into tiles!
-        const initialTiles: Record<string, any> = {};
-        for (const r of sim.state.roads) {
-          const key = `${r.x},${r.y}`;
-          initialTiles[key] = {
-            x: r.x,
-            y: r.y,
-            mask: 0,
-            type: r.kind || "street",
-          };
-        }
-
-        const getMask = (x: number, y: number) => {
-          let mask = 0;
-          if (initialTiles[`${x},${y - 1}`]) mask |= RoadMask.N;
-          if (initialTiles[`${x + 1},${y}`]) mask |= RoadMask.E;
-          if (initialTiles[`${x},${y + 1}`]) mask |= RoadMask.S;
-          if (initialTiles[`${x - 1},${y}`]) mask |= RoadMask.W;
-          return mask;
-        };
-
-        for (const key in initialTiles) {
-          const t = initialTiles[key];
-          t.mask = getMask(t.x, t.y);
-        }
-
-        tiles = initialTiles;
-      }
-    }
-
-    set({ tiles });
+  loadFromDB: async (_sim?: any) => {
+    // WB.1d compatibility shim. Road cells, ways and terrain edits now hydrate atomically from the
+    // versioned WorldLayoutDocument before ColonyRuntime starts. Reading the old /api/roads or
+    // citylife_roads snapshots here would make a partial road-only document authoritative after
+    // boot and could silently replace the validated runtime. Keep the old UI method callable until
+    // BuilderPanel moves to world-layout history, but deliberately perform no I/O or mutation.
+    console.warn(
+      "Legacy road-only loading is disabled; use authoritative world-layout revisions",
+    );
   },
 
   applyLandscapeEdit: (x, y, mode) => {

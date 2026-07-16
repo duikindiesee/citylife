@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "worldId": "legacy-fixture",
+  "seed": 4242,
+  "revision": {
+    "number": 0,
+    "parentHash": null,
+    "contentHash": "43b554fa2d9082bc1ac9c8c587aae1de1d9d6798d16f7f6a016b26694a2647b4"
+  },
+  "frames": [
+    {
+      "id": "surface",
+      "address": "spatial://citylife/legacy-fixture/surface",
+      "kind": "region",
+      "layer": "surface",
+      "transform": {
+        "position": { "x": 0, "y": 0, "z": 0 },
+        "rotation": { "x": 0, "y": 0, "z": 0 },
+        "scale": { "x": 1, "y": 1, "z": 1 }
+      },
+      "grid": {
+        "width": 64,
+        "height": 64,
+        "cellSize": 4,
+        "origin": { "x": -128, "y": 0, "z": -128 }
+      }
+    }
+  ],
+  "placements": [],
+  "roads": [
+    {
+      "id": "road:surface:street",
+      "frameId": "surface",
+      "layer": "surface",
+      "kind": "street",
+      "cells": [
+        { "x": 1, "y": 1 },
+        { "x": 2, "y": 1 }
+      ],
+      "vertical": {
+        "min": 0,
+        "max": 1,
+        "clearanceBelow": 0,
+        "clearanceAbove": 1
+      }
+    }
+  ],
+  "ways": [
+    {
+      "id": "way:surface:main",
+      "frameId": "surface",
+      "layer": "surface",
+      "kind": "street",
+      "width": 1,
+      "cells": [
+        { "x": 1, "y": 1 },
+        { "x": 2, "y": 1 }
+      ],
+      "roadIds": ["road:surface:street"]
+    }
+  ],
+  "terrainEdits": [
+    {
+      "frameId": "surface",
+      "cell": { "x": 3, "y": 3 },
+      "elevation": 1.25
+    }
+  ],
+  "portals": []
+}

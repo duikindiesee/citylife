@@ -134,7 +134,11 @@ function failureSort(a: PlacementFailure, b: PlacementFailure): number {
   const by = b.cell?.y ?? Number.NEGATIVE_INFINITY;
   const ax = a.cell?.x ?? Number.NEGATIVE_INFINITY;
   const bx = b.cell?.x ?? Number.NEGATIVE_INFINITY;
-  return ay - by || ax - bx || a.code.localeCompare(b.code);
+  return (
+    ay - by ||
+    ax - bx ||
+    (a.code < b.code ? -1 : a.code > b.code ? 1 : 0)
+  );
 }
 
 export function placementFailureMessage(code: PlacementFailureCode): string {
