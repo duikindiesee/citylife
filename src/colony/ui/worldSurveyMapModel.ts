@@ -73,7 +73,8 @@ export interface SurveyCellInspector {
 }
 
 export type SurveySelectionInspector =
-  SurveyRecordInspector | SurveyCellInspector;
+  | SurveyRecordInspector
+  | SurveyCellInspector;
 
 export interface SurveyMapSelection {
   readonly cell: GridCell;
