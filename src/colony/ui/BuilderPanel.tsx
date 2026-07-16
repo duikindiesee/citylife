@@ -1,5 +1,10 @@
 import React from "react";
 import { useRoadNetwork } from "../stores/useRoadNetwork";
+import { WorldSurveyMap } from "./WorldSurveyMap";
+import type {
+  SurveyMapSelection,
+  SurveyTerrainLayer,
+} from "./worldSurveyMapModel";
 
 interface BuilderPanelProps {
   runtime?: any;
@@ -60,6 +65,119 @@ export function BuilderPanel({ runtime, sim }: BuilderPanelProps) {
   } = useRoadNetwork();
   const activeRoadType = useRoadNetwork((state) => state.activeRoadType);
   const setActiveRoadType = useRoadNetwork((state) => state.setActiveRoadType);
+  const [surveyOpen, setSurveyOpen] = React.useState(false);
+  const [surveyLayer, setSurveyLayer] =
+    React.useState<SurveyTerrainLayer>("surface");
+  const [surveyRevision, setSurveyRevision] = React.useState(0);
+  const [surveyTarget, setSurveyTarget] = React.useState<{
+    cell: { x: number; y: number };
+    recordId?: string;
+  } | null>(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const [x, y] = (params.get("cell") ?? "").split(",").map(Number);
+    if (!Number.isInteger(x) || !Number.isInteger(y)) return null;
+    const recordId = params.get("survey") ?? undefined;
+    return { cell: { x: x!, y: y! }, ...(recordId ? { recordId } : {}) };
+  });
+  const surveyRegistry = React.useMemo(
+    () =>
+      surveyOpen && typeof runtime?.worldSurvey === "function"
+        ? runtime.worldSurvey()
+        : null,
+    [runtime, surveyOpen, surveyRevision, sim?.state?.roadsVersion],
+  );
+
+  const selectSurveyLocation = (selection: SurveyMapSelection) => {
+    const recordId = selection.selectedRecord?.id;
+    setSurveyTarget({
+      cell: selection.cell,
+      ...(recordId ? { recordId } : {}),
+    });
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    params.set("cell", `${selection.cell.x},${selection.cell.y}`);
+    params.set("survey", selection.inspector.id);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}?${params.toString()}${window.location.hash}`,
+    );
+  };
+
+  const surveyOverlay = surveyOpen && surveyRegistry && (
+    <div
+      role="dialog"
+      aria-label="Authoritative world survey map"
+      style={{
+        position: "fixed",
+        inset: "16px 16px 154px 16px",
+        zIndex: 1200,
+        overflow: "auto",
+        padding: "12px",
+        border: "1px solid #31566b",
+        borderRadius: "10px",
+        background: "rgba(4, 14, 22, 0.97)",
+        boxShadow: "0 12px 50px rgba(0,0,0,0.72)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "10px",
+          marginBottom: "10px",
+          color: "#dce8ef",
+          fontFamily: "monospace",
+        }}
+      >
+        <strong style={{ color: "#57d1c4" }}>AUTHORITATIVE WORLD SURVEY</strong>
+        <span style={{ color: "#91a6b4", fontSize: "11px" }}>
+          north-up · fixed region grid · exact spatial addresses
+        </span>
+        <label style={{ marginLeft: "auto", fontSize: "12px" }}>
+          Terrain{" "}
+          <select
+            value={surveyLayer}
+            onChange={(event) =>
+              setSurveyLayer(event.target.value as SurveyTerrainLayer)
+            }
+          >
+            <option value="surface">Land / shore / sea</option>
+            <option value="buildability">Buildability</option>
+            <option value="elevation">Elevation</option>
+          </select>
+        </label>
+        <button type="button" onClick={() => setSurveyRevision((n) => n + 1)}>
+          Refresh truth
+        </button>
+        <button type="button" onClick={() => setSurveyOpen(false)}>
+          Close map
+        </button>
+      </div>
+      <WorldSurveyMap
+        registry={surveyRegistry}
+        width={720}
+        height={540}
+        terrainLayer={surveyLayer}
+        selectedCell={surveyTarget?.cell}
+        selectedRecordId={surveyTarget?.recordId}
+        onSelect={selectSurveyLocation}
+        onNavigate={(selection) => {
+          selectSurveyLocation(selection);
+          runtime?.focusSurveyCell?.(
+            selection.inspector.cell.x,
+            selection.inspector.cell.y,
+          );
+          useRoadNetwork.setState({
+            builderActive: false,
+            worldViewActive: true,
+          });
+          setSurveyOpen(false);
+        }}
+      />
+    </div>
+  );
 
   const ui = runtime?.getUiState();
   const sol = ui?.clock?.sol ?? 0;
@@ -70,31 +188,49 @@ export function BuilderPanel({ runtime, sim }: BuilderPanelProps) {
 
   if (!builderActive && !worldViewActive) {
     return (
-      <div className="group">
-        <button onClick={toggleWorldView} title="Enter Aerial World View">
-          🌍 World View
-        </button>
-        <button onClick={toggleBuilder} title="Enter City Builder Mode">
-          🏗️ City Builder
-        </button>
-      </div>
+      <>
+        <div className="group">
+          <button onClick={toggleWorldView} title="Enter Aerial World View">
+            🌍 World View
+          </button>
+          <button onClick={toggleBuilder} title="Enter City Builder Mode">
+            🏗️ City Builder
+          </button>
+          <button
+            onClick={() => setSurveyOpen(true)}
+            title="Open exact world survey map"
+          >
+            🗺️ Survey Map
+          </button>
+        </div>
+        {surveyOverlay}
+      </>
     );
   }
 
   if (worldViewActive) {
     return (
-      <div className="group">
-        <span style={{ color: "#a0b5c6", fontSize: "11px" }}>
-          Drag to pan · Right-drag to tilt · Wheel to zoom
-        </span>
-        <button
-          onClick={toggleWorldView}
-          style={{ color: "#ff6b6b" }}
-          title="Exit World View"
-        >
-          Exit World View
-        </button>
-      </div>
+      <>
+        <div className="group">
+          <span style={{ color: "#a0b5c6", fontSize: "11px" }}>
+            Drag to pan · Right-drag to tilt · Wheel to zoom
+          </span>
+          <button
+            onClick={() => setSurveyOpen(true)}
+            title="Open exact world survey map"
+          >
+            🗺️ Survey Map
+          </button>
+          <button
+            onClick={toggleWorldView}
+            style={{ color: "#ff6b6b" }}
+            title="Exit World View"
+          >
+            Exit World View
+          </button>
+        </div>
+        {surveyOverlay}
+      </>
     );
   }
 
@@ -136,8 +272,10 @@ export function BuilderPanel({ runtime, sim }: BuilderPanelProps) {
   });
 
   return (
-    <div
-      style={{
+    <>
+      {surveyOverlay}
+      <div
+        style={{
         position: "fixed",
         bottom: 0,
         left: 0,
@@ -551,6 +689,7 @@ export function BuilderPanel({ runtime, sim }: BuilderPanelProps) {
           🚨 EXIT BUILDER
         </button>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

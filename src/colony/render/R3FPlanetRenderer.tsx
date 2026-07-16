@@ -347,7 +347,8 @@ const r3fProbe: {
   gl: THREE.WebGLRenderer | null;
   scene: THREE.Scene | null;
   camera: THREE.Camera | null;
-} = { gl: null, scene: null, camera: null };
+  controls: { target: THREE.Vector3; update: () => void } | null;
+} = { gl: null, scene: null, camera: null, controls: null };
 
 function SceneProbe() {
   const scene = useThree((s) => s.scene);
@@ -368,6 +369,13 @@ function SceneProbe() {
     r3fProbe.gl = gl;
     r3fProbe.scene = scene;
     r3fProbe.camera = camera;
+    r3fProbe.controls =
+      controls &&
+      typeof controls === "object" &&
+      "target" in controls &&
+      "update" in controls
+        ? (controls as { target: THREE.Vector3; update: () => void })
+        : null;
     return () => {
       if (w.__r3fScene === scene) w.__r3fScene = undefined;
       if (w.__r3fCamera === camera) w.__r3fCamera = undefined;
@@ -376,6 +384,7 @@ function SceneProbe() {
         r3fProbe.gl = null;
         r3fProbe.scene = null;
         r3fProbe.camera = null;
+        r3fProbe.controls = null;
       }
     };
   }, [scene, camera, controls, gl]);
@@ -386,8 +395,7 @@ function AerialCameraController({ sim }: { sim: ColonySim }) {
   const { camera, size } = useThree();
   const worldViewActive = useRoadNetwork((state) => state.worldViewActive);
   const controls = useThree((state) => state.controls) as
-    | { target?: THREE.Vector3; update?: () => void }
-    | undefined;
+    { target?: THREE.Vector3; update?: () => void } | undefined;
 
   useEffect(() => {
     // Position camera high up looking down
@@ -825,6 +833,31 @@ export class PlanetRenderer {
     } finally {
       gl.toneMapping = prevToneMapping;
     }
+  }
+
+  /** Spec 152 — target one authoritative survey cell while preserving the operator's current
+   *  viewing direction and distance. This updates BOTH camera and MapControls target, so the next
+   *  drag/zoom continues around the selected object instead of snapping back to the old district. */
+  focusSurveyCell(cell: { x: number; y: number }): boolean {
+    const { camera, controls } = r3fProbe;
+    const terrain = this.sim.state.terrain;
+    const x = Math.round(cell.x);
+    const y = Math.round(cell.y);
+    if (!camera || !controls || !terrain.inBounds(x, y)) return false;
+
+    const target = new THREE.Vector3(
+      (x - terrain.size / 2) * 4,
+      Math.max(0, terrain.worldY(x, y)),
+      (y - terrain.size / 2) * 4,
+    );
+    const offset = camera.position.clone().sub(controls.target);
+    if (!Number.isFinite(offset.lengthSq()) || offset.lengthSq() < 100)
+      offset.set(72, 96, 72);
+    camera.position.copy(target).add(offset);
+    controls.target.copy(target);
+    controls.update();
+    camera.updateMatrixWorld();
+    return true;
   }
 
   setOperatorCar(spec: CarSpec | null, cell: { x: number; y: number } | null) {
