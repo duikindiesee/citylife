@@ -1,5 +1,11 @@
 # CityLife
 
+> [!IMPORTANT]
+> This README still describes legacy v1/v2 architecture and controls and is not
+> the current product contract for the v3 R3F colony. A governed rewrite is in
+> progress. Until it is operator-approved, use [the roadmap](docs/ROADMAP.md)
+> for current shipped status and verify implementation claims against `main`.
+
 A stylized-3D, agent-driven city that **runs itself** while an **AI mayor governs it** — built to live on a screen and evolve on its own.
 
 > **Origin & tribute.** CityLife grew out of **[CityMind — v1](https://github.com/duikland/citymind)**: an AI-driven city builder where each model reads the rules and writes a script to run the city. The whole idea was sparked by **[Wes Roth](https://www.youtube.com/@WesRoth)** — his benchmark-game video (each AI model generating its own script to play) lodged in my head and wouldn't leave, and his _own_ autonomous city-builder video kicked off this v2. Huge thanks, Wes, for the inspiration and the consistently great content. 🙏
