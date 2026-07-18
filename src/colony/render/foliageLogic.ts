@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { Biome } from "../terrain";
 import { COLONY } from "../config";
+import { ribbonCoverage, type RoadWay } from "./roadRibbon";
+import { getSmoothRoadY } from "./roadSurface";
 
 const TREE_COLORS = [
   0x55925b, 0x6fb069, 0x3f7d5e, 0x7a5aa8, 0x8fb557, 0x356b46,
@@ -20,6 +22,7 @@ export function calculateFoliagePositions(
   roads: any[],
   _buildings: any[],
   clearRects: ClearRect[] = [],
+  roadWays: RoadWay[] = [],
 ): { matrices: number[][]; colors: number[] } {
   const N = terrain.size;
   const hash = (n: number) => ((n * 2654435761) >>> 0) / 4294967296;
@@ -37,6 +40,21 @@ export function calculateFoliagePositions(
 
   // Clear roads
   for (const r of roads) mark(r.x, r.y, 1);
+
+  // Spec 127 — road cells are a topology hint; rendered roads are smoothed,
+  // widened ribbons. Cull foliage from the same conservative ribbon coverage the renderer
+  // paints, so curved/wide avenues and builder-plotted ways do not leave trees standing on
+  // asphalt while preserving trees outside the actual carriageway footprint.
+  if (roadWays.length) {
+    const roadY =
+      typeof terrain.worldYAt === "function"
+        ? (x: number, y: number) => getSmoothRoadY(terrain, x, y)
+        : (x: number, y: number) => terrain.worldY(Math.round(x), Math.round(y));
+    for (const key of ribbonCoverage(roadWays, terrain, roadY).keys()) {
+      const [x, y] = key.split(",").map(Number);
+      if (Number.isFinite(x) && Number.isFinite(y)) mark(x!, y!, 0);
+    }
+  }
 
   // Spec 128 — clear lot/parcel footprints ("trees on houses is a big no"): each rect is a
   // zoned or built lot, cleared with a 1-cell margin so canopies don't overhang the fence.

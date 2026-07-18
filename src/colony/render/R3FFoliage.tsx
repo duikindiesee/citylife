@@ -79,6 +79,7 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
       s.roads,
       s.buildings,
       rects,
+      s.roadWays ?? [],
     );
     return { matrices: mats, colors: cols };
   }, [sim, foliageSig]);
