@@ -139,7 +139,8 @@ describe("Kooker HQ interior fragment (WB.1e-a)", () => {
     const [building, reception] = fragment.frames;
     expect(building).toMatchObject({
       id: "surface:building:kooker-hq",
-      address: "spatial://citylife/world/kooker-hq-fixture/surface/building/kooker-hq",
+      address:
+        "spatial://citylife/world/kooker-hq-fixture/surface/building/kooker-hq",
       kind: "building",
       layer: "surface",
       parentId: "surface",
@@ -173,8 +174,16 @@ describe("Kooker HQ interior fragment (WB.1e-a)", () => {
 
   it("is deterministic for a given surface frame and options", () => {
     const surface = surfaceFrameFrom(islandInput());
-    expect(buildKookerHqInteriorFragment(surface, { entranceCell: { x: 4, y: 7 }, facing: "e" })).toEqual(
-      buildKookerHqInteriorFragment(surface, { entranceCell: { x: 4, y: 7 }, facing: "e" }),
+    expect(
+      buildKookerHqInteriorFragment(surface, {
+        entranceCell: { x: 4, y: 7 },
+        facing: "e",
+      }),
+    ).toEqual(
+      buildKookerHqInteriorFragment(surface, {
+        entranceCell: { x: 4, y: 7 },
+        facing: "e",
+      }),
     );
   });
 
@@ -308,8 +317,7 @@ describe("Kooker HQ interior fragment (WB.1e-a)", () => {
             {
               ...surfaceFrameFrom(twoSurfaces),
               id: "surface-two",
-              address:
-                "spatial://citylife/world/kooker-hq-fixture/surface-two",
+              address: "spatial://citylife/world/kooker-hq-fixture/surface-two",
             },
           ],
         }),

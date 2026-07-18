@@ -237,9 +237,7 @@ export function withKookerHqInterior(
   const fragment = buildKookerHqInteriorFragment(surfaceFrame, options);
 
   const existingFrameIds = new Set(input.frames.map((frame) => frame.id));
-  const existingPortalIds = new Set(
-    input.portals.map((portal) => portal.id),
-  );
+  const existingPortalIds = new Set(input.portals.map((portal) => portal.id));
   for (const frame of fragment.frames)
     if (existingFrameIds.has(frame.id))
       throw new KookerHqInteriorError(
