@@ -78,5 +78,6 @@ held ~102k nodes (3,412 "junction" decoration groups); 7 FPS with roads visible,
 
 Scene meshes 70,869 → **204** (ribbon = 4 merged meshes; junctions 8 groups). Tests:
 `tests/roadJunctions.test.ts` (zones, arms, furniture), `tests/roadRibbonsState.test.ts`
-(attach, merged build, signature, plotRoad append), `e2e/roadRibbons.spec.ts` (scene
-collapse + builder-not-broken).
+(attach, merged build, signature, plotRoad append), `tests/foliageLogic.test.ts`
+(foliage clears the widened/curved ribbon coverage rather than only center road cells), and
+`e2e/roadRibbons.spec.ts` (scene collapse + builder-not-broken).

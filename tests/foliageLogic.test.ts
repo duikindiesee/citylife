@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { calculateFoliagePositions } from "../src/colony/render/foliageLogic";
+import { ribbonCoverage } from "../src/colony/render/roadRibbon";
 import { Biome } from "../src/colony/terrain";
 
 describe("foliage logic", () => {
@@ -71,5 +72,45 @@ describe("foliage logic", () => {
         treesNearBuilding++;
     }
     expect(treesNearBuilding).toBeGreaterThan(0);
+  });
+
+  it("clears foliage from the actual widened ribbon footprint on curved roads", () => {
+    const size = 24;
+    const terrain = {
+      size,
+      elev: new Float32Array(size * size).fill(0.4),
+      water: new Uint8Array(size * size).fill(0),
+      biome: new Uint8Array(size * size).fill(Biome.Forest),
+      idx: (x: number, y: number) => y * size + x,
+      inBounds: (x: number, y: number) => x >= 0 && y >= 0 && x < size && y < size,
+      worldY: () => 0.4,
+    };
+    const roadWays = [
+      {
+        kind: "avenue" as const,
+        width: 4,
+        path: [
+          { x: 5, y: 5 },
+          { x: 12, y: 8 },
+          { x: 18, y: 16 },
+        ],
+      },
+    ];
+    const covered = ribbonCoverage(roadWays, terrain as any, () => 0.4);
+
+    const { matrices } = calculateFoliagePositions(
+      terrain,
+      [],
+      [],
+      [],
+      roadWays,
+    );
+
+    expect(covered.size).toBeGreaterThan(0);
+    for (const matrix of matrices) {
+      const cellX = Math.round(matrix[12] / 4 + size / 2);
+      const cellY = Math.round(matrix[14] / 4 + size / 2);
+      expect(covered.has(`${cellX},${cellY}`)).toBe(false);
+    }
   });
 });
