@@ -49,7 +49,8 @@ export function calculateFoliagePositions(
     const roadY =
       typeof terrain.worldYAt === "function"
         ? (x: number, y: number) => getSmoothRoadY(terrain, x, y)
-        : (x: number, y: number) => terrain.worldY(Math.round(x), Math.round(y));
+        : (x: number, y: number) =>
+            terrain.worldY(Math.round(x), Math.round(y));
     for (const key of ribbonCoverage(roadWays, terrain, roadY).keys()) {
       const [x, y] = key.split(",").map(Number);
       if (Number.isFinite(x) && Number.isFinite(y)) mark(x!, y!, 0);

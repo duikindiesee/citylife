@@ -82,7 +82,8 @@ describe("foliage logic", () => {
       water: new Uint8Array(size * size).fill(0),
       biome: new Uint8Array(size * size).fill(Biome.Forest),
       idx: (x: number, y: number) => y * size + x,
-      inBounds: (x: number, y: number) => x >= 0 && y >= 0 && x < size && y < size,
+      inBounds: (x: number, y: number) =>
+        x >= 0 && y >= 0 && x < size && y < size,
       worldY: () => 0.4,
     };
     const roadWays = [
