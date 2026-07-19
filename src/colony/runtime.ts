@@ -142,7 +142,7 @@ import {
 import { makeCityPlan, type CityPlan, type Plot } from "./cityPlan";
 import { CitizenRoster, type CitizenPublic } from "./bot/citizenRoster";
 import { firstPersonView, type FirstPersonView } from "./bot/firstPersonView";
-import { canonicalSolClock } from "./sol";
+import { canonicalSolClock, solsSinceEpoch } from "./sol";
 import {
   makeNeighborhood,
   makeNeighborhoodAt,
@@ -4717,7 +4717,8 @@ export class ColonyRuntime {
 
   getUiState(): ColonyUiState {
     const s = this.sim.state;
-    const canonicalClock = canonicalSolClock(Date.now());
+    const nowMs = Date.now();
+    const canonicalClock = canonicalSolClock(nowMs);
     const li = s.terrain.idx(s.terrain.landing.x, s.terrain.landing.y);
     const p = s.power;
     const playerViewerId = this.playerView ? this.operatorCitizenId() : null;
@@ -4740,7 +4741,7 @@ export class ColonyRuntime {
         hour: canonicalClock.hour,
         minute: canonicalClock.minute,
         isDay: canonicalClock.isDay,
-        sol: canonicalClock.sol,
+        sol: solsSinceEpoch(nowMs),
       },
       power: {
         solarW: p.solarW,
