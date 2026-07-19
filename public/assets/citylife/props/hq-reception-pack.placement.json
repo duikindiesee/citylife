@@ -1,0 +1,75 @@
+{
+  "schema": "citylife-prop-placement/v1",
+  "asset": {
+    "id": "hq-reception-pack",
+    "url": "/assets/citylife/props/hq-reception-pack.glb",
+    "generator": "scripts/generate_hq_reception_pack.mjs",
+    "provenance": "public/assets/citylife/props/hq-reception-pack.PROVENANCE.md",
+    "units": "meters",
+    "upAxis": "Y",
+    "forwardAxis": "+Z",
+    "publicSafe": true
+  },
+  "frame": {
+    "reference": "src/colony/spatial/kookerHqInterior.ts",
+    "roomLocalId": "reception",
+    "gridWidthCells": 12,
+    "gridDepthCells": 10,
+    "cellSizeMeters": 1,
+    "origin": "room-local corner (0,0,0); door centred at (6,0,0) on the z=0 wall; room opens toward +Z",
+    "coordinateSpace": "reception-room-local meters"
+  },
+  "nodes": {
+    "HqReception_Desk": {
+      "dimensions": { "w": 2.4, "h": 0.96, "d": 0.8 },
+      "pivot": "floor-center",
+      "facing": "front face toward local +Z"
+    },
+    "HqReception_ManifestoWall": {
+      "dimensions": { "w": 3.6, "h": 2.36, "d": 0.14 },
+      "pivot": "floor-center-back",
+      "facing": "back plane at local z=0; display face toward local +Z"
+    },
+    "HqReception_ArchiveShelf": {
+      "dimensions": { "w": 1.8, "h": 2.2, "d": 0.45 },
+      "pivot": "floor-center-back",
+      "facing": "back plane at local z=0; open face toward local +Z"
+    }
+  },
+  "placements": [
+    {
+      "node": "HqReception_Desk",
+      "position": [6, 0, 3.2],
+      "yawRadians": 3.141592653589793,
+      "note": "centred on the door axis, front facing the z=0 door wall so arrivals meet the desk"
+    },
+    {
+      "node": "HqReception_ManifestoWall",
+      "position": [6, 0, 10],
+      "yawRadians": 3.141592653589793,
+      "note": "back flush against the z=10 rear wall, manifesto plaques facing the door"
+    },
+    {
+      "node": "HqReception_ArchiveShelf",
+      "position": [0, 0, 3.5],
+      "yawRadians": 1.5707963267948966,
+      "note": "back flush against the x=0 west wall, open face into the room"
+    },
+    {
+      "node": "HqReception_ArchiveShelf",
+      "position": [0, 0, 6.5],
+      "yawRadians": 1.5707963267948966,
+      "note": "second west-wall bay, one metre gap from the first"
+    },
+    {
+      "node": "HqReception_ArchiveShelf",
+      "position": [12, 0, 5],
+      "yawRadians": -1.5707963267948966,
+      "note": "back flush against the x=12 east wall, open face into the room"
+    }
+  ],
+  "integration": {
+    "owner": "opus",
+    "note": "Runtime wiring (venuePropAssets registration, HQ interior layer, grounding) is deliberately not done here; this file is data for the integration slice. Yaw rotates local +Z by the given radians about +Y."
+  }
+}
