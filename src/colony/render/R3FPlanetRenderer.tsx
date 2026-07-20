@@ -53,6 +53,8 @@ import { buildLandingCamp } from "./landingCampLayer";
 import { buildAmbient } from "./ambientLayer";
 import { useTerrainLeveling } from "./useTerrainLeveling";
 import { leveledWorldY } from "./terrainLeveling";
+import { solClockOfDay } from "../sol";
+import { solNowMs } from "../solRuntimeClock";
 import { useRoadNetwork } from "../stores/useRoadNetwork";
 import { COLONY } from "../config";
 import { Html, MapControls } from "@react-three/drei";
@@ -263,10 +265,11 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
     // the BUILDER is open. World view is NOT clamped (spec 136) — the floating-island
     // night vista (stars, gas giant, lit roads) lives there, and clamping it made night
     // unreachable from above. getState() (not a hook) so the frame loop never re-renders.
+    // Spec 150 PR2 — the sky rides CANONICAL SOL time, the same instant the bus fleet replays
+    // from, so sun, fog and ambient can never drift from the fleet's schedule.
     const { builderActive } = useRoadNetwork.getState();
-    const time = builderActive
-      ? 12
-      : sim.state.clock.hour + sim.state.clock.minute / 60;
+    const solTod = solClockOfDay(solNowMs());
+    const time = builderActive ? 12 : solTod.hour + solTod.minute / 60;
 
     // Calculate sun position (0=midnight, 6=dawn, 12=noon, 18=dusk)
     const sunAngle = ((time - 6) / 24) * Math.PI * 2;
@@ -610,9 +613,8 @@ function R3FWorld({
     // not burn their night lights while the builder forces daylight. World view stays
     // unclamped (spec 136), matching the sky.
     const { builderActive } = useRoadNetwork.getState();
-    const time = builderActive
-      ? 12
-      : sim.state.clock.hour + sim.state.clock.minute / 60;
+    const beaconTod = solClockOfDay(solNowMs()); // spec 150 PR2 — same sol clock as the sky
+    const time = builderActive ? 12 : beaconTod.hour + beaconTod.minute / 60;
     let dayFactor = 0;
     if (time > 5 && time < 7) {
       dayFactor = (time - 5) / 2;
