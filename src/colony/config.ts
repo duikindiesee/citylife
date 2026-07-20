@@ -1089,16 +1089,16 @@ export const COLONY = {
     depotBayDepth: 4.8, // bay CENTRE depth — a 12 m bus parked here stays inside the 7-deep pad
     baysTotal: 5, // size the marked row to the five owned coaches; future purchases expand the depot
     busesOwned: 5,
-    firstDepartureMin: 8 * 60, // depot opens: the first bus pulls out at 08:00
-    lastServiceMin: 23 * 60, // streets drain by 23:00; overnight every bus parks at the depot
-    // The live loop is ~1350 cells (5.4 km) and a whole day is a 160 s time-lapse — the bus keeps
-    // pace with the CLOCK, not the eye. 3.5 cells/sim-min fits a full lap + dwells inside the
-    // 08:00-23:00 day with a ~6 h dispatch window, so all five buses roll out staggered by ~13:00
-    // and the last is home parked before close (shiftMinutes in busFleet.ts is the gatekeeper).
-    busSpeedCellsPerMin: 3.5,
-    stopDwellMin: 25, // doors-open dwell at each route stop (~3 wall-seconds at 1x to press E)
-    depotBoardMin: 25, // doors-open dwell at the depot gate shelter on the way out and home
-    breakMin: 45, // bay break between shifts
+    firstDepartureMin: 300, // 05:00 — spec 150 PR2 widened the window onto sol time
+    lastServiceMin: 1410, // 23:30; overnight every bus parks at the depot
+    // Spec 150 PR2 rescale. The fleet now rides CANONICAL SOL time (one in-sol minute = 15 real
+    // seconds, a whole sol day = six real hours) instead of the speed-scaled sim clock, so the
+    // per-sim-minute figures are rescaled to keep a full lap + dwells inside the widened
+    // 05:00-23:30 service window (shiftMinutes in busFleet.ts is the gatekeeper).
+    busSpeedCellsPerMin: 28,
+    stopDwellMin: 1.5, // doors-open dwell at each route stop
+    depotBoardMin: 2, // doors-open dwell at the depot gate shelter on the way out and home
+    breakMin: 18, // bay break between shifts
     lapsPerShift: 1, // laps before a bus heads home for its break
     bayPullOutCells: 2.8, // the straight bay leg (bayDepth - laneDepth) a bus REVERSES along leaving its bay
     busLengthM: 12, // a real city bus — not the 2.55 m toy the spec-088 coach shipped as

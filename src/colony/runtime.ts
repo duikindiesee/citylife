@@ -142,7 +142,14 @@ import {
 import { makeCityPlan, type CityPlan, type Plot } from "./cityPlan";
 import { CitizenRoster, type CitizenPublic } from "./bot/citizenRoster";
 import { firstPersonView, type FirstPersonView } from "./bot/firstPersonView";
-import { canonicalSolClock, solsSinceEpoch } from "./sol";
+import {
+  canonicalSolClock,
+  MINUTES_PER_SOL,
+  MS_PER_SOL,
+  solMinutesSinceEpoch,
+  solsSinceEpoch,
+} from "./sol";
+import { setSolDebugOffsetMs, solNowMs } from "./solRuntimeClock";
 import {
   makeNeighborhood,
   makeNeighborhoodAt,
@@ -875,6 +882,9 @@ export class ColonyRuntime {
   busFleet: BusFleet | null = null;
   private fleetGeom: FleetGeometry | null = null;
   private fleetPaths: FleetPaths | null = null;
+  /** Spec 150 PR2 — the absolute sol minute the fleet has been replayed up to; null before the
+   *  first tick anchors it at the current sol day's tod=0. */
+  private transitLastMin: number | null = null;
   /** Spec 149 — the fleet bus the stepped-in player is riding, or null on foot. */
   fpRidingBusId: number | null = null;
   /** Spec 149 — where the first-person CAMERA capsule stands (grid coords), reported by the
@@ -2373,26 +2383,38 @@ export class ColonyRuntime {
     return true;
   }
 
-  /** Spec 149 — advance the bus fleet in sim-minutes (frozen while paused, scaled with sim speed,
-   *  so the 08:00–23:00 schedule stays honest against the clock) and keep a riding player PINNED
-   *  to their bus: pos, target and heading all follow the pose, so the fp camera rides along and
-   *  stepAvatars/wander can never fight the pin. */
-  private transitTick(dtReal: number): void {
+  /** Spec 150 PR2 — the bus fleet is a DETERMINISTIC REPLAY of canonical sol time. The absolute sol
+   *  minute is the only input: frame dt, sim speed and pause no longer move it, so the fleet and the
+   *  sky (which reads the same clock) can never disagree, and the same sol minute always reproduces
+   *  the same fleet. Each sol day is replayed from its tod=0 anchor in whole-minute steps, bounded to
+   *  one day of catch-up so a slept tab can never spin. A backward clock (debug time travel) or an
+   *  over-long gap re-anchors and replays from tod=0 rather than stepping negative or unbounded.
+   *
+   *  A riding player stays PINNED to their bus: pos, target and heading all follow the pose, so the
+   *  fp camera rides along and stepAvatars/wander can never fight the pin. */
+  private transitTick(): void {
     if (!this.busFleet || !this.fleetGeom || !this.fleetPaths) return;
-    if (!this.paused) {
-      const dtMin =
-        dtReal *
-        this.speed *
-        COLONY.time.stepsPerSec *
-        COLONY.time.simMinPerStep;
-      if (dtMin > 0)
-        stepFleet(
-          this.busFleet,
-          dtMin,
-          this.sim.state.clock.totalMinutes,
-          this.fleetGeom,
-          COLONY.transit,
-        );
+    const nowMin = Math.floor(solMinutesSinceEpoch(solNowMs()));
+    const dayStartMin = nowMin - (nowMin % MINUTES_PER_SOL);
+    const behind =
+      this.transitLastMin === null ? Infinity : nowMin - this.transitLastMin;
+    if (behind < 0 || behind > MINUTES_PER_SOL) {
+      // First tick, a backward clock, or a gap longer than a sol day: re-anchor at this day's
+      // tod=0 and replay forward from a freshly seeded fleet so the result stays deterministic.
+      this.busFleet = makeFleet(COLONY.transit, this.worldSeed);
+      this.transitLastMin = dayStartMin;
+    }
+    let stepsLeft = MINUTES_PER_SOL;
+    while (this.transitLastMin! < nowMin && stepsLeft-- > 0) {
+      const step = Math.min(1, nowMin - this.transitLastMin!);
+      stepFleet(
+        this.busFleet,
+        step,
+        this.transitLastMin!,
+        this.fleetGeom,
+        COLONY.transit,
+      );
+      this.transitLastMin! += step;
     }
     if (this.fpRidingBusId !== null && this.fpCitizenId) {
       const pose = this.busPoseOf(this.fpRidingBusId);
@@ -2524,6 +2546,23 @@ export class ColonyRuntime {
     c.hour = h;
     c.minute = m;
     c.isDay = h >= COLONY.time.dayStartHour && h < COLONY.time.dayEndHour;
+    this.emit();
+  }
+
+  /** Spec 150 PR2 e2e/dev helper — jump CANONICAL SOL time to hh:mm inside the current sol day by
+   *  offsetting the one shared instant, so the bus fleet, the sky and the HUD all move together.
+   *  Always resolves forward to the next occurrence of hh:mm (an in-sol minute is 15 real seconds);
+   *  replacing a large offset with a small one steps the clock back, which the transit driver's
+   *  backward-clock guard re-anchors deterministically. */
+  debugSetSolTimeOfDay(hour: number, minute = 0): void {
+    const h = Math.max(0, Math.min(23, Math.round(hour)));
+    const m = Math.max(0, Math.min(59, Math.round(minute)));
+    const targetTod = h * 60 + m;
+    const currentTod = solMinutesSinceEpoch(Date.now()) % MINUTES_PER_SOL;
+    const deltaMin =
+      (((targetTod - currentTod) % MINUTES_PER_SOL) + MINUTES_PER_SOL) %
+      MINUTES_PER_SOL;
+    setSolDebugOffsetMs(deltaMin * (MS_PER_SOL / MINUTES_PER_SOL));
     this.emit();
   }
 
@@ -4672,7 +4711,7 @@ export class ColonyRuntime {
     this.wanderIdleCitizens(dtReal); // keep the citizens strolling so watch mode is never frozen
     this.tickAutoZoningSettlers(dtReal);
     this.raceTick(dtReal);
-    this.transitTick(dtReal); // spec 149 — the bus fleet rides the sim clock
+    this.transitTick(); // spec 150 PR2 — the bus fleet rides canonical sol time, not the sim clock
     this.renderer?.frame(dtReal);
     if (now - this.lastUi > 200) {
       this.lastUi = now;
@@ -4717,7 +4756,7 @@ export class ColonyRuntime {
 
   getUiState(): ColonyUiState {
     const s = this.sim.state;
-    const nowMs = Date.now();
+    const nowMs = solNowMs(); // spec 150 PR2 — the same instant the fleet and sky read
     const canonicalClock = canonicalSolClock(nowMs);
     const li = s.terrain.idx(s.terrain.landing.x, s.terrain.landing.y);
     const p = s.power;
