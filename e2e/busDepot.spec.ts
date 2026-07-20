@@ -1,7 +1,9 @@
 import { test, expect } from "@playwright/test";
 
-// Spec 149 — the bus depot + fleet, asserted against the LIVE world through the __colony runtime
-// probe: buses park at the depot overnight, the first departure lands at 08:00 on the sim clock,
+// Spec 149 + spec 150 PR2 — the bus depot + fleet, asserted against the LIVE world through the
+// __colony runtime probe. The fleet now rides CANONICAL SOL time and ignores sim speed, so this
+// suite drives it with debugSetSolTimeOfDay (stepping the sol clock) instead of setSpeed:
+// buses park at the depot overnight, the first departure lands at 05:00 on the sol clock,
 // the next bus holds its bay until the running one clears its second stop (the spacing gate) with a
 // single-occupancy depot corridor (no two buses maneuvering at once — the collision fix), and the
 // player boards a dwelling bus at the depot shelter, rides it onto the route, and steps off.
@@ -31,19 +33,28 @@ async function bootWithDepot(
   expect(hasDepot).toBe(true);
 }
 
-/** All owned buses parked, re-pinning the clock to deep night until the last one gets home. */
+/** Spec 150 PR2 — step the shared sol clock forward by `delta` in-sol minutes. The fleet is a
+ *  deterministic replay of sol time, so this (not setSpeed) is how the suite advances the day. */
+const STEP_SOL_MINUTES = `(delta) => {
+  const rt = window.__colony;
+  const c = rt.getUiState().clock;
+  const next = (((c.hour * 60 + c.minute + delta) % 1440) + 1440) % 1440;
+  rt.debugSetSolTimeOfDay(Math.floor(next / 60), next % 60);
+}`;
+
+/** All owned buses parked, re-pinning the sol clock to deep night until the last one gets home. */
 async function waitAllParkedAtNight(
   page: import("@playwright/test").Page,
 ): Promise<void> {
   await page.evaluate(() => {
-    window.__colony.setSpeed(15);
-    window.__colony.debugSetClock(1, 0);
+    window.__colony.debugSetSolTimeOfDay(1, 0);
   });
   await page.waitForFunction(
     () => {
       const rt = window.__colony;
       // In-flight buses finish their run home; keep it night so nobody re-dispatches meanwhile.
-      if (rt.sim.state.clock.hour >= 7) rt.debugSetClock(1, 0);
+      // Service now opens at 05:00, so re-pin before the window reopens.
+      if (rt.getUiState().clock.hour >= 4) rt.debugSetSolTimeOfDay(1, 0);
       return rt.busFleet.buses.every((b: any) => b.mode === "parked");
     },
     undefined,
@@ -89,10 +100,10 @@ test.describe("spec 149 — bus depot fleet", () => {
       path: testInfo.outputPath("depot-night-parked.png"),
     });
 
-    // 2. First departure: set 07:58 and catch bus 0 leaving — at or just past 08:00 sim time.
+    // 2. First departure: set 04:58 and catch bus 0 leaving — at or just past 05:00 sol time.
+    //    An in-sol minute is 15 real seconds, so the two-minute run-up elapses on its own.
     await page.evaluate(() => {
-      window.__colony.setSpeed(1);
-      window.__colony.debugSetClock(7, 58);
+      window.__colony.debugSetSolTimeOfDay(4, 58);
     });
     await page.waitForFunction(
       () =>
@@ -101,11 +112,11 @@ test.describe("spec 149 — bus depot fleet", () => {
       { timeout: 60000, polling: 100 },
     );
     const departure = await page.evaluate(() => {
-      const c = window.__colony.sim.state.clock;
+      const c = window.__colony.getUiState().clock;
       return c.hour * 60 + c.minute;
     });
-    expect(departure).toBeGreaterThanOrEqual(8 * 60);
-    expect(departure).toBeLessThan(8 * 60 + 15); // 100 ms polling at 9 sim-min/s ≈ minutes of slack
+    expect(departure).toBeGreaterThanOrEqual(300);
+    expect(departure).toBeLessThan(315); // 100 ms polling ≈ a few sol minutes of slack
 
     // 3. The stagger gate (spec 149 §9): bus 1 must not leave its bay until bus 0 has cleared its
     //    SECOND route stop. Also assert the depot corridor is single-occupancy the whole time — no
@@ -125,18 +136,21 @@ test.describe("spec 149 — bus depot fleet", () => {
         null;
       window.__staggerViolated = false;
       (window as any).__corridorViolated = false;
-      // Run the dispatch/stagger phase at 9x (was 3x) so the leader reaching its 2nd stop is bounded
-      // by SIM time, not wall clock — on a starved CI runner 3x could not get there inside 300s and
-      // the waitForFunction below timed out. The gate + single-occupancy corridor are sim-enforced,
-      // so a faster clock does not change the behaviour being asserted, only how soon it settles.
-      window.__colony.setSpeed(9);
+      // Spec 150 PR2: the fleet ignores sim speed, so the stagger phase is driven by STEPPING the
+      // sol clock one in-sol minute per poll. The driver replays in whole minutes, so this observes
+      // every fleet step the old 9x run did — the gate and single-occupancy corridor are still
+      // sim-enforced, this only bounds how soon the leader reaches its second stop by wall clock.
     });
     await page.waitForFunction(
-      (inCorridorSrc: string) => {
+      ([inCorridorSrc, stepSrc]: [string, string]) => {
         const isCorridor = new Function(
           "m",
           `return (${inCorridorSrc})(m)`,
         ) as (m: string) => boolean;
+        const step = new Function(`return (${stepSrc})`)() as (
+          delta: number,
+        ) => void;
+        step(1); // advance one in-sol minute per poll
         const f = window.__colony.busFleet;
         const leaderId = (window as any).__dispatchLeader;
         const leader = f.buses.find((b: any) => b.id === leaderId);
@@ -154,7 +168,7 @@ test.describe("spec 149 — bus depot fleet", () => {
           f.buses.some((b: any) => b.id !== leaderId && b.mode !== "parked")
         );
       },
-      inCorridor.toString(),
+      [inCorridor.toString(), STEP_SOL_MINUTES] as [string, string],
       { timeout: 300000, polling: 100 },
     );
     const stagger = await page.evaluate(() => {
@@ -185,8 +199,7 @@ test.describe("spec 149 — bus depot fleet", () => {
     // Step into a citizen and stand them at the depot boarding shelter just before opening.
     const entered = await page.evaluate(() => {
       const rt = window.__colony;
-      rt.setSpeed(1);
-      rt.debugSetClock(7, 56);
+      rt.debugSetSolTimeOfDay(4, 56);
       rt.setPlayerView(false); // skipauth boots as a restricted player; step-in needs the operator view
       const ids = rt.getUiState().firstPerson.stepInCitizenIds;
       if (!ids.length) return false;
@@ -196,17 +209,22 @@ test.describe("spec 149 — bus depot fleet", () => {
     });
     expect(entered).toBe(true);
 
-    // Wait for the 08:00 bus to open its doors at the gate; the Board prompt is the EXISTING
+    // Wait for the 05:00 bus to open its doors at the gate; the Board prompt is the EXISTING
     // first-person affordance (interactionPrompt + activateFirstPersonInteraction — the E key).
+    // Sol time is stepped per poll (spec 150 PR2) since the fleet ignores sim speed.
     await page.waitForFunction(
-      () => {
+      (stepSrc: string) => {
+        const step = new Function(`return (${stepSrc})`)() as (
+          delta: number,
+        ) => void;
         const rt = window.__colony;
         const p = rt.getUiState().firstPerson.view?.interactionPrompt;
         if (p && p.kind === "bus" && String(p.label).startsWith("Board"))
           rt.activateFirstPersonInteraction();
+        if (rt.fpRidingBusId === null) step(1);
         return rt.fpRidingBusId !== null;
       },
-      undefined,
+      STEP_SOL_MINUTES,
       { timeout: 120000, polling: 100 },
     );
     const boardedAt = await page.evaluate(() => {
@@ -224,15 +242,18 @@ test.describe("spec 149 — bus depot fleet", () => {
     });
 
     // Riding: the bus pulls out (spur -> route) and the rider's position tracks it.
-    await page.evaluate(() => window.__colony.setSpeed(3));
     await page.waitForFunction(
-      (start) => {
+      ([start, stepSrc]: [{ x: number; y: number }, string]) => {
+        const step = new Function(`return (${stepSrc})`)() as (
+          delta: number,
+        ) => void;
         const rt = window.__colony;
         if (rt.fpRidingBusId === null) return false;
+        step(1);
         const pose = rt.busPoseOf(rt.fpRidingBusId);
         return Math.hypot(pose.x - start.x, pose.y - start.y) > 4;
       },
-      boardedAt,
+      [boardedAt, STEP_SOL_MINUTES] as [{ x: number; y: number }, string],
       { timeout: 120000, polling: 100 },
     );
     const riding = await page.evaluate(() => {
