@@ -28,6 +28,11 @@ land floating above the ground" — their read was right).
   its own terrain height, so the tint drapes the ground like painted land (and matches the
   operator's purchasable-land mental model). Keeps the `zone-ground-${lot.id}` name so the
   reactivity e2e contract (count grows on placement, shrinks on demolition) is unchanged.
+- **`GlbHouse` footprint fit**: when ZoneManager renders the `functional_garage` GLB for a
+  built lot, it now passes the lot `houseZone` dimensions. `GlbHouse` measures the cloned GLB
+  bounds and applies one uniform fit scale from the lot footprint in world metres
+  (`cells * CELL_SIZE`), instead of trusting a `[1, 1, 1]` manifest scale. If no footprint is
+  supplied or the model bounds are not measurable, the manifest scale remains the fallback.
 - **`calculateFoliagePositions` takes `clearRects`**: all neighborhood lots
   (centre-anchored) + commercial parcels (origin-anchored), cleared with a 1-cell margin.
   `foliageSignature` now includes lot/parcel counts so zoning re-cuts the forest.
@@ -96,5 +101,8 @@ Fixes, layered:
   stays finite/bounded at fractional + out-of-range coordinates; the real boot state
   (seed 4242) seats every commercial pad finitely and levels every footprint — a
   regression back to NaN seats shows up as MISSING pad overrides (the guard drops them).
+- `tests/glbHouseScale.test.ts` (3): lot footprints override the garage manifest scale with a
+  uniform measured-bounds fit, while no-footprint and non-measurable model bounds preserve the
+  manifest fallback.
 - `e2e/nanGeometry.spec.ts`: a booted scene has zero `computeBoundingSphere` NaN console
   errors and no non-finite geometry vertex or object transform anywhere.
