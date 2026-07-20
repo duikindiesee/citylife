@@ -3,6 +3,7 @@ import type { Terrain } from "../terrain";
 import type { JunctionZone } from "./roadJunctions";
 import { nearPoly } from "./geom2d";
 import { Biome } from "../terrain";
+import { crossSectionOffsets, STATION_STEP_CELLS } from "./roadClearance";
 
 // Spec 088 — SMOOTH ROAD RIBBONS. The roads are stored + driven as per-cell grid data (for traffic,
 // the bus and the rally), but rendering one axis-aligned square per cell makes every non-straight road
@@ -405,13 +406,16 @@ export function roadRibbonRenderPath(
   terrain: Terrain,
 ): { x: number; y: number }[] {
   if (way.path.length < 2) return way.path.map((p) => ({ ...p }));
-  const smooth = densify(chaikin(way.path, 2), 1.5);
+  // Stations at STATION_STEP_CELLS, not 1.5: the drape sampler only sees 0.6 cells around a vertex,
+  // so 1.5-cell stations left a band of ground between cross-sections that nothing sampled and a
+  // crest there pushed through the road. See roadClearance.ts.
+  const smooth = densify(chaikin(way.path, 2), STATION_STEP_CELLS);
   for (let i = 0; i < smooth.length - 1; i++) {
     const a = smooth[i]!,
       b = smooth[i + 1]!;
     for (const f of [0, 0.5, 1] as const) {
       if (!cellOkOn(terrain, a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f))
-        return densify(way.path, 1.5);
+        return densify(way.path, STATION_STEP_CELLS);
     }
   }
   return smooth;
@@ -427,7 +431,12 @@ function ribbon(
   cells: Set<string>,
   lift = 0,
 ): void {
-  const edge = (i: number, sign: number): number[] => {
+  // One vertex per offset ACROSS the complete carriageway, not just the two kerbs. A quad is a flat
+  // interpolation of its corners, so with kerb-only vertices the middle of a ~3-cell carriageway was
+  // never sampled and any crown or diagonal ridge under the road protruded through it. See
+  // roadClearance.ts for the invariant these offsets satisfy.
+  const offsets = crossSectionOffsets(half);
+  const station = (i: number): number[][] => {
     const p = pts[i]!;
     const prev = pts[Math.max(0, i - 1)]!,
       next = pts[Math.min(pts.length - 1, i + 1)]!;
@@ -436,21 +445,21 @@ function ribbon(
     const len = Math.hypot(tx, ty) || 1;
     const px = -ty / len,
       py = tx / len; // unit perpendicular
-    // record every grid cell across the cross-section so surfaceY knows where the ribbon really is.
-    // Spec 115 guard: only record cells that the ribbon is actually allowed to render on.
-    for (let k = -half; k <= half + 1e-6; k += 0.5) {
+    const verts: number[][] = [];
+    for (const k of offsets) {
       const gx = p.x + px * k,
         gy = p.y + py * k;
+      // record every grid cell across the cross-section so surfaceY knows where the ribbon really is.
+      // Spec 115 guard: only record cells that the ribbon is actually allowed to render on.
       if (roadSurfaceCellOk(opts, gx, gy))
         cells.add(`${Math.round(gx)},${Math.round(gy)}`);
+      // Height from this VERTEX's own position (continuous, terrain-following). Two ribbons overlapping at a
+      // junction therefore sit at the same height there — coplanar, no lips/seams — and the cross-section
+      // gently follows the terrain's cross-slope instead of forcing a level plank that floats on a hillside.
+      const h = Math.max(0, opts.roadY(gx, gy)) + ROAD_RIBBON_LIFT + lift;
+      verts.push([opts.wx(gx), h, opts.wz(gy)]);
     }
-    const gx = p.x + px * half * sign,
-      gy = p.y + py * half * sign;
-    // Height from this VERTEX's own position (continuous, terrain-following). Two ribbons overlapping at a
-    // junction therefore sit at the same height there — coplanar, no lips/seams — and the cross-section
-    // gently follows the terrain's cross-slope instead of forcing a level plank that floats on a hillside.
-    const h = Math.max(0, opts.roadY(gx, gy)) + ROAD_RIBBON_LIFT + lift;
-    return [opts.wx(gx), h, opts.wz(gy)];
+    return verts;
   };
   const segmentOk = (i: number): boolean => {
     for (const f of [0, 0.5, 1] as const) {
@@ -466,12 +475,14 @@ function ribbon(
     out.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!);
   for (let i = 0; i < pts.length - 1; i++) {
     if (!segmentOk(i)) continue;
-    const aL = edge(i, -1),
-      aR = edge(i, 1),
-      bL = edge(i + 1, -1),
-      bR = edge(i + 1, 1);
-    tri(aL, aR, bL);
-    tri(bL, aR, bR);
+    const a = station(i),
+      b = station(i + 1);
+    // Same winding as the old single-quad strip (L,R,L / L,R,R), now repeated per cross-section
+    // span so surface normals keep pointing the way they did.
+    for (let j = 0; j < offsets.length - 1; j++) {
+      tri(a[j]!, a[j + 1]!, b[j]!);
+      tri(b[j]!, a[j + 1]!, b[j + 1]!);
+    }
   }
 }
 
