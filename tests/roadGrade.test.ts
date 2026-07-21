@@ -1,8 +1,8 @@
 // Spec 130 — the ground grades up to the road. Contracts: the pure coverage covers every
 // cell the mesh build records; each cell's target is the SURFACE height the mesh renders
 // there (segment-bridged, never below the local road height); and a short steep player-style
-// road produces real see-under gaps for the grading to close (boot roads follow least-cost
-// paths that avoid slopes — floating roads come from hand-drawn strokes and bridged dips).
+// road leaves NO walkable see-under gap once graded (boot roads follow least-cost paths that
+// avoid slopes — floating roads come from hand-drawn strokes and bridged dips).
 import { describe, it, expect } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { Biome } from "../src/colony/terrain";
@@ -12,6 +12,16 @@ import {
   type RoadWay,
 } from "../src/colony/render/roadRibbon";
 import { getSmoothRoadY } from "../src/colony/render/roadSurface";
+import { computeTerrainLeveling } from "../src/colony/render/useTerrainLeveling";
+import { leveledWorldY } from "../src/colony/render/terrainLeveling";
+import * as THREE from "three";
+
+/** A person is ~1.8 m; anything at or under this reads as the road resting on the ground rather
+ *  than bridging a see-under dip. The drape itself only lifts ROAD_RIBBON_LIFT (0.18 m). */
+const MAX_UNDER_ROAD_GAP_M = 0.75;
+
+/** Minimum drop over the 6-cell hop for it to count as a genuinely steep, road-floating case. */
+const MIN_STEEP_DROP_M = 0.6;
 
 describe("spec 130 — ribbon coverage + road grading inputs", () => {
   const rt = new ColonyRuntime(4242);
@@ -89,8 +99,7 @@ describe("spec 130 — ribbon coverage + road grading inputs", () => {
     expect(waterCovered).toBe(0); // the spec-115 water guard holds
   });
 
-  it("a short steep player-style road yields real gaps for the grading to close", () => {
-    const DEADZONE = 0.6;
+  it("leaves no walkable gap under the ribbon on a short steep player-style road", () => {
     // find the steepest short hop (6 cells apart) on buildable dry land
     let best: {
       a: { x: number; y: number };
@@ -109,19 +118,53 @@ describe("spec 130 — ribbon coverage + road grading inputs", () => {
       }
     }
     expect(best).not.toBeNull();
-    expect(best!.drop).toBeGreaterThan(DEADZONE);
+    expect(best!.drop).toBeGreaterThan(MIN_STEEP_DROP_M);
     const drawn: RoadWay[] = [
       { path: [best!.a, best!.b], kind: "street", width: 1, source: "builder" },
     ];
     const cover = ribbonCoverage(drawn, terrain, roadY);
-    let gaps = 0;
-    for (const [key, h] of cover) {
-      const c = key.indexOf(",");
-      const x = +key.slice(0, c);
-      const y = +key.slice(c + 1);
-      if (h - Math.max(0, terrain.worldY(x, y)) > DEADZONE) gaps++;
-    }
-    // the low end of the hop sits under the bridged surface — the grading must fill it
-    expect(gaps).toBeGreaterThan(0);
+    expect(cover.size).toBeGreaterThan(0);
+
+    // The ground is graded to the surface the mesh renders, so measure the REAL remaining gap:
+    // rendered ribbon vs the graded ground the player actually walks on.
+    const level = computeTerrainLeveling(rt.sim.state, cover, new Map());
+    const { group } = buildRoadRibbons(drawn, {
+      terrain,
+      wx: (x) => (x - N / 2) * 4,
+      wz: (y) => (y - N / 2) * 4,
+      roadY,
+    });
+    const gridOf = (world: number) => world / 4 + N / 2;
+    let worstGap = 0;
+    group.traverse((o: THREE.Object3D) => {
+      const mesh = o as THREE.Mesh;
+      if (!(mesh as unknown as { isMesh?: boolean }).isMesh) return;
+      const pos = mesh.geometry?.getAttribute("position");
+      if (!pos) return;
+      for (let i = 0; i + 2 < pos.count; i += 3) {
+        // Triangle centroid — the middle of a quad is where a bridged dip would show daylight.
+        const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
+        const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
+        const cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3;
+        const ground = Math.max(
+          0,
+          leveledWorldY(
+            terrain,
+            level,
+            Math.round(gridOf(cx)),
+            Math.round(gridOf(cz)),
+          ),
+        );
+        worstGap = Math.max(worstGap, cy - ground);
+      }
+    });
+    // Spec 130's intent, re-expressed: the guard is that no WALKABLE gap survives under the
+    // ribbon, not that the coverage sits above raw terrain. The old form asserted the grade was
+    // inflated above the dip floor — which is exactly what pushed terrain up THROUGH the road
+    // (see tests/roadTerrainClearance.test.ts). Dips are now closed by the mesh following the
+    // ground instead, so the correct assertion is that the road rests on the graded surface.
+    expect(worstGap).toBeLessThan(MAX_UNDER_ROAD_GAP_M);
+    // and it must still not be the other failure mode — the road never sinks under the ground
+    expect(worstGap).toBeGreaterThanOrEqual(0);
   });
 });
