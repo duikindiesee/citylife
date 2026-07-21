@@ -1,5 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useRoadNetwork } from "../src/colony/stores/useRoadNetwork";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  enforceBuilderAccess,
+  useRoadNetwork,
+} from "../src/colony/stores/useRoadNetwork";
 
 describe("road network authority", () => {
   beforeEach(() => {
@@ -44,5 +47,39 @@ describe("road network authority", () => {
 
     fetchSpy.mockRestore();
     warn.mockRestore();
+  });
+});
+
+describe("enforceBuilderAccess (SECURITY: fail-closed builder gate)", () => {
+  afterEach(() => {
+    useRoadNetwork.setState({ builderActive: false, isDrawing: false });
+  });
+
+  it("forces off a stale builderActive/isDrawing left over from a prior authorized session", () => {
+    useRoadNetwork.setState({ builderActive: true, isDrawing: true });
+
+    enforceBuilderAccess(false);
+
+    expect(useRoadNetwork.getState().builderActive).toBe(false);
+    expect(useRoadNetwork.getState().isDrawing).toBe(false);
+  });
+
+  it("is a no-op once the store is already clean for a restricted session", () => {
+    useRoadNetwork.setState({ builderActive: false, isDrawing: false });
+    const before = useRoadNetwork.getState();
+
+    enforceBuilderAccess(false);
+
+    // Same state reference — setState was never called.
+    expect(useRoadNetwork.getState()).toBe(before);
+  });
+
+  it("never touches builderActive/isDrawing for an authorized (canBuild) session", () => {
+    useRoadNetwork.setState({ builderActive: true, isDrawing: true });
+
+    enforceBuilderAccess(true);
+
+    expect(useRoadNetwork.getState().builderActive).toBe(true);
+    expect(useRoadNetwork.getState().isDrawing).toBe(true);
   });
 });

@@ -425,3 +425,23 @@ export class AuthClient {
     }
   }
 }
+
+/**
+ * Whether a session may enter City Builder mode: an operator/admin role, OR a null `operator` —
+ * the one state AuthGate's own strictly-scoped local DEV/E2E skip-auth bypass produces (a DEV
+ * build, served from localhost/LAN, with the explicit `VITE_LOCAL_TEST` or `?skipauth=1` opt-in).
+ * ColonyApp is mounted ONLY inside `<AuthGate>`, which never renders it unauthenticated on any
+ * other path, so a null operator can never occur on a kooker.co.za production build — this keeps
+ * existing local/E2E builder workflows (which never log in) working without widening production
+ * access. SECURITY: fails closed for every authenticated non-operator role, including
+ * CITYLIFE_PLAYER, CITYLIFE_VISITOR, a plain KOOKER_USER, and any empty/unknown role list.
+ *
+ * Exported standalone (rather than only as the `AuthClient.canEnterCityBuilder` getter) so callers
+ * can unit-test the decision against a plain `{ isCityLifeAdmin, operator }` shape without needing
+ * a real login round trip.
+ */
+export function canEnterCityBuilder(
+  auth: Pick<AuthClient, "isCityLifeAdmin" | "operator">,
+): boolean {
+  return auth.isCityLifeAdmin || auth.operator === null;
+}

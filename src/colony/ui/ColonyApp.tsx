@@ -10,7 +10,7 @@ import {
   type FirstPersonMouseSensitivity,
 } from "../runtime";
 import { isPublicSafe, type HouseholdOverrides } from "../newcomers";
-import { AuthClient } from "../authClient";
+import { AuthClient, canEnterCityBuilder } from "../authClient";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
 import {
   FURNITURE_KINDS,
@@ -758,6 +758,9 @@ export function ColonyApp() {
   };
   // P1 — tell the runtime who is logged in, so it can mark the operator's own avatar + gate the step-into.
   const auth = useMemo(() => new AuthClient(), []);
+  // City Builder authorization (see authClient.canEnterCityBuilder for the fail-closed rule and why
+  // a null operator is safe here — it can only be AuthGate's own local DEV/E2E skip-auth bypass).
+  const canBuildCity = canEnterCityBuilder(auth);
   useEffect(() => {
     runtime.setOperatorName(auth.operator?.id ?? null);
     // Identity key: bind the player view to the authenticated kooker userId (from the JWT), so own-data
@@ -1631,6 +1634,7 @@ export function ColonyApp() {
           runtime={runtime}
           sim={runtime.sim}
           worldLayoutControls={worldLayoutControls}
+          canBuild={canBuildCity}
         />
         <div className="group">
           <a

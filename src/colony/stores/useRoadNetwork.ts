@@ -357,3 +357,18 @@ export const useRoadNetwork = create<BuilderState>((set, get) => ({
 if (typeof window !== "undefined") {
   (window as any).useRoadNetwork = useRoadNetwork;
 }
+
+/**
+ * SECURITY: fail-closed defense in depth for a restricted (non-operator) session. Builder mode and
+ * road-drawing must never stay active for a principal that isn't allowed to build — even if this
+ * shared, module-level store carries stale `builderActive`/`isDrawing` state left over from a prior
+ * authorized session in the same tab, a programmatic `setState` call, or any other source. Call
+ * this whenever a caller's authorization to build is (re)established, e.g. on every render of the
+ * component that owns the builder UI; it is a no-op once the store is already clean.
+ */
+export function enforceBuilderAccess(canBuild: boolean): void {
+  if (canBuild) return;
+  const { builderActive, isDrawing } = useRoadNetwork.getState();
+  if (!builderActive && !isDrawing) return;
+  useRoadNetwork.setState({ builderActive: false, isDrawing: false });
+}

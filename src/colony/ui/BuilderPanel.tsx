@@ -1,5 +1,5 @@
 import React from "react";
-import { useRoadNetwork } from "../stores/useRoadNetwork";
+import { enforceBuilderAccess, useRoadNetwork } from "../stores/useRoadNetwork";
 import { WorldSurveyMap } from "./WorldSurveyMap";
 import type {
   SurveyMapSelection,
@@ -79,6 +79,10 @@ export interface BuilderPanelProps {
   runtime?: any;
   sim?: any;
   worldLayoutControls?: WorldLayoutOperatorControls;
+  /** Whether the signed-in principal may enter City Builder mode (see
+   *  `authClient.canEnterCityBuilder`). SECURITY: defaults to false (fail closed) when omitted —
+   *  a caller must explicitly opt a session in to builder access. */
+  canBuild?: boolean;
 }
 
 const BUILDER_ICON_BASE = "/assets/citylife/builder-icons/64";
@@ -456,6 +460,7 @@ export function BuilderPanel({
   runtime,
   sim,
   worldLayoutControls,
+  canBuild = false,
 }: BuilderPanelProps) {
   const {
     builderActive,
@@ -464,9 +469,21 @@ export function BuilderPanel({
     toggleWorldView,
     builderMode,
     setBuilderMode,
+    isDrawing,
   } = useRoadNetwork();
   const activeRoadType = useRoadNetwork((state) => state.activeRoadType);
   const setActiveRoadType = useRoadNetwork((state) => state.setActiveRoadType);
+
+  // SECURITY: fail-closed the instant a restricted principal's render observes stale
+  // builderActive/isDrawing (a prior session in this tab, a persisted/programmatic setState, etc.)
+  // — corrects the shared store other consumers (e.g. the R3F road/terrain renderers) read from
+  // directly. The render below never shows builder UI even before this effect commits, since every
+  // branch below checks `canBuild && builderActive`, never raw `builderActive`.
+  React.useEffect(() => {
+    enforceBuilderAccess(canBuild);
+  }, [canBuild, builderActive, isDrawing]);
+
+  const builderModeActive = canBuild && builderActive;
   const [surveyOpen, setSurveyOpen] = React.useState(false);
   const [surveyLayer, setSurveyLayer] =
     React.useState<SurveyTerrainLayer>("surface");
@@ -588,16 +605,18 @@ export function BuilderPanel({
   const pop = ui?.citizens?.count ?? sim?.state?.citizens?.length ?? 0;
   const balance = ui?.bank?.balance ?? 0;
 
-  if (!builderActive && !worldViewActive) {
+  if (!builderModeActive && !worldViewActive) {
     return (
       <>
         <div className="group">
           <button onClick={toggleWorldView} title="Enter Aerial World View">
             🌍 World View
           </button>
-          <button onClick={toggleBuilder} title="Enter City Builder Mode">
-            🏗️ City Builder
-          </button>
+          {canBuild && (
+            <button onClick={toggleBuilder} title="Enter City Builder Mode">
+              🏗️ City Builder
+            </button>
+          )}
           <button
             onClick={() => setSurveyOpen(true)}
             title="Open exact world survey map"
