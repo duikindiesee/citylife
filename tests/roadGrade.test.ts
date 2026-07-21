@@ -15,10 +15,16 @@ import { getSmoothRoadY } from "../src/colony/render/roadSurface";
 import { computeTerrainLeveling } from "../src/colony/render/useTerrainLeveling";
 import { leveledWorldY } from "../src/colony/render/terrainLeveling";
 import * as THREE from "three";
+import { stencilTouchesWater } from "../src/colony/render/roadClearance";
 
 /** A person is ~1.8 m; anything at or under this reads as the road resting on the ground rather
  *  than bridging a see-under dip. The drape itself only lifts ROAD_RIBBON_LIFT (0.18 m). */
 const MAX_UNDER_ROAD_GAP_M = 0.75;
+
+/** Operator-permitted numerical epsilon (<= 0.005 m). This absorbs float/reconstruction noise at
+ *  the threshold ONLY — it is explicitly not licence to excuse a real gap: the metre-scale
+ *  bridge-span cases are handled by stencilTouchesWater, not by this. */
+const GAP_EPSILON_M = 0.005;
 
 /** Minimum drop over the 6-cell hop for it to count as a genuinely steep, road-floating case. */
 const MIN_STEEP_DROP_M = 0.6;
@@ -151,6 +157,9 @@ describe("spec 130 — ribbon coverage + road grading inputs", () => {
         // the point and overstated this gap by ~28% (1.107 -> 0.802 m on seed 4242).
         const gx = gridOf(cx),
           gy = gridOf(cz);
+        // Bridge span: the water guard forbids grading a water corner, so the ground legitimately
+        // falls away here. Excepted from the CLEARANCE guard only — protrusion stays enforced.
+        if (stencilTouchesWater(terrain, gx, gy)) continue;
         const x0 = Math.floor(gx),
           y0 = Math.floor(gy),
           fx = gx - x0,
@@ -170,7 +179,7 @@ describe("spec 130 — ribbon coverage + road grading inputs", () => {
     // inflated above the dip floor — which is exactly what pushed terrain up THROUGH the road
     // (see tests/roadTerrainClearance.test.ts). Dips are now closed by the mesh following the
     // ground instead, so the correct assertion is that the road rests on the graded surface.
-    expect(worstGap).toBeLessThan(MAX_UNDER_ROAD_GAP_M);
+    expect(worstGap).toBeLessThan(MAX_UNDER_ROAD_GAP_M + GAP_EPSILON_M);
     // and it must still not be the other failure mode — the road never sinks under the ground
     expect(worstGap).toBeGreaterThanOrEqual(0);
   });

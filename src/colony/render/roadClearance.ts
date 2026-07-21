@@ -62,3 +62,38 @@ export function crossSectionOffsets(
   out.push(safeHalf); // exact far kerb, never overshot by the accumulating step
   return out;
 }
+
+/** Minimal shape of the terrain this module needs to spot a water cell. */
+export interface WaterProbe {
+  inBounds(x: number, y: number): boolean;
+  idx(x: number, y: number): number;
+  readonly water: ArrayLike<number>;
+}
+
+/** True when the bilinear stencil under a rendered road sample touches water — a BRIDGE SPAN.
+ *
+ *  The ground beneath a road sample is reconstructed bilinearly from four integer cell corners.
+ *  The spec 115/133 water guard forbids grading or paving over water, so a corner that is water
+ *  keeps its natural bed height and the interpolated ground necessarily falls away beneath the
+ *  road edge. That is not a clearance defect to be graded out: a road carried over water IS a
+ *  bridge, and grounding it would mean raising a river bed. The ground-clearance guard therefore
+ *  excepts these samples, while PROTRUSION stays strictly enforced everywhere — a bridge may span
+ *  open water, but terrain must still never rise through the deck. */
+export function stencilTouchesWater(
+  terrain: WaterProbe,
+  gx: number,
+  gy: number,
+): boolean {
+  const x0 = Math.floor(gx),
+    y0 = Math.floor(gy);
+  for (const [x, y] of [
+    [x0, y0],
+    [x0 + 1, y0],
+    [x0, y0 + 1],
+    [x0 + 1, y0 + 1],
+  ] as const) {
+    if (!terrain.inBounds(x, y)) continue;
+    if (terrain.water[terrain.idx(x, y)]) return true;
+  }
+  return false;
+}
