@@ -8,11 +8,13 @@ import { setSolDebugOffsetMs } from "../src/colony/solRuntimeClock";
 // sim speed no longer moves it. transitTick is private; the frame loop that normally calls it needs
 // a browser, so the driver is invoked directly here.
 
-type Runtime = ColonyRuntime & { transitTick: () => void };
+// transitTick is private, so intersecting it with ColonyRuntime collapses the whole type to `never`
+// (TS2339) and breaks `tsc --noEmit` for the branch. Reach it structurally instead.
+type TransitDriver = { transitTick: () => void };
 
 const modesAt = (rt: ColonyRuntime, hour: number, minute: number): string[] => {
   rt.debugSetSolTimeOfDay(hour, minute);
-  (rt as unknown as Runtime).transitTick();
+  (rt as unknown as TransitDriver).transitTick();
   return rt.busFleet!.buses.map((b) => b.mode);
 };
 
