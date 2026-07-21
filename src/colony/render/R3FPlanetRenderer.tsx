@@ -6,9 +6,13 @@ import {
   EffectComposer,
   Bloom,
   ToneMapping,
+  HueSaturation,
+  BrightnessContrast,
+  Vignette,
+  SMAA,
 } from "@react-three/postprocessing";
 import { Physics, RigidBody } from "@react-three/rapier";
-import { ToneMappingMode } from "postprocessing";
+import { ToneMappingMode, BlendFunction } from "postprocessing";
 import * as THREE from "three";
 
 import type { ColonySim } from "../sim";
@@ -754,9 +758,27 @@ function R3FWorld({
             far={20}
             color="#000000"
           />
+          {/*
+            Atmosphere polish pass. Order matters: grade the linear frame BEFORE
+            tone mapping, bloom the bright pixels, then tone-map to display, then
+            resolve edges (SMAA) and frame the eye (Vignette) in display space.
+            Every effect is deliberately gentle — this lifts the whole frame
+            without changing the world's colour identity. Bloom is unchanged.
+          */}
           <EffectComposer>
+            {/* Warm the colony a touch and add filmic depth (subtle). */}
+            <HueSaturation saturation={0.06} hue={0} />
+            <BrightnessContrast brightness={0.0} contrast={0.06} />
             <Bloom luminanceThreshold={1} mipmapBlur intensity={1.5} />
             <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+            {/* Crisper edges than the default MSAA-off canvas, cheap. */}
+            <SMAA />
+            {/* Draw the eye to the centre; barely-there darkened corners. */}
+            <Vignette
+              blendFunction={BlendFunction.NORMAL}
+              offset={0.32}
+              darkness={0.42}
+            />
           </EffectComposer>
         </>
       )}
