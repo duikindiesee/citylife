@@ -68,6 +68,7 @@ import {
   serializeWorldLayoutDocument,
   type WorldLayoutDocument,
 } from "../spatial/worldLayoutDocument";
+import { formatAmount } from "./currencyFormat";
 
 // Spec 089 — the CityLife HUD shows only the city-relevant stats (citizens, homesteads, the bank, the
 // commercial district, the border). The old colony-sim survival/economy dashboard (water/food/health/
@@ -117,7 +118,7 @@ export function bankPanelCopy(bank: ColonyUiState["bank"]): BankPanelCopy {
       rows: [
         {
           label: "Your balance",
-          value: `${bank.currency}${bank.deposits.toLocaleString()}`,
+          value: `${bank.currency}${formatAmount(bank.deposits)}`,
         },
       ],
       ledgerRows: [],
@@ -132,13 +133,13 @@ export function bankPanelCopy(bank: ColonyUiState["bank"]): BankPanelCopy {
     rows: [
       {
         label: "Residents hold",
-        value: `${bank.currency}${bank.deposits.toLocaleString()}`,
+        value: `${bank.currency}${formatAmount(bank.deposits)}`,
       },
-      { label: "≈ in rand", value: `R${bank.depositsZar.toLocaleString()}` },
+      { label: "≈ in rand", value: `R${formatAmount(bank.depositsZar)}` },
       { label: "Wallets", value: String(bank.accounts) },
       {
         label: "Land office",
-        value: `${bank.currency}${bank.landOffice.toLocaleString()}`,
+        value: `${bank.currency}${formatAmount(bank.landOffice)}`,
       },
       {
         label: "Real ledger",
@@ -196,7 +197,7 @@ export function commercePanelCopy(args: {
       : "No resident can afford a free shop plot yet",
     claimButtonLabel: `🛒 Open a shop${
       args.commerce.cheapest
-        ? ` · ${args.commerce.cheapest.kind} ${args.currency}${args.commerce.cheapest.price.toLocaleString()}`
+        ? ` · ${args.commerce.cheapest.kind} ${args.currency}${formatAmount(args.commerce.cheapest.price)}`
         : ""
     }`,
   };
@@ -248,8 +249,8 @@ export function lotHudCopy(args: {
       : "Founder plot — permanently reserved; never assigned to newcomers and protected from demolition."
     : args.price !== null
       ? args.playerScoped
-        ? `Home site price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString("en-US")}) — larger and shore-side sites cost more`
-        : `Plot price ${args.price} ₭ (≈ R${args.priceZar?.toLocaleString("en-US")}) — bigger and shore-ward land costs more`
+        ? `Home site price ${args.price} ₭ (≈ R${formatAmount(args.priceZar ?? 0)}) — larger and shore-side sites cost more`
+        : `Plot price ${args.price} ₭ (≈ R${formatAmount(args.priceZar ?? 0)}) — bigger and shore-ward land costs more`
       : undefined;
   return { label: `${siteLabel} · ${ownerLabel}`, title };
 }
@@ -1951,7 +1952,7 @@ export function ColonyApp() {
                 </div>
                 <div className="row">
                   <span>Treasury</span>
-                  <b>${ui.colony.treasury.toLocaleString()}</b>
+                  <b>${formatAmount(ui.colony.treasury)}</b>
                 </div>
                 {ui.colony.arrears.office && ui.colony.arrears.debt > 0 && (
                   <div className="row">
@@ -1972,7 +1973,7 @@ export function ColonyApp() {
                             : `The colony is running a managed deficit. Debt ${ui.colony.arrears.debt} of ${ui.colony.arrears.ceiling}; interest accrues each payday.`
                       }
                     >
-                      -${ui.colony.arrears.debt.toLocaleString()}
+                      -${formatAmount(ui.colony.arrears.debt)}
                       {ui.colony.arrears.unmanaged
                         ? " ⚠ unmanaged"
                         : ui.colony.arrears.strain
@@ -1985,7 +1986,7 @@ export function ColonyApp() {
                   <div className="row">
                     <span>Trade</span>
                     <b style={{ color: "#5fd0a0" }}>
-                      +${ui.colony.trade.toLocaleString()}/day
+                      +${formatAmount(ui.colony.trade)}/day
                     </b>
                   </div>
                 )}
@@ -2052,7 +2053,7 @@ export function ColonyApp() {
                       style={{ color: "#e0844d" }}
                       title="The colony's daily wage bill — employed workers times the wage rate."
                     >
-                      -${ui.colony.wage.payroll.toLocaleString()}/day
+                      -${formatAmount(ui.colony.wage.payroll)}/day
                     </b>
                   </div>
                 )}
@@ -2477,7 +2478,7 @@ export function ColonyApp() {
                         style={{ color: "#e0844d" }}
                         title={`The Import Office is landing about ${ui.colony.imports.perDay} ${ui.colony.imports.order} per day, at a premium over the Exchange price.`}
                       >
-                        -${ui.colony.imports.dailySpend.toLocaleString()}/day
+                        -${formatAmount(ui.colony.imports.dailySpend)}/day
                       </b>
                     </div>
                   )}
@@ -3327,7 +3328,7 @@ export function ColonyApp() {
                       <span>{label}</span>
                       <b>
                         {ui.bank.currency}
-                        {priceOf(kind).toLocaleString()} ×
+                        {formatAmount(priceOf(kind))} ×
                         {ui.commerce.byKind[kind]}
                       </b>
                     </div>
@@ -3381,7 +3382,7 @@ export function ColonyApp() {
                       <span>Your wallet</span>
                       <b>
                         {ui.bank.currency}
-                        {wallet.toLocaleString()}
+                        {formatAmount(wallet)}
                       </b>
                     </div>
                     {inv.length > 0 ? (
@@ -3824,7 +3825,7 @@ export function ColonyApp() {
                     {h.membersSummary} · from {h.originLocation} · brings{" "}
                     <b>
                       {ui.bank.currency}
-                      {h.holdings.toLocaleString()}
+                      {formatAmount(h.holdings)}
                     </b>
                   </div>
                   <div className="hh-members">
