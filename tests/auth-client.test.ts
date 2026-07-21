@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import {
   AuthClient,
   basicAuth,
+  canEnterCityBuilder,
   classifyLoginFailure,
 } from "../src/colony/authClient";
 
@@ -155,6 +156,43 @@ describe("AuthClient (kooker login gate)", () => {
     const adminPlayer = new AuthClient();
     await adminPlayer.login("admin@test.com", "pw");
     expect(adminPlayer.isCityLifePlayer).toBe(false);
+  });
+
+  it("gates City Builder to operator roles, failing closed for every player/visitor/unknown role", async () => {
+    // A CITYLIFE_PLAYER — the exact regression this guards — must not be able to build.
+    mockFetchOk(fakeJwtWithRoles(["CITYLIFE_PLAYER"]));
+    const player = new AuthClient();
+    await player.login("player@test.com", "pw");
+    expect(canEnterCityBuilder(player)).toBe(false);
+
+    // Every other non-operator role, and no roles at all, also fail closed.
+    for (const roles of [["CITYLIFE_VISITOR"], ["KOOKER_USER"], []]) {
+      mockFetchOk(fakeJwtWithRoles(roles));
+      const restricted = new AuthClient();
+      await restricted.login("restricted@test.com", "pw");
+      expect(canEnterCityBuilder(restricted)).toBe(false);
+    }
+
+    // ADMIN, KOOKER_ADMIN and CITYLIFE_ADMIN may build.
+    for (const role of ["ADMIN", "KOOKER_ADMIN", "CITYLIFE_ADMIN"]) {
+      mockFetchOk(fakeJwtWithRoles([role]));
+      const op = new AuthClient();
+      await op.login("op@test.com", "pw");
+      expect(canEnterCityBuilder(op)).toBe(true);
+    }
+
+    // A principal holding CITYLIFE_PLAYER plus an operator role remains allowed — the operator
+    // role is authoritative.
+    mockFetchOk(fakeJwtWithRoles(["CITYLIFE_PLAYER", "ADMIN"]));
+    const adminPlayer = new AuthClient();
+    await adminPlayer.login("admin@test.com", "pw");
+    expect(canEnterCityBuilder(adminPlayer)).toBe(true);
+  });
+
+  it("allows City Builder for a signed-out session — the only way this occurs is AuthGate's own local DEV/E2E skip-auth bypass, which is provably impossible on a production build/host", () => {
+    const signedOut = new AuthClient();
+    expect(signedOut.operator).toBeNull();
+    expect(canEnterCityBuilder(signedOut)).toBe(true);
   });
 
   it("rejects an empty password before hitting the network", async () => {
