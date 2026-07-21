@@ -146,15 +146,22 @@ describe("spec 130 — ribbon coverage + road grading inputs", () => {
         const cx = (pos.getX(i) + pos.getX(i + 1) + pos.getX(i + 2)) / 3;
         const cy = (pos.getY(i) + pos.getY(i + 1) + pos.getY(i + 2)) / 3;
         const cz = (pos.getZ(i) + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3;
-        const ground = Math.max(
-          0,
-          leveledWorldY(
-            terrain,
-            level,
-            Math.round(gridOf(cx)),
-            Math.round(gridOf(cz)),
-          ),
-        );
+        // The terrain mesh renders INTERPOLATED between cell vertices, so sample it bilinearly.
+        // Nearest-vertex sampling takes the local extreme instead of the surface actually under
+        // the point and overstated this gap by ~28% (1.107 -> 0.802 m on seed 4242).
+        const gx = gridOf(cx),
+          gy = gridOf(cz);
+        const x0 = Math.floor(gx),
+          y0 = Math.floor(gy),
+          fx = gx - x0,
+          fy = gy - y0;
+        const at = (px: number, py: number) =>
+          Math.max(0, leveledWorldY(terrain, level, px, py));
+        const ground =
+          at(x0, y0) * (1 - fx) * (1 - fy) +
+          at(x0 + 1, y0) * fx * (1 - fy) +
+          at(x0, y0 + 1) * (1 - fx) * fy +
+          at(x0 + 1, y0 + 1) * fx * fy;
         worstGap = Math.max(worstGap, cy - ground);
       }
     });
