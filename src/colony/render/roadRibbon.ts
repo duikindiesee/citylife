@@ -94,11 +94,31 @@ export function ribbonCoverage(
   roadY: (x: number, y: number) => number,
 ): Map<string, number> {
   const cover = new Map<string, number>();
+  // TARGETED STENCIL COMPLETION. The terrain mesh reconstructs its surface BILINEARLY from the
+  // four integer cell corners around a point, so a rendered ribbon sample is held up by all four
+  // — not by the nearest cell alone. Stamping only Math.round() left one corner of the stencil
+  // ungraded under some triangles; that corner kept its natural (or skirt-ramped) height and
+  // dragged the interpolated ground down under the road, which is the whole residual gap.
+  // So stamp exactly the four corners the interpolation actually reads. This is deliberately NOT
+  // a one-cell dilation: no ring is added around each cell, only the stencil the sample already
+  // depends on, which is why coverage stays inside the spec-130 size bound.
   const stamp = (gx: number, gy: number, h: number) => {
-    if (!cellOkOn(terrain, gx, gy)) return;
-    const key = `${Math.round(gx)},${Math.round(gy)}`;
-    const cur = cover.get(key);
-    if (cur === undefined || h < cur) cover.set(key, h);
+    const x0 = Math.floor(gx),
+      y0 = Math.floor(gy);
+    for (const [cx, cy] of [
+      [x0, y0],
+      [x0 + 1, y0],
+      [x0, y0 + 1],
+      [x0 + 1, y0 + 1],
+    ] as const) {
+      if (!cellOkOn(terrain, cx, cy)) continue;
+      const key = `${cx},${cy}`;
+      if (cover.has(key)) continue;
+      // Each corner carries the shared drape AT ITS OWN position — not the height of whichever
+      // sample referenced it. That makes the value deterministic per corner, and makes the graded
+      // terrain and the ribbon two reconstructions of ONE function over the SAME corner samples.
+      cover.set(key, Math.max(0, roadY(cx, cy)));
+    }
   };
   for (const w of ways) {
     if (w.path.length < 2) continue;
@@ -151,6 +171,27 @@ export function ribbonCoverage(
     }
   }
   return cover;
+}
+
+/** Reconstruct the shared drape exactly as the TERRAIN MESH does: bilinearly from the four
+ *  integer cell corners. The ribbon must use the SAME reconstruction as the ground it is graded
+ *  against, or the two surfaces disagree by the reconstruction error of a max-filtered field. */
+function drapeAt(
+  roadY: (x: number, y: number) => number,
+  gx: number,
+  gy: number,
+): number {
+  const x0 = Math.floor(gx),
+    y0 = Math.floor(gy);
+  const fx = gx - x0,
+    fy = gy - y0;
+  const h = (x: number, y: number) => Math.max(0, roadY(x, y));
+  return (
+    h(x0, y0) * (1 - fx) * (1 - fy) +
+    h(x0 + 1, y0) * fx * (1 - fy) +
+    h(x0, y0 + 1) * (1 - fx) * fy +
+    h(x0 + 1, y0 + 1) * fx * fy
+  );
 }
 
 function roadCrossSectionOk(
@@ -472,7 +513,7 @@ function ribbon(
       // Height from this VERTEX's own position (continuous, terrain-following). Two ribbons overlapping at a
       // junction therefore sit at the same height there — coplanar, no lips/seams — and the cross-section
       // gently follows the terrain's cross-slope instead of forcing a level plank that floats on a hillside.
-      const h = Math.max(0, opts.roadY(gx, gy)) + ROAD_RIBBON_LIFT + lift;
+      const h = drapeAt(opts.roadY, gx, gy) + ROAD_RIBBON_LIFT + lift;
       verts.push([opts.wx(gx), h, opts.wz(gy)]);
     }
     return verts;
