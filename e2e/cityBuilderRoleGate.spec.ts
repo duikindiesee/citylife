@@ -50,10 +50,14 @@ test.describe("City Builder role gate (P0 CITYLIFE_PLAYER access regression)", (
     await expect(surveyMapBtn(page)).toBeVisible();
 
     // No builder toolbar (roads/zoning/landscaping/bulldoze/exit) is reachable at all.
-    await expect(page.locator("button", { hasText: "EXIT BUILDER" })).toHaveCount(0);
+    await expect(
+      page.locator("button", { hasText: "EXIT BUILDER" }),
+    ).toHaveCount(0);
   });
 
-  test("an unrecognised/empty role list also fails closed", async ({ page }) => {
+  test("an unrecognised/empty role list also fails closed", async ({
+    page,
+  }) => {
     await seedSession(page, []);
     await page.goto("/");
     await page.waitForSelector("canvas", { timeout: 30000 });
@@ -72,7 +76,9 @@ test.describe("City Builder role gate (P0 CITYLIFE_PLAYER access regression)", (
     await expect(cityBuilderBtn(page)).toBeVisible();
     await cityBuilderBtn(page).click({ force: true });
     await page.waitForTimeout(500);
-    await expect(page.locator("button", { hasText: "EXIT BUILDER" })).toBeVisible();
+    await expect(
+      page.locator("button", { hasText: "EXIT BUILDER" }),
+    ).toBeVisible();
   });
 
   test("a CITYLIFE_PLAYER who also holds ADMIN keeps builder access (operator role is authoritative)", async ({
@@ -106,7 +112,9 @@ test.describe("City Builder role gate (P0 CITYLIFE_PLAYER access regression)", (
     // The gate must self-correct: no builder toolbar renders, and the store is reset. The store
     // carries a large starter road network, so give the reset generous headroom under headless
     // rendering load rather than the default 5s poll.
-    await expect(page.locator("button", { hasText: "EXIT BUILDER" })).toHaveCount(0);
+    await expect(
+      page.locator("button", { hasText: "EXIT BUILDER" }),
+    ).toHaveCount(0);
     await expect(cityBuilderBtn(page)).toHaveCount(0);
     await expect(worldViewBtn(page)).toBeVisible();
     await expect
