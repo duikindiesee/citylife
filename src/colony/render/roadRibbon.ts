@@ -72,12 +72,22 @@ function roadSurfaceCellOk(
 /** Spec 130 — the grid cells the ribbon surface actually covers, mapped to the SURFACE
  *  height the mesh renders over each cell. Same smoothing + cross-section math as the mesh
  *  (chaikin, densify, half-width sweep, the ocean/unbuildable guard), pure — no geometry.
- *  Each cell's height is the MAX of the station heights whose segment bridges it: between
- *  stations the mesh is a flat quad, so a dip crossed by a segment is spanned at RIM height
- *  — grading to the cell's own local road height would leave the quad floating above the
- *  dip floor (the "walking under the road" the operator saw). The terrain leveling grades
- *  these cells to these heights, as legacy relevelTerrain consumed the build's cells
- *  (spec 095). */
+ *  The terrain leveling grades these cells to these heights, as legacy relevelTerrain
+ *  consumed the build's cells (spec 095).
+ *
+ *  Each stamp is the height the MESH ACTUALLY RENDERS at that position, and a cell keeps the
+ *  MINIMUM of its stamps. That is the whole road-protrusion fix. This used to stamp the MAX of
+ *  the neighbouring station heights (and the max of a segment's two ends), which OVER-ESTIMATES
+ *  the rendered surface: the mesh at a station renders at that station's own height, and across
+ *  a segment it INTERPOLATES between the two ends rather than sitting at the higher one. Grading
+ *  raised the ground to that over-estimate, so on any slope the terrain was lifted straight
+ *  THROUGH the road — measured at 1.1-1.2 m across every seed.
+ *
+ *  Bridging a dip is still handled, but by the mesh rather than by inflating the grade: a
+ *  segment's midpoint stamps the INTERPOLATED height, which is exactly where the flat quad
+ *  spans the dip, so the ground still rises to meet the underside instead of leaving the
+ *  "walking under the road" gap. Taking the min across a cell's stamps keeps the graded ground
+ *  at or below the mesh everywhere inside that cell, so it can never surface through it. */
 export function ribbonCoverage(
   ways: RoadWay[],
   terrain: Terrain,
@@ -88,13 +98,12 @@ export function ribbonCoverage(
     if (!cellOkOn(terrain, gx, gy)) return;
     const key = `${Math.round(gx)},${Math.round(gy)}`;
     const cur = cover.get(key);
-    if (cur === undefined || h > cur) cover.set(key, h);
+    if (cur === undefined || h < cur) cover.set(key, h);
   };
   for (const w of ways) {
     if (w.path.length < 2) continue;
     const pts = roadRibbonRenderPath(w, terrain);
     const half = w.width / 2;
-    const stationH = pts.map((p) => Math.max(0, roadY(p.x, p.y)));
     // per-STATION sweep with the mesh's own CENTERED perpendicular (prev..next), so bend
     // cells round into exactly the cells the build records
     for (let i = 0; i < pts.length; i++) {
@@ -106,13 +115,13 @@ export function ribbonCoverage(
       const len = Math.hypot(tx, ty) || 1;
       const px = -ty / len,
         py = tx / len;
-      const h = Math.max(
-        stationH[i]!,
-        stationH[Math.max(0, i - 1)]!,
-        stationH[Math.min(pts.length - 1, i + 1)]!,
-      );
+      // Each cross-section vertex renders at ITS OWN position's height (the mesh follows the
+      // cross-slope), so stamp per offset. Stamping the whole width at the station-centre
+      // height over-estimates the outer kerbs and lifts the ground through them.
       for (let k = -half; k <= half + 1e-6; k += 0.5) {
-        stamp(p.x + px * k, p.y + py * k, h);
+        const gx = p.x + px * k,
+          gy = p.y + py * k;
+        stamp(gx, gy, Math.max(0, roadY(gx, gy)));
       }
     }
     // per-SEGMENT midpoint sweep so no cell column between 1.5-cell stations escapes, each
@@ -121,7 +130,6 @@ export function ribbonCoverage(
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!,
         b = pts[i + 1]!;
-      const hSeg = Math.max(stationH[i]!, stationH[i + 1]!);
       const tx = b.x - a.x,
         ty = b.y - a.y;
       const len = Math.hypot(tx, ty) || 1;
@@ -130,6 +138,14 @@ export function ribbonCoverage(
       const sx = a.x + tx * 0.5,
         sy = a.y + ty * 0.5;
       for (let k = -half; k <= half + 1e-6; k += 0.5) {
+        // Midpoint of a flat quad = the INTERPOLATED height of the two cross-section vertices
+        // bounding it, which is where the quad actually spans a dip. The old max sat the grade
+        // at rim height across the whole segment, pushing ground through the road wherever the
+        // quad was lower than its rim.
+        const hSeg =
+          (Math.max(0, roadY(a.x + px * k, a.y + py * k)) +
+            Math.max(0, roadY(b.x + px * k, b.y + py * k))) /
+          2;
         stamp(sx + px * k, sy + py * k, hSeg);
       }
     }
