@@ -3,16 +3,22 @@ import { useGLTF, useAnimations } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useWorldAssets } from "../stores/useWorldAssets";
+import {
+  resolveGlbHouseScale,
+  type GlbFootprintCells,
+} from "./glbHouseScale";
 
 import { RigidBody } from "@react-three/rapier";
 
 export function GlbHouse({
   assetId,
   position,
+  footprint,
   playerCarRef,
 }: {
   assetId: string;
   position: [number, number, number];
+  footprint?: GlbFootprintCells;
   playerCarRef?: React.RefObject<THREE.Group>;
 }) {
   const { assets } = useWorldAssets();
@@ -30,6 +36,16 @@ export function GlbHouse({
 
   // Clone the scene for instancing multiple houses of the same type
   const clonedScene = useMemo(() => scene.clone(), [scene]);
+  const houseScale = useMemo(() => {
+    const bounds = new THREE.Box3().setFromObject(clonedScene);
+    const size = new THREE.Vector3();
+    bounds.getSize(size);
+    return resolveGlbHouseScale({
+      manifestScale: asset.scale,
+      modelSize: { x: size.x, y: size.y, z: size.z },
+      footprint,
+    });
+  }, [asset.scale, clonedScene, footprint]);
 
   // Proximity check loop
   useFrame(({ camera }) => {
@@ -65,7 +81,7 @@ export function GlbHouse({
   });
 
   return (
-    <group ref={groupRef} position={position} scale={asset.scale}>
+    <group ref={groupRef} position={position} scale={houseScale}>
       <RigidBody type="fixed" colliders="trimesh">
         <primitive object={clonedScene} />
       </RigidBody>

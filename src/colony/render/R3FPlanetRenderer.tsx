@@ -171,6 +171,7 @@ function ZoneManager({
                     <GlbHouse
                       assetId="functional_garage"
                       position={[gX, seat + 0.02, gZ]}
+                      footprint={{ w: hz.w, d: hz.d }}
                     />
                   </React.Suspense>
                 </ErrorBoundary>,
