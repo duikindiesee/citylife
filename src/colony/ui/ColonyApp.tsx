@@ -11,6 +11,8 @@ import {
 } from "../runtime";
 import { isPublicSafe, type HouseholdOverrides } from "../newcomers";
 import { AuthClient, canEnterCityBuilder } from "../authClient";
+import { PasswordChangePanel } from "./PasswordChangePanel";
+import { markPasswordChangePending } from "../pendingPasswordNotice";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
 import {
   FURNITURE_KINDS,
@@ -722,6 +724,9 @@ export function ColonyApp() {
     playerScoped: ui.bank.scope === "player",
   });
   const [borderOpen, setBorderOpen] = useState(false);
+  // The signed-in password-change dialog (PWD.ACT E1). Only offered for a real logged-in account —
+  // the local DEV/E2E skip-auth bypass has a null operator and no account to change.
+  const [pwdChangeOpen, setPwdChangeOpen] = useState(false);
   const [rightHudOpen, setRightHudOpen] = useState(false);
   const [mouseLookLocked, setMouseLookLocked] = useState(false);
   const [pointerLockError, setPointerLockError] = useState<string | null>(null);
@@ -761,6 +766,9 @@ export function ColonyApp() {
   // City Builder authorization (see authClient.canEnterCityBuilder for the fail-closed rule and why
   // a null operator is safe here — it can only be AuthGate's own local DEV/E2E skip-auth bypass).
   const canBuildCity = canEnterCityBuilder(auth);
+  // Offer "Change password" only for a real logged-in account — the local DEV/E2E skip-auth bypass
+  // has a null operator and no account to change.
+  const hasRealAccount = auth.operator !== null;
   useEffect(() => {
     runtime.setOperatorName(auth.operator?.id ?? null);
     // Identity key: bind the player view to the authenticated kooker userId (from the JWT), so own-data
@@ -1644,6 +1652,14 @@ export function ColonyApp() {
           >
             Ask Kooker
           </a>
+          {hasRealAccount && (
+            <button
+              title="Change your CityLife password"
+              onClick={() => setPwdChangeOpen(true)}
+            >
+              Change password
+            </button>
+          )}
           <button
             title="Sign out of CityLife"
             onClick={() => {
@@ -3721,6 +3737,20 @@ export function ColonyApp() {
       )}
 
       <RadioPanel runtime={runtime} radio={ui.radio} tv={ui.tv} />
+
+      {pwdChangeOpen && (
+        <PasswordChangePanel
+          onClose={() => setPwdChangeOpen(false)}
+          onRequested={() => {
+            // The backend has staged the change and revoked the session. Sign out immediately into
+            // the pending state and reload to the login gate, where the one-shot notice explains the
+            // next step (redeem the activation token). Neither old nor new password works until then.
+            markPasswordChangePending();
+            auth.logout();
+            window.location.reload();
+          }}
+        />
+      )}
 
       {showBorderControl && borderOpen && (
         <div className="modal-overlay" onClick={() => setBorderOpen(false)}>
