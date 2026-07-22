@@ -14,13 +14,13 @@
 
 ## 1. Citizen voice
 
-*You push through the brass-posted door and the reception desk greets you the
+_You push through the brass-posted door and the reception desk greets you the
 way it always has. But past it, where the back wall used to be, the room now
 exhales into a bright commons: a two-storey hub with the Big Board burning on
 its far wall — every bot, every task, live. Left, behind glass, the Gate Room
 where epics wait for a human hand. Right, the Arcade — foosball, a watercooler,
 whoever's idle. And running east and west, two colour-washed office wings where
-you can walk past a door and see, truthfully, what Jack is building right now.*
+you can walk past a door and see, truthfully, what Jack is building right now._
 
 ## 2. Design theses (from the panel, binding)
 
@@ -49,15 +49,15 @@ yaw ∈ {0, π} only. Walls are zero-thickness shared planes (the authored
 reception idiom). Doors sit on each room's local z=0 wall at (W/2, 0, 0),
 opening local +Z.
 
-| Room | localId | Grid W×D | Frame position | Yaw | Building extent (x × z) |
-|---|---|---|---|---|---|
-| Reception (exists, untouched) | `reception` | 12×10 | (−6, 0, 0) | 0 | [−6,6] × [0,10] |
-| Commons hub | `commons` | 16×12 | (−8, 0, 10) | 0 | [−8,8] × [10,22] |
-| Boardroom "Gate Room" | `boardroom` | 8×8 | (0, 0, 22) | 0 | [0,8] × [22,30] |
-| Social "Arcade" | `arcade` | 8×8 | (−8, 0, 22) | 0 | [−8,0] × [22,30] |
-| East wing segment 1 "Forge" | `wing-east-1` | 12×4 | (8, 0, 14) | 0 | [8,20] × [14,18] |
-| West wing segment 1 "Flow" | `wing-west-1` | 12×4 | (−20, 0, 14) | 0 | [−20,−8] × [14,18] |
-| Offices ×12 | `office-slot-00`…`11` | 4×5 | slot formula §5 | 0 (N) / π (S) | wings ±[8..20] |
+| Room                          | localId               | Grid W×D | Frame position  | Yaw           | Building extent (x × z) |
+| ----------------------------- | --------------------- | -------- | --------------- | ------------- | ----------------------- |
+| Reception (exists, untouched) | `reception`           | 12×10    | (−6, 0, 0)      | 0             | [−6,6] × [0,10]         |
+| Commons hub                   | `commons`             | 16×12    | (−8, 0, 10)     | 0             | [−8,8] × [10,22]        |
+| Boardroom "Gate Room"         | `boardroom`           | 8×8      | (0, 0, 22)      | 0             | [0,8] × [22,30]         |
+| Social "Arcade"               | `arcade`              | 8×8      | (−8, 0, 22)     | 0             | [−8,0] × [22,30]        |
+| East wing segment 1 "Forge"   | `wing-east-1`         | 12×4     | (8, 0, 14)      | 0             | [8,20] × [14,18]        |
+| West wing segment 1 "Flow"    | `wing-west-1`         | 12×4     | (−20, 0, 14)    | 0             | [−20,−8] × [14,18]      |
+| Offices ×12                   | `office-slot-00`…`11` | 4×5      | slot formula §5 | 0 (N) / π (S) | wings ±[8..20]          |
 
 Envelope day one: **40 m × 30 m**. 17 new frames, 34 new portal records.
 
@@ -91,7 +91,8 @@ z=14└┬─────────┬────────┬────�
                      z=0        └───────────▓▓────────────┘
                                        street door (origin)
 ```
-*(Diagram is indicative; the tables are normative.)*
+
+_(Diagram is indicative; the tables are normative.)_
 
 ## 4. Portal plan (17 doorways = 34 records)
 
@@ -102,15 +103,15 @@ inside each doorway plane and strictly inside the half-open grid extents.
 Ids `<hq>:portal:<near>--<far>:enter|exit`, addresses
 `<hqAddr>/portal/<near>--<far>/enter|exit`.
 
-| Doorway | from-local endpoint | to-local endpoint | building-local |
-|---|---|---|---|
-| reception ↔ commons | (6, 0, 9.5) | (8, 0, 0.5) | (0, 9.5)/(0, 10.5) — on the door→Big Board axis |
-| commons ↔ boardroom | (12, 0, 11.5) | (4, 0, 0.5) | (4, 21.5)/(4, 22.5) — recentred on the 8-wide boardroom (door at building x=4) |
-| commons ↔ arcade | (4, 0, 11.5) | (4, 0, 0.5) | (−4, 21.5)/(−4, 22.5) — recentred on the 8-wide arcade (door at building x=−4) |
-| commons ↔ wing-east-1 | (15.5, 0, 6) | (0.5, 0, 2) | (7.5, 16)/(8.5, 16) |
-| commons ↔ wing-west-1 | (0.5, 0, 6) | (11.5, 0, 2) | (−7.5, 16)/(−8.5, 16) |
-| segment ↔ N office ×6 | (2+4j, 0, 3.5) | (2, 0, 0.5) | (x₀+2+4j, 17.5)/(…, 18.5) |
-| segment ↔ S office ×6 | (2+4j, 0, 0.5) | (2, 0, 0.5) | (x₀+2+4j, 14.5)/(…, 13.5) |
+| Doorway                | from-local endpoint | to-local endpoint | building-local                                                                 |
+| ---------------------- | ------------------- | ----------------- | ------------------------------------------------------------------------------ |
+| reception ↔ commons   | (6, 0, 9.5)         | (8, 0, 0.5)       | (0, 9.5)/(0, 10.5) — on the door→Big Board axis                                |
+| commons ↔ boardroom   | (12, 0, 11.5)       | (4, 0, 0.5)       | (4, 21.5)/(4, 22.5) — recentred on the 8-wide boardroom (door at building x=4) |
+| commons ↔ arcade      | (4, 0, 11.5)        | (4, 0, 0.5)       | (−4, 21.5)/(−4, 22.5) — recentred on the 8-wide arcade (door at building x=−4) |
+| commons ↔ wing-east-1 | (15.5, 0, 6)        | (0.5, 0, 2)       | (7.5, 16)/(8.5, 16)                                                            |
+| commons ↔ wing-west-1 | (0.5, 0, 6)         | (11.5, 0, 2)      | (−7.5, 16)/(−8.5, 16)                                                          |
+| segment ↔ N office ×6 | (2+4j, 0, 3.5)      | (2, 0, 0.5)       | (x₀+2+4j, 17.5)/(…, 18.5)                                                      |
+| segment ↔ S office ×6 | (2+4j, 0, 0.5)      | (2, 0, 0.5)       | (x₀+2+4j, 14.5)/(…, 13.5)                                                      |
 
 Panel verification: all endpoints recomputed under the confirmed
 `frameTransforms.rotateY` convention (x′ = x·cosθ + z·sinθ,
@@ -132,20 +133,20 @@ time and recorded as immutable `slotIndex` in the fleet registry.
 The total, explicit `slotIndex` → (wing, segment, j, side) mapping — the
 authored day-one binding, never derived from a mutable sort:
 
-| slotIndex | Wing (segment) | j | Side | Door (building-local) | Day-one bot |
-|---|---|---|---|---|---|
-| 00 | East "Forge" (m=1) | 0 | N | (10, 18) | Joe |
-| 01 | East "Forge" (m=1) | 1 | N | (14, 18) | Jack |
-| 02 | East "Forge" (m=1) | 2 | N | (18, 18) | MoJoJo |
-| 03 | East "Forge" (m=1) | 0 | S | (10, 14) | Floyd |
-| 04 | East "Forge" (m=1) | 1 | S | (14, 14) | Vesper |
-| 05 | East "Forge" (m=1) | 2 | S | (18, 14) | Alice |
-| 06 | West "Flow" (m=1) | 0 | N | (−18, 18) | Fable-review |
-| 07 | West "Flow" (m=1) | 1 | N | (−14, 18) | Sonnet-executor |
-| 08 | West "Flow" (m=1) | 2 | N | (−10, 18) | CityLife-builder |
-| 09 | West "Flow" (m=1) | 0 | S | (−18, 14) | — dark shell |
-| 10 | West "Flow" (m=1) | 1 | S | (−14, 14) | — dark shell |
-| 11 | West "Flow" (m=1) | 2 | S | (−10, 14) | — dark shell |
+| slotIndex | Wing (segment)     | j   | Side | Door (building-local) | Day-one bot      |
+| --------- | ------------------ | --- | ---- | --------------------- | ---------------- |
+| 00        | East "Forge" (m=1) | 0   | N    | (10, 18)              | Joe              |
+| 01        | East "Forge" (m=1) | 1   | N    | (14, 18)              | Jack             |
+| 02        | East "Forge" (m=1) | 2   | N    | (18, 18)              | MoJoJo           |
+| 03        | East "Forge" (m=1) | 0   | S    | (10, 14)              | Floyd            |
+| 04        | East "Forge" (m=1) | 1   | S    | (14, 14)              | Vesper           |
+| 05        | East "Forge" (m=1) | 2   | S    | (18, 14)              | Alice            |
+| 06        | West "Flow" (m=1)  | 0   | N    | (−18, 18)             | Fable-review     |
+| 07        | West "Flow" (m=1)  | 1   | N    | (−14, 18)             | Sonnet-executor  |
+| 08        | West "Flow" (m=1)  | 2   | N    | (−10, 18)             | CityLife-builder |
+| 09        | West "Flow" (m=1)  | 0   | S    | (−18, 14)             | — dark shell     |
+| 10        | West "Flow" (m=1)  | 1   | S    | (−14, 14)             | — dark shell     |
+| 11        | West "Flow" (m=1)  | 2   | S    | (−10, 14)             | — dark shell     |
 
 (East = "Forge", slots 00–05; West = "Flow", slots 06–11; N row z=18, S row z=14;
 `j` increases with the diagram's left-to-right reading. Door building-local
@@ -173,7 +174,7 @@ IDLE_AT_DESK → totem steady dim. IDLE_SOCIAL → avatar in the Arcade, desk
 honestly empty. COMMUTE → walks the wing, address flips atomically per portal.
 OFFLINE → totem dark, board greyscale but still showing real queued tasks with
 an "offline" chip. AWAITING_HUMAN → totem amber, card in a gate slot. Empty
-worklist → dim "no queued work" strip. The one delight beat: on an *observed*
+worklist → dim "no queued work" strip. The one delight beat: on an _observed_
 claim event, the office door light blinks once (badge-tap ritual).
 
 **Worklist data quarantine:** the 2026-07-12 big-board presence contract file
@@ -193,7 +194,7 @@ A chair reads occupied only when a presence address sits at that seat anchor.
 **Arcade (8×8):** watercooler totem (landmark prop), foosball, arcade
 cabinet (decor shader — decor never imitates telemetry), couches facing a
 3.6×2.0 `FleetBoard` with per-bot coarse presence chips and fleet WIP/queue
-depth. Idle avatars congregate here: a crowded Arcade *is* the idle-capacity
+depth. Idle avatars congregate here: a crowded Arcade _is_ the idle-capacity
 gauge. Deterministic foosball pairing from the sorted idle set.
 
 ## 8. Asset plan (four packs, reception-pack pipeline)
@@ -203,12 +204,12 @@ GLB, `PROVENANCE.md`, `citylife-prop-placement/v1` placement JSON, vitest
 structural contract. Office placement JSONs are emitted per slot by the slot
 formula — one generator, N rooms.
 
-| Pack | Nodes (count) | Est. source tris |
-|---|---|---|
-| `hq-campus-shell-pack` | Wall1m, DoorFrame, GlassPanel1m, FloorTile, CeilingDuct2m, FloorStripe1m, Planter, ServerNook (8) | ~500 |
-| `hq-bot-office-pack` | Desk, TaskChair, WorklistBoard, TaskCard, StatusTotem, DoorLight, Shelf, DeskLamp, Plant, LiaisonDesk, RoutingBoard, LibrarySign, Workbench (13) | ~1,400 |
-| `hq-boardroom-pack` | BoardTable, BoardChair, EpicWall, GatePuck, MergeTicker, HoloEpic, Sideboard (7) | ~900 |
-| `hq-commons-pack` | Watercooler, Foosball, Arcade, Couch, BeanBag, FleetBoard, SnackShelf, Rug (8) | ~1,100 |
+| Pack                   | Nodes (count)                                                                                                                                    | Est. source tris |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------- |
+| `hq-campus-shell-pack` | Wall1m, DoorFrame, GlassPanel1m, FloorTile, CeilingDuct2m, FloorStripe1m, Planter, ServerNook (8)                                                | ~500             |
+| `hq-bot-office-pack`   | Desk, TaskChair, WorklistBoard, TaskCard, StatusTotem, DoorLight, Shelf, DeskLamp, Plant, LiaisonDesk, RoutingBoard, LibrarySign, Workbench (13) | ~1,400           |
+| `hq-boardroom-pack`    | BoardTable, BoardChair, EpicWall, GatePuck, MergeTicker, HoloEpic, Sideboard (7)                                                                 | ~900             |
+| `hq-commons-pack`      | Watercooler, Foosball, Arcade, Couch, BeanBag, FleetBoard, SnackShelf, Rug (8)                                                                   | ~1,100           |
 
 Budgets: ≤6 draw calls per office (merged static + emissive set + instanced
 cards + SDF text); ≤150 resident interior draw calls worst case (~40 typical
