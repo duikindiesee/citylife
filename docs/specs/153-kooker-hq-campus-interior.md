@@ -53,13 +53,21 @@ opening local +Z.
 |---|---|---|---|---|---|
 | Reception (exists, untouched) | `reception` | 12×10 | (−6, 0, 0) | 0 | [−6,6] × [0,10] |
 | Commons hub | `commons` | 16×12 | (−8, 0, 10) | 0 | [−8,8] × [10,22] |
-| Boardroom "Gate Room" | `boardroom` | 10×8 | (1, 0, 22) | 0 | [1,11] × [22,30] |
-| Social "Arcade" | `arcade` | 10×8 | (−11, 0, 22) | 0 | [−11,−1] × [22,30] |
+| Boardroom "Gate Room" | `boardroom` | 8×8 | (0, 0, 22) | 0 | [0,8] × [22,30] |
+| Social "Arcade" | `arcade` | 8×8 | (−8, 0, 22) | 0 | [−8,0] × [22,30] |
 | East wing segment 1 "Forge" | `wing-east-1` | 12×4 | (8, 0, 14) | 0 | [8,20] × [14,18] |
 | West wing segment 1 "Flow" | `wing-west-1` | 12×4 | (−20, 0, 14) | 0 | [−20,−8] × [14,18] |
 | Offices ×12 | `office-slot-00`…`11` | 4×5 | slot formula §5 | 0 (N) / π (S) | wings ±[8..20] |
 
 Envelope day one: **40 m × 30 m**. 17 new frames, 34 new portal records.
+
+The boardroom and arcade are symmetric **8×8** frames sitting **wholly within the
+commons width** (`[0,8]` and `[−8,0]`, the door axis at x=0). They stop at the
+office-column boundary x=±8, so their `[22,30]` footprints share only the x=±8 and
+z=22 boundary lines with the north offices (`z[18,23]`) and the commons (`z[10,22]`)
+— zero overlapping area under the half-open `[x₀, x₀+W)` / `[z₀, z₀+D)` frame
+convention. This is the FIX1 resolution of the two 3 m × 1 m room-frame collisions
+found in review; envelope, frame count and portal count are unchanged.
 
 ```text
                     z=30 ┌──────────────┐      ┌──────────────┐
@@ -88,7 +96,8 @@ z=14└┬─────────┬────────┬────�
 ## 4. Portal plan (17 doorways = 34 records)
 
 Every doorway is one enter/exit **exact-inverse pair** between distinct frames
-(the authored HQ pattern), modes `["portal","walk"]` (sorted), endpoints 0.5 m
+(the authored HQ pattern), modes `["walk","portal"]` (the merged spec-152 /
+runtime authorship order, not alphabetical), endpoints 0.5 m
 inside each doorway plane and strictly inside the half-open grid extents.
 Ids `<hq>:portal:<near>--<far>:enter|exit`, addresses
 `<hqAddr>/portal/<near>--<far>/enter|exit`.
@@ -96,8 +105,8 @@ Ids `<hq>:portal:<near>--<far>:enter|exit`, addresses
 | Doorway | from-local endpoint | to-local endpoint | building-local |
 |---|---|---|---|
 | reception ↔ commons | (6, 0, 9.5) | (8, 0, 0.5) | (0, 9.5)/(0, 10.5) — on the door→Big Board axis |
-| commons ↔ boardroom | (14, 0, 11.5) | (5, 0, 0.5) | (6, 21.5)/(6, 22.5) |
-| commons ↔ arcade | (2, 0, 11.5) | (5, 0, 0.5) | (−6, 21.5)/(−6, 22.5) |
+| commons ↔ boardroom | (12, 0, 11.5) | (4, 0, 0.5) | (4, 21.5)/(4, 22.5) — recentred on the 8-wide boardroom (door at building x=4) |
+| commons ↔ arcade | (4, 0, 11.5) | (4, 0, 0.5) | (−4, 21.5)/(−4, 22.5) — recentred on the 8-wide arcade (door at building x=−4) |
 | commons ↔ wing-east-1 | (15.5, 0, 6) | (0.5, 0, 2) | (7.5, 16)/(8.5, 16) |
 | commons ↔ wing-west-1 | (0.5, 0, 6) | (11.5, 0, 2) | (−7.5, 16)/(−8.5, 16) |
 | segment ↔ N office ×6 | (2+4j, 0, 3.5) | (2, 0, 0.5) | (x₀+2+4j, 17.5)/(…, 18.5) |
@@ -106,7 +115,11 @@ Ids `<hq>:portal:<near>--<far>:enter|exit`, addresses
 Panel verification: all endpoints recomputed under the confirmed
 `frameTransforms.rotateY` convention (x′ = x·cosθ + z·sinθ,
 z′ = −x·sinθ + z·cosθ); all in bounds; no from==to; no id/address collisions;
-0.5-step float-exact coordinates throughout.
+0.5-step float-exact coordinates throughout. FIX1 recompute: the boardroom and
+arcade commons-side endpoints move to building x=±4 (commons-local x=12 and 4)
+and their room-side endpoints to local (4, 0, 0.5) — both 0.5 m inside the now
+8-wide rooms and inside the commons `z[0,12]` extent; the exact inverses and all
+other 32 endpoints are unchanged.
 
 ## 5. Office slot formula (pure, total)
 
@@ -115,6 +128,28 @@ west x₀(m) = −8 − 12m. North office: frame position (x₀+4j, 0, 18), yaw 
 door at building (x₀+2+4j, 18). South office: frame position (x₀+4j+4, 0, 14),
 yaw π, door at building (x₀+2+4j, 14). Slot numbering is fixed at authoring
 time and recorded as immutable `slotIndex` in the fleet registry.
+
+The total, explicit `slotIndex` → (wing, segment, j, side) mapping — the
+authored day-one binding, never derived from a mutable sort:
+
+| slotIndex | Wing (segment) | j | Side | Door (building-local) | Day-one bot |
+|---|---|---|---|---|---|
+| 00 | East "Forge" (m=1) | 0 | N | (10, 18) | Joe |
+| 01 | East "Forge" (m=1) | 1 | N | (14, 18) | Jack |
+| 02 | East "Forge" (m=1) | 2 | N | (18, 18) | MoJoJo |
+| 03 | East "Forge" (m=1) | 0 | S | (10, 14) | Floyd |
+| 04 | East "Forge" (m=1) | 1 | S | (14, 14) | Vesper |
+| 05 | East "Forge" (m=1) | 2 | S | (18, 14) | Alice |
+| 06 | West "Flow" (m=1) | 0 | N | (−18, 18) | Fable-review |
+| 07 | West "Flow" (m=1) | 1 | N | (−14, 18) | Sonnet-executor |
+| 08 | West "Flow" (m=1) | 2 | N | (−10, 18) | CityLife-builder |
+| 09 | West "Flow" (m=1) | 0 | S | (−18, 14) | — dark shell |
+| 10 | West "Flow" (m=1) | 1 | S | (−14, 14) | — dark shell |
+| 11 | West "Flow" (m=1) | 2 | S | (−10, 14) | — dark shell |
+
+(East = "Forge", slots 00–05; West = "Flow", slots 06–11; N row z=18, S row z=14;
+`j` increases with the diagram's left-to-right reading. Door building-local
+follows §5's `(x₀+2+4j, 18|14)`.)
 
 **Day-one binding (9 bound, 3 dark shells):** 00 Joe, 01 Jack, 02 MoJoJo,
 03 Floyd, 04 Vesper, 05 Alice (Forge); 06 Fable-review, 07 Sonnet-executor,
@@ -149,13 +184,13 @@ ship first.
 
 ## 7. Boardroom "Gate Room" and Arcade
 
-**Gate Room (10×8):** glass front toward the commons; 3.6×1.4 table, 10
+**Gate Room (8×8):** glass front toward the commons; 3.6×1.4 table, 10
 instanced chairs; `EpicWall` 6.0×2.4 on the back wall — one swimlane per live
 epic; physical `GatePuck` tokens glow amber in the "awaiting operator" column;
 `MergeTicker` over the door scrolls MoJoJo merge events only when they exist.
 A chair reads occupied only when a presence address sits at that seat anchor.
 
-**Arcade (10×8):** watercooler totem (landmark prop), foosball, arcade
+**Arcade (8×8):** watercooler totem (landmark prop), foosball, arcade
 cabinet (decor shader — decor never imitates telemetry), couches facing a
 3.6×2.0 `FleetBoard` with per-bot coarse presence chips and fleet WIP/queue
 depth. Idle avatars congregate here: a crowded Arcade *is* the idle-capacity
