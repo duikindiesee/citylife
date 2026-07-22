@@ -236,6 +236,10 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     C.wz(model.center.y),
   );
   g.rotation.y = model.facingAngle;
+  // PLAYER.GARAGE.1 — the model's dimensions are grid cells; the group sits in world metres.
+  // Without this uniform cells→metres scale the whole landmark rendered at quarter size on its
+  // 16×11-cell pad (operator-reported).
+  g.scale.setScalar(model.renderScale);
 
   const floorMat = new THREE.MeshStandardMaterial({
     color: 0xffb24a,

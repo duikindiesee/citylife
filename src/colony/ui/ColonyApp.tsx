@@ -44,6 +44,7 @@ const PROFESSION_SUGGESTIONS = [
 import { RadioPanel } from "./RadioPanel";
 import { FirstPersonPanel } from "./FirstPersonPanel";
 import { GaragePanel } from "./GaragePanel";
+import { ShowroomOverlay } from "./ShowroomOverlay";
 import { RaceMobileControls } from "./RaceMobileControls";
 import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
@@ -733,6 +734,8 @@ export function ColonyApp() {
   const [touchCapable, setTouchCapable] = useState(detectTouchCapable);
   const [controllerConnected, setControllerConnected] = useState(false);
   const [roadmapOpen, setRoadmapOpen] = useState(false);
+  // PLAYER.GARAGE.1 — the Gearbox Auto Hub showroom interior (its own streamed scene overlay).
+  const [showroomOpen, setShowroomOpen] = useState(false);
   // Furniture studio (spec 088 Slice D UI) — the design-and-buy controls.
   const [furnKind, setFurnKind] = useState<FurnitureKind>("sofa");
   const [furnName, setFurnName] = useState("");
@@ -1489,6 +1492,36 @@ export function ColonyApp() {
       />
       <RoadmapPanel open={roadmapOpen} onClose={() => setRoadmapOpen(false)} />
       {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
+      {/* PLAYER.GARAGE.1 — enter the Gearbox Auto Hub showroom. The interior is its own streamed
+          scene (ShowroomOverlay); this affordance is the door until spec-152 portal streaming lands
+          in the walker. */}
+      {!builderActive && !showroomOpen && (
+        <button
+          data-build-action="open-showroom"
+          title="Step into the Gearbox Auto Hub showroom"
+          onClick={() => setShowroomOpen(true)}
+          style={{
+            position: "fixed",
+            right: 12,
+            bottom: 24,
+            zIndex: 60,
+            padding: "8px 12px",
+            fontSize: 13,
+            borderRadius: 8,
+            cursor: "pointer",
+            border: "1px solid #b6892f",
+            background: "rgba(8,14,24,0.92)",
+            color: "#ffd25a",
+            fontFamily: "monospace",
+            fontWeight: 700,
+          }}
+        >
+          🏬 Gearbox Auto Hub
+        </button>
+      )}
+      {showroomOpen && (
+        <ShowroomOverlay onClose={() => setShowroomOpen(false)} />
+      )}
       {!ui.firstPerson.active &&
         !builderActive &&
         !worldViewActive &&

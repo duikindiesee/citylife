@@ -1,4 +1,5 @@
 import type { GaragePad } from "../commerce/district";
+import { CELL_SIZE } from "../scale";
 
 export interface GarageAnchorShellModel {
   kind: "garage_anchor_shell";
@@ -7,6 +8,9 @@ export interface GarageAnchorShellModel {
   center: { x: number; y: number };
   baseY: number;
   facingAngle: number;
+  /** Cells → metres factor the render layer must apply to the whole mesh group so the shell
+   *  actually fills its surveyed pad (dimensions below are authored in grid cells). */
+  renderScale: number;
   footprint: { w: number; d: number };
   showroom: {
     w: number;
@@ -73,6 +77,10 @@ export function buildGarageAnchorShellModel(
     doorCount: 3 as const,
     bayDoorW: footprint.w * 0.135,
   };
+  // PLAYER.GARAGE.1 — every dimension above is authored in GRID CELLS (footprint = pad cells).
+  // The render layer positions the shell in world metres (4 m per cell), so the mesh group must
+  // be scaled by CELL_SIZE or the whole landmark renders at exactly quarter size on its pad —
+  // the operator-reported "size is wrong" defect. Declared here, applied by the layer.
   const localFromGrid = (grid: { x: number; y: number }) => {
     const dx = grid.x - center.x;
     const dy = grid.y - center.y;
@@ -109,6 +117,7 @@ export function buildGarageAnchorShellModel(
     center,
     baseY,
     facingAngle: garagePad.facingAngle,
+    renderScale: CELL_SIZE,
     footprint,
     showroom,
     serviceBay,
