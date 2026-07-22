@@ -3,10 +3,7 @@ import { useGLTF, useAnimations } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { useWorldAssets } from "../stores/useWorldAssets";
-import {
-  resolveGlbHouseScale,
-  type GlbFootprintCells,
-} from "./glbHouseScale";
+import { resolveGlbHouseScale, type GlbFootprintCells } from "./glbHouseScale";
 
 import { RigidBody } from "@react-three/rapier";
 
