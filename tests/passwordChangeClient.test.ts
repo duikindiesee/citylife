@@ -53,7 +53,9 @@ async function freshModules(signIn: boolean) {
   const authMod = await import("../src/colony/authClient");
   const pwdMod = await import("../src/colony/passwordChangeClient");
   if (signIn) {
-    const r = await authMod.getAuthClient().login("player@test.com", "old-pass-1234");
+    const r = await authMod
+      .getAuthClient()
+      .login("player@test.com", "old-pass-1234");
     expect(r.ok).toBe(true);
   }
   return pwdMod;
@@ -72,10 +74,15 @@ describe("requestPasswordChange", () => {
   it("posts current + new password with a Bearer token to the exact E1 path", async () => {
     const calls = mockFetch({ changeOk: true });
     const { requestPasswordChange } = await freshModules(true);
-    const r = await requestPasswordChange("old-pass-1234", "brand-new-pass-5678");
+    const r = await requestPasswordChange(
+      "old-pass-1234",
+      "brand-new-pass-5678",
+    );
     expect(r).toEqual({ ok: true });
 
-    const change = calls.find((c) => c.url.includes("/me/password-change-request"));
+    const change = calls.find((c) =>
+      c.url.includes("/me/password-change-request"),
+    );
     expect(change).toBeTruthy();
     expect(change!.url).toBe("/kooker/api/users/me/password-change-request");
     expect(JSON.parse(change!.init.body as string)).toEqual({
@@ -90,7 +97,10 @@ describe("requestPasswordChange", () => {
   it("maps a 401 to a specific current-password error (the re-proof failed)", async () => {
     mockFetch({ changeOk: false, changeStatus: 401 });
     const { requestPasswordChange } = await freshModules(true);
-    const r = await requestPasswordChange("wrong-current", "brand-new-pass-5678");
+    const r = await requestPasswordChange(
+      "wrong-current",
+      "brand-new-pass-5678",
+    );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/current password is incorrect/i);
   });
@@ -98,7 +108,10 @@ describe("requestPasswordChange", () => {
   it("maps any other non-2xx to one neutral error", async () => {
     mockFetch({ changeOk: false, changeStatus: 500 });
     const { requestPasswordChange } = await freshModules(true);
-    const r = await requestPasswordChange("old-pass-1234", "brand-new-pass-5678");
+    const r = await requestPasswordChange(
+      "old-pass-1234",
+      "brand-new-pass-5678",
+    );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/try again/i);
   });
@@ -106,16 +119,24 @@ describe("requestPasswordChange", () => {
   it("refuses without a session and never calls the E1 endpoint", async () => {
     const calls = mockFetch({ changeOk: true });
     const { requestPasswordChange } = await freshModules(false); // not signed in
-    const r = await requestPasswordChange("old-pass-1234", "brand-new-pass-5678");
+    const r = await requestPasswordChange(
+      "old-pass-1234",
+      "brand-new-pass-5678",
+    );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/signed out/i);
-    expect(calls.some((c) => c.url.includes("/me/password-change-request"))).toBe(false);
+    expect(
+      calls.some((c) => c.url.includes("/me/password-change-request")),
+    ).toBe(false);
   });
 
   it("returns a network error when the request throws", async () => {
     mockFetch({ throwOnChange: true });
     const { requestPasswordChange } = await freshModules(true);
-    const r = await requestPasswordChange("old-pass-1234", "brand-new-pass-5678");
+    const r = await requestPasswordChange(
+      "old-pass-1234",
+      "brand-new-pass-5678",
+    );
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toMatch(/network error/i);
   });
