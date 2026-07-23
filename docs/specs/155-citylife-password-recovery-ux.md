@@ -49,7 +49,7 @@ Signed-out, on the login gate, kept strictly separate from the signed-in Change 
 
 - **Endpoint (through the `/kooker` proxy):** R1 `POST /kooker/api/users/password-recovery-request`,
   body `{ identifier, newPassword }`, **no** auth header. Returns `202 { status: "RECEIVED",
-  requestRef }`. New password 12–128 chars (matches `PasswordRecoveryRequestBody @Size`, v1.32.0).
+requestRef }`. New password 12–128 chars (matches `PasswordRecoveryRequestBody @Size`, v1.32.0).
 - **Generic, oracle-safe response.** The backend returns the same `202 { status, requestRef }` shape
   whether or not the identifier resolves to an eligible account. The client shows the reference for
   **every** success and never infers or discloses account existence. Every non-2xx collapses to one
@@ -85,7 +85,7 @@ wiring; the redemption step is reused unchanged.
   consent locally.
 - e2e (`e2e/passwordRecovery.spec.ts`, mocked backend): a locked-out (unauthenticated) user initiates
   R1 with no current-password field, sees the one-time reference, posts only `{identifier,
-  newPassword}` with no Authorization header, has no secret in the URL or in local/sessionStorage, and
+newPassword}` with no Authorization header, has no secret in the URL or in local/sessionStorage, and
   hands off to the activation screen with the identifier prefilled; a nonexistent identifier still
   shows a generic reference with no existence disclosure; a client-side mismatch/too-short password
   never reaches the backend; the recovery entry is distinct from token redemption and returns to sign

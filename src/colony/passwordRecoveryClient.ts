@@ -48,7 +48,10 @@ export function validateRecoveryInput(
   consented: boolean,
 ): RecoveryValidation {
   if (!identifier.trim()) {
-    return { ok: false, error: "Enter the email or username your account uses." };
+    return {
+      ok: false,
+      error: "Enter the email or username your account uses.",
+    };
   }
   if (newPassword.length < RECOVERY_PASSWORD_MIN) {
     return {

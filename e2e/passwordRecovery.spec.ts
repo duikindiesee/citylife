@@ -40,14 +40,10 @@ test.describe("Signed-out password recovery UX (PWD.REC R1)", () => {
     await expect(page.getByPlaceholder("current password")).toHaveCount(0);
 
     await page.getByPlaceholder("email or username").fill(IDENTIFIER);
-    await page
-      .getByPlaceholder(/new password \(min/)
-      .fill(NEW_PASSWORD);
+    await page.getByPlaceholder(/new password \(min/).fill(NEW_PASSWORD);
     await page.getByPlaceholder("confirm new password").fill(NEW_PASSWORD);
     await page.getByRole("checkbox").check();
-    await page
-      .getByRole("button", { name: "Request password reset" })
-      .click();
+    await page.getByRole("button", { name: "Request password reset" }).click();
 
     // The one-time reference is shown exactly once, with the read-to-your-operator instruction.
     await expect(page.getByTestId("recovery-ref")).toHaveText(REQUEST_REF);
@@ -75,9 +71,13 @@ test.describe("Signed-out password recovery UX (PWD.REC R1)", () => {
 
     // Clean hand-off to the SHIPPED activation-token screen (no parallel activation mechanism), with
     // the identifier prefilled so the redeemed token resolves the same account.
-    await page.getByRole("button", { name: "I have my activation token" }).click();
+    await page
+      .getByRole("button", { name: "I have my activation token" })
+      .click();
     await expect(page.getByText("Finish your password change")).toBeVisible();
-    await expect(page.getByPlaceholder("email address")).toHaveValue(IDENTIFIER);
+    await expect(page.getByPlaceholder("email address")).toHaveValue(
+      IDENTIFIER,
+    );
   });
 
   test("a nonexistent identifier still returns a generic reference — no account-existence disclosure", async ({
@@ -104,7 +104,9 @@ test.describe("Signed-out password recovery UX (PWD.REC R1)", () => {
     await page.getByRole("button", { name: "Request password reset" }).click();
 
     await expect(page.getByTestId("recovery-ref")).toHaveText("9F9F-9F9F");
-    await expect(page.getByText(/no such account|not found|doesn't exist/i)).toHaveCount(0);
+    await expect(
+      page.getByText(/no such account|not found|doesn't exist/i),
+    ).toHaveCount(0);
   });
 
   test("a client-side mismatch or too-short password never reaches the backend", async ({
@@ -113,7 +115,11 @@ test.describe("Signed-out password recovery UX (PWD.REC R1)", () => {
     let hit = false;
     await page.route(RECOVERY_ROUTE, async (route) => {
       hit = true;
-      await route.fulfill({ status: 202, contentType: "application/json", body: "{}" });
+      await route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: "{}",
+      });
     });
 
     await page.goto("/?login=1");
@@ -133,7 +139,9 @@ test.describe("Signed-out password recovery UX (PWD.REC R1)", () => {
     // Now a full-length mismatch (both 12+ so native validation passes) — the local JS validator
     // catches it and shows a friendly message, still without hitting the backend.
     await page.getByPlaceholder(/new password \(min/).fill(NEW_PASSWORD);
-    await page.getByPlaceholder("confirm new password").fill("does-not-match-9999");
+    await page
+      .getByPlaceholder("confirm new password")
+      .fill("does-not-match-9999");
     await page.getByRole("button", { name: "Request password reset" }).click();
     await expect(page.getByText(/don't match/i)).toBeVisible();
 
@@ -144,7 +152,11 @@ test.describe("Signed-out password recovery UX (PWD.REC R1)", () => {
     page,
   }) => {
     await page.route(RECOVERY_ROUTE, async (route) => {
-      await route.fulfill({ status: 429, contentType: "application/json", body: "{}" });
+      await route.fulfill({
+        status: 429,
+        contentType: "application/json",
+        body: "{}",
+      });
     });
 
     await page.goto("/?login=1");
@@ -162,7 +174,9 @@ test.describe("Signed-out password recovery UX (PWD.REC R1)", () => {
     // Both plaintext password fields must be empty; identifier is preserved so the user can retry.
     await expect(page.getByPlaceholder(/new password \(min/)).toHaveValue("");
     await expect(page.getByPlaceholder("confirm new password")).toHaveValue("");
-    await expect(page.getByPlaceholder("email or username")).toHaveValue(IDENTIFIER);
+    await expect(page.getByPlaceholder("email or username")).toHaveValue(
+      IDENTIFIER,
+    );
   });
 
   test("the signed-out recovery entry is distinct from token redemption and returns to sign in", async ({
@@ -170,7 +184,9 @@ test.describe("Signed-out password recovery UX (PWD.REC R1)", () => {
   }) => {
     await page.goto("/?login=1");
     // Both signed-out actions exist and are separate paths.
-    await expect(page.getByRole("button", { name: "Forgot password?" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Forgot password?" }),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Enter your activation token" }),
     ).toBeVisible();
