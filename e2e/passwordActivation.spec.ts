@@ -42,8 +42,14 @@ function seedSession(page: Page, roles: string[]) {
   );
 }
 
+function seedPendingPasswordChange(page: Page) {
+  return page.addInitScript(() => {
+    window.sessionStorage.setItem("citylife.pwdChangePending", "1");
+  });
+}
+
 test.describe("Password activation UX (PWD.ACT PR-E)", () => {
-  test("login gate redeems an activation token and confirms success, then returns to sign in", async ({
+  test("a pending signed-in change opens activation directly, confirms success, then returns to sign in", async ({
     page,
   }) => {
     let posted: unknown = null;
@@ -56,10 +62,8 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
       });
     });
 
+    await seedPendingPasswordChange(page);
     await page.goto("/?login=1");
-    await page
-      .getByRole("button", { name: "Enter your activation token" })
-      .click();
 
     await expect(page.getByText("Finish your password change")).toBeVisible();
     await page.getByPlaceholder("email address").fill("player@test.com");
@@ -87,10 +91,8 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
       });
     });
 
+    await seedPendingPasswordChange(page);
     await page.goto("/?login=1");
-    await page
-      .getByRole("button", { name: "Enter your activation token" })
-      .click();
     await page.getByPlaceholder("email address").fill("player@test.com");
     await page.locator("input.visitor-code-input").fill(TOKEN);
     await page.getByRole("button", { name: "Activate new password" }).click();
@@ -129,11 +131,10 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
       .fill("brand-new-pass-5678");
     await page.getByRole("button", { name: "Request change" }).click();
 
-    // The session is cleared and the page reloads to the login gate with the one-shot pending notice.
-    await expect(page.getByText(/waiting on activation/i)).toBeVisible({
+    // The session is cleared and the page reloads directly into the one-shot activation context.
+    await expect(page.getByText("Finish your password change")).toBeVisible({
       timeout: 15000,
     });
-    await expect(page.getByText("Border Authority")).toBeVisible();
     // Fully signed out — the colony canvas is gone.
     await expect(page.locator("canvas")).toHaveCount(0);
   });
