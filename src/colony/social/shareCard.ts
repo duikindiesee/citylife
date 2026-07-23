@@ -52,7 +52,9 @@ export function headlineFor(specTitle: string | undefined): string {
 /** The quiet stat chips along the bottom of the card, drawn from the live UI state. */
 export function shareStats(ui: ColonyUiState): ShareStat[] {
   return [
-    { label: "Sol", value: String(ui.clock.day) },
+    // Spec 150 PR3 — the chip is labelled Sol, so it must read the canonical sol. It was showing
+    // clock.day (the earth day), which shipped a card whose Sol disagreed with the HUD's Sol.
+    { label: "Sol", value: String(ui.clock.sol) },
     { label: "Pop", value: `${ui.colonists}/${ui.colony.capacity}` },
     { label: "Food", value: String(ui.colony.food) },
     { label: "Built", value: String(ui.colony.buildings) },

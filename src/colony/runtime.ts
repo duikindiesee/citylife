@@ -5366,7 +5366,10 @@ export class ColonyRuntime {
       return;
     }
     const withBirth = addPost(profile, {
+      // Spec 150 PR3 — id/seq/cap stay on the fast game-day bucket; the canonical sol rides along
+      // for display so the feed agrees with the HUD.
       sol: this.sim.state.clock.day,
+      displaySol: solsSinceEpoch(Date.now()),
       kind: "event",
       text: `${opts.alias} arrived in Landing One.`,
     });
@@ -5391,7 +5394,9 @@ export class ColonyRuntime {
     const p = this.kookerbook.get(citizenId);
     if (!p) return false;
     const next = addPost(p, {
+      // Spec 150 PR3 — see kbRegister: the bucket keys the cap, displaySol is what the feed shows.
       sol: this.sim.state.clock.day,
+      displaySol: solsSinceEpoch(Date.now()),
       kind,
       text,
       imageRef,
