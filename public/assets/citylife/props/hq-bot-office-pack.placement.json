@@ -1,0 +1,77 @@
+{
+  "schema": "citylife-prop-placement/v1",
+  "asset": {
+    "id": "hq-bot-office-pack",
+    "url": "/assets/citylife/props/hq-bot-office-pack.glb",
+    "generator": "scripts/generate_hq_bot_office_pack.mjs",
+    "provenance": "public/assets/citylife/props/hq-bot-office-pack.PROVENANCE.md",
+    "units": "meters",
+    "upAxis": "Y",
+    "forwardAxis": "+Z",
+    "publicSafe": true
+  },
+  "frame": {
+    "reference": "docs/specs/153-kooker-hq-campus-interior.md",
+    "roomLocalId": "office-slot-NN",
+    "gridWidthCells": 4,
+    "gridDepthCells": 5,
+    "cellSizeMeters": 1,
+    "origin": "room-local corner (0,0,0); door centred at (2,0,0) on the z=0 wall; room opens toward +Z",
+    "coordinateSpace": "office-room-local meters"
+  },
+  "nodes": {
+    "Office_Desk": { "dimensions": { "w": 1.6, "h": 0.75, "d": 0.8 }, "pivot": "floor-center" },
+    "Office_TaskChair": { "dimensions": { "w": 0.5, "h": 0.95, "d": 0.55 }, "pivot": "floor-center" },
+    "Office_WorklistBoard": { "dimensions": { "w": 3.0, "h": 1.8, "d": 0.12 }, "pivot": "floor-center-back" },
+    "Office_TaskCard": { "dimensions": { "w": 0.6, "h": 0.4, "d": 0.04 }, "pivot": "floor-center-back" },
+    "Office_StatusTotem": { "dimensions": { "w": 0.4, "h": 2.2, "d": 0.4 }, "pivot": "floor-center" },
+    "Office_DoorLight": { "dimensions": { "w": 0.35, "h": 0.14, "d": 0.1 }, "pivot": "floor-center-back" },
+    "Office_Shelf": { "dimensions": { "w": 1.2, "h": 1.8, "d": 0.35 }, "pivot": "floor-center-back" },
+    "Office_DeskLamp": { "dimensions": { "w": 0.22, "h": 0.48, "d": 0.15 }, "pivot": "floor-center" },
+    "Office_Plant": { "dimensions": { "w": 0.34, "h": 0.85, "d": 0.34 }, "pivot": "floor-center" },
+    "Office_LiaisonDesk": { "dimensions": { "w": 1.2, "h": 0.75, "d": 0.6 }, "pivot": "floor-center" },
+    "Office_RoutingBoard": { "dimensions": { "w": 1.6, "h": 1.2, "d": 0.1 }, "pivot": "floor-center-back" },
+    "Office_LibrarySign": { "dimensions": { "w": 1.6, "h": 0.5, "d": 0.08 }, "pivot": "floor-center-back" },
+    "Office_Workbench": { "dimensions": { "w": 1.8, "h": 1.05, "d": 0.7 }, "pivot": "floor-center" }
+  },
+  "kits": {
+    "standard": [
+      { "node": "Office_WorklistBoard", "position": [2, 0, 5], "yawRadians": 3.141592653589793, "note": "back-flush on the z=5 wall, screen facing the door" },
+      { "node": "Office_Desk", "position": [2, 0, 3.6], "yawRadians": 3.141592653589793, "note": "bot faces the door, board readable over its shoulder" },
+      { "node": "Office_TaskChair", "position": [2, 0, 4.25], "yawRadians": 3.141592653589793, "note": "presence anchor between desk and board" },
+      { "node": "Office_StatusTotem", "position": [0.5, 0, 0.7], "yawRadians": 0, "note": "status visible from the corridor through the door" },
+      { "node": "Office_DoorLight", "position": [2, 2.55, 0.02], "yawRadians": 0, "note": "above the door inside face; runtime tints per bot" },
+      { "node": "Office_Shelf", "position": [4, 0, 2.5], "yawRadians": -1.5707963267948966, "note": "back-flush on the x=4 wall" },
+      { "node": "Office_DeskLamp", "position": [2.6, 0.75, 3.45], "yawRadians": 0, "note": "sits on the desk top (y = desk height)" },
+      { "node": "Office_Plant", "position": [0.4, 0, 4.5], "yawRadians": 0, "note": "back corner greenery" }
+    ],
+    "heavy": [
+      { "replaces": "Office_Shelf", "node": "Office_Workbench", "position": [3.65, 0, 2.5], "yawRadians": -1.5707963267948966, "note": "Jack variant: workbench along the x=4 wall" }
+    ],
+    "liaison": {
+      "note": "Suzi has no office (spec 153 §5): Office_LiaisonDesk, Office_RoutingBoard and Office_LibrarySign are placed in the commons by hq-commons-pack.placement.json"
+    }
+  },
+  "slots": {
+    "formula": "spec 153 §5 — east x0(m)=8+12(m-1); west x0(m)=-8-12m; N office frame (x0+4j,0,18) yaw 0; S office frame (x0+4j+4,0,14) yaw pi; door at building (x0+2+4j, z=18 N / z=14 S)",
+    "coordinateSpace": "kooker-hq building-local meters",
+    "entries": [
+      { "slotIndex": 0, "localId": "office-slot-00", "wing": "forge-east", "framePosition": [8, 0, 18], "yawRadians": 0, "door": [10, 0, 18], "binding": "principal:bot:joe", "kit": "standard" },
+      { "slotIndex": 1, "localId": "office-slot-01", "wing": "forge-east", "framePosition": [12, 0, 18], "yawRadians": 0, "door": [14, 0, 18], "binding": "principal:bot:jack", "kit": "heavy" },
+      { "slotIndex": 2, "localId": "office-slot-02", "wing": "forge-east", "framePosition": [16, 0, 18], "yawRadians": 0, "door": [18, 0, 18], "binding": "principal:bot:mojojo", "kit": "standard" },
+      { "slotIndex": 3, "localId": "office-slot-03", "wing": "forge-east", "framePosition": [12, 0, 14], "yawRadians": 3.141592653589793, "door": [10, 0, 14], "binding": "principal:bot:floyd", "kit": "standard" },
+      { "slotIndex": 4, "localId": "office-slot-04", "wing": "forge-east", "framePosition": [16, 0, 14], "yawRadians": 3.141592653589793, "door": [14, 0, 14], "binding": "principal:bot:vesper", "kit": "standard" },
+      { "slotIndex": 5, "localId": "office-slot-05", "wing": "forge-east", "framePosition": [20, 0, 14], "yawRadians": 3.141592653589793, "door": [18, 0, 14], "binding": "principal:bot:alice", "kit": "standard" },
+      { "slotIndex": 6, "localId": "office-slot-06", "wing": "flow-west", "framePosition": [-20, 0, 18], "yawRadians": 0, "door": [-18, 0, 18], "binding": "principal:bot:claude-fable-review-kooker1", "kit": "standard" },
+      { "slotIndex": 7, "localId": "office-slot-07", "wing": "flow-west", "framePosition": [-16, 0, 18], "yawRadians": 0, "door": [-14, 0, 18], "binding": "principal:bot:claude-sonnet-executor-kooker1", "kit": "standard" },
+      { "slotIndex": 8, "localId": "office-slot-08", "wing": "flow-west", "framePosition": [-12, 0, 18], "yawRadians": 0, "door": [-10, 0, 18], "binding": "principal:bot:claude-citylife-kooker1", "kit": "standard" },
+      { "slotIndex": 9, "localId": "office-slot-09", "wing": "flow-west", "framePosition": [-16, 0, 14], "yawRadians": 3.141592653589793, "door": [-18, 0, 14], "binding": null, "kit": "dark-shell" },
+      { "slotIndex": 10, "localId": "office-slot-10", "wing": "flow-west", "framePosition": [-12, 0, 14], "yawRadians": 3.141592653589793, "door": [-14, 0, 14], "binding": null, "kit": "dark-shell" },
+      { "slotIndex": 11, "localId": "office-slot-11", "wing": "flow-west", "framePosition": [-8, 0, 14], "yawRadians": 3.141592653589793, "door": [-10, 0, 14], "binding": null, "kit": "dark-shell" }
+    ]
+  },
+  "integration": {
+    "owner": "opus",
+    "note": "Frames/reservations come from the withKookerHqCampus slice; bindings here mirror the day-one table in spec 153 §5 and are data, not authority. Dark shells render unfurnished. Yaw rotates local +Z about +Y."
+  }
+}
