@@ -48,16 +48,20 @@ test.describe("spec 149 — bus depot foliage clearing", () => {
       { timeout: 60000 },
     );
 
-    // Park the whole fleet at the depot (deep night, re-pinned) so the buses stand in the bays for
-    // the screenshot — the exact regression the operator saw ("half-buried the parked buses").
+    // Park the whole fleet at the depot so the buses stand in the bays for the screenshot — the
+    // exact regression the operator saw ("half-buried the parked buses"). Spec 150 PR2: the fleet
+    // is a DETERMINISTIC REPLAY of canonical sol time and ignores sim speed and pause, so parking
+    // it means driving the SOL clock into the overnight window before the 05:00 first departure via
+    // debugSetSolTimeOfDay — the sim debugSetClock no longer moves the fleet (that is the exact
+    // clock-contract change that broke the old setSpeed+debugSetClock wait).
     await page.evaluate(() => {
-      window.__colony.setSpeed(15);
-      window.__colony.debugSetClock(1, 0);
+      window.__colony.debugSetSolTimeOfDay(1, 0);
     });
     await page.waitForFunction(
       () => {
         const rt = window.__colony;
-        if (rt.sim.state.clock.hour >= 7) rt.debugSetClock(1, 0);
+        // Keep it overnight (service opens at 05:00) so nobody re-dispatches while it settles.
+        if (rt.getUiState().clock.hour >= 4) rt.debugSetSolTimeOfDay(1, 0);
         return rt.busFleet?.buses.every((b: any) => b.mode === "parked");
       },
       undefined,
@@ -150,11 +154,12 @@ test.describe("spec 149 — bus depot foliage clearing", () => {
     expect(probe.foundationTopY).toBeLessThan(probe.padTopY);
     expect(probe.padTopY).toBeGreaterThan(probe.foundationBottomY);
 
-    // Freeze the fleet in the bays (pause) and set a daytime clock for a legible shot — world view
-    // is not clock-clamped (spec 136), so lighting follows state.clock even while paused.
+    // Spec 150 PR2 — bus and sky now share ONE canonical sol clock, so the fleet cannot be both
+    // parked (overnight) and lit by day at the same instant. This frame proves the cut/fill pad
+    // grading and the tree-cleared apron, which are independent of the fleet, so shoot it legibly
+    // in daylight via the sol clock (debugSetClock no longer drives the sky either).
     await page.evaluate(() => {
-      window.__colony.setSpeed(0);
-      window.__colony.debugSetClock(13, 0);
+      window.__colony.debugSetSolTimeOfDay(12, 0);
     });
 
     // Enter aerial World View: only then is MapControls (makeDefault) the active `controls`, so a
@@ -197,7 +202,8 @@ test.describe("spec 149 — bus depot foliage clearing", () => {
     await page.screenshot({
       path: testInfo.outputPath("depot-cut-fill-day.png"),
     });
-    await page.evaluate(() => window.__colony.debugSetClock(1, 0));
+    // Overnight sol time: the same cut/fill pad at night, with the fleet parked in the bays.
+    await page.evaluate(() => window.__colony.debugSetSolTimeOfDay(1, 0));
     await page.waitForTimeout(800);
     await page.screenshot({
       path: testInfo.outputPath("depot-cut-fill-night.png"),
