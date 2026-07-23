@@ -62,9 +62,6 @@ export function PasswordRecoveryScreen({ onBackToLogin, onHaveToken }: Props) {
     setError(null);
     try {
       const r = await requestPasswordRecovery(id, newPassword);
-      // The candidate password has done its single job — drop the plaintext from state immediately.
-      setNewPassword("");
-      setConfirm("");
       setRequestRef(r.requestRef);
     } catch {
       // Oracle-safe: one neutral message for rate-limit, network, or any server error. We deliberately
@@ -73,6 +70,10 @@ export function PasswordRecoveryScreen({ onBackToLogin, onHaveToken }: Props) {
         "Couldn't submit your request right now. Please try again in a minute.",
       );
     } finally {
+      // The candidate password has done its single job — drop the plaintext from state whether the
+      // request succeeded or failed, so secrets never linger after a settled submission.
+      setNewPassword("");
+      setConfirm("");
       setBusy(false);
     }
   };

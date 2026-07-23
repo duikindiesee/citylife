@@ -140,6 +140,31 @@ test.describe("Signed-out password recovery UX (PWD.REC R1)", () => {
     expect(hit).toBe(false);
   });
 
+  test("password fields are cleared after a failed R1 request, identifier preserved for retry", async ({
+    page,
+  }) => {
+    await page.route(RECOVERY_ROUTE, async (route) => {
+      await route.fulfill({ status: 429, contentType: "application/json", body: "{}" });
+    });
+
+    await page.goto("/?login=1");
+    await page.getByRole("button", { name: "Forgot password?" }).click();
+
+    await page.getByPlaceholder("email or username").fill(IDENTIFIER);
+    await page.getByPlaceholder(/new password \(min/).fill(NEW_PASSWORD);
+    await page.getByPlaceholder("confirm new password").fill(NEW_PASSWORD);
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Request password reset" }).click();
+
+    // The generic retry message appears — oracle-safe (no status detail leaked).
+    await expect(page.getByText(/try again in a minute/i)).toBeVisible();
+
+    // Both plaintext password fields must be empty; identifier is preserved so the user can retry.
+    await expect(page.getByPlaceholder(/new password \(min/)).toHaveValue("");
+    await expect(page.getByPlaceholder("confirm new password")).toHaveValue("");
+    await expect(page.getByPlaceholder("email or username")).toHaveValue(IDENTIFIER);
+  });
+
   test("the signed-out recovery entry is distinct from token redemption and returns to sign in", async ({
     page,
   }) => {
