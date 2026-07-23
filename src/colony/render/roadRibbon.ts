@@ -3,6 +3,7 @@ import type { Terrain } from "../terrain";
 import type { JunctionZone } from "./roadJunctions";
 import { nearPoly } from "./geom2d";
 import { Biome } from "../terrain";
+import { crossSectionOffsets, STATION_STEP_CELLS } from "./roadClearance";
 
 // Spec 088 — SMOOTH ROAD RIBBONS. The roads are stored + driven as per-cell grid data (for traffic,
 // the bus and the rally), but rendering one axis-aligned square per cell makes every non-straight road
@@ -71,29 +72,58 @@ function roadSurfaceCellOk(
 /** Spec 130 — the grid cells the ribbon surface actually covers, mapped to the SURFACE
  *  height the mesh renders over each cell. Same smoothing + cross-section math as the mesh
  *  (chaikin, densify, half-width sweep, the ocean/unbuildable guard), pure — no geometry.
- *  Each cell's height is the MAX of the station heights whose segment bridges it: between
- *  stations the mesh is a flat quad, so a dip crossed by a segment is spanned at RIM height
- *  — grading to the cell's own local road height would leave the quad floating above the
- *  dip floor (the "walking under the road" the operator saw). The terrain leveling grades
- *  these cells to these heights, as legacy relevelTerrain consumed the build's cells
- *  (spec 095). */
+ *  The terrain leveling grades these cells to these heights, as legacy relevelTerrain
+ *  consumed the build's cells (spec 095).
+ *
+ *  Each stamp is the height the MESH ACTUALLY RENDERS at that position, and a cell keeps the
+ *  MINIMUM of its stamps. That is the whole road-protrusion fix. This used to stamp the MAX of
+ *  the neighbouring station heights (and the max of a segment's two ends), which OVER-ESTIMATES
+ *  the rendered surface: the mesh at a station renders at that station's own height, and across
+ *  a segment it INTERPOLATES between the two ends rather than sitting at the higher one. Grading
+ *  raised the ground to that over-estimate, so on any slope the terrain was lifted straight
+ *  THROUGH the road — measured at 1.1-1.2 m across every seed.
+ *
+ *  Bridging a dip is still handled, but by the mesh rather than by inflating the grade: a
+ *  segment's midpoint stamps the INTERPOLATED height, which is exactly where the flat quad
+ *  spans the dip, so the ground still rises to meet the underside instead of leaving the
+ *  "walking under the road" gap. Taking the min across a cell's stamps keeps the graded ground
+ *  at or below the mesh everywhere inside that cell, so it can never surface through it. */
 export function ribbonCoverage(
   ways: RoadWay[],
   terrain: Terrain,
   roadY: (x: number, y: number) => number,
 ): Map<string, number> {
   const cover = new Map<string, number>();
+  // TARGETED STENCIL COMPLETION. The terrain mesh reconstructs its surface BILINEARLY from the
+  // four integer cell corners around a point, so a rendered ribbon sample is held up by all four
+  // — not by the nearest cell alone. Stamping only Math.round() left one corner of the stencil
+  // ungraded under some triangles; that corner kept its natural (or skirt-ramped) height and
+  // dragged the interpolated ground down under the road, which is the whole residual gap.
+  // So stamp exactly the four corners the interpolation actually reads. This is deliberately NOT
+  // a one-cell dilation: no ring is added around each cell, only the stencil the sample already
+  // depends on, which is why coverage stays inside the spec-130 size bound.
   const stamp = (gx: number, gy: number, h: number) => {
-    if (!cellOkOn(terrain, gx, gy)) return;
-    const key = `${Math.round(gx)},${Math.round(gy)}`;
-    const cur = cover.get(key);
-    if (cur === undefined || h > cur) cover.set(key, h);
+    const x0 = Math.floor(gx),
+      y0 = Math.floor(gy);
+    for (const [cx, cy] of [
+      [x0, y0],
+      [x0 + 1, y0],
+      [x0, y0 + 1],
+      [x0 + 1, y0 + 1],
+    ] as const) {
+      if (!cellOkOn(terrain, cx, cy)) continue;
+      const key = `${cx},${cy}`;
+      if (cover.has(key)) continue;
+      // Each corner carries the shared drape AT ITS OWN position — not the height of whichever
+      // sample referenced it. That makes the value deterministic per corner, and makes the graded
+      // terrain and the ribbon two reconstructions of ONE function over the SAME corner samples.
+      cover.set(key, Math.max(0, roadY(cx, cy)));
+    }
   };
   for (const w of ways) {
     if (w.path.length < 2) continue;
     const pts = roadRibbonRenderPath(w, terrain);
     const half = w.width / 2;
-    const stationH = pts.map((p) => Math.max(0, roadY(p.x, p.y)));
     // per-STATION sweep with the mesh's own CENTERED perpendicular (prev..next), so bend
     // cells round into exactly the cells the build records
     for (let i = 0; i < pts.length; i++) {
@@ -105,13 +135,13 @@ export function ribbonCoverage(
       const len = Math.hypot(tx, ty) || 1;
       const px = -ty / len,
         py = tx / len;
-      const h = Math.max(
-        stationH[i]!,
-        stationH[Math.max(0, i - 1)]!,
-        stationH[Math.min(pts.length - 1, i + 1)]!,
-      );
+      // Each cross-section vertex renders at ITS OWN position's height (the mesh follows the
+      // cross-slope), so stamp per offset. Stamping the whole width at the station-centre
+      // height over-estimates the outer kerbs and lifts the ground through them.
       for (let k = -half; k <= half + 1e-6; k += 0.5) {
-        stamp(p.x + px * k, p.y + py * k, h);
+        const gx = p.x + px * k,
+          gy = p.y + py * k;
+        stamp(gx, gy, Math.max(0, roadY(gx, gy)));
       }
     }
     // per-SEGMENT midpoint sweep so no cell column between 1.5-cell stations escapes, each
@@ -120,7 +150,6 @@ export function ribbonCoverage(
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!,
         b = pts[i + 1]!;
-      const hSeg = Math.max(stationH[i]!, stationH[i + 1]!);
       const tx = b.x - a.x,
         ty = b.y - a.y;
       const len = Math.hypot(tx, ty) || 1;
@@ -129,11 +158,40 @@ export function ribbonCoverage(
       const sx = a.x + tx * 0.5,
         sy = a.y + ty * 0.5;
       for (let k = -half; k <= half + 1e-6; k += 0.5) {
+        // Midpoint of a flat quad = the INTERPOLATED height of the two cross-section vertices
+        // bounding it, which is where the quad actually spans a dip. The old max sat the grade
+        // at rim height across the whole segment, pushing ground through the road wherever the
+        // quad was lower than its rim.
+        const hSeg =
+          (Math.max(0, roadY(a.x + px * k, a.y + py * k)) +
+            Math.max(0, roadY(b.x + px * k, b.y + py * k))) /
+          2;
         stamp(sx + px * k, sy + py * k, hSeg);
       }
     }
   }
   return cover;
+}
+
+/** Reconstruct the shared drape exactly as the TERRAIN MESH does: bilinearly from the four
+ *  integer cell corners. The ribbon must use the SAME reconstruction as the ground it is graded
+ *  against, or the two surfaces disagree by the reconstruction error of a max-filtered field. */
+function drapeAt(
+  roadY: (x: number, y: number) => number,
+  gx: number,
+  gy: number,
+): number {
+  const x0 = Math.floor(gx),
+    y0 = Math.floor(gy);
+  const fx = gx - x0,
+    fy = gy - y0;
+  const h = (x: number, y: number) => Math.max(0, roadY(x, y));
+  return (
+    h(x0, y0) * (1 - fx) * (1 - fy) +
+    h(x0 + 1, y0) * fx * (1 - fy) +
+    h(x0, y0 + 1) * (1 - fx) * fy +
+    h(x0 + 1, y0 + 1) * fx * fy
+  );
 }
 
 function roadCrossSectionOk(
@@ -405,13 +463,16 @@ export function roadRibbonRenderPath(
   terrain: Terrain,
 ): { x: number; y: number }[] {
   if (way.path.length < 2) return way.path.map((p) => ({ ...p }));
-  const smooth = densify(chaikin(way.path, 2), 1.5);
+  // Stations at STATION_STEP_CELLS, not 1.5: the drape sampler only sees 0.6 cells around a vertex,
+  // so 1.5-cell stations left a band of ground between cross-sections that nothing sampled and a
+  // crest there pushed through the road. See roadClearance.ts.
+  const smooth = densify(chaikin(way.path, 2), STATION_STEP_CELLS);
   for (let i = 0; i < smooth.length - 1; i++) {
     const a = smooth[i]!,
       b = smooth[i + 1]!;
     for (const f of [0, 0.5, 1] as const) {
       if (!cellOkOn(terrain, a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f))
-        return densify(way.path, 1.5);
+        return densify(way.path, STATION_STEP_CELLS);
     }
   }
   return smooth;
@@ -427,7 +488,12 @@ function ribbon(
   cells: Set<string>,
   lift = 0,
 ): void {
-  const edge = (i: number, sign: number): number[] => {
+  // One vertex per offset ACROSS the complete carriageway, not just the two kerbs. A quad is a flat
+  // interpolation of its corners, so with kerb-only vertices the middle of a ~3-cell carriageway was
+  // never sampled and any crown or diagonal ridge under the road protruded through it. See
+  // roadClearance.ts for the invariant these offsets satisfy.
+  const offsets = crossSectionOffsets(half);
+  const station = (i: number): number[][] => {
     const p = pts[i]!;
     const prev = pts[Math.max(0, i - 1)]!,
       next = pts[Math.min(pts.length - 1, i + 1)]!;
@@ -436,21 +502,21 @@ function ribbon(
     const len = Math.hypot(tx, ty) || 1;
     const px = -ty / len,
       py = tx / len; // unit perpendicular
-    // record every grid cell across the cross-section so surfaceY knows where the ribbon really is.
-    // Spec 115 guard: only record cells that the ribbon is actually allowed to render on.
-    for (let k = -half; k <= half + 1e-6; k += 0.5) {
+    const verts: number[][] = [];
+    for (const k of offsets) {
       const gx = p.x + px * k,
         gy = p.y + py * k;
+      // record every grid cell across the cross-section so surfaceY knows where the ribbon really is.
+      // Spec 115 guard: only record cells that the ribbon is actually allowed to render on.
       if (roadSurfaceCellOk(opts, gx, gy))
         cells.add(`${Math.round(gx)},${Math.round(gy)}`);
+      // Height from this VERTEX's own position (continuous, terrain-following). Two ribbons overlapping at a
+      // junction therefore sit at the same height there — coplanar, no lips/seams — and the cross-section
+      // gently follows the terrain's cross-slope instead of forcing a level plank that floats on a hillside.
+      const h = drapeAt(opts.roadY, gx, gy) + ROAD_RIBBON_LIFT + lift;
+      verts.push([opts.wx(gx), h, opts.wz(gy)]);
     }
-    const gx = p.x + px * half * sign,
-      gy = p.y + py * half * sign;
-    // Height from this VERTEX's own position (continuous, terrain-following). Two ribbons overlapping at a
-    // junction therefore sit at the same height there — coplanar, no lips/seams — and the cross-section
-    // gently follows the terrain's cross-slope instead of forcing a level plank that floats on a hillside.
-    const h = Math.max(0, opts.roadY(gx, gy)) + ROAD_RIBBON_LIFT + lift;
-    return [opts.wx(gx), h, opts.wz(gy)];
+    return verts;
   };
   const segmentOk = (i: number): boolean => {
     for (const f of [0, 0.5, 1] as const) {
@@ -466,12 +532,14 @@ function ribbon(
     out.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!);
   for (let i = 0; i < pts.length - 1; i++) {
     if (!segmentOk(i)) continue;
-    const aL = edge(i, -1),
-      aR = edge(i, 1),
-      bL = edge(i + 1, -1),
-      bR = edge(i + 1, 1);
-    tri(aL, aR, bL);
-    tri(bL, aR, bR);
+    const a = station(i),
+      b = station(i + 1);
+    // Same winding as the old single-quad strip (L,R,L / L,R,R), now repeated per cross-section
+    // span so surface normals keep pointing the way they did.
+    for (let j = 0; j < offsets.length - 1; j++) {
+      tri(a[j]!, a[j + 1]!, b[j]!);
+      tri(b[j]!, a[j + 1]!, b[j + 1]!);
+    }
   }
 }
 
