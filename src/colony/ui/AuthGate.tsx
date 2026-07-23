@@ -4,9 +4,14 @@ import { LoginScreen } from "./LoginScreen";
 import { CinematicBackdrop } from "./CinematicBackdrop";
 import { VisitorSignupScreen } from "./VisitorSignupScreen";
 import { PasswordActivateScreen } from "./PasswordActivateScreen";
+import { PasswordRecoveryScreen } from "./PasswordRecoveryScreen";
 import { consumePasswordChangePending } from "../pendingPasswordNotice";
 
-type View = "login" | "visitor-signup" | "password-activate";
+type View =
+  | "login"
+  | "visitor-signup"
+  | "password-activate"
+  | "password-recovery";
 
 const PASSWORD_PENDING_NOTICE =
   "Your password change is waiting on activation — enter the one-time token your operator sent you, then sign in with your new password.";
@@ -39,9 +44,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // After 10s untouched, the login screen drops into a cinematic fly-around backdrop (LoginScreen owns
   // the idle timer; we own the backdrop). It's a screensaver behind the card — login is still required.
   const [idle, setIdle] = useState(false);
-  // login (default) vs the signup screen for brand-new visitors vs the password-activation screen.
-  // Reached only when not authed.
+  // login (default) vs the signup screen for brand-new visitors vs the password-activation screen vs
+  // the signed-out password-recovery screen. Reached only when not authed.
   const [view, setView] = useState<View>("login");
+  // In-memory only (never persisted): the identifier to prefill on the activation screen when the user
+  // arrives there straight from a recovery request, so the token they redeem resolves the same account.
+  const [activateEmail, setActivateEmail] = useState<string | undefined>(
+    undefined,
+  );
   // One-shot: a just-requested password change signed the user out and reloaded us here. Read-and-clear
   // the flag on first render so the login gate can explain why they're signed out (non-secret hint).
   const [pendingNotice] = useState<string | null>(() =>
@@ -99,7 +109,27 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (view === "password-activate") {
-    return <PasswordActivateScreen onBackToLogin={() => setView("login")} />;
+    return (
+      <PasswordActivateScreen
+        initialEmail={activateEmail}
+        onBackToLogin={() => setView("login")}
+      />
+    );
+  }
+
+  // Signed-out recovery for an owner who lost their password (PWD.REC R1). On success it shows a
+  // one-time reference to read to the operator, then hands off to the SAME activation screen above —
+  // no parallel activation mechanism. Kept entirely separate from the signed-in Change password flow.
+  if (view === "password-recovery") {
+    return (
+      <PasswordRecoveryScreen
+        onBackToLogin={() => setView("login")}
+        onHaveToken={(identifier) => {
+          setActivateEmail(identifier || undefined);
+          setView("password-activate");
+        }}
+      />
+    );
   }
 
   // The default (login) view: the form, with the idle→cinematic backdrop behind it. A not-yet-active
@@ -111,7 +141,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
         auth={auth}
         onAuthed={() => setAuthed(true)}
         onVisitorSignup={() => setView("visitor-signup")}
-        onPasswordActivate={() => setView("password-activate")}
+        onPasswordActivate={() => {
+          setActivateEmail(undefined); // token-only entry: no recovery identifier to prefill
+          setView("password-activate");
+        }}
+        onForgotPassword={() => setView("password-recovery")}
         initialNotice={pendingNotice ?? undefined}
         onIdle={() => setIdle(true)}
         onActive={() => setIdle(false)}
