@@ -70,8 +70,8 @@ export function PasswordActivateScreen({ initialEmail, onBackToLogin }: Props) {
           <div className="login-sub">Password change complete</div>
           <div className="visitor-pending-badge">Activated</div>
           <p className="login-blurb">
-            Your new password is now active. Head back to sign in and log in with
-            it.
+            Your new password is now active. Head back to sign in and log in
+            with it.
           </p>
           <button className="login-btn" type="button" onClick={onBackToLogin}>
             Back to sign in
@@ -89,9 +89,9 @@ export function PasswordActivateScreen({ initialEmail, onBackToLogin }: Props) {
         </div>
         <div className="login-sub">Finish your password change</div>
         <p className="login-blurb">
-          Your password change is waiting on activation. Enter your email and the
-          one-time activation token your operator sent you to switch to your new
-          password.
+          Your password change is waiting on activation. Enter your email and
+          the one-time activation token your operator sent you to switch to your
+          new password.
         </p>
         <input
           className="login-input"

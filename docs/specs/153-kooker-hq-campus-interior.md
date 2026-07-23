@@ -170,11 +170,11 @@ from the registry — geometry stays neutral). Task cards are instanced
 
 **Presence behaviour (projection only, per the read-only doctrine):**
 WORKING → presence at desk anchor, totem pulsing, active card raised.
-IDLE_AT_DESK → totem steady dim. IDLE_SOCIAL → avatar in the Arcade, desk
+IDLE*AT_DESK → totem steady dim. IDLE_SOCIAL → avatar in the Arcade, desk
 honestly empty. COMMUTE → walks the wing, address flips atomically per portal.
 OFFLINE → totem dark, board greyscale but still showing real queued tasks with
 an "offline" chip. AWAITING_HUMAN → totem amber, card in a gate slot. Empty
-worklist → dim "no queued work" strip. The one delight beat: on an _observed_
+worklist → dim "no queued work" strip. The one delight beat: on an \_observed*
 claim event, the office door light blinks once (badge-tap ritual).
 
 **Worklist data quarantine:** the 2026-07-12 big-board presence contract file

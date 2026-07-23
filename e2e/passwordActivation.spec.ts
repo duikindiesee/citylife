@@ -57,18 +57,14 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
     });
 
     await page.goto("/?login=1");
-    await page.getByRole("button", { name: "Enter your activation token" }).click();
-
-    await expect(
-      page.getByText("Finish your password change"),
-    ).toBeVisible();
-    await page.getByPlaceholder("email address").fill("player@test.com");
     await page
-      .locator("input.visitor-code-input")
-      .fill(TOKEN); // formatCode regroups it as XXXX-XXXX-…
-    await page
-      .getByRole("button", { name: "Activate new password" })
+      .getByRole("button", { name: "Enter your activation token" })
       .click();
+
+    await expect(page.getByText("Finish your password change")).toBeVisible();
+    await page.getByPlaceholder("email address").fill("player@test.com");
+    await page.locator("input.visitor-code-input").fill(TOKEN); // formatCode regroups it as XXXX-XXXX-…
+    await page.getByRole("button", { name: "Activate new password" }).click();
 
     await expect(page.getByText("Password change complete")).toBeVisible();
     await expect(page.getByText("Activated", { exact: true })).toBeVisible();
@@ -92,15 +88,15 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
     });
 
     await page.goto("/?login=1");
-    await page.getByRole("button", { name: "Enter your activation token" }).click();
+    await page
+      .getByRole("button", { name: "Enter your activation token" })
+      .click();
     await page.getByPlaceholder("email address").fill("player@test.com");
     await page.locator("input.visitor-code-input").fill(TOKEN);
     await page.getByRole("button", { name: "Activate new password" }).click();
 
     await expect(page.getByText(/invalid or expired code/i)).toBeVisible();
-    await expect(
-      page.getByText("Finish your password change"),
-    ).toBeVisible();
+    await expect(page.getByText("Finish your password change")).toBeVisible();
   });
 
   test("a signed-in user requests a change and is dropped to a signed-out pending state", async ({
@@ -111,7 +107,11 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
     test.setTimeout(150_000);
     await seedSession(page, ["CITYLIFE_PLAYER"]);
     await page.route(CHANGE_ROUTE, async (route) => {
-      await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "{}",
+      });
     });
 
     await page.goto("/");
@@ -121,8 +121,12 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
     await page.getByRole("button", { name: "Change password" }).click();
     await expect(page.getByTestId("password-change-modal")).toBeVisible();
     await page.getByPlaceholder("current password").fill("old-pass-1234");
-    await page.getByPlaceholder(/new password \(min/).fill("brand-new-pass-5678");
-    await page.getByPlaceholder("confirm new password").fill("brand-new-pass-5678");
+    await page
+      .getByPlaceholder(/new password \(min/)
+      .fill("brand-new-pass-5678");
+    await page
+      .getByPlaceholder("confirm new password")
+      .fill("brand-new-pass-5678");
     await page.getByRole("button", { name: "Request change" }).click();
 
     // The session is cleared and the page reloads to the login gate with the one-shot pending notice.
@@ -143,7 +147,11 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
     await seedSession(page, ["CITYLIFE_PLAYER"]);
     await page.route(CHANGE_ROUTE, async (route) => {
       hit = true;
-      await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "{}",
+      });
     });
 
     await page.goto("/");
@@ -152,8 +160,12 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
 
     await page.getByRole("button", { name: "Change password" }).click();
     await page.getByPlaceholder("current password").fill("old-pass-1234");
-    await page.getByPlaceholder(/new password \(min/).fill("brand-new-pass-5678");
-    await page.getByPlaceholder("confirm new password").fill("does-not-match-9999");
+    await page
+      .getByPlaceholder(/new password \(min/)
+      .fill("brand-new-pass-5678");
+    await page
+      .getByPlaceholder("confirm new password")
+      .fill("does-not-match-9999");
     await page.getByRole("button", { name: "Request change" }).click();
 
     await expect(page.getByText(/don't match/i)).toBeVisible();

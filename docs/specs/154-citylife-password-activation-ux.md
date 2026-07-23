@@ -18,14 +18,14 @@ A signed-in player must be able to change their own password safely. The backend
 this a two-step, activation-gated change rather than an instant swap, precisely so that a stolen
 30-minute access token can never become an account takeover:
 
-- **E1** re-proves the current password, disables the old hash, stores the new one as *pending*, moves
+- **E1** re-proves the current password, disables the old hash, stores the new one as _pending_, moves
   the account to `PENDING_ACTIVATION`, and revokes every session. **Neither the old nor the new
   password authenticates while pending.**
 - **E3** redeems a single-use, operator-issued activation token (out of band) that promotes the
   pending password to live and returns the account to `ACTIVE`.
 
 The UX must expose exactly this shape without inventing a client-side session, and without conflating
-it with the Spec 077 *visitor unlock code* (a different endpoint, a different account state).
+it with the Spec 077 _visitor unlock code_ (a different endpoint, a different account state).
 
 ## 2. Mechanic
 
