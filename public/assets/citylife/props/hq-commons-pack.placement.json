@@ -1,0 +1,65 @@
+{
+  "schema": "citylife-prop-placement/v1",
+  "asset": {
+    "id": "hq-commons-pack",
+    "url": "/assets/citylife/props/hq-commons-pack.glb",
+    "generator": "scripts/generate_hq_commons_pack.mjs",
+    "provenance": "public/assets/citylife/props/hq-commons-pack.PROVENANCE.md",
+    "units": "meters",
+    "upAxis": "Y",
+    "forwardAxis": "+Z",
+    "publicSafe": true
+  },
+  "rooms": {
+    "commons": {
+      "gridWidthCells": 16,
+      "gridDepthCells": 12,
+      "origin": "room-local corner (0,0,0); door centred at (8,0,0) on the z=0 wall; Big Board zone on the z=12 wall, x in [4,12]"
+    },
+    "arcade": {
+      "gridWidthCells": 10,
+      "gridDepthCells": 8,
+      "origin": "room-local corner (0,0,0); door centred at (5,0,0) on the z=0 wall"
+    }
+  },
+  "frame": {
+    "reference": "docs/specs/153-kooker-hq-campus-interior.md",
+    "cellSizeMeters": 1,
+    "coordinateSpace": "room-local meters; every placement names its room"
+  },
+  "nodes": {
+    "Commons_Watercooler": { "dimensions": { "w": 0.5, "h": 1.4, "d": 0.5 }, "pivot": "floor-center" },
+    "Commons_Foosball": { "dimensions": { "w": 1.6, "h": 0.9, "d": 0.8 }, "pivot": "floor-center" },
+    "Commons_Arcade": { "dimensions": { "w": 0.7, "h": 1.8, "d": 0.8 }, "pivot": "floor-center" },
+    "Commons_Couch": { "dimensions": { "w": 2.2, "h": 0.85, "d": 0.95 }, "pivot": "floor-center" },
+    "Commons_BeanBag": { "dimensions": { "w": 0.9, "h": 0.55, "d": 0.9 }, "pivot": "floor-center" },
+    "Commons_FleetBoard": { "dimensions": { "w": 3.6, "h": 2.0, "d": 0.14 }, "pivot": "floor-center-back" },
+    "Commons_SnackShelf": { "dimensions": { "w": 1.2, "h": 1.6, "d": 0.4 }, "pivot": "floor-center-back" },
+    "Commons_Rug": { "dimensions": { "w": 3.0, "h": 0.025, "d": 2.0 }, "pivot": "floor-center" }
+  },
+  "crossPackNodes": {
+    "Office_LiaisonDesk": "hq-bot-office-pack",
+    "Office_RoutingBoard": "hq-bot-office-pack",
+    "Office_LibrarySign": "hq-bot-office-pack"
+  },
+  "placements": [
+    { "room": "commons", "node": "Commons_Watercooler", "position": [3, 0, 2.5], "yawRadians": 0, "note": "hub watercooler on the arrival path" },
+    { "room": "commons", "node": "Commons_SnackShelf", "position": [0, 0, 6], "yawRadians": 1.5707963267948966, "note": "kitchenette against the x=0 wall" },
+    { "room": "commons", "node": "Commons_Rug", "position": [8, 0, 7], "yawRadians": 0, "note": "soft centre under the Big Board approach" },
+    { "room": "commons", "node": "Office_LiaisonDesk", "position": [13.5, 0, 2.5], "yawRadians": -1.5707963267948966, "note": "Suzi liaison desk (no office, spec 153 §5)" },
+    { "room": "commons", "node": "Office_RoutingBoard", "position": [16, 0, 3], "yawRadians": -1.5707963267948966, "note": "routing board behind the liaison desk, x=16 wall" },
+    { "room": "commons", "node": "Office_LibrarySign", "position": [16, 2.2, 4.5], "yawRadians": -1.5707963267948966, "note": "LIBRARY -> blade above the liaison corner" },
+    { "room": "arcade", "node": "Commons_FleetBoard", "position": [5, 0, 8], "yawRadians": 3.141592653589793, "note": "fleet idle-capacity board, back-flush z=8 wall" },
+    { "room": "arcade", "node": "Commons_Couch", "position": [5, 0, 5.8], "yawRadians": 0, "note": "faces the FleetBoard" },
+    { "room": "arcade", "node": "Commons_Rug", "position": [5, 0, 5.6], "yawRadians": 0 },
+    { "room": "arcade", "node": "Commons_Foosball", "position": [2.5, 0, 3.5], "yawRadians": 0 },
+    { "room": "arcade", "node": "Commons_Arcade", "position": [0.45, 0, 6], "yawRadians": 1.5707963267948966, "note": "cabinet against the x=0 wall; screen is decor, never telemetry" },
+    { "room": "arcade", "node": "Commons_BeanBag", "position": [7, 0, 6.4], "yawRadians": 0 },
+    { "room": "arcade", "node": "Commons_BeanBag", "position": [8.2, 0, 5.4], "yawRadians": 0 },
+    { "room": "arcade", "node": "Commons_Watercooler", "position": [9.5, 0, 1], "yawRadians": 0, "note": "second cooler by the arcade door" }
+  ],
+  "integration": {
+    "owner": "opus",
+    "note": "The commons Big Board itself is a live display in the WorklistProjection slice, not a pack prop. Liaison nodes load from hq-bot-office-pack. Yaw rotates local +Z about +Y."
+  }
+}
