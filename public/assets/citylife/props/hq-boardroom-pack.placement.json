@@ -1,0 +1,55 @@
+{
+  "schema": "citylife-prop-placement/v1",
+  "asset": {
+    "id": "hq-boardroom-pack",
+    "url": "/assets/citylife/props/hq-boardroom-pack.glb",
+    "generator": "scripts/generate_hq_boardroom_pack.mjs",
+    "provenance": "public/assets/citylife/props/hq-boardroom-pack.PROVENANCE.md",
+    "units": "meters",
+    "upAxis": "Y",
+    "forwardAxis": "+Z",
+    "publicSafe": true
+  },
+  "frame": {
+    "reference": "docs/specs/153-kooker-hq-campus-interior.md",
+    "roomLocalId": "boardroom",
+    "gridWidthCells": 10,
+    "gridDepthCells": 8,
+    "cellSizeMeters": 1,
+    "origin": "room-local corner (0,0,0); door centred at (5,0,0) on the z=0 wall; room opens toward +Z",
+    "coordinateSpace": "boardroom-room-local meters"
+  },
+  "nodes": {
+    "Board_Table": { "dimensions": { "w": 3.6, "h": 0.78, "d": 1.4 }, "pivot": "floor-center" },
+    "Board_Chair": { "dimensions": { "w": 0.55, "h": 1.0, "d": 0.55 }, "pivot": "floor-center" },
+    "Board_EpicWall": { "dimensions": { "w": 6.0, "h": 2.4, "d": 0.14 }, "pivot": "floor-center-back" },
+    "Board_GatePuck": { "dimensions": { "w": 0.18, "h": 0.06, "d": 0.18 }, "pivot": "floor-center" },
+    "Board_MergeTicker": { "dimensions": { "w": 2.4, "h": 0.3, "d": 0.12 }, "pivot": "floor-center-back" },
+    "Board_HoloEpic": { "dimensions": { "w": 0.6, "h": 1.1, "d": 0.6 }, "pivot": "floor-center" },
+    "Board_Sideboard": { "dimensions": { "w": 1.8, "h": 0.9, "d": 0.45 }, "pivot": "floor-center-back" }
+  },
+  "placements": [
+    { "node": "Board_Table", "position": [5, 0, 4], "yawRadians": 0, "note": "Gate Room table on the room axis" },
+    { "node": "Board_Chair", "position": [3.2, 0, 2.85], "yawRadians": 0 },
+    { "node": "Board_Chair", "position": [4.1, 0, 2.85], "yawRadians": 0 },
+    { "node": "Board_Chair", "position": [5, 0, 2.85], "yawRadians": 0 },
+    { "node": "Board_Chair", "position": [5.9, 0, 2.85], "yawRadians": 0 },
+    { "node": "Board_Chair", "position": [6.8, 0, 2.85], "yawRadians": 0 },
+    { "node": "Board_Chair", "position": [3.2, 0, 5.15], "yawRadians": 3.141592653589793 },
+    { "node": "Board_Chair", "position": [4.1, 0, 5.15], "yawRadians": 3.141592653589793 },
+    { "node": "Board_Chair", "position": [5, 0, 5.15], "yawRadians": 3.141592653589793 },
+    { "node": "Board_Chair", "position": [5.9, 0, 5.15], "yawRadians": 3.141592653589793 },
+    { "node": "Board_Chair", "position": [6.8, 0, 5.15], "yawRadians": 3.141592653589793 },
+    { "node": "Board_EpicWall", "position": [5, 0, 8], "yawRadians": 3.141592653589793, "note": "back-flush on the z=8 wall, swimlanes facing the glass front" },
+    { "node": "Board_GatePuck", "position": [4.2, 0.78, 3.6], "yawRadians": 0, "note": "on the table top; amber = awaiting operator" },
+    { "node": "Board_GatePuck", "position": [5.8, 0.78, 3.6], "yawRadians": 0 },
+    { "node": "Board_GatePuck", "position": [5, 0.78, 4.5], "yawRadians": 0 },
+    { "node": "Board_MergeTicker", "position": [5, 2.6, 0.02], "yawRadians": 0, "note": "over the door inside face; scrolls only observed merge events" },
+    { "node": "Board_HoloEpic", "position": [5, 0.78, 4], "yawRadians": 0, "note": "table centrepiece; spins only for an operator-selected epic" },
+    { "node": "Board_Sideboard", "position": [10, 0, 6], "yawRadians": -1.5707963267948966, "note": "back-flush on the x=10 wall" }
+  ],
+  "integration": {
+    "owner": "opus",
+    "note": "Ten chairs by instancing one node. Seat-occupancy, puck glow, ticker and holo states are the WorklistProjection slice; props ship inert. Yaw rotates local +Z about +Y."
+  }
+}
