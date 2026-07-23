@@ -183,13 +183,14 @@ test.describe("Signed-out password recovery UX (PWD.REC R1)", () => {
     page,
   }) => {
     await page.goto("/?login=1");
-    // Both signed-out actions exist and are separate paths.
+    // Recovery is the only password-related entry on an ordinary login screen. Token redemption is
+    // contextual after a recovery request or signed-in change, not permanent login clutter.
     await expect(
       page.getByRole("button", { name: "Forgot password?" }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Enter your activation token" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
 
     await page.getByRole("button", { name: "Forgot password?" }).click();
     await expect(page.getByText("Reset your password")).toBeVisible();

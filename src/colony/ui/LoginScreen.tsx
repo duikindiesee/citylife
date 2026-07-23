@@ -10,12 +10,8 @@ interface Props {
   auth: AuthClient;
   onAuthed: () => void;
   onVisitorSignup: () => void;
-  /** Opens the password-change activation screen (redeem the one-time token, PWD.ACT E3). */
-  onPasswordActivate: () => void;
   /** Opens the signed-out password-recovery screen for an owner who lost their password (PWD.REC R1). */
   onForgotPassword: () => void;
-  /** A one-shot notice to show on mount — e.g. after a password change signed the user out. */
-  initialNotice?: string;
   /** Fired after IDLE_MS of no interaction — the operator wants the cinematic fly-around to take over. */
   onIdle?: () => void;
   /** Fired the moment the operator stirs (mouse/key/touch) — return from the cinematic to the form. */
@@ -35,9 +31,7 @@ export function LoginScreen({
   auth,
   onAuthed,
   onVisitorSignup,
-  onPasswordActivate,
   onForgotPassword,
-  initialNotice,
   onIdle,
   onActive,
   isCinematic,
@@ -51,7 +45,7 @@ export function LoginScreen({
   // password-verified) credentials in state so the post-redeem retry login needs no re-entry.
   const [phase, setPhase] = useState<"credentials" | "code">("credentials");
   const [code, setCode] = useState("");
-  const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
+  const [notice, setNotice] = useState<string | null>(null);
   // Set when redeem succeeded but the retry login failed transiently — offer a plain re-login that
   // does NOT re-redeem the (now single-use-consumed) code.
   const [retryable, setRetryable] = useState(false);
@@ -312,16 +306,6 @@ export function LoginScreen({
             onClick={onVisitorSignup}
           >
             Sign up as a visitor
-          </button>
-        </div>
-        <div className="login-hint visitor-back">
-          Changing your password?{" "}
-          <button
-            type="button"
-            className="login-link"
-            onClick={onPasswordActivate}
-          >
-            Enter your activation token
           </button>
         </div>
         <div className="login-hint">

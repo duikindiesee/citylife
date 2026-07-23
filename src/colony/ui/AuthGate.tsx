@@ -13,9 +13,6 @@ type View =
   | "password-activate"
   | "password-recovery";
 
-const PASSWORD_PENDING_NOTICE =
-  "Your password change is waiting on activation — enter the one-time token your operator sent you, then sign in with your new password.";
-
 /** Gates its children behind operator login. Renders the LoginScreen until authenticated.
  *  On mount, tries a dev auto-login (async — reads VITE_OPERATOR_EMAIL + VITE_OPERATOR_PASSWORD
  *  from the gitignored .env.local and hits the kooker auth service). Shows nothing during that
@@ -44,20 +41,22 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // After 10s untouched, the login screen drops into a cinematic fly-around backdrop (LoginScreen owns
   // the idle timer; we own the backdrop). It's a screensaver behind the card — login is still required.
   const [idle, setIdle] = useState(false);
+  // One-shot: a signed-in password-change request revoked the session and reloaded here. Consume the
+  // non-secret marker once and route that user directly to activation. Ordinary visitors should not
+  // see a permanent activation-token prompt on the login screen.
+  const [passwordChangePending] = useState(() =>
+    consumePasswordChangePending(),
+  );
   // login (default) vs the signup screen for brand-new visitors vs the password-activation screen vs
   // the signed-out password-recovery screen. Reached only when not authed.
-  const [view, setView] = useState<View>("login");
+  const [view, setView] = useState<View>(() =>
+    passwordChangePending ? "password-activate" : "login",
+  );
   // In-memory only (never persisted): the identifier to prefill on the activation screen when the user
   // arrives there straight from a recovery request, so the token they redeem resolves the same account.
   const [activateEmail, setActivateEmail] = useState<string | undefined>(
     undefined,
   );
-  // One-shot: a just-requested password change signed the user out and reloaded us here. Read-and-clear
-  // the flag on first render so the login gate can explain why they're signed out (non-secret hint).
-  const [pendingNotice] = useState<string | null>(() =>
-    consumePasswordChangePending() ? PASSWORD_PENDING_NOTICE : null,
-  );
-
   useEffect(() => {
     if (forceLogin) {
       setChecking(false);
@@ -141,12 +140,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         auth={auth}
         onAuthed={() => setAuthed(true)}
         onVisitorSignup={() => setView("visitor-signup")}
-        onPasswordActivate={() => {
-          setActivateEmail(undefined); // token-only entry: no recovery identifier to prefill
-          setView("password-activate");
-        }}
         onForgotPassword={() => setView("password-recovery")}
-        initialNotice={pendingNotice ?? undefined}
         onIdle={() => setIdle(true)}
         onActive={() => setIdle(false)}
         isCinematic={idle}
