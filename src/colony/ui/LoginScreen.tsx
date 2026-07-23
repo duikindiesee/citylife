@@ -12,6 +12,8 @@ interface Props {
   onVisitorSignup: () => void;
   /** Opens the password-change activation screen (redeem the one-time token, PWD.ACT E3). */
   onPasswordActivate: () => void;
+  /** Opens the signed-out password-recovery screen for an owner who lost their password (PWD.REC R1). */
+  onForgotPassword: () => void;
   /** A one-shot notice to show on mount — e.g. after a password change signed the user out. */
   initialNotice?: string;
   /** Fired after IDLE_MS of no interaction — the operator wants the cinematic fly-around to take over. */
@@ -34,6 +36,7 @@ export function LoginScreen({
   onAuthed,
   onVisitorSignup,
   onPasswordActivate,
+  onForgotPassword,
   initialNotice,
   onIdle,
   onActive,
@@ -291,6 +294,16 @@ export function LoginScreen({
         <button className="login-btn" type="submit" disabled={busy}>
           {busy ? "Authenticating…" : "Enter the Kookerverse"}
         </button>
+        <div className="login-hint visitor-back">
+          Can't sign in?{" "}
+          <button
+            type="button"
+            className="login-link"
+            onClick={onForgotPassword}
+          >
+            Forgot password?
+          </button>
+        </div>
         <div className="login-hint visitor-links">
           New to CityLife?{" "}
           <button

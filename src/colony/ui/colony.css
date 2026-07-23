@@ -599,6 +599,38 @@ body,
   text-align: center;
   margin: 4px 0;
 }
+/* PWD.REC — the one-time recovery reference the owner reads to their operator. Prominent, monospaced,
+   and selectable so it can be read/copied accurately; shown exactly once and never persisted. */
+.recovery-ref {
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px dashed var(--accent);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 12px;
+  margin: 6px 0;
+  font-family: "Courier New", monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-align: center;
+  user-select: all;
+}
+/* PWD.REC — the consent acknowledgement on the recovery form. */
+.login-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 2px 0;
+  cursor: pointer;
+}
+.login-consent input {
+  margin-top: 2px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
 /* Border Control */
 .border-modal {
   width: 470px;
