@@ -54,8 +54,9 @@ test.describe("spec 149 — persistent live bus network minimap", () => {
         );
     const before = await markerPositions();
     await page.evaluate(() => {
-      window.__colony.debugSetClock(8, 0);
-      window.__colony.setSpeed(5);
+      // debugSetSolTimeOfDay shifts solNowMs() (canonical sol clock read by the bus fleet).
+      // debugSetClock only moves the legacy sim clock which the fleet ignores since spec 150 PR2.
+      window.__colony.debugSetSolTimeOfDay(8, 0);
     });
     await expect.poll(markerPositions, { timeout: 90000 }).not.toBe(before);
     await page.getByRole("button", { name: /World View/i }).click();
@@ -64,7 +65,7 @@ test.describe("spec 149 — persistent live bus network minimap", () => {
     await page.screenshot({
       path: testInfo.outputPath("bus-network-minimap-day.png"),
     });
-    await page.evaluate(() => window.__colony.debugSetClock(23, 5));
+    await page.evaluate(() => window.__colony.debugSetSolTimeOfDay(23, 5));
     await page.waitForTimeout(1000);
     await page.screenshot({
       path: testInfo.outputPath("bus-network-minimap-night.png"),
