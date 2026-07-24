@@ -31,7 +31,11 @@ test.use({
 });
 
 test.afterEach(async ({ page }, testInfo) => {
-  await attachFailureEvidence(page, testInfo, testInfo.title.replace(/\s+/g, "-"));
+  await attachFailureEvidence(
+    page,
+    testInfo,
+    testInfo.title.replace(/\s+/g, "-"),
+  );
 });
 
 test("real touch pass: mobile touch reaches and toggles City Builder", async ({
@@ -52,7 +56,11 @@ test("real touch pass: mobile touch reaches and toggles City Builder", async ({
   expect(isTouch).toBe(true);
 
   const cityBuilderBtn = page.locator("button", { hasText: "City Builder" });
-  if (await cityBuilderBtn.isVisible({ timeout: ASSERT_TIMEOUT }).catch(() => false)) {
+  if (
+    await cityBuilderBtn
+      .isVisible({ timeout: ASSERT_TIMEOUT })
+      .catch(() => false)
+  ) {
     await touchTap(page, cityBuilderBtn);
     await expect(page.locator("aside.hud")).toBeHidden({
       timeout: ASSERT_TIMEOUT,
@@ -66,27 +74,26 @@ test("real touch pass: mobile touch reaches and toggles City Builder", async ({
   }
 });
 
-test(
-  "deliberate failure terminates within the bound and leaves actionable evidence",
-  async ({ page }) => {
-    test.setTimeout(90_000);
+test("deliberate failure terminates within the bound and leaves actionable evidence", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
 
-    // Expected to fail — that IS the proof. `test.fail()` keeps this a green regression gate: if
-    // this selector were ever satisfied (or the failure stopped surfacing) the run would flip to
-    // an unexpected pass and CI would correctly go red.
-    test.fail(
-      true,
-      "deliberately targets a selector that never exists, to prove bounded/actionable failure",
-    );
+  // Expected to fail — that IS the proof. `test.fail()` keeps this a green regression gate: if
+  // this selector were ever satisfied (or the failure stopped surfacing) the run would flip to
+  // an unexpected pass and CI would correctly go red.
+  test.fail(
+    true,
+    "deliberately targets a selector that never exists, to prove bounded/actionable failure",
+  );
 
-    await page.goto("/?skipauth=1", { timeout: NAV_TIMEOUT });
-    await page.waitForSelector("canvas", { timeout: NAV_TIMEOUT });
+  await page.goto("/?skipauth=1", { timeout: NAV_TIMEOUT });
+  await page.waitForSelector("canvas", { timeout: NAV_TIMEOUT });
 
-    // This selector never exists. No retry, no catch-and-continue: the short explicit bound below
-    // must make this fail well inside the 90s whole-test timeout, proving a genuine hang can never
-    // consume the full budget, let alone hang the harness process itself.
-    await expect(
-      page.locator('[data-testid="mobile-harness-canary-never-exists"]'),
-    ).toBeVisible({ timeout: 5_000 });
-  },
-);
+  // This selector never exists. No retry, no catch-and-continue: the short explicit bound below
+  // must make this fail well inside the 90s whole-test timeout, proving a genuine hang can never
+  // consume the full budget, let alone hang the harness process itself.
+  await expect(
+    page.locator('[data-testid="mobile-harness-canary-never-exists"]'),
+  ).toBeVisible({ timeout: 5_000 });
+});

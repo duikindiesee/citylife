@@ -93,9 +93,9 @@ export async function attachFailureEvidence(
   // Attach on any actual failure, including a deliberately-expected one (`test.fail()`): the
   // point is evidence-on-failure, not whether Playwright itself considered the outcome expected.
   if (testInfo.status !== "failed" && testInfo.status !== "timedOut") return;
-  const screenshot = await page.screenshot({ timeout: ASSERT_TIMEOUT }).catch(
-    () => null,
-  );
+  const screenshot = await page
+    .screenshot({ timeout: ASSERT_TIMEOUT })
+    .catch(() => null);
   if (screenshot) {
     await testInfo.attach(`${label}-screenshot`, {
       body: screenshot,
