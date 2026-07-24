@@ -11,6 +11,15 @@ import {
 } from "../runtime";
 import { isPublicSafe, type HouseholdOverrides } from "../newcomers";
 import { AuthClient, canEnterCityBuilder } from "../authClient";
+// PLAYER.FLAG.S3 — the fail-closed, default-OFF new-player-journey entitlement (gates the garage
+// showroom entry and every future journey-only action on the server allowlist).
+import {
+  evaluateJourneyEntitlement,
+  defaultJourneyDeps,
+  journeyEntitlementBypassed,
+  newPlayerJourneyAvailable,
+  type JourneyEntitlement,
+} from "../entitlement/newPlayerJourney";
 import { PasswordChangePanel } from "./PasswordChangePanel";
 import { markPasswordChangePending } from "../pendingPasswordNotice";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
@@ -736,6 +745,11 @@ export function ColonyApp() {
   const [roadmapOpen, setRoadmapOpen] = useState(false);
   // PLAYER.GARAGE.1 — the Gearbox Auto Hub showroom interior (its own streamed scene overlay).
   const [showroomOpen, setShowroomOpen] = useState(false);
+  // PLAYER.FLAG.S3 — the new-player-journey entitlement. `null` = not yet evaluated (treated as
+  // OFF), so the gate fails closed while loading. Kept in memory ONLY — never persisted — so a
+  // positive entitlement can never outlive the authenticated session or bleed across a switch.
+  const [journeyEntitlement, setJourneyEntitlement] =
+    useState<JourneyEntitlement | null>(null);
   // Furniture studio (spec 088 Slice D UI) — the design-and-buy controls.
   const [furnKind, setFurnKind] = useState<FurnitureKind>("sofa");
   const [furnName, setFurnName] = useState("");
@@ -772,6 +786,21 @@ export function ColonyApp() {
   // Offer "Change password" only for a real logged-in account — the local DEV/E2E skip-auth bypass
   // has a null operator and no account to change.
   const hasRealAccount = auth.operator !== null;
+  // PLAYER.FLAG.S3 — is the new-player journey available to THIS session? Fails closed: only the
+  // DEV/E2E bypass or a live positive server entitlement opens it. Used both to hide the entry
+  // affordance and — via openShowroom — to reject a direct/programmatic open, so gating is never
+  // merely cosmetic.
+  const newPlayerJourneyEnabled = newPlayerJourneyAvailable({
+    bypass: journeyEntitlementBypassed(auth),
+    entitlement: journeyEntitlement,
+  });
+  // The single guarded entry point into the journey-only garage showroom. A direct/runtime call is
+  // rejected exactly like the (hidden) button, so a non-allowlisted player can never reach the
+  // interior even by invoking this handler out of band.
+  const openShowroom = () => {
+    if (!newPlayerJourneyEnabled) return;
+    setShowroomOpen(true);
+  };
   useEffect(() => {
     runtime.setOperatorName(auth.operator?.id ?? null);
     // Identity key: bind the player view to the authenticated kooker userId (from the JWT), so own-data
@@ -781,6 +810,27 @@ export function ColonyApp() {
     // player-view from the isolation slice); operators/admins keep the whole-colony view.
     runtime.setPlayerView(auth.isCityLifePlayer);
   }, [auth, runtime]);
+  // PLAYER.FLAG.S3 — evaluate the new-player-journey entitlement during authenticated bootstrap, and
+  // whenever the identity changes. It resets to `null` (fail-closed OFF) the instant the identity
+  // changes — logout does a full reload, but keying on the userId means an in-place account switch
+  // can never carry a prior user's positive entitlement forward. A stale in-flight response is
+  // ignored (`cancelled`) so it can never overwrite the current identity's decision.
+  const operatorUserId = auth.operator?.userId ?? null;
+  useEffect(() => {
+    setJourneyEntitlement(null);
+    // The DEV/E2E skip-auth bypass has no authenticated session to evaluate; leaving the entitlement
+    // null lets the pure availability decision apply the bypass carve-out without a network call.
+    if (journeyEntitlementBypassed(auth)) return;
+    let cancelled = false;
+    void (async () => {
+      const result = await evaluateJourneyEntitlement(defaultJourneyDeps());
+      if (!cancelled) setJourneyEntitlement(result);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth, operatorUserId]);
   // Spec 085 P1 — once mounted (the AuthGate has signed the player in), drain any real-ledger sync
   // moves left queued from a prior session. New moves drain themselves on notice().
   useEffect(() => {
@@ -1494,12 +1544,13 @@ export function ColonyApp() {
       {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
       {/* PLAYER.GARAGE.1 — enter the Gearbox Auto Hub showroom. The interior is its own streamed
           scene (ShowroomOverlay); this affordance is the door until spec-152 portal streaming lands
-          in the walker. */}
-      {!builderActive && !showroomOpen && (
+          in the walker. PLAYER.FLAG.S3 gates it on the fail-closed new-player-journey entitlement:
+          hidden until operator UAT allowlists this player (default OFF). */}
+      {!builderActive && !showroomOpen && newPlayerJourneyEnabled && (
         <button
           data-build-action="open-showroom"
           title="Step into the Gearbox Auto Hub showroom"
-          onClick={() => setShowroomOpen(true)}
+          onClick={openShowroom}
           style={{
             position: "fixed",
             right: 12,
@@ -1519,7 +1570,10 @@ export function ColonyApp() {
           🏬 Gearbox Auto Hub
         </button>
       )}
-      {showroomOpen && (
+      {/* PLAYER.FLAG.S3 — defense in depth: the interior renders ONLY while the entitlement is live,
+          so a forced/stale showroomOpen can never mount it, and a mid-session revocation (account
+          switch) closes it immediately. */}
+      {showroomOpen && newPlayerJourneyEnabled && (
         <ShowroomOverlay onClose={() => setShowroomOpen(false)} />
       )}
       {!ui.firstPerson.active &&
