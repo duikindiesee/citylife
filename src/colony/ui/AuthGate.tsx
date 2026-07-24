@@ -42,8 +42,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // the idle timer; we own the backdrop). It's a screensaver behind the card — login is still required.
   const [idle, setIdle] = useState(false);
   // One-shot: a signed-in password-change request revoked the session and reloaded here. Consume the
-  // non-secret marker once and route that user directly to activation. Ordinary visitors should not
-  // see a permanent activation-token prompt on the login screen.
+  // non-secret marker once and route that user STRAIGHT to activation (skipping the login form). This
+  // is only a convenience shortcut — since PWD.REC.9 the login screen also carries a permanent
+  // "Enter activation token" route, so a returning recovery/close-reopen user can always reach it too.
   const [passwordChangePending] = useState(() =>
     consumePasswordChangePending(),
   );
@@ -141,6 +142,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
         onAuthed={() => setAuthed(true)}
         onVisitorSignup={() => setView("visitor-signup")}
         onForgotPassword={() => setView("password-recovery")}
+        onEnterActivation={() => {
+          // PWD.REC.9: permanent token-only entry. No recovery identifier to prefill — the returning
+          // player types the email their account uses alongside the operator-issued activation token.
+          setActivateEmail(undefined);
+          setView("password-activate");
+        }}
         onIdle={() => setIdle(true)}
         onActive={() => setIdle(false)}
         isCinematic={idle}
