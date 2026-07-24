@@ -188,9 +188,9 @@ describe("newPlayerJourneyAvailable (the single UI/runtime gate)", () => {
   });
 
   it("is available for the DEV/E2E null-operator bypass without any entitlement", () => {
-    expect(
-      newPlayerJourneyAvailable({ bypass: true, entitlement: null }),
-    ).toBe(true);
+    expect(newPlayerJourneyAvailable({ bypass: true, entitlement: null })).toBe(
+      true,
+    );
   });
 });
 
@@ -199,7 +199,12 @@ describe("journeyEntitlementBypassed (DEV/E2E carve-out)", () => {
     expect(journeyEntitlementBypassed({ operator: null })).toBe(true);
     expect(
       journeyEntitlementBypassed({
-        operator: { id: "p", userId: "u", scopes: [], roles: ["CITYLIFE_PLAYER"] },
+        operator: {
+          id: "p",
+          userId: "u",
+          scopes: [],
+          roles: ["CITYLIFE_PLAYER"],
+        },
       }),
     ).toBe(false);
   });
@@ -209,9 +214,17 @@ describe("account switch (no cross-user cache bleed)", () => {
   // The evaluator is stateless — each identity re-derives from its OWN token, so a prior user's
   // positive entitlement can never carry into the next session's decision.
   it("re-derives per identity: allowlisted user A then OFF user B", async () => {
-    const a = deps({ token: "A", body: { enabled: true }, getUserId: () => "A" });
+    const a = deps({
+      token: "A",
+      body: { enabled: true },
+      getUserId: () => "A",
+    });
     expect((await evaluateJourneyEntitlement(a.deps)).enabled).toBe(true);
-    const b = deps({ token: "B", body: { enabled: false }, getUserId: () => "B" });
+    const b = deps({
+      token: "B",
+      body: { enabled: false },
+      getUserId: () => "B",
+    });
     expect((await evaluateJourneyEntitlement(b.deps)).enabled).toBe(false);
   });
 });

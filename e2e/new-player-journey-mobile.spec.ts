@@ -89,7 +89,10 @@ async function bootAs(
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ enabled, state: enabled ? "UAT_ALLOWLIST" : "OFF" }),
+      body: JSON.stringify({
+        enabled,
+        state: enabled ? "UAT_ALLOWLIST" : "OFF",
+      }),
     }),
   );
   await page.addInitScript(
@@ -133,7 +136,9 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
     page.locator('[data-build-action="showroom-acquire-preview"]'),
   ).toBeDisabled({ timeout: ASSERT_TIMEOUT });
   await touchTap(page, '[data-build-action="showroom-exit"]');
-  await expect(page.locator(OVERLAY)).toHaveCount(0, { timeout: ASSERT_TIMEOUT });
+  await expect(page.locator(OVERLAY)).toHaveCount(0, {
+    timeout: ASSERT_TIMEOUT,
+  });
 
   // 3) Account switch to a different, OFF player → the entry is hidden again. No positive
   //    entitlement bled across the session boundary.
