@@ -12,7 +12,9 @@
 // Usage: node scripts/run-bounded-e2e.mjs [--config <path>] [--hang-canary]
 import { spawn, execFileSync } from "node:child_process";
 
-const HARD_TIMEOUT_MS = Number(process.env.MOBILE_HARNESS_HARD_TIMEOUT_MS ?? 150_000);
+const HARD_TIMEOUT_MS = Number(
+  process.env.MOBILE_HARNESS_HARD_TIMEOUT_MS ?? 150_000,
+);
 
 const args = process.argv.slice(2);
 let configPath = "playwright.mobile-harness.config.ts";
@@ -52,9 +54,7 @@ const child = spawn("npx", ["playwright", "test", "--config", configPath], {
   stdio: "inherit",
   env: {
     ...process.env,
-    ...(includeHangCanary
-      ? { MOBILE_HARNESS_INCLUDE_HANG_CANARY: "1" }
-      : {}),
+    ...(includeHangCanary ? { MOBILE_HARNESS_INCLUDE_HANG_CANARY: "1" } : {}),
   },
   // POSIX: make the child its own process-group leader so -pid kills the whole tree.
   // Windows: `shell: true` is required to resolve npx.cmd at all; tree-kill on timeout goes
@@ -102,6 +102,8 @@ child.on("error", (err) => {
   if (settled) return;
   settled = true;
   clearTimeout(hardTimer);
-  console.error(`[run-bounded-e2e] failed to launch playwright: ${err.message}`);
+  console.error(
+    `[run-bounded-e2e] failed to launch playwright: ${err.message}`,
+  );
   process.exit(1);
 });
