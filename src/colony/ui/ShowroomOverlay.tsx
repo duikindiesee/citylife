@@ -2,12 +2,7 @@
 // rotating plinth (ShowroomView), left/right carousel between the Karoo vehicles, bounded zoom and
 // the specification card. Acquire is PREVIEW-ONLY and permanently disabled in this slice — no KCO
 // movement, grant, ownership write or service call can originate here.
-import {
-  useCallback,
-  useEffect,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { ShowroomView } from "../render/ShowroomView";
 import {
   SHOWROOM_VEHICLES,

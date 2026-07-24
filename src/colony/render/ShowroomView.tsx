@@ -119,7 +119,7 @@ export function ShowroomView({
       style={{ width: "100%", height: "100%" }}
       gl={{ antialias: true }}
     >
-      <color attach="background" args={[0xceD4d8]} />
+      <color attach="background" args={[0xced4d8]} />
       <StudioRoom />
       <TurntableCar vehicle={vehicle} />
       <ShowroomCameraRig zoom={zoom} />

@@ -99,9 +99,7 @@ test("garage showroom: exterior fit, interior plinth, two-vehicle selection", as
   });
   await page.waitForTimeout(2000); // let the studio scene light and the turntable start
 
-  const vonkName = await page.textContent(
-    '[data-testid="showroom-card-name"]',
-  );
+  const vonkName = await page.textContent('[data-testid="showroom-card-name"]');
   expect(vonkName).toBe("Karoo Vonk 1.1");
   const vonkTopSpeed = await page.textContent(
     '[data-testid="showroom-stat-top-speed"]',
@@ -139,7 +137,5 @@ test("garage showroom: exterior fit, interior plinth, two-vehicle selection", as
 
   // And the exit control leaves the interior cleanly.
   await page.click('[data-build-action="showroom-exit"]');
-  await expect(
-    page.locator('[data-testid="showroom-overlay"]'),
-  ).toHaveCount(0);
+  await expect(page.locator('[data-testid="showroom-overlay"]')).toHaveCount(0);
 });
