@@ -10,7 +10,9 @@
     "preview": "vite preview --port 5188",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:mobile-harness": "node scripts/run-bounded-e2e.mjs",
+    "test:e2e:mobile-harness:hang-canary": "node scripts/run-bounded-e2e.mjs --hang-canary"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",
