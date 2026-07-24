@@ -130,7 +130,8 @@ test("garage showroom on mobile touch: reachable portal, non-blank interior, tou
     const scene = (window as any).__r3fScene;
     let shell: any = null;
     scene?.traverse((o: any) => {
-      if (o.name === "commercialDistrict.garagePad.garageAnchorShell") shell = o;
+      if (o.name === "commercialDistrict.garagePad.garageAnchorShell")
+        shell = o;
     });
     if (!shell) return { ok: false, reason: "no garageAnchorShell in scene" };
     shell.updateWorldMatrix(true, false);
@@ -160,9 +161,9 @@ test("garage showroom on mobile touch: reachable portal, non-blank interior, tou
   await page.waitForTimeout(800);
 
   // 2) The exterior portal affordance must be reachable and enter the showroom by TOUCH.
-  await expect(
-    page.locator('[data-build-action="open-showroom"]'),
-  ).toBeVisible({ timeout: ASSERT_TIMEOUT });
+  await expect(page.locator('[data-build-action="open-showroom"]')).toBeVisible(
+    { timeout: ASSERT_TIMEOUT },
+  );
   await touchTap(page, '[data-build-action="open-showroom"]');
   await page.waitForSelector('[data-testid="showroom-overlay"]', {
     timeout: ACTION_TIMEOUT,
@@ -170,9 +171,12 @@ test("garage showroom on mobile touch: reachable portal, non-blank interior, tou
   await page.waitForTimeout(2000); // let the studio scene light and the turntable start
 
   // 3) The interior renders a real lit scene (non-blank), not an empty canvas.
-  const vonkName = await page.textContent('[data-testid="showroom-card-name"]', {
-    timeout: ACTION_TIMEOUT,
-  });
+  const vonkName = await page.textContent(
+    '[data-testid="showroom-card-name"]',
+    {
+      timeout: ACTION_TIMEOUT,
+    },
+  );
   expect(vonkName).toBe("Karoo Vonk 1.1");
   const vonkTopSpeed = await page.textContent(
     '[data-testid="showroom-stat-top-speed"]',
@@ -234,7 +238,7 @@ test("garage showroom on mobile touch: reachable portal, non-blank interior, tou
   await expect(page.locator("canvas").first()).toBeVisible({
     timeout: ASSERT_TIMEOUT,
   });
-  await expect(
-    page.locator('[data-build-action="open-showroom"]'),
-  ).toBeVisible({ timeout: ASSERT_TIMEOUT });
+  await expect(page.locator('[data-build-action="open-showroom"]')).toBeVisible(
+    { timeout: ASSERT_TIMEOUT },
+  );
 });
