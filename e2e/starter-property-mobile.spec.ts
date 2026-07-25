@@ -8,8 +8,9 @@ import { test, expect, devices, type Page, type Route } from "@playwright/test";
 // double-tap-idempotent purchase that yields exactly one deterministic identity-bound house, cross-boot
 // (re-login / second device) convergence on the SAME house, and loading/error/retry.
 //
-// The dark build gate VITE_CITYLIFE_HOME_PURCHASE is ON for the harness dev server ONLY (never a
-// deployed build); the server entitlement is still stubbed per-test, so both gates are exercised.
+// The whole step is gated on the SERVER new-player-journey entitlement alone (no build flag), which each
+// test stubs per-case, so the dev server is a plain build — exactly what hosted CI runs — and both the
+// ON path and the OFF / unreachable-flag fail-closed paths are proven under that same config.
 
 const NAV_TIMEOUT = 30_000;
 const ASSERT_TIMEOUT = 15_000;
@@ -76,7 +77,9 @@ function authAs(userId: string) {
 }
 
 interface HomeState {
-  enabled: boolean;
+  /** on = server allowlists this player; off = server says OFF; unavailable = the flag endpoint is
+   *  unreachable/errored (the hosted ECONNREFUSED case) — both non-on modes must fail closed. */
+  flagMode: "on" | "off" | "unavailable";
   eligibleStatus?: number;
   eligible?: unknown;
   truth: Record<string, unknown>;
@@ -85,14 +88,25 @@ interface HomeState {
 }
 
 async function routeAll(page: Page, s: HomeState): Promise<void> {
-  await page.route(FLAG_GLOB, (route: Route) =>
-    route.fulfill({
+  await page.route(FLAG_GLOB, (route: Route) => {
+    // Simulate an unreachable flag endpoint (backend down / proxy ECONNREFUSED) — the gate must fail
+    // closed on it, exactly as it did on hosted CI where the entry correctly never rendered.
+    if (s.flagMode === "unavailable") return route.abort("failed");
+    const enabled = s.flagMode === "on";
+    return route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        enabled: s.enabled,
-        state: s.enabled ? "UAT_ALLOWLIST" : "OFF",
+        enabled,
+        state: enabled ? "UAT_ALLOWLIST" : "OFF",
       }),
+    });
+  });
+  await page.route(ELIGIBLE_RE, (route: Route) =>
+    route.fulfill({
+      status: s.eligibleStatus ?? 200,
+      contentType: "application/json",
+      body: JSON.stringify(s.eligible ?? { neighbourhoods: [] }),
     }),
   );
   await page.route(ELIGIBLE_RE, (route: Route) =>
@@ -162,17 +176,31 @@ const ELIGIBLE_PUBLIC = {
   ],
 };
 
-test("HOME.1C: feature-OFF entitlement keeps the legacy entry (no home step)", async ({
+test("HOME.1C: feature-OFF AND flag-unavailable both fail closed (legacy entry preserved)", async ({
   page,
 }) => {
-  test.setTimeout(200_000);
+  test.setTimeout(300_000);
+
+  // 1) Server says OFF → the entry is absent from the DOM (not merely hidden), so it cannot be opened
+  //    and the legacy entry stands.
   await bootAs(page, "uat-off-1", {
-    enabled: false,
+    flagMode: "off",
     eligible: ELIGIBLE_PUBLIC,
     truth: NOT_OWNED,
     purchaseCount: { n: 0 },
   });
-  // Absent from the DOM (not merely hidden) → the step cannot be opened and the legacy entry stands.
+  await expect(page.locator(ENTRY)).toHaveCount(0, { timeout: ASSERT_TIMEOUT });
+  await expect(page.locator(OVERLAY)).toHaveCount(0);
+
+  // 2) The flag endpoint is UNREACHABLE (backend down / proxy ECONNREFUSED — the exact hosted case).
+  //    The fail-closed entitlement must keep the entry absent; an outage never exposes the step.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await bootAs(page, "uat-unavailable-1", {
+    flagMode: "unavailable",
+    eligible: ELIGIBLE_PUBLIC,
+    truth: NOT_OWNED,
+    purchaseCount: { n: 0 },
+  });
   await expect(page.locator(ENTRY)).toHaveCount(0, { timeout: ASSERT_TIMEOUT });
   await expect(page.locator(OVERLAY)).toHaveCount(0);
 });
@@ -182,7 +210,7 @@ test("HOME.1C: eligible-only render, double-tap-idempotent purchase, determinist
 }) => {
   test.setTimeout(330_000);
   const state: HomeState = {
-    enabled: true,
+    flagMode: "on",
     eligible: ELIGIBLE_PUBLIC,
     truth: NOT_OWNED,
     purchaseCount: { n: 0 },
@@ -249,7 +277,7 @@ test("HOME.1C: eligible-list read failure shows retry, then recovers", async ({
 }) => {
   test.setTimeout(240_000);
   const state: HomeState = {
-    enabled: true,
+    flagMode: "on",
     eligibleStatus: 500,
     eligible: {},
     truth: NOT_OWNED,

@@ -1,6 +1,6 @@
 # Spec 156 — CityLife starter-property selection and identity-bound house projection (PLAYER.HOME.1C)
 
-Status: proposed (dark — behind the fail-closed new-player-journey gate + a default-OFF build flag)
+Status: proposed (dark — behind the single fail-closed new-player-journey server entitlement)
 
 ## Why
 
@@ -34,10 +34,13 @@ A guided mobile overlay (`StarterPropertyOverlay`) that:
 
 ## Rules & data
 
-- **Two gates, both fail-closed.** The step mounts only when the server new-player-journey entitlement
-  is a live positive (or the DEV/E2E null-operator bypass) **and** the dark build flag
-  `VITE_CITYLIFE_HOME_PURCHASE` is on (this worker never sets it — production stays dark). Absent either
-  gate the entry is **absent from the DOM** (not merely hidden) and the legacy entry stands.
+- **One server-owned gate, fail-closed.** The step mounts only when the server `new-player-journey-v1`
+  entitlement is a live positive (or the DEV/E2E null-operator bypass) — exactly the gate the showroom
+  entry uses. OFF, killed, 401/403, a timeout, a malformed payload and an **unreachable** flag endpoint
+  all resolve to unavailable, so the entry is **absent from the DOM** (not merely hidden) and the legacy
+  entry stands. There is no independent client on/off switch that could drift from the server or be
+  flipped in a build; the deployed purchase route is itself dark (403/503 while its flag / kill switch
+  are OFF), so authority lives solely with the service.
 - **Response classification (closed set).** `200/201 → owned`, `422 → insufficient_funds` (the deployed
   home shortfall status, distinct from the vehicle flow's 402), `202/409 → pending` (idempotent replay —
   never a second POST), `401/403/503 → disabled` (signed out / feature off / kill switch — never a blind
@@ -66,7 +69,8 @@ The KCO cost of a starter home is the server's fixed 350 KCO, charged and owned 
 - full CityLife `typecheck` + `test` + production `build` green;
 - mobile-viewport E2E: server-eligible-only render, canonical price + wallet display, private-omission,
   double-tap-idempotent purchase → exactly one owned projection, cross-boot deterministic convergence,
-  loading/error/retry, and feature-OFF legacy fallback;
+  loading/error/retry, and both fail-closed paths (server-OFF **and** unreachable flag endpoint) keeping
+  the legacy entry;
 - both rollout gates stay OFF; no KCO moved, no flag/allowlist enabled, no production player/deed/home
   state created, no City Builder exposure.
 

@@ -20,8 +20,6 @@ import {
   newPlayerJourneyAvailable,
   type JourneyEntitlement,
 } from "../entitlement/newPlayerJourney";
-// PLAYER.HOME.1C — the dark, server-truth starter-property step (gated inside the new-player journey).
-import { isHomePurchaseEnabled } from "../home/starterProperty";
 import { PasswordChangePanel } from "./PasswordChangePanel";
 import { markPasswordChangePending } from "../pendingPasswordNotice";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
@@ -806,15 +804,13 @@ export function ColonyApp() {
     if (!newPlayerJourneyEnabled) return;
     setShowroomOpen(true);
   };
-  // PLAYER.HOME.1C — the starter-property step is available only INSIDE an open new-player journey AND
-  // behind its own dark build-env gate (VITE_CITYLIFE_HOME_PURCHASE), so it stays invisible and the
-  // legacy entry is preserved until operator UAT turns it on. Evaluated once (like the car gate) so a
-  // mid-session env flip can never surprise a live overlay. The guarded open rejects a direct/runtime
-  // call exactly like the hidden button, so gating is never merely cosmetic.
-  const homePurchaseEnabled =
-    newPlayerJourneyEnabled && isHomePurchaseEnabled();
+  // PLAYER.HOME.1C — the starter-property step is gated on the SAME fail-closed new-player-journey
+  // entitlement as the showroom entry (server-owned, default OFF, fail-closed while loading / on any
+  // 401/403/timeout/malformed/unreachable flag response). No independent client on/off switch that could
+  // drift from the server or be flipped in a build. The guarded open rejects a direct/runtime call
+  // exactly like the hidden button, so gating is never merely cosmetic.
   const openHome = () => {
-    if (!homePurchaseEnabled) return;
+    if (!newPlayerJourneyEnabled) return;
     setHomeOpen(true);
   };
   // The server-synced wallet truth to display (player scope only; the operator/admin bank is the whole
@@ -1600,7 +1596,7 @@ export function ColonyApp() {
           new-player-journey entitlement AND its own dark build-env flag: hidden (absent from the DOM,
           not merely styled away) until operator UAT, so the legacy entry is preserved when OFF or an
           entitlement read fails. */}
-      {!builderActive && !showroomOpen && !homeOpen && homePurchaseEnabled && (
+      {!builderActive && !showroomOpen && !homeOpen && newPlayerJourneyEnabled && (
         <button
           data-build-action="open-home"
           title="Choose your starter home"
@@ -1626,7 +1622,7 @@ export function ColonyApp() {
       )}
       {/* Defense in depth: the overlay renders ONLY while the gate is open, so a forced/stale homeOpen
           can never mount it and a mid-session revocation (account switch) closes it immediately. */}
-      {homeOpen && homePurchaseEnabled && (
+      {homeOpen && newPlayerJourneyEnabled && (
         <StarterPropertyOverlay
           onClose={() => setHomeOpen(false)}
           walletKco={playerWalletKco}

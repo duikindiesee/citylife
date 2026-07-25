@@ -1,5 +1,5 @@
 // PLAYER.HOME.1C — the dark, server-truth client contract for the starter-property selection and
-// identity-bound house projection. It mirrors PLAYER.CAR.1.S4's carAcquisition purity rules exactly:
+// identity-bound house projection. It mirrors PLAYER.CAR.1.S4's carAcquisition purity rules:
 //
 //   • The eligible starter choices are SERVER-RETURNED ONLY. The client never infers a choice from the
 //     map, a static layout, localStorage or any client state — it renders exactly what the authority
@@ -15,11 +15,14 @@
 //     switch), error. 422 (not the vehicle flow's 402) is the deployed home-purchase shortfall status;
 //     503 (kill switch) and 401/403 (signed out / feature off) all fail closed to disabled.
 //
-// The pure model ops (the dark gate, the eligible-list and home-truth sanitisers, the response
-// classifier and the button view) take no DOM and are node-testable. The backend layer is best-effort
-// and fail-soft like carAcquisition / furnitureStore: it never throws, never blocks the game, and
-// tolerates a 404 while a kooker-side endpoint ships separately — so the whole slice stays inert and
-// falls back to the legacy entry until the operator UAT turns it on.
+// The whole step is DARK by the SERVER's own gate: the fail-closed `new-player-journey-v1` entitlement
+// (evaluated in ColonyApp) hides the entry unless the backend unambiguously allowlists the player, and
+// the deployed home-purchase route itself answers 403/503 while its flag / kill switch are OFF. The
+// client keeps NO independent on/off switch that could drift from the server or be flipped in a build —
+// authority lives solely with the service, which is why an unreachable flag endpoint fails closed. The
+// pure model ops (the sanitisers, the response classifier and the button view) take no DOM and are
+// node-testable; the backend layer is best-effort and fail-soft like carAcquisition / furnitureStore:
+// it never throws, never blocks the game, and tolerates a 404 while an endpoint ships separately.
 import { getAuthClient } from "../authClient";
 
 /** GET the server-eligible starter neighbourhood choices for THIS signed-in player (token-derived).
@@ -42,29 +45,6 @@ export type HomeOnboardingState =
   | "OWNED"
   | "REQUIRES_OPERATOR"
   | string;
-
-/** The feature is DARK by default. It turns on only when the operator sets VITE_CITYLIFE_HOME_PURCHASE
- *  to "on"/"1"/"true"/"enabled" in the build env for UAT — this worker never sets it, so production
- *  stays dark and the legacy entry is preserved. Mirrors isCarAcquisitionEnabled exactly. */
-export function isHomePurchaseEnabled(
-  env?: Record<string, string | undefined>,
-): boolean {
-  const raw = (env ?? readViteEnv())["VITE_CITYLIFE_HOME_PURCHASE"];
-  if (typeof raw !== "string") return false;
-  const v = raw.trim().toLowerCase();
-  return v === "on" || v === "1" || v === "true" || v === "enabled";
-}
-
-function readViteEnv(): Record<string, string | undefined> {
-  try {
-    return (
-      (import.meta as unknown as { env?: Record<string, string | undefined> })
-        .env ?? {}
-    );
-  } catch {
-    return {};
-  }
-}
 
 // ── Eligible starter choices (SERVER-RETURNED ONLY) ───────────────────────────────
 
@@ -321,15 +301,14 @@ export async function fetchHomeTruth(): Promise<HomeTruth | null> {
 /** Post a starter-home purchase. Sends the SELECTED neighbourhoodKey ONLY (no price, no amount, no owner
  *  or plot claim) plus a stable Idempotency-Key; the service alone checks funds, moves coin, derives the
  *  identity-bound plot/frame/deed and records ownership. Returns a classified {@link PurchaseOutcome}.
- *  Refuses locally — without ever touching the network — when the feature is dark, the player is signed
- *  out, or the key is NOT one the server just offered (`eligibleKeys`), so a tampered/stale key can never
- *  reach the authority and authority is never bypassed. */
+ *  Refuses locally — without ever touching the network — when the player is signed out or the key is NOT
+ *  one the server just offered (`eligibleKeys`), so a tampered/stale key can never reach the authority.
+ *  The DARK gate stays server-owned: while the new-player-journey / home kill switch are OFF the service
+ *  answers 403/503, which classifies to `disabled` and moves no KCO — the client never second-guesses it. */
 export async function postPurchaseHome(
   neighbourhoodKey: string,
   eligibleKeys: readonly string[],
-  env?: Record<string, string | undefined>,
 ): Promise<PurchaseOutcome> {
-  if (!isHomePurchaseEnabled(env)) return { kind: "disabled" };
   if (!neighbourhoodKey || !eligibleKeys.includes(neighbourhoodKey))
     return { kind: "disabled" };
   const auth = getAuthClient();

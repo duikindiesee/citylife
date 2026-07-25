@@ -9,9 +9,10 @@ import { defineConfig } from "@playwright/test";
 //   CITYLIFE_E2E_PORT=5632 node scripts/run-bounded-e2e.mjs --config e2e/starter-property-mobile.harness.config.ts
 //
 // The port is env-overridable (default 5632) and stays within 5630-5639. The real last-resort bound is
-// the OS-level process-tree kill in scripts/run-bounded-e2e.mjs. VITE_CITYLIFE_HOME_PURCHASE=on turns
-// the dark build gate ON for the dev server ONLY (never a deployed build), so the E2E can exercise the
-// enabled path; the server entitlement is still stubbed per-test.
+// the OS-level process-tree kill in scripts/run-bounded-e2e.mjs. The dev server is a plain build (no
+// special env) — exactly what hosted CI runs — because the whole step is gated on the SERVER
+// new-player-journey entitlement, which each test stubs, so both the ON and OFF/unavailable paths are
+// proven without any build flag.
 const PORT = Number(process.env.CITYLIFE_E2E_PORT) || 5632;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
@@ -36,6 +37,5 @@ export default defineConfig({
     url: BASE_URL,
     reuseExistingServer: false,
     timeout: 60_000,
-    env: { VITE_CITYLIFE_HOME_PURCHASE: "on" },
   },
 });

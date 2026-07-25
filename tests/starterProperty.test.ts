@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
 import {
-  isHomePurchaseEnabled,
   coerceEligibleNeighbourhood,
   sanitizeEligibleNeighbourhoods,
   parseHomeTruth,
@@ -16,29 +15,6 @@ import {
 // with no DOM and no network: the dark gate, the SERVER-RETURNED-ONLY eligible-list sanitiser, the
 // authoritative home-truth parser, the closed-set purchase classifier, and the local refusals that keep
 // a tampered/stale key off the wire.
-
-describe("dark feature gate (isHomePurchaseEnabled)", () => {
-  it("is OFF by default (no env, empty env, unrelated values)", () => {
-    expect(isHomePurchaseEnabled({})).toBe(false);
-    expect(isHomePurchaseEnabled({ VITE_CITYLIFE_HOME_PURCHASE: undefined })).toBe(
-      false,
-    );
-    expect(isHomePurchaseEnabled({ VITE_CITYLIFE_HOME_PURCHASE: "off" })).toBe(
-      false,
-    );
-    expect(isHomePurchaseEnabled({ VITE_CITYLIFE_HOME_PURCHASE: "0" })).toBe(
-      false,
-    );
-    expect(isHomePurchaseEnabled({ VITE_CITYLIFE_HOME_PURCHASE: "yes" })).toBe(
-      false,
-    );
-  });
-  it("turns on only for the explicit affirmative tokens", () => {
-    for (const v of ["on", "1", "true", "enabled", "ON", " True "]) {
-      expect(isHomePurchaseEnabled({ VITE_CITYLIFE_HOME_PURCHASE: v })).toBe(true);
-    }
-  });
-});
 
 describe("eligible-list sanitiser (SERVER-RETURNED ONLY)", () => {
   it("coerces a well-formed entry and keeps only a server-quoted price", () => {
@@ -197,17 +173,13 @@ describe("idempotency key (double-tap / reload = same request)", () => {
 });
 
 describe("postPurchaseHome local refusals (never touch the wire)", () => {
-  it("refuses while the feature is dark", async () => {
+  it("refuses a key the server did not just offer (tampered/stale)", async () => {
     await expect(
-      postPurchaseHome("coastal", ["coastal"], {}),
+      postPurchaseHome("private-hamlet", ["coastal", "vale2"]),
     ).resolves.toEqual({ kind: "disabled" });
   });
-  it("refuses a key the server did not just offer (tampered/stale), even when enabled", async () => {
-    const env = { VITE_CITYLIFE_HOME_PURCHASE: "on" };
-    await expect(
-      postPurchaseHome("private-hamlet", ["coastal", "vale2"], env),
-    ).resolves.toEqual({ kind: "disabled" });
-    await expect(postPurchaseHome("", ["coastal"], env)).resolves.toEqual({
+  it("refuses an empty key", async () => {
+    await expect(postPurchaseHome("", ["coastal"])).resolves.toEqual({
       kind: "disabled",
     });
   });
