@@ -196,7 +196,10 @@ export function StarterPropertyOverlay({
         }}
       >
         <span style={{ color: "#7ab0d0" }}>Your wallet</span>
-        <span data-testid="home-wallet-balance" style={{ color: "#9fd4a6", fontWeight: 700 }}>
+        <span
+          data-testid="home-wallet-balance"
+          style={{ color: "#9fd4a6", fontWeight: 700 }}
+        >
           {money(currency, walletKco)}
         </span>
       </div>
@@ -204,7 +207,13 @@ export function StarterPropertyOverlay({
       {phase === "loading" && (
         <div
           data-testid="home-loading"
-          style={{ ...panelStyle, marginTop: 10, padding: 16, fontSize: 13, color: "#7ab0d0" }}
+          style={{
+            ...panelStyle,
+            marginTop: 10,
+            padding: 16,
+            fontSize: 13,
+            color: "#7ab0d0",
+          }}
         >
           ⏳ Loading eligible neighbourhoods…
         </div>
@@ -255,18 +264,31 @@ export function StarterPropertyOverlay({
             {truth?.neighbourhoodKey ? ` in ${truth.neighbourhoodKey}` : ""}.
           </span>
           <span style={{ color: "#7ab0d0", fontSize: 11 }}>
-            Placed at {projected.placement.x},{projected.placement.y} · the same on every device.
+            Placed at {projected.placement.x},{projected.placement.y} · the same
+            on every device.
           </span>
         </div>
       )}
 
       {/* SELECT — server-eligible choices only */}
       {!owned && phase === "ready" && (
-        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+        <div
+          style={{
+            marginTop: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
           {choices.length === 0 ? (
             <div
               data-testid="home-empty"
-              style={{ ...panelStyle, padding: 16, fontSize: 13, color: "#7ab0d0" }}
+              style={{
+                ...panelStyle,
+                padding: 16,
+                fontSize: 13,
+                color: "#7ab0d0",
+              }}
             >
               No eligible starter neighbourhoods are open to you yet.
             </div>
@@ -295,13 +317,17 @@ export function StarterPropertyOverlay({
                       padding: "12px 14px",
                       cursor: "pointer",
                       border: `1px solid ${isSel ? "#b6892f" : "#1e3a5a"}`,
-                      background: isSel ? "rgba(182,137,47,0.16)" : panelStyle.background,
+                      background: isSel
+                        ? "rgba(182,137,47,0.16)"
+                        : panelStyle.background,
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
                     }}
                   >
-                    <span style={{ color: "#c8dff0", fontWeight: 700 }}>{c.name}</span>
+                    <span style={{ color: "#c8dff0", fontWeight: 700 }}>
+                      {c.name}
+                    </span>
                     <span
                       data-testid={`home-price-${c.key}`}
                       style={{ color: "#ffd25a", fontWeight: 700 }}

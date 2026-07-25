@@ -223,11 +223,13 @@ test("HOME.1C: eligible-only render, double-tap-idempotent purchase, determinist
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: ASSERT_TIMEOUT });
 
   // Server-eligible choices only + canonical price + wallet truth are shown.
-  await expect(page.locator('[data-testid="home-choice-coastal"]')).toBeVisible();
+  await expect(
+    page.locator('[data-testid="home-choice-coastal"]'),
+  ).toBeVisible();
   await expect(page.locator('[data-testid="home-choice-vale2"]')).toBeVisible();
-  await expect(page.locator('[data-testid="home-price-coastal"]')).toContainText(
-    "350",
-  );
+  await expect(
+    page.locator('[data-testid="home-price-coastal"]'),
+  ).toContainText("350");
   await expect(page.locator('[data-testid="home-wallet"]')).toBeVisible();
   // Private / non-eligible neighbourhood is omitted by the authority → never rendered.
   await expect(
@@ -300,7 +302,9 @@ test("HOME.1C: eligible-list read failure shows retry, then recovers", async ({
     }),
   );
   await touchTap(page, '[data-testid="home-retry"]');
-  await expect(page.locator('[data-testid="home-choice-coastal"]')).toBeVisible({
-    timeout: ASSERT_TIMEOUT,
-  });
+  await expect(page.locator('[data-testid="home-choice-coastal"]')).toBeVisible(
+    {
+      timeout: ASSERT_TIMEOUT,
+    },
+  );
 });

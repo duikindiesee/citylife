@@ -19,7 +19,11 @@ import {
 describe("eligible-list sanitiser (SERVER-RETURNED ONLY)", () => {
   it("coerces a well-formed entry and keeps only a server-quoted price", () => {
     expect(
-      coerceEligibleNeighbourhood({ key: "coastal", name: "Coastal", priceKco: 350 }),
+      coerceEligibleNeighbourhood({
+        key: "coastal",
+        name: "Coastal",
+        priceKco: 350,
+      }),
     ).toEqual({ key: "coastal", name: "Coastal", priceKco: 350 });
     // no price quoted → null, never a client-invented number
     expect(coerceEligibleNeighbourhood({ key: "vale2" })).toEqual({
@@ -28,9 +32,9 @@ describe("eligible-list sanitiser (SERVER-RETURNED ONLY)", () => {
       priceKco: null,
     });
     // accepts a `price` alias too
-    expect(coerceEligibleNeighbourhood({ key: "k", price: 12.5 })?.priceKco).toBe(
-      12.5,
-    );
+    expect(
+      coerceEligibleNeighbourhood({ key: "k", price: 12.5 })?.priceKco,
+    ).toBe(12.5);
   });
   it("drops keyless / non-object / non-finite-price garbage", () => {
     expect(coerceEligibleNeighbourhood({ name: "no key" })).toBeNull();
@@ -83,7 +87,9 @@ describe("authoritative home-truth parser", () => {
       true,
     );
     // truthy-but-not-true never counts as owned (fail closed)
-    expect(isHomeOwned(parseHomeTruth({ owned: "true" as unknown }))).toBe(false);
+    expect(isHomeOwned(parseHomeTruth({ owned: "true" as unknown }))).toBe(
+      false,
+    );
     expect(isHomeOwned(parseHomeTruth({ owned: 1 as unknown }))).toBe(false);
     // owned true but the server status contradicts → not owned
     expect(
@@ -116,10 +122,18 @@ describe("purchase status classifier (closed set, fail-closed)", () => {
 
 describe("purchase button view (thin-view state machine)", () => {
   it("owned and pending are terminal, non-firing states", () => {
-    expect(purchaseButtonView(true, true, false, undefined).disabled).toBe(true);
-    expect(purchaseButtonView(true, true, false, undefined).state).toBe("owned");
-    expect(purchaseButtonView(false, true, true, undefined).state).toBe("pending");
-    expect(purchaseButtonView(false, true, true, undefined).disabled).toBe(true);
+    expect(purchaseButtonView(true, true, false, undefined).disabled).toBe(
+      true,
+    );
+    expect(purchaseButtonView(true, true, false, undefined).state).toBe(
+      "owned",
+    );
+    expect(purchaseButtonView(false, true, true, undefined).state).toBe(
+      "pending",
+    );
+    expect(purchaseButtonView(false, true, true, undefined).disabled).toBe(
+      true,
+    );
   });
   it("requires a selection before it can fire", () => {
     const v = purchaseButtonView(false, false, false, undefined);

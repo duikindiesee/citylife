@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { parseHomeTruth, type HomeTruth } from "../src/colony/home/starterProperty";
+import {
+  parseHomeTruth,
+  type HomeTruth,
+} from "../src/colony/home/starterProperty";
 import {
   projectStarterHome,
   deriveHomeSeed,
@@ -35,7 +38,11 @@ describe("projects exactly one house only for an OWNED deed", () => {
     // owned but with no server reference at all → fail closed (no floating, non-deterministic house)
     expect(
       projectStarterHome(
-        parseHomeTruth({ owned: true, status: "OWNED", onboardingState: "OWNED" }),
+        parseHomeTruth({
+          owned: true,
+          status: "OWNED",
+          onboardingState: "OWNED",
+        }),
       ),
     ).toBeNull();
   });
@@ -96,9 +103,9 @@ describe("identity binding — distinct players get distinct homes", () => {
     expect(alice.placement).not.toEqual(bob.placement);
   });
   it("the identity string prefers the server frame, then plot, then neighbourhood", () => {
-    expect(
-      homeIdentityString(ownedTruth({ frameId: "F", plotId: "P" })),
-    ).toBe("F");
+    expect(homeIdentityString(ownedTruth({ frameId: "F", plotId: "P" }))).toBe(
+      "F",
+    );
     expect(
       homeIdentityString(
         parseHomeTruth({ owned: true, status: "OWNED", plotId: "P" })!,
@@ -118,7 +125,14 @@ describe("identity binding — distinct players get distinct homes", () => {
 
 describe("placement stays inside the bounded grid", () => {
   it("x and y are always within [0, GRID)", () => {
-    for (const id of ["a", "bb", "ccc", "user-42", "zzzzzz", "starter-home:q"]) {
+    for (const id of [
+      "a",
+      "bb",
+      "ccc",
+      "user-42",
+      "zzzzzz",
+      "starter-home:q",
+    ]) {
       const place = deriveHomePlacement(
         ownedTruth({ plotId: id, frameId: `frame:${id}` }),
       );
