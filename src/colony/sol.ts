@@ -44,6 +44,15 @@ export function solMinutesSinceEpoch(
   );
 }
 
+/** Continuous fractional compressed in-sol minutes since the epoch across every sol so far. */
+export function solMinutesFracSinceEpoch(
+  nowMs: number,
+  epochMs: number = CITYLIFE_EPOCH_MS,
+): number {
+  return (elapsedSinceEpoch(nowMs, epochMs) * MINUTES_PER_SOL) / MS_PER_SOL;
+}
+
+
 /** Compressed in-sol minute within the current sol's 24-hour day, in [0, 1440). */
 export function solMinuteOfDay(
   nowMs: number,

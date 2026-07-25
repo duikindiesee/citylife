@@ -151,6 +151,7 @@ import {
   MINUTES_PER_SOL,
   MS_PER_SOL,
   solMinutesSinceEpoch,
+  solMinutesFracSinceEpoch,
   solsSinceEpoch,
 } from "./sol";
 import { setSolDebugOffsetMs, solNowMs } from "./solRuntimeClock";
@@ -2526,19 +2527,28 @@ export class ColonyRuntime {
    *  fp camera rides along and stepAvatars/wander can never fight the pin. */
   private transitTick(): void {
     if (!this.busFleet || !this.fleetGeom || !this.fleetPaths) return;
-    const nowMin = Math.floor(solMinutesSinceEpoch(solNowMs()));
-    const dayStartMin = nowMin - (nowMin % MINUTES_PER_SOL);
+    const nowMinFrac = solMinutesFracSinceEpoch(solNowMs());
+    const nowMinInt = Math.floor(nowMinFrac);
+    const dayStartMin =
+      nowMinInt -
+      (((nowMinInt % MINUTES_PER_SOL) + MINUTES_PER_SOL) % MINUTES_PER_SOL);
     const behind =
-      this.transitLastMin === null ? Infinity : nowMin - this.transitLastMin;
+      this.transitLastMin === null ? Infinity : nowMinFrac - this.transitLastMin;
     if (behind < 0 || behind > MINUTES_PER_SOL) {
       // First tick, a backward clock, or a gap longer than a sol day: re-anchor at this day's
       // tod=0 and replay forward from a freshly seeded fleet so the result stays deterministic.
       this.busFleet = makeFleet(COLONY.transit, this.worldSeed);
       this.transitLastMin = dayStartMin;
     }
-    let stepsLeft = MINUTES_PER_SOL;
-    while (this.transitLastMin! < nowMin && stepsLeft-- > 0) {
-      const step = Math.min(1, nowMin - this.transitLastMin!);
+    let stepsLeft = MINUTES_PER_SOL + 2;
+    while (this.transitLastMin! < nowMinFrac && stepsLeft-- > 0) {
+      const nextBoundary = Math.floor(this.transitLastMin! + 1);
+      const targetMin = Math.min(nextBoundary, nowMinFrac);
+      const step = targetMin - this.transitLastMin!;
+      if (step <= 1e-9) {
+        this.transitLastMin = targetMin;
+        break;
+      }
       stepFleet(
         this.busFleet,
         step,
@@ -2546,7 +2556,7 @@ export class ColonyRuntime {
         this.fleetGeom,
         COLONY.transit,
       );
-      this.transitLastMin! += step;
+      this.transitLastMin = targetMin;
     }
     if (this.fpRidingBusId !== null && this.fpCitizenId) {
       const pose = this.busPoseOf(this.fpRidingBusId);
