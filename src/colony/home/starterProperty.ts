@@ -202,7 +202,8 @@ export function purchaseButtonView(
   isPending: boolean,
   outcome: PurchaseOutcome | undefined,
 ): PurchaseButtonView {
-  if (isOwned) return { state: "owned", label: "✓ Home secured", disabled: true };
+  if (isOwned)
+    return { state: "owned", label: "✓ Home secured", disabled: true };
   if (isPending)
     return { state: "pending", label: "⏳ Securing…", disabled: true };
   switch (outcome?.kind) {
@@ -220,7 +221,11 @@ export function purchaseButtonView(
       return { state: "error", label: "Couldn't buy — retry", disabled: false };
     default:
       if (!hasSelection)
-        return { state: "disabled", label: "Pick a neighbourhood", disabled: true };
+        return {
+          state: "disabled",
+          label: "Pick a neighbourhood",
+          disabled: true,
+        };
       return { state: "ready", label: "Secure this home", disabled: false };
   }
 }
