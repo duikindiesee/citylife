@@ -1,7 +1,13 @@
 // PLAYER.GARAGE.1 — the Gearbox Auto Hub showroom overlay: full-screen interior scene with the
 // rotating plinth (ShowroomView), left/right carousel between the Karoo vehicles, bounded zoom and
-// the specification card. Acquire is PREVIEW-ONLY and permanently disabled in this slice — no KCO
-// movement, grant, ownership write or service call can originate here.
+// the specification card.
+//
+// PLAYER.CAR.1.S4 — acquisition is wired to the AUTHORITATIVE SERVER, but stays DARK behind the
+// carAcquisition feature gate until operator UAT. While the gate is off (the shipped default) the
+// button is exactly the honest "preview only" lock this slice inherited — no KCO movement, grant,
+// ownership write or service call can originate here. Only when the operator turns the gate on does
+// the acquire button post the canonical vehicleKey to the service (which alone checks funds and moves
+// coin) and render the server ownership truth.
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { ShowroomView } from "../render/ShowroomView";
 import {
@@ -15,6 +21,17 @@ import {
   stepSelection,
   wrapIndex,
 } from "../showroom/showroomState";
+import {
+  isCarAcquisitionEnabled,
+  vehicleKeyOf,
+  loadOwnedKeysCache,
+  saveOwnedKeysCache,
+  fetchOwnedVehicleKeysBackend,
+  postAcquireVehicle,
+  acquireButtonView,
+  acquireStateColor,
+  type AcquireOutcome,
+} from "../car/carAcquisition";
 
 const panelStyle: CSSProperties = {
   background: "rgba(8,14,24,0.92)",
@@ -41,6 +58,53 @@ export function ShowroomOverlay({ onClose }: { onClose: () => void }) {
   const count = SHOWROOM_VEHICLES.length;
   const vehicle = SHOWROOM_VEHICLES[wrapIndex(index, count)]!;
   const card = showroomCardModel(vehicle);
+  const vehicleKey = vehicleKeyOf(vehicle);
+
+  // PLAYER.CAR.1.S4 — acquisition is dark unless the operator turned the gate on. Evaluated once so a
+  // mid-session env flip can never surprise a live overlay; the whole server-truth path is inert while off.
+  const [acquireEnabled] = useState(() => isCarAcquisitionEnabled());
+  // The set of vehicleKeys the SERVER says the player owns. Seeded from the cache-only mirror for an
+  // instant first paint, then overwritten by the authoritative GET — never merged ahead of it.
+  const [owned, setOwned] = useState<readonly string[]>([]);
+  // The per-vehicle outcome of the last acquire attempt (keyed by vehicleKey), and which key is in flight.
+  const [outcomes, setOutcomes] = useState<Record<string, AcquireOutcome>>({});
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!acquireEnabled) return;
+    let live = true;
+    setOwned(loadOwnedKeysCache()); // instant, non-authoritative first paint
+    void fetchOwnedVehicleKeysBackend().then((truth) => {
+      if (!live || truth === null) return; // signed out / endpoint absent → keep the cache
+      setOwned(truth);
+      saveOwnedKeysCache(truth); // the cache follows the truth, never leads it
+    });
+    return () => {
+      live = false;
+    };
+  }, [acquireEnabled]);
+
+  const isOwned = owned.includes(vehicleKey);
+  const outcome = outcomes[vehicleKey];
+  const isPending = pendingKey === vehicleKey;
+
+  const acquire = useCallback(() => {
+    if (!acquireEnabled || isOwned || pendingKey !== null) return;
+    const key = vehicleKey;
+    setPendingKey(key);
+    void postAcquireVehicle(key).then((result) => {
+      setOutcomes((m) => ({ ...m, [key]: result }));
+      setPendingKey((cur) => (cur === key ? null : cur));
+      if (result.kind === "owned") {
+        // Confirmed by the authority — reconcile against the fresh server truth, not a local guess.
+        void fetchOwnedVehicleKeysBackend().then((truth) => {
+          if (truth === null) return;
+          setOwned(truth);
+          saveOwnedKeysCache(truth);
+        });
+      }
+    });
+  }, [acquireEnabled, isOwned, pendingKey, vehicleKey]);
 
   const prev = useCallback(
     () => setIndex((i) => stepSelection(i, count, -1)),
@@ -180,23 +244,32 @@ export function ShowroomOverlay({ onClose }: { onClose: () => void }) {
         >
           {card.priceLabel}
         </span>
-        <button
-          data-build-action="showroom-acquire-preview"
-          disabled
-          title="Acquisition arrives with the starter economy — preview only in this slice"
-          style={{
-            padding: "6px 10px",
-            fontSize: 12,
-            borderRadius: 6,
-            border: "1px solid #3a4a5a",
-            background: "rgba(255,255,255,0.05)",
-            color: "#7a90a0",
-            cursor: "not-allowed",
-            fontWeight: 700,
-          }}
-        >
-          🔒 Acquire · preview only
-        </button>
+        {acquireEnabled ? (
+          <AcquireButton
+            isOwned={isOwned}
+            isPending={isPending}
+            outcome={outcome}
+            onAcquire={acquire}
+          />
+        ) : (
+          <button
+            data-build-action="showroom-acquire-preview"
+            disabled
+            title="Acquisition arrives with the starter economy — preview only in this slice"
+            style={{
+              padding: "6px 10px",
+              fontSize: 12,
+              borderRadius: 6,
+              border: "1px solid #3a4a5a",
+              background: "rgba(255,255,255,0.05)",
+              color: "#7a90a0",
+              cursor: "not-allowed",
+              fontWeight: 700,
+            }}
+          >
+            🔒 Acquire · preview only
+          </button>
+        )}
       </div>
 
       {/* carousel + zoom controls */}
@@ -256,5 +329,49 @@ export function ShowroomOverlay({ onClose }: { onClose: () => void }) {
         </button>
       </div>
     </div>
+  );
+}
+
+// PLAYER.CAR.1.S4 — the server-truth acquire control. Rendered ONLY when the feature gate is on; the
+// dark default keeps the inherited "preview only" lock instead. Its state + label + disabled come from
+// the pure acquireButtonView state machine (carAcquisition), so this stays a thin view. It carries a
+// stable data-acquire-state for deterministic E2E once the operator enables UAT, and never fires while a
+// request is in flight (pending) or the car is already owned. The click posts the canonical vehicleKey
+// and the authority decides — the button never names a price or moves coin.
+function AcquireButton({
+  isOwned,
+  isPending,
+  outcome,
+  onAcquire,
+}: {
+  isOwned: boolean;
+  isPending: boolean;
+  outcome: AcquireOutcome | undefined;
+  onAcquire: () => void;
+}) {
+  const view = acquireButtonView(isOwned, isPending, outcome);
+  return (
+    <button
+      data-build-action="showroom-acquire"
+      data-testid="showroom-acquire"
+      data-acquire-state={view.state}
+      disabled={view.disabled}
+      onClick={onAcquire}
+      title="Acquire this vehicle — the server checks your balance and moves the coin"
+      style={{
+        padding: "6px 10px",
+        fontSize: 12,
+        borderRadius: 6,
+        border: `1px solid ${view.disabled ? "#3a4a5a" : "#b6892f"}`,
+        background: view.disabled
+          ? "rgba(255,255,255,0.05)"
+          : "rgba(182,137,47,0.18)",
+        color: acquireStateColor(view.state),
+        cursor: view.disabled ? "not-allowed" : "pointer",
+        fontWeight: 700,
+      }}
+    >
+      {view.label}
+    </button>
   );
 }
