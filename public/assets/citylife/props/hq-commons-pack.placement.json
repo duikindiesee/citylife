@@ -17,9 +17,9 @@
       "origin": "room-local corner (0,0,0); door centred at (8,0,0) on the z=0 wall; Big Board zone on the z=12 wall, x in [4,12]"
     },
     "arcade": {
-      "gridWidthCells": 10,
+      "gridWidthCells": 8,
       "gridDepthCells": 8,
-      "origin": "room-local corner (0,0,0); door centred at (5,0,0) on the z=0 wall"
+      "origin": "room-local corner (0,0,0); door centred at (4,0,0) on the z=0 wall"
     }
   },
   "frame": {
@@ -49,14 +49,14 @@
     { "room": "commons", "node": "Office_LiaisonDesk", "position": [13.5, 0, 2.5], "yawRadians": -1.5707963267948966, "note": "Suzi liaison desk (no office, spec 153 §5)" },
     { "room": "commons", "node": "Office_RoutingBoard", "position": [16, 0, 3], "yawRadians": -1.5707963267948966, "note": "routing board behind the liaison desk, x=16 wall" },
     { "room": "commons", "node": "Office_LibrarySign", "position": [16, 2.2, 4.5], "yawRadians": -1.5707963267948966, "note": "LIBRARY -> blade above the liaison corner" },
-    { "room": "arcade", "node": "Commons_FleetBoard", "position": [5, 0, 8], "yawRadians": 3.141592653589793, "note": "fleet idle-capacity board, back-flush z=8 wall" },
-    { "room": "arcade", "node": "Commons_Couch", "position": [5, 0, 5.8], "yawRadians": 0, "note": "faces the FleetBoard" },
-    { "room": "arcade", "node": "Commons_Rug", "position": [5, 0, 5.6], "yawRadians": 0 },
+    { "room": "arcade", "node": "Commons_FleetBoard", "position": [4, 0, 8], "yawRadians": 3.141592653589793, "note": "fleet idle-capacity board, back-flush z=8 wall" },
+    { "room": "arcade", "node": "Commons_Couch", "position": [4, 0, 5.8], "yawRadians": 0, "note": "faces the FleetBoard" },
+    { "room": "arcade", "node": "Commons_Rug", "position": [4, 0, 5.6], "yawRadians": 0 },
     { "room": "arcade", "node": "Commons_Foosball", "position": [2.5, 0, 3.5], "yawRadians": 0 },
     { "room": "arcade", "node": "Commons_Arcade", "position": [0.45, 0, 6], "yawRadians": 1.5707963267948966, "note": "cabinet against the x=0 wall; screen is decor, never telemetry" },
-    { "room": "arcade", "node": "Commons_BeanBag", "position": [7, 0, 6.4], "yawRadians": 0 },
-    { "room": "arcade", "node": "Commons_BeanBag", "position": [8.2, 0, 5.4], "yawRadians": 0 },
-    { "room": "arcade", "node": "Commons_Watercooler", "position": [9.5, 0, 1], "yawRadians": 0, "note": "second cooler by the arcade door" }
+    { "room": "arcade", "node": "Commons_BeanBag", "position": [6, 0, 6.4], "yawRadians": 0 },
+    { "room": "arcade", "node": "Commons_BeanBag", "position": [7.2, 0, 5.4], "yawRadians": 0 },
+    { "room": "arcade", "node": "Commons_Watercooler", "position": [7.5, 0, 1], "yawRadians": 0, "note": "second cooler by the arcade door" }
   ],
   "integration": {
     "owner": "opus",

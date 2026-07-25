@@ -144,7 +144,7 @@ describe("hq-commons-pack.placement.json", () => {
     const rooms = placement.rooms as Record<string, { gridWidthCells: number; gridDepthCells: number }>;
     expect(rooms.commons.gridWidthCells).toBe(16);
     expect(rooms.commons.gridDepthCells).toBe(12);
-    expect(rooms.arcade.gridWidthCells).toBe(10);
+    expect(rooms.arcade.gridWidthCells).toBe(8);
     expect(rooms.arcade.gridDepthCells).toBe(8);
     const crossPack = Object.keys(placement.crossPackNodes);
     for (const entry of placement.placements) {
