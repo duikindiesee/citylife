@@ -20,6 +20,8 @@ import {
   newPlayerJourneyAvailable,
   type JourneyEntitlement,
 } from "../entitlement/newPlayerJourney";
+// PLAYER.HOME.1C — the dark, server-truth starter-property step (gated inside the new-player journey).
+import { isHomePurchaseEnabled } from "../home/starterProperty";
 import { PasswordChangePanel } from "./PasswordChangePanel";
 import { markPasswordChangePending } from "../pendingPasswordNotice";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
@@ -54,6 +56,7 @@ import { RadioPanel } from "./RadioPanel";
 import { FirstPersonPanel } from "./FirstPersonPanel";
 import { GaragePanel } from "./GaragePanel";
 import { ShowroomOverlay } from "./ShowroomOverlay";
+import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
 import { RaceMobileControls } from "./RaceMobileControls";
 import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
@@ -745,6 +748,8 @@ export function ColonyApp() {
   const [roadmapOpen, setRoadmapOpen] = useState(false);
   // PLAYER.GARAGE.1 — the Gearbox Auto Hub showroom interior (its own streamed scene overlay).
   const [showroomOpen, setShowroomOpen] = useState(false);
+  // PLAYER.HOME.1C — the guided starter-property selection + identity-bound house projection overlay.
+  const [homeOpen, setHomeOpen] = useState(false);
   // PLAYER.FLAG.S3 — the new-player-journey entitlement. `null` = not yet evaluated (treated as
   // OFF), so the gate fails closed while loading. Kept in memory ONLY — never persisted — so a
   // positive entitlement can never outlive the authenticated session or bleed across a switch.
@@ -801,6 +806,21 @@ export function ColonyApp() {
     if (!newPlayerJourneyEnabled) return;
     setShowroomOpen(true);
   };
+  // PLAYER.HOME.1C — the starter-property step is available only INSIDE an open new-player journey AND
+  // behind its own dark build-env gate (VITE_CITYLIFE_HOME_PURCHASE), so it stays invisible and the
+  // legacy entry is preserved until operator UAT turns it on. Evaluated once (like the car gate) so a
+  // mid-session env flip can never surprise a live overlay. The guarded open rejects a direct/runtime
+  // call exactly like the hidden button, so gating is never merely cosmetic.
+  const homePurchaseEnabled =
+    newPlayerJourneyEnabled && isHomePurchaseEnabled();
+  const openHome = () => {
+    if (!homePurchaseEnabled) return;
+    setHomeOpen(true);
+  };
+  // The server-synced wallet truth to display (player scope only; the operator/admin bank is the whole
+  // city, not a personal wallet). Display only — the overlay never submits it.
+  const playerWalletKco =
+    ui.bank.scope === "player" ? ui.bank.deposits : null;
   useEffect(() => {
     runtime.setOperatorName(auth.operator?.id ?? null);
     // Identity key: bind the player view to the authenticated kooker userId (from the JWT), so own-data
@@ -1575,6 +1595,43 @@ export function ColonyApp() {
           switch) closes it immediately. */}
       {showroomOpen && newPlayerJourneyEnabled && (
         <ShowroomOverlay onClose={() => setShowroomOpen(false)} />
+      )}
+      {/* PLAYER.HOME.1C — enter the guided starter-property selection. Gated on the SAME fail-closed
+          new-player-journey entitlement AND its own dark build-env flag: hidden (absent from the DOM,
+          not merely styled away) until operator UAT, so the legacy entry is preserved when OFF or an
+          entitlement read fails. */}
+      {!builderActive && !showroomOpen && !homeOpen && homePurchaseEnabled && (
+        <button
+          data-build-action="open-home"
+          title="Choose your starter home"
+          onClick={openHome}
+          style={{
+            position: "fixed",
+            right: 12,
+            bottom: 68,
+            zIndex: 60,
+            padding: "8px 12px",
+            fontSize: 13,
+            borderRadius: 8,
+            cursor: "pointer",
+            border: "1px solid #b6892f",
+            background: "rgba(8,14,24,0.92)",
+            color: "#ffd25a",
+            fontFamily: "monospace",
+            fontWeight: 700,
+          }}
+        >
+          🏡 Choose your home
+        </button>
+      )}
+      {/* Defense in depth: the overlay renders ONLY while the gate is open, so a forced/stale homeOpen
+          can never mount it and a mid-session revocation (account switch) closes it immediately. */}
+      {homeOpen && homePurchaseEnabled && (
+        <StarterPropertyOverlay
+          onClose={() => setHomeOpen(false)}
+          walletKco={playerWalletKco}
+          currency={ui.bank.currency}
+        />
       )}
       {!ui.firstPerson.active &&
         !builderActive &&
