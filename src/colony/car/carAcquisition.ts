@@ -91,7 +91,12 @@ export function classifyAcquireStatus(status: number): AcquireOutcome {
  *  (already owned, in flight, being processed, or refused). No THREE, no React, no colour policy. */
 export interface AcquireButtonView {
   readonly state:
-    "ready" | "pending" | "owned" | "insufficient_funds" | "disabled" | "error";
+    | "ready"
+    | "pending"
+    | "owned"
+    | "insufficient_funds"
+    | "disabled"
+    | "error";
   readonly label: string;
   readonly disabled: boolean;
 }
