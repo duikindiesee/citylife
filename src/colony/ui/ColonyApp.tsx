@@ -55,6 +55,7 @@ import { FirstPersonPanel } from "./FirstPersonPanel";
 import { GaragePanel } from "./GaragePanel";
 import { ShowroomOverlay } from "./ShowroomOverlay";
 import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
+import { DriveHomeOverlay } from "./DriveHomeOverlay";
 import { RaceMobileControls } from "./RaceMobileControls";
 import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
@@ -748,6 +749,8 @@ export function ColonyApp() {
   const [showroomOpen, setShowroomOpen] = useState(false);
   // PLAYER.HOME.1C — the guided starter-property selection + identity-bound house projection overlay.
   const [homeOpen, setHomeOpen] = useState(false);
+  // PLAYER.HOME.1D.S2 — the guided mobile drive out of the dealership to the owned home + home garage.
+  const [driveHomeOpen, setDriveHomeOpen] = useState(false);
   // PLAYER.FLAG.S3 — the new-player-journey entitlement. `null` = not yet evaluated (treated as
   // OFF), so the gate fails closed while loading. Kept in memory ONLY — never persisted — so a
   // positive entitlement can never outlive the authenticated session or bleed across a switch.
@@ -812,6 +815,15 @@ export function ColonyApp() {
   const openHome = () => {
     if (!newPlayerJourneyEnabled) return;
     setHomeOpen(true);
+  };
+  // PLAYER.HOME.1D.S2 — the guided drive-home step is gated on the SAME fail-closed new-player-journey
+  // entitlement as the showroom / property entries (server-owned, default OFF, fail-closed while loading
+  // and on any 401/403/timeout/malformed/unreachable flag response). No independent client on/off switch.
+  // The guarded open rejects a direct/runtime call exactly like the hidden button, so gating is never
+  // merely cosmetic.
+  const openDriveHome = () => {
+    if (!newPlayerJourneyEnabled) return;
+    setDriveHomeOpen(true);
   };
   // The server-synced wallet truth to display (player scope only; the operator/admin bank is the whole
   // city, not a personal wallet). Display only — the overlay never submits it.
@@ -1630,6 +1642,42 @@ export function ColonyApp() {
           walletKco={playerWalletKco}
           currency={ui.bank.currency}
         />
+      )}
+      {/* PLAYER.HOME.1D.S2 — enter the guided drive out of the dealership to the owned home. Gated on the
+          SAME fail-closed new-player-journey entitlement: hidden (absent from the DOM, not merely styled
+          away) until operator UAT, so the legacy world play is preserved when OFF or a read fails. */}
+      {!builderActive &&
+        !showroomOpen &&
+        !homeOpen &&
+        !driveHomeOpen &&
+        newPlayerJourneyEnabled && (
+          <button
+            data-build-action="open-drive-home"
+            title="Drive to your owned home"
+            onClick={openDriveHome}
+            style={{
+              position: "fixed",
+              right: 12,
+              bottom: 112,
+              zIndex: 60,
+              padding: "8px 12px",
+              fontSize: 13,
+              borderRadius: 8,
+              cursor: "pointer",
+              border: "1px solid #b6892f",
+              background: "rgba(8,14,24,0.92)",
+              color: "#ffd25a",
+              fontFamily: "monospace",
+              fontWeight: 700,
+            }}
+          >
+            🚗 Drive home
+          </button>
+        )}
+      {/* Defense in depth: the overlay renders ONLY while the gate is open, so a forced/stale
+          driveHomeOpen can never mount it and a mid-session revocation (account switch) closes it. */}
+      {driveHomeOpen && newPlayerJourneyEnabled && (
+        <DriveHomeOverlay onClose={() => setDriveHomeOpen(false)} />
       )}
       {!ui.firstPerson.active &&
         !builderActive &&
