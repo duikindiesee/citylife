@@ -113,7 +113,10 @@ async function routeAll(page: Page, s: DriveState): Promise<void> {
     return route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ enabled, state: enabled ? "UAT_ALLOWLIST" : "OFF" }),
+      body: JSON.stringify({
+        enabled,
+        state: enabled ? "UAT_ALLOWLIST" : "OFF",
+      }),
     });
   });
   // The arrival POST records residency once (idempotent): the SAME logical arrival only ever advances the
@@ -136,7 +139,11 @@ async function routeAll(page: Page, s: DriveState): Promise<void> {
   });
 }
 
-async function bootAs(page: Page, userId: string, s: DriveState): Promise<void> {
+async function bootAs(
+  page: Page,
+  userId: string,
+  s: DriveState,
+): Promise<void> {
   await routeAll(page, s);
   await page.addInitScript(
     ([key, session]) => {
@@ -234,11 +241,9 @@ test("HOME.1D.S2: mobile drive to owned home, idempotent bounded arrival, RESIDE
   // Drive by touch, following the live guidance (proves mobile controls + route recovery).
   const taps = await driveToHome(page);
   expect(taps).toBeGreaterThan(0);
-  await expect(page.locator('[data-testid="drive-home-guidance"]')).toHaveAttribute(
-    "data-arrived",
-    "true",
-    { timeout: ASSERT_TIMEOUT },
-  );
+  await expect(
+    page.locator('[data-testid="drive-home-guidance"]'),
+  ).toHaveAttribute("data-arrived", "true", { timeout: ASSERT_TIMEOUT });
   await expect(arrive).toHaveAttribute("data-arrival-state", "ready");
 
   // Double-tap the arrival control: one logical arrival, never two (bounded evidence + idempotency key).
@@ -248,9 +253,11 @@ test("HOME.1D.S2: mobile drive to owned home, idempotent bounded arrival, RESIDE
   });
 
   // Convergence on the server RESIDENT truth → the home-garage portal appears, unlocked by the server.
-  await expect(page.locator('[data-testid="drive-home-resident"]')).toBeVisible({
-    timeout: ASSERT_TIMEOUT,
-  });
+  await expect(page.locator('[data-testid="drive-home-resident"]')).toBeVisible(
+    {
+      timeout: ASSERT_TIMEOUT,
+    },
+  );
   expect(state.arrivalCount.n).toBe(1); // the double-tap fired ONE POST
   const portal = page.locator('[data-testid="home-garage-portal"]');
   await expect(portal).toHaveAttribute("data-garage-unlocked", "true");
@@ -283,13 +290,14 @@ test("HOME.1D.S2: relogin / second-device boot converges on RESIDENT without re-
   await touchTap(page, ENTRY);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: ASSERT_TIMEOUT });
 
-  await expect(page.locator('[data-testid="drive-home-resident"]')).toBeVisible({
-    timeout: ASSERT_TIMEOUT,
-  });
-  await expect(page.locator('[data-testid="drive-home-arrive"]')).toHaveAttribute(
-    "data-arrival-state",
-    "confirmed",
+  await expect(page.locator('[data-testid="drive-home-resident"]')).toBeVisible(
+    {
+      timeout: ASSERT_TIMEOUT,
+    },
   );
+  await expect(
+    page.locator('[data-testid="drive-home-arrive"]'),
+  ).toHaveAttribute("data-arrival-state", "confirmed");
   await expect(
     page.locator('[data-testid="home-garage-portal"]'),
   ).toHaveAttribute("data-garage-unlocked", "true");

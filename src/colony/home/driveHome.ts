@@ -104,15 +104,7 @@ export function dealershipStartCell(truth: HomeTruth | null): Cell | null {
 export const ARRIVAL_RADIUS_CELLS = 2;
 
 /** The 8-way compass heading the mobile HUD points the driver along. Null once arrived. */
-export type RouteHeading =
-  | "N"
-  | "NE"
-  | "E"
-  | "SE"
-  | "S"
-  | "SW"
-  | "W"
-  | "NW";
+export type RouteHeading = "N" | "NE" | "E" | "SE" | "S" | "SW" | "W" | "NW";
 
 /** True when the current cell is inside the owned plot cells (within the arrival radius of the home cell,
  *  Chebyshev so the plot is a small square). Pure — the single local arrival gate; the server re-checks. */
@@ -373,12 +365,24 @@ export function arrivalButtonView(
         disabled: true,
       };
     case "disabled":
-      return { state: "disabled", label: "🔒 Sign in to arrive", disabled: true };
+      return {
+        state: "disabled",
+        label: "🔒 Sign in to arrive",
+        disabled: true,
+      };
     case "error":
-      return { state: "error", label: "Couldn't check in — retry", disabled: false };
+      return {
+        state: "error",
+        label: "Couldn't check in — retry",
+        disabled: false,
+      };
     default:
       if (!withinBounds)
-        return { state: "far", label: "Drive to your home plot", disabled: true };
+        return {
+          state: "far",
+          label: "Drive to your home plot",
+          disabled: true,
+        };
       return { state: "ready", label: "Pull into your home", disabled: false };
   }
 }
