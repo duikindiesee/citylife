@@ -124,14 +124,11 @@ export function DriveHomeOverlay({ onClose }: { onClose: () => void }) {
   const resident = residency?.resident === true;
   const garageUnlocked = isHomeGarageUnlocked(residency);
 
-  const move = useCallback(
-    (dir: "up" | "down" | "left" | "right") => {
-      setCursor((cur) => (cur ? stepCell(cur, dir) : cur));
-      // Any movement invalidates a stale "rejected/error" outcome so the button re-derives from position.
-      setOutcome(undefined);
-    },
-    [],
-  );
+  const move = useCallback((dir: "up" | "down" | "left" | "right") => {
+    setCursor((cur) => (cur ? stepCell(cur, dir) : cur));
+    // Any movement invalidates a stale "rejected/error" outcome so the button re-derives from position.
+    setOutcome(undefined);
+  }, []);
 
   const arrive = useCallback(() => {
     if (pending || resident || !cursor || !withinBounds) return;
@@ -185,9 +182,7 @@ export function DriveHomeOverlay({ onClose }: { onClose: () => void }) {
           alignItems: "center",
         }}
       >
-        <span style={{ color: "#ffd25a", fontWeight: 700 }}>
-          🚗 Drive home
-        </span>
+        <span style={{ color: "#ffd25a", fontWeight: 700 }}>🚗 Drive home</span>
         <button
           data-build-action="drive-home-exit"
           data-testid="drive-home-exit"

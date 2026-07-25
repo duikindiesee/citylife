@@ -83,7 +83,9 @@ describe("driveHome — server-derived destination (never client-authored)", () 
   it("is null unless the truth is unambiguously OWNED, and null on a reference-less deed", () => {
     expect(homeTargetCell(null)).toBeNull();
     expect(homeTargetCell(NOT_OWNED)).toBeNull();
-    expect(homeTargetCell(truth({ owned: true, status: "PENDING" }))).toBeNull();
+    expect(
+      homeTargetCell(truth({ owned: true, status: "PENDING" })),
+    ).toBeNull();
     expect(
       homeTargetCell(
         truth({ plotId: null, frameId: null, neighbourhoodKey: null }),
@@ -105,16 +107,10 @@ describe("driveHome — arrival bounds + heading (route recovery is inherent)", 
   it("counts as arrived only inside the Chebyshev plot radius", () => {
     expect(isWithinArrivalBounds({ x: 30, y: 30 }, home)).toBe(true);
     expect(
-      isWithinArrivalBounds(
-        { x: 30 + ARRIVAL_RADIUS_CELLS, y: 30 },
-        home,
-      ),
+      isWithinArrivalBounds({ x: 30 + ARRIVAL_RADIUS_CELLS, y: 30 }, home),
     ).toBe(true);
     expect(
-      isWithinArrivalBounds(
-        { x: 30 + ARRIVAL_RADIUS_CELLS + 1, y: 30 },
-        home,
-      ),
+      isWithinArrivalBounds({ x: 30 + ARRIVAL_RADIUS_CELLS + 1, y: 30 }, home),
     ).toBe(false);
   });
   it("points toward home from every quadrant and is null once inside", () => {
