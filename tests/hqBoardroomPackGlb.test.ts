@@ -138,15 +138,15 @@ describe("hq-boardroom-pack.glb", () => {
 });
 
 describe("hq-boardroom-pack.placement.json", () => {
-  it("furnishes the 10x8 Gate Room with in-bounds contract nodes and ten chairs", () => {
+  it("furnishes the 8x8 Gate Room with in-bounds contract nodes and ten chairs", () => {
     expect(placement.schema).toBe("citylife-prop-placement/v1");
-    expect(placement.frame.gridWidthCells).toBe(10);
+    expect(placement.frame.gridWidthCells).toBe(8);
     expect(placement.frame.gridDepthCells).toBe(8);
     for (const entry of placement.placements) {
       expect(Object.keys(PARTS)).toContain(entry.node);
       const [x, y, z] = entry.position;
       expect(x).toBeGreaterThanOrEqual(0);
-      expect(x).toBeLessThanOrEqual(10);
+      expect(x).toBeLessThanOrEqual(8);
       expect(y).toBeGreaterThanOrEqual(0);
       expect(z).toBeGreaterThanOrEqual(0);
       expect(z).toBeLessThanOrEqual(8);
