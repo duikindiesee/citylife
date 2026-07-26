@@ -75,7 +75,7 @@ wiring, renderer scene, network call or Task API change ships with this slice.
 
 - `tests/gamehouseInterior.test.ts` — 8×8 frame graph, exact-inverse portals,
   determinism, serialize/parse replay, existing records preserved, out-of-bounds
-  + duplicate rejection.
+  - duplicate rejection.
 - `tests/gamehouseCabinet.test.ts` — cabinet dimensions, in-bounds tight-bounds
   placement, public-safe ids, procedural fallback, and the auth gate
   (authenticated → play prompt; unauthenticated → sign-in prompt).

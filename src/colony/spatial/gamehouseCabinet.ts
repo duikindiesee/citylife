@@ -90,8 +90,7 @@ export function isCommonsArcadeCabinetInBounds(): boolean {
   const width = GAMEHOUSE_FLOOR_WIDTH_CELLS * GAMEHOUSE_FLOOR_CELL_SIZE;
   const depth = GAMEHOUSE_FLOOR_DEPTH_CELLS * GAMEHOUSE_FLOOR_CELL_SIZE;
   const a = COMMONS_ARCADE_CABINET_APPROACH_POINT;
-  const approachInBounds =
-    a.x >= 0 && a.x <= width && a.z >= 0 && a.z <= depth;
+  const approachInBounds = a.x >= 0 && a.x <= width && a.z >= 0 && a.z <= depth;
   return cellInBounds && approachInBounds;
 }
 
