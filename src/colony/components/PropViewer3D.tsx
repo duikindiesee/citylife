@@ -2,7 +2,13 @@
 // Renders single isolated GLB props or room mode placement layouts with accessible controls,
 // reduced-motion support, mobile input handling, and robust load-error fallbacks.
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import {
@@ -92,17 +98,15 @@ export function PropViewer3D({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const [internalControls, setInternalControls] = useState<PropViewerControlsState>(
-    DEFAULT_CONTROLS_STATE,
-  );
+  const [internalControls, setInternalControls] =
+    useState<PropViewerControlsState>(DEFAULT_CONTROLS_STATE);
   const activeControls = externalControls ?? internalControls;
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [retryCount, setRetryCount] = useState<number>(0);
-  const [activePlacement, setActivePlacement] = useState<PropPlacementSchema | null>(
-    placementJson,
-  );
+  const [activePlacement, setActivePlacement] =
+    useState<PropPlacementSchema | null>(placementJson);
 
   // Ref to hold the current control values to prevent scene effect re-creation on every control change
   const controlsRef = useRef<PropViewerControlsState>(activeControls);
@@ -117,13 +121,16 @@ export function PropViewer3D({
   }, [onError]);
 
   // System reduced-motion preference check
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(() => {
-    if (typeof externalReducedMotion === "boolean") return externalReducedMotion;
-    if (typeof window !== "undefined" && window.matchMedia) {
-      return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    }
-    return false;
-  });
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(
+    () => {
+      if (typeof externalReducedMotion === "boolean")
+        return externalReducedMotion;
+      if (typeof window !== "undefined" && window.matchMedia) {
+        return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      }
+      return false;
+    },
+  );
 
   useEffect(() => {
     if (typeof externalReducedMotion === "boolean") {
@@ -132,7 +139,8 @@ export function PropViewer3D({
     }
     if (typeof window === "undefined" || !window.matchMedia) return;
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const listener = (e: MediaQueryListEvent) => setPrefersReducedMotion(e.matches);
+    const listener = (e: MediaQueryListEvent) =>
+      setPrefersReducedMotion(e.matches);
     media.addEventListener("change", listener);
     return () => media.removeEventListener("change", listener);
   }, [externalReducedMotion]);
@@ -166,7 +174,8 @@ export function PropViewer3D({
     let mounted = true;
     fetch(placementUrl)
       .then((res) => {
-        if (!res.ok) throw new Error(`Failed to load placement JSON (${res.status})`);
+        if (!res.ok)
+          throw new Error(`Failed to load placement JSON (${res.status})`);
         return res.json();
       })
       .then((json) => {
@@ -243,9 +252,10 @@ export function PropViewer3D({
       scene.add(modelGroup);
 
       const loader = new GLTFLoader();
-      const targetGlbUrl = mode === "room" && activePlacement?.asset.url
-        ? activePlacement.asset.url
-        : glbUrl;
+      const targetGlbUrl =
+        mode === "room" && activePlacement?.asset.url
+          ? activePlacement.asset.url
+          : glbUrl;
 
       loader.load(
         targetGlbUrl,
@@ -296,17 +306,28 @@ export function PropViewer3D({
 
                 if (nodeMesh) {
                   const nodeGroup = new THREE.Group();
-                  nodeGroup.position.set(p.position[0], p.position[1], p.position[2]);
+                  nodeGroup.position.set(
+                    p.position[0],
+                    p.position[1],
+                    p.position[2],
+                  );
                   nodeGroup.rotation.y = p.yawRadians;
 
                   // Highlight selected prop if it matches nodeName
                   const targetObj = nodeMesh as THREE.Object3D;
-                  if (nodeName && (p.node === nodeName || p.node.includes(nodeName))) {
+                  if (
+                    nodeName &&
+                    (p.node === nodeName || p.node.includes(nodeName))
+                  ) {
                     targetObj.traverse((m: THREE.Object3D) => {
                       if ((m as THREE.Mesh).isMesh) {
                         const mesh = m as THREE.Mesh;
                         if (mesh.material) {
-                          const mat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
+                          const mat = (
+                            Array.isArray(mesh.material)
+                              ? mesh.material[0]
+                              : mesh.material
+                          ) as THREE.MeshStandardMaterial;
                           if (mat && mat.emissive) {
                             mat.emissive = new THREE.Color(0x3a7ab0);
                             mat.emissiveIntensity = 0.4;
@@ -357,9 +378,16 @@ export function PropViewer3D({
         const clampedZoom = clampPropZoom(zoom);
         const clampedPolar = clampPropPolar(polar);
 
-        const camX = pan[0] + Math.sin(azimuth) * Math.cos(clampedPolar) * clampedZoom;
-        const camY = Math.max(0.2, pan[1] + Math.sin(clampedPolar) * clampedZoom + 0.9);
-        const camZ = Math.sin(azimuth + Math.PI / 2) * Math.cos(clampedPolar) * clampedZoom;
+        const camX =
+          pan[0] + Math.sin(azimuth) * Math.cos(clampedPolar) * clampedZoom;
+        const camY = Math.max(
+          0.2,
+          pan[1] + Math.sin(clampedPolar) * clampedZoom + 0.9,
+        );
+        const camZ =
+          Math.sin(azimuth + Math.PI / 2) *
+          Math.cos(clampedPolar) *
+          clampedZoom;
 
         camera.position.set(camX, camY, camZ);
         camera.lookAt(pan[0], 0.9 + pan[1], 0);
@@ -504,17 +532,25 @@ export function PropViewer3D({
 
   // Keyboard navigation & accessibility handlers
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    const stepAngle = prefersReducedMotion ? (15 * Math.PI) / 180 : (8 * Math.PI) / 180;
+    const stepAngle = prefersReducedMotion
+      ? (15 * Math.PI) / 180
+      : (8 * Math.PI) / 180;
     const stepZoom = 0.3;
 
     switch (e.key) {
       case "ArrowLeft":
         e.preventDefault();
-        updateControls((prev) => ({ ...prev, azimuth: prev.azimuth - stepAngle }));
+        updateControls((prev) => ({
+          ...prev,
+          azimuth: prev.azimuth - stepAngle,
+        }));
         break;
       case "ArrowRight":
         e.preventDefault();
-        updateControls((prev) => ({ ...prev, azimuth: prev.azimuth + stepAngle }));
+        updateControls((prev) => ({
+          ...prev,
+          azimuth: prev.azimuth + stepAngle,
+        }));
         break;
       case "ArrowUp":
         e.preventDefault();
@@ -602,11 +638,7 @@ export function PropViewer3D({
 
       {/* Accessible Asset Load Error Fallback UI */}
       {loadError && (
-        <div
-          role="alert"
-          data-testid="prop-viewer-error"
-          style={errorBoxStyle}
-        >
+        <div role="alert" data-testid="prop-viewer-error" style={errorBoxStyle}>
           <div style={{ fontSize: 22 }}>⚠️ 3D Asset Load Failure</div>
           <div>{loadError}</div>
           <div style={{ fontSize: 12, color: "#c8808a" }}>
