@@ -12,8 +12,7 @@ import {
   CABINET_SIGN_IN_PROMPT,
 } from "../src/colony/spatial/gamehouseCabinet";
 
-const FLOOR_FRAME_ID =
-  "surface:building:kooker-gamehouse:room:gamehouse-floor";
+const FLOOR_FRAME_ID = "surface:building:kooker-gamehouse:room:gamehouse-floor";
 
 describe("Commons_Arcade cabinet placement (ARCADE.1)", () => {
   it("uses the accepted 0.7 x 1.8 x 0.8 m dimensions with a floor-centre pivot", () => {
@@ -39,8 +38,7 @@ describe("Commons_Arcade cabinet placement (ARCADE.1)", () => {
     expect(a.bounds).toEqual({ x: cell.x, y: cell.y, w: 1, h: 1 });
 
     // Every anchor belongs to the placement cells.
-    for (const anchor of a.anchors)
-      expect(a.cells).toContainEqual(anchor.cell);
+    for (const anchor of a.anchors) expect(a.cells).toContainEqual(anchor.cell);
 
     // The cabinet cell and its approach point stay inside the 8 x 8 room.
     expect(isCommonsArcadeCabinetInBounds()).toBe(true);
