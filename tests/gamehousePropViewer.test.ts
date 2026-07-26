@@ -96,7 +96,7 @@ function resetMountedMetrics() {
 function setupMountedDOM() {
   resetMountedMetrics();
 
-  (global as any).IS_REACT_ACT_ENVIRONMENT = true;
+  (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
   class MockElement {}
   class MockHTMLElement extends MockElement {}
@@ -119,7 +119,7 @@ function setupMountedDOM() {
     "SVGElement",
   ];
   for (const type of elementTypes) {
-    (global as any)[type] = class extends MockHTMLElement {};
+    (globalThis as any)[type] = class extends MockHTMLElement {};
   }
 
   const mockListeners = new Map<string, Set<Function>>();
@@ -127,7 +127,12 @@ function setupMountedDOM() {
   let mockDoc: any;
   const createMockNode = (tag: string) => {
     const nodeListeners = new Map<string, Set<Function>>();
-    const Proto = tag === "canvas" ? MockHTMLCanvasElement : tag === "button" ? MockHTMLButtonElement : MockHTMLDivElement;
+    const Proto =
+      tag === "canvas"
+        ? MockHTMLCanvasElement
+        : tag === "button"
+        ? MockHTMLButtonElement
+        : MockHTMLDivElement;
     const node: any = Object.create(Proto.prototype);
     Object.assign(node, {
       tagName: tag.toUpperCase(),
@@ -138,7 +143,8 @@ function setupMountedDOM() {
       parentNode: null,
       ownerDocument: mockDoc,
       nodeType: 1,
-      getAttribute: (attr: string) => node[`data-${attr}`] || null,
+      _listeners: nodeListeners,
+      getAttribute: (attr: string) => node[attr] || node[`data-${attr}`] || null,
       setAttribute: (attr: string, val: string) => {
         node[attr] = val;
       },
@@ -150,7 +156,32 @@ function setupMountedDOM() {
         nodeListeners.get(evt)?.delete(fn);
       },
       dispatchEvent: (evt: any) => {
-        nodeListeners.get(evt.type)?.forEach((fn) => fn(evt));
+        const type = typeof evt === "string" ? evt : evt.type;
+        const eventObj = typeof evt === "string" ? { type: evt, target: node, bubbles: true } : evt;
+        if (!eventObj.target) eventObj.target = node;
+
+        let curr: any = node;
+        while (curr) {
+          const listeners = curr._listeners?.get(type);
+          if (listeners) {
+            listeners.forEach((fn: Function) => fn(eventObj));
+          }
+          if (type === "click") {
+            if (typeof curr.onClick === "function") curr.onClick(eventObj);
+            if (typeof curr.onclick === "function") curr.onclick(eventObj);
+          }
+          if (!eventObj.bubbles) break;
+          curr = curr.parentNode || (curr === mockDoc.body ? mockDoc : null);
+        }
+      },
+      click: () => {
+        node.dispatchEvent({
+          type: "click",
+          target: node,
+          bubbles: true,
+          preventDefault: () => {},
+          stopPropagation: () => {},
+        });
       },
       setPointerCapture: () => {},
       releasePointerCapture: () => {},
@@ -197,21 +228,21 @@ function setupMountedDOM() {
   mockDoc.body.ownerDocument = mockDoc as any;
 
   const windowListeners = new Map<string, Set<Function>>();
-  (global as any).addEventListener = (evt: string, fn: Function) => {
+  (globalThis as any).addEventListener = (evt: string, fn: Function) => {
     if (!windowListeners.has(evt)) windowListeners.set(evt, new Set());
     windowListeners.get(evt)!.add(fn);
   };
-  (global as any).removeEventListener = (evt: string, fn: Function) => {
+  (globalThis as any).removeEventListener = (evt: string, fn: Function) => {
     windowListeners.get(evt)?.delete(fn);
   };
-  (global as any).dispatchEvent = (evt: any) => {
+  (globalThis as any).dispatchEvent = (evt: any) => {
     windowListeners.get(evt.type)?.forEach((fn) => fn(evt));
   };
-  (global as any).window = global;
-  (global as any).document = mockDoc;
+  (globalThis as any).window = globalThis;
+  (globalThis as any).document = mockDoc;
 
   try {
-    Object.defineProperty(global, "navigator", {
+    Object.defineProperty(globalThis, "navigator", {
       value: { userAgent: "node" },
       configurable: true,
       writable: true,
@@ -219,32 +250,52 @@ function setupMountedDOM() {
   } catch {
     // Ignore if navigator getter is non-configurable
   }
-  (global as any).devicePixelRatio = 1;
+  (globalThis as any).devicePixelRatio = 1;
 
-  (global as any).requestAnimationFrame = (cb: FrameRequestCallback) => {
+  (globalThis as any).requestAnimationFrame = (cb: FrameRequestCallback) => {
     mountedMetrics.animationFramesRequested++;
     const id = nextFrameId++;
     activeFrameIds.add(id);
     mountedMetrics.activeAnimLoops = activeFrameIds.size;
     setTimeout(() => {
       if (activeFrameIds.has(id)) {
+        activeFrameIds.delete(id);
+        mountedMetrics.activeAnimLoops = activeFrameIds.size;
         cb(performance.now());
       }
     }, 16);
     return id;
   };
 
-  (global as any).cancelAnimationFrame = (id: number) => {
+  (globalThis as any).cancelAnimationFrame = (id: number) => {
     mountedMetrics.animationFramesCanceled++;
     activeFrameIds.delete(id);
     mountedMetrics.activeAnimLoops = activeFrameIds.size;
   };
 
-  (global as any).matchMedia = () => ({
+  (globalThis as any).matchMedia = () => ({
     matches: false,
     addEventListener: () => {},
     removeEventListener: () => {},
   });
+}
+
+function findNodeByTestId(root: any, testId: string): any {
+  if (!root) return null;
+  if (
+    root["data-testid"] === testId ||
+    root.getAttribute?.("data-testid") === testId ||
+    root["data-build-action"] === testId
+  ) {
+    return root;
+  }
+  if (root.children && Array.isArray(root.children)) {
+    for (const child of root.children) {
+      const found = findNodeByTestId(child, testId);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 describe("PropViewer3D & Gamehouse Cabinet Inspection (CITYLIFE.3D.VIEWER)", () => {
@@ -285,33 +336,20 @@ describe("PropViewer3D & Gamehouse Cabinet Inspection (CITYLIFE.3D.VIEWER)", () 
       setupMountedDOM();
     });
 
-    it("parent-controlled rotate/zoom/pan rerenders do NOT create another WebGL renderer or load the GLB again", async () => {
-      const container = document.createElement("div");
-      document.body.appendChild(container);
+    it("operating rotate, zoom and pan controls through multiple state changes preserves 1 renderer creation, 1 GLB load and 0 disposals", async () => {
+      const container = (globalThis as any).document.createElement("div");
+      (globalThis as any).document.body.appendChild(container);
       let root: Root | null = null;
-
-      function ParentHarness() {
-        const [controls, setControls] = React.useState<PropViewerControlsState>(
-          DEFAULT_CONTROLS_STATE,
-        );
-
-        return React.createElement(
-          "div",
-          null,
-          React.createElement(PropViewer3D, {
-            mode: "prop",
-            glbUrl: "/assets/citylife/props/hq-commons-pack.glb",
-            nodeName: "Commons_Arcade",
-            controls: controls,
-            onControlsChange: setControls,
-            onError: () => {},
-          }),
-        );
-      }
 
       await act(async () => {
         root = createRoot(container);
-        root.render(React.createElement(ParentHarness));
+        root.render(
+          React.createElement(CabinetInspectModal, {
+            onClose: () => {},
+            isAuthenticated: true,
+            nodeName: "Commons_Arcade",
+          }),
+        );
       });
 
       // Initial mount creates exactly 1 renderer and starts 1 GLB load
@@ -319,9 +357,39 @@ describe("PropViewer3D & Gamehouse Cabinet Inspection (CITYLIFE.3D.VIEWER)", () 
       expect(mountedMetrics.gltfLoadAttempts).toBe(1);
       expect(mountedMetrics.webglDisposals).toBe(0);
 
-      // Perform 8 parent-controlled rerenders with changing control state and inline callbacks
+      // Drive rotate, zoom and pan controls through multiple state changes via toolbar buttons
+      const rotateLeftBtn = findNodeByTestId(container, "inspect-rotate-left");
+      const rotateRightBtn = findNodeByTestId(container, "inspect-rotate-right");
+      const pitchUpBtn = findNodeByTestId(container, "inspect-pitch-up");
+      const pitchDownBtn = findNodeByTestId(container, "inspect-pitch-down");
+      const zoomInBtn = findNodeByTestId(container, "inspect-zoom-in");
+      const zoomOutBtn = findNodeByTestId(container, "inspect-zoom-out");
+      const panLeftBtn = findNodeByTestId(container, "inspect-pan-left");
+      const panRightBtn = findNodeByTestId(container, "inspect-pan-right");
+      const resetBtn = findNodeByTestId(container, "inspect-reset");
+
       await act(async () => {
-        root?.render(React.createElement(ParentHarness));
+        rotateLeftBtn?.click();
+        rotateRightBtn?.click();
+        pitchUpBtn?.click();
+        pitchDownBtn?.click();
+        zoomInBtn?.click();
+        zoomOutBtn?.click();
+        panLeftBtn?.click();
+        panRightBtn?.click();
+        resetBtn?.click();
+      });
+
+      // Also drive keyboard control inputs on PropViewer3D container
+      const viewerContainer = findNodeByTestId(container, "prop-viewer-3d");
+      await act(async () => {
+        viewerContainer?.dispatchEvent({ type: "keydown", key: "ArrowLeft", preventDefault: () => {} });
+        viewerContainer?.dispatchEvent({ type: "keydown", key: "ArrowRight", preventDefault: () => {} });
+        viewerContainer?.dispatchEvent({ type: "keydown", key: "ArrowUp", preventDefault: () => {} });
+        viewerContainer?.dispatchEvent({ type: "keydown", key: "ArrowDown", preventDefault: () => {} });
+        viewerContainer?.dispatchEvent({ type: "keydown", key: "+", preventDefault: () => {} });
+        viewerContainer?.dispatchEvent({ type: "keydown", key: "-", preventDefault: () => {} });
+        viewerContainer?.dispatchEvent({ type: "keydown", key: "r", preventDefault: () => {} });
       });
 
       // Assert zero new renderer creations, zero GLB reloads, zero WebGL disposals
@@ -335,48 +403,55 @@ describe("PropViewer3D & Gamehouse Cabinet Inspection (CITYLIFE.3D.VIEWER)", () 
       });
     });
 
-    it("Retry performs exactly one new load attempt after cleanup", async () => {
-      const container = document.createElement("div");
-      document.body.appendChild(container);
+    it("Retry performs exactly one new load attempt after cleanup when actual Retry button is clicked", async () => {
+      const container = (globalThis as any).document.createElement("div");
+      (globalThis as any).document.body.appendChild(container);
       let root: Root | null = null;
-
-      function RetryHarness({ retryKey }: { retryKey: number }) {
-        return React.createElement(PropViewer3D, {
-          key: retryKey,
-          mode: "prop",
-          glbUrl: "/assets/citylife/props/fail-load.glb",
-          nodeName: "Commons_Arcade",
-          onError: () => {},
-        });
-      }
 
       await act(async () => {
         root = createRoot(container);
-        root.render(React.createElement(RetryHarness, { retryKey: 1 }));
+        root.render(
+          React.createElement(PropViewer3D, {
+            mode: "prop",
+            glbUrl: "/assets/citylife/props/fail-load.glb",
+            nodeName: "Commons_Arcade",
+            onError: () => {},
+          }),
+        );
       });
 
       expect(mountedMetrics.webglRendererCreations).toBe(1);
       expect(mountedMetrics.gltfLoadAttempts).toBe(1);
 
-      // Trigger retry (re-mount with new key / retry increment)
+      // Trigger load error by running async timers for failed GLB load
       await act(async () => {
-        root?.render(React.createElement(RetryHarness, { retryKey: 2 }));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       });
 
-      // Exactly 1 previous renderer disposed, context lost, and 1 new renderer created
+      // Find actual Retry button rendered in DOM
+      const retryBtn = findNodeByTestId(container, "prop-viewer-retry");
+      expect(retryBtn).not.toBeNull();
+
+      // Click actual Retry button
+      await act(async () => {
+        retryBtn?.click();
+      });
+
+      // Assert exactly 1 fresh GLB load attempt, 1 cleanup of failed attempt, 1 fresh renderer creation, and no duplicate animation loop
       expect(mountedMetrics.webglDisposals).toBe(1);
       expect(mountedMetrics.webglContextLosses).toBe(1);
       expect(mountedMetrics.webglRendererCreations).toBe(2);
       expect(mountedMetrics.gltfLoadAttempts).toBe(2);
+      expect(mountedMetrics.activeAnimLoops).toBe(1);
 
       await act(async () => {
         root?.unmount();
       });
     });
 
-    it("leaves no duplicate animation loop or active WebGL context after unmount", async () => {
-      const container = document.createElement("div");
-      document.body.appendChild(container);
+    it("unmount performs cleanup exactly once and leaves zero active animation loops", async () => {
+      const container = (globalThis as any).document.createElement("div");
+      (globalThis as any).document.body.appendChild(container);
       let root: Root | null = null;
 
       await act(async () => {
