@@ -25,8 +25,9 @@ import {
 import {
   evaluateArcadeEntitlement,
   defaultArcadeDeps,
-  arcadeGamehouseBypassed,
+  arcadeGamehouseDevBypass,
   arcadeGamehouseAvailable,
+  ARCADE_ENTITLEMENT_REVALIDATE_MS,
   type ArcadeEntitlement,
 } from "../entitlement/arcadeGamehouse";
 import { GamehouseOverlay } from "./GamehouseOverlay";
@@ -826,13 +827,14 @@ export function ColonyApp() {
     if (!newPlayerJourneyEnabled) return;
     setShowroomOpen(true);
   };
-  // ARCADE.2A — is the Gamehouse venue available to THIS session? Fails closed: only the DEV/E2E
-  // null-operator bypass, OR an authenticated CITYLIFE_PLAYER whose `citylife-arcade-3d-v1` flag is
-  // unambiguously enabled server-side, opens it. Signed-out and non-entitled sessions can never enter.
-  // Used to hide the entry affordance AND — via openGamehouse — to reject a direct/programmatic open,
-  // so the gate is never merely cosmetic.
+  // ARCADE.2A — is the Gamehouse venue available to THIS session? Fails closed: only the narrowly scoped
+  // DEV/E2E bypass (DEV build + local origin + explicit opt-in — never a mere null/expired operator), OR
+  // an authenticated CITYLIFE_PLAYER whose `citylife-arcade-3d-v1` flag is unambiguously enabled
+  // server-side, opens it. Signed-out and non-entitled sessions can never enter. Used to hide the entry
+  // affordance AND — via openGamehouse — to reject a direct/programmatic open, so the gate is never
+  // merely cosmetic.
   const arcadeGamehouseEnabled = arcadeGamehouseAvailable({
-    bypass: arcadeGamehouseBypassed(auth),
+    bypass: arcadeGamehouseDevBypass(),
     entitlement: arcadeEntitlement,
     session: auth.operator
       ? { userId: auth.operator.userId, roles: auth.operator.roles }
@@ -840,7 +842,7 @@ export function ColonyApp() {
   });
   // Whether this session may run the isolated 3D cabinet inspection inside the venue: a real
   // authenticated player, or the DEV/E2E bypass (which the entry gate already required).
-  const arcadeCabinetAuthed = auth.isAuthenticated || arcadeGamehouseBypassed(auth);
+  const arcadeCabinetAuthed = auth.isAuthenticated || arcadeGamehouseDevBypass();
   // The governed commercial plot the venue fronts, for stable metadata display (read-only; null before
   // the district survey completes or if no Gamehouse plot was placed).
   const gamehouseSite = useMemo(
@@ -913,7 +915,7 @@ export function ColonyApp() {
   // forward. A close/switch collapses any open venue via the arcadeGamehouseEnabled render guard below.
   useEffect(() => {
     setArcadeEntitlement(null);
-    if (arcadeGamehouseBypassed(auth)) return;
+    if (arcadeGamehouseDevBypass()) return;
     let cancelled = false;
     void (async () => {
       const result = await evaluateArcadeEntitlement(defaultArcadeDeps());
@@ -924,6 +926,40 @@ export function ColonyApp() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth, operatorUserId]);
+  // ARCADE.2A — make kill/OFF revocation LIVE, not just an entry-time snapshot. While the venue is open,
+  // revalidate `citylife-arcade-3d-v1` immediately (on entry) and then on a bounded cadence AND whenever
+  // the tab is refocused/re-shown. A mid-session flag kill / OFF / 401 / 403 / timeout / malformed body /
+  // network error all resolve (fail-closed) to a disabled entitlement, which flips arcadeGamehouseEnabled
+  // false so the render guard below unmounts the open venue at once. The local DEV/E2E bypass takes no
+  // network and stays open (it never mounted against a server flag). Stale in-flight results are dropped.
+  useEffect(() => {
+    if (!gamehouseOpen) return;
+    if (arcadeGamehouseDevBypass()) return;
+    let cancelled = false;
+    const revalidate = async () => {
+      const result = await evaluateArcadeEntitlement(defaultArcadeDeps());
+      if (!cancelled) setArcadeEntitlement(result);
+    };
+    void revalidate();
+    const timer = setInterval(
+      () => void revalidate(),
+      ARCADE_ENTITLEMENT_REVALIDATE_MS,
+    );
+    const onRefocus = () => void revalidate();
+    if (typeof window !== "undefined")
+      window.addEventListener("focus", onRefocus);
+    if (typeof document !== "undefined")
+      document.addEventListener("visibilitychange", onRefocus);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      if (typeof window !== "undefined")
+        window.removeEventListener("focus", onRefocus);
+      if (typeof document !== "undefined")
+        document.removeEventListener("visibilitychange", onRefocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gamehouseOpen]);
   // Spec 085 P1 — once mounted (the AuthGate has signed the player in), drain any real-ledger sync
   // moves left queued from a prior session. New moves drain themselves on notice().
   useEffect(() => {

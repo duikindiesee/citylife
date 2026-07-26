@@ -9,10 +9,11 @@ import {
   decideArcadeEntitlement,
   evaluateArcadeEntitlement,
   arcadeGamehouseAvailable,
-  arcadeGamehouseBypassed,
+  arcadeGamehouseDevBypass,
   isEntitledCityLifePlayer,
   type ArcadeTransportResult,
 } from "../src/colony/entitlement/arcadeGamehouse";
+import type { DevAuthBypassProbe } from "../src/colony/devAuthBypass";
 
 const ok = (body: unknown): ArcadeTransportResult => ({
   ok: true,
@@ -139,13 +140,59 @@ describe("ARCADE.2A — arcadeGamehouseAvailable is the single fail-closed avail
     ).toBe(false);
   });
 
-  it("opens for the DEV/E2E null-operator bypass without any entitlement or role", () => {
+  it("opens for the narrowly scoped DEV/E2E bypass without any entitlement or role", () => {
     expect(
       arcadeGamehouseAvailable({ bypass: true, entitlement: null, session: null }),
     ).toBe(true);
-    expect(arcadeGamehouseBypassed({ operator: null })).toBe(true);
+  });
+});
+
+describe("ARCADE.2A — the DEV/E2E bypass requires DEV + local origin + explicit opt-in (never null auth)", () => {
+  const probe = (over: Partial<DevAuthBypassProbe>): DevAuthBypassProbe => ({
+    isDev: false,
+    hostname: "",
+    localTestSetting: false,
+    urlSkip: false,
+    ...over,
+  });
+
+  it("opens on a DEV build, local host and an explicit opt-in", () => {
     expect(
-      arcadeGamehouseBypassed({ operator: { userId: "u" } as never }),
+      arcadeGamehouseDevBypass(
+        probe({ isDev: true, hostname: "localhost", localTestSetting: true }),
+      ),
+    ).toBe(true);
+    expect(
+      arcadeGamehouseDevBypass(
+        probe({ isDev: true, hostname: "127.0.0.1", urlSkip: true }),
+      ),
+    ).toBe(true);
+  });
+
+  it("stays CLOSED without the explicit opt-in even on a local dev build", () => {
+    expect(
+      arcadeGamehouseDevBypass(probe({ isDev: true, hostname: "localhost" })),
+    ).toBe(false);
+  });
+
+  it("stays CLOSED off a DEV build (a production build can never bypass)", () => {
+    expect(
+      arcadeGamehouseDevBypass(
+        probe({ isDev: false, hostname: "localhost", localTestSetting: true }),
+      ),
+    ).toBe(false);
+  });
+
+  it("stays CLOSED on a non-local (production) origin even with a dev build + opt-in", () => {
+    expect(
+      arcadeGamehouseDevBypass(
+        probe({
+          isDev: true,
+          hostname: "citylife.kooker.co.za",
+          urlSkip: true,
+          localTestSetting: true,
+        }),
+      ),
     ).toBe(false);
   });
 });
@@ -202,5 +249,37 @@ describe("ARCADE.2A — evaluateArcadeEntitlement drives the token → flag path
       getUserId: () => "user-xyz",
     });
     expect(result.enabled).toBe(false);
+  });
+
+  it("revokes on an enabled→killed transition (the same session, re-checked live)", async () => {
+    // Models the live revalidation the OPEN venue performs: the first check enables, a later re-check —
+    // after an operator kill — must flip to disabled so the render guard can close the venue.
+    const bodies = [{ enabled: true }, { enabled: true, killed: true }];
+    let call = 0;
+    const deps = {
+      transport: async () => ok(bodies[Math.min(call++, bodies.length - 1)]),
+      getToken: async () => "tok.abc",
+      getUserId: () => "user-xyz",
+    };
+    const first = await evaluateArcadeEntitlement(deps);
+    expect(first.enabled).toBe(true);
+    const second = await evaluateArcadeEntitlement(deps);
+    expect(second.enabled).toBe(false);
+    expect(second.reason).toMatch(/killed/i);
+  });
+
+  it("revokes on an enabled→OFF transition and on an enabled→error transition", async () => {
+    const off = await evaluateArcadeEntitlement({
+      transport: async () => ok({ enabled: false }),
+      getToken: async () => "tok.abc",
+      getUserId: () => "user-xyz",
+    });
+    expect(off.enabled).toBe(false);
+    const errored = await evaluateArcadeEntitlement({
+      transport: async () => ({ ok: false, status: 401, body: null }),
+      getToken: async () => "tok.abc",
+      getUserId: () => "user-xyz",
+    });
+    expect(errored.enabled).toBe(false);
   });
 });

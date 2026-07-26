@@ -7,8 +7,8 @@
 //
 // This is a pure client integration of an existing server entitlement. It NEVER flips a flag, mutates a
 // cohort/allowlist, moves KCO, or writes any ownership. `citylife-arcade-3d-v1` stays globally OFF; the
-// only positive path is a backend that answers `enabled === true` for a non-killed flag (or the
-// DEV/E2E null-operator bypass, which can only occur on a local build — see authClient.canEnterCityBuilder).
+// only positive path is a backend that answers `enabled === true` for a non-killed flag (or the narrowly
+// scoped DEV/E2E bypass — a DEV build, local origin and explicit opt-in — see arcadeGamehouseDevBypass).
 //
 // Truth is the authenticated, token-derived endpoint
 //   GET /api/v1/citylife/players/me/feature-flags/citylife-arcade-3d-v1
@@ -18,8 +18,12 @@
 // so the decision heart is pure and node-testable without a DOM. Fail-closed rule (SECURITY): OFF,
 // killed, 401/403, timeout, a malformed payload and any network error ALL resolve to disabled — a blip
 // can never leak the venue to a non-entitled player.
-import { getAuthClient, type AuthClient } from "../authClient";
+import { getAuthClient } from "../authClient";
 import { userIdFromToken } from "../bot/ledgerSync";
+import {
+  isLocalDevAuthBypass,
+  type DevAuthBypassProbe,
+} from "../devAuthBypass";
 import {
   isAuthenticatedCityLifePlayer,
   type GamehousePlayerSession,
@@ -35,6 +39,10 @@ export const CITYLIFE_PLAYER_ROLE = "CITYLIFE_PLAYER";
 
 /** The bounded default before a hung network is treated as a (fail-closed) failure. */
 export const DEFAULT_ARCADE_ENTITLEMENT_TIMEOUT_MS = 8000;
+
+/** How often the OPEN venue re-checks the flag so a mid-session kill/OFF revokes access promptly
+ *  (a bounded cadence — the venue also revalidates on entry and on tab refocus). */
+export const ARCADE_ENTITLEMENT_REVALIDATE_MS = 15000;
 
 /** The raw backend body. Every field is `unknown` on purpose — the decision below trusts nothing and
  *  fails closed on anything other than an exact `enabled: true` from a non-killed flag. */
@@ -163,16 +171,16 @@ export function defaultArcadeDeps(
 }
 
 /**
- * The local DEV/E2E skip-auth bypass produces a NULL operator (see authClient.canEnterCityBuilder for
- * why this is the only unauthenticated state ColonyApp can mount in, and why it can never occur on a
- * kooker.co.za production build). Exactly as the new-player journey does, that developer-only state is
- * treated as entitled WITHOUT a network call, so local/E2E flows keep working while every real
- * authenticated session is still evaluated and fails closed.
+ * The local DEV/E2E skip-auth bypass. SECURITY: this is deliberately NOT derived from auth state. A
+ * mounted app can drop to a null/expired/signed-out operator at any time, so `operator === null` is NOT
+ * a safe bypass signal — keying off it could fail OPEN in production. Instead this delegates to the
+ * shared `isLocalDevAuthBypass`, which is true ONLY for a DEV build, on a local origin, with an explicit
+ * developer opt-in (`VITE_LOCAL_TEST` or `?skipauth=1`) — the exact same predicate AuthGate uses to
+ * mount login-free. Production, expired and signed-out sessions all fail closed and are evaluated
+ * normally (and fail closed again) by the entitlement path. The probe is injectable for node tests.
  */
-export function arcadeGamehouseBypassed(
-  auth: Pick<AuthClient, "operator">,
-): boolean {
-  return auth.operator === null;
+export function arcadeGamehouseDevBypass(probe?: DevAuthBypassProbe): boolean {
+  return isLocalDevAuthBypass(probe);
 }
 
 /**
@@ -193,7 +201,7 @@ export function isEntitledCityLifePlayer(
  * The single UI/runtime availability decision for every Gamehouse-venue affordance and action (the
  * entry button, the guarded open, the streamed interior, and the cabinet inspection). Fails closed:
  * while the entitlement is still loading (`null`) it is unavailable, and it opens ONLY for
- *   - the DEV/E2E null-operator bypass, OR
+ *   - the narrowly scoped DEV/E2E bypass (DEV build + local origin + explicit opt-in), OR
  *   - an authenticated CITYLIFE_PLAYER whose server flag is unambiguously enabled.
  * Used both to hide the entry affordance AND to reject a direct/programmatic open, so the gate is never
  * merely cosmetic UI. Signed-out and non-entitled sessions can never enter.
