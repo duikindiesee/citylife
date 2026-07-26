@@ -145,18 +145,34 @@ const desk = new THREE.Group();
 desk.name = "HqReception_Desk";
 root.add(desk);
 
-mesh("Desk_Top", new THREE.BoxGeometry(2.4, 0.06, 0.8), warmWood, desk, [
-  0, 0.93, 0,
-]);
-mesh("Desk_Front_Fascia", new THREE.BoxGeometry(2.4, 0.84, 0.06), obsidian, desk, [
-  0, 0.48, 0.34,
-]);
-mesh("Desk_Brass_Edge", new THREE.BoxGeometry(2.4, 0.03, 0.045), oldBrass, desk, [
-  0, 0.915, 0.3775,
-]);
-mesh("Desk_Welcome_Seam", new THREE.BoxGeometry(2.28, 0.025, 0.02), paleSeam, desk, [
-  0, 0.86, 0.375,
-]);
+mesh(
+  "Desk_Top",
+  new THREE.BoxGeometry(2.4, 0.06, 0.8),
+  warmWood,
+  desk,
+  [0, 0.93, 0],
+);
+mesh(
+  "Desk_Front_Fascia",
+  new THREE.BoxGeometry(2.4, 0.84, 0.06),
+  obsidian,
+  desk,
+  [0, 0.48, 0.34],
+);
+mesh(
+  "Desk_Brass_Edge",
+  new THREE.BoxGeometry(2.4, 0.03, 0.045),
+  oldBrass,
+  desk,
+  [0, 0.915, 0.3775],
+);
+mesh(
+  "Desk_Welcome_Seam",
+  new THREE.BoxGeometry(2.28, 0.025, 0.02),
+  paleSeam,
+  desk,
+  [0, 0.86, 0.375],
+);
 for (const side of [-1, 1]) {
   mesh(
     side < 0 ? "Desk_Leg_West" : "Desk_Leg_East",
@@ -166,9 +182,13 @@ for (const side of [-1, 1]) {
     [side * 1.17, 0.45, 0],
   );
 }
-mesh("Desk_Back_Shelf", new THREE.BoxGeometry(2.28, 0.04, 0.3), darkWood, desk, [
-  0, 0.42, -0.2,
-]);
+mesh(
+  "Desk_Back_Shelf",
+  new THREE.BoxGeometry(2.28, 0.04, 0.3),
+  darkWood,
+  desk,
+  [0, 0.42, -0.2],
+);
 
 // ---------------------------------------------------------------------------
 // HqReception_ManifestoWall — pivot floor-center-back; back plane at local
@@ -179,15 +199,27 @@ const manifesto = new THREE.Group();
 manifesto.name = "HqReception_ManifestoWall";
 root.add(manifesto);
 
-mesh("Manifesto_Backboard", new THREE.BoxGeometry(3.6, 2.3, 0.08), obsidian, manifesto, [
-  0, 1.15, 0.04,
-]);
-mesh("Manifesto_Header_Seam", new THREE.BoxGeometry(3.3, 0.05, 0.03), paleSeam, manifesto, [
-  0, 2.335, 0.095,
-]);
-mesh("Manifesto_Base_Trim", new THREE.BoxGeometry(3.6, 0.08, 0.1), blackIron, manifesto, [
-  0, 0.04, 0.05,
-]);
+mesh(
+  "Manifesto_Backboard",
+  new THREE.BoxGeometry(3.6, 2.3, 0.08),
+  obsidian,
+  manifesto,
+  [0, 1.15, 0.04],
+);
+mesh(
+  "Manifesto_Header_Seam",
+  new THREE.BoxGeometry(3.3, 0.05, 0.03),
+  paleSeam,
+  manifesto,
+  [0, 2.335, 0.095],
+);
+mesh(
+  "Manifesto_Base_Trim",
+  new THREE.BoxGeometry(3.6, 0.08, 0.1),
+  blackIron,
+  manifesto,
+  [0, 0.04, 0.05],
+);
 const plaqueX = [-1.15, 0, 1.15];
 const plaqueNames = ["West", "Centre", "East"];
 for (let i = 0; i < 3; i += 1) {
@@ -216,9 +248,13 @@ const shelf = new THREE.Group();
 shelf.name = "HqReception_ArchiveShelf";
 root.add(shelf);
 
-mesh("Archive_Back_Panel", new THREE.BoxGeometry(1.8, 2.2, 0.04), darkWood, shelf, [
-  0, 1.1, 0.02,
-]);
+mesh(
+  "Archive_Back_Panel",
+  new THREE.BoxGeometry(1.8, 2.2, 0.04),
+  darkWood,
+  shelf,
+  [0, 1.1, 0.02],
+);
 for (const side of [-1, 1]) {
   mesh(
     side < 0 ? "Archive_Upright_West" : "Archive_Upright_East",

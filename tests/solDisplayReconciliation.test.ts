@@ -61,11 +61,21 @@ describe("spec 150 PR3 — Kookerbook sol display vs bucket", () => {
     }
     // Over the cap for game day 7 — refused even though the canonical sol moved on.
     expect(
-      addPost(p, { sol: 7, displaySol: 99, kind: "authored", text: "one more" }),
+      addPost(p, {
+        sol: 7,
+        displaySol: 99,
+        kind: "authored",
+        text: "one more",
+      }),
     ).toBeNull();
     // A new game day reopens the allowance.
     expect(
-      addPost(p, { sol: 8, displaySol: 99, kind: "authored", text: "next day" }),
+      addPost(p, {
+        sol: 8,
+        displaySol: 99,
+        kind: "authored",
+        text: "next day",
+      }),
     ).not.toBeNull();
   });
 
