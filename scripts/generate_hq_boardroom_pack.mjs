@@ -53,12 +53,30 @@ const material = (name, color, options = {}) =>
     emissiveIntensity: options.emissiveIntensity ?? 0,
   });
 
-const warmWood = material("Board_Warm_Wood", 0x8a6a48, { roughness: 0.68, metalness: 0.04 });
-const darkWood = material("Board_Dark_Wood", 0x5c4632, { roughness: 0.74, metalness: 0.03 });
-const blackIron = material("Board_Black_Iron", 0x424b4b, { roughness: 0.36, metalness: 0.82 });
-const oldBrass = material("Board_Old_Brass", 0x927747, { roughness: 0.43, metalness: 0.9 });
-const obsidian = material("Board_Obsidian_Panel", 0x27383c, { roughness: 0.34, metalness: 0.62 });
-const seatFabric = material("Board_Seat_Fabric", 0x6d7a6f, { roughness: 0.88, metalness: 0.02 });
+const warmWood = material("Board_Warm_Wood", 0x8a6a48, {
+  roughness: 0.68,
+  metalness: 0.04,
+});
+const darkWood = material("Board_Dark_Wood", 0x5c4632, {
+  roughness: 0.74,
+  metalness: 0.03,
+});
+const blackIron = material("Board_Black_Iron", 0x424b4b, {
+  roughness: 0.36,
+  metalness: 0.82,
+});
+const oldBrass = material("Board_Old_Brass", 0x927747, {
+  roughness: 0.43,
+  metalness: 0.9,
+});
+const obsidian = material("Board_Obsidian_Panel", 0x27383c, {
+  roughness: 0.34,
+  metalness: 0.62,
+});
+const seatFabric = material("Board_Seat_Fabric", 0x6d7a6f, {
+  roughness: 0.88,
+  metalness: 0.02,
+});
 const laneGlow = material("Board_Lane_Emissive", 0x0f1a14, {
   roughness: 0.3,
   emissive: 0x2dd4bf,
@@ -104,8 +122,20 @@ root.userData = {
 const table = new THREE.Group();
 table.name = "Board_Table";
 root.add(table);
-mesh("Table_Top", new THREE.BoxGeometry(3.6, 0.07, 1.4), warmWood, table, [0, 0.745, 0]);
-mesh("Table_Spine", new THREE.BoxGeometry(3.0, 0.62, 0.5), obsidian, table, [0, 0.36, 0]);
+mesh(
+  "Table_Top",
+  new THREE.BoxGeometry(3.6, 0.07, 1.4),
+  warmWood,
+  table,
+  [0, 0.745, 0],
+);
+mesh(
+  "Table_Spine",
+  new THREE.BoxGeometry(3.0, 0.62, 0.5),
+  obsidian,
+  table,
+  [0, 0.36, 0],
+);
 for (const side of [-1, 1]) {
   mesh(
     side < 0 ? "Table_Foot_West" : "Table_Foot_East",
@@ -115,22 +145,58 @@ for (const side of [-1, 1]) {
     [side * 1.35, 0.025, 0],
   );
 }
-mesh("Table_Brass_Inlay", new THREE.BoxGeometry(3.2, 0.015, 0.12), oldBrass, table, [0, 0.7725, 0]);
+mesh(
+  "Table_Brass_Inlay",
+  new THREE.BoxGeometry(3.2, 0.015, 0.12),
+  oldBrass,
+  table,
+  [0, 0.7725, 0],
+);
 
 // Board_Chair — boardroom chair, instanced ten times by placement.
 const chair = new THREE.Group();
 chair.name = "Board_Chair";
 root.add(chair);
-mesh("Chair_Base", new THREE.BoxGeometry(0.5, 0.08, 0.5), blackIron, chair, [0, 0.04, 0]);
-mesh("Chair_Post", new THREE.BoxGeometry(0.09, 0.36, 0.09), blackIron, chair, [0, 0.3, 0]);
-mesh("Chair_Seat", new THREE.BoxGeometry(0.55, 0.09, 0.55), seatFabric, chair, [0, 0.525, 0]);
-mesh("Chair_Back", new THREE.BoxGeometry(0.5, 0.42, 0.07), seatFabric, chair, [0, 0.79, -0.24]);
+mesh(
+  "Chair_Base",
+  new THREE.BoxGeometry(0.5, 0.08, 0.5),
+  blackIron,
+  chair,
+  [0, 0.04, 0],
+);
+mesh(
+  "Chair_Post",
+  new THREE.BoxGeometry(0.09, 0.36, 0.09),
+  blackIron,
+  chair,
+  [0, 0.3, 0],
+);
+mesh(
+  "Chair_Seat",
+  new THREE.BoxGeometry(0.55, 0.09, 0.55),
+  seatFabric,
+  chair,
+  [0, 0.525, 0],
+);
+mesh(
+  "Chair_Back",
+  new THREE.BoxGeometry(0.5, 0.42, 0.07),
+  seatFabric,
+  chair,
+  [0, 0.79, -0.24],
+);
 
 // Board_EpicWall — four swimlanes on a dark backboard, back-flush.
 const epic = new THREE.Group();
 epic.name = "Board_EpicWall";
 root.add(epic);
-mesh("Epic_Backboard", new THREE.BoxGeometry(6.0, 2.3, 0.08), obsidian, epic, [0, 1.15, 0.04]);
+mesh(
+  "Epic_Backboard",
+  new THREE.BoxGeometry(6.0, 2.3, 0.08),
+  obsidian,
+  epic,
+  [0, 1.15, 0.04],
+);
 const laneNames = ["A", "B", "C", "D"];
 for (let i = 0; i < 4; i += 1) {
   mesh(
@@ -141,37 +207,103 @@ for (let i = 0; i < 4; i += 1) {
     [-2.175 + i * 1.45, 1.2, 0.095],
   );
 }
-mesh("Epic_Header", new THREE.BoxGeometry(6.0, 0.1, 0.14), oldBrass, epic, [0, 2.35, 0.07]);
+mesh(
+  "Epic_Header",
+  new THREE.BoxGeometry(6.0, 0.1, 0.14),
+  oldBrass,
+  epic,
+  [0, 2.35, 0.07],
+);
 
 // Board_GatePuck — one physical operator-gate token.
 const puck = new THREE.Group();
 puck.name = "Board_GatePuck";
 root.add(puck);
-mesh("Puck_Body", new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12), gateAmber, puck, [0, 0.025, 0]);
-mesh("Puck_Rim", new THREE.CylinderGeometry(0.05, 0.05, 0.01, 12), oldBrass, puck, [0, 0.055, 0]);
+mesh(
+  "Puck_Body",
+  new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12),
+  gateAmber,
+  puck,
+  [0, 0.025, 0],
+);
+mesh(
+  "Puck_Rim",
+  new THREE.CylinderGeometry(0.05, 0.05, 0.01, 12),
+  oldBrass,
+  puck,
+  [0, 0.055, 0],
+);
 
 // Board_MergeTicker — merge-authority event strip, mounts over the door.
 const ticker = new THREE.Group();
 ticker.name = "Board_MergeTicker";
 root.add(ticker);
-mesh("Ticker_Housing", new THREE.BoxGeometry(2.4, 0.3, 0.08), blackIron, ticker, [0, 0.15, 0.04]);
-mesh("Ticker_Strip", new THREE.BoxGeometry(2.2, 0.18, 0.04), laneGlow, ticker, [0, 0.15, 0.1]);
+mesh(
+  "Ticker_Housing",
+  new THREE.BoxGeometry(2.4, 0.3, 0.08),
+  blackIron,
+  ticker,
+  [0, 0.15, 0.04],
+);
+mesh(
+  "Ticker_Strip",
+  new THREE.BoxGeometry(2.2, 0.18, 0.04),
+  laneGlow,
+  ticker,
+  [0, 0.15, 0.1],
+);
 
 // Board_HoloEpic — table centrepiece: pedestal plus floating epic glyph.
 const holo = new THREE.Group();
 holo.name = "Board_HoloEpic";
 root.add(holo);
-mesh("Holo_Pedestal", new THREE.BoxGeometry(0.4, 0.5, 0.4), obsidian, holo, [0, 0.25, 0]);
-mesh("Holo_Plate", new THREE.BoxGeometry(0.6, 0.04, 0.6), oldBrass, holo, [0, 0.52, 0]);
-mesh("Holo_Glyph", new THREE.OctahedronGeometry(0.24, 0), holoGlow, holo, [0, 0.86, 0]);
+mesh(
+  "Holo_Pedestal",
+  new THREE.BoxGeometry(0.4, 0.5, 0.4),
+  obsidian,
+  holo,
+  [0, 0.25, 0],
+);
+mesh(
+  "Holo_Plate",
+  new THREE.BoxGeometry(0.6, 0.04, 0.6),
+  oldBrass,
+  holo,
+  [0, 0.52, 0],
+);
+mesh(
+  "Holo_Glyph",
+  new THREE.OctahedronGeometry(0.24, 0),
+  holoGlow,
+  holo,
+  [0, 0.86, 0],
+);
 
 // Board_Sideboard — refreshment/archive sideboard, back-flush.
 const sideboard = new THREE.Group();
 sideboard.name = "Board_Sideboard";
 root.add(sideboard);
-mesh("Side_Body", new THREE.BoxGeometry(1.8, 0.82, 0.42), darkWood, sideboard, [0, 0.41, 0.21]);
-mesh("Side_Top", new THREE.BoxGeometry(1.8, 0.04, 0.45), warmWood, sideboard, [0, 0.84, 0.225]);
-mesh("Side_Skirt", new THREE.BoxGeometry(1.8, 0.04, 0.42), blackIron, sideboard, [0, 0.88, 0.21]);
+mesh(
+  "Side_Body",
+  new THREE.BoxGeometry(1.8, 0.82, 0.42),
+  darkWood,
+  sideboard,
+  [0, 0.41, 0.21],
+);
+mesh(
+  "Side_Top",
+  new THREE.BoxGeometry(1.8, 0.04, 0.45),
+  warmWood,
+  sideboard,
+  [0, 0.84, 0.225],
+);
+mesh(
+  "Side_Skirt",
+  new THREE.BoxGeometry(1.8, 0.04, 0.42),
+  blackIron,
+  sideboard,
+  [0, 0.88, 0.21],
+);
 for (const x of [-0.45, 0.45]) {
   mesh(
     x < 0 ? "Side_Handle_West" : "Side_Handle_East",

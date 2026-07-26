@@ -51,7 +51,10 @@ function parseGltfJson(raw: string): GltfJson {
   throw new Error("unterminated GLB JSON chunk");
 }
 
-const PARTS: Record<string, { w: number; h: number; d: number; pivot: string }> = {
+const PARTS: Record<
+  string,
+  { w: number; h: number; d: number; pivot: string }
+> = {
   Commons_Watercooler: { w: 0.5, h: 1.4, d: 0.5, pivot: "floor-center" },
   Commons_Foosball: { w: 1.6, h: 0.9, d: 0.8, pivot: "floor-center" },
   Commons_Arcade: { w: 0.7, h: 1.8, d: 0.8, pivot: "floor-center" },
@@ -67,8 +70,10 @@ function childTranslation(child: GltfNode): number[] {
   expect(child.rotation, `${child.name} rotation`).toBeUndefined();
   expect(child.scale, `${child.name} scale`).toBeUndefined();
   if (child.matrix) {
-    expect(child.matrix.slice(0, 12), `${child.name} matrix must be translation-only`)
-      .toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
+    expect(
+      child.matrix.slice(0, 12),
+      `${child.name} matrix must be translation-only`,
+    ).toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
     return [child.matrix[12], child.matrix[13], child.matrix[14]];
   }
   return child.translation ?? [0, 0, 0];
@@ -85,7 +90,10 @@ function partBounds(json: GltfJson, partName: string) {
   for (const childIndex of part!.children!) {
     const child = json.nodes[childIndex];
     expect(child.mesh, `${child.name} mesh`).toBeTypeOf("number");
-    const positions = json.accessors[json.meshes[child.mesh!].primitives[0].attributes.POSITION];
+    const positions =
+      json.accessors[
+        json.meshes[child.mesh!].primitives[0].attributes.POSITION
+      ];
     const translation = childTranslation(child);
     for (let axis = 0; axis < 3; axis += 1) {
       min[axis] = Math.min(min[axis], positions.min![axis] + translation[axis]);
@@ -96,7 +104,10 @@ function partBounds(json: GltfJson, partName: string) {
 }
 
 const packBytes = readFileSync(
-  new URL("../public/assets/citylife/props/hq-commons-pack.glb", import.meta.url),
+  new URL(
+    "../public/assets/citylife/props/hq-commons-pack.glb",
+    import.meta.url,
+  ),
 );
 
 describe("hq-commons-pack.glb", () => {
@@ -134,14 +145,18 @@ describe("hq-commons-pack.glb", () => {
 
   it("uses only named Commons materials", () => {
     expect(json.materials?.length ?? 0).toBeGreaterThan(0);
-    for (const material of json.materials!) expect(material.name).toMatch(/^Commons_/);
+    for (const material of json.materials!)
+      expect(material.name).toMatch(/^Commons_/);
   });
 });
 
 describe("hq-commons-pack.placement.json", () => {
   it("keeps every placement inside its named room and resolves cross-pack nodes", () => {
     expect(placement.schema).toBe("citylife-prop-placement/v1");
-    const rooms = placement.rooms as Record<string, { gridWidthCells: number; gridDepthCells: number }>;
+    const rooms = placement.rooms as Record<
+      string,
+      { gridWidthCells: number; gridDepthCells: number }
+    >;
     expect(rooms.commons.gridWidthCells).toBe(16);
     expect(rooms.commons.gridDepthCells).toBe(12);
     expect(rooms.arcade.gridWidthCells).toBe(8);
@@ -149,7 +164,8 @@ describe("hq-commons-pack.placement.json", () => {
     const crossPack = Object.keys(placement.crossPackNodes);
     for (const entry of placement.placements) {
       const known =
-        Object.keys(PARTS).includes(entry.node) || crossPack.includes(entry.node);
+        Object.keys(PARTS).includes(entry.node) ||
+        crossPack.includes(entry.node);
       expect(known, `${entry.node} is a known node`).toBe(true);
       const room = rooms[entry.room];
       expect(room, `${entry.room} is a declared room`).toBeDefined();

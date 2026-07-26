@@ -15,14 +15,46 @@
     "coordinateSpace": "modules snap to the spec-153 room tables (building-local); wall runs derive from the §3 extents and §4 doorway list, not from this file"
   },
   "nodes": {
-    "Shell_Wall1m": { "dimensions": { "w": 1.0, "h": 3.0, "d": 0.12 }, "pivot": "floor-center", "snap": "tile along X on zero-thickness shared wall planes" },
-    "Shell_DoorFrame": { "dimensions": { "w": 2.2, "h": 2.65, "d": 0.16 }, "pivot": "floor-center", "snap": "centre on each §4 doorway (1.6 m clear opening)" },
-    "Shell_GlassPanel1m": { "dimensions": { "w": 1.0, "h": 3.0, "d": 0.1 }, "pivot": "floor-center", "snap": "commons-facing boardroom/arcade fronts" },
-    "Shell_FloorTile": { "dimensions": { "w": 2.0, "h": 0.08, "d": 2.0 }, "pivot": "floor-center", "snap": "2 m grid, sink 0.08 so the walk surface is y=0" },
-    "Shell_CeilingDuct2m": { "dimensions": { "w": 2.0, "h": 0.35, "d": 0.35 }, "pivot": "floor-center", "snap": "raise to y=2.6 along corridor spines" },
-    "Shell_FloorStripe1m": { "dimensions": { "w": 1.0, "h": 0.02, "d": 0.3 }, "pivot": "floor-center", "snap": "wing accent line; runtime tints per wing hue" },
-    "Shell_Planter": { "dimensions": { "w": 0.6, "h": 1.15, "d": 0.6 }, "pivot": "floor-center", "snap": "commons corners and wing mouths" },
-    "Shell_ServerNook": { "dimensions": { "w": 0.8, "h": 2.0, "d": 0.6 }, "pivot": "floor-center-back", "snap": "one per commons, back-flush" }
+    "Shell_Wall1m": {
+      "dimensions": { "w": 1.0, "h": 3.0, "d": 0.12 },
+      "pivot": "floor-center",
+      "snap": "tile along X on zero-thickness shared wall planes"
+    },
+    "Shell_DoorFrame": {
+      "dimensions": { "w": 2.2, "h": 2.65, "d": 0.16 },
+      "pivot": "floor-center",
+      "snap": "centre on each §4 doorway (1.6 m clear opening)"
+    },
+    "Shell_GlassPanel1m": {
+      "dimensions": { "w": 1.0, "h": 3.0, "d": 0.1 },
+      "pivot": "floor-center",
+      "snap": "commons-facing boardroom/arcade fronts"
+    },
+    "Shell_FloorTile": {
+      "dimensions": { "w": 2.0, "h": 0.08, "d": 2.0 },
+      "pivot": "floor-center",
+      "snap": "2 m grid, sink 0.08 so the walk surface is y=0"
+    },
+    "Shell_CeilingDuct2m": {
+      "dimensions": { "w": 2.0, "h": 0.35, "d": 0.35 },
+      "pivot": "floor-center",
+      "snap": "raise to y=2.6 along corridor spines"
+    },
+    "Shell_FloorStripe1m": {
+      "dimensions": { "w": 1.0, "h": 0.02, "d": 0.3 },
+      "pivot": "floor-center",
+      "snap": "wing accent line; runtime tints per wing hue"
+    },
+    "Shell_Planter": {
+      "dimensions": { "w": 0.6, "h": 1.15, "d": 0.6 },
+      "pivot": "floor-center",
+      "snap": "commons corners and wing mouths"
+    },
+    "Shell_ServerNook": {
+      "dimensions": { "w": 0.8, "h": 2.0, "d": 0.6 },
+      "pivot": "floor-center-back",
+      "snap": "one per commons, back-flush"
+    }
   },
   "integration": {
     "owner": "opus",

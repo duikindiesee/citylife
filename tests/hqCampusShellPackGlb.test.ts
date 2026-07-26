@@ -51,7 +51,10 @@ function parseGltfJson(raw: string): GltfJson {
   throw new Error("unterminated GLB JSON chunk");
 }
 
-const PARTS: Record<string, { w: number; h: number; d: number; pivot: string }> = {
+const PARTS: Record<
+  string,
+  { w: number; h: number; d: number; pivot: string }
+> = {
   Shell_Wall1m: { w: 1.0, h: 3.0, d: 0.12, pivot: "floor-center" },
   Shell_DoorFrame: { w: 2.2, h: 2.65, d: 0.16, pivot: "floor-center" },
   Shell_GlassPanel1m: { w: 1.0, h: 3.0, d: 0.1, pivot: "floor-center" },
@@ -67,8 +70,10 @@ function childTranslation(child: GltfNode): number[] {
   expect(child.rotation, `${child.name} rotation`).toBeUndefined();
   expect(child.scale, `${child.name} scale`).toBeUndefined();
   if (child.matrix) {
-    expect(child.matrix.slice(0, 12), `${child.name} matrix must be translation-only`)
-      .toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
+    expect(
+      child.matrix.slice(0, 12),
+      `${child.name} matrix must be translation-only`,
+    ).toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
     return [child.matrix[12], child.matrix[13], child.matrix[14]];
   }
   return child.translation ?? [0, 0, 0];
@@ -85,7 +90,10 @@ function partBounds(json: GltfJson, partName: string) {
   for (const childIndex of part!.children!) {
     const child = json.nodes[childIndex];
     expect(child.mesh, `${child.name} mesh`).toBeTypeOf("number");
-    const positions = json.accessors[json.meshes[child.mesh!].primitives[0].attributes.POSITION];
+    const positions =
+      json.accessors[
+        json.meshes[child.mesh!].primitives[0].attributes.POSITION
+      ];
     const translation = childTranslation(child);
     for (let axis = 0; axis < 3; axis += 1) {
       min[axis] = Math.min(min[axis], positions.min![axis] + translation[axis]);
@@ -96,14 +104,19 @@ function partBounds(json: GltfJson, partName: string) {
 }
 
 const packBytes = readFileSync(
-  new URL("../public/assets/citylife/props/hq-campus-shell-pack.glb", import.meta.url),
+  new URL(
+    "../public/assets/citylife/props/hq-campus-shell-pack.glb",
+    import.meta.url,
+  ),
 );
 
 describe("hq-campus-shell-pack.glb", () => {
   const json = parseGltfJson(packGlbRaw);
 
   it("exposes the pack root with exactly the eight modules and no cameras or textures", () => {
-    const root = json.nodes.find((node) => node.name === "HqCampusShellPack_Root");
+    const root = json.nodes.find(
+      (node) => node.name === "HqCampusShellPack_Root",
+    );
     expect(root).toBeDefined();
     const partNames = root!.children!.map((index) => json.nodes[index].name);
     expect(partNames?.sort()).toEqual(Object.keys(PARTS).sort());
@@ -134,7 +147,8 @@ describe("hq-campus-shell-pack.glb", () => {
 
   it("uses only named Shell materials", () => {
     expect(json.materials?.length ?? 0).toBeGreaterThan(0);
-    for (const material of json.materials!) expect(material.name).toMatch(/^Shell_/);
+    for (const material of json.materials!)
+      expect(material.name).toMatch(/^Shell_/);
   });
 });
 
@@ -142,12 +156,23 @@ describe("hq-campus-shell-pack.modules.json", () => {
   it("documents every module with dimensions matching the GLB contract", () => {
     expect(modules.schema).toBe("citylife-prop-placement/v1");
     expect(modules.asset.id).toBe("hq-campus-shell-pack");
-    expect(Object.keys(modules.nodes).sort()).toEqual(Object.keys(PARTS).sort());
+    expect(Object.keys(modules.nodes).sort()).toEqual(
+      Object.keys(PARTS).sort(),
+    );
     for (const [name, node] of Object.entries(modules.nodes)) {
       const contract = PARTS[name];
-      expect((node as { dimensions: { w: number } }).dimensions.w).toBeCloseTo(contract.w, 3);
-      expect((node as { dimensions: { h: number } }).dimensions.h).toBeCloseTo(contract.h, 3);
-      expect((node as { dimensions: { d: number } }).dimensions.d).toBeCloseTo(contract.d, 3);
+      expect((node as { dimensions: { w: number } }).dimensions.w).toBeCloseTo(
+        contract.w,
+        3,
+      );
+      expect((node as { dimensions: { h: number } }).dimensions.h).toBeCloseTo(
+        contract.h,
+        3,
+      );
+      expect((node as { dimensions: { d: number } }).dimensions.d).toBeCloseTo(
+        contract.d,
+        3,
+      );
       expect((node as { pivot: string }).pivot).toBe(contract.pivot);
     }
     expect(modules.integration.owner).toBe("opus");
