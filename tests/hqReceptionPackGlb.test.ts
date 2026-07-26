@@ -63,22 +63,24 @@ function parseGltfJson(raw: string): GltfJson {
   throw new Error("unterminated GLB JSON chunk");
 }
 
-const PARTS: Record<string, { w: number; h: number; d: number; pivot: string }> =
-  {
-    HqReception_Desk: { w: 2.4, h: 0.96, d: 0.8, pivot: "floor-center" },
-    HqReception_ManifestoWall: {
-      w: 3.6,
-      h: 2.36,
-      d: 0.14,
-      pivot: "floor-center-back",
-    },
-    HqReception_ArchiveShelf: {
-      w: 1.8,
-      h: 2.2,
-      d: 0.45,
-      pivot: "floor-center-back",
-    },
-  };
+const PARTS: Record<
+  string,
+  { w: number; h: number; d: number; pivot: string }
+> = {
+  HqReception_Desk: { w: 2.4, h: 0.96, d: 0.8, pivot: "floor-center" },
+  HqReception_ManifestoWall: {
+    w: 3.6,
+    h: 2.36,
+    d: 0.14,
+    pivot: "floor-center-back",
+  },
+  HqReception_ArchiveShelf: {
+    w: 1.8,
+    h: 2.2,
+    d: 0.45,
+    pivot: "floor-center-back",
+  },
+};
 
 const EPSILON = 0.001;
 
@@ -109,14 +111,18 @@ function partBounds(json: GltfJson, partName: string) {
   expect(part!.rotation, `${partName} rotation`).toBeUndefined();
   expect(part!.scale, `${partName} scale`).toBeUndefined();
   expect(part!.matrix, `${partName} matrix`).toBeUndefined();
-  expect(part!.children?.length ?? 0, `${partName} children`).toBeGreaterThan(0);
+  expect(part!.children?.length ?? 0, `${partName} children`).toBeGreaterThan(
+    0,
+  );
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
   for (const childIndex of part!.children!) {
     const child = json.nodes[childIndex];
     expect(child.mesh, `${child.name} mesh`).toBeTypeOf("number");
     const positions =
-      json.accessors[json.meshes[child.mesh!].primitives[0].attributes.POSITION];
+      json.accessors[
+        json.meshes[child.mesh!].primitives[0].attributes.POSITION
+      ];
     expect(positions.min).toHaveLength(3);
     expect(positions.max).toHaveLength(3);
     const translation = childTranslation(child);
@@ -129,14 +135,19 @@ function partBounds(json: GltfJson, partName: string) {
 }
 
 const packBytes = readFileSync(
-  new URL("../public/assets/citylife/props/hq-reception-pack.glb", import.meta.url),
+  new URL(
+    "../public/assets/citylife/props/hq-reception-pack.glb",
+    import.meta.url,
+  ),
 );
 
 describe("hq-reception-pack.glb", () => {
   const json = parseGltfJson(packGlbRaw);
 
   it("exposes the pack root with exactly the three contract parts and no cameras or textures", () => {
-    const root = json.nodes.find((node) => node.name === "HqReceptionPack_Root");
+    const root = json.nodes.find(
+      (node) => node.name === "HqReceptionPack_Root",
+    );
     expect(root).toBeDefined();
     expect(root!.mesh).toBeUndefined();
     expect(root!.rotation).toBeUndefined();
@@ -202,7 +213,9 @@ describe("hq-reception-pack.placement.json", () => {
       expect(z).toBeLessThanOrEqual(10);
       expect(Number.isFinite(entry.yawRadians)).toBe(true);
     }
-    const placedNodes = new Set(placement.placements.map((entry) => entry.node));
+    const placedNodes = new Set(
+      placement.placements.map((entry) => entry.node),
+    );
     expect(placedNodes).toEqual(new Set(Object.keys(PARTS)));
   });
 });
