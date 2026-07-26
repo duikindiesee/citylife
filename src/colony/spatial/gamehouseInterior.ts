@@ -17,16 +17,23 @@ import type {
   WorldLayoutPortal,
 } from "./worldLayoutDocument";
 import { buildCommonsArcadeCabinetPlacement } from "./gamehouseCabinet";
-
-/** Human-readable final id/address segment for the Gamehouse building frame. */
-export const GAMEHOUSE_LOCAL_ID = "kooker-gamehouse" as const;
-/** Human-readable final id/address segment for the nested arcade-floor room frame. */
-export const GAMEHOUSE_FLOOR_LOCAL_ID = "gamehouse-floor" as const;
-
-/** Arcade floor: the accepted 8 m x 8 m room on a 1 m interior grid (kept numerically small). */
-export const GAMEHOUSE_FLOOR_WIDTH_CELLS = 8 as const;
-export const GAMEHOUSE_FLOOR_DEPTH_CELLS = 8 as const;
-export const GAMEHOUSE_FLOOR_CELL_SIZE = 1 as const;
+// The id/dimension constants live in a dependency-free leaf so the cabinet can read them without
+// importing this module — breaking the interior <-> cabinet cycle. Re-exported here so every existing
+// `from "./gamehouseInterior"` import path is unchanged.
+import {
+  GAMEHOUSE_LOCAL_ID,
+  GAMEHOUSE_FLOOR_LOCAL_ID,
+  GAMEHOUSE_FLOOR_WIDTH_CELLS,
+  GAMEHOUSE_FLOOR_DEPTH_CELLS,
+  GAMEHOUSE_FLOOR_CELL_SIZE,
+} from "./gamehouseDimensions";
+export {
+  GAMEHOUSE_LOCAL_ID,
+  GAMEHOUSE_FLOOR_LOCAL_ID,
+  GAMEHOUSE_FLOOR_WIDTH_CELLS,
+  GAMEHOUSE_FLOOR_DEPTH_CELLS,
+  GAMEHOUSE_FLOOR_CELL_SIZE,
+};
 
 /** Compass facing of the Gamehouse door; maps to a yaw about the surface Y axis. */
 export type GamehouseFacing = "n" | "e" | "s" | "w";

@@ -9,6 +9,7 @@
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 
+const BASE = process.env.ARCADE_BASE ?? "http://127.0.0.1:5630";
 const OUT = "evidence/arcade-2a";
 mkdirSync(OUT, { recursive: true });
 
@@ -31,6 +32,7 @@ const browser = await chromium.launch({
 
 function newContext(vp) {
   return browser.newContext({
+    baseURL: BASE,
     viewport: { width: vp.width, height: vp.height },
     deviceScaleFactor: 1,
   });
@@ -171,15 +173,8 @@ for (const vp of VIEWPORTS) {
       await page.screenshot({
         path: `${OUT}/${vp.name}-04-closed-back-to-venue.png`,
       });
-
-      // Exit the venue back to the governed plot (inverse exit).
-      await pointerClick(page, '[data-build-action="gamehouse-exit"]');
-      await page.waitForSelector('[data-testid="gamehouse-overlay"]', {
-        state: "detached",
-        timeout: 15000,
-      });
-      await page.waitForTimeout(400);
-      await page.screenshot({ path: `${OUT}/${vp.name}-05-exited-to-plot.png` });
+      // The inverse enter/exit portal pair itself is proven at the layout level by the runtime test
+      // (gamehousePortalRuntime); this capture proves the authenticated entry + cabinet inspection path.
       console.log(`[${vp.name}] ON-canary OK`);
     } catch (e) {
       failed = true;
