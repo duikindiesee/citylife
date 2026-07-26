@@ -273,6 +273,18 @@ const BUSINESS_MASSING: Record<BusinessId, BusinessMassing> = {
     windowCount: 1,
     signatureFeature: "records-booth",
   },
+  kooker_gamehouse: {
+    ...DEFAULT_MASSING,
+    heightBonus: 0.4,
+    frontageScale: 0.9,
+    depthScale: 0.86,
+    roofForm: "arena",
+    roofRise: 1.35,
+    roofOverhang: 1.1,
+    signWidthScale: 0.78,
+    windowCount: 1,
+    signatureFeature: "classifieds-boards",
+  },
   plant_lab: {
     ...DEFAULT_MASSING,
     heightBonus: -0.25,

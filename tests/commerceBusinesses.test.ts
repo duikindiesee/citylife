@@ -84,4 +84,22 @@ describe("commerce businesses (themed app storefronts)", () => {
     for (const b of Object.values(BUSINESSES))
       expect(/kooker|token|secret/i.test(b.name)).toBe(false);
   });
+
+  it("registers the player-facing Kooker Gamehouse with a public-safe sign (ARCADE.1)", () => {
+    const gamehouse = BUSINESSES["kooker_gamehouse"];
+    expect(gamehouse).toBeTruthy();
+    expect(gamehouse.isPublicSafe).toBe(true);
+    expect(/kooker|token|secret/i.test(gamehouse.name)).toBe(false);
+    // A commercial storefront, not the bar: it carries no seating.
+    expect(gamehouse.seating).toBe(false);
+    // It is player-facing: cycling the secondary roster far enough always reaches the Gamehouse.
+    const many = assignBusinesses(
+      Array.from({ length: 24 }, (_, i) => ({
+        id: `shop_${i}`,
+        kind: "store" as const,
+      })),
+    );
+    const reached = new Set(Object.values(many) as BusinessId[]);
+    expect(reached.has("kooker_gamehouse")).toBe(true);
+  });
 });
