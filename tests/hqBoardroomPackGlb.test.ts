@@ -51,7 +51,10 @@ function parseGltfJson(raw: string): GltfJson {
   throw new Error("unterminated GLB JSON chunk");
 }
 
-const PARTS: Record<string, { w: number; h: number; d: number; pivot: string }> = {
+const PARTS: Record<
+  string,
+  { w: number; h: number; d: number; pivot: string }
+> = {
   Board_Table: { w: 3.6, h: 0.78, d: 1.4, pivot: "floor-center" },
   Board_Chair: { w: 0.55, h: 1.0, d: 0.55, pivot: "floor-center" },
   Board_EpicWall: { w: 6.0, h: 2.4, d: 0.14, pivot: "floor-center-back" },
@@ -66,8 +69,10 @@ function childTranslation(child: GltfNode): number[] {
   expect(child.rotation, `${child.name} rotation`).toBeUndefined();
   expect(child.scale, `${child.name} scale`).toBeUndefined();
   if (child.matrix) {
-    expect(child.matrix.slice(0, 12), `${child.name} matrix must be translation-only`)
-      .toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
+    expect(
+      child.matrix.slice(0, 12),
+      `${child.name} matrix must be translation-only`,
+    ).toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
     return [child.matrix[12], child.matrix[13], child.matrix[14]];
   }
   return child.translation ?? [0, 0, 0];
@@ -84,7 +89,10 @@ function partBounds(json: GltfJson, partName: string) {
   for (const childIndex of part!.children!) {
     const child = json.nodes[childIndex];
     expect(child.mesh, `${child.name} mesh`).toBeTypeOf("number");
-    const positions = json.accessors[json.meshes[child.mesh!].primitives[0].attributes.POSITION];
+    const positions =
+      json.accessors[
+        json.meshes[child.mesh!].primitives[0].attributes.POSITION
+      ];
     const translation = childTranslation(child);
     for (let axis = 0; axis < 3; axis += 1) {
       min[axis] = Math.min(min[axis], positions.min![axis] + translation[axis]);
@@ -95,14 +103,19 @@ function partBounds(json: GltfJson, partName: string) {
 }
 
 const packBytes = readFileSync(
-  new URL("../public/assets/citylife/props/hq-boardroom-pack.glb", import.meta.url),
+  new URL(
+    "../public/assets/citylife/props/hq-boardroom-pack.glb",
+    import.meta.url,
+  ),
 );
 
 describe("hq-boardroom-pack.glb", () => {
   const json = parseGltfJson(packGlbRaw);
 
   it("exposes the pack root with exactly the seven parts and no cameras or textures", () => {
-    const root = json.nodes.find((node) => node.name === "HqBoardroomPack_Root");
+    const root = json.nodes.find(
+      (node) => node.name === "HqBoardroomPack_Root",
+    );
     expect(root).toBeDefined();
     const partNames = root!.children!.map((index) => json.nodes[index].name);
     expect(partNames?.sort()).toEqual(Object.keys(PARTS).sort());
@@ -133,7 +146,8 @@ describe("hq-boardroom-pack.glb", () => {
 
   it("uses only named Board materials", () => {
     expect(json.materials?.length ?? 0).toBeGreaterThan(0);
-    for (const material of json.materials!) expect(material.name).toMatch(/^Board_/);
+    for (const material of json.materials!)
+      expect(material.name).toMatch(/^Board_/);
   });
 });
 

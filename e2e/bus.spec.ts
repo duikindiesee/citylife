@@ -120,4 +120,3 @@ test("R3F bus: buses move continuously along authoritative road routes at frame 
     path: testInfo.outputPath("continuous-bus-motion.png"),
   });
 });
-
