@@ -99,9 +99,16 @@ export function PropViewer3D({
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [retryCount, setRetryCount] = useState<number>(0);
   const [activePlacement, setActivePlacement] = useState<PropPlacementSchema | null>(
     placementJson,
   );
+
+  // Ref to hold the current control values to prevent scene effect re-creation on every control change
+  const controlsRef = useRef<PropViewerControlsState>(activeControls);
+  useEffect(() => {
+    controlsRef.current = activeControls;
+  }, [activeControls]);
 
   // System reduced-motion preference check
   const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(() => {
@@ -126,14 +133,20 @@ export function PropViewer3D({
 
   const updateControls = useCallback(
     (updater: (prev: PropViewerControlsState) => PropViewerControlsState) => {
-      setInternalControls((prev) => {
-        const next = updater(prev);
-        onControlsChange?.(next);
-        return next;
-      });
+      const current = controlsRef.current;
+      const next = updater(current);
+      controlsRef.current = next;
+      setInternalControls(next);
+      onControlsChange?.(next);
     },
     [onControlsChange],
   );
+
+  const handleRetry = useCallback(() => {
+    setLoadError(null);
+    setIsLoading(true);
+    setRetryCount((prev) => prev + 1);
+  }, []);
 
   // Fetch placement JSON in room mode if not provided directly
   useEffect(() => {
@@ -333,8 +346,8 @@ export function PropViewer3D({
           }));
         }
 
-        // Apply controls to camera position
-        const { azimuth, polar, zoom, pan } = activeControls;
+        // Apply controls to camera position using truthful current control ref
+        const { azimuth, polar, zoom, pan } = controlsRef.current;
         const clampedZoom = clampPropZoom(zoom);
         const clampedPolar = clampPropPolar(polar);
 
@@ -401,8 +414,7 @@ export function PropViewer3D({
     roomName,
     autoRotate,
     prefersReducedMotion,
-    activeControls,
-    updateControls,
+    retryCount,
     onError,
   ]);
 
@@ -599,10 +611,7 @@ export function PropViewer3D({
             type="button"
             data-testid="prop-viewer-retry"
             style={retryButtonStyle}
-            onClick={() => {
-              setLoadError(null);
-              setIsLoading(true);
-            }}
+            onClick={handleRetry}
           >
             Retry Loading Asset
           </button>
