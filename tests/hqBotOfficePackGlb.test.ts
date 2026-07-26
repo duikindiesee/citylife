@@ -52,7 +52,10 @@ function parseGltfJson(raw: string): GltfJson {
   throw new Error("unterminated GLB JSON chunk");
 }
 
-const PARTS: Record<string, { w: number; h: number; d: number; pivot: string }> = {
+const PARTS: Record<
+  string,
+  { w: number; h: number; d: number; pivot: string }
+> = {
   Office_Desk: { w: 1.6, h: 0.75, d: 0.8, pivot: "floor-center" },
   Office_TaskChair: { w: 0.5, h: 0.95, d: 0.55, pivot: "floor-center" },
   Office_WorklistBoard: { w: 3.0, h: 1.8, d: 0.12, pivot: "floor-center-back" },
@@ -73,8 +76,10 @@ function childTranslation(child: GltfNode): number[] {
   expect(child.rotation, `${child.name} rotation`).toBeUndefined();
   expect(child.scale, `${child.name} scale`).toBeUndefined();
   if (child.matrix) {
-    expect(child.matrix.slice(0, 12), `${child.name} matrix must be translation-only`)
-      .toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
+    expect(
+      child.matrix.slice(0, 12),
+      `${child.name} matrix must be translation-only`,
+    ).toEqual([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0]);
     return [child.matrix[12], child.matrix[13], child.matrix[14]];
   }
   return child.translation ?? [0, 0, 0];
@@ -91,7 +96,10 @@ function partBounds(json: GltfJson, partName: string) {
   for (const childIndex of part!.children!) {
     const child = json.nodes[childIndex];
     expect(child.mesh, `${child.name} mesh`).toBeTypeOf("number");
-    const positions = json.accessors[json.meshes[child.mesh!].primitives[0].attributes.POSITION];
+    const positions =
+      json.accessors[
+        json.meshes[child.mesh!].primitives[0].attributes.POSITION
+      ];
     const translation = childTranslation(child);
     for (let axis = 0; axis < 3; axis += 1) {
       min[axis] = Math.min(min[axis], positions.min![axis] + translation[axis]);
@@ -102,14 +110,19 @@ function partBounds(json: GltfJson, partName: string) {
 }
 
 const packBytes = readFileSync(
-  new URL("../public/assets/citylife/props/hq-bot-office-pack.glb", import.meta.url),
+  new URL(
+    "../public/assets/citylife/props/hq-bot-office-pack.glb",
+    import.meta.url,
+  ),
 );
 
 describe("hq-bot-office-pack.glb", () => {
   const json = parseGltfJson(packGlbRaw);
 
   it("exposes the pack root with exactly the thirteen parts and no cameras or textures", () => {
-    const root = json.nodes.find((node) => node.name === "HqBotOfficePack_Root");
+    const root = json.nodes.find(
+      (node) => node.name === "HqBotOfficePack_Root",
+    );
     expect(root).toBeDefined();
     const partNames = root!.children!.map((index) => json.nodes[index].name);
     expect(partNames?.sort()).toEqual(Object.keys(PARTS).sort());
@@ -140,7 +153,8 @@ describe("hq-bot-office-pack.glb", () => {
 
   it("uses only named Office materials", () => {
     expect(json.materials?.length ?? 0).toBeGreaterThan(0);
-    for (const material of json.materials!) expect(material.name).toMatch(/^Office_/);
+    for (const material of json.materials!)
+      expect(material.name).toMatch(/^Office_/);
   });
 });
 
@@ -163,7 +177,9 @@ describe("hq-bot-office-pack.placement.json", () => {
   it("records exactly the spec-153 §5 slot formula for twelve slots with immutable slotIndex", () => {
     const entries = placement.slots.entries;
     expect(entries).toHaveLength(12);
-    expect(new Set(entries.map((e: { slotIndex: number }) => e.slotIndex)).size).toBe(12);
+    expect(
+      new Set(entries.map((e: { slotIndex: number }) => e.slotIndex)).size,
+    ).toBe(12);
     const expectSlot = (
       index: number,
       framePosition: number[],
@@ -172,7 +188,9 @@ describe("hq-bot-office-pack.placement.json", () => {
     ) => {
       const entry = entries[index];
       expect(entry.slotIndex).toBe(index);
-      expect(entry.localId).toBe(`office-slot-${String(index).padStart(2, "0")}`);
+      expect(entry.localId).toBe(
+        `office-slot-${String(index).padStart(2, "0")}`,
+      );
       expect(entry.framePosition).toEqual(framePosition);
       expect(entry.yawRadians).toBeCloseTo(yaw, 12);
       expect(entry.door).toEqual(door);
@@ -192,7 +210,9 @@ describe("hq-bot-office-pack.placement.json", () => {
         expect(entry.binding).toMatch(/^principal:bot:[A-Za-z0-9._:-]+$/);
       else expect(entry.kit).toBe("dark-shell");
     }
-    expect(entries.filter((e: { binding: string | null }) => e.binding === null)).toHaveLength(3);
+    expect(
+      entries.filter((e: { binding: string | null }) => e.binding === null),
+    ).toHaveLength(3);
     expect(placement.integration.owner).toBe("opus");
   });
 });
