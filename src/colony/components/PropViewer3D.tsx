@@ -110,6 +110,12 @@ export function PropViewer3D({
     controlsRef.current = activeControls;
   }, [activeControls]);
 
+  // Ref to hold the latest onError callback to prevent scene effect re-creation when callback identity changes
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
   // System reduced-motion preference check
   const [prefersReducedMotion, setPrefersReducedMotion] = useState<boolean>(() => {
     if (typeof externalReducedMotion === "boolean") return externalReducedMotion;
@@ -170,14 +176,14 @@ export function PropViewer3D({
         if (mounted) {
           const msg = err instanceof Error ? err.message : String(err);
           setLoadError(`Room layout error: ${msg}`);
-          onError?.(err instanceof Error ? err : new Error(msg));
+          onErrorRef.current?.(err instanceof Error ? err : new Error(msg));
         }
       });
 
     return () => {
       mounted = false;
     };
-  }, [mode, placementJson, placementUrl, onError]);
+  }, [mode, placementJson, placementUrl]);
 
   // Main 3D Canvas Lifecycle & Scene Setup
   useEffect(() => {
@@ -326,7 +332,7 @@ export function PropViewer3D({
           const errObj = err instanceof Error ? err : new Error(String(err));
           const errorMsg = `Asset load failure (${targetGlbUrl}): ${errObj.message}`;
           setLoadError(errorMsg);
-          onError?.(errObj);
+          onErrorRef.current?.(errObj);
         },
       );
 
@@ -367,7 +373,7 @@ export function PropViewer3D({
       setIsLoading(false);
       const msg = `WebGL Canvas initialization failed: ${err instanceof Error ? err.message : String(err)}`;
       setLoadError(msg);
-      onError?.(err instanceof Error ? err : new Error(msg));
+      onErrorRef.current?.(err instanceof Error ? err : new Error(msg));
     }
 
     // Resize handler
@@ -415,7 +421,6 @@ export function PropViewer3D({
     autoRotate,
     prefersReducedMotion,
     retryCount,
-    onError,
   ]);
 
   // Touch & Pointer Gesture Controls
