@@ -10,7 +10,9 @@ import type { ColonyUiState } from "../src/colony/runtime";
 // A minimal UI-state stub — only the fields the card reads.
 const ui = (over: Partial<ColonyUiState> = {}): ColonyUiState =>
   ({
-    clock: { day: 3, hour: 10, minute: 0, isDay: true },
+    // Spec 150 PR3 — sol is deliberately different from day: the Sol chip must read the canonical
+    // sol, not the earth day, or a shared card disagrees with the HUD.
+    clock: { day: 3, hour: 10, minute: 0, isDay: true, sol: 13 },
     colonists: 16,
     colony: { capacity: 25, food: 30, buildings: 5 },
     power: { solarW: 3.8 },
@@ -40,7 +42,7 @@ describe("Social card — headlines from the day build", () => {
 describe("Social card — stat chips + site label", () => {
   it("draws Sol, Pop, Food, Built and Solar from the UI state", () => {
     const s = shareStats(ui());
-    expect(s.find((x) => x.label === "Sol")?.value).toBe("3");
+    expect(s.find((x) => x.label === "Sol")?.value).toBe("13");
     expect(s.find((x) => x.label === "Pop")?.value).toBe("16/25");
     expect(s.find((x) => x.label === "Food")?.value).toBe("30");
     expect(s.find((x) => x.label === "Built")?.value).toBe("5");

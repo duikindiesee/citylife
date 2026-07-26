@@ -14,7 +14,13 @@ export type PostKind = "event" | "narration" | "authored";
 
 export interface KbPost {
   id: string; // `${citizenId}_${sol}_${seq}` — deterministic, unique per profile
+  /** Spec 150 PR3 — the FAST game-day bucket. It keys the id, the seq and the AUTHORED_PER_SOL
+   *  cap, and must stay on the game day: that cap was tuned to the 160 s sim-day, so re-keying it
+   *  on the six-hour canonical sol would starve the feed. Never render this. */
   sol: number;
+  /** Spec 150 PR3 — the canonical wall-clock sol at authoring time. Display-only, so the feed
+   *  agrees with the HUD and the share card. Absent on posts stored before PR3. */
+  displaySol?: number;
   seq: number;
   kind: PostKind;
   text: string;
@@ -61,7 +67,13 @@ export function createProfile(opts: {
  *  profile, or null when the post is refused (unsafe text, over the authored cap, duplicate id). */
 export function addPost(
   p: KbProfile,
-  post: { sol: number; kind: PostKind; text: string; imageRef?: string },
+  post: {
+    sol: number;
+    displaySol?: number;
+    kind: PostKind;
+    text: string;
+    imageRef?: string;
+  },
 ): KbProfile | null {
   const text = post.text.trim().slice(0, POST_TEXT_MAX);
   if (!text || !isPublicSafe(text)) return null;
@@ -77,6 +89,9 @@ export function addPost(
   const entry: KbPost = {
     id,
     sol: post.sol,
+    ...(typeof post.displaySol === "number" && Number.isFinite(post.displaySol)
+      ? { displaySol: post.displaySol }
+      : {}),
     seq,
     kind: post.kind,
     text,
@@ -124,6 +139,10 @@ export function safeProfile(raw: unknown): KbProfile | null {
       qq.kind === "narration" || qq.kind === "authored" ? qq.kind : "event";
     const next = addPost(out, {
       sol: qq.sol,
+      displaySol:
+        typeof qq.displaySol === "number" && Number.isFinite(qq.displaySol)
+          ? qq.displaySol
+          : undefined,
       kind,
       text: qq.text,
       imageRef: typeof qq.imageRef === "string" ? qq.imageRef : undefined,

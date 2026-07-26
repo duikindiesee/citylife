@@ -398,7 +398,10 @@ function App() {
                 }}
               >
                 <div style={{ opacity: 0.55, fontSize: 12 }}>
-                  {KIND_LABEL[q.kind]} sol {q.sol}
+                  {/* Spec 150 PR3 — show the canonical wall-clock sol so the feed matches the
+                      HUD and share card. q.sol is the fast game-day bucket that keys the id and
+                      the authored cap, and is only the fallback for posts stored before PR3. */}
+                  {KIND_LABEL[q.kind]} sol {q.displaySol ?? q.sol}
                 </div>
                 <div style={layout.contentText}>{q.text}</div>
               </div>
