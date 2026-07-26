@@ -130,7 +130,9 @@ export function CabinetInspectModal({
   const isAuth = passedAuth ?? getAuthClient().isAuthenticated;
 
   const [mode, setMode] = useState<PropViewerMode>("prop");
-  const [controls, setControls] = useState<PropViewerControlsState>(DEFAULT_CONTROLS_STATE);
+  const [controls, setControls] = useState<PropViewerControlsState>(
+    DEFAULT_CONTROLS_STATE,
+  );
   const [inspectError, setInspectError] = useState<string | null>(null);
 
   // Return to world listener on Escape key
@@ -157,23 +159,47 @@ export function CabinetInspectModal({
   const rotateRight = () =>
     updateControls((prev) => ({ ...prev, azimuth: prev.azimuth + 0.25 }));
   const pitchUp = () =>
-    updateControls((prev) => ({ ...prev, polar: clampPropPolar(prev.polar + 0.15) }));
+    updateControls((prev) => ({
+      ...prev,
+      polar: clampPropPolar(prev.polar + 0.15),
+    }));
   const pitchDown = () =>
-    updateControls((prev) => ({ ...prev, polar: clampPropPolar(prev.polar - 0.15) }));
+    updateControls((prev) => ({
+      ...prev,
+      polar: clampPropPolar(prev.polar - 0.15),
+    }));
 
   const zoomIn = () =>
-    updateControls((prev) => ({ ...prev, zoom: clampPropZoom(prev.zoom - 0.5) }));
+    updateControls((prev) => ({
+      ...prev,
+      zoom: clampPropZoom(prev.zoom - 0.5),
+    }));
   const zoomOut = () =>
-    updateControls((prev) => ({ ...prev, zoom: clampPropZoom(prev.zoom + 0.5) }));
+    updateControls((prev) => ({
+      ...prev,
+      zoom: clampPropZoom(prev.zoom + 0.5),
+    }));
 
   const panLeft = () =>
-    updateControls((prev) => ({ ...prev, pan: [prev.pan[0] - 0.2, prev.pan[1]] }));
+    updateControls((prev) => ({
+      ...prev,
+      pan: [prev.pan[0] - 0.2, prev.pan[1]],
+    }));
   const panRight = () =>
-    updateControls((prev) => ({ ...prev, pan: [prev.pan[0] + 0.2, prev.pan[1]] }));
+    updateControls((prev) => ({
+      ...prev,
+      pan: [prev.pan[0] + 0.2, prev.pan[1]],
+    }));
   const panUp = () =>
-    updateControls((prev) => ({ ...prev, pan: [prev.pan[0], prev.pan[1] + 0.2] }));
+    updateControls((prev) => ({
+      ...prev,
+      pan: [prev.pan[0], prev.pan[1] + 0.2],
+    }));
   const panDown = () =>
-    updateControls((prev) => ({ ...prev, pan: [prev.pan[0], prev.pan[1] - 0.2] }));
+    updateControls((prev) => ({
+      ...prev,
+      pan: [prev.pan[0], prev.pan[1] - 0.2],
+    }));
 
   const resetView = () => setControls(DEFAULT_CONTROLS_STATE);
   const toggleMode = () => setMode((m) => (m === "prop" ? "room" : "prop"));
@@ -238,9 +264,17 @@ export function CabinetInspectModal({
             <div style={{ fontSize: 18, color: "#ffd25a", fontWeight: 700 }}>
               Authentication Required
             </div>
-            <div style={{ maxWidth: 420, color: "#a0b8cc", fontSize: 13, lineHeight: 1.5 }}>
-              Gamehouse 3D Cabinet Inspection requires an authenticated operator or player session.
-              Please sign in to inspect props and room placements.
+            <div
+              style={{
+                maxWidth: 420,
+                color: "#a0b8cc",
+                fontSize: 13,
+                lineHeight: 1.5,
+              }}
+            >
+              Gamehouse 3D Cabinet Inspection requires an authenticated operator
+              or player session. Please sign in to inspect props and room
+              placements.
             </div>
             <button
               type="button"
@@ -266,7 +300,8 @@ export function CabinetInspectModal({
                 {mode === "prop" ? "Single Prop Isolation" : "Room Layout"}
               </div>
               <div>
-                <strong style={{ color: "#7ab0d0" }}>Dimensions:</strong> 0.7m × 1.8m × 0.8m
+                <strong style={{ color: "#7ab0d0" }}>Dimensions:</strong> 0.7m ×
+                1.8m × 0.8m
               </div>
             </div>
 
@@ -302,7 +337,14 @@ export function CabinetInspectModal({
             {mode === "prop" ? "🏢 Room Mode" : "🔍 Single Prop Mode"}
           </button>
 
-          <div style={{ height: 20, width: 1, background: "#1e3650", margin: "0 4px" }} />
+          <div
+            style={{
+              height: 20,
+              width: 1,
+              background: "#1e3650",
+              margin: "0 4px",
+            }}
+          />
 
           {/* Rotate Controls */}
           <button
@@ -342,7 +384,14 @@ export function CabinetInspectModal({
             ▼ Pitch Down
           </button>
 
-          <div style={{ height: 20, width: 1, background: "#1e3650", margin: "0 4px" }} />
+          <div
+            style={{
+              height: 20,
+              width: 1,
+              background: "#1e3650",
+              margin: "0 4px",
+            }}
+          />
 
           {/* Zoom Controls */}
           <button
@@ -364,7 +413,14 @@ export function CabinetInspectModal({
             🔍− Zoom Out
           </button>
 
-          <div style={{ height: 20, width: 1, background: "#1e3650", margin: "0 4px" }} />
+          <div
+            style={{
+              height: 20,
+              width: 1,
+              background: "#1e3650",
+              margin: "0 4px",
+            }}
+          />
 
           {/* Pan Controls */}
           <button
@@ -386,7 +442,14 @@ export function CabinetInspectModal({
             ► Pan Right
           </button>
 
-          <div style={{ height: 20, width: 1, background: "#1e3650", margin: "0 4px" }} />
+          <div
+            style={{
+              height: 20,
+              width: 1,
+              background: "#1e3650",
+              margin: "0 4px",
+            }}
+          />
 
           {/* Reset View Control */}
           <button

@@ -48,8 +48,8 @@ export interface PropPlacementSchema {
 
 export interface PropViewerControlsState {
   azimuth: number; // Y-axis rotation in radians
-  polar: number;   // Pitch / elevation angle in radians
-  zoom: number;    // Camera distance / scale
+  polar: number; // Pitch / elevation angle in radians
+  zoom: number; // Camera distance / scale
   pan: [number, number]; // [panX, panY]
 }
 

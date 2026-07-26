@@ -60,11 +60,19 @@ vi.mock("three", async (importOriginal) => {
 
 vi.mock("three/addons/loaders/GLTFLoader.js", () => {
   class MockGLTFLoader {
-    load(url: string, onLoad: Function, _onProgress?: Function, onError?: Function) {
+    load(
+      url: string,
+      onLoad: Function,
+      _onProgress?: Function,
+      onError?: Function,
+    ) {
       mountedMetrics.gltfLoadAttempts++;
       if (url.includes("fail") || url.includes("error")) {
         if (onError) {
-          setTimeout(() => onError(new Error(`Failed GLB load from ${url}`)), 0);
+          setTimeout(
+            () => onError(new Error(`Failed GLB load from ${url}`)),
+            0,
+          );
         }
       } else {
         const scene = new THREE.Scene();
@@ -131,8 +139,8 @@ function setupMountedDOM() {
       tag === "canvas"
         ? MockHTMLCanvasElement
         : tag === "button"
-        ? MockHTMLButtonElement
-        : MockHTMLDivElement;
+          ? MockHTMLButtonElement
+          : MockHTMLDivElement;
     const node: any = Object.create(Proto.prototype);
     Object.assign(node, {
       tagName: tag.toUpperCase(),
@@ -144,7 +152,8 @@ function setupMountedDOM() {
       ownerDocument: mockDoc,
       nodeType: 1,
       _listeners: nodeListeners,
-      getAttribute: (attr: string) => node[attr] || node[`data-${attr}`] || null,
+      getAttribute: (attr: string) =>
+        node[attr] || node[`data-${attr}`] || null,
       setAttribute: (attr: string, val: string) => {
         node[attr] = val;
       },
@@ -157,7 +166,10 @@ function setupMountedDOM() {
       },
       dispatchEvent: (evt: any) => {
         const type = typeof evt === "string" ? evt : evt.type;
-        const eventObj = typeof evt === "string" ? { type: evt, target: node, bubbles: true } : evt;
+        const eventObj =
+          typeof evt === "string"
+            ? { type: evt, target: node, bubbles: true }
+            : evt;
         if (!eventObj.target) eventObj.target = node;
 
         let curr: any = node;
@@ -212,7 +224,11 @@ function setupMountedDOM() {
     nodeType: 9,
     createElement: (tag: string) => createMockNode(tag),
     createElementNS: (_ns: string, tag: string) => createMockNode(tag),
-    createTextNode: (text: string) => ({ nodeType: 3, nodeValue: text, ownerDocument: mockDoc }),
+    createTextNode: (text: string) => ({
+      nodeType: 3,
+      nodeValue: text,
+      ownerDocument: mockDoc,
+    }),
     addEventListener: (evt: string, fn: Function) => {
       if (!mockListeners.has(evt)) mockListeners.set(evt, new Set());
       mockListeners.get(evt)!.add(fn);
@@ -359,7 +375,10 @@ describe("PropViewer3D & Gamehouse Cabinet Inspection (CITYLIFE.3D.VIEWER)", () 
 
       // Drive rotate, zoom and pan controls through multiple state changes via toolbar buttons
       const rotateLeftBtn = findNodeByTestId(container, "inspect-rotate-left");
-      const rotateRightBtn = findNodeByTestId(container, "inspect-rotate-right");
+      const rotateRightBtn = findNodeByTestId(
+        container,
+        "inspect-rotate-right",
+      );
       const pitchUpBtn = findNodeByTestId(container, "inspect-pitch-up");
       const pitchDownBtn = findNodeByTestId(container, "inspect-pitch-down");
       const zoomInBtn = findNodeByTestId(container, "inspect-zoom-in");
@@ -383,13 +402,41 @@ describe("PropViewer3D & Gamehouse Cabinet Inspection (CITYLIFE.3D.VIEWER)", () 
       // Also drive keyboard control inputs on PropViewer3D container
       const viewerContainer = findNodeByTestId(container, "prop-viewer-3d");
       await act(async () => {
-        viewerContainer?.dispatchEvent({ type: "keydown", key: "ArrowLeft", preventDefault: () => {} });
-        viewerContainer?.dispatchEvent({ type: "keydown", key: "ArrowRight", preventDefault: () => {} });
-        viewerContainer?.dispatchEvent({ type: "keydown", key: "ArrowUp", preventDefault: () => {} });
-        viewerContainer?.dispatchEvent({ type: "keydown", key: "ArrowDown", preventDefault: () => {} });
-        viewerContainer?.dispatchEvent({ type: "keydown", key: "+", preventDefault: () => {} });
-        viewerContainer?.dispatchEvent({ type: "keydown", key: "-", preventDefault: () => {} });
-        viewerContainer?.dispatchEvent({ type: "keydown", key: "r", preventDefault: () => {} });
+        viewerContainer?.dispatchEvent({
+          type: "keydown",
+          key: "ArrowLeft",
+          preventDefault: () => {},
+        });
+        viewerContainer?.dispatchEvent({
+          type: "keydown",
+          key: "ArrowRight",
+          preventDefault: () => {},
+        });
+        viewerContainer?.dispatchEvent({
+          type: "keydown",
+          key: "ArrowUp",
+          preventDefault: () => {},
+        });
+        viewerContainer?.dispatchEvent({
+          type: "keydown",
+          key: "ArrowDown",
+          preventDefault: () => {},
+        });
+        viewerContainer?.dispatchEvent({
+          type: "keydown",
+          key: "+",
+          preventDefault: () => {},
+        });
+        viewerContainer?.dispatchEvent({
+          type: "keydown",
+          key: "-",
+          preventDefault: () => {},
+        });
+        viewerContainer?.dispatchEvent({
+          type: "keydown",
+          key: "r",
+          preventDefault: () => {},
+        });
       });
 
       // Assert zero new renderer creations, zero GLB reloads, zero WebGL disposals
@@ -547,10 +594,14 @@ describe("PropViewer3D & Gamehouse Cabinet Inspection (CITYLIFE.3D.VIEWER)", () 
       expect(placement.rooms.arcade).toBeDefined();
       expect(placement.nodes.Commons_Arcade).toBeDefined();
 
-      const arcadePlacements = placement.placements.filter((p) => p.room === "arcade");
+      const arcadePlacements = placement.placements.filter(
+        (p) => p.room === "arcade",
+      );
       expect(arcadePlacements.length).toBeGreaterThan(0);
 
-      const cabinetPlacement = arcadePlacements.find((p) => p.node === "Commons_Arcade");
+      const cabinetPlacement = arcadePlacements.find(
+        (p) => p.node === "Commons_Arcade",
+      );
       expect(cabinetPlacement).toBeDefined();
       expect(cabinetPlacement?.position).toEqual([0.45, 0, 6]);
 
