@@ -179,21 +179,33 @@ test.describe("Signed-out password recovery UX (PWD.REC R1)", () => {
     );
   });
 
-  test("the signed-out recovery entry is distinct from token redemption and returns to sign in", async ({
+  test("the signed-out recovery entry is distinct from the permanent token-redemption entry (PWD.REC.9)", async ({
     page,
   }) => {
     await page.goto("/?login=1");
-    // Recovery is the only password-related entry on an ordinary login screen. Token redemption is
-    // contextual after a recovery request or signed-in change, not permanent login clutter.
+    // PWD.REC.9 supersedes PWD.REC.6: the login screen now carries TWO distinct password-related
+    // entries — recovery (which START a reset and hands out a REFERENCE) and activation-token
+    // redemption (which FINISHES one). Both must be permanently visible and clearly separate.
     await expect(
       page.getByRole("button", { name: "Forgot password?" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Enter your activation token" }),
-    ).toHaveCount(0);
+      page.getByRole("button", { name: "Enter activation token" }),
+    ).toBeVisible();
 
+    // The recovery entry opens the reference-issuing request screen (the REFERENCE concept)...
     await page.getByRole("button", { name: "Forgot password?" }).click();
     await expect(page.getByText("Reset your password")).toBeVisible();
+    await expect(page.getByText(/one-time reference/i)).toBeVisible();
+    await page.getByRole("button", { name: "Back to sign in" }).click();
+    await expect(page.getByText("Border Authority")).toBeVisible();
+
+    // ...while the permanent activation entry opens the token-redemption screen (the TOKEN concept),
+    // a genuinely different destination — no reference is asked for or shown here.
+    await page.getByRole("button", { name: "Enter activation token" }).click();
+    await expect(page.getByText("Finish your password change")).toBeVisible();
+    await expect(page.getByPlaceholder("email address")).toBeVisible();
+    await expect(page.getByTestId("recovery-ref")).toHaveCount(0);
     await page.getByRole("button", { name: "Back to sign in" }).click();
     await expect(page.getByText("Border Authority")).toBeVisible();
   });

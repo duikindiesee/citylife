@@ -12,6 +12,13 @@ interface Props {
   onVisitorSignup: () => void;
   /** Opens the signed-out password-recovery screen for an owner who lost their password (PWD.REC R1). */
   onForgotPassword: () => void;
+  /**
+   * Opens the activation-token redemption screen directly (PWD.REC.9). A permanent, always-visible
+   * signed-out route so a player who requested recovery, then closed or reloaded, can come back later,
+   * enter the operator-issued activation token, and finish switching to their staged new password.
+   * This explicitly supersedes PWD.REC.6, which had made activation entry contextual-only.
+   */
+  onEnterActivation: () => void;
   /** Fired after IDLE_MS of no interaction — the operator wants the cinematic fly-around to take over. */
   onIdle?: () => void;
   /** Fired the moment the operator stirs (mouse/key/touch) — return from the cinematic to the form. */
@@ -32,6 +39,7 @@ export function LoginScreen({
   onAuthed,
   onVisitorSignup,
   onForgotPassword,
+  onEnterActivation,
   onIdle,
   onActive,
   isCinematic,
@@ -296,6 +304,22 @@ export function LoginScreen({
             onClick={onForgotPassword}
           >
             Forgot password?
+          </button>
+        </div>
+        {/* PWD.REC.9 — a permanent route to finish a password reset. A player who requested recovery
+            and then closed or reloaded still lands here signed-out with no context; this always-visible
+            entry lets them return, redeem the operator-issued activation token, and switch to their
+            staged new password. Deliberately worded around the ACTIVATION TOKEN, kept distinct from the
+            recovery REFERENCE the request screen hands out — the two are different concepts. */}
+        <div className="login-hint visitor-back">
+          Completing a password reset?{" "}
+          <button
+            type="button"
+            className="login-link"
+            data-testid="enter-activation-link"
+            onClick={onEnterActivation}
+          >
+            Enter activation token
           </button>
         </div>
         <div className="login-hint visitor-links">
