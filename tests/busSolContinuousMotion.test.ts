@@ -127,13 +127,15 @@ describe("BUS.SOL.STUTTER.FIX.1 — continuous bus motion while persisting canon
   });
 
   it("preserves sol-time service without regression from sim speed changes", () => {
+    const targetMs = CITYLIFE_EPOCH_MS + (14 / 24) * MS_PER_SOL;
+
     const rtSlow = new ColonyRuntime();
     const rtFast = new ColonyRuntime();
     rtFast.setSpeed(10);
 
-    rtSlow.debugSetSolTimeOfDay(14, 0);
-    rtFast.debugSetSolTimeOfDay(14, 0);
+    setSolDebugOffsetMs(targetMs - Date.now());
     tick(rtSlow);
+    setSolDebugOffsetMs(targetMs - Date.now());
     tick(rtFast);
 
     const slowPoses = rtSlow.busPoses();
