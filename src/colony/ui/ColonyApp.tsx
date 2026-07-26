@@ -20,6 +20,17 @@ import {
   newPlayerJourneyAvailable,
   type JourneyEntitlement,
 } from "../entitlement/newPlayerJourney";
+// ARCADE.2A — the fail-closed, default-OFF `citylife-arcade-3d-v1` entitlement (gates the authenticated
+// Gamehouse venue entry + isolated 3D cabinet inspection; globally OFF, per-user/cohort server truth).
+import {
+  evaluateArcadeEntitlement,
+  defaultArcadeDeps,
+  arcadeGamehouseBypassed,
+  arcadeGamehouseAvailable,
+  type ArcadeEntitlement,
+} from "../entitlement/arcadeGamehouse";
+import { GamehouseOverlay } from "./GamehouseOverlay";
+import { resolveGamehousePortalSite } from "../spatial/gamehousePortal";
 import { PasswordChangePanel } from "./PasswordChangePanel";
 import { markPasswordChangePending } from "../pendingPasswordNotice";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
@@ -747,6 +758,9 @@ export function ColonyApp() {
   const [roadmapOpen, setRoadmapOpen] = useState(false);
   // PLAYER.GARAGE.1 — the Gearbox Auto Hub showroom interior (its own streamed scene overlay).
   const [showroomOpen, setShowroomOpen] = useState(false);
+  // ARCADE.2A — the authenticated Gamehouse venue interior (its own streamed overlay; the isolated 3D
+  // cabinet inspection mounts only on a cabinet interaction inside it).
+  const [gamehouseOpen, setGamehouseOpen] = useState(false);
   // PLAYER.HOME.1C — the guided starter-property selection + identity-bound house projection overlay.
   const [homeOpen, setHomeOpen] = useState(false);
   // PLAYER.HOME.1D.S2 — the guided mobile drive out of the dealership to the owned home + home garage.
@@ -756,6 +770,11 @@ export function ColonyApp() {
   // positive entitlement can never outlive the authenticated session or bleed across a switch.
   const [journeyEntitlement, setJourneyEntitlement] =
     useState<JourneyEntitlement | null>(null);
+  // ARCADE.2A — the fail-closed `citylife-arcade-3d-v1` entitlement for THIS session. Same discipline
+  // as the journey flag: default null (fails closed while loading), memory-only (never persisted), and
+  // re-evaluated on identity change so a positive can never outlive the session or bleed across a switch.
+  const [arcadeEntitlement, setArcadeEntitlement] =
+    useState<ArcadeEntitlement | null>(null);
   // Furniture studio (spec 088 Slice D UI) — the design-and-buy controls.
   const [furnKind, setFurnKind] = useState<FurnitureKind>("sofa");
   const [furnName, setFurnName] = useState("");
@@ -807,6 +826,36 @@ export function ColonyApp() {
     if (!newPlayerJourneyEnabled) return;
     setShowroomOpen(true);
   };
+  // ARCADE.2A — is the Gamehouse venue available to THIS session? Fails closed: only the DEV/E2E
+  // null-operator bypass, OR an authenticated CITYLIFE_PLAYER whose `citylife-arcade-3d-v1` flag is
+  // unambiguously enabled server-side, opens it. Signed-out and non-entitled sessions can never enter.
+  // Used to hide the entry affordance AND — via openGamehouse — to reject a direct/programmatic open,
+  // so the gate is never merely cosmetic.
+  const arcadeGamehouseEnabled = arcadeGamehouseAvailable({
+    bypass: arcadeGamehouseBypassed(auth),
+    entitlement: arcadeEntitlement,
+    session: auth.operator
+      ? { userId: auth.operator.userId, roles: auth.operator.roles }
+      : null,
+  });
+  // Whether this session may run the isolated 3D cabinet inspection inside the venue: a real
+  // authenticated player, or the DEV/E2E bypass (which the entry gate already required).
+  const arcadeCabinetAuthed = auth.isAuthenticated || arcadeGamehouseBypassed(auth);
+  // The governed commercial plot the venue fronts, for stable metadata display (read-only; null before
+  // the district survey completes or if no Gamehouse plot was placed).
+  const gamehouseSite = useMemo(
+    () =>
+      runtime.commercialDistrict
+        ? resolveGamehousePortalSite(runtime.commercialDistrict)
+        : null,
+    [runtime],
+  );
+  // The single guarded entry into the Gamehouse venue. A direct/runtime call is rejected exactly like
+  // the (hidden) button, so a non-entitled session can never reach the interior even out of band.
+  const openGamehouse = () => {
+    if (!arcadeGamehouseEnabled) return;
+    setGamehouseOpen(true);
+  };
   // PLAYER.HOME.1C — the starter-property step is gated on the SAME fail-closed new-player-journey
   // entitlement as the showroom entry (server-owned, default OFF, fail-closed while loading / on any
   // 401/403/timeout/malformed/unreachable flag response). No independent client on/off switch that could
@@ -852,6 +901,23 @@ export function ColonyApp() {
     void (async () => {
       const result = await evaluateJourneyEntitlement(defaultJourneyDeps());
       if (!cancelled) setJourneyEntitlement(result);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth, operatorUserId]);
+  // ARCADE.2A — evaluate `citylife-arcade-3d-v1` for the current identity, with the SAME discipline as
+  // the journey flag: reset to null (fail closed) on every identity change, skip the network for the
+  // DEV/E2E bypass, and ignore a stale in-flight response so a prior user's positive can never carry
+  // forward. A close/switch collapses any open venue via the arcadeGamehouseEnabled render guard below.
+  useEffect(() => {
+    setArcadeEntitlement(null);
+    if (arcadeGamehouseBypassed(auth)) return;
+    let cancelled = false;
+    void (async () => {
+      const result = await evaluateArcadeEntitlement(defaultArcadeDeps());
+      if (!cancelled) setArcadeEntitlement(result);
     })();
     return () => {
       cancelled = true;
@@ -1602,6 +1668,46 @@ export function ColonyApp() {
           switch) closes it immediately. */}
       {showroomOpen && newPlayerJourneyEnabled && (
         <ShowroomOverlay onClose={() => setShowroomOpen(false)} />
+      )}
+      {/* ARCADE.2A — enter the authenticated Gamehouse venue from its governed commercial plot. Gated
+          on the fail-closed `citylife-arcade-3d-v1` entitlement: hidden (absent from the DOM, not merely
+          styled away) unless the operator has enabled the flag for this authenticated CITYLIFE_PLAYER
+          (default OFF). Signed-out and non-entitled sessions never see it. */}
+      {!builderActive && !gamehouseOpen && arcadeGamehouseEnabled && (
+        <button
+          data-build-action="open-gamehouse"
+          data-testid="open-gamehouse"
+          title="Step into The Gamehouse"
+          onClick={openGamehouse}
+          style={{
+            position: "fixed",
+            right: 12,
+            bottom: 66,
+            zIndex: 60,
+            padding: "8px 12px",
+            fontSize: 13,
+            borderRadius: 8,
+            cursor: "pointer",
+            border: "1px solid #b6892f",
+            background: "rgba(8,14,24,0.92)",
+            color: "#ffd25a",
+            fontFamily: "monospace",
+            fontWeight: 700,
+          }}
+        >
+          🕹️ The Gamehouse
+        </button>
+      )}
+      {/* ARCADE.2A — defense in depth: the venue interior renders ONLY while the entitlement is live, so
+          a forced/stale gamehouseOpen can never mount it, and a mid-session revocation (flag kill or
+          account switch) closes it immediately. The isolated 3D cabinet inspection mounts only on a
+          cabinet interaction inside the overlay. */}
+      {gamehouseOpen && arcadeGamehouseEnabled && (
+        <GamehouseOverlay
+          onClose={() => setGamehouseOpen(false)}
+          isAuthenticated={arcadeCabinetAuthed}
+          site={gamehouseSite}
+        />
       )}
       {/* PLAYER.HOME.1C — enter the guided starter-property selection. Gated on the SAME fail-closed
           new-player-journey entitlement AND its own dark build-env flag: hidden (absent from the DOM,
