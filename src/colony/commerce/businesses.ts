@@ -21,6 +21,7 @@ export type BusinessId =
   | "skyline_cafe"
   | "parcel_press"
   | "arcade_lane"
+  | "kooker_gamehouse"
   | "plant_lab"
   | "tool_library"
   | "poster_union"
@@ -237,6 +238,19 @@ export const BUSINESSES: Record<BusinessId, Business> = {
     marquee: false,
     isPublicSafe: true,
   },
+  kooker_gamehouse: {
+    id: "kooker_gamehouse",
+    // Public-safe display name: the venue's internal id is the Gamehouse, but the sign never shows a
+    // kooker/token/secret brand-word (commerceBusinesses public-safe test).
+    name: "The Gamehouse",
+    app: "arcade games",
+    tagline: "Play the cabinet, chase the score",
+    palette: 0x00e6c3,
+    emblem: "board",
+    seating: false,
+    marquee: false,
+    isPublicSafe: true,
+  },
   plant_lab: {
     id: "plant_lab",
     name: "Plant Lab",
@@ -313,6 +327,7 @@ const SECONDARY_ORDER: BusinessId[] = [
   "skyline_cafe",
   "parcel_press",
   "arcade_lane",
+  "kooker_gamehouse",
   "plant_lab",
   "tool_library",
   "poster_union",
