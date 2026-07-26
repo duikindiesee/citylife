@@ -2533,7 +2533,9 @@ export class ColonyRuntime {
       nowMinInt -
       (((nowMinInt % MINUTES_PER_SOL) + MINUTES_PER_SOL) % MINUTES_PER_SOL);
     const behind =
-      this.transitLastMin === null ? Infinity : nowMinFrac - this.transitLastMin;
+      this.transitLastMin === null
+        ? Infinity
+        : nowMinFrac - this.transitLastMin;
     if (behind < 0 || behind > MINUTES_PER_SOL) {
       // First tick, a backward clock, or a gap longer than a sol day: re-anchor at this day's
       // tod=0 and replay forward from a freshly seeded fleet so the result stays deterministic.

@@ -52,7 +52,6 @@ export function solMinutesFracSinceEpoch(
   return (elapsedSinceEpoch(nowMs, epochMs) * MINUTES_PER_SOL) / MS_PER_SOL;
 }
 
-
 /** Compressed in-sol minute within the current sol's 24-hour day, in [0, 1440). */
 export function solMinuteOfDay(
   nowMs: number,
