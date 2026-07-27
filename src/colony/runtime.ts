@@ -2925,7 +2925,15 @@ export class ColonyRuntime {
    *  cell/owner verbatim — it never moves a coordinate or rewrites ownership. Fails SAFE: with no
    *  district or no Gamehouse plot it returns the layout untouched (never blocks world boot), and it is
    *  idempotent — if the venue is already present it returns the layout unchanged. Only ever called on
-   *  the seed path (no active layout yet), so a re-capture of an already-hydrated world never re-appends. */
+   *  the seed path (no active layout yet), so a re-capture of an already-hydrated world never re-appends.
+   *
+   *  MIGRATION BOUNDARY (ARCADE.2A, deliberate): a world hydrated from a durable layout persisted BEFORE
+   *  this feature is carried through verbatim and is NOT backfilled with the venue. That is intentional,
+   *  not an oversight — `citylife-arcade-3d-v1` is globally OFF and fail-closed, so an un-migrated world
+   *  is behaviourally identical for every user today, while an on-hydration backfill would mutate the
+   *  durable spatial layout of every existing world (collision/determinism risk) and belongs in its own
+   *  reviewed slice. The boundary is locked by the exclusion test in gamehousePortalRuntime.test.ts and
+   *  tracked as a governed follow-up (see docs/arcade-2a-migration-boundary.md). */
   private withSeedGamehouseVenue(
     document: WorldLayoutDocument,
   ): WorldLayoutDocument {

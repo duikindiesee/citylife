@@ -1,16 +1,29 @@
-// ARCADE.2A — capture desktop + narrow-viewport evidence of the flag-gated Gamehouse venue and the
-// isolated 3D cabinet inspection against a locally-served DEV build, driven as a REAL AUTHENTICATED
-// CITYLIFE_PLAYER (NOT the ?skipauth=1 null-operator bypass, and NOT a programmatic el.click() that
-// would skip pointer-overlap). We seed a genuine non-null CITYLIFE_PLAYER session into sessionStorage
-// before the app boots, stub only the token-derived `citylife-arcade-3d-v1` entitlement endpoint to the
-// desired per-user state (ON for the canary, OFF for the deny shot), and enter by a hit-tested, occlusion-
-// aware real pointer click. No production flag is ever enabled — the flag stays globally OFF; this only
-// mocks the per-request entitlement answer for the ephemeral local canary session.
+// ARCADE.2A — SYNTHETIC component evidence. This is NOT authenticated UAT and must never be described as
+// such. It captures desktop + narrow-viewport screenshots of the flag-gated Gamehouse venue and the
+// isolated 3D cabinet inspection against a locally-served DEV build, but the "player" and the server truth
+// are BOTH fabricated in the browser, not real:
+//   - it INJECTS a hand-built CITYLIFE_PLAYER session object into sessionStorage before the app boots
+//     (an opaque, non-verifiable token — no real login, no real JWT, no real auth backend); and
+//   - it STUBS the `citylife-arcade-3d-v1` entitlement endpoint via page.route(...fulfill) to the state
+//     it wants (ON for the canary, OFF for the deny shot) — no real feature-flag / cohort service answers.
+// What it therefore PROVES: the client-side gate + render/interaction wiring behave correctly given a
+// player session and an entitlement answer (a useful, deterministic component check, and it does use a
+// real occlusion-aware pointer click rather than a programmatic el.click()). What it CANNOT prove: that a
+// real signed-in player is authenticated by the backend or entitled by a real server flag. That REAL,
+// disposable, authenticated proof is a separate deliverable — see scripts/arcade-2a-authenticated-uat.mjs
+// and docs/arcade-2a-authenticated-uat.md. No production flag is ever enabled; the flag stays globally OFF.
 import { chromium } from "playwright";
 import { mkdirSync } from "node:fs";
 
+console.log(
+  "[ARCADE.2A] SYNTHETIC evidence: injected session + STUBBED entitlement endpoint. " +
+    "This is component evidence, NOT authenticated UAT. See arcade-2a-authenticated-uat for real proof.",
+);
+
 const BASE = process.env.ARCADE_BASE ?? "http://127.0.0.1:5630";
-const OUT = "evidence/arcade-2a";
+// Synthetic captures land in their own clearly-labelled folder so they can never be mistaken for the
+// real authenticated UAT evidence (evidence/arcade-2a-authenticated/).
+const OUT = "evidence/arcade-2a-synthetic";
 mkdirSync(OUT, { recursive: true });
 
 // The token-derived entitlement endpoint the client GETs (through the /kooker proxy). Matched loosely so
@@ -38,9 +51,10 @@ function newContext(vp) {
   });
 }
 
-/** A genuine authenticated (non-null operator) CityLife player session for `userId`. The token is opaque
- *  — the entitlement endpoint is stubbed, so only the session identity + CITYLIFE_PLAYER role matter. */
-function authAs(userId) {
+/** A FABRICATED (non-null operator) CityLife player session for `userId` — NOT a real login. The token is
+ *  a made-up opaque string the backend never issued or validated; combined with the stubbed entitlement
+ *  endpoint, only the client-side session identity + CITYLIFE_PLAYER role are being exercised here. */
+function fabricatedSessionAs(userId) {
   return {
     token: `opaque.${userId}.token`,
     expiresAt: Date.now() + 60 * 60 * 1000,
@@ -53,8 +67,8 @@ function authAs(userId) {
   };
 }
 
-/** Seed the authenticated session + stub the per-user entitlement to `enabled`, then boot the app to the
- *  authenticated HUD (the Sign-out control proves the world-layout boot resolved). */
+/** Inject the FABRICATED session + STUB the per-user entitlement to `enabled`, then boot the app to the
+ *  HUD (the Sign-out control proves the world-layout boot resolved). Both inputs are synthetic. */
 async function bootAs(page, userId, enabled) {
   await page.route(FLAG_GLOB, (route) =>
     route.fulfill({
@@ -71,7 +85,7 @@ async function bootAs(page, userId, enabled) {
         /* no storage */
       }
     },
-    [SESSION_KEY, JSON.stringify(authAs(userId))],
+    [SESSION_KEY, JSON.stringify(fabricatedSessionAs(userId))],
   );
   await page.goto("/", { timeout: NAV_TIMEOUT, waitUntil: "domcontentloaded" });
   await page.waitForSelector("canvas", { timeout: NAV_TIMEOUT });

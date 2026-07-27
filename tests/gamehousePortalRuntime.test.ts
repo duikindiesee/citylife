@@ -7,6 +7,10 @@ import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { resolveGamehousePortalSite } from "../src/colony/spatial/gamehousePortal";
 import { GAMEHOUSE_LOCAL_ID } from "../src/colony/spatial/gamehouseInterior";
+import {
+  createWorldLayoutDocument,
+  type WorldLayoutDocumentInput,
+} from "../src/colony/spatial/worldLayoutDocument";
 import type { GamehousePortalSite } from "../src/colony/spatial/gamehousePortal";
 
 const BUILDING_SUFFIX = `:building:${GAMEHOUSE_LOCAL_ID}`;
@@ -16,12 +20,13 @@ const BUILDING_SUFFIX = `:building:${GAMEHOUSE_LOCAL_ID}`;
 function seededRuntimeWithGamehouse(): {
   runtime: ColonyRuntime;
   site: GamehousePortalSite;
+  seed: number;
 } | null {
   for (let seed = 1; seed <= 800; seed++) {
     const runtime = new ColonyRuntime(seed);
     const district = runtime.commercialDistrict;
     const site = district ? resolveGamehousePortalSite(district) : null;
-    if (site) return { runtime, site };
+    if (site) return { runtime, site, seed };
   }
   return null;
 }
@@ -88,5 +93,56 @@ describe("ARCADE.2A — the Gamehouse venue is wired into the live runtime world
     expect(countVenuePortals(second)).toBe(2);
     expect(countBuildingFrames(first)).toBe(1);
     expect(countBuildingFrames(second)).toBe(1);
+  });
+});
+
+// ARCADE.2A — the DELIBERATE existing-world migration boundary. The venue is appended ONLY on the fresh
+// seed path (no active layout); a world hydrated from a pre-feature durable layout is carried through
+// verbatim and is NOT backfilled with the venue. This is an intentional decision (the flag is globally
+// OFF, so an un-migrated world is behaviourally identical for every user today) recorded as a governed
+// follow-up rather than a silent gap. These tests LOCK that boundary so a future change is a conscious one.
+describe("ARCADE.2A — existing hydrated worlds are intentionally NOT backfilled (governed follow-up)", () => {
+  const references = (value: unknown, needle: string): boolean =>
+    JSON.stringify(value ?? null).includes(needle);
+
+  it("does not fabricate the venue when re-capturing a hydrated pre-feature world", () => {
+    const found = seededRuntimeWithGamehouse();
+    expect(found).not.toBeNull();
+    const { runtime, seed } = found!;
+
+    // A pre-feature durable layout: the SAME seeded world (its district still fronts the Gamehouse plot),
+    // but persisted before the venue existed — so its document carries no venue building/portals/cabinet.
+    const seedDoc = runtime.captureWorldLayout();
+    // Rebuild through createWorldLayoutDocument so the revision content-hash is recomputed for the
+    // venue-free layout (a hand-edited copy would fail the durable digest check on hydration).
+    const legacyDoc = createWorldLayoutDocument({
+      ...(seedDoc as unknown as WorldLayoutDocumentInput),
+      frames: seedDoc.frames.filter((f) => !references(f, GAMEHOUSE_LOCAL_ID)),
+      portals: seedDoc.portals.filter((p) => !references(p, GAMEHOUSE_LOCAL_ID)),
+      placements: seedDoc.placements.filter(
+        (p) => !references(p, GAMEHOUSE_LOCAL_ID),
+      ),
+    });
+    // Sanity: the fixture really is venue-free before hydration.
+    expect(
+      legacyDoc.frames.some((f) => f.id.endsWith(BUILDING_SUFFIX)),
+    ).toBe(false);
+
+    // A fresh runtime on the same seed hydrates the legacy layout, then re-captures.
+    const revived = new ColonyRuntime(seed);
+    revived.hydrateWorldLayout(legacyDoc);
+    const recaptured = revived.captureWorldLayout();
+
+    // The boundary: hydration + re-capture never appends the venue to an existing world.
+    expect(
+      recaptured.frames.some((f) => f.id.endsWith(BUILDING_SUFFIX)),
+    ).toBe(false);
+    expect(
+      recaptured.portals.filter(
+        (p) =>
+          p.fromFrameId.includes(BUILDING_SUFFIX) ||
+          p.toFrameId.includes(BUILDING_SUFFIX),
+      ),
+    ).toHaveLength(0);
   });
 });

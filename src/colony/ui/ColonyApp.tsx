@@ -30,6 +30,9 @@ import {
   ARCADE_ENTITLEMENT_REVALIDATE_MS,
   type ArcadeEntitlement,
 } from "../entitlement/arcadeGamehouse";
+// ARCADE.2A — the latest-wins sequencer that stops a stale `enabled` from re-opening a venue a newer
+// OFF/killed/denied/failed/aborted result just closed (see arcadeEntitlementGate for the full rationale).
+import { createArcadeEntitlementGate } from "../entitlement/arcadeEntitlementGate";
 import { GamehouseOverlay } from "./GamehouseOverlay";
 import { resolveGamehousePortalSite } from "../spatial/gamehousePortal";
 import { PasswordChangePanel } from "./PasswordChangePanel";
@@ -776,6 +779,20 @@ export function ColonyApp() {
   // re-evaluated on identity change so a positive can never outlive the session or bleed across a switch.
   const [arcadeEntitlement, setArcadeEntitlement] =
     useState<ArcadeEntitlement | null>(null);
+  // ARCADE.2A — one latest-wins gate shared by BOTH the identity-change check and the open-venue
+  // revalidation loop, so overlapping/out-of-order `citylife-arcade-3d-v1` results are sequenced across
+  // every source: only the most recently dispatched check wins, and any non-enabled winner closes the
+  // venue. React guarantees the setters are stable, so the gate is created exactly once.
+  const arcadeGateRef = useRef<ReturnType<
+    typeof createArcadeEntitlementGate
+  > | null>(null);
+  if (!arcadeGateRef.current) {
+    arcadeGateRef.current = createArcadeEntitlementGate({
+      setEntitlement: setArcadeEntitlement,
+      closeVenue: () => setGamehouseOpen(false),
+    });
+  }
+  const arcadeGate = arcadeGateRef.current;
   // Furniture studio (spec 088 Slice D UI) — the design-and-buy controls.
   const [furnKind, setFurnKind] = useState<FurnitureKind>("sofa");
   const [furnName, setFurnName] = useState("");
@@ -911,15 +928,19 @@ export function ColonyApp() {
   }, [auth, operatorUserId]);
   // ARCADE.2A — evaluate `citylife-arcade-3d-v1` for the current identity, with the SAME discipline as
   // the journey flag: reset to null (fail closed) on every identity change, skip the network for the
-  // DEV/E2E bypass, and ignore a stale in-flight response so a prior user's positive can never carry
-  // forward. A close/switch collapses any open venue via the arcadeGamehouseEnabled render guard below.
+  // DEV/E2E bypass, and — via the shared latest-wins gate — drop any stale in-flight response so a prior
+  // user's positive can never carry forward. The gate's reset also collapses any open venue on a switch.
   useEffect(() => {
-    setArcadeEntitlement(null);
+    // reset() drops to the fail-closed loading state, closes any open venue, AND supersedes every check
+    // still in flight, so a prior identity's positive can never carry forward or land after this switch.
+    arcadeGate.reset();
     if (arcadeGamehouseDevBypass()) return;
     let cancelled = false;
+    const apply = arcadeGate.begin();
     void (async () => {
       const result = await evaluateArcadeEntitlement(defaultArcadeDeps());
-      if (!cancelled) setArcadeEntitlement(result);
+      // `apply` is latest-wins across ALL sources; `cancelled` additionally drops a result after unmount.
+      if (!cancelled) apply(result);
     })();
     return () => {
       cancelled = true;
@@ -929,16 +950,21 @@ export function ColonyApp() {
   // ARCADE.2A — make kill/OFF revocation LIVE, not just an entry-time snapshot. While the venue is open,
   // revalidate `citylife-arcade-3d-v1` immediately (on entry) and then on a bounded cadence AND whenever
   // the tab is refocused/re-shown. A mid-session flag kill / OFF / 401 / 403 / timeout / malformed body /
-  // network error all resolve (fail-closed) to a disabled entitlement, which flips arcadeGamehouseEnabled
-  // false so the render guard below unmounts the open venue at once. The local DEV/E2E bypass takes no
-  // network and stays open (it never mounted against a server flag). Stale in-flight results are dropped.
+  // network error all resolve (fail-closed) to a disabled entitlement. The shared latest-wins gate then
+  // both flips arcadeGamehouseEnabled false (render guard) AND actively closes gamehouseOpen, so a venue
+  // cannot linger — nor be re-opened by an older `enabled` that resolves after this newer denial. The
+  // local DEV/E2E bypass takes no network and stays open (it never mounted against a server flag).
   useEffect(() => {
     if (!gamehouseOpen) return;
     if (arcadeGamehouseDevBypass()) return;
     let cancelled = false;
     const revalidate = async () => {
+      // Number this check at DISPATCH time so the entry / interval / refocus checks are ordered by when
+      // they START, not when they resolve. A slow earlier `enabled` that lands after a newer OFF/killed
+      // is then dropped by `apply`, which also closes the venue on any non-enabled winner.
+      const apply = arcadeGate.begin();
       const result = await evaluateArcadeEntitlement(defaultArcadeDeps());
-      if (!cancelled) setArcadeEntitlement(result);
+      if (!cancelled) apply(result);
     };
     void revalidate();
     const timer = setInterval(
