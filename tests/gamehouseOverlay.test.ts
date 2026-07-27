@@ -71,8 +71,9 @@ function resetMetrics() {
 
 function setupMountedDOM() {
   resetMetrics();
-  (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
-    true;
+  (
+    globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
 
   class MockHTMLElement {}
   for (const type of [
@@ -90,7 +91,9 @@ function setupMountedDOM() {
     "HTMLSpanElement",
     "SVGElement",
   ]) {
-    (globalThis as Record<string, unknown>)[type] = class extends MockHTMLElement {};
+    (globalThis as Record<string, unknown>)[type] = class extends (
+      MockHTMLElement
+    ) {};
   }
 
   let mockDoc: Record<string, unknown>;
@@ -132,7 +135,9 @@ function setupMountedDOM() {
         let curr: Record<string, unknown> | null = node;
         while (curr) {
           const listeners = (
-            curr._listeners as Map<string, Set<(e: unknown) => void>> | undefined
+            curr._listeners as
+              | Map<string, Set<(e: unknown) => void>>
+              | undefined
           )?.get(type);
           if (listeners) listeners.forEach((fn) => fn(eventObj));
           if (type === "click" && typeof curr.onClick === "function")
@@ -164,10 +169,7 @@ function setupMountedDOM() {
         child.parentNode = null;
         return child;
       },
-      insertBefore: (
-        newChild: Record<string, unknown>,
-        refChild: unknown,
-      ) => {
+      insertBefore: (newChild: Record<string, unknown>, refChild: unknown) => {
         const arr = node.children as unknown[];
         const idx = arr.indexOf(refChild);
         if (idx !== -1) arr.splice(idx, 0, newChild);
@@ -298,7 +300,9 @@ describe("ARCADE.2A — GamehouseOverlay cabinet-inspection lifecycle", () => {
 
   it("entering the venue mounts NO WebGL until a cabinet interaction", async () => {
     const container = (
-      globalThis as unknown as { document: { createElement: (t: string) => Record<string, unknown> } }
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
+      }
     ).document.createElement("div");
     let root: Root | null = null;
     await act(async () => {
@@ -317,7 +321,9 @@ describe("ARCADE.2A — GamehouseOverlay cabinet-inspection lifecycle", () => {
 
   it("a cabinet interaction opens exactly one isolated viewer and closing disposes it cleanly", async () => {
     const container = (
-      globalThis as unknown as { document: { createElement: (t: string) => Record<string, unknown> } }
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
+      }
     ).document.createElement("div");
     let root: Root | null = null;
     await act(async () => {
@@ -331,7 +337,10 @@ describe("ARCADE.2A — GamehouseOverlay cabinet-inspection lifecycle", () => {
     });
 
     // Interact with the cabinet → open the isolated 3D viewer.
-    const cabinet = findByTestId(container as unknown as Record<string, unknown>, "gamehouse-cabinet");
+    const cabinet = findByTestId(
+      container as unknown as Record<string, unknown>,
+      "gamehouse-cabinet",
+    );
     expect(cabinet).not.toBeNull();
     await act(async () => (cabinet!.click as () => void)());
 
@@ -341,7 +350,10 @@ describe("ARCADE.2A — GamehouseOverlay cabinet-inspection lifecycle", () => {
     expect(metrics.activeAnimLoops).toBe(1); // exactly one render loop, never duplicated
 
     // Close the viewer via the modal's Return-to-World control → back to the venue, fully disposed.
-    const close = findByTestId(container as unknown as Record<string, unknown>, "inspect-close");
+    const close = findByTestId(
+      container as unknown as Record<string, unknown>,
+      "inspect-close",
+    );
     expect(close).not.toBeNull();
     await act(async () => (close!.click as () => void)());
 
@@ -351,7 +363,10 @@ describe("ARCADE.2A — GamehouseOverlay cabinet-inspection lifecycle", () => {
     expect(metrics.activeAnimLoops).toBe(0); // no leaked animation loop
     // The venue itself is still mounted after closing the inspection.
     expect(
-      findByTestId(container as unknown as Record<string, unknown>, "gamehouse-cabinet"),
+      findByTestId(
+        container as unknown as Record<string, unknown>,
+        "gamehouse-cabinet",
+      ),
     ).not.toBeNull();
 
     await act(async () => root?.unmount());
@@ -359,7 +374,9 @@ describe("ARCADE.2A — GamehouseOverlay cabinet-inspection lifecycle", () => {
 
   it("repeated open/close cycles never leak a renderer or animation loop", async () => {
     const container = (
-      globalThis as unknown as { document: { createElement: (t: string) => Record<string, unknown> } }
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
+      }
     ).document.createElement("div");
     let root: Root | null = null;
     await act(async () => {
@@ -397,7 +414,9 @@ describe("ARCADE.2A — GamehouseOverlay cabinet-inspection lifecycle", () => {
 
   it("feature-OFF / fail-closed: an unauthenticated session can never open the viewer", async () => {
     const container = (
-      globalThis as unknown as { document: { createElement: (t: string) => Record<string, unknown> } }
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
+      }
     ).document.createElement("div");
     let root: Root | null = null;
     await act(async () => {
@@ -410,14 +429,20 @@ describe("ARCADE.2A — GamehouseOverlay cabinet-inspection lifecycle", () => {
       );
     });
 
-    const cabinet = findByTestId(container as unknown as Record<string, unknown>, "gamehouse-cabinet");
+    const cabinet = findByTestId(
+      container as unknown as Record<string, unknown>,
+      "gamehouse-cabinet",
+    );
     expect(cabinet).not.toBeNull();
     // Even a forced click cannot mount the isolated viewer for a non-authorized session.
     await act(async () => (cabinet!.click as () => void)());
     expect(metrics.rendererCreations).toBe(0);
     expect(metrics.gltfLoads).toBe(0);
     expect(
-      findByTestId(container as unknown as Record<string, unknown>, "cabinet-inspect-modal"),
+      findByTestId(
+        container as unknown as Record<string, unknown>,
+        "cabinet-inspect-modal",
+      ),
     ).toBeNull();
 
     await act(async () => root?.unmount());

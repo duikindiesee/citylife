@@ -54,8 +54,12 @@ describe("ARCADE.2A — the Gamehouse venue is wired into the live runtime world
 
     // One enters (surface → venue) and one exits (venue → surface); they are exact inverses, so
     // entering then exiting returns the player to the governed plot without moving coordinates.
-    const enter = venuePortals.find((p) => p.toFrameId.includes(BUILDING_SUFFIX))!;
-    const exit = venuePortals.find((p) => p.fromFrameId.includes(BUILDING_SUFFIX))!;
+    const enter = venuePortals.find((p) =>
+      p.toFrameId.includes(BUILDING_SUFFIX),
+    )!;
+    const exit = venuePortals.find((p) =>
+      p.fromFrameId.includes(BUILDING_SUFFIX),
+    )!;
     expect(enter).toBeDefined();
     expect(exit).toBeDefined();
     expect(enter.fromFrameId).toBe(exit.toFrameId);
@@ -79,7 +83,9 @@ describe("ARCADE.2A — the Gamehouse venue is wired into the live runtime world
 
     const first = runtime.captureWorldLayout();
     const second = runtime.captureWorldLayout();
-    const countVenuePortals = (doc: ReturnType<ColonyRuntime["captureWorldLayout"]>) =>
+    const countVenuePortals = (
+      doc: ReturnType<ColonyRuntime["captureWorldLayout"]>,
+    ) =>
       doc.portals.filter(
         (p) =>
           p.fromFrameId.includes(BUILDING_SUFFIX) ||
@@ -118,15 +124,17 @@ describe("ARCADE.2A — existing hydrated worlds are intentionally NOT backfille
     const legacyDoc = createWorldLayoutDocument({
       ...(seedDoc as unknown as WorldLayoutDocumentInput),
       frames: seedDoc.frames.filter((f) => !references(f, GAMEHOUSE_LOCAL_ID)),
-      portals: seedDoc.portals.filter((p) => !references(p, GAMEHOUSE_LOCAL_ID)),
+      portals: seedDoc.portals.filter(
+        (p) => !references(p, GAMEHOUSE_LOCAL_ID),
+      ),
       placements: seedDoc.placements.filter(
         (p) => !references(p, GAMEHOUSE_LOCAL_ID),
       ),
     });
     // Sanity: the fixture really is venue-free before hydration.
-    expect(
-      legacyDoc.frames.some((f) => f.id.endsWith(BUILDING_SUFFIX)),
-    ).toBe(false);
+    expect(legacyDoc.frames.some((f) => f.id.endsWith(BUILDING_SUFFIX))).toBe(
+      false,
+    );
 
     // A fresh runtime on the same seed hydrates the legacy layout, then re-captures.
     const revived = new ColonyRuntime(seed);
@@ -134,9 +142,9 @@ describe("ARCADE.2A — existing hydrated worlds are intentionally NOT backfille
     const recaptured = revived.captureWorldLayout();
 
     // The boundary: hydration + re-capture never appends the venue to an existing world.
-    expect(
-      recaptured.frames.some((f) => f.id.endsWith(BUILDING_SUFFIX)),
-    ).toBe(false);
+    expect(recaptured.frames.some((f) => f.id.endsWith(BUILDING_SUFFIX))).toBe(
+      false,
+    );
     expect(
       recaptured.portals.filter(
         (p) =>

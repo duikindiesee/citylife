@@ -2,7 +2,10 @@
 // Asserts the site resolves from the kooker_gamehouse parcel, produces stable portal metadata, treats
 // the plot read-only (ownership + coordinates preserved), and fails closed when no plot exists.
 import { describe, expect, it } from "vitest";
-import type { CommercialDistrict, ShopParcel } from "../src/colony/commerce/district";
+import type {
+  CommercialDistrict,
+  ShopParcel,
+} from "../src/colony/commerce/district";
 import type {
   WorldLayoutDocumentInput,
   WorldLayoutFrame,

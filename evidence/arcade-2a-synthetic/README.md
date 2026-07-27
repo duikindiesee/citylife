@@ -10,6 +10,7 @@ build. They are **synthetic component evidence**, not authenticated user-accepta
   the desired ON/OFF state. **No real feature-flag / cohort service answered.**
 
 ### What these DO show
+
 The client-side gate and render/interaction wiring behave correctly given a player session and an
 entitlement answer, captured with a real occlusion-aware pointer click (not a programmatic `el.click()`):
 
@@ -22,6 +23,7 @@ entitlement answer, captured with a real occlusion-aware pointer click (not a pr
 Both `desktop` (1280×800) and `narrow` (390×844) viewports are captured.
 
 ### What these do NOT show
+
 They do **not** prove that a real signed-in player is authenticated by the backend or entitled by a real
 server flag. That real, disposable, authenticated proof is a separate deliverable — see
 `scripts/arcade-2a-authenticated-uat.mjs` and `docs/arcade-2a-authenticated-uat.md`. Real authenticated UAT

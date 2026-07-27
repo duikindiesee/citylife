@@ -48,7 +48,9 @@ describe("ARCADE.2A — decideArcadeEntitlement fails closed on everything but a
   it("disables on OFF, missing, non-boolean-true, killed and state=KILLED", () => {
     expect(decideArcadeEntitlement(ok({ enabled: false })).enabled).toBe(false);
     expect(decideArcadeEntitlement(ok({})).enabled).toBe(false);
-    expect(decideArcadeEntitlement(ok({ enabled: "true" })).enabled).toBe(false);
+    expect(decideArcadeEntitlement(ok({ enabled: "true" })).enabled).toBe(
+      false,
+    );
     expect(decideArcadeEntitlement(ok({ enabled: 1 })).enabled).toBe(false);
     // A kill switch ALWAYS wins, even alongside enabled:true.
     expect(
@@ -79,7 +81,10 @@ describe("ARCADE.2A — isEntitledCityLifePlayer requires a JWT userId AND the C
       isEntitledCityLifePlayer({ userId: "u", roles: ["citylife_player"] }),
     ).toBe(true);
     expect(
-      isEntitledCityLifePlayer({ userId: "u", roles: ["KOOKER_USER", "CITYLIFE_PLAYER"] }),
+      isEntitledCityLifePlayer({
+        userId: "u",
+        roles: ["KOOKER_USER", "CITYLIFE_PLAYER"],
+      }),
     ).toBe(true);
   });
 
@@ -104,13 +109,21 @@ describe("ARCADE.2A — arcadeGamehouseAvailable is the single fail-closed avail
 
   it("opens for an authenticated CITYLIFE_PLAYER with the flag ON", () => {
     expect(
-      arcadeGamehouseAvailable({ bypass: false, entitlement: enabled, session: PLAYER }),
+      arcadeGamehouseAvailable({
+        bypass: false,
+        entitlement: enabled,
+        session: PLAYER,
+      }),
     ).toBe(true);
   });
 
   it("stays closed for a signed-out visitor even if the flag somehow reads ON", () => {
     expect(
-      arcadeGamehouseAvailable({ bypass: false, entitlement: enabled, session: null }),
+      arcadeGamehouseAvailable({
+        bypass: false,
+        entitlement: enabled,
+        session: null,
+      }),
     ).toBe(false);
     expect(
       arcadeGamehouseAvailable({
@@ -133,16 +146,28 @@ describe("ARCADE.2A — arcadeGamehouseAvailable is the single fail-closed avail
 
   it("stays closed for an entitled player while the flag is OFF, killed or still loading", () => {
     expect(
-      arcadeGamehouseAvailable({ bypass: false, entitlement: off, session: PLAYER }),
+      arcadeGamehouseAvailable({
+        bypass: false,
+        entitlement: off,
+        session: PLAYER,
+      }),
     ).toBe(false);
     expect(
-      arcadeGamehouseAvailable({ bypass: false, entitlement: null, session: PLAYER }),
+      arcadeGamehouseAvailable({
+        bypass: false,
+        entitlement: null,
+        session: PLAYER,
+      }),
     ).toBe(false);
   });
 
   it("opens for the narrowly scoped DEV/E2E bypass without any entitlement or role", () => {
     expect(
-      arcadeGamehouseAvailable({ bypass: true, entitlement: null, session: null }),
+      arcadeGamehouseAvailable({
+        bypass: true,
+        entitlement: null,
+        session: null,
+      }),
     ).toBe(true);
   });
 });
