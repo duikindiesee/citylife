@@ -72,7 +72,9 @@ function newContext(vp) {
 /** Boot signed-out (no session seeded) — the app must show the login gate and never the venue affordance. */
 async function bootSignedOut(page) {
   await page.goto("/", { timeout: NAV_TIMEOUT, waitUntil: "domcontentloaded" });
-  await page.waitForSelector("canvas", { timeout: NAV_TIMEOUT }).catch(() => {});
+  await page
+    .waitForSelector("canvas", { timeout: NAV_TIMEOUT })
+    .catch(() => {});
 }
 
 /** Boot with the REAL session seeded. The entitlement endpoint is deliberately NOT routed/stubbed, so the
@@ -124,7 +126,9 @@ for (const vp of VIEWPORTS) {
         .locator('[data-build-action="open-gamehouse"]')
         .count();
       if (count !== 0)
-        throw new Error(`signed-out: entry affordance present (count ${count})`);
+        throw new Error(
+          `signed-out: entry affordance present (count ${count})`,
+        );
       await page.screenshot({
         path: `${OUT}/${vp.name}-00-signedout-denied.png`,
       });
@@ -171,7 +175,9 @@ for (const vp of VIEWPORTS) {
           timeout: 15000,
         });
         await page.waitForTimeout(800);
-        await page.screenshot({ path: `${OUT}/${vp.name}-21-authed-venue.png` });
+        await page.screenshot({
+          path: `${OUT}/${vp.name}-21-authed-venue.png`,
+        });
         await pointerClick(
           page,
           '[data-build-action="gamehouse-inspect-cabinet"]',

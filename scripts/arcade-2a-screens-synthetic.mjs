@@ -169,7 +169,10 @@ for (const vp of VIEWPORTS) {
       await page.screenshot({ path: `${OUT}/${vp.name}-02-venue.png` });
 
       // Inspect the cabinet → isolated 3D inspection (real pointer click again).
-      await pointerClick(page, '[data-build-action="gamehouse-inspect-cabinet"]');
+      await pointerClick(
+        page,
+        '[data-build-action="gamehouse-inspect-cabinet"]',
+      );
       await page.waitForSelector('[data-testid="cabinet-inspect-modal"]', {
         timeout: 15000,
       });

@@ -859,7 +859,8 @@ export function ColonyApp() {
   });
   // Whether this session may run the isolated 3D cabinet inspection inside the venue: a real
   // authenticated player, or the DEV/E2E bypass (which the entry gate already required).
-  const arcadeCabinetAuthed = auth.isAuthenticated || arcadeGamehouseDevBypass();
+  const arcadeCabinetAuthed =
+    auth.isAuthenticated || arcadeGamehouseDevBypass();
   // The governed commercial plot the venue fronts, for stable metadata display (read-only; null before
   // the district survey completes or if no Gamehouse plot was placed).
   const gamehouseSite = useMemo(
