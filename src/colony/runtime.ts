@@ -317,7 +317,16 @@ import {
   type WorldLayoutWay,
   type WorldLayoutZone,
   type WorldLayoutZoneKind,
+  type WorldLayoutDocumentInput,
 } from "./spatial/worldLayoutDocument";
+// ARCADE.2A — append the governed-plot Gamehouse venue (frames + inverse enter/exit door portals +
+// cabinet) to the seed world layout so its portals live in the runtime portal lifecycle, not test-only.
+import {
+  withGamehousePortal,
+  resolveGamehousePortalSite,
+  GamehousePortalError,
+} from "./spatial/gamehousePortal";
+import { GAMEHOUSE_LOCAL_ID } from "./spatial/gamehouseInterior";
 import { createPlacementContext } from "./placement/runtimeContext";
 import {
   ROAD_PLACEABLES,
@@ -2908,6 +2917,50 @@ export class ColonyRuntime {
     });
   }
 
+  /** ARCADE.2A — append the Gamehouse venue (building frame, arcade-floor room, the inverse enter/exit
+   *  door portals and the Commons_Arcade cabinet) to the freshly SEEDED layout, anchored on the governed
+   *  `kooker_gamehouse` commercial plot's door. This is what puts the venue's portals into the durable
+   *  first head and therefore the runtime portal lifecycle (they are registered from `layoutPortals` on
+   *  hydration) instead of remaining authoring/test-only. It reads the district and copies its door
+   *  cell/owner verbatim — it never moves a coordinate or rewrites ownership. Fails SAFE: with no
+   *  district or no Gamehouse plot it returns the layout untouched (never blocks world boot), and it is
+   *  idempotent — if the venue is already present it returns the layout unchanged. Only ever called on
+   *  the seed path (no active layout yet), so a re-capture of an already-hydrated world never re-appends.
+   *
+   *  MIGRATION BOUNDARY (ARCADE.2A, deliberate): a world hydrated from a durable layout persisted BEFORE
+   *  this feature is carried through verbatim and is NOT backfilled with the venue. That is intentional,
+   *  not an oversight — `citylife-arcade-3d-v1` is globally OFF and fail-closed, so an un-migrated world
+   *  is behaviourally identical for every user today, while an on-hydration backfill would mutate the
+   *  durable spatial layout of every existing world (collision/determinism risk) and belongs in its own
+   *  reviewed slice. The boundary is locked by the exclusion test in gamehousePortalRuntime.test.ts and
+   *  tracked as a governed follow-up (see docs/arcade-2a-migration-boundary.md). */
+  private withSeedGamehouseVenue(
+    document: WorldLayoutDocument,
+  ): WorldLayoutDocument {
+    const district = this.commercialDistrict;
+    if (!district) return document;
+    if (!resolveGamehousePortalSite(district)) return document;
+    // Idempotency guard: never append a second copy if the seed already carries the Gamehouse building.
+    const alreadyPresent = document.frames.some((f) =>
+      f.id.endsWith(`:building:${GAMEHOUSE_LOCAL_ID}`),
+    );
+    if (alreadyPresent) return document;
+    try {
+      const input = withGamehousePortal(
+        document as unknown as WorldLayoutDocumentInput,
+        district,
+      );
+      return createWorldLayoutDocument(input);
+    } catch (e) {
+      // A NO_GAMEHOUSE_PARCEL / ALREADY_PRESENT authoring error must never strand world boot; fall back
+      // to the un-augmented layout (fail-closed: the venue simply does not appear).
+      if (e instanceof GamehousePortalError) return document;
+      if (e instanceof Error && e.name === "GamehouseInteriorError")
+        return document;
+      throw e;
+    }
+  }
+
   /** WB.1d — capture only durable spatial intent. The codec/adapter strict allow-list prevents
    *  citizens, occupants, wallets, blueprints, renderer objects or the rest of ColonyState leaking
    *  into the document. */
@@ -2955,7 +3008,7 @@ export class ColonyRuntime {
         clearanceAbove: roadPolicy.clearanceAbove,
       },
     });
-    if (!active) return captured;
+    if (!active) return this.withSeedGamehouseVenue(captured);
 
     const activeRoads = new Map<string, WorldLayoutRoad[]>();
     for (const road of active.roads) {

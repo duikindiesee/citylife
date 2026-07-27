@@ -14,11 +14,13 @@
 // the interaction prompt is offered and what it reads.
 import type { GridCell, Vec3 } from "../worldSurvey";
 import type { WorldLayoutPlacement } from "./worldLayoutDocument";
+// Read the dimensions from the dependency-free leaf, NOT gamehouseInterior — this breaks the interior
+// <-> cabinet import cycle so these bindings are always initialized before this module's top-level consts.
 import {
   GAMEHOUSE_FLOOR_CELL_SIZE,
   GAMEHOUSE_FLOOR_DEPTH_CELLS,
   GAMEHOUSE_FLOOR_WIDTH_CELLS,
-} from "./gamehouseInterior";
+} from "./gamehouseDimensions";
 
 /** Canonical Commons_Arcade cabinet dimensions in metres (floor-centre pivot). */
 export const COMMONS_ARCADE_CABINET_DIMENSIONS = {
