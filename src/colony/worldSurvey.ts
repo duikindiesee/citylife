@@ -995,9 +995,13 @@ function addPlacementGhost(
   });
 }
 
-/** Build the deterministic current-world registry. No renderer or browser state is consulted. */
-export function createWorldSurvey(
-  source: WorldSurveySource,
+/** Spec 152 — the authoritative frame graph on its own: the universe, world and region frames with
+ *  their ids, addresses, transforms and grids, and nothing else. `createWorldSurvey` builds on
+ *  exactly this, so a cheap presence resolution and the full survey map can never disagree about a
+ *  frame id, address, transform or grid extent. Surveying the terrain/road/building records is the
+ *  expensive part; presence needs only the frames. */
+export function createWorldFrameRegistry(
+  source: Pick<WorldSurveySource, "terrain" | "worldId">,
 ): WorldSurveyRegistry {
   const worldName = cleanId(source.worldId ?? "colony-primary");
   const universeId = "universe:citylife";
@@ -1091,6 +1095,14 @@ export function createWorldSurvey(
     transform: ZERO_TRANSFORM,
     metadata: { extensible: true },
   });
+  return registry;
+}
+
+/** Build the deterministic current-world registry. No renderer or browser state is consulted. */
+export function createWorldSurvey(
+  source: WorldSurveySource,
+): WorldSurveyRegistry {
+  const registry = createWorldFrameRegistry(source);
 
   for (const [index, structure] of (source.structures ?? []).entries()) {
     const metadata = { structureKind: structure.kind, sourceIndex: index };

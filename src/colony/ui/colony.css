@@ -2054,3 +2054,76 @@ body.tv-mode .radio-iframe.is-visible {
     font-size: 8px;
   }
 }
+
+/* BUG.GEO.1 — on-screen geolocation readout. Deliberately opaque and high-contrast: it has to stay
+   legible after a screenshot is compressed and re-shared. */
+.geo-readout {
+  position: absolute;
+  left: 16px;
+  bottom: 24px;
+  z-index: 6;
+  max-width: 300px;
+  padding: 8px 10px;
+  border: 1px solid var(--brd);
+  border-radius: 12px;
+  background: rgba(6, 16, 22, 0.82);
+  backdrop-filter: blur(8px);
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #d8ecf6;
+  pointer-events: none;
+}
+.geo-readout__marker + .geo-readout__marker,
+.geo-readout__others {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(150, 190, 210, 0.22);
+}
+.geo-readout__who {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  letter-spacing: 0.04em;
+}
+.geo-readout__marker--local .geo-readout__who b {
+  color: #ff5f5f;
+}
+.geo-readout__name {
+  color: #9fc4d6;
+}
+.geo-readout__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #7fa8bd;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.geo-readout__marker--local .geo-readout__dot {
+  background: #ff3b3b;
+  box-shadow: 0 0 0 1px #fff;
+}
+.geo-readout__address {
+  color: #8fb6d8;
+  overflow-wrap: anywhere;
+}
+.geo-readout__coord {
+  color: #cfe6f2;
+}
+.geo-readout__marker--unknown .geo-readout__coord {
+  color: #e0a14d;
+}
+.geo-readout__stamp {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(150, 190, 210, 0.22);
+  color: #9fc4d6;
+}
+@media (max-width: 700px) {
+  .geo-readout {
+    max-width: 62vw;
+    font-size: 9px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+}

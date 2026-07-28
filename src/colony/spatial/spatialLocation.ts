@@ -120,6 +120,19 @@ function frameChainToRoot(
 }
 
 /**
+ * The presence address's ancestor chain: [self, parent, ..., root]. Spec 152 requires a presence
+ * record to carry the complete ancestor chain, so this is exported rather than kept private —
+ * everything that displays or transmits an address reads the chain from here instead of parsing
+ * the address string, which is a label and never a second source of truth.
+ */
+export function frameAncestry(
+  frameId: string,
+  frames: ReadonlyMap<string, SpatialFrame>,
+): readonly SpatialFrame[] {
+  return frameChainToRoot(frameId, frames);
+}
+
+/**
  * Resolve a point expressed in `fromFrameId` into `toFrameId`'s local coordinates, routing through the
  * two frames' lowest common ancestor. Neither the source nor the target root transform is applied — the
  * result is expressed in the target frame's own local space, matching resolvePointToAncestor's

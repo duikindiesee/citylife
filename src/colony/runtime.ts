@@ -288,11 +288,18 @@ import {
 import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
 import { roadComponents } from "./roadConnectivity";
 import {
+  createWorldFrameRegistry,
   createWorldSurvey,
   type SpatialFrame,
   type SpatialPortal,
   type WorldSurveyRegistry,
 } from "./worldSurvey";
+import {
+  resolvePresenceReadout,
+  type PresenceReadout,
+  type PresenceRecord,
+} from "./spatial/presenceReadout";
+import { surfacePresenceRecords } from "./spatial/presenceRecords";
 import {
   applyWorldLayoutDocument,
   captureWorldLayoutDocument as captureRuntimeWorldLayout,
@@ -3816,12 +3823,10 @@ export class ColonyRuntime {
     return parseWorldLayoutDocument(serializeWorldLayoutDocument(canonical));
   }
 
-  /** Spec 152 — build a read-only registry from the active durable head when present. Custom child
-   *  frames and portals remain addressable even though their streamed scenes are not loaded yet. */
-  worldSurvey(): WorldSurveyRegistry {
-    const registry = this.seededWorldSurvey();
-    if (!this.activeWorldLayout || !this.layoutFrames) return registry;
-
+  /** Graft the active layout's custom child frames onto a registry, parents before children. Shared
+   *  by the full survey and the cheap presence frame graph so the two can never diverge. */
+  private mergeLayoutFrames(registry: WorldSurveyRegistry): void {
+    if (!this.activeWorldLayout || !this.layoutFrames) return;
     const pending = this.layoutFrames.filter(
       (frame) => !registry.frames.has(frame.id),
     );
@@ -3834,6 +3839,15 @@ export class ColonyRuntime {
       const [frame] = pending.splice(index, 1);
       registry.addFrame({ ...frame!, metadata: {} });
     }
+  }
+
+  /** Spec 152 — build a read-only registry from the active durable head when present. Custom child
+   *  frames and portals remain addressable even though their streamed scenes are not loaded yet. */
+  worldSurvey(): WorldSurveyRegistry {
+    const registry = this.seededWorldSurvey();
+    if (!this.activeWorldLayout || !this.layoutFrames) return registry;
+
+    this.mergeLayoutFrames(registry);
     const surfaceAddress = registry.frames.get(
       registry.surfaceFrameId,
     )!.address;
@@ -3885,6 +3899,74 @@ export class ColonyRuntime {
     for (const portal of this.layoutPortals)
       if (!registry.portals.has(portal.id)) registry.addPortal(portal);
     return registry;
+  }
+
+  /** BUG.GEO.1 — the authoritative frame graph WITHOUT the terrain/road/building survey. Presence
+   *  resolution needs only frames, and the HUD resolves on every render, so paying for a full survey
+   *  there would be wasteful. Built by the same `createWorldFrameRegistry` the survey uses, so the
+   *  readout and the survey map can never disagree about a frame id, transform or grid extent. */
+  presenceFrames(): WorldSurveyRegistry {
+    const registry = createWorldFrameRegistry({
+      terrain: this.sim.state.terrain,
+      worldId: `seed-${this.worldSeed}`,
+    });
+    this.mergeLayoutFrames(registry);
+    return registry;
+  }
+
+  /** BUG.GEO.1 — the presence RECORD LIST behind the on-screen geolocation readout. The local
+   *  player/bot is one entry among the others, so multiplayer and other-bot markers are a data change
+   *  rather than a UI rewrite. A citizen the roster holds no live pose for yields a record with a null
+   *  address; the readout then hides that marker instead of inventing one. */
+  presenceRecords(): PresenceRecord[] {
+    const surfaceFrameId = this.presenceFrames().surfaceFrameId;
+    const terrain = this.sim.state.terrain;
+    const localId = this.fpCitizenId ?? this.operatorCitizenId();
+    const avatars = this.citizens.avatars();
+    // Deterministic order: the local subject first, then everyone else by stable id.
+    const ordered = [...avatars].sort((a, b) => {
+      const aLocal = a.id === localId ? 0 : 1;
+      const bLocal = b.id === localId ? 0 : 1;
+      return aLocal - bLocal || a.id.localeCompare(b.id);
+    });
+    return surfacePresenceRecords(
+      ordered.map((a) => ({
+        subjectId: a.id,
+        displayName: a.displayName,
+        subjectKind: a.hasPod ? ("bot" as const) : ("player" as const),
+        isLocal: a.id === localId,
+        pose: { x: a.x, y: a.y, heading: a.heading },
+      })),
+      {
+        surfaceFrameId,
+        terrainSize: terrain.size,
+        groundY: (x, y) => terrain.worldY(x, y),
+      },
+    );
+  }
+
+  /** BUG.GEO.1 — resolve the presence list into the on-screen readout. Spec 152's visibility policy is
+   *  enforced here by reusing the EXISTING step-in authorization rail: a viewer resolves the exact
+   *  room/anchor only for subjects they are already authorized to enter, and everyone else coarsens to
+   *  a public building/region. The stamp carries the world seed and canonical sol so a shared
+   *  screenshot is reproducible. */
+  presenceReadout(): PresenceReadout {
+    const registry = this.presenceFrames();
+    const clock = canonicalSolClock(solNowMs());
+    return resolvePresenceReadout(this.presenceRecords(), {
+      frames: registry.frames,
+      projectionFrameId: registry.surfaceFrameId,
+      exactSubjectIds: this.stepInCitizenIds(),
+      stamp: {
+        worldSeed: this.worldSeed,
+        sol: clock.sol,
+        solHour: clock.hour,
+        solMinute: clock.minute,
+        layoutRevision: this.activeWorldLayout
+          ? worldLayoutRevisionId(this.activeWorldLayout.revision)
+          : null,
+      },
+    });
   }
 
   /** Focus the live aerial camera on an exact surveyed grid cell. Returns false before the R3F
