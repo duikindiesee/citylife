@@ -14,8 +14,9 @@
 //     the slab existed to hide, the same way the painted markings already do at +50/60mm.
 // Pure geometry — node-testable; R3FRoadRibbons draws the merged output.
 import type { Terrain } from "../terrain";
-import type { JunctionZone } from "./roadJunctions";
+import type { JunctionArm, JunctionZone } from "./roadJunctions";
 import { convexHull, pointInConvexPoly, pointInPoly, nearPoly } from "./geom2d";
+import { EDGE_LINE_HALF_WIDTH, edgeLineOffset } from "./roadRibbon";
 import { Biome } from "../terrain";
 
 export { convexHull, pointInConvexPoly, pointInPoly, nearPoly };
@@ -50,65 +51,175 @@ const cellOk = (t: Terrain, x: number, y: number): boolean => {
   );
 };
 
+/** How far BEHIND the zone centre an arm's carriageway rectangle reaches: far enough to
+ *  cross the widest OTHER arm, so the outer elbow of a bend (and the back corner of a tee)
+ *  is paved instead of being bitten out. For a cross this adds nothing — the opposite arm
+ *  already covers it. Never larger than one crossing carriageway half-width, so it cannot
+ *  push tarmac past a kerb line. */
+function armBack(arms: JunctionArm[], self: JunctionArm): number {
+  let back = 0;
+  for (const o of arms) if (o !== self) back = Math.max(back, o.half);
+  return back || self.half;
+}
+
+/** Distance from the zone centre to where the ray `d` leaves arm `a`'s carriageway
+ *  rectangle (along in [-back, mouthD], |across| <= half). Every rectangle contains the
+ *  centre in its interior, so this is always > 0 and the union is STAR-SHAPED about the
+ *  centre — which is what makes the radial reconstruction below exact. */
+function armRayExit(
+  a: JunctionArm,
+  back: number,
+  dx: number,
+  dy: number,
+): number {
+  const du = dx * a.ux + dy * a.uy;
+  const dn = dx * -a.uy + dy * a.ux;
+  let t = Infinity;
+  if (du > 1e-12) t = Math.min(t, a.mouthD / du);
+  else if (du < -1e-12) t = Math.min(t, back / -du);
+  if (Math.abs(dn) > 1e-12) t = Math.min(t, a.half / Math.abs(dn));
+  return t;
+}
+
+/** Proper segment intersection point (endpoints included), or null. */
+function segPoint(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  c: { x: number; y: number },
+  d: { x: number; y: number },
+): { x: number; y: number } | null {
+  const rx = b.x - a.x,
+    ry = b.y - a.y,
+    sx = d.x - c.x,
+    sy = d.y - c.y;
+  const den = rx * sy - ry * sx;
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
+  const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
+  if (t < -1e-9 || t > 1 + 1e-9 || u < -1e-9 || u > 1 + 1e-9) return null;
+  return { x: a.x + rx * t, y: a.y + ry * t };
+}
+
+/** Drop coincident vertices and vertices that sit on the straight line between their
+ *  neighbours. Tolerances are geometric noise only (1e-6 cells = 4 microns) — unlike
+ *  sanitizeCapPoly's 0.35-cell weld, this can never move the outline. */
+function simplifyRing(
+  pts: { x: number; y: number }[],
+): { x: number; y: number }[] {
+  const out: { x: number; y: number }[] = [];
+  for (const p of pts) {
+    const last = out[out.length - 1];
+    if (last && Math.hypot(last.x - p.x, last.y - p.y) < 1e-6) continue;
+    out.push(p);
+  }
+  while (
+    out.length > 1 &&
+    Math.hypot(
+      out[0]!.x - out[out.length - 1]!.x,
+      out[0]!.y - out[out.length - 1]!.y,
+    ) < 1e-6
+  )
+    out.pop();
+  let dropped = true;
+  while (dropped && out.length > 3) {
+    dropped = false;
+    for (let i = 0; i < out.length; i++) {
+      const a = out[(i - 1 + out.length) % out.length]!,
+        b = out[i]!,
+        c = out[(i + 1) % out.length]!;
+      const area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+      const base = Math.hypot(c.x - a.x, c.y - a.y) || 1;
+      if (Math.abs(area) / base < 1e-6) {
+        out.splice(i, 1);
+        dropped = true;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 /** Build the cap outline for a zone as the EXACT union of the arm carriageways
  *  (operator directive, 2026-07-11: "find the sides of the road ends, and exactly draw
  *  it mathematically" — the convex hull over-covered, worst on merged zones).
  *
- *  Walk the arms in angular (CCW) order. Per arm the boundary crosses the MOUTH edge —
- *  a square cut across the carriageway at mouthD — and between adjacent arms it runs
- *  along arm i's left kerb LINE into the true kerb-corner intersection with arm j's
- *  right kerb line, then back out. Every side edge is therefore COLLINEAR with a road's
- *  painted edge line; the road flows into the pad with no jog. Near-parallel neighbours
- *  (a through road's two collinear arms) connect mouth-corner to mouth-corner straight
- *  along the shared kerb; corners that land beyond the mouths (very shallow crossings,
- *  clamped upstream) fall back to the same straight chamfer. The result is generally
- *  NON-convex (the plus-shape's kerb corners are reflex) and star-shaped around the
- *  zone centre. Mutates zone.poly. */
+ *  ROAD.JUNCTION.CAP.1 (measured, seeds 4242/7/99/1234): the previous angular WALK over
+ *  the arms only approximated that union. Whenever the true kerb-corner intersection was
+ *  rejected — a near-duplicate arm pair, a corner past MOUTH_MAX, or the whole outline
+ *  falling back to sanitizeCapPoly's CONVEX HULL — the boundary became a straight CHORD
+ *  between two mouth corners, which cuts across the reflex kerb notch on the OUTSIDE.
+ *  That chord is asphalt in the verge: 24 of 52 junctions overshot the carriageway edge,
+ *  worst 2.006 cells (8.0 m) at seed 4242 zone 10. The chord also carried the cap's white
+ *  kerb paint off the arm's edge line, which is the notch/jog the operator walked into.
+ *
+ *  So build the union DIRECTLY instead of walking towards it. Each arm is a rectangle
+ *  (along in [-back, mouthD], |across| <= half); every rectangle contains the centre, so
+ *  their union is star-shaped about it and is fully described by the radial function
+ *  r(theta) = max over arms of the ray exit distance. The union boundary can only turn at
+ *  a rectangle CORNER or at a rectangle-edge CROSSING, so evaluating r() at exactly those
+ *  critical bearings and joining consecutive samples reproduces the union EXACTLY — every
+ *  edge lies on a kerb line or a mouth cut, never on an invented chord. The result is
+ *  generally NON-convex (the plus-shape's kerb corners are reflex). Mutates zone.poly. */
 export function capPolygon(zone: JunctionZone): { x: number; y: number }[] {
   const { cx, cy } = zone;
-  if (zone.arms.length < 2) {
+  const arms = zone.arms;
+  if (arms.length < 2) {
     zone.poly = [];
     return zone.poly;
   }
-  const arms = [...zone.arms].sort(
-    (a, b) => Math.atan2(a.uy, a.ux) - Math.atan2(b.uy, b.ux),
-  );
-  const poly: { x: number; y: number }[] = [];
-  for (let i = 0; i < arms.length; i++) {
-    const a = arms[i]!;
+  const backs = arms.map((a) => armBack(arms, a));
+  const rects = arms.map((a, i) => {
     const nx = -a.uy,
-      ny = a.ux; // left perpendicular (CCW) of the outward heading
-    const mx = cx + a.ux * a.mouthD,
-      my = cy + a.uy * a.mouthD;
-    // CCW traversal crosses the mouth from the right kerb corner to the left.
-    poly.push({ x: mx - nx * a.half, y: my - ny * a.half });
-    poly.push({ x: mx + nx * a.half, y: my + ny * a.half });
-    // Boundary between arm i's LEFT kerb and the next arm's RIGHT kerb: their exact
-    // line intersection, kept only when it lies between the two mouths.
-    const b = arms[(i + 1) % arms.length]!;
-    const denom = a.ux * b.uy - a.uy * b.ux;
-    if (Math.abs(denom) > 0.08) {
-      const ax = cx + nx * a.half,
-        ay = cy + ny * a.half; // point on a's left kerb line
-      const bx = cx + b.uy * b.half,
-        by = cy - b.ux * b.half; // point on b's RIGHT kerb line (-perp side)
-      const dx = bx - ax,
-        dy = by - ay;
-      const t = (dx * b.uy - dy * b.ux) / denom; // along a's heading from (ax, ay)
-      const s = (dx * a.uy - dy * a.ux) / denom; // along b's heading from (bx, by)
-      if (
-        Number.isFinite(t) &&
-        t > -Math.max(a.half, b.half) - 1 &&
-        t < a.mouthD - 1e-6 &&
-        s < b.mouthD - 1e-6
-      ) {
-        poly.push({ x: ax + a.ux * t, y: ay + a.uy * t });
-      }
-      // else: straight chamfer — the next arm's right mouth corner follows directly
-    }
-    // near-parallel neighbours: direct segment along the shared kerb line
+      ny = a.ux;
+    const at = (along: number, across: number) => ({
+      x: cx + a.ux * along + nx * across,
+      y: cy + a.uy * along + ny * across,
+    });
+    return [
+      at(-backs[i]!, -a.half),
+      at(a.mouthD, -a.half),
+      at(a.mouthD, a.half),
+      at(-backs[i]!, a.half),
+    ];
+  });
+  // Critical bearings: every rectangle corner, and every crossing of two rectangles'
+  // edges. Extra bearings are harmless (they land mid-edge and simplifyRing drops them);
+  // a MISSING one would round a corner off, so be generous.
+  const bearings: number[] = [];
+  const addBearing = (p: { x: number; y: number }) => {
+    const dx = p.x - cx,
+      dy = p.y - cy;
+    if (dx * dx + dy * dy < 1e-18) return;
+    bearings.push(Math.atan2(dy, dx));
+  };
+  for (const r of rects) for (const p of r) addBearing(p);
+  for (let i = 0; i < rects.length; i++)
+    for (let j = i + 1; j < rects.length; j++)
+      for (let e = 0; e < 4; e++)
+        for (let f = 0; f < 4; f++) {
+          const p = segPoint(
+            rects[i]![e]!,
+            rects[i]![(e + 1) % 4]!,
+            rects[j]![f]!,
+            rects[j]![(f + 1) % 4]!,
+          );
+          if (p) addBearing(p);
+        }
+  bearings.sort((a, b) => a - b);
+  const poly: { x: number; y: number }[] = [];
+  let prev = -Infinity;
+  for (const th of bearings) {
+    if (th - prev < 1e-12) continue;
+    prev = th;
+    const dx = Math.cos(th),
+      dy = Math.sin(th);
+    let r = 0;
+    for (let i = 0; i < arms.length; i++)
+      r = Math.max(r, armRayExit(arms[i]!, backs[i]!, dx, dy));
+    if (!Number.isFinite(r) || r <= 0) continue;
+    poly.push({ x: cx + dx * r, y: cy + dy * r });
   }
-  zone.poly = sanitizeCapPoly(poly);
+  zone.poly = simplifyRing(poly);
   return zone.poly;
 }
 
@@ -141,7 +252,13 @@ function segsCross(
  *  fall back to the CONVEX HULL of its points — always a clean simple CCW polygon. Only the
  *  broken degenerate cases take the hull; a valid plus-shape cross keeps its exact concave
  *  outline (its reflex kerb corners never self-cross), so the general-case geometry the
- *  spec-137 exact-union delivers is untouched. */
+ *  spec-137 exact-union delivers is untouched.
+ *
+ *  ROAD.JUNCTION.CAP.1: capPolygon NO LONGER routes through this. The radial union it now
+ *  builds is simple by construction, so the hull fallback could only ever fire wrongly —
+ *  and when it did fire (measured: 24/52 junctions across 4 seeds) it replaced the reflex
+ *  kerb notches with hull chords, i.e. the wedges of asphalt in the verge. Kept exported
+ *  as the repair for any externally supplied outline; not part of the cap build path. */
 export function sanitizeCapPoly(
   raw: { x: number; y: number }[],
 ): { x: number; y: number }[] {
@@ -389,18 +506,30 @@ export function capStopBars(
   }
 }
 
-/** Kerb-line paint: a thin white strip along the cap perimeter between crosswalk mouths,
- *  closing the junction visually from first person and masking the hull chamfer chords. */
-export function capKerbLines(
-  zone: JunctionZone,
-  opts: CapBuildOptions,
-  out: number[],
-): void {
+/** One paintable run of the cap perimeter: the segment, the arm whose kerb it lies on,
+ *  and how far INSIDE the kerb the white line must be laid so that it continues that
+ *  arm's ribbon edge line without a sideways step. Pure — node-testable. */
+export interface CapKerbSegment {
+  a: { x: number; y: number };
+  b: { x: number; y: number };
+  /** Index into zone.arms of the arm whose kerb line this run follows. */
+  arm: number;
+  /** Inset from the perimeter towards the carriageway, in cells. */
+  inset: number;
+}
+
+/** The perimeter runs that carry kerb paint, with the inset that makes each run COLLINEAR
+ *  with its arm's ribbon edge line.
+ *
+ *  ROAD.JUNCTION.CAP.1: the strip used to be laid hard against the perimeter (from 0.018
+ *  cells outside it to 0.09 inside), i.e. at ~half - 0.036 from the arm axis, while
+ *  roadRibbon.edgeLines paints at edgeLineOffset(half) = half - 0.3. Every arm mouth
+ *  therefore had a 0.264-cell (1.06 m) sideways JOG in the white line. Inset by
+ *  half - edgeLineOffset(half) instead and the two lines are one straight line. */
+export function capKerbPaintSegments(zone: JunctionZone): CapKerbSegment[] {
   const poly = zone.poly;
-  if (poly.length < 3) return;
-  const yOf = (x: number, y: number) =>
-    Math.max(0, opts.roadY(x, y)) + CAP_PAINT_LIFT - 0.005;
-  const w = 0.09;
+  const segs: CapKerbSegment[] = [];
+  if (poly.length < 3 || zone.arms.length === 0) return segs;
   const nearMouth = (x: number, y: number) => {
     for (const a of zone.arms) {
       const mx = zone.cx + a.ux * a.mouthD,
@@ -419,19 +548,58 @@ export function capKerbLines(
     const mx = (a.x + b.x) / 2,
       my = (a.y + b.y) / 2;
     if (nearMouth(mx, my)) continue;
+    // Which arm's kerb is this run on? The one whose lateral distance at the midpoint is
+    // closest to its own half-width. Every perimeter edge of the exact union lies on some
+    // arm's kerb line or on a mouth cut (mouth cuts are dropped above).
+    let arm = -1,
+      bestErr = Infinity;
+    for (let k = 0; k < zone.arms.length; k++) {
+      const q = zone.arms[k]!;
+      const rx = mx - zone.cx,
+        ry = my - zone.cy;
+      const err = Math.abs(Math.abs(rx * -q.uy + ry * q.ux) - q.half);
+      if (err < bestErr) {
+        bestErr = err;
+        arm = k;
+      }
+    }
+    if (arm < 0 || bestErr > 1e-6) continue; // not a kerb run — never invent paint
+    const half = zone.arms[arm]!.half;
+    segs.push({ a, b, arm, inset: half - edgeLineOffset(half) });
+  }
+  return segs;
+}
+
+/** Kerb-line paint: a thin white strip along the cap perimeter between crosswalk mouths,
+ *  closing the junction visually from first person and continuing each arm's painted edge
+ *  line straight across its mouth. */
+export function capKerbLines(
+  zone: JunctionZone,
+  opts: CapBuildOptions,
+  out: number[],
+): void {
+  const yOf = (x: number, y: number) =>
+    Math.max(0, opts.roadY(x, y)) + CAP_PAINT_LIFT - 0.005;
+  const w = EDGE_LINE_HALF_WIDTH;
+  for (const seg of capKerbPaintSegments(zone)) {
+    const { a, b, inset } = seg;
+    const mx = (a.x + b.x) / 2,
+      my = (a.y + b.y) / 2;
     if (!cellOk(opts.terrain, mx, my)) continue;
     const ex = b.x - a.x,
       ey = b.y - a.y;
     const len = Math.hypot(ex, ey) || 1;
     const nx = -ey / len,
-      ny = ex / len; // inward normal (CCW hull)
+      ny = ex / len; // inward normal (CCW outline)
+    const inner = inset + w,
+      outer = inset - w;
     quad(
       out,
       [
-        [a.x + nx * w, a.y + ny * w],
-        [b.x + nx * w, b.y + ny * w],
-        [b.x - nx * w * 0.2, b.y - ny * w * 0.2],
-        [a.x - nx * w * 0.2, a.y - ny * w * 0.2],
+        [a.x + nx * inner, a.y + ny * inner],
+        [b.x + nx * inner, b.y + ny * inner],
+        [b.x + nx * outer, b.y + ny * outer],
+        [a.x + nx * outer, a.y + ny * outer],
       ],
       yOf,
       opts.wx,

@@ -34,6 +34,19 @@ export interface RoadRibbonOptions {
  *  surface (not the bare terrain) when they're on a road cell — else they sink under the raised ribbon. */
 export const ROAD_RIBBON_LIFT = 0.18;
 
+/** Where the painted EDGE LINE of a carriageway of half-width `half` runs, as a lateral
+ *  offset from the centre-line (cells). ONE definition, shared by the ribbon's edgeLines
+ *  and by junctionCap.capKerbLines — the junction's kerb paint has to continue the arm's
+ *  edge line across the mouth, and before ROAD.JUNCTION.CAP.1 it did not: the cap painted
+ *  its strip hard against the kerb (offset ~half - 0.036) while the ribbon painted at
+ *  half - 0.3, so the white line stepped 0.26 cells (1.06 m) sideways at every mouth —
+ *  the notch/jog the operator reported. */
+export const edgeLineOffset = (half: number): number =>
+  Math.max(0.3, half - 0.3);
+
+/** Painted line half-width (cells), shared by the ribbon edge lines and the cap kerb lines. */
+export const EDGE_LINE_HALF_WIDTH = 0.09;
+
 function cellOkOn(terrain: Terrain, x: number, y: number): boolean {
   const gx = Math.round(x),
     gy = Math.round(y);
@@ -555,8 +568,8 @@ function edgeLines(
 ): void {
   const tri = (a: number[], b: number[], c: number[]) =>
     out.push(a[0]!, a[1]!, a[2]!, b[0]!, b[1]!, b[2]!, c[0]!, c[1]!, c[2]!);
-  const off = Math.max(0.3, half - 0.3); // sit just inside the carriageway edge
-  const w = 0.09; // painted line half-width
+  const off = edgeLineOffset(half); // sit just inside the carriageway edge
+  const w = EDGE_LINE_HALF_WIDTH; // painted line half-width
   // world points at a station for a signed centre offset `c`, spanning c-w .. c+w across the road
   const at = (i: number, c: number): [number[], number[]] => {
     const p = pts[i]!;
