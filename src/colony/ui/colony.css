@@ -113,11 +113,59 @@ body,
   font-weight: 600;
 }
 
-.hud {
+/* UI.HUD.OVERLAP.1 — the single owner of the bottom-right corner.
+   Before: the city HUD panel (`.hud`, absolutely positioned bottom/right) and each new-player /
+   venue affordance ('Drive home', 'Choose your home', 'The Gamehouse', 'Gearbox Auto Hub' — each
+   `position: fixed` with its own hand-picked `bottom: 24/66/68/112`) all claimed the same region
+   with no shared layout owner, so whichever painted last buried the other. Measured on
+   1280x800: 'Gearbox Auto Hub' covered the 'HUD details' expander and 'Choose your home' covered
+   the 'Landing One' title — both were unreadable AND failed a centre hit-test, i.e. unclickable.
+   'Choose your home' also buried 'The Gamehouse' at every viewport.
+   After: one flex column owns the corner and lays every occupant out in flow, so an overlap is
+   impossible by construction (a z-index bump or offset nudge would only have relocated it).
+   The affordances are rigid (`flex: 0 0 auto`) and keep hugging the corner where operators already
+   tap them; the HUD panel sits directly above them and is the flexible member, so a tall expanded
+   panel shrinks and scrolls inside itself instead of shoving the affordances off-screen.
+   `max-height` is the rail's explicit safe area: the top edge it may never grow past.
+   STACKING: the rail is `absolute` (inside `.colony`, which is `fixed; inset: 0`, so this is still
+   viewport-anchored) and carries NO `z-index` — deliberately, because `position: fixed` and any
+   `z-index` would each make the rail a stacking context and fuse its members into one layer. Those
+   members legitimately sit on DIFFERENT layers: the affordances must stay above the first-person
+   panel (z-index 50) and the race mobile controls (55), while the city HUD panel must stay BELOW
+   them and below the modal overlay (30). Fusing them either lets the panel cover the first-person
+   Use/exit cluster or drops the affordances under it — a new unclickable control in each direction.
+   So the rail owns LAYOUT only: the affordances re-declare their own `z-index: 60` below and the
+   panel stays at `auto`, exactly as each did before. Nothing in this corner needs to out-paint a
+   sibling any more; overlap is settled by the flex column, not by paint order. */
+.hud-corner-rail {
   position: absolute;
-  top: auto;
-  bottom: 24px;
   right: 16px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  /* Safe area: stay below the topbar however tall the rail's contents grow. */
+  max-height: calc(100vh - 92px);
+  /* The rail is only a layout frame — the world must stay draggable through its empty space. */
+  pointer-events: none;
+}
+.hud-corner-rail > * {
+  pointer-events: auto;
+}
+.hud-corner-rail > button {
+  flex: 0 0 auto;
+  /* `relative` with no offsets changes nothing about layout — it only makes `z-index` apply, so the
+     affordances keep the exact paint order they had when they positioned themselves. */
+  position: relative;
+  z-index: 60;
+}
+
+.hud {
+  /* Positioned by `.hud-corner-rail`, not by itself — see the block above. */
+  position: static;
+  flex: 0 1 auto;
+  min-height: 0;
   width: 226px;
   max-height: calc(100vh - 140px);
   overflow-y: auto;
@@ -1728,17 +1776,20 @@ body.tv-mode .radio-iframe.is-visible {
     font-size: 12px;
   }
 
+  .hud-corner-rail {
+    /* UI.HUD.OVERLAP.1 — the narrow-screen safe area. Narrow screens are pinned at BOTH ends: the
+       topbar wraps to a tall block at the top with the live bus mini-map (168px wide, bottom edge
+       ~185px) beneath it, and the rally card lives bottom-left (min-width 190px). The rail is the
+       one owner of the right-hand column: it starts below the mini-map and stops 24px off the
+       bottom, and its 165px-wide contents clear the rally card's 208px right edge. The HUD panel
+       rides ABOVE the affordance stack inside it, so it can never reach the bottom row that the
+       rally card owns — which is the constraint the old free-floating mid-right-edge dock was
+       working around, now expressed as a layout rule instead of a hand-tuned offset. */
+    right: 12px;
+    max-height: calc(100vh - 232px);
+  }
+
   .hud {
-    /* Narrow screens are pinned at BOTH ends: the topbar wraps to a tall block at the top,
-       and the rally card lives bottom-left (min-width 190px). Two ~190px cards can't share
-       the bottom row at 375px, and top-anchoring collides with the wrapped topbar — so dock
-       this panel to the middle of the right edge, the one region clear of both. Centring with
-       translateY keeps it clear however the topbar wraps or whether the rally card shows;
-       max-height + overflow-y bound it if the detail stack is expanded. */
-    top: 50%;
-    bottom: auto;
-    transform: translateY(-50%);
-    right: 8px;
     width: min(190px, calc(100vw - 16px));
     max-height: calc(100vh - 132px);
     padding: 9px;
@@ -1754,9 +1805,11 @@ body.tv-mode .radio-iframe.is-visible {
   }
 
   .hud--first-person-mobile-drawer {
-    /* Pin the vertical anchoring the drawer needs (it slides horizontally via translateX),
-       so the centred non-first-person .hud rule above does not leak top:50%/translateY into
-       this shared-class element. Restores the original full-height right-edge drawer. */
+    /* The first-person treatment is a different component entirely: a full-height right-edge drawer
+       that slides in horizontally via translateX and parks as a 42px tab. It is NOT a member of the
+       corner rail — UI.HUD.OVERLAP.1 keeps it `position: fixed` so it is laid out against the
+       viewport, exactly as before, and pins its own vertical anchoring. */
+    position: fixed;
     top: 58px;
     bottom: 24px;
     transform: translateX(calc(100% - 42px));
