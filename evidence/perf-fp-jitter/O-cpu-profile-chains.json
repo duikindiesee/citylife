@@ -1,0 +1,130 @@
+{
+  "rows": [
+    {
+      "name": "addRoadNetwork",
+      "where": "colony/worldSurvey.ts:402",
+      "percent": 12.889188986420585
+    },
+    {
+      "name": "cells",
+      "where": "spatial/worldLayoutDocument.ts:234",
+      "percent": 3.3310826018455995
+    },
+    {
+      "name": "(garbage collector)",
+      "where": ":0",
+      "percent": 3.0910045764873586
+    },
+    {
+      "name": "cells",
+      "where": "spatial/worldLayoutDocument.ts:234",
+      "percent": 2.9784680021006826
+    },
+    {
+      "name": "canonicalJson",
+      "where": "spatial/worldLayoutDocument.ts:848",
+      "percent": 2.5808387726010955
+    },
+    {
+      "name": "sha256",
+      "where": "spatial/worldLayoutDocument.ts:723",
+      "percent": 2.5433265811388703
+    },
+    {
+      "name": "sha256",
+      "where": "spatial/worldLayoutDocument.ts:723",
+      "percent": 2.505814389676645
+    },
+    {
+      "name": "sha256",
+      "where": "spatial/worldLayoutDocument.ts:723",
+      "percent": 2.4983119513842
+    },
+    {
+      "name": "sha256",
+      "where": "spatial/worldLayoutDocument.ts:723",
+      "percent": 2.48330707479931
+    },
+    {
+      "name": "sha256",
+      "where": "spatial/worldLayoutDocument.ts:723",
+      "percent": 2.4758046365068647
+    },
+    {
+      "name": "sha256",
+      "where": "spatial/worldLayoutDocument.ts:723",
+      "percent": 2.4758046365068647
+    },
+    {
+      "name": "canonicalJson",
+      "where": "spatial/worldLayoutDocument.ts:848",
+      "percent": 2.4683021982144195
+    },
+    {
+      "name": "canonicalJson",
+      "where": "spatial/worldLayoutDocument.ts:848",
+      "percent": 2.4607997599219744
+    },
+    {
+      "name": "canonicalJson",
+      "where": "spatial/worldLayoutDocument.ts:848",
+      "percent": 2.4307900067521944
+    },
+    {
+      "name": "canonicalJson",
+      "where": "spatial/worldLayoutDocument.ts:848",
+      "percent": 2.4007802535824143
+    },
+    {
+      "name": "canonicalJson",
+      "where": "spatial/worldLayoutDocument.ts:848",
+      "percent": 2.3782729387050794
+    },
+    {
+      "name": "canonicalJson",
+      "where": "spatial/worldLayoutDocument.ts:848",
+      "percent": 2.363268062120189
+    },
+    {
+      "name": "placement",
+      "where": "spatial/worldLayoutDocument.ts:265",
+      "percent": 1.9206242028659313
+    },
+    {
+      "name": "placement",
+      "where": "spatial/worldLayoutDocument.ts:265",
+      "percent": 1.8230925050641458
+    },
+    {
+      "name": "cells",
+      "where": "spatial/worldLayoutDocument.ts:234",
+      "percent": 1.7555705604321403
+    }
+  ],
+  "chains": [
+    [
+      "renderRootSync > workLoopSync > performUnitOfWork > runWithFiberInDEV > run > beginWork > updateFunctionComponent > renderWithHooks > react_stack_bottom_frame > ColonyApp > captureWorldLayout > seededWorldSurvey > createWorldSurvey > addRoadNetwork",
+      1718
+    ],
+    [
+      "(root)",
+      509
+    ],
+    [
+      "performUnitOfWork > runWithFiberInDEV > run > beginWork > updateFunctionComponent > renderWithHooks > react_stack_bottom_frame > ColonyApp > captureWorldLayout > createWorldLayoutDocument > parseV1 > (anon) > placement > cells",
+      444
+    ],
+    [
+      "run > beginWork > updateFunctionComponent > renderWithHooks > react_stack_bottom_frame > ColonyApp > captureWorldLayout > captureWorldLayoutDocument > captureWorldLayoutDocumentWithProvenance > createWorldLayoutDocument > parseV1 > (anon) > placement > cells",
+      397
+    ],
+    [
+      "beginWork > updateFunctionComponent > renderWithHooks > react_stack_bottom_frame > ColonyApp > captureWorldLayout > createWorldLayoutDocument > parseV1 > contentHashForCanonical > canonicalJson > (anon) > canonicalJson > (anon) > canonicalJson",
+      344
+    ],
+    [
+      "performUnitOfWork > runWithFiberInDEV > run > beginWork > updateFunctionComponent > renderWithHooks > react_stack_bottom_frame > ColonyApp > captureWorldLayout > captureWorldLayoutDocument > captureWorldLayoutDocumentWithProvenance > createWorldLayoutDocument > contentHashForCanonical > sha256",
+      339
+    ]
+  ]
+}

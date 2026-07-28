@@ -19,6 +19,7 @@ import {
   PLAYER_HALF_EXTENT,
   PLAYER_EYE_OFFSET,
 } from "../../colony/scale";
+import { replayPose } from "../../colony/perf/replayBridge";
 
 const MOVEMENT_SPEED = 10;
 const LOOK_SPEED = 2;
@@ -133,6 +134,24 @@ export function FirstPersonController({
     // which flips when the builder toggle remounts this component — the explicit guard
     // makes camera ownership deterministic instead of mount-order luck.
     if (sim?.state?.cinematic) return;
+
+    // Spec 158 — a movement trace is replaying: the walker is driven from the recorded POSE
+    // instead of from live input, so the camera path (and therefore the render workload) is
+    // identical on every run and a before/after comparison measures the code change alone.
+    // One null check when nothing is replaying; the perf module holds the cell.
+    const replay = replayPose();
+    if (replay) {
+      rigidBody.current.setTranslation(
+        { x: replay.x, y: replay.y - PLAYER_EYE_OFFSET, z: replay.z },
+        true,
+      );
+      rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      rotation.current.y = replay.yaw;
+      rotation.current.x = replay.pitch;
+      camera.position.set(replay.x, replay.y, replay.z);
+      camera.quaternion.setFromEuler(rotation.current);
+      return;
+    }
 
     const terrainSizeForGrid = sim?.state?.terrain?.size ?? 0;
     const toGridX = (wx: number) => wx / 4 + terrainSizeForGrid / 2;
@@ -269,7 +288,12 @@ export function FirstPersonController({
       const gridZ = pos.z / 4 + terrainSize / 2;
       // Guard against the RENDERED surface, not the raw sim height — leveling overrides
       // (pads, graded roads, terraforming) are where the visible mesh actually is.
-      const terrainHeight = leveledWorldYAt(terrain, terrainLevel, gridX, gridZ);
+      const terrainHeight = leveledWorldYAt(
+        terrain,
+        terrainLevel,
+        gridX,
+        gridZ,
+      );
 
       if (pos.y < terrainHeight - 0.5) {
         rigidBody.current.setTranslation(

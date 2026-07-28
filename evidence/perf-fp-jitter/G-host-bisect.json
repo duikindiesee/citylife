@@ -1,0 +1,225 @@
+{
+  "rows": {
+    "control": {
+      "frames": 32,
+      "windowSec": 4.217100000000559,
+      "fpsMean": 7.588152996133779,
+      "fpsLow1": 3.7467216185785097,
+      "frameMeanMs": 131.78437500001746,
+      "frameP50Ms": 9.200000000186265,
+      "frameP95Ms": 266.79999999981374,
+      "frameP99Ms": 266.90000000037253,
+      "frameMaxMs": 266.90000000037253,
+      "cpuMeanMs": 1.1812500000814907,
+      "drawMeanMs": 5.4531250000873115,
+      "gpuMeanMs": 7.35902875,
+      "physicsMeanMs": 0.2749999999359716,
+      "drawCallsMean": 71.25,
+      "trianglesMean": 1106692,
+      "spikeCount": 16,
+      "spikeRatio": 0.5,
+      "shadowFrameMeanMs": 256.51250000006985,
+      "nonShadowFrameMeanMs": 90.20833333333333,
+      "shadowFrames": 8
+    },
+    "uiHidden": {
+      "frames": 31,
+      "windowSec": 4.0305,
+      "fpsMean": 7.69135343009552,
+      "fpsLow1": 3.4458993797469586,
+      "frameMeanMs": 130.01612903225808,
+      "frameP50Ms": 12.900000000372529,
+      "frameP95Ms": 274.20000000018626,
+      "frameP99Ms": 290.19999999925494,
+      "frameMaxMs": 290.19999999925494,
+      "cpuMeanMs": 1.0838709677599612,
+      "drawMeanMs": 4.867741935375717,
+      "gpuMeanMs": 6.733446451612903,
+      "physicsMeanMs": 0.2580645160989896,
+      "drawCallsMean": 71.45161290322581,
+      "trianglesMean": 1112782.3548387096,
+      "spikeCount": 15,
+      "spikeRatio": 0.4838709677419355,
+      "shadowFrameMeanMs": 8.475000000093132,
+      "nonShadowFrameMeanMs": 172.2913043477937,
+      "shadowFrames": 8
+    },
+    "simPaused": {
+      "frames": 29,
+      "windowSec": 4.040900000000373,
+      "fpsMean": 7.1766190700084955,
+      "fpsLow1": 3.602305475509157,
+      "frameMeanMs": 139.34137931035767,
+      "frameP50Ms": 243.80000000074506,
+      "frameP95Ms": 274.90000000037253,
+      "frameP99Ms": 277.59999999962747,
+      "frameMaxMs": 277.59999999962747,
+      "cpuMeanMs": 1.303448275919875,
+      "drawMeanMs": 5.568965517048692,
+      "gpuMeanMs": 6.826417931034481,
+      "physicsMeanMs": 0.2689655172349564,
+      "drawCallsMean": 71.89655172413794,
+      "trianglesMean": 1126223.1379310344,
+      "spikeCount": 15,
+      "spikeRatio": 0.5172413793103449,
+      "shadowFrameMeanMs": 39.349999999743886,
+      "nonShadowFrameMeanMs": 177.43333333344864,
+      "shadowFrames": 8
+    },
+    "canvasSmall": {
+      "frames": 16,
+      "windowSec": 4.0345,
+      "fpsMean": 3.9657950179700086,
+      "fpsLow1": 3.326679973390683,
+      "frameMeanMs": 252.15625,
+      "frameP50Ms": 248.5,
+      "frameP95Ms": 300.59999999962747,
+      "frameP99Ms": 300.59999999962747,
+      "frameMaxMs": 300.59999999962747,
+      "cpuMeanMs": 1.0687500000931323,
+      "drawMeanMs": 3.937499999650754,
+      "gpuMeanMs": 7.0289375,
+      "physicsMeanMs": 0.3749999998835847,
+      "drawCallsMean": 71.25,
+      "trianglesMean": 1106692,
+      "spikeCount": 16,
+      "spikeRatio": 1,
+      "shadowFrameMeanMs": 249.35000000009313,
+      "nonShadowFrameMeanMs": 253.09166666663563,
+      "shadowFrames": 4
+    }
+  },
+  "census": {
+    "layers": [
+      {
+        "name": "foliage",
+        "instances": 75188,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 7,
+        "castShadow": false
+      },
+      {
+        "name": "tarentaal-chicks",
+        "instances": 6,
+        "castShadow": true
+      },
+      {
+        "name": "tarentaal-adults",
+        "instances": 4,
+        "castShadow": true
+      },
+      {
+        "name": "avatar-bodies",
+        "instances": 3,
+        "castShadow": true
+      },
+      {
+        "name": "avatar-heads",
+        "instances": 3,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 3,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 3,
+        "castShadow": true
+      },
+      {
+        "name": "pedestrian-bodies",
+        "instances": 2,
+        "castShadow": true
+      },
+      {
+        "name": "pedestrian-heads",
+        "instances": 2,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 2,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 2,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 2,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-bench",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-lamppost",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-planter",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-fountain",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-shade_tree",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-notice_board",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-wayfinder",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "porter-piles",
+        "instances": 0,
+        "castShadow": true
+      },
+      {
+        "name": "porter-carts",
+        "instances": 0,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 0,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 0,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 0,
+        "castShadow": true
+      }
+    ],
+    "instances": 75234,
+    "shadowInstances": 75227,
+    "meshes": 1203,
+    "shadowMeshes": 615
+  }
+}

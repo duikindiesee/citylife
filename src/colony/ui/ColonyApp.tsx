@@ -67,6 +67,7 @@ const PROFESSION_SUGGESTIONS = [
 ];
 import { RadioPanel } from "./RadioPanel";
 import { FirstPersonPanel } from "./FirstPersonPanel";
+import { captureWorldLayoutForOperator } from "./worldLayoutOperatorCapture";
 import { GaragePanel } from "./GaragePanel";
 import { ShowroomOverlay } from "./ShowroomOverlay";
 import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
@@ -1298,23 +1299,23 @@ export function ColonyApp() {
         : "#e0584d";
   const rightHud = rightHudDeclutterModel(ui);
 
-  let capturedWorldLayout: WorldLayoutDocument | null = null;
-  let captureError: string | null = null;
-  if (worldLayoutBoot.status === "ready") {
-    try {
-      capturedWorldLayout = runtime.captureWorldLayout();
-    } catch (error: unknown) {
-      captureError =
-        error instanceof Error
-          ? error.message
-          : "The current world layout could not be captured";
-    }
-  }
+  // Spec 158 — capture the world layout only while the operator surface that displays it is
+  // on screen. This call canonically serialises and SHA-256 hashes the whole document
+  // (~220 ms on seed 4242); running it from the render body meant the 200 ms UI heartbeat
+  // burned ~97% of the main thread on a value nobody could see, and first-person play ran at
+  // 7.8 fps instead of 60. See docs/specs/158 for the measurement.
+  const { document: capturedWorldLayout, error: captureError } =
+    captureWorldLayoutForOperator<WorldLayoutDocument>(runtime, {
+      bootReady: worldLayoutBoot.status === "ready",
+      // BuilderPanel returns early unless one of these is true, and the revision controls
+      // live in the branch it returns early from.
+      consumerVisible: (canBuildCity && builderActive) || worldViewActive,
+    });
   const worldLayoutDirty = Boolean(
     capturedWorldLayout &&
-      worldLayoutHead &&
-      capturedWorldLayout.revision.contentHash !==
-        worldLayoutHead.document.revision.contentHash,
+    worldLayoutHead &&
+    capturedWorldLayout.revision.contentHash !==
+      worldLayoutHead.document.revision.contentHash,
   );
   const worldLayoutOperatorStatus: WorldLayoutOperatorStatus = captureError
     ? "error"

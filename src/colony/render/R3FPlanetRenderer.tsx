@@ -39,6 +39,8 @@ export interface AvatarView {
   isOperator: boolean;
 }
 
+import { R3FPerfProbe } from "./R3FPerfProbe";
+import { perfExperiment } from "../perf/perfExperiment";
 import { R3FTerrain } from "./R3FTerrain";
 import { R3FOcean } from "./R3FOcean";
 import { R3FFoliage } from "./R3FFoliage";
@@ -314,7 +316,14 @@ function DayNightCycle({ sim }: { sim: ColonySim }) {
       }
       dirLightRef.current.intensity = dayFactor * 2;
     }
-    if ((shadowFrame.current++ & 3) === 0) gl.shadowMap.needsUpdate = true;
+    // Spec 158 — the cadence is a measurement knob (shipped default 4). The harness turns it
+    // off / stretches it to weigh the shadow pass without editing this file.
+    const experiment = perfExperiment();
+    if (
+      experiment.shadows &&
+      shadowFrame.current++ % Math.max(1, experiment.shadowCadence) === 0
+    )
+      gl.shadowMap.needsUpdate = true;
   });
 
   return (
@@ -399,8 +408,7 @@ function AerialCameraController({ sim }: { sim: ColonySim }) {
   const { camera, size } = useThree();
   const worldViewActive = useRoadNetwork((state) => state.worldViewActive);
   const controls = useThree((state) => state.controls) as
-    | { target?: THREE.Vector3; update?: () => void }
-    | undefined;
+    { target?: THREE.Vector3; update?: () => void } | undefined;
 
   useEffect(() => {
     // Position camera high up looking down
@@ -667,6 +675,10 @@ function R3FWorld({
       <DayNightCycle sim={sim} />
 
       <Physics>
+        {/* Spec 158 — frame-timing instrumentation. Inert unless ?perf= arms it; it lives
+            inside <Physics> so it can time the Rapier step, and inside <Canvas> so it can
+            time the draw submission. */}
+        <R3FPerfProbe />
         {/* Stage 0 — the world exists: terrain, sea, camera, physics floor */}
         <R3FTerrain sim={sim} terrainLevel={debouncedTerrainLevel} />
         {/* Spec 136 — the ocean reaches the Dark City slab's waterline (0.72 × the world
@@ -684,7 +696,9 @@ function R3FWorld({
             <R3FRoadRibbons sim={sim} runtime={runtime} />
             <R3FRoadNetwork sim={sim} runtime={runtime} />
             {/* Dynamic World Elements */}
-            <R3FFoliage sim={sim} runtime={runtime} />
+            {perfExperiment().foliage && (
+              <R3FFoliage sim={sim} runtime={runtime} />
+            )}
             <ZoneManager sim={sim} runtime={runtime} />
             <R3FPlayerCar sim={sim} />
             <R3FAvatars
@@ -757,10 +771,12 @@ function R3FWorld({
             far={20}
             color="#000000"
           />
-          <EffectComposer>
-            <Bloom luminanceThreshold={1} mipmapBlur intensity={1.5} />
-            <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-          </EffectComposer>
+          {perfExperiment().postProcessing && (
+            <EffectComposer>
+              <Bloom luminanceThreshold={1} mipmapBlur intensity={1.5} />
+              <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+            </EffectComposer>
+          )}
         </>
       )}
     </>
