@@ -269,7 +269,12 @@ export function FirstPersonController({
       const gridZ = pos.z / 4 + terrainSize / 2;
       // Guard against the RENDERED surface, not the raw sim height — leveling overrides
       // (pads, graded roads, terraforming) are where the visible mesh actually is.
-      const terrainHeight = leveledWorldYAt(terrain, terrainLevel, gridX, gridZ);
+      const terrainHeight = leveledWorldYAt(
+        terrain,
+        terrainLevel,
+        gridX,
+        gridZ,
+      );
 
       if (pos.y < terrainHeight - 0.5) {
         rigidBody.current.setTranslation(

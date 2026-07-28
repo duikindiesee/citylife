@@ -83,7 +83,11 @@ describe("ROAD.JUNCTIONS.1 — bus stops sit on the verge, not the carriageway",
 
   it("puts no residual offset in the pole/sign local transforms", () => {
     // The lane-relative correction must live in the group placement, not a hardcoded child nudge.
-    const g = buildStop(identityOpts, stop, stopVergeDirection(eastWestLoop, stop));
+    const g = buildStop(
+      identityOpts,
+      stop,
+      stopVergeDirection(eastWestLoop, stop),
+    );
     for (const child of g.children) {
       expect(child.position.z).toBeCloseTo(0, 9);
       expect(child.position.x).toBeCloseTo(0, 9);
