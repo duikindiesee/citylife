@@ -82,7 +82,11 @@ function protrusions(seed: number): Violation[] {
     // Interior samples: the centroid and the three edge midpoints. A flat triangle interpolates
     // linearly, so these are exactly the points the old geometry could not keep above ground.
     const samples = [
-      [(a[0]! + b[0]! + c[0]!) / 3, (a[1]! + b[1]! + c[1]!) / 3, (a[2]! + b[2]! + c[2]!) / 3],
+      [
+        (a[0]! + b[0]! + c[0]!) / 3,
+        (a[1]! + b[1]! + c[1]!) / 3,
+        (a[2]! + b[2]! + c[2]!) / 3,
+      ],
       [(a[0]! + b[0]!) / 2, (a[1]! + b[1]!) / 2, (a[2]! + b[2]!) / 2],
       [(b[0]! + c[0]!) / 2, (b[1]! + c[1]!) / 2, (b[2]! + c[2]!) / 2],
       [(a[0]! + c[0]!) / 2, (a[1]! + c[1]!) / 2, (a[2]! + c[2]!) / 2],
