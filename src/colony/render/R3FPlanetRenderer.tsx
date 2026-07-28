@@ -838,6 +838,71 @@ export class PlanetRenderer {
   ): string | null {
     return null;
   }
+  /**
+   * BUG.CAPTURE.1 — the live camera pose in ROOT/world space (the space three.js actually uses).
+   * `up` is read off the camera quaternion rather than `camera.up`, so any roll is captured too, and
+   * `target` prefers the MapControls target so an orbit capture replays around the same pivot.
+   * Read-only: nothing here mutates the camera, the controls or the sim.
+   */
+  cameraPose(): {
+    position: { x: number; y: number; z: number };
+    target: { x: number; y: number; z: number };
+    up: { x: number; y: number; z: number };
+    fovDeg: number;
+    near: number;
+    far: number;
+    aspect: number;
+  } | null {
+    const { camera, controls, gl } = r3fProbe;
+    const perspective = camera as THREE.PerspectiveCamera | null;
+    if (!perspective?.isPerspectiveCamera) return null;
+    perspective.updateMatrixWorld();
+    const position = perspective.getWorldPosition(new THREE.Vector3());
+    const forward = perspective.getWorldDirection(new THREE.Vector3());
+    const target =
+      controls?.target && !controls.target.equals(position)
+        ? controls.target.clone()
+        : position.clone().add(forward.multiplyScalar(10));
+    const up = new THREE.Vector3(0, 1, 0)
+      .applyQuaternion(perspective.quaternion)
+      .normalize();
+    const size = gl?.getSize(new THREE.Vector2());
+    const aspect =
+      perspective.aspect > 0
+        ? perspective.aspect
+        : size && size.y > 0
+          ? size.x / size.y
+          : 1;
+    return {
+      position: { x: position.x, y: position.y, z: position.z },
+      target: { x: target.x, y: target.y, z: target.z },
+      up: { x: up.x, y: up.y, z: up.z },
+      fovDeg: perspective.fov,
+      near: perspective.near,
+      far: perspective.far,
+      aspect,
+    };
+  }
+
+  /** BUG.CAPTURE.1 — drawing-buffer size the capture was framed at. Null before the canvas mounts. */
+  viewport(): {
+    width: number;
+    height: number;
+    devicePixelRatio: number;
+  } | null {
+    const gl = r3fProbe.gl;
+    if (!gl) return null;
+    const size = gl.getSize(new THREE.Vector2());
+    const width = Math.max(1, Math.round(size.x));
+    const height = Math.max(1, Math.round(size.y));
+    const devicePixelRatio = gl.getPixelRatio();
+    return {
+      width,
+      height,
+      devicePixelRatio: devicePixelRatio > 0 ? devicePixelRatio : 1,
+    };
+  }
+
   capturePNG(): string | null {
     // Spec 131 — the HUD snapshot button. R3F does not preserve the drawing buffer, so
     // render one fresh frame straight through the base renderer (no postprocessing) and
