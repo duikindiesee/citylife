@@ -14,7 +14,7 @@
 //     the slab existed to hide, the same way the painted markings already do at +50/60mm.
 // Pure geometry — node-testable; R3FRoadRibbons draws the merged output.
 import type { Terrain } from "../terrain";
-import type { JunctionZone } from "./roadJunctions";
+import type { JunctionArm, JunctionZone } from "./roadJunctions";
 import { convexHull, pointInConvexPoly, pointInPoly, nearPoly } from "./geom2d";
 import { Biome } from "../terrain";
 
@@ -280,6 +280,148 @@ const quad = (
   out.push(...w[0]!, ...w[1]!, ...w[2]!, ...w[0]!, ...w[2]!, ...w[3]!);
 };
 
+/** ROAD.JUNCTION.PAINT.1 — how far apart two arm headings must be to count as SEPARATE
+ *  approaches for painting purposes. */
+export const PAINT_APPROACH_MERGE_DEG = 30;
+
+/** Convex-polygon overlap by the separating-axis theorem. Both inputs must be convex and
+ *  wound consistently; used to guarantee two painted bands never share ground. */
+function convexOverlap(
+  a: Array<[number, number]>,
+  b: Array<[number, number]>,
+  eps = 1e-6,
+): boolean {
+  for (const poly of [a, b]) {
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i]!,
+        q = poly[(i + 1) % poly.length]!;
+      // outward axis = edge normal
+      const nx = -(q[1] - p[1]),
+        ny = q[0] - p[0];
+      const len = Math.hypot(nx, ny);
+      if (len < 1e-12) continue;
+      const ax = nx / len,
+        ay = ny / len;
+      let aMin = Infinity,
+        aMax = -Infinity,
+        bMin = Infinity,
+        bMax = -Infinity;
+      for (const v of a) {
+        const d = v[0] * ax + v[1] * ay;
+        if (d < aMin) aMin = d;
+        if (d > aMax) aMax = d;
+      }
+      for (const v of b) {
+        const d = v[0] * ax + v[1] * ay;
+        if (d < bMin) bMin = d;
+        if (d > bMax) bMax = d;
+      }
+      // a gap on ANY axis proves disjoint
+      if (aMax <= bMin + eps || bMax <= aMin + eps) return false;
+    }
+  }
+  return true;
+}
+
+/** ROAD.JUNCTION.PAINT.1 — the APPROACHES of a junction, for painting.
+ *
+ *  `zone.arms` carries one arm per way-SIDE, which is right for kerb geometry but wrong
+ *  for paint. Several ways converging on one event — or two near-parallel ways crossing
+ *  shallowly — leave a BUNDLE of arms whose headings differ by a few degrees (measured on
+ *  origin/main: seed 7 zone 0 has 8 arms spread across a 70 degree fan). capCrosswalks and
+ *  capStopBars emitted a full band per ARM, so each bundle painted a stack of overlapping
+ *  zebras plus stray diagonal slashes at angles no real road marking takes.
+ *
+ *  A marking belongs to an APPROACH, not to a way. Cluster the arms by outward heading
+ *  (single linkage over the circle at PAINT_APPROACH_MERGE_DEG) and return ONE arm per
+ *  cluster: the widest road's REAL heading, never an average — an averaged heading can
+ *  point where no road actually goes. Ties break deterministically so the paint is stable
+ *  across rebuilds. Kerb/cap geometry still uses the full `zone.arms` and is untouched. */
+export function paintApproaches(zone: JunctionZone): JunctionArm[] {
+  const arms = zone.arms;
+  if (arms.length <= 1) return [...arms];
+  const merge = (PAINT_APPROACH_MERGE_DEG * Math.PI) / 180;
+  // sort by heading so single-linkage is a single walk around the circle
+  const order = arms
+    .map((a, i) => ({ a, i, th: Math.atan2(a.uy, a.ux) }))
+    .sort((p, q) => p.th - q.th || p.i - q.i);
+  const groups: (typeof order)[] = [];
+  for (const item of order) {
+    const last = groups[groups.length - 1];
+    if (last && item.th - last[last.length - 1]!.th <= merge) last.push(item);
+    else groups.push([item]);
+  }
+  // close the circle: the last group may link back to the first across +/-PI
+  if (groups.length > 1) {
+    const first = groups[0]!,
+      last = groups[groups.length - 1]!;
+    if (first[0]!.th + 2 * Math.PI - last[last.length - 1]!.th <= merge) {
+      first.unshift(...last);
+      groups.pop();
+    }
+  }
+  // representative = widest carriageway, then furthest mouth, then lowest way index
+  return groups.map((g) => {
+    const rep = g.reduce((best, cur) =>
+      cur.a.half !== best.a.half
+        ? cur.a.half > best.a.half
+          ? cur
+          : best
+        : cur.a.mouthD !== best.a.mouthD
+          ? cur.a.mouthD > best.a.mouthD
+            ? cur
+            : best
+          : cur.a.wayIdx < best.a.wayIdx
+            ? cur
+            : best,
+    ).a;
+    // "terminating" is a property of the APPROACH: if any way in the bundle ends here,
+    // traffic on this approach stops here, so the stop bar must still be drawn.
+    const terminating = g.some((x) => x.a.terminating);
+    return terminating === rep.terminating ? rep : { ...rep, terminating };
+  });
+}
+
+/** Zebra band constants — one place, so the plan-view evidence renderer
+ *  (scripts/junctionPaintPlan.ts) can never drift from what actually gets drawn. */
+export const ZEBRA = { K: 5, depth: 1.3, stripeHalf: 0.16 } as const;
+
+/** Where one approach's zebra band sits: centre, the along/across unit axes, and the
+ *  band's outer footprint (used for the non-overlap guard and for plan-view evidence). */
+export function zebraBand(
+  zone: JunctionZone,
+  a: JunctionArm,
+): {
+  bx: number;
+  by: number;
+  span: number;
+  px: number;
+  py: number;
+  foot: Array<[number, number]>;
+} {
+  const { depth, stripeHalf: sw } = ZEBRA;
+  const px = -a.uy,
+    py = a.ux;
+  const bx = zone.cx + a.ux * (a.mouthD + 0.2 + depth / 2);
+  const by = zone.cy + a.uy * (a.mouthD + 0.2 + depth / 2);
+  const span = a.half * 0.82;
+  const hs = span + sw,
+    hd = depth / 2;
+  return {
+    bx,
+    by,
+    span,
+    px,
+    py,
+    foot: [
+      [bx + a.ux * hd + px * hs, by + a.uy * hd + py * hs],
+      [bx + a.ux * hd - px * hs, by + a.uy * hd - py * hs],
+      [bx - a.ux * hd - px * hs, by - a.uy * hd - py * hs],
+      [bx - a.ux * hd + px * hs, by - a.uy * hd + py * hs],
+    ],
+  };
+}
+
 /** Zebra crossings anchored to the arm MOUTHS (never the old blocky suppression edge):
  *  a band of stripes parallel to travel, just outside the cap, correctly rotated on
  *  diagonal arms. Emits into the merged junction-paint array. */
@@ -291,21 +433,21 @@ export function capCrosswalks(
   if (zone.kind === "bend") return;
   const yOf = (x: number, y: number) =>
     Math.max(0, opts.roadY(x, y)) + CAP_PAINT_LIFT;
-  const K = 5,
-    depth = 1.3,
-    sw = 0.16;
-  for (const a of zone.arms) {
-    const px = -a.uy,
-      py = a.ux;
-    const bx = zone.cx + a.ux * (a.mouthD + 0.2 + depth / 2);
-    const by = zone.cy + a.uy * (a.mouthD + 0.2 + depth / 2);
-    const span = a.half * 0.82;
+  const { K, depth, stripeHalf: sw } = ZEBRA;
+  // ONE band per approach (see paintApproaches), not one per way-arm.
+  const accepted: Array<Array<[number, number]>> = [];
+  for (const a of paintApproaches(zone)) {
+    const { bx, by, span, px, py, foot } = zebraBand(zone, a);
     let ok = true;
     for (let k = 0; k < K && ok; k++) {
       const ca = (k / (K - 1) - 0.5) * 2 * span;
       if (!cellOk(opts.terrain, bx + px * ca, by + py * ca)) ok = false;
     }
     if (!ok) continue;
+    // Clustering removes the fan; this is the belt-and-braces guarantee that two bands
+    // never share ground even on a cramped junction.
+    if (accepted.some((f) => convexOverlap(f, foot))) continue;
+    accepted.push(foot);
     for (let k = 0; k < K; k++) {
       const ca = (k / (K - 1) - 0.5) * 2 * span;
       const sx = bx + px * ca,
@@ -349,8 +491,14 @@ export function capStopBars(
   if (zone.kind === "bend") return;
   const yOf = (x: number, y: number) =>
     Math.max(0, opts.roadY(x, y)) + CAP_PAINT_LIFT;
+  // Per APPROACH, not per way-arm — a bundle of near-parallel arms otherwise stacked a
+  // pile of stop bars in the same place (ROAD.JUNCTION.PAINT.1).
+  const approaches = paintApproaches(zone);
   const arms =
-    zone.kind === "cross" ? zone.arms : zone.arms.filter((a) => a.terminating);
+    zone.kind === "cross"
+      ? approaches
+      : approaches.filter((a) => a.terminating);
+  const acceptedBars: Array<Array<[number, number]>> = [];
   for (const a of arms) {
     // left of travel INTO the junction (t = -u): L = (-uy, ux)... for t=(-ux,-uy):
     // left(t) = (t.y, -t.x) = (-a.uy, a.ux)
@@ -362,6 +510,26 @@ export function capStopBars(
     if (!cellOk(opts.terrain, bx, by)) continue;
     const halfLen = a.half / 2; // bar spans the approach half only
     const halfDepth = 0.0625; // 0.5 m
+    const foot: Array<[number, number]> = [
+      [
+        bx + Lx * halfLen + a.ux * halfDepth,
+        by + Ly * halfLen + a.uy * halfDepth,
+      ],
+      [
+        bx - Lx * halfLen + a.ux * halfDepth,
+        by - Ly * halfLen + a.uy * halfDepth,
+      ],
+      [
+        bx - Lx * halfLen - a.ux * halfDepth,
+        by - Ly * halfLen - a.uy * halfDepth,
+      ],
+      [
+        bx + Lx * halfLen - a.ux * halfDepth,
+        by + Ly * halfLen - a.uy * halfDepth,
+      ],
+    ];
+    if (acceptedBars.some((f) => convexOverlap(f, foot))) continue;
+    acceptedBars.push(foot);
     quad(
       out,
       [
