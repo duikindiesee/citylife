@@ -61,7 +61,7 @@ export function R3FPerfProbe() {
     const context = gl.getContext();
     const timer = new GpuFrameTimer(
       typeof WebGL2RenderingContext !== "undefined" &&
-        context instanceof WebGL2RenderingContext
+      context instanceof WebGL2RenderingContext
         ? context
         : null,
     );
@@ -115,7 +115,8 @@ export function R3FPerfProbe() {
     const session = perfSession();
     if (!session) return;
     const world = rapier?.world as unknown as
-      { step: (...args: unknown[]) => unknown } | undefined;
+      | { step: (...args: unknown[]) => unknown }
+      | undefined;
     if (!world || typeof world.step !== "function") return;
     const originalStep = world.step.bind(world);
     world.step = (...args: unknown[]) => {

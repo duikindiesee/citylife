@@ -119,4 +119,4 @@ trivial 1600x900 clear-only WebGL2 canvas in the same browser (so a harness-impo
 cannot be mistaken for a game cost). On this box those read 60.1 and 60.3 fps.
 
 Spec 158's investigation is the worked example of why the split matters: the first-person
-frame was 93% *blocked*, not busy, and every renderer-side hypothesis was wrong.
+frame was 93% _blocked_, not busy, and every renderer-side hypothesis was wrong.

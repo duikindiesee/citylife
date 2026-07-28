@@ -13,7 +13,7 @@ Three previous investigations in this lane fixed a plausible cause before measur
 two of those fixes made the game measurably worse and were reverted. The lesson is not "try
 harder"; it is that the repository had **no way to measure a frame**. `docs/VERIFY-GPU.md`
 could count frames over four seconds, which is enough to tell 3 FPS from 60 FPS but tells you
-nothing about *where a frame went*, and nothing at all about a stutter — a stutter is a
+nothing about _where a frame went_, and nothing at all about a stutter — a stutter is a
 property of the worst 1% of frames, and an average hides it by construction.
 
 So this spec ships the instrument first and the conclusion second:
@@ -22,25 +22,25 @@ So this spec ships the instrument first and the conclusion second:
    split, draw calls, triangles, resident instance counts and the physics step cost;
 2. a **movement trace** recorder and a deterministic replay, so a stutter can be reproduced
    and A/B-ed instead of described;
-3. **measurement knobs** so a candidate cause can be switched off and weighed *without
-   editing the renderer* — otherwise every hypothesis test is itself a code change, and the
+3. **measurement knobs** so a candidate cause can be switched off and weighed _without
+   editing the renderer_ — otherwise every hypothesis test is itself a code change, and the
    "before" is gone before you have measured it.
 
 ## 2. What ships
 
-| Module | Role |
-| --- | --- |
-| `src/colony/perf/perfFlags.ts` | Arming. `?perf=1` (HUD visible), `?perf=armed` (armed, hidden), `localStorage citylife.perf`. Default **off**. |
-| `src/colony/perf/perfMonitor.ts` | Fixed-size frame-sample ring + the statistics (p50/p95/p99, 1% low, spike count, shadow-frame split). Framework-agnostic. |
-| `src/colony/perf/gpuTimer.ts` | Real GPU frame time via `EXT_disjoint_timer_query_webgl2`; reports `-1` where unavailable. |
-| `src/colony/perf/movementTrace.ts` | Trace format, recorder, deterministic time-sampled replay, and a closed-form canonical walk. |
-| `src/colony/perf/sceneCensus.ts` | Resident-instance census: instances per layer and how many cast shadows. |
-| `src/colony/perf/perfExperiment.ts` | The measurement knobs (`window.__perfExperiment`). Every knob defaults to shipped behaviour. |
-| `src/colony/perf/perfSession.ts` | Ties them together; publishes `window.__perf`. |
-| `src/colony/perf/PerfHudOverlay.tsx` | The HUD, mounted into its own DOM root (not into `ColonyApp`). |
-| `src/colony/render/R3FPerfProbe.tsx` | The renderer-side hookup: patches the draw submission and the Rapier step, samples each frame. |
-| `src/colony/ui/worldLayoutOperatorCapture.ts` | The fix: gates the world-layout capture on the operator surface that displays it being on screen. |
-| `scripts/perf-trace-probe.mjs` | The automated harness: boots on a real GPU, replays the canonical trace, prints the numbers. Also `--bisect`, `--host-bisect`, `--emit-anatomy`, `--profile`, `--raw-fps`. |
+| Module                                        | Role                                                                                                                                                                       |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/colony/perf/perfFlags.ts`                | Arming. `?perf=1` (HUD visible), `?perf=armed` (armed, hidden), `localStorage citylife.perf`. Default **off**.                                                             |
+| `src/colony/perf/perfMonitor.ts`              | Fixed-size frame-sample ring + the statistics (p50/p95/p99, 1% low, spike count, shadow-frame split). Framework-agnostic.                                                  |
+| `src/colony/perf/gpuTimer.ts`                 | Real GPU frame time via `EXT_disjoint_timer_query_webgl2`; reports `-1` where unavailable.                                                                                 |
+| `src/colony/perf/movementTrace.ts`            | Trace format, recorder, deterministic time-sampled replay, and a closed-form canonical walk.                                                                               |
+| `src/colony/perf/sceneCensus.ts`              | Resident-instance census: instances per layer and how many cast shadows.                                                                                                   |
+| `src/colony/perf/perfExperiment.ts`           | The measurement knobs (`window.__perfExperiment`). Every knob defaults to shipped behaviour.                                                                               |
+| `src/colony/perf/perfSession.ts`              | Ties them together; publishes `window.__perf`.                                                                                                                             |
+| `src/colony/perf/PerfHudOverlay.tsx`          | The HUD, mounted into its own DOM root (not into `ColonyApp`).                                                                                                             |
+| `src/colony/render/R3FPerfProbe.tsx`          | The renderer-side hookup: patches the draw submission and the Rapier step, samples each frame.                                                                             |
+| `src/colony/ui/worldLayoutOperatorCapture.ts` | The fix: gates the world-layout capture on the operator surface that displays it being on screen.                                                                          |
+| `scripts/perf-trace-probe.mjs`                | The automated harness: boots on a real GPU, replays the canonical trace, prints the numbers. Also `--bisect`, `--host-bisect`, `--emit-anatomy`, `--profile`, `--raw-fps`. |
 
 Everything is inert when the flag is off: the probe mounts, sees no session, and returns
 before it patches anything.
@@ -61,7 +61,7 @@ amount of optimising the walker will move it.
 
 ### Replay is pose-driven
 
-Re-simulating recorded *input* through Rapier cannot be bit-exact — the step consumes
+Re-simulating recorded _input_ through Rapier cannot be bit-exact — the step consumes
 wall-clock deltas, so two runs diverge within a second and stop being comparable. Replay
 therefore drives the walker from the recorded **pose** track, which reproduces the exact
 camera path, which is what determines the render workload, which is what an A/B is comparing.
@@ -76,15 +76,15 @@ on every run (a SwiftShader number is refused by the harness).
 
 ### 3.1 It is not the CPU, and it is not the walker
 
-| | baseline |
-| --- | --- |
-| fps mean / 1% low | 6.4 / 1.7 |
-| frame p50 / p99 / max | 258.9 / 592.2 / 592.2 ms |
-| **cpu (frame start -> first draw)** | **1.23 ms** |
-| draw submit | 18.67 ms |
-| gpu (scene, timer query) | 19.83 ms |
-| **physics step (Rapier)** | **0.13 ms** |
-| **wait / present** | **136.49 ms** |
+|                                     | baseline                 |
+| ----------------------------------- | ------------------------ |
+| fps mean / 1% low                   | 6.4 / 1.7                |
+| frame p50 / p99 / max               | 258.9 / 592.2 / 592.2 ms |
+| **cpu (frame start -> first draw)** | **1.23 ms**              |
+| draw submit                         | 18.67 ms                 |
+| gpu (scene, timer query)            | 19.83 ms                 |
+| **physics step (Rapier)**           | **0.13 ms**              |
+| **wait / present**                  | **136.49 ms**            |
 
 Candidate 1 is answered: the first-person frame spends **1.2 ms** in JavaScript and **0.13 ms**
 in physics. Ground sampling, `leveledWorldYAt`, the walker capsule and the sim step are not
@@ -96,13 +96,13 @@ The task named foliage residency as the leading candidate: 75,486 instances full
 seed 4242, all of them shadow casters. The census confirms the count (75,188 foliage instances
 of 75,234 total, all castShadow). The cost does not.
 
-| run | knob | fps mean | frame p50 | triangles |
-| --- | --- | --- | --- | --- |
-| A baseline | shipped | 6.4 | 258.9 ms | 1,252,532 |
-| B | `shadows=false` (shadow map never refreshed) | 6.5 | 249.5 ms | 1,067,513 |
-| C | `foliageShadow=false` (75k casters removed from the shadow pass) | 6.4 | 254.2 ms | 1,058,610 |
-| D | `foliage=false` (**the whole 75k-instance layer removed**) | 6.9 | 242.6 ms | 314,594 |
-| E | `postProcessing=false` (no Bloom / tone mapping) | 6.5 | 250.4 ms | 1,254,047 |
+| run        | knob                                                             | fps mean | frame p50 | triangles |
+| ---------- | ---------------------------------------------------------------- | -------- | --------- | --------- |
+| A baseline | shipped                                                          | 6.4      | 258.9 ms  | 1,252,532 |
+| B          | `shadows=false` (shadow map never refreshed)                     | 6.5      | 249.5 ms  | 1,067,513 |
+| C          | `foliageShadow=false` (75k casters removed from the shadow pass) | 6.4      | 254.2 ms  | 1,058,610 |
+| D          | `foliage=false` (**the whole 75k-instance layer removed**)       | 6.9      | 242.6 ms  | 314,594   |
+| E          | `postProcessing=false` (no Bloom / tone mapping)                 | 6.5      | 250.4 ms  | 1,254,047 |
 
 Deleting every conifer in the world — three quarters of a million triangles, 75,188 shadow
 casters — buys **0.5 fps**. Distance culling, LOD or streamed hydration of foliage would have
@@ -114,31 +114,31 @@ spec with a different justification.
 The shadow-cadence hypothesis was equally attractive and equally wrong. The frame trace shows
 a clean 4-frame period (`gl.shadowMap.needsUpdate` is set every 4th frame in
 `DayNightCycle`), and shadow frames average 285 ms against 115 ms for the rest — so the
-cadence *looks* exactly like the cause. Switching the shadow refresh off entirely (run B)
+cadence _looks_ exactly like the cause. Switching the shadow refresh off entirely (run B)
 changes nothing. The periodicity is real; the causation is not.
 
 ### 3.3 It is not fill rate, and the harness is not the ceiling
 
 `--host-bisect`, same session, 4-second windows:
 
-| probe | fps | frame mean |
-| --- | --- | --- |
-| control | 7.8 | 127.5 ms |
-| React UI root `display:none` | 7.8 | 127.5 ms |
-| sim paused (`runtime.setPaused`) | 7.6 | 131.7 ms |
-| viewport 1024x576 | 7.9 | 126.6 ms |
-| viewport 640x360 | 7.7 | 130.6 ms |
-| **viewport 320x180** | **8.1** | **123.6 ms** |
-| blank page, rAF ceiling | 60.2 | — |
-| trivial 1600x900 WebGL2 clear-only canvas | 60.3 | — |
-| the game with NO instrumentation at all (`?skipauth=1`, plain rAF count) | 7.5 / 7.6 | — |
+| probe                                                                    | fps       | frame mean   |
+| ------------------------------------------------------------------------ | --------- | ------------ |
+| control                                                                  | 7.8       | 127.5 ms     |
+| React UI root `display:none`                                             | 7.8       | 127.5 ms     |
+| sim paused (`runtime.setPaused`)                                         | 7.6       | 131.7 ms     |
+| viewport 1024x576                                                        | 7.9       | 126.6 ms     |
+| viewport 640x360                                                         | 7.7       | 130.6 ms     |
+| **viewport 320x180**                                                     | **8.1**   | **123.6 ms** |
+| blank page, rAF ceiling                                                  | 60.2      | —            |
+| trivial 1600x900 WebGL2 clear-only canvas                                | 60.3      | —            |
+| the game with NO instrumentation at all (`?skipauth=1`, plain rAF count) | 7.5 / 7.6 | —            |
 
 Three controls that the earlier investigations never had:
 
 - shrinking the render target by **25x** changes nothing, so it is not fill rate;
 - a trivial WebGL canvas in the same browser at the same size hits **60.3 fps**, so it is not
   the harness's present path;
-- the page with the perf flag *off entirely* is equally slow, so it is not the instrument
+- the page with the perf flag _off entirely_ is equally slow, so it is not the instrument
   measuring itself.
 
 A cost that is invariant to both resolution and geometry, with ~1 ms of JavaScript in the
@@ -148,17 +148,17 @@ render window, is not rendering work at all.
 
 `--host-bisect` again, with one more probe:
 
-| probe | fps | frame mean | p99 |
-| --- | --- | --- | --- |
-| control | 7.8 | 127.5 ms | 268.5 ms |
+| probe                                           | fps      | frame mean  | p99         |
+| ----------------------------------------------- | -------- | ----------- | ----------- |
+| control                                         | 7.8      | 127.5 ms    | 268.5 ms    |
 | **UI heartbeat stubbed (`runtime.emit` no-op)** | **60.2** | **16.6 ms** | **18.7 ms** |
 
 `--emit-anatomy`, 5-second windows, `PerformanceObserver('longtask')`:
 
-| | long tasks | total | longest |
-| --- | --- | --- | --- |
-| control | 22 | 4,849 ms | 254 ms |
-| emit stubbed | 0 | 0 ms | 0 ms |
+|              | long tasks | total    | longest |
+| ------------ | ---------- | -------- | ------- |
+| control      | 22         | 4,849 ms | 254 ms  |
+| emit stubbed | 0          | 0 ms     | 0 ms    |
 
 **97% of the main thread was inside long tasks**, each ~200-254 ms, arriving at the 200 ms
 heartbeat's cadence. `getUiState()` — the obvious suspect — costs **0.04 ms** and is not
@@ -202,18 +202,18 @@ re-capture at click time, so operator actions still work against a live document
 
 Identical canonical 12-second walk, same machine, same harness, 60 warm-up frames discarded:
 
-| | before | after | |
-| --- | --- | --- | --- |
-| fps mean | 6.4 | **50.6** | 7.9x |
-| fps 1% low | 1.7 | **7.3** | 4.3x |
-| frame p50 | 258.90 ms | **16.90 ms** | 15.3x |
-| frame p95 | 308.60 ms | **30.80 ms** | 10.0x |
-| frame p99 | 592.20 ms | **40.60 ms** | 14.6x |
-| frames >33 ms | 41 of 78 (52.6%) | **22 of 608 (3.6%)** | |
-| frames rendered in the 12 s trace | 78 | **608** | |
-| cpu (frame start -> first draw) | 1.23 ms | 0.77 ms | |
-| physics step | 0.13 ms | 0.08 ms | |
-| long tasks per 5 s | 22, totalling 4,849 ms | **0, totalling 0 ms** | |
+|                                   | before                 | after                 |       |
+| --------------------------------- | ---------------------- | --------------------- | ----- |
+| fps mean                          | 6.4                    | **50.6**              | 7.9x  |
+| fps 1% low                        | 1.7                    | **7.3**               | 4.3x  |
+| frame p50                         | 258.90 ms              | **16.90 ms**          | 15.3x |
+| frame p95                         | 308.60 ms              | **30.80 ms**          | 10.0x |
+| frame p99                         | 592.20 ms              | **40.60 ms**          | 14.6x |
+| frames >33 ms                     | 41 of 78 (52.6%)       | **22 of 608 (3.6%)**  |       |
+| frames rendered in the 12 s trace | 78                     | **608**               |       |
+| cpu (frame start -> first draw)   | 1.23 ms                | 0.77 ms               |       |
+| physics step                      | 0.13 ms                | 0.08 ms               |       |
+| long tasks per 5 s                | 22, totalling 4,849 ms | **0, totalling 0 ms** |       |
 
 Scene content is byte-identical across the two runs — 75,234 instances, 75,227 of them shadow
 casters, ~1.23 M triangles. Nothing was removed from the world.

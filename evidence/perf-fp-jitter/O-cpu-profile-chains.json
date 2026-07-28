@@ -106,10 +106,7 @@
       "renderRootSync > workLoopSync > performUnitOfWork > runWithFiberInDEV > run > beginWork > updateFunctionComponent > renderWithHooks > react_stack_bottom_frame > ColonyApp > captureWorldLayout > seededWorldSurvey > createWorldSurvey > addRoadNetwork",
       1718
     ],
-    [
-      "(root)",
-      509
-    ],
+    ["(root)", 509],
     [
       "performUnitOfWork > runWithFiberInDEV > run > beginWork > updateFunctionComponent > renderWithHooks > react_stack_bottom_frame > ColonyApp > captureWorldLayout > createWorldLayoutDocument > parseV1 > (anon) > placement > cells",
       444
