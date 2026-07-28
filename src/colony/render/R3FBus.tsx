@@ -8,6 +8,7 @@ import type { BusPose } from "../transit/busFleet";
 import {
   buildBusLayer,
   buildStop,
+  stopVergeDirection,
   makeBusRig,
   BUS_ROAD_LIFT,
   type BusLayer,
@@ -131,7 +132,11 @@ export function R3FBus({ sim, runtime }: R3FBusProps) {
           );
           for (const s of route.stops)
             group.add(
-              buildStop({ wx: world.wx, wz: world.wz, roadY: world.roadY }, s),
+              buildStop(
+                { wx: world.wx, wz: world.wz, roadY: world.roadY },
+                s,
+                stopVergeDirection(route.loop, s),
+              ),
             );
           const poses = runtime.busPoses();
           const rigs: BusRig[] = [];

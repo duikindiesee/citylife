@@ -127,7 +127,8 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
   group.name = "Bus";
   const rig = makeBusRig(opts);
   group.add(rig.group);
-  for (const s of opts.route.stops) group.add(buildStop(opts, s));
+  for (const s of opts.route.stops)
+    group.add(buildStop(opts, s, stopVergeDirection(opts.route.loop, s)));
 
   let dist = 0; // arc length (cells) along the loop
   let last = -1;
@@ -597,13 +598,60 @@ function addLights(
   }
 }
 
+/** Rendered carriageway half-width in CELLS for the bus route's roads, plus a kerb clearance.
+ *  Route roads are authored `width: 4` cells (runtime.ts road construction), i.e. 16 m wide, so the
+ *  drive lane reaches 2.0 cells (8 m) either side of the centre-line. A stop pole must stand clear
+ *  of that, on the verge. */
+export const STOP_VERGE_OFFSET_CELLS = 2.25;
+
+/** Unit verge direction (grid space) at a stop: perpendicular to the route's local travel
+ *  direction, so the shelter always steps SIDEWAYS off the carriageway whichever way the road runs.
+ *
+ *  The stop furniture used to be nudged a fixed +3.2 world metres along +Z regardless of road
+ *  heading. That is inside a 16 m carriageway on ANY orientation, and on a north-south road the
+ *  offset points straight DOWN the lane — the "bus stops placed in carriageways" defect. Deriving
+ *  the offset from the route polyline's own tangent is the shared contract that fixes every stop.
+ *
+ *  Pure and deterministic: the side is the left of travel (SA left-hand drive near-side kerb, the
+ *  same convention the junction furniture uses), and a degenerate/︎single-point loop falls back to
+ *  +Z so a stop is never rendered without a verge. */
+export function stopVergeDirection(
+  loop: readonly { x: number; y: number }[],
+  s: { x: number; y: number },
+): { x: number; y: number } {
+  const n = loop.length;
+  if (n < 2) return { x: 0, y: 1 };
+  let best = 0;
+  let bestD = Infinity;
+  for (let i = 0; i < n; i++) {
+    const d = (loop[i]!.x - s.x) ** 2 + (loop[i]!.y - s.y) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  // Central difference over the CLOSED loop gives the local travel direction at the stop.
+  const prev = loop[(best - 1 + n) % n]!;
+  const next = loop[(best + 1) % n]!;
+  const tx = next.x - prev.x;
+  const ty = next.y - prev.y;
+  const len = Math.hypot(tx, ty);
+  if (len < 1e-9) return { x: 0, y: 1 };
+  // Left of travel: rotate the unit tangent +90 degrees in grid space.
+  return { x: -ty / len, y: tx / len };
+}
+
 export function buildStop(
   opts: Pick<BusLayerOptions, "wx" | "wz" | "roadY">,
   s: { x: number; y: number },
+  verge: { x: number; y: number },
 ): THREE.Group {
   const g = new THREE.Group();
-  const baseY = Math.max(0, opts.roadY(s.x, s.y));
-  g.position.set(opts.wx(s.x), baseY, opts.wz(s.y));
+  // Stand the whole stop on the VERGE cell, not the lane cell, and sit it on the ground there.
+  const gx = s.x + verge.x * STOP_VERGE_OFFSET_CELLS;
+  const gy = s.y + verge.y * STOP_VERGE_OFFSET_CELLS;
+  const baseY = Math.max(0, opts.roadY(gx, gy));
+  g.position.set(opts.wx(gx), baseY, opts.wz(gy));
   const poleMat = new THREE.MeshStandardMaterial({
     color: 0x3a3f4a,
     roughness: 0.7,
@@ -618,10 +666,10 @@ export function buildStop(
     new THREE.CylinderGeometry(0.06, 0.07, 3.0, 8),
     poleMat,
   );
-  pole.position.set(0, 1.5, 3.2);
+  pole.position.set(0, 1.5, 0);
   pole.castShadow = true;
   const sign = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.08), signMat);
-  sign.position.set(0, 3.0, 3.2);
+  sign.position.set(0, 3.0, 0);
   g.add(pole, sign);
   return g;
 }
