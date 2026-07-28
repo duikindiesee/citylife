@@ -1,0 +1,102 @@
+[
+  {
+    "name": "addRoadNetwork",
+    "where": "colony/worldSurvey.ts:402",
+    "percent": 12.14411113655446
+  },
+  {
+    "name": "(garbage collector)",
+    "where": ":0",
+    "percent": 2.8929089382489885
+  },
+  {
+    "name": "canonicalJson",
+    "where": "spatial/worldLayoutDocument.ts:848",
+    "percent": 2.7326158308526067
+  },
+  {
+    "name": "canonicalJson",
+    "where": "spatial/worldLayoutDocument.ts:848",
+    "percent": 2.5875887336844516
+  },
+  {
+    "name": "canonicalJson",
+    "where": "spatial/worldLayoutDocument.ts:848",
+    "percent": 2.5875887336844516
+  },
+  {
+    "name": "canonicalJson",
+    "where": "spatial/worldLayoutDocument.ts:848",
+    "percent": 2.5723227234562245
+  },
+  {
+    "name": "sha256",
+    "where": "spatial/worldLayoutDocument.ts:723",
+    "percent": 2.5341576978856577
+  },
+  {
+    "name": "sha256",
+    "where": "spatial/worldLayoutDocument.ts:723",
+    "percent": 2.4959926723150905
+  },
+  {
+    "name": "sha256",
+    "where": "spatial/worldLayoutDocument.ts:723",
+    "percent": 2.488359667200977
+  },
+  {
+    "name": "canonicalJson",
+    "where": "spatial/worldLayoutDocument.ts:848",
+    "percent": 2.4730936569727504
+  },
+  {
+    "name": "sha256",
+    "where": "spatial/worldLayoutDocument.ts:723",
+    "percent": 2.4654606518586366
+  },
+  {
+    "name": "canonicalJson",
+    "where": "spatial/worldLayoutDocument.ts:848",
+    "percent": 2.434928631402183
+  },
+  {
+    "name": "sha256",
+    "where": "spatial/worldLayoutDocument.ts:723",
+    "percent": 2.4272956262880694
+  },
+  {
+    "name": "cells",
+    "where": "spatial/worldLayoutDocument.ts:234",
+    "percent": 2.419662621173956
+  },
+  {
+    "name": "sha256",
+    "where": "spatial/worldLayoutDocument.ts:723",
+    "percent": 2.4120296160598427
+  },
+  {
+    "name": "canonicalJson",
+    "where": "spatial/worldLayoutDocument.ts:848",
+    "percent": 2.381497595603389
+  },
+  {
+    "name": "cells",
+    "where": "spatial/worldLayoutDocument.ts:234",
+    "percent": 2.3204335546904815
+  },
+  {
+    "name": "placement",
+    "where": "spatial/worldLayoutDocument.ts:265",
+    "percent": 1.877719258071903
+  },
+  {
+    "name": "placement",
+    "where": "spatial/worldLayoutDocument.ts:265",
+    "percent": 1.7784901915884284
+  },
+  {
+    "name": "cells",
+    "where": "spatial/worldLayoutDocument.ts:234",
+    "percent": 1.343408900083963
+  }
+]

@@ -1,0 +1,314 @@
+{
+  "rows": {
+    "control": {
+      "frames": 32,
+      "windowSec": 4.0805,
+      "fpsMean": 7.842176203896582,
+      "fpsLow1": 3.7243947858473,
+      "frameMeanMs": 127.515625,
+      "frameP50Ms": 8.400000000372529,
+      "frameP95Ms": 261.8999999994412,
+      "frameP99Ms": 268.5,
+      "frameMaxMs": 268.5,
+      "cpuMeanMs": 1.1312500000058208,
+      "drawMeanMs": 5.30937499992433,
+      "gpuMeanMs": 7.181648749999999,
+      "physicsMeanMs": 0.2437499999650754,
+      "drawCallsMean": 71.25,
+      "trianglesMean": 1106692,
+      "spikeCount": 16,
+      "spikeRatio": 0.5,
+      "shadowFrameMeanMs": 244.48750000004657,
+      "nonShadowFrameMeanMs": 88.52499999998447,
+      "shadowFrames": 8
+    },
+    "uiHidden": {
+      "frames": 32,
+      "windowSec": 4.080400000000372,
+      "fpsMean": 7.842368395254651,
+      "fpsLow1": 2.8719126938525705,
+      "frameMeanMs": 127.51250000001164,
+      "frameP50Ms": 13.399999999441206,
+      "frameP95Ms": 289.09999999962747,
+      "frameP99Ms": 348.20000000018626,
+      "frameMaxMs": 348.20000000018626,
+      "cpuMeanMs": 0.8250000000116415,
+      "drawMeanMs": 5.009375000052387,
+      "gpuMeanMs": 7.09160875,
+      "physicsMeanMs": 0.20624999998835847,
+      "drawCallsMean": 71.25,
+      "trianglesMean": 1106692,
+      "spikeCount": 16,
+      "spikeRatio": 0.5,
+      "shadowFrameMeanMs": 237.01250000006985,
+      "nonShadowFrameMeanMs": 91.01249999999224,
+      "shadowFrames": 8
+    },
+    "simPaused": {
+      "frames": 31,
+      "windowSec": 4.0827000000001865,
+      "fpsMean": 7.593014426727064,
+      "fpsLow1": 3.51000350999892,
+      "frameMeanMs": 131.700000000006,
+      "frameP50Ms": 215.40000000037253,
+      "frameP95Ms": 269.20000000018626,
+      "frameP99Ms": 284.90000000037253,
+      "frameMaxMs": 284.90000000037253,
+      "cpuMeanMs": 1.100000000078111,
+      "drawMeanMs": 5.190322580506965,
+      "gpuMeanMs": 7.147023225806452,
+      "physicsMeanMs": 0.30645161293326845,
+      "drawCallsMean": 71.45161290322581,
+      "trianglesMean": 1112782.3548387096,
+      "spikeCount": 16,
+      "spikeRatio": 0.5161290322580645,
+      "shadowFrameMeanMs": 249.2874999998603,
+      "nonShadowFrameMeanMs": 90.80000000005668,
+      "shadowFrames": 8
+    },
+    "emitStubbed": {
+      "frames": 242,
+      "windowSec": 4.019299999999814,
+      "fpsMean": 60.209489214542636,
+      "fpsLow1": 50.37783375409406,
+      "frameMeanMs": 16.608677685949644,
+      "frameP50Ms": 16.600000000558794,
+      "frameP95Ms": 17.90000000037253,
+      "frameP99Ms": 18.700000000186265,
+      "frameMaxMs": 20.799999999813735,
+      "cpuMeanMs": 0.7739669421402937,
+      "drawMeanMs": 4.307024793395357,
+      "gpuMeanMs": 7.175575165289257,
+      "physicsMeanMs": 0.10495867770288356,
+      "drawCallsMean": 71.19834710743801,
+      "trianglesMean": 1105131.6611570248,
+      "spikeCount": 0,
+      "spikeRatio": 0,
+      "shadowFrameMeanMs": 16.848333333292977,
+      "nonShadowFrameMeanMs": 16.52967032968261,
+      "shadowFrames": 60
+    },
+    "gamepadStubbed": {
+      "frames": 36,
+      "windowSec": 4.195600000000558,
+      "fpsMean": 8.580417580321098,
+      "fpsLow1": 3.780718336483932,
+      "frameMeanMs": 116.54444444445997,
+      "frameP50Ms": 16.100000000558794,
+      "frameP95Ms": 261.70000000018626,
+      "frameP99Ms": 264.5,
+      "frameMaxMs": 264.5,
+      "cpuMeanMs": 0.8722222222584404,
+      "drawMeanMs": 4.661111111209418,
+      "gpuMeanMs": 6.988042222222222,
+      "physicsMeanMs": 0.16111111120941737,
+      "drawCallsMean": 71.25,
+      "trianglesMean": 1106692,
+      "spikeCount": 17,
+      "spikeRatio": 0.4722222222222222,
+      "shadowFrameMeanMs": 59.28888888874402,
+      "nonShadowFrameMeanMs": 135.62962962969863,
+      "shadowFrames": 9
+    },
+    "viewport1024": {
+      "frames": 32,
+      "windowSec": 4.0517999999998136,
+      "fpsMean": 7.897724468137981,
+      "fpsLow1": 3.6363636363636362,
+      "frameMeanMs": 126.61874999999418,
+      "frameP50Ms": 10.5,
+      "frameP95Ms": 274.5,
+      "frameP99Ms": 275,
+      "frameMaxMs": 275,
+      "cpuMeanMs": 0.9624999999359716,
+      "drawMeanMs": 4.749999999970896,
+      "gpuMeanMs": 4.3520975,
+      "physicsMeanMs": 0.19687500002328306,
+      "drawCallsMean": 71.25,
+      "trianglesMean": 1106692,
+      "spikeCount": 16,
+      "spikeRatio": 0.5,
+      "shadowFrameMeanMs": 8.70000000006985,
+      "nonShadowFrameMeanMs": 165.92499999996895,
+      "shadowFrames": 8
+    },
+    "viewport640": {
+      "frames": 32,
+      "windowSec": 4.180600000000559,
+      "fpsMean": 7.65440367411274,
+      "fpsLow1": 3.6363636363636362,
+      "frameMeanMs": 130.64375000001746,
+      "frameP50Ms": 9.900000000372529,
+      "frameP95Ms": 269,
+      "frameP99Ms": 275,
+      "frameMaxMs": 275,
+      "cpuMeanMs": 0.8281249999708962,
+      "drawMeanMs": 4.478125000052387,
+      "gpuMeanMs": 3.100799375,
+      "physicsMeanMs": 0.23437499994179234,
+      "drawCallsMean": 71.25,
+      "trianglesMean": 1106692,
+      "spikeCount": 16,
+      "spikeRatio": 0.5,
+      "shadowFrameMeanMs": 8.275000000023283,
+      "nonShadowFrameMeanMs": 171.43333333334886,
+      "shadowFrames": 8
+    },
+    "viewport320": {
+      "frames": 34,
+      "windowSec": 4.200700000000186,
+      "fpsMean": 8.093889113718783,
+      "fpsLow1": 3.89408099688756,
+      "frameMeanMs": 123.55000000000548,
+      "frameP50Ms": 14.900000000372529,
+      "frameP95Ms": 256.09999999962747,
+      "frameP99Ms": 256.79999999981374,
+      "frameMaxMs": 256.79999999981374,
+      "cpuMeanMs": 0.8617647058768746,
+      "drawMeanMs": 4.111764705876874,
+      "gpuMeanMs": 1.6209605882352935,
+      "physicsMeanMs": 0.20000000002191348,
+      "drawCallsMean": 71.61764705882354,
+      "trianglesMean": 1117797.9411764706,
+      "spikeCount": 17,
+      "spikeRatio": 0.5,
+      "shadowFrameMeanMs": 241.6444444442168,
+      "nonShadowFrameMeanMs": 81.0360000000894,
+      "shadowFrames": 9
+    },
+    "harnessCeilingFps": 60.20890160334934
+  },
+  "census": {
+    "layers": [
+      {
+        "name": "foliage",
+        "instances": 75188,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 7,
+        "castShadow": false
+      },
+      {
+        "name": "tarentaal-chicks",
+        "instances": 6,
+        "castShadow": true
+      },
+      {
+        "name": "tarentaal-adults",
+        "instances": 4,
+        "castShadow": true
+      },
+      {
+        "name": "avatar-bodies",
+        "instances": 3,
+        "castShadow": true
+      },
+      {
+        "name": "avatar-heads",
+        "instances": 3,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 3,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 3,
+        "castShadow": true
+      },
+      {
+        "name": "pedestrian-bodies",
+        "instances": 2,
+        "castShadow": true
+      },
+      {
+        "name": "pedestrian-heads",
+        "instances": 2,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 2,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 2,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 2,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-bench",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-lamppost",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-planter",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-fountain",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-shade_tree",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-notice_board",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "artifact-wayfinder",
+        "instances": 1,
+        "castShadow": true
+      },
+      {
+        "name": "porter-piles",
+        "instances": 0,
+        "castShadow": true
+      },
+      {
+        "name": "porter-carts",
+        "instances": 0,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 0,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 0,
+        "castShadow": true
+      },
+      {
+        "name": "(unnamed instanced)",
+        "instances": 0,
+        "castShadow": true
+      }
+    ],
+    "instances": 75234,
+    "shadowInstances": 75227,
+    "meshes": 1203,
+    "shadowMeshes": 615
+  }
+}

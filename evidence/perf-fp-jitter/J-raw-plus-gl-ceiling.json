@@ -1,0 +1,8 @@
+{
+  "rawFps": [
+    7.523411669208301,
+    7.626870049867996
+  ],
+  "trivialFps": 60.287486609692415,
+  "renderer": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+}

@@ -7,6 +7,7 @@ import { findJunctionZones } from "./roadJunctions";
 import { useSimSignal, type SimBridge } from "./useSimSignal";
 import { foliageSignature } from "./simSignals";
 import { buildIronworkHikePath, ironworkPillarCell } from "../ironworkPillar";
+import { perfExperiment } from "../perf/perfExperiment";
 
 interface R3FFoliageProps {
   sim: ColonySim;
@@ -155,7 +156,9 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
       ref={meshRef}
       name="foliage"
       args={[geometry, material, matrices.length]}
-      castShadow
+      // Spec 158 — shadow casting is a measurement knob so the shadow pass can be weighed
+      // against the colour pass without editing this file. Shipped default: true.
+      castShadow={perfExperiment().foliageShadow}
       receiveShadow
     />
   );

@@ -95,3 +95,28 @@ screenshot wants.
 | real GPU FPS            | 3.2                            | 60.4          |
 | SwiftShader FPS (floor) | 0.9                            | 1.5           |
 | scene meshes            | 70,869                         | 204           |
+
+## Frame-budget probe (spec 158)
+
+The FPS probe above answers "how fast", not "where did the frame go". For that, and for a
+reproducible movement, use `scripts/perf-trace-probe.mjs` — it boots the world on the real
+GPU, replays a deterministic canonical walk, and reports the CPU/GPU/wait split, 1% lows,
+per-frame spikes and the resident-instance census. Modes:
+
+```
+node scripts/perf-trace-probe.mjs --port 5631 --seconds 12 --label before --out before.json
+node scripts/perf-trace-probe.mjs --port 5631 --set foliage=false      # weigh a candidate cause
+node scripts/perf-trace-probe.mjs --port 5631 --bisect                 # per-scene-layer attribution
+node scripts/perf-trace-probe.mjs --port 5631 --host-bisect            # outside the WebGL scene
+node scripts/perf-trace-probe.mjs --port 5631 --emit-anatomy           # long tasks + getUiState cost
+node scripts/perf-trace-probe.mjs --port 5631 --profile                # CDP sampling profile + call chains
+node scripts/perf-trace-probe.mjs --port 5631 --raw-fps                # no instrumentation, plus a trivial-canvas ceiling
+```
+
+Two controls the probe runs for you, and which any perf claim needs: `--raw-fps` measures the
+page with the perf flag OFF (so the instrument cannot be measuring itself) and also times a
+trivial 1600x900 clear-only WebGL2 canvas in the same browser (so a harness-imposed ceiling
+cannot be mistaken for a game cost). On this box those read 60.1 and 60.3 fps.
+
+Spec 158's investigation is the worked example of why the split matters: the first-person
+frame was 93% *blocked*, not busy, and every renderer-side hypothesis was wrong.
