@@ -30,6 +30,41 @@ export function leveledWorldY(
   return terrainLevel?.get(y * terrain.size + x) ?? terrain.worldY(x, y);
 }
 
+/**
+ * The rendered ground height at a FRACTIONAL grid position, interpolated the way the terrain mesh
+ * actually reconstructs its surface: bilinearly from the four surrounding integer cell corners.
+ *
+ * `leveledWorldY` answers per CELL, which is correct for cell-indexed work but wrong for anything
+ * that moves continuously across the world. Sampling it with `Math.round(...)` snaps to the nearest
+ * cell centre, so a walker clamped that way stands on a 4 m PLATEAU staircase while the mesh under
+ * their feet is a smooth ramp — the height jumps every time they cross a cell boundary. That is the
+ * "bumpy when I walk over the road" report: it is worst beside roads, where the leveling map has the
+ * sharpest cell-to-cell deltas (road grading plus its skirt ramp).
+ *
+ * Out-of-range corners clamp to the edge cell, so positions at the world boundary stay finite.
+ */
+export function leveledWorldYAt(
+  terrain: LeveledTerrain,
+  terrainLevel: ReadonlyMap<number, number> | null | undefined,
+  gx: number,
+  gy: number,
+): number {
+  const n = terrain.size;
+  const clamp = (v: number) => Math.max(0, Math.min(n - 1, v));
+  const x0 = Math.floor(gx);
+  const y0 = Math.floor(gy);
+  const fx = gx - x0;
+  const fy = gy - y0;
+  const at = (x: number, y: number) =>
+    leveledWorldY(terrain, terrainLevel, clamp(x), clamp(y));
+  return (
+    at(x0, y0) * (1 - fx) * (1 - fy) +
+    at(x0 + 1, y0) * fx * (1 - fy) +
+    at(x0, y0 + 1) * (1 - fx) * fy +
+    at(x0 + 1, y0 + 1) * fx * fy
+  );
+}
+
 export interface CoastalCommercialDryBlendOptions {
   next: Map<number, number>;
   n: number;
