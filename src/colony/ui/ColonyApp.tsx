@@ -1313,9 +1313,9 @@ export function ColonyApp() {
     });
   const worldLayoutDirty = Boolean(
     capturedWorldLayout &&
-    worldLayoutHead &&
-    capturedWorldLayout.revision.contentHash !==
-      worldLayoutHead.document.revision.contentHash,
+      worldLayoutHead &&
+      capturedWorldLayout.revision.contentHash !==
+        worldLayoutHead.document.revision.contentHash,
   );
   const worldLayoutOperatorStatus: WorldLayoutOperatorStatus = captureError
     ? "error"
