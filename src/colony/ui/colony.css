@@ -2068,8 +2068,8 @@ body.tv-mode .radio-iframe.is-visible {
   border-radius: 12px;
   background: rgba(6, 16, 22, 0.82);
   backdrop-filter: blur(8px);
-  font-family:
-    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
+    monospace;
   font-size: 10px;
   line-height: 1.45;
   color: #d8ecf6;
