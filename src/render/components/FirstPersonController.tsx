@@ -7,7 +7,10 @@ import {
 } from "@react-three/rapier";
 import { Vector3, Euler, Quaternion } from "three";
 import { COLONY } from "../../colony/config";
-import { leveledWorldY } from "../../colony/render/terrainLeveling";
+import {
+  leveledWorldY,
+  leveledWorldYAt,
+} from "../../colony/render/terrainLeveling";
 import { getSmoothRoadY } from "../../colony/render/roadSurface";
 import { BUS_ROAD_LIFT } from "../../colony/render/busLayer";
 import {
@@ -259,17 +262,14 @@ export function FirstPersonController({
     const terrain = sim?.state?.terrain;
     if (terrain) {
       const terrainSize = terrain.size;
-      const gridX = Math.max(
-        0,
-        Math.min(terrainSize - 1, Math.round(pos.x / 4 + terrainSize / 2)),
-      );
-      const gridZ = Math.max(
-        0,
-        Math.min(terrainSize - 1, Math.round(pos.z / 4 + terrainSize / 2)),
-      );
+      // FRACTIONAL grid position, interpolated bilinearly below. Rounding to the nearest cell here
+      // clamped the walker to a 4 m plateau staircase while the visible mesh ramps smoothly between
+      // corners — the "bumpy walking over the road" report.
+      const gridX = pos.x / 4 + terrainSize / 2;
+      const gridZ = pos.z / 4 + terrainSize / 2;
       // Guard against the RENDERED surface, not the raw sim height — leveling overrides
       // (pads, graded roads, terraforming) are where the visible mesh actually is.
-      const terrainHeight = leveledWorldY(terrain, terrainLevel, gridX, gridZ);
+      const terrainHeight = leveledWorldYAt(terrain, terrainLevel, gridX, gridZ);
 
       if (pos.y < terrainHeight - 0.5) {
         rigidBody.current.setTranslation(
