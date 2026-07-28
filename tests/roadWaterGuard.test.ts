@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
+import { STATION_STEP_CELLS } from "../src/colony/render/roadClearance";
 import { Biome } from "../src/colony/terrain";
 import type { Terrain } from "../src/colony/terrain";
 import {
@@ -96,13 +97,15 @@ describe("road-on-water guard", () => {
       width: 4,
     };
 
-    const smoothed = densify(chaikin(way.path, 2), 1.5);
+    const smoothed = densify(chaikin(way.path, 2), STATION_STEP_CELLS);
     expect(
       smoothed.some(
         (p) => water[Math.round(p.y) * size + Math.round(p.x)] === 1,
       ),
     ).toBe(true);
-    expect(roadRibbonRenderPath(way, terrain)).toEqual(densify(way.path, 1.5));
+    expect(roadRibbonRenderPath(way, terrain)).toEqual(
+      densify(way.path, STATION_STEP_CELLS),
+    );
   });
 
   it("keeps the seed 4242 Woods1 connector visibly continuous", () => {
@@ -117,7 +120,7 @@ describe("road-on-water guard", () => {
     });
     expect(way).toBeDefined();
     expect(roadRibbonRenderPath(way!, terrain)).toEqual(
-      densify(way!.path, 1.5),
+      densify(way!.path, STATION_STEP_CELLS),
     );
   });
 });
