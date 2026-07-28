@@ -83,6 +83,7 @@ import {
   type WorldLayoutOperatorStatus,
 } from "./BuilderPanel";
 import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
+import { GeoReadout } from "./GeoReadout";
 import "./colony.css";
 import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
 import {
@@ -730,6 +731,13 @@ export function ColonyApp() {
   }, []);
   const hostRef = useRef<HTMLDivElement>(null);
   const ui: ColonyUiState = runtime.getUiState();
+  // BUG.GEO.1 — resolved fresh each render from the authoritative frame graph, never cached: a stale
+  // marker on a screenshot is exactly the failure this readout exists to prevent. Resolution is a
+  // handful of frame-transform walks; it deliberately does NOT build the full world survey.
+  const presenceReadout =
+    typeof runtime.presenceReadout === "function"
+      ? runtime.presenceReadout()
+      : null;
   const citizenCopy = citizenHudCopy({
     awake: ui.citizens.awake,
     count: ui.citizens.count,
@@ -2032,6 +2040,8 @@ export function ColonyApp() {
         </div>
       </header>
       <BusNetworkMiniMap runtime={runtime} />
+      {/* BUG.GEO.1 — presence readout, so any screenshot of this frame is self-locating. */}
+      {presenceReadout && <GeoReadout readout={presenceReadout} />}
       {!builderActive && !worldViewActive && (
         <aside
           className={hudClassName(ui.firstPerson.active)}
