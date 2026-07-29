@@ -3,7 +3,7 @@
 - **Status:** proposed for review.
 - **Depends on:** spec 146 (the world metric system — 1 world unit = 1 m, 1 cell = 4 m),
   spec 104 (first-person walk tuning), spec 149 (the walker capsule + bus ride pinning).
-- **Supersedes the transit half of:** spec 162 (BUS.SPEED.1) — see "Relationship to spec 162".
+- **Supersedes the transit half of:** BUS.SPEED.1 — see "Relationship to BUS.SPEED.1".
 - **Design provenance:** operator report, "the bus is slower than I can walk", re-diagnosed.
 
 ## The defect, measured
@@ -117,25 +117,30 @@ fleet cruises 7.47 m/s. Measured on the real booted route (loop 1728.3 cells, 5 
 The dwell (`stopDwellMin: 1.5` = 22.5 real seconds) is **deliberately not cut**: it is the boarding
 window a player needs to walk up and press E, and it is owned by the boarding work (BUS.BOARD.1).
 
-## Relationship to spec 162
+## Relationship to BUS.SPEED.1
 
-Spec 162 (BUS.SPEED.1) diagnosed the same operator report as a **transit** defect and proposed
+BUS.SPEED.1 diagnosed the same operator report as a **transit** defect and proposed
 `busSpeedCellsPerMin: 28 → 84` (22.4 m/s = **80 km/h**), sized entirely against the 10 m/s capsule.
 It explicitly filed this units mismatch as a "Known adjacent defect, NOT fixed here… correcting it
 changes walk feel across the whole game. Filed separately." **This is that follow-up, and it inverts
 the diagnosis:** the bus was never the larger error. The player was moving at 36 km/h.
 
-With the player corrected, spec 162's tuning would leave the bus **6.6× walking pace**. Its test
+With the player corrected, that tuning would leave the bus **6.6× walking pace**. Its test
 discriminations (`expect(preFix).toBeLessThan(WALK_MPS)`) also invert, because the pre-fix bus
-(7.47 m/s) comfortably beats a 3.4 m/s walk. This spec therefore supersedes spec 162's transit
+(7.47 m/s) comfortably beats a 3.4 m/s walk. This spec therefore supersedes BUS.SPEED.1's transit
 tuning and replaces `tests/busFeltSpeed.test.ts` with a version measured against the player's **top**
-speed. Spec 162's genuinely orthogonal contributions — `REAL_SECONDS_PER_SOL_MINUTE`, the
+speed. Its genuinely orthogonal contributions — `REAL_SECONDS_PER_SOL_MINUTE`, the
 `busCruiseSpeedMps`/`busLegSpeedMps` helpers, and its repair of the wall-clock-contaminated bound in
 `busSolContinuousMotion.test.ts` — are kept and carried here.
 
-At the time of writing spec 162 is unmerged and uncommitted (stashed on branch
+At the time of writing BUS.SPEED.1 is unmerged and uncommitted (stashed on branch
 `claude-citylife/busspeed`); `PLAYER_WALK_SPEED_MPS` exists in no committed branch. Its owner should
 re-decide the fleet number against this anchor rather than against the 10 m/s capsule.
+
+**It is referred to by its ID, not by a number, on purpose.** BUS.SPEED.1 drafted itself as
+"spec 162" while that number was free, but PR #427 (BUG.TRACK.1) landed on `main` first and
+`docs/specs/162-bug-record-lifecycle-and-validated-fix.md` now owns 162. Its spec file therefore
+needs renumbering before it lands, and nothing here cites the contested number.
 
 ## Tests
 
