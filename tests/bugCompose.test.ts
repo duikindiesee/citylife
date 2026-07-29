@@ -44,7 +44,13 @@ const CAPTURE = Object.freeze({
   captureId: "bugcap_9f2a1c0455e10b31",
   recordVersion: 1,
   world: { worldId: "seed-4242", seed: 4242 },
-  sol: { capturedAtMs: 1_785_000_000_000, sol: 312, hour: 9, minute: 30, isDay: true },
+  sol: {
+    capturedAtMs: 1_785_000_000_000,
+    sol: 312,
+    hour: 9,
+    minute: 30,
+    isDay: true,
+  },
   viewport: { width: 3840, height: 2160, devicePixelRatio: 2 },
   composeSteps: 3,
 });
@@ -55,9 +61,17 @@ const LAYER = Object.freeze({
   captureId: CAPTURE.captureId,
   viewport: CAPTURE.viewport,
   annotations: Object.freeze([
-    { kind: "arrow", id: "mark-1", style: { color: "red", strokeWidth: 0.004 } },
+    {
+      kind: "arrow",
+      id: "mark-1",
+      style: { color: "red", strokeWidth: 0.004 },
+    },
     { kind: "box", id: "mark-2", style: { color: "red", strokeWidth: 0.004 } },
-    { kind: "arrow", id: "mark-3", style: { color: "red", strokeWidth: 0.004 } },
+    {
+      kind: "arrow",
+      id: "mark-3",
+      style: { color: "red", strokeWidth: 0.004 },
+    },
   ]),
   nextOrdinal: 4,
 });
@@ -67,9 +81,12 @@ const STEPS = [
   "Walk north along Harbour Road to the first junction",
   "Stand on the north-east corner and look down at the kerb",
 ];
-const TITLE = "Kerb cap overshoots the carriageway at the Harbour Road junction";
-const EXPECTED = "The kerb should stop at the carriageway edge and the paint should stay straight";
-const ACTUAL = "The cap sticks about half a metre into the road and the paint jumps sideways";
+const TITLE =
+  "Kerb cap overshoots the carriageway at the Harbour Road junction";
+const EXPECTED =
+  "The kerb should stop at the carriageway edge and the paint should stay straight";
+const ACTUAL =
+  "The cap sticks about half a metre into the road and the paint jumps sideways";
 
 function readyDraft(): BugComposeDraft {
   return openBugComposeDraft({
@@ -77,7 +94,8 @@ function readyDraft(): BugComposeDraft {
     steps: STEPS,
     expected: EXPECTED,
     actual: ACTUAL,
-    bodyMarkdown: "Seen on two junctions.\n\n```mermaid\nflowchart TD\n  A[walk] --> B[look]\n```",
+    bodyMarkdown:
+      "Seen on two junctions.\n\n```mermaid\nflowchart TD\n  A[walk] --> B[look]\n```",
     evidence: attachBugEvidence(CAPTURE, LAYER),
   });
 }
@@ -109,7 +127,12 @@ const identity = {
 const REAL_FRAMES = new Map<string, SpatialFrame>(
   (
     [
-      { id: "universe", parentId: undefined, kind: "universe", layer: "surface" },
+      {
+        id: "universe",
+        parentId: undefined,
+        kind: "universe",
+        layer: "surface",
+      },
       { id: "world", parentId: "universe", kind: "world", layer: "surface" },
       { id: "surface", parentId: "world", kind: "region", layer: "surface" },
     ] as const
@@ -160,14 +183,20 @@ describe("bugCompose — the BUG.CAPTURE.1 seam holds against the real record", 
     expect(evidence.worldId).toBe("seed-4242");
     expect(evidence.seed).toBe(4242);
     expect(evidence.sol).toBe(capture.sol.sol);
-    expect(evidence.viewport).toEqual({ width: 1920, height: 1080, devicePixelRatio: 2 });
+    expect(evidence.viewport).toEqual({
+      width: 1920,
+      height: 1080,
+      devicePixelRatio: 2,
+    });
   });
 
   it("binds a real capture to a layer that names it, and refuses one that does not", () => {
     const capture = realCapture();
     const layer = { ...LAYER, captureId: capture.captureId };
     expect(attachBugEvidence(capture, layer).markCount).toBe(3);
-    expect(() => attachBugEvidence(capture, LAYER)).toThrowError(/bound to capture/);
+    expect(() => attachBugEvidence(capture, LAYER)).toThrowError(
+      /bound to capture/,
+    );
   });
 
   it("carries the real capture through a filed report and its round-trip", () => {
@@ -228,7 +257,9 @@ describe("bugCompose — structural attachment to capture and annotation evidenc
     // layer. The failure this prevents is invisible to every later reviewer: arrows presented over an
     // image they were never drawn on.
     const other = { ...LAYER, captureId: "bugcap_deadbeefdeadbeef" };
-    expect(() => attachBugEvidence(CAPTURE, other)).toThrowError(/bound to capture/);
+    expect(() => attachBugEvidence(CAPTURE, other)).toThrowError(
+      /bound to capture/,
+    );
     try {
       attachBugEvidence(CAPTURE, other);
       expect.unreachable("mismatched layer must be refused");
@@ -291,8 +322,13 @@ describe("bugCompose — the prompt chatbox", () => {
     // verbatim record; the single-line FIELD additionally collapses runs of whitespace, which is the
     // only transformation this module performs on reporter text and the reason fields cannot carry
     // block structure into the canonical Markdown.
-    const typed = "press *E*  then the door `sticks` — 50% of the time, \"every\" time #4";
-    const draft = answerBugComposePrompt(openBugComposeDraft(), "title.missing", typed);
+    const typed =
+      'press *E*  then the door `sticks` — 50% of the time, "every" time #4';
+    const draft = answerBugComposePrompt(
+      openBugComposeDraft(),
+      "title.missing",
+      typed,
+    );
     expect(draft.transcript).toEqual([
       {
         turn: 0,
@@ -312,7 +348,11 @@ describe("bugCompose — the prompt chatbox", () => {
     const sentinel = "ZZ-SENTINEL-9137";
     const drafts = [
       openBugComposeDraft({ title: sentinel }),
-      openBugComposeDraft({ title: sentinel, steps: [sentinel], expected: sentinel }),
+      openBugComposeDraft({
+        title: sentinel,
+        steps: [sentinel],
+        expected: sentinel,
+      }),
       openBugComposeDraft({
         title: sentinel,
         steps: [`${sentinel} one`, `${sentinel} two`],
@@ -343,15 +383,30 @@ describe("bugCompose — the prompt chatbox", () => {
     expect(assessBugReportReadiness(same).blocking.map((p) => p.id)).toEqual([
       "expected-actual.identical",
     ]);
-    const different = setBugComposeActual(same, "The door stays shut and no message appears");
+    const different = setBugComposeActual(
+      same,
+      "The door stays shut and no message appears",
+    );
     expect(assessBugReportReadiness(different).ready).toBe(true);
   });
 
   it("blocks a noise phrase but not a specific negative observation (two-sided)", () => {
-    const base = openBugComposeDraft({ title: TITLE, steps: STEPS, expected: EXPECTED });
-    for (const noise of ["broken", "It doesn't work.", "  BAD  ", "n/a", "see screenshot"])
+    const base = openBugComposeDraft({
+      title: TITLE,
+      steps: STEPS,
+      expected: EXPECTED,
+    });
+    for (const noise of [
+      "broken",
+      "It doesn't work.",
+      "  BAD  ",
+      "n/a",
+      "see screenshot",
+    ])
       expect(
-        assessBugReportReadiness(setBugComposeActual(base, noise)).blocking.map((p) => p.id),
+        assessBugReportReadiness(setBugComposeActual(base, noise)).blocking.map(
+          (p) => p.id,
+        ),
       ).toEqual(["actual.noise"]);
     // The mirror case is what makes the check usable: "nothing happens" is a real observation and
     // must sail through, or reporters learn to fight the assistant.
@@ -359,7 +414,9 @@ describe("bugCompose — the prompt chatbox", () => {
       "Nothing happens when I press E and the prompt stays on screen",
       "The bus drives through the depot wall",
     ])
-      expect(assessBugReportReadiness(setBugComposeActual(base, real)).ready).toBe(true);
+      expect(
+        assessBugReportReadiness(setBugComposeActual(base, real)).ready,
+      ).toBe(true);
   });
 
   it("flags a one-word step as advice without blocking the report", () => {
@@ -376,14 +433,21 @@ describe("bugCompose — the prompt chatbox", () => {
   });
 
   it("asks for marks once a capture with no annotations is attached", () => {
-    const draft = attachBugComposeEvidence(readyDraft(), attachBugEvidence(CAPTURE));
+    const draft = attachBugComposeEvidence(
+      readyDraft(),
+      attachBugEvidence(CAPTURE),
+    );
     expect(nextBugComposePrompt(draft)?.id).toBe("evidence.marks");
     expect(assessBugReportReadiness(draft).ready).toBe(true);
   });
 
   it("refuses to answer a prompt that is closed by an action, not by typing", () => {
     try {
-      answerBugComposePrompt(readyDraft(), "evidence.marks", "I drew one, promise");
+      answerBugComposePrompt(
+        readyDraft(),
+        "evidence.marks",
+        "I drew one, promise",
+      );
       expect.unreachable("evidence prompts are not answerable");
     } catch (error) {
       expect((error as BugComposeError).code).toBe("PROMPT_NOT_ANSWERABLE");
@@ -407,7 +471,11 @@ describe("bugCompose — the prompt chatbox", () => {
 
 describe("bugCompose — committing a report", () => {
   it("refuses to commit while a blocking gap remains", () => {
-    const thin = openBugComposeDraft({ title: TITLE, steps: STEPS, expected: EXPECTED });
+    const thin = openBugComposeDraft({
+      title: TITLE,
+      steps: STEPS,
+      expected: EXPECTED,
+    });
     try {
       commitBugReport(thin, { filedAtMs: 1 });
       expect.unreachable("a report with no ACTUAL must not commit");
@@ -464,8 +532,14 @@ describe("bugCompose — the report is self-verifying", () => {
     };
     const mutations: Record<string, typeof base> = {
       title: { ...base, title: `${base.title}.` },
-      "steps.text": { ...base, steps: [...base.steps.slice(0, 2), "different"] },
-      "steps.order": { ...base, steps: [base.steps[1], base.steps[0], base.steps[2]] },
+      "steps.text": {
+        ...base,
+        steps: [...base.steps.slice(0, 2), "different"],
+      },
+      "steps.order": {
+        ...base,
+        steps: [base.steps[1], base.steps[0], base.steps[2]],
+      },
       "steps.count": { ...base, steps: base.steps.slice(0, 2) },
       expected: { ...base, expected: `${base.expected} exactly` },
       actual: { ...base, actual: `${base.actual} exactly` },
@@ -480,12 +554,20 @@ describe("bugCompose — the report is self-verifying", () => {
         evidence: { ...base.evidence!, layerId: "buganl_0000000000000000" },
       },
       "evidence.sol": { ...base, evidence: { ...base.evidence!, sol: 313 } },
-      "evidence.markCount": { ...base, evidence: { ...base.evidence!, markCount: 2 } },
+      "evidence.markCount": {
+        ...base,
+        evidence: { ...base.evidence!, markCount: 2 },
+      },
       "evidence.dropped": { ...base, evidence: null },
       "transcript.answer": {
         ...base,
         transcript: [
-          { turn: 0, promptId: "title.missing" as const, question: "q", answer: "other" },
+          {
+            turn: 0,
+            promptId: "title.missing" as const,
+            question: "q",
+            answer: "other",
+          },
         ],
       },
     };
@@ -535,7 +617,10 @@ describe("bugCompose — the report is self-verifying", () => {
   });
 
   it("rejects an unknown report version", () => {
-    const wire = JSON.parse(serializeBugReport(committed())) as Record<string, unknown>;
+    const wire = JSON.parse(serializeBugReport(committed())) as Record<
+      string,
+      unknown
+    >;
     wire.reportVersion = 99;
     expect(() => parseBugReport(JSON.stringify(wire))).toThrowError(/version/);
   });
@@ -571,7 +656,9 @@ describe("bugCompose — canonical Markdown", () => {
       { filedAtMs: 7 },
     );
     const markdown = renderBugReportMarkdown(forged);
-    const headings = markdown.split("\n").filter((line) => line === "## Expected");
+    const headings = markdown
+      .split("\n")
+      .filter((line) => line === "## Expected");
     expect(headings).toHaveLength(1);
     expect(markdown).toContain("\\## Expected it works fine, nothing to see");
     // Two-sided: an ordinary field is NOT escaped, so the escape is a targeted defence rather than a
@@ -581,10 +668,17 @@ describe("bugCompose — canonical Markdown", () => {
 
   it("says plainly when no capture is attached", () => {
     const report = commitBugReport(
-      openBugComposeDraft({ title: TITLE, steps: STEPS, expected: EXPECTED, actual: ACTUAL }),
+      openBugComposeDraft({
+        title: TITLE,
+        steps: STEPS,
+        expected: EXPECTED,
+        actual: ACTUAL,
+      }),
       { filedAtMs: 7 },
     );
-    expect(renderBugReportMarkdown(report)).toContain("- no in-world capture attached");
+    expect(renderBugReportMarkdown(report)).toContain(
+      "- no in-world capture attached",
+    );
   });
 });
 

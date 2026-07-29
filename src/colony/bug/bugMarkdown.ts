@@ -249,7 +249,9 @@ export interface ClassifiedHref {
  */
 export function classifyBugHref(
   raw: string,
-): { ok: true; value: ClassifiedHref } | { ok: false; reason: BugRejectedReferenceReason } {
+):
+  | { ok: true; value: ClassifiedHref }
+  | { ok: false; reason: BugRejectedReferenceReason } {
   const trimmed = raw.trim();
   if (trimmed.length === 0) return { ok: false, reason: "NO_SCHEME" };
   if (trimmed.length > MAX_HREF_CHARS) return { ok: false, reason: "TOO_LONG" };
@@ -257,7 +259,14 @@ export function classifyBugHref(
     const code = ch.codePointAt(0) ?? 0;
     if (code <= 0x20 || code === 0x7f)
       return { ok: false, reason: "UNSAFE_CHARACTERS" };
-    if (ch === "<" || ch === ">" || ch === '"' || ch === "'" || ch === "`" || ch === "\\")
+    if (
+      ch === "<" ||
+      ch === ">" ||
+      ch === '"' ||
+      ch === "'" ||
+      ch === "`" ||
+      ch === "\\"
+    )
       return { ok: false, reason: "UNSAFE_CHARACTERS" };
   }
   const match = /^([A-Za-z][A-Za-z0-9+.-]*):/.exec(trimmed);
@@ -265,7 +274,10 @@ export function classifyBugHref(
   const scheme = match[1].toLowerCase();
   if (!ALLOWED_SCHEMES.has(scheme))
     return { ok: false, reason: "DISALLOWED_SCHEME" };
-  return { ok: true, value: { href: trimmed, scheme: scheme as BugLinkScheme } };
+  return {
+    ok: true,
+    value: { href: trimmed, scheme: scheme as BugLinkScheme },
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -331,7 +343,11 @@ function parseInline(
   while (index < text.length) {
     const ch = text[index];
 
-    if (ch === "\\" && index + 1 < text.length && ESCAPABLE.has(text[index + 1])) {
+    if (
+      ch === "\\" &&
+      index + 1 < text.length &&
+      ESCAPABLE.has(text[index + 1])
+    ) {
       buffer += text[index + 1];
       index += 2;
       continue;
@@ -355,7 +371,10 @@ function parseInline(
     if (ch === "!" && text[index + 1] === "[") {
       const parsed = matchBracketLink(text, index + 1);
       if (parsed) {
-        sink.rejectedImages.push({ raw: parsed.target, reason: "REMOTE_IMAGE" });
+        sink.rejectedImages.push({
+          raw: parsed.target,
+          reason: "REMOTE_IMAGE",
+        });
         buffer += parsed.label;
         index = parsed.end;
         continue;
@@ -394,7 +413,10 @@ function parseInline(
       const closing = text.indexOf(delim, index + 2);
       if (closing > index + 2) {
         buffer = pushText(spans, buffer);
-        spans.push({ kind: "strong", spans: nested(text.slice(index + 2, closing)) });
+        spans.push({
+          kind: "strong",
+          spans: nested(text.slice(index + 2, closing)),
+        });
         index = closing + 2;
         continue;
       }
@@ -404,7 +426,10 @@ function parseInline(
       const closing = text.indexOf(ch, index + 1);
       if (closing > index + 1) {
         buffer = pushText(spans, buffer);
-        spans.push({ kind: "emphasis", spans: nested(text.slice(index + 1, closing)) });
+        spans.push({
+          kind: "emphasis",
+          spans: nested(text.slice(index + 1, closing)),
+        });
         index = closing + 1;
         continue;
       }
@@ -589,7 +614,10 @@ export function renderBugMarkdown(source: string): BugMarkdownDocument {
         parts.push(quote[1]);
         index += 1;
       }
-      push({ kind: "quote", spans: parseInline(parts.join(" ").trim(), sink, 0) });
+      push({
+        kind: "quote",
+        spans: parseInline(parts.join(" ").trim(), sink, 0),
+      });
       continue;
     }
 
@@ -600,7 +628,9 @@ export function renderBugMarkdown(source: string): BugMarkdownDocument {
       const items: string[] = [];
       while (index < lines.length) {
         const current = lines[index];
-        const match = isOrdered ? ORDERED_RE.exec(current) : BULLET_RE.exec(current);
+        const match = isOrdered
+          ? ORDERED_RE.exec(current)
+          : BULLET_RE.exec(current);
         if (match) {
           items.push(match[1]);
           index += 1;
@@ -608,7 +638,8 @@ export function renderBugMarkdown(source: string): BugMarkdownDocument {
         }
         // An indented, non-blank line continues the previous item rather than starting a paragraph.
         if (items.length > 0 && /^\s{2,}\S/.test(current)) {
-          items[items.length - 1] = `${items[items.length - 1]} ${current.trim()}`;
+          items[items.length - 1] =
+            `${items[items.length - 1]} ${current.trim()}`;
           index += 1;
           continue;
         }
@@ -627,7 +658,10 @@ export function renderBugMarkdown(source: string): BugMarkdownDocument {
       paragraph.push(lines[index].trim());
       index += 1;
     }
-    push({ kind: "paragraph", spans: parseInline(paragraph.join(" ").trim(), sink, 0) });
+    push({
+      kind: "paragraph",
+      spans: parseInline(paragraph.join(" ").trim(), sink, 0),
+    });
   }
 
   return deepFreeze({
@@ -641,7 +675,12 @@ export function renderBugMarkdown(source: string): BugMarkdownDocument {
 
 function mermaidBlock(source: string, sink: ParseSink): BugMermaidBlock {
   try {
-    return { kind: "mermaid", source, render: renderMermaidLocally(source), error: null };
+    return {
+      kind: "mermaid",
+      source,
+      render: renderMermaidLocally(source),
+      error: null,
+    };
   } catch (error) {
     const message =
       error instanceof BugMermaidError
@@ -771,17 +810,23 @@ export function bugMarkdownToHtml(document: BugMarkdownDocument): string {
   for (const block of document.blocks) {
     switch (block.kind) {
       case "heading":
-        parts.push(`<h${block.level}>${inlineHtml(block.spans)}</h${block.level}>`);
+        parts.push(
+          `<h${block.level}>${inlineHtml(block.spans)}</h${block.level}>`,
+        );
         break;
       case "paragraph":
         parts.push(`<p>${inlineHtml(block.spans)}</p>`);
         break;
       case "quote":
-        parts.push(`<blockquote><p>${inlineHtml(block.spans)}</p></blockquote>`);
+        parts.push(
+          `<blockquote><p>${inlineHtml(block.spans)}</p></blockquote>`,
+        );
         break;
       case "list": {
         const tag = block.ordered ? "ol" : "ul";
-        const items = block.items.map((item) => `<li>${inlineHtml(item)}</li>`).join("");
+        const items = block.items
+          .map((item) => `<li>${inlineHtml(item)}</li>`)
+          .join("");
         parts.push(`<${tag}>${items}</${tag}>`);
         break;
       }
