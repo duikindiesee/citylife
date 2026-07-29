@@ -88,8 +88,10 @@ function recordingContext(): Annotation2DContext & { calls: string[] } {
     lineCap: "",
     lineJoin: "",
     beginPath: () => void calls.push("beginPath"),
-    moveTo: (x, y) => void calls.push(`moveTo(${x.toFixed(2)},${y.toFixed(2)})`),
-    lineTo: (x, y) => void calls.push(`lineTo(${x.toFixed(2)},${y.toFixed(2)})`),
+    moveTo: (x, y) =>
+      void calls.push(`moveTo(${x.toFixed(2)},${y.toFixed(2)})`),
+    lineTo: (x, y) =>
+      void calls.push(`lineTo(${x.toFixed(2)},${y.toFixed(2)})`),
     stroke: () => void calls.push("stroke"),
     strokeRect: (x, y, w, h) =>
       void calls.push(
@@ -294,7 +296,9 @@ describe("bug annotation layer — paint order is authoring order", () => {
 
   it("preserves that order exactly across a serialize/parse round-trip", () => {
     const layer = markedLayer();
-    const restored = parseBugAnnotationLayer(serializeBugAnnotationLayer(layer));
+    const restored = parseBugAnnotationLayer(
+      serializeBugAnnotationLayer(layer),
+    );
     expect(restored.annotations.map((a) => a.id)).toEqual(
       layer.annotations.map((a) => a.id),
     );
@@ -308,7 +312,10 @@ describe("bug annotation layer — paint order is authoring order", () => {
   it("keeps the survivors in order after a mark is removed from the middle", () => {
     const layer = markedLayer();
     const trimmed = removeBugAnnotation(layer, layer.annotations[1].id);
-    expect(trimmed.annotations.map((a) => a.kind)).toEqual(["arrow", "freehand"]);
+    expect(trimmed.annotations.map((a) => a.kind)).toEqual([
+      "arrow",
+      "freehand",
+    ]);
     const restored = parseBugAnnotationLayer(
       serializeBugAnnotationLayer(trimmed),
     );
@@ -338,9 +345,9 @@ describe("bug annotation layer — paint order is authoring order", () => {
   });
 
   it("refuses to remove a mark that is not in this layer", () => {
-    expect(() => removeBugAnnotation(markedLayer(), "bugann_deadbeef")).toThrowError(
-      /not in this layer/,
-    );
+    expect(() =>
+      removeBugAnnotation(markedLayer(), "bugann_deadbeef"),
+    ).toThrowError(/not in this layer/);
   });
 
   it("clears every mark while keeping the binding and the ordinal watermark", () => {
@@ -355,7 +362,9 @@ describe("bug annotation layer — paint order is authoring order", () => {
 describe("bug annotation layer — serialisation and round-trip", () => {
   it("round-trips to a value equal to the original, with the EXACT key set", () => {
     const layer = markedLayer();
-    const restored = parseBugAnnotationLayer(serializeBugAnnotationLayer(layer));
+    const restored = parseBugAnnotationLayer(
+      serializeBugAnnotationLayer(layer),
+    );
     expect(restored).toEqual(layer);
     // A field that is added to the record but not to the digest (or the reverse) is caught here.
     expect(Object.keys(restored).sort()).toEqual(
@@ -383,7 +392,9 @@ describe("bug annotation layer — serialisation and round-trip", () => {
   it("re-derives a SENSITIVE id: any single altered field changes it", () => {
     const layer = markedLayer();
     const { layerId, ...parts } = layer;
-    const mutations: Array<[string, () => Omit<BugAnnotationLayer, "layerId">]> = [
+    const mutations: Array<
+      [string, () => Omit<BugAnnotationLayer, "layerId">]
+    > = [
       ["captureId", () => ({ ...parts, captureId: "bugcap_0000000000000000" })],
       [
         "viewport.width",
@@ -391,16 +402,25 @@ describe("bug annotation layer — serialisation and round-trip", () => {
       ],
       [
         "viewport.devicePixelRatio",
-        () => ({ ...parts, viewport: { ...parts.viewport, devicePixelRatio: 1 } }),
+        () => ({
+          ...parts,
+          viewport: { ...parts.viewport, devicePixelRatio: 1 },
+        }),
       ],
       ["nextOrdinal", () => ({ ...parts, nextOrdinal: 9 })],
-      ["a dropped mark", () => ({ ...parts, annotations: parts.annotations.slice(1) })],
+      [
+        "a dropped mark",
+        () => ({ ...parts, annotations: parts.annotations.slice(1) }),
+      ],
       [
         "an arrow tip moved",
         () => ({
           ...parts,
           annotations: [
-            { ...parts.annotations[0], to: { u: 0.51, v: 0.5 } } as (typeof parts.annotations)[number],
+            {
+              ...parts.annotations[0],
+              to: { u: 0.51, v: 0.5 },
+            } as (typeof parts.annotations)[number],
             ...parts.annotations.slice(1),
           ],
         }),
@@ -441,23 +461,27 @@ describe("bug annotation layer — serialisation and round-trip", () => {
     const layer = markedLayer();
     const tampered = JSON.parse(serializeBugAnnotationLayer(layer));
     tampered.annotations[0].to = { u: 0.9, v: 0.9 };
-    expect(() => parseBugAnnotationLayer(JSON.stringify(tampered))).toThrowError(
-      /layerId does not match/,
-    );
+    expect(() =>
+      parseBugAnnotationLayer(JSON.stringify(tampered)),
+    ).toThrowError(/layerId does not match/);
   });
 
   it("rejects a layer that lost a mark in transit", () => {
     const layer = markedLayer();
     const truncated = JSON.parse(serializeBugAnnotationLayer(layer));
     truncated.annotations.pop();
-    expect(() => parseBugAnnotationLayer(JSON.stringify(truncated))).toThrowError(
-      /layerId does not match/,
-    );
+    expect(() =>
+      parseBugAnnotationLayer(JSON.stringify(truncated)),
+    ).toThrowError(/layerId does not match/);
   });
 
   it("rejects malformed, mis-versioned and non-JSON transports", () => {
-    expect(() => parseBugAnnotationLayer("not json")).toThrowError(/valid JSON/);
-    expect(() => parseBugAnnotationLayer("[]")).toThrowError(BugAnnotationError);
+    expect(() => parseBugAnnotationLayer("not json")).toThrowError(
+      /valid JSON/,
+    );
+    expect(() => parseBugAnnotationLayer("[]")).toThrowError(
+      BugAnnotationError,
+    );
     const layer = markedLayer();
     const wrongVersion = JSON.parse(serializeBugAnnotationLayer(layer));
     wrongVersion.layerVersion = 99;
@@ -466,9 +490,9 @@ describe("bug annotation layer — serialisation and round-trip", () => {
     ).toThrowError(/unsupported bug annotation layer version/);
     const badShape = JSON.parse(serializeBugAnnotationLayer(layer));
     badShape.annotations[0].kind = "scribble";
-    expect(() => parseBugAnnotationLayer(JSON.stringify(badShape))).toThrowError(
-      /not a supported shape/,
-    );
+    expect(() =>
+      parseBugAnnotationLayer(JSON.stringify(badShape)),
+    ).toThrowError(/not a supported shape/);
   });
 });
 
@@ -487,16 +511,22 @@ describe("bug annotation layer — a layer belongs to exactly one capture", () =
   it("refuses to re-open over a DIFFERENT capture", () => {
     const layer = markedLayer();
     expect(() =>
-      reopenBugAnnotationLayer(serializeBugAnnotationLayer(layer), OTHER_CAPTURE),
+      reopenBugAnnotationLayer(
+        serializeBugAnnotationLayer(layer),
+        OTHER_CAPTURE,
+      ),
     ).toThrowError(/belongs to capture/);
   });
 
   it("re-opens happily at a different window size — that is the normal case", () => {
     const layer = markedLayer();
-    const restored = reopenBugAnnotationLayer(serializeBugAnnotationLayer(layer), {
-      captureId: CAPTURE.captureId,
-      viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
-    });
+    const restored = reopenBugAnnotationLayer(
+      serializeBugAnnotationLayer(layer),
+      {
+        captureId: CAPTURE.captureId,
+        viewport: { width: 1280, height: 720, devicePixelRatio: 1 },
+      },
+    );
     expect(restored.annotations).toEqual(layer.annotations);
   });
 
@@ -694,7 +724,10 @@ describe("bug annotation overlay — marks land on the same pixel of the world",
   });
 
   it("carries the binding through to the overlay so a painter cannot mix reports", () => {
-    const overlay = resolveBugAnnotationOverlay(markedLayer(), CAPTURE.viewport);
+    const overlay = resolveBugAnnotationOverlay(
+      markedLayer(),
+      CAPTURE.viewport,
+    );
     expect(overlay.captureId).toBe(CAPTURE.captureId);
     expect(overlay.layerId).toBe(markedLayer().layerId);
   });

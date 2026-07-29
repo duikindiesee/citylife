@@ -108,14 +108,14 @@ Fifteen naive implementations were restored one at a time, the suite observed to
 restored. The full table is in the PR body and in
 `bridge/from-claude-citylife/2026-07-29-bug-annotate-1-marking.md`. Headline results:
 
-| Naive implementation restored | Result |
-| --- | --- |
+| Naive implementation restored                                           | Result               |
+| ----------------------------------------------------------------------- | -------------------- |
 | Resolve uses the layer's STORED viewport (marks are effectively pixels) | 6 failed / 34 passed |
-| Storage keyed by id (paint order becomes id-sorted) | 6 failed / 34 passed |
-| `layerId` from a counter instead of a content digest | 4 failed / 36 passed |
-| Freehand stores the caller's live array by reference | 3 failed / 37 passed |
-| Re-open ignores which capture the marks belong to | 1 failed / 39 passed |
-| Fix restored | **40 passed / 40** |
+| Storage keyed by id (paint order becomes id-sorted)                     | 6 failed / 34 passed |
+| `layerId` from a counter instead of a content digest                    | 4 failed / 36 passed |
+| Freehand stores the caller's live array by reference                    | 3 failed / 37 passed |
+| Re-open ignores which capture the marks belong to                       | 1 failed / 39 passed |
+| Fix restored                                                            | **40 passed / 40**   |
 
 ## 7. Open questions
 
