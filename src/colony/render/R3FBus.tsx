@@ -5,6 +5,7 @@ import type { ColonySim } from "../sim";
 import type { BusRoute } from "../transit/busRoute";
 import type { DepotSite, DepotLayout } from "../transit/busDepot";
 import type { BusPose } from "../transit/busFleet";
+import type { BusStopAnchor } from "../transit/busStopAnchor";
 import {
   buildBusLayer,
   buildStop,
@@ -30,6 +31,8 @@ interface R3FBusRuntime {
   busRoute?: BusRoute | null;
   busDepot?: { site: DepotSite; layout: DepotLayout } | null;
   busPoses?: () => BusPose[];
+  /** BUS.BOARD.1 — where each stop's bus actually halts, and where its furniture stands. */
+  busStopAnchors?: () => BusStopAnchor[];
 }
 
 interface R3FBusProps {
@@ -130,14 +133,28 @@ export function R3FBus({ sim, runtime }: R3FBusProps) {
                 ROAD_RIBBON_LIFT,
             }),
           );
-          for (const s of route.stops)
-            group.add(
-              buildStop(
-                { wx: world.wx, wz: world.wz, roadY: world.roadY },
-                s,
-                stopVergeDirection(route.loop, s),
-              ),
-            );
+          // BUS.BOARD.1 — stand each pole on the verge of the point the fleet actually HALTS at.
+          // Anchoring on the authored road cell left the sign up to 5.34 cells (21.4 m) from the
+          // dwelling bus, outside the 3-cell Board gate, so the player could not board at the sign.
+          const stopAnchors = runtime?.busStopAnchors?.() ?? [];
+          if (stopAnchors.length)
+            for (const a of stopAnchors)
+              group.add(
+                buildStop(
+                  { wx: world.wx, wz: world.wz, roadY: world.roadY },
+                  a.at,
+                  a.verge,
+                ),
+              );
+          else
+            for (const s of route.stops)
+              group.add(
+                buildStop(
+                  { wx: world.wx, wz: world.wz, roadY: world.roadY },
+                  s,
+                  stopVergeDirection(route.loop, s),
+                ),
+              );
           const poses = runtime.busPoses();
           const rigs: BusRig[] = [];
           for (let i = 0; i < poses.length; i++) {

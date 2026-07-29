@@ -8,6 +8,10 @@ import {
   samplePath,
   type PathData,
 } from "../transit/path";
+import {
+  busStopAnchors,
+  STOP_VERGE_OFFSET_CELLS,
+} from "../transit/busStopAnchor";
 import { COLONY } from "../config";
 
 // Spec 088/122/149 — the render-side BUS. Spec 149 rebuilt the coach against the world metric
@@ -19,6 +23,10 @@ import { COLONY } from "../config";
 // R3FBus + the fleet machine instead). De-zigzag path math lives in transit/path.ts now.
 
 export { simplifyClosed, smoothClosed };
+/** BUS.BOARD.1 — the verge offset now lives with the boarding anchor (transit/busStopAnchor.ts),
+ *  because how far the pole stands from the doors is a boarding contract, not a drawing detail.
+ *  Re-exported so render callers and the verge tests keep their existing import site. */
+export { STOP_VERGE_OFFSET_CELLS };
 
 export interface BusLayer {
   group: THREE.Group;
@@ -127,8 +135,10 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
   group.name = "Bus";
   const rig = makeBusRig(opts);
   group.add(rig.group);
-  for (const s of opts.route.stops)
-    group.add(buildStop(opts, s, stopVergeDirection(opts.route.loop, s)));
+  // BUS.BOARD.1 — stand the furniture beside where this coach actually HALTS (the anchor on the
+  // driven loop), not beside the authored road cell the smoothing may have left behind.
+  const anchors = busStopAnchors(loop, opts.route.stops);
+  for (const a of anchors) group.add(buildStop(opts, a.at, a.verge));
 
   let dist = 0; // arc length (cells) along the loop
   let last = -1;
@@ -152,9 +162,12 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
       rig.setDoors(dwell > 0);
       // dwell briefly on arriving near a stop; re-arm once we have driven clear so each lap pauses again
       let near = "";
-      for (const s of opts.route.stops)
-        if (Math.hypot(p.x - s.x, p.y - s.y) < STOP_RADIUS) {
-          near = `${s.x},${s.y}`;
+      for (const a of anchors)
+        // BUS.BOARD.1 — measure against the anchor ON this coach's own path. Against the authored
+        // cell the legacy coach sailed past any stop the smoothing had moved more than STOP_RADIUS
+        // away and never opened its doors there.
+        if (Math.hypot(p.x - a.at.x, p.y - a.at.y) < STOP_RADIUS) {
+          near = `${a.cell.x},${a.cell.y}`;
           break;
         }
       if (near && near !== lastStop && dwell <= 0) {
@@ -597,12 +610,6 @@ function addLights(
     bus.add(headlight, tailLight);
   }
 }
-
-/** Rendered carriageway half-width in CELLS for the bus route's roads, plus a kerb clearance.
- *  Route roads are authored `width: 4` cells (runtime.ts road construction), i.e. 16 m wide, so the
- *  drive lane reaches 2.0 cells (8 m) either side of the centre-line. A stop pole must stand clear
- *  of that, on the verge. */
-export const STOP_VERGE_OFFSET_CELLS = 2.25;
 
 /** Unit verge direction (grid space) at a stop: perpendicular to the route's local travel
  *  direction, so the shelter always steps SIDEWAYS off the carriageway whichever way the road runs.

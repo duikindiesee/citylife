@@ -285,6 +285,10 @@ import {
   smoothClosed,
   smoothOpen,
 } from "./transit/path";
+import {
+  busStopAnchors as computeBusStopAnchors,
+  type BusStopAnchor,
+} from "./transit/busStopAnchor";
 import type { RoadWay } from "./render/roadRibbon";
 import { conservativeRoadRibbonBlockedCells } from "./placementValidation";
 import { findJunctionZones } from "./render/roadJunctions";
@@ -1008,6 +1012,10 @@ export class ColonyRuntime {
   busFleet: BusFleet | null = null;
   private fleetGeom: FleetGeometry | null = null;
   private fleetPaths: FleetPaths | null = null;
+  /** BUS.BOARD.1 — one boarding anchor per authored route stop: where the bus actually halts on the
+   *  driven loop and where the stop furniture stands beside it. Built at boot with the fleet
+   *  geometry so the render, the fleet and the Board prompt all agree on where "the stop" is. */
+  private stopAnchors: BusStopAnchor[] = [];
   /** Spec 150 PR2 — the absolute sol minute the fleet has been replayed up to; null before the
    *  first tick anchors it at the current sol day's tod=0. */
   private transitLastMin: number | null = null;
@@ -1906,6 +1914,9 @@ export class ColonyRuntime {
           bayPaths,
           this.busRoute.stops,
         );
+        // BUS.BOARD.1 — the SAME loopPath the fleet samples poses from, so the pole the player walks
+        // to is exactly STOP_VERGE_OFFSET_CELLS from the halted bus at every stop.
+        this.stopAnchors = computeBusStopAnchors(loopPath, this.busRoute.stops);
         this.busFleet = makeFleet(COLONY.transit, this.worldSeed); // seed the free-bay lottery per world
       }
     }
@@ -2606,6 +2617,12 @@ export class ColonyRuntime {
     return b
       ? busPose(b, this.fleetPaths, this.fleetGeom, COLONY.transit)
       : null;
+  }
+
+  /** BUS.BOARD.1 — the route's boarding anchors (empty when this seed has no fleet). The render
+   *  layer stands the stop furniture on `furniture`; e2e/tests walk the player there. */
+  busStopAnchors(): BusStopAnchor[] {
+    return this.stopAnchors;
   }
 
   /** Spec 149 — all fleet bus poses in bus-id order (the render layer draws these). */
