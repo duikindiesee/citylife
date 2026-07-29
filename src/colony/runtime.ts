@@ -1,6 +1,7 @@
 // Browser runtime for the colony: fixed-timestep sim loop + planet renderer + camera presets.
 import { COLONY } from "./config";
 import {
+  MAX_LOCOMOTION_DT,
   advanceSprintCharge,
   advanceWalkRampMps,
   isSprinting,
@@ -6416,7 +6417,9 @@ export class ColonyRuntime {
 
   private loop = (now: number) => {
     if (!this.running) return;
-    const dtReal = Math.min(0.25, (now - this.lastFrame) / 1000);
+    // Spec 163 — MAX_LOCOMOTION_DT is the same 0.25 this line always used, now shared with the
+    // camera capsule so a frame hitch cannot advance one movement path further than the other.
+    const dtReal = Math.min(MAX_LOCOMOTION_DT, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
     if (!this.paused) {
       this.accumulator += dtReal * this.speed;

@@ -23,6 +23,7 @@ import {
 import {
   advanceSprintCharge,
   advanceWalkRampMps,
+  clampLocomotionDt,
   isSprinting,
   rampedGroundSpeedMps,
 } from "../../colony/playerSpeed";
@@ -278,10 +279,16 @@ export function FirstPersonController({
         `${Math.round(toGridX(bodyPos.x))},${Math.round(toGridZ(bodyPos.z))}`,
       );
 
+    // Spec 163 — clamp to the SAME bound ColonyRuntime's loop uses (dtReal = min(0.25, ...)). A
+    // frame hitch hands useFrame a delta of whole seconds; unclamped, one such frame snaps the ramp
+    // to full speed and drains the entire sprint budget at once (measured in-app: full charge to
+    // empty in a single stalled frame). Velocity is unaffected — it is a rate, not an integral —
+    // so only the two stateful scalars need this.
+    const locoDt = clampLocomotionDt(delta);
     walkRampMps.current = advanceWalkRampMps(
       walkRampMps.current,
       moving ? COLONY.firstPerson.maxWalkSpeed : 0,
-      delta,
+      locoDt,
     );
     const sprintHeld = input.current.sprint;
     const sprinting = isSprinting({
@@ -289,7 +296,7 @@ export function FirstPersonController({
       moving,
       charge: sprintCharge.current,
     });
-    sprintCharge.current = advanceSprintCharge(sprintCharge.current, delta, {
+    sprintCharge.current = advanceSprintCharge(sprintCharge.current, locoDt, {
       sprintHeld,
       sprinting,
     });

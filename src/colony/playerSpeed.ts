@@ -19,6 +19,20 @@
 import { COLONY } from "./config";
 import { PLAYER_WALK_SPEED_MPS, mpsToCellsPerSec } from "./scale";
 
+/** Longest tick the locomotion model will integrate, in real seconds. A frame hitch (shader compile,
+ *  GC, a backgrounded tab) hands the renderer a `delta` of whole seconds; without this the ramp
+ *  snaps to full speed and — much worse — ONE such frame drains the entire sprint budget, because
+ *  the drain is dt/sprintChargeSeconds. ColonyRuntime's loop has always clamped its own tick to this
+ *  value (`dtReal = Math.min(0.25, ...)`), so the capsule must use the SAME bound or the two paths
+ *  diverge again on exactly the frames where it is hardest to notice. Observed in-app: an unclamped
+ *  capsule went from a full sprint charge to empty in one stalled frame. */
+export const MAX_LOCOMOTION_DT = 0.25;
+
+/** Clamp a renderer/loop delta to something the locomotion model can integrate sanely. */
+export function clampLocomotionDt(dt: number): number {
+  return Number.isFinite(dt) ? Math.min(Math.max(0, dt), MAX_LOCOMOTION_DT) : 0;
+}
+
 /** What the world is doing to the player this tick — the only inputs that scale ground speed. */
 export interface PlayerSpeedContext {
   /** The player is standing on a road/path cell (COLONY.firstPerson.roadWalkSpeedMultiplier). */

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 // @ts-ignore - Vite raw import pins the capsule's speed source so the fork cannot recur.
 import capsuleSource from "../src/render/components/FirstPersonController.tsx?raw";
+// @ts-ignore - and the runtime loop's tick clamp, which must stay the shared one.
+import runtimeSource from "../src/colony/runtime.ts?raw";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { COLONY } from "../src/colony/config";
 import {
@@ -9,6 +11,10 @@ import {
   mpsToCellsPerSec,
 } from "../src/colony/scale";
 import {
+  MAX_LOCOMOTION_DT,
+  advanceSprintCharge,
+  advanceWalkRampMps,
+  clampLocomotionDt,
   playerGroundSpeedMps,
   playerTopSpeedMps,
   rampedGroundSpeedMps,
@@ -30,6 +36,7 @@ import {
 const UNCONVERTED_MPS = PLAYER_WALK_SPEED_MPS * CELL_SIZE; // 13.6 — the shipped defect
 
 const CAPSULE_SRC: string = capsuleSource;
+const RUNTIME_SRC: string = runtimeSource;
 
 /** Walk the real runtime in a straight line and return metres covered per real second, measured
  *  from the CELL displacement of the roster twin — the units the twin actually stores. */
@@ -162,6 +169,50 @@ describe("spec 163 — one speed anchor, in metres, for both movement paths", ()
     expect(src).toMatch(/roadSet/); // road surface multiplier
     expect(src).toMatch(/advanceSprintCharge\(/); // sprint comfort budget
     expect(src).toMatch(/isSprinting\(/);
+  });
+
+  it("survives a frame hitch: one stalled frame cannot eat the whole sprint budget", () => {
+    // FOUND BY RUNNING THE APP, not by reading it. useFrame hands the capsule a raw `delta`, and a
+    // shader-compile stall made that delta whole seconds: the sprint charge went 1 -> 0 in a SINGLE
+    // frame, against a 3 s design budget. ColonyRuntime's loop had always clamped its tick to 0.25;
+    // the capsule did not, so the two paths diverged on exactly the frames nobody is watching.
+    const HITCH = 4; // seconds in one frame — what the stall actually produced
+    expect(clampLocomotionDt(HITCH)).toBe(MAX_LOCOMOTION_DT);
+
+    // Clamped, a hitch spends at most one clamped tick of the budget...
+    const clamped = advanceSprintCharge(1, clampLocomotionDt(HITCH), {
+      sprintHeld: true,
+      sprinting: true,
+    });
+    expect(clamped).toBeCloseTo(
+      1 - MAX_LOCOMOTION_DT / COLONY.firstPerson.sprintChargeSeconds,
+      9,
+    );
+    expect(clamped).toBeGreaterThan(0.9);
+
+    // DISCRIMINATION: unclamped, that same frame empties it outright — the measured defect.
+    const unclamped = advanceSprintCharge(1, HITCH, {
+      sprintHeld: true,
+      sprinting: true,
+    });
+    expect(unclamped).toBe(0);
+
+    // ...and the ramp cannot teleport to full speed either.
+    expect(advanceWalkRampMps(0, PLAYER_WALK_SPEED_MPS, HITCH)).toBe(
+      PLAYER_WALK_SPEED_MPS,
+    );
+    expect(
+      advanceWalkRampMps(0, PLAYER_WALK_SPEED_MPS, clampLocomotionDt(HITCH)),
+    ).toBeLessThan(PLAYER_WALK_SPEED_MPS);
+
+    // Garbage deltas must not poison the state either.
+    expect(clampLocomotionDt(Number.NaN)).toBe(0);
+    expect(clampLocomotionDt(-1)).toBe(0);
+
+    // BOTH paths must apply it — the capsule via clampLocomotionDt, the runtime loop via the same
+    // shared constant. A future edit that drops either one fails here.
+    expect(CAPSULE_SRC).toMatch(/clampLocomotionDt\(delta\)/);
+    expect(RUNTIME_SRC).toMatch(/Math\.min\(MAX_LOCOMOTION_DT,/);
   });
 
   it("keeps the player a human being and not a 36 km/h giant", () => {
