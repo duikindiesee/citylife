@@ -2226,6 +2226,24 @@ body.tv-mode .radio-iframe.is-visible {
   color: #e0a14d;
 }
 .geo-readout__stamp {
+  /* UI.GEO.OVERLAP.1 follow-up — the stamp is PINNED to the bottom of the readout's own scroll box.
+     Measured on a reviewer's machine where the rail sat exactly at its 540px cap (0 slack, vs 36px
+     of slack here): the readout was forced to shrink and scroll (scroll delta 23), and the stamp —
+     the LAST child of the scroll container — ended up 13.30px BELOW the readout's visible bottom
+     edge, giving 948.14px^2 of intersection with the rally card. Two things were wrong with that,
+     and the invisible one is the lesser:
+       1. The reproducibility stamp was SCROLLED OUT OF SIGHT. A revision hash nobody can read
+          defeats its own purpose just as thoroughly as a truncated one.
+       2. `getBoundingClientRect()` ignores ancestor clipping, so that off-screen stamp still
+          reported as overlapping the card.
+     `sticky` fixes the real defect — the stamp stays visible while the presence list scrolls under
+     it — and the reported overlap goes with it, because the stamp can no longer leave the box.
+     Fixing only the measurement would have hidden (1). */
+  position: sticky;
+  bottom: 0;
+  /* Opaque, or markers scrolling underneath read through the pinned stamp. Matches `.geo-readout`'s
+     own background; the readout's `backdrop-filter` already frosts what is behind the panel. */
+  background: rgba(6, 16, 22, 0.97);
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid rgba(150, 190, 210, 0.22);

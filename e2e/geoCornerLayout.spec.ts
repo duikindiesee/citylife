@@ -421,3 +421,90 @@ test("bottom-left rail with a single member stays on-screen and unclipped (rally
     "the readout must not be clipped by the safe area",
   ).toBeLessThanOrEqual(1);
 });
+
+// ================================================================================================
+// UI.GEO.OVERLAP.1 follow-up — the stamp must never leave the readout's scroll box
+// ================================================================================================
+
+/**
+ * A reviewer measured 948.14px^2 of stamp-versus-card intersection on a machine where the rail sat
+ * exactly at its 540px cap (0 slack) while this one had 36px of slack and reported 0. The difference
+ * was never the machine: it was whether the rail is CAPPED. Capped, the readout shrinks and scrolls,
+ * and the stamp — the last child of the scroll container — falls below the readout's visible edge.
+ *
+ * So this drives the failing state DETERMINISTICALLY instead of waiting for font metrics to produce
+ * it: `.hud-corner-rail-left` is `max-height: calc(100vh - 260px)`, so a short viewport caps the rail
+ * on any machine. That is the whole point — a test that only fails on someone else's box is not a
+ * regression test.
+ */
+test("the reproducibility stamp stays inside the readout when the rail is CAPPED", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  // Tall enough to be a real session, short enough that calc(100vh - 260px) bites.
+  await page.setViewportSize({ width: 1280, height: 660 });
+  await bootSession(page);
+  await page.evaluate(() =>
+    (
+      window.__colony as unknown as { setPlayerView: (v: boolean) => void }
+    ).setPlayerView(false),
+  );
+  await page.waitForTimeout(1000);
+
+  const m = await page.evaluate(() => {
+    const q = (s: string) => document.querySelector(s) as HTMLElement | null;
+    const readout = q(".geo-readout");
+    const stamp = q('[data-testid="geo-readout-stamp"]');
+    const card = q(".rally-social-read");
+    const rail = q(".hud-corner-rail-left");
+    if (!readout || !stamp || !card || !rail) return null;
+    const rb = readout.getBoundingClientRect();
+    const sb = stamp.getBoundingClientRect();
+    const cb = card.getBoundingClientRect();
+    const area = (a: DOMRect, b: DOMRect) =>
+      Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) *
+      Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+    return {
+      railCapped:
+        rail.getBoundingClientRect().height + 0.5 >=
+        parseFloat(getComputedStyle(rail).maxHeight),
+      readoutScrolls: readout.scrollHeight > readout.clientHeight,
+      stampBelowReadoutBottom: sb.bottom - rb.bottom,
+      stampVsCard: area(sb, cb),
+      readoutVsCard: area(rb, cb),
+      stampVisibleHeight: Math.max(
+        0,
+        Math.min(sb.bottom, rb.bottom) - Math.max(sb.top, rb.top),
+      ),
+      stampHeight: sb.height,
+    };
+  });
+
+  expect(m, "the corner's occupants must all be present").not.toBeNull();
+
+  // Guard: if the rail is NOT capped we are not testing anything. Fail loudly rather than pass
+  // vacuously — a green run that never entered the failing state is exactly the trap this whole
+  // investigation started from.
+  expect(
+    m!.railCapped && m!.readoutScrolls,
+    `precondition not met — rail capped: ${m!.railCapped}, readout scrolls: ${m!.readoutScrolls}. ` +
+      `Shorten the viewport until calc(100vh - 260px) forces the readout to scroll.`,
+  ).toBe(true);
+
+  // THE FIX: pinned to the bottom of the scroll box, the stamp can never fall below the readout.
+  expect(
+    m!.stampBelowReadoutBottom,
+    `the stamp escaped the readout's visible box by ${m!.stampBelowReadoutBottom}px`,
+  ).toBeLessThanOrEqual(0.5);
+
+  // ...and it must be WHOLLY visible, not merely non-overlapping. A stamp clipped to a sliver is
+  // still an unreadable revision hash, which is the defect the reviewer's numbers actually exposed.
+  expect(
+    m!.stampVisibleHeight,
+    "the whole stamp must be readable, not clipped to a sliver",
+  ).toBeGreaterThan(m!.stampHeight - 0.5);
+
+  // The number the reviewer measured at 948.14px^2.
+  expect(m!.stampVsCard, "stamp must not overlap the rally card").toBe(0);
+  expect(m!.readoutVsCard, "readout must not overlap the rally card").toBe(0);
+});
