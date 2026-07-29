@@ -1095,7 +1095,21 @@ export const COLONY = {
     // seconds, a whole sol day = six real hours) instead of the speed-scaled sim clock, so the
     // per-sim-minute figures are rescaled to keep a full lap + dwells inside the widened
     // 05:00-23:30 service window (shiftMinutes in busFleet.ts is the gatekeeper).
-    busSpeedCellsPerMin: 28,
+    // Spec 164 (BUS.SPEED.1) — FELT speed, not just schedule. The PR2 rescale above kept a lap
+    // inside the service window but nobody converted the rate into real time: at 28 cells/min the
+    // bus cruised 28*4/15 = 7.47 m/s while the walker capsule does 10 m/s and 14.5 m/s sprinting,
+    // so a player could out-WALK the bus over any distance, dwell or no dwell. 84 is bounded on
+    // BOTH sides by measured constraints: above 54.4 it beats sprint (14.5 m/s), and below 93.75 a
+    // 16 ms frame still advances a bus less than 0.1 cells (the sub-frame continuity guard in
+    // busSolContinuousMotion.test.ts). 84 = 22.4 m/s cruise, 2.24x walk / 1.54x sprint, and 16.2 m/s
+    // door-to-door once the stop dwell is paid. Raising it SHORTENS shiftMinutes, so the
+    // "a whole shift fits before lastServiceMin" invariant gets slacker, not tighter.
+    busSpeedCellsPerMin: 84,
+    // NOTE (spec 164): the dwell is the SECOND drag on felt speed — 1.5 in-sol minutes is 22.5 REAL
+    // seconds standing still, ~27% of a stop-to-stop hop at the new cruise. It is deliberately NOT
+    // cut here: this same number is the boarding window a player needs to walk up and press E, and
+    // it is owned by the boarding work (BUS.BOARD.1). Speed alone already clears "faster than
+    // walking"; shortening the dwell is a boarding-side decision, not a speed-side one.
     stopDwellMin: 1.5, // doors-open dwell at each route stop
     depotBoardMin: 2, // doors-open dwell at the depot gate shelter on the way out and home
     breakMin: 18, // bay break between shifts

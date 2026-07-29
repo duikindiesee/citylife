@@ -40,6 +40,15 @@ export const PLAYER_HALF_EXTENT = PLAYER_HEIGHT_M / 2; // 0.9
 /** Camera offset above the body centre so the eye sits at PLAYER_EYE_M above the feet. */
 export const PLAYER_EYE_OFFSET = PLAYER_EYE_M - PLAYER_HALF_EXTENT; // 0.7
 
+/** The walker capsule's ground speed in METRES PER REAL SECOND. This is the number a player
+ *  actually feels: FirstPersonController sets it straight onto the Rapier body as a linear
+ *  velocity, so no frame delta and no sim speed scale it. It lives here, beside CELL_SIZE, because
+ *  it is the only speed in the world expressed in real seconds — everything else is per in-sol
+ *  minute — and BUS.SPEED.1 (spec 164) showed that with no shared anchor the transit fleet was
+ *  tuned in the other unit and shipped SLOWER than this. Sprinting multiplies it by
+ *  COLONY.firstPerson.sprintWalkSpeedMultiplier. */
+export const PLAYER_WALK_SPEED_MPS = 10;
+
 // ── Citizens & pedestrians ───────────────────────────────────────────────────────────────
 // The colonists render from a torso capsule + a head sphere. The port modelled them at ~1 m
 // (citizens) and ~0.8 m (pedestrians) — a third of the corrected player — and centred the

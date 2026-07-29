@@ -24,6 +24,8 @@
 // the bay a bus currently holds (parked / pulling out of / backing into), or -1 while out on the loop.
 
 import { type PathData, samplePath, projectPath, type Pt } from "./path";
+import { CELL_SIZE } from "../scale";
+import { REAL_SECONDS_PER_SOL_MINUTE } from "../sol";
 
 export interface FleetConfig {
   /** Buses the colony owns; they start parked in bays 0..n-1. baysTotal - busesOwned bays start free. */
@@ -189,6 +191,34 @@ export function shiftMinutes(geom: FleetGeometry, cfg: FleetConfig): number {
     cfg.lapsPerShift * geom.stopsFromJoin.length * cfg.stopDwellMin +
     2 * cfg.depotBoardMin;
   return drive + dwell;
+}
+
+// ── Felt speed (spec 164 / BUS.SPEED.1) ──────────────────────────────────────────────────
+// The fleet is tuned in cells per IN-SOL minute, but a player experiences metres per REAL second,
+// and an in-sol minute is only 15 real seconds. Nothing converted between the two, so the fleet was
+// scheduled correctly and still crawled: at 28 cells/min the bus cruised 7.5 m/s while the walker
+// capsule does 10 m/s (PLAYER_WALK_SPEED_MPS) and 14.5 m/s sprinting. These two helpers put the
+// conversion next to the config it governs so the comparison can be asserted instead of guessed.
+
+/** Cruise speed in METRES PER REAL SECOND — directly comparable to PLAYER_WALK_SPEED_MPS. */
+export function busCruiseSpeedMps(
+  cfg: Pick<FleetConfig, "busSpeedCellsPerMin">,
+): number {
+  return (
+    (Math.max(1e-6, cfg.busSpeedCellsPerMin) * CELL_SIZE) /
+    REAL_SECONDS_PER_SOL_MINUTE
+  );
+}
+
+/** Door-to-door speed in METRES PER REAL SECOND for a leg of `cells` that ends in ONE stop dwell —
+ *  the honest "was riding worth it" number, since a rider pays the dwell as well as the drive. */
+export function busLegSpeedMps(
+  cfg: Pick<FleetConfig, "busSpeedCellsPerMin" | "stopDwellMin">,
+  cells: number,
+): number {
+  const minutes =
+    cells / Math.max(1e-6, cfg.busSpeedCellsPerMin) + cfg.stopDwellMin;
+  return (cells * CELL_SIZE) / (minutes * REAL_SECONDS_PER_SOL_MINUTE);
 }
 
 const inHours = (tod: number, cfg: FleetConfig): boolean =>

@@ -21,7 +21,8 @@ const liveGeometry: FleetGeometry = {
 
 describe("spec 150 PR2 — transit rescale onto sol time", () => {
   it("locks the rescaled transit config", () => {
-    expect(COLONY.transit.busSpeedCellsPerMin).toBe(28);
+    // Spec 164 raised cruise 28 -> 84 (felt speed; see tests/busFeltSpeed.test.ts for why).
+    expect(COLONY.transit.busSpeedCellsPerMin).toBe(84);
     expect(COLONY.transit.stopDwellMin).toBe(1.5);
     expect(COLONY.transit.depotBoardMin).toBe(2);
     expect(COLONY.transit.breakMin).toBe(18);

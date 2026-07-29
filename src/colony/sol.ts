@@ -18,6 +18,12 @@ export const MS_PER_SOL = 21_600_000; // six real hours
 export const SOLS_PER_EARTH_DAY = 4;
 export const MINUTES_PER_SOL = 24 * 60;
 
+/** REAL seconds one in-sol minute lasts: 15. Every "per sim-minute" rate in the config is a rate
+ *  per FIFTEEN REAL SECONDS, so a number that looks like a speed is ~4x smaller than it reads.
+ *  Exported because that missing conversion is precisely what shipped a bus slower than a walking
+ *  player (BUS.SPEED.1 / spec 164): felt speed = cellsPerMin * CELL_SIZE / this. */
+export const REAL_SECONDS_PER_SOL_MINUTE = MS_PER_SOL / MINUTES_PER_SOL / 1000;
+
 /** Real milliseconds elapsed since the epoch, clamped so pre-epoch or garbage input yields
  *  0 rather than a negative or NaN sol. Shared by every derived helper. */
 function elapsedSinceEpoch(nowMs: number, epochMs: number): number {
