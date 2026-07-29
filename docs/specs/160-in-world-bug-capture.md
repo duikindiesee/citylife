@@ -90,12 +90,12 @@ lands; until then the seam is explicit.
 randomness. Each of the four load-bearing invariants was verified to DISCRIMINATE: the naive
 implementation was restored, the test observed to FAIL, and the real implementation restored.
 
-| Invariant | Naive implementation restored | Tests that failed |
-| --- | --- | --- |
-| Snapshot, not a live view | draft/record alias the caller's pose; nothing frozen | 2 |
-| Reproduction resolves the frame chain | replay the raw frame-local numbers | 3 |
-| `up` is a direction | resolve `up` as a point | 2 |
-| Self-verifying id | trust the transported id; derive it from the timestamp alone | 3 |
+| Invariant                             | Naive implementation restored                                | Tests that failed |
+| ------------------------------------- | ------------------------------------------------------------ | ----------------- |
+| Snapshot, not a live view             | draft/record alias the caller's pose; nothing frozen         | 2                 |
+| Reproduction resolves the frame chain | replay the raw frame-local numbers                           | 3                 |
+| `up` is a direction                   | resolve `up` as a point                                      | 2                 |
+| Self-verifying id                     | trust the transported id; derive it from the timestamp alone | 3                 |
 
 Two-sided coverage is deliberate: id STABILITY is paired with id SENSITIVITY across eleven
 single-field mutations; the JSON round-trip asserts the exact key set, so the wire form can neither
