@@ -161,6 +161,46 @@ body,
   z-index: 60;
 }
 
+/* UI.GEO.OVERLAP.1 — the single owner of the bottom-LEFT corner, the same pattern #421 applied to
+   the bottom-right.
+   Before: the BUG.GEO.1 presence readout (`.geo-readout`, `position: absolute; left: 16px;
+   bottom: 24px; z-index: 6`) and the rally "who is here" card (`.rally-social-read`,
+   `position: fixed; left: 18px; bottom: 24px; z-index: 49`) each pinned THEMSELVES into the same
+   corner with no shared owner. Both are bottom-anchored, so the rally card landed wholly inside the
+   readout's rect and the higher z-index painted it over the readout's last rows: measured at BOTH
+   1280x800 and 390x844, the intersection is the rally card's entire 190x80 box (15161px^2) and the
+   readout's reproducibility stamp ('seed … · sol …') fails a centre hit-test, answering
+   `span.rally-social-read__status`. It is not a "long list" bug — the collision is identical with a
+   single presence record, in player and operator view alike, because neither element's height is
+   what puts them on top of each other.
+   After: one flex column lays both out in flow, so an overlap is impossible by construction. The
+   rally card is the rigid member and keeps hugging the corner exactly where it already sat; the
+   readout stacks above it and is the flexible member, so a long presence list shrinks and scrolls
+   inside itself instead of pushing the rally card off the top of the viewport.
+   `max-height` is the rail's explicit safe area: the bus mini-map owns the TOP-left (bottom edge
+   ~224px desktop, ~185px narrow), and the rail may never grow past it.
+   STACKING — the same trap #421 measured, in the same corner shape: this rail is `absolute` (inside
+   `.colony`, which is `fixed; inset: 0`, so it is still viewport-anchored — exactly how
+   `.geo-readout` was positioned before) and carries NO `z-index`. `position: fixed` or any
+   `z-index` here would make the rail a stacking context and FUSE its two members into one layer,
+   but they legitimately live on different ones: the rally card (49) must stay ABOVE the modal
+   overlay (30), and the readout (6) must stay BELOW it. Fusing them either lets the readout paint
+   over an open modal or drops the rally card underneath one. So the rail owns LAYOUT only and each
+   member re-declares its own layer below. */
+.hud-corner-rail-left {
+  position: absolute;
+  left: 16px;
+  bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  max-height: calc(100vh - 260px);
+  /* The rail is only a layout frame — the world must stay draggable through its empty space.
+     Members opt back in individually; the readout deliberately does NOT (see `.geo-readout`). */
+  pointer-events: none;
+}
+
 .hud {
   /* Positioned by `.hud-corner-rail`, not by itself — see the block above. */
   position: static;
@@ -1554,11 +1594,13 @@ body.tv-mode .radio-iframe.is-visible {
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
 }
 .rally-social-read {
-  position: fixed;
-  top: auto;
-  bottom: 24px;
-  left: 18px;
+  /* UI.GEO.OVERLAP.1 — laid out by `.hud-corner-rail-left`, not by itself. `relative` with no
+     offsets moves nothing; it only keeps `z-index: 49` applying, so the card holds the exact layer
+     it had when it pinned itself (above `.modal-overlay`, below `.first-person-panel`). */
+  position: relative;
   z-index: 49;
+  flex: 0 0 auto;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -1787,6 +1829,15 @@ body.tv-mode .radio-iframe.is-visible {
        working around, now expressed as a layout rule instead of a hand-tuned offset. */
     right: 12px;
     max-height: calc(100vh - 232px);
+  }
+
+  .hud-corner-rail-left {
+    /* UI.GEO.OVERLAP.1 — the narrow-screen safe area for the left-hand column. The bus mini-map
+       shrinks to 168px wide with its bottom edge at ~185px, so the rail starts below that and stops
+       24px (plus the device inset) off the bottom. Same single owner at every width — only the safe
+       area is retuned. */
+    bottom: calc(24px + env(safe-area-inset-bottom));
+    max-height: calc(100vh - 221px);
   }
 
   .hud {
@@ -2111,10 +2162,17 @@ body.tv-mode .radio-iframe.is-visible {
 /* BUG.GEO.1 — on-screen geolocation readout. Deliberately opaque and high-contrast: it has to stay
    legible after a screenshot is compressed and re-shared. */
 .geo-readout {
-  position: absolute;
-  left: 16px;
-  bottom: 24px;
+  /* UI.GEO.OVERLAP.1 — laid out by `.hud-corner-rail-left`, the owner of the bottom-left corner,
+     never by itself. `relative` with no offsets moves nothing; it only keeps `z-index: 6` applying,
+     so the readout holds the exact layer it had when it pinned itself — below `.modal-overlay` (30),
+     which is what stops a status readout painting over an open modal. */
+  position: relative;
   z-index: 6;
+  /* The flexible member of its owner: a long presence list shrinks and scrolls inside the readout
+     rather than shoving its rigid sibling off the top of the viewport. */
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   max-width: 300px;
   padding: 8px 10px;
   border: 1px solid var(--brd);
@@ -2172,11 +2230,16 @@ body.tv-mode .radio-iframe.is-visible {
   padding-top: 6px;
   border-top: 1px solid rgba(150, 190, 210, 0.22);
   color: #9fc4d6;
+  /* UI.GEO.OVERLAP.1 — the layout-revision hash is one long unbreakable token. It used to spill
+     outside the readout's own border and paint over the world; now that the readout is a flex member
+     with a `max-height` (which makes the cross axis scroll rather than spill) that spill would become
+     a horizontal clip instead, and a truncated revision defeats the point of a reproducibility
+     stamp. Wrapping keeps every character inside the panel. */
+  overflow-wrap: anywhere;
 }
 @media (max-width: 700px) {
   .geo-readout {
     max-width: 62vw;
     font-size: 9px;
-    bottom: calc(12px + env(safe-area-inset-bottom));
   }
 }
