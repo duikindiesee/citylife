@@ -130,9 +130,23 @@ export type BugAnnotationKind = BugAnnotation["kind"];
 
 /** What a caller hands in. The id is derived here, never supplied, so ids cannot collide or be forged. */
 export type BugAnnotationInput =
-  | { readonly kind: "arrow"; readonly style: BugAnnotationStyle; readonly from: BugAnnotationPoint; readonly to: BugAnnotationPoint }
-  | { readonly kind: "box"; readonly style: BugAnnotationStyle; readonly min: BugAnnotationPoint; readonly max: BugAnnotationPoint }
-  | { readonly kind: "freehand"; readonly style: BugAnnotationStyle; readonly points: readonly BugAnnotationPoint[] };
+  | {
+      readonly kind: "arrow";
+      readonly style: BugAnnotationStyle;
+      readonly from: BugAnnotationPoint;
+      readonly to: BugAnnotationPoint;
+    }
+  | {
+      readonly kind: "box";
+      readonly style: BugAnnotationStyle;
+      readonly min: BugAnnotationPoint;
+      readonly max: BugAnnotationPoint;
+    }
+  | {
+      readonly kind: "freehand";
+      readonly style: BugAnnotationStyle;
+      readonly points: readonly BugAnnotationPoint[];
+    };
 
 export interface BugAnnotationViewport {
   readonly width: number;
@@ -310,7 +324,9 @@ function digest(text: string): string {
 }
 
 /** Every field of one annotation, in one fixed order. The id is EXCLUDED — it is derived from this. */
-function annotationBody(annotation: BugAnnotationInput | BugAnnotation): string {
+function annotationBody(
+  annotation: BugAnnotationInput | BugAnnotation,
+): string {
   const style = `${annotation.style.color}|${num(annotation.style.strokeWidth)}`;
   switch (annotation.kind) {
     case "arrow":
@@ -331,7 +347,9 @@ function deriveAnnotationId(
   return `bugann_${digest(`${num(ordinal)}${FIELD}${annotationBody(annotation)}`)}`;
 }
 
-function canonicalLayerForm(parts: Omit<BugAnnotationLayer, "layerId">): string {
+function canonicalLayerForm(
+  parts: Omit<BugAnnotationLayer, "layerId">,
+): string {
   return [
     `v=${num(parts.layerVersion)}`,
     `capture=${parts.captureId}`,
@@ -489,7 +507,9 @@ function normalizeAnnotation(
 // composing a layer
 // ---------------------------------------------------------------------------------------------
 
-function sealLayer(parts: Omit<BugAnnotationLayer, "layerId">): BugAnnotationLayer {
+function sealLayer(
+  parts: Omit<BugAnnotationLayer, "layerId">,
+): BugAnnotationLayer {
   return freezeDeep({ ...parts, layerId: deriveBugAnnotationLayerId(parts) });
 }
 
@@ -568,7 +588,10 @@ export function clearBugAnnotations(
 
 function requireLayer(layer: BugAnnotationLayer): BugAnnotationLayer {
   if (!layer || typeof layer !== "object" || !Array.isArray(layer.annotations))
-    throw new BugAnnotationError("INVALID_LAYER", "an annotation layer is required");
+    throw new BugAnnotationError(
+      "INVALID_LAYER",
+      "an annotation layer is required",
+    );
   return layer;
 }
 
@@ -595,13 +618,25 @@ function readAnnotation(value: unknown, index: number): BugAnnotation {
   switch (raw.kind) {
     case "arrow":
       return sealAnnotation("arrow", id, style, {
-        from: assertPoint(raw.from as BugAnnotationPoint, `annotations[${index}].from`),
-        to: assertPoint(raw.to as BugAnnotationPoint, `annotations[${index}].to`),
+        from: assertPoint(
+          raw.from as BugAnnotationPoint,
+          `annotations[${index}].from`,
+        ),
+        to: assertPoint(
+          raw.to as BugAnnotationPoint,
+          `annotations[${index}].to`,
+        ),
       });
     case "box":
       return sealAnnotation("box", id, style, {
-        min: assertPoint(raw.min as BugAnnotationPoint, `annotations[${index}].min`),
-        max: assertPoint(raw.max as BugAnnotationPoint, `annotations[${index}].max`),
+        min: assertPoint(
+          raw.min as BugAnnotationPoint,
+          `annotations[${index}].min`,
+        ),
+        max: assertPoint(
+          raw.max as BugAnnotationPoint,
+          `annotations[${index}].max`,
+        ),
       });
     case "freehand": {
       if (!Array.isArray(raw.points))
@@ -654,7 +689,10 @@ export function parseBugAnnotationLayer(json: string): BugAnnotationLayer {
       "layer.annotations must be an array",
     );
   if (typeof record.nextOrdinal !== "number")
-    throw new BugAnnotationError("INVALID_LAYER", "layer.nextOrdinal must be a number");
+    throw new BugAnnotationError(
+      "INVALID_LAYER",
+      "layer.nextOrdinal must be a number",
+    );
 
   const parts: Omit<BugAnnotationLayer, "layerId"> = {
     layerVersion: BUG_ANNOTATION_LAYER_VERSION,
