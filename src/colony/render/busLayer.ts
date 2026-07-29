@@ -162,10 +162,10 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
       rig.setDoors(dwell > 0);
       // dwell briefly on arriving near a stop; re-arm once we have driven clear so each lap pauses again
       let near = "";
+      // BUS.BOARD.1 — measure against the anchor ON this coach's own path. Against the authored
+      // cell the legacy coach sailed past any stop the smoothing had moved more than STOP_RADIUS
+      // away and never opened its doors there.
       for (const a of anchors)
-        // BUS.BOARD.1 — measure against the anchor ON this coach's own path. Against the authored
-        // cell the legacy coach sailed past any stop the smoothing had moved more than STOP_RADIUS
-        // away and never opened its doors there.
         if (Math.hypot(p.x - a.at.x, p.y - a.at.y) < STOP_RADIUS) {
           near = `${a.cell.x},${a.cell.y}`;
           break;
