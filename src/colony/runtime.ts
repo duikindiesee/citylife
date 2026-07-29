@@ -2064,10 +2064,24 @@ export class ColonyRuntime {
     }
   }
 
+  /** Spec 163 — where a citizen's first-person senses are sampled from. For any citizen the player
+   *  is NOT driving (every NPC bot), that is the roster twin's own cell — nothing else moves them.
+   *  For the one the player IS stepped into, the camera capsule wins: `fpCameraCell` is authoritative
+   *  over the twin's `pos` wherever it exists, so a bot asking "where am I and what is near me"
+   *  would otherwise get an answer that lags the player's actual eyes. Null means "use the twin". */
+  private fpViewOrigin(citizenId: string): { x: number; y: number } | null {
+    return citizenId === this.fpCitizenId ? this.fpCameraCell : null;
+  }
+
   /** Spec 074 — engine-side first-person view of one citizen (cheap, deterministic JSON). The
    *  governor loop reads this every tick + may pair it with a costly PNG snapshot (vision). */
   firstPersonView(citizenId: string): FirstPersonView | null {
-    return firstPersonView(this.sim.state, citizenId, this.citizens);
+    return firstPersonView(
+      this.sim.state,
+      citizenId,
+      this.citizens,
+      this.fpViewOrigin(citizenId),
+    );
   }
 
   /** Spec 074 — the citizen's VISION as a PNG data URL: what they actually see standing at their
@@ -2078,6 +2092,9 @@ export class ColonyRuntime {
     if (!this.renderer) return null;
     const c = this.citizens.byId(citizenId);
     if (!c) return null;
+    // Spec 163 — deliberately NOT the capsule origin: this PNG is rendered from `c.homeXY` below,
+    // so the road it looks toward must be resolved from the same home cell, not from wherever the
+    // player currently stands.
     const view = firstPersonView(this.sim.state, citizenId, this.citizens);
     const look = view?.nearestRoad ?? {
       x: this.sim.state.terrain.landing.x,
@@ -4090,7 +4107,12 @@ export class ColonyRuntime {
       this.emit();
       return false;
     }
-    const view = firstPersonView(this.sim.state, id, this.citizens);
+    const view = firstPersonView(
+      this.sim.state,
+      id,
+      this.citizens,
+      this.fpViewOrigin(id),
+    );
     const prompt = view?.interactionPrompt;
     if (!prompt) {
       this.fpNarrating = false;
@@ -6124,7 +6146,12 @@ export class ColonyRuntime {
   async narrate(): Promise<void> {
     const id = this.fpCitizenId;
     if (!id || this.fpNarrating) return;
-    const view = firstPersonView(this.sim.state, id, this.citizens);
+    const view = firstPersonView(
+      this.sim.state,
+      id,
+      this.citizens,
+      this.fpViewOrigin(id),
+    );
     if (!view) return;
     const c = this.citizens.byId(id);
     if (!c) return;
@@ -6739,7 +6766,12 @@ export class ColonyRuntime {
           ? this.citizens.byId(this.fpCitizenId)
           : null;
         const rawView = this.fpCitizenId
-          ? firstPersonView(this.sim.state, this.fpCitizenId, this.citizens)
+          ? firstPersonView(
+              this.sim.state,
+              this.fpCitizenId,
+              this.citizens,
+              this.fpViewOrigin(this.fpCitizenId),
+            )
           : null;
         let view =
           this.playerView && rawView
