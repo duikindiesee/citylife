@@ -1,5 +1,11 @@
 // Browser runtime for the colony: fixed-timestep sim loop + planet renderer + camera presets.
 import { COLONY } from "./config";
+import {
+  advanceSprintCharge,
+  advanceWalkRampMps,
+  isSprinting,
+  rampedGroundSpeedCellsPerSec,
+} from "./playerSpeed";
 import { ColonySim } from "./sim";
 import {
   PlanetRenderer,
@@ -4576,41 +4582,44 @@ export class ColonyRuntime {
       this.fpNarration = "Guided walk canceled — manual control resumed.";
     }
     if (opposingWalkInput || opposingStrafeInput) this.fpWalkSpeed = 0;
+    // Spec 163 — fpWalkSpeed is the ramped base speed in METRES per real second, advanced by the
+    // shared model the camera capsule also uses. It is converted to cells only where it is finally
+    // added to c.pos below; the old code ramped the same number and added it to a cell position
+    // unconverted, which is why the twin walked 13.6 m/s against the capsule's 10.
     const targetSpeed = moving ? cfg.maxWalkSpeed : 0;
-    if (this.fpWalkSpeed < targetSpeed) {
-      this.fpWalkSpeed = Math.min(
-        targetSpeed,
-        this.fpWalkSpeed + cfg.walkAcceleration * dt,
-      );
-    } else if (this.fpWalkSpeed > targetSpeed) {
-      const rate =
-        targetSpeed === 0 ? cfg.walkDeceleration : cfg.walkAcceleration;
-      this.fpWalkSpeed = Math.max(targetSpeed, this.fpWalkSpeed - rate * dt);
-    }
+    this.fpWalkSpeed = advanceWalkRampMps(this.fpWalkSpeed, targetSpeed, dt);
     const sprintHeld = k.has("sprint");
     if (!sprintHeld) {
-      this.fpSprintCharge = Math.min(
-        1,
-        this.fpSprintCharge + dt / cfg.sprintRecoverySeconds,
-      );
+      this.fpSprintCharge = advanceSprintCharge(this.fpSprintCharge, dt, {
+        sprintHeld: false,
+        sprinting: false,
+      });
     }
     if (Math.abs(this.fpWalkSpeed) > 0.001) {
       const inputLength = Math.hypot(forward, strafe);
       const dirForward = inputLength > 0 ? forward / inputLength : 1;
       const dirStrafe = inputLength > 0 ? strafe / inputLength : 0;
-      const cellKey = `${Math.round(c.pos.x)},${Math.round(c.pos.y)}`;
-      const surfaceMultiplier = this.sim.state.roadSet.has(cellKey)
-        ? cfg.roadWalkSpeedMultiplier
-        : cfg.offRoadWalkSpeedMultiplier;
-      const sprinting = moving && sprintHeld && this.fpSprintCharge > 0;
+      // Spec 163 — sample the surface where the PLAYER actually stands. fpCameraCell (the capsule)
+      // is authoritative over the twin's pos wherever it exists, so reading the twin's cell could
+      // apply the road multiplier from a cell the player had already left.
+      const at = this.fpCameraCell ?? c.pos;
+      const cellKey = `${Math.round(at.x)},${Math.round(at.y)}`;
+      const onRoad = this.sim.state.roadSet.has(cellKey);
+      const sprinting = isSprinting({
+        sprintHeld,
+        moving,
+        charge: this.fpSprintCharge,
+      });
       if (sprinting) {
-        this.fpSprintCharge = Math.max(
-          0,
-          this.fpSprintCharge - dt / cfg.sprintChargeSeconds,
-        );
+        this.fpSprintCharge = advanceSprintCharge(this.fpSprintCharge, dt, {
+          sprintHeld: true,
+          sprinting: true,
+        });
       }
-      const sprintMultiplier = sprinting ? cfg.sprintWalkSpeedMultiplier : 1;
-      const sp = this.fpWalkSpeed * surfaceMultiplier * sprintMultiplier * dt;
+      // The ONE conversion: metres/sec -> cells/sec, because c.pos is in cells.
+      const sp =
+        rampedGroundSpeedCellsPerSec(this.fpWalkSpeed, { onRoad, sprinting }) *
+        dt;
       const nx =
         c.pos.x +
         (Math.cos(c.heading) * dirForward - Math.sin(c.heading) * dirStrafe) *

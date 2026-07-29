@@ -20,11 +20,14 @@ import {
   PLAYER_EYE_OFFSET,
   PLAYER_WALK_SPEED_MPS,
 } from "../../colony/scale";
+import {
+  advanceSprintCharge,
+  advanceWalkRampMps,
+  isSprinting,
+  rampedGroundSpeedMps,
+} from "../../colony/playerSpeed";
 import { replayPose } from "../../colony/perf/replayBridge";
 
-// Spec 164 — one anchor for the walker's felt speed, so transit tuning can compare against it
-// instead of a private literal only this file knew about (BUS.SPEED.1).
-const MOVEMENT_SPEED = PLAYER_WALK_SPEED_MPS;
 const LOOK_SPEED = 2;
 const BUS_RIDER_EYE = 2.4; // eye height above the road while seated on the 3 m coach (spec 149)
 
@@ -55,6 +58,12 @@ export function FirstPersonController({
 }) {
   const rigidBody = useRef<RapierRigidBody>(null);
   const consumedTeleport = useRef(0);
+  // Spec 163 — the capsule's half of the SHARED locomotion state. It used to have neither: speed was
+  // a private literal set instantly, so the acceleration ramp, the road multiplier and the sprint
+  // budget existed only on the roster twin and the two integrators disagreed by 36%. Both are
+  // advanced through src/colony/playerSpeed.ts, the one place the model lives.
+  const walkRampMps = useRef(0);
+  const sprintCharge = useRef(1);
   const { camera } = useThree();
 
   useEffect(() => {
@@ -251,13 +260,42 @@ export function FirstPersonController({
 
     // Apply rotation to movement vector
     movement.applyEuler(new Euler(0, rotation.current.y, 0));
-    // Hold Shift to sprint — the multiplier is the spec-104 config value, so the slate's
-    // future sprint bar (spec 138) and this speed can never disagree. The charge/recovery
-    // budget lands WITH that HUD; silently exhausting sprint with no gauge reads as a bug.
-    const sprint = input.current.sprint
-      ? COLONY.firstPerson.sprintWalkSpeedMultiplier
-      : 1;
-    movement.multiplyScalar(MOVEMENT_SPEED * sprint); // Velocity, so no delta
+
+    // Spec 163 — ONE speed model, in metres per real second, shared with ColonyRuntime's roster
+    // twin (src/colony/playerSpeed.ts). The capsule now honours everything the twin always did:
+    // the acceleration ramp, the road surface multiplier and the sprint comfort budget. World
+    // units are metres (spec 146), so this value goes onto the body as a linear velocity unchanged
+    // — the twin is the path that converts, because its position is in cells.
+    const moving = moveX !== 0 || moveZ !== 0;
+    const bodyPos = rigidBody.current.translation();
+    // Which cell the CAPSULE stands on — the same roadSet the twin samples, so the road multiplier
+    // engages on the same cells for both.
+    const roadSet: Set<string> | undefined = sim?.state?.roadSet;
+    const onRoad =
+      !!roadSet &&
+      terrainSizeForGrid > 0 &&
+      roadSet.has(
+        `${Math.round(toGridX(bodyPos.x))},${Math.round(toGridZ(bodyPos.z))}`,
+      );
+
+    walkRampMps.current = advanceWalkRampMps(
+      walkRampMps.current,
+      moving ? COLONY.firstPerson.maxWalkSpeed : 0,
+      delta,
+    );
+    const sprintHeld = input.current.sprint;
+    const sprinting = isSprinting({
+      sprintHeld,
+      moving,
+      charge: sprintCharge.current,
+    });
+    sprintCharge.current = advanceSprintCharge(sprintCharge.current, delta, {
+      sprintHeld,
+      sprinting,
+    });
+    movement.multiplyScalar(
+      rampedGroundSpeedMps(walkRampMps.current, { onRoad, sprinting }),
+    ); // m/s onto a Rapier linvel — a velocity, so no delta
 
     // Apply movement to physics body
     const currentVel = rigidBody.current.linvel();
