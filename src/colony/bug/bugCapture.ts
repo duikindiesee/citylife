@@ -178,7 +178,10 @@ function assertVec3(value: Vec3 | undefined, label: string): Vec3 {
 
 function assertId(value: string | undefined, label: string): string {
   if (typeof value !== "string" || value.trim() === "")
-    throw new BugCaptureError("INVALID_RECORD", `${label} must be a non-empty string`);
+    throw new BugCaptureError(
+      "INVALID_RECORD",
+      `${label} must be a non-empty string`,
+    );
   return value;
 }
 
@@ -238,9 +241,7 @@ function digest(text: string): string {
 
 /** Every field of the record, in one fixed order. Adding a field here without adding it to the record
  *  (or the reverse) is caught by the round-trip key-set test. */
-function canonicalForm(
-  parts: Omit<BugCaptureContext, "captureId">,
-): string {
+function canonicalForm(parts: Omit<BugCaptureContext, "captureId">): string {
   const { world, sol, presence, camera, viewport, screenshot } = parts;
   return [
     `v=${num(parts.recordVersion)}`,
@@ -451,9 +452,10 @@ export function aimBugCaptureDraft(
 /** Base64 payload length -> decoded byte length, tolerating a leading `data:` URL prefix. */
 function base64ByteLength(payload: string): number {
   const comma = payload.indexOf(",");
-  const body = payload.startsWith("data:") && comma >= 0
-    ? payload.slice(comma + 1)
-    : payload;
+  const body =
+    payload.startsWith("data:") && comma >= 0
+      ? payload.slice(comma + 1)
+      : payload;
   const clean = body.replace(/\s+/g, "");
   if (clean.length === 0) return 0;
   let padding = 0;
@@ -517,7 +519,10 @@ export function commitBugCapture(
   const capturedAtMs = assertFinite(input.capturedAtMs, "capturedAtMs");
   const frames = input.frames;
   if (!frames || typeof frames.get !== "function")
-    throw new BugCaptureError("MISSING_FRAME", "a spatial frame map is required");
+    throw new BugCaptureError(
+      "MISSING_FRAME",
+      "a spatial frame map is required",
+    );
 
   const location = normalizeLocation(draft.location);
   const camera = normalizeCamera(draft.camera);
@@ -617,7 +622,11 @@ export function planBugReproduction(
     camera.frameId,
     frames,
   );
-  const target = resolvePointToRoot(camera.target, camera.frameId, frames).point;
+  const target = resolvePointToRoot(
+    camera.target,
+    camera.frameId,
+    frames,
+  ).point;
   const up = resolveDirection(camera.up, camera.frameId, rootFrameId, frames);
   return freezeDeep({
     captureId: context.captureId,
@@ -728,7 +737,10 @@ export function parseBugCapture(json: string): BugCaptureContext {
       "INVALID_RECORD",
       "record is missing one or more required sections",
     );
-  if (!Array.isArray(presence.ancestorFrameIds) || presence.ancestorFrameIds.length === 0)
+  if (
+    !Array.isArray(presence.ancestorFrameIds) ||
+    presence.ancestorFrameIds.length === 0
+  )
     throw new BugCaptureError(
       "INVALID_RECORD",
       "presence.ancestorFrameIds must be a non-empty array",
@@ -736,7 +748,10 @@ export function parseBugCapture(json: string): BugCaptureContext {
   if (typeof sol.isDay !== "boolean")
     throw new BugCaptureError("INVALID_RECORD", "sol.isDay must be a boolean");
   if (typeof record.composeSteps !== "number")
-    throw new BugCaptureError("INVALID_RECORD", "composeSteps must be a number");
+    throw new BugCaptureError(
+      "INVALID_RECORD",
+      "composeSteps must be a number",
+    );
 
   const location = presence.location;
   const publicPresence = presence.publicPresence;

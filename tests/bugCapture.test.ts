@@ -308,10 +308,7 @@ describe("bug capture — capture identity", () => {
           },
         },
       ],
-      [
-        "camera.fovDeg",
-        { ...parts, camera: { ...parts.camera, fovDeg: 46 } },
-      ],
+      ["camera.fovDeg", { ...parts, camera: { ...parts.camera, fovDeg: 46 } }],
       [
         "presence.point",
         {
@@ -335,10 +332,7 @@ describe("bug capture — capture identity", () => {
           },
         },
       ],
-      [
-        "viewport",
-        { ...parts, viewport: { ...parts.viewport, width: 1921 } },
-      ],
+      ["viewport", { ...parts, viewport: { ...parts.viewport, width: 1921 } }],
       [
         "screenshot",
         {
@@ -397,54 +391,56 @@ describe("bug capture — transport", () => {
     const parsed = parseBugCapture(wire);
     expect(parsed).toEqual(context);
     expect(keyPaths(JSON.parse(wire))).toEqual(keyPaths(context));
-    expect(keyPaths(JSON.parse(wire))).toEqual([
-      "camera.aspect",
-      "camera.far",
-      "camera.fovDeg",
-      "camera.frameId",
-      "camera.near",
-      "camera.position.x",
-      "camera.position.y",
-      "camera.position.z",
-      "camera.target.x",
-      "camera.target.y",
-      "camera.target.z",
-      "camera.up.x",
-      "camera.up.y",
-      "camera.up.z",
-      "captureId",
-      "composeSteps",
-      "presence.ancestorFrameIds[0]",
-      "presence.ancestorFrameIds[1]",
-      "presence.ancestorFrameIds[2]",
-      "presence.ancestorFrameIds[3]",
-      "presence.ancestorFrameIds[4]",
-      "presence.location.frameId",
-      "presence.location.point.x",
-      "presence.location.point.y",
-      "presence.location.point.z",
-      "presence.publicPresence.address",
-      "presence.publicPresence.frameId",
-      "presence.publicPresence.kind",
-      "recordVersion",
-      "screenshot.byteLength",
-      "screenshot.fingerprint",
-      "screenshot.height",
-      "screenshot.mimeType",
-      "screenshot.width",
-      "sol.capturedAtMs",
-      "sol.earthDay",
-      "sol.hour",
-      "sol.isDay",
-      "sol.minute",
-      "sol.solOfEarthDay",
-      "sol.sol",
-      "viewport.devicePixelRatio",
-      "viewport.height",
-      "viewport.width",
-      "world.seed",
-      "world.worldId",
-    ].sort());
+    expect(keyPaths(JSON.parse(wire))).toEqual(
+      [
+        "camera.aspect",
+        "camera.far",
+        "camera.fovDeg",
+        "camera.frameId",
+        "camera.near",
+        "camera.position.x",
+        "camera.position.y",
+        "camera.position.z",
+        "camera.target.x",
+        "camera.target.y",
+        "camera.target.z",
+        "camera.up.x",
+        "camera.up.y",
+        "camera.up.z",
+        "captureId",
+        "composeSteps",
+        "presence.ancestorFrameIds[0]",
+        "presence.ancestorFrameIds[1]",
+        "presence.ancestorFrameIds[2]",
+        "presence.ancestorFrameIds[3]",
+        "presence.ancestorFrameIds[4]",
+        "presence.location.frameId",
+        "presence.location.point.x",
+        "presence.location.point.y",
+        "presence.location.point.z",
+        "presence.publicPresence.address",
+        "presence.publicPresence.frameId",
+        "presence.publicPresence.kind",
+        "recordVersion",
+        "screenshot.byteLength",
+        "screenshot.fingerprint",
+        "screenshot.height",
+        "screenshot.mimeType",
+        "screenshot.width",
+        "sol.capturedAtMs",
+        "sol.earthDay",
+        "sol.hour",
+        "sol.isDay",
+        "sol.minute",
+        "sol.solOfEarthDay",
+        "sol.sol",
+        "viewport.devicePixelRatio",
+        "viewport.height",
+        "viewport.width",
+        "world.seed",
+        "world.worldId",
+      ].sort(),
+    );
   });
 
   // DISCRIMINATING: a validator that only checked shape would accept all three of these and send a
@@ -482,7 +478,9 @@ describe("bug capture — transport", () => {
     >;
     wire.recordVersion = BUG_CAPTURE_RECORD_VERSION + 1;
     expect(() => parseBugCapture(JSON.stringify(wire))).toThrowError(
-      expect.objectContaining({ code: "UNSUPPORTED_VERSION" }) as unknown as Error,
+      expect.objectContaining({
+        code: "UNSUPPORTED_VERSION",
+      }) as unknown as Error,
     );
     expect(() => parseBugCapture("not json")).toThrowError(BugCaptureError);
   });
