@@ -156,6 +156,15 @@ import {
 } from "./sol";
 import { setSolDebugOffsetMs, solNowMs } from "./solRuntimeClock";
 import {
+  aimBugCaptureDraft,
+  attachBugCaptureScreenshot,
+  bugCameraPoseFromWorld,
+  commitBugCapture,
+  openBugCaptureDraft,
+  type BugCaptureContext,
+} from "./bug/bugCapture";
+import type { SpatialLocation } from "./spatial/spatialLocation";
+import {
   makeNeighborhood,
   makeNeighborhoodAt,
   findSatelliteAnchors,
@@ -6236,6 +6245,64 @@ export class ColonyRuntime {
   /** Capture the current view as a PNG data URL (HUD snapshot button); null before the renderer starts. */
   snapshot(): string | null {
     return this.renderer?.capturePNG() ?? null;
+  }
+
+  /**
+   * BUG.CAPTURE.1 — file a bug from inside CityLife. Pairs a PNG with a deterministic, public-safe
+   * context record (camera pose, presence address, world seed, canonical sol) that another session can
+   * replay via `planBugReproduction`. Mirrors `captureFirstPersonDemo`'s evidence + PNG shape.
+   *
+   * READ-ONLY: it reads the camera, the survey registry and the clock, and mutates no world, player,
+   * sim or score state. Returns null before the renderer starts, exactly like `snapshot()`.
+   *
+   * `location` is BUG.GEO.1's payload — the authoritative presence address of the reporter. It is
+   * required rather than defaulted: guessing a presence address would file reports that point at the
+   * wrong place, which is the one thing this record exists to prevent.
+   */
+  captureBugContext(input: {
+    location: SpatialLocation;
+    /** Times the reporter re-aimed while composing; the compose UI passes its own count. */
+    composeSteps?: number;
+    includeScreenshot?: boolean;
+  }): { context: BugCaptureContext; pngDataUrl: string | null } | null {
+    const renderer = this.renderer;
+    if (!renderer) return null;
+    const worldPose = renderer.cameraPose();
+    const viewport = renderer.viewport();
+    if (!worldPose || !viewport) return null;
+
+    const survey = this.worldSurvey();
+    const frames = survey.frames;
+    let draft = openBugCaptureDraft({
+      world: { worldId: `seed-${this.worldSeed}`, seed: this.worldSeed },
+      viewport,
+    });
+    // The live pose is in renderer/root space; store it relative to the reporter's own frame so the
+    // capture stays valid if that frame is later re-sited (spec 152: cameras reference the registry).
+    const camera = bugCameraPoseFromWorld(
+      worldPose,
+      input.location.frameId,
+      survey.universeFrameId,
+      frames,
+    );
+    const steps = Math.max(1, Math.floor(input.composeSteps ?? 1));
+    for (let step = 0; step < steps; step += 1)
+      draft = aimBugCaptureDraft(draft, { camera, location: input.location });
+
+    const pngDataUrl =
+      input.includeScreenshot === false ? null : renderer.capturePNG();
+    if (pngDataUrl)
+      draft = attachBugCaptureScreenshot(draft, {
+        mimeType: "image/png",
+        width: viewport.width,
+        height: viewport.height,
+        payload: pngDataUrl,
+      });
+
+    return {
+      context: commitBugCapture(draft, { capturedAtMs: solNowMs(), frames }),
+      pngDataUrl,
+    };
   }
   /** Compose a shareable "poster" of the colony over the current view, mounted as a fixed overlay.
    *  Returns false if the renderer has not started (no hero to capture). Driven by the morning routine. */
