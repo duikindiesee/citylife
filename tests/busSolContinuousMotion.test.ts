@@ -2,7 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { COLONY } from "../src/colony/config";
 import { setSolDebugOffsetMs, solNowMs } from "../src/colony/solRuntimeClock";
-import { CITYLIFE_EPOCH_MS, MS_PER_SOL } from "../src/colony/sol";
+import {
+  CITYLIFE_EPOCH_MS,
+  MS_PER_SOL,
+  REAL_SECONDS_PER_SOL_MINUTE,
+} from "../src/colony/sol";
 
 // BUS.SOL.STUTTER.FIX.1 — locks the continuous bus motion contract diagnosed in BUS.SOL.STUTTER.DIAG.1:
 // 1. Continuous position changes across adjacent animation frames (sub-frame/frame cadence).
@@ -24,6 +28,11 @@ describe("BUS.SOL.STUTTER.FIX.1 — continuous bus motion while persisting canon
     const rt = new ColonyRuntime();
     // Set sol time to midday (12:00) when buses are out in active service
     rt.debugSetSolTimeOfDay(12, 0);
+    // Bracket BOTH driver reads: beforeMs is taken before the first tick and afterMs after the
+    // second, so the measured window can only be LONGER than the one the fleet actually stepped
+    // through. A bracket that starts after the first tick understates the window and turns runner
+    // scheduling into a false failure.
+    const beforeMs = solNowMs();
     tick(rt);
 
     const poses1 = rt.busPoses();
@@ -36,14 +45,33 @@ describe("BUS.SOL.STUTTER.FIX.1 — continuous bus motion while persisting canon
     const currentOffset = solNowMs() - Date.now();
     setSolDebugOffsetMs(currentOffset + 16);
     tick(rt);
+    const afterMs = solNowMs();
 
     const poses2 = rt.busPoses();
     const p2 = poses2[activeIdx]!;
 
     const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-    // Position must change smoothly on adjacent frame (dist > 0), NOT remaining static or jumping coarse cells
+    // Position must change smoothly on adjacent frame (dist > 0), NOT remaining static or jumping
+    // coarse cells.
     expect(dist).toBeGreaterThan(0);
-    expect(dist).toBeLessThan(0.1); // Sub-cell smooth progress per 16ms frame
+    // Spec 164 — the upper bound is RATE-DERIVED, not a magic 0.1 cells. The old absolute bound
+    // silently folded wall-clock drift into the measurement: `setSolDebugOffsetMs(offset + 16)`
+    // advances the clock by 16 ms PLUS however long the runner took between the two samples, so the
+    // bound only held while the bus was slow enough to absorb tens of milliseconds of jitter, and it
+    // failed on a faster bus for a reason that had nothing to do with stutter. Bounding the CHORD by
+    // the arc the bus could physically have covered in the window that actually elapsed is the real
+    // no-teleport contract (chord <= arc <= cruise * dt) and is drift-immune.
+    const elapsedSolMin =
+      (afterMs - beforeMs) / (REAL_SECONDS_PER_SOL_MINUTE * 1000);
+    expect(dist).toBeLessThanOrEqual(
+      elapsedSolMin * COLONY.transit.busSpeedCellsPerMin + 1e-6,
+    );
+    // ...and the DESIGNED per-frame advance stays sub-cell, which is clock-free and is what
+    // "no coarse cell jumping" actually meant.
+    const designedFrameCells =
+      (COLONY.transit.busSpeedCellsPerMin * (16 / 1000)) /
+      REAL_SECONDS_PER_SOL_MINUTE;
+    expect(designedFrameCells).toBeLessThan(0.1);
   });
 
   it("guarantees bounded, deterministic recovery after reload from canonical sol clock", () => {

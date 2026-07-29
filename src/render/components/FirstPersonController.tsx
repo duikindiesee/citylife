@@ -18,10 +18,13 @@ import {
   PLAYER_RADIUS_M,
   PLAYER_HALF_EXTENT,
   PLAYER_EYE_OFFSET,
+  PLAYER_WALK_SPEED_MPS,
 } from "../../colony/scale";
 import { replayPose } from "../../colony/perf/replayBridge";
 
-const MOVEMENT_SPEED = 10;
+// Spec 164 — one anchor for the walker's felt speed, so transit tuning can compare against it
+// instead of a private literal only this file knew about (BUS.SPEED.1).
+const MOVEMENT_SPEED = PLAYER_WALK_SPEED_MPS;
 const LOOK_SPEED = 2;
 const BUS_RIDER_EYE = 2.4; // eye height above the road while seated on the 3 m coach (spec 149)
 
