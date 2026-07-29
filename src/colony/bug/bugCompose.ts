@@ -131,15 +131,17 @@ function normalizeLine(value: string, label: string): string {
 /** Comparison form for the "these two say the same thing" check: case, punctuation and spacing are
  *  not differences a reviewer would call meaningful. */
 function comparable(value: string): string {
-  return value
-    .toLowerCase()
-    // Apostrophes are DELETED rather than turned into a separator, so "doesn't work" and "doesnt
-    // work" reduce to the same key. Splitting on them instead lets the single most common useless
-    // ACTUAL in the corpus walk straight past the noise check.
-    .replace(/['‘’ʼ]/g, "")
-    .replace(/[^a-z0-9 ]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return (
+    value
+      .toLowerCase()
+      // Apostrophes are DELETED rather than turned into a separator, so "doesn't work" and "doesnt
+      // work" reduce to the same key. Splitting on them instead lets the single most common useless
+      // ACTUAL in the corpus walk straight past the noise check.
+      .replace(/['‘’ʼ]/g, "")
+      .replace(/[^a-z0-9 ]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
 /**
@@ -191,7 +193,10 @@ const NOISE_PHRASES: ReadonlySet<string> = new Set([
 function isNoise(value: string): boolean {
   // A bare subject pronoun adds nothing, so "it doesn't work" and "doesn't work" are the same claim.
   // Stripping it keeps the phrase list short instead of enumerating every prefix a reporter may type.
-  const key = comparable(value).replace(/^(it|this|that|the game|the app) /, "");
+  const key = comparable(value).replace(
+    /^(it|this|that|the game|the app) /,
+    "",
+  );
   return key.length === 0 || NOISE_PHRASES.has(key);
 }
 
@@ -224,7 +229,10 @@ export interface BugComposeCaptureRef {
 export interface BugComposeAnnotationRef {
   readonly layerId: string;
   readonly captureId: string;
-  readonly annotations: readonly { readonly id: string; readonly kind: string }[];
+  readonly annotations: readonly {
+    readonly id: string;
+    readonly kind: string;
+  }[];
 }
 
 export interface BugReportEvidence {
@@ -245,13 +253,19 @@ export interface BugReportEvidence {
 
 function assertNonEmptyString(value: unknown, label: string): string {
   if (typeof value !== "string" || value.trim() === "")
-    throw new BugComposeError("INVALID_EVIDENCE", `${label} must be a non-empty string`);
+    throw new BugComposeError(
+      "INVALID_EVIDENCE",
+      `${label} must be a non-empty string`,
+    );
   return value;
 }
 
 function assertFiniteNumber(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isFinite(value))
-    throw new BugComposeError("INVALID_EVIDENCE", `${label} must be a finite number`);
+    throw new BugComposeError(
+      "INVALID_EVIDENCE",
+      `${label} must be a finite number`,
+    );
   return value;
 }
 
@@ -269,13 +283,28 @@ export function attachBugEvidence(
   annotation: BugComposeAnnotationRef | null = null,
 ): BugReportEvidence {
   if (capture === null || typeof capture !== "object")
-    throw new BugComposeError("INVALID_EVIDENCE", "capture reference is required");
-  const captureId = assertNonEmptyString(capture.captureId, "capture.captureId");
-  const worldId = assertNonEmptyString(capture.world?.worldId, "capture.world.worldId");
+    throw new BugComposeError(
+      "INVALID_EVIDENCE",
+      "capture reference is required",
+    );
+  const captureId = assertNonEmptyString(
+    capture.captureId,
+    "capture.captureId",
+  );
+  const worldId = assertNonEmptyString(
+    capture.world?.worldId,
+    "capture.world.worldId",
+  );
   const seed = assertFiniteNumber(capture.world?.seed, "capture.world.seed");
   const sol = assertFiniteNumber(capture.sol?.sol, "capture.sol.sol");
-  const width = assertFiniteNumber(capture.viewport?.width, "capture.viewport.width");
-  const height = assertFiniteNumber(capture.viewport?.height, "capture.viewport.height");
+  const width = assertFiniteNumber(
+    capture.viewport?.width,
+    "capture.viewport.width",
+  );
+  const height = assertFiniteNumber(
+    capture.viewport?.height,
+    "capture.viewport.height",
+  );
   const devicePixelRatio = assertFiniteNumber(
     capture.viewport?.devicePixelRatio,
     "capture.viewport.devicePixelRatio",
@@ -286,7 +315,10 @@ export function attachBugEvidence(
   let markKinds: string[] = [];
   if (annotation !== null) {
     layerId = assertNonEmptyString(annotation.layerId, "annotation.layerId");
-    const boundTo = assertNonEmptyString(annotation.captureId, "annotation.captureId");
+    const boundTo = assertNonEmptyString(
+      annotation.captureId,
+      "annotation.captureId",
+    );
     if (boundTo !== captureId)
       throw new BugComposeError(
         "EVIDENCE_MISMATCH",
@@ -355,7 +387,10 @@ function normalizeSteps(steps: readonly string[]): readonly string[] {
     .map((step, index) => normalizeLine(step, `steps[${index}]`))
     .filter((step) => step.length > 0);
   if (out.length > MAX_STEPS)
-    throw new BugComposeError("TOO_MANY_STEPS", `a report may carry at most ${MAX_STEPS} steps`);
+    throw new BugComposeError(
+      "TOO_MANY_STEPS",
+      `a report may carry at most ${MAX_STEPS} steps`,
+    );
   return out;
 }
 
@@ -396,7 +431,10 @@ function withDraft(
   }) as BugComposeDraft;
 }
 
-export function setBugComposeTitle(draft: BugComposeDraft, title: string): BugComposeDraft {
+export function setBugComposeTitle(
+  draft: BugComposeDraft,
+  title: string,
+): BugComposeDraft {
   return withDraft(draft, { title: normalizeLine(title, "title") });
 }
 
@@ -460,7 +498,12 @@ export type BugComposePromptId =
   | "evidence.capture"
   | "evidence.marks";
 
-export type BugComposeField = "title" | "steps" | "expected" | "actual" | "evidence";
+export type BugComposeField =
+  | "title"
+  | "steps"
+  | "expected"
+  | "actual"
+  | "evidence";
 
 export interface BugComposePrompt {
   readonly id: BugComposePromptId;
@@ -479,124 +522,131 @@ export interface BugComposePrompt {
  * The whole catalogue, in the order it is offered. Frozen constants: the assistant's voice is fixed
  * code, so no amount of hostile body text can steer what it says to the next reader.
  */
-const PROMPTS: Readonly<Record<BugComposePromptId, BugComposePrompt>> = deepFreeze({
-  "title.missing": {
-    id: "title.missing",
-    field: "title",
-    severity: "blocking",
-    question: "In one line, what is wrong? Name the thing and the defect.",
-    why: "The title is what a reviewer reads in a list of forty reports. It has to survive on its own.",
-    example: "Kerb cap overshoots the carriageway at the north junction of Harbour Road",
-    answerable: true,
-  },
-  "title.noise": {
-    id: "title.noise",
-    field: "title",
-    severity: "blocking",
-    question:
-      "That title does not name anything specific. Which object or place is wrong, and in what way?",
-    why: "A title like 'broken' cannot be searched for, deduplicated against, or prioritised.",
-    example: "Bus 3 drives through the depot wall when leaving the last bay",
-    answerable: true,
-  },
-  "steps.missing": {
-    id: "steps.missing",
-    field: "steps",
-    severity: "blocking",
-    question:
-      "What was the FIRST thing you did? Start from where you were standing or what you loaded.",
-    why: "A reviewer has to be able to arrive at the same place before anything else you say applies.",
-    example: "Spawn at the founders' landing camp and walk north to the first junction",
-    answerable: true,
-  },
-  "steps.more": {
-    id: "steps.more",
-    field: "steps",
-    severity: "blocking",
-    question: "And then what? Add the next step, one action per step.",
-    why: "One step is a description, not a reproduction. Two or more is the smallest thing someone else can follow.",
-    example: "Press E to enter the bus, then wait for it to leave the bay",
-    answerable: true,
-  },
-  "steps.terse": {
-    id: "steps.terse",
-    field: "steps",
-    severity: "advisory",
-    question:
-      "One of your steps is a single word or two. Can you say what you did and where?",
-    why: "A step like 'walk' does not tell a reviewer which way, from where, or how far.",
-    example: "Walk north along Harbour Road until the kerb turns",
-    answerable: false,
-  },
-  "expected.missing": {
-    id: "expected.missing",
-    field: "expected",
-    severity: "blocking",
-    question: "What did you EXPECT to happen at that point?",
-    why: "Without it, a reviewer cannot tell a defect from a design decision they simply disagree with.",
-    example: "The kerb should stop at the carriageway edge and the paint should stay straight across the mouth",
-    answerable: true,
-  },
-  "actual.missing": {
-    id: "actual.missing",
-    field: "actual",
-    severity: "blocking",
-    question: "And what ACTUALLY happened? Describe only what you saw.",
-    why: "The observed behaviour is the thing a fix is tested against.",
-    example: "The kerb cap sticks about half a metre into the road and the paint jumps sideways",
-    answerable: true,
-  },
-  "expected.noise": {
-    id: "expected.noise",
-    field: "expected",
-    severity: "blocking",
-    question:
-      "'Expected' needs the specific behaviour you were counting on, not that it should work.",
-    why: "'It should work' is true of everything, so it rules nothing in and nothing out.",
-    example: "The door should open and I should end up inside the lobby",
-    answerable: true,
-  },
-  "actual.noise": {
-    id: "actual.noise",
-    field: "actual",
-    severity: "blocking",
-    question:
-      "'Actual' needs what you actually saw — the message, the position, the thing that moved.",
-    why: "'Broken' is the same sentence for a crash, a wrong colour and a missing wall.",
-    example: "Nothing happened and the prompt stayed on screen; no message appeared",
-    answerable: true,
-  },
-  "expected-actual.identical": {
-    id: "expected-actual.identical",
-    field: "actual",
-    severity: "blocking",
-    question:
-      "Your expected and actual say the same thing. What was different about what actually happened?",
-    why: "If the two match, the report contains no defect a reviewer can act on.",
-    example: "Expected: the bus stops at the bay. Actual: the bus drives through the bay wall and stops outside.",
-    answerable: true,
-  },
-  "evidence.capture": {
-    id: "evidence.capture",
-    field: "evidence",
-    severity: "advisory",
-    question:
-      "There is no capture attached. Take one from where the problem is so a reviewer can stand there.",
-    why: "A capture carries the camera pose, the presence address, the seed and the sol — a written location does not.",
-    example: "Aim at the defect, capture, then attach it to this report",
-    answerable: false,
-  },
-  "evidence.marks": {
-    id: "evidence.marks",
-    field: "evidence",
-    severity: "advisory",
-    question:
-      "The capture has no marks on it. Which of the things on screen is the wrong one?",
-    why: "A junction capture holds a couple of hundred objects; the arrow is the only thing that says which one.",
-    example: "Draw an arrow from the sky onto the kerb that overshoots",
-    answerable: false,
-  },
-});
+const PROMPTS: Readonly<Record<BugComposePromptId, BugComposePrompt>> =
+  deepFreeze({
+    "title.missing": {
+      id: "title.missing",
+      field: "title",
+      severity: "blocking",
+      question: "In one line, what is wrong? Name the thing and the defect.",
+      why: "The title is what a reviewer reads in a list of forty reports. It has to survive on its own.",
+      example:
+        "Kerb cap overshoots the carriageway at the north junction of Harbour Road",
+      answerable: true,
+    },
+    "title.noise": {
+      id: "title.noise",
+      field: "title",
+      severity: "blocking",
+      question:
+        "That title does not name anything specific. Which object or place is wrong, and in what way?",
+      why: "A title like 'broken' cannot be searched for, deduplicated against, or prioritised.",
+      example: "Bus 3 drives through the depot wall when leaving the last bay",
+      answerable: true,
+    },
+    "steps.missing": {
+      id: "steps.missing",
+      field: "steps",
+      severity: "blocking",
+      question:
+        "What was the FIRST thing you did? Start from where you were standing or what you loaded.",
+      why: "A reviewer has to be able to arrive at the same place before anything else you say applies.",
+      example:
+        "Spawn at the founders' landing camp and walk north to the first junction",
+      answerable: true,
+    },
+    "steps.more": {
+      id: "steps.more",
+      field: "steps",
+      severity: "blocking",
+      question: "And then what? Add the next step, one action per step.",
+      why: "One step is a description, not a reproduction. Two or more is the smallest thing someone else can follow.",
+      example: "Press E to enter the bus, then wait for it to leave the bay",
+      answerable: true,
+    },
+    "steps.terse": {
+      id: "steps.terse",
+      field: "steps",
+      severity: "advisory",
+      question:
+        "One of your steps is a single word or two. Can you say what you did and where?",
+      why: "A step like 'walk' does not tell a reviewer which way, from where, or how far.",
+      example: "Walk north along Harbour Road until the kerb turns",
+      answerable: false,
+    },
+    "expected.missing": {
+      id: "expected.missing",
+      field: "expected",
+      severity: "blocking",
+      question: "What did you EXPECT to happen at that point?",
+      why: "Without it, a reviewer cannot tell a defect from a design decision they simply disagree with.",
+      example:
+        "The kerb should stop at the carriageway edge and the paint should stay straight across the mouth",
+      answerable: true,
+    },
+    "actual.missing": {
+      id: "actual.missing",
+      field: "actual",
+      severity: "blocking",
+      question: "And what ACTUALLY happened? Describe only what you saw.",
+      why: "The observed behaviour is the thing a fix is tested against.",
+      example:
+        "The kerb cap sticks about half a metre into the road and the paint jumps sideways",
+      answerable: true,
+    },
+    "expected.noise": {
+      id: "expected.noise",
+      field: "expected",
+      severity: "blocking",
+      question:
+        "'Expected' needs the specific behaviour you were counting on, not that it should work.",
+      why: "'It should work' is true of everything, so it rules nothing in and nothing out.",
+      example: "The door should open and I should end up inside the lobby",
+      answerable: true,
+    },
+    "actual.noise": {
+      id: "actual.noise",
+      field: "actual",
+      severity: "blocking",
+      question:
+        "'Actual' needs what you actually saw — the message, the position, the thing that moved.",
+      why: "'Broken' is the same sentence for a crash, a wrong colour and a missing wall.",
+      example:
+        "Nothing happened and the prompt stayed on screen; no message appeared",
+      answerable: true,
+    },
+    "expected-actual.identical": {
+      id: "expected-actual.identical",
+      field: "actual",
+      severity: "blocking",
+      question:
+        "Your expected and actual say the same thing. What was different about what actually happened?",
+      why: "If the two match, the report contains no defect a reviewer can act on.",
+      example:
+        "Expected: the bus stops at the bay. Actual: the bus drives through the bay wall and stops outside.",
+      answerable: true,
+    },
+    "evidence.capture": {
+      id: "evidence.capture",
+      field: "evidence",
+      severity: "advisory",
+      question:
+        "There is no capture attached. Take one from where the problem is so a reviewer can stand there.",
+      why: "A capture carries the camera pose, the presence address, the seed and the sol — a written location does not.",
+      example: "Aim at the defect, capture, then attach it to this report",
+      answerable: false,
+    },
+    "evidence.marks": {
+      id: "evidence.marks",
+      field: "evidence",
+      severity: "advisory",
+      question:
+        "The capture has no marks on it. Which of the things on screen is the wrong one?",
+      why: "A junction capture holds a couple of hundred objects; the arrow is the only thing that says which one.",
+      example: "Draw an arrow from the sky onto the kerb that overshoots",
+      answerable: false,
+    },
+  });
 
 /** Fewer than this many words in a step reads as a note to self rather than an instruction. */
 const MIN_STEP_WORDS = 3;
@@ -627,7 +677,11 @@ function unmetPrompts(draft: BugComposeDraft): readonly BugComposePrompt[] {
   )
     push("expected-actual.identical");
 
-  if (draft.steps.some((step) => step.split(" ").filter(Boolean).length < MIN_STEP_WORDS))
+  if (
+    draft.steps.some(
+      (step) => step.split(" ").filter(Boolean).length < MIN_STEP_WORDS,
+    )
+  )
     push("steps.terse");
 
   if (draft.evidence === null) push("evidence.capture");
@@ -642,7 +696,9 @@ export interface BugReportReadiness {
   readonly advisory: readonly BugComposePrompt[];
 }
 
-export function assessBugReportReadiness(draft: BugComposeDraft): BugReportReadiness {
+export function assessBugReportReadiness(
+  draft: BugComposeDraft,
+): BugReportReadiness {
   const unmet = unmetPrompts(draft);
   const blocking = unmet.filter((prompt) => prompt.severity === "blocking");
   const advisory = unmet.filter((prompt) => prompt.severity === "advisory");
@@ -654,7 +710,9 @@ export function assessBugReportReadiness(draft: BugComposeDraft): BugReportReadi
 }
 
 /** The next question the chatbox should ask, blocking gaps first. `null` once nothing is left. */
-export function nextBugComposePrompt(draft: BugComposeDraft): BugComposePrompt | null {
+export function nextBugComposePrompt(
+  draft: BugComposeDraft,
+): BugComposePrompt | null {
   const unmet = unmetPrompts(draft);
   return (
     unmet.find((prompt) => prompt.severity === "blocking") ??
@@ -678,7 +736,10 @@ export function answerBugComposePrompt(
 ): BugComposeDraft {
   const prompt = PROMPTS[promptId];
   if (!prompt)
-    throw new BugComposeError("UNKNOWN_PROMPT", `no such prompt: ${String(promptId)}`);
+    throw new BugComposeError(
+      "UNKNOWN_PROMPT",
+      `no such prompt: ${String(promptId)}`,
+    );
   if (!prompt.answerable)
     throw new BugComposeError(
       "PROMPT_NOT_ANSWERABLE",
@@ -703,11 +764,20 @@ export function answerBugComposePrompt(
 
   switch (prompt.field) {
     case "title":
-      return withDraft(draft, { title: normalizeLine(recorded, "title"), transcript });
+      return withDraft(draft, {
+        title: normalizeLine(recorded, "title"),
+        transcript,
+      });
     case "expected":
-      return withDraft(draft, { expected: normalizeLine(recorded, "expected"), transcript });
+      return withDraft(draft, {
+        expected: normalizeLine(recorded, "expected"),
+        transcript,
+      });
     case "actual":
-      return withDraft(draft, { actual: normalizeLine(recorded, "actual"), transcript });
+      return withDraft(draft, {
+        actual: normalizeLine(recorded, "actual"),
+        transcript,
+      });
     case "steps": {
       const added = recorded
         .split("\n")
@@ -759,7 +829,9 @@ function canonicalEvidenceForm(evidence: BugReportEvidence | null): string {
   ].join("|");
 }
 
-function canonicalReportForm(parts: Omit<BugReportBody, "bodyId" | "document">): string {
+function canonicalReportForm(
+  parts: Omit<BugReportBody, "bodyId" | "document">,
+): string {
   return [
     num(parts.reportVersion),
     parts.title,
@@ -804,7 +876,10 @@ export function commitBugReport(
       `report is not ready: ${readiness.blocking.map((prompt) => prompt.id).join(", ")}`,
     );
   if (typeof input?.filedAtMs !== "number" || !Number.isFinite(input.filedAtMs))
-    throw new BugComposeError("INVALID_FIELD", "filedAtMs must be a finite number");
+    throw new BugComposeError(
+      "INVALID_FIELD",
+      "filedAtMs must be a finite number",
+    );
 
   const parts = {
     reportVersion: BUG_REPORT_BODY_VERSION,
@@ -892,7 +967,10 @@ export function parseBugReport(json: string): BugReportBody {
     })),
   };
   if (typeof parts.filedAtMs !== "number" || !Number.isFinite(parts.filedAtMs))
-    throw new BugComposeError("INVALID_REPORT", "filedAtMs must be a finite number");
+    throw new BugComposeError(
+      "INVALID_REPORT",
+      "filedAtMs must be a finite number",
+    );
 
   const bodyId = deriveBugReportBodyId(parts);
   if (bodyId !== wire.bodyId)
@@ -934,7 +1012,9 @@ function evidenceLines(evidence: BugReportEvidence): readonly string[] {
   else
     lines.push(
       `- annotations \`${evidence.layerId}\` — ${evidence.markCount} mark${evidence.markCount === 1 ? "" : "s"}${
-        evidence.markKinds.length > 0 ? ` (${evidence.markKinds.join(", ")})` : ""
+        evidence.markKinds.length > 0
+          ? ` (${evidence.markKinds.join(", ")})`
+          : ""
       }`,
     );
   return lines;
@@ -956,8 +1036,7 @@ export function renderBugReportMarkdown(report: BugReportBody): string {
   if (report.bodyMarkdown.trim() !== "")
     out.push("## Details", "", report.bodyMarkdown, "");
   out.push("## Evidence", "");
-  if (report.evidence === null)
-    out.push("- no in-world capture attached");
+  if (report.evidence === null) out.push("- no in-world capture attached");
   else out.push(...evidenceLines(report.evidence));
   out.push("", `<!-- bugbody ${report.bodyId} -->`);
   return out.join("\n");

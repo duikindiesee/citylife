@@ -19,7 +19,10 @@ const SIMPLE = `flowchart TD
   C -.->|yes| E[Keep walking]
 `;
 
-function walk(element: BugSvgElement, visit: (node: BugSvgElement) => void): void {
+function walk(
+  element: BugSvgElement,
+  visit: (node: BugSvgElement) => void,
+): void {
   visit(element);
   for (const child of element.children) walk(child, visit);
 }
@@ -28,7 +31,9 @@ describe("bugMermaid — parsing the supported subset", () => {
   it("reads nodes, shapes, edges and edge labels exactly", () => {
     const diagram = parseMermaidDiagram(SIMPLE);
     expect(diagram.direction).toBe("TD");
-    expect(diagram.nodes.map((node) => [node.id, node.label, node.shape])).toEqual([
+    expect(
+      diagram.nodes.map((node) => [node.id, node.label, node.shape]),
+    ).toEqual([
       ["A", "Spawn at camp", "rect"],
       ["B", "Walk north", "round"],
       ["C", "Kerb correct?", "diamond"],
@@ -63,14 +68,19 @@ describe("bugMermaid — parsing the supported subset", () => {
       A[First name] --> B
       B[Real name] --> A[Renamed?]
     `);
-    expect(diagram.nodes.map((node) => node.label)).toEqual(["First name", "Real name"]);
+    expect(diagram.nodes.map((node) => node.label)).toEqual([
+      "First name",
+      "Real name",
+    ]);
   });
 
   it("rejects the %%{init}%% directive rather than ignoring it", () => {
     // Upstream Mermaid lets this directive set securityLevel from inside the diagram source, i.e. the
     // untrusted body could disable the sanitizer that is protecting the reviewer reading it.
     expect(() =>
-      parseMermaidDiagram(`%%{init: {"securityLevel": "loose"}}%%\nflowchart TD\n  A --> B`),
+      parseMermaidDiagram(
+        `%%{init: {"securityLevel": "loose"}}%%\nflowchart TD\n  A --> B`,
+      ),
     ).toThrowError(/init.*not supported/i);
     try {
       parseMermaidDiagram(`%%{init: {}}%%\nflowchart TD\n  A --> B`);
@@ -91,7 +101,11 @@ describe("bugMermaid — parsing the supported subset", () => {
   });
 
   it("rejects style/class/click directives that would bind behaviour from diagram text", () => {
-    for (const line of ["style A fill:#f00", "click A callback", "classDef x fill:#0f0"]) {
+    for (const line of [
+      "style A fill:#f00",
+      "click A callback",
+      "classDef x fill:#0f0",
+    ]) {
       try {
         parseMermaidDiagram(`flowchart TD\n  A --> B\n  ${line}`);
         expect.unreachable(`${line} must be rejected`);
@@ -121,7 +135,8 @@ describe("bugMermaid — parsing the supported subset", () => {
 
   it("bounds the node count", () => {
     const lines = ["flowchart TD"];
-    for (let i = 0; i < MAX_MERMAID_NODES + 5; i += 1) lines.push(`  n${i}[Node ${i}]`);
+    for (let i = 0; i < MAX_MERMAID_NODES + 5; i += 1)
+      lines.push(`  n${i}[Node ${i}]`);
     try {
       parseMermaidDiagram(lines.join("\n"));
       expect.unreachable("node bound must be enforced");
@@ -136,7 +151,9 @@ describe("bugMermaid — layout", () => {
     // A retry loop is a normal thing for a reporter to draw. Longest-path layering written the
     // natural recursive way never terminates on it; back edges are excluded from LAYERING but are
     // still DRAWN, and which edge is the back edge is fixed by declaration order.
-    const diagram = parseMermaidDiagram("flowchart TD\n  A --> B\n  B --> C\n  C --> A");
+    const diagram = parseMermaidDiagram(
+      "flowchart TD\n  A --> B\n  B --> C\n  C --> A",
+    );
     const layout = layoutMermaidDiagram(diagram);
     expect(layout.nodes.map((node) => [node.id, node.layer])).toEqual([
       ["A", 0],
@@ -154,8 +171,12 @@ describe("bugMermaid — layout", () => {
   });
 
   it("advances layers down the page for TD and across it for LR", () => {
-    const down = layoutMermaidDiagram(parseMermaidDiagram("flowchart TD\n  A --> B"));
-    const across = layoutMermaidDiagram(parseMermaidDiagram("flowchart LR\n  A --> B"));
+    const down = layoutMermaidDiagram(
+      parseMermaidDiagram("flowchart TD\n  A --> B"),
+    );
+    const across = layoutMermaidDiagram(
+      parseMermaidDiagram("flowchart LR\n  A --> B"),
+    );
     expect(down.nodes[1].y).toBeGreaterThan(down.nodes[0].y);
     expect(down.nodes[1].x).toBe(down.nodes[0].x);
     expect(across.nodes[1].x).toBeGreaterThan(across.nodes[0].x);
@@ -163,10 +184,18 @@ describe("bugMermaid — layout", () => {
   });
 
   it("mirrors RL against LR and BT against TD", () => {
-    const lr = layoutMermaidDiagram(parseMermaidDiagram("flowchart LR\n  A --> B"));
-    const rl = layoutMermaidDiagram(parseMermaidDiagram("flowchart RL\n  A --> B"));
-    const td = layoutMermaidDiagram(parseMermaidDiagram("flowchart TD\n  A --> B"));
-    const bt = layoutMermaidDiagram(parseMermaidDiagram("flowchart BT\n  A --> B"));
+    const lr = layoutMermaidDiagram(
+      parseMermaidDiagram("flowchart LR\n  A --> B"),
+    );
+    const rl = layoutMermaidDiagram(
+      parseMermaidDiagram("flowchart RL\n  A --> B"),
+    );
+    const td = layoutMermaidDiagram(
+      parseMermaidDiagram("flowchart TD\n  A --> B"),
+    );
+    const bt = layoutMermaidDiagram(
+      parseMermaidDiagram("flowchart BT\n  A --> B"),
+    );
     expect(rl.nodes[1].x).toBeLessThan(rl.nodes[0].x);
     expect(lr.nodes[1].x).toBeGreaterThan(lr.nodes[0].x);
     expect(bt.nodes[1].y).toBeLessThan(bt.nodes[0].y);
@@ -198,7 +227,9 @@ describe("bugMermaid — SVG output is a closed surface", () => {
   it("never lets reporter text reach an attribute value", () => {
     // A quote is harmless in TEXT position and dangerous in ATTRIBUTE position. The guarantee worth
     // pinning is therefore structural: labels only ever appear as element text.
-    const svg = renderMermaidLocally(`flowchart TD\n  A[say "hi" now] --> B[ok]`).svg;
+    const svg = renderMermaidLocally(
+      `flowchart TD\n  A[say "hi" now] --> B[ok]`,
+    ).svg;
     const attrValues: string[] = [];
     const textValues: string[] = [];
     walk(svg, (node) => {
@@ -215,7 +246,14 @@ describe("bugMermaid — SVG output is a closed surface", () => {
     walk(svg, (node) => {
       for (const name of Object.keys(node.attrs)) attrs.add(name.toLowerCase());
     });
-    for (const fetching of ["src", "href", "xlink:href", "data", "poster", "srcset"])
+    for (const fetching of [
+      "src",
+      "href",
+      "xlink:href",
+      "data",
+      "poster",
+      "srcset",
+    ])
       expect(attrs.has(fetching)).toBe(false);
     // Two-sided: the element really does carry attributes, so the assertion above is not vacuous.
     expect(attrs.has("viewbox")).toBe(true);
@@ -242,8 +280,12 @@ describe("bugMermaid — SVG output is a closed surface", () => {
   });
 
   it("draws a head for --> and none for ---", () => {
-    const arrows = bugSvgToMarkup(renderMermaidLocally("flowchart TD\n  A --> B").svg);
-    const plain = bugSvgToMarkup(renderMermaidLocally("flowchart TD\n  A --- B").svg);
+    const arrows = bugSvgToMarkup(
+      renderMermaidLocally("flowchart TD\n  A --> B").svg,
+    );
+    const plain = bugSvgToMarkup(
+      renderMermaidLocally("flowchart TD\n  A --- B").svg,
+    );
     expect(arrows).toContain("<polygon");
     expect(plain).not.toContain("<polygon");
   });
@@ -266,7 +308,7 @@ describe("bugMermaid — SVG output is a closed surface", () => {
   it("only ever styles with the theme this module chose, never with source text", () => {
     const markup = bugSvgToMarkup(
       renderMermaidLocally("flowchart TD\n  A[x] --> B[y]").svg,
-      );
+    );
     expect(markup).toContain(DEFAULT_MERMAID_THEME.nodeFill);
     expect(markup).not.toContain("style=");
     expect(markup).not.toContain("class=");

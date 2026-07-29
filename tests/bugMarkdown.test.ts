@@ -55,7 +55,9 @@ describe("bugMarkdown — block structure", () => {
   });
 
   it("keeps inline emphasis, strong and code, and honours a backslash escape", () => {
-    const document = renderBugMarkdown("a *b* **c** `d` and \\*not emphasis\\*");
+    const document = renderBugMarkdown(
+      "a *b* **c** `d` and \\*not emphasis\\*",
+    );
     const html = bugMarkdownToHtml(document);
     expect(html).toBe(
       "<p>a <em>b</em> <strong>c</strong> <code>d</code> and *not emphasis*</p>",
@@ -70,9 +72,9 @@ describe("bugMarkdown — block structure", () => {
   });
 
   it("bounds the body size", () => {
-    expect(() => renderBugMarkdown("x".repeat(MAX_BODY_CHARS + 1))).toThrowError(
-      /exceeds/,
-    );
+    expect(() =>
+      renderBugMarkdown("x".repeat(MAX_BODY_CHARS + 1)),
+    ).toThrowError(/exceeds/);
   });
 });
 
@@ -86,7 +88,12 @@ describe("bugMarkdown — raw HTML has no way in", () => {
     expect(html).not.toContain("<img");
     // No `<` from the source survives unescaped, so no attribute — onerror included — can attach to
     // anything. Checking for the literal word would be wrong: it is fine, and expected, as TEXT.
-    expect(html.replace(/<\/?(p|em|strong|code|a|h[1-6]|ul|ol|li|pre|blockquote|hr)\b[^>]*>/g, "")).not.toContain("<");
+    expect(
+      html.replace(
+        /<\/?(p|em|strong|code|a|h[1-6]|ul|ol|li|pre|blockquote|hr)\b[^>]*>/g,
+        "",
+      ),
+    ).not.toContain("<");
     // Positive side: the text survives, escaped, so nothing of the report was silently eaten.
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
@@ -105,7 +112,9 @@ describe("bugMarkdown — raw HTML has no way in", () => {
     // backwards to the next person, and a literal NUL makes git treat the test as a binary blob.
     const hostile =
       "expected: the door \u202Esnepo\u202C\u0000 now\u2028and\u202Athen\uFEFF";
-    expect(sanitizeBugText(hostile)).toBe("expected: the door snepo nowandthen");
+    expect(sanitizeBugText(hostile)).toBe(
+      "expected: the door snepo nowandthen",
+    );
     const text = bugMarkdownPlainText(renderBugMarkdown(hostile));
     for (const code of [0x202e, 0x202c, 0x0000, 0x2028])
       expect(text.includes(String.fromCodePoint(code))).toBe(false);
@@ -180,9 +189,13 @@ describe("bugMarkdown — link scheme policy", () => {
   });
 
   it("autolinks a bare allowlisted URL and leaves a bare disallowed one as text", () => {
-    const good = bugMarkdownToHtml(renderBugMarkdown("see https://kooker.co.za/a for detail"));
+    const good = bugMarkdownToHtml(
+      renderBugMarkdown("see https://kooker.co.za/a for detail"),
+    );
     expect(good).toContain('href="https://kooker.co.za/a"');
-    const bad = bugMarkdownToHtml(renderBugMarkdown("see javascript:alert(1) for detail"));
+    const bad = bugMarkdownToHtml(
+      renderBugMarkdown("see javascript:alert(1) for detail"),
+    );
     expect(bad).not.toContain("<a ");
     expect(bad).toContain("javascript:alert(1)");
   });
@@ -228,14 +241,21 @@ describe("bugMarkdown — a rendered body never fetches", () => {
     // Two-sided: the document really does contain a rendered diagram and a live link, so "no fetch
     // targets" is a property of the design rather than of an empty document.
     expect(blockKinds(document)).toContain("mermaid");
-    expect(bugMarkdownToHtml(document)).toContain('href="https://kooker.co.za/ok"');
+    expect(bugMarkdownToHtml(document)).toContain(
+      'href="https://kooker.co.za/ok"',
+    );
   });
 });
 
 describe("bugMarkdown — Mermaid renders locally or degrades", () => {
   it("parses and lays out a fenced mermaid block at parse time", () => {
     const document = renderBugMarkdown(
-      ["```mermaid", "flowchart LR", "  A[press E] --> B[door opens]", "```"].join("\n"),
+      [
+        "```mermaid",
+        "flowchart LR",
+        "  A[press E] --> B[door opens]",
+        "```",
+      ].join("\n"),
     );
     const block = document.blocks[0] as BugMermaidBlock;
     expect(block.kind).toBe("mermaid");
@@ -273,9 +293,12 @@ describe("bugMarkdown — Mermaid renders locally or degrades", () => {
   it("escapes a hostile node label in the exported SVG", () => {
     const html = bugMarkdownToHtml(
       renderBugMarkdown(
-        ["```mermaid", "flowchart TD", '  A["<script>alert(1)</script>"] --> B[x]', "```"].join(
-          "\n",
-        ),
+        [
+          "```mermaid",
+          "flowchart TD",
+          '  A["<script>alert(1)</script>"] --> B[x]',
+          "```",
+        ].join("\n"),
       ),
     );
     expect(html).not.toContain("<script");

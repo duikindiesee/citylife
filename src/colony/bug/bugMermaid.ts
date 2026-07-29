@@ -87,7 +87,12 @@ export const MAX_DRAWN_LABEL_CHARS = 28;
 // ---------------------------------------------------------------------------------------------
 
 export type MermaidDirection = "TD" | "TB" | "LR" | "RL" | "BT";
-export type MermaidNodeShape = "rect" | "round" | "stadium" | "circle" | "diamond";
+export type MermaidNodeShape =
+  | "rect"
+  | "round"
+  | "stadium"
+  | "circle"
+  | "diamond";
 export type MermaidEdgeStyle = "solid" | "dotted" | "thick";
 
 export interface MermaidNode {
@@ -197,11 +202,7 @@ const SHAPE_DELIMITERS: readonly {
 
 function unquoteLabel(raw: string): string {
   const trimmed = raw.trim();
-  if (
-    trimmed.length >= 2 &&
-    trimmed.startsWith('"') &&
-    trimmed.endsWith('"')
-  )
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"'))
     return trimmed.slice(1, -1).trim();
   return trimmed;
 }
@@ -291,7 +292,10 @@ function clampLabel(label: string): string {
  */
 export function parseMermaidDiagram(source: string): MermaidDiagram {
   if (typeof source !== "string")
-    throw new BugMermaidError("EMPTY_SOURCE", "diagram source must be a string");
+    throw new BugMermaidError(
+      "EMPTY_SOURCE",
+      "diagram source must be a string",
+    );
   if (source.length > MAX_MERMAID_SOURCE_CHARS)
     throw new BugMermaidError(
       "SOURCE_TOO_LARGE",
@@ -307,14 +311,14 @@ export function parseMermaidDiagram(source: string): MermaidDiagram {
     );
 
   const nodeOrder: string[] = [];
-  const nodeById = new Map<string, { label: string; shape: MermaidNodeShape }>();
+  const nodeById = new Map<
+    string,
+    { label: string; shape: MermaidNodeShape }
+  >();
   const edges: MermaidEdge[] = [];
   let direction: MermaidDirection | null = null;
 
-  const declare = (
-    token: ParsedNodeToken,
-    line: number,
-  ): void => {
+  const declare = (token: ParsedNodeToken, line: number): void => {
     const existing = nodeById.get(token.id);
     if (!existing) {
       if (nodeOrder.length >= MAX_MERMAID_NODES)
@@ -412,7 +416,10 @@ export function parseMermaidDiagram(source: string): MermaidDiagram {
       edges.push({
         from: previous.id,
         to: target.id,
-        label: edge.label === null || edge.label === "" ? null : clampLabel(edge.label),
+        label:
+          edge.label === null || edge.label === ""
+            ? null
+            : clampLabel(edge.label),
         style: edge.style,
         arrow: edge.arrow,
       });
@@ -527,7 +534,9 @@ function findBackEdges(
 
   for (const root of nodes) {
     if (state.get(root.id) !== 0) continue;
-    const stack: { id: string; cursor: number }[] = [{ id: root.id, cursor: 0 }];
+    const stack: { id: string; cursor: number }[] = [
+      { id: root.id, cursor: 0 },
+    ];
     state.set(root.id, 1);
     while (stack.length > 0) {
       const frame = stack[stack.length - 1];
@@ -679,17 +688,26 @@ export function layoutMermaidDiagram(diagram: MermaidDiagram): MermaidLayout {
     };
   });
 
-  const layerCount = placements.reduce((max, p) => Math.max(max, p.layer + 1), 1);
+  const layerCount = placements.reduce(
+    (max, p) => Math.max(max, p.layer + 1),
+    1,
+  );
   const columnCount = placements.reduce(
     (max, p) => Math.max(max, p.column + 1),
     1,
   );
-  const cellAcross = placements.reduce((max, p) => Math.max(max, p.width), MIN_NODE_WIDTH);
-  const horizontalFlow = diagram.direction === "LR" || diagram.direction === "RL";
+  const cellAcross = placements.reduce(
+    (max, p) => Math.max(max, p.width),
+    MIN_NODE_WIDTH,
+  );
+  const horizontalFlow =
+    diagram.direction === "LR" || diagram.direction === "RL";
 
-  const alongExtent = layerCount * (horizontalFlow ? cellAcross : NODE_HEIGHT) +
+  const alongExtent =
+    layerCount * (horizontalFlow ? cellAcross : NODE_HEIGHT) +
     (layerCount - 1) * GAP_ALONG;
-  const acrossExtent = columnCount * (horizontalFlow ? NODE_HEIGHT : cellAcross) +
+  const acrossExtent =
+    columnCount * (horizontalFlow ? NODE_HEIGHT : cellAcross) +
     (columnCount - 1) * GAP_ACROSS;
 
   const width = MARGIN * 2 + (horizontalFlow ? alongExtent : acrossExtent);
@@ -701,11 +719,17 @@ export function layoutMermaidDiagram(diagram: MermaidDiagram): MermaidLayout {
     let x: number;
     let y: number;
     if (horizontalFlow) {
-      x = MARGIN + alongIndex * (cellAcross + GAP_ALONG) + (cellAcross - placement.width) / 2;
+      x =
+        MARGIN +
+        alongIndex * (cellAcross + GAP_ALONG) +
+        (cellAcross - placement.width) / 2;
       y = MARGIN + acrossIndex * (NODE_HEIGHT + GAP_ACROSS);
       if (diagram.direction === "RL") x = width - x - placement.width;
     } else {
-      x = MARGIN + acrossIndex * (cellAcross + GAP_ACROSS) + (cellAcross - placement.width) / 2;
+      x =
+        MARGIN +
+        acrossIndex * (cellAcross + GAP_ACROSS) +
+        (cellAcross - placement.width) / 2;
       y = MARGIN + alongIndex * (NODE_HEIGHT + GAP_ALONG);
       if (diagram.direction === "BT") y = height - y - NODE_HEIGHT;
     }
@@ -1075,7 +1099,10 @@ function escapeSvgAttr(value: string): string {
  */
 export function bugSvgToMarkup(element: BugSvgElement): string {
   if (!ALLOWED_SVG_TAGS.has(element.tag))
-    throw new BugMermaidError("INVALID_SVG", `tag '${element.tag}' is not allowlisted`);
+    throw new BugMermaidError(
+      "INVALID_SVG",
+      `tag '${element.tag}' is not allowlisted`,
+    );
   const attrs: string[] = [];
   for (const [name, value] of Object.entries(element.attrs)) {
     if (!ALLOWED_SVG_ATTRS.has(name))
@@ -1085,7 +1112,8 @@ export function bugSvgToMarkup(element: BugSvgElement): string {
       );
     attrs.push(`${name}="${escapeSvgAttr(String(value))}"`);
   }
-  const open = attrs.length > 0 ? `<${element.tag} ${attrs.join(" ")}` : `<${element.tag}`;
+  const open =
+    attrs.length > 0 ? `<${element.tag} ${attrs.join(" ")}` : `<${element.tag}`;
   const inner =
     (element.text === null ? "" : escapeSvgText(element.text)) +
     element.children.map(bugSvgToMarkup).join("");

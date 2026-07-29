@@ -37,8 +37,8 @@ new deep-frozen values and mutating nothing:
 - **`src/colony/bug/bugMermaid.ts`** — a local Mermaid flowchart implementation: parse → layer and
   lay out → an SVG ELEMENT TREE. `bugSvgToMarkup` serializes that tree for export.
 - **`src/colony/bug/bugMarkdown.ts`** — the body: source → a typed block/inline tree, with the link
-  policy, the fetch policy, and ```mermaid fences resolved at parse time. `bugMarkdownToHtml` is the
-  export path; `collectBugDocumentFetchTargets` is the executable form of the no-fetch claim.
+  policy, the fetch policy, and ```mermaid fences resolved at parse time. `bugMarkdownToHtml`is the
+export path;`collectBugDocumentFetchTargets` is the executable form of the no-fetch claim.
 - **`src/colony/bug/bugCompose.ts`** — the draft, the prompt catalogue, readiness, the evidence
   binding, the committed `BugReportBody` with its self-verifying id and JSON transport, the canonical
   tracker Markdown, and `projectBugComposeView` for a surface to render.
@@ -185,21 +185,21 @@ Markdown, remains the source of truth.
 restored one at a time, the suite observed to FAIL, and the fix restored.** Full table in the PR body
 and in `bridge/from-claude-citylife/2026-07-29-bug-compose-1-markdown-mermaid.md`. Headline results:
 
-| Naive implementation restored | Result |
-| --- | --- |
-| Nothing is deep-frozen | 4 failed / 65 passed |
-| HTML export does not escape | 3 failed / 66 passed |
-| Link policy is a `javascript:` denylist | 2 failed / 67 passed |
-| SVG text is not escaped | 2 failed / 67 passed |
+| Naive implementation restored                         | Result               |
+| ----------------------------------------------------- | -------------------- |
+| Nothing is deep-frozen                                | 4 failed / 65 passed |
+| HTML export does not escape                           | 3 failed / 66 passed |
+| Link policy is a `javascript:` denylist               | 2 failed / 67 passed |
+| SVG text is not escaped                               | 2 failed / 67 passed |
 | `bodyId` derived from the timestamp, not the contents | 2 failed / 67 passed |
-| Prompts quote the reporter's own text back | 2 failed / 67 passed |
-| A bad diagram rejects the whole report | 2 failed / 67 passed |
-| Images render as links (no image refusal) | 2 failed / 67 passed |
-| No cycle detection in the layout | 1 failed / 68 passed |
-| Evidence binding (`captureId`) not checked | 1 failed / 68 passed |
-| Canonical Markdown fields not escaped | 1 failed / 68 passed |
-| `%%{init}%%` treated as an ordinary comment | 1 failed / 68 passed |
-| Fix restored | **69 passed / 69** |
+| Prompts quote the reporter's own text back            | 2 failed / 67 passed |
+| A bad diagram rejects the whole report                | 2 failed / 67 passed |
+| Images render as links (no image refusal)             | 2 failed / 67 passed |
+| No cycle detection in the layout                      | 1 failed / 68 passed |
+| Evidence binding (`captureId`) not checked            | 1 failed / 68 passed |
+| Canonical Markdown fields not escaped                 | 1 failed / 68 passed |
+| `%%{init}%%` treated as an ordinary comment           | 1 failed / 68 passed |
+| Fix restored                                          | **69 passed / 69**   |
 
 Two-sided coverage is deliberate throughout: the JSON round-trip asserts the EXACT key set so a field
 can neither be lost nor gained; id stability is paired with sensitivity across fourteen single-field
