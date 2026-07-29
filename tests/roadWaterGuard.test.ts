@@ -5,8 +5,8 @@ import { Biome } from "../src/colony/terrain";
 import type { Terrain } from "../src/colony/terrain";
 import {
   buildRoadRibbons,
-  chaikin,
   densify,
+  roadCentreLine,
   roadRibbonRenderPath,
   type RoadWay,
 } from "../src/colony/render/roadRibbon";
@@ -77,8 +77,12 @@ describe("road-on-water guard", () => {
     const size = 16;
     const biome = new Uint8Array(size * size).fill(Biome.Plains);
     const water = new Uint8Array(size * size);
-    water[9 * size + 3] = 1;
-    biome[9 * size + 3] = Biome.River;
+    // The corner-cut clamp (ROAD.RIBBON.TURN.1) means a rounded corner now moves at most
+    // MAX_CORNER_CUT_CELLS off the routed bend, so the inlet this guard exists for has to sit
+    // inside that fillet: (4,5) is the one cell the smoothed bend covers that the routed bend
+    // (2,2)->(2,5)->(8,7) never touches.
+    water[5 * size + 4] = 1;
+    biome[5 * size + 4] = Biome.River;
     const terrain = {
       size,
       biome,
@@ -90,14 +94,14 @@ describe("road-on-water guard", () => {
     const way: RoadWay = {
       path: [
         { x: 2, y: 2 },
-        { x: 2, y: 10 },
-        { x: 10, y: 10 },
+        { x: 2, y: 5 },
+        { x: 8, y: 7 },
       ],
       kind: "street",
       width: 4,
     };
 
-    const smoothed = densify(chaikin(way.path, 2), STATION_STEP_CELLS);
+    const smoothed = roadCentreLine(way.path, STATION_STEP_CELLS);
     expect(
       smoothed.some(
         (p) => water[Math.round(p.y) * size + Math.round(p.x)] === 1,
@@ -119,8 +123,28 @@ describe("road-on-water guard", () => {
       );
     });
     expect(way).toBeDefined();
-    expect(roadRibbonRenderPath(way!, terrain)).toEqual(
-      densify(way!.path, STATION_STEP_CELLS),
-    );
+    // CONTINUITY is the contract, not which branch delivers it. This connector used to reach the
+    // water only because textbook Chaikin bowed it there off a string-pulled bend, so the guard had
+    // to throw the smoothing away wholesale and render the raw routed polyline. With the corner cut
+    // clamped (ROAD.RIBBON.TURN.1) the smoothed line stays on the routed land route, so the ribbon
+    // is now BOTH smooth and unbroken. What must never come back is a wet segment: buildRoadRibbons
+    // omits those, and every omission is a visible hole in the asphalt.
+    const pts = roadRibbonRenderPath(way!, terrain);
+    const wet = pts.filter((p) => {
+      const gx = Math.round(p.x),
+        gy = Math.round(p.y);
+      if (!terrain.inBounds(gx, gy)) return true;
+      const i = terrain.idx(gx, gy);
+      const b = terrain.biome[i];
+      return (
+        b === Biome.Ocean ||
+        b === Biome.Shallows ||
+        b === Biome.River ||
+        terrain.water[i] === 1
+      );
+    });
+    expect(wet).toEqual([]);
+    // and it is the SMOOTHED line that survives now — the fallback is no longer needed here.
+    expect(pts).not.toEqual(densify(way!.path, STATION_STEP_CELLS));
   });
 });
