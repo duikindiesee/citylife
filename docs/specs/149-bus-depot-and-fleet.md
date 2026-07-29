@@ -186,8 +186,10 @@ Boarding builds on the EXISTING first-person affordance — the
 - The prompt union gains kind **`bus`**. The pure `firstPersonView()` still knows
   nothing about buses; the runtime OVERRIDES the prompt in its ui-state assembly (the
   same layer that injects mood extras) whenever a fleet bus is DWELLING with doors
-  open within `interactionPromptMaxDistance.bus` = 3 cells of the walker: label
-  `Board bus {i+1}`. While riding, the prompt is `Exit bus` whenever the bus is
+  open within `COLONY.transit.boardMaxDistanceCells` = 3 cells of the walker (the bus
+  gate lives with the transit tunables, NOT in
+  `firstPerson.interactionPromptMaxDistance`; it is read in
+  `ColonyRuntime.busInteraction()`): label `Board bus {i+1}`. While riding, the prompt is `Exit bus` whenever the bus is
   dwelling (any stop, or the depot shelter) — you can ride as long as you like and
   step off at any stop.
 - `activateFirstPersonInteraction()` handles the bus branch first: board pins the
