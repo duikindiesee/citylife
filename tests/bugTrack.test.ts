@@ -1,4 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  getBugBountyConfig,
+  resetBugBountyConfig,
+  setBugBountyConfig,
+  setBugValidatorAuthority,
+} from "../src/colony/bug/bugBounty";
 import {
   aimBugCaptureDraft,
   attachBugCaptureScreenshot,
@@ -1126,5 +1132,223 @@ describe("the KCO bounty signal", () => {
       { actor: VALIDATOR, atMs: FILED_AT + 4_000, fixRef: selfFix },
     );
     expect(bugBountySignal(record)!.selfFixed).toBe(true);
+  });
+});
+
+// ================================================================================================
+// BUG.VALIDATOR.ROLE.1 — validator authority is RESOLVED, not ASSERTED
+// ================================================================================================
+
+/**
+ * BUG.TRACK.1 left the `validator` role as a caller-supplied string; its own author wrote that the
+ * gate "stops accidents but not intent". Since BUG.KCO.1 pays 100 KCO on the validated-fix signal,
+ * anyone able to present role: "validator" could mint currency.
+ *
+ * Every refusal below was VERIFIED TO DISCRIMINATE by removing the authority check from
+ * guardTransition and confirming it fails; the exact counts are in the PR body.
+ */
+
+/** Hand-build a VALIDATE_FIX entry with a correctly recomputed digest chain. */
+function forgeValidation(record: BugRecord, actor: BugActor): string {
+  const wire = JSON.parse(serializeBugRecord(record)) as {
+    ledger: BugLedgerEntry[];
+  };
+  const head = wire.ledger[wire.ledger.length - 1];
+  const parts = {
+    seq: wire.ledger.length,
+    type: "VALIDATE_FIX" as const,
+    actorId: actor.actorId,
+    role: actor.role,
+    atMs: FILED_AT + 9_000,
+    fromStatus: "FIX_PROPOSED" as const,
+    toStatus: "VALIDATED_FIX" as const,
+    detail: "",
+    fixRef: FIX,
+    taskId: null,
+    duplicateOfReportId: null,
+    prevEntryId: head.entryId,
+  };
+  return JSON.stringify({
+    ...wire,
+    ledger: [
+      ...wire.ledger,
+      { ...parts, entryId: deriveBugLedgerEntryId(record.reportId, parts) },
+    ],
+  });
+}
+
+/** Attempt validation as an arbitrary identity that claims the validator role. */
+function validateAs(actorId: string): string {
+  return code(() =>
+    validateBugFix(proposed(), {
+      actor: { actorId, role: "validator" },
+      atMs: FILED_AT + 4_000,
+      fixRef: FIX,
+    }),
+  );
+}
+
+describe("BUG.VALIDATOR.ROLE.1 — the validator role cannot be self-asserted", () => {
+  afterEach(() => {
+    resetBugBountyConfig();
+    setBugValidatorAuthority(null);
+  });
+
+  it("refuses a stranger who simply claims the validator role", () => {
+    // The exact hole BUG.TRACK.1 named. Eve is neither the reporter nor the fix author, so every
+    // check that already existed passes; only the identity gate stops her.
+    expect(validateAs("citizen:eve")).toBe("VALIDATOR_NOT_AUTHORIZED");
+  });
+
+  it("refuses a BOT principal even though bots are legitimate maintainers", () => {
+    // Deliberately a bot that is NOT the fix author. bot:claude-citylife is FIX.authorId, so it is
+    // already stopped by SELF_VALIDATION — using it here would have proved nothing about identity,
+    // only re-proved the conflict-of-interest check. This bot passes every pre-existing check and is
+    // stopped solely by not being a configured validator.
+    expect(validateAs("bot:some-other-worker")).toBe(
+      "VALIDATOR_NOT_AUTHORIZED",
+    );
+  });
+
+  it("refuses an absent or blank principal rather than treating it as anonymous-ok", () => {
+    expect(validateAs("   ")).not.toBe("NO_THROW");
+    expect(validateAs("")).not.toBe("NO_THROW");
+  });
+
+  it("STILL LETS THE REAL OPERATOR VALIDATE — the honest path is not collateral damage", () => {
+    // The other side of every refusal above. A gate that also blocks the legitimate actor is not a
+    // fix, it is an outage.
+    const record = validated();
+    expect(record.status).toBe("VALIDATED_FIX");
+    expect(record.validation!.validatedBy).toBe("operator:kooker");
+    expect(bugBountySignal(record)).not.toBeNull();
+  });
+
+  it("gates REJECT_FIX too, so an impostor cannot bury a good fix either", () => {
+    // Rejection is the mirror of validation: it drops the record back to GOVERNED. Ungated, a
+    // stranger could veto fixes indefinitely without ever minting a coin.
+    expect(
+      code(() =>
+        rejectBugFix(proposed(), {
+          actor: { actorId: "citizen:eve", role: "validator" },
+          atMs: FILED_AT + 4_000,
+          fixRef: FIX,
+        }),
+      ),
+    ).toBe("VALIDATOR_NOT_AUTHORIZED");
+    expect(
+      rejectBugFix(proposed(), {
+        actor: VALIDATOR,
+        atMs: FILED_AT + 4_000,
+        fixRef: FIX,
+      }).status,
+    ).toBe("GOVERNED");
+  });
+
+  it("refuses a hand-appended validation on REPLAY, with a perfect digest chain", () => {
+    // The forger controls the whole entry and recomputes entryId correctly, so the chain verifies.
+    // Replay still refuses, because it judges legality with the SAME table the writing path uses —
+    // which is exactly why the authority check lives in guardTransition and not in validateBugFix.
+    expect(
+      code(() =>
+        parseBugRecord(
+          forgeValidation(proposed(), {
+            actorId: "citizen:eve",
+            role: "validator",
+          }),
+        ),
+      ),
+    ).toBe("VALIDATOR_NOT_AUTHORIZED");
+    // A record the operator really did validate still round-trips.
+    expect(parseBugRecord(serializeBugRecord(validated())).status).toBe(
+      "VALIDATED_FIX",
+    );
+  });
+});
+
+describe("BUG.VALIDATOR.ROLE.1 — validator identity and bounty are configuration", () => {
+  afterEach(() => {
+    resetBugBountyConfig();
+    setBugValidatorAuthority(null);
+  });
+
+  it("ships the operator decision as the DEFAULT, not as a literal", () => {
+    // bridge/from-claude-citylife/2026-07-29-kco-bounty-operator-decision.md: 100 KCO per validated
+    // fix, the operator alone validates. Defaults, so kooker-web can change them later.
+    expect(getBugBountyConfig().kcoPerValidatedFix).toBe(100);
+    expect(getBugBountyConfig().validatorPrincipalIds).toEqual([
+      "operator:kooker",
+    ]);
+  });
+
+  it("lets configuration move the bounty and the validator", () => {
+    setBugBountyConfig({
+      kcoPerValidatedFix: 250,
+      validatorPrincipalIds: ["operator:someone-else"],
+    });
+    expect(getBugBountyConfig().kcoPerValidatedFix).toBe(250);
+    expect(
+      validateBugFix(proposed(), {
+        actor: { actorId: "operator:someone-else", role: "validator" },
+        atMs: FILED_AT + 4_000,
+        fixRef: FIX,
+      }).status,
+    ).toBe("VALIDATED_FIX");
+    // The previous validator can no longer. Configuration MOVES authority, it does not accumulate it.
+    expect(
+      code(() =>
+        validateBugFix(proposed(), {
+          actor: VALIDATOR,
+          atMs: FILED_AT + 4_000,
+          fixRef: FIX,
+        }),
+      ),
+    ).toBe("VALIDATOR_NOT_AUTHORIZED");
+  });
+
+  it("refuses an empty allowlist instead of failing open", () => {
+    // An empty list reads as "nobody may validate" but is overwhelmingly more likely to be a wiring
+    // bug, and a gate that disables itself on a wiring bug is not a gate.
+    expect(() => setBugBountyConfig({ validatorPrincipalIds: [] })).toThrow();
+    expect(() => setBugBountyConfig({ kcoPerValidatedFix: -1 })).toThrow();
+    expect(() => setBugBountyConfig({ kcoPerValidatedFix: NaN })).toThrow();
+    // Configuration is unchanged after each refusal.
+    expect(getBugBountyConfig().validatorPrincipalIds).toEqual([
+      "operator:kooker",
+    ]);
+  });
+
+  it("lets an installed auth boundary NARROW authority but never widen it", () => {
+    // The seam where the Task API check ("user JWT with an admin role") plugs in. Consulting the
+    // allowlist FIRST means a buggy or hostile authority cannot promote someone the operator never
+    // configured.
+    setBugValidatorAuthority(() => true);
+    expect(validateAs("citizen:eve")).toBe("VALIDATOR_NOT_AUTHORIZED");
+    // ...but it CAN refuse someone the allowlist would have allowed.
+    setBugValidatorAuthority(() => false);
+    expect(
+      code(() =>
+        validateBugFix(proposed(), {
+          actor: VALIDATOR,
+          atMs: FILED_AT + 4_000,
+          fixRef: FIX,
+        }),
+      ),
+    ).toBe("VALIDATOR_NOT_AUTHORIZED");
+  });
+
+  it("treats a THROWING authority as a refusal, not as an open door", () => {
+    setBugValidatorAuthority(() => {
+      throw new Error("auth service unreachable");
+    });
+    expect(
+      code(() =>
+        validateBugFix(proposed(), {
+          actor: VALIDATOR,
+          atMs: FILED_AT + 4_000,
+          fixRef: FIX,
+        }),
+      ),
+    ).toBe("VALIDATOR_NOT_AUTHORIZED");
   });
 });
