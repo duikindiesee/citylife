@@ -1404,7 +1404,9 @@ export function parseBugRecord(json: string): BugRecord {
 
   const capture = verifyCapture(wire.capture as BugCaptureContext | undefined);
   const rawAnnotation = wire.annotation as
-    BugTrackAnnotationSummary | null | undefined;
+    | BugTrackAnnotationSummary
+    | null
+    | undefined;
   const annotation =
     rawAnnotation === null || rawAnnotation === undefined
       ? null
