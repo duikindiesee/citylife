@@ -279,12 +279,7 @@ import {
   type FleetPaths,
   type BusPose,
 } from "./transit/busFleet";
-import {
-  buildPath,
-  simplifyClosed,
-  smoothClosed,
-  smoothOpen,
-} from "./transit/path";
+import { buildPath, busLoopPath, smoothOpen } from "./transit/path";
 import {
   busStopAnchors as computeBusStopAnchors,
   type BusStopAnchor,
@@ -1888,10 +1883,7 @@ export class ColonyRuntime {
           h: site.h,
         };
         // Fleet geometry over the SAME smoothed loop the render drives, plus spur + bay paths.
-        const loopPath = buildPath(
-          smoothClosed(simplifyClosed(this.busRoute.loop, 1.5), 2),
-          true,
-        );
+        const loopPath = busLoopPath(this.busRoute.loop);
         const spurPath = buildPath(
           [
             { x: layout.gate.x, y: layout.gate.y },

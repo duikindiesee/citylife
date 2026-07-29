@@ -45,9 +45,44 @@ export function simplifyClosed(loop: Pt[], eps: number): Pt[] {
   return out.length >= 2 ? out : loop;
 }
 
-/** Chaikin corner-cutting on a CLOSED loop: each iteration replaces every vertex with its 1/4 and 3/4
- *  points (wrapping around), rounding the BFS cell staircase into a smooth circuit. */
-export function smoothClosed(loop: Pt[], iters: number): Pt[] {
+/** BUS.ROUTE.TURN.1 — how far (in cells) a corner may be cut off the routed line.
+ *
+ *  Textbook Chaikin cuts a QUARTER of every segment, so the corner it rounds moves by a distance
+ *  PROPORTIONAL TO THE ADJACENT SEGMENT LENGTHS. That is harmless on the raw BFS loop (1-cell
+ *  segments -> sub-cell rounding), but the loop is `simplifyClosed`d FIRST, which collapses the
+ *  staircase into straight runs averaging ~29 cells. Cutting a quarter off runs that long sweeps
+ *  the bus clean off the tarmac at every tight bend: measured on seed 4242, the smoothed loop ran
+ *  8.86 cells (35 m) from the nearest drivable cell at (492, 198), with 70 sampled positions more
+ *  than 5 cells out — buses driving a long, graceful arc across open veld.
+ *
+ *  Clamping the cut to a fixed DISTANCE decouples the corner radius from the segment length: long
+ *  straight runs stay straight, and every corner rounds over the same ~1-cell fillet whatever the
+ *  arms measure. 1 cell = 4 m, a plausible turn-in for a bus and comfortably inside the 4-cell
+ *  carriageway. The bound holds across iterations because each pass only re-rounds the (short)
+ *  fillet it just made.
+ *
+ *  NOTE: render/roadRibbon's `chaikin` has the SAME defect on the rendered asphalt (9.28 cells off
+ *  its own road cells on seed 4242) and is NOT fixed here — capping it moves the conservative
+ *  ribbon footprint enough to break depot siting on the live seed. See the
+ *  claude-citylife/road-ribbon-corner-cut branch. When that lands, this rule should be hoisted
+ *  somewhere both can share so the two cannot drift. */
+const MAX_CORNER_CUT_CELLS = 1;
+
+/** Corner-cut fraction for one segment: a quarter (plain Chaikin) unless that would cut more than
+ *  `maxCut` cells off, in which case cut exactly `maxCut`. Zero-length segments cut nothing. */
+function cornerCutFraction(a: Pt, b: Pt, maxCut: number): number {
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  return len > 1e-9 ? Math.min(0.25, maxCut / len) : 0;
+}
+
+/** Chaikin corner-cutting on a CLOSED loop: each iteration replaces every vertex with points near
+ *  its 1/4 and 3/4 points (wrapping around), rounding the BFS cell staircase into a smooth circuit.
+ *  The cut is capped at `maxCut` cells per corner — see MAX_CORNER_CUT_CELLS. */
+export function smoothClosed(
+  loop: Pt[],
+  iters: number,
+  maxCut = MAX_CORNER_CUT_CELLS,
+): Pt[] {
   let pts = loop.map((p) => ({ x: p.x, y: p.y }));
   for (let it = 0; it < iters; it++) {
     const n = pts.length;
@@ -55,8 +90,9 @@ export function smoothClosed(loop: Pt[], iters: number): Pt[] {
     for (let i = 0; i < n; i++) {
       const a = pts[i]!,
         b = pts[(i + 1) % n]!;
-      out.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 });
-      out.push({ x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
+      const f = cornerCutFraction(a, b, maxCut);
+      out.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f });
+      out.push({ x: b.x - (b.x - a.x) * f, y: b.y - (b.y - a.y) * f });
     }
     pts = out;
   }
@@ -64,8 +100,13 @@ export function smoothClosed(loop: Pt[], iters: number): Pt[] {
 }
 
 /** Chaikin on an OPEN polyline: endpoints are pinned so the path still starts and ends exactly where
- *  it must (a depot gate, a road junction); only the interior corners round off. */
-export function smoothOpen(path: Pt[], iters: number): Pt[] {
+ *  it must (a depot gate, a road junction); only the interior corners round off. Same per-corner cap
+ *  as smoothClosed. */
+export function smoothOpen(
+  path: Pt[],
+  iters: number,
+  maxCut = MAX_CORNER_CUT_CELLS,
+): Pt[] {
   let pts = path.map((p) => ({ x: p.x, y: p.y }));
   for (let it = 0; it < iters; it++) {
     if (pts.length < 3) return pts;
@@ -73,8 +114,9 @@ export function smoothOpen(path: Pt[], iters: number): Pt[] {
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!,
         b = pts[i + 1]!;
-      out.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 });
-      out.push({ x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
+      const f = cornerCutFraction(a, b, maxCut);
+      out.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f });
+      out.push({ x: b.x - (b.x - a.x) * f, y: b.y - (b.y - a.y) * f });
     }
     out.push(pts[pts.length - 1]!);
     pts = out;
@@ -140,6 +182,29 @@ export function samplePath(
     y: a.y + (b.y - a.y) * f,
     heading: Math.atan2(b.y - a.y, b.x - a.x),
   };
+}
+
+/** Douglas-Peucker tolerance for the route loop: below this the BFS staircase weave is noise, above
+ *  it is a real bend in the road. Also the loop's own worst-case offset from the routed line. */
+export const ROUTE_SIMPLIFY_EPS_CELLS = 1.5;
+
+/** Corner-cutting passes over the simplified loop. Three rather than the original two because the
+ *  cut is now capped (MAX_CORNER_CUT_CELLS): each pass re-rounds only the short fillet the previous
+ *  one made, so an extra pass buys turn-in resolution — ~8 vertices through a corner instead of 4 —
+ *  without widening the corner. It cost the old unbounded smoother a longer sweep off the road. */
+export const ROUTE_SMOOTH_ITERS = 3;
+
+/** The driven bus circuit: straighten the BFS staircase (Douglas-Peucker), then round the real bends
+ *  (capped Chaikin). ONE definition, shared by the runtime's fleet geometry and busLayer's legacy
+ *  fallback coach — they have to drive the identical line, or the coach rides beside the fleet. */
+export function busLoopPath(loop: Pt[]): PathData {
+  return buildPath(
+    smoothClosed(
+      simplifyClosed(loop, ROUTE_SIMPLIFY_EPS_CELLS),
+      ROUTE_SMOOTH_ITERS,
+    ),
+    true,
+  );
 }
 
 /** Arc length of the point on `path` nearest to p — how stops and the spur junction are located on

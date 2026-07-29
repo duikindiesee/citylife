@@ -10,11 +10,9 @@ import {
   STOP_VERGE_OFFSET_CELLS,
 } from "../src/colony/transit/busStopAnchor";
 import {
-  buildPath,
+  busLoopPath,
   projectPath,
   samplePath,
-  simplifyClosed,
-  smoothClosed,
   type Pt,
 } from "../src/colony/transit/path";
 
@@ -63,13 +61,21 @@ describe("BUS.BOARD.1 — the boarding anchor is derived from the DRIVEN loop", 
   for (let x = 39; x >= 10; x--) rawLoop.push({ x, y: 40 });
   for (let y = 39; y >= 11; y--) rawLoop.push({ x: 10, y });
   const corner: Pt = { x: 40, y: 10 };
-  const driven = buildPath(smoothClosed(simplifyClosed(rawLoop, 1.5), 2), true);
+  // Build the fixture through the SAME entry point the runtime drives (busLoopPath), not a
+  // hand-rolled copy of its smoothing — a copy silently stops tracking the product, which is how
+  // this fixture came to be calibrated against a corner cut the runtime no longer makes.
+  const driven = busLoopPath(rawLoop);
 
   it("halts the bus where the smoothed loop actually runs, not on the authored cell", () => {
     const a = busStopAnchor(driven, corner);
-    // The bus can only stand on its own path, and the path has been cut away from the bend.
+    // The bus can only stand on its own path, and the path is rounded away from the bend.
+    //
+    // BUS.ROUTE.TURN.1 shrank this. The cut used to take a quarter of each 30-cell arm, so the
+    // driven line left this corner by 3.40 cells; capped at 1 cell it leaves by 0.707. The
+    // contract is unchanged — the halt point is on the path, not on the authored cell — but the
+    // magnitude is now sub-cell on a clean bend, so this bounds it well below the old 1.0.
     const drift = Math.hypot(a.at.x - corner.x, a.at.y - corner.y);
-    expect(drift).toBeGreaterThan(1);
+    expect(drift).toBeGreaterThan(0.5);
     // The anchor IS the projection the fleet uses for this stop (busFleet.makeFleetGeometry).
     expect(a.arc).toBeCloseTo(projectPath(driven, corner), 9);
     const p = samplePath(driven, a.arc);
@@ -94,15 +100,35 @@ describe("BUS.BOARD.1 — the boarding anchor is derived from the DRIVEN loop", 
     expect(a.verge.y).toBeCloseTo(Math.cos(a.heading), 9);
   });
 
-  it("DISCRIMINATES: the authored-cell placement is out of boarding range on this bend", () => {
+  it("puts the anchored furniture inside the gate, and the authored cell no longer governs it", () => {
     const a = busStopAnchor(driven, corner);
     const old = authoredCellFurniture(rawLoop, corner);
     const oldGap = Math.hypot(old.x - a.at.x, old.y - a.at.y);
     const newGap = Math.hypot(a.furniture.x - a.at.x, a.furniture.y - a.at.y);
-    // Two-sided: the old placement fails the gate, the new one passes it — on the SAME geometry.
-    expect(oldGap).toBeGreaterThan(BOARD_MAX);
+    // The anchored placement is exactly the verge offset from the doors, inside the gate, always.
     expect(newGap).toBeLessThanOrEqual(BOARD_MAX);
-    expect(newGap).toBeLessThan(oldGap);
+    expect(newGap).toBeCloseTo(STOP_VERGE_OFFSET_CELLS, 9);
+    // The authored-cell placement is NOT the same point — it is governed by the raw staircase's
+    // local direction rather than the driven heading, so it lands somewhere else entirely.
+    expect(
+      Math.hypot(old.x - a.furniture.x, old.y - a.furniture.y),
+    ).toBeGreaterThan(0.5);
+    // WHY THIS NO LONGER ASSERTS `oldGap > BOARD_MAX` — a real BUS.ROUTE.TURN.1 consequence, not a
+    // relaxation to make a build pass. This bend was chosen because the UNCAPPED quarter-of-each-
+    // segment cut pulled the driven line 3.40 cells off the authored cell, which composed with the
+    // 2.25-cell verge offset into a 5.34-cell gap against a 3-cell gate. With the cut capped at one
+    // cell the same bend yields drift 0.707 and oldGap 1.543 — inside the gate. No synthetic bend
+    // reproduces the failure any more: drift is bounded by the cap, so oldGap cannot exceed
+    // STOP_VERGE_OFFSET_CELLS + ~1 = 3.25 even in the worst alignment, and a clean right angle or
+    // spike measures 1.54-2.25.
+    //
+    // The absolute claim still holds where it matters and is still asserted — see the live-world
+    // case below, which measures worstOld > BOARD_MAX on the boot seed and passes. Real routes
+    // compose several bends and the raw-loop verge disagrees with the driven heading far more than
+    // on a clean fixture. So BUS.BOARD.1 is still load-bearing; this synthetic bend simply can no
+    // longer demonstrate it, and asserting a magnitude that only existed because of a defect would
+    // re-break the moment the defect was fixed. Which is what happened.
+    expect(oldGap).toBeGreaterThan(0);
   });
 
   it("is deterministic and maps stops one-for-one, in order", () => {

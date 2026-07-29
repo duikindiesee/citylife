@@ -4,7 +4,7 @@ import type { BusRoute } from "../transit/busRoute";
 import {
   simplifyClosed,
   smoothClosed,
-  buildPath,
+  busLoopPath,
   samplePath,
   type PathData,
 } from "../transit/path";
@@ -124,12 +124,10 @@ export function buildBusLayer(opts: BusLayerOptions): BusLayer | null {
   const raw = opts.route.loop;
   if (raw.length < 2) return null;
   // De-zigzag the bus path: straighten the BFS staircase (Douglas-Peucker), then round the real
-  // bends (Chaikin) — see transit/path.ts. The loop is arc-length parameterised so ground speed is
-  // constant regardless of point density.
-  const loop: PathData = buildPath(
-    smoothClosed(simplifyClosed(raw, 1.5), 2),
-    true,
-  );
+  // bends (capped Chaikin) — see transit/path.ts, which owns the one definition the runtime's fleet
+  // geometry shares. The loop is arc-length parameterised so ground speed is constant regardless of
+  // point density.
+  const loop: PathData = busLoopPath(raw);
   if (loop.total < 1e-3) return null;
   const group = new THREE.Group();
   group.name = "Bus";
