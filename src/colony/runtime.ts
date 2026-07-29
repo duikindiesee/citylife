@@ -2064,7 +2064,7 @@ export class ColonyRuntime {
     }
   }
 
-  /** Spec 163 — where a citizen's first-person senses are sampled from. For any citizen the player
+  /** Spec 165 — where a citizen's first-person senses are sampled from. For any citizen the player
    *  is NOT driving (every NPC bot), that is the roster twin's own cell — nothing else moves them.
    *  For the one the player IS stepped into, the camera capsule wins: `fpCameraCell` is authoritative
    *  over the twin's `pos` wherever it exists, so a bot asking "where am I and what is near me"
@@ -2092,7 +2092,7 @@ export class ColonyRuntime {
     if (!this.renderer) return null;
     const c = this.citizens.byId(citizenId);
     if (!c) return null;
-    // Spec 163 — deliberately NOT the capsule origin: this PNG is rendered from `c.homeXY` below,
+    // Spec 165 — deliberately NOT the capsule origin: this PNG is rendered from `c.homeXY` below,
     // so the road it looks toward must be resolved from the same home cell, not from wherever the
     // player currently stands.
     const view = firstPersonView(this.sim.state, citizenId, this.citizens);
@@ -4605,7 +4605,7 @@ export class ColonyRuntime {
       this.fpNarration = "Guided walk canceled — manual control resumed.";
     }
     if (opposingWalkInput || opposingStrafeInput) this.fpWalkSpeed = 0;
-    // Spec 163 — fpWalkSpeed is the ramped base speed in METRES per real second, advanced by the
+    // Spec 165 — fpWalkSpeed is the ramped base speed in METRES per real second, advanced by the
     // shared model the camera capsule also uses. It is converted to cells only where it is finally
     // added to c.pos below; the old code ramped the same number and added it to a cell position
     // unconverted, which is why the twin walked 13.6 m/s against the capsule's 10.
@@ -4622,7 +4622,7 @@ export class ColonyRuntime {
       const inputLength = Math.hypot(forward, strafe);
       const dirForward = inputLength > 0 ? forward / inputLength : 1;
       const dirStrafe = inputLength > 0 ? strafe / inputLength : 0;
-      // Spec 163 — sample the surface where the PLAYER actually stands. fpCameraCell (the capsule)
+      // Spec 165 — sample the surface where the PLAYER actually stands. fpCameraCell (the capsule)
       // is authoritative over the twin's pos wherever it exists, so reading the twin's cell could
       // apply the road multiplier from a cell the player had already left.
       const at = this.fpCameraCell ?? c.pos;
@@ -6444,7 +6444,7 @@ export class ColonyRuntime {
 
   private loop = (now: number) => {
     if (!this.running) return;
-    // Spec 163 — MAX_LOCOMOTION_DT is the same 0.25 this line always used, now shared with the
+    // Spec 165 — MAX_LOCOMOTION_DT is the same 0.25 this line always used, now shared with the
     // camera capsule so a frame hitch cannot advance one movement path further than the other.
     const dtReal = Math.min(MAX_LOCOMOTION_DT, (now - this.lastFrame) / 1000);
     this.lastFrame = now;

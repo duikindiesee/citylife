@@ -1,9 +1,9 @@
-# Spec 163 — Player walk speed: one anchor, in metres (FP.SPEED.1)
+# Spec 165 — Player walk speed: one anchor, in metres (FP.SPEED.1)
 
 - **Status:** proposed for review.
 - **Depends on:** spec 146 (the world metric system — 1 world unit = 1 m, 1 cell = 4 m),
   spec 104 (first-person walk tuning), spec 149 (the walker capsule + bus ride pinning).
-- **Supersedes the transit half of:** BUS.SPEED.1 — see "Relationship to BUS.SPEED.1".
+- **Supersedes the transit half of:** spec 164 (BUS.SPEED.1) — see "Relationship to spec 164 (BUS.SPEED.1)".
 - **Design provenance:** operator report, "the bus is slower than I can walk", re-diagnosed.
 
 ## The defect, measured
@@ -117,9 +117,9 @@ fleet cruises 7.47 m/s. Measured on the real booted route (loop 1728.3 cells, 5 
 The dwell (`stopDwellMin: 1.5` = 22.5 real seconds) is **deliberately not cut**: it is the boarding
 window a player needs to walk up and press E, and it is owned by the boarding work (BUS.BOARD.1).
 
-## Relationship to BUS.SPEED.1
+## Relationship to spec 164 (BUS.SPEED.1)
 
-BUS.SPEED.1 diagnosed the same operator report as a **transit** defect and proposed
+Spec 164 (BUS.SPEED.1) diagnosed the same operator report as a **transit** defect and proposed
 `busSpeedCellsPerMin: 28 → 84` (22.4 m/s = **80 km/h**), sized entirely against the 10 m/s capsule.
 It explicitly filed this units mismatch as a "Known adjacent defect, NOT fixed here… correcting it
 changes walk feel across the whole game. Filed separately." **This is that follow-up, and it inverts
@@ -133,14 +133,17 @@ speed. Its genuinely orthogonal contributions — `REAL_SECONDS_PER_SOL_MINUTE`,
 `busCruiseSpeedMps`/`busLegSpeedMps` helpers, and its repair of the wall-clock-contaminated bound in
 `busSolContinuousMotion.test.ts` — are kept and carried here.
 
-At the time of writing BUS.SPEED.1 is unmerged and uncommitted (stashed on branch
-`claude-citylife/busspeed`); `PLAYER_WALK_SPEED_MPS` exists in no committed branch. Its owner should
-re-decide the fleet number against this anchor rather than against the 10 m/s capsule.
+Spec 164 is open as PR #430 (`claude-citylife/busspeed`) and unmerged. Its owner should re-decide the
+fleet number against this anchor rather than against the 10 m/s capsule; until they do, `main` still
+carries `busSpeedCellsPerMin: 28` and this spec's 46 is the only value measured against a human
+player.
 
-**It is referred to by its ID, not by a number, on purpose.** BUS.SPEED.1 drafted itself as
-"spec 162" while that number was free, but PR #427 (BUG.TRACK.1) landed on `main` first and
-`docs/specs/162-bug-record-lifecycle-and-validated-fix.md` now owns 162. Its spec file therefore
-needs renumbering before it lands, and nothing here cites the contested number.
+**On the numbering.** These two specs and this one all drafted against a moving target: BUS.SPEED.1
+first claimed 162, then PR #427 (BUG.TRACK.1) landed 162 on `main`, so it moved to 164. This spec
+first claimed 163, which PR #429 (BUS.BOARD.1,
+`docs/specs/163-bus-route-stop-boarding-anchor.md`) had already taken, so it is 165. Current live
+numbering: **162** bug-record lifecycle (merged), **163** bus route-stop boarding (#429), **164** bus
+felt speed (#430), **165** this.
 
 ## Tests
 

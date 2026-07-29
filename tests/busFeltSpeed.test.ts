@@ -11,11 +11,11 @@ import {
   type FleetGeometry,
 } from "../src/colony/transit/busFleet";
 
-// Spec 163 — "the bus is slower than I can walk", re-decided against a CORRECTED player.
+// Spec 165 — "the bus is slower than I can walk", re-decided against a CORRECTED player.
 //
 // The fleet is tuned in cells per IN-SOL minute (15 real seconds each, 4 m each); the player is
 // tuned in metres per REAL second. Nothing converted between them, so the two numbers were never
-// comparable. The original reading of that report (BUS.SPEED.1) blamed the bus alone and would have raised it to
+// comparable. The original reading of that report (spec 164, BUS.SPEED.1) blamed the bus alone and would have raised it to
 // 84 cells/min (22.4 m/s = 80 km/h). But the player was the bigger defect: the capsule ran at
 // 10 m/s (36 km/h) and the roster twin at 13.6 m/s, both wrong. With the player corrected to a
 // human 3.4 m/s the bus needs a far smaller, and physically honest, raise.
@@ -48,7 +48,7 @@ function legCells(geom: FleetGeometry): number[] {
   return legs;
 }
 
-describe("spec 163 — the bus is meaningfully faster than the player at their best", () => {
+describe("spec 165 — the bus is meaningfully faster than the player at their best", () => {
   it("cruises comfortably faster than the player's absolute top speed", () => {
     const top = playerTopSpeedMps();
     const cruise = busCruiseSpeedMps(COLONY.transit);
@@ -88,7 +88,7 @@ describe("spec 163 — the bus is meaningfully faster than the player at their b
   });
 
   it("stays a city bus and not a missile", () => {
-    // The raise is bounded ABOVE too: BUS.SPEED.1's reading of this report would have gone to 84
+    // The raise is bounded ABOVE too: spec 164 (BUS.SPEED.1) would have gone to 84
     // cells/min (80 km/h) because it was sized against a 10 m/s player. Against a human player the
     // honest answer is a realistic urban cruise.
     const cruise = busCruiseSpeedMps(COLONY.transit);

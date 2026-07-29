@@ -101,7 +101,7 @@ export function firstPersonView(
   const me = roster.byId(citizenId);
   if (!me) return null;
   const t = state.terrain;
-  // Spec 163 — WHERE THE SENSES ARE SAMPLED FROM. Normally the roster twin's own cell: for an NPC
+  // Spec 165 — WHERE THE SENSES ARE SAMPLED FROM. Normally the roster twin's own cell: for an NPC
   // bot that IS the truth, since nothing else moves it. But while a human is stepped into this
   // citizen the camera capsule is authoritative (ColonyRuntime.fpCameraCell), and the twin can lag
   // it — so the caller passes the capsule's cell and the whole view is computed from there.

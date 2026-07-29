@@ -11,7 +11,7 @@ function distance(
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-/** Spec 163 — the ground a fully-ramped walk covers in `seconds`, in CELLS (the unit `citizen.pos`
+/** Spec 165 — the ground a fully-ramped walk covers in `seconds`, in CELLS (the unit `citizen.pos`
  *  is measured in). The distance thresholds below used to be bare literals silently calibrated
  *  against a twin that moved CELL_SIZE times too fast, because it added a metres-per-second speed
  *  straight to a cell position. Stating them as a fraction of this makes them survive a re-tune of

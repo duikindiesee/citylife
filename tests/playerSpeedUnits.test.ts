@@ -20,7 +20,7 @@ import {
   rampedGroundSpeedMps,
 } from "../src/colony/playerSpeed";
 
-// Spec 163 — the player had TWO movement integrators that disagreed by 36%, because ONE config
+// Spec 165 — the player had TWO movement integrators that disagreed by 36%, because ONE config
 // number was read as metres in one place and cells in the other.
 //
 //   capsule (FirstPersonController) : Rapier linvel of a private literal 10 -> 10.0 m/s walking
@@ -95,7 +95,7 @@ function measureTwinMps(opts: { onRoad: boolean; sprint: boolean }): number {
   return (cells * CELL_SIZE) / (TICK * TICKS);
 }
 
-describe("spec 163 — one speed anchor, in metres, for both movement paths", () => {
+describe("spec 165 — one speed anchor, in metres, for both movement paths", () => {
   it("keeps ONE anchor: config re-exports scale.ts rather than holding a second copy", () => {
     expect(COLONY.firstPerson.maxWalkSpeed).toBe(PLAYER_WALK_SPEED_MPS);
 

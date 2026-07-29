@@ -21,7 +21,7 @@ const liveGeometry: FleetGeometry = {
 
 describe("spec 150 PR2 — transit rescale onto sol time", () => {
   it("locks the rescaled transit config", () => {
-    // Spec 163 re-tuned this from 28: at 28 the fleet only TIED a road-sprinting player
+    // Spec 165 re-tuned this from 28: at 28 the fleet only TIED a road-sprinting player
     // door-to-door on the worst real leg. The felt-speed contract that owns this number now lives
     // in tests/busFeltSpeed.test.ts; this lock just pins the shipped value against silent drift.
     expect(COLONY.transit.busSpeedCellsPerMin).toBe(46);

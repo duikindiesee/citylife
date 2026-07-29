@@ -40,7 +40,7 @@ export const PLAYER_HALF_EXTENT = PLAYER_HEIGHT_M / 2; // 0.9
 /** Camera offset above the body centre so the eye sits at PLAYER_EYE_M above the feet. */
 export const PLAYER_EYE_OFFSET = PLAYER_EYE_M - PLAYER_HALF_EXTENT; // 0.7
 
-/** Spec 163 — the player's base ground speed, in METRES PER REAL SECOND, and the ONE anchor both
+/** Spec 165 — the player's base ground speed, in METRES PER REAL SECOND, and the ONE anchor both
  *  movement paths derive from. It lives here, beside CELL_SIZE, because the defect it closes was a
  *  UNITS defect and this file is where the world's units are defined.
  *
@@ -66,7 +66,7 @@ export const PLAYER_WALK_SPEED_MPS = 3.4;
 
 /** Cells per real second for a speed in metres per real second. The roster twin stores position in
  *  cells (citizenRoster.ts `pos`), so it MUST pass every speed through this before integrating —
- *  omitting it is exactly the bug spec 163 closed. */
+ *  omitting it is exactly the bug spec 165 closed. */
 export function mpsToCellsPerSec(mps: number): number {
   return mps / CELL_SIZE;
 }

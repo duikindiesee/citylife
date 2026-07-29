@@ -1097,7 +1097,7 @@ export const COLONY = {
     // seconds, a whole sol day = six real hours) instead of the speed-scaled sim clock, so the
     // per-sim-minute figures are rescaled to keep a full lap + dwells inside the widened
     // 05:00-23:30 service window (shiftMinutes in busFleet.ts is the gatekeeper).
-    // Spec 163 — 28 -> 46. At 28 the fleet cruised 7.47 m/s, which lost to the OLD 10 m/s capsule
+    // Spec 165 — 28 -> 46. At 28 the fleet cruised 7.47 m/s, which lost to the OLD 10 m/s capsule
     // outright ("the bus is slower than I can walk") and, once the capsule was corrected to a human
     // 3.4 m/s, still only TIED a road-sprinting player door-to-door on the worst real leg
     // (6.20 m/s against a 6.1625 m/s top speed — 1.01x, not a reason to ride). Bounded on both
@@ -1152,7 +1152,7 @@ export const COLONY = {
   },
 
   firstPerson: {
-    // Spec 163 — METRES per real second, and no longer a second copy of the number: the anchor is
+    // Spec 165 — METRES per real second, and no longer a second copy of the number: the anchor is
     // src/colony/scale.ts PLAYER_WALK_SPEED_MPS, which BOTH the camera capsule and the roster twin
     // derive from. The old literal 3.4 here said "world units/sec" but was added straight to a
     // position measured in CELLS, so the twin actually walked 13.6 m/s.

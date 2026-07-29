@@ -59,7 +59,7 @@ export function FirstPersonController({
 }) {
   const rigidBody = useRef<RapierRigidBody>(null);
   const consumedTeleport = useRef(0);
-  // Spec 163 — the capsule's half of the SHARED locomotion state. It used to have neither: speed was
+  // Spec 165 — the capsule's half of the SHARED locomotion state. It used to have neither: speed was
   // a private literal set instantly, so the acceleration ramp, the road multiplier and the sprint
   // budget existed only on the roster twin and the two integrators disagreed by 36%. Both are
   // advanced through src/colony/playerSpeed.ts, the one place the model lives.
@@ -262,7 +262,7 @@ export function FirstPersonController({
     // Apply rotation to movement vector
     movement.applyEuler(new Euler(0, rotation.current.y, 0));
 
-    // Spec 163 — ONE speed model, in metres per real second, shared with ColonyRuntime's roster
+    // Spec 165 — ONE speed model, in metres per real second, shared with ColonyRuntime's roster
     // twin (src/colony/playerSpeed.ts). The capsule now honours everything the twin always did:
     // the acceleration ramp, the road surface multiplier and the sprint comfort budget. World
     // units are metres (spec 146), so this value goes onto the body as a linear velocity unchanged
@@ -279,7 +279,7 @@ export function FirstPersonController({
         `${Math.round(toGridX(bodyPos.x))},${Math.round(toGridZ(bodyPos.z))}`,
       );
 
-    // Spec 163 — clamp to the SAME bound ColonyRuntime's loop uses (dtReal = min(0.25, ...)). A
+    // Spec 165 — clamp to the SAME bound ColonyRuntime's loop uses (dtReal = min(0.25, ...)). A
     // frame hitch hands useFrame a delta of whole seconds; unclamped, one such frame snaps the ramp
     // to full speed and drains the entire sprint budget at once (measured in-app: full charge to
     // empty in a single stalled frame). Velocity is unaffected — it is a rate, not an integral —

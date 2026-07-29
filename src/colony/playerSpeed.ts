@@ -1,4 +1,4 @@
-// Spec 163 — THE player locomotion speed model. One implementation, in metres per real second,
+// Spec 165 — THE player locomotion speed model. One implementation, in metres per real second,
 // shared by both things that move the player:
 //
 //   1. src/render/components/FirstPersonController.tsx — the camera capsule (Rapier linear

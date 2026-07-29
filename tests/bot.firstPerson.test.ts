@@ -331,7 +331,7 @@ describe("firstPersonView — spec 074", () => {
   });
 });
 
-describe("spec 163 — the view is sampled where the PLAYER is, not where the twin drifted to", () => {
+describe("spec 165 — the view is sampled where the PLAYER is, not where the twin drifted to", () => {
   // runtime.fpCameraCell is set from the camera capsule and is authoritative over the roster twin's
   // pos wherever it exists. Before this, a bot asking "where am I and what is near me" got the
   // twin's answer — which lags the player's actual eyes while they are stepped in.
