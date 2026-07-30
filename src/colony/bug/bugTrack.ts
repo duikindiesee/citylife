@@ -47,6 +47,7 @@ import {
   serializeBugCapture,
   type BugCaptureContext,
 } from "./bugCapture";
+import { isAuthorizedBugValidator } from "./bugBounty";
 
 export const BUG_RECORD_VERSION = 1;
 
@@ -62,6 +63,7 @@ export type BugTrackErrorCode =
   | "INVALID_FIX_REF"
   | "ILLEGAL_TRANSITION"
   | "ROLE_REQUIRED"
+  | "VALIDATOR_NOT_AUTHORIZED"
   | "SELF_VALIDATION"
   | "FIX_MISMATCH"
   | "NON_MONOTONIC_TIME"
@@ -110,10 +112,18 @@ export type BugTransitionType =
   | "DUPLICATE";
 
 /**
- * Roles are supplied by the CALLER, which is where the identity authority lives (the Task API's own
- * auth, not this module). What this module owns is the far cheaper and far more often forgotten half:
- * which role a given transition demands, and that the validator is nobody with an interest in the
- * outcome.
+ * Roles are supplied by the CALLER — but a role alone is only ever a CLAIM, and for the one role that
+ * can mint currency that claim is no longer enough.
+ *
+ * BUG.VALIDATOR.ROLE.1 changed this. `reporter`, `triager` and `maintainer` remain caller-supplied,
+ * because the worst a false claim there can do is move a record between working states. `validator`
+ * is different: it is the only role that reaches VALIDATED_FIX, and BUG.KCO.1 pays against that
+ * signal. So for VALIDATE_FIX and REJECT_FIX the actor's IDENTITY must also resolve to a configured
+ * validator principal (see ./bugBounty), checked in `guardTransition` and therefore on replay too.
+ *
+ * What this module owns remains the cheap, often-forgotten half: which role a transition demands,
+ * that the validator is nobody with an interest in the outcome, and now that the validator is
+ * somebody the operator actually named.
  */
 export type BugActorRole = "reporter" | "triager" | "maintainer" | "validator";
 
@@ -747,6 +757,13 @@ function guardTransition(
         `${type} presented ${fixRefForm(fixRef)} but the fix under review is ${fixRefForm(underReview)}`,
       );
   }
+  // BUG.VALIDATOR.ROLE.1 — holding the `validator` role is NO LONGER SUFFICIENT. The role is a
+  // caller-supplied string, so on its own it stopped accidents but not intent. Authority is now
+  // resolved from configuration (and, once installed, the auth boundary) rather than asserted.
+  // This runs inside guardTransition deliberately: the writing path and `verifyBugRecordLedger` both
+  // come through here, so an entry that could not have been written legally also cannot be READ BACK
+  // as legal. A hand-appended VALIDATE_FIX naming an unauthorised validator is refused on replay even
+  // when its digest chain is recomputed perfectly.
   if (type === "VALIDATE_FIX") {
     if (actor.actorId === reporterId)
       throw new BugTrackError(
@@ -757,6 +774,27 @@ function guardTransition(
       throw new BugTrackError(
         "SELF_VALIDATION",
         "the author of a fix may not validate it",
+      );
+  }
+
+  // BUG.VALIDATOR.ROLE.1 — holding the `validator` role is NO LONGER SUFFICIENT. The role is a
+  // caller-supplied string, so on its own it stopped accidents but not intent. Authority is now
+  // RESOLVED from configuration (and, once installed, the auth boundary) rather than ASSERTED.
+  //
+  // This lives inside guardTransition deliberately: the writing path and `verifyBugRecordLedger` both
+  // come through here, so an entry that could not have been written legally also cannot be READ BACK
+  // as legal. A hand-appended VALIDATE_FIX naming an unauthorised validator is refused on replay even
+  // when its digest chain is recomputed perfectly.
+  //
+  // It runs AFTER the self-validation checks on purpose. Both gates apply, but when the reporter or
+  // the fix author is the one reaching for validation, SELF_VALIDATION is the truer answer — the
+  // problem is the conflict of interest, not the allowlist. Ordering it the other way masked that
+  // with a vaguer error.
+  if (type === "VALIDATE_FIX" || type === "REJECT_FIX") {
+    if (!isAuthorizedBugValidator(actor.actorId))
+      throw new BugTrackError(
+        "VALIDATOR_NOT_AUTHORIZED",
+        `${type} requires a configured validator principal; ${actor.actorId} is not one`,
       );
   }
 
