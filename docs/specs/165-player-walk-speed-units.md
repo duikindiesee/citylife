@@ -119,7 +119,7 @@ window a player needs to walk up and press E, and it is owned by the boarding wo
 
 ## Relationship to spec 164 (BUS.SPEED.1)
 
-Spec 164 (BUS.SPEED.1) diagnosed the same operator report as a **transit** defect and proposed
+Spec 164 (BUS.SPEED.1) diagnosed the same operator report as a **transit** defect and **merged**
 `busSpeedCellsPerMin: 28 → 84` (22.4 m/s = **80 km/h**), sized entirely against the 10 m/s capsule.
 It explicitly filed this units mismatch as a "Known adjacent defect, NOT fixed here… correcting it
 changes walk feel across the whole game. Filed separately." **This is that follow-up, and it inverts
@@ -133,17 +133,57 @@ speed. Its genuinely orthogonal contributions — `REAL_SECONDS_PER_SOL_MINUTE`,
 `busCruiseSpeedMps`/`busLegSpeedMps` helpers, and its repair of the wall-clock-contaminated bound in
 `busSolContinuousMotion.test.ts` — are kept and carried here.
 
-Spec 164 is open as PR #430 (`claude-citylife/busspeed`) and unmerged. Its owner should re-decide the
-fleet number against this anchor rather than against the 10 m/s capsule; until they do, `main` still
-carries `busSpeedCellsPerMin: 28` and this spec's 46 is the only value measured against a human
-player.
+**This spec REVISES merged work, and says so plainly.** Spec 164 merged as PR #430 while this branch
+was in flight, so `main` now carries `PLAYER_WALK_SPEED_MPS = 10` and `busSpeedCellsPerMin: 84`. This
+spec changes both. That is not a disagreement about transit: 84 is a correct answer to "beat a 10 m/s
+player" and both numbers are downstream of the same units defect. Once the player is a human 3.4 m/s,
+84 is an 80 km/h city bus at 6.6× walking pace, and 46 (44 km/h, 1.99× the player's top speed) is the
+value measured against a real pedestrian. The felt-speed contract moved from
+`WALK_MPS`-relative to **top-speed**-relative — full ramp, on a road, sprinting — because a rider who
+could have sprinted there faster has no reason to board.
+
+## Future consumers: vehicles, and the two things that will bite
+
+Cars are next (grip, drift, tuning), and they hit this same seam. Recorded here so it is not
+rediscovered inside a tyre model.
+
+**Share the CONVERSION, not the player's speed.** The reusable parts are `mpsToCellsPerSec` /
+`cellsPerSecToMps` (`scale.ts`) and `REAL_SECONDS_PER_SOL_MINUTE` (`sol.ts`). Walker
+(`playerSpeed.ts`) and bus (`busFleet.ts`) both already derive from them; a car is the third
+consumer, not a third definition. The first `carSpeedCellsPerMin` written without them reproduces
+BUS.SPEED.1 exactly — a rate whose unit is invisible at the call site. But a car must **not** derive
+from `PLAYER_WALK_SPEED_MPS`: that is a pedestrian's walking pace, not a world constant. The name
+stays deliberately player-specific to prevent that coupling.
+
+**Schedules run on sol time; physics runs on real time.** `transitTick` reconstructs fleet state from
+`solMinutesSinceEpoch` and deliberately ignores sim speed _and_ pause — correct for a timetable,
+which should be where the clock says it is regardless of how fast you are watching. It is wrong for
+handling. Grip, weight transfer and tyre slip are integrations over **real** dt: driven off sol
+minutes, pause or sim-speed would change how a car grips, and a single in-sol "minute" step is 15 real
+seconds — meaningless for any integrator. Same metre anchor, different clocks. Do not reuse the
+transit driver for vehicle physics to save code.
+
+**The continuity bound cannot express a fast car.** `busSolContinuousMotion.test.ts` locks
+"< 0.1 cells per 16 ms frame". In real units that is a ceiling of **25 m/s (90 km/h) for anything that
+moves** — 0.1 × `CELL_SIZE` / 0.016. It is not a number to tune up: 93.75 cells/min _is_ 25 m/s, so
+the bound and the bus's own upper limit are the same constraint. A racing car at 40 m/s is
+0.160 cells/frame, **1.6× over**. The bound must be restated in real m/s and satisfied by
+**substepping or swept/continuous collision**, not by capping speed — drifting into a kerb at 40 m/s
+is exactly the case where discrete per-frame stepping tunnels through geometry.
+
+**Sample the ground the way the road is drawn.** Anything reading surface height (suspension, grip)
+must use the graded drape the ribbon actually renders — `leveledWorldYAt` / the shared road centre
+line — not raw terrain and not a `Math.round` nearest-cell sample. Nearest-cell sampling is what
+produced the 4 m plateau staircase that made walking bumpy (PR #410); a suspension reading it would
+fight noise that is not in the world. Note the mesh is **triangulated, not bilinear** — the two
+disagree inside a quad.
 
 **On the numbering.** These two specs and this one all drafted against a moving target: BUS.SPEED.1
 first claimed 162, then PR #427 (BUG.TRACK.1) landed 162 on `main`, so it moved to 164. This spec
 first claimed 163, which PR #429 (BUS.BOARD.1,
 `docs/specs/163-bus-route-stop-boarding-anchor.md`) had already taken, so it is 165. Current live
 numbering: **162** bug-record lifecycle (merged), **163** bus route-stop boarding (#429), **164** bus
-felt speed (#430), **165** this.
+felt speed (#430, merged), **165** this.
 
 ## Tests
 
