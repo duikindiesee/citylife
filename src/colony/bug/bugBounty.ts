@@ -74,7 +74,9 @@ export function setBugBountyConfig(next: Partial<BugBountyConfig>): void {
     );
   for (const id of ids)
     if (typeof id !== "string" || id.trim() === "")
-      throw new Error("validatorPrincipalIds entries must be non-empty strings");
+      throw new Error(
+        "validatorPrincipalIds entries must be non-empty strings",
+      );
   config = Object.freeze({
     kcoPerValidatedFix: amount,
     validatorPrincipalIds: Object.freeze([...ids]),
@@ -113,7 +115,8 @@ export function setBugValidatorAuthority(
  * configured allowlist.
  */
 export function isAuthorizedBugValidator(principalId: unknown): boolean {
-  if (typeof principalId !== "string" || principalId.trim() === "") return false;
+  if (typeof principalId !== "string" || principalId.trim() === "")
+    return false;
   if (!config.validatorPrincipalIds.includes(principalId)) return false;
   if (authority === null) return true;
   try {
