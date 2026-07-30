@@ -1587,10 +1587,14 @@ export class ColonyRuntime {
       ...satellites.map((s) => hoodCentroid(s.carriage)),
       ...(commercialStop ? [commercialStop] : []),
     ];
-    this.busRoute = makeBusRoute(
-      { roadKind: this.sim.state.roadKind },
-      busAnchors,
-    );
+    // TRANSIT.COMPLETE.1 — the route build MOVED from here to after the spec 148 connectivity
+    // repair below. Measured: 12 of 24 seeds routed NO bus loop at all, and 11 of those failed
+    // because makeBusRoute ran while the road network was still FRAGMENTED. Spec 148's own comment
+    // says orphans are routine at this point, most often the commercial cross street the mall pad
+    // severs from its own high street — and a seed with only two anchors is exactly one
+    // neighbourhood plus that commercial stop, so the one fragile link IS the whole loop. bfsPath
+    // returned null, the route came back null, and the network was repaired into a single component
+    // afterwards with nothing going back to retry. The routing was never wrong; it ran too early.
     // Spec 097 R3.5 — connect the hilltop Rally Point to the road network. Route a spur from the
     // nearest existing road cell to the rally cell and lay it like any other road, mirroring the
     // commercial connector, so the guided walk and a rally-started race reach the bus-stop on a real
@@ -1815,6 +1819,14 @@ export class ColonyRuntime {
     // Sited AFTER the bus route (so the loop is unchanged — the rally-spur discipline) and AFTER the
     // fence cleanup (so the freshly laid gate spur is never pruned). Fail-soft: no in-margin fit means
     // no depot and the legacy single cosmetic coach keeps driving.
+    // TRANSIT.COMPLETE.1 — build the route HERE, after the connectivity repair has made the road
+    // network a single component and after the rally spur has laid its roads. This is the earliest
+    // point at which the network the route is planned over is the network the world actually ships.
+    // `busAnchors` is unchanged; only WHEN it is resolved has moved.
+    this.busRoute = makeBusRoute(
+      { roadKind: this.sim.state.roadKind },
+      busAnchors,
+    );
     if (this.busRoute) {
       const tr = COLONY.transit;
       const roadKeys = new Set(this.sim.state.roadKind.keys());
