@@ -1765,27 +1765,53 @@ export function ColonyApp() {
       {driveHomeOpen && newPlayerJourneyEnabled && (
         <DriveHomeOverlay onClose={() => setDriveHomeOpen(false)} />
       )}
-      {!ui.firstPerson.active &&
-        !builderActive &&
-        !worldViewActive &&
-        rallyRead && (
-          <div
-            className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
-            aria-label="Who is here at the rally"
-          >
-            <span className="rally-social-read__eyebrow">
-              {rallyRead.title}
-            </span>
-            <b>{rallyRead.summary}</b>
-            <span className="rally-social-read__status">
-              {ui.rally?.ready
-                ? "Friend present · race ready"
-                : ui.rally && ui.rally.present > 0
-                  ? "Waiting for a friend"
-                  : "Rally point empty"}
-            </span>
-          </div>
-        )}
+      {/* UI.GEO.OVERLAP.1 — the ONE owner of the bottom-LEFT corner, mirroring what #421 did for the
+          bottom-right. The BUG.GEO.1 presence readout (`position: absolute; left: 16; bottom: 24;
+          z-index: 6`) and the rally "who is here" card (`position: fixed; left: 18; bottom: 24;
+          z-index: 49`) each pinned themselves into this corner with no shared owner. Being both
+          bottom-anchored, the rally card landed WHOLLY inside the readout's box and the higher
+          z-index painted it over the readout's last rows — measured 15161px^2 at 1280x800 AND at
+          390x844, with the readout's reproducibility stamp failing a centre hit-test. A flex column
+          cannot overlap itself, so the collision is removed by construction rather than nudged
+          elsewhere by an offset or z-index tweak. Layout rules live in `.hud-corner-rail-left`
+          (colony.css); the rail deliberately owns LAYOUT only and each member keeps its own layer.
+          Order is DOM order: the readout above, then the rally card, which keeps hugging the corner
+          exactly where it already sat. The readout is the flexible member and the card is rigid, so
+          a long presence list shrinks the readout instead of pushing the card off-screen.
+          SCOPE, measured: in first person the rally card unmounts, so this defect cannot occur
+          there, but the touch joystick takes the bottom-left and the readout is buried under it
+          instead (34532px^2 at 1280x800, 39324px^2 + 6630px^2 against the guidance caption at
+          390x844). That is a DIFFERENT owner — the first-person edge-HUD grid — and it does not
+          fit: the free band between the bus mini-map's bottom edge (224px) and the joystick's top
+          (528px) is ~304px, while the first-person readout measures 389px tall. Folding it into
+          that grid was tried and measured: it merely relocated the collision onto the bus mini-map
+          (20520px^2). It needs a compact first-person readout form, not a layout owner, so it is
+          reported separately rather than half-fixed here. First-person layout is unchanged by this
+          PR. */}
+      <div className="hud-corner-rail-left" data-testid="hud-corner-rail-left">
+        {presenceReadout && <GeoReadout readout={presenceReadout} />}
+        {!ui.firstPerson.active &&
+          !builderActive &&
+          !worldViewActive &&
+          rallyRead && (
+            <div
+              className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
+              aria-label="Who is here at the rally"
+            >
+              <span className="rally-social-read__eyebrow">
+                {rallyRead.title}
+              </span>
+              <b>{rallyRead.summary}</b>
+              <span className="rally-social-read__status">
+                {ui.rally?.ready
+                  ? "Friend present · race ready"
+                  : ui.rally && ui.rally.present > 0
+                    ? "Waiting for a friend"
+                    : "Rally point empty"}
+              </span>
+            </div>
+          )}
+      </div>
       {ui.race.mode !== "idle" && (
         <div
           style={{
@@ -1948,8 +1974,10 @@ export function ColonyApp() {
         </div>
       </header>
       <BusNetworkMiniMap runtime={runtime} />
-      {/* BUG.GEO.1 — presence readout, so any screenshot of this frame is self-locating. */}
-      {presenceReadout && <GeoReadout readout={presenceReadout} />}
+      {/* BUG.GEO.1 — the presence readout (so any screenshot of this frame is self-locating) is
+          rendered above, as a member of `.hud-corner-rail-left`. UI.GEO.OVERLAP.1 moved it there
+          from here: it used to position itself into the bottom-left corner and collide with the
+          rally card. */}
       {/* UI.HUD.OVERLAP.1 — the ONE owner of the bottom-right corner. Every affordance that used to
           pin itself there independently (`position: fixed; right; bottom: 24/66/68/112`) now lives in
           this rail, and so does the city HUD panel, which used to be absolutely positioned into the
