@@ -1071,7 +1071,15 @@ export class ColonyRuntime {
   /** Exact legacy placement payloads allowed to replay while their old shore/ribbon debt is fixed. */
   private seededPlacementSignatures: ReadonlySet<string> | null = null;
 
-  constructor(seed: number = COLONY.render.seed) {
+  /** WORLD.SURVEY.1 — built for measurement, not for play: no residents, no social, no bots.
+   *  See the early return near the end of the constructor. */
+  private readonly surveyOnly: boolean;
+
+  constructor(
+    seed: number = COLONY.render.seed,
+    opts: { surveyOnly?: boolean } = {},
+  ) {
+    this.surveyOnly = opts.surveyOnly === true;
     this.worldSeed = seed;
     this.sim = new ColonySim(seed);
     this.seededTerrainAuthority = {
@@ -1919,6 +1927,15 @@ export class ColonyRuntime {
         this.busFleet = makeFleet(COLONY.transit, this.worldSeed); // seed the free-bay lottery per world
       }
     }
+    // WORLD.SURVEY.1 — a SURVEY boot stops here. Everything above built the physical world:
+    // terrain, neighbourhoods, the commercial reserve, hamlets, parcels, the road network, the bus
+    // route, the depot and the fleet geometry. Everything below populates it — stored social
+    // timelines, the named founders, saved blueprints, the bot adapter, a window listener — none of
+    // which any geometric question about a seed can depend on.
+    //
+    // This exists so seeds can be QUALIFIED in bulk (scripts/seedQualify.ts). It is not a "fast
+    // mode" for the game: a surveyed runtime has no residents and must never be handed to the UI.
+    if (this.surveyOnly) return;
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
     // founder profile (the bug: seed-then-restore overwrote Joe's stored posts with a 1-post reset).
