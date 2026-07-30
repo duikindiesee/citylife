@@ -2182,7 +2182,7 @@ body.tv-mode .radio-iframe.is-visible {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono",
     monospace;
   font-size: 10px;
-  line-height: 1.45;
+  line-height: 1.33;
   color: #d8ecf6;
   pointer-events: none;
 }
