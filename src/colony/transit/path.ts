@@ -207,6 +207,79 @@ export function busLoopPath(loop: Pt[]): PathData {
   );
 }
 
+/** BUS.LANE.1 — the pose at arc length `s`, moved into its LANE instead of straddling the
+ *  centre-line. `offsetCells` is measured to the LEFT of travel, the SA near-side kerb the doors
+ *  already open onto (busStopAnchor, junctionCap and alightBus all agree on that side).
+ *
+ *  Offsetting a curve is not offsetting a point: on the INSIDE of a bend the offset line has a
+ *  smaller radius than the centre-line, and once the offset exceeds that radius the line turns
+ *  itself inside out — the bus would swing backwards through the corner. The driven loop's fillets
+ *  are ~0.3 cells, well under a 1-cell lane offset, so this is not a theoretical worry.
+ *
+ *  So the offset is CLAMPED by the local turn radius: full lane offset on a straight or on the
+ *  outside of a bend, tapering to nothing as the inside radius closes. A bus cutting toward the
+ *  centre-line through a tight turn is also what real ones do, so the degradation reads correctly
+ *  rather than as a glitch.
+ *
+ *  Arc length is untouched: `s` still parameterises the CENTRE-LINE, so speeds, stop projections
+ *  and the fleet's dispatch spacing are all unaffected by which lane the body sits in. */
+export function lanePose(
+  path: PathData,
+  s: number,
+  offsetCells: number,
+  /** How much of the inside radius the offset may consume before it is cut back. */
+  safety = 0.6,
+): { x: number; y: number; heading: number } {
+  const here = samplePath(path, s);
+  if (offsetCells === 0 || path.total <= 1e-9) return here;
+  // Curvature from symmetric samples around s, at SEVERAL SCALES, keeping the tightest radius any
+  // of them sees. One scale is not enough: a wide pair averages straight over a short sharp feature
+  // and under-clamps (a 1-cell pair reads a 0.3-cell fillet as nearly straight, and the offset line
+  // then reverses through it), while a narrow pair alone is noisy on gentle curves where packed
+  // vertices dominate. Taking the minimum is the conservative read.
+  let radius = Infinity;
+  let turnAtTightest = 0;
+  for (const scale of [0.25, 0.5, 1]) {
+    const step = Math.min(scale, path.total / 8);
+    if (step <= 1e-9) continue;
+    // ...and over a WINDOW of positions either side of s, not at s alone. The clamp has to vary
+    // CONTINUOUSLY: evaluated pointwise, one sample can straddle a tip and clamp hard while its
+    // neighbour reads the straight arm and does not, so the lane line jumps between two offsets and
+    // the bus appears to step backwards. Neighbouring samples share most of this window, so the
+    // limit they derive is near enough identical. A tight bend anywhere WITHIN REACH is a reason to
+    // already be tucked in, which is also how the corner is actually driven.
+    for (const du of [-1, -0.5, 0, 0.5, 1]) {
+      const at = s + du * step;
+      const before = samplePath(path, at - step);
+      const after = samplePath(path, at + step);
+      let turn = after.heading - before.heading;
+      while (turn > Math.PI) turn -= 2 * Math.PI;
+      while (turn < -Math.PI) turn += 2 * Math.PI;
+      if (Math.abs(turn) < 1e-9) continue; // straight here at this scale
+      const r = (2 * step) / Math.abs(turn); // radius = arc / |dtheta|
+      if (r < radius) {
+        radius = r;
+        turnAtTightest = turn;
+      }
+    }
+  }
+  // A LEFT offset is on the inside of a LEFT turn (turn > 0 in this grid, y down).
+  const insideTurn =
+    turnAtTightest === 0
+      ? false
+      : offsetCells > 0
+        ? turnAtTightest > 0
+        : turnAtTightest < 0;
+  const limit = insideTurn ? Math.max(0, radius * safety) : Infinity;
+  const applied =
+    Math.sign(offsetCells) * Math.min(Math.abs(offsetCells), limit);
+  return {
+    x: here.x - Math.sin(here.heading) * applied,
+    y: here.y + Math.cos(here.heading) * applied,
+    heading: here.heading,
+  };
+}
+
 /** Arc length of the point on `path` nearest to p — how stops and the spur junction are located on
  *  the smoothed loop. Exhaustive over segments (paths are a few hundred points, built once at boot). */
 export function projectPath(path: PathData, p: Pt): number {

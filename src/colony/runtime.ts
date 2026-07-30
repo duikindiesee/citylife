@@ -294,6 +294,8 @@ import {
 import type { RoadWay } from "./render/roadRibbon";
 import { conservativeRoadRibbonBlockedCells } from "./placementValidation";
 import { findJunctionZones } from "./render/roadJunctions";
+import { attachCapPolys } from "./render/junctionCap";
+import { nearPoly } from "./render/geom2d";
 import {
   barStoolGridPositions,
   junctionZonesToPads,
@@ -1918,15 +1920,38 @@ export class ColonyRuntime {
           bays: bayPaths,
           gateHeading: layout.gate.headingOut,
         };
+        // ORDER MATTERS. The anchors resolve WHERE A BUS STOPS, and the fleet geometry must be
+        // built from that answer rather than deriving a second one of its own.
+        //
+        // BUS.BOARD.1 — the SAME loopPath the fleet samples poses from, so the pole the player
+        // walks to is exactly STOP_VERGE_OFFSET_CELLS from the halted bus at every stop.
+        // BUS.LANE.1 — anchored on the pose the bus REALLY halts at (its lane), not the
+        // centre-line, so the pole stays exactly the verge offset from the doors.
+        // BUS.STOP.CLEAR.1 — a halt may not land inside a junction. The cap outlines are the same
+        // footprint paint suppression and venue placement use; a stop whose projection falls in one
+        // slides along the route until it is clear.
+        const stopJunctions = attachCapPolys(findJunctionZones(this.roadWays));
+        this.stopAnchors = computeBusStopAnchors(
+          loopPath,
+          this.busRoute.stops,
+          undefined,
+          COLONY.transit.busLaneOffsetCells,
+          (x, y) =>
+            stopJunctions.some(
+              (z) => z.poly.length >= 3 && nearPoly(x, y, z.poly, 0.5),
+            ),
+        );
         this.fleetGeom = makeFleetGeometry(
           loopPath,
           spurPath,
           bayPaths,
           this.busRoute.stops,
+          // ...and the fleet dwells at the anchored arcs. Letting it re-project the authored cells
+          // put the DWELL back in the junction the anchor had just slid out of, leaving the coach
+          // in the crossroads with its sign 6.7 cells up the road — out of Board range, which is
+          // how the boarding test caught it.
+          this.stopAnchors.map((a) => a.arc),
         );
-        // BUS.BOARD.1 — the SAME loopPath the fleet samples poses from, so the pole the player walks
-        // to is exactly STOP_VERGE_OFFSET_CELLS from the halted bus at every stop.
-        this.stopAnchors = computeBusStopAnchors(loopPath, this.busRoute.stops);
         this.busFleet = makeFleet(COLONY.transit, this.worldSeed); // seed the free-bay lottery per world
       }
     }

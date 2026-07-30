@@ -36,6 +36,10 @@ const cfg: FleetConfig = {
   breakMin: 30,
   lapsPerShift: 1,
   bayPullOutCells: 3,
+  // These fixtures assert POSE geometry against straight synthetic paths, so they drive the
+  // centre-line. Lane keeping has its own coverage — see the lanePose tests in path.test.ts and
+  // the in-lane sweep in busSolContinuousMotion.
+  busLaneOffsetCells: 0,
 };
 
 function run(

@@ -21,7 +21,13 @@
 //
 // Pure and deterministic: polyline math only, no three.js, no clock, no Math.random.
 
-import { projectPath, samplePath, type PathData, type Pt } from "./path";
+import {
+  lanePose,
+  projectPath,
+  samplePath,
+  type PathData,
+  type Pt,
+} from "./path";
 
 /** Cells the stop furniture stands back from the DRIVEN lane centre-line.
  *
@@ -51,9 +57,50 @@ export function busStopAnchor(
   loop: PathData,
   cell: Pt,
   offsetCells: number = STOP_VERGE_OFFSET_CELLS,
+  /** BUS.LANE.1 — cells LEFT of the centre-line the bus is actually driving in. The anchor has to
+   *  be built on the pose the bus really halts at: the whole point of BUS.BOARD.1 is that the
+   *  furniture stands on the verge of the HALT POINT, and a bus keeping left halts a lane-width off
+   *  the centre-line. Anchoring on the centre-line while the coach sits beside it would put the
+   *  pole and the doors a full cell apart again — the exact fault BUS.BOARD.1 fixed. Arc length is
+   *  unaffected, so stop ORDER and dispatch spacing do not move. */
+  laneOffsetCells = 0,
+  /** BUS.STOP.CLEAR.1 — ground the bus must not HALT on, in grid coords. Junction caps, in
+   *  practice: `makeBusRoute` snaps each hood anchor to its nearest road cell, and the commercial
+   *  district's anchor IS its crossroads, so on the boot seed the stop at (125,265) landed inside
+   *  the junction and the coach dwelt there with its doors open for 1.5 sim-minutes, blocking a
+   *  four-way. Passed in as a predicate rather than imported so this module stays pure transit
+   *  math with no dependency on the road renderer. */
+  keepClear?: (x: number, y: number) => boolean,
 ): BusStopAnchor {
-  const arc = projectPath(loop, cell);
-  const p = samplePath(loop, arc);
+  const poseAt = (a: number) =>
+    laneOffsetCells === 0
+      ? samplePath(loop, a)
+      : lanePose(loop, a, laneOffsetCells);
+  let arc = projectPath(loop, cell);
+  if (keepClear) {
+    const first = poseAt(arc);
+    if (keepClear(first.x, first.y)) {
+      // Slide ALONG THE ROUTE to the nearest clear halt, trying each direction at each distance so
+      // the stop lands on whichever side of the junction is closer. The authored cell is left
+      // alone — it still identifies the stop — and only the halt point moves, which is exactly the
+      // BUS.BOARD.1 rule that the furniture follows the pose the bus really stops at.
+      const STEP = 0.5;
+      const LIMIT = 24; // cells of arc; a stop is not worth dragging half a block
+      let found: number | null = null;
+      for (let d = STEP; d <= LIMIT && found === null; d += STEP)
+        for (const dir of [1, -1]) {
+          const a = arc + dir * d;
+          const q = poseAt(a);
+          if (!keepClear(q.x, q.y)) {
+            found = a;
+            break;
+          }
+        }
+      // Nothing clear within reach: keep the projection rather than invent a stop elsewhere.
+      if (found !== null) arc = found;
+    }
+  }
+  const p = poseAt(arc);
   // Left of travel: the unit tangent rotated +90 degrees in grid space — the same convention
   // stopVergeDirection and runtime.alightBus's kerb use, so the sign, the doors and the alighting
   // spot are all on one side.
@@ -76,6 +123,10 @@ export function busStopAnchors(
   loop: PathData,
   cells: readonly Pt[],
   offsetCells: number = STOP_VERGE_OFFSET_CELLS,
+  laneOffsetCells = 0,
+  keepClear?: (x: number, y: number) => boolean,
 ): BusStopAnchor[] {
-  return cells.map((c) => busStopAnchor(loop, c, offsetCells));
+  return cells.map((c) =>
+    busStopAnchor(loop, c, offsetCells, laneOffsetCells, keepClear),
+  );
 }
