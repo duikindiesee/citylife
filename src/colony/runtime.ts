@@ -1846,6 +1846,9 @@ export class ColonyRuntime {
           maxRoadGap: tr.depotMaxRoadGap,
           maxHeightSpreadM: tr.depotMaxHeightSpreadM,
         },
+        // The pad keeps clear of the rendered-ribbon reservation; the spur corridor does not have
+        // to, because the corridor becomes a road. See corridorClear.
+        ribbonCells,
       );
       if (site) {
         const padCells: Cell[] = [];

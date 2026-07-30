@@ -85,6 +85,11 @@ export function findDepotSite(
   blocked: ReadonlySet<string>,
   roadKeys: ReadonlySet<string>,
   cfg: DepotSiteConfig,
+  /** WORLD.SURVEY.1 — cells blocked ONLY because rendered road geometry covers them. The PAD must
+   *  still keep clear of these (that reservation is why it exists: a cell-clean pad can otherwise
+   *  overlap visible asphalt). The SPUR CORRIDOR must not, because the corridor is about to become
+   *  a road itself — `layRoad` paves it moments after this returns. See corridorClear. */
+  paveable: ReadonlySet<string> = new Set(),
 ): DepotSite | null {
   const L = cfg.longCells,
     D = cfg.deepCells;
@@ -94,18 +99,31 @@ export function findDepotSite(
     { x: -1, y: 0 },
     { x: 0, y: -1 },
   ];
-  for (let g = cfg.minRoadGap; g <= cfg.maxRoadGap; g++) {
-    for (const r of loop) {
-      for (const d of dirs) {
-        const site = padAt(r, d, g, L, D);
-        if (!padClear(t, site, blocked, cfg.maxHeightSpreadM)) continue;
-        if (!corridorClear(t, r, site.gate, blocked, roadKeys)) continue;
-        return site;
+  const scan = (pave: ReadonlySet<string>): DepotSite | null => {
+    for (let g = cfg.minRoadGap; g <= cfg.maxRoadGap; g++) {
+      for (const r of loop) {
+        for (const d of dirs) {
+          const site = padAt(r, d, g, L, D);
+          if (!padClear(t, site, blocked, cfg.maxHeightSpreadM)) continue;
+          if (!corridorClear(t, r, site.gate, blocked, roadKeys, pave))
+            continue;
+          return site;
+        }
       }
     }
-  }
-  return null;
+    return null;
+  };
+  // TWO PASSES, and the order is the whole point. The strict scan runs first, so every world that
+  // already sites a depot keeps the SAME pad it always had — the search returns the first fit, and
+  // a relaxed first pass would let an earlier, smaller-gap candidate win and quietly relocate the
+  // depot in every existing world. (Measured: seed 4242 moved from (181,299) to (188,301) when the
+  // exemption was applied on the first pass.) Only when the strict scan finds nothing does the
+  // corridor exemption come into play, so this is additive: it rescues worlds that had no depot at
+  // all and moves none that did.
+  return scan(EMPTY) ?? (paveable.size ? scan(paveable) : null);
 }
+
+const EMPTY: ReadonlySet<string> = new Set();
 
 /** The pad rectangle for road cell r, road->pad direction d and gap g: the long (gate) edge faces the
  *  road, centred on r's row/column so the gate lines up with the junction. */
@@ -156,14 +174,29 @@ function padClear(
   return maxY - minY <= maxHeightSpreadM;
 }
 
-/** The gap between road and gate becomes the spur road — it must be dry and cross nothing that is not
- *  already road (crossing existing asphalt is fine; crossing a parcel or reserve is not). */
+/** The gap between road and gate becomes the spur road — it must be dry, and cross nothing that a
+ *  road may not be laid over. Crossing existing asphalt is fine. Crossing a parcel or a reserve is
+ *  not.
+ *
+ *  WORLD.SURVEY.1 — `paveable` cells are fine too, and leaving them out was starving the search.
+ *  A pad sits 2-6 cells off the loop, so its corridor is by construction road-ADJACENT, which is
+ *  exactly where `conservativeRoadRibbonBlockedCells` reserves: the rendered carriageway is four
+ *  cells wide plus the bilinear stencil, while `roadKind` marks only the ~3-cell rasterised
+ *  centre-line. So nearly every corridor crossed reserved-but-not-road ground and was rejected.
+ *  Measured over seeds 1-24: on the six seeds that routed a loop and still found no depot, the pad
+ *  was clear on 20,703-32,263 candidate placements and EVERY ONE died here, for this reason —
+ *  `ok` was zero. Even the seeds that succeeded did so on 52 and 755 survivors out of ~132,000.
+ *
+ *  That reservation exists to stop PLOTS overlapping visible road geometry. Applying it to a
+ *  would-be road is a category error: `layRoad` paves this corridor moments later, so the ribbon
+ *  it "conflicts" with is the ribbon it is about to become part of. The PAD still respects it. */
 function corridorClear(
   t: DepotTerrain,
   road: Cell,
   gate: Cell,
   blocked: ReadonlySet<string>,
   roadKeys: ReadonlySet<string>,
+  paveable: ReadonlySet<string>,
 ): boolean {
   const dx = Math.sign(gate.x - road.x),
     dy = Math.sign(gate.y - road.y);
@@ -173,7 +206,7 @@ function corridorClear(
       y = road.y + dy * s;
     if (!t.inBounds(x, y) || t.isWater(x, y)) return false;
     const k = key(x, y);
-    if (blocked.has(k) && !roadKeys.has(k)) return false;
+    if (blocked.has(k) && !roadKeys.has(k) && !paveable.has(k)) return false;
   }
   return true;
 }
