@@ -16,8 +16,9 @@
 
 import type { CommercialDistrict, ShopParcel } from "../commerce/district";
 import type { Terrain } from "../terrain";
+import { nearPoly } from "./geom2d";
 import { padSeatY } from "./useTerrainLeveling";
-import { ribbonCoverage, type RoadWay } from "./roadRibbon";
+import { ribbonSurfaceCells, type RoadWay } from "./roadRibbon";
 import { getSmoothRoadY } from "./roadSurface";
 import { CELL_SIZE } from "../scale";
 
@@ -64,6 +65,12 @@ export interface JunctionPad {
   cx: number;
   cy: number;
   r: number;
+  /** The junction's CAP OUTLINE when it is known. `r` is only a bounding circle — `rBound` is
+   *  documented in roadJunctions as being for "cheap point rejection", and a circle that reaches
+   *  the end of every arm mouth swallows the frontage of any parcel near a junction. When the cap
+   *  polygon is attached (junctionCap.attachCapPolys) the hit test uses it instead, which is the
+   *  same footprint paint suppression, coverage and foliage clearing already share. */
+  poly?: { x: number; y: number }[];
 }
 
 export interface VenuePlacement {
@@ -154,9 +161,25 @@ function rectHitsPad(
   halfY: number,
   pad: JunctionPad,
 ): boolean {
+  // Broad phase: the bounding circle can only ever over-report, so a miss here is a real miss.
   const dx = Math.max(Math.abs(pad.cx - cx) - halfX, 0);
   const dy = Math.max(Math.abs(pad.cy - cy) - halfY, 0);
-  return dx * dx + dy * dy < pad.r * pad.r;
+  if (dx * dx + dy * dy >= pad.r * pad.r) return false;
+  if (!pad.poly || pad.poly.length < 3) return true; // no cap outline: the circle is all we have
+  // Narrow phase against the cap outline. Either the rect touches the cap (any corner or the
+  // centre inside it, or within half a cell of an edge), or the cap pokes into the rect.
+  for (const [px, py] of [
+    [cx, cy],
+    [cx - halfX, cy - halfY],
+    [cx + halfX, cy - halfY],
+    [cx - halfX, cy + halfY],
+    [cx + halfX, cy + halfY],
+  ] as const)
+    if (nearPoly(px, py, pad.poly, 0.5)) return true;
+  for (const v of pad.poly)
+    if (Math.abs(v.x - cx) <= halfX + 0.5 && Math.abs(v.y - cy) <= halfY + 0.5)
+      return true;
+  return false;
 }
 
 /** The ONE seat formula, re-exported at the venue contract's altitude: a venue building
@@ -174,10 +197,13 @@ export function venueRoadBlockedCells(
   ways: readonly RoadWay[] | undefined,
   t: Terrain,
 ): ReadonlySet<string> {
-  const cover = ribbonCoverage((ways ?? []) as RoadWay[], t, (x, y) =>
-    getSmoothRoadY(t, x, y),
-  );
-  return new Set(cover.keys());
+  // The cells the ASPHALT covers, not `ribbonCoverage`. ribbonCoverage is the terrain-grading
+  // stencil — it stamps the four bilinear corners each rendered sample depends on, so it reaches
+  // about a cell past the kerb by design, because the ground under a road has to be graded wider
+  // than the road. Read as a no-build mask it over-reserved the whole frontage: 12 of 21 shops on
+  // the boot seed (and 14 of 21 on seed 3) found no legal footprint and silently did not render,
+  // because `surveyVenuePlacements` gives up and leaves the parcel open when nothing fits.
+  return ribbonSurfaceCells((ways ?? []) as RoadWay[], t);
 }
 
 /** Survey every parcel of the commercial district into a venue placement. Pure and
@@ -394,11 +420,15 @@ export function junctionZonesToPads(
     cy: number;
     half?: number;
     rBound?: number;
+    poly?: { x: number; y: number }[];
   }[],
 ): JunctionPad[] {
   return zones.map((z) => ({
     cx: z.cx,
     cy: z.cy,
     r: (z.rBound ?? (z.half ?? 2) + 1) + 0.5,
+    // Carried through when the caller attached it. Without it the circle stands, so callers that
+    // do not build caps keep exactly their old behaviour rather than silently under-reserving.
+    ...(z.poly && z.poly.length >= 3 ? { poly: z.poly } : {}),
   }));
 }

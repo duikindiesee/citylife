@@ -48,6 +48,7 @@ import {
   type VenuePlacement,
 } from "./venuePlacement";
 import { findJunctionZones } from "./roadJunctions";
+import { attachCapPolys } from "./junctionCap";
 import { buildCrabGeometry } from "./crabGeometry";
 
 export interface CommercialLabelEntry {
@@ -780,7 +781,11 @@ function buildCommercialDistrict(C: CommercialCtx): void {
   // seat, facing, plot-filling footprint and entrance; the live junction zones carve
   // their no-build pads first so nothing stands inside a junction's bound. The runtime
   // (bar stools) and the node tests read the same survey — no per-renderer improvising.
-  const pads = junctionZonesToPads(findJunctionZones(C.state.roadWays ?? []));
+  // Cap outlines attached first: the pad hit test wants the junction's real footprint, not its
+  // broad-phase bounding circle. See junctionZonesToPads.
+  const pads = junctionZonesToPads(
+    attachCapPolys(findJunctionZones(C.state.roadWays ?? [])),
+  );
   const placements = surveyVenuePlacements(
     d,
     pads,

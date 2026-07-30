@@ -186,6 +186,44 @@ export function ribbonCoverage(
   return cover;
 }
 
+/** The grid cells the asphalt ACTUALLY COVERS — the same set `ribbon()` records into `cells`, but
+ *  pure, so callers that only want the footprint need not build a mesh.
+ *
+ *  This is deliberately NOT `ribbonCoverage`. That one is the TERRAIN GRADING stencil: it stamps
+ *  the four integer corners the bilinear reconstruction reads around every cross-section sample, so
+ *  it reaches about a cell past the kerb on purpose — the ground under the road has to be graded a
+ *  little wider than the road. Using a grading stencil as a NO-BUILD mask over-reserves by exactly
+ *  that margin, which is how 12 of 21 commercial shops on the boot seed ended up with nowhere legal
+ *  to stand. "Do not build under the asphalt" should be asked of the asphalt. */
+export function ribbonSurfaceCells(
+  ways: readonly RoadWay[],
+  terrain: Terrain,
+): Set<string> {
+  const cells = new Set<string>();
+  for (const w of ways) {
+    if (w.path.length < 2) continue;
+    const pts = roadRibbonRenderPath(w, terrain);
+    const offsets = crossSectionOffsets(w.width / 2);
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i]!;
+      const prev = pts[Math.max(0, i - 1)]!,
+        next = pts[Math.min(pts.length - 1, i + 1)]!;
+      const tx = next.x - prev.x,
+        ty = next.y - prev.y;
+      const len = Math.hypot(tx, ty) || 1;
+      const px = -ty / len,
+        py = tx / len;
+      for (const k of offsets) {
+        const gx = p.x + px * k,
+          gy = p.y + py * k;
+        if (cellOkOn(terrain, gx, gy))
+          cells.add(`${Math.round(gx)},${Math.round(gy)}`);
+      }
+    }
+  }
+  return cells;
+}
+
 /** Reconstruct the shared drape exactly as the TERRAIN MESH does: bilinearly from the four
  *  integer cell corners. The ribbon must use the SAME reconstruction as the ground it is graded
  *  against, or the two surfaces disagree by the reconstruction error of a max-filtered field. */

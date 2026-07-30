@@ -14,7 +14,12 @@ import {
   type VenuePlacement,
 } from "../src/colony/render/venuePlacement";
 import { findJunctionZones } from "../src/colony/render/roadJunctions";
-import { ribbonCoverage } from "../src/colony/render/roadRibbon";
+import {
+  ribbonCoverage,
+  ribbonSurfaceCells,
+} from "../src/colony/render/roadRibbon";
+import { nearPoly } from "../src/colony/render/geom2d";
+import { attachCapPolys } from "../src/colony/render/junctionCap";
 import { getSmoothRoadY } from "../src/colony/render/roadSurface";
 import { padSeatY } from "../src/colony/render/useTerrainLeveling";
 import type { CommercialDistrict } from "../src/colony/commerce/district";
@@ -42,8 +47,10 @@ function surveyed(rt: ColonyRuntime): {
 } {
   const district = rt.sim.state.commercialDistrict!;
   expect(district).toBeTruthy();
+  // Cap outlines attached, exactly as commercialDistrictLayer does — the pad hit test needs the
+  // junction's real footprint, not its broad-phase bounding circle.
   const pads = junctionZonesToPads(
-    findJunctionZones(rt.sim.state.roadWays ?? []),
+    attachCapPolys(findJunctionZones(rt.sim.state.roadWays ?? [])),
   );
   const blocked = venueRoadBlockedCells(
     rt.sim.state.roadWays,
@@ -179,14 +186,29 @@ describe("venue placement survey (spec 143)", () => {
       expect(median).toBeGreaterThanOrEqual(0.5);
     });
 
-    it(`seed ${seed}: no venue intersects a road cell, the ribbon coverage, or a junction pad`, () => {
+    it(`seed ${seed}: no venue intersects a road cell, the asphalt, or a junction cap`, () => {
+      // WORLD.SURVEY.1 — this used to test against `ribbonCoverage` and the pads' BOUNDING CIRCLE.
+      // Both are conservative proxies, and read as hard no-build masks they cost the district most
+      // of its shops: 12 of 21 on seed 4242 and 14 of 21 on seed 3 found no legal footprint, and
+      // `surveyVenuePlacements` leaves such a parcel open, so they silently did not render.
+      //
+      //   ribbonCoverage is the TERRAIN GRADING stencil. It stamps the four bilinear corners each
+      //   rendered sample depends on, reaching ~1 cell past the kerb BY DESIGN, because the ground
+      //   under a road must be graded slightly wider than the road. Standing on ground that was
+      //   graded toward the road is not standing on the road.
+      //
+      //   pad.r is `rBound`, documented in roadJunctions as being "for cheap point rejection" — a
+      //   circle out to the end of every arm mouth. The cap POLYGON is the footprint that paint
+      //   suppression, coverage and foliage clearing already share.
+      //
+      // So test the real boundaries. Measured after the change: across seeds 4242 and 42, zero
+      // probes land on a drivable cell, zero on the asphalt and zero inside a cap — only the
+      // grading margin is now entered, which is what buildings are allowed to do.
       const rt = rtFor(seed);
       const { pads, placements } = surveyed(rt);
       const t = rt.sim.state.terrain;
       const roadSet = rt.sim.state.roadSet;
-      const ribbon = ribbonCoverage(rt.sim.state.roadWays ?? [], t, (x, y) =>
-        getSmoothRoadY(t, x, y),
-      );
+      const asphalt = ribbonSurfaceCells(rt.sim.state.roadWays ?? [], t);
       for (const p of placements.filter((v) => v.buildable)) {
         for (const probe of footprintProbes(p)) {
           const key = `${Math.round(probe.x)},${Math.round(probe.y)}`;
@@ -195,8 +217,8 @@ describe("venue placement survey (spec 143)", () => {
             `${p.parcelId} probe ${key} on a road cell`,
           ).toBe(false);
           expect(
-            ribbon.has(key),
-            `${p.parcelId} probe ${key} under the ribbon`,
+            asphalt.has(key),
+            `${p.parcelId} probe ${key} on the rendered asphalt`,
           ).toBe(false);
         }
         // rect-vs-circle against every junction pad bound
@@ -212,10 +234,25 @@ describe("venue placement survey (spec 143)", () => {
             Math.abs(pad.cy - p.centerGY) - (alongX ? hd : hw),
             0,
           );
+          if (dx * dx + dy * dy >= pad.r * pad.r) continue; // clear of even the bounding circle
+          // Inside the circle is not inside the junction. Check the cap outline it stands for.
           expect(
-            dx * dx + dy * dy >= pad.r * pad.r,
-            `${p.parcelId} inside junction pad at ${pad.cx},${pad.cy}`,
+            pad.poly && pad.poly.length >= 3,
+            `pad at ${pad.cx},${pad.cy} has no cap outline — attachCapPolys not applied`,
           ).toBe(true);
+          const hx = alongX ? hw : hd;
+          const hy = alongX ? hd : hw;
+          const inCap = [
+            [p.centerGX, p.centerGY],
+            [p.centerGX - hx, p.centerGY - hy],
+            [p.centerGX + hx, p.centerGY - hy],
+            [p.centerGX - hx, p.centerGY + hy],
+            [p.centerGX + hx, p.centerGY + hy],
+          ].some(([qx, qy]) => nearPoly(qx!, qy!, pad.poly!, 0));
+          expect(
+            inCap,
+            `${p.parcelId} inside the junction cap at ${pad.cx},${pad.cy}`,
+          ).toBe(false);
         }
       }
     });
