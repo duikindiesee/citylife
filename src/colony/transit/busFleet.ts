@@ -23,7 +23,13 @@
 // is deterministic yet varied), and dispatch pulls whichever parked bus is ready. `BusState.bay` is
 // the bay a bus currently holds (parked / pulling out of / backing into), or -1 while out on the loop.
 
-import { type PathData, samplePath, projectPath, type Pt } from "./path";
+import {
+  type PathData,
+  lanePose,
+  samplePath,
+  projectPath,
+  type Pt,
+} from "./path";
 import { cellsPerSecToMps } from "../scale";
 import { REAL_SECONDS_PER_SOL_MINUTE } from "../sol";
 
@@ -44,6 +50,8 @@ export interface FleetConfig {
   lapsPerShift: number;
   /** Length (cells) of the straight bay leg a bus REVERSES along when pulling out. */
   bayPullOutCells: number;
+  /** BUS.LANE.1 — cells LEFT of the route centre-line the bus drives while in service. */
+  busLaneOffsetCells: number;
 }
 
 /** Arc-length geometry of the transit world, computed once at boot from the real paths. */
@@ -517,7 +525,14 @@ export function busPose(
       };
     }
     case "service": {
-      const p = samplePath(paths.loop, geom.joinT + (b.lapT % geom.loopLen));
+      // BUS.LANE.1 — in service the bus keeps LEFT rather than straddling the centre-line. Only
+      // here: the depot apron, its bays and the single-lane spur have no oncoming traffic and no
+      // lane to keep, and offsetting there would push the coach off its own manoeuvring geometry.
+      const p = lanePose(
+        paths.loop,
+        geom.joinT + (b.lapT % geom.loopLen),
+        cfg.busLaneOffsetCells,
+      );
       return {
         x: p.x,
         y: p.y,

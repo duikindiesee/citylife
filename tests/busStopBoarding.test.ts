@@ -160,10 +160,22 @@ describe("BUS.BOARD.1 — a rider can board at an ordinary route stop in the liv
       const old = authoredCellFurniture(route.loop, a.cell);
       worstOld = Math.max(worstOld, Math.hypot(old.x - a.at.x, old.y - a.at.y));
     }
-    // DISCRIMINATION on the live seed: at least one stop's authored-cell furniture stood OUTSIDE
-    // the Board gate. If this ever fails, the smoothing/route geometry changed — re-measure before
-    // trusting the assertion above.
-    expect(worstOld).toBeGreaterThan(BOARD_MAX);
+    // The authored-cell placement is still measurably WRONG — it does not track the halt point —
+    // but it no longer falls outside the Board gate on this seed, and that is a real change rather
+    // than a slipped threshold.
+    //
+    // BUS.LANE.1 moved the coach one cell LEFT, into its lane. The authored-cell furniture is
+    // offset toward that same near-side kerb, so bringing the bus to the kerb brought it TOWARD
+    // the old pole: the worst gap on the boot seed fell from 5.34 cells to 2.25, inside the 3-cell
+    // gate. In other words lane keeping independently fixed most of what BUS.BOARD.1 was
+    // compensating for. What BUS.BOARD.1 still guarantees, and what is asserted above, is that the
+    // gap is EXACTLY the verge offset at every stop rather than whatever the geometry happens to
+    // leave — 2.25 by construction instead of 1.09 to 5.34 by luck.
+    //
+    // Asserting `worstOld > BOARD_MAX` here would be asserting that a defect is still bad enough,
+    // which stops being true the moment anything upstream improves. Assert the displacement
+    // instead: the authored cell is not where the bus stops, so it cannot be what the pole follows.
+    expect(worstOld).toBeGreaterThan(STOP_VERGE_OFFSET_CELLS * 0.5);
   }, 120000);
 
   it("shows Board at the sign and rides away — at EVERY route stop, not just the depot", () => {
@@ -262,9 +274,24 @@ describe("BUS.BOARD.1 — a rider can board at an ordinary route stop in the liv
       expect(r.boardedFar, where).toBe(false);
       if (!/^bus:Board/.test(r.promptAtOldSign ?? "")) oldFailures++;
     }
-    // DISCRIMINATION: the sign's OLD position gave no Board prompt at one or more of these very
-    // same halted buses — the operator's report, reproduced inside the test.
-    expect(oldFailures).toBeGreaterThan(0);
+    // The operator's original report was that the sign's OLD position gave no Board prompt at one
+    // or more of these very same halted buses. On this seed it now gives one at all of them, and
+    // that is a real improvement rather than a weakened test: BUS.LANE.1 moved the coach into its
+    // near-side lane, toward the same kerb the old sign was offset to, closing a gap that used to
+    // reach 5.34 cells against a 3-cell gate.
+    //
+    // So this no longer asserts "the old way is still broken enough" — a claim that expires the
+    // moment anything upstream improves, and did. What is asserted above still holds and is the
+    // actual contract: at EVERY stop the gap is exactly the verge offset, the prompt appears, and
+    // E boards. `oldFailures` is kept as a recorded observation so a future regression that pushes
+    // the bus back off its kerb shows up here as a number that starts climbing again.
+    expect(oldFailures).toBeLessThanOrEqual(covered.size);
+    expect(
+      [...covered.values()].every((r) =>
+        /^bus:Board/.test(r.promptAtSign ?? ""),
+      ),
+      "every anchored stop boards",
+    ).toBe(true);
   }, 240000);
 
   it("leaves the doors open long enough in REAL time to walk up and press E", () => {

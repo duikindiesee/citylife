@@ -1926,7 +1926,14 @@ export class ColonyRuntime {
         );
         // BUS.BOARD.1 — the SAME loopPath the fleet samples poses from, so the pole the player walks
         // to is exactly STOP_VERGE_OFFSET_CELLS from the halted bus at every stop.
-        this.stopAnchors = computeBusStopAnchors(loopPath, this.busRoute.stops);
+        // BUS.LANE.1 — anchored on the pose the bus REALLY halts at (its lane), not the
+        // centre-line, so the pole stays exactly the verge offset from the doors.
+        this.stopAnchors = computeBusStopAnchors(
+          loopPath,
+          this.busRoute.stops,
+          undefined,
+          COLONY.transit.busLaneOffsetCells,
+        );
         this.busFleet = makeFleet(COLONY.transit, this.worldSeed); // seed the free-bay lottery per world
       }
     }

@@ -21,7 +21,13 @@
 //
 // Pure and deterministic: polyline math only, no three.js, no clock, no Math.random.
 
-import { projectPath, samplePath, type PathData, type Pt } from "./path";
+import {
+  lanePose,
+  projectPath,
+  samplePath,
+  type PathData,
+  type Pt,
+} from "./path";
 
 /** Cells the stop furniture stands back from the DRIVEN lane centre-line.
  *
@@ -51,9 +57,19 @@ export function busStopAnchor(
   loop: PathData,
   cell: Pt,
   offsetCells: number = STOP_VERGE_OFFSET_CELLS,
+  /** BUS.LANE.1 — cells LEFT of the centre-line the bus is actually driving in. The anchor has to
+   *  be built on the pose the bus really halts at: the whole point of BUS.BOARD.1 is that the
+   *  furniture stands on the verge of the HALT POINT, and a bus keeping left halts a lane-width off
+   *  the centre-line. Anchoring on the centre-line while the coach sits beside it would put the
+   *  pole and the doors a full cell apart again — the exact fault BUS.BOARD.1 fixed. Arc length is
+   *  unaffected, so stop ORDER and dispatch spacing do not move. */
+  laneOffsetCells = 0,
 ): BusStopAnchor {
   const arc = projectPath(loop, cell);
-  const p = samplePath(loop, arc);
+  const p =
+    laneOffsetCells === 0
+      ? samplePath(loop, arc)
+      : lanePose(loop, arc, laneOffsetCells);
   // Left of travel: the unit tangent rotated +90 degrees in grid space — the same convention
   // stopVergeDirection and runtime.alightBus's kerb use, so the sign, the doors and the alighting
   // spot are all on one side.
@@ -76,6 +92,7 @@ export function busStopAnchors(
   loop: PathData,
   cells: readonly Pt[],
   offsetCells: number = STOP_VERGE_OFFSET_CELLS,
+  laneOffsetCells = 0,
 ): BusStopAnchor[] {
-  return cells.map((c) => busStopAnchor(loop, c, offsetCells));
+  return cells.map((c) => busStopAnchor(loop, c, offsetCells, laneOffsetCells));
 }

@@ -1118,6 +1118,13 @@ export const COLONY = {
     breakMin: 18, // bay break between shifts
     lapsPerShift: 1, // laps before a bus heads home for its break
     bayPullOutCells: 2.8, // the straight bay leg (bayDepth - laneDepth) a bus REVERSES along leaving its bay
+    // BUS.LANE.1 — how far LEFT of the road centre-line the bus drives, in cells (1 cell = 4 m).
+    // A way is 4 cells of carriageway, so the two lanes are 2 cells each and their centres sit one
+    // cell either side of the centre-line. Driving the centre-line put a 12 m coach astride both
+    // lanes. `lanePose` clamps this back toward the centre through tight bends so the offset line
+    // can never invert. NOTE traffic.laneOffset is a SEPARATE, currently unused number for cars —
+    // nothing reads it, and cars still drive the centre-line.
+    busLaneOffsetCells: 1,
     busLengthM: 12, // a real city bus — not the 2.55 m toy the spec-088 coach shipped as
     busWidthM: 2.5,
     busHeightM: 3.0,
