@@ -96,11 +96,21 @@ export function firstPersonView(
   state: ColonyState,
   citizenId: string,
   roster: CitizenRoster,
+  at?: { x: number; y: number } | null,
 ): FirstPersonView | null {
   const me = roster.byId(citizenId);
   if (!me) return null;
   const t = state.terrain;
-  const { x: px, y: py } = me.pos;
+  // Spec 165 — WHERE THE SENSES ARE SAMPLED FROM. Normally the roster twin's own cell: for an NPC
+  // bot that IS the truth, since nothing else moves it. But while a human is stepped into this
+  // citizen the camera capsule is authoritative (ColonyRuntime.fpCameraCell), and the twin can lag
+  // it — so the caller passes the capsule's cell and the whole view is computed from there.
+  // Everything below reads px/py: the terrain/biome/water sample, the nearest road, and every
+  // neighbour and building distance. Reporting a corrected position while still measuring the
+  // surroundings from the stale one would be worse than not correcting it at all.
+  // Kept as an explicit parameter rather than read from the runtime so this stays pure and
+  // deterministic given the same inputs (spec 074).
+  const { x: px, y: py } = at ?? me.pos;
   const tx = clampCell(px, t.size);
   const ty = clampCell(py, t.size);
   const i = t.idx(tx, ty);

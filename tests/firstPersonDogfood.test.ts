@@ -2,12 +2,22 @@ import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { COLONY } from "../src/colony/config";
 import { driveFirstPersonRouteDogfood } from "../src/colony/bot/firstPersonDogfood";
+import { PLAYER_WALK_SPEED_MPS, mpsToCellsPerSec } from "../src/colony/scale";
 
 function distance(
   a: { x: number; y: number },
   b: { x: number; y: number },
 ): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+/** Spec 165 — the ground a fully-ramped walk covers in `seconds`, in CELLS (the unit `citizen.pos`
+ *  is measured in). The distance thresholds below used to be bare literals silently calibrated
+ *  against a twin that moved CELL_SIZE times too fast, because it added a metres-per-second speed
+ *  straight to a cell position. Stating them as a fraction of this makes them survive a re-tune of
+ *  the anchor AND fail loudly if the metres->cells conversion is ever dropped again. */
+function walkCells(seconds: number): number {
+  return mpsToCellsPerSec(PLAYER_WALK_SPEED_MPS) * seconds;
 }
 
 function surroundStartWithBlockers(
@@ -1068,7 +1078,7 @@ describe("first-person route dogfood", () => {
     rt.setFpKey("KeyW", false);
 
     const after = rt.getUiState().firstPerson.view!.citizen.positionXY;
-    expect(distance(before, after)).toBeGreaterThan(0.1);
+    expect(distance(before, after)).toBeGreaterThan(walkCells(0.25) * 0.4);
   });
 
   it("ramps movement speed up and coasts down after release", () => {
@@ -1089,9 +1099,13 @@ describe("first-person route dogfood", () => {
       run.samples[1]!.after.position,
     );
 
-    expect(startDistance).toBeGreaterThan(0.05);
-    expect(startDistance).toBeLessThan(0.68);
-    expect(coastDistance).toBeGreaterThan(0.05);
+    // Accelerating from rest, so the phase covers real ground but strictly less than a full-speed
+    // walk would over the same 0.2 s — that IS the ramp. (The old upper bound 0.68 was exactly the
+    // full-speed distance at the pre-fix, 4x-too-fast twin speed.)
+    expect(startDistance).toBeGreaterThan(walkCells(0.2) * 0.25);
+    expect(startDistance).toBeLessThan(walkCells(0.2));
+    // Releasing coasts: still moving, but less far than while powered.
+    expect(coastDistance).toBeGreaterThan(walkCells(0.2) * 0.05);
     expect(coastDistance).toBeLessThan(startDistance);
   });
 
@@ -1113,7 +1127,7 @@ describe("first-person route dogfood", () => {
     const afterConflict = rt.getUiState().firstPerson.view!.citizen.positionXY;
     const conflictDistance = distance(afterForward, afterConflict);
 
-    expect(poweredDistance).toBeGreaterThan(0.5);
+    expect(poweredDistance).toBeGreaterThan(walkCells(0.3) * 0.5);
     expect(conflictDistance).toBeLessThan(poweredDistance * 0.1);
   });
 
@@ -1371,15 +1385,22 @@ describe("first-person route dogfood", () => {
     expect(run.citizenId).toBe(me.id);
     expect(run.samples).toHaveLength(3);
     expect(run.samples[0]!.label).toBe("walk forward");
-    expect(
-      distance(run.samples[0]!.before.position, run.samples[0]!.after.position),
-    ).toBeGreaterThan(0.5);
+    const forwardCells = distance(
+      run.samples[0]!.before.position,
+      run.samples[0]!.after.position,
+    );
+    // The citizen starts wherever the seeded city put them, so this leg can be cut short by a
+    // blocker — hence a tolerant lower bound. The UPPER bound is the units lock and is exact: an
+    // unobstructed walk cannot out-run a fully-ramped one, so dropping the metres->cells conversion
+    // (which would make this 4x larger) fails here.
+    expect(forwardCells).toBeGreaterThan(walkCells(0.5) * 0.2);
+    expect(forwardCells).toBeLessThanOrEqual(walkCells(0.5) * 1.001);
     expect(run.samples[1]!.after.heading).toBeGreaterThan(
       run.samples[1]!.before.heading,
     );
     expect(
       distance(run.samples[2]!.before.position, run.samples[2]!.after.position),
-    ).toBeGreaterThan(0.2);
+    ).toBeGreaterThan(walkCells(0.25) * 0.5);
 
     for (const sample of run.samples) {
       expect(sample.after.viewPosition.x).toBeCloseTo(

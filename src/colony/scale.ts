@@ -40,14 +40,42 @@ export const PLAYER_HALF_EXTENT = PLAYER_HEIGHT_M / 2; // 0.9
 /** Camera offset above the body centre so the eye sits at PLAYER_EYE_M above the feet. */
 export const PLAYER_EYE_OFFSET = PLAYER_EYE_M - PLAYER_HALF_EXTENT; // 0.7
 
-/** The walker capsule's ground speed in METRES PER REAL SECOND. This is the number a player
- *  actually feels: FirstPersonController sets it straight onto the Rapier body as a linear
- *  velocity, so no frame delta and no sim speed scale it. It lives here, beside CELL_SIZE, because
- *  it is the only speed in the world expressed in real seconds — everything else is per in-sol
- *  minute — and BUS.SPEED.1 (spec 164) showed that with no shared anchor the transit fleet was
- *  tuned in the other unit and shipped SLOWER than this. Sprinting multiplies it by
- *  COLONY.firstPerson.sprintWalkSpeedMultiplier. */
-export const PLAYER_WALK_SPEED_MPS = 10;
+/** Spec 165 — the player's base ground speed, in METRES PER REAL SECOND, and the ONE anchor both
+ *  movement paths derive from. It lives here, beside CELL_SIZE, because the defect it closes was a
+ *  UNITS defect and this file is where the world's units are defined.
+ *
+ *  THE DEFECT: the camera capsule set a Rapier linear velocity of a private literal `10` — world
+ *  units, so 10 m/s = 36 km/h, a 1.8 m adult outrunning Usain Bolt. The roster data twin used
+ *  `COLONY.firstPerson.maxWalkSpeed` (3.4), whose comment claimed "world units/sec", but added it
+ *  straight to `citizen.pos`, which citizenRoster.ts documents as CELLS — so at CELL_SIZE 4 the twin
+ *  walked 13.6 m/s. One config number, read as metres in one place and cells in the other, and the
+ *  two integrators disagreed by 36%.
+ *
+ *  WHY METRES WIN: spec 146 anchors 1 world unit = 1 metre and makes this file the single source of
+ *  truth for world size. A cell is a grid INDEX unit (4 m of it); a speed the player feels belongs in
+ *  the world's base unit. So the capsule keeps metres and the roster twin — the path whose position
+ *  is in cells — is the one that converts, via `mpsToCellsPerSec`.
+ *
+ *  WHY 3.4: it is the number `maxWalkSpeed`'s own comment always claimed, and three independent
+ *  measures agree it was meant as metres. The NPC crowd walks at `spd` 0.5–0.9 cells/s
+ *  (citizenRoster.ts); 3.4 m/s is 0.85 cells/s, inside that band, whereas 3.4 CELLS/s would be 4x the
+ *  entire crowd. Guided auto-walk already moves the same avatar at c.spd ~0.8 cells/s (3.2 m/s), so
+ *  manual and guided walking finally agree instead of differing 4x. And 3.4 m/s (12 km/h) is a brisk
+ *  human jog — fast enough to cross the ~2.4 km region, slow enough to read as a person. */
+export const PLAYER_WALK_SPEED_MPS = 3.4;
+
+/** Cells per real second for a speed in metres per real second. The roster twin stores position in
+ *  cells (citizenRoster.ts `pos`), so it MUST pass every speed through this before integrating —
+ *  omitting it is exactly the bug spec 165 closed. */
+export function mpsToCellsPerSec(mps: number): number {
+  return mps / CELL_SIZE;
+}
+
+/** Metres per real second for a speed in cells per real second — the inverse of mpsToCellsPerSec.
+ *  Lets cell-tuned systems (the transit fleet) be compared against the player in one shared unit. */
+export function cellsPerSecToMps(cellsPerSec: number): number {
+  return cellsPerSec * CELL_SIZE;
+}
 
 // ── Citizens & pedestrians ───────────────────────────────────────────────────────────────
 // The colonists render from a torso capsule + a head sphere. The port modelled them at ~1 m

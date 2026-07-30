@@ -1,5 +1,12 @@
 // Browser runtime for the colony: fixed-timestep sim loop + planet renderer + camera presets.
 import { COLONY } from "./config";
+import {
+  MAX_LOCOMOTION_DT,
+  advanceSprintCharge,
+  advanceWalkRampMps,
+  isSprinting,
+  rampedGroundSpeedCellsPerSec,
+} from "./playerSpeed";
 import { ColonySim } from "./sim";
 import {
   PlanetRenderer,
@@ -2057,10 +2064,24 @@ export class ColonyRuntime {
     }
   }
 
+  /** Spec 165 — where a citizen's first-person senses are sampled from. For any citizen the player
+   *  is NOT driving (every NPC bot), that is the roster twin's own cell — nothing else moves them.
+   *  For the one the player IS stepped into, the camera capsule wins: `fpCameraCell` is authoritative
+   *  over the twin's `pos` wherever it exists, so a bot asking "where am I and what is near me"
+   *  would otherwise get an answer that lags the player's actual eyes. Null means "use the twin". */
+  private fpViewOrigin(citizenId: string): { x: number; y: number } | null {
+    return citizenId === this.fpCitizenId ? this.fpCameraCell : null;
+  }
+
   /** Spec 074 — engine-side first-person view of one citizen (cheap, deterministic JSON). The
    *  governor loop reads this every tick + may pair it with a costly PNG snapshot (vision). */
   firstPersonView(citizenId: string): FirstPersonView | null {
-    return firstPersonView(this.sim.state, citizenId, this.citizens);
+    return firstPersonView(
+      this.sim.state,
+      citizenId,
+      this.citizens,
+      this.fpViewOrigin(citizenId),
+    );
   }
 
   /** Spec 074 — the citizen's VISION as a PNG data URL: what they actually see standing at their
@@ -2071,6 +2092,9 @@ export class ColonyRuntime {
     if (!this.renderer) return null;
     const c = this.citizens.byId(citizenId);
     if (!c) return null;
+    // Spec 165 — deliberately NOT the capsule origin: this PNG is rendered from `c.homeXY` below,
+    // so the road it looks toward must be resolved from the same home cell, not from wherever the
+    // player currently stands.
     const view = firstPersonView(this.sim.state, citizenId, this.citizens);
     const look = view?.nearestRoad ?? {
       x: this.sim.state.terrain.landing.x,
@@ -4083,7 +4107,12 @@ export class ColonyRuntime {
       this.emit();
       return false;
     }
-    const view = firstPersonView(this.sim.state, id, this.citizens);
+    const view = firstPersonView(
+      this.sim.state,
+      id,
+      this.citizens,
+      this.fpViewOrigin(id),
+    );
     const prompt = view?.interactionPrompt;
     if (!prompt) {
       this.fpNarrating = false;
@@ -4576,41 +4605,44 @@ export class ColonyRuntime {
       this.fpNarration = "Guided walk canceled — manual control resumed.";
     }
     if (opposingWalkInput || opposingStrafeInput) this.fpWalkSpeed = 0;
+    // Spec 165 — fpWalkSpeed is the ramped base speed in METRES per real second, advanced by the
+    // shared model the camera capsule also uses. It is converted to cells only where it is finally
+    // added to c.pos below; the old code ramped the same number and added it to a cell position
+    // unconverted, which is why the twin walked 13.6 m/s against the capsule's 10.
     const targetSpeed = moving ? cfg.maxWalkSpeed : 0;
-    if (this.fpWalkSpeed < targetSpeed) {
-      this.fpWalkSpeed = Math.min(
-        targetSpeed,
-        this.fpWalkSpeed + cfg.walkAcceleration * dt,
-      );
-    } else if (this.fpWalkSpeed > targetSpeed) {
-      const rate =
-        targetSpeed === 0 ? cfg.walkDeceleration : cfg.walkAcceleration;
-      this.fpWalkSpeed = Math.max(targetSpeed, this.fpWalkSpeed - rate * dt);
-    }
+    this.fpWalkSpeed = advanceWalkRampMps(this.fpWalkSpeed, targetSpeed, dt);
     const sprintHeld = k.has("sprint");
     if (!sprintHeld) {
-      this.fpSprintCharge = Math.min(
-        1,
-        this.fpSprintCharge + dt / cfg.sprintRecoverySeconds,
-      );
+      this.fpSprintCharge = advanceSprintCharge(this.fpSprintCharge, dt, {
+        sprintHeld: false,
+        sprinting: false,
+      });
     }
     if (Math.abs(this.fpWalkSpeed) > 0.001) {
       const inputLength = Math.hypot(forward, strafe);
       const dirForward = inputLength > 0 ? forward / inputLength : 1;
       const dirStrafe = inputLength > 0 ? strafe / inputLength : 0;
-      const cellKey = `${Math.round(c.pos.x)},${Math.round(c.pos.y)}`;
-      const surfaceMultiplier = this.sim.state.roadSet.has(cellKey)
-        ? cfg.roadWalkSpeedMultiplier
-        : cfg.offRoadWalkSpeedMultiplier;
-      const sprinting = moving && sprintHeld && this.fpSprintCharge > 0;
+      // Spec 165 — sample the surface where the PLAYER actually stands. fpCameraCell (the capsule)
+      // is authoritative over the twin's pos wherever it exists, so reading the twin's cell could
+      // apply the road multiplier from a cell the player had already left.
+      const at = this.fpCameraCell ?? c.pos;
+      const cellKey = `${Math.round(at.x)},${Math.round(at.y)}`;
+      const onRoad = this.sim.state.roadSet.has(cellKey);
+      const sprinting = isSprinting({
+        sprintHeld,
+        moving,
+        charge: this.fpSprintCharge,
+      });
       if (sprinting) {
-        this.fpSprintCharge = Math.max(
-          0,
-          this.fpSprintCharge - dt / cfg.sprintChargeSeconds,
-        );
+        this.fpSprintCharge = advanceSprintCharge(this.fpSprintCharge, dt, {
+          sprintHeld: true,
+          sprinting: true,
+        });
       }
-      const sprintMultiplier = sprinting ? cfg.sprintWalkSpeedMultiplier : 1;
-      const sp = this.fpWalkSpeed * surfaceMultiplier * sprintMultiplier * dt;
+      // The ONE conversion: metres/sec -> cells/sec, because c.pos is in cells.
+      const sp =
+        rampedGroundSpeedCellsPerSec(this.fpWalkSpeed, { onRoad, sprinting }) *
+        dt;
       const nx =
         c.pos.x +
         (Math.cos(c.heading) * dirForward - Math.sin(c.heading) * dirStrafe) *
@@ -6114,7 +6146,12 @@ export class ColonyRuntime {
   async narrate(): Promise<void> {
     const id = this.fpCitizenId;
     if (!id || this.fpNarrating) return;
-    const view = firstPersonView(this.sim.state, id, this.citizens);
+    const view = firstPersonView(
+      this.sim.state,
+      id,
+      this.citizens,
+      this.fpViewOrigin(id),
+    );
     if (!view) return;
     const c = this.citizens.byId(id);
     if (!c) return;
@@ -6407,7 +6444,9 @@ export class ColonyRuntime {
 
   private loop = (now: number) => {
     if (!this.running) return;
-    const dtReal = Math.min(0.25, (now - this.lastFrame) / 1000);
+    // Spec 165 — MAX_LOCOMOTION_DT is the same 0.25 this line always used, now shared with the
+    // camera capsule so a frame hitch cannot advance one movement path further than the other.
+    const dtReal = Math.min(MAX_LOCOMOTION_DT, (now - this.lastFrame) / 1000);
     this.lastFrame = now;
     if (!this.paused) {
       this.accumulator += dtReal * this.speed;
@@ -6727,7 +6766,12 @@ export class ColonyRuntime {
           ? this.citizens.byId(this.fpCitizenId)
           : null;
         const rawView = this.fpCitizenId
-          ? firstPersonView(this.sim.state, this.fpCitizenId, this.citizens)
+          ? firstPersonView(
+              this.sim.state,
+              this.fpCitizenId,
+              this.citizens,
+              this.fpViewOrigin(this.fpCitizenId),
+            )
           : null;
         let view =
           this.playerView && rawView

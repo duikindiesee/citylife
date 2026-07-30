@@ -330,3 +330,85 @@ describe("firstPersonView — spec 074", () => {
     expect(jackProfile.bio).not.toMatch(/token|secret|cluster|telegram/i);
   });
 });
+
+describe("spec 165 — the view is sampled where the PLAYER is, not where the twin drifted to", () => {
+  // runtime.fpCameraCell is set from the camera capsule and is authoritative over the roster twin's
+  // pos wherever it exists. Before this, a bot asking "where am I and what is near me" got the
+  // twin's answer — which lags the player's actual eyes while they are stepped in.
+
+  it("samples position AND surroundings from the supplied origin", () => {
+    const { sim, roster } = bootColony();
+    const plots = sim.state.cityPlan!.plots;
+    const me = roster.register(generateHousehold(7), plots[0]!, fixedNow)!;
+
+    const atTwin = firstPersonView(sim.state, me.id, roster)!;
+    // Somewhere genuinely else on the map — what a capsule that walked off would report.
+    const elsewhere = {
+      x: Math.min(sim.state.terrain.size - 2, me.pos.x + 40),
+      y: Math.min(sim.state.terrain.size - 2, me.pos.y + 40),
+    };
+    const atCapsule = firstPersonView(sim.state, me.id, roster, elsewhere)!;
+
+    // The reported position follows the origin...
+    expect(atCapsule.citizen.positionXY).toEqual(elsewhere);
+    expect(atTwin.citizen.positionXY).toEqual({ x: me.pos.x, y: me.pos.y });
+
+    // ...and so does what is AROUND it. Correcting the position while still measuring the
+    // surroundings from the stale cell would be worse than not correcting it at all.
+    const movedRoad =
+      atCapsule.nearestRoad?.distance !== atTwin.nearestRoad?.distance ||
+      atCapsule.nearestRoad?.x !== atTwin.nearestRoad?.x;
+    const movedGround =
+      atCapsule.ground.biome !== atTwin.ground.biome ||
+      atCapsule.ground.elevation !== atTwin.ground.elevation ||
+      atCapsule.ground.distToWater !== atTwin.ground.distToWater;
+    expect(movedRoad || movedGround).toBe(true);
+
+    // The citizen's IDENTITY is unchanged — only the vantage point moved.
+    expect(atCapsule.citizen.id).toBe(atTwin.citizen.id);
+    expect(atCapsule.citizen.homeXY).toEqual(atTwin.citizen.homeXY);
+  });
+
+  it("falls back to the twin when no origin is supplied — NPC bots are unaffected", () => {
+    const { sim, roster } = bootColony();
+    const me = roster.register(
+      generateHousehold(7),
+      sim.state.cityPlan!.plots[0]!,
+      fixedNow,
+    )!;
+    const bare = firstPersonView(sim.state, me.id, roster)!;
+    for (const origin of [undefined, null]) {
+      const same = firstPersonView(sim.state, me.id, roster, origin)!;
+      expect(same.citizen.positionXY).toEqual(bare.citizen.positionXY);
+      expect(same.nearestRoad).toEqual(bare.nearestRoad);
+      expect(same.ground).toEqual(bare.ground);
+    }
+  });
+
+  it("only redirects the citizen the player is actually driving", () => {
+    // The runtime's rule: fpCameraCell applies to fpCitizenId and to nobody else. An NPC bot's
+    // senses must never be relocated to the player's capsule.
+    const rt = new ColonyRuntime(4242);
+    const list = rt.getUiState().citizens.list;
+    const me = list[0]!;
+    const other = list.find((c) => c.id !== me.id)!;
+    rt.enterFirstPerson(me.id);
+    (rt as unknown as { fpCameraCell: { x: number; y: number } }).fpCameraCell =
+      { x: 5, y: 5 };
+
+    const origin = (id: string) =>
+      (
+        rt as unknown as {
+          fpViewOrigin: (id: string) => { x: number; y: number } | null;
+        }
+      ).fpViewOrigin(id);
+    expect(origin(me.id)).toEqual({ x: 5, y: 5 });
+    expect(origin(other.id)).toBeNull();
+
+    // And the driven citizen's view really is reported from the capsule cell.
+    expect(rt.firstPersonView(me.id)!.citizen.positionXY).toEqual({
+      x: 5,
+      y: 5,
+    });
+  });
+});

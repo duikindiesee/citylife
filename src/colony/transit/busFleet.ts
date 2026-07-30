@@ -24,7 +24,7 @@
 // the bay a bus currently holds (parked / pulling out of / backing into), or -1 while out on the loop.
 
 import { type PathData, samplePath, projectPath, type Pt } from "./path";
-import { CELL_SIZE } from "../scale";
+import { cellsPerSecToMps } from "../scale";
 import { REAL_SECONDS_PER_SOL_MINUTE } from "../sol";
 
 export interface FleetConfig {
@@ -204,9 +204,8 @@ export function shiftMinutes(geom: FleetGeometry, cfg: FleetConfig): number {
 export function busCruiseSpeedMps(
   cfg: Pick<FleetConfig, "busSpeedCellsPerMin">,
 ): number {
-  return (
-    (Math.max(1e-6, cfg.busSpeedCellsPerMin) * CELL_SIZE) /
-    REAL_SECONDS_PER_SOL_MINUTE
+  return cellsPerSecToMps(
+    Math.max(1e-6, cfg.busSpeedCellsPerMin) / REAL_SECONDS_PER_SOL_MINUTE,
   );
 }
 
@@ -218,7 +217,7 @@ export function busLegSpeedMps(
 ): number {
   const minutes =
     cells / Math.max(1e-6, cfg.busSpeedCellsPerMin) + cfg.stopDwellMin;
-  return (cells * CELL_SIZE) / (minutes * REAL_SECONDS_PER_SOL_MINUTE);
+  return cellsPerSecToMps(cells / (minutes * REAL_SECONDS_PER_SOL_MINUTE));
 }
 
 const inHours = (tod: number, cfg: FleetConfig): boolean =>

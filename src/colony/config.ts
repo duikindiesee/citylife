@@ -1,4 +1,6 @@
 // Colony (v2) tunables. The planet, the seed, the early power loop.
+import { PLAYER_WALK_SPEED_MPS } from "./scale";
+
 export const COLONY = {
   world: {
     // Spec 084 S6 — WORLD v2: ~10x the area (608 = 8x76 for clean terrain chunking). heightScale
@@ -1095,21 +1097,22 @@ export const COLONY = {
     // seconds, a whole sol day = six real hours) instead of the speed-scaled sim clock, so the
     // per-sim-minute figures are rescaled to keep a full lap + dwells inside the widened
     // 05:00-23:30 service window (shiftMinutes in busFleet.ts is the gatekeeper).
-    // Spec 164 (BUS.SPEED.1) — FELT speed, not just schedule. The PR2 rescale above kept a lap
-    // inside the service window but nobody converted the rate into real time: at 28 cells/min the
-    // bus cruised 28*4/15 = 7.47 m/s while the walker capsule does 10 m/s and 14.5 m/s sprinting,
-    // so a player could out-WALK the bus over any distance, dwell or no dwell. 84 is bounded on
-    // BOTH sides by measured constraints: above 54.4 it beats sprint (14.5 m/s), and below 93.75 a
-    // 16 ms frame still advances a bus less than 0.1 cells (the sub-frame continuity guard in
-    // busSolContinuousMotion.test.ts). 84 = 22.4 m/s cruise, 2.24x walk / 1.54x sprint, and 16.2 m/s
-    // door-to-door once the stop dwell is paid. Raising it SHORTENS shiftMinutes, so the
-    // "a whole shift fits before lastServiceMin" invariant gets slacker, not tighter.
-    busSpeedCellsPerMin: 84,
+    // Spec 165 — 28 -> 46. At 28 the fleet cruised 7.47 m/s, which lost to the OLD 10 m/s capsule
+    // outright ("the bus is slower than I can walk") and, once the capsule was corrected to a human
+    // 3.4 m/s, still only TIED a road-sprinting player door-to-door on the worst real leg
+    // (6.20 m/s against a 6.1625 m/s top speed — 1.01x, not a reason to ride). Bounded on both
+    // sides rather than picked: below ~40 the worst leg drops under 1.35x the player's top speed,
+    // and above 93.75 a 16 ms frame advances a bus more than 0.1 cells, breaking the sub-frame
+    // continuity contract in busSolContinuousMotion.test.ts. 46 gives cruise 12.27 m/s (44 km/h —
+    // an honest urban bus) = 1.99x top speed, and 9.19-11.17 m/s door-to-door per leg with the
+    // 22.5 s dwell paid = 1.49-1.81x top speed, 2.70-3.28x walking. Measured on the real booted
+    // route; locked by tests/busFeltSpeed.test.ts.
+    busSpeedCellsPerMin: 46,
     // NOTE (spec 164): the dwell is the SECOND drag on felt speed — 1.5 in-sol minutes is 22.5 REAL
-    // seconds standing still, ~27% of a stop-to-stop hop at the new cruise. It is deliberately NOT
-    // cut here: this same number is the boarding window a player needs to walk up and press E, and
-    // it is owned by the boarding work (BUS.BOARD.1). Speed alone already clears "faster than
-    // walking"; shortening the dwell is a boarding-side decision, not a speed-side one.
+    // seconds standing still. It is deliberately NOT cut here: this same number is the boarding
+    // window a player needs to walk up and press E, and it is owned by the boarding work
+    // (BUS.BOARD.1). Speed alone already clears "faster than walking"; shortening the dwell is a
+    // boarding-side decision, not a speed-side one.
     stopDwellMin: 1.5, // doors-open dwell at each route stop
     depotBoardMin: 2, // doors-open dwell at the depot gate shelter on the way out and home
     breakMin: 18, // bay break between shifts
@@ -1149,9 +1152,13 @@ export const COLONY = {
   },
 
   firstPerson: {
-    maxWalkSpeed: 3.4, // world units/sec once fully accelerated
-    walkAcceleration: 10, // units/sec²; gives a visible ramp instead of instant full speed
-    walkDeceleration: 8, // units/sec²; releases coast briefly, then settle
+    // Spec 165 — METRES per real second, and no longer a second copy of the number: the anchor is
+    // src/colony/scale.ts PLAYER_WALK_SPEED_MPS, which BOTH the camera capsule and the roster twin
+    // derive from. The old literal 3.4 here said "world units/sec" but was added straight to a
+    // position measured in CELLS, so the twin actually walked 13.6 m/s.
+    maxWalkSpeed: PLAYER_WALK_SPEED_MPS, // m/s once fully accelerated
+    walkAcceleration: 10, // m/s²; gives a visible ramp instead of instant full speed
+    walkDeceleration: 8, // m/s²; releases coast briefly, then settle
     roadWalkSpeedMultiplier: 1.25, // paved/path cells feel easier to roam than grass
     offRoadWalkSpeedMultiplier: 1, // baseline terrain walking multiplier
     sprintWalkSpeedMultiplier: 1.45, // hold Shift to cover long streets faster without changing normal walk
