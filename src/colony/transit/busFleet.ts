@@ -167,14 +167,24 @@ export function makeFleetGeometry(
   spur: PathData,
   bays: PathData[],
   stopCells: readonly Pt[],
+  /** BUS.STOP.CLEAR.1 — arc lengths of the halts, when the caller has already resolved them.
+   *
+   *  Re-projecting `stopCells` here is what put a bus in the crossroads: the authored cell for the
+   *  commercial stop IS its junction, and projecting it lands the DWELL inside the cap. The stop
+   *  anchor slides that halt clear, and if this function then re-derives its own arc from the cell,
+   *  the fleet dwells in one place while the pole stands at another — the three-unreconciled-points
+   *  fault BUS.BOARD.1 was written to end, reintroduced from the other side.
+   *
+   *  So there is ONE source of truth for where a bus stops, and it is the anchor. Callers without
+   *  anchors keep the projection, which is the old behaviour exactly. */
+  stopArcs?: readonly number[],
 ): FleetGeometry {
   const joinT = projectPath(
     loop,
     spur.pts[spur.pts.length - 1] ?? { x: 0, y: 0 },
   );
   const loopLen = loop.total;
-  const stopsFromJoin = stopCells
-    .map((c) => projectPath(loop, c))
+  const stopsFromJoin = (stopArcs ?? stopCells.map((c) => projectPath(loop, c)))
     .map((s) => (((s - joinT) % loopLen) + loopLen) % loopLen)
     .filter((d) => d > 1e-6)
     .sort((a, b) => a - b);
