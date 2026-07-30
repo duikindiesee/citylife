@@ -27,12 +27,16 @@ describe("busStopAnchor — halts slide clear of blocked ground", () => {
   const band = (x: number) => x >= 20 && x <= 30;
 
   it("leaves a halt alone when its projection is already clear", () => {
-    const a = busStopAnchor(line, { x: 45, y: 0 }, undefined, 0, (x) => band(x));
+    const a = busStopAnchor(line, { x: 45, y: 0 }, undefined, 0, (x) =>
+      band(x),
+    );
     expect(a.at.x).toBeCloseTo(45, 6);
   });
 
   it("slides OUT of blocked ground, and takes the furniture with it", () => {
-    const a = busStopAnchor(line, { x: 25, y: 0 }, undefined, 0, (x) => band(x));
+    const a = busStopAnchor(line, { x: 25, y: 0 }, undefined, 0, (x) =>
+      band(x),
+    );
     expect(band(a.at.x)).toBe(false);
     // the pole is still exactly the verge offset from the halt, wherever the halt ended up
     expect(
@@ -42,12 +46,16 @@ describe("busStopAnchor — halts slide clear of blocked ground", () => {
 
   it("takes the NEARER side of the obstruction", () => {
     // 22 is 2 from the near edge (20) and 8 from the far edge (30)
-    const a = busStopAnchor(line, { x: 22, y: 0 }, undefined, 0, (x) => band(x));
+    const a = busStopAnchor(line, { x: 22, y: 0 }, undefined, 0, (x) =>
+      band(x),
+    );
     expect(a.at.x).toBeLessThan(20.01);
   });
 
   it("keeps the authored cell as the stop's identity", () => {
-    const a = busStopAnchor(line, { x: 25, y: 0 }, undefined, 0, (x) => band(x));
+    const a = busStopAnchor(line, { x: 25, y: 0 }, undefined, 0, (x) =>
+      band(x),
+    );
     expect(a.cell).toEqual({ x: 25, y: 0 });
   });
 
@@ -90,7 +98,9 @@ describe("BUS.STOP.CLEAR.1 — no live stop halts in a junction", () => {
     // Guards the guard. Without the keep-clear predicate the halt lands in the crossroads, which
     // is the defect — if this ever stops being true the test above is no longer proving anything.
     const rt = new ColonyRuntime(4242);
-    const zones = attachCapPolys(findJunctionZones(rt.sim.state.roadWays ?? []));
+    const zones = attachCapPolys(
+      findJunctionZones(rt.sim.state.roadWays ?? []),
+    );
     const anchors = rt.busStopAnchors();
     const commercial = anchors.find(
       (a) => a.cell.x === 125 && a.cell.y === 265,
@@ -99,7 +109,9 @@ describe("BUS.STOP.CLEAR.1 — no live stop halts in a junction", () => {
     // The RAW projection of that cell sits in the cap...
     const raw: Pt = { x: 125.2, y: 265.2 };
     expect(
-      zones.some((z) => z.poly.length >= 3 && nearPoly(raw.x, raw.y, z.poly, 0)),
+      zones.some(
+        (z) => z.poly.length >= 3 && nearPoly(raw.x, raw.y, z.poly, 0),
+      ),
     ).toBe(true);
     // ...and the anchor moved the halt somewhere else entirely.
     expect(
