@@ -269,11 +269,16 @@ test("the overlap assertion FAILS when the stamp is deliberately placed over a H
       '[data-testid="geo-readout"]',
     ) as HTMLElement | null;
     if (!stamp || !target) return false;
-    const r = target.getBoundingClientRect();
+    // Take the stamp out of flow FIRST. The rail is a bottom-anchored flex column, so removing its
+    // last child reflows the remaining members downward — measuring the target before this step
+    // yields a stale rect and can stage a collision that no longer exists.
     stamp.style.position = "fixed";
+    stamp.style.zIndex = "999";
+    void stamp.offsetHeight; // force layout so the rect below is post-reflow
+    const r = target.getBoundingClientRect();
     stamp.style.left = `${r.x + 4}px`;
     stamp.style.top = `${r.y + 4}px`;
-    stamp.style.zIndex = "999";
+    void stamp.offsetHeight;
     return true;
   });
   expect(covered, "must be able to stage the collision").toBe(true);
