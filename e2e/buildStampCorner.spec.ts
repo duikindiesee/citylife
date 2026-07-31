@@ -306,29 +306,56 @@ test("the build stamp costs the capped rail no height (1280x760)", async ({
     const rail = document.querySelector(
       ".hud-corner-rail-left",
     ) as HTMLElement | null;
-    const readout = document.querySelector(
-      ".geo-readout",
-    ) as HTMLElement | null;
     const stamp = document.querySelector(
       '[data-testid="build-stamp"]',
     ) as HTMLElement | null;
-    if (!rail || !readout || !stamp) return null;
+    if (!rail || !stamp) return null;
+    const railBox = rail.getBoundingClientRect();
+    const stampBox = stamp.getBoundingClientRect();
     return {
-      clipped: Math.max(0, readout.scrollHeight - readout.clientHeight),
-      stampInFlow: getComputedStyle(stamp).position !== "absolute",
-      stampH: stamp.getBoundingClientRect().height,
+      stampPosition: getComputedStyle(stamp).position,
+      stampH: stampBox.height,
+      // How far the stamp's top sits BELOW the rail's bottom edge. Positive means it is entirely
+      // outside the rail's stack and therefore cannot be consuming its height.
+      belowRailBy: stampBox.top - railBox.bottom,
+      viewportH: window.innerHeight,
+      stampBottom: stampBox.bottom,
     };
   });
 
-  expect(state, "rail, readout and stamp must all be mounted").not.toBeNull();
+  expect(state, "rail and stamp must both be mounted").not.toBeNull();
   expect(
     state!.stampH,
     "the stamp must actually be rendered, or this proves nothing",
   ).toBeGreaterThan(1);
+
+  // THE INVARIANT, stated structurally rather than in pixels.
+  //
+  // The first version of this test asserted the presence readout was clipped by exactly 0px. That
+  // was wrong, and a reviewer's machine caught it: their readout renders taller than mine, so at
+  // 1280x760 the rail is at its `max-height` cap and the readout clips by ~30px on MAIN TOO,
+  // with no stamp involved. The assertion was measuring their font metrics, not this change.
+  //
+  // That is precisely the failure mode I complained about elsewhere in this PR — "a test that only
+  // fails on someone else's box is not a regression test" — and I wrote one anyway.
+  //
+  // What this change actually guarantees is structural: the stamp is taken OUT of the rail's flow,
+  // so whatever the rail's height budget is, the stamp does not spend any of it. That holds on
+  // every machine, at every font size, whether or not the cap happens to bind.
   expect(
-    state!.clipped,
-    "the presence readout must not be clipped by the stamp taking rail height",
-  ).toBe(0);
+    state!.stampPosition,
+    "the stamp must be out of the rail's flow, or it spends the capped stack's height",
+  ).toBe("absolute");
+  expect(
+    state!.belowRailBy,
+    "the stamp must sit entirely below the rail's content box",
+  ).toBeGreaterThanOrEqual(0);
+
+  // Two-sided: out of flow must not mean off-screen.
+  expect(
+    state!.stampBottom,
+    "the stamp must still be on screen",
+  ).toBeLessThanOrEqual(state!.viewportH + 0.5);
 });
 
 // ================================================================================================
