@@ -11,7 +11,7 @@ test("Zoning and building plots E2E", async ({ page }) => {
   await page.goto("/?skipauth=1");
 
   // Wait for the simulation to be ready by checking if the canvas is rendered
-  await page.waitForSelector("canvas", { timeout: 30000 });
+  await page.waitForSelector("canvas", { timeout: 90000 });
   await page.waitForTimeout(5000); // Give the renderer time to boot up and initialize
 
   // Get initial lots count

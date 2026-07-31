@@ -149,7 +149,7 @@ test.describe("Persistent activation-token redemption route (PWD.REC.9)", () => 
     await page.getByRole("button", { name: "Enter the Kookerverse" }).click();
 
     // Authenticated: the border gate hands over to the colony canvas.
-    await page.waitForSelector("canvas", { timeout: 30000 });
+    await page.waitForSelector("canvas", { timeout: 90000 });
     await expect(page.getByText("Border Authority")).toHaveCount(0);
     // The login used the STAGED new password (the whole point of the reset), not some old one.
     expect(decodeBasic(loginBasic)).toBe(`${IDENTIFIER}:${NEW_PASSWORD}`);

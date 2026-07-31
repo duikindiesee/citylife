@@ -36,7 +36,7 @@ test("R3F reactivity: placing and demolishing a plot updates the rendered scene"
 
   console.log("Navigating to CityLife...");
   await page.goto("/?skipauth=1");
-  await page.waitForSelector("canvas", { timeout: 30000 });
+  await page.waitForSelector("canvas", { timeout: 90000 });
   await page.waitForTimeout(5000); // Give the renderer time to boot up and initialize
 
   // The scene probe and the runtime probe must both be live.

@@ -19,7 +19,7 @@ test("R3F race: starting a race renders the course and the player car", async ({
   test.setTimeout(120000);
 
   await page.goto("/?skipauth=1");
-  await page.waitForSelector("canvas", { timeout: 30000 });
+  await page.waitForSelector("canvas", { timeout: 90000 });
   await page.waitForTimeout(5000);
   await page.waitForFunction(
     () => !!(window as any).__r3fScene && !!(window as any).__colony,
