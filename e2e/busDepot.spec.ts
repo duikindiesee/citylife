@@ -21,9 +21,9 @@ async function bootWithDepot(
   page: import("@playwright/test").Page,
 ): Promise<void> {
   await page.goto("/?skipauth=1");
-  await page.waitForSelector("canvas", { timeout: 30000 });
+  await page.waitForSelector("canvas", { timeout: 90000 });
   await page.waitForFunction(() => !!window.__colony, undefined, {
-    timeout: 30000,
+    timeout: 90000,
   });
   // The live seed sites a depot (tests/busDepotBoot.test.ts guards this in node); require it here
   // so a silent fall-back to the legacy coach fails loudly.

@@ -11,7 +11,7 @@ test("builder-painted CommercialBlock seats on its graded sloped pad", async ({
   // retries are 0 so a genuine hang still fails once, fast.
   test.setTimeout(420000);
   await page.goto("/?skipauth=1");
-  await page.waitForSelector("canvas", { timeout: 30000 });
+  await page.waitForSelector("canvas", { timeout: 90000 });
   await page.waitForFunction(
     () =>
       !!(window as any).__r3fScene &&

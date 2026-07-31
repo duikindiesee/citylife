@@ -76,7 +76,19 @@ export default defineConfig(({ mode }) => {
       // neighbourhood. Under parallel-suite CPU contention that brushed the 5s default; 20s gives the
       // city-builders room without masking a genuine hang. (Supersedes Codex's 15s from the lighthouse
       // merge — the distributed-city boot is the heavier of the two.)
-      testTimeout: 20000,
+      //
+      // CI.E2E.TIMEOUT.1 — raised again, 20s -> 60s, for the same reason and with the same shape of
+      // evidence. The world kept growing after that note was written. Measured on a developer
+      // machine with nothing competing, `worldLayoutAcceptance` — a boot-heavy suite — spends
+      // 19.84s of test time across 5 tests, and its single heaviest case takes 5685ms ALONE, i.e.
+      // 28% of the old budget before any contention at all. On CI, running 246 files in parallel,
+      // that same case timed out at 20000ms and failed ALL THREE retries, while the identical
+      // commit's siblings (PRs 459 and 461) passed — the signature of contention, not a hang.
+      //
+      // 60s keeps roughly a 10x margin over the measured solo cost while still reporting a genuine
+      // hang inside a minute. It does not weaken a single assertion: a test that passes cannot be
+      // made to fail by a longer budget, and one that truly hangs still fails, just later.
+      testTimeout: 60000,
       // Spec 150 — ship-CI resilience for the v3->main cutover. A couple of runtime suites
       // (rally-spur seed coverage, road-connectivity) are order/seed-sensitive: they pass in
       // isolation but occasionally flip under full-parallel-suite contention. `npm test` on

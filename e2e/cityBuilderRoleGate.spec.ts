@@ -42,7 +42,7 @@ test.describe("City Builder role gate (P0 CITYLIFE_PLAYER access regression)", (
   }) => {
     await seedSession(page, ["CITYLIFE_PLAYER"]);
     await page.goto("/");
-    await page.waitForSelector("canvas", { timeout: 30000 });
+    await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForTimeout(2000);
 
     await expect(cityBuilderBtn(page)).toHaveCount(0);
@@ -60,7 +60,7 @@ test.describe("City Builder role gate (P0 CITYLIFE_PLAYER access regression)", (
   }) => {
     await seedSession(page, []);
     await page.goto("/");
-    await page.waitForSelector("canvas", { timeout: 30000 });
+    await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForTimeout(2000);
 
     await expect(cityBuilderBtn(page)).toHaveCount(0);
@@ -70,7 +70,7 @@ test.describe("City Builder role gate (P0 CITYLIFE_PLAYER access regression)", (
   test("ADMIN can still see, enter and use City Builder", async ({ page }) => {
     await seedSession(page, ["ADMIN"]);
     await page.goto("/");
-    await page.waitForSelector("canvas", { timeout: 30000 });
+    await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForTimeout(2000);
 
     await expect(cityBuilderBtn(page)).toBeVisible();
@@ -86,7 +86,7 @@ test.describe("City Builder role gate (P0 CITYLIFE_PLAYER access regression)", (
   }) => {
     await seedSession(page, ["CITYLIFE_PLAYER", "ADMIN"]);
     await page.goto("/");
-    await page.waitForSelector("canvas", { timeout: 30000 });
+    await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForTimeout(2000);
 
     await expect(cityBuilderBtn(page)).toBeVisible();
@@ -97,7 +97,7 @@ test.describe("City Builder role gate (P0 CITYLIFE_PLAYER access regression)", (
   }) => {
     await seedSession(page, ["CITYLIFE_PLAYER"]);
     await page.goto("/");
-    await page.waitForSelector("canvas", { timeout: 30000 });
+    await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForTimeout(2000);
 
     // Simulate stale/programmatic store state — e.g. left over from a prior authorized session in
@@ -141,7 +141,7 @@ test.describe("City Builder role gate (P0 CITYLIFE_PLAYER access regression)", (
     page,
   }) => {
     await page.goto("/?skipauth=1");
-    await page.waitForSelector("canvas", { timeout: 30000 });
+    await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForTimeout(2000);
 
     await expect(cityBuilderBtn(page)).toBeVisible();

@@ -24,7 +24,7 @@ test.describe("spec 149 — bus depot foliage clearing", () => {
     test.setTimeout(240000);
 
     await page.goto("/?skipauth=1");
-    await page.waitForSelector("canvas", { timeout: 30000 });
+    await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForFunction(
       () => !!window.__r3fScene && !!window.__colony,
       undefined,

@@ -11,7 +11,7 @@ test("R3F bus: the town coach renders when a route exists", async ({
   test.setTimeout(120000);
 
   await page.goto("/?skipauth=1");
-  await page.waitForSelector("canvas", { timeout: 30000 });
+  await page.waitForSelector("canvas", { timeout: 90000 });
   await page.waitForTimeout(5000);
 
   await page.waitForFunction(
@@ -79,7 +79,7 @@ test("R3F bus: buses move continuously along authoritative road routes at frame 
   test.setTimeout(120000);
 
   await page.goto("/?skipauth=1");
-  await page.waitForSelector("canvas", { timeout: 30000 });
+  await page.waitForSelector("canvas", { timeout: 90000 });
   await page.waitForFunction(
     () => !!(window as any).__colony?.busPoses,
     undefined,

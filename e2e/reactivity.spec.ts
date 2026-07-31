@@ -20,11 +20,23 @@ const countZoneMeshes = `(function () {
 test("R3F reactivity: placing and demolishing a plot updates the rendered scene", async ({
   page,
 }) => {
-  test.setTimeout(120000);
+  // CI.E2E.TIMEOUT.1 — was 120000, the narrowest budget in the whole e2e suite, on a test that
+  // boots a world, lays road, places a plot and demolishes it.
+  //
+  // MEASURED, because "raise the timeout" is otherwise indistinguishable from hiding a bug:
+  // with headroom this test PASSES in 156s, logging "Overlay mesh appeared — sim mutation reached
+  // the render" and "Overlay mesh removed". The dead-memo assertion it exists for is intact. At
+  // 120s it failed on a developer machine AND on CI, and it failed at a DIFFERENT LINE each run
+  // (132 once, 102 the next) — the signature of a budget expiring wherever it happens to be, not
+  // of a deterministic defect.
+  //
+  // The world got heavier (spec 086 builds a distributed city per boot) while this number did not
+  // move. 420s matches four other specs in this suite.
+  test.setTimeout(420000);
 
   console.log("Navigating to CityLife...");
   await page.goto("/?skipauth=1");
-  await page.waitForSelector("canvas", { timeout: 30000 });
+  await page.waitForSelector("canvas", { timeout: 90000 });
   await page.waitForTimeout(5000); // Give the renderer time to boot up and initialize
 
   // The scene probe and the runtime probe must both be live.

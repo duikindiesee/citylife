@@ -10,7 +10,7 @@ test("R3F pedestrians: the crowd renders and tracks the colony population", asyn
   test.setTimeout(120000);
 
   await page.goto("/?skipauth=1");
-  await page.waitForSelector("canvas", { timeout: 30000 });
+  await page.waitForSelector("canvas", { timeout: 90000 });
   await page.waitForTimeout(5000);
 
   await page.waitForFunction(

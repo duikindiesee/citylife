@@ -32,9 +32,9 @@ test.describe("BUS.BOARD.1 — boarding at an ordinary route stop", () => {
   }, testInfo) => {
     test.setTimeout(420000);
     await page.goto("/?skipauth=1");
-    await page.waitForSelector("canvas", { timeout: 30000 });
+    await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForFunction(() => !!window.__colony, undefined, {
-      timeout: 30000,
+      timeout: 90000,
     });
 
     const ready = await page.evaluate(() => {
