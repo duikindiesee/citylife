@@ -53,11 +53,19 @@ into the same corner with `position: fixed/absolute`, and whichever painted last
 version stamp is an obvious candidate to repeat that mistake, so it carries **no positioning of its
 own** and instead joins whichever element already owns the region:
 
-| View | Owner it joins | Why |
-| --- | --- | --- |
-| Third person | `.hud-corner-rail-left`, as the last member | Closest to the corner; the rail owns layout |
+| View         | Owner it joins                                                | Why                                                          |
+| ------------ | ------------------------------------------------------------- | ------------------------------------------------------------ |
+| Third person | `.hud-corner-rail-left`, as the last member                   | Closest to the corner; the rail owns layout                  |
 | First person | `.first-person-panel__destination-strip` in the edge-HUD grid | The bottom-left is the **touch joystick's** corner on mobile |
-| Login screen | In flow under the login card | Not a corner element at all |
+| Login screen | Anchored to the bottom of `.login`                            | Not a corner element at all                                  |
+
+**The login screen needed a correction, found by measurement.** `.login` is a centring flex ROW, so
+the first implementation — an in-flow stamp after the card — became a second row item, was pushed to
+the right of the card and was **clipped by the viewport at 390px**. It also stole width from the
+card. It is now anchored to the bottom of `.login` (itself `position: fixed; inset: 0`) instead of
+participating in that row. This is safe here in a way it would not be in the game HUD: the login
+screen has exactly one other element, so there is no corner to contend for. The two login tests in
+`buildStampCorner.spec.ts` exist because of this defect and fail against that first implementation.
 
 **First person is treated separately on purpose, and it is the mobile-first case.** In first person
 the bottom-left belongs to the touch joystick — UI.GEO.OVERLAP.1 measured 34532px² of joystick

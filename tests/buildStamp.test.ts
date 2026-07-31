@@ -27,12 +27,12 @@ describe("build stamp", () => {
 
   it("degrades honestly rather than inventing a value", () => {
     // Each of these is a real state: a bundle built outside CI, or an env var not passed through.
-    expect(
-      formatBuildStamp({ version: "", sha: "abc1234", builtAt: "" }),
-    ).toBe("abc1234");
-    expect(
-      formatBuildStamp({ version: "0.43.2", sha: "", builtAt: "" }),
-    ).toBe("v0.43.2");
+    expect(formatBuildStamp({ version: "", sha: "abc1234", builtAt: "" })).toBe(
+      "abc1234",
+    );
+    expect(formatBuildStamp({ version: "0.43.2", sha: "", builtAt: "" })).toBe(
+      "v0.43.2",
+    );
     expect(formatBuildStamp({ version: "", sha: "", builtAt: "" })).toBe(
       "build unknown",
     );

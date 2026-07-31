@@ -52,7 +52,9 @@ export function buildStampParts(): BuildStampParts {
     version: injected(() =>
       typeof __BUILD_VERSION__ === "string" ? __BUILD_VERSION__ : "",
     ),
-    sha: injected(() => (typeof __BUILD_SHA__ === "string" ? __BUILD_SHA__ : "")),
+    sha: injected(() =>
+      typeof __BUILD_SHA__ === "string" ? __BUILD_SHA__ : "",
+    ),
     builtAt: injected(() =>
       typeof __BUILD_TIME__ === "string" ? __BUILD_TIME__ : "",
     ),
@@ -64,7 +66,9 @@ export function buildStampParts(): BuildStampParts {
  * build reads "build unknown", which is itself a useful signal (something built outside the
  * normal pipeline) and is never mistaken for a real version.
  */
-export function formatBuildStamp(parts: BuildStampParts = buildStampParts()): string {
+export function formatBuildStamp(
+  parts: BuildStampParts = buildStampParts(),
+): string {
   const version = parts.version ? `v${parts.version}` : "";
   const sha = parts.sha ? parts.sha : "";
   if (version && sha) return `${version} · ${sha}`;

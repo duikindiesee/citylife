@@ -231,10 +231,17 @@ body,
   border-color: rgba(111, 208, 255, 0.22);
   pointer-events: auto;
 }
-/* On the login screen it is a normal in-flow element under the card, not a corner element. */
+/* Login screen. `.login` is a CENTRING FLEX ROW (`display:flex; align-items:center;
+   justify-content:center`), so an in-flow stamp becomes a second row item beside the card and is
+   pushed off the right edge at 390px — measured, it was clipped by the viewport. It is therefore
+   anchored to the bottom of `.login` (which is `position: fixed; inset: 0`, so it is the containing
+   block) instead of participating in that row. This is safe here in a way it would not be in the
+   game HUD: the login screen has exactly one other element, so there is no corner to contend for. */
 .build-stamp--login {
-  margin-top: 10px;
-  align-self: center;
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
   background: transparent;
   border-color: rgba(80, 96, 130, 0.28);
 }

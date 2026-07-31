@@ -19,7 +19,10 @@ import { test, expect } from "@playwright/test";
 
 type Region = { name: string; sel: string };
 
-const STAMP: Region = { name: "Build stamp", sel: '[data-testid="build-stamp"]' };
+const STAMP: Region = {
+  name: "Build stamp",
+  sel: '[data-testid="build-stamp"]',
+};
 
 // Everything that can share screen space with the stamp in the third-person views.
 const HUD_REGIONS: Region[] = [
@@ -126,15 +129,22 @@ function assertStampIsSane(p: Probe, where: string): void {
   ).not.toEqual("build unknown");
 
   // (2) It must not share a pixel with any existing region.
-  expect(stampOverlaps(p), `${where}: the stamp must not overlap the HUD`).toEqual(
-    [],
-  );
+  expect(
+    stampOverlaps(p),
+    `${where}: the stamp must not overlap the HUD`,
+  ).toEqual([]);
 
   // (3) Two-sided: it may not be "de-conflicted" by being collapsed or shoved off-screen.
   expect(stamp!.w, `${where}: the stamp must have width`).toBeGreaterThan(1);
   expect(stamp!.h, `${where}: the stamp must have height`).toBeGreaterThan(1);
-  expect(stamp!.x, `${where}: the stamp must not be off the left edge`).toBeGreaterThanOrEqual(0);
-  expect(stamp!.y, `${where}: the stamp must not be off the top edge`).toBeGreaterThanOrEqual(0);
+  expect(
+    stamp!.x,
+    `${where}: the stamp must not be off the left edge`,
+  ).toBeGreaterThanOrEqual(0);
+  expect(
+    stamp!.y,
+    `${where}: the stamp must not be off the top edge`,
+  ).toBeGreaterThanOrEqual(0);
   expect(
     stamp!.right,
     `${where}: the stamp must not overflow the ${p.viewport.w}px viewport`,
@@ -155,7 +165,9 @@ async function bootSession(
     undefined,
     { timeout: 60_000 },
   );
-  await page.waitForSelector('[data-testid="build-stamp"]', { timeout: 30_000 });
+  await page.waitForSelector('[data-testid="build-stamp"]', {
+    timeout: 30_000,
+  });
   await page.waitForTimeout(1500);
 }
 
@@ -242,6 +254,37 @@ test("build stamp survives first person on mobile, where the joystick owns the c
     path: testInfo.outputPath("build-stamp-first-person-390.png"),
   });
 });
+
+// The login screen is half the requirement: a user who cannot get in still needs to report what
+// they were on. It is also its own layout risk — `.login` is a CENTRING FLEX ROW, so an in-flow
+// stamp becomes a second row item and is pushed off the right edge on a narrow screen. That is not
+// hypothetical: it is what the first implementation did, measured clipped at 390px.
+for (const [label, viewport] of [
+  ["desktop 1280x800", { width: 1280, height: 800 }],
+  ["mobile 390x844", { width: 390, height: 844 }],
+] as const) {
+  test(`build stamp is visible and unclipped on the login screen (${label})`, async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize(viewport);
+    await page.goto("/?login=1");
+    await page.waitForSelector('[data-testid="build-stamp"]', {
+      timeout: 60_000,
+    });
+    await page.waitForTimeout(600);
+
+    const p = await probe(page, [
+      STAMP,
+      { name: "Login card", sel: ".login-card" },
+    ]);
+    assertStampIsSane(p, `${label} login screen`);
+
+    await page.screenshot({
+      path: testInfo.outputPath(`build-stamp-login-${viewport.width}.png`),
+    });
+  });
+}
 
 // ================================================================================================
 // DISCRIMINATION — prove the overlap detector actually fires.
