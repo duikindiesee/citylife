@@ -43,7 +43,10 @@ describe("road ways are published by shared reference, not copied", () => {
       (w) => (w as { source?: string }).source !== undefined,
     );
 
-    expect(ways.length, "seed 4242 should lay a real road network").toBeGreaterThan(10);
+    expect(
+      ways.length,
+      "seed 4242 should lay a real road network",
+    ).toBeGreaterThan(10);
     // The depot spur is laid AFTER publication and tags itself with a source. Its presence in
     // `state.roadWays` is direct evidence that post-publication pushes are visible downstream.
     expect(
@@ -57,8 +60,13 @@ describe("road ways are published by shared reference, not copied", () => {
     // would indicate a partially-built way escaping into state.
     const rt = new ColonyRuntime(7, { surveyOnly: true } as never);
     const bad = (rt.sim.state.roadWays ?? []).filter(
-      (w) => !Array.isArray((w as { path?: unknown }).path) || (w as { path: unknown[] }).path.length < 2,
+      (w) =>
+        !Array.isArray((w as { path?: unknown }).path) ||
+        (w as { path: unknown[] }).path.length < 2,
     );
-    expect(bad.length, `${bad.length} published way(s) have fewer than 2 points`).toBe(0);
+    expect(
+      bad.length,
+      `${bad.length} published way(s) have fewer than 2 points`,
+    ).toBe(0);
   });
 });
