@@ -9,7 +9,16 @@ import { test, expect } from "@playwright/test";
 test("R3F road ribbons: merged surface, draped junction caps, builder intact", async ({
   page,
 }) => {
-  test.setTimeout(180000);
+  // CI.E2E.TIMEOUT.1 — 180s was not enough headroom. Measured on a developer machine this test
+  // takes 90-108s ALONE, i.e. it already used 60% of its budget with nothing else competing, and
+  // it fails on the hosted runner (which takes 19.1m for the 65-test suite) purely from CPU
+  // contention. It passed 2/2 in isolation on the same commit it failed on in CI, which is what
+  // proves the failure is scheduling and not behaviour.
+  //
+  // This is deliberately NOT a blanket raise: several specs in this suite already sit at 240-420s
+  // and one at 600s with a note about "the slow CI runner". This brings a heavy boot+build test
+  // into line with them instead of leaving it as the narrowest budget in the file.
+  test.setTimeout(300000);
 
   await page.goto("/?skipauth=1");
   await page.waitForSelector("canvas", { timeout: 30000 });
