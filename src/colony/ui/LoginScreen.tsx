@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { AuthClient } from "../authClient";
 import { redeemAndLogin } from "../visitorActivation";
 import { formatCode, isCodeComplete, stripCode } from "../visitorCode";
+import { BuildStamp } from "./BuildStamp";
 
 /** How long the login screen may sit untouched before it drops into the cinematic attract backdrop. */
 const IDLE_MS = 10_000;
@@ -249,6 +250,8 @@ export function LoginScreen({
             </button>
           </div>
         </form>
+        {/* UI.VERSION.1 — a user who cannot get in still needs to report what they were on. */}
+        <BuildStamp variant="login" />
       </div>
     );
   }
@@ -339,6 +342,8 @@ export function LoginScreen({
           — no account needed to ask.
         </div>
       </form>
+      {/* UI.VERSION.1 — see the activation branch above. */}
+      <BuildStamp variant="login" />
     </div>
   );
 }

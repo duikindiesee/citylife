@@ -201,6 +201,44 @@ body,
   pointer-events: none;
 }
 
+/* UI.VERSION.1 — the build stamp. Deliberately has NO position of its own: in the game it is a
+   member of `.hud-corner-rail-left` and that rail decides where it goes, which is the whole point
+   of UI.GEO.OVERLAP.1. It opts back into pointer events only so the title tooltip (which carries
+   the build time) is reachable; the rail itself stays click-through. */
+.build-stamp {
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: #7f8ba3;
+  background: rgba(10, 14, 28, 0.55);
+  border: 1px solid rgba(80, 96, 130, 0.35);
+  border-radius: 6px;
+  padding: 2px 6px;
+  white-space: nowrap;
+  user-select: text;
+}
+.build-stamp--hud {
+  position: static;
+  flex: 0 0 auto;
+  pointer-events: auto;
+}
+/* First person: in flow inside the destination strip, which already owns its own box. Transparent
+   so it reads as part of that strip rather than as a second floating chip on a small screen. */
+.build-stamp--fp {
+  align-self: flex-start;
+  background: transparent;
+  border-color: rgba(111, 208, 255, 0.22);
+  pointer-events: auto;
+}
+/* On the login screen it is a normal in-flow element under the card, not a corner element. */
+.build-stamp--login {
+  margin-top: 10px;
+  align-self: center;
+  background: transparent;
+  border-color: rgba(80, 96, 130, 0.28);
+}
+
 .hud {
   /* Positioned by `.hud-corner-rail`, not by itself — see the block above. */
   position: static;

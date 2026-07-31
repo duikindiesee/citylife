@@ -14,6 +14,13 @@ WORKDIR /app
 # inlined into the bundle as VITE_APP_VERSION so the running app can report which build it is.
 ARG APP_VERSION=dev
 ENV VITE_APP_VERSION=$APP_VERSION
+# UI.VERSION.1 — the exact commit and build time. These MUST be passed in: .dockerignore excludes
+# .git, so there is no repository inside this stage for vite to ask, and a build without them
+# falls back to an empty SHA rather than a wrong one.
+ARG GIT_SHA=
+ARG BUILD_TIME=
+ENV VITE_BUILD_SHA=$GIT_SHA
+ENV VITE_BUILD_TIME=$BUILD_TIME
 COPY package*.json ./
 RUN npm ci || (rm -f package-lock.json && npm install)
 COPY . .

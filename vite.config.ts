@@ -3,6 +3,46 @@ import { loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import http from "node:http";
 import https from "node:https";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+/**
+ * UI.VERSION.1 — resolve the identity of THIS build, at build time.
+ *
+ * Deliberately env-first, git-second. The Docker build cannot use git at all: `.dockerignore`
+ * excludes `.git`, so inside the image there is no repository to ask. CI therefore passes the
+ * values in as build args (see Dockerfile + .github/workflows/docker.yml), and the git lookup
+ * exists only so a developer running `npm run dev` still sees a truthful SHA instead of a blank.
+ *
+ * Nothing here is hand-maintained: a stale value cannot be committed, because there is no
+ * constant to forget to update.
+ */
+function resolveBuildStamp(env: Record<string, string>) {
+  const pkgVersion = (() => {
+    try {
+      return JSON.parse(readFileSync("package.json", "utf8")).version || "";
+    } catch {
+      return "";
+    }
+  })();
+  const gitSha = () => {
+    try {
+      return execFileSync("git", ["rev-parse", "--short=7", "HEAD"], {
+        stdio: ["ignore", "pipe", "ignore"],
+      })
+        .toString()
+        .trim();
+    } catch {
+      // No .git — the Docker build path. CI supplies VITE_BUILD_SHA instead.
+      return "";
+    }
+  };
+  return {
+    version: env.VITE_APP_VERSION || pkgVersion,
+    sha: env.VITE_BUILD_SHA || gitSha(),
+    builtAt: env.VITE_BUILD_TIME || new Date().toISOString(),
+  };
+}
 
 // Vite + Vitest config. Sim/engine tests run in the node environment (no DOM).
 // Dev reads KOOKER_GATEWAY from .env.local (see .env.example); the deploy image bakes the public
@@ -19,8 +59,15 @@ export default defineConfig(({ mode }) => {
   const ipv4Agent = kookerGateway.startsWith("https")
     ? new https.Agent({ family: 4 })
     : new http.Agent({ family: 4 });
+  const buildStamp = resolveBuildStamp(env);
   return {
     plugins: [react()],
+    // Inlined as literals so the shipped bundle carries its own identity with no runtime fetch.
+    define: {
+      __BUILD_VERSION__: JSON.stringify(buildStamp.version),
+      __BUILD_SHA__: JSON.stringify(buildStamp.sha),
+      __BUILD_TIME__: JSON.stringify(buildStamp.builtAt),
+    },
     build: {
       rollupOptions: {
         // Multipage: the colony game plus the spec-077 House Builder (town.html is the legacy v1 page),

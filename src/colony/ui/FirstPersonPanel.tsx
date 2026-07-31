@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { isPublicSafe } from "../newcomers";
 import { isKookerBeaconPrompt } from "../roadmap";
+import { BuildStamp } from "./BuildStamp";
 import type { ColonyRuntime } from "../runtime";
 import type { ColonyUiState } from "../runtime";
 
@@ -116,6 +117,12 @@ export function FirstPersonPanel({
           <span>{targetLabel}</span>
           {targetDistance && <em>{targetDistance}</em>}
         </div>
+        {/* UI.VERSION.1 — first person is the mobile-first view, and it is exactly the view a
+            player is in when they hit a bug worth reporting. The bottom-left rail cannot carry the
+            stamp here (the touch joystick owns that corner), so it rides in this strip, which is
+            already an owned box at the TOP of the edge-HUD grid — no new grid area, no new pinned
+            element, and nowhere near the thumb controls. */}
+        <BuildStamp variant="fp" />
         {nightFriendBanner && (
           <div className="first-person-panel__friend-banner">
             {nightFriendBanner}
