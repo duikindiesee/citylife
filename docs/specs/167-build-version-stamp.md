@@ -75,6 +75,16 @@ occupant under the player's thumb on the smallest screen. So in first person the
 destination strip at the **top** of the edge-HUD grid: an already-owned box, no new grid area, and
 nowhere near the thumb controls.
 
+**The third-person placement needed a correction too, found in review.** `.hud-corner-rail-left` is
+capped at `max-height: calc(100vh - 260px)` to stay clear of the bus mini-map, and the readout is
+the flexible member that shrinks and scrolls once that cap binds. As an in-flow rail member the
+stamp cost the readout a constant **26px** (18px plus the 8px rail gap). Measured at 1280×760 the
+readout went from **0px clipped on main to 3px clipped**, and at 1280×700 from 37px to 63px. A
+reviewer hit it at 800px on a machine whose readout was taller than mine — the difference is never
+the machine, it is whether the rail is at its cap. The stamp is now absolutely positioned within
+the rail: the rail is still the owner (it is the positioned ancestor) but the capped stack pays
+nothing, and every measurement matches main exactly.
+
 ## Relationship to the presence stamp — examined, deliberately left alone
 
 `formatPresenceStamp` (`spatial/presenceReadout`) already stamps the geo readout with

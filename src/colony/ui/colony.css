@@ -218,9 +218,21 @@ body,
   white-space: nowrap;
   user-select: text;
 }
+/* OUT of the rail's flow, deliberately. `.hud-corner-rail-left` is capped at
+   `max-height: calc(100vh - 260px)` to stay clear of the bus mini-map, and the readout is the
+   flexible member that shrinks and scrolls when that cap binds. As an in-flow member the stamp
+   cost the readout a constant 26px (18px + the 8px rail gap): measured at 1280x760 the readout
+   went from 0px clipped on main to 3px clipped, and at 1280x700 from 37px to 63px. A reviewer hit
+   the same thing at 800px on a box whose readout was taller than mine — the difference is never
+   the machine, it is whether the rail is at its cap.
+
+   Absolute positioning keeps the rail as the owner (it is the positioned ancestor) while costing
+   the capped stack nothing. It sits just below the rail, still in the bottom-left corner, and
+   cannot overlap the rail's members because it is entirely beneath them. */
 .build-stamp--hud {
-  position: static;
-  flex: 0 0 auto;
+  position: absolute;
+  left: 0;
+  bottom: -22px;
   pointer-events: auto;
 }
 /* First person: in flow inside the destination strip, which already owns its own box. Transparent

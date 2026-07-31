@@ -286,6 +286,51 @@ for (const [label, viewport] of [
   });
 }
 
+// The stamp must not consume the bottom-left rail's CAPPED height budget.
+//
+// `.hud-corner-rail-left` is `max-height: calc(100vh - 260px)` and the readout is the flexible
+// member that shrinks and scrolls once that cap binds. As an in-flow rail member the stamp cost the
+// readout a constant 26px, which is invisible on a machine with slack and clips the readout on one
+// without. 1280x760 is chosen because main has ~23px of slack there — less than the 26px an in-flow
+// stamp would take — so this FAILS with the stamp in flow and passes with it out of flow, on any
+// machine. That is the point: a test that only fails on someone else's box is not a regression test.
+test("the build stamp costs the capped rail no height (1280x760)", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1280, height: 760 });
+  await bootSession(page);
+  await setPlayerView(page, false);
+
+  const state = await page.evaluate(() => {
+    const rail = document.querySelector(
+      ".hud-corner-rail-left",
+    ) as HTMLElement | null;
+    const readout = document.querySelector(
+      ".geo-readout",
+    ) as HTMLElement | null;
+    const stamp = document.querySelector(
+      '[data-testid="build-stamp"]',
+    ) as HTMLElement | null;
+    if (!rail || !readout || !stamp) return null;
+    return {
+      clipped: Math.max(0, readout.scrollHeight - readout.clientHeight),
+      stampInFlow: getComputedStyle(stamp).position !== "absolute",
+      stampH: stamp.getBoundingClientRect().height,
+    };
+  });
+
+  expect(state, "rail, readout and stamp must all be mounted").not.toBeNull();
+  expect(
+    state!.stampH,
+    "the stamp must actually be rendered, or this proves nothing",
+  ).toBeGreaterThan(1);
+  expect(
+    state!.clipped,
+    "the presence readout must not be clipped by the stamp taking rail height",
+  ).toBe(0);
+});
+
 // ================================================================================================
 // DISCRIMINATION — prove the overlap detector actually fires.
 // ================================================================================================
