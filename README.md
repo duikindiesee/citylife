@@ -61,12 +61,12 @@ npm run build
 
 ## Entry points
 
-| Route | Purpose |
-| --- | --- |
-| `/` | Current CityLife world |
-| `/builder.html` | World and asset builder tools |
-| `/kookerbook.html` | In-world reference experience |
-| `/town.html` | Legacy town build retained for reference |
+| Route              | Purpose                                  |
+| ------------------ | ---------------------------------------- |
+| `/`                | Current CityLife world                   |
+| `/builder.html`    | World and asset builder tools            |
+| `/kookerbook.html` | In-world reference experience            |
+| `/town.html`       | Legacy town build retained for reference |
 
 ## Architecture at a glance
 
