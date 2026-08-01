@@ -28,6 +28,9 @@ const COOL_KICKER = 0x3e8fd0;
 /** Baked at 256² — a reflection needs resolution for streak SHAPE, not for detail. ~1.5 MB VRAM. */
 const BAKE_RESOLUTION = 256;
 
+/** The visible backdrop sits FURTHER out than the room but inside the camera far plane (100). */
+const SKY_RADIUS = 60;
+
 const RAMP_VERTEX = /* glsl */ `
   varying vec3 vDir;
   void main() {
@@ -54,6 +57,24 @@ const RAMP_FRAGMENT = /* glsl */ `
   }
 `;
 
+// The same four stops, but for the thing you actually LOOK at: much wider transitions so there is no
+// visible seam, the warm band kept low and gentle, and the whole ramp pulled toward the void so the
+// car silhouette stays the brightest thing in frame. A backdrop's job is to lose, quietly.
+const SKY_FRAGMENT = /* glsl */ `
+  uniform vec3 top;
+  uniform vec3 mid;
+  uniform vec3 warm;
+  uniform vec3 low;
+  varying vec3 vDir;
+  void main() {
+    float y = vDir.y;
+    vec3 sky = mix(mid, top, smoothstep(-0.05, 0.85, y));
+    vec3 ground = mix(low, mix(low, warm, 0.45), smoothstep(-0.6, -0.02, y));
+    vec3 c = mix(ground, sky, smoothstep(-0.30, 0.22, y));
+    gl_FragColor = vec4(c * 0.55, 1.0);
+  }
+`;
+
 /** Built once per mount; the uniforms are stable so the bake is genuinely one-shot. */
 function rampUniforms() {
   return {
@@ -65,18 +86,37 @@ function rampUniforms() {
 }
 
 /**
- * The showroom's environment AND its background, baked once at mount.
+ * The VISIBLE backdrop — a calm gradient dome, replacing the old flat `0xced4d8` clear colour.
  *
- * `background` with `backgroundBlurriness` replaces the old flat `0xced4d8` clear colour: a clear
- * colour is not geometry, is not lit, does not gradate, and contributes nothing to a reflection.
+ * This is deliberately separate from the environment below. The first attempt showed the environment
+ * itself as the background (`<Environment background blur>`), and the emitters that exist to make
+ * good REFLECTIONS turned into big orange, cyan and violet blobs with a hard seam across the sky.
+ * Reflection geometry is allowed to be crude precisely because nobody inspects a reflection — so it
+ * must not be the thing you look at. The backdrop gets its own soft, emitter-free ramp.
+ */
+export function ShowroomSky() {
+  return (
+    <mesh name="showroomSky" scale={SKY_RADIUS} renderOrder={-1}>
+      <sphereGeometry args={[1, 32, 16]} />
+      <shaderMaterial
+        side={THREE.BackSide}
+        depthWrite={false}
+        uniforms={rampUniforms()}
+        vertexShader={RAMP_VERTEX}
+        fragmentShader={SKY_FRAGMENT}
+      />
+    </mesh>
+  );
+}
+
+/**
+ * The reflection environment, baked once at mount. Reflection-only — see ShowroomSky for why.
  */
 export function ShowroomEnvironment() {
   return (
     <Environment
       frames={1}
       resolution={BAKE_RESOLUTION}
-      background
-      backgroundBlurriness={0.6}
       environmentIntensity={0.55}
     >
       {/* the dusk sky, seen only as reflection and as the blurred backdrop */}
@@ -108,9 +148,11 @@ export function ShowroomEnvironment() {
         <meshBasicMaterial color={CEILING_STRIP} toneMapped={false} />
       </mesh>
 
-      {/* one cool kicker so the far shoulder separates from the dark instead of merging into it */}
-      <mesh position={[-8, 2.4, -2]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[8, 3]} />
+      {/* One cool kicker so the far shoulder separates from the dark instead of merging into it.
+          Pulled back to [-11, 3.4] and narrowed: closer/larger, it resolved on the polished plinth as
+          a hard blue-white blob that read as a lens artifact rather than a reflection. */}
+      <mesh position={[-11, 3.4, -2]} rotation={[0, Math.PI / 2, 0]}>
+        <planeGeometry args={[5, 2.2]} />
         <meshBasicMaterial color={COOL_KICKER} toneMapped={false} />
       </mesh>
     </Environment>
