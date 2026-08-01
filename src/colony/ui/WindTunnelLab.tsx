@@ -41,6 +41,10 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
   const telemetry: AeroTelemetry = calculateAerodynamics(curves, speedKmH);
 
   useEffect(() => {
+    // The component stays mounted while closed, so hooks still run. Without this guard the
+    // animation loop would rAF forever and setState every frame on a hidden overlay, which is
+    // a background render leak in every session.
+    if (!open) return;
     let animId: number;
     let particles = generateStreamlines(60, speedKmH);
     setStreamlines(particles);
@@ -60,13 +64,28 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
 
     animId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(animId);
-  }, [speedKmH]);
+  }, [open, speedKmH]);
 
   useEffect(() => {
     if (audioActive && synthRef.current) {
       synthRef.current.updateRPM(soundCal);
     }
   }, [soundCal, audioActive]);
+
+  // Exiting the lab must silence the V8. onClose only flips the open flag, and the component
+  // stays mounted, so without this the audio graph keeps running behind a hidden overlay.
+  useEffect(() => {
+    if (open) return;
+    if (synthRef.current) synthRef.current.stop();
+    setAudioActive(false);
+  }, [open]);
+
+  // Same on teardown, so a route change or unmount cannot leave the graph running.
+  useEffect(() => {
+    return () => {
+      if (synthRef.current) synthRef.current.stop();
+    };
+  }, []);
 
   const toggleAudio = () => {
     if (!synthRef.current) synthRef.current = new V8AudioSynthesizer();
