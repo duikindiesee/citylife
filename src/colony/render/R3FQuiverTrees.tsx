@@ -162,7 +162,8 @@ export function R3FQuiverTrees({ runtime }: { readonly runtime: unknown }) {
   const trees: QuiverTree[] = useMemo(() => {
     const rt = runtime as { sim?: { state?: { terrain?: unknown } } } | null;
     const terrain = rt?.sim?.state?.terrain as
-      Parameters<typeof calculateQuiverTrees>[0] | undefined;
+      | Parameters<typeof calculateQuiverTrees>[0]
+      | undefined;
     if (!terrain) return [];
     return calculateQuiverTrees(terrain, COLONY.world.seaLevel, []);
   }, [runtime]);
