@@ -27,6 +27,7 @@ repo, on protected `main` (PRs + review only).
 6. **[TEAM-LANES.md](TEAM-LANES.md)** — who owns what, the cross-lane seams, the cron operating
    model, and the review/merge flow.
 7. **[specs/152-authoritative-spatial-registry-and-world-survey-map.md](specs/152-authoritative-spatial-registry-and-world-survey-map.md)** — the exact spatial address, layer, footprint, network, nested-interior, and Survey Map contract.
+8. **[specs/167-local-neighbourhood-console-and-bot-households.md](specs/167-local-neighbourhood-console-and-bot-households.md)** — the proposed local connector, server-side vault and DNS boundary, and the rule that a bot household fits its authoritative building plan.
 
 ---
 
