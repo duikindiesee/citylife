@@ -57,7 +57,9 @@ export function bugGoalStepsFromText(text: string): string[] {
 
 function stepsFor(input: BuildBugGoalPlanInput): readonly string[] {
   const steps = input.steps ?? bugGoalStepsFromText(input.stepsText ?? "");
-  return steps.length > 0 ? steps : ["Open CityLife and reproduce from the attached capture."];
+  return steps.length > 0
+    ? steps
+    : ["Open CityLife and reproduce from the attached capture."];
 }
 
 /**
