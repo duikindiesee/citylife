@@ -19,8 +19,9 @@ export interface RoadWay {
   /** Carriageway width in cells. */
   width: number;
   /** Origin tag for lifecycle/invariant checks. Builder ways can be bulldozed; the depot spur is
-   *  excluded from the conservative pre-existing-ribbon blocked-cell survey. */
-  source?: "builder" | "depot-spur";
+   *  excluded from the conservative pre-existing-ribbon blocked-cell survey; the transit loop is
+   *  the canonical bus route surface authored from the drivable route graph. */
+  source?: "builder" | "depot-spur" | "transit-loop";
 }
 
 export interface RoadRibbonOptions {
