@@ -70,6 +70,7 @@ import { RadioPanel } from "./RadioPanel";
 import { FirstPersonPanel } from "./FirstPersonPanel";
 import { captureWorldLayoutForOperator } from "./worldLayoutOperatorCapture";
 import { GaragePanel } from "./GaragePanel";
+import { WindTunnelLab } from "./WindTunnelLab";
 import { ShowroomOverlay } from "./ShowroomOverlay";
 import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
 import { DriveHomeOverlay } from "./DriveHomeOverlay";
@@ -788,6 +789,7 @@ export function ColonyApp() {
   const [controllerConnected, setControllerConnected] = useState(false);
   const [roadmapOpen, setRoadmapOpen] = useState(false);
   const [bugReportOpen, setBugReportOpen] = useState(false);
+  const [windTunnelOpen, setWindTunnelOpen] = useState(false);
   // PLAYER.GARAGE.1 — the Gearbox Auto Hub showroom interior (its own streamed scene overlay).
   const [showroomOpen, setShowroomOpen] = useState(false);
   // ARCADE.2A — the authenticated Gamehouse venue interior (its own streamed overlay; the isolated 3D
@@ -1731,7 +1733,18 @@ export function ColonyApp() {
         ui={ui}
         onClose={() => setBugReportOpen(false)}
       />
-      {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
+      {ui.garage && (
+        <GaragePanel
+          runtime={runtime}
+          garage={ui.garage}
+          onOpenWindTunnel={() => setWindTunnelOpen(true)}
+        />
+      )}
+      <WindTunnelLab
+        open={windTunnelOpen}
+        onClose={() => setWindTunnelOpen(false)}
+      />
+
       {/* PLAYER.FLAG.S3 — defense in depth: the interior renders ONLY while the entitlement is live,
           so a forced/stale showroomOpen can never mount it, and a mid-session revocation (account
           switch) closes it immediately. */}

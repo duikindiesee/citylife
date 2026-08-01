@@ -16,9 +16,12 @@ const STATS: { key: keyof Garage["stats"]; label: string }[] = [
 export function GaragePanel({
   runtime,
   garage,
+  onOpenWindTunnel,
 }: {
   runtime: ColonyRuntime;
   garage: Garage;
+  /** Opens the wind tunnel lab so the owner can measure drag and downforce on the current build. */
+  onOpenWindTunnel?: () => void;
 }) {
   return (
     <div
@@ -103,6 +106,25 @@ export function GaragePanel({
         }}
       >
         {garage.bonnetOpen ? "▼ Close bonnet" : "🔩 Open bonnet"}
+      </button>
+
+      <button
+        data-build-action="open-wind-tunnel"
+        title="Measure drag and downforce on this build in the wind tunnel"
+        onClick={() => onOpenWindTunnel?.()}
+        disabled={!onOpenWindTunnel}
+        style={{
+          padding: "5px 8px",
+          fontSize: 12,
+          borderRadius: 6,
+          cursor: onOpenWindTunnel ? "pointer" : "default",
+          border: "1px solid #3a5a6a",
+          background: "rgba(120,180,210,0.12)",
+          color: "#a0d4f0",
+          fontWeight: 700,
+        }}
+      >
+        🌬 Wind tunnel
       </button>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
