@@ -291,7 +291,7 @@ import {
   busStopAnchors as computeBusStopAnchors,
   type BusStopAnchor,
 } from "./transit/busStopAnchor";
-import { ribbonSurfaceCells, type RoadWay } from "./render/roadRibbon";
+import type { RoadWay } from "./render/roadRibbon";
 import { conservativeRoadRibbonBlockedCells } from "./placementValidation";
 import { findJunctionZones } from "./render/roadJunctions";
 import { attachCapPolys } from "./render/junctionCap";
@@ -1550,14 +1550,6 @@ export class ColonyRuntime {
     // precedent: live object on sim.state, read by the React tree). Shared reference, so
     // later pushes (the rally spur) land in the same array the renderer reads.
     this.sim.state.roadWays = this.roadWays;
-    const syncVisibleRoadSurfaceToGraph = () => {
-      const cells = [...ribbonSurfaceCells(this.roadWays, t0)].map((k) => {
-        const [x, y] = k.split(",").map(Number);
-        return { x: x!, y: y! };
-      });
-      if (cells.length > 0) mergeAvenue(this.sim.state, cells);
-    };
-    syncVisibleRoadSurfaceToGraph();
     const hoodCentroid = (
       cells: { x: number; y: number }[],
     ): { x: number; y: number } => {
@@ -1823,16 +1815,16 @@ export class ColonyRuntime {
     if (this.busRoute) {
       // ROAD.NET.CANON.1 — the bus route is planned over the authoritative drivable road graph, so
       // publish that same graph path as an authored surface way before any downstream minimap,
-      // depot-siting, terrain-grading or renderer consumer reads `state.roadWays`. Previously the
-      // route could legally traverse roadKind cells that had no corresponding roadWay ribbon, so
-      // buses, the minimap/drivable cells and visible asphalt disagreed on seed 4242.
+      // depot-siting, terrain-grading or renderer consumer reads `state.roadWays`. The authority flows
+      // one way: `roadKind`/`state.roads` define the logical road graph; ribbons are derived surfaces
+      // and must never be merged back into the drivable graph (their smoothed shoulders may legally
+      // graze beach/kerb cells that cars and route planning must not drive).
       this.roadWays.push({
         path: [...this.busRoute.loop, this.busRoute.loop[0]!],
         kind: "avenue",
         width: 4,
         source: "transit-loop",
       });
-      syncVisibleRoadSurfaceToGraph();
       const tr = COLONY.transit;
       const roadKeys = new Set(this.sim.state.roadKind.keys());
       const depotBlocked = new Set<string>([
@@ -1896,7 +1888,6 @@ export class ColonyRuntime {
           }
         }
         mergeAvenue(this.sim.state, spurCells);
-        syncVisibleRoadSurfaceToGraph();
         // Spec 149 — the spur belongs to the BUSES. Fence it off from ambient car traffic (all its
         // cells except the loop junction) so a car never drives the dead-end into a maneuvering bus.
         this.sim.state.busDepotSpurCells = new Set(
