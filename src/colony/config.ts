@@ -1108,6 +1108,11 @@ export const COLONY = {
     // 22.5 s dwell paid = 1.49-1.81x top speed, 2.70-3.28x walking. Measured on the real booted
     // route; locked by tests/busFeltSpeed.test.ts.
     busSpeedCellsPerMin: 46,
+    // BUS.COLLIDE.1 — minimum following distance, in cells, between coaches on the loop.
+    // A coach is 12 m = 3 cells long, so 5 cells (20 m) leaves roughly two-thirds of a bus of
+    // daylight rather than a bumper kiss. Measured WITHOUT this rule, a lapped bus landed exactly
+    // on a freshly dispatched one: seeds 1 and 55 both sat at 0.00 cells.
+    minHeadwayCells: 5,
     // NOTE (spec 164): the dwell is the SECOND drag on felt speed — 1.5 in-sol minutes is 22.5 REAL
     // seconds standing still. It is deliberately NOT cut here: this same number is the boarding
     // window a player needs to walk up and press E, and it is owned by the boarding work

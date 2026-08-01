@@ -44,6 +44,8 @@ export interface FleetConfig {
   busSpeedCellsPerMin: number;
   /** Doors-open dwell at a route stop / at the depot shelter (sim-minutes). */
   stopDwellMin: number;
+  /** BUS.COLLIDE.1 — minimum gap, in cells, a service bus keeps behind the coach ahead of it. */
+  minHeadwayCells: number;
   depotBoardMin: number;
   /** Bay break between shifts (sim-minutes) and laps per shift before the break. */
   breakMin: number;
@@ -245,6 +247,70 @@ const inHours = (tod: number, cfg: FleetConfig): boolean =>
  *  release on that one stop; with none, release immediately on reaching service. */
 const GATE_RELEASE_STOP = 2;
 
+/**
+ * BUS.COLLIDE.1 — the furthest a bus may advance without closing inside `minHeadwayCells` of the
+ * coach ahead of it in the queue. +Infinity when nothing constrains it.
+ *
+ * WHY `lapT` AND NOT POSITION-ON-LOOP. Two coaches at the same place on the loop are ambiguous by
+ * position alone — each looks like it is "just ahead" of the other going the long way round, so a
+ * position-only rule can hold BOTH and deadlock the route. `lapT` is cumulative and only ever
+ * increases from a common start of 0, so it is a strict total order over the fleet: the bus with
+ * the largest `lapT` is genuinely the leader and is never held, and the queue resolves from the
+ * front. Ties (identical `lapT`) break on bus id so the order is total even then.
+ *
+ * A held bus is not stopped dead — it advances up to `minHeadwayCells` behind the leader and then
+ * waits, which is what a driver does. It also never blocks a dwell from finishing, because dwell is
+ * handled before this runs.
+ */
+/**
+ * BUS.COLLIDE.1 — is the loop clear at the join, so a bus coming off the spur may merge?
+ *
+ * A joining bus is placed at `lapT = 0`, i.e. exactly at the join point, so it must not merge while
+ * a coach already in service is sitting there. Only the stretch AHEAD of the join matters: a bus
+ * just behind it is approaching from the rear and the following-distance rule handles that.
+ */
+function joinIsClear(
+  fleet: BusFleet,
+  geom: FleetGeometry,
+  cfg: Pick<FleetConfig, "minHeadwayCells">,
+): boolean {
+  const loopLen = geom.loopLen;
+  const gap = Math.max(0, cfg.minHeadwayCells);
+  if (!(loopLen > 0) || gap <= 0) return true;
+  for (const other of fleet.buses) {
+    if (other.mode !== "service") continue;
+    let forward = other.lapT % loopLen;
+    if (forward < 0) forward += loopLen;
+    if (forward < gap) return false;
+  }
+  return true;
+}
+
+function headwayCapLapT(
+  fleet: BusFleet,
+  self: BusState,
+  geom: FleetGeometry,
+  cfg: Pick<FleetConfig, "minHeadwayCells">,
+): number {
+  const loopLen = geom.loopLen;
+  const gap = Math.max(0, cfg.minHeadwayCells);
+  if (!(loopLen > 0) || gap <= 0) return Infinity;
+
+  let cap = Infinity;
+  for (const other of fleet.buses) {
+    if (other === self || other.mode !== "service") continue;
+    const ahead =
+      other.lapT > self.lapT ||
+      (other.lapT === self.lapT && other.id < self.id);
+    if (!ahead) continue;
+    // Physical distance forward around the loop to that coach.
+    let forward = (other.lapT - self.lapT) % loopLen;
+    if (forward < 0) forward += loopLen;
+    cap = Math.min(cap, self.lapT + forward - gap);
+  }
+  return cap;
+}
+
 /** Advance the whole fleet by dtMin sim-minutes at absolute sim-minute nowMin (clock.totalMinutes).
  *  Mutates the fleet in place. Step it in small increments (the runtime steps per frame; tests step
  *  a minute at a time) — dispatch decisions are made once per call. */
@@ -346,6 +412,20 @@ export function stepFleet(
           if (rem < need) {
             b.t += rem * v;
             rem = 0;
+          } else if (!joinIsClear(fleet, geom, cfg)) {
+            // BUS.COLLIDE.1 — do not merge onto an occupied join.
+            //
+            // Joining set `lapT = 0` unconditionally, so a bus arriving from the spur was placed
+            // at the join whatever was already standing there. On seed 1 a coach that had LAPPED
+            // was dwelling at exactly that point, and the newcomer materialised inside it — 0.00
+            // cells. The following-distance rule then held them apart only as far as it could
+            // after the fact, which measured 0.39 cells: still one coach inside another.
+            //
+            // Waiting at the spur nose is the honest behaviour and costs nothing: the corridor is
+            // already this bus's, so nobody is blocked behind it, and it merges as soon as the
+            // coach ahead pulls away.
+            b.t = geom.spurLen;
+            rem = 0;
           } else {
             rem -= need;
             b.mode = "service";
@@ -374,9 +454,32 @@ export function stepFleet(
           const nextEvent = atStop
             ? b.laps * geom.loopLen + stops[b.nextStopIdx]!
             : (b.laps + 1) * geom.loopLen;
-          const need = (nextEvent - b.lapT) / v;
-          if (rem < need) {
-            b.lapT += rem * v;
+
+          // BUS.COLLIDE.1 (same-direction half) — do not drive into the back of the coach ahead.
+          //
+          // Departures were spaced by the dispatch gate (the next bus leaves once this one clears
+          // its 2nd stop) and NOTHING held them apart afterwards. A bus that has LAPPED can
+          // therefore land exactly on one that has just come out of the depot.
+          //
+          // Measured on main, both at the same stop, both dwelling:
+          //   seed  1  sol 448  loopLen 1094.8  bus0 lapT 1204.14 (lap 1) -> 109.34 on the loop
+          //                                     bus4 lapT  109.33 (lap 0) -> 109.33 on the loop
+          //   seed 55  sol 359  loopLen 2024.7  bus0 lapT 2049.13 (lap 1) ->  24.43
+          //                                     bus4 lapT   24.40 (lap 0) ->  24.40
+          // i.e. 0.00 cells apart, one coach inside another.
+          //
+          // NOTE this is a DIFFERENT defect from the one PR 465 fixed. There the coaches were 315
+          // cells apart along the route and only close in space, because the route doubled back on
+          // itself — no following-distance rule could ever see that. Here they are genuinely
+          // adjacent in the queue, which is exactly what a following distance is for.
+          const cap = headwayCapLapT(fleet, b, geom, cfg);
+          const target = Math.min(nextEvent, cap);
+          const need = (target - b.lapT) / v;
+          if (target <= b.lapT) {
+            // Held by the coach ahead: consume the tick without moving. Never reverse.
+            rem = 0;
+          } else if (rem < need || target < nextEvent) {
+            b.lapT += Math.min(rem * v, target - b.lapT);
             rem = 0;
           } else {
             rem -= Math.max(0, need);
