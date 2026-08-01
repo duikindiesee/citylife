@@ -140,7 +140,8 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
             💨 3D Aerodynamics Wind Tunnel Laboratory
           </h2>
           <div style={{ fontSize: 13, color: "#7a9cb8", marginTop: 4 }}>
-            Airflow Streamline Simulation, Drag & Downforce Telemetry, and V8 Sound Calibration
+            Airflow Streamline Simulation, Drag & Downforce Telemetry, and V8
+            Sound Calibration
           </div>
         </div>
 
@@ -161,7 +162,13 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
       </div>
 
       {/* Main Grid: Telemetry Gauges + Streamline Visualiser + Curve Shaping */}
-      <div style={{ display: "grid", gridTemplateColumns: "340px 1fr 340px", gap: 20 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "340px 1fr 340px",
+          gap: 20,
+        }}
+      >
         {/* Left Column: Real-Time Telemetry & Gauges */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div
@@ -172,11 +179,19 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
               padding: 16,
             }}
           >
-            <h4 style={{ margin: "0 0 12px 0", color: "#ffd25a", fontSize: 14 }}>
+            <h4
+              style={{ margin: "0 0 12px 0", color: "#ffd25a", fontSize: 14 }}
+            >
               📊 Aerodynamic Telemetry (Actual Physics)
             </h4>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
               <div
                 style={{
                   background: "rgba(0, 229, 255, 0.1)",
@@ -185,8 +200,12 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
                   borderRadius: 8,
                 }}
               >
-                <div style={{ fontSize: 11, color: "#8ab4d0" }}>Drag Coeff ($C_d$)</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#00e5ff" }}>
+                <div style={{ fontSize: 11, color: "#8ab4d0" }}>
+                  Drag Coeff ($C_d$)
+                </div>
+                <div
+                  style={{ fontSize: 24, fontWeight: 800, color: "#00e5ff" }}
+                >
                   {telemetry.cd}
                 </div>
               </div>
@@ -199,9 +218,14 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
                   borderRadius: 8,
                 }}
               >
-                <div style={{ fontSize: 11, color: "#8ab4d0" }}>Frontal Area ($A$)</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: "#ffd25a" }}>
-                  {telemetry.frontalAreaM2} <span style={{ fontSize: 12 }}>m²</span>
+                <div style={{ fontSize: 11, color: "#8ab4d0" }}>
+                  Frontal Area ($A$)
+                </div>
+                <div
+                  style={{ fontSize: 24, fontWeight: 800, color: "#ffd25a" }}
+                >
+                  {telemetry.frontalAreaM2}{" "}
+                  <span style={{ fontSize: 12 }}>m²</span>
                 </div>
               </div>
 
@@ -213,8 +237,12 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
                   borderRadius: 8,
                 }}
               >
-                <div style={{ fontSize: 11, color: "#8ab4d0" }}>Drag Force ($F_d$)</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#ef233c" }}>
+                <div style={{ fontSize: 11, color: "#8ab4d0" }}>
+                  Drag Force ($F_d$)
+                </div>
+                <div
+                  style={{ fontSize: 20, fontWeight: 800, color: "#ef233c" }}
+                >
                   {telemetry.dragForceN} <span style={{ fontSize: 12 }}>N</span>
                 </div>
               </div>
@@ -227,16 +255,23 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
                   borderRadius: 8,
                 }}
               >
-                <div style={{ fontSize: 11, color: "#8ab4d0" }}>Total Downforce</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: "#4cc9f0" }}>
-                  {telemetry.totalDownforceN} <span style={{ fontSize: 12 }}>N</span>
+                <div style={{ fontSize: 11, color: "#8ab4d0" }}>
+                  Total Downforce
+                </div>
+                <div
+                  style={{ fontSize: 20, fontWeight: 800, color: "#4cc9f0" }}
+                >
+                  {telemetry.totalDownforceN}{" "}
+                  <span style={{ fontSize: 12 }}>N</span>
                 </div>
               </div>
             </div>
 
             <div style={{ marginTop: 12, fontSize: 12, color: "#8ab4d0" }}>
               Aero efficiency ratio (downforce / drag):{" "}
-              <strong style={{ color: "#fff" }}>{telemetry.aeroEfficiency}</strong>
+              <strong style={{ color: "#fff" }}>
+                {telemetry.aeroEfficiency}
+              </strong>
             </div>
           </div>
 
@@ -249,10 +284,18 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
               padding: 16,
             }}
           >
-            <h4 style={{ margin: "0 0 10px 0", color: "#00e5ff", fontSize: 14 }}>
+            <h4
+              style={{ margin: "0 0 10px 0", color: "#00e5ff", fontSize: 14 }}
+            >
               🌪️ Wind Tunnel Air Speed Control
             </h4>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: 6,
+              }}
+            >
               <span>Air Velocity:</span>
               <strong style={{ color: "#00e5ff" }}>{speedKmH} km/h</strong>
             </div>
@@ -281,7 +324,8 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
           }}
         >
           <div style={{ fontSize: 12, color: "#7a9cb8", marginBottom: 8 }}>
-            🔴 Red = Stagnation/High Drag | 🟢 Green = Smooth Laminar Flow | 🔵 Blue = Low Pressure/Wake
+            🔴 Red = Stagnation/High Drag | 🟢 Green = Smooth Laminar Flow | 🔵
+            Blue = Low Pressure/Wake
           </div>
 
           <div
@@ -297,18 +341,41 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
             {/* Simulated Streamline Flow Particles */}
             <svg
               viewBox="0 0 800 360"
-              style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
+              style={{
+                width: "100%",
+                height: "100%",
+                position: "absolute",
+                inset: 0,
+              }}
             >
               {/* Grid Lines */}
               <defs>
-                <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(0, 229, 255, 0.08)" strokeWidth="1" />
+                <pattern
+                  id="grid"
+                  width="40"
+                  height="40"
+                  patternUnits="userSpaceOnUse"
+                >
+                  <path
+                    d="M 40 0 L 0 0 0 40"
+                    fill="none"
+                    stroke="rgba(0, 229, 255, 0.08)"
+                    strokeWidth="1"
+                  />
                 </pattern>
               </defs>
               <rect width="800" height="360" fill="url(#grid)" />
 
               {/* Wind Tunnel Ground Plane */}
-              <line x1="0" y1="280" x2="800" y2="280" stroke="#00e5ff" strokeWidth="2" strokeDasharray="6,6" />
+              <line
+                x1="0"
+                y1="280"
+                x2="800"
+                y2="280"
+                stroke="#00e5ff"
+                strokeWidth="2"
+                strokeDasharray="6,6"
+              />
 
               {/* Karoo Kaap V8 Muscle Car Side Profile Contour */}
               <path
@@ -318,9 +385,23 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
                 strokeWidth="3"
               />
               {/* Chrome Supercharger Blower Scoop */}
-              <rect x="290" y="195" width="55" height="30" fill="#ffffff" stroke="#00e5ff" strokeWidth="2" rx="4" />
+              <rect
+                x="290"
+                y="195"
+                width="55"
+                height="30"
+                fill="#ffffff"
+                stroke="#00e5ff"
+                strokeWidth="2"
+                rx="4"
+              />
               {/* Rear Wing */}
-              <path d="M 580 205 L 630 198 L 640 206 L 590 215 Z" fill="#111" stroke="#00e5ff" strokeWidth="2" />
+              <path
+                d="M 580 205 L 630 198 L 640 206 L 590 215 Z"
+                fill="#111"
+                stroke="#00e5ff"
+                strokeWidth="2"
+              />
 
               {/* Animated Streamline Ribbons */}
               {streamlines.map((p) => {
@@ -328,10 +409,10 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
                   p.pressure === "high"
                     ? "#ef233c"
                     : p.pressure === "low"
-                    ? "#4cc9f0"
-                    : p.pressure === "wake"
-                    ? "#9d4edd"
-                    : "#52b788";
+                      ? "#4cc9f0"
+                      : p.pressure === "wake"
+                        ? "#9d4edd"
+                        : "#52b788";
                 const cx = (p.x / 12) * 800;
                 const cy = p.y * 320;
 
@@ -365,13 +446,21 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
               padding: 16,
             }}
           >
-            <h4 style={{ margin: "0 0 12px 0", color: "#ffd25a", fontSize: 14 }}>
+            <h4
+              style={{ margin: "0 0 12px 0", color: "#ffd25a", fontSize: 14 }}
+            >
               🎛️ Shape Car Curves (Live Telemetry)
             </h4>
 
             {/* Front Splitter Extension */}
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 12, display: "flex", justifyContent: "space-between" }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  display: "flex",
+                  justifyContent: "space-between",
+                }}
+              >
                 <span>Front Splitter Extension:</span>
                 <strong style={{ color: "#ffd25a" }}>
                   {Math.round(curves.splitterAngle * 100)}%
@@ -384,7 +473,10 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
                 step={0.05}
                 value={curves.splitterAngle}
                 onChange={(e) =>
-                  setCurves({ ...curves, splitterAngle: Number(e.target.value) })
+                  setCurves({
+                    ...curves,
+                    splitterAngle: Number(e.target.value),
+                  })
                 }
                 style={{ width: "100%", accentColor: "#ffd25a" }}
               />
@@ -392,7 +484,13 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
 
             {/* Fastback Rake Slope */}
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 12, display: "flex", justifyContent: "space-between" }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  display: "flex",
+                  justifyContent: "space-between",
+                }}
+              >
                 <span>Fastback Roof Rake:</span>
                 <strong style={{ color: "#00e5ff" }}>
                   {Math.round(curves.fastbackRake * 100)}%
@@ -413,9 +511,17 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
 
             {/* Rear Wing Angle of Attack */}
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 12, display: "flex", justifyContent: "space-between" }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  display: "flex",
+                  justifyContent: "space-between",
+                }}
+              >
                 <span>Rear Wing Angle:</span>
-                <strong style={{ color: "#d880ff" }}>{curves.wingAngleDeg}°</strong>
+                <strong style={{ color: "#d880ff" }}>
+                  {curves.wingAngleDeg}°
+                </strong>
               </div>
               <input
                 type="range"
@@ -431,7 +537,13 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
 
             {/* Supercharger Scoop Height */}
             <div>
-              <div style={{ fontSize: 12, display: "flex", justifyContent: "space-between" }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  display: "flex",
+                  justifyContent: "space-between",
+                }}
+              >
                 <span>Blower Scoop Height:</span>
                 <strong style={{ color: "#ef233c" }}>
                   {Math.round(curves.blowerScoopHeight * 100)}%
@@ -444,7 +556,10 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
                 step={0.05}
                 value={curves.blowerScoopHeight}
                 onChange={(e) =>
-                  setCurves({ ...curves, blowerScoopHeight: Number(e.target.value) })
+                  setCurves({
+                    ...curves,
+                    blowerScoopHeight: Number(e.target.value),
+                  })
                 }
                 style={{ width: "100%", accentColor: "#ef233c" }}
               />
@@ -460,7 +575,9 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
               padding: 16,
             }}
           >
-            <h4 style={{ margin: "0 0 10px 0", color: "#ff9f1c", fontSize: 14 }}>
+            <h4
+              style={{ margin: "0 0 10px 0", color: "#ff9f1c", fontSize: 14 }}
+            >
               🔊 V8 Engine Sound Calibration
             </h4>
 
@@ -499,7 +616,9 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
             <div style={{ fontSize: 12 }}>
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span>Engine Speed (Tachometer):</span>
-                <strong style={{ color: "#ff9f1c" }}>{soundCal.currentRpm} RPM</strong>
+                <strong style={{ color: "#ff9f1c" }}>
+                  {soundCal.currentRpm} RPM
+                </strong>
               </div>
               <input
                 type="range"
@@ -508,7 +627,10 @@ export function WindTunnelLab({ open, onClose }: WindTunnelLabProps) {
                 step={50}
                 value={soundCal.currentRpm}
                 onChange={(e) =>
-                  setSoundCal({ ...soundCal, currentRpm: Number(e.target.value) })
+                  setSoundCal({
+                    ...soundCal,
+                    currentRpm: Number(e.target.value),
+                  })
                 }
                 style={{ width: "100%", accentColor: "#ff9f1c", marginTop: 4 }}
               />

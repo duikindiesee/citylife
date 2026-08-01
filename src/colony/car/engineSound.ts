@@ -56,17 +56,26 @@ export class V8AudioSynthesizer {
       // Main V8 Crankshaft Rumble Oscillator (Sawtooth)
       this.osc1 = this.ctx.createOscillator();
       this.osc1.type = "sawtooth";
-      this.osc1.frequency.setValueAtTime(v8FiringFrequencyHz(2400), this.ctx.currentTime);
+      this.osc1.frequency.setValueAtTime(
+        v8FiringFrequencyHz(2400),
+        this.ctx.currentTime,
+      );
 
       // Sub-Bass Sub-Harmonic Oscillator (Square)
       this.osc2 = this.ctx.createOscillator();
       this.osc2.type = "square";
-      this.osc2.frequency.setValueAtTime(v8FiringFrequencyHz(2400) / 2, this.ctx.currentTime);
+      this.osc2.frequency.setValueAtTime(
+        v8FiringFrequencyHz(2400) / 2,
+        this.ctx.currentTime,
+      );
 
       // High-Pitched Supercharger Whine Oscillator (Triangle)
       this.whineOsc = this.ctx.createOscillator();
       this.whineOsc.type = "triangle";
-      this.whineOsc.frequency.setValueAtTime(superchargerWhineHz(2400), this.ctx.currentTime);
+      this.whineOsc.frequency.setValueAtTime(
+        superchargerWhineHz(2400),
+        this.ctx.currentTime,
+      );
 
       this.gainNode = this.ctx.createGain();
       this.gainNode.gain.setValueAtTime(0.08, this.ctx.currentTime);
