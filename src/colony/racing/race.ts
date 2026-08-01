@@ -1,4 +1,5 @@
 import { nearestTrackPoint, type RaceTrack } from "./track";
+import { STOCK_STATS, type CarStatVector } from "../car/carSpec";
 
 export type RaceMode = "idle" | "countdown" | "running" | "finished";
 
@@ -40,6 +41,28 @@ export interface GamepadLike {
   axes: readonly number[];
   buttons: readonly { pressed: boolean }[];
 }
+
+// CAR.STATS.DRIVE.1 — the car's stats actually drive the car.
+//
+// `deriveStats()` was computed in exactly ONE place on main: the garage panel's headline "tune points"
+// readout. `driveCar` below ran on hardcoded literals and never saw the vector, so no bolted-on part
+// and no car choice changed how anything drove — a blower and a stock rod were byte-identical on the
+// road, and the only thing a purchase moved was the number on the buy screen. carParts.ts's own header
+// ("The race reads deriveStats() for handling") described an intention, not the code.
+//
+// Each stat is 0..1 with 0.5 = stock, so the multiplier is 1 at 0.5 BY CONSTRUCTION: a stock car
+// reproduces main's handling exactly, digit for digit, and only a tuned car deviates. That property is
+// asserted in tests/raceCarStats.test.ts — this must stay a wiring change, not a re-tune.
+const statScale = (stat: number, spread: number): number =>
+  1 + (clamp(stat, 0, 1) - 0.5) * 2 * spread;
+
+/** How far a fully-built (1.0) or gutted (0.0) car may swing from the stock figure, per stat. Chosen so
+ *  the best obtainable build is decisively quicker without making the stock car feel broken: the parts
+ *  catalog tops out near 0.8, i.e. +15% top speed and +21% acceleration, not double. */
+const TOP_SPEED_SPREAD = 0.25;
+const ACCELERATION_SPREAD = 0.35;
+const BRAKING_SPREAD = 0.3;
+const GRIP_SPREAD = 0.25;
 
 const RACE_STEER_DEADZONE = 0.15;
 const GYRO_STEER_DEADZONE_DEGREES = 2;
@@ -93,6 +116,10 @@ export interface RaceState {
   mode: RaceMode;
   track: RaceTrack;
   car: RaceCar;
+  /** CAR.STATS.DRIVE.1 — the EFFECTIVE stats of the car being driven (base + mounted parts), resolved
+   *  once at the start line. Held on the state rather than read per-frame so a race cannot change car
+   *  mid-lap and so this module stays free of the garage/storage layer. */
+  stats: CarStatVector;
   checkpoints: RaceCheckpoint[];
   nextCheckpoint: number;
   countdownMs: number;
@@ -104,7 +131,12 @@ export interface RaceState {
 export const RACE_COUNTDOWN_MS = 3000;
 export const CHECKPOINT_RADIUS = 1.15;
 
-export function newRaceState(track: RaceTrack): RaceState {
+export function newRaceState(
+  track: RaceTrack,
+  /** The driver's effective stats, from carParts.deriveStats(). Omitted = a stock car, which drives
+   *  exactly as the race always has. */
+  stats: CarStatVector = STOCK_STATS,
+): RaceState {
   const start = track.checkpoints[0] ?? track.path[0] ?? { x: 0, y: 0 };
   const next = track.path.find((p) => p.x !== start.x || p.y !== start.y) ??
     track.checkpoints[1] ?? { x: start.x + 1, y: start.y };
@@ -117,6 +149,7 @@ export function newRaceState(track: RaceTrack): RaceState {
       heading: Math.atan2(next.y - start.y, next.x - start.x),
       speed: 0,
     },
+    stats: { ...stats },
     checkpoints: track.checkpoints.map((p, i) => ({
       x: p.x,
       y: p.y,
@@ -168,6 +201,7 @@ function cloneState(state: RaceState): RaceState {
   return {
     ...state,
     car: { ...state.car },
+    stats: { ...state.stats },
     checkpoints: state.checkpoints.map((c) => ({ ...c })),
   };
 }
@@ -183,14 +217,24 @@ function driveCar(state: RaceState, input: RaceInput, dt: number): void {
     ? (state.track.roadKinds[`${cell.x},${cell.y}`] ?? "street")
     : "street";
   const onTrack = before.distance <= 0.9;
+  // CAR.STATS.DRIVE.1 — the road kind still sets the ceiling; the car's top-speed stat scales it, so a
+  // blown motor is faster everywhere rather than only on the avenues.
+  const stats = state.stats ?? STOCK_STATS;
   const maxForward =
     (kind === "avenue" ? 8.8 : kind === "street" ? 7.2 : 4.8) *
+    statScale(stats.topSpeed, TOP_SPEED_SPREAD) *
     (onTrack ? 1 : 0.48);
   const maxReverse = onTrack ? -2.8 : -1.4;
 
   const drive = normalizeRaceDriveInput(input);
-  if (drive.throttle) car.speed += 13.5 * dt;
-  if (drive.brake) car.speed -= car.speed > 0.2 ? 16 * dt : 7 * dt;
+  if (drive.throttle)
+    car.speed += 13.5 * statScale(stats.acceleration, ACCELERATION_SPREAD) * dt;
+  // Only the braking figure scales: the 7 is the reverse gear pulling away backwards, not a stop.
+  if (drive.brake)
+    car.speed -=
+      car.speed > 0.2
+        ? 16 * statScale(stats.braking, BRAKING_SPREAD) * dt
+        : 7 * dt;
   if (!drive.throttle && !drive.brake) car.speed *= Math.max(0, 1 - 2.2 * dt);
   if (drive.handbrake) car.speed *= Math.max(0, 1 - 1.8 * dt);
   car.speed = clamp(car.speed, maxReverse, maxForward);
@@ -198,10 +242,13 @@ function driveCar(state: RaceState, input: RaceInput, dt: number): void {
   if (drive.steer !== 0 && Math.abs(car.speed) > 0.05) {
     const dir = car.speed >= 0 ? 1 : -1;
     const handbrake = drive.handbrake ? 1.45 : 1;
+    // Grip is cornering: slicks and a ducktail turn the car harder at the same speed. This is the stat
+    // the operator's ducktail complaint was actually about — it had no effect whatsoever.
     car.heading +=
       drive.steer *
       dir *
       (2.25 + Math.min(5, Math.abs(car.speed)) * 0.12) *
+      statScale(stats.grip, GRIP_SPREAD) *
       handbrake *
       dt;
   }
