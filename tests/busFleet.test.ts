@@ -32,6 +32,7 @@ const cfg: FleetConfig = {
   lastServiceMin: 23 * 60,
   busSpeedCellsPerMin: 1,
   stopDwellMin: 2,
+  minHeadwayCells: 5,
   depotBoardMin: 3,
   breakMin: 30,
   lapsPerShift: 1,
