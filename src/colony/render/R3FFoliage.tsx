@@ -60,6 +60,19 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
         y1: depot.y + depot.h - 1,
       });
     }
+    // WORLD.FOLIAGE.SCATTER.1 — the GARAGE pad clears its trees too. It is the same class as the depot
+    // pad above (an origin-anchored AABB the terrain grading already levels), and it was simply never
+    // added: plants grew over the forecourt and through the Gearbox Auto Hub itself, which is the one
+    // building a player is sent to first. Operator report, 2026-08-01: "not on garage".
+    const garage = s.commercialDistrict?.garagePad;
+    if (garage) {
+      rects.push({
+        x0: garage.x,
+        y0: garage.y,
+        x1: garage.x + garage.w - 1,
+        y1: garage.y + garage.h - 1,
+      });
+    }
     // Spec 144 — the highland route is a footpath, not a road, so it does not enter `roads`.
     // Clear its narrow tread and the mountain dais explicitly or conifers hide the destination
     // and grow through the gravel ribbon.

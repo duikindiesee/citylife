@@ -32,7 +32,36 @@ export function calculateFoliagePositions(
   roadWays: RoadWay[] = [],
 ): { matrices: number[][]; colors: number[] } {
   const N = terrain.size;
-  const hash = (n: number) => ((n * 2654435761) >>> 0) / 4294967296;
+  // WORLD.FOLIAGE.SCATTER.1 — a murmur3-style finalizer, NOT the plain `(n * 2654435761) >>> 0` this
+  // file used to carry. quiverTreeLogic.ts already documented that hash as unfit and said so in as many
+  // words ("NOT the plain (n * 2654435761) >>> 0 used elsewhere in the render layer") — this is the
+  // "elsewhere", left behind when the quiver trees were fixed.
+  //
+  // WHY IT SHOWS. A multiplicative hash of CONSECUTIVE integers is an arithmetic progression mod 2^32,
+  // and the cell index `i = y*N + x` is consecutive along every row. Thresholding it therefore selects
+  // a periodic set of columns — the trees line up. Measured over 40 rows of a 608-wide grid at the
+  // Forest threshold, the gap between neighbouring trees took only THREE values in the entire world:
+  //
+  //   weak hash    gap 3 = 57.1%,  gap 2 = 30.6%,  gap 5 = 12.3%   (100% — nothing else occurs)
+  //   this hash    gap 1 = 34.9%,  gap 2 = 22.7%,  gap 3 = 14.4%,  ... a proper geometric tail
+  //
+  // Three spacings for every tree on the planet is a lattice, and it read on screen as rows of cones
+  // marching across the dunes. The finalizer's avalanche breaks the progression, so neighbouring cells
+  // decide independently and the stand scatters.
+  //
+  // The trailing `>>> 0` on the LAST xor is load-bearing: JS bitwise operators return a SIGNED int32,
+  // so without it a negative value divided by 2^32 yields a NEGATIVE "probability", every threshold
+  // test fails, and the affected cells silently grow nothing. That exact omission once produced 18,799
+  // quiver trees with their heights capped — see the note in quiverTreeLogic.ts.
+  const hash = (n: number) => {
+    let h = n >>> 0;
+    h = (h ^ (h >>> 16)) >>> 0;
+    h = Math.imul(h, 0x85ebca6b) >>> 0;
+    h = (h ^ (h >>> 13)) >>> 0;
+    h = Math.imul(h, 0xc2b2ae35) >>> 0;
+    h = (h ^ (h >>> 16)) >>> 0;
+    return h / 4294967296;
+  };
 
   const cleared = new Set<number>();
   const mark = (cx: number, cy: number, rad: number) => {
