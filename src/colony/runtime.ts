@@ -4343,7 +4343,14 @@ export class ColonyRuntime {
     if (!track) return false;
     this.raceInput = {};
     this.raceAnalogInput = {};
-    this.raceState = newRaceState(track);
+    // CAR.STATS.DRIVE.1 — resolve the driver's EFFECTIVE stats (base + mounted parts) at the start line.
+    // Before this, deriveStats() fed the garage readout and nothing else, so the parts a player bought
+    // changed the displayed rating and not the car. No signed-in operator = a stock car.
+    const driverId = this.operatorCitizenId();
+    this.raceState = newRaceState(
+      track,
+      driverId ? deriveStats(loadCar(driverId)) : undefined,
+    );
     this.sim.state.raceState = this.raceState; // expose to the R3F renderer (race course + player car)
     this.renderer?.setRaceState(this.raceState);
     this.emit();
