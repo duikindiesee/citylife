@@ -2,10 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { SpatialLocation } from "../spatial/spatialLocation";
 import type { ColonyRuntime, ColonyUiState } from "../runtime";
 import type { WorldSurveyRegistry } from "../worldSurvey";
-import {
-  buildBugGoalPlan,
-  type BugGoalPlan,
-} from "../bug/bugGoal";
+import { buildBugGoalPlan, type BugGoalPlan } from "../bug/bugGoal";
 import type { BugTaskSubmission } from "../bug/bugTrack";
 
 export interface BugGoalSubmitResult {
@@ -35,14 +32,17 @@ export async function localBugGoalSubmitter(
 ): Promise<BugGoalSubmitResult> {
   const taskId = `local-${submission.clientToken}`;
   if (typeof window !== "undefined" && window.localStorage) {
-    const list = safeJsonList(window.localStorage.getItem(BUG_GOAL_STORAGE_KEY));
+    const list = safeJsonList(
+      window.localStorage.getItem(BUG_GOAL_STORAGE_KEY),
+    );
     list.push({ taskId, submission });
     window.localStorage.setItem(BUG_GOAL_STORAGE_KEY, JSON.stringify(list));
   }
   return {
     mode: "planned",
     taskId,
-    message: "Queue goal planned locally; live Task API posting is the deploy/auth seam.",
+    message:
+      "Queue goal planned locally; live Task API posting is the deploy/auth seam.",
   };
 }
 
@@ -101,7 +101,9 @@ export function BugReportPanel({
   const [expected, setExpected] = useState("");
   const [actual, setActual] = useState("");
   const [detail, setDetail] = useState("");
-  const [capture, setCapture] = useState<ReturnType<ColonyRuntime["captureBugContext"]> | null>(null);
+  const [capture, setCapture] = useState<ReturnType<
+    ColonyRuntime["captureBugContext"]
+  > | null>(null);
   const [plan, setPlan] = useState<BugGoalPlan | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,7 +122,9 @@ export function BugReportPanel({
         includeScreenshot: true,
       });
       if (!next) {
-        setError("Renderer is not ready yet; try again once the world is visible.");
+        setError(
+          "Renderer is not ready yet; try again once the world is visible.",
+        );
         return;
       }
       setCapture(next);
@@ -170,13 +174,17 @@ export function BugReportPanel({
             <span>CityLife QA</span>
             <h2>Log Bug</h2>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close bug report panel">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close bug report panel"
+          >
             ×
           </button>
         </div>
         <p className="bug-report-panel__intro">
-          Capture the exact camera and presence context, write the repro, then queue it as a governed
-          goal.
+          Capture the exact camera and presence context, write the repro, then
+          queue it as a governed goal.
         </p>
         <button
           type="button"
@@ -188,29 +196,51 @@ export function BugReportPanel({
         </button>
         {capture && (
           <p className="bug-report-panel__capture-id">
-            Capture <code>{capture.context.captureId}</code> · sol {capture.context.sol.sol} · {capture.context.viewport.width}×{capture.context.viewport.height}
+            Capture <code>{capture.context.captureId}</code> · sol{" "}
+            {capture.context.sol.sol} · {capture.context.viewport.width}×
+            {capture.context.viewport.height}
           </p>
         )}
         <form onSubmit={queueGoal}>
           <label>
             Title
-            <input name="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <input
+              name="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
           </label>
           <label>
             Steps to reproduce
-            <textarea name="steps" value={steps} onChange={(e) => setSteps(e.target.value)} />
+            <textarea
+              name="steps"
+              value={steps}
+              onChange={(e) => setSteps(e.target.value)}
+            />
           </label>
           <label>
             Expected
-            <textarea name="expected" value={expected} onChange={(e) => setExpected(e.target.value)} />
+            <textarea
+              name="expected"
+              value={expected}
+              onChange={(e) => setExpected(e.target.value)}
+            />
           </label>
           <label>
             Actual
-            <textarea name="actual" value={actual} onChange={(e) => setActual(e.target.value)} />
+            <textarea
+              name="actual"
+              value={actual}
+              onChange={(e) => setActual(e.target.value)}
+            />
           </label>
           <label>
             Details / notes
-            <textarea name="detail" value={detail} onChange={(e) => setDetail(e.target.value)} />
+            <textarea
+              name="detail"
+              value={detail}
+              onChange={(e) => setDetail(e.target.value)}
+            />
           </label>
           <button type="submit" data-bug-action="queue-goal" disabled={busy}>
             {busy ? "Queueing…" : "Queue as goal"}

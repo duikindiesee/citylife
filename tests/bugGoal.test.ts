@@ -82,7 +82,9 @@ function capture(): BugCaptureContext {
 describe("bugGoal", () => {
   it("turns reporter text into stable non-empty repro steps", () => {
     expect(
-      bugGoalStepsFromText("1. Open CityLife at 1280px\n2) Observe the top bar\n\nActual line"),
+      bugGoalStepsFromText(
+        "1. Open CityLife at 1280px\n2) Observe the top bar\n\nActual line",
+      ),
     ).toEqual([
       "Open CityLife at 1280px",
       "Observe the top bar",
@@ -98,8 +100,10 @@ describe("bugGoal", () => {
       title: "Topbar Log out wraps under bus map",
       stepsText:
         "1. Open CityLife at a 1280px wide viewport\n2. Observe the top navigation and bus map",
-      expected: "All topbar actions remain visible and clickable without overlapping the bus map.",
-      actual: "The Log out button wraps under the bus map and is partially hidden.",
+      expected:
+        "All topbar actions remain visible and clickable without overlapping the bus map.",
+      actual:
+        "The Log out button wraps under the bus map and is partially hidden.",
       repo: "duikindiesee/citylife",
       pathGlobs: ["src/colony/ui/**", "tests/**"],
     });
@@ -113,8 +117,12 @@ describe("bugGoal", () => {
     );
     expect(plan.taskSubmission.repo).toBe("duikindiesee/citylife");
     expect(plan.taskSubmission.scopeKeys).toContain("citylife:bug-reporting");
-    expect(plan.taskSubmission.scopeKeys).toContain(`bug:${plan.record.reportId}`);
-    expect(plan.taskSubmission.body).toContain(`capture: ${plan.record.capture.captureId}`);
+    expect(plan.taskSubmission.scopeKeys).toContain(
+      `bug:${plan.record.reportId}`,
+    );
+    expect(plan.taskSubmission.body).toContain(
+      `capture: ${plan.record.capture.captureId}`,
+    );
     expect(plan.taskSubmission.body).toContain(
       "> 1. Open CityLife at a 1280px wide viewport",
     );
