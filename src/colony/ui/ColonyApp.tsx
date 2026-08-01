@@ -33,6 +33,7 @@ import {
 // ARCADE.2A — the latest-wins sequencer that stops a stale `enabled` from re-opening a venue a newer
 // OFF/killed/denied/failed/aborted result just closed (see arcadeEntitlementGate for the full rationale).
 import { createArcadeEntitlementGate } from "../entitlement/arcadeEntitlementGate";
+import { BuildStamp } from "./BuildStamp";
 import { GamehouseOverlay } from "./GamehouseOverlay";
 import { resolveGamehousePortalSite } from "../spatial/gamehousePortal";
 import { PasswordChangePanel } from "./PasswordChangePanel";
@@ -1811,6 +1812,18 @@ export function ColonyApp() {
               </span>
             </div>
           )}
+        {/* UI.VERSION.1 — the build stamp is the LAST member of the rail, so it sits closest to
+            the corner. It joins the rail rather than pinning itself, for the reason documented
+            above this element.
+
+            NOT in first person, deliberately and measurably. In first person this corner has a
+            different owner: the touch joystick takes the bottom-left (the collision measured in
+            UI.GEO.OVERLAP.1's header — 34532px^2 at 1280x800), and `geoCornerLayout` asserts the
+            rail degrades to EXACTLY ONE member there. An unconditional stamp would both break
+            that invariant and put a second occupant under the joystick on the mobile view that
+            matters most. First person is covered instead by FirstPersonPanel's edge-HUD grid,
+            which is that view's real layout owner. */}
+        {!ui.firstPerson.active && <BuildStamp />}
       </div>
       {ui.race.mode !== "idle" && (
         <div
