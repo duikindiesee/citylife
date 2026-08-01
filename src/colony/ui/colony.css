@@ -2318,3 +2318,120 @@ body.tv-mode .radio-iframe.is-visible {
     font-size: 9px;
   }
 }
+
+/* BUG.UI.1 — in-world bug report surface. It is an overlay rather than a HUD rail member because the
+   reporter must be able to write multi-line repro text without the bottom/right gameplay controls
+   squeezing or hiding the form. */
+.bug-report-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(3, 6, 14, 0.46);
+  pointer-events: auto;
+}
+.bug-report-panel__card {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  border: 1px solid rgba(87, 209, 196, 0.34);
+  border-radius: 18px;
+  background: rgba(8, 14, 28, 0.96);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.42);
+  padding: 18px;
+  backdrop-filter: blur(12px);
+}
+.bug-report-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.bug-report-panel__header span {
+  display: block;
+  color: #57d1c4;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.bug-report-panel__header h2 {
+  margin: 2px 0 0;
+  font-size: 24px;
+}
+.bug-report-panel__header button {
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid var(--brd);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  cursor: pointer;
+}
+.bug-report-panel__intro,
+.bug-report-panel__capture-id,
+.bug-report-panel__status,
+.bug-report-panel__error {
+  margin: 10px 0;
+  color: var(--muted);
+}
+.bug-report-panel__capture {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #b6892f;
+  border-radius: 12px;
+  background: rgba(255, 210, 90, 0.14);
+  color: #ffd25a;
+  font-weight: 800;
+  cursor: pointer;
+}
+.bug-report-panel form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+.bug-report-panel label {
+  display: grid;
+  gap: 5px;
+  color: #d7e8f7;
+  font-size: 12px;
+  font-weight: 700;
+}
+.bug-report-panel input,
+.bug-report-panel textarea {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  font: inherit;
+  padding: 9px 10px;
+}
+.bug-report-panel textarea {
+  min-height: 68px;
+  resize: vertical;
+}
+.bug-report-panel button[data-bug-action="queue-goal"] {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #04231f;
+  font-weight: 900;
+  cursor: pointer;
+}
+.bug-report-panel__error {
+  color: #ff8f8f;
+}
+.bug-report-panel__goal {
+  margin-top: 12px;
+  border: 1px solid var(--brd);
+  border-radius: 12px;
+  padding: 10px;
+}
+.bug-report-panel__goal pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

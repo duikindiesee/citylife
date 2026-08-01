@@ -85,6 +85,7 @@ import {
 } from "./BuilderPanel";
 import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
 import { GeoReadout } from "./GeoReadout";
+import { BugReportPanel } from "./BugReportPanel";
 import "./colony.css";
 import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
 import {
@@ -786,6 +787,7 @@ export function ColonyApp() {
   const [touchCapable, setTouchCapable] = useState(detectTouchCapable);
   const [controllerConnected, setControllerConnected] = useState(false);
   const [roadmapOpen, setRoadmapOpen] = useState(false);
+  const [bugReportOpen, setBugReportOpen] = useState(false);
   // PLAYER.GARAGE.1 — the Gearbox Auto Hub showroom interior (its own streamed scene overlay).
   const [showroomOpen, setShowroomOpen] = useState(false);
   // ARCADE.2A — the authenticated Gamehouse venue interior (its own streamed overlay; the isolated 3D
@@ -1723,6 +1725,12 @@ export function ColonyApp() {
         onLevelView={() => runtime.levelFirstPersonLook()}
       />
       <RoadmapPanel open={roadmapOpen} onClose={() => setRoadmapOpen(false)} />
+      <BugReportPanel
+        open={bugReportOpen}
+        runtime={runtime}
+        ui={ui}
+        onClose={() => setBugReportOpen(false)}
+      />
       {ui.garage && <GaragePanel runtime={runtime} garage={ui.garage} />}
       {/* PLAYER.FLAG.S3 — defense in depth: the interior renders ONLY while the entitlement is live,
           so a forced/stale showroomOpen can never mount it, and a mid-session revocation (account
@@ -1939,6 +1947,12 @@ export function ColonyApp() {
           </div>
         )}
         <div className="group">
+          <button
+            title="Log a reproducible in-world bug"
+            onClick={() => setBugReportOpen(true)}
+          >
+            🐞 Log Bug
+          </button>
           <button
             title="Save a PNG snapshot of the city"
             onClick={() => {
