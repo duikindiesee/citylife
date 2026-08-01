@@ -16,16 +16,33 @@ export enum Biome {
   River = 8,
 }
 
-// Alien palette (teal seas, violet flora, ochre rock, pale crystal peaks).
+// WORLD.DESERT.1 — a desert island: sand meeting a turquoise sea, the Namib read.
+//
+// The biome IDs are deliberately UNCHANGED. `cityPlan.ts` scores settlement sites off
+// `Biome.Forest` and `Biome.Plains` (30 points each), `neighborhood.ts` names hamlets from
+// Forest/Highland, `foliageLogic.ts` keys plant density off Forest/Plains/Mountain, and
+// `build.ts`/`pathfind.ts` treat Beach as impassable for roads. Deleting or renumbering a biome
+// would silently break city siting — so this retheme changes what each band LOOKS like and how
+// often it occurs, never what it is called. Every consumer keeps working.
+//
+// The mapping, read as desert rather than temperate:
+//   Plains   -> open sand flat        Forest -> sparse dry scrub (the only green left)
+//   Highland -> rust dune shoulder    Mountain -> dark exposed rock
+//   Peak     -> wind-scoured crest    Beach  -> bright coastal sand
+// The sea stays teal/turquoise on purpose: the whole point of the Namib look is the contrast
+// between a dead-dry coast and a vivid ocean.
 export const BIOME_COLOR: Record<Biome, number> = {
-  [Biome.Ocean]: 0x17566f,
-  [Biome.Shallows]: 0x2c8aa4,
-  [Biome.Beach]: 0xcdbf9e,
-  [Biome.Plains]: 0x6f9d6a,
-  [Biome.Forest]: 0x4f7d5a,
-  [Biome.Highland]: 0xa9925f,
-  [Biome.Mountain]: 0x7d7488,
-  [Biome.Peak]: 0xe6e2ee,
+  [Biome.Ocean]: 0x0e3f57,
+  [Biome.Shallows]: 0x2f9fb5,
+  [Biome.Beach]: 0xe8d9b0,
+  // A hot desert is mostly ROCK and gravel; only a small part is dune sand. So the big open band
+  // (Plains) is a stony tan rather than pure sand, and the sand tones are kept for the coast
+  // (Beach) and the dune shoulders (Highland) where they are the exception, not the rule.
+  [Biome.Plains]: 0xd9a86a,
+  [Biome.Forest]: 0x8f8752,
+  [Biome.Highland]: 0xc98b4e,
+  [Biome.Mountain]: 0x8a5f4a,
+  [Biome.Peak]: 0xe8dcc6,
   [Biome.River]: 0x39b6d8,
 };
 
@@ -215,6 +232,18 @@ export class Terrain {
         const t = (e - sea) / (1 - sea);
         const m = this.moisture[i]!;
         if (t < 0.035) b = Biome.Beach;
+        // WORLD.DESERT.1 deliberately does NOT touch this threshold.
+        //
+        // Making the world arid by reclassifying moist ground was tried and measured: scrub fell
+        // from up to 15.9% to a consistent ~1.3%, which looked right — and broke three suites,
+        // because biome IDs are load-bearing for LAYOUT, not just colour. `cityPlan.ts` scores
+        // settlement sites off Forest/Plains and `neighborhood.ts` names hamlets from Forest, so
+        // reclassifying moved the city: `roadWaterGuard`'s "seed 4242 Woods1 connector" and
+        // `roadTerrainClearance`'s seed 1234 both shifted, and `busFeltSpeed` re-timed.
+        //
+        // Retheming the LOOK of the world must not silently relocate everyone's town. Aridity is
+        // therefore applied in the render layer (foliageLogic), where it changes what grows
+        // without changing where anything is built. Every world layout is byte-identical to main.
         else if (t < 0.34) b = m > 0.52 ? Biome.Forest : Biome.Plains;
         else if (t < 0.6) b = Biome.Highland;
         else if (t < 0.82) b = Biome.Mountain;

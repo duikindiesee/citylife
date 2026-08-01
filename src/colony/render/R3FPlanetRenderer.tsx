@@ -44,6 +44,7 @@ import { perfExperiment } from "../perf/perfExperiment";
 import { R3FTerrain } from "./R3FTerrain";
 import { R3FOcean } from "./R3FOcean";
 import { R3FFoliage } from "./R3FFoliage";
+import { R3FQuiverTrees } from "./R3FQuiverTrees";
 import { R3FCloud } from "./R3FCloud";
 import { R3FFoam } from "./R3FFoam";
 import { R3FRoadBuilder } from "./R3FRoadBuilder";
@@ -408,8 +409,7 @@ function AerialCameraController({ sim }: { sim: ColonySim }) {
   const { camera, size } = useThree();
   const worldViewActive = useRoadNetwork((state) => state.worldViewActive);
   const controls = useThree((state) => state.controls) as
-    | { target?: THREE.Vector3; update?: () => void }
-    | undefined;
+    { target?: THREE.Vector3; update?: () => void } | undefined;
 
   useEffect(() => {
     // Position camera high up looking down
@@ -700,6 +700,10 @@ function R3FWorld({
             {perfExperiment().foliage && (
               <R3FFoliage sim={sim} runtime={runtime} />
             )}
+            {/* WORLD.KOKERBOOM.1 — the quiver trees are a separate layer from the generic foliage
+                on purpose: they have their own forked geometry, their own rocky-ground siting, and
+                they are NOT cleared by construction. One instanced draw call for the whole stand. */}
+            <R3FQuiverTrees runtime={runtime} />
             <ZoneManager sim={sim} runtime={runtime} />
             <R3FPlayerCar sim={sim} />
             <R3FAvatars

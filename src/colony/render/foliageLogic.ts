@@ -4,8 +4,15 @@ import { COLONY } from "../config";
 import { ribbonCoverage, type RoadWay } from "./roadRibbon";
 import { getSmoothRoadY } from "./roadSurface";
 
+// WORLD.DESERT.1 — bioluminescent desert flora.
+//
+// The old palette was six temperate greens, which is what dotted the new sand with dark conifers.
+// An arid world has few plants, and the ones that survive cluster in the damp hollows — so the
+// survivors are worth making the opposite of drab: cyan, magenta, lime, violet and amber, the
+// alien glow the operator asked for. Saturated on purpose; against pale sand these read as light
+// sources rather than shrubs.
 const TREE_COLORS = [
-  0x55925b, 0x6fb069, 0x3f7d5e, 0x7a5aa8, 0x8fb557, 0x356b46,
+  0x2ff0d0, 0xff4fd8, 0xa8ff3e, 0x9b5cff, 0xffc23e, 0x3ec6ff,
 ];
 const LOT_SIZE = 4;
 
@@ -89,10 +96,24 @@ export function calculateFoliagePositions(
       const h2 = hash(i + 1);
 
       // Trees per cell based on biome
+      // WORLD.DESERT.1 — density, re-tuned for an arid world. This is where aridity lives, ON
+      // PURPOSE: the biome classification is unchanged, because Forest/Plains are load-bearing for
+      // city siting and hamlet naming (see the note in terrain.ts classify). Changing what GROWS
+      // is safe; changing what a cell IS moves the town.
+      //
+      // Measured on the unchanged classification, Forest is 6.5% of the map on seed 4242 and
+      // 15.9% on seed 314. At the old `2 + h1*3` that is 2-4 plants on every one of those cells —
+      // roughly 72,000 on seed 4242 alone — which is a forest, not a desert. Plains adds ~15,000
+      // more at `h1 > 0.8` (a plant on a fifth of all open ground), and those were the dark trees
+      // scattered over the new sand.
+      //
+      // Forest now reads as the DAMP HOLLOW: still the densest thing in the world, still where the
+      // glow gathers, but a scattering rather than a canopy. Plains and Mountain become genuinely
+      // occasional so the dunes read as empty, which is the whole point of a desert.
       let count = 0;
-      if (b === Biome.Forest) count = 2 + Math.floor(h1 * 3);
-      else if (b === Biome.Plains) count = h1 > 0.8 ? 1 : 0;
-      else if (b === Biome.Mountain) count = h1 > 0.9 ? 1 : 0;
+      if (b === Biome.Forest) count = h1 > 0.66 ? 1 : 0;
+      else if (b === Biome.Plains) count = h1 > 0.97 ? 1 : 0;
+      else if (b === Biome.Mountain) count = h1 > 0.98 ? 1 : 0;
 
       for (let j = 0; j < count; j++) {
         const trX = x + (hash(i + j * 7) - 0.5) * 0.8;
@@ -120,7 +141,9 @@ export function calculateFoliagePositions(
         const baseC =
           TREE_COLORS[Math.floor(hash(i + j * 29) * TREE_COLORS.length)];
         col.setHex(baseC);
-        col.multiplyScalar(0.7 + hash(i + j * 31) * 0.5); // jitter brightness
+        // Keep the jitter for variety but raise the floor: dimming a neon hue to 0.7 turns it
+        // muddy, which is exactly what we are moving away from.
+        col.multiplyScalar(0.9 + hash(i + j * 31) * 0.35);
         colors.push(col.getHex());
       }
     }
