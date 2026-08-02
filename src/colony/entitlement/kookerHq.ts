@@ -144,3 +144,19 @@ export function defaultHqDeps(
     getUserId: userIdFromToken,
   };
 }
+
+/**
+ * HQ.ENTER.1 — is Kooker HQ available to THIS session? Fails closed: only the narrowly scoped DEV/E2E
+ * bypass, or a live positive server entitlement, opens it.
+ *
+ * Mirrors `newPlayerJourneyAvailable`. Used BOTH to hide the entry affordance and to reject a direct
+ * or programmatic open, so the gate is never merely cosmetic — a non-allowlisted player cannot reach
+ * the reception by invoking the handler out of band, and a mid-session revocation closes it.
+ */
+export function kookerHqAvailable(args: {
+  bypass: boolean;
+  entitlement: HqEntitlement | null;
+}): boolean {
+  if (args.bypass) return true;
+  return args.entitlement?.enabled === true;
+}

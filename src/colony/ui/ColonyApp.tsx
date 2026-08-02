@@ -33,6 +33,15 @@ import {
 // ARCADE.2A — the latest-wins sequencer that stops a stale `enabled` from re-opening a venue a newer
 // OFF/killed/denied/failed/aborted result just closed (see arcadeEntitlementGate for the full rationale).
 import { createArcadeEntitlementGate } from "../entitlement/arcadeEntitlementGate";
+// HQ.ENTER.1 — the fail-closed `kooker-hq-v1` gate. Same discipline as the journey and arcade flags:
+// default OFF, server-owned, and used BOTH to hide the entry and to reject a programmatic open.
+import {
+  defaultHqDeps,
+  evaluateHqEntitlement,
+  kookerHqAvailable,
+  type HqEntitlement,
+} from "../entitlement/kookerHq";
+import { HqReceptionView } from "../render/HqReceptionView";
 import { BuildStamp } from "./BuildStamp";
 import { GamehouseOverlay } from "./GamehouseOverlay";
 import { resolveGamehousePortalSite } from "../spatial/gamehousePortal";
@@ -809,6 +818,13 @@ export function ColonyApp() {
   // re-evaluated on identity change so a positive can never outlive the session or bleed across a switch.
   const [arcadeEntitlement, setArcadeEntitlement] =
     useState<ArcadeEntitlement | null>(null);
+  // HQ.ENTER.1 — the fail-closed `kooker-hq-v1` entitlement for THIS session. Default null so it reads
+  // as CLOSED while loading, memory-only, and re-evaluated on identity change so a positive can never
+  // outlive the session or bleed across an in-place account switch.
+  const [hqEntitlement, setHqEntitlement] = useState<HqEntitlement | null>(
+    null,
+  );
+  const [hqOpen, setHqOpen] = useState(false);
   // ARCADE.2A — one latest-wins gate shared by BOTH the identity-change check and the open-venue
   // revalidation loop, so overlapping/out-of-order `citylife-arcade-3d-v1` results are sequenced across
   // every source: only the most recently dispatched check wins, and any non-enabled winner closes the
@@ -873,6 +889,17 @@ export function ColonyApp() {
   const openShowroom = () => {
     if (!newPlayerJourneyEnabled) return;
     setShowroomOpen(true);
+  };
+  // HQ.ENTER.1 — is Kooker HQ open to THIS session? Fails closed while loading and on every error.
+  const kookerHqEnabled = kookerHqAvailable({
+    bypass: journeyEntitlementBypassed(auth),
+    entitlement: hqEntitlement,
+  });
+  // The single guarded entry into the reception. A direct/runtime call is rejected exactly like the
+  // (hidden) button, so a non-allowlisted player can never reach the interior out of band.
+  const openKookerHq = () => {
+    if (!kookerHqEnabled) return;
+    setHqOpen(true);
   };
   // ARCADE.2A — is the Gamehouse venue available to THIS session? Fails closed: only the narrowly scoped
   // DEV/E2E bypass (DEV build + local origin + explicit opt-in — never a mere null/expired operator), OR
@@ -951,6 +978,24 @@ export function ColonyApp() {
     void (async () => {
       const result = await evaluateJourneyEntitlement(defaultJourneyDeps());
       if (!cancelled) setJourneyEntitlement(result);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth, operatorUserId]);
+  // HQ.ENTER.1 — evaluate `kooker-hq-v1` for the current identity, same discipline as the journey flag:
+  // reset to null (fail closed) on every identity change, skip the network for the DEV/E2E bypass, and
+  // drop a stale in-flight response so a prior user's positive can never carry forward. Closing `hqOpen`
+  // on reset means a mid-session revocation or account switch ejects the player from the building.
+  useEffect(() => {
+    setHqEntitlement(null);
+    setHqOpen(false);
+    if (journeyEntitlementBypassed(auth)) return;
+    let cancelled = false;
+    void (async () => {
+      const result = await evaluateHqEntitlement(defaultHqDeps());
+      if (!cancelled) setHqEntitlement(result);
     })();
     return () => {
       cancelled = true;
@@ -1342,9 +1387,9 @@ export function ColonyApp() {
     });
   const worldLayoutDirty = Boolean(
     capturedWorldLayout &&
-      worldLayoutHead &&
-      capturedWorldLayout.revision.contentHash !==
-        worldLayoutHead.document.revision.contentHash,
+    worldLayoutHead &&
+    capturedWorldLayout.revision.contentHash !==
+      worldLayoutHead.document.revision.contentHash,
   );
   const worldLayoutOperatorStatus: WorldLayoutOperatorStatus = captureError
     ? "error"
@@ -1750,6 +1795,11 @@ export function ColonyApp() {
           switch) closes it immediately. */}
       {showroomOpen && newPlayerJourneyEnabled && (
         <ShowroomOverlay onClose={() => setShowroomOpen(false)} />
+      )}
+      {/* HQ.ENTER.1 — defense in depth: the reception renders ONLY while the entitlement is live, so a
+          forced or stale `hqOpen` can never mount it, and a mid-session revocation closes it. */}
+      {hqOpen && kookerHqEnabled && (
+        <HqReceptionView onClose={() => setHqOpen(false)} />
       )}
       {/* ARCADE.2A — enter the authenticated Gamehouse venue from its governed commercial plot. Gated
           on the fail-closed `citylife-arcade-3d-v1` entitlement: hidden (absent from the DOM, not merely
@@ -4193,6 +4243,24 @@ export function ColonyApp() {
             style={CORNER_ACTION_STYLE}
           >
             🏬 Gearbox Auto Hub
+          </button>
+        )}
+        {/* HQ.ENTER.1 — walk into Kooker HQ reception. Like the Gamehouse and the showroom, this
+            affordance is the door until spec-152 portal streaming lands in the walker: the spatial
+            layer already carries the real building frame, reception room and the inverse enter/exit
+            portals (HQ.SITE.1/SEED.1), sited in the civic centre.
+
+            Gated on the fail-closed `kooker-hq-v1` entitlement and ABSENT FROM THE DOM — not merely
+            styled away — unless the operator has allowlisted this player. Default OFF. */}
+        {!builderActive && !hqOpen && kookerHqEnabled && (
+          <button
+            data-build-action="open-kooker-hq"
+            data-testid="open-kooker-hq"
+            title="Step into Kooker HQ reception"
+            onClick={openKookerHq}
+            style={CORNER_ACTION_STYLE}
+          >
+            🏛️ Kooker HQ
           </button>
         )}
       </div>
