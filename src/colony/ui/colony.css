@@ -2279,6 +2279,12 @@ body.tv-mode .radio-iframe.is-visible {
 .geo-readout__coord {
   color: #cfe6f2;
 }
+.geo-readout__meaning {
+  margin-top: 3px;
+  color: #ffd27a;
+  font-size: 9px;
+  font-weight: 700;
+}
 .geo-readout__marker--unknown .geo-readout__coord {
   color: #e0a14d;
 }
@@ -2313,7 +2319,13 @@ body.tv-mode .radio-iframe.is-visible {
   overflow-wrap: anywhere;
 }
 @media (max-width: 700px) {
+  .bus-network-minimap {
+    /* The fleet map is a vehicle diagnostic, not a people-presence signal or default mobile chrome. */
+    display: none;
+  }
   .geo-readout {
+    /* PLAYER.MOBILE.HUD.R1: diagnostics are progressive disclosure, not default gameplay chrome. */
+    display: none;
     max-width: 62vw;
     font-size: 9px;
   }

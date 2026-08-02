@@ -1812,27 +1812,6 @@ export function ColonyApp() {
           PR. */}
       <div className="hud-corner-rail-left" data-testid="hud-corner-rail-left">
         {presenceReadout && <GeoReadout readout={presenceReadout} />}
-        {!ui.firstPerson.active &&
-          !builderActive &&
-          !worldViewActive &&
-          rallyRead && (
-            <div
-              className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
-              aria-label="Who is here at the rally"
-            >
-              <span className="rally-social-read__eyebrow">
-                {rallyRead.title}
-              </span>
-              <b>{rallyRead.summary}</b>
-              <span className="rally-social-read__status">
-                {ui.rally?.ready
-                  ? "Friend present · race ready"
-                  : ui.rally && ui.rally.present > 0
-                    ? "Waiting for a friend"
-                    : "Rally point empty"}
-              </span>
-            </div>
-          )}
         {/* UI.VERSION.1 — the build stamp is the LAST member of the rail, so it sits closest to
             the corner. It joins the rail rather than pinning itself, for the reason documented
             above this element.
@@ -1935,30 +1914,7 @@ export function ColonyApp() {
             </button>
           ))}
         </div>
-        <div className="group">
-          <button
-            className={ui.race.mode !== "idle" ? "on" : ""}
-            disabled={!ui.race.available}
-            onClick={() => {
-              if (ui.race.mode === "idle") runtime.startRace();
-              else runtime.exitRace();
-            }}
-            title="Road Rally"
-          >
-            Road Rally
-          </button>
-        </div>
-        {ui.rally?.ready && ui.race.mode === "idle" && (
-          <div className="group">
-            <button
-              className="on"
-              onClick={() => runtime.joinRallyRace()}
-              title="Two players are at the Rally Point — start a race from the hilltop"
-            >
-              Join Race
-            </button>
-          </div>
-        )}
+
         <div className="group">
           <button
             title="Log a reproducible in-world bug"
