@@ -99,17 +99,23 @@ export function calculateQuiverTrees(
       if (blocked.has(i)) continue;
       if (terrain.elev[i]! < seaLevel || terrain.water[i]) continue;
 
-      // Rocky ground only. Explicitly NOT beach: a kokerboom on the tideline would be wrong, and
-      // spec 140 already treats beach as its own thing.
+      // WORLD.KOKERBOOM.2 — DRY COUNTRY: the open dunes as well as the rocky ground.
+      //
+      // Highland/Mountain only was too narrow to see. The town stands on Plains, so the world's
+      // signature tree grew exclusively where the player never looks. Measured on the previous rule:
+      // 12 trees on seed 314 and 14 on seed 7 across a whole 608-cell world, none of them near the
+      // colony. A kokerboom you cannot find is not in the game.
+      //
+      // Still explicitly NOT beach — a kokerboom on the tideline would be wrong, and spec 140 treats
+      // beach as its own thing. Still NOT Forest either: in the desert retheme Forest is the DAMP
+      // HOLLOW where the neon flora gathers (see foliageLogic's density note), and a quiver tree is a
+      // dry-country species. Keeping the two layers on different ground keeps them reading as
+      // different plants rather than a mixed thicket.
       const b = terrain.biome[i]!;
-      if (
-        b === BIOME_OCEAN ||
-        b === BIOME_SHALLOWS ||
-        b === BIOME_BEACH ||
-        b === BIOME_PLAINS
-      )
+      if (b === BIOME_OCEAN || b === BIOME_SHALLOWS || b === BIOME_BEACH)
         continue;
-      if (b !== BIOME_HIGHLAND && b !== BIOME_MOUNTAIN) continue;
+      if (b !== BIOME_PLAINS && b !== BIOME_HIGHLAND && b !== BIOME_MOUNTAIN)
+        continue;
 
       const h = hash(i * 31 + 7);
       if (h * RARITY >= 1) continue;

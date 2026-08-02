@@ -13,6 +13,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { COLONY } from "../config";
+import { worldClearRects } from "./worldClearRects";
 import {
   calculateQuiverTrees,
   quiverTreeHeight,
@@ -161,11 +162,20 @@ export function R3FQuiverTrees({ runtime }: { readonly runtime: unknown }) {
 
   const trees: QuiverTree[] = useMemo(() => {
     const rt = runtime as { sim?: { state?: { terrain?: unknown } } } | null;
-    const terrain = rt?.sim?.state?.terrain as
-      | Parameters<typeof calculateQuiverTrees>[0]
-      | undefined;
+    const state = rt?.sim?.state;
+    const terrain = state?.terrain as
+      Parameters<typeof calculateQuiverTrees>[0] | undefined;
     if (!terrain) return [];
-    return calculateQuiverTrees(terrain, COLONY.world.seaLevel, []);
+    // WORLD.KOKERBOOM.2 — this used to pass `[]`, i.e. clear NOTHING. That was survivable only while
+    // the trees were confined to Highland/Mountain, far from any building. Now that they grow on the
+    // dunes the town stands on, siting must respect the same footprints the foliage layer does, or a
+    // kokerboom ends up inside a house — and a placed kokerboom is never removed by later
+    // construction (that is what "protected" means here), so it would stay there.
+    return calculateQuiverTrees(
+      terrain,
+      COLONY.world.seaLevel,
+      worldClearRects(state as never),
+    );
   }, [runtime]);
 
   const geometry = useMemo(() => buildQuiverGeometry(), []);
