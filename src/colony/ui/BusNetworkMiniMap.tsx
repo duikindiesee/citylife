@@ -22,7 +22,7 @@ export function BusNetworkMiniMap({ runtime }: { runtime: ColonyRuntime }) {
     <aside className="bus-network-minimap" aria-label="Live bus network map">
       <div className="bus-network-minimap__title">
         <span>BUS NETWORK</span>
-        <span>{model.buses.length} LIVE</span>
+        <span>{model.buses.length} VEHICLES</span>
       </div>
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}

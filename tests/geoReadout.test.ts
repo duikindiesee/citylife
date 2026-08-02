@@ -72,6 +72,8 @@ describe("GeoReadout", () => {
   it("prints no coordinate for a coarse entry", () => {
     const html = render({ stamp, entries: [coarseOther], hidden: [] });
     expect(html).toContain("Ada Kell");
+    expect(html).toContain("SIMULATION CITIZEN");
+    expect(html).toContain("not an authenticated online session");
     expect(html).toContain("kooker-hq");
     expect(html).toContain("location coarse");
     expect(html).not.toMatch(/(grid|world) -?\d/);
