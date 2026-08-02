@@ -3,11 +3,10 @@ import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import type { ColonySim } from "../sim";
 import { calculateFoliagePositions } from "./foliageLogic";
-import { findJunctionZones } from "./roadJunctions";
 import { useSimSignal, type SimBridge } from "./useSimSignal";
 import { foliageSignature } from "./simSignals";
-import { buildIronworkHikePath, ironworkPillarCell } from "../ironworkPillar";
 import { perfExperiment } from "../perf/perfExperiment";
+import { worldClearRects } from "./worldClearRects";
 
 interface R3FFoliageProps {
   sim: ColonySim;
@@ -22,72 +21,10 @@ export function R3FFoliage({ sim, runtime }: R3FFoliageProps) {
   const foliageSig = useSimSignal(runtime, () => foliageSignature(sim.state));
   const { matrices, colors } = useMemo(() => {
     const s = sim.state;
-    // Spec 128 — lots and parcels clear their trees ("trees on houses is a big no"):
-    // neighborhood lots are CENTRE-anchored (bulldoze convention), commercial parcels
-    // ORIGIN-anchored (leveling convention).
-    const rects: { x0: number; y0: number; x1: number; y1: number }[] = [];
-    for (const lot of s.neighborhood?.lots ?? []) {
-      const x0 = lot.x - Math.floor((lot.w - 1) / 2);
-      const y0 = lot.y - Math.floor((lot.h - 1) / 2);
-      rects.push({ x0, y0, x1: x0 + lot.w - 1, y1: y0 + lot.h - 1 });
-    }
-    for (const p of s.commercialDistrict?.parcels ?? []) {
-      rects.push({ x0: p.x, y0: p.y, x1: p.x + p.w - 1, y1: p.y + p.h - 1 });
-    }
-    // Spec 137 — junctions clear their trees too: conifers grew straight through the
-    // old slab (and now would through the draped cap), dead-centre in the crossing.
-    for (const z of findJunctionZones(s.roadWays ?? [])) {
-      const r = z.rBound + 1;
-      rects.push({
-        x0: Math.floor(z.cx - r),
-        y0: Math.floor(z.cy - r),
-        x1: Math.ceil(z.cx + r),
-        y1: Math.ceil(z.cy + r),
-      });
-    }
-    // Spec 149 — the bus depot pad clears its trees too (same class as lots/parcels/junctions):
-    // conifers otherwise grow across the apron and parking bays, half-burying the parked fleet.
-    // ORIGIN-anchored AABB (same field the terrain leveling grades in useTerrainLeveling §2b, so
-    // trees and grading agree on ONE footprint); the whole depot GLB + bays sit inside it, and the
-    // gate spur is a real road already cleared by the roads pass above. The 1-cell canopy margin is
-    // added by calculateFoliagePositions, exactly as for the commercial parcels.
-    const depot = s.busDepotPad;
-    if (depot) {
-      rects.push({
-        x0: depot.x,
-        y0: depot.y,
-        x1: depot.x + depot.w - 1,
-        y1: depot.y + depot.h - 1,
-      });
-    }
-    // WORLD.FOLIAGE.SCATTER.1 — the GARAGE pad clears its trees too. It is the same class as the depot
-    // pad above (an origin-anchored AABB the terrain grading already levels), and it was simply never
-    // added: plants grew over the forecourt and through the Gearbox Auto Hub itself, which is the one
-    // building a player is sent to first. Operator report, 2026-08-01: "not on garage".
-    const garage = s.commercialDistrict?.garagePad;
-    if (garage) {
-      rects.push({
-        x0: garage.x,
-        y0: garage.y,
-        x1: garage.x + garage.w - 1,
-        y1: garage.y + garage.h - 1,
-      });
-    }
-    // Spec 144 — the highland route is a footpath, not a road, so it does not enter `roads`.
-    // Clear its narrow tread and the mountain dais explicitly or conifers hide the destination
-    // and grow through the gravel ribbon.
-    for (const cell of buildIronworkHikePath(s)) {
-      rects.push({ x0: cell.x, y0: cell.y, x1: cell.x, y1: cell.y });
-    }
-    const pillar = ironworkPillarCell(s.structures);
-    if (pillar) {
-      rects.push({
-        x0: pillar.x - 3,
-        y0: pillar.y - 3,
-        x1: pillar.x + 3,
-        y1: pillar.y + 3,
-      });
-    }
+    // WORLD.KOKERBOOM.2 — the shared footprint list (see worldClearRects.ts). This used to be
+    // built inline here, which is how the garage pad came to be missing from it while the quiver
+    // trees cleared nothing at all. One list, both layers.
+    const rects = worldClearRects(s as never);
     const { matrices: mats, colors: cols } = calculateFoliagePositions(
       s.terrain,
       s.roads,
