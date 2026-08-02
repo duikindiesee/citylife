@@ -164,7 +164,8 @@ export function R3FQuiverTrees({ runtime }: { readonly runtime: unknown }) {
     const rt = runtime as { sim?: { state?: { terrain?: unknown } } } | null;
     const state = rt?.sim?.state;
     const terrain = state?.terrain as
-      Parameters<typeof calculateQuiverTrees>[0] | undefined;
+      | Parameters<typeof calculateQuiverTrees>[0]
+      | undefined;
     if (!terrain) return [];
     // WORLD.KOKERBOOM.2 — this used to pass `[]`, i.e. clear NOTHING. That was survivable only while
     // the trees were confined to Highland/Mountain, far from any building. Now that they grow on the
