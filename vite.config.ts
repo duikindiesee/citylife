@@ -5,6 +5,7 @@ import http from "node:http";
 import https from "node:https";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { cpus } from "node:os";
 
 /**
  * UI.VERSION.1 — resolve the identity of THIS build, at build time.
@@ -118,6 +119,32 @@ export default defineConfig(({ mode }) => {
     test: {
       environment: "node",
       include: ["tests/**/*.test.ts", "src/**/*.test.ts"],
+      // CI.BOOT.COST.1 — bound the worker pool, because this suite is CPU-bound, not IO-bound.
+      //
+      // MEASURED, on a 12-core machine:
+      //   one `new ColonyRuntime()` boot          ~700-1000 ms (850 ms typical, 688 ms warm)
+      //   test files that construct one            75
+      //   total constructions across the suite    234
+      //   => ~3.3 MINUTES of pure world generation, all of it CPU-bound
+      //
+      // Vitest's default pool is `cpus - 1`, i.e. ELEVEN workers here, and nothing capped it. Eleven
+      // concurrent world generations saturate a 12-core box on their own; run two suites at once — a
+      // second branch's CI job, or a developer running `npm test` while CI does — and it is 22
+      // CPU-bound workers on 12 cores. That is not slow, it is thrashing, and the numbers show it:
+      //
+      //   districtDeterminism.test.ts   6 boots, ~5 s of boot solo   ->    330,581 ms on hosted CI
+      //   worldPlacement.test.ts        2 boots                      ->    140,114 ms on hosted CI
+      //   worldLayoutImportPreflight    4 boots                      ->  2,502,862 ms locally (41.7 min)
+      //
+      // A 66x amplification is contention, not workload. Six timeout failures in one day across
+      // hosted CI and two local machines, each time a DIFFERENT victim and everything else green —
+      // the signature of a resource problem rather than a broken test.
+      //
+      // Half the cores leaves genuine parallelism while keeping headroom for the OS, the GPU runner's
+      // other jobs, and a second suite. This does NOT mask anything: a hung test still hangs, and
+      // `testTimeout` is untouched. Raising the timeout again would have masked it; this addresses the
+      // cause. `retry: 2` below stays as the last line of defence, not the first.
+      maxWorkers: Math.max(2, Math.floor((cpus().length || 4) / 2)),
       // Spec 086 — a ColonyRuntime boot now builds a whole distributed city (a primary + several
       // satellite hamlets + trunk-road routing), so a construction is far heavier than one cheap
       // neighbourhood. Under parallel-suite CPU contention that brushed the 5s default; 20s gives the
