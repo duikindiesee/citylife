@@ -17,7 +17,7 @@
 // Runtime wiring is a later gated slice; this only writes the asset.
 import * as THREE from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,6 +39,37 @@ if (typeof FileReader === "undefined") {
 }
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+// ASSET.GLB.DETERMINISM.2 — refuse to run on a node_modules that drifted from the lockfile.
+//
+// The determinism contract is "byte-for-byte under `npm ci`", and it CANNOT be stronger than that:
+// the exporter serialises three.js-generated geometry, so a different installed three produces
+// different bytes from identical source. That is not hypothetical — independent review regenerated
+// this pack twice and got TWO different hashes on two occasions (4541b104..., then f747...), neither
+// matching the committed binary, while this machine (three exactly at the lockfile's 0.185.1)
+// reproduces the committed bytes every run. Two internally-stable-but-different environments is the
+// signature of a drifted install, and silently emitting different bytes turns that drift into a
+// twelve-day review mystery. So: compare the INSTALLED three against the LOCKFILE, and refuse with
+// the diagnosis instead of producing bytes that will fail review.
+//
+// (fs-read rather than require("three/package.json"): three's exports map blocks that subpath.)
+const lockedThree = JSON.parse(
+  readFileSync(resolve(rootDir, "package-lock.json"), "utf8"),
+).packages["node_modules/three"]?.version;
+const installedThree = JSON.parse(
+  readFileSync(resolve(rootDir, "node_modules/three/package.json"), "utf8"),
+).version;
+if (!lockedThree || installedThree !== lockedThree) {
+  console.error(
+    `REFUSING to generate: installed three@${installedThree} != lockfile three@${lockedThree}.
+` +
+      `The GLB's bytes depend on the three.js version, so a drifted node_modules cannot reproduce
+` +
+      `the committed binary. Run \`npm ci\` and regenerate.`,
+  );
+  process.exit(1);
+}
+console.log(`three@${installedThree} matches the lockfile — generating.`);
 const outDir = resolve(rootDir, "public/assets/citylife/props");
 mkdirSync(outDir, { recursive: true });
 

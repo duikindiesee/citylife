@@ -202,6 +202,13 @@ describe("generate_hq_civic_art_pack.mjs determinism contract", () => {
 
   it("stays free of nondeterministic sources", () => {
     expect(generatorSource).not.toMatch(/Math\.random|Date\.now|new Date\(/);
+    // ASSET.GLB.DETERMINISM.2 — the generator must refuse a node_modules that drifted from the
+    // lockfile. The GLB's bytes depend on the installed three.js, so "byte-for-byte" is only ever
+    // promised under `npm ci`; without this guard, a drifted install silently emits different bytes
+    // (independent review saw TWO different hashes across two runs, 4541b104... then f747...,
+    // neither matching the committed binary — while a lockfile-exact install reproduces it exactly).
+    expect(generatorSource).toContain("node_modules/three/package.json");
+    expect(generatorSource).toContain("package-lock.json");
     expect(generatorSource).toContain("hq-civic-art-pack.glb");
     expect(generatorSource).toContain("HqCivicArtPack_Root");
   });
