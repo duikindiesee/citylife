@@ -4,6 +4,7 @@ import type { ColonyRuntime, ColonyUiState } from "../runtime";
 import type { WorldSurveyRegistry } from "../worldSurvey";
 import { buildBugGoalPlan, type BugGoalPlan } from "../bug/bugGoal";
 import type { BugTaskSubmission } from "../bug/bugTrack";
+import { defaultBugSubmitDeps, submitBugGoal } from "../bug/bugGoalSubmit";
 
 export interface BugGoalSubmitResult {
   readonly mode: "planned" | "submitted";
@@ -27,9 +28,9 @@ function safeJsonList(text: string | null): unknown[] {
   }
 }
 
-export async function localBugGoalSubmitter(
-  submission: BugTaskSubmission,
-): Promise<BugGoalSubmitResult> {
+/** Keep a copy on this device. Returns the LOCAL MARKER — deliberately prefixed so it can never be
+ *  mistaken for, or displayed as, a real governed task id. */
+export function saveBugGoalLocally(submission: BugTaskSubmission): string {
   const taskId = `local-${submission.clientToken}`;
   if (typeof window !== "undefined" && window.localStorage) {
     const list = safeJsonList(
@@ -38,6 +39,36 @@ export async function localBugGoalSubmitter(
     list.push({ taskId, submission });
     window.localStorage.setItem(BUG_GOAL_STORAGE_KEY, JSON.stringify(list));
   }
+  return taskId;
+}
+
+/**
+ * BUG.SUBMIT.1 — the DEFAULT submitter: try to file the report for real, fall back to this device.
+ *
+ * The panel used to default to the local writer alone, so "Queue as goal" wrote the payload into
+ * localStorage, handed back a fabricated `local-<clientToken>` id, and nothing ever read that key
+ * back. The report reached no one. It now POSTs to the authenticated CityLife backend (which holds
+ * the credential needed to create a governed task — a browser must never carry one) and only reports
+ * a filing when the backend returns a real task id.
+ */
+export async function backendBugGoalSubmitter(
+  submission: BugTaskSubmission,
+): Promise<BugGoalSubmitResult> {
+  const outcome = await submitBugGoal(
+    submission,
+    defaultBugSubmitDeps(saveBugGoalLocally),
+  );
+  return {
+    mode: outcome.mode,
+    taskId: outcome.taskId,
+    message: outcome.message,
+  };
+}
+
+export async function localBugGoalSubmitter(
+  submission: BugTaskSubmission,
+): Promise<BugGoalSubmitResult> {
+  const taskId = saveBugGoalLocally(submission);
   return {
     mode: "planned",
     taskId,
@@ -63,8 +94,7 @@ export function bugCaptureLocationFromUi(
     };
   }
   const landing = surface?.metadata?.landing as
-    | { readonly x?: unknown; readonly y?: unknown }
-    | undefined;
+    { readonly x?: unknown; readonly y?: unknown } | undefined;
   if (
     surface?.grid &&
     landing &&
@@ -88,7 +118,7 @@ export function BugReportPanel({
   runtime,
   ui,
   onClose,
-  submitGoal = localBugGoalSubmitter,
+  submitGoal = backendBugGoalSubmitter,
 }: {
   open: boolean;
   runtime: ColonyRuntime;
@@ -158,7 +188,11 @@ export function BugReportPanel({
       });
       const result = await submitGoal(nextPlan.taskSubmission);
       setPlan(nextPlan);
-      setStatus(`${result.message} ${result.taskId}`);
+      // Only a REAL filing gets its id shown. A local fallback shows the honest message alone —
+      // appending `local-<token>` is what made a device-only save read as a filed ticket.
+      setStatus(
+        result.mode === "submitted" ? `${result.message}` : result.message,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
