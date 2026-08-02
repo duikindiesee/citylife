@@ -351,6 +351,12 @@ import {
   GamehousePortalError,
 } from "./spatial/gamehousePortal";
 import { GAMEHOUSE_LOCAL_ID } from "./spatial/gamehouseInterior";
+import {
+  withKookerHqPortal,
+  KookerHqPortalError,
+  type KookerHqSiteSurvey,
+} from "./spatial/kookerHqPortal";
+import { KOOKER_HQ_LOCAL_ID } from "./spatial/kookerHqInterior";
 import { createPlacementContext } from "./placement/runtimeContext";
 import {
   ROAD_PLACEABLES,
@@ -3067,6 +3073,65 @@ export class ColonyRuntime {
     }
   }
 
+  /** HQ.SEED.1 — append Kooker HQ (building frame, reception room, the inverse enter/exit door portals)
+   *  to the freshly SEEDED layout, anchored on a surveyed cell in the CIVIC centre. This is what puts
+   *  the HQ portals into the durable first head and therefore the runtime portal lifecycle (they are
+   *  registered from `layoutPortals` on hydration) instead of leaving `kookerHqInterior.ts` imported by
+   *  tests only, which is what it was until this slice.
+   *
+   *  Same contract as `withSeedGamehouseVenue`, deliberately — this is that seam's sibling, not a new
+   *  pattern. Fails SAFE: with no civic site it returns the layout untouched and world boot proceeds
+   *  without an HQ (far better than a building in the sea). Idempotent: if the HQ frame is already
+   *  present it returns the layout unchanged. Only ever called on the seed path, so a re-capture of an
+   *  already-hydrated world never re-appends.
+   *
+   *  MIGRATION BOUNDARY (matching ARCADE.2A, deliberate): a world hydrated from a durable layout
+   *  persisted BEFORE this feature is carried through verbatim and is NOT backfilled. `kooker-hq-v1` is
+   *  globally OFF and fail-closed, so an un-migrated world is behaviourally identical for every user
+   *  today, while an on-hydration backfill would mutate the durable spatial layout of every existing
+   *  world (collision/determinism risk) and belongs in its own reviewed slice. */
+  private withSeedKookerHq(document: WorldLayoutDocument): WorldLayoutDocument {
+    const terrain = this.sim.state.terrain;
+    if (!terrain) return document;
+    // Idempotency guard: never append a second HQ if the seed already carries the building frame.
+    if (
+      document.frames.some((f) =>
+        f.id.endsWith(`:building:${KOOKER_HQ_LOCAL_ID}`),
+      )
+    )
+      return document;
+    const roadCells = new Set<string>();
+    for (const r of this.sim.state.roads) roadCells.add(`${r.x},${r.y}`);
+    const occupied = new Set<string>();
+    for (const s of this.sim.state.structures) occupied.add(`${s.x},${s.y}`);
+    const survey: KookerHqSiteSurvey = {
+      landing: { x: terrain.landing.x, y: terrain.landing.y },
+      isBuildable: (x, y) =>
+        x >= 0 &&
+        y >= 0 &&
+        x < terrain.size &&
+        y < terrain.size &&
+        !terrain.isWater(x, y),
+      isRoad: (x, y) => roadCells.has(`${x},${y}`),
+      isOccupied: (x, y) => occupied.has(`${x},${y}`),
+    };
+    try {
+      return createWorldLayoutDocument(
+        withKookerHqPortal(
+          document as unknown as WorldLayoutDocumentInput,
+          survey,
+        ),
+      );
+    } catch (e) {
+      // A NO_CIVIC_SITE / authoring error must never strand world boot; fall back to the un-augmented
+      // layout (fail-closed: the HQ simply does not appear).
+      if (e instanceof KookerHqPortalError) return document;
+      if (e instanceof Error && e.name === "KookerHqInteriorError")
+        return document;
+      throw e;
+    }
+  }
+
   /** WB.1d — capture only durable spatial intent. The codec/adapter strict allow-list prevents
    *  citizens, occupants, wallets, blueprints, renderer objects or the rest of ColonyState leaking
    *  into the document. */
@@ -3114,7 +3179,8 @@ export class ColonyRuntime {
         clearanceAbove: roadPolicy.clearanceAbove,
       },
     });
-    if (!active) return this.withSeedGamehouseVenue(captured);
+    if (!active)
+      return this.withSeedKookerHq(this.withSeedGamehouseVenue(captured));
 
     const activeRoads = new Map<string, WorldLayoutRoad[]>();
     for (const road of active.roads) {
