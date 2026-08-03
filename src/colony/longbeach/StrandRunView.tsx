@@ -325,7 +325,12 @@ function DriveScene({
       </instancedMesh>
 
       <group ref={carGroup}>
-        <primitive object={car} scale={2.4} />
+        {/* The π yaw is a MODEL-AXIS correction, not a physics one: the group's rotation stays the
+            shared -heading convention (raceLayer, R3FPlayerCar), but those render their own car
+            geometry — buildCarMesh's nose is modelled along the opposite axis, and the mesh drove
+            visibly backwards. Operator visual UAT, 2026-08-03: "the car drives backwards, flip it".
+            This is the one property no node test can see, which is exactly why UAT exists. */}
+        <primitive object={car} scale={2.4} rotation={[0, Math.PI, 0]} />
       </group>
     </group>
   );
