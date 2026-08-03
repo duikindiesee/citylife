@@ -94,7 +94,8 @@ export function bugCaptureLocationFromUi(
     };
   }
   const landing = surface?.metadata?.landing as
-    { readonly x?: unknown; readonly y?: unknown } | undefined;
+    | { readonly x?: unknown; readonly y?: unknown }
+    | undefined;
   if (
     surface?.grid &&
     landing &&
