@@ -42,6 +42,15 @@ import {
   type HqEntitlement,
 } from "../entitlement/kookerHq";
 import { HqReceptionView } from "../render/HqReceptionView";
+// Spec 169 slice 1b — the Long Beach gate and the Strand Run drive (operator-held side branch).
+import {
+  defaultLongBeachDeps,
+  evaluateLongBeachEntitlement,
+  longBeachAvailable,
+  longBeachDevBypass,
+  type LongBeachEntitlement,
+} from "../entitlement/westCoastLongBeach";
+import { StrandRunView } from "../longbeach/StrandRunView";
 import { BuildStamp } from "./BuildStamp";
 import { GamehouseOverlay } from "./GamehouseOverlay";
 import { resolveGamehousePortalSite } from "../spatial/gamehousePortal";
@@ -901,6 +910,7 @@ export function ColonyApp() {
     if (!kookerHqEnabled) return;
     setHqOpen(true);
   };
+
   // ARCADE.2A — is the Gamehouse venue available to THIS session? Fails closed: only the narrowly scoped
   // DEV/E2E bypass (DEV build + local origin + explicit opt-in — never a mere null/expired operator), OR
   // an authenticated CITYLIFE_PLAYER whose `citylife-arcade-3d-v1` flag is unambiguously enabled
@@ -969,6 +979,42 @@ export function ColonyApp() {
   // can never carry a prior user's positive entitlement forward. A stale in-flight response is
   // ignored (`cancelled`) so it can never overwrite the current identity's decision.
   const operatorUserId = auth.operator?.userId ?? null;
+  // Spec 169 slice 1b — the fail-closed `west-coast-long-beach-v1` entitlement, same identity
+  // discipline as the journey/HQ flags: null (closed) on every identity change, stale responses
+  // dropped, and the open flag collapses with it so a revocation ejects the driver.
+  const [lbEntitlement, setLbEntitlement] =
+    useState<LongBeachEntitlement | null>(null);
+  const [strandOpen, setStrandOpen] = useState(false);
+  useEffect(() => {
+    setLbEntitlement(null);
+    setStrandOpen(false);
+    if (longBeachDevBypass()) return;
+    let cancelled = false;
+    void (async () => {
+      const result = await evaluateLongBeachEntitlement(defaultLongBeachDeps());
+      if (!cancelled) setLbEntitlement(result);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth, operatorUserId]);
+  // Spec 169 slice 1b — is Long Beach open to THIS session? Fails closed; the DEV/E2E bypass is the
+  // narrow shared predicate, never a null operator. The guarded open rejects out-of-band calls.
+  const longBeachEnabled = longBeachAvailable({
+    bypass: longBeachDevBypass(),
+    entitlement: lbEntitlement,
+  });
+  const openStrandRun = () => {
+    if (!longBeachEnabled) return;
+    setStrandOpen(true);
+  };
+  // The operator's garage car, resolved at the moment of entry so a car bought mid-session drives.
+  const strandCar = useMemo(
+    () => (strandOpen ? runtime.operatorCarForStrand() : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [strandOpen, runtime],
+  );
   useEffect(() => {
     setJourneyEntitlement(null);
     // The DEV/E2E skip-auth bypass has no authenticated session to evaluate; leaving the entitlement
@@ -1387,9 +1433,9 @@ export function ColonyApp() {
     });
   const worldLayoutDirty = Boolean(
     capturedWorldLayout &&
-      worldLayoutHead &&
-      capturedWorldLayout.revision.contentHash !==
-        worldLayoutHead.document.revision.contentHash,
+    worldLayoutHead &&
+    capturedWorldLayout.revision.contentHash !==
+      worldLayoutHead.document.revision.contentHash,
   );
   const worldLayoutOperatorStatus: WorldLayoutOperatorStatus = captureError
     ? "error"
@@ -1800,6 +1846,15 @@ export function ColonyApp() {
           forced or stale `hqOpen` can never mount it, and a mid-session revocation closes it. */}
       {hqOpen && kookerHqEnabled && (
         <HqReceptionView onClose={() => setHqOpen(false)} />
+      )}
+      {/* Spec 169 slice 1b — defense in depth: the drive renders ONLY while the entitlement is live,
+          so a forced or stale strandOpen can never mount it. */}
+      {strandOpen && longBeachEnabled && strandCar && (
+        <StrandRunView
+          carSpec={strandCar.spec}
+          stats={strandCar.stats}
+          onClose={() => setStrandOpen(false)}
+        />
       )}
       {/* ARCADE.2A — enter the authenticated Gamehouse venue from its governed commercial plot. Gated
           on the fail-closed `citylife-arcade-3d-v1` entitlement: hidden (absent from the DOM, not merely
@@ -4243,6 +4298,20 @@ export function ColonyApp() {
             style={CORNER_ACTION_STYLE}
           >
             🏬 Gearbox Auto Hub
+          </button>
+        )}
+        {/* Spec 169 slice 1b — drive the Strand Run: the Long Beach sunset coastal drive, its own
+            streamed scene. Gated on the fail-closed `west-coast-long-beach-v1` entitlement and
+            ABSENT FROM THE DOM unless enabled (default OFF; DEV bypass for local UAT). */}
+        {!builderActive && !strandOpen && longBeachEnabled && (
+          <button
+            data-build-action="open-strand-run"
+            data-testid="open-strand-run"
+            title="Drive the Strand Run — the Long Beach coastal highway"
+            onClick={openStrandRun}
+            style={CORNER_ACTION_STYLE}
+          >
+            🏁 Strand Run
           </button>
         )}
         {/* HQ.ENTER.1 — walk into Kooker HQ reception. Like the Gamehouse and the showroom, this

@@ -4396,6 +4396,15 @@ export class ColonyRuntime {
   /** Spec 097 R5 — start the Road Rally. An OPTIONAL startCell biases the track start near a given point
    *  (the rally rendezvous); with no argument it starts from the commercial centre exactly as the
    *  existing Road Rally buttons always have, so their behaviour is unchanged. */
+  /** Spec 169 slice 1b — the operator's garage car and its effective stats for the Strand Run
+   *  scene: the SAME resolution startRace uses, so the Strand drives the car you actually own and a
+   *  tuned car feels different there too (CAR.STATS.DRIVE.1). Signed-out sessions get the
+   *  deterministic default spec for a guest id. */
+  operatorCarForStrand() {
+    const spec = loadCar(this.operatorCitizenId() ?? "strand-guest");
+    return { spec, stats: deriveStats(spec) };
+  }
+
   startRace(startCell?: { x: number; y: number }): boolean {
     if (this.fpCitizenId) this.exitFirstPerson();
     const track = makeRaceTrack(this.sim.state, {
