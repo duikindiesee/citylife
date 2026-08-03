@@ -42,6 +42,17 @@ import {
   type HqEntitlement,
 } from "../entitlement/kookerHq";
 import { HqReceptionView } from "../render/HqReceptionView";
+// UI.STATE.1 slice 1 — the fail-closed `hud-player-state-v1` gate and the pure topbar plan (spec 170
+// §8). Deliberately NO dev/e2e bypass on this one: e2e runs under skip-auth and clicks legacy topbar
+// controls by role/name, so the flag must stay OFF there — see hudPlayerState.ts for the measurement.
+import {
+  evaluateHudEntitlement,
+  defaultHudDeps,
+  hudPlayerStateAvailable,
+  type HudEntitlement,
+} from "../entitlement/hudPlayerState";
+import { planTopbar } from "./topbarPlan";
+import { TopbarMenu } from "./TopbarMenu";
 import { BuildStamp } from "./BuildStamp";
 import { GamehouseOverlay } from "./GamehouseOverlay";
 import { resolveGamehousePortalSite } from "../spatial/gamehousePortal";
@@ -969,6 +980,45 @@ export function ColonyApp() {
   // can never carry a prior user's positive entitlement forward. A stale in-flight response is
   // ignored (`cancelled`) so it can never overwrite the current identity's decision.
   const operatorUserId = auth.operator?.userId ?? null;
+  // UI.STATE.1 slice 1 — evaluate `hud-player-state-v1` with the same identity discipline as the
+  // journey flag: reset to null (fail closed -> legacy topbar) on every identity change, drop a stale
+  // in-flight response. Signed-out sessions short-circuit inside evaluateHudEntitlement before any
+  // network call, so e2e (skip-auth, no gateway) deterministically renders the legacy topbar.
+  const [hudEntitlement, setHudEntitlement] = useState<HudEntitlement | null>(
+    null,
+  );
+  useEffect(() => {
+    setHudEntitlement(null);
+    let cancelled = false;
+    void (async () => {
+      const result = await evaluateHudEntitlement(defaultHudDeps());
+      if (!cancelled) setHudEntitlement(result);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth, operatorUserId]);
+  // The pure decision for WHICH topbar controls exist this render (tests/topbarPlan.test.ts pins
+  // both branches). The Space-key gate reads a ref because the keydown listener mounts once with
+  // [] deps and must see the CURRENT plan, not the mount-time closure.
+  const topbar = planTopbar({
+    hudPlayerStateEnabled: hudPlayerStateAvailable({
+      entitlement: hudEntitlement,
+    }),
+    raceAvailable: ui.race.available,
+  });
+  const spacePausesSimRef = useRef(true);
+  spacePausesSimRef.current = topbar.spacePausesSim;
+  // Shared by the inline snapshot button (legacy) and the menu item (new HUD) — one handler.
+  const saveSnapshot = () => {
+    const url = runtime.snapshot();
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `citylife-sol${ui.clock.sol}-${String(ui.clock.hour).padStart(2, "0")}${String(ui.clock.minute).padStart(2, "0")}.png`;
+    a.click();
+  };
   useEffect(() => {
     setJourneyEntitlement(null);
     // The DEV/E2E skip-auth bypass has no authenticated session to evaluate; leaving the entitlement
@@ -1328,6 +1378,9 @@ export function ColonyApp() {
       }
       switch (e.code) {
         case "Space":
+          // UI.STATE.1 slice 1 — under the new HUD the world's clock is not a control (spec 170 §6):
+          // pause never stopped sol time, only the citizen sim, and the shortcut goes with the button.
+          if (!spacePausesSimRef.current) break;
           e.preventDefault();
           runtime.setPaused(!runtime.getUiState().paused);
           break;
@@ -1387,9 +1440,9 @@ export function ColonyApp() {
     });
   const worldLayoutDirty = Boolean(
     capturedWorldLayout &&
-      worldLayoutHead &&
-      capturedWorldLayout.revision.contentHash !==
-        worldLayoutHead.document.revision.contentHash,
+    worldLayoutHead &&
+    capturedWorldLayout.revision.contentHash !==
+      worldLayoutHead.document.revision.contentHash,
   );
   const worldLayoutOperatorStatus: WorldLayoutOperatorStatus = captureError
     ? "error"
@@ -1965,39 +2018,48 @@ export function ColonyApp() {
           <span>{ui.clock.isDay ? "☀" : "☾"}</span>
         </div>
         <div className="spacer" />
-        <div className="group">
-          <button
-            className={ui.paused ? "on" : ""}
-            onClick={() => runtime.setPaused(!ui.paused)}
-          >
-            {ui.paused ? "▶" : "❚❚"}
-          </button>
-          {[1, 2, 5].map((s) => (
+        {/* UI.STATE.1 slice 1 — the pause/speed group exists only on the legacy branch. Measured
+            (spec 170 §6): these gate the citizen-sim accumulator alone; sol time, the sky and the
+            buses never stopped. The runtime methods stay as debug API. */}
+        {topbar.showPauseSpeedGroup && (
+          <div className="group">
             <button
-              key={s}
-              className={!ui.paused && ui.speed === s ? "on" : ""}
-              onClick={() => {
-                runtime.setPaused(false);
-                runtime.setSpeed(s);
-              }}
+              className={ui.paused ? "on" : ""}
+              onClick={() => runtime.setPaused(!ui.paused)}
             >
-              {s}×
+              {ui.paused ? "▶" : "❚❚"}
             </button>
-          ))}
-        </div>
-        <div className="group">
-          <button
-            className={ui.race.mode !== "idle" ? "on" : ""}
-            disabled={!ui.race.available}
-            onClick={() => {
-              if (ui.race.mode === "idle") runtime.startRace();
-              else runtime.exitRace();
-            }}
-            title="Road Rally"
-          >
-            Road Rally
-          </button>
-        </div>
+            {[1, 2, 5].map((s) => (
+              <button
+                key={s}
+                className={!ui.paused && ui.speed === s ? "on" : ""}
+                onClick={() => {
+                  runtime.setPaused(false);
+                  runtime.setSpeed(s);
+                }}
+              >
+                {s}×
+              </button>
+            ))}
+          </div>
+        )}
+        {/* UI.STATE.1 slice 1 — on the new HUD the disabled-button state becomes absence: Road
+            Rally shows only where a race can actually start (spec 170 §5, the contextual slot). */}
+        {topbar.showRoadRally && (
+          <div className="group">
+            <button
+              className={ui.race.mode !== "idle" ? "on" : ""}
+              disabled={!ui.race.available}
+              onClick={() => {
+                if (ui.race.mode === "idle") runtime.startRace();
+                else runtime.exitRace();
+              }}
+              title="Road Rally"
+            >
+              Road Rally
+            </button>
+          </div>
+        )}
         {ui.rally?.ready && ui.race.mode === "idle" && (
           <div className="group">
             <button
@@ -2016,19 +2078,14 @@ export function ColonyApp() {
           >
             🐞 Log Bug
           </button>
-          <button
-            title="Save a PNG snapshot of the city"
-            onClick={() => {
-              const url = runtime.snapshot();
-              if (!url) return;
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `citylife-sol${ui.clock.sol}-${String(ui.clock.hour).padStart(2, "0")}${String(ui.clock.minute).padStart(2, "0")}.png`;
-              a.click();
-            }}
-          >
-            📷
-          </button>
+          {topbar.showInlineSnapshot && (
+            <button
+              title="Save a PNG snapshot of the city"
+              onClick={saveSnapshot}
+            >
+              📷
+            </button>
+          )}
         </div>
         <BuilderPanel
           runtime={runtime}
@@ -2036,32 +2093,48 @@ export function ColonyApp() {
           worldLayoutControls={worldLayoutControls}
           canBuild={canBuildCity}
         />
-        <div className="group">
-          <a
-            className="linkbtn"
-            href="/ask-kooker.html"
-            title="Open the Ask Kooker board"
-          >
-            Ask Kooker
-          </a>
-          {hasRealAccount && (
-            <button
-              title="Change your CityLife password"
-              onClick={() => setPwdChangeOpen(true)}
+        {topbar.showInlineAccountGroup && (
+          <div className="group">
+            <a
+              className="linkbtn"
+              href="/ask-kooker.html"
+              title="Open the Ask Kooker board"
             >
-              Change password
+              Ask Kooker
+            </a>
+            {hasRealAccount && (
+              <button
+                title="Change your CityLife password"
+                onClick={() => setPwdChangeOpen(true)}
+              >
+                Change password
+              </button>
+            )}
+            <button
+              title="Sign out of CityLife"
+              onClick={() => {
+                auth.logout();
+                window.location.reload();
+              }}
+            >
+              Log out
             </button>
-          )}
-          <button
-            title="Sign out of CityLife"
-            onClick={() => {
+          </div>
+        )}
+        {/* UI.STATE.1 slice 1 — the menu absorbs Ask Kooker / Change password / snapshot / Log out
+            on the new HUD, taking the bar from up to 14 interactive controls toward the 5-slot
+            target (spec 170 §5). */}
+        {topbar.showMenu && (
+          <TopbarMenu
+            hasRealAccount={hasRealAccount}
+            onChangePassword={() => setPwdChangeOpen(true)}
+            onLogout={() => {
               auth.logout();
               window.location.reload();
             }}
-          >
-            Log out
-          </button>
-        </div>
+            onSnapshot={saveSnapshot}
+          />
+        )}
       </header>
       <BusNetworkMiniMap runtime={runtime} />
       {/* BUG.GEO.1 — the presence readout (so any screenshot of this frame is self-locating) is
