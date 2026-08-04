@@ -1529,44 +1529,29 @@ export class ColonyRuntime {
     // coast + each hamlet). Anchored on each hood's carriage centroid; makeBusRoute snaps to the nearest
     // road cell and BFS-connects them into a closed circuit. Pure + deterministic; the render-loop bus
     // drives it. Computed AFTER all the roads are merged so every hood is reachable.
-    // Spec 088 — collect the remaining road centre-lines as ribbon ways (the trunk roads + connector
-    // already recorded themselves through layRoad): the founders' avenue spine, each hamlet spine, and
-    // the commercial high street. The smooth ribbon render draws these; traffic still uses the cells.
+    // Spec 088 / ROAD.NET.CANON.1 — collect the remaining road centre-lines through the SAME layRoad
+    // authority as the trunk roads, so the founders' avenue spine, each hamlet spine, commercial high
+    // street and cross street publish both drivable cells and rendered ways from one graph.
     //
     // These are RAW least-cost spines (cell-by-cell staircases), so unlike the trunk roads — which
     // layRoad STRING-PULLS into clean straight runs before recording — their ribbons wiggled and their
     // edge lines jittered into the ragged mess the operator saw along the founders' avenue. String-pull
-    // them the same way (simplifyPath: greedily straighten while line-of-sight stays road-able) so every
-    // ribbon centre-line, trunk or spine, is a clean polyline. Render-only: the road CELLS the traffic,
-    // bus and rally drive are untouched.
-    if (this.neighborhood.spine.length >= 2)
-      this.roadWays.push({
-        path: simplifyPath(this.neighborhood.spine),
-        kind: "avenue",
-        width: 4,
-      });
+    // them the same way (layRoad: simplifyPath plus the authoritative cell stroke) so every ribbon
+    // centre-line, trunk or spine, is a clean polyline backed by the drivable graph.
+    const publishAuthoredRoad = (
+      path: Cell[],
+      kind: "avenue" | "street",
+    ) => {
+      if (path.length < 2) return;
+      mergeAvenue(this.sim.state, layRoad(path, 1, kind));
+    };
+    publishAuthoredRoad(this.neighborhood.spine, "avenue");
     for (const s of satellites)
-      if (s.spine.length >= 2)
-        this.roadWays.push({
-          path: simplifyPath(s.spine),
-          kind: "street",
-          width: 4,
-        });
-    if (this.commercialDistrict && this.commercialDistrict.street.length >= 2)
-      this.roadWays.push({
-        path: simplifyPath(this.commercialDistrict.street),
-        kind: "avenue",
-        width: 4,
-      });
-    if (
-      this.commercialDistrict &&
-      this.commercialDistrict.crossStreet.length >= 2
-    )
-      this.roadWays.push({
-        path: this.commercialDistrict.crossStreet,
-        kind: "avenue",
-        width: 4,
-      });
+      publishAuthoredRoad(s.spine, "street");
+    if (this.commercialDistrict)
+      publishAuthoredRoad(this.commercialDistrict.street, "avenue");
+    if (this.commercialDistrict)
+      publishAuthoredRoad(this.commercialDistrict.crossStreet, "avenue");
     // Spec 127 — attach the centre-lines for the R3F ribbon renderer (the raceState
     // precedent: live object on sim.state, read by the React tree). Shared reference, so
     // later pushes (the rally spur) land in the same array the renderer reads.
@@ -1834,6 +1819,18 @@ export class ColonyRuntime {
       busAnchors,
     );
     if (this.busRoute) {
+      // ROAD.NET.CANON.1 — the bus route is planned over the authoritative drivable road graph, so
+      // publish that same graph path as an authored surface way before any downstream minimap,
+      // depot-siting, terrain-grading or renderer consumer reads `state.roadWays`. The authority flows
+      // one way: `roadKind`/`state.roads` define the logical road graph; ribbons are derived surfaces
+      // and must never be merged back into the drivable graph (their smoothed shoulders may legally
+      // graze beach/kerb cells that cars and route planning must not drive).
+      this.roadWays.push({
+        path: [...this.busRoute.loop, this.busRoute.loop[0]!],
+        kind: "avenue",
+        width: 4,
+        source: "transit-loop",
+      });
       const tr = COLONY.transit;
       const roadKeys = new Set(this.sim.state.roadKind.keys());
       const depotBlocked = new Set<string>([
