@@ -46,6 +46,8 @@ function surveyedPlacement(
   base: WorldLayoutDocument,
   valid: boolean,
 ): WorldLayoutPlacement {
+  if (valid) return seededPlacement(base);
+
   const orientations = ["n", "s", "e", "w"] as const;
   const candidates: {
     x: number;
@@ -104,6 +106,12 @@ function surveyedPlacement(
     };
   }
   throw new Error(`no ${valid ? "valid" : "invalid"} catalog survey fixture`);
+}
+
+function seededPlacement(base: WorldLayoutDocument): WorldLayoutPlacement {
+  const placement = base.placements[0];
+  if (!placement) throw new Error("no seeded catalog placement fixture");
+  return placement;
 }
 
 const vertical = (min: number, max: number) => ({
@@ -172,10 +180,8 @@ describe("world layout import runtime preflight", () => {
     const runtime = new ColonyRuntime(4242);
     const base = runtime.captureWorldLayout();
     runtime.hydrateWorldLayout(base);
-    const valid = surveyedPlacement(runtime, base, true);
-    const validImport = child(base, {
-      placements: [...base.placements, valid],
-    });
+    const valid = seededPlacement(base);
+    const validImport = child(base, { placements: base.placements });
     expect(
       validatedWorldLayoutImportSaveInput(
         serializeWorldLayoutDocument(validImport),
@@ -213,7 +219,12 @@ describe("world layout import runtime preflight", () => {
     const runtime = new ColonyRuntime(4242);
     const base = runtime.captureWorldLayout();
     runtime.hydrateWorldLayout(base);
-    const fixture = surveyedPlacement(runtime, base, true);
+    const fixture = seededPlacement(base);
+    const fixtureBase = child(base, {
+      placements: base.placements.filter(
+        (placement) => placement.id !== fixture.id,
+      ),
+    });
     const placement = genericPlacement(fixture, "placement:zz-reserved", 0, 10);
     const cell = placement.cells[0]!;
     const cases = [
@@ -223,8 +234,8 @@ describe("world layout import runtime preflight", () => {
     ] as const;
 
     for (const testCase of cases) {
-      const candidate = child(base, {
-        placements: [...base.placements, placement],
+      const candidate = child(fixtureBase, {
+        placements: [...fixtureBase.placements, placement],
         reservations: [
           {
             id: `reservation:${testCase.label}`,
@@ -248,7 +259,12 @@ describe("world layout import runtime preflight", () => {
     const runtime = new ColonyRuntime(4242);
     const base = runtime.captureWorldLayout();
     runtime.hydrateWorldLayout(base);
-    const fixture = surveyedPlacement(runtime, base, true);
+    const fixture = seededPlacement(base);
+    const fixtureBase = child(base, {
+      placements: base.placements.filter(
+        (placement) => placement.id !== fixture.id,
+      ),
+    });
     const lower = genericPlacement(fixture, "placement:zz-stack-a", 0, 10);
     const cases = [
       { label: "disjoint", min: 20, max: 30, accepted: true },
@@ -263,8 +279,8 @@ describe("world layout import runtime preflight", () => {
         testCase.min,
         testCase.max,
       );
-      const candidate = child(base, {
-        placements: [...base.placements, lower, upper],
+      const candidate = child(fixtureBase, {
+        placements: [...fixtureBase.placements, lower, upper],
       });
       if (testCase.accepted)
         expect(() => runtime.preflightWorldLayout(candidate)).not.toThrow();
