@@ -1896,6 +1896,59 @@ export class ColonyRuntime {
             spurKeys.add(k);
           }
         }
+        // ...but pinning a cell is not the same as CONNECTING it. `layRoad` refused these endpoints
+        // because `roadLandOk` rejected them, which means it also refused the cells AROUND them, so a
+        // bare pin can drop a drivable cell with no 4-neighbour at all — the exact "visual-only road
+        // fleet logic cannot enter" this pin exists to prevent, arrived at from the other side.
+        //
+        // Measured on seed 4242 with the ROAD.RIBBON.TURN.1 clamp: roadComponents reported 2
+        // components of sizes 4130 and 1, and the singleton was cell (497,243) with
+        // busDepotSpurCells membership true and waySource "depot-spur". The clamp changed the
+        // ribbon, which changed `conservativeRoadRibbonBlockedCells`, which moved the depot, which
+        // landed the gate on ground whose neighbours the land filter refuses.
+        //
+        // Nothing downstream repairs it: the spec 148 connectivity pass runs EARLIER in boot, so any
+        // cell the depot spur adds afterwards is never connectivity-checked. Bridge here instead —
+        // step 4-connected from the pinned endpoint to the nearest cell already in the spur, so the
+        // apron joins the graph rather than floating beside it. Cells added here inherit the pin's
+        // documented exemption from `roadLandOk`; the exemption is what makes the apron reachable.
+        const isConnected = (c: Cell) =>
+          spurKeys.has(`${c.x + 1},${c.y}`) ||
+          spurKeys.has(`${c.x - 1},${c.y}`) ||
+          spurKeys.has(`${c.x},${c.y + 1}`) ||
+          spurKeys.has(`${c.x},${c.y - 1}`) ||
+          this.sim.state.roadSet.has(`${c.x + 1},${c.y}`) ||
+          this.sim.state.roadSet.has(`${c.x - 1},${c.y}`) ||
+          this.sim.state.roadSet.has(`${c.x},${c.y + 1}`) ||
+          this.sim.state.roadSet.has(`${c.x},${c.y - 1}`);
+        for (const endpoint of [site.roadCell, site.gate]) {
+          if (isConnected(endpoint)) continue;
+          // Nearest already-laid spur cell, by Manhattan distance — the spur is a handful of cells,
+          // so a scan is cheaper and more predictable than a search structure.
+          let best: Cell | null = null;
+          let bestD = Infinity;
+          for (const c of spurCells) {
+            if (c.x === endpoint.x && c.y === endpoint.y) continue;
+            const d = Math.abs(c.x - endpoint.x) + Math.abs(c.y - endpoint.y);
+            if (d < bestD) {
+              bestD = d;
+              best = c;
+            }
+          }
+          if (!best) continue;
+          // L-shaped 4-connected walk: x first, then y. Deterministic, and short by construction.
+          let cx = endpoint.x;
+          let cy = endpoint.y;
+          while (cx !== best.x || cy !== best.y) {
+            if (cx !== best.x) cx += Math.sign(best.x - cx);
+            else cy += Math.sign(best.y - cy);
+            const bk = `${cx},${cy}`;
+            if (!spurKeys.has(bk)) {
+              spurCells.push({ x: cx, y: cy });
+              spurKeys.add(bk);
+            }
+          }
+        }
         mergeAvenue(this.sim.state, spurCells);
         // Spec 149 — the spur belongs to the BUSES. Fence it off from ambient car traffic (all its
         // cells except the loop junction) so a car never drives the dead-end into a maneuvering bus.

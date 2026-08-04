@@ -10,7 +10,7 @@
 // STANDING furniture (traffic lights + stop signs) that must never occupy asphalt.
 import { describe, it, expect } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
-import { chaikin, densify } from "../src/colony/render/roadRibbon";
+import { roadCentreLine } from "../src/colony/render/roadRibbon";
 import {
   findJunctionZones,
   junctionFurniture,
@@ -40,7 +40,7 @@ describe("spec 137 — boot-town furniture clearance", () => {
       const rt = new ColonyRuntime(seed);
       const ways = rt.sim.state.roadWays!;
       const smoothed = ways.map((w) =>
-        w.path.length >= 2 ? densify(chaikin(w.path, 2), 1.5) : null,
+        w.path.length >= 2 ? roadCentreLine(w.path, 1.5) : null,
       );
       // how many carriageways contain this point (with a small clearance margin)
       const containedBy = (px: number, py: number) => {
