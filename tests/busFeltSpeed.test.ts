@@ -35,14 +35,29 @@ function liveGeometry(): FleetGeometry {
   return geom!;
 }
 
-/** Stop-to-stop leg lengths (cells) around one lap — the distances a rider actually travels. */
+/** Stop-to-stop leg lengths (cells) around one lap — the distances a rider actually travels.
+ *
+ * The last leg WRAPS PAST THE JOIN to the first stop. The join is where the depot spur meets the
+ * loop; it is not a halt, and a rider aboard does not get out there. Ending the last leg at
+ * `loopLen` invents a stop that does not exist, and splits one real leg into two.
+ *
+ * That is not hypothetical — it produced a false failure. Relocating the bus depot rotates the join
+ * around the loop without moving a single stop. Measured on the boot seed, before and after such a
+ * move, `stopsFromJoin` re-indexes against the new join:
+ *
+ *   join at 1718.5   stops  83.6  802.9 1079.9 1316.4 1549.4   -> naive legs ... 249.0
+ *   join at   89.5   stops 633.4  910.4 1146.9 1380.0 1712.6   -> naive legs ...  85.8
+ *
+ * Identical service, identical stop spacing — but the naive last leg reads 85.8 cells, dwell then
+ * dominates it, and the suite reports the bus as slower than a sprinting player. Wrapping gives the
+ * SAME set both ways: {719.2, 277.0, 236.5, 233.1, 332.6}. */
 function legCells(geom: FleetGeometry): number[] {
   const stops = geom.stopsFromJoin;
   expect(stops.length).toBeGreaterThan(1);
   const legs: number[] = [];
   for (let i = 0; i < stops.length; i++) {
     const a = stops[i]!;
-    const b = i + 1 < stops.length ? stops[i + 1]! : geom.loopLen;
+    const b = i + 1 < stops.length ? stops[i + 1]! : geom.loopLen + stops[0]!; // wrap past the join to the first stop
     legs.push(b - a);
   }
   return legs;
