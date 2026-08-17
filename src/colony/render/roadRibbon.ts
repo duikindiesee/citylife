@@ -459,12 +459,43 @@ export function buildRoadRibbons(
   return { group, cells };
 }
 
-/** Corner-cutting smoothing: each iteration replaces every segment with its 1/4 and 3/4 points, so
- *  staircases round off into smooth curves. Endpoints are kept. Exported (spec 127) so the
- *  junction detector sees exactly the centre-lines the ribbon draws. */
+/** ROAD.RIBBON.TURN.1 — the furthest (in CELLS) a smoothed corner is allowed to travel from the
+ *  routed centre-line it is rounding. Textbook Chaikin cuts a QUARTER off every segment, so the
+ *  distance a corner moves scales with the length of its arms. That is fine for a BFS staircase
+ *  (one-cell segments -> a quarter-cell cut) but ruinous here: `way.path` is string-pulled
+ *  (runtime.ts simplifyPath), so a hundred-cell road can be four points and a single bend then
+ *  swings tens of cells off the asphalt. Clamping the cut to a fixed distance gives every corner
+ *  the same small fillet regardless of arm length and leaves long straight runs dead straight.
+ *
+ *  This is the render-side twin of the bus-route turn fix: the drivable cells are rasterised
+ *  straight onto `way.path` (runtime.ts layRoad), so any bow is the ribbon leaving the road it is
+ *  supposed to be paving — asphalt cutting the corner across open ground while the cell road
+ *  underneath goes the other way. 1 cell = 4 m, about a real kerb radius. */
+export const MAX_CORNER_CUT_CELLS = 1.0;
+
+/** Iterations of corner cutting the road network smooths with. Three, not the textbook two: the
+ *  clamp confines each pass to a ~1-cell fillet, so the extra pass is what puts enough vertices
+ *  THROUGH that fillet for it to read as a curve rather than a chamfer. */
+export const ROAD_SMOOTH_ITERATIONS = 3;
+
+/** How far along a segment of length `len` the corner points sit. The textbook quarter, except on
+ *  segments long enough that a quarter would exceed `maxCut` — there it is whatever fraction lands
+ *  exactly `maxCut` from each end. Never above 1/4, so the two cut points can't cross. */
+function cutFraction(len: number, maxCut: number): number {
+  if (!(len > 1e-9)) return 0.25;
+  return Math.min(0.25, maxCut / len);
+}
+
+/** Corner-cutting smoothing: each iteration replaces every segment with two interior points, so
+ *  staircases and routed bends round off into smooth curves. Endpoints are kept, and each corner
+ *  moves at most `maxCut` cells (see MAX_CORNER_CUT_CELLS) — the cut points sit `maxCut` from the
+ *  corner, so the whole rounded corner lives inside that triangle and every later pass only cuts
+ *  further inside it. Exported (spec 127) so the junction detector sees exactly the centre-lines
+ *  the ribbon draws. */
 export function chaikin(
   path: { x: number; y: number }[],
   iterations: number,
+  maxCut: number = MAX_CORNER_CUT_CELLS,
 ): { x: number; y: number }[] {
   let pts = path.map((p) => ({ x: p.x, y: p.y }));
   for (let it = 0; it < iterations; it++) {
@@ -472,13 +503,26 @@ export function chaikin(
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!,
         b = pts[i + 1]!;
-      out.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 });
-      out.push({ x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 });
+      const dx = b.x - a.x,
+        dy = b.y - a.y;
+      const f = cutFraction(Math.hypot(dx, dy), maxCut);
+      out.push({ x: a.x + dx * f, y: a.y + dy * f });
+      out.push({ x: a.x + dx * (1 - f), y: a.y + dy * (1 - f) });
     }
     out.push(pts[pts.length - 1]!);
     pts = out;
   }
   return pts;
+}
+
+/** THE road network centre-line: the one smoothing every consumer must agree on. The ribbon mesh,
+ *  the grading stencil, the junction detector and the furniture clearance all measure against the
+ *  same curve, so they all go through here. `step` is only the station density each consumer needs. */
+export function roadCentreLine(
+  path: { x: number; y: number }[],
+  step: number,
+): { x: number; y: number }[] {
+  return densify(chaikin(path, ROAD_SMOOTH_ITERATIONS), step);
 }
 
 /** Insert points along a polyline so no segment is longer than `step`. Keeps the surface stations close
@@ -504,11 +548,16 @@ export function densify(
   return out;
 }
 
-/** Select the visible centre-line for one routed way. Chaikin makes long roads read naturally, but
+/** Select the visible centre-line for one routed way. Smoothing makes long roads read naturally, but
  * it cuts inside corners and can therefore bow a legally routed land path across a narrow inlet.
  * The mesh guard then omits those water-touching segments, producing a visible road gap while the
  * simulation remains connected. Keep smoothing only when its dense samples remain dry; otherwise
- * render the already land-routed source polyline at the same station density. */
+ * render the already land-routed source polyline at the same station density.
+ *
+ * ROAD.RIBBON.TURN.1 clamped the corner cut, so a corner now leaves the routed line by under half a
+ * cell and this fallback fires far more rarely — a smooth ribbon survives where the whole way used
+ * to be dropped back to raw string-pulled segments. It stays as the guard for the case the clamp
+ * cannot rule out: a routed road running the shoreline, where even a small fillet reaches wet ground. */
 export function roadRibbonRenderPath(
   way: RoadWay,
   terrain: Terrain,
@@ -517,7 +566,7 @@ export function roadRibbonRenderPath(
   // Stations at STATION_STEP_CELLS, not 1.5: the drape sampler only sees 0.6 cells around a vertex,
   // so 1.5-cell stations left a band of ground between cross-sections that nothing sampled and a
   // crest there pushed through the road. See roadClearance.ts.
-  const smooth = densify(chaikin(way.path, 2), STATION_STEP_CELLS);
+  const smooth = roadCentreLine(way.path, STATION_STEP_CELLS);
   for (let i = 0; i < smooth.length - 1; i++) {
     const a = smooth[i]!,
       b = smooth[i + 1]!;
