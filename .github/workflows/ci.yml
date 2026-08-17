@@ -32,7 +32,8 @@ jobs:
       - run: npm ci
       - run: npx playwright install chromium
       - run: npm run typecheck
-      - run: npm test
+      - run: npm run test:ci
+        timeout-minutes: 35
       - run: npm run test:e2e
       # Explicit step-level bound (PLAYER.MOBILE.E2E.1): the mobile/touch harness has its own
       # 90s whole-test timeout and a wrapper-enforced OS-level process-tree kill, but this step
