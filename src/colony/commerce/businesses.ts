@@ -362,7 +362,10 @@ export function assignBusinesses(
   }
 
   const secondaryCap = SECONDARY_ORDER.length;
-  const pickNext = (start: number, prev?: BusinessId): { id: BusinessId; nextStart: number } => {
+  const pickNext = (
+    start: number,
+    prev?: BusinessId,
+  ): { id: BusinessId; nextStart: number } => {
     for (let d = 0; d < secondaryCap; d++) {
       const id = SECONDARY_ORDER[(start + d) % secondaryCap] as BusinessId;
       const count = counts.get(id) ?? 0;
