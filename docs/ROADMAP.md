@@ -89,7 +89,7 @@
 
 ### Role-gated task/epic creation (S3.5)
 
-- **Next** ○ `TaskCreatePolicy` + per-role capability table · Riaan files work via role, not GitHub write (see plan Part 10)
+- **Next** ○ `TaskCreatePolicy` + per-role capability table · external collaborators file work via role, not GitHub write (see plan Part 10)
 
 ### Living World (G1–G3)
 
