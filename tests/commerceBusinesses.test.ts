@@ -50,6 +50,27 @@ describe("commerce businesses (themed app storefronts)", () => {
     for (const count of counts.values()) expect(count).toBeLessThanOrEqual(2);
   }, 20000);
 
+  it("caps secondary storefront repetition at two placements on long strips", () => {
+    const kinds: Array<"showroom" | "store" | "kiosk"> = [
+      "showroom",
+      "store",
+      "kiosk",
+    ];
+    const parcels = Array.from({ length: 40 }, (_, i) => ({
+      id: `shop_${i}`,
+      kind: kinds[i % kinds.length]!,
+    }));
+    const assigned = assignBusinesses(parcels);
+
+    const ids = parcels.map((p) => assigned[p.id] as BusinessId);
+    const counts = new Map<BusinessId, number>();
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+
+    for (const count of counts.values()) expect(count).toBeLessThanOrEqual(2);
+    for (let i = 1; i < ids.length; i++) expect(ids[i]).not.toBe(ids[i - 1]);
+    for (const id of ids) expect(BUSINESSES[id]).toBeTruthy();
+  });
+
   it("marks every authored storefront identity as public-safe metadata", () => {
     for (const b of Object.values(BUSINESSES))
       expect(b.isPublicSafe).toBe(true);

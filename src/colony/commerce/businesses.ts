@@ -336,10 +336,12 @@ const SECONDARY_ORDER: BusinessId[] = [
 ];
 const KIND_RANK: Record<ShopKind, number> = { showroom: 0, store: 1, kiosk: 2 };
 const shopIdx = (id: string) => parseInt(id.split("_")[1] ?? "0", 10);
+const MAX_APPEARANCES = 2;
 
 /** Assign a business to every surveyed plot: marquee apps still claim the biggest plots first, but the
  *  visible strip no longer collapses to repeated generic names. Secondary identities cycle through a
- *  larger authored roster and avoid immediate-neighbour repeats in parcel order. */
+ *  larger authored roster, avoid immediate-neighbour repeats in parcel order, and limit repeat
+ *  appearance to 2 per name so a single storefront identity cannot over-dominate the strip. */
 export function assignBusinesses(
   parcels: { id: string; kind: ShopKind }[],
 ): Record<string, BusinessId> {
@@ -348,10 +350,43 @@ export function assignBusinesses(
       KIND_RANK[a.kind] - KIND_RANK[b.kind] || shopIdx(a.id) - shopIdx(b.id),
   );
   const out: Record<string, BusinessId> = {};
+  const counts = new Map<BusinessId, number>();
+
   let m = 0;
   for (const p of sorted) {
-    if (m < MARQUEE_ORDER.length) out[p.id] = MARQUEE_ORDER[m++]!;
+    if (m < MARQUEE_ORDER.length) {
+      const id = MARQUEE_ORDER[m++];
+      out[p.id] = id;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
   }
+
+  const secondaryCap = SECONDARY_ORDER.length;
+  const pickNext = (start: number, prev?: BusinessId): { id: BusinessId; nextStart: number } => {
+    for (let d = 0; d < secondaryCap; d++) {
+      const id = SECONDARY_ORDER[(start + d) % secondaryCap] as BusinessId;
+      const count = counts.get(id) ?? 0;
+      if (id !== prev && count < MAX_APPEARANCES) {
+        return { id, nextStart: start + d + 1 };
+      }
+    }
+
+    for (let d = 0; d < secondaryCap; d++) {
+      const id = SECONDARY_ORDER[(start + d) % secondaryCap] as BusinessId;
+      const count = counts.get(id) ?? 0;
+      if (count < MAX_APPEARANCES) {
+        return { id, nextStart: start + d + 1 };
+      }
+      if (id !== prev) {
+        return { id, nextStart: start + d + 1 };
+      }
+    }
+
+    return {
+      id: SECONDARY_ORDER[0] as BusinessId,
+      nextStart: start + 1,
+    };
+  };
 
   let s = 0;
   const ordered = [...parcels].sort((a, b) => shopIdx(a.id) - shopIdx(b.id));
@@ -359,13 +394,10 @@ export function assignBusinesses(
     const p = ordered[i]!;
     if (out[p.id]) continue;
     const prev = i > 0 ? out[ordered[i - 1]!.id] : undefined;
-    let next = SECONDARY_ORDER[s % SECONDARY_ORDER.length]!;
-    if (next === prev) {
-      s++;
-      next = SECONDARY_ORDER[s % SECONDARY_ORDER.length]!;
-    }
-    out[p.id] = next;
-    s++;
+    const choice = pickNext(s, prev);
+    out[p.id] = choice.id;
+    s = choice.nextStart;
+    counts.set(choice.id, (counts.get(choice.id) ?? 0) + 1);
   }
   return out;
 }
