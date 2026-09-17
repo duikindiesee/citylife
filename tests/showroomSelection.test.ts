@@ -86,4 +86,17 @@ describe("showroom catalog and specification card", () => {
       expect(isPublicSafe(v.blurb)).toBe(true);
     }
   });
+
+  it("offers the Karoo X19 Targa with GLB asset and distinctive stats", () => {
+    const x19 = SHOWROOM_VEHICLES.find((v) => v.spec.id === "showroom:karoo-x19-targa");
+    expect(x19).toBeDefined();
+    const card = showroomCardModel(x19!);
+    expect(card.name).toBe("Karoo X19 Targa");
+    expect(card.vehicleClass).toBe("Heritage sports targa");
+    expect(card.priceLabel).toBe("₭950 · planned");
+    expect(x19!.glbUrl).toBe("/assets/citylife/cars/fiat_x19.glb");
+    expect(x19!.presentationScale).toBe(0.56);
+    expect(x19!.rotationOffset).toEqual([0, -Math.PI / 2, 0]);
+    expect(x19!.spec.stats.grip).toBe(0.85);
+  });
 });

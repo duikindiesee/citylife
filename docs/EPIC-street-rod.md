@@ -253,6 +253,7 @@ Every research doc and working plan captured so the research survives the cron j
 
 ### Remains (in-lane, not gated)
 
+- **Showroom vehicle selection — Yellow Fiat X1/9 GLB (modern_car.glb / Karoo X19 Targa, spec 169):** Authored 3D model (`modern_car.glb` placed at `public/assets/citylife/cars/fiat_x19.glb`) added to `SHOWROOM_VEHICLES` as `showroom:karoo-x19-targa` (fictional Karoo Motors marque). Rendered on the rotating showroom plinth in `ShowroomView.tsx` with scaling (0.56) and orientation, selectable via carousel overlay.
 - Visual hood-raise (F2, deferred until CDP screenshots work).
 - Car rename (isPublicSafe text input).
 - More parts / body styles, UX polish.

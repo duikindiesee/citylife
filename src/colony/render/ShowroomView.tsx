@@ -7,13 +7,17 @@
 //
 // The environment map in showroomEnvironment.tsx is load-bearing, not decoration: without it the car's
 // metalness deletes albedo instead of adding sheen, which is why the paint used to read as primer.
-import { useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { useGLTF } from "@react-three/drei";
 import * as THREE from "three";
 import { buildCarMesh } from "../car/carMesh";
+import type { CarSpec } from "../car/carSpec";
 import type { ShowroomVehicle } from "../showroom/showroomCatalog";
 import { clampShowroomZoom } from "../showroom/showroomState";
 import { ShowroomEnvironment, ShowroomSky } from "./showroomEnvironment";
+
+useGLTF.preload("/assets/citylife/cars/fiat_x19.glb");
 
 /** Plinth turntable speed, radians per second — slow enough to read the car. */
 const TURNTABLE_RATE = 0.45;
@@ -27,9 +31,53 @@ const CAR_PRESENTATION_SCALE = 2.4;
 const PLINTH_RADIUS = 1.7;
 const PLINTH_HEIGHT = 0.14;
 
-function TurntableCar({ vehicle }: { vehicle: ShowroomVehicle }) {
-  const group = useRef<THREE.Group>(null);
-  const car = useMemo(() => buildCarMesh(vehicle.spec), [vehicle]);
+function GlbTurntableCarModel({
+  url,
+  scale = 0.56,
+  rotationOffset = [0, -Math.PI / 2, 0],
+}: {
+  url: string;
+  scale?: number;
+  rotationOffset?: readonly [number, number, number];
+}) {
+  const { scene } = useGLTF(url);
+  const cloned = useMemo(() => {
+    const c = scene.clone(true);
+    c.traverse((node) => {
+      if ((node as THREE.Mesh).isMesh) {
+        node.castShadow = true;
+        node.receiveShadow = true;
+      }
+    });
+    return c;
+  }, [scene]);
+
+  useEffect(
+    () => () => {
+      cloned.traverse((o) => {
+        if (o instanceof THREE.Mesh) {
+          o.geometry.dispose();
+          const m = o.material;
+          if (Array.isArray(m)) m.forEach((mm) => mm.dispose());
+          else if (m) m.dispose();
+        }
+      });
+    },
+    [cloned],
+  );
+
+  return (
+    <primitive
+      object={cloned}
+      scale={[scale, scale, scale]}
+      rotation={[rotationOffset[0], rotationOffset[1], rotationOffset[2]]}
+      position={[0, 0, 0]}
+    />
+  );
+}
+
+function ProceduralTurntableCarModel({ spec }: { spec: CarSpec }) {
+  const car = useMemo(() => buildCarMesh(spec), [spec]);
   useEffect(
     () => () => {
       car.traverse((o) => {
@@ -43,6 +91,12 @@ function TurntableCar({ vehicle }: { vehicle: ShowroomVehicle }) {
     },
     [car],
   );
+
+  return <primitive object={car} scale={CAR_PRESENTATION_SCALE} />;
+}
+
+function TurntableCar({ vehicle }: { vehicle: ShowroomVehicle }) {
+  const group = useRef<THREE.Group>(null);
   useFrame((_, delta) => {
     if (group.current) group.current.rotation.y += delta * TURNTABLE_RATE;
   });
@@ -109,9 +163,18 @@ function TurntableCar({ vehicle }: { vehicle: ShowroomVehicle }) {
       <group
         name="showroomCar"
         position={[0, PLINTH_HEIGHT, 0]}
-        scale={CAR_PRESENTATION_SCALE}
       >
-        <primitive object={car} />
+        <Suspense fallback={null}>
+          {vehicle.glbUrl ? (
+            <GlbTurntableCarModel
+              url={vehicle.glbUrl}
+              scale={vehicle.presentationScale}
+              rotationOffset={vehicle.rotationOffset}
+            />
+          ) : (
+            <ProceduralTurntableCarModel spec={vehicle.spec} />
+          )}
+        </Suspense>
       </group>
     </group>
   );
