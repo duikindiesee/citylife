@@ -129,6 +129,17 @@ test("garage showroom: exterior fit, interior plinth, two-vehicle selection", as
   const b = fs.readFileSync(kaapPng);
   expect(a.equals(b)).toBe(false);
 
+  // Advance to Karoo X19 Targa (the yellow wedge targa).
+  await page.click('[data-build-action="showroom-next"]');
+  await expect(page.locator('[data-testid="showroom-card-name"]')).toHaveText(
+    "Karoo X19 Targa",
+  );
+  await page.waitForTimeout(1200);
+
+  const x19Png = path.join(EVIDENCE_DIR, "player-garage1-showroom-x19.png");
+  await page.screenshot({ path: x19Png });
+  assertNonBlank(x19Png);
+
   // Selection wraps: right from the last vehicle returns to the first.
   await page.click('[data-build-action="showroom-next"]');
   await expect(page.locator('[data-testid="showroom-card-name"]')).toHaveText(
