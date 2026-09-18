@@ -221,6 +221,13 @@ test("garage showroom on mobile touch: reachable portal, non-blank interior, tou
   // The two interior screenshots must differ (different car, different card).
   expect(fs.readFileSync(vonkPng).equals(fs.readFileSync(kaapPng))).toBe(false);
 
+  // Advance touch selection to Karoo X19 Targa.
+  await touchTap(page, '[data-build-action="showroom-next"]');
+  await expect(page.locator('[data-testid="showroom-card-name"]')).toHaveText(
+    "Karoo X19 Targa",
+    { timeout: ASSERT_TIMEOUT },
+  );
+
   // Selection wraps by touch: next from the last vehicle returns to the first.
   await touchTap(page, '[data-build-action="showroom-next"]');
   await expect(page.locator('[data-testid="showroom-card-name"]')).toHaveText(

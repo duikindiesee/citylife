@@ -15,6 +15,12 @@ export interface ShowroomVehicle {
   readonly plannedPriceK: number;
   /** One-line character blurb for the card. */
   readonly blurb: string;
+  /** Optional custom 3D model asset URL (e.g. GLB) rendered on the plinth. */
+  readonly glbUrl?: string;
+  /** Optional scale factor for presentation on the showroom plinth. Defaults to 0.56 if glbUrl provided. */
+  readonly presentationScale?: number;
+  /** Optional rotation offset [x, y, z] in radians. */
+  readonly rotationOffset?: readonly [number, number, number];
 }
 
 const VONK_STATS: CarStatVector = {
@@ -31,7 +37,14 @@ const KAAP_STATS: CarStatVector = {
   braking: 0.62,
 };
 
-/** The two launch vehicles. Order is the carousel order. */
+const X19_STATS: CarStatVector = {
+  topSpeed: 0.65,
+  acceleration: 0.62,
+  grip: 0.85,
+  braking: 0.72,
+};
+
+/** The showroom catalog vehicles. Order is the carousel order. */
 export const SHOWROOM_VEHICLES: readonly ShowroomVehicle[] = [
   {
     spec: {
@@ -58,6 +71,22 @@ export const SHOWROOM_VEHICLES: readonly ShowroomVehicle[] = [
     vehicleClass: "Heritage V8 coupe",
     plannedPriceK: 2400,
     blurb: "The aspirational eight — thunder for the coast road.",
+  },
+  {
+    spec: {
+      id: "showroom:karoo-x19-targa",
+      name: "Karoo X19 Targa",
+      stats: X19_STATS,
+      paint: { body: 0xf5cf0a, cabin: 0x08080a, accent: 0x111115 },
+      parts: [],
+    },
+    publicName: "Karoo X19 Targa",
+    vehicleClass: "Heritage sports targa",
+    plannedPriceK: 950,
+    blurb: "A mid-engine wedge targa: agile poise, pop-up lights, built for the winding mountain pass.",
+    glbUrl: "/assets/citylife/cars/fiat_x19.glb",
+    presentationScale: 0.56,
+    rotationOffset: [0, -Math.PI / 2, 0],
   },
 ] as const;
 
