@@ -52,23 +52,12 @@ function GlbTurntableCarModel({
     return c;
   }, [scene]);
 
-  useEffect(
-    () => () => {
-      cloned.traverse((o) => {
-        if (o instanceof THREE.Mesh) {
-          o.geometry.dispose();
-          const m = o.material;
-          if (Array.isArray(m)) m.forEach((mm) => mm.dispose());
-          else if (m) m.dispose();
-        }
-      });
-    },
-    [cloned],
-  );
-
+  // Retain loader ownership: do not dispose shared cache-owned geometries/materials.
+  // Explicitly suppress R3F automatic disposal via dispose={null}.
   return (
     <primitive
       object={cloned}
+      dispose={null}
       scale={[scale, scale, scale]}
       rotation={[rotationOffset[0], rotationOffset[1], rotationOffset[2]]}
       position={[0, 0, 0]}

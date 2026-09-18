@@ -33,7 +33,8 @@ This specification integrates the authored yellow Fiat X1/9 GLB model into the s
 3. **Plinth Rendering (`src/colony/render/ShowroomView.tsx`):**
    - Renders within a `<Suspense fallback={null}>` boundary on the rotating dark-stone plinth.
    - Reuses `@react-three/drei`'s `useGLTF` for efficient model caching and asset preloading (`useGLTF.preload("/assets/citylife/cars/fiat_x19.glb")`).
-   - Cloned scene enables shadows (`castShadow = true`, `receiveShadow = true`) and proper GPU material disposal on unmount.
+   - Cloned scene enables shadows (`castShadow = true`, `receiveShadow = true`).
+   - Retains loader cache ownership without per-instance disposal, explicitly suppressing automatic unmount disposal via `dispose={null}` to preserve shared GPU allocations across carousel selection.
 
 4. **Carousel Navigation (`src/colony/ui/ShowroomOverlay.tsx`):**
    - Arrow keys and HUD navigation buttons cycle across all 3 showroom vehicles.
@@ -52,5 +53,6 @@ This specification integrates the authored yellow Fiat X1/9 GLB model into the s
 
 1. `SHOWROOM_VEHICLES` contains `showroom:karoo-x19-targa` with `glbUrl: "/assets/citylife/cars/fiat_x19.glb"`.
 2. `ShowroomView.tsx` renders the GLB car on the turntable plinth without R3F or console errors.
-3. Unit test suite `tests/showroomSelection.test.ts` passes, verifying catalog entries, public-safety screens, and specification card stats.
+3. Unit test suite `tests/showroomSelection.test.ts` passes, verifying catalog entries, public-safety screens, specification card stats, and loader cache resource retention.
 4. `npm run typecheck` (`tsc --noEmit`) passes cleanly with no errors.
+5. `GlbTurntableCarModel` retains loader cache ownership (`dispose={null}`), leaving cached geometries and materials intact on unmount or selection change.

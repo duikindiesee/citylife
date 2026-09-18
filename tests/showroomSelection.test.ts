@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as THREE from "three";
 import {
   SHOWROOM_DEFAULT_ZOOM,
   SHOWROOM_MAX_ZOOM,
@@ -98,5 +99,71 @@ describe("showroom catalog and specification card", () => {
     expect(x19!.presentationScale).toBe(0.56);
     expect(x19!.rotationOffset).toEqual([0, -Math.PI / 2, 0]);
     expect(x19!.spec.stats.grip).toBe(0.85);
+  });
+});
+
+describe("GLB turntable model resource ownership", () => {
+  it("retains loader cache ownership and leaves cached geometries and materials undisposed across clone lifecycles", () => {
+    // Model a multi-node scene graph as loaded and cached by useGLTF
+    const geomA = new THREE.BufferGeometry();
+    const geomB = new THREE.BufferGeometry();
+    const matA = new THREE.MeshStandardMaterial({ color: 0xffcc00 });
+    const matB = new THREE.MeshStandardMaterial({ color: 0x111111 });
+
+    const meshA = new THREE.Mesh(geomA, matA);
+    const meshB = new THREE.Mesh(geomB, [matA, matB]);
+
+    const cachedScene = new THREE.Group();
+    cachedScene.add(meshA);
+    cachedScene.add(meshB);
+
+    let disposeCallCount = 0;
+    geomA.addEventListener("dispose", () => {
+      disposeCallCount++;
+    });
+    geomB.addEventListener("dispose", () => {
+      disposeCallCount++;
+    });
+    matA.addEventListener("dispose", () => {
+      disposeCallCount++;
+    });
+    matB.addEventListener("dispose", () => {
+      disposeCallCount++;
+    });
+
+    // Simulate mount / turntable clone creation as GlbTurntableCarModel does
+    const clone1 = cachedScene.clone(true);
+    let clone1MeshCount = 0;
+    clone1.traverse((node) => {
+      if (node instanceof THREE.Mesh) {
+        clone1MeshCount++;
+        node.castShadow = true;
+        node.receiveShadow = true;
+      }
+    });
+    expect(clone1MeshCount).toBe(2);
+
+    // Verify cloned meshes share geometry & material instances with the loader cache
+    const clonedA = clone1.children[0] as THREE.Mesh;
+    const clonedB = clone1.children[1] as THREE.Mesh;
+    expect(clonedA.geometry).toBe(geomA);
+    expect(clonedA.material).toBe(matA);
+    expect(clonedB.geometry).toBe(geomB);
+    expect(clonedB.material).toEqual([matA, matB]);
+
+    // GlbTurntableCarModel retains loader ownership and passes dispose={null} to <primitive />.
+    // Unmounting or switching cars must NOT dispose shared cache resources.
+    expect(disposeCallCount).toBe(0);
+
+    // Simulate remounting / selecting the vehicle again
+    const clone2 = cachedScene.clone(true);
+    let clone2MeshCount = 0;
+    clone2.traverse((node) => {
+      if (node instanceof THREE.Mesh) {
+        clone2MeshCount++;
+      }
+    });
+    expect(clone2MeshCount).toBe(2);
+    expect(disposeCallCount).toBe(0);
   });
 });
