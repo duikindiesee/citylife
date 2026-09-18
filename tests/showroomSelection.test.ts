@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import * as THREE from "three";
 import {
   SHOWROOM_DEFAULT_ZOOM,
@@ -14,6 +16,146 @@ import {
 } from "../src/colony/showroom/showroomCatalog";
 import { safeCarSpec } from "../src/colony/car/carSpec";
 import { isPublicSafe } from "../src/colony/newcomers";
+
+// Instrumented cached GLTF scene for lifecycle testing
+const mockCachedScene = new THREE.Group();
+const mockGeomA = new THREE.BufferGeometry();
+const mockGeomB = new THREE.BufferGeometry();
+const mockMatA = new THREE.MeshStandardMaterial({ color: 0xffcc00 });
+const mockMatB = new THREE.MeshStandardMaterial({ color: 0x111111 });
+const mockMeshA = new THREE.Mesh(mockGeomA, mockMatA);
+const mockMeshB = new THREE.Mesh(mockGeomB, [mockMatA, mockMatB]);
+mockCachedScene.add(mockMeshA, mockMeshB);
+
+vi.mock("@react-three/drei", () => {
+  const useGLTF = Object.assign(
+    vi.fn(() => ({ scene: mockCachedScene })),
+    {
+      preload: vi.fn(),
+      clear: vi.fn(),
+    },
+  );
+  return {
+    useGLTF,
+    Environment: ({ children }: { children?: React.ReactNode }) => children ?? null,
+  };
+});
+
+vi.mock("@react-three/fiber", () => ({
+  Canvas: ({ children }: { children?: React.ReactNode }) => children ?? null,
+  useFrame: vi.fn(),
+  useThree: vi.fn((selector) => {
+    const state = {
+      camera: new THREE.PerspectiveCamera(),
+    };
+    return typeof selector === "function" ? selector(state) : state;
+  }),
+}));
+
+import { ShowroomView } from "../src/colony/render/ShowroomView";
+
+function setupMountedDOM() {
+  (
+    globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+
+  class MockHTMLElement {}
+  for (const type of [
+    "Element",
+    "HTMLElement",
+    "HTMLCanvasElement",
+    "HTMLDivElement",
+    "HTMLButtonElement",
+    "HTMLInputElement",
+    "HTMLTextAreaElement",
+    "HTMLSelectElement",
+    "HTMLIFrameElement",
+    "HTMLAnchorElement",
+    "HTMLImageElement",
+    "HTMLSpanElement",
+    "SVGElement",
+  ]) {
+    (globalThis as Record<string, unknown>)[type] = class extends MockHTMLElement {};
+  }
+
+  let mockDoc: Record<string, unknown>;
+  const createMockNode = (tag: string) => {
+    const nodeListeners = new Map<string, Set<(e: unknown) => void>>();
+    const node: Record<string, unknown> = {
+      tagName: tag.toUpperCase(),
+      clientWidth: 800,
+      clientHeight: 600,
+      style: {},
+      children: [] as unknown[],
+      parentNode: null,
+      ownerDocument: mockDoc,
+      nodeType: 1,
+      getAttribute: (attr: string) =>
+        (node[attr] as unknown) ?? (node[`data-${attr}`] as unknown) ?? null,
+      setAttribute: (attr: string, val: string) => {
+        node[attr] = val;
+      },
+      removeAttribute: (attr: string) => {
+        delete node[attr];
+      },
+      hasAttribute: (attr: string) => node[attr] != null,
+      addEventListener: (evt: string, fn: (e: unknown) => void) => {
+        if (!nodeListeners.has(evt)) nodeListeners.set(evt, new Set());
+        nodeListeners.get(evt)!.add(fn);
+      },
+      removeEventListener: (evt: string, fn: (e: unknown) => void) => {
+        nodeListeners.get(evt)?.delete(fn);
+      },
+      dispatchEvent: () => {},
+      appendChild: (child: Record<string, unknown>) => {
+        child.parentNode = node;
+        (node.children as unknown[]).push(child);
+        return child;
+      },
+      removeChild: (child: Record<string, unknown>) => {
+        const arr = node.children as unknown[];
+        const idx = arr.indexOf(child);
+        if (idx !== -1) arr.splice(idx, 1);
+        child.parentNode = null;
+        return child;
+      },
+      insertBefore: (newChild: Record<string, unknown>, refChild: unknown) => {
+        const arr = node.children as unknown[];
+        const idx = arr.indexOf(refChild);
+        if (idx !== -1) arr.splice(idx, 0, newChild);
+        else arr.push(newChild);
+        newChild.parentNode = node;
+        return newChild;
+      },
+    };
+    return node;
+  };
+
+  mockDoc = {
+    nodeType: 9,
+    createElement: (tag: string) => createMockNode(tag),
+    createElementNS: (_ns: string, tag: string) => createMockNode(tag),
+    createTextNode: (text: string) => ({ nodeType: 3, nodeValue: text }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => {},
+    body: createMockNode("body"),
+  };
+  (mockDoc.body as Record<string, unknown>).ownerDocument = mockDoc;
+
+  const g = globalThis as Record<string, unknown>;
+  g.window = globalThis;
+  g.document = mockDoc;
+  try {
+    Object.defineProperty(globalThis, "navigator", {
+      value: { userAgent: "node" },
+      configurable: true,
+      writable: true,
+    });
+  } catch {
+    /* non-configurable navigator */
+  }
+}
 
 describe("showroom carousel selection (PLAYER.GARAGE.1)", () => {
   it("wraps at both ends", () => {
@@ -103,67 +245,119 @@ describe("showroom catalog and specification card", () => {
 });
 
 describe("GLB turntable model resource ownership", () => {
-  it("retains loader cache ownership and leaves cached geometries and materials undisposed across clone lifecycles", () => {
-    // Model a multi-node scene graph as loaded and cached by useGLTF
-    const geomA = new THREE.BufferGeometry();
-    const geomB = new THREE.BufferGeometry();
-    const matA = new THREE.MeshStandardMaterial({ color: 0xffcc00 });
-    const matB = new THREE.MeshStandardMaterial({ color: 0x111111 });
+  let originalConsoleError: typeof console.error;
 
-    const meshA = new THREE.Mesh(geomA, matA);
-    const meshB = new THREE.Mesh(geomB, [matA, matB]);
+  beforeEach(() => {
+    setupMountedDOM();
+    originalConsoleError = console.error;
+    console.error = vi.fn();
+  });
 
-    const cachedScene = new THREE.Group();
-    cachedScene.add(meshA);
-    cachedScene.add(meshB);
+  afterEach(() => {
+    console.error = originalConsoleError;
+  });
 
-    let disposeCallCount = 0;
-    geomA.addEventListener("dispose", () => {
-      disposeCallCount++;
-    });
-    geomB.addEventListener("dispose", () => {
-      disposeCallCount++;
-    });
-    matA.addEventListener("dispose", () => {
-      disposeCallCount++;
-    });
-    matB.addEventListener("dispose", () => {
-      disposeCallCount++;
-    });
+  it("retains loader cache ownership and leaves cached geometries and materials undisposed across component mount, selection away, and unmount", async () => {
+    const x19 = SHOWROOM_VEHICLES.find((v) => v.glbUrl)!;
+    const proceduralCar = SHOWROOM_VEHICLES.find((v) => !v.glbUrl)!;
+    expect(x19).toBeDefined();
+    expect(proceduralCar).toBeDefined();
 
-    // Simulate mount / turntable clone creation as GlbTurntableCarModel does
-    const clone1 = cachedScene.clone(true);
-    let clone1MeshCount = 0;
-    clone1.traverse((node) => {
-      if (node instanceof THREE.Mesh) {
-        clone1MeshCount++;
-        node.castShadow = true;
-        node.receiveShadow = true;
+    let disposeCalls = 0;
+    const onDispose = () => {
+      disposeCalls++;
+    };
+
+    mockGeomA.addEventListener("dispose", onDispose);
+    mockGeomB.addEventListener("dispose", onDispose);
+    mockMatA.addEventListener("dispose", onDispose);
+    mockMatB.addEventListener("dispose", onDispose);
+
+    const spyGeomA = vi.spyOn(mockGeomA, "dispose");
+    const spyGeomB = vi.spyOn(mockGeomB, "dispose");
+    const spyMatA = vi.spyOn(mockMatA, "dispose");
+    const spyMatB = vi.spyOn(mockMatB, "dispose");
+
+    const container = (
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
       }
-    });
-    expect(clone1MeshCount).toBe(2);
+    ).document.createElement("div");
 
-    // Verify cloned meshes share geometry & material instances with the loader cache
-    const clonedA = clone1.children[0] as THREE.Mesh;
-    const clonedB = clone1.children[1] as THREE.Mesh;
-    expect(clonedA.geometry).toBe(geomA);
-    expect(clonedA.material).toBe(matA);
-    expect(clonedB.geometry).toBe(geomB);
-    expect(clonedB.material).toEqual([matA, matB]);
+    let root: Root | null = null;
 
-    // GlbTurntableCarModel retains loader ownership and passes dispose={null} to <primitive />.
-    // Unmounting or switching cars must NOT dispose shared cache resources.
-    expect(disposeCallCount).toBe(0);
+    try {
+      // Step 1: Mount showroom presenting the GLB vehicle (Karoo X19 Targa)
+      await act(async () => {
+        root = createRoot(container as unknown as HTMLElement);
+        root.render(
+          React.createElement(ShowroomView, {
+            vehicle: x19,
+            zoom: SHOWROOM_DEFAULT_ZOOM,
+          }),
+        );
+      });
 
-    // Simulate remounting / selecting the vehicle again
-    const clone2 = cachedScene.clone(true);
-    let clone2MeshCount = 0;
-    clone2.traverse((node) => {
-      if (node instanceof THREE.Mesh) {
-        clone2MeshCount++;
-      }
-    });
-    expect(clone2MeshCount).toBe(2);
-    expect(disposeCallCount).toBe(0);
+      expect(disposeCalls).toBe(0);
+      expect(spyGeomA).not.toHaveBeenCalled();
+      expect(spyGeomB).not.toHaveBeenCalled();
+      expect(spyMatA).not.toHaveBeenCalled();
+      expect(spyMatB).not.toHaveBeenCalled();
+
+      // Step 2: Select away to a procedural vehicle (unmounts GlbTurntableCarModel)
+      // Under the rejected head 717708b, GlbTurntableCarModel unmount effect traversed the cloned
+      // mesh and disposed shared cached geometries and materials. Under corrected head 3ff46c9,
+      // loader cache ownership is retained and automatic primitive disposal is suppressed (dispose={null}).
+      await act(async () => {
+        root!.render(
+          React.createElement(ShowroomView, {
+            vehicle: proceduralCar,
+            zoom: SHOWROOM_DEFAULT_ZOOM,
+          }),
+        );
+      });
+
+      expect(disposeCalls).toBe(0);
+      expect(spyGeomA).not.toHaveBeenCalled();
+      expect(spyGeomB).not.toHaveBeenCalled();
+      expect(spyMatA).not.toHaveBeenCalled();
+      expect(spyMatB).not.toHaveBeenCalled();
+
+      // Step 3: Select back to the GLB vehicle (remounts GlbTurntableCarModel)
+      await act(async () => {
+        root!.render(
+          React.createElement(ShowroomView, {
+            vehicle: x19,
+            zoom: SHOWROOM_DEFAULT_ZOOM,
+          }),
+        );
+      });
+
+      expect(disposeCalls).toBe(0);
+      expect(spyGeomA).not.toHaveBeenCalled();
+      expect(spyGeomB).not.toHaveBeenCalled();
+      expect(spyMatA).not.toHaveBeenCalled();
+      expect(spyMatB).not.toHaveBeenCalled();
+
+      // Step 4: Unmount the entire showroom view
+      await act(async () => {
+        root?.unmount();
+      });
+
+      expect(disposeCalls).toBe(0);
+      expect(spyGeomA).not.toHaveBeenCalled();
+      expect(spyGeomB).not.toHaveBeenCalled();
+      expect(spyMatA).not.toHaveBeenCalled();
+      expect(spyMatB).not.toHaveBeenCalled();
+    } finally {
+      mockGeomA.removeEventListener("dispose", onDispose);
+      mockGeomB.removeEventListener("dispose", onDispose);
+      mockMatA.removeEventListener("dispose", onDispose);
+      mockMatB.removeEventListener("dispose", onDispose);
+      spyGeomA.mockRestore();
+      spyGeomB.mockRestore();
+      spyMatA.mockRestore();
+      spyMatB.mockRestore();
+    }
   });
 });
