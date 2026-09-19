@@ -149,10 +149,7 @@ function TurntableCar({ vehicle }: { vehicle: ShowroomVehicle }) {
           metalness={0}
         />
       </mesh>
-      <group
-        name="showroomCar"
-        position={[0, PLINTH_HEIGHT, 0]}
-      >
+      <group name="showroomCar" position={[0, PLINTH_HEIGHT, 0]}>
         <Suspense fallback={null}>
           {vehicle.glbUrl ? (
             <GlbTurntableCarModel

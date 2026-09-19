@@ -37,7 +37,8 @@ vi.mock("@react-three/drei", () => {
   );
   return {
     useGLTF,
-    Environment: ({ children }: { children?: React.ReactNode }) => children ?? null,
+    Environment: ({ children }: { children?: React.ReactNode }) =>
+      children ?? null,
   };
 });
 
@@ -75,7 +76,9 @@ function setupMountedDOM() {
     "HTMLSpanElement",
     "SVGElement",
   ]) {
-    (globalThis as Record<string, unknown>)[type] = class extends MockHTMLElement {};
+    (globalThis as Record<string, unknown>)[type] = class extends (
+      MockHTMLElement
+    ) {};
   }
 
   let mockDoc: Record<string, unknown>;
@@ -231,7 +234,9 @@ describe("showroom catalog and specification card", () => {
   });
 
   it("offers the Karoo X19 Targa with GLB asset and distinctive stats", () => {
-    const x19 = SHOWROOM_VEHICLES.find((v) => v.spec.id === "showroom:karoo-x19-targa");
+    const x19 = SHOWROOM_VEHICLES.find(
+      (v) => v.spec.id === "showroom:karoo-x19-targa",
+    );
     expect(x19).toBeDefined();
     const card = showroomCardModel(x19!);
     expect(card.name).toBe("Karoo X19 Targa");
