@@ -62,3 +62,9 @@ export function saveCar(citizenId: string, spec: CarSpec): void {
   g[citizenId] = safe;
   write(g);
 }
+
+/** Whether the player has explicitly saved or acquired a car in their garage. */
+export function hasStoredCar(citizenId: string): boolean {
+  const stored = read()[citizenId];
+  return Boolean(stored && safeCarSpec(stored));
+}

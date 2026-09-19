@@ -16,21 +16,21 @@ This specification integrates the authored yellow Fiat X1/9 GLB model into the s
 ## Mechanic
 
 1. **Asset Placement:**
-
-   - Static model located at `public/assets/citylife/cars/fiat_x19.glb` (and `public/assets/citylife/cars/modern_car.glb`).
-   - 325 KB binary GLB with PBR materials (`CarPaint_GialloYellow`, `Black_Targa_Top`, `Black_Rubber_Bumper`, `Glass_Clear`, `Bertone_Star_Alloy`).
+   - Static models located at:
+     - `public/assets/citylife/cars/karoo_vonk.glb` (474 KB): Karoo Vonk 1.1 compact starter hatch with dual-tone Azure Blue body, Bianco White curved roof, chrome grille bar, round LED headlights, and alloy rims.
+     - `public/assets/citylife/cars/karoo_kaap_gt.glb` (405 KB): Karoo Kaap GT-V8 coupe with Obsidian Crimson body, carbon-fiber aerodynamics, quad chrome exhausts, active rear spoiler, and twin-spoke alloy wheels.
+     - `public/assets/citylife/cars/fiat_x19.glb` (325 KB): Karoo X19 Targa wedge sports coupe with Giallo Yellow body, black targa roof, pop-up headlights, and Bertone star alloys.
 
 2. **Showroom Catalog Interface (`src/colony/showroom/showroomCatalog.ts`):**
 
-   - Extended `ShowroomVehicle` with optional 3D asset metadata:
+   - All `ShowroomVehicle` entries provide authored 3D asset metadata:
      - `glbUrl?: string`
-     - `presentationScale?: number` (defaults to 0.56 for GLB models to match plinth diameter)
-     - `rotationOffset?: readonly [number, number, number]` (defaults to `[0, -Math.PI / 2, 0]` to face the long presentation axis)
-   - Registered entry `showroom:karoo-x19-targa`:
-     - Public name: `Karoo X19 Targa`
-     - Class: `Heritage sports targa`
-     - Planned Price: `₭950`
-     - Handling Profile: Top speed 0.65, Acceleration 0.62, Grip 0.85 (balanced mid-engine chassis), Braking 0.72.
+     - `presentationScale?: number` (tuned per vehicle: 0.54 for Vonk, 0.48 for Kaap GT, 0.56 for X19)
+     - `rotationOffset?: readonly [number, number, number]` (`[0, -Math.PI / 2, 0]` facing the showroom camera)
+   - Catalog lineup:
+     - `showroom:karoo-vonk-11`: `Karoo Vonk 1.1`, Compact starter hatch, ₭250 (Top Speed 0.38, Accel 0.42, Grip 0.55, Braking 0.50).
+     - `showroom:karoo-kaap-gt-v8`: `Karoo Kaap GT-V8`, Heritage V8 coupe, ₭2,400 (Top Speed 0.82, Accel 0.78, Grip 0.60, Braking 0.62).
+     - `showroom:karoo-x19-targa`: `Karoo X19 Targa`, Heritage sports targa, ₭950 (Top Speed 0.65, Accel 0.62, Grip 0.85, Braking 0.72).
 
 3. **Plinth Rendering (`src/colony/render/ShowroomView.tsx`):**
 

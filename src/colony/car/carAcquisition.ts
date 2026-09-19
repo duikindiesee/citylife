@@ -18,10 +18,16 @@
 import { getAuthClient } from "../authClient";
 import { SHOWROOM_VEHICLES } from "../showroom/showroomCatalog";
 
-/** GET the player's owned vehicles — the cross-device server truth. */
-const BACKEND_OWNERSHIP_PATH = "/kooker/api/v1/citylife/car-ownership";
-/** POST a single canonical vehicleKey to acquire; the service checks funds and moves coin itself. */
-const BACKEND_ACQUIRE_PATH = "/kooker/api/v1/citylife/car-acquisitions";
+/** Authoritative endpoint from kooker-service-user (PR #224 / PLAYER.CAR.1.S2). */
+export const BACKEND_VEHICLE_TRUTH_PATH =
+  "/kooker/api/v1/citylife/players/me/vehicle";
+export const BACKEND_VEHICLE_PURCHASE_PATH =
+  "/kooker/api/v1/citylife/players/me/vehicle/purchase";
+/** Legacy endpoint paths for backwards compatibility / local dev fallback. */
+export const LEGACY_BACKEND_OWNERSHIP_PATH =
+  "/kooker/api/v1/citylife/car-ownership";
+export const LEGACY_BACKEND_ACQUIRE_PATH =
+  "/kooker/api/v1/citylife/car-acquisitions";
 /** Cache-only mirror of the server ownership truth — never authoritative. */
 const LS_CAR_OWNERSHIP = "citylife.car.ownership.v1";
 
@@ -53,10 +59,17 @@ export function vehicleKeyOf(v: { spec: { id: string } }): string {
   return v.spec.id;
 }
 
-/** The closed set of canonical keys the showroom can ever offer. Anything outside it is never posted. */
-const CANONICAL_VEHICLE_KEYS: ReadonlySet<string> = new Set(
-  SHOWROOM_VEHICLES.map(vehicleKeyOf),
-);
+/** Strips any "showroom:" prefix to yield the canonical server key (e.g. "karoo-vonk-11"). Pure. */
+export function serverVehicleKeyOf(key: string): string {
+  return key.replace(/^showroom:/, "");
+}
+
+/** The closed set of canonical keys the showroom can ever offer. Accepts both procedural spec IDs
+ *  ("showroom:karoo-vonk-11") and server catalog keys ("karoo-vonk-11"). */
+const CANONICAL_VEHICLE_KEYS: ReadonlySet<string> = new Set([
+  ...SHOWROOM_VEHICLES.map(vehicleKeyOf),
+  ...SHOWROOM_VEHICLES.map((v) => serverVehicleKeyOf(vehicleKeyOf(v))),
+]);
 
 /** True only for a key the current catalog actually sells — guards the POST body against a tampered or
  *  stale client value so the authority only ever sees a real vehicleKey. Pure. */
@@ -79,7 +92,7 @@ export type AcquireOutcome =
  *  replay that must never double-charge, so we surface a neutral pending rather than a second POST. Pure. */
 export function classifyAcquireStatus(status: number): AcquireOutcome {
   if (status === 200 || status === 201) return { kind: "owned" };
-  if (status === 402) return { kind: "insufficient_funds" };
+  if (status === 402 || status === 422) return { kind: "insufficient_funds" };
   if (status === 202 || status === 409) return { kind: "pending" };
   if (status === 401 || status === 403) return { kind: "disabled" };
   return { kind: "error", status };
@@ -162,7 +175,11 @@ export function acquireStateColor(state: AcquireButtonView["state"]): string {
 export function safeOwnedKeys(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   const keep = new Set<string>();
-  for (const e of raw) if (isCanonicalVehicleKey(e)) keep.add(e);
+  for (const e of raw) {
+    if (isCanonicalVehicleKey(e)) {
+      keep.add(e);
+    }
+  }
   return [...keep].sort();
 }
 
@@ -202,22 +219,41 @@ export function clearOwnedKeysCache(): void {
 
 /** Fetch the player's owned vehicleKeys from the authority. Null when signed out, the endpoint is
  *  missing (404 while it ships separately), or the body is malformed — callers fall back to the cache.
- *  Accepts either a bare array or an { ownedVehicleKeys: [...] } envelope. Never throws. */
+ *  Accepts either a bare array, an { ownedVehicleKeys: [...] } envelope, or an S2 VehicleTruthResponse. Never throws. */
 export async function fetchOwnedVehicleKeysBackend(): Promise<string[] | null> {
   const token = await getAuthClient().getValidToken();
   if (!token) return null;
   try {
-    const resp = await fetch(BACKEND_OWNERSHIP_PATH, {
+    let resp = await fetch(BACKEND_VEHICLE_TRUTH_PATH, {
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (resp.status === 404) {
+      resp = await fetch(LEGACY_BACKEND_OWNERSHIP_PATH, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
     if (!resp.ok) return null;
     const data = (await resp.json()) as unknown;
-    const arr = Array.isArray(data)
-      ? data
-      : data && typeof data === "object"
-        ? (data as { ownedVehicleKeys?: unknown }).ownedVehicleKeys
-        : null;
-    return arr ? safeOwnedKeys(arr) : null;
+    if (Array.isArray(data)) {
+      return safeOwnedKeys(data);
+    }
+    if (data && typeof data === "object") {
+      const obj = data as {
+        ownedVehicleKeys?: unknown;
+        owned?: unknown;
+        vehicleKey?: unknown;
+      };
+      if (Array.isArray(obj.ownedVehicleKeys)) {
+        return safeOwnedKeys(obj.ownedVehicleKeys);
+      }
+      if (obj.owned === true && typeof obj.vehicleKey === "string") {
+        return safeOwnedKeys([obj.vehicleKey]);
+      }
+      if (obj.owned === false) {
+        return [];
+      }
+    }
+    return null;
   } catch {
     return null;
   }
@@ -240,26 +276,40 @@ export function acquireIdempotencyKey(
 export async function postAcquireVehicle(
   vehicleKey: string,
   env?: Record<string, string | undefined>,
+  options?: { bypassGate?: boolean },
 ): Promise<AcquireOutcome> {
-  if (!isCarAcquisitionEnabled(env)) return { kind: "disabled" };
+  const enabled = options?.bypassGate || isCarAcquisitionEnabled(env);
+  if (!enabled) return { kind: "disabled" };
   if (!isCanonicalVehicleKey(vehicleKey)) return { kind: "disabled" };
   const auth = getAuthClient();
   const token = await auth.getValidToken();
   if (!token) return { kind: "disabled" };
+  const serverKey = serverVehicleKeyOf(vehicleKey);
   const idemKey = acquireIdempotencyKey(
     auth.operator?.userId ?? null,
-    vehicleKey,
+    serverKey,
   );
   try {
-    const resp = await fetch(BACKEND_ACQUIRE_PATH, {
+    let resp = await fetch(BACKEND_VEHICLE_PURCHASE_PATH, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         Authorization: `Bearer ${token}`,
         "Idempotency-Key": idemKey,
       },
-      body: JSON.stringify({ vehicleKey }),
+      body: JSON.stringify({ vehicleKey: serverKey }),
     });
+    if (resp.status === 404) {
+      resp = await fetch(LEGACY_BACKEND_ACQUIRE_PATH, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "Idempotency-Key": idemKey,
+        },
+        body: JSON.stringify({ vehicleKey }),
+      });
+    }
     return classifyAcquireStatus(resp.status);
   } catch {
     return { kind: "error" };

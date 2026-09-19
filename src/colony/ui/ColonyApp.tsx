@@ -58,6 +58,11 @@ import { GamehouseOverlay } from "./GamehouseOverlay";
 import { resolveGamehousePortalSite } from "../spatial/gamehousePortal";
 import { PasswordChangePanel } from "./PasswordChangePanel";
 import { markPasswordChangePending } from "../pendingPasswordNotice";
+import { hasStoredCar } from "../car/garageStore";
+import {
+  fetchOwnedVehicleKeysBackend,
+  loadOwnedKeysCache,
+} from "../car/carAcquisition";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
 import {
   FURNITURE_KINDS,
@@ -1034,6 +1039,43 @@ export function ColonyApp() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth, operatorUserId]);
+
+  // PLAYER.CAR.1.S5 — auto-spawn into the Gearbox Auto Hub showroom on login when the player does not
+  // own a car on their profile. Runs once per session identity. Evaluates authoritative server truth,
+  // the localStorage ownership cache, and the local garageStore.
+  const autoShowroomCheckedRef = useRef(false);
+  useEffect(() => {
+    autoShowroomCheckedRef.current = false;
+  }, [operatorUserId]);
+
+  useEffect(() => {
+    if (!newPlayerJourneyEnabled || autoShowroomCheckedRef.current) return;
+    const citizenId = auth.operator?.userId
+      ? String(auth.operator.userId)
+      : "citizen-me";
+
+    // Fast-path: If local garageStore has a stored car or cache has owned keys, don't auto-open.
+    if (hasStoredCar(citizenId) || loadOwnedKeysCache().length > 0) {
+      autoShowroomCheckedRef.current = true;
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const truth = await fetchOwnedVehicleKeysBackend();
+      if (cancelled) return;
+      autoShowroomCheckedRef.current = true;
+      if (truth === null || truth.length === 0) {
+        if (!hasStoredCar(citizenId) && loadOwnedKeysCache().length === 0) {
+          setShowroomOpen(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [newPlayerJourneyEnabled, auth, operatorUserId]);
   // HQ.ENTER.1 — evaluate `kooker-hq-v1` for the current identity, same discipline as the journey flag:
   // reset to null (fail closed) on every identity change, skip the network for the DEV/E2E bypass, and
   // drop a stale in-flight response so a prior user's positive can never carry forward. Closing `hqOpen`
@@ -1847,7 +1889,10 @@ export function ColonyApp() {
           so a forced/stale showroomOpen can never mount it, and a mid-session revocation (account
           switch) closes it immediately. */}
       {showroomOpen && newPlayerJourneyEnabled && (
-        <ShowroomOverlay onClose={() => setShowroomOpen(false)} />
+        <ShowroomOverlay
+          canAcquire={newPlayerJourneyEnabled}
+          onClose={() => setShowroomOpen(false)}
+        />
       )}
       {/* HQ.ENTER.1 — defense in depth: the reception renders ONLY while the entitlement is live, so a
           forced or stale `hqOpen` can never mount it, and a mid-session revocation closes it. */}

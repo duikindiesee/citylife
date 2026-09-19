@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   isCarAcquisitionEnabled,
   vehicleKeyOf,
+  serverVehicleKeyOf,
   isCanonicalVehicleKey,
   classifyAcquireStatus,
   acquireButtonView,
@@ -13,6 +14,7 @@ import {
   fetchOwnedVehicleKeysBackend,
   postAcquireVehicle,
   acquireIdempotencyKey,
+  BACKEND_VEHICLE_PURCHASE_PATH,
 } from "../src/colony/car/carAcquisition";
 import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
 import { getAuthClient } from "../src/colony/authClient";
@@ -91,6 +93,7 @@ describe("carAcquisition — response classification", () => {
     expect(classifyAcquireStatus(200)).toEqual({ kind: "owned" });
     expect(classifyAcquireStatus(201)).toEqual({ kind: "owned" });
     expect(classifyAcquireStatus(402)).toEqual({ kind: "insufficient_funds" });
+    expect(classifyAcquireStatus(422)).toEqual({ kind: "insufficient_funds" });
     expect(classifyAcquireStatus(202)).toEqual({ kind: "pending" });
     expect(classifyAcquireStatus(409)).toEqual({ kind: "pending" });
     expect(classifyAcquireStatus(401)).toEqual({ kind: "disabled" });
@@ -178,6 +181,30 @@ describe("carAcquisition — backend ownership truth (GET)", () => {
       json: async () => ({ ownedVehicleKeys: [VONK] }),
     }));
     expect(await fetchOwnedVehicleKeysBackend()).toEqual([VONK]);
+
+    vi.stubGlobal("fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        owned: true,
+        status: "OWNED",
+        vehicleKey: serverVehicleKeyOf(VONK),
+      }),
+    }));
+    expect(await fetchOwnedVehicleKeysBackend()).toEqual([
+      serverVehicleKeyOf(VONK),
+    ]);
+
+    vi.stubGlobal("fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        owned: false,
+        status: null,
+        vehicleKey: null,
+      }),
+    }));
+    expect(await fetchOwnedVehicleKeysBackend()).toEqual([]);
   });
   it("returns null on a non-OK response (e.g. 404 while the endpoint ships)", async () => {
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
@@ -221,17 +248,23 @@ describe("carAcquisition — POST acquire (server authority, vehicleKey only)", 
     });
     const r = await postAcquireVehicle(VONK, ON);
     expect(r).toEqual({ kind: "owned" });
-    expect(url).toBe("/kooker/api/v1/citylife/car-acquisitions");
+    expect(url).toBe(BACKEND_VEHICLE_PURCHASE_PATH);
     expect(init.method).toBe("POST");
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer jwt.tok");
-    expect(headers["Idempotency-Key"]).toContain(VONK);
+    expect(headers["Idempotency-Key"]).toContain(serverVehicleKeyOf(VONK));
     // The body carries the canonical key and NOTHING else — no price, amount, or ownership claim.
-    expect(JSON.parse(init.body as string)).toEqual({ vehicleKey: VONK });
+    expect(JSON.parse(init.body as string)).toEqual({
+      vehicleKey: serverVehicleKeyOf(VONK),
+    });
   });
-  it("maps a 402 to insufficient funds and a 409 to a neutral pending replay", async () => {
+  it("maps a 402 or 422 to insufficient funds and a 409 to a neutral pending replay", async () => {
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
     vi.stubGlobal("fetch", async () => ({ ok: false, status: 402 }));
+    expect(await postAcquireVehicle(KAAP, ON)).toEqual({
+      kind: "insufficient_funds",
+    });
+    vi.stubGlobal("fetch", async () => ({ ok: false, status: 422 }));
     expect(await postAcquireVehicle(KAAP, ON)).toEqual({
       kind: "insufficient_funds",
     });

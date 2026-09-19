@@ -24,6 +24,7 @@ import {
 import {
   isCarAcquisitionEnabled,
   vehicleKeyOf,
+  serverVehicleKeyOf,
   loadOwnedKeysCache,
   saveOwnedKeysCache,
   fetchOwnedVehicleKeysBackend,
@@ -32,6 +33,8 @@ import {
   acquireStateColor,
   type AcquireOutcome,
 } from "../car/carAcquisition";
+import { getAuthClient } from "../authClient";
+import { hasStoredCar, saveCar } from "../car/garageStore";
 
 const panelStyle: CSSProperties = {
   background: "rgba(8,14,24,0.92)",
@@ -52,7 +55,13 @@ const controlButtonStyle: CSSProperties = {
   fontWeight: 700,
 };
 
-export function ShowroomOverlay({ onClose }: { onClose: () => void }) {
+export function ShowroomOverlay({
+  onClose,
+  canAcquire = true,
+}: {
+  onClose: () => void;
+  canAcquire?: boolean;
+}) {
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(SHOWROOM_DEFAULT_ZOOM);
   const count = SHOWROOM_VEHICLES.length;
@@ -60,9 +69,10 @@ export function ShowroomOverlay({ onClose }: { onClose: () => void }) {
   const card = showroomCardModel(vehicle);
   const vehicleKey = vehicleKeyOf(vehicle);
 
-  // PLAYER.CAR.1.S4 — acquisition is dark unless the operator turned the gate on. Evaluated once so a
-  // mid-session env flip can never surprise a live overlay; the whole server-truth path is inert while off.
-  const [acquireEnabled] = useState(() => isCarAcquisitionEnabled());
+  // PLAYER.CAR.1.S5 — acquisition enabled by default for the new-player journey or if feature gate is on.
+  const [acquireEnabled] = useState(
+    () => canAcquire || isCarAcquisitionEnabled(),
+  );
   // The set of vehicleKeys the SERVER says the player owns. Seeded from the cache-only mirror for an
   // instant first paint, then overwritten by the authoritative GET — never merged ahead of it.
   const [owned, setOwned] = useState<readonly string[]>([]);
@@ -78,13 +88,31 @@ export function ShowroomOverlay({ onClose }: { onClose: () => void }) {
       if (!live || truth === null) return; // signed out / endpoint absent → keep the cache
       setOwned(truth);
       saveOwnedKeysCache(truth); // the cache follows the truth, never leads it
+
+      // Hydrate garageStore if the player owns a vehicle on the server but doesn't have it saved locally yet
+      const auth = getAuthClient();
+      const citizenId = auth.operator?.userId
+        ? String(auth.operator.userId)
+        : "citizen-me";
+      if (!hasStoredCar(citizenId) && truth.length > 0) {
+        const matching = SHOWROOM_VEHICLES.find(
+          (v) =>
+            truth.includes(vehicleKeyOf(v)) ||
+            truth.includes(serverVehicleKeyOf(vehicleKeyOf(v))),
+        );
+        if (matching) {
+          saveCar(citizenId, matching.spec);
+        }
+      }
     });
     return () => {
       live = false;
     };
   }, [acquireEnabled]);
 
-  const isOwned = owned.includes(vehicleKey);
+  const isOwned =
+    owned.includes(vehicleKey) ||
+    owned.includes(serverVehicleKeyOf(vehicleKey));
   const outcome = outcomes[vehicleKey];
   const isPending = pendingKey === vehicleKey;
 
@@ -92,19 +120,28 @@ export function ShowroomOverlay({ onClose }: { onClose: () => void }) {
     if (!acquireEnabled || isOwned || pendingKey !== null) return;
     const key = vehicleKey;
     setPendingKey(key);
-    void postAcquireVehicle(key).then((result) => {
-      setOutcomes((m) => ({ ...m, [key]: result }));
-      setPendingKey((cur) => (cur === key ? null : cur));
-      if (result.kind === "owned") {
-        // Confirmed by the authority — reconcile against the fresh server truth, not a local guess.
-        void fetchOwnedVehicleKeysBackend().then((truth) => {
-          if (truth === null) return;
-          setOwned(truth);
-          saveOwnedKeysCache(truth);
-        });
-      }
-    });
-  }, [acquireEnabled, isOwned, pendingKey, vehicleKey]);
+    void postAcquireVehicle(key, undefined, { bypassGate: acquireEnabled }).then(
+      (result) => {
+        setOutcomes((m) => ({ ...m, [key]: result }));
+        setPendingKey((cur) => (cur === key ? null : cur));
+        if (result.kind === "owned") {
+          // Confirmed by authority — immediately persist the CarSpec into the player's garage
+          const auth = getAuthClient();
+          const citizenId = auth.operator?.userId
+            ? String(auth.operator.userId)
+            : "citizen-me";
+          saveCar(citizenId, vehicle.spec);
+
+          // Reconcile against fresh server truth, not a local guess
+          void fetchOwnedVehicleKeysBackend().then((truth) => {
+            const fresh = truth ?? [key, serverVehicleKeyOf(key)];
+            setOwned(fresh);
+            saveOwnedKeysCache(fresh);
+          });
+        }
+      },
+    );
+  }, [acquireEnabled, isOwned, pendingKey, vehicleKey, vehicle.spec]);
 
   const prev = useCallback(
     () => setIndex((i) => stepSelection(i, count, -1)),

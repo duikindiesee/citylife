@@ -58,6 +58,9 @@ export const SHOWROOM_VEHICLES: readonly ShowroomVehicle[] = [
     vehicleClass: "Compact starter hatch",
     plannedPriceK: 250,
     blurb: "An honest little hatch: cheap to run, happy on gravel.",
+    glbUrl: "/assets/citylife/cars/karoo_vonk.glb",
+    presentationScale: 0.54,
+    rotationOffset: [0, -Math.PI / 2, 0],
   },
   {
     spec: {
@@ -71,6 +74,9 @@ export const SHOWROOM_VEHICLES: readonly ShowroomVehicle[] = [
     vehicleClass: "Heritage V8 coupe",
     plannedPriceK: 2400,
     blurb: "The aspirational eight — thunder for the coast road.",
+    glbUrl: "/assets/citylife/cars/karoo_kaap_gt.glb",
+    presentationScale: 0.48,
+    rotationOffset: [0, -Math.PI / 2, 0],
   },
   {
     spec: {
