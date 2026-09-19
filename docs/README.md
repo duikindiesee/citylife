@@ -29,6 +29,7 @@ repo, on protected `main` (PRs + review only).
 7. **[specs/152-authoritative-spatial-registry-and-world-survey-map.md](specs/152-authoritative-spatial-registry-and-world-survey-map.md)** — the exact spatial address, layer, footprint, network, nested-interior, and Survey Map contract.
 8. **[specs/167-local-neighbourhood-console-and-bot-households.md](specs/167-local-neighbourhood-console-and-bot-households.md)** — the proposed local connector, server-side vault and DNS boundary, and the rule that a bot household fits its authoritative building plan.
 9. **[specs/169-showroom-fiat-x19-selection.md](specs/169-showroom-fiat-x19-selection.md)** — Showroom vehicle selection for the yellow Fiat X1/9 GLB (Karoo X19 Targa) on the rotating turntable plinth.
+10. **[specs/171-auto-load-showroom-and-kco-acquisition.md](specs/171-auto-load-showroom-and-kco-acquisition.md)** — Auto-load showroom for new players without a car and authoritative KCO vehicle acquisition (PLAYER.CAR.1.S5).
 
 ---
 

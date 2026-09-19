@@ -104,11 +104,12 @@ import {
   CURRENCY,
 } from "./ledger";
 import { plotPriceKook, kookToZar, starterDeposit } from "./land";
-import { loadCar, saveCar } from "./car/garageStore";
+import { hasStoredCar, loadCar, saveCar } from "./car/garageStore";
 import {
   PAINT_PALETTES,
   type PaintChannel,
   type CarStatVector,
+  type CarSpec,
 } from "./car/carSpec";
 import {
   CAR_PARTS,
@@ -2309,11 +2310,32 @@ export class ColonyRuntime {
    *  kooker userId (claimed at login). Falls back to a display-name match only for an UNCLAIMED citizen
    *  (legacy / not-yet-claimed), so a colliding name can never resolve to another user's citizen.
    *  Pure read with no side effects — the claim/stamp happens in setOperatorUserId / setOperatorName. */
-  private operatorCitizenId(): string | null {
+  operatorCitizenId(): string | null {
     return this.citizens.resolveOwnCitizenId(
       this.operatorUserId,
       this.operatorName,
     );
+  }
+
+  /** Spec 096 / PLAYER.CAR.1.S5 — persist an acquired car for the operator citizen and refresh
+   *  the in-world parked car mesh immediately. Guards against identity mismatch if expectedCitizenId
+   *  is provided. Returns true if persisted and refreshed. */
+  acquireCar(spec: CarSpec, expectedCitizenId?: string): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    if (expectedCitizenId && id !== expectedCitizenId) return false;
+    saveCar(id, spec);
+    this.updateOperatorCar();
+    this.emit();
+    return true;
+  }
+
+  /** Spec 096 / PLAYER.CAR.1.S5 — whether the operator citizen has a stored car in their garage. */
+  hasStoredCar(expectedCitizenId?: string): boolean {
+    const id = this.operatorCitizenId();
+    if (!id) return false;
+    if (expectedCitizenId && id !== expectedCitizenId) return false;
+    return hasStoredCar(id);
   }
 
   /** Spec 096 Slice D — buy a car part with the player's in-game city coin (KCO). Records ownership so
