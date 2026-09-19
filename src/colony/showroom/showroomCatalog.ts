@@ -83,7 +83,8 @@ export const SHOWROOM_VEHICLES: readonly ShowroomVehicle[] = [
     publicName: "Karoo X19 Targa",
     vehicleClass: "Heritage sports targa",
     plannedPriceK: 950,
-    blurb: "A mid-engine wedge targa: agile poise, pop-up lights, built for the winding mountain pass.",
+    blurb:
+      "A mid-engine wedge targa: agile poise, pop-up lights, built for the winding mountain pass.",
     glbUrl: "/assets/citylife/cars/fiat_x19.glb",
     presentationScale: 0.56,
     rotationOffset: [0, -Math.PI / 2, 0],

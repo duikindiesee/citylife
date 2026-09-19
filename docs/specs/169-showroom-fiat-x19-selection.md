@@ -16,10 +16,12 @@ This specification integrates the authored yellow Fiat X1/9 GLB model into the s
 ## Mechanic
 
 1. **Asset Placement:**
+
    - Static model located at `public/assets/citylife/cars/fiat_x19.glb` (and `public/assets/citylife/cars/modern_car.glb`).
    - 325 KB binary GLB with PBR materials (`CarPaint_GialloYellow`, `Black_Targa_Top`, `Black_Rubber_Bumper`, `Glass_Clear`, `Bertone_Star_Alloy`).
 
 2. **Showroom Catalog Interface (`src/colony/showroom/showroomCatalog.ts`):**
+
    - Extended `ShowroomVehicle` with optional 3D asset metadata:
      - `glbUrl?: string`
      - `presentationScale?: number` (defaults to 0.56 for GLB models to match plinth diameter)
@@ -31,6 +33,7 @@ This specification integrates the authored yellow Fiat X1/9 GLB model into the s
      - Handling Profile: Top speed 0.65, Acceleration 0.62, Grip 0.85 (balanced mid-engine chassis), Braking 0.72.
 
 3. **Plinth Rendering (`src/colony/render/ShowroomView.tsx`):**
+
    - Renders within a `<Suspense fallback={null}>` boundary on the rotating dark-stone plinth.
    - Reuses `@react-three/drei`'s `useGLTF` for efficient model caching and asset preloading (`useGLTF.preload("/assets/citylife/cars/fiat_x19.glb")`).
    - Cloned scene enables shadows (`castShadow = true`, `receiveShadow = true`).
