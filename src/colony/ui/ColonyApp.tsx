@@ -1050,12 +1050,17 @@ export function ColonyApp() {
 
   useEffect(() => {
     if (!newPlayerJourneyEnabled || autoShowroomCheckedRef.current) return;
-    const citizenId = auth.operator?.userId
+    const citizenId =
+      runtime.operatorCitizenId() ??
+      (auth.operator?.userId ? String(auth.operator.userId) : "citizen-me");
+    const cacheScope = auth.operator?.userId
       ? String(auth.operator.userId)
-      : "citizen-me";
+      : (runtime.operatorCitizenId() ?? "anon");
 
-    // Fast-path: If local garageStore has a stored car or cache has owned keys, don't auto-open.
-    if (hasStoredCar(citizenId) || loadOwnedKeysCache().length > 0) {
+    // Fast-path: If local garageStore has a stored car or scoped cache has owned keys, don't auto-open.
+    const hasCarLocally =
+      runtime.hasStoredCar(citizenId) || hasStoredCar(citizenId);
+    if (hasCarLocally || loadOwnedKeysCache(cacheScope).length > 0) {
       autoShowroomCheckedRef.current = true;
       return;
     }
@@ -1066,7 +1071,9 @@ export function ColonyApp() {
       if (cancelled) return;
       autoShowroomCheckedRef.current = true;
       if (truth === null || truth.length === 0) {
-        if (!hasStoredCar(citizenId) && loadOwnedKeysCache().length === 0) {
+        const stillHasCar =
+          runtime.hasStoredCar(citizenId) || hasStoredCar(citizenId);
+        if (!stillHasCar && loadOwnedKeysCache(cacheScope).length === 0) {
           setShowroomOpen(true);
         }
       }
@@ -1075,7 +1082,7 @@ export function ColonyApp() {
     return () => {
       cancelled = true;
     };
-  }, [newPlayerJourneyEnabled, auth, operatorUserId]);
+  }, [newPlayerJourneyEnabled, auth, operatorUserId, runtime]);
   // HQ.ENTER.1 — evaluate `kooker-hq-v1` for the current identity, same discipline as the journey flag:
   // reset to null (fail closed) on every identity change, skip the network for the DEV/E2E bypass, and
   // drop a stale in-flight response so a prior user's positive can never carry forward. Closing `hqOpen`
@@ -1890,6 +1897,7 @@ export function ColonyApp() {
           switch) closes it immediately. */}
       {showroomOpen && newPlayerJourneyEnabled && (
         <ShowroomOverlay
+          runtime={runtime}
           canAcquire={newPlayerJourneyEnabled}
           onClose={() => setShowroomOpen(false)}
         />

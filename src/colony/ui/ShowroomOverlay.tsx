@@ -8,7 +8,7 @@
 // ownership write or service call can originate here. Only when the operator turns the gate on does
 // the acquire button post the canonical vehicleKey to the service (which alone checks funds and moves
 // coin) and render the server ownership truth.
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { ShowroomView } from "../render/ShowroomView";
 import {
   SHOWROOM_VEHICLES,
@@ -35,6 +35,7 @@ import {
 } from "../car/carAcquisition";
 import { getAuthClient } from "../authClient";
 import { hasStoredCar, saveCar } from "../car/garageStore";
+import type { ColonyRuntime } from "../runtime";
 
 const panelStyle: CSSProperties = {
   background: "rgba(8,14,24,0.92)",
@@ -58,9 +59,11 @@ const controlButtonStyle: CSSProperties = {
 export function ShowroomOverlay({
   onClose,
   canAcquire = true,
+  runtime,
 }: {
   onClose: () => void;
   canAcquire?: boolean;
+  runtime?: ColonyRuntime;
 }) {
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(SHOWROOM_DEFAULT_ZOOM);
@@ -80,35 +83,64 @@ export function ShowroomOverlay({
   const [outcomes, setOutcomes] = useState<Record<string, AcquireOutcome>>({});
   const [pendingKey, setPendingKey] = useState<string | null>(null);
 
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   useEffect(() => {
     if (!acquireEnabled) return;
     let live = true;
-    setOwned(loadOwnedKeysCache()); // instant, non-authoritative first paint
-    void fetchOwnedVehicleKeysBackend().then((truth) => {
-      if (!live || truth === null) return; // signed out / endpoint absent → keep the cache
-      setOwned(truth);
-      saveOwnedKeysCache(truth); // the cache follows the truth, never leads it
+    const auth = getAuthClient();
+    const initialUserId = auth.operator?.userId ?? null;
+    const initialCitizenId = runtime?.operatorCitizenId() ?? null;
+    const scope = initialUserId
+      ? String(initialUserId)
+      : (initialCitizenId ?? "anon");
 
-      // Hydrate garageStore if the player owns a vehicle on the server but doesn't have it saved locally yet
-      const auth = getAuthClient();
-      const citizenId = auth.operator?.userId
-        ? String(auth.operator.userId)
-        : "citizen-me";
-      if (!hasStoredCar(citizenId) && truth.length > 0) {
+    setOwned(loadOwnedKeysCache(scope)); // instant, non-authoritative first paint
+    void fetchOwnedVehicleKeysBackend().then((truth) => {
+      if (!live || !isMountedRef.current || truth === null) return; // signed out / endpoint absent → keep the cache
+      const freshAuth = getAuthClient();
+      if (
+        freshAuth.operator?.userId !== initialUserId ||
+        (initialCitizenId && runtime?.operatorCitizenId() !== initialCitizenId)
+      ) {
+        return; // session/identity changed while in flight
+      }
+
+      setOwned(truth);
+      saveOwnedKeysCache(truth, scope); // the cache follows the truth, never leads it
+
+      // Hydrate garageStore/runtime if the player owns a vehicle on the server but doesn't have it saved locally yet
+      const citizenId =
+        runtime?.operatorCitizenId() ??
+        (initialUserId ? String(initialUserId) : "citizen-me");
+      const alreadyHasCar = runtime
+        ? runtime.hasStoredCar(citizenId)
+        : hasStoredCar(citizenId);
+      if (!alreadyHasCar && truth.length > 0) {
         const matching = SHOWROOM_VEHICLES.find(
           (v) =>
             truth.includes(vehicleKeyOf(v)) ||
             truth.includes(serverVehicleKeyOf(vehicleKeyOf(v))),
         );
         if (matching) {
-          saveCar(citizenId, matching.spec);
+          if (runtime) {
+            runtime.acquireCar(matching.spec, citizenId);
+          } else {
+            saveCar(citizenId, matching.spec);
+          }
         }
       }
     });
     return () => {
       live = false;
     };
-  }, [acquireEnabled]);
+  }, [acquireEnabled, runtime]);
 
   const isOwned =
     owned.includes(vehicleKey) ||
@@ -119,29 +151,60 @@ export function ShowroomOverlay({
   const acquire = useCallback(() => {
     if (!acquireEnabled || isOwned || pendingKey !== null) return;
     const key = vehicleKey;
+    const initiatingAuth = getAuthClient();
+    const initiatingUserId = initiatingAuth.operator?.userId ?? null;
+    const initiatingCitizenId = runtime?.operatorCitizenId() ?? null;
+    const scope = initiatingUserId
+      ? String(initiatingUserId)
+      : (initiatingCitizenId ?? "anon");
+
     setPendingKey(key);
     void postAcquireVehicle(key, undefined, { bypassGate: acquireEnabled }).then(
       (result) => {
+        if (!isMountedRef.current) return;
+        const currentAuth = getAuthClient();
+        const currentUserId = currentAuth.operator?.userId ?? null;
+        const currentCitizenId = runtime?.operatorCitizenId() ?? null;
+        if (
+          currentUserId !== initiatingUserId ||
+          (initiatingCitizenId && currentCitizenId !== initiatingCitizenId)
+        ) {
+          // Cross-account / session switch guard: suppress stale completion
+          return;
+        }
+
         setOutcomes((m) => ({ ...m, [key]: result }));
         setPendingKey((cur) => (cur === key ? null : cur));
         if (result.kind === "owned") {
-          // Confirmed by authority — immediately persist the CarSpec into the player's garage
-          const auth = getAuthClient();
-          const citizenId = auth.operator?.userId
-            ? String(auth.operator.userId)
-            : "citizen-me";
-          saveCar(citizenId, vehicle.spec);
+          // Confirmed by authority — persist via identity-bound runtime method to update parked car
+          const targetCitizenId =
+            currentCitizenId ??
+            (currentUserId ? String(currentUserId) : "citizen-me");
+          if (runtime) {
+            runtime.acquireCar(vehicle.spec, targetCitizenId);
+          } else {
+            saveCar(targetCitizenId, vehicle.spec);
+          }
 
           // Reconcile against fresh server truth, not a local guess
           void fetchOwnedVehicleKeysBackend().then((truth) => {
+            if (!isMountedRef.current) return;
+            const freshAuthAfter = getAuthClient();
+            if (
+              freshAuthAfter.operator?.userId !== initiatingUserId ||
+              (initiatingCitizenId &&
+                runtime?.operatorCitizenId() !== initiatingCitizenId)
+            ) {
+              return;
+            }
             const fresh = truth ?? [key, serverVehicleKeyOf(key)];
             setOwned(fresh);
-            saveOwnedKeysCache(fresh);
+            saveOwnedKeysCache(fresh, scope);
           });
         }
       },
     );
-  }, [acquireEnabled, isOwned, pendingKey, vehicleKey, vehicle.spec]);
+  }, [acquireEnabled, isOwned, pendingKey, vehicleKey, vehicle.spec, runtime]);
 
   const prev = useCallback(
     () => setIndex((i) => stepSelection(i, count, -1)),

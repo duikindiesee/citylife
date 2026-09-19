@@ -28,8 +28,16 @@ export const LEGACY_BACKEND_OWNERSHIP_PATH =
   "/kooker/api/v1/citylife/car-ownership";
 export const LEGACY_BACKEND_ACQUIRE_PATH =
   "/kooker/api/v1/citylife/car-acquisitions";
-/** Cache-only mirror of the server ownership truth — never authoritative. */
-const LS_CAR_OWNERSHIP = "citylife.car.ownership.v1";
+/** Cache-only mirror of the server ownership truth — never authoritative.
+ *  Scoped per user/session so switching accounts never suppresses another account's new-player showroom. */
+export function carOwnershipCacheKey(scope?: string | null): string {
+  const clean =
+    typeof scope === "string" && scope.trim().length > 0
+      ? scope.trim()
+      : null;
+  return clean ? `citylife.car.ownership.v1.${clean}` : "citylife.car.ownership.v1";
+}
+
 
 /** The feature is DARK by default. It turns on only when the operator sets VITE_CITYLIFE_CAR_ACQUISITION
  *  to "on"/"1"/"true" in the build env for UAT — this worker never sets it, so production stays dark. */
@@ -85,6 +93,7 @@ export type AcquireOutcome =
   | { kind: "insufficient_funds" } // 402 — not enough KCO; no coin moved
   | { kind: "pending" } // 202/409 — accepted or a replay of an in-flight/settled request
   | { kind: "disabled" } // 401/403 — signed out or refused; the client never retries blindly
+  | { kind: "unsupported" } // 400 — vehicle model not in server catalog
   | { kind: "error"; status?: number }; // anything else — a transient/unknown failure
 
 /** Map an acquire HTTP status to a closed outcome. The kooker service owns the decision; the client only
@@ -95,6 +104,7 @@ export function classifyAcquireStatus(status: number): AcquireOutcome {
   if (status === 402 || status === 422) return { kind: "insufficient_funds" };
   if (status === 202 || status === 409) return { kind: "pending" };
   if (status === 401 || status === 403) return { kind: "disabled" };
+  if (status === 400) return { kind: "unsupported" };
   return { kind: "error", status };
 }
 
@@ -109,6 +119,7 @@ export interface AcquireButtonView {
     | "owned"
     | "insufficient_funds"
     | "disabled"
+    | "unsupported"
     | "error";
   readonly label: string;
   readonly disabled: boolean;
@@ -138,6 +149,12 @@ export function acquireButtonView(
         label: "🔒 Sign in to acquire",
         disabled: true,
       };
+    case "unsupported":
+      return {
+        state: "unsupported",
+        label: "🔒 Preview only",
+        disabled: true,
+      };
     case "error":
       return {
         state: "error",
@@ -162,6 +179,7 @@ export function acquireStateColor(state: AcquireButtonView["state"]): string {
     case "error":
       return "#e07a7a";
     case "disabled":
+    case "unsupported":
       return "#7a90a0";
     default:
       return "#a0d4f0";
@@ -184,10 +202,10 @@ export function safeOwnedKeys(raw: unknown): string[] {
 }
 
 /** Read the cached ownership mirror. Never authoritative — callers replace it the moment the server
- *  truth resolves. Returns [] on any storage/parse failure. */
-export function loadOwnedKeysCache(): string[] {
+ *  truth resolves. Scoped by user/session. Returns [] on any storage/parse failure. */
+export function loadOwnedKeysCache(scope?: string | null): string[] {
   try {
-    const raw = localStorage.getItem(LS_CAR_OWNERSHIP);
+    const raw = localStorage.getItem(carOwnershipCacheKey(scope));
     if (!raw) return [];
     return safeOwnedKeys(JSON.parse(raw));
   } catch {
@@ -197,9 +215,15 @@ export function loadOwnedKeysCache(): string[] {
 
 /** Overwrite the cache with the given keys (screened + sorted). Returns false if storage is unavailable.
  *  Only ever called with values the server returned — the cache follows the truth, never leads it. */
-export function saveOwnedKeysCache(keys: readonly string[]): boolean {
+export function saveOwnedKeysCache(
+  keys: readonly string[],
+  scope?: string | null,
+): boolean {
   try {
-    localStorage.setItem(LS_CAR_OWNERSHIP, JSON.stringify(safeOwnedKeys(keys)));
+    localStorage.setItem(
+      carOwnershipCacheKey(scope),
+      JSON.stringify(safeOwnedKeys(keys)),
+    );
     return true;
   } catch {
     return false;
@@ -207,9 +231,9 @@ export function saveOwnedKeysCache(keys: readonly string[]): boolean {
 }
 
 /** Forget the cached ownership mirror (colony reset / sign-out). */
-export function clearOwnedKeysCache(): void {
+export function clearOwnedKeysCache(scope?: string | null): void {
   try {
-    localStorage.removeItem(LS_CAR_OWNERSHIP);
+    localStorage.removeItem(carOwnershipCacheKey(scope));
   } catch {
     /* no storage */
   }

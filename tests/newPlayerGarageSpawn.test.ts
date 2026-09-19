@@ -1,3 +1,5 @@
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   hasStoredCar,
@@ -11,12 +13,20 @@ import {
   safeOwnedKeys,
   loadOwnedKeysCache,
   saveOwnedKeysCache,
+  clearOwnedKeysCache,
   postAcquireVehicle,
   BACKEND_VEHICLE_PURCHASE_PATH,
 } from "../src/colony/car/carAcquisition";
 import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
 import { type CarSpec } from "../src/colony/car/carSpec";
 import { getAuthClient } from "../src/colony/authClient";
+import { ColonyRuntime } from "../src/colony/runtime";
+
+vi.mock("../src/colony/render/ShowroomView", () => ({
+  ShowroomView: () => null,
+}));
+
+import { ShowroomOverlay } from "../src/colony/ui/ShowroomOverlay";
 
 class MemStorage {
   private m = new Map<string, string>();
@@ -39,9 +49,145 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  const g = globalThis as Record<string, unknown>;
+  delete g.window;
+  delete g.document;
+  delete g.location;
+  delete g.addEventListener;
+  delete g.removeEventListener;
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+
+function setupMountedDOM() {
+  (
+    globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+
+  class MockHTMLElement {}
+  for (const type of [
+    "Element",
+    "HTMLElement",
+    "HTMLCanvasElement",
+    "HTMLDivElement",
+    "HTMLButtonElement",
+    "HTMLInputElement",
+    "HTMLTextAreaElement",
+    "HTMLSelectElement",
+    "HTMLIFrameElement",
+    "HTMLAnchorElement",
+    "HTMLImageElement",
+    "HTMLSpanElement",
+    "SVGElement",
+  ]) {
+    (globalThis as Record<string, unknown>)[type] = class extends (
+      MockHTMLElement
+    ) {};
+  }
+
+  let mockDoc: Record<string, unknown>;
+  const createMockNode = (tag: string) => {
+    const nodeListeners = new Map<string, Set<(e: unknown) => void>>();
+    const node: Record<string, unknown> = {
+      tagName: tag.toUpperCase(),
+      clientWidth: 800,
+      clientHeight: 600,
+      style: {},
+      children: [] as unknown[],
+      parentNode: null,
+      ownerDocument: mockDoc,
+      nodeType: 1,
+      getAttribute: (attr: string) =>
+        (node[attr] as unknown) ?? (node[`data-${attr}`] as unknown) ?? null,
+      setAttribute: (attr: string, val: string) => {
+        node[attr] = val;
+      },
+      removeAttribute: (attr: string) => {
+        delete node[attr];
+      },
+      hasAttribute: (attr: string) => node[attr] != null,
+      addEventListener: (evt: string, fn: (e: unknown) => void) => {
+        if (!nodeListeners.has(evt)) nodeListeners.set(evt, new Set());
+        nodeListeners.get(evt)!.add(fn);
+      },
+      removeEventListener: (evt: string, fn: (e: unknown) => void) => {
+        nodeListeners.get(evt)?.delete(fn);
+      },
+      dispatchEvent: () => {},
+      appendChild: (child: Record<string, unknown>) => {
+        child.parentNode = node;
+        (node.children as unknown[]).push(child);
+        return child;
+      },
+      removeChild: (child: Record<string, unknown>) => {
+        const arr = node.children as unknown[];
+        const idx = arr.indexOf(child);
+        if (idx !== -1) arr.splice(idx, 1);
+        child.parentNode = null;
+        return child;
+      },
+      insertBefore: (newChild: Record<string, unknown>, refChild: unknown) => {
+        const arr = node.children as unknown[];
+        const idx = arr.indexOf(refChild);
+        if (idx !== -1) arr.splice(idx, 0, newChild);
+        else arr.push(newChild);
+        newChild.parentNode = node;
+        return newChild;
+      },
+      _listeners: nodeListeners,
+    };
+    return node;
+  };
+
+  mockDoc = {
+    nodeType: 9,
+    createElement: (tag: string) => createMockNode(tag),
+    createElementNS: (_ns: string, tag: string) => createMockNode(tag),
+    createTextNode: (text: string) => ({ nodeType: 3, nodeValue: text }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => {},
+    body: createMockNode("body"),
+  };
+  (mockDoc.body as Record<string, unknown>).ownerDocument = mockDoc;
+
+  const g = globalThis as Record<string, unknown>;
+  g.addEventListener = vi.fn();
+  g.removeEventListener = vi.fn();
+  g.location = { search: "", origin: "http://localhost" };
+  g.window = globalThis;
+  g.document = mockDoc;
+}
+
+function findNodeByAttr(
+  node: Record<string, unknown>,
+  attr: string,
+  val: string,
+): Record<string, unknown> | null {
+  if (
+    node.getAttribute &&
+    (node.getAttribute as (a: string) => unknown)(attr) === val
+  ) {
+    return node;
+  }
+  const children = (node.children as Record<string, unknown>[]) || [];
+  for (const child of children) {
+    const found = findNodeByAttr(child, attr, val);
+    if (found) return found;
+  }
+  return null;
+}
+
+function clickNode(node: Record<string, unknown>): void {
+  const listeners = (
+    node as unknown as {
+      _listeners?: Map<string, Set<(e: unknown) => void>>;
+    }
+  )._listeners;
+  listeners
+    ?.get("click")
+    ?.forEach((fn) => fn({ type: "click", preventDefault: () => {} }));
+}
 
 describe("PLAYER.CAR.1.S5 — garageStore vehicle presence & persistence", () => {
   it("hasStoredCar returns false when no car is saved on profile", () => {
@@ -126,5 +272,288 @@ describe("PLAYER.CAR.1.S5 — acquisition persistence integration", () => {
     expect(hasStoredCar(citizenId)).toBe(true);
     expect(loadOwnedKeysCache()).toContain(vehicleKeyOf(acquired));
     expect(loadCar(citizenId).id).toBe(acquired.spec.id);
+  });
+});
+
+describe("PLAYER.CAR.1.S5 — distinct user ID vs citizen ID persistence via runtime.acquireCar", () => {
+  it("persists to resolved citizenId rather than userId, updates parked car mesh, and drives with acquired stats", () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+    const citizenId = citizen.id; // e.g. "citizen_0"
+    const userId = "kooker-user-distinct-8888";
+
+    // Operator logs in with distinct userId
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId(userId);
+
+    expect(rt.operatorCitizenId()).toBe(citizenId);
+    expect(rt.operatorCitizenId()).not.toBe(userId);
+
+    const setOperatorCarSpy = vi.fn();
+    (rt as unknown as { renderer: unknown }).renderer = {
+      setOperatorCar: setOperatorCarSpy,
+      setRaceState: vi.fn(),
+      enterFirstPerson: vi.fn(),
+      exitFirstPerson: vi.fn(),
+    };
+
+    const acquired = SHOWROOM_VEHICLES[2]!; // Karoo X19 Targa
+    expect(rt.hasStoredCar()).toBe(false);
+
+    // Acquire vehicle via identity-bound runtime method
+    const ok = rt.acquireCar(acquired.spec, citizenId);
+    expect(ok).toBe(true);
+
+    // Assert stored under citizenId, NOT userId
+    expect(hasStoredCar(citizenId)).toBe(true);
+    expect(hasStoredCar(userId)).toBe(false);
+    expect(loadCar(citizenId).id).toBe(acquired.spec.id);
+    expect(rt.hasStoredCar()).toBe(true);
+    expect(rt.hasStoredCar(citizenId)).toBe(true);
+
+    // Parked car mesh refresh
+    expect(setOperatorCarSpy).toHaveBeenCalled();
+    const [renderedCar, renderedCell] = setOperatorCarSpy.mock.calls.at(-1)!;
+    expect(renderedCar?.id).toBe(acquired.spec.id);
+    expect(renderedCell).toBeDefined();
+
+    // UI state reads the acquired car
+    expect(rt.getUiState().garage?.carName).toBe(acquired.spec.name);
+    expect(rt.getUiState().garage?.stats.topSpeed).toBeCloseTo(
+      acquired.spec.stats.topSpeed,
+    );
+
+    // Driving loop resolves stats from the acquired car
+    const raceStarted = rt.startRace();
+    expect(raceStarted).toBe(true);
+    expect(rt.sim.state.raceState?.stats.topSpeed).toBeCloseTo(
+      acquired.spec.stats.topSpeed,
+    );
+  });
+
+  it("acquireCar rejects if expectedCitizenId does not match resolved operatorCitizenId", () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId("user-1");
+
+    const acquired = SHOWROOM_VEHICLES[1]!;
+    const ok = rt.acquireCar(acquired.spec, "wrong-citizen-id");
+    expect(ok).toBe(false);
+    expect(rt.hasStoredCar()).toBe(false);
+  });
+});
+
+describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
+  it("isolates ownership cache between distinct user accounts", () => {
+    const userA = "user-alice-101";
+    const userB = "user-bob-202";
+
+    saveOwnedKeysCache(["karoo-vonk-11"], userA);
+    expect(loadOwnedKeysCache(userA)).toEqual(["karoo-vonk-11"]);
+    expect(loadOwnedKeysCache(userB)).toEqual([]);
+
+    clearOwnedKeysCache(userA);
+    expect(loadOwnedKeysCache(userA)).toEqual([]);
+  });
+
+  it("prevents account A cached ownership from suppressing account B new-player showroom", () => {
+    const userA = "user-alice-101";
+    const userB = "user-bob-202";
+
+    // Alice has a car cached in her scope
+    saveOwnedKeysCache(["karoo-vonk-11"], userA);
+
+    // Bob has no car in garageStore and no cached keys in his scope
+    expect(hasStoredCar("citizen-bob")).toBe(false);
+    expect(loadOwnedKeysCache(userB).length).toBe(0);
+    // User A's cache did not bleed into User B
+    expect(loadOwnedKeysCache(userB)).not.toContain("karoo-vonk-11");
+  });
+});
+
+describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & unmount guards", () => {
+  beforeEach(() => {
+    setupMountedDOM();
+  });
+
+  it("suppresses completion if account switches while acquisition request is in flight", async () => {
+    const rt = new ColonyRuntime(4242);
+    const citizenA = rt.getUiState().citizens.list[0]!;
+    const citizenB = rt.getUiState().citizens.list[1]!;
+
+    const auth = getAuthClient();
+    vi.spyOn(auth, "getValidToken").mockResolvedValue("test-jwt");
+
+    // Start as Alice
+    (auth as unknown as { session: unknown }).session = {
+      token: "test-jwt",
+      expiresAt: Date.now() + 100000,
+      operator: {
+        id: "Alice",
+        userId: "user-alice-101",
+        scopes: [],
+        roles: ["CITYLIFE_PLAYER"],
+      },
+    };
+    rt.setOperatorName(citizenA.displayName);
+    rt.setOperatorUserId("user-alice-101");
+    expect(rt.operatorCitizenId()).toBe(citizenA.id);
+
+    // Controlled in-flight purchase deferred promise
+    let resolvePurchase!: (val: { ok: boolean; status: number }) => void;
+    const purchasePromise = new Promise<{ ok: boolean; status: number }>(
+      (res) => {
+        resolvePurchase = res;
+      },
+    );
+
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (
+        url.includes("/vehicle/purchase") ||
+        url.includes("/car-acquisitions")
+      ) {
+        return purchasePromise;
+      }
+      return { ok: true, status: 200, json: async () => [] };
+    });
+
+    const container = (
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
+      }
+    ).document.createElement("div");
+
+    let root: Root | null = null;
+    await act(async () => {
+      root = createRoot(container as unknown as HTMLElement);
+      root.render(
+        React.createElement(ShowroomOverlay, {
+          runtime: rt,
+          canAcquire: true,
+          onClose: () => {},
+        }),
+      );
+    });
+
+    // Find and click acquire button as Alice
+    const btn = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire",
+    );
+    expect(btn).not.toBeNull();
+
+    await act(async () => {
+      clickNode(btn!);
+    });
+
+    // While request is in flight, switch session to Bob!
+    (auth as unknown as { session: unknown }).session = {
+      token: "test-jwt-bob",
+      expiresAt: Date.now() + 100000,
+      operator: {
+        id: "Bob",
+        userId: "user-bob-202",
+        scopes: [],
+        roles: ["CITYLIFE_PLAYER"],
+      },
+    };
+    rt.setOperatorName(citizenB.displayName);
+    rt.setOperatorUserId("user-bob-202");
+    expect(rt.operatorCitizenId()).toBe(citizenB.id);
+
+    // Now resolve Alice's late response
+    await act(async () => {
+      resolvePurchase({ ok: true, status: 200 });
+    });
+
+    // Guard MUST suppress: Bob's citizenId and Bob's userId must NOT have Alice's car!
+    expect(hasStoredCar(citizenB.id)).toBe(false);
+    expect(hasStoredCar("user-bob-202")).toBe(false);
+    expect(loadOwnedKeysCache("user-bob-202")).toEqual([]);
+
+    await act(async () => {
+      root?.unmount();
+    });
+  });
+
+  it("suppresses completion if component unmounts while request is in flight", async () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+
+    const auth = getAuthClient();
+    vi.spyOn(auth, "getValidToken").mockResolvedValue("test-jwt");
+    (auth as unknown as { session: unknown }).session = {
+      token: "test-jwt",
+      expiresAt: Date.now() + 100000,
+      operator: {
+        id: "Alice",
+        userId: "user-alice-101",
+        scopes: [],
+        roles: ["CITYLIFE_PLAYER"],
+      },
+    };
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId("user-alice-101");
+
+    let resolvePurchase!: (val: { ok: boolean; status: number }) => void;
+    const purchasePromise = new Promise<{ ok: boolean; status: number }>(
+      (res) => {
+        resolvePurchase = res;
+      },
+    );
+
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (
+        url.includes("/vehicle/purchase") ||
+        url.includes("/car-acquisitions")
+      ) {
+        return purchasePromise;
+      }
+      return { ok: true, status: 200, json: async () => [] };
+    });
+
+    const container = (
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
+      }
+    ).document.createElement("div");
+
+    let root: Root | null = null;
+    await act(async () => {
+      root = createRoot(container as unknown as HTMLElement);
+      root.render(
+        React.createElement(ShowroomOverlay, {
+          runtime: rt,
+          canAcquire: true,
+          onClose: () => {},
+        }),
+      );
+    });
+
+    const btn = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire",
+    );
+    expect(btn).not.toBeNull();
+
+    await act(async () => {
+      clickNode(btn!);
+    });
+
+    // Unmount before response arrives
+    await act(async () => {
+      root?.unmount();
+    });
+
+    // Resolve response after unmount
+    await act(async () => {
+      resolvePurchase({ ok: true, status: 200 });
+    });
+
+    // Stored car must not have been saved
+    expect(hasStoredCar(citizen.id)).toBe(false);
   });
 });

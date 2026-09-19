@@ -11,6 +11,7 @@ import {
   loadOwnedKeysCache,
   saveOwnedKeysCache,
   clearOwnedKeysCache,
+  carOwnershipCacheKey,
   fetchOwnedVehicleKeysBackend,
   postAcquireVehicle,
   acquireIdempotencyKey,
@@ -98,6 +99,7 @@ describe("carAcquisition — response classification", () => {
     expect(classifyAcquireStatus(409)).toEqual({ kind: "pending" });
     expect(classifyAcquireStatus(401)).toEqual({ kind: "disabled" });
     expect(classifyAcquireStatus(403)).toEqual({ kind: "disabled" });
+    expect(classifyAcquireStatus(400)).toEqual({ kind: "unsupported" });
     expect(classifyAcquireStatus(500)).toEqual({ kind: "error", status: 500 });
     expect(classifyAcquireStatus(404)).toEqual({ kind: "error", status: 404 });
   });
@@ -129,6 +131,15 @@ describe("carAcquisition — button state machine", () => {
     expect(acquireButtonView(false, false, { kind: "disabled" }).disabled).toBe(
       true,
     );
+    expect(
+      acquireButtonView(false, false, { kind: "unsupported" }).disabled,
+    ).toBe(true);
+    expect(
+      acquireButtonView(false, false, { kind: "unsupported" }).state,
+    ).toBe("unsupported");
+    expect(
+      acquireButtonView(false, false, { kind: "unsupported" }).label,
+    ).toBe("🔒 Preview only");
   });
   it("every state has a colour", () => {
     for (const s of [
@@ -137,6 +148,7 @@ describe("carAcquisition — button state machine", () => {
       "owned",
       "insufficient_funds",
       "disabled",
+      "unsupported",
       "error",
     ] as const) {
       expect(acquireStateColor(s)).toMatch(/^#[0-9a-f]{6}$/i);
@@ -158,6 +170,20 @@ describe("carAcquisition — ownership cache (CACHE ONLY)", () => {
     expect(loadOwnedKeysCache()).toEqual([]);
     clearOwnedKeysCache();
     expect(loadOwnedKeysCache()).toEqual([]);
+  });
+  it("scopes ownership cache per account to prevent cross-account showroom suppression", () => {
+    expect(carOwnershipCacheKey("user-1")).toBe(
+      "citylife.car.ownership.v1.user-1",
+    );
+    expect(carOwnershipCacheKey(null)).toBe("citylife.car.ownership.v1");
+    expect(carOwnershipCacheKey("")).toBe("citylife.car.ownership.v1");
+
+    saveOwnedKeysCache([VONK], "user-1");
+    expect(loadOwnedKeysCache("user-1")).toEqual([VONK]);
+    expect(loadOwnedKeysCache("user-2")).toEqual([]);
+
+    clearOwnedKeysCache("user-1");
+    expect(loadOwnedKeysCache("user-1")).toEqual([]);
   });
 });
 
