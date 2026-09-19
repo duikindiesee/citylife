@@ -61,6 +61,7 @@ import { markPasswordChangePending } from "../pendingPasswordNotice";
 import { hasStoredCar } from "../car/garageStore";
 import {
   fetchOwnedVehicleKeysBackend,
+  isCarAcquisitionEnabled,
   loadOwnedKeysCache,
   shouldAutoOpenShowroom,
 } from "../car/carAcquisition";
@@ -818,6 +819,7 @@ export function ColonyApp() {
   const [windTunnelOpen, setWindTunnelOpen] = useState(false);
   // PLAYER.GARAGE.1 — the Gearbox Auto Hub showroom interior (its own streamed scene overlay).
   const [showroomOpen, setShowroomOpen] = useState(false);
+  const [showroomAutoAcquire, setShowroomAutoAcquire] = useState(false);
   // ARCADE.2A — the authenticated Gamehouse venue interior (its own streamed overlay; the isolated 3D
   // cabinet inspection mounts only on a cabinet interaction inside it).
   const [gamehouseOpen, setGamehouseOpen] = useState(false);
@@ -905,6 +907,7 @@ export function ColonyApp() {
   // interior even by invoking this handler out of band.
   const openShowroom = () => {
     if (!newPlayerJourneyEnabled) return;
+    setShowroomAutoAcquire(false);
     setShowroomOpen(true);
   };
   // HQ.ENTER.1 — is Kooker HQ open to THIS session? Fails closed while loading and on every error.
@@ -1048,6 +1051,7 @@ export function ColonyApp() {
   const autoShowroomCheckedRef = useRef(false);
   useEffect(() => {
     autoShowroomCheckedRef.current = false;
+    setShowroomAutoAcquire(false);
   }, [operatorUserId]);
 
   useEffect(() => {
@@ -1090,6 +1094,7 @@ export function ColonyApp() {
           backendTruth: truth,
         })
       ) {
+        setShowroomAutoAcquire(true);
         setShowroomOpen(true);
       }
     })();
@@ -1913,8 +1918,11 @@ export function ColonyApp() {
       {showroomOpen && newPlayerJourneyEnabled && (
         <ShowroomOverlay
           runtime={runtime}
-          canAcquire={newPlayerJourneyEnabled}
-          onClose={() => setShowroomOpen(false)}
+          canAcquire={showroomAutoAcquire || isCarAcquisitionEnabled()}
+          onClose={() => {
+            setShowroomAutoAcquire(false);
+            setShowroomOpen(false);
+          }}
         />
       )}
       {/* HQ.ENTER.1 — defense in depth: the reception renders ONLY while the entitlement is live, so a

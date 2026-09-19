@@ -58,7 +58,7 @@ const controlButtonStyle: CSSProperties = {
 
 export function ShowroomOverlay({
   onClose,
-  canAcquire = true,
+  canAcquire = isCarAcquisitionEnabled(),
   runtime,
 }: {
   onClose: () => void;
@@ -72,10 +72,8 @@ export function ShowroomOverlay({
   const card = showroomCardModel(vehicle);
   const vehicleKey = vehicleKeyOf(vehicle);
 
-  // PLAYER.CAR.1.S5 — acquisition enabled by default for the new-player journey or if feature gate is on.
-  const [acquireEnabled] = useState(
-    () => canAcquire || isCarAcquisitionEnabled(),
-  );
+  // PLAYER.CAR.1.S5 — acquisition enabled when canAcquire is explicitly true or feature gate is on.
+  const acquireEnabled = Boolean(canAcquire);
   // The set of vehicleKeys the SERVER says the player owns. Seeded from the cache-only mirror for an
   // instant first paint, then overwritten by the authoritative GET — never merged ahead of it.
   const [owned, setOwned] = useState<readonly string[]>([]);

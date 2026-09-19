@@ -557,6 +557,42 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
     // Stored car must not have been saved
     expect(hasStoredCar(citizen.id)).toBe(false);
   });
+
+  it("renders locked preview button when canAcquire is false", async () => {
+    const rt = new ColonyRuntime(4242);
+    const container = (
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
+      }
+    ).document.createElement("div");
+
+    let root: Root | null = null;
+    await act(async () => {
+      root = createRoot(container as unknown as HTMLElement);
+      root.render(
+        React.createElement(ShowroomOverlay, {
+          runtime: rt,
+          canAcquire: false,
+          onClose: () => {},
+        }),
+      );
+    });
+
+    const previewBtn = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire-preview",
+    );
+    expect(previewBtn).not.toBeNull();
+    expect((previewBtn as any).hasAttribute("disabled")).toBe(true);
+
+    const acquireBtn = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire",
+    );
+    expect(acquireBtn).toBeNull();
+  });
 });
 
 describe("PLAYER.CAR.1.S5 — shouldAutoOpenShowroom pure decision rule", () => {
