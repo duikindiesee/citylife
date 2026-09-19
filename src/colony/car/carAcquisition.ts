@@ -339,3 +339,28 @@ export async function postAcquireVehicle(
     return { kind: "error" };
   }
 }
+
+/** Decision inputs for the PLAYER.CAR.1.S5 auto-load showroom on login flow. Pure. */
+export interface AutoShowroomDecisionArgs {
+  readonly hasRealAccount: boolean;
+  readonly isAuthenticated: boolean;
+  readonly newPlayerJourneyEnabled: boolean;
+  readonly hasStoredCarLocally: boolean;
+  readonly ownedKeysInCache: readonly string[];
+  readonly backendTruth: readonly string[] | null;
+}
+
+/** Pure decision rule for auto-loading the Gearbox Auto Hub showroom on login.
+ *  Fails closed: only opens when a real authenticated player session is active, the journey is enabled,
+ *  no car is present in local store or cache, AND the server explicitly reports 0 owned cars (`[]`).
+ *  If backend is unreachable (`null`), unauthenticated, or in dev bypass without an account, returns false. */
+export function shouldAutoOpenShowroom(args: AutoShowroomDecisionArgs): boolean {
+  if (!args.hasRealAccount || !args.isAuthenticated || !args.newPlayerJourneyEnabled) {
+    return false;
+  }
+  if (args.hasStoredCarLocally || args.ownedKeysInCache.length > 0) {
+    return false;
+  }
+  // Server truth must be authoritatively resolved: non-null and empty (0 owned vehicles).
+  return args.backendTruth !== null && args.backendTruth.length === 0;
+}

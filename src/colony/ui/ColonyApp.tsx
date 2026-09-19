@@ -62,6 +62,7 @@ import { hasStoredCar } from "../car/garageStore";
 import {
   fetchOwnedVehicleKeysBackend,
   loadOwnedKeysCache,
+  shouldAutoOpenShowroom,
 } from "../car/carAcquisition";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
 import {
@@ -1040,22 +1041,28 @@ export function ColonyApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth, operatorUserId]);
 
-  // PLAYER.CAR.1.S5 — auto-spawn into the Gearbox Auto Hub showroom on login when the player does not
-  // own a car on their profile. Runs once per session identity. Evaluates authoritative server truth,
-  // the localStorage ownership cache, and the local garageStore.
+  // PLAYER.CAR.1.S5 — auto-spawn into the Gearbox Auto Hub showroom on login when an authenticated
+  // player does not own a car on their profile. Runs once per session identity. Evaluates authoritative
+  // server truth, the localStorage ownership cache, and the local garageStore. Fails closed when unauthenticated,
+  // in dev bypass without an account, or when backend truth is unreachable.
   const autoShowroomCheckedRef = useRef(false);
   useEffect(() => {
     autoShowroomCheckedRef.current = false;
   }, [operatorUserId]);
 
   useEffect(() => {
-    if (!newPlayerJourneyEnabled || autoShowroomCheckedRef.current) return;
+    if (
+      !hasRealAccount ||
+      !auth.isAuthenticated ||
+      !newPlayerJourneyEnabled ||
+      autoShowroomCheckedRef.current
+    ) {
+      return;
+    }
     const citizenId =
       runtime.operatorCitizenId() ??
       (auth.operator?.userId ? String(auth.operator.userId) : "citizen-me");
-    const cacheScope = auth.operator?.userId
-      ? String(auth.operator.userId)
-      : (runtime.operatorCitizenId() ?? "anon");
+    const cacheScope = String(auth.operator?.userId ?? "anon");
 
     // Fast-path: If local garageStore has a stored car or scoped cache has owned keys, don't auto-open.
     const hasCarLocally =
@@ -1070,19 +1077,27 @@ export function ColonyApp() {
       const truth = await fetchOwnedVehicleKeysBackend();
       if (cancelled) return;
       autoShowroomCheckedRef.current = true;
-      if (truth === null || truth.length === 0) {
-        const stillHasCar =
-          runtime.hasStoredCar(citizenId) || hasStoredCar(citizenId);
-        if (!stillHasCar && loadOwnedKeysCache(cacheScope).length === 0) {
-          setShowroomOpen(true);
-        }
+      const stillHasCar =
+        runtime.hasStoredCar(citizenId) || hasStoredCar(citizenId);
+      const stillCachedKeys = loadOwnedKeysCache(cacheScope);
+      if (
+        shouldAutoOpenShowroom({
+          hasRealAccount,
+          isAuthenticated: auth.isAuthenticated,
+          newPlayerJourneyEnabled,
+          hasStoredCarLocally: stillHasCar,
+          ownedKeysInCache: stillCachedKeys,
+          backendTruth: truth,
+        })
+      ) {
+        setShowroomOpen(true);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [newPlayerJourneyEnabled, auth, operatorUserId, runtime]);
+  }, [hasRealAccount, newPlayerJourneyEnabled, auth, operatorUserId, runtime]);
   // HQ.ENTER.1 — evaluate `kooker-hq-v1` for the current identity, same discipline as the journey flag:
   // reset to null (fail closed) on every identity change, skip the network for the DEV/E2E bypass, and
   // drop a stale in-flight response so a prior user's positive can never carry forward. Closing `hqOpen`

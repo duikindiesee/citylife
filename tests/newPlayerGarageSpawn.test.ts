@@ -16,6 +16,7 @@ import {
   clearOwnedKeysCache,
   postAcquireVehicle,
   BACKEND_VEHICLE_PURCHASE_PATH,
+  shouldAutoOpenShowroom,
 } from "../src/colony/car/carAcquisition";
 import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
 import { type CarSpec } from "../src/colony/car/carSpec";
@@ -555,5 +556,83 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
 
     // Stored car must not have been saved
     expect(hasStoredCar(citizen.id)).toBe(false);
+  });
+});
+
+describe("PLAYER.CAR.1.S5 — shouldAutoOpenShowroom pure decision rule", () => {
+  const baseValidArgs = {
+    hasRealAccount: true,
+    isAuthenticated: true,
+    newPlayerJourneyEnabled: true,
+    hasStoredCarLocally: false,
+    ownedKeysInCache: [] as string[],
+    backendTruth: [] as string[],
+  };
+
+  it("returns true when authenticated player has journey enabled, no local car, and 0 backend owned cars", () => {
+    expect(shouldAutoOpenShowroom(baseValidArgs)).toBe(true);
+  });
+
+  it("returns false when user does not have a real account (e.g. dev/e2e skip-auth bypass)", () => {
+    expect(
+      shouldAutoOpenShowroom({
+        ...baseValidArgs,
+        hasRealAccount: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when session is unauthenticated", () => {
+    expect(
+      shouldAutoOpenShowroom({
+        ...baseValidArgs,
+        isAuthenticated: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when new player journey is disabled", () => {
+    expect(
+      shouldAutoOpenShowroom({
+        ...baseValidArgs,
+        newPlayerJourneyEnabled: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when player already has a car stored locally", () => {
+    expect(
+      shouldAutoOpenShowroom({
+        ...baseValidArgs,
+        hasStoredCarLocally: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when player already has owned keys in cache", () => {
+    expect(
+      shouldAutoOpenShowroom({
+        ...baseValidArgs,
+        ownedKeysInCache: ["karoo-vonk-11"],
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when backend truth is null (fails closed on network/endpoint error)", () => {
+    expect(
+      shouldAutoOpenShowroom({
+        ...baseValidArgs,
+        backendTruth: null,
+      }),
+    ).toBe(false);
+  });
+
+  it("returns false when backend truth reports an owned car", () => {
+    expect(
+      shouldAutoOpenShowroom({
+        ...baseValidArgs,
+        backendTruth: ["karoo-x19-targa"],
+      }),
+    ).toBe(false);
   });
 });
