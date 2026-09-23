@@ -8,7 +8,13 @@
 // ownership write or service call can originate here. Only when the operator turns the gate on does
 // the acquire button post the canonical vehicleKey to the service (which alone checks funds and moves
 // coin) and render the server ownership truth.
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { ShowroomView } from "../render/ShowroomView";
 import {
   SHOWROOM_VEHICLES,
@@ -157,47 +163,63 @@ export function ShowroomOverlay({
       : (initiatingCitizenId ?? "anon");
 
     setPendingKey(key);
-    void postAcquireVehicle(key, undefined, { bypassGate: acquireEnabled }).then(
-      async (result) => {
-        if (!isMountedRef.current) return;
-        const currentAuth = getAuthClient();
-        const currentUserId = currentAuth.operator?.userId ?? null;
-        const currentCitizenId = runtime?.operatorCitizenId() ?? null;
-        if (
-          currentUserId !== initiatingUserId ||
-          (initiatingCitizenId && currentCitizenId !== initiatingCitizenId)
-        ) {
-          // Cross-account / session switch guard: suppress stale completion
-          return;
+    void postAcquireVehicle(key, undefined, {
+      bypassGate: acquireEnabled,
+    }).then(async (result) => {
+      if (!isMountedRef.current) return;
+      const currentAuth = getAuthClient();
+      const currentUserId = currentAuth.operator?.userId ?? null;
+      const currentCitizenId = runtime?.operatorCitizenId() ?? null;
+      if (
+        currentUserId !== initiatingUserId ||
+        (initiatingCitizenId && currentCitizenId !== initiatingCitizenId)
+      ) {
+        // Cross-account / session switch guard: suppress stale completion
+        return;
+      }
+
+      // A successful purchase can confirm a different, already-owned car.
+      // Resolve authority before writing the garage; never infer it from the offer.
+      const truth =
+        result.kind === "owned" ? await fetchOwnedVehicleKeysBackend() : null;
+      if (
+        !isMountedRef.current ||
+        (getAuthClient().operator?.userId ?? null) !== initiatingUserId ||
+        (initiatingCitizenId &&
+          runtime?.operatorCitizenId() !== initiatingCitizenId)
+      )
+        return;
+      const confirmed =
+        truth &&
+        SHOWROOM_VEHICLES.find(
+          (v) =>
+            truth.includes(vehicleKeyOf(v)) ||
+            truth.includes(serverVehicleKeyOf(vehicleKeyOf(v))),
+        );
+      setOutcomes((m) => ({
+        ...m,
+        [key]:
+          result.kind === "owned" &&
+          (!confirmed || vehicleKeyOf(confirmed) !== key)
+            ? { kind: "error" }
+            : result,
+      }));
+      setPendingKey((cur) => (cur === key ? null : cur));
+      if (result.kind === "owned" && confirmed && truth) {
+        // Confirmed by authority — persist via identity-bound runtime method to update parked car
+        const targetCitizenId =
+          currentCitizenId ??
+          (currentUserId ? String(currentUserId) : "citizen-me");
+        if (runtime) {
+          runtime.acquireCar(confirmed.spec, targetCitizenId);
+        } else {
+          saveCar(targetCitizenId, confirmed.spec);
         }
 
-        // A successful purchase can confirm a different, already-owned car.
-        // Resolve authority before writing the garage; never infer it from the offer.
-        const truth = result.kind === "owned" ? await fetchOwnedVehicleKeysBackend() : null;
-        if (!isMountedRef.current ||
-          (getAuthClient().operator?.userId ?? null) !== initiatingUserId ||
-          (initiatingCitizenId && runtime?.operatorCitizenId() !== initiatingCitizenId)) return;
-        const confirmed = truth && SHOWROOM_VEHICLES.find((v) =>
-          truth.includes(vehicleKeyOf(v)) || truth.includes(serverVehicleKeyOf(vehicleKeyOf(v))));
-        setOutcomes((m) => ({ ...m, [key]: result.kind === "owned" &&
-          (!confirmed || vehicleKeyOf(confirmed) !== key) ? { kind: "error" } : result }));
-        setPendingKey((cur) => (cur === key ? null : cur));
-        if (result.kind === "owned" && confirmed && truth) {
-          // Confirmed by authority — persist via identity-bound runtime method to update parked car
-          const targetCitizenId =
-            currentCitizenId ??
-            (currentUserId ? String(currentUserId) : "citizen-me");
-          if (runtime) {
-            runtime.acquireCar(confirmed.spec, targetCitizenId);
-          } else {
-            saveCar(targetCitizenId, confirmed.spec);
-          }
-
-          setOwned(truth);
-          saveOwnedKeysCache(truth, scope);
-        }
-      },
-    );
+        setOwned(truth);
+        saveOwnedKeysCache(truth, scope);
+      }
+    });
   }, [acquireEnabled, isOwned, pendingKey, vehicleKey, runtime]);
 
   const prev = useCallback(

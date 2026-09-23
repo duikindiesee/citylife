@@ -134,12 +134,12 @@ describe("carAcquisition — button state machine", () => {
     expect(
       acquireButtonView(false, false, { kind: "unsupported" }).disabled,
     ).toBe(true);
-    expect(
-      acquireButtonView(false, false, { kind: "unsupported" }).state,
-    ).toBe("unsupported");
-    expect(
-      acquireButtonView(false, false, { kind: "unsupported" }).label,
-    ).toBe("🔒 Preview only");
+    expect(acquireButtonView(false, false, { kind: "unsupported" }).state).toBe(
+      "unsupported",
+    );
+    expect(acquireButtonView(false, false, { kind: "unsupported" }).label).toBe(
+      "🔒 Preview only",
+    );
   });
   it("every state has a colour", () => {
     for (const s of [
