@@ -1064,18 +1064,8 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
   // server truth only. Cached cosmetics/default cars cannot establish ownership. Fails closed when unauthenticated,
   // in dev bypass without an account, or when backend truth is unreachable.
   const autoShowroomCheckedRef = useRef(false);
-  useEffect(() => {
-    runtime.clearPlayerHome();
-    if (!operatorUserId || !playerInventory || !newPlayerJourneyEnabled) return;
-    let cancelled=false;
-    void (async () => {
-      const truth=await fetchHomeTruth();
-      if (cancelled || !isHomeOwned(truth)) return;
-      const session=await loadHouseBuild(playerInventory);
-      if (!cancelled && session.userId === String(operatorUserId)) runtime.applyCompletedPlayerHome(session);
-    })().catch(() => { /* No invented home when authoritative completion cannot be read. */ });
-    return () => {cancelled=true;};
-  },[operatorUserId,playerInventory,newPlayerJourneyEnabled,runtime]);
+  const [arrivalError, setArrivalError] = useState(false);
+  const [arrivalAttempt, setArrivalAttempt] = useState(0);
   useEffect(() => {
     autoShowroomCheckedRef.current = false;
     setShowroomAutoAcquire(false);
@@ -1085,14 +1075,31 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
     if (
       !hasRealAccount ||
       !auth.isAuthenticated ||
+      !journeyEntitlement ||
       autoShowroomCheckedRef.current
     ) {
       return;
     }
     let cancelled = false;
+    setArrivalError(false);
+    runtime.clearPlayerHome();
+    if (operatorUserId) runtime.applyVehicleOwnership(String(operatorUserId), null);
     void (async () => {
       const truth = await fetchOwnedVehicleKeysBackend();
       if (cancelled) return;
+      if (!truth) throw new Error("Vehicle ownership unavailable");
+      if (newPlayerJourneyEnabled) {
+        if (!playerInventory) throw new Error("Home inventory unavailable");
+        const home = await fetchHomeTruth();
+        if (cancelled) return;
+        if (!home) throw new Error("Home ownership unavailable");
+        if (isHomeOwned(home)) {
+          const session = await loadHouseBuild(playerInventory);
+          if (cancelled) return;
+          if (session.userId !== String(operatorUserId) || !runtime.applyCompletedPlayerHome(session))
+            throw new Error("Completed home unavailable");
+        }
+      }
       if (operatorUserId)
         runtime.applyVehicleOwnership(String(operatorUserId), truth);
       // Hydrate existing owners even when onboarding is off. If entitlement is still
@@ -1109,12 +1116,13 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
         setShowroomAutoAcquire(true);
         setShowroomOpen(true);
       }
-    })();
+    })().catch(() => { if (!cancelled) setArrivalError(true); });
 
     return () => {
       cancelled = true;
     };
-  }, [hasRealAccount, newPlayerJourneyEnabled, auth, operatorUserId, runtime]);
+  }, [hasRealAccount, newPlayerJourneyEnabled, auth, operatorUserId, runtime,
+    journeyEntitlement, playerInventory, arrivalAttempt]);
   // HQ.ENTER.1 — evaluate `kooker-hq-v1` for the current identity, same discipline as the journey flag:
   // reset to null (fail closed) on every identity change, skip the network for the DEV/E2E bypass, and
   // drop a stale in-flight response so a prior user's positive can never carry forward. Closing `hqOpen`
@@ -1901,6 +1909,11 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
   return (
     <div className="colony">
       <div className="canvas-host" ref={hostRef} />
+      {arrivalError && <div role="alert" style={{position:"absolute",inset:0,zIndex:10000,
+        background:"#08131ff5",display:"grid",placeContent:"center",gap:16,padding:24}}>
+        <p>We couldn't load your car and home. Please try again.</p>
+        <button onClick={() => setArrivalAttempt(n => n + 1)}>Retry arrival</button>
+      </div>}
       <FirstPersonPanel
         runtime={runtime}
         fp={ui.firstPerson}

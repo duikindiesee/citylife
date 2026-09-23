@@ -250,10 +250,14 @@ export async function fetchOwnedVehicleKeysBackend(): Promise<string[] | null> {
     if (!token) return null;
     let resp = await fetch(BACKEND_VEHICLE_TRUTH_PATH, {
       headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000),
     });
     if (resp.status === 404) {
       resp = await fetch(LEGACY_BACKEND_OWNERSHIP_PATH, {
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+        signal: AbortSignal.timeout(15000),
       });
     }
     if (!resp.ok) return null;

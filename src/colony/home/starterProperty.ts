@@ -132,7 +132,7 @@ export interface HomeTruth {
  *  advances and no house projects on a malformed payload. Pure, fail-closed. */
 export function parseHomeTruth(raw: unknown): HomeTruth | null {
   const o = asRecord(raw);
-  if (!o) return null;
+  if (!o || typeof o.owned !== "boolean") return null;
   const str = (v: unknown): string | null =>
     typeof v === "string" && v.trim() ? v.trim() : null;
   const priceRaw = o.priceKco ?? o.price;
@@ -311,6 +311,8 @@ export async function fetchHomeTruth(): Promise<HomeTruth | null> {
   try {
     const resp = await fetch(HOME_TRUTH_PATH, {
       headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) return null;
     const data = (await resp.json()) as unknown;

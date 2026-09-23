@@ -178,6 +178,8 @@ Driving permits road cells and only the current owned home's driveway, still exc
 water, house footprint, fences outside the gate and other buildings. The shared swept
 vehicle footprint checks continue to apply. Keyboard driving onto the road and reload
 back to the home spawn are covered in the browser with fixture APIs. This is not yet proof
-of all slopes, road-turn clearance or live deployment. Ownership reads currently arrive
-asynchronously; a unified arrival loading/error barrier remains to prevent a temporary
-garage spawn while completed-home truth is still loading.
+of all slopes, road-turn clearance or live deployment.
+
+## Arrival read ordering
+
+Resolve entitlement and required home reads before applying vehicle ownership. A completed home projection must succeed before seating its car, avoiding an intermediate garage spawn. Failed required ownership reads expose Retry arrival and do not seat the car. Browser regression covers a failed home read followed by retry, home spawn, road access, reload and account switch. Deployed acceptance remains outstanding.
