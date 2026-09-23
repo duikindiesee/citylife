@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { ColonyRuntime } from "../runtime";
 import type { OwnedDriveInput } from "../car/ownedDriving";
 
@@ -23,14 +23,25 @@ export function OwnedCarControls({
 }) {
   const pose = runtime.getOwnedDrivePose();
   const active = !!pose && !suspended;
+  const generation = runtime.getOwnedDriveInputGeneration();
+  const inputGeneration = useRef(generation);
   const input = useRef<OwnedDriveInput>({});
-  const change = (action: keyof OwnedDriveInput, down: boolean) => {
-    input.current = { ...input.current, [action]: down };
-    runtime.setOwnedDriveInput(input.current);
-  };
+  const change = useCallback(
+    (action: keyof OwnedDriveInput, down: boolean) => {
+      const currentGeneration = runtime.getOwnedDriveInputGeneration();
+      if (inputGeneration.current !== currentGeneration) {
+        input.current = {};
+        inputGeneration.current = currentGeneration;
+      }
+      input.current = { ...input.current, [action]: down };
+      runtime.setOwnedDriveInput(input.current);
+    },
+    [runtime],
+  );
   useEffect(() => {
     const clear = () => {
       input.current = {};
+      inputGeneration.current = runtime.getOwnedDriveInputGeneration();
       runtime.setOwnedDriveInput({ brake: true });
     };
     if (!active) {
@@ -40,7 +51,9 @@ export function OwnedCarControls({
     const onKey = (event: KeyboardEvent) => {
       const action = keys[event.code];
       if (!action) return;
-      const target = event.target as HTMLElement | null;
+      // Holding a key through an authority reset must require a fresh physical press.
+      if (event.type === "keydown" && event.repeat) return;
+      const target = event.target instanceof Element ? event.target : null;
       if (
         event.type === "keydown" &&
         target?.closest("input, textarea, select, [contenteditable=true]")
@@ -60,7 +73,7 @@ export function OwnedCarControls({
       window.removeEventListener("blur", clear);
       document.removeEventListener("visibilitychange", clear);
     };
-  }, [runtime, active]);
+  }, [runtime, active, generation, change]);
   if (!active)
     return !suspended && runtime.canEnterOwnedCar() ? (
       <button
