@@ -158,7 +158,7 @@ export function ShowroomOverlay({
 
     setPendingKey(key);
     void postAcquireVehicle(key, undefined, { bypassGate: acquireEnabled }).then(
-      (result) => {
+      async (result) => {
         if (!isMountedRef.current) return;
         const currentAuth = getAuthClient();
         const currentUserId = currentAuth.operator?.userId ?? null;
@@ -171,38 +171,34 @@ export function ShowroomOverlay({
           return;
         }
 
-        setOutcomes((m) => ({ ...m, [key]: result }));
+        // A successful purchase can confirm a different, already-owned car.
+        // Resolve authority before writing the garage; never infer it from the offer.
+        const truth = result.kind === "owned" ? await fetchOwnedVehicleKeysBackend() : null;
+        if (!isMountedRef.current ||
+          (getAuthClient().operator?.userId ?? null) !== initiatingUserId ||
+          (initiatingCitizenId && runtime?.operatorCitizenId() !== initiatingCitizenId)) return;
+        const confirmed = truth && SHOWROOM_VEHICLES.find((v) =>
+          truth.includes(vehicleKeyOf(v)) || truth.includes(serverVehicleKeyOf(vehicleKeyOf(v))));
+        setOutcomes((m) => ({ ...m, [key]: result.kind === "owned" &&
+          (!confirmed || vehicleKeyOf(confirmed) !== key) ? { kind: "error" } : result }));
         setPendingKey((cur) => (cur === key ? null : cur));
-        if (result.kind === "owned") {
+        if (result.kind === "owned" && confirmed && truth) {
           // Confirmed by authority — persist via identity-bound runtime method to update parked car
           const targetCitizenId =
             currentCitizenId ??
             (currentUserId ? String(currentUserId) : "citizen-me");
           if (runtime) {
-            runtime.acquireCar(vehicle.spec, targetCitizenId);
+            runtime.acquireCar(confirmed.spec, targetCitizenId);
           } else {
-            saveCar(targetCitizenId, vehicle.spec);
+            saveCar(targetCitizenId, confirmed.spec);
           }
 
-          // Reconcile against fresh server truth, not a local guess
-          void fetchOwnedVehicleKeysBackend().then((truth) => {
-            if (!isMountedRef.current) return;
-            const freshAuthAfter = getAuthClient();
-            if (
-              freshAuthAfter.operator?.userId !== initiatingUserId ||
-              (initiatingCitizenId &&
-                runtime?.operatorCitizenId() !== initiatingCitizenId)
-            ) {
-              return;
-            }
-            const fresh = truth ?? [key, serverVehicleKeyOf(key)];
-            setOwned(fresh);
-            saveOwnedKeysCache(fresh, scope);
-          });
+          setOwned(truth);
+          saveOwnedKeysCache(truth, scope);
         }
       },
     );
-  }, [acquireEnabled, isOwned, pendingKey, vehicleKey, vehicle.spec, runtime]);
+  }, [acquireEnabled, isOwned, pendingKey, vehicleKey, runtime]);
 
   const prev = useCallback(
     () => setIndex((i) => stepSelection(i, count, -1)),

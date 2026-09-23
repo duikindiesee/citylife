@@ -1,6 +1,6 @@
 # Spec 171 — Auto-Load Showroom for New Players & Authoritative KCO Vehicle Acquisition (PLAYER.CAR.1.S5)
 
-**Status:** built<br>
+**Status:** implementation under review; deployed acceptance pending<br>
 **Lane:** Car / Garage spine<br>
 **Date:** 2026-09-19<br>
 **Tracking:** Issue #516, PR #517<br>
@@ -16,7 +16,7 @@ This specification completes `PLAYER.CAR.1.S5`:
 1. When an authenticated player logs into CityLife without an owned car on their profile, they immediately load into the **Gearbox Auto Hub showroom** interior.
 2. The showroom enables acquisition using the player's authoritative **KCO** currency balance.
 3. The client integrates with `kooker-service-user` S2 endpoints, mapping canonical vehicle keys per Contract A15 and translating HTTP 422 / 402 statuses into user-friendly outcomes.
-4. Acquired vehicles are directly committed to `garageStore` (`citylife.garage.v1`), ensuring the selected vehicle is immediately parked and drivable.
+4. Acquired vehicles are directly committed to `garageStore` (`citylife.garage.v1`), ensuring only the server-confirmed vehicle is parked and drivable.
 
 ## Mechanic
 
@@ -44,7 +44,9 @@ This specification completes `PLAYER.CAR.1.S5`:
 
 3. **In-World Garage Synchronization (`src/colony/ui/ShowroomOverlay.tsx`):**
    - Upon confirmed purchase (`result.kind === "owned"`):
-     - The acquired `vehicle.spec` is saved into `garageStore.saveCar(citizenId, vehicle.spec)`.
+     - Resolve a fresh authoritative ownership GET before persistence. A successful POST may confirm a different already-owned car; persist the catalog spec matching that confirmed key, never the selected offer.
+     - If truth is unavailable, empty or unknown, show an error without granting a local car or inventing cached ownership.
+     - Keep account/citizen and unmount guards across both purchase and subsequent ownership reads.
      - `saveOwnedKeysCache` updates local cache.
      - The specification card renders `✓ In your garage`.
    - On initial mount of the showroom, if the authoritative backend truth indicates existing car ownership but `hasStoredCar(citizenId)` is not yet populated, the store is automatically hydrated with the matching catalog `CarSpec`.
@@ -63,3 +65,7 @@ This specification completes `PLAYER.CAR.1.S5`:
 4. HTTP 422 / 402 renders `Not enough ₭ — try later`.
 5. Successful acquisition persists the `CarSpec` to `citylife.garage.v1` via `garageStore.saveCar`.
 6. Full test suite (`npm test`) and `npm run typecheck` pass with zero errors.
+
+## Review correction evidence
+
+Regression tests exercise React delegated click handlers and assert that a purchase actually starts before account-switch/unmount guards are tested. Successful controls cover matching and different server-owned vehicles; unavailable and empty ownership never grant the selected offer. Live-backend purchase and deployed driving acceptance remain required after review and rollout.
