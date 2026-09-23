@@ -303,10 +303,15 @@ export function lotHudCopy(args: {
   owner: string | null;
   built: boolean;
   reserved: boolean;
+  playerManaged?: boolean;
   price: number | null;
   priceZar: number | null;
   playerScoped: boolean;
 }): LotHudCopy {
+  if (args.playerManaged) return {
+    label: `${args.id} · Player home site`,
+    title: "Check your property screen for availability, ownership and building progress.",
+  };
   const siteLabel = args.playerScoped
     ? args.id.replace("lot_", "Home site ")
     : args.id.replace("lot_", "Plot ");
@@ -358,7 +363,12 @@ export function homesteadActionVisibility(args: {
   occupied: boolean;
   built: boolean;
   reserved: boolean;
+  playerManaged?: boolean;
 }): HomesteadActionVisibility {
+  if (args.playerManaged) return {
+    showDesign: false, showCommission: false, showBuild: false,
+    showDemolish: false, showEvict: false,
+  };
   const hasOwner = args.ownerId !== null;
   const playerOwnsLot =
     args.operatorCitizenId !== null && args.ownerId === args.operatorCitizenId;
@@ -3441,6 +3451,7 @@ export function ColonyApp() {
                       owner: l.owner,
                       built: l.built,
                       reserved: l.reserved,
+                      playerManaged: l.playerManaged,
                       price: l.price,
                       priceZar: l.priceZar,
                       playerScoped: ui.bank.scope === "player",
@@ -3452,6 +3463,7 @@ export function ColonyApp() {
                       occupied: l.occupied,
                       built: l.built,
                       reserved: l.reserved,
+                      playerManaged: l.playerManaged,
                     });
                     return (
                       <div
@@ -3495,6 +3507,7 @@ export function ColonyApp() {
                         )}
                         {!l.occupied &&
                           !l.reserved &&
+                          !l.playerManaged &&
                           firstFree &&
                           (() => {
                             const canBuy =

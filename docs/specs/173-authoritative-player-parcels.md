@@ -81,3 +81,22 @@ debit, live catalogue publication, starting balance or house completion.
 - Review the coherent backend/frontend exact heads, then build, deploy and prove all three arrival states in the real interface.
 
 No gameplay or purchase acceptance is claimed by this survey. The backend's current unpublished selection API must not deploy alone against the old neighbourhood-only purchase UI.
+
+### Player inventory HUD and remaining authority boundaries
+
+The runtime exposes a distinct `playerManaged` flag to the homestead HUD. These sites
+show as player home sites, never as free NPC land or founder reservations. Both player
+and operator HUDs hide legacy assignment, design, commission, construction, demolition
+and eviction actions for them. Property offer/truth screens remain the source of price
+and ownership; the local citizen owner field is not player ownership evidence.
+
+Before wiring inventory into production, pin or explicitly reconcile saved-layout
+hydration as well as constructor generation. `WorldLayoutBootCoordinator` can hydrate
+a persisted layout after runtime construction; inventory validated only before that
+step cannot prove the final road and terrain geometry.
+
+The existing User `CitylifeBlueprintService.upsert` stores per-user scripts after basic
+text screening. It does not validate a paid deed, parcel dimensions, driveway clearance
+or durable completion. Player completion must validate the exact owned parcel/revision,
+persist the accepted design and completion atomically, and only then activate residence
+and home spawn. A successful legacy blueprint PUT must never substitute for this step.

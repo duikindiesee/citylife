@@ -856,6 +856,7 @@ export interface ColonyUiState {
       ownerId: string | null;
       occupied: boolean;
       reserved: boolean;
+      playerManaged: boolean;
       price: number | null;
       priceZar: number | null;
       neighbourhoodKey: string | null;
@@ -7347,6 +7348,7 @@ export class ColonyRuntime {
             owner: scopedOwner.owner,
             ownerId: scopedOwner.ownerId,
             occupied: !!l.ownerCitizenId,
+            playerManaged: this.isPlayerParcel(l.id),
             reserved: !!l.reservedFor, // spec 078 — founder plots show a nameplate and hide demolish/evict
             price: Number.isFinite(price) ? price : null, // ₭ — null = not for sale
             priceZar: Number.isFinite(price)
