@@ -60,3 +60,15 @@ the same binding.
 This is a prerequisite, not seated gameplay acceptance. Runtime vehicle controls,
 authoritative purchased parcels, completed house persistence and road-connected driveway
 spawn remain required. The legacy drive-home overlay cursor is not evidence of driving.
+
+The world renderer now uses the owned catalog vehicle's actual showroom GLB instead of
+giving every model the same procedural block body. It retains loader ownership of cached
+geometry/materials, centres the asset on the runtime anchor and seats its bounds on the
+surface. Catalog model failure shows an explicit loading/error state rather than a
+different car. Legacy non-catalog custom cars retain the procedural renderer.
+
+Validation: 2,356 unit tests in 265 files passed for authority hydration and the no-citizen
+spawn. The subsequent actual-model renderer change passed TypeScript and the Chromium
+returning-owner regression, which checks the mounted X19 GLB has mesh geometry and verifies
+ownership/placement after reload. API responses in this browser regression are fixtures;
+this is not deployed ownership, acquisition, camera seating or driving acceptance.
