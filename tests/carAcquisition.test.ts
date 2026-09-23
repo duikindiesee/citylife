@@ -192,12 +192,19 @@ describe("carAcquisition — backend ownership truth (GET)", () => {
     getAuthClient().logout();
     expect(await fetchOwnedVehicleKeysBackend()).toBeNull();
   });
-  it("parses both a bare array and an envelope, screening junk", async () => {
+  it("parses valid arrays and envelopes but refuses partial malformed server truth", async () => {
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
     vi.stubGlobal("fetch", async () => ({
       ok: true,
       status: 200,
       json: async () => [KAAP, "showroom:fake", VONK],
+    }));
+    expect(await fetchOwnedVehicleKeysBackend()).toBeNull();
+
+    vi.stubGlobal("fetch", async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [KAAP, VONK],
     }));
     expect(await fetchOwnedVehicleKeysBackend()).toEqual([VONK, KAAP].sort());
 

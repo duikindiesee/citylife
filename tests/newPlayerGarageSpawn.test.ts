@@ -13,6 +13,7 @@ import {
   postAcquireVehicle,
   BACKEND_VEHICLE_PURCHASE_PATH,
   shouldAutoOpenShowroom,
+  fetchOwnedVehicleKeysBackend,
 } from "../src/colony/car/carAcquisition";
 import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
 import { type CarSpec } from "../src/colony/car/carSpec";
@@ -710,6 +711,23 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
 });
 
 describe("PLAYER.CAR.1.S5 — shouldAutoOpenShowroom pure decision rule", () => {
+  it("does not turn unknown server-owned vehicles into an empty ownership list", async () => {
+    vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("fixture-token");
+    for (const response of [
+      { owned: true, vehicleKey: "future-vehicle" },
+      { ownedVehicleKeys: ["future-vehicle"] },
+      ["future-vehicle"],
+    ]) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => response }));
+      expect(await fetchOwnedVehicleKeysBackend()).toBeNull();
+    }
+  });
+
+  it("fails closed when session token refresh rejects", async () => {
+    vi.spyOn(getAuthClient(), "getValidToken").mockRejectedValue(new Error("Refresh unavailable"));
+    expect(await fetchOwnedVehicleKeysBackend()).toBeNull();
+  });
+
   const baseValidArgs = {
     hasRealAccount: true,
     isAuthenticated: true,
@@ -750,22 +768,18 @@ describe("PLAYER.CAR.1.S5 — shouldAutoOpenShowroom pure decision rule", () => 
     ).toBe(false);
   });
 
-  it("returns false when player already has a car stored locally", () => {
+  it("server-reported no ownership wins over an extra stale local car hint", () => {
+    const staleLocalHints = { ...baseValidArgs, hasStoredCarLocally: true };
     expect(
-      shouldAutoOpenShowroom({
-        ...baseValidArgs,
-        hasStoredCarLocally: true,
-      }),
-    ).toBe(false);
+      shouldAutoOpenShowroom(staleLocalHints),
+    ).toBe(true);
   });
 
-  it("returns false when player already has owned keys in cache", () => {
+  it("server-reported no ownership wins over extra stale cached vehicle keys", () => {
+    const staleLocalHints = { ...baseValidArgs, ownedKeysInCache: ["karoo-vonk-11"] };
     expect(
-      shouldAutoOpenShowroom({
-        ...baseValidArgs,
-        ownedKeysInCache: ["karoo-vonk-11"],
-      }),
-    ).toBe(false);
+      shouldAutoOpenShowroom(staleLocalHints),
+    ).toBe(true);
   });
 
   it("returns false when backend truth is null (fails closed on network/endpoint error)", () => {

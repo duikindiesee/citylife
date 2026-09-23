@@ -58,11 +58,9 @@ import { GamehouseOverlay } from "./GamehouseOverlay";
 import { resolveGamehousePortalSite } from "../spatial/gamehousePortal";
 import { PasswordChangePanel } from "./PasswordChangePanel";
 import { markPasswordChangePending } from "../pendingPasswordNotice";
-import { hasStoredCar } from "../car/garageStore";
 import {
   fetchOwnedVehicleKeysBackend,
   isCarAcquisitionEnabled,
-  loadOwnedKeysCache,
   shouldAutoOpenShowroom,
 } from "../car/carAcquisition";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
@@ -1046,7 +1044,7 @@ export function ColonyApp() {
 
   // PLAYER.CAR.1.S5 — auto-spawn into the Gearbox Auto Hub showroom on login when an authenticated
   // player does not own a car on their profile. Runs once per session identity. Evaluates authoritative
-  // server truth, the localStorage ownership cache, and the local garageStore. Fails closed when unauthenticated,
+  // server truth only. Cached cosmetics/default cars cannot establish ownership. Fails closed when unauthenticated,
   // in dev bypass without an account, or when backend truth is unreachable.
   const autoShowroomCheckedRef = useRef(false);
   useEffect(() => {
@@ -1063,34 +1061,16 @@ export function ColonyApp() {
     ) {
       return;
     }
-    const citizenId =
-      runtime.operatorCitizenId() ??
-      (auth.operator?.userId ? String(auth.operator.userId) : "citizen-me");
-    const cacheScope = String(auth.operator?.userId ?? "anon");
-
-    // Fast-path: If local garageStore has a stored car or scoped cache has owned keys, don't auto-open.
-    const hasCarLocally =
-      runtime.hasStoredCar(citizenId) || hasStoredCar(citizenId);
-    if (hasCarLocally || loadOwnedKeysCache(cacheScope).length > 0) {
-      autoShowroomCheckedRef.current = true;
-      return;
-    }
-
     let cancelled = false;
     void (async () => {
       const truth = await fetchOwnedVehicleKeysBackend();
       if (cancelled) return;
       autoShowroomCheckedRef.current = true;
-      const stillHasCar =
-        runtime.hasStoredCar(citizenId) || hasStoredCar(citizenId);
-      const stillCachedKeys = loadOwnedKeysCache(cacheScope);
       if (
         shouldAutoOpenShowroom({
           hasRealAccount,
           isAuthenticated: auth.isAuthenticated,
           newPlayerJourneyEnabled,
-          hasStoredCarLocally: stillHasCar,
-          ownedKeysInCache: stillCachedKeys,
           backendTruth: truth,
         })
       ) {

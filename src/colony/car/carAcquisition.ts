@@ -241,12 +241,13 @@ export function clearOwnedKeysCache(scope?: string | null): void {
 // ── Backend layer (best-effort, as the logged-in player) ──────────────────────────
 
 /** Fetch the player's owned vehicleKeys from the authority. Null when signed out, the endpoint is
- *  missing (404 while it ships separately), or the body is malformed — callers fall back to the cache.
+ *  missing (404 while it ships separately), or the body is malformed. Null never establishes ownership
+ *  or eligibility; login decisions must not replace unavailable authority with cached cars.
  *  Accepts either a bare array, an { ownedVehicleKeys: [...] } envelope, or an S2 VehicleTruthResponse. Never throws. */
 export async function fetchOwnedVehicleKeysBackend(): Promise<string[] | null> {
-  const token = await getAuthClient().getValidToken();
-  if (!token) return null;
   try {
+    const token = await getAuthClient().getValidToken();
+    if (!token) return null;
     let resp = await fetch(BACKEND_VEHICLE_TRUTH_PATH, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -258,7 +259,7 @@ export async function fetchOwnedVehicleKeysBackend(): Promise<string[] | null> {
     if (!resp.ok) return null;
     const data = (await resp.json()) as unknown;
     if (Array.isArray(data)) {
-      return safeOwnedKeys(data);
+      return data.every(isCanonicalVehicleKey) ? safeOwnedKeys(data) : null;
     }
     if (data && typeof data === "object") {
       const obj = data as {
@@ -267,10 +268,11 @@ export async function fetchOwnedVehicleKeysBackend(): Promise<string[] | null> {
         vehicleKey?: unknown;
       };
       if (Array.isArray(obj.ownedVehicleKeys)) {
-        return safeOwnedKeys(obj.ownedVehicleKeys);
+        return obj.ownedVehicleKeys.every(isCanonicalVehicleKey)
+          ? safeOwnedKeys(obj.ownedVehicleKeys) : null;
       }
       if (obj.owned === true && typeof obj.vehicleKey === "string") {
-        return safeOwnedKeys([obj.vehicleKey]);
+        return isCanonicalVehicleKey(obj.vehicleKey) ? [obj.vehicleKey] : null;
       }
       if (obj.owned === false) {
         return [];
@@ -344,14 +346,12 @@ export interface AutoShowroomDecisionArgs {
   readonly hasRealAccount: boolean;
   readonly isAuthenticated: boolean;
   readonly newPlayerJourneyEnabled: boolean;
-  readonly hasStoredCarLocally: boolean;
-  readonly ownedKeysInCache: readonly string[];
   readonly backendTruth: readonly string[] | null;
 }
 
 /** Pure decision rule for auto-loading the Gearbox Auto Hub showroom on login.
  *  Fails closed: only opens when a real authenticated player session is active, the journey is enabled,
- *  no car is present in local store or cache, AND the server explicitly reports 0 owned cars (`[]`).
+ *  and the server explicitly reports 0 owned cars (`[]`). Local cars/caches are not ownership authority.
  *  If backend is unreachable (`null`), unauthenticated, or in dev bypass without an account, returns false. */
 export function shouldAutoOpenShowroom(
   args: AutoShowroomDecisionArgs,
@@ -361,9 +361,6 @@ export function shouldAutoOpenShowroom(
     !args.isAuthenticated ||
     !args.newPlayerJourneyEnabled
   ) {
-    return false;
-  }
-  if (args.hasStoredCarLocally || args.ownedKeysInCache.length > 0) {
     return false;
   }
   // Server truth must be authoritatively resolved: non-null and empty (0 owned vehicles).

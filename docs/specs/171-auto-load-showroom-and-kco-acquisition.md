@@ -24,11 +24,8 @@ This specification completes `PLAYER.CAR.1.S5`:
 1. **Auto-Load Showroom on Login Without Car (`src/colony/ui/ColonyApp.tsx`):**
 
    - When identity resolution completes and the session is entitled (`newPlayerJourneyEnabled === true`):
-     - An idempotent check evaluates whether the player owns a car across three layers:
-       1. Local `garageStore.hasStoredCar(citizenId)`.
-       2. Local storage ownership cache `loadOwnedKeysCache()`.
-       3. Authoritative backend GET `fetchOwnedVehicleKeysBackend()`.
-     - If all three indicate no vehicle is owned, the showroom overlay is automatically opened (`setShowroomOpen(true)`).
+     - Always read authoritative backend GET `fetchOwnedVehicleKeysBackend()` for the current session. Local garage entries and cached vehicle keys cannot bypass this read or establish ownership.
+     - If the server reports no owned vehicle, the showroom overlay is automatically opened (`setShowroomOpen(true)`), even when local data contains an old/default car. Unavailable server truth is not interpreted as no ownership.
      - Guarded by `autoShowroomCheckedRef` so this check occurs once per login session; explicitly exiting the showroom does not re-trigger the auto-spawn.
      - Server-confirmed new-player acquisition eligibility survives closing and manually reopening the showroom in the same session. It resets on identity change; the journey entitlement still gates every entry. Exiting must not strand a qualifying newcomer behind the preview-only control.
 
