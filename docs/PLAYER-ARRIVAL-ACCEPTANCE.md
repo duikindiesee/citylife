@@ -13,13 +13,13 @@ Status: active implementation and deployed acceptance; not complete.
 
 ## Evidence and gaps
 
-| Requirement | Current evidence | Remaining gap |
-|---|---|---|
-| X19 showroom | MoJoJo approved PR517, merged as `6dc295c`; release 35874372776 succeeded; live Chrome rendered X19 as 3/3 on 0.55.0 | Acquisition and subsequent arrival need full acceptance |
-| Re-entry | Live exit/re-entry reverted Acquire to preview-only; ColonyApp cleared eligibility in both handlers | Preserve same-identity eligibility; test and deploy correction |
-| Funds | Ledger StarterGrantService grants 750 KCO; service-user X19 costs 950 and starter home costs 350 | Minimum 1300 for existing contracts; calculate actual plot/build path before final funding and one-time recovery |
-| Home | Spec156 selects neighbourhoods and projects a deterministic house for a 350 KCO deed | Actual priced plot choice and house-building transition unproven |
-| Arrival | Runtime parks a locally loaded car east of citizen home; DriveHomeOverlay moves a separate cursor | Server-owned car, real spawn/entry, driveway and home geometry must converge |
+| Requirement  | Current evidence                                                                                                     | Remaining gap                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| X19 showroom | MoJoJo approved PR517, merged as `6dc295c`; release 35874372776 succeeded; live Chrome rendered X19 as 3/3 on 0.55.0 | Acquisition and subsequent arrival need full acceptance                                                          |
+| Re-entry     | Live exit/re-entry reverted Acquire to preview-only; ColonyApp cleared eligibility in both handlers                  | Preserve same-identity eligibility; test and deploy correction                                                   |
+| Funds        | Ledger StarterGrantService grants 750 KCO; service-user X19 costs 950 and starter home costs 350                     | Minimum 1300 for existing contracts; calculate actual plot/build path before final funding and one-time recovery |
+| Home         | Spec156 selects neighbourhoods and projects a deterministic house for a 350 KCO deed                                 | Actual priced plot choice and house-building transition unproven                                                 |
+| Arrival      | Runtime parks a locally loaded car east of citizen home; DriveHomeOverlay moves a separate cursor                    | Server-owned car, real spawn/entry, driveway and home geometry must converge                                     |
 
 ## Dependency-ordered integration
 
