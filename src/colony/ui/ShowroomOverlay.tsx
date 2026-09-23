@@ -40,6 +40,7 @@ import {
   type AcquireOutcome,
 } from "../car/carAcquisition";
 import { getAuthClient } from "../authClient";
+import {fetchVehicleOffers,type VehicleOffer} from "../car/vehicleOffers";
 import { hasStoredCar, saveCar } from "../car/garageStore";
 import type { ColonyRuntime } from "../runtime";
 
@@ -82,6 +83,16 @@ export function ShowroomOverlay({
 
   // PLAYER.CAR.1.S5 — acquisition enabled when canAcquire is explicitly true or feature gate is on.
   const acquireEnabled = Boolean(canAcquire);
+  const [offers,setOffers]=useState<VehicleOffer[]|null>(null);
+  const [offersLoading,setOffersLoading]=useState(true);
+  const [offerAttempt,setOfferAttempt]=useState(0);
+  const offer=offers?.find(item=>item.vehicleKey===serverVehicleKeyOf(vehicleKey));
+  useEffect(()=>{
+    if(!acquireEnabled)return;
+    let live=true;setOffers(null);setOffersLoading(true);
+    void fetchVehicleOffers().then(result=>{if(live){setOffers(result);setOffersLoading(false);}});
+    return()=>{live=false;};
+  },[acquireEnabled,offerAttempt]);
   // The set of vehicleKeys the SERVER says the player owns. Seeded from the cache-only mirror for an
   // instant first paint, then overwritten by the authoritative GET — never merged ahead of it.
   const [owned, setOwned] = useState<readonly string[]>([]);
@@ -156,7 +167,7 @@ export function ShowroomOverlay({
   const isPending = pendingKey === vehicleKey;
 
   const acquire = useCallback(() => {
-    if (!acquireEnabled || isOwned || pendingKey !== null) return;
+    if (!acquireEnabled || !offer || isOwned || pendingKey !== null) return;
     const key = vehicleKey;
     const initiatingAuth = getAuthClient();
     const initiatingUserId = initiatingAuth.operator?.userId ?? null;
@@ -225,7 +236,7 @@ export function ShowroomOverlay({
         onOwnershipConfirmed?.();
       }
     });
-  }, [acquireEnabled, isOwned, pendingKey, vehicleKey, runtime, onOwnershipConfirmed]);
+  }, [acquireEnabled, offer, isOwned, pendingKey, vehicleKey, runtime, onOwnershipConfirmed]);
 
   const prev = useCallback(
     () => setIndex((i) => stepSelection(i, count, -1)),
@@ -363,9 +374,15 @@ export function ShowroomOverlay({
           data-testid="showroom-card-price"
           style={{ color: "#ffd25a", fontWeight: 700 }}
         >
-          {card.priceLabel}
+          {acquireEnabled ? (offer ? `${offer.priceKco.toLocaleString()} KCO` :
+            offersLoading ? "Loading price…" : offers === null ? "Price unavailable" : "Not currently offered") : card.priceLabel}
         </span>
-        {acquireEnabled ? (
+        {acquireEnabled && !offer ? (
+          <button data-testid="showroom-retry-price" disabled={offersLoading}
+            onClick={()=>setOfferAttempt(n=>n+1)} style={controlButtonStyle}>
+            {offersLoading ? "Loading offers…" : "Refresh prices"}
+          </button>
+        ) : acquireEnabled ? (
           <AcquireButton
             isOwned={isOwned}
             isPending={isPending}

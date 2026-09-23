@@ -1,5 +1,5 @@
 import {test,expect} from "@playwright/test";
-import {starterWorldFixture} from "./starterWorldFixture";
+import {starterWorldFixture,installVehicleOffersFixture} from "./starterWorldFixture";
 
 test("game hydrates the completed owned house on reload and removes it for another account",async({page})=>{
   test.setTimeout(180000);
@@ -11,6 +11,7 @@ test("game hydrates the completed owned house on reload and removes it for anoth
   const homeBarrier=new Promise<void>(resolve=>{releaseHome=resolve;});
   let ownsCar=true;
   await page.route("**/kooker/**",route=>route.fulfill({status:200,contentType:"application/json",body:"{}"}));
+  await installVehicleOffersFixture(page);
   await page.route("**/worlds/seed-4242/starter-catalogue",route=>route.fulfill({status:200,contentType:"application/json",body:fixture}));
   await page.route("**/feature-flags/new-player-journey-v1",route=>route.fulfill({status:failFlag?503:200,contentType:"application/json",body:JSON.stringify({enabled:true,state:"UAT_ALLOWLIST"})}));
   await page.route("**/players/me/vehicle",route=>route.fulfill({status:200,contentType:"application/json",

@@ -1,5 +1,5 @@
 import {test,expect} from "@playwright/test";
-import {starterWorldFixture} from "./starterWorldFixture";
+import {starterWorldFixture,installVehicleOffersFixture} from "./starterWorldFixture";
 
 // Browser/UI contract proof with a stateful fixture authority. This is deliberately
 // not a real ledger, grant or deployment receipt; service integration tests cover those.
@@ -13,6 +13,7 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
   const vehicleRequests:{body:unknown;key:string|undefined}[]=[],plotRequests:unknown[]=[],buildRequests:unknown[]=[];
   const json=(body:unknown,status=200)=>({status,contentType:"application/json",body:JSON.stringify(body)});
   await page.route("**/kooker/**",route=>route.fulfill(json({})));
+  await installVehicleOffersFixture(page);
   await page.route("**/worlds/seed-4242/starter-catalogue",route=>route.fulfill({status:200,contentType:"application/json",body:fixture}));
   await page.route("**/feature-flags/new-player-journey-v1",route=>route.fulfill(json({enabled:true})));
   await page.route("**/players/me/vehicle",route=>route.fulfill(json({owned:car,vehicleKey:car?"karoo-x19-targa":null})));

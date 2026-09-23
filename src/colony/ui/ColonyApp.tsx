@@ -1956,6 +1956,7 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
           switch) closes it immediately. */}
       {showroomOpen && newPlayerJourneyEnabled && (
         <ShowroomOverlay
+          key={operatorUserId ?? "signed-out"}
           runtime={runtime}
           canAcquire={showroomAutoAcquire || isCarAcquisitionEnabled()}
           onOwnershipConfirmed={() => {

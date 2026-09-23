@@ -18,7 +18,17 @@ export function starterWorldFixture(): Promise<string> {
   })();
 }
 export async function installStarterWorldFixture(page: Page) {
+  await installVehicleOffersFixture(page);
   const body = await starterWorldFixture();
   await page.route("**/worlds/seed-4242/starter-catalogue", route =>
     route.fulfill({status:200,contentType:"application/json",body}));
+}
+
+export async function installVehicleOffersFixture(page:Page){
+  await page.route("**/players/me/vehicle/offers",route=>route.fulfill({status:200,
+    contentType:"application/json",body:JSON.stringify([
+      {vehicleKey:"karoo-vonk-11",priceKco:250,currency:"KCO"},
+      {vehicleKey:"karoo-kaap-gt-v8",priceKco:2400,currency:"KCO"},
+      {vehicleKey:"karoo-x19-targa",priceKco:950,currency:"KCO"},
+    ])}));
 }
