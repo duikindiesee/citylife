@@ -1102,7 +1102,8 @@ export class ColonyRuntime {
     seed: number = COLONY.render.seed,
     opts: {
       surveyOnly?: boolean;
-      playerInventory?: { worldId: string; layoutRevision: string; plotIds: readonly string[] };
+      playerInventory?: { worldId: string; layoutRevision: string; plotIds: readonly string[];
+        layout?: WorldLayoutDocument };
     } = {},
   ) {
     this.surveyOnly = opts.surveyOnly === true;
@@ -2001,6 +2002,12 @@ export class ColonyRuntime {
     // mode" for the game: a surveyed runtime has no residents and must never be handed to the UI.
     if (opts.playerInventory) {
       const inventory = opts.playerInventory;
+      if (inventory.layout) {
+        const published = parseWorldLayoutDocument(serializeWorldLayoutDocument(inventory.layout));
+        if (published.worldId !== inventory.worldId || published.revision.contentHash !== inventory.layoutRevision)
+          throw new Error("Published parcel document does not match inventory identity");
+        this.hydrateWorldLayout(published);
+      }
       const layout = this.captureWorldLayout();
       if (inventory.worldId !== layout.worldId || inventory.layoutRevision !== layout.revision.contentHash)
         throw new Error("Player parcel inventory does not match this world layout");

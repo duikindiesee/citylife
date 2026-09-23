@@ -72,7 +72,7 @@ reload/resume with identical request bodies. These use fixture APIs and prove no
 debit, live catalogue publication, starting balance or house completion.
 
 - Validate swept vehicle clearance, elevation/slope, gate opening and turning onto the connected road with the actual supported car dimensions. Centre-line connectivity alone is insufficient.
-- Create canonical parcel child frames in the reviewed world document. The existing document has a shared surface frame and venue frames, not individual parcel frames; do not invent a different frame for each buyer.
+- Canonical parcel child-frame generation now exists in `starterParcelManifest.ts`. Generate a review artifact with `node scripts/createStarterParcelManifest.mjs <output.json>` from the configured untouched seed. It creates surface-region children, with local cell zero at the first parcel cell centre and no invented building elevation. The resulting document hash is embedded in every plot geometry, while `sourceLayoutRevision` retains the original survey hash. Ten seed-4242 candidates qualify; the ten unnamed coastal plots remain excluded. Publication still requires review, server import and client bootstrap wiring.
 - Runtime isolation now accepts an immutable player-inventory list pinned to the exact generated world ID and layout hash before residents or blueprint restoration start. It rejects duplicate, unknown, occupied, commercial and unnamed coastal/founder parcels. Legacy allocation, purchase, builder, blueprint restoration, construction, demolition and citizen cleanup exclude these IDs. This is a local guard, not publication or ownership authority: the production bootstrap still needs the reviewed server manifest, including sold parcels (an available-only list would expose sold land to NPCs). Default boots do not reserve player land until that manifest is connected. Focused tests cover mismatched inventories, unchanged protected geometry/materials/ledger, citizen cleanup and ordinary parcel construction.
 - Import the reviewed manifest server-side, pin the world revision, and verify public neighbourhood registration. Client-authored geometry cannot publish land. Prices come from server offers.
 - Authoritative offer selection and insufficient-funds resume are implemented locally. Still verify the real published catalogue, real ledger outcomes and uncertain-debit convergence after deployment.
@@ -81,6 +81,16 @@ debit, live catalogue publication, starting balance or house completion.
 - Review the coherent backend/frontend exact heads, then build, deploy and prove all three arrival states in the real interface.
 
 No gameplay or purchase acceptance is claimed by this survey. The backend's current unpublished selection API must not deploy alone against the old neighbourhood-only purchase UI.
+
+The generated manifest is explicitly `REVIEW_REQUIRED_NOT_PUBLISHED`, has no prices or
+owners, and includes the complete canonical layout plus plot/frame bindings and spawn
+headings. It derives roads from that layout, requires production straight-driveway
+footprint clearance and refuses reusing an already parcel-framed document as a fresh
+survey. It is deterministic under parcel input reordering. The runtime constructor can
+hydrate the supplied canonical document before accepting inventory and populating
+residents; document identity and revision must match the inventory. This constructor
+seam is tested but is not yet connected to the production server catalogue. Do not
+mistake the artifact for a published catalogue or rendered foundation/grade proof.
 
 ### Player inventory HUD and remaining authority boundaries
 
