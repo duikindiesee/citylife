@@ -2525,6 +2525,15 @@ export class ColonyRuntime {
     const id = this.operatorCitizenId();
     const c = id ? this.citizens.byId(id) : null;
     if (!id || !c) {
+      // A signed-in human is not necessarily a Border Patrol household/citizen.
+      // Their verified car still exists: stage it at the surveyed Gearbox road
+      // entrance without minting a citizen, a local deed, or a fictional home.
+      const entrance = this.commercialDistrict?.garagePad?.roadTarget;
+      if (this.operatorUserId && this.authoritativeCar && entrance &&
+          this.sim.state.roadSet.has(`${entrance.x},${entrance.y}`)) {
+        this.renderer.setOperatorCar(this.authoritativeCar, entrance);
+        return;
+      }
       this.renderer.setOperatorCar(null, null);
       return;
     }

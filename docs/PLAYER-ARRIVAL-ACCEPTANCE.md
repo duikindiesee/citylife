@@ -41,6 +41,15 @@ Coverage: pure stale-cache decisions, unknown server-owned model and refresh-rej
 This change does not yet hydrate the exact owned car into the driving runtime, resolve an owned home's real parcel, invoke player house building, or place a car on a road-connected driveway. These remain required acceptance work. Deployed browser evidence remains outstanding.
 # Owned-car hydration follow-up (not complete arrival)
 
+Browser acceptance on 2026-09-23 exposed an additional prerequisite: a fresh authenticated
+owner without a matching local CitizenRoster entry received correct vehicle truth but
+had no rendered operator car. Existing unit coverage seeded a matching citizen and missed
+this case. The runtime now stages this verified car at the surveyed Gearbox road entrance,
+only when that entrance belongs to the live road network. The Chromium regression checks
+the exact model, no invented citizen, a real road cell and stable placement after reload.
+This does not seat the player or establish a home. User-keyed driving/presence and owned
+home placement remain required; do not claim another citizen by name or invent a deed.
+
 Authenticated bootstrap now resolves the exact catalog model from server ownership even
 when onboarding is off. A different cached model is replaced; matching model tuning is
 retained. Missing, empty, unsupported or ambiguous truth cannot render a fabricated
