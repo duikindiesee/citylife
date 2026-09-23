@@ -112,6 +112,36 @@ async function bootAs(
   await page.waitForSelector(READY_MARKER, { timeout: READY_TIMEOUT });
 }
 
+test("returning owner hydrates their exact car without opening Gearbox", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.route("**/citylife/players/me/vehicle", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: '{"owned":true,"vehicleKey":"karoo-x19-targa"}',
+  }));
+  await bootAs(page, "returning-car-owner", true);
+  await expect(page.locator(OVERLAY)).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = (window as unknown as { __colony?: { sim: { state: { operatorCar?: { spec: { id: string } } } } } }).__colony;
+    return runtime?.sim.state.operatorCar?.spec.id ?? null;
+  }), { timeout: ASSERT_TIMEOUT }).toBe("showroom:karoo-x19-targa");
+  const placement = await page.evaluate(() => {
+    const runtime = (window as unknown as { __colony: {
+      operatorCitizenId(): string | null;
+      sim: { state: { roadSet: Set<string>; operatorCar?: { cell: { x: number; y: number } } } };
+    } }).__colony;
+    const cell = runtime.sim.state.operatorCar!.cell;
+    return { citizenId: runtime.operatorCitizenId(), onRoad: runtime.sim.state.roadSet.has(`${cell.x},${cell.y}`), cell };
+  });
+  expect(placement.citizenId).toBeNull();
+  expect(placement.onRoad).toBe(true);
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = (window as unknown as { __colony?: { sim: { state: { operatorCar?: { spec: { id: string }; cell: { x: number; y: number } } } } } }).__colony;
+    const car = runtime?.sim.state.operatorCar;
+    return car ? { id: car.spec.id, cell: car.cell } : null;
+  }), { timeout: READY_TIMEOUT }).toEqual({ id: "showroom:karoo-x19-targa", cell: placement.cell });
+});
+
 test("new player can exit and re-enter the showroom without losing acquisition", async ({
   page,
 }) => {
