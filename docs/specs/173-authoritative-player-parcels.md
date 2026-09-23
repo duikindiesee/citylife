@@ -38,7 +38,8 @@ house is still unbuilt, hides further land purchase, and does not show a complet
 The legacy hash-grid house projection rejects every published layout revision, including
 an apparently completed response: the new path must render actual server geometry and a
 durable blueprint instead. The selector now uses actual plot offers (below); this
-intermediate paid-land view still has no builder entry.
+intermediate paid-land view links to the server-backed player house builder when its plot
+matches the loaded published inventory.
 
 Focused validation: 28 client unit tests, typecheck/build and a Chromium paid-land reload
 test passed. The browser booted the real UI with fixture APIs, reloaded, found no synthetic
@@ -76,7 +77,7 @@ debit, live catalogue publication, starting balance or house completion.
 - Runtime isolation now accepts an immutable player-inventory list pinned to the exact generated world ID and layout hash before residents or blueprint restoration start. It rejects duplicate, unknown, occupied, commercial and unnamed coastal/founder parcels. Legacy allocation, purchase, builder, blueprint restoration, construction, demolition and citizen cleanup exclude these IDs. This is a local guard, not publication or ownership authority: the authenticated bootstrap now consumes the reviewed server manifest, including sold parcels (an available-only list would expose sold land to NPCs). Explicit local authoring boots remain inventory-free. Focused tests cover mismatched inventories, unchanged protected geometry/materials/ledger, citizen cleanup and ordinary parcel construction.
 - Import the reviewed manifest server-side, pin the world revision, and verify public neighbourhood registration. Client-authored geometry cannot publish land. Prices come from server offers.
 - Authoritative offer selection and insufficient-funds resume are implemented locally. Still verify the real published catalogue, real ledger outcomes and uncertain-debit convergence after deployment.
-- Connect owned land to the builder, validate/persist completion and project the correct home and driveway. Existing driving only permits road cells, so it must explicitly authorize the owned driveway before home spawning.
+- Project the server-completed player home and driveway into the world. Existing driving only permits road cells, so it must explicitly authorize the owned driveway before home spawning.
 - Preserve legacy synthetic deeds through explicit no-recharge recovery; do not silently remap them to these shared parcels.
 - Review the coherent backend/frontend exact heads, then build, deploy and prove all three arrival states in the real interface.
 
@@ -145,3 +146,20 @@ The property screen rejects an entire offer response if any entry differs from t
 published world, layout revision, plot inventory or exact plot-to-frame binding. Missing
 published inventory is a read failure. Prices and purchase validation remain server-owned.
 This prevents stale or cross-world offers from selecting land outside the loaded catalogue.
+
+## Player house builder
+
+Paid land opens `/builder.html?mode=player-home` in the current tab. This mode fetches
+the published world and authenticated `/players/me/home/build` context; it never uses
+query-string ownership, dimensions, seed or blueprint. The existing visual editor is reused
+with the published footprint and driveway-facing door locked. The operator authoring mode
+remains a separate ADMIN-only entry. Player mode does not use the legacy Builder Desk's
+local purchase negotiation or `blueprint_saved` messages as completion evidence.
+
+Accept POSTs only the bound plot, revision and script, then reads back completion and the
+exact script. Pending requests prevent another submit and design edits. Failure remains
+visible and retryable; account changes invalidate both requests and results. Reload of a
+completed build shows a return link without another write. Server eligibility, ownership,
+design validation, atomic completion and residence remain authoritative. The accepted
+design is not yet projected into the game scene; the return link alone does not prove
+home spawning or full deployed onboarding.

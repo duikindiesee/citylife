@@ -271,6 +271,9 @@ export function StarterPropertyOverlay({
           <strong>Your plot is secured</strong>
           <p>{truth.plotId} · {truth.neighbourhoodKey}</p>
           <p>{truth.requiresBuild ? "Your house still needs to be built." : "Your home setup needs an operator check."}</p>
+          {truth.requiresBuild && playerInventory && truth.layoutRevision === playerInventory.layoutRevision &&
+            !!truth.plotId && playerInventory.plotIds.includes(truth.plotId) &&
+            <a data-testid="home-build-house" href="/builder.html?mode=player-home">Build your house</a>}
         </div>
       )}
       {existingIntent && truth && phase === "ready" && (

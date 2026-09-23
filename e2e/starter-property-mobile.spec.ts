@@ -123,7 +123,7 @@ async function routeAll(page: Page, s: HomeState): Promise<void> {
     s.truth = {owned:false, plotOwned:paid, requiresBuild:paid,
       status:paid ? "PLOT_OWNED" : "REJECTED_INSUFFICIENT_FUNDS",
       neighbourhoodKey:selection.neighbourhoodKey, plotId:selection.plotId,
-      frameId:`published-frame-${selection.plotId}`,layoutRevision:selection.layoutRevision,
+      frameId:publishedFrames.get(selection.plotId),layoutRevision:selection.layoutRevision,
       onboardingState:"NEIGHBOURHOOD_CHOSEN",priceKco:350};
     route.fulfill({ status: s.purchaseStatus ?? 200, contentType: "application/json",
       body: JSON.stringify({status:paid ? "PLOT_OWNED" : "INSUFFICIENT_FUNDS"}) });
@@ -169,9 +169,11 @@ const NOT_OWNED = {
 // authority and so can never appear (the client adds no choice of its own).
 let ELIGIBLE_PUBLIC: unknown[];
 let publishedRevision: string;
+let publishedFrames: Map<string,string>;
 test.beforeAll(async () => {
   const {manifest} = JSON.parse(await starterWorldFixture());
   publishedRevision = manifest.layoutRevision;
+  publishedFrames = new Map(manifest.plots.map((p:{plotId:string;frameId:string})=>[p.plotId,p.frameId]));
   ELIGIBLE_PUBLIC = manifest.plots.filter((plot: {plotId:string}) =>
     ["wood1_lot_1", "wood2_lot_1"].includes(plot.plotId))
     .map((plot: Record<string, unknown>) => ({...plot, priceKco:350}));
@@ -181,8 +183,8 @@ test("paid published plot stays unbuilt across reload without a synthetic house 
   const state: HomeState = {
     flagMode: "on", eligible: ELIGIBLE_PUBLIC, purchaseCount: {n:0},
     truth: {owned:false, plotOwned:true, requiresBuild:true, status:"PLOT_OWNED",
-      plotId:"wood1_lot_1", frameId:"published-frame-wood1-lot-1", neighbourhoodKey:"wood1",
-      layoutRevision:"a".repeat(64), priceKco:350, onboardingState:"NEIGHBOURHOOD_CHOSEN"},
+      plotId:"wood1_lot_1", frameId:publishedFrames.get("wood1_lot_1"), neighbourhoodKey:"wood1",
+      layoutRevision:publishedRevision, priceKco:350, onboardingState:"NEIGHBOURHOOD_CHOSEN"},
   };
   await bootAs(page, "paid-land-owner", state);
   for (let boot = 0; boot < 2; boot++) {
@@ -193,6 +195,7 @@ test("paid published plot stays unbuilt across reload without a synthetic house 
     await touchTap(page, ENTRY);
     await expect(page.getByTestId("home-plot-owned")).toContainText("Your house still needs to be built");
     await expect(page.getByTestId("home-plot-owned")).toHaveAttribute("data-plot-id", "wood1_lot_1");
+    await expect(page.getByTestId("home-build-house")).toHaveAttribute("href","/builder.html?mode=player-home");
     await expect(page.getByTestId("home-owned")).toHaveCount(0);
     await expect(page.getByTestId("home-purchase")).toHaveCount(0);
   }
