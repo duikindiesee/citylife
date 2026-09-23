@@ -107,6 +107,11 @@ import { plotPriceKook, kookToZar, starterDeposit } from "./land";
 import { hasStoredCar, loadCar, saveCar } from "./car/garageStore";
 import { resolveOwnedCar } from "./car/ownedCar";
 import {
+  stepOwnedDrive,
+  type OwnedDrivePose,
+  type OwnedDriveInput,
+} from "./car/ownedDriving";
+import {
   PAINT_PALETTES,
   type PaintChannel,
   type CarStatVector,
@@ -2242,7 +2247,12 @@ export class ColonyRuntime {
    *  setOperatorName, so flipping identity drops a now-disallowed first-person session. */
   setOperatorUserId(userId: string | null): void {
     const nextUserId = userId && userId.trim() ? userId.trim() : null;
-    if (nextUserId !== this.operatorUserId) this.authoritativeCar = null;
+    if (nextUserId !== this.operatorUserId) {
+      this.authoritativeCar = null;
+      this.ownedDrivePose = null;
+      this.ownedDriveInput = {};
+      this.ownedDriveSeated = false;
+    }
     this.operatorUserId = nextUserId;
     this.claimOwnCitizen();
     this.updateOperatorCar();
@@ -2342,6 +2352,10 @@ export class ColonyRuntime {
   ): boolean {
     if (userId !== this.operatorUserId) return false;
     const owned = resolveOwnedCar(keys);
+    if (owned?.id !== this.authoritativeCar?.id || !owned) {
+      this.ownedDrivePose = null;
+      this.ownedDriveInput = {};
+    }
     this.authoritativeCar = owned;
     const citizenId = this.operatorCitizenId();
     if (owned && citizenId) {
@@ -2525,6 +2539,52 @@ export class ColonyRuntime {
    *  land-next-to-your-car spot). Called whenever the operator or the car changes. Render-only. */
   private updateOperatorCar(): void {
     if (!this.renderer) return;
+    if (this.operatorUserId && this.authoritativeCar) {
+      const pose = this.ownedDrivePose;
+      const entrance = pose ?? this.commercialDistrict?.garagePad?.roadTarget;
+      if (
+        entrance &&
+        this.sim.state.roadSet.has(
+          `${Math.round(entrance.x)},${Math.round(entrance.y)}`,
+        )
+      ) {
+        this.renderer.setOperatorCar(this.authoritativeCar, {
+          x: entrance.x,
+          y: entrance.y,
+        });
+        // Ownership can arrive before the world renderer/layout. Seat only when
+        // both are ready; the same path runs again at world start.
+        if (!pose) {
+          const ahead = [
+            [1, 0],
+            [0, 1],
+            [-1, 0],
+            [0, -1],
+          ].find(([dx, dy]) =>
+            this.sim.state.roadSet.has(
+              `${Math.round(entrance.x) + dx},${Math.round(entrance.y) + dy}`,
+            ),
+          );
+          if (ahead) {
+            this.ownedDrivePose = {
+              x: entrance.x,
+              y: entrance.y,
+              heading: Math.atan2(ahead[1], ahead[0]),
+              speed: 0,
+            };
+            this.ownedDriveSeated = true;
+            useRoadNetwork.setState({
+              builderActive: false,
+              worldViewActive: false,
+            });
+          }
+        }
+        return;
+      }
+      // A roster citizen's local home is not authoritative property ownership.
+      this.renderer.setOperatorCar(null, null);
+      return;
+    }
     const id = this.operatorCitizenId();
     const c = id ? this.citizens.byId(id) : null;
     if (!id || !c) {
@@ -2553,6 +2613,89 @@ export class ColonyRuntime {
         : this.authoritativeCar
       : stored;
     this.renderer.setOperatorCar(spec, spec ? cell : null);
+  }
+
+  private ownedDrivePose: OwnedDrivePose | null = null;
+  private ownedDriveInput: OwnedDriveInput = {};
+  private ownedDriveSeated = false;
+
+  getOwnedDrivePose(): OwnedDrivePose | null {
+    return this.operatorUserId &&
+      this.authoritativeCar &&
+      this.ownedDriveSeated &&
+      (!this.raceState || this.raceState.mode === "idle")
+      ? this.ownedDrivePose
+      : null;
+  }
+
+  canEnterOwnedCar(): boolean {
+    const car = this.ownedDrivePose;
+    const at = this.fpCameraCell;
+    return !!(
+      this.operatorUserId &&
+      this.authoritativeCar &&
+      car &&
+      at &&
+      !this.ownedDriveSeated &&
+      Math.hypot(car.x - at.x, car.y - at.y) <= 2
+    );
+  }
+
+  enterOwnedCar(): boolean {
+    if (!this.canEnterOwnedCar()) return false;
+    this.ownedDriveSeated = true;
+    this.ownedDriveInput = {};
+    this.emit();
+    return true;
+  }
+
+  exitOwnedCar(): boolean {
+    const car = this.getOwnedDrivePose();
+    if (!car) return false;
+    const side = [-1, 1]
+      .map((s) => ({
+        x: Math.round(car.x - Math.sin(car.heading) * s),
+        y: Math.round(car.y + Math.cos(car.heading) * s),
+      }))
+      .find((cell) => this.blockedStepReason(cell.x, cell.y) === null);
+    if (!side) return false;
+    car.speed = 0;
+    this.ownedDriveSeated = false;
+    this.ownedDriveInput = {};
+    this.fpTeleportRequest = {
+      ...side,
+      yaw: -car.heading - Math.PI / 2,
+      seq: (this.fpTeleportRequest?.seq ?? 0) + 1,
+    };
+    this.emit();
+    return true;
+  }
+
+  setOwnedDriveInput(input: OwnedDriveInput): void {
+    this.ownedDriveInput = this.getOwnedDrivePose() ? { ...input } : {};
+  }
+
+  private tickOwnedDrive(dt: number): void {
+    if (
+      !this.getOwnedDrivePose() ||
+      !this.ownedDrivePose ||
+      !this.authoritativeCar
+    )
+      return;
+    this.ownedDrivePose = stepOwnedDrive(
+      this.ownedDrivePose,
+      this.ownedDriveInput,
+      deriveStats(this.authoritativeCar),
+      dt,
+      (x, y) =>
+        this.sim.state.roadSet.has(`${Math.round(x)},${Math.round(y)}`) &&
+        this.blockedStepReason(x, y) === null,
+    );
+    const car = this.sim.state.operatorCar;
+    if (car) {
+      car.cell = { x: this.ownedDrivePose.x, y: this.ownedDrivePose.y };
+      car.heading = this.ownedDrivePose.heading;
+    }
   }
 
   /** Spec 096 E — the land-next-to-your-car payoff. Drop the signed-in player into first person
@@ -6658,6 +6801,7 @@ export class ColonyRuntime {
     this.wanderIdleCitizens(dtReal); // keep the citizens strolling so watch mode is never frozen
     this.tickAutoZoningSettlers(dtReal);
     this.raceTick(dtReal);
+    this.tickOwnedDrive(dtReal);
     this.transitTick(); // spec 150 PR2 — the bus fleet rides canonical sol time, not the sim clock
     this.renderer?.frame(dtReal);
     if (now - this.lastUi > 200) {

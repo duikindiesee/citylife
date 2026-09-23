@@ -99,6 +99,7 @@ import { WindTunnelLab } from "./WindTunnelLab";
 import { ShowroomOverlay } from "./ShowroomOverlay";
 import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
 import { DriveHomeOverlay } from "./DriveHomeOverlay";
+import { OwnedCarControls } from "./OwnedCarControls";
 import { RaceMobileControls } from "./RaceMobileControls";
 import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
@@ -1391,6 +1392,7 @@ export function ColonyApp() {
           t.isContentEditable)
       )
         return;
+      if (runtime.getOwnedDrivePose()) return; // owned car controls own these keys
       if (runtime.getUiState().race.mode !== "idle") {
         if (RACE_MOVE.has(e.code)) {
           e.preventDefault();
@@ -1492,9 +1494,9 @@ export function ColonyApp() {
     });
   const worldLayoutDirty = Boolean(
     capturedWorldLayout &&
-      worldLayoutHead &&
-      capturedWorldLayout.revision.contentHash !==
-        worldLayoutHead.document.revision.contentHash,
+    worldLayoutHead &&
+    capturedWorldLayout.revision.contentHash !==
+      worldLayoutHead.document.revision.contentHash,
   );
   const worldLayoutOperatorStatus: WorldLayoutOperatorStatus = captureError
     ? "error"
@@ -1972,10 +1974,13 @@ export function ColonyApp() {
           reported separately rather than half-fixed here. First-person layout is unchanged by this
           PR. */}
       <div className="hud-corner-rail-left" data-testid="hud-corner-rail-left">
-        {presenceReadout && <GeoReadout readout={presenceReadout} />}
+        {presenceReadout && !runtime.getOwnedDrivePose() && (
+          <GeoReadout readout={presenceReadout} />
+        )}
         {!ui.firstPerson.active &&
           !builderActive &&
           !worldViewActive &&
+          !runtime.getOwnedDrivePose() &&
           rallyRead && (
             <div
               className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
@@ -4394,6 +4399,12 @@ export function ColonyApp() {
             🏛️ Kooker HQ
           </button>
         )}
+        <OwnedCarControls
+          runtime={runtime}
+          suspended={
+            showroomOpen || homeOpen || driveHomeOpen || hqOpen || gamehouseOpen
+          }
+        />
       </div>
 
       <RadioPanel runtime={runtime} radio={ui.radio} tv={ui.tv} />

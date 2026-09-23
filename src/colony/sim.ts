@@ -641,7 +641,11 @@ export interface ColonyState {
   roadWays?: RoadWay[];
   /** Attached by the renderer bridge when the signed-in operator has a car — the parked
    *  car's spec + home cell (spec 131). Legacy path was setOperatorCar(). */
-  operatorCar?: { spec: CarSpec; cell: { x: number; y: number } } | null;
+  operatorCar?: {
+    spec: CarSpec;
+    cell: { x: number; y: number };
+    heading?: number;
+  } | null;
   /** Render toggle for the zoning overlays (spec 131) — set through setZonesVisible(). */
   zonesVisible?: boolean;
   /** Citizens present at the hilltop Rally Point (spec 131) — public-safe filtered at the
