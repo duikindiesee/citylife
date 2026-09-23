@@ -112,6 +112,45 @@ async function bootAs(
   await page.waitForSelector(READY_MARKER, { timeout: READY_TIMEOUT });
 }
 
+test("new player can exit and re-enter the showroom without losing acquisition", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await page.route("**/citylife/players/me/vehicle", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: '{"owned":false}',
+    }),
+  );
+  await bootAs(page, "showroom-reentry-1", true);
+  const acquire = page.locator('[data-build-action="showroom-acquire"]');
+  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
+  await expect(acquire).toBeEnabled({ timeout: ASSERT_TIMEOUT });
+
+  await touchTap(page, '[data-build-action="showroom-exit"]');
+  await expect(page.locator(OVERLAY)).toHaveCount(0);
+  await touchTap(page, ENTRY);
+  await expect(page.locator(OVERLAY)).toBeVisible();
+  await expect(acquire).toBeEnabled({ timeout: ASSERT_TIMEOUT });
+  await expect(
+    page.locator('[data-build-action="showroom-acquire-preview"]'),
+  ).toHaveCount(0);
+
+  // A different identity with unavailable ownership truth must not inherit eligibility.
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await page.route("**/citylife/players/me/vehicle", (route) =>
+    route.fulfill({ status: 503, body: "unavailable" }),
+  );
+  await bootAs(page, "showroom-reentry-2", true);
+  await expect(page.locator(ENTRY)).toBeVisible({ timeout: READY_TIMEOUT });
+  await touchTap(page, ENTRY);
+  await expect(
+    page.locator('[data-build-action="showroom-acquire-preview"]'),
+  ).toBeDisabled();
+  await expect(acquire).toHaveCount(0);
+});
+
 test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switch re-hides", async ({
   page,
 }) => {
