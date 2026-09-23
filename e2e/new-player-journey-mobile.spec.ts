@@ -112,34 +112,105 @@ async function bootAs(
   await page.waitForSelector(READY_MARKER, { timeout: READY_TIMEOUT });
 }
 
-test("returning owner hydrates their exact car without opening Gearbox", async ({ page }) => {
+test("returning owner hydrates their exact car without opening Gearbox", async ({
+  page,
+}) => {
   test.setTimeout(180_000);
-  await page.route("**/citylife/players/me/vehicle", (route) => route.fulfill({
-    status: 200, contentType: "application/json",
-    body: '{"owned":true,"vehicleKey":"karoo-x19-targa"}',
-  }));
+  await page.route("**/citylife/players/me/vehicle", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: '{"owned":true,"vehicleKey":"karoo-x19-targa"}',
+    }),
+  );
   await bootAs(page, "returning-car-owner", true);
   await expect(page.locator(OVERLAY)).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => {
-    const runtime = (window as unknown as { __colony?: { sim: { state: { operatorCar?: { spec: { id: string } } } } } }).__colony;
-    return runtime?.sim.state.operatorCar?.spec.id ?? null;
-  }), { timeout: ASSERT_TIMEOUT }).toBe("showroom:karoo-x19-targa");
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const runtime = (
+            window as unknown as {
+              __colony?: {
+                sim: { state: { operatorCar?: { spec: { id: string } } } };
+              };
+            }
+          ).__colony;
+          return runtime?.sim.state.operatorCar?.spec.id ?? null;
+        }),
+      { timeout: ASSERT_TIMEOUT },
+    )
+    .toBe("showroom:karoo-x19-targa");
   const placement = await page.evaluate(() => {
-    const runtime = (window as unknown as { __colony: {
-      operatorCitizenId(): string | null;
-      sim: { state: { roadSet: Set<string>; operatorCar?: { cell: { x: number; y: number } } } };
-    } }).__colony;
+    const runtime = (
+      window as unknown as {
+        __colony: {
+          operatorCitizenId(): string | null;
+          sim: {
+            state: {
+              roadSet: Set<string>;
+              operatorCar?: { cell: { x: number; y: number } };
+            };
+          };
+        };
+      }
+    ).__colony;
     const cell = runtime.sim.state.operatorCar!.cell;
-    return { citizenId: runtime.operatorCitizenId(), onRoad: runtime.sim.state.roadSet.has(`${cell.x},${cell.y}`), cell };
+    return {
+      citizenId: runtime.operatorCitizenId(),
+      onRoad: runtime.sim.state.roadSet.has(`${cell.x},${cell.y}`),
+      cell,
+    };
   });
   expect(placement.citizenId).toBeNull();
   expect(placement.onRoad).toBe(true);
+  // Inspect the mounted world model, not only the runtime's ownership label.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const scene = (
+            window as unknown as { __r3fScene?: import("three").Scene }
+          ).__r3fScene;
+          const model = scene
+            ?.getObjectByName("operator-car")
+            ?.getObjectByName("owned-vehicle-model");
+          let vertices = 0;
+          model?.traverse((node) => {
+            const mesh = node as import("three").Mesh;
+            if (mesh.isMesh)
+              vertices += mesh.geometry.getAttribute("position")?.count ?? 0;
+          });
+          return { asset: model?.userData.assetUrl, vertices: vertices > 100 };
+        }),
+      { timeout: READY_TIMEOUT },
+    )
+    .toEqual({ asset: "/assets/citylife/cars/fiat_x19.glb", vertices: true });
   await page.reload();
-  await expect.poll(() => page.evaluate(() => {
-    const runtime = (window as unknown as { __colony?: { sim: { state: { operatorCar?: { spec: { id: string }; cell: { x: number; y: number } } } } } }).__colony;
-    const car = runtime?.sim.state.operatorCar;
-    return car ? { id: car.spec.id, cell: car.cell } : null;
-  }), { timeout: READY_TIMEOUT }).toEqual({ id: "showroom:karoo-x19-targa", cell: placement.cell });
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const runtime = (
+            window as unknown as {
+              __colony?: {
+                sim: {
+                  state: {
+                    operatorCar?: {
+                      spec: { id: string };
+                      cell: { x: number; y: number };
+                    };
+                  };
+                };
+              };
+            }
+          ).__colony;
+          const car = runtime?.sim.state.operatorCar;
+          return car ? { id: car.spec.id, cell: car.cell } : null;
+        }),
+      { timeout: READY_TIMEOUT },
+    )
+    .toEqual({ id: "showroom:karoo-x19-targa", cell: placement.cell });
 });
 
 test("new player can exit and re-enter the showroom without losing acquisition", async ({
@@ -181,20 +252,31 @@ test("new player can exit and re-enter the showroom without losing acquisition",
   await expect(acquire).toHaveCount(0);
 });
 
-test("server ownership opens Gearbox despite a stale cached car", async ({ page }) => {
+test("server ownership opens Gearbox despite a stale cached car", async ({
+  page,
+}) => {
   test.setTimeout(120_000);
   let ownershipReads = 0;
   await page.addInitScript(() => {
-    localStorage.setItem("citylife.car.ownership.v1.stale-cache-player", JSON.stringify(["karoo-x19-targa"]));
+    localStorage.setItem(
+      "citylife.car.ownership.v1.stale-cache-player",
+      JSON.stringify(["karoo-x19-targa"]),
+    );
   });
-  await page.route("**/citylife/players/me/vehicle", route => {
+  await page.route("**/citylife/players/me/vehicle", (route) => {
     ownershipReads++;
-    return route.fulfill({ status: 200, contentType: "application/json", body: '{"owned":false}' });
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: '{"owned":false}',
+    });
   });
   await bootAs(page, "stale-cache-player", true);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   expect(ownershipReads).toBeGreaterThan(0);
-  await expect(page.locator('[data-build-action="showroom-acquire"]')).toBeEnabled({ timeout: ASSERT_TIMEOUT });
+  await expect(
+    page.locator('[data-build-action="showroom-acquire"]'),
+  ).toBeEnabled({ timeout: ASSERT_TIMEOUT });
 });
 
 test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switch re-hides", async ({
