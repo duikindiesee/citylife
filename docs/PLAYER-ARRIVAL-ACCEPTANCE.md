@@ -39,3 +39,15 @@ Task dd18507c-8ce4-4405-b7f2-10fb78b9f313: login must read current server vehicl
 Coverage: pure stale-cache decisions, unknown server-owned model and refresh-rejection cases; browser regression seeds stale X19 ownership before authenticated login and expects a server read plus enabled Gearbox acquisition after an explicit no-vehicle response.
 
 This change does not yet hydrate the exact owned car into the driving runtime, resolve an owned home's real parcel, invoke player house building, or place a car on a road-connected driveway. These remain required acceptance work. Deployed browser evidence remains outstanding.
+# Owned-car hydration follow-up (not complete arrival)
+
+Authenticated bootstrap now resolves the exact catalog model from server ownership even
+when onboarding is off. A different cached model is replaced; matching model tuning is
+retained. Missing, empty, unsupported or ambiguous truth cannot render a fabricated
+default owned car. Identity changes clear the runtime ownership binding and stale
+responses cannot hydrate the new account. Showroom refresh and confirmed purchase use
+the same binding.
+
+This is a prerequisite, not seated gameplay acceptance. Runtime vehicle controls,
+authoritative purchased parcels, completed house persistence and road-connected driveway
+spawn remain required. The legacy drive-home overlay cursor is not evidence of driving.

@@ -314,6 +314,7 @@ describe("PLAYER.CAR.1.S5 — distinct user ID vs citizen ID persistence via run
     // Acquire vehicle via identity-bound runtime method
     const ok = rt.acquireCar(acquired.spec, citizenId);
     expect(ok).toBe(true);
+    rt.applyVehicleOwnership(userId, [vehicleKeyOf(acquired)]);
 
     // Assert stored under citizenId, NOT userId
     expect(hasStoredCar(citizenId)).toBe(true);
@@ -356,6 +357,26 @@ describe("PLAYER.CAR.1.S5 — distinct user ID vs citizen ID persistence via run
 });
 
 describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
+  it("replaces the wrong cached model and rejects a stale account ownership response", () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId("owner-a");
+    saveCar(citizen.id, SHOWROOM_VEHICLES[0]!.spec);
+    const render = vi.fn();
+    (rt as unknown as { renderer: unknown }).renderer = {
+      setOperatorCar: render,
+    };
+    rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"]);
+    expect(loadCar(citizen.id).id).toBe(SHOWROOM_VEHICLES[2]!.spec.id);
+    expect(render.mock.calls.at(-1)![0].id).toBe(SHOWROOM_VEHICLES[2]!.spec.id);
+    rt.applyVehicleOwnership("owner-a", []);
+    expect(render).toHaveBeenLastCalledWith(null, null);
+    rt.setOperatorUserId("owner-b");
+    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(false);
+    expect(render).toHaveBeenLastCalledWith(null, null);
+  });
+
   it("isolates ownership cache between distinct user accounts", () => {
     const userA = "user-alice-101";
     const userB = "user-bob-202";

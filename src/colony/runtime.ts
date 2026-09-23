@@ -105,6 +105,7 @@ import {
 } from "./ledger";
 import { plotPriceKook, kookToZar, starterDeposit } from "./land";
 import { hasStoredCar, loadCar, saveCar } from "./car/garageStore";
+import { resolveOwnedCar } from "./car/ownedCar";
 import {
   PAINT_PALETTES,
   type PaintChannel,
@@ -987,6 +988,7 @@ export class ColonyRuntime {
   // step-into resolve to the citizen stamped with this id, not a spoofable display name. Null until a
   // signed-in player sets it (legacy tokens with no userId claim also leave it null → name fallback).
   private operatorUserId: string | null = null;
+  private authoritativeCar: CarSpec | null = null;
   // Player data isolation: false = the privileged operator/admin view (sees every citizen + wallet,
   // the default). true = a CITYLIFE_PLAYER view — the HUD then shows only the player's own data plus
   // other citizens' public presence (stubs), never their private wallet/usage. Set by the player login
@@ -2239,7 +2241,9 @@ export class ColonyRuntime {
    *  step-into resolve by user id even when names collide. Re-evaluates the step-into guard like
    *  setOperatorName, so flipping identity drops a now-disallowed first-person session. */
   setOperatorUserId(userId: string | null): void {
-    this.operatorUserId = userId && userId.trim() ? userId.trim() : null;
+    const nextUserId = userId && userId.trim() ? userId.trim() : null;
+    if (nextUserId !== this.operatorUserId) this.authoritativeCar = null;
+    this.operatorUserId = nextUserId;
     this.claimOwnCitizen();
     this.updateOperatorCar();
     if (this.fpCitizenId && !this.canStepIntoCitizen(this.fpCitizenId)) {
@@ -2325,6 +2329,22 @@ export class ColonyRuntime {
     if (!id) return false;
     if (expectedCitizenId && id !== expectedCitizenId) return false;
     saveCar(id, spec);
+    this.updateOperatorCar();
+    this.emit();
+    return true;
+  }
+
+  /** Apply a server ownership read only to the identity that requested it.
+   * Local tuning may survive only when its model matches the authoritative car. */
+  applyVehicleOwnership(userId: string, keys: readonly string[] | null): boolean {
+    if (userId !== this.operatorUserId) return false;
+    const owned = resolveOwnedCar(keys);
+    this.authoritativeCar = owned;
+    const citizenId = this.operatorCitizenId();
+    if (owned && citizenId) {
+      const stored = hasStoredCar(citizenId) ? loadCar(citizenId) : null;
+      if (!stored || stored.id !== owned.id) saveCar(citizenId, owned);
+    }
     this.updateOperatorCar();
     this.emit();
     return true;
@@ -2510,7 +2530,12 @@ export class ColonyRuntime {
     }
     const home = c.homeXY ?? c.pos;
     const cell = { x: Math.round(home.x) + 1, y: Math.round(home.y) };
-    this.renderer.setOperatorCar(loadCar(id), cell);
+    const stored = loadCar(id);
+    const spec = this.operatorUserId
+      ? (this.authoritativeCar && stored.id === this.authoritativeCar.id
+          ? stored : this.authoritativeCar)
+      : stored;
+    this.renderer.setOperatorCar(spec, spec ? cell : null);
   }
 
   /** Spec 096 E — the land-next-to-your-car payoff. Drop the signed-in player into first person
