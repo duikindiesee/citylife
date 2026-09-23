@@ -7,6 +7,7 @@ import {
 } from "@react-three/rapier";
 import { Vector3, Euler, Quaternion } from "three";
 import { COLONY } from "../../colony/config";
+import { ownedVehicleSurfaceY } from "../../colony/render/ownedVehicleSurface";
 import {
   leveledWorldY,
   leveledWorldYAt,
@@ -29,7 +30,6 @@ import {
 } from "../../colony/playerSpeed";
 import { replayPose } from "../../colony/perf/replayBridge";
 import type { OwnedDrivePose } from "../../colony/car/ownedDriving";
-import { ROAD_RIBBON_LIFT } from "../../colony/render/roadRibbon";
 
 const LOOK_SPEED = 2;
 const BUS_RIDER_EYE = 2.4; // eye height above the road while seated on the 3 m coach (spec 149)
@@ -178,8 +178,7 @@ export function FirstPersonController({
     const driving = runtime?.getOwnedDrivePose?.();
     if (driving && sim?.state?.terrain) {
       const eyeY =
-        Math.max(0, getSmoothRoadY(sim.state.terrain, driving.x, driving.y)) +
-        ROAD_RIBBON_LIFT +
+        ownedVehicleSurfaceY(sim, terrainLevel, driving.x, driving.y) +
         COLONY.ownedDriving.seatedEyeMetres;
       const wx = toWorldX(driving.x);
       const wz = toWorldZ(driving.y);
