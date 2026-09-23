@@ -17,6 +17,8 @@ import type { ShowroomVehicle } from "../showroom/showroomCatalog";
 import { clampShowroomZoom } from "../showroom/showroomState";
 import { ShowroomEnvironment, ShowroomSky } from "./showroomEnvironment";
 
+useGLTF.preload("/assets/citylife/cars/karoo_vonk.glb");
+useGLTF.preload("/assets/citylife/cars/karoo_kaap_gt.glb");
 useGLTF.preload("/assets/citylife/cars/fiat_x19.glb");
 
 /** Plinth turntable speed, radians per second — slow enough to read the car. */

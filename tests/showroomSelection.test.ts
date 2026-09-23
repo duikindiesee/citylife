@@ -247,6 +247,15 @@ describe("showroom catalog and specification card", () => {
     expect(x19!.rotationOffset).toEqual([0, -Math.PI / 2, 0]);
     expect(x19!.spec.stats.grip).toBe(0.85);
   });
+
+  it("offers high-fidelity GLB models across all showroom vehicles", () => {
+    for (const v of SHOWROOM_VEHICLES) {
+      expect(v.glbUrl).toBeDefined();
+      expect(v.glbUrl).toMatch(/\.glb$/);
+      expect(v.presentationScale).toBeGreaterThan(0);
+      expect(v.rotationOffset).toHaveLength(3);
+    }
+  });
 });
 
 describe("GLB turntable model resource ownership", () => {
@@ -263,10 +272,10 @@ describe("GLB turntable model resource ownership", () => {
   });
 
   it("retains loader cache ownership and leaves cached geometries and materials undisposed across component mount, selection away, and unmount", async () => {
-    const x19 = SHOWROOM_VEHICLES.find((v) => v.glbUrl)!;
-    const proceduralCar = SHOWROOM_VEHICLES.find((v) => !v.glbUrl)!;
+    const x19 = SHOWROOM_VEHICLES.find((v) => v.spec.id === "showroom:karoo-x19-targa")!;
+    const otherCar = SHOWROOM_VEHICLES.find((v) => v.spec.id === "showroom:karoo-vonk-11")!;
     expect(x19).toBeDefined();
-    expect(proceduralCar).toBeDefined();
+    expect(otherCar).toBeDefined();
 
     let disposeCalls = 0;
     const onDispose = () => {
@@ -309,14 +318,12 @@ describe("GLB turntable model resource ownership", () => {
       expect(spyMatA).not.toHaveBeenCalled();
       expect(spyMatB).not.toHaveBeenCalled();
 
-      // Step 2: Select away to a procedural vehicle (unmounts GlbTurntableCarModel)
-      // Under the rejected head 717708b, GlbTurntableCarModel unmount effect traversed the cloned
-      // mesh and disposed shared cached geometries and materials. Under corrected head 3ff46c9,
-      // loader cache ownership is retained and automatic primitive disposal is suppressed (dispose={null}).
+      // Step 2: Select away to another vehicle in the carousel (unmounts previous GlbTurntableCarModel)
+      // Loader cache ownership is retained and automatic primitive disposal is suppressed (dispose={null}).
       await act(async () => {
         root!.render(
           React.createElement(ShowroomView, {
-            vehicle: proceduralCar,
+            vehicle: otherCar,
             zoom: SHOWROOM_DEFAULT_ZOOM,
           }),
         );

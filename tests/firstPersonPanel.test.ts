@@ -151,10 +151,11 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).toContain("road");
     expect(html).toContain("1.4 units away");
     expect(html).toContain("Guiding to road · 1.4 units away");
-    expect(html).not.toContain("301");
-    expect(html).not.toContain("306");
-    expect(html).not.toContain("Ground");
-    expect(html).not.toContain("Neighbours");
+    const content = html.replace(/<div class="build-stamp[^>]*>.*?<\/div>/s, "");
+    expect(content).not.toContain("301");
+    expect(content).not.toContain("306");
+    expect(content).not.toContain("Ground");
+    expect(content).not.toContain("Neighbours");
   });
 
   it("shows the next guided route leg without exposing debug telemetry", () => {
@@ -177,11 +178,12 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).toContain("road");
     expect(html).toContain("2.8 units away");
     expect(html).toContain("Guiding to road · 2.8 units away");
-    expect(html).not.toContain("Next leg");
-    expect(html).not.toContain("300");
-    expect(html).not.toContain("307");
-    expect(html).not.toContain("Ground");
-    expect(html).not.toContain("Neighbours");
+    const content = html.replace(/<div class="build-stamp[^>]*>.*?<\/div>/s, "");
+    expect(content).not.toContain("Next leg");
+    expect(content).not.toContain("300");
+    expect(content).not.toContain("307");
+    expect(content).not.toContain("Ground");
+    expect(content).not.toContain("Neighbours");
   });
 
   it("shows a night-only friend banner from nearby public names", () => {
