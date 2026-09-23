@@ -22,6 +22,9 @@ test("game hydrates the completed owned house on reload and removes it for anoth
     body:JSON.stringify({owned:ownsHome,status:ownsHome?"OWNED":null,plotOwned:ownsHome,requiresBuild:false,
       plotId:ownsHome?plot.plotId:null,layoutRevision:manifest.layoutRevision})});
   });
+  await page.route("**/players/me/home/available-plots",route=>route.fulfill({status:200,
+    contentType:"application/json",body:JSON.stringify([{...plot,worldId:manifest.worldId,
+      layoutRevision:manifest.layoutRevision,priceKco:350}])}));
   await page.route("**/players/me/home/build",route=>{
     if(route.request().method()!=="GET") writes++;
     buildReads++;
@@ -85,10 +88,29 @@ test("game hydrates the completed owned house on reload and removes it for anoth
   await page.reload();
   await expect(page.locator('button[title="Sign out of CityLife"]')).toBeVisible({timeout:90000});
   await expect.poll(snapshot).toEqual([]);
+  await expect(page.getByTestId(`home-price-${plot.plotId}`)).toContainText("350");
+  await expect(page.getByTestId("home-purchase")).toBeVisible();
   expect(buildReads).toBe(2);expect(writes).toBe(0);
   ownsCar=false;
   await page.reload();
   await expect(page.locator('[data-testid="showroom-overlay"]')).toBeVisible({timeout:90000});
   expect(await car()).toBeNull();
   expect(await snapshot()).toEqual([]);
+  let purchases=0;
+  await page.route("**/players/me/vehicle/purchase",route=>{
+    expect(route.request().method()).toBe("POST");
+    expect(route.request().postDataJSON()).toEqual({vehicleKey:"karoo-x19-targa"});
+    expect(route.request().headers()["idempotency-key"]).toBeTruthy();
+    purchases++;ownsCar=true;
+    return route.fulfill({status:201,contentType:"application/json",body:"{}"});
+  });
+  await page.locator('[data-build-action="showroom-next"]').press("Enter");
+  await expect(page.getByTestId("showroom-card-name")).toContainText("GT-V8");
+  await page.locator('[data-build-action="showroom-next"]').press("Enter");
+  await expect(page.getByTestId("showroom-card-name")).toContainText("X19");
+  await expect(page.getByTestId("showroom-acquire")).toBeEnabled();
+  await page.getByTestId("showroom-acquire").press("Enter");
+  await expect(page.getByTestId(`home-price-${plot.plotId}`)).toContainText("350",{timeout:30000});
+  await expect(page.getByTestId("showroom-overlay")).toHaveCount(0);
+  expect(purchases).toBe(1);
 });

@@ -1073,6 +1073,8 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
     setShowroomAutoAcquire(false);
     setArrivalError(false);
     setArrivalReady(false);
+    setHomeOpen(false);
+    setShowroomOpen(false);
   }, [operatorUserId]);
 
   useEffect(() => {
@@ -1095,11 +1097,13 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
       if (cancelled) return;
       if (!truth) throw new Error("Vehicle ownership unavailable");
       if (truth.length && !resolveOwnedCar(truth)) throw new Error("Ambiguous vehicle ownership");
+      let needsHome = false;
       if (newPlayerJourneyEnabled) {
         if (!playerInventory) throw new Error("Home inventory unavailable");
         const home = await fetchHomeTruth();
         if (cancelled) return;
         if (!home) throw new Error("Home ownership unavailable");
+        needsHome = !isHomeOwned(home);
         if (isHomeOwned(home)) {
           const session = await loadHouseBuild(playerInventory);
           if (cancelled) return;
@@ -1111,6 +1115,7 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
         throw new Error("Player identity changed");
       autoShowroomCheckedRef.current = true;
       setArrivalReady(true);
+      if (truth.length > 0 && needsHome) setHomeOpen(true);
       if (
         shouldAutoOpenShowroom({
           hasRealAccount,
@@ -1953,6 +1958,12 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
         <ShowroomOverlay
           runtime={runtime}
           canAcquire={showroomAutoAcquire || isCarAcquisitionEnabled()}
+          onOwnershipConfirmed={() => {
+            setShowroomOpen(false);
+            autoShowroomCheckedRef.current = false;
+            setArrivalReady(false);
+            setArrivalAttempt(n => n + 1);
+          }}
           onClose={() => {
             setShowroomOpen(false);
           }}

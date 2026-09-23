@@ -66,10 +66,12 @@ export function ShowroomOverlay({
   onClose,
   canAcquire = isCarAcquisitionEnabled(),
   runtime,
+  onOwnershipConfirmed,
 }: {
   onClose: () => void;
   canAcquire?: boolean;
   runtime?: ColonyRuntime;
+  onOwnershipConfirmed?: () => void;
 }) {
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(SHOWROOM_DEFAULT_ZOOM);
@@ -220,9 +222,10 @@ export function ShowroomOverlay({
 
         setOwned(truth);
         saveOwnedKeysCache(truth, scope);
+        onOwnershipConfirmed?.();
       }
     });
-  }, [acquireEnabled, isOwned, pendingKey, vehicleKey, runtime]);
+  }, [acquireEnabled, isOwned, pendingKey, vehicleKey, runtime, onOwnershipConfirmed]);
 
   const prev = useCallback(
     () => setIndex((i) => stepSelection(i, count, -1)),

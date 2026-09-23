@@ -182,6 +182,10 @@ of all slopes, road-turn clearance or live deployment.
 
 ## Arrival read ordering
 
+An entitled player with an authoritative car but no completed home automatically enters the property flow after arrival resolves. That flow reads available priced plots or resumes an existing paid plot's build. Account changes close the previous account's home/showroom overlays before resolving the new identity.
+
+After a successful vehicle purchase and authoritative ownership readback, the showroom closes and refreshes arrival. This continues directly to the priced property/build flow for a homeless owner, or to the completed home for an existing homeowner. Closing the showroom without a confirmed purchase does not trigger this continuation.
+
 Resolve entitlement and required home reads before applying vehicle ownership. A completed home projection must succeed before seating its car, avoiding an intermediate garage spawn. Failed required ownership reads expose Retry arrival and do not seat the car. Browser regression covers a failed home read followed by retry, home spawn, road access, reload and account switch. Deployed acceptance remains outstanding.
 
 Arrival distinguishes a failed entitlement read from an explicit OFF/killed response. Failed or malformed reads hold arrival with a retry that refreshes entitlement; explicit OFF preserves the existing non-onboarding path. A loading boundary covers pending ownership reads. Nonempty vehicle truth must resolve to exactly one supported model, otherwise arrival retries instead of silently selecting no car. The browser regression also holds a home response open to prove no intermediate car spawn, and checks automatic Gearbox entry for a carless, homeless account. These are fixture tests, not deployment receipts.
