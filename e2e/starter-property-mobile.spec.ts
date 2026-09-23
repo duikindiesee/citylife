@@ -1,5 +1,5 @@
 import { test, expect, devices, type Page, type Route } from "@playwright/test";
-import { installStarterWorldFixture } from "./starterWorldFixture";
+import { installStarterWorldFixture, starterWorldFixture } from "./starterWorldFixture";
 
 // Spec 173 — actual plot offers in the real mobile UI with authenticated fixture APIs.
 // Proves exact selection, double-tap exclusion, paid-land reload, insufficient-funds recovery,
@@ -167,11 +167,15 @@ const NOT_OWNED = {
 
 // The SERVER returns only public, eligible starter neighbourhoods — a private hamlet is omitted by the
 // authority and so can never appear (the client adds no choice of its own).
-const ELIGIBLE_PUBLIC = ["wood1", "wood2"].map(neighbourhoodKey => ({
-  plotId:`${neighbourhoodKey}_lot_1`, frameId:`published-frame-${neighbourhoodKey}-lot-1`,priceKco:350,
-  geometry:{plotId:`${neighbourhoodKey}_lot_1`,neighbourhoodKey,worldId:"seed-4242",
-    layoutRevision:"a".repeat(64),parcel:{x:1,y:1,width:9,depth:11}},
-}));
+let ELIGIBLE_PUBLIC: unknown[];
+let publishedRevision: string;
+test.beforeAll(async () => {
+  const {manifest} = JSON.parse(await starterWorldFixture());
+  publishedRevision = manifest.layoutRevision;
+  ELIGIBLE_PUBLIC = manifest.plots.filter((plot: {plotId:string}) =>
+    ["wood1_lot_1", "wood2_lot_1"].includes(plot.plotId))
+    .map((plot: Record<string, unknown>) => ({...plot, priceKco:350}));
+});
 
 test("paid published plot stays unbuilt across reload without a synthetic house or another purchase", async ({page}) => {
   const state: HomeState = {
@@ -275,7 +279,7 @@ test("actual plot offers submit the selected parcel once and retain paid land ac
   await expect(owned).toHaveCount(1);
   expect(state.purchaseCount.n).toBe(1); // the double-tap fired ONE POST
 
-  expect(state.purchaseBodies).toEqual([{plotId:"wood2_lot_1",neighbourhoodKey:"wood2",layoutRevision:"a".repeat(64)}]);
+  expect(state.purchaseBodies).toEqual([{plotId:"wood2_lot_1",neighbourhoodKey:"wood2",layoutRevision:publishedRevision}]);
   await expect(owned).toHaveAttribute("data-plot-id","wood2_lot_1");
   await expect(page.getByTestId("home-owned")).toHaveCount(0);
 
@@ -313,6 +317,16 @@ test("HOME.1C: eligible-list read failure shows retry, then recovers", async ({
   });
 
   // Recover the endpoint, then retry → the server-eligible choices load.
+  await page.unroute(ELIGIBLE_RE);
+  await page.route(ELIGIBLE_RE, route => route.fulfill({status:200,
+    contentType:"application/json",body:JSON.stringify(ELIGIBLE_PUBLIC.map(entry => {
+      const plot = entry as {geometry:Record<string,unknown>};
+      return {...plot,geometry:{...plot.geometry,layoutRevision:"b".repeat(64)}};
+    }))}));
+  await touchTap(page, '[data-testid="home-retry"]');
+  await expect(page.getByTestId("home-error")).toBeVisible();
+  await expect(page.getByTestId("home-purchase")).toHaveCount(0);
+  expect(state.purchaseCount.n).toBe(0);
   await page.unroute(ELIGIBLE_RE);
   await page.route(ELIGIBLE_RE, (route: Route) =>
     route.fulfill({

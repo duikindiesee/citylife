@@ -1,4 +1,5 @@
 import { getAuthClient } from "../authClient";
+import type { PublishedPlayerInventory } from "./starterWorldCatalogue";
 import { classifyPurchaseStatus, HOME_PURCHASE_PATH, type HomeTruth, type PurchaseOutcome } from "./starterProperty";
 
 export const AVAILABLE_PLOTS_PATH = "/kooker/api/v1/citylife/players/me/home/available-plots";
@@ -45,7 +46,18 @@ export function parseStarterPlotOffers(raw: unknown): StarterPlotOffer[] | null 
   return offers.sort((a,b) => a.plotId < b.plotId ? -1 : a.plotId > b.plotId ? 1 : 0);
 }
 
-export async function fetchStarterPlotOffers(): Promise<StarterPlotOffer[] | null> {
+/** Reject the entire list if any offer belongs to another loaded world or revision. */
+export function bindStarterPlotOffers(offers: StarterPlotOffer[] | null,
+  inventory: Pick<PublishedPlayerInventory, "worldId" | "layoutRevision" | "plotIds" | "plotFrames"> | undefined): StarterPlotOffer[] | null {
+  if (!offers || !inventory) return null;
+  return offers.every(offer => offer.worldId === inventory.worldId &&
+    offer.layoutRevision === inventory.layoutRevision && inventory.plotIds.includes(offer.plotId) &&
+    inventory.plotFrames.get(offer.plotId) === offer.frameId) ? offers : null;
+}
+
+export async function fetchStarterPlotOffers(
+  inventory?: Pick<PublishedPlayerInventory, "worldId" | "layoutRevision" | "plotIds" | "plotFrames">,
+): Promise<StarterPlotOffer[] | null> {
   const auth = getAuthClient(), userId = auth.operator?.userId;
   if (!userId) return null;
   try {
@@ -54,7 +66,7 @@ export async function fetchStarterPlotOffers(): Promise<StarterPlotOffer[] | nul
     const response = await fetch(AVAILABLE_PLOTS_PATH, {headers:{Authorization:`Bearer ${token}`}});
     if (!response.ok) return null;
     const body: unknown = await response.json();
-    return auth.operator?.userId === userId ? parseStarterPlotOffers(body) : null;
+    return auth.operator?.userId === userId ? bindStarterPlotOffers(parseStarterPlotOffers(body), inventory) : null;
   } catch { return null; }
 }
 

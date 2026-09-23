@@ -1954,6 +1954,7 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
       {homeOpen && newPlayerJourneyEnabled && (
         <StarterPropertyOverlay
           key={operatorUserId ?? "signed-out"}
+          playerInventory={playerInventory}
           onClose={() => setHomeOpen(false)}
           walletKco={playerWalletKco}
           currency={ui.bank.currency}

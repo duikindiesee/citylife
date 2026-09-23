@@ -139,3 +139,9 @@ text screening. It does not validate a paid deed, parcel dimensions, driveway cl
 or durable completion. Player completion must validate the exact owned parcel/revision,
 persist the accepted design and completion atomically, and only then activate residence
 and home spawn. A successful legacy blueprint PUT must never substitute for this step.
+# Offer binding to the loaded world
+
+The property screen rejects an entire offer response if any entry differs from the loaded
+published world, layout revision, plot inventory or exact plot-to-frame binding. Missing
+published inventory is a read failure. Prices and purchase validation remain server-owned.
+This prevents stale or cross-world offers from selecting land outside the loaded catalogue.

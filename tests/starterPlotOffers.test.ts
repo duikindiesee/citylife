@@ -1,7 +1,7 @@
 import {beforeEach, afterEach, describe, expect, it, vi} from "vitest";
 const auth = vi.hoisted(() => ({operator:{userId:"player-a"}, getValidToken:vi.fn()}));
 vi.mock("../src/colony/authClient", () => ({getAuthClient:() => auth}));
-import {fetchStarterPlotOffers, parseStarterPlotOffers, postPurchasePlot, postResumePlotPurchase} from "../src/colony/home/starterPlotOffers";
+import {bindStarterPlotOffers, fetchStarterPlotOffers, parseStarterPlotOffers, postPurchasePlot, postResumePlotPurchase} from "../src/colony/home/starterPlotOffers";
 import {parseHomeTruth} from "../src/colony/home/starterProperty";
 
 const offered = {plotId:"wood1_lot_1",frameId:"frame-wood1-lot-1",priceKco:350,
@@ -12,6 +12,18 @@ beforeEach(() => { auth.operator.userId = "player-a"; auth.getValidToken.mockRes
 afterEach(() => {vi.unstubAllGlobals(); vi.clearAllMocks();});
 
 describe("actual server plot offers", () => {
+  it("rejects stale worlds, revisions and mismatched parcel frames as a whole list", () => {
+    const offers = parseStarterPlotOffers([offered])!;
+    const inventory = {worldId:"seed-4242",layoutRevision:"a".repeat(64),
+      plotIds:[offered.plotId],plotFrames:new Map([[offered.plotId,offered.frameId]])};
+    expect(bindStarterPlotOffers(offers,inventory)).toEqual(offers);
+    expect(bindStarterPlotOffers([],inventory)).toEqual([]);
+    expect(bindStarterPlotOffers(offers,undefined)).toBeNull();
+    for (const changed of [{worldId:"other"},{layoutRevision:"b".repeat(64)},
+      {plotId:"unknown"},{frameId:"other-parcel-frame"}]) {
+      expect(bindStarterPlotOffers([...offers,{...offers[0],...changed}],inventory)).toBeNull();
+    }
+  });
   it("retains exact server identity, revision and price, with no synthetic fallback", () => {
     const offer = parseStarterPlotOffers([offered])![0];
     expect(offer).toMatchObject({plotId:offered.plotId,priceKco:350,layoutRevision:"a".repeat(64),neighbourhoodKey:"wood1"});
@@ -35,11 +47,15 @@ describe("actual server plot offers", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
   it("does not display a late offer list from the previous account", async () => {
+    const inventory = {worldId:"seed-4242",layoutRevision:"a".repeat(64),
+      plotIds:[offered.plotId],plotFrames:new Map([[offered.plotId,offered.frameId]])};
+    vi.stubGlobal("fetch",vi.fn().mockResolvedValue(response(200,[offered])));
+    expect(await fetchStarterPlotOffers(inventory)).toEqual(parseStarterPlotOffers([offered]));
     vi.stubGlobal("fetch",vi.fn().mockImplementation(async () => {
       auth.operator.userId = "player-b";
       return response(200,[offered]);
     }));
-    expect(await fetchStarterPlotOffers()).toBeNull();
+    expect(await fetchStarterPlotOffers(inventory)).toBeNull();
   });
   it("rejects a switch during token refresh before any POST", async () => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch",fetcher);

@@ -22,6 +22,7 @@ import {
 import { projectStarterHome } from "../home/starterHouseProjection";
 import { fetchStarterPlotOffers, postPurchasePlot, postResumePlotPurchase, type StarterPlotOffer } from "../home/starterPlotOffers";
 import { CELL_SIZE } from "../scale";
+import type { PublishedPlayerInventory } from "../home/starterWorldCatalogue";
 
 const panelStyle: CSSProperties = {
   background: "rgba(8,14,24,0.92)",
@@ -54,11 +55,13 @@ export function StarterPropertyOverlay({
   onClose,
   walletKco,
   currency = "₭",
+  playerInventory,
 }: {
   onClose: () => void;
   /** The current server-synced wallet balance for the signed-in player, display only. null = unknown. */
   walletKco: number | null;
   currency?: string;
+  playerInventory?: PublishedPlayerInventory;
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [choices, setChoices] = useState<StarterPlotOffer[]>([]);
@@ -76,7 +79,7 @@ export function StarterPropertyOverlay({
     setPhase("loading");
     void (async () => {
       const [elig, home] = await Promise.all([
-        fetchStarterPlotOffers(),
+        fetchStarterPlotOffers(playerInventory),
         fetchHomeTruth(),
       ]);
       if (!live) return;
@@ -95,7 +98,7 @@ export function StarterPropertyOverlay({
     return () => {
       live = false;
     };
-  }, [reloadToken]);
+  }, [reloadToken, playerInventory]);
 
   const owned = isHomeOwned(truth);
   const plotOwned = truth?.plotOwned === true;
