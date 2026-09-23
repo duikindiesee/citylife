@@ -186,6 +186,14 @@ An entitled player with an authoritative car but no completed home automatically
 
 After a successful vehicle purchase and authoritative ownership readback, the showroom closes and refreshes arrival. This continues directly to the priced property/build flow for a homeless owner, or to the completed home for an existing homeowner. Closing the showroom without a confirmed purchase does not trigger this continuation.
 
+## Whole-journey browser contract
+
+`e2e/player-onboarding-journey.spec.ts` drives the actual controls with stateful fixture APIs: insufficient X19 funds, exit/re-entry, a funded retry using the same idempotency key, priced plot selection, purchase, house-builder completion, return to the home driveway and reload. It checks request bodies/counts and retains screenshots of the shortage, paid plot, saved house and home arrival. The fixture balance is explicitly test-owned: this does not prove real grants, admin funding, ledger transactions or deployment.
+
+Remaining pricing blocker: the showroom still labels its local catalogue prices as planned. Task `e4f805e7-afff-4a93-90d3-bdebb7645f9d` tracks server-backed vehicle offer/display prices and is a dependency of final deployed acceptance. Purchase prices are server-owned, but that alone does not make the displayed price authoritative.
+
+Visual acceptance remains failed: the complete fixture journey passed its ownership/request/reload assertions, but its home-arrival screenshot places the view underneath or inside the X19 and obscures the house/driveway. Task `6c9c937d-3179-4a2e-a739-e91b7feec406` tracks model/height/camera investigation and rendered driving proof. A matching runtime pose is not proof of a usable view or correct terrain seating.
+
 Resolve entitlement and required home reads before applying vehicle ownership. A completed home projection must succeed before seating its car, avoiding an intermediate garage spawn. Failed required ownership reads expose Retry arrival and do not seat the car. Browser regression covers a failed home read followed by retry, home spawn, road access, reload and account switch. Deployed acceptance remains outstanding.
 
 Arrival distinguishes a failed entitlement read from an explicit OFF/killed response. Failed or malformed reads hold arrival with a retry that refreshes entitlement; explicit OFF preserves the existing non-onboarding path. A loading boundary covers pending ownership reads. Nonempty vehicle truth must resolve to exactly one supported model, otherwise arrival retries instead of silently selecting no car. The browser regression also holds a home response open to prove no intermediate car spawn, and checks automatic Gearbox entry for a carless, homeless account. These are fixture tests, not deployment receipts.
