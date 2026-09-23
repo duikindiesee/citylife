@@ -12,8 +12,11 @@ export const COLONY = {
     steerRadiansPerSecond: 1.2,
     maxFrameSeconds: 0.25,
     substepSeconds: 1 / 60,
-    halfLengthMetres: 2,
-    halfWidthMetres: 0.85,
+    // Current owned GLBs measure 4.08 x 1.825 m after catalogue rotation.
+    // Round outward so visible bodywork never exceeds the collision envelope.
+    halfLengthMetres: 2.05,
+    halfWidthMetres: 0.92,
+    drivewayClearanceSampleMetres: 0.25,
     seatedEyeMetres: 1.05,
   },
   world: {

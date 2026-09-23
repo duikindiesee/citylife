@@ -1,12 +1,19 @@
 import { describe, it, expect } from "vitest";
 import {
   stepOwnedDrive,
+  ownedDriveFootprintClear,
   type OwnedDrivePose,
 } from "../src/colony/car/ownedDriving";
 import { STOCK_STATS } from "../src/colony/car/carSpec";
 
 const start: OwnedDrivePose = { x: 0, y: 0, heading: 0, speed: 0 };
 describe("owned vehicle world driving", () => {
+  it("rejects a blocked body centre and uses bounds enclosing the displayed model", () => {
+    expect(ownedDriveFootprintClear(start, (x, y) => Math.abs(x) > 0.1 || Math.abs(y) > 0.1)).toBe(false);
+    expect(ownedDriveFootprintClear(start, (x, y) => Math.abs(x) <= 0.5 && Math.abs(y) <= 0.2125)).toBe(false);
+    expect(ownedDriveFootprintClear({...start, heading: Math.PI / 4}, () => true)).toBe(true);
+    expect(ownedDriveFootprintClear({...start, x: NaN}, () => true)).toBe(false);
+  });
   it("moves the actual pose, steers and reverses using car stats", () => {
     let pose = { ...start };
     for (let i = 0; i < 30; i++)

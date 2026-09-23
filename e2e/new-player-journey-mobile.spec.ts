@@ -288,15 +288,18 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
     const runtime = (window as unknown as {
       __colony: import("../src/colony/runtime").ColonyRuntime;
     }).__colony;
+    const inputs = () => (runtime as unknown as { ownedDriveInput: Record<string, boolean> }).ownedDriveInput;
+    const throttleBeforeSwitch = !!inputs().throttle;
     runtime.setOperatorUserId("second-seated-owner");
     runtime.applyVehicleOwnership("second-seated-owner", ["karoo-x19-targa"]);
+    const emptyAfterSwitch = Object.keys(inputs()).length === 0;
     // Same JavaScript turn: even before React effects run, steering must not restore throttle.
     document.body.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", repeat: true, bubbles: true }));
     document.body.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyD", bubbles: true }));
     const input = (runtime as unknown as { ownedDriveInput: Record<string, boolean> }).ownedDriveInput;
-    return { seated: !!runtime.getOwnedDrivePose(), throttle: !!input.throttle, right: !!input.right };
+    return { throttleBeforeSwitch, emptyAfterSwitch, seated: !!runtime.getOwnedDrivePose(), throttle: !!input.throttle, right: !!input.right };
   });
-  expect(switchedInput).toEqual({ seated: true, throttle: false, right: true });
+  expect(switchedInput).toEqual({ throttleBeforeSwitch: true, emptyAfterSwitch: true, seated: true, throttle: false, right: true });
   await page.keyboard.up("KeyW");
   await page.keyboard.up("KeyD");
   await page.reload();

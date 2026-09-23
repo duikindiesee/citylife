@@ -1,7 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { cellOk } from "../src/colony/pathfind";
-import { surveyStarterParcels } from "../src/colony/starterParcelSurvey";
+import { surveyStarterParcels, surveyStarterDrivewayClearance } from "../src/colony/starterParcelSurvey";
+import { stepOwnedDrive } from "../src/colony/car/ownedDriving";
+import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
 
 describe("starter parcel survey of the real generated world", () => {
   let input: Parameters<typeof surveyStarterParcels>[0];
@@ -42,6 +44,30 @@ describe("starter parcel survey of the real generated world", () => {
   it("refuses disconnected roads and blocked approach terrain", () => {
     expect(surveyStarterParcels({...input, roads: []}).candidates).toEqual([]);
     expect(surveyStarterParcels({...input, groundClear: () => false}).candidates).toEqual([]);
+  });
+
+  it("drives the X19 from every surveyed spawn onto its real road using production movement", () => {
+    const candidates = surveyStarterParcels(input).candidates;
+    const stats = SHOWROOM_VEHICLES.find(v => v.spec.id === "showroom:karoo-x19-targa")!.spec.stats;
+    for (const candidate of candidates) {
+      const lot = input.parcels.find(l => l.id === candidate.plotId)!;
+      const clearance = surveyStarterDrivewayClearance(candidate, lot, input.roads, input.groundClear);
+      expect(clearance.clear, candidate.plotId).toBe(true);
+      const permitted = new Set([...input.roads, ...candidate.driveway].map(c => `${c.x},${c.y}`));
+      const fence = new Set(lot.fence.map(c => `${c.x},${c.y}`));
+      let pose = {...candidate.spawn, heading:clearance.heading, speed:0};
+      const road = candidate.driveway[0];
+      let reached = false;
+      for (let frame = 0; frame < 2400; frame++) {
+        pose = stepOwnedDrive(pose, pose.speed < 1 ? {throttle:true} : {brake:true}, stats, 1/60,
+          (x,y) => permitted.has(`${Math.round(x)},${Math.round(y)}`) &&
+            !fence.has(`${Math.round(x)},${Math.round(y)}`) &&
+            input.groundClear({x:Math.round(x), y:Math.round(y)}));
+        if (Math.hypot(pose.x-road.x,pose.y-road.y) < 0.1) { reached = true; break; }
+      }
+      expect(reached, candidate.plotId).toBe(true);
+      expect(surveyStarterDrivewayClearance(candidate, {...lot, fence:[...lot.fence, candidate.spawn]}, input.roads, input.groundClear).clear).toBe(false);
+    }
   });
 
   it("does not sell an occupied, built, founder or commercial parcel", () => {

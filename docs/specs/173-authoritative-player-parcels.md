@@ -17,6 +17,16 @@ Existing parcel driveways are pedestrian approaches: they begin on the verge and
 
 Four tests exercise the actual seed's ten candidates, road and terrain refusal, occupied/reserved exclusion, boundary/identity refusal, and deterministic conversion without changing pedestrian paths.
 
+### Vehicle clearance evidence
+
+`node scripts/measureOwnedVehicleModels.mjs` measures the three current GLB scenes through node transforms and catalogue rotation, retaining asset SHA256s. All current models have conservative static bounds about 4.08 m long by 1.825 m wide. The previous movement envelope was 4.0 by 1.7 m; it is now rounded outward to 4.10 by 1.84 m in `COLONY.ownedDriving`. A test binds all catalogue GLBs to these measurements and rejects missing/new/unmeasured or larger assets.
+
+Movement and survey share `ownedDriveFootprintClear`, which checks the rotated body against every intersected grid cell plus continuous edge samples. The survey samples straight driveways at 0.25 m intervals, refusing fence, house, unavailable surface or ground intersections. All ten current candidates pass this static body-clearance test. A production `stepOwnedDrive` test with X19 stats then drives each spawn to its actual road at low speed and checks that a blocked gate/spawn is refused.
+
+This proves straight approach clearance with the current static collider, not a complete usable driveway. Turning onto the road, slope/graded-surface continuity, dynamic obstruction and deployed keyboard/touch driving still require acceptance. The survey does not authorize runtime access to privately owned land.
+
+Local validation on 2026-09-23: 2,367 tests in 268 files passed (275.26 s), TypeScript and the production build passed, and the returning-owner Chromium regression passed (1 test, 26 s) using fixture APIs. That browser exercise includes keyboard/touch driving, brake, exit/re-entry, reload and in-place account switching. It starts at Gearbox, not at an owned home. The retained screenshot shows the seated road view and controls; it is not evidence of deployed home arrival.
+
 ## Required before publication
 
 - Validate swept vehicle clearance, elevation/slope, gate opening and turning onto the connected road with the actual supported car dimensions. Centre-line connectivity alone is insufficient.

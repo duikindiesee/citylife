@@ -1,5 +1,7 @@
 import type { Parcel } from "./neighborhood";
 import type { Cell } from "./pathfind";
+import { ownedDriveFootprintClear } from "./car/ownedDriving";
+import { COLONY } from "./config";
 
 export interface StarterParcelGeometry {
   plotId: string;
@@ -20,6 +22,43 @@ export interface StarterParcelSurvey {
 
 const key = (c: Cell) => `${c.x},${c.y}`;
 const adjacent = (a: Cell, b: Cell) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y) === 1;
+
+/** Static body clearance along a straight driveway, using the production collider.
+ * Passing does not yet prove road turning, slope or rendered-surface alignment.
+ */
+export function surveyStarterDrivewayClearance(
+  geometry: StarterParcelGeometry,
+  lot: Parcel,
+  roads: readonly Cell[],
+  groundClear: (cell: Cell) => boolean,
+): { clear: boolean; heading: number; reason: string | null } {
+  const end = geometry.driveway.findIndex(c => key(c) === key(geometry.spawn));
+  const path = geometry.driveway.slice(0, end + 1).reverse();
+  if (path.length < 2) return { clear: false, heading: 0, reason: "missing-spawn-route" };
+  const heading = Math.atan2(path[1].y - path[0].y, path[1].x - path[0].x);
+  if (path.some((c, i) => i > 0 && (!adjacent(c, path[i-1]) ||
+      Math.atan2(c.y - path[i-1].y, c.x - path[i-1].x) !== heading)))
+    return { clear: false, heading, reason: "requires-turn-survey" };
+  const permitted = new Set([...roads, ...geometry.driveway].map(key));
+  const fence = new Set(lot.fence.map(key));
+  const h = geometry.houseZone;
+  const canOccupy = (x: number, y: number) => {
+    const cell = { x: Math.round(x), y: Math.round(y) };
+    return permitted.has(key(cell)) && !fence.has(key(cell)) && groundClear(cell) &&
+      !(cell.x >= h.x && cell.x < h.x + h.width && cell.y >= h.y && cell.y < h.y + h.depth);
+  };
+  const distance = Math.hypot(path[0].x - path.at(-1)!.x, path[0].y - path.at(-1)!.y);
+  const samples = Math.ceil(distance * COLONY.ownedDriving.cellMetres /
+    COLONY.ownedDriving.drivewayClearanceSampleMetres);
+  for (let i = 0; i <= samples; i++) {
+    const fraction = i / samples;
+    if (!ownedDriveFootprintClear({
+      x: path[0].x + (path.at(-1)!.x - path[0].x) * fraction,
+      y: path[0].y + (path.at(-1)!.y - path[0].y) * fraction, heading,
+    }, canOccupy)) return { clear: false, heading, reason: "vehicle-footprint-blocked" };
+  }
+  return { clear: true, heading, reason: null };
+}
 
 /** Operator-side survey candidates, never an ownership or availability authority.
  * Use an untouched canonical world, not a player's edited/local layout. This converts
