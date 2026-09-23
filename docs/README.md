@@ -2,6 +2,8 @@
 
 Active completion contract: [Player arrival, vehicle, home and funding acceptance](PLAYER-ARRIVAL-ACCEPTANCE.md).
 
+Implementation in progress: [Owned vehicle arrival and world driving](specs/172-owned-vehicle-driving.md).
+
 This `docs/` tree is the **version-controlled knowledge base** for CityLife. It travels with the
 game: anyone — a human, a coding agent, or a fresh session — who picks up the game gets the full
 picture from here, without needing any out-of-repo notes. **If it was worked on, it is written down

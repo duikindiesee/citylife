@@ -186,6 +186,101 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       { timeout: READY_TIMEOUT },
     )
     .toEqual({ asset: "/assets/citylife/cars/fiat_x19.glb", vertices: true });
+  await expect(page.getByTestId("owned-car-controls")).toBeVisible();
+  await page.keyboard.down("KeyW");
+  await expect
+    .poll(
+      () =>
+        page.evaluate((start) => {
+          const runtime = (
+            window as unknown as {
+              __colony: import("../src/colony/runtime").ColonyRuntime;
+            }
+          ).__colony;
+          const pose = runtime.getOwnedDrivePose();
+          return pose ? Math.hypot(pose.x - start.x, pose.y - start.y) : 0;
+        }, placement.cell),
+      { timeout: 10_000 },
+    )
+    .toBeGreaterThan(0.1);
+  await page.keyboard.up("KeyW");
+  await page.keyboard.down("Space");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const runtime = (
+          window as unknown as {
+            __colony: import("../src/colony/runtime").ColonyRuntime;
+          }
+        ).__colony;
+        return runtime.getOwnedDrivePose()?.speed;
+      }),
+    )
+    .toBe(0);
+  await page.keyboard.up("Space");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const w = window as unknown as {
+          __colony: import("../src/colony/runtime").ColonyRuntime;
+          __r3fCamera: import("three").Camera;
+        };
+        const pose = w.__colony.getOwnedDrivePose()!;
+        const n = w.__colony.sim.state.terrain.size;
+        return Math.hypot(
+          w.__r3fCamera.position.x - (pose.x - n / 2) * 4,
+          w.__r3fCamera.position.z - (pose.y - n / 2) * 4,
+        );
+      }),
+    )
+    .toBeLessThan(0.05);
+  await page.screenshot({ path: "test-results/owned-car-seated-driving.png" });
+  await touchTap(page, '[data-testid="exit-owned-car"]');
+  await expect(page.getByTestId("owned-car-controls")).toHaveCount(0);
+  await touchTap(page, '[data-testid="enter-owned-car"]');
+  await expect(page.getByTestId("owned-car-controls")).toBeVisible();
+  const accelerator = await page
+    .locator('[data-drive-action="throttle"]')
+    .boundingBox();
+  expect(accelerator).not.toBeNull();
+  const touch = {
+    x: accelerator!.x + accelerator!.width / 2,
+    y: accelerator!.y + accelerator!.height / 2,
+  };
+  expect(
+    await page.evaluate(
+      ({ x, y }) =>
+        document
+          .elementFromPoint(x, y)
+          ?.closest('[data-drive-action="throttle"]') !== null,
+      touch,
+    ),
+  ).toBe(true);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [touch],
+  });
+  try {
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as unknown as {
+                __colony: import("../src/colony/runtime").ColonyRuntime;
+              }
+            ).__colony.getOwnedDrivePose()?.speed,
+        ),
+      )
+      .toBeGreaterThan(0);
+  } finally {
+    await cdp.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await cdp.detach();
+  }
   await page.reload();
   await expect
     .poll(
@@ -211,6 +306,25 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       { timeout: READY_TIMEOUT },
     )
     .toEqual({ id: "showroom:karoo-x19-targa", cell: placement.cell });
+  await page.route("**/citylife/players/me/vehicle", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: '{"owned":false}',
+    }),
+  );
+  await bootAs(page, "different-owner-without-car", true);
+  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
+  await expect(page.getByTestId("owned-car-controls")).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      (
+        window as unknown as {
+          __colony: import("../src/colony/runtime").ColonyRuntime;
+        }
+      ).__colony.getOwnedDrivePose(),
+    ),
+  ).toBeNull();
 });
 
 test("new player can exit and re-enter the showroom without losing acquisition", async ({
