@@ -1092,6 +1092,7 @@ export class ColonyRuntime {
    *  See the early return near the end of the constructor. */
   private readonly surveyOnly: boolean;
   private readonly playerParcelIds = new Set<string>();
+  private playerParcelLayoutSignature: string | null = null;
 
   isPlayerParcel(lotId: string): boolean {
     return this.playerParcelIds.has(lotId);
@@ -2013,6 +2014,7 @@ export class ColonyRuntime {
           throw new Error("Player parcel inventory contains an unavailable parcel");
       }
       for (const id of ids) this.playerParcelIds.add(id);
+      this.playerParcelLayoutSignature = this.worldLayoutDurableSignature(layout);
     }
     if (this.surveyOnly) return;
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
@@ -3241,6 +3243,13 @@ export class ColonyRuntime {
     return candidate;
   }
 
+  private assertPlayerParcelLayout(document: WorldLayoutDocument): void {
+    if (this.playerParcelLayoutSignature === null) return;
+    const canonical = parseWorldLayoutDocument(serializeWorldLayoutDocument(document));
+    if (this.worldLayoutDurableSignature(canonical) !== this.playerParcelLayoutSignature)
+      throw new Error("World layout conflicts with published player parcel geometry");
+  }
+
   private worldLayoutDurableSignature(document: WorldLayoutDocument): string {
     return JSON.stringify({
       worldId: document.worldId,
@@ -3960,6 +3969,7 @@ export class ColonyRuntime {
   /** Complete side-effect-free candidate validation shared by import CAS and boot hydration. */
   preflightWorldLayout(document: WorldLayoutDocument): HydratedWorldLayout {
     const candidate = applyWorldLayoutDocument(document);
+    this.assertPlayerParcelLayout(document);
     const expectedWorldId = `seed-${this.worldSeed}`;
     if (
       candidate.worldId !== expectedWorldId ||
@@ -4162,6 +4172,7 @@ export class ColonyRuntime {
    *  hydration this is safe while running: it cannot replace roads, terrain, renderer inputs or
    *  builder state, only the validated immutable head and its matching layout metadata. */
   adoptWorldLayoutRevision(document: WorldLayoutDocument): WorldLayoutDocument {
+    this.assertPlayerParcelLayout(document);
     const active = this.activeWorldLayout;
     if (!active)
       throw new Error("cannot adopt a world layout revision before hydration");

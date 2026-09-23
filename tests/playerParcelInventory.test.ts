@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
+import { createWorldLayoutDocument } from "../src/colony/spatial/worldLayoutDocument";
 
 describe("player parcel isolation from the legacy citizen economy", () => {
   let baseline: ReturnType<ColonyRuntime["captureWorldLayout"]>;
@@ -58,5 +59,28 @@ describe("player parcel isolation from the legacy citizen economy", () => {
     expect(runtime.isPlayerParcel(ordinary.id)).toBe(false);
     expect(runtime.buildHouse(ordinary.id)).toBe(true);
     expect(ordinary.built).toBe(true);
+  });
+
+  it("allows persistence metadata changes but refuses geometry replacement before mutation", () => {
+    const runtime = boot();
+    const next = createWorldLayoutDocument({ ...baseline, revision: {
+      number: baseline.revision.number + 1, parentHash: baseline.revision.contentHash,
+    } });
+    // Initial persistence can advance the revision while preserving the published geometry.
+    expect(() => runtime.hydrateWorldLayout(next)).not.toThrow();
+    expect(() => runtime.adoptWorldLayoutRevision(next)).not.toThrow();
+    const surface = next.frames.find(f => f.layer === "surface" && f.grid)!;
+    const changed = createWorldLayoutDocument({ ...next, terrainEdits: [{
+      frameId: surface.id, cell: { x: 3, y: 4 }, elevation: 7,
+    }], revision: { number: next.revision.number + 1, parentHash: next.revision.contentHash } });
+    const before = runtime.captureWorldLayout();
+    const roads = JSON.stringify(runtime.sim.state.roads);
+    const elevation = new Float32Array(runtime.sim.state.terrain.elev);
+    expect(() => runtime.preflightWorldLayout(changed)).toThrow(/player parcel geometry/);
+    expect(() => runtime.hydrateWorldLayout(changed)).toThrow(/player parcel geometry/);
+    expect(() => runtime.adoptWorldLayoutRevision(changed)).toThrow(/player parcel geometry/);
+    expect(runtime.captureWorldLayout()).toEqual(before);
+    expect(JSON.stringify(runtime.sim.state.roads)).toBe(roads);
+    expect(runtime.sim.state.terrain.elev).toEqual(elevation);
   });
 });

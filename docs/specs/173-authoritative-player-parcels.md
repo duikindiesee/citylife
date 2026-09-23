@@ -90,10 +90,15 @@ and operator HUDs hide legacy assignment, design, commission, construction, demo
 and eviction actions for them. Property offer/truth screens remain the source of price
 and ownership; the local citizen owner field is not player ownership evidence.
 
-Before wiring inventory into production, pin or explicitly reconcile saved-layout
-hydration as well as constructor generation. `WorldLayoutBootCoordinator` can hydrate
-a persisted layout after runtime construction; inventory validated only before that
-step cannot prove the final road and terrain geometry.
+Inventory-enabled runtimes now validate saved-layout hydration, import preflight and
+revision adoption against the canonical durable geometry captured when the inventory
+was accepted. `WorldLayoutBootCoordinator` can advance persistence metadata without
+changing that geometry. Changed roads, terrain, frames or other durable spatial data
+are rejected before mutation; accepting a changed world requires an explicit reviewed
+inventory migration. This guard does not police every live editor mutation: production
+wiring must also prevent local world editing while published player land is active,
+or validate those edits before they enter the runtime. Default inventory-free editor
+boots retain their existing behavior.
 
 The existing User `CitylifeBlueprintService.upsert` stores per-user scripts after basic
 text screening. It does not validate a paid deed, parcel dimensions, driveway clearance
