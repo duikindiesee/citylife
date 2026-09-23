@@ -1937,6 +1937,7 @@ export function ColonyApp() {
           can never mount it and a mid-session revocation (account switch) closes it immediately. */}
       {homeOpen && newPlayerJourneyEnabled && (
         <StarterPropertyOverlay
+          key={operatorUserId ?? "signed-out"}
           onClose={() => setHomeOpen(false)}
           walletKco={playerWalletKco}
           currency={ui.bank.currency}

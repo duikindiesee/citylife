@@ -1,39 +1,27 @@
-// PLAYER.HOME.1C — the guided mobile property-selection step and identity-bound house projection. A
-// full-screen overlay that:
-//
-//   • renders ONLY the server-returned eligible starter neighbourhoods (private/inaccessible ones are
-//     absent because the authority omits them — the client adds no choice of its own),
-//   • shows the canonical server price and the current server-synced wallet truth (display only — the
-//     control never submits either),
-//   • on tap posts the SELECTED neighbourhoodKey only, and is idempotent under a double-tap (a stable
-//     Idempotency-Key + an in-flight guard mean one logical purchase → one deed → one house),
-//   • re-fetches the authoritative home truth and projects it into exactly ONE deterministic,
-//     identity-bound starter house (starterHouseProjection), advancing the journey to the owned state,
-//   • fails soft on every read: a signed-out/absent/malformed response shows a retry, never a guess, and
-//     the caller keeps the legacy entry.
-//
-// The overlay is a thin view over the pure model in starterProperty / starterHouseProjection; all the
-// "handle every state" logic lives there and is node-tested. It mounts only when the operator UAT gate
-// is open (see ColonyApp) — while dark it never renders and the network path is inert.
+// Spec 173 — actual server-offered plot selection. Submit only the selected identity/revision;
+// prices, ownership and debits remain server-owned. Paid land still needs a completed house.
+// A retained insufficient-funds intent resumes the same selection after reload, while pending
+// and operator-held purchases cannot select another plot. The parent keys this view by account.
+// Legacy home summaries remain isolated from published parcel geometry.
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
 } from "react";
 import {
-  fetchEligibleNeighbourhoods,
   fetchHomeTruth,
-  postPurchaseHome,
   purchaseButtonView,
   purchaseStateColor,
   isHomeOwned,
-  type EligibleNeighbourhood,
   type HomeTruth,
   type PurchaseOutcome,
 } from "../home/starterProperty";
 import { projectStarterHome } from "../home/starterHouseProjection";
+import { fetchStarterPlotOffers, postPurchasePlot, postResumePlotPurchase, type StarterPlotOffer } from "../home/starterPlotOffers";
+import { CELL_SIZE } from "../scale";
 
 const panelStyle: CSSProperties = {
   background: "rgba(8,14,24,0.92)",
@@ -73,12 +61,13 @@ export function StarterPropertyOverlay({
   currency?: string;
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
-  const [choices, setChoices] = useState<EligibleNeighbourhood[]>([]);
+  const [choices, setChoices] = useState<StarterPlotOffer[]>([]);
   const [truth, setTruth] = useState<HomeTruth | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<PurchaseOutcome | undefined>();
   const [pending, setPending] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+  const purchaseInFlight = useRef(false);
 
   // Load the authoritative eligible choices + home truth together. Fail-soft: a null from either read
   // (signed out / endpoint absent / malformed) surfaces the retry state and never a client-invented list.
@@ -87,7 +76,7 @@ export function StarterPropertyOverlay({
     setPhase("loading");
     void (async () => {
       const [elig, home] = await Promise.all([
-        fetchEligibleNeighbourhoods(),
+        fetchStarterPlotOffers(),
         fetchHomeTruth(),
       ]);
       if (!live) return;
@@ -96,12 +85,12 @@ export function StarterPropertyOverlay({
         setChoices([]);
         // If the player already owns a home, an eligible-list miss is not an error — we go straight to
         // the owned projection. Otherwise it is a genuine read failure the player can retry.
-        setPhase(isHomeOwned(home) || home?.plotOwned ? "ready" : "error");
+        setPhase(isHomeOwned(home) || home?.plotOwned || home?.plotId ? "ready" : "error");
         return;
       }
       setChoices(elig);
-      setSelected((cur) => cur ?? elig[0]?.key ?? null);
-      setPhase("ready");
+      setSelected((cur) => elig.some(c => c.plotId === cur) ? cur : elig[0]?.plotId ?? null);
+      setPhase(home === null ? "error" : "ready");
     })();
     return () => {
       live = false;
@@ -110,33 +99,34 @@ export function StarterPropertyOverlay({
 
   const owned = isHomeOwned(truth);
   const plotOwned = truth?.plotOwned === true;
+  const existingIntent = !!truth?.plotId && !owned && !plotOwned;
   // EXACTLY ONE deterministic, identity-bound house — a pure function of the authoritative truth, so a
   // refresh / re-login / second device all converge on this same projection.
   const projected = useMemo(() => projectStarterHome(truth), [truth]);
 
-  const eligibleKeys = useMemo(() => choices.map((c) => c.key), [choices]);
-  const selectedChoice = choices.find((c) => c.key === selected) ?? null;
+  const selectedChoice = choices.find((c) => c.plotId === selected) ?? null;
 
-  const purchase = useCallback(() => {
-    if (pending || owned || plotOwned || !selected) return;
-    const key = selected;
+  const purchase = useCallback((resume = false) => {
+    if (purchaseInFlight.current || pending || owned || plotOwned || (!selected && !resume)) return;
+    purchaseInFlight.current = true;
     setPending(true);
-    void postPurchaseHome(key, eligibleKeys).then((result) => {
-      setOutcome(result);
-      if (result.kind === "owned" || result.kind === "plot_owned") {
-        // Confirmed by the authority — reconcile against a FRESH re-fetch of the server truth (never a
-        // local guess), which is what the house projection binds to.
-        void fetchHomeTruth().then((fresh) => {
-          setTruth(fresh);
-          setPending(false);
-        });
-      } else {
+    void (async () => {
+      try {
+        const result = resume && truth ? await postResumePlotPurchase(truth)
+          : await postPurchasePlot(selected!, choices);
+        setOutcome(result);
+        const fresh = await fetchHomeTruth();
+        if (fresh) setTruth(fresh);
+      } finally {
+        purchaseInFlight.current = false;
         setPending(false);
       }
-    });
-  }, [pending, owned, plotOwned, selected, eligibleKeys]);
+    })();
+  }, [pending, owned, plotOwned, selected, choices, truth]);
 
   const view = purchaseButtonView(owned, !!selected, pending, outcome);
+  const selectionConflict = outcome?.kind === "error" && outcome.status === 409;
+  const refresh = () => { setOutcome(undefined); setReloadToken(n => n + 1); };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -171,7 +161,7 @@ export function StarterPropertyOverlay({
         }}
       >
         <span style={{ color: "#ffd25a", fontWeight: 700 }}>
-          🏡 Choose your starter home
+          🏡 Choose your home plot
         </span>
         <button
           data-build-action="home-exit"
@@ -216,7 +206,7 @@ export function StarterPropertyOverlay({
             color: "#7ab0d0",
           }}
         >
-          ⏳ Loading eligible neighbourhoods…
+          ⏳ Loading available plots…
         </div>
       )}
 
@@ -226,7 +216,7 @@ export function StarterPropertyOverlay({
           style={{ ...panelStyle, marginTop: 10, padding: 16, fontSize: 13 }}
         >
           <div style={{ color: "#e07a7a", marginBottom: 10 }}>
-            Couldn't load your eligible neighbourhoods.
+            Couldn't load your available plots or purchase status.
           </div>
           <button
             data-build-action="home-retry"
@@ -272,15 +262,30 @@ export function StarterPropertyOverlay({
       )}
 
       {/* SELECT — server-eligible choices only */}
-      {plotOwned && truth?.requiresBuild && (
+      {plotOwned && !owned && truth && (
         <div data-testid="home-plot-owned" data-plot-id={truth.plotId ?? ""}
           style={{...panelStyle, marginTop:10, padding:16}}>
           <strong>Your plot is secured</strong>
           <p>{truth.plotId} · {truth.neighbourhoodKey}</p>
-          <p>Your house still needs to be built.</p>
+          <p>{truth.requiresBuild ? "Your house still needs to be built." : "Your home setup needs an operator check."}</p>
         </div>
       )}
-      {!owned && !plotOwned && phase === "ready" && (
+      {existingIntent && truth && phase === "ready" && (
+        <div data-testid="home-existing-purchase" style={{...panelStyle, marginTop:10, padding:16}}>
+          <p>Plot {truth.plotId} · {money(currency, truth.priceKco)}</p>
+          <p>{truth.status === "REJECTED_INSUFFICIENT_FUNDS" && truth.layoutRevision
+            ? "Payment needs more funds. Your selected plot is retained."
+            : truth.status === "PENDING" ? "Your purchase is still being confirmed."
+            : "This purchase needs an operator check."}</p>
+          {truth.status === "REJECTED_INSUFFICIENT_FUNDS" && truth.layoutRevision && (
+            <button data-testid="home-resume-purchase" style={controlButtonStyle}
+              disabled={pending} onClick={() => purchase(true)}>Retry payment for this plot</button>
+          )}
+          <button data-testid="home-check-purchase" style={controlButtonStyle}
+            disabled={pending} onClick={refresh}>Check purchase status</button>
+        </div>
+      )}
+      {!owned && !plotOwned && !existingIntent && phase === "ready" && (
         <div
           style={{
             marginTop: 10,
@@ -299,27 +304,27 @@ export function StarterPropertyOverlay({
                 color: "#7ab0d0",
               }}
             >
-              No eligible starter neighbourhoods are open to you yet.
+              No starter plots are currently available. Check again later.
             </div>
           ) : (
             <div
               data-testid="home-choices"
               role="radiogroup"
-              aria-label="Eligible starter neighbourhoods"
+              aria-label="Available starter plots"
               style={{ display: "flex", flexDirection: "column", gap: 8 }}
             >
               {choices.map((c) => {
-                const isSel = c.key === selected;
+                const isSel = c.plotId === selected;
                 return (
                   <button
-                    key={c.key}
+                    key={c.plotId}
                     data-build-action="home-choice"
-                    data-testid={`home-choice-${c.key}`}
-                    data-choice-key={c.key}
+                    data-testid={`home-choice-${c.plotId}`}
+                    data-choice-key={c.plotId}
                     data-selected={isSel ? "true" : "false"}
                     role="radio"
                     aria-checked={isSel}
-                    onClick={() => setSelected(c.key)}
+                    onClick={() => setSelected(c.plotId)}
                     style={{
                       ...panelStyle,
                       textAlign: "left",
@@ -335,10 +340,13 @@ export function StarterPropertyOverlay({
                     }}
                   >
                     <span style={{ color: "#c8dff0", fontWeight: 700 }}>
-                      {c.name}
+                      Plot {c.plotId} · {c.neighbourhoodKey}
+                      <small style={{display:"block", marginTop:4}}>
+                        {Math.round(c.width * CELL_SIZE)} × {Math.round(c.depth * CELL_SIZE)} m
+                      </small>
                     </span>
                     <span
-                      data-testid={`home-price-${c.key}`}
+                      data-testid={`home-price-${c.plotId}`}
                       style={{ color: "#ffd25a", fontWeight: 700 }}
                     >
                       {money(currency, c.priceKco)}
@@ -354,9 +362,9 @@ export function StarterPropertyOverlay({
               data-build-action="home-purchase"
               data-testid="home-purchase"
               data-purchase-state={view.state}
-              disabled={view.disabled}
-              onClick={purchase}
-              title="Secure this starter home — the server checks your balance and grants the deed"
+              disabled={view.disabled || selectionConflict}
+              onClick={() => purchase()}
+              title="Buy this plot — the server checks availability, balance and ownership"
               style={{
                 marginTop: 4,
                 padding: "12px 16px",
@@ -371,12 +379,14 @@ export function StarterPropertyOverlay({
                 fontWeight: 700,
               }}
             >
-              {view.label}
+              {selectionConflict ? "Plot changed — refresh availability" : view.state === "ready" ? "Buy this plot" : view.label}
               {selectedChoice && view.state === "ready"
                 ? ` · ${money(currency, selectedChoice.priceKco)}`
                 : ""}
             </button>
           )}
+          <button data-testid="home-refresh-plots" style={controlButtonStyle}
+            disabled={pending} onClick={refresh}>Refresh available plots</button>
         </div>
       )}
     </div>

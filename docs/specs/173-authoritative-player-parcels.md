@@ -37,19 +37,45 @@ must still belong to the authenticated user. The UI shows that the plot is secur
 house is still unbuilt, hides further land purchase, and does not show a completed home.
 The legacy hash-grid house projection rejects every published layout revision, including
 an apparently completed response: the new path must render actual server geometry and a
-durable blueprint instead. Old neighbourhood-only selection is still present and must be
-replaced before release; this intermediate paid-land view has no builder entry yet.
+durable blueprint instead. The selector now uses actual plot offers (below); this
+intermediate paid-land view still has no builder entry.
 
 Focused validation: 28 client unit tests, typecheck/build and a Chromium paid-land reload
 test passed. The browser booted the real UI with fixture APIs, reloaded, found no synthetic
 house and observed zero purchase requests. This is state-display evidence, not a real
 purchase/build/deployment or starting-wallet acceptance result.
 
+### Actual offers and payment recovery
+
+The primary property UI now reads `/players/me/home/available-plots`. Each card uses the
+server's exact plot ID, neighbourhood, quoted KCO price and dimensions; dimensions are
+displayed in metres using the engine cell scale. Malformed or duplicate offers reject the
+catalogue, and an absent endpoint shows an error rather than a neighbourhood-only fallback.
+POST submits only `neighbourhoodKey`, `plotId` and `layoutRevision`; it never submits price,
+owner or frame. The server still independently validates all selection and payment facts.
+
+A synchronous in-flight guard prevents a second tap from posting while React is updating.
+The view is keyed by authenticated user; late offer responses and switches during token
+refresh are rejected. A 409 selection conflict requires fresh availability. Processing
+responses never infer ownership from HTTP success alone.
+
+On reload, an existing insufficient-funds intent displays the retained plot instead of an
+empty catalogue. Retry posts exactly that selection and stable idempotency key. A pending
+intent offers a read-only status check; operator-held or legacy unbound intents cannot
+silently select another plot. Current server ownership remains the source of paid-land and
+completed-home state. This client does not release reservations or grant funds.
+
+Validation: 34 focused client tests, TypeScript and build passed. Five Chromium property
+tests passed in 56.9 s: exact offered selection (including choosing the second plot),
+double-tap exclusion, paid-land reload, feature-off/error/retry and insufficient-funds
+reload/resume with identical request bodies. These use fixture APIs and prove no real
+debit, live catalogue publication, starting balance or house completion.
+
 - Validate swept vehicle clearance, elevation/slope, gate opening and turning onto the connected road with the actual supported car dimensions. Centre-line connectivity alone is insufficient.
 - Create canonical parcel child frames in the reviewed world document. The existing document has a shared surface frame and venue frames, not individual parcel frames; do not invent a different frame for each buyer.
 - Reserve the exact published inventory from NPC assignment, purchase and local blueprint restoration before residents start. This is not implemented by the survey.
 - Import the reviewed manifest server-side, pin the world revision, and verify public neighbourhood registration. Client-authored geometry cannot publish land. Prices come from server offers.
-- Render authoritative offers and submit plot/revision selection; resume durable intents after uncertain debit responses.
+- Authoritative offer selection and insufficient-funds resume are implemented locally. Still verify the real published catalogue, real ledger outcomes and uncertain-debit convergence after deployment.
 - Connect owned land to the builder, validate/persist completion and project the correct home and driveway. Existing driving only permits road cells, so it must explicitly authorize the owned driveway before home spawning.
 - Preserve legacy synthetic deeds through explicit no-recharge recovery; do not silently remap them to these shared parcels.
 - Review the coherent backend/frontend exact heads, then build, deploy and prove all three arrival states in the real interface.

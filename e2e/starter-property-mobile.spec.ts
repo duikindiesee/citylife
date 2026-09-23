@@ -1,12 +1,8 @@
 import { test, expect, devices, type Page, type Route } from "@playwright/test";
 
-// PLAYER.HOME.1C — prove the dark, server-truth starter-property step on a representative touch/mobile
-// viewport, driven through the REAL authenticated bootstrap. We seed an authenticated (non-null)
-// CITYLIFE_PLAYER session into sessionStorage before boot (NOT the DEV skip-auth null-operator bypass)
-// and stub the token-derived endpoints to drive: feature-OFF legacy fallback, server-eligible-only
-// rendering (private neighbourhood omitted by the authority), canonical price + wallet display, a
-// double-tap-idempotent purchase that yields exactly one deterministic identity-bound house, cross-boot
-// (re-login / second device) convergence on the SAME house, and loading/error/retry.
+// Spec 173 — actual plot offers in the real mobile UI with authenticated fixture APIs.
+// Proves exact selection, double-tap exclusion, paid-land reload, insufficient-funds recovery,
+// feature gating and read failure. It does not prove a real debit or completed house.
 //
 // The whole step is gated on the SERVER new-player-journey entitlement alone (no build flag), which each
 // test stubs per-case, so the dev server is a plain build — exactly what hosted CI runs — and both the
@@ -17,7 +13,7 @@ const ASSERT_TIMEOUT = 15_000;
 const READY_TIMEOUT = 90_000; // one-off world-layout boot on a slow software-WebGL renderer
 
 const FLAG_GLOB = "**/feature-flags/new-player-journey-v1";
-const ELIGIBLE_RE = /\/players\/me\/home\/eligible-neighbourhoods/;
+const ELIGIBLE_RE = /\/players\/me\/home\/available-plots/;
 const PURCHASE_RE = /\/players\/me\/home\/purchase/;
 const TRUTH_RE = /\/players\/me\/home(\?.*)?$/; // GET truth only — not /home/purchase or /home/eligible-*
 const SESSION_KEY = "citylife.session.v5";
@@ -85,6 +81,8 @@ interface HomeState {
   truth: Record<string, unknown>;
   /** flipped to true after a successful purchase, so the truth GET then reports OWNED */
   purchaseCount: { n: number };
+  purchaseStatus?: number;
+  purchaseBodies?: unknown[];
 }
 
 async function routeAll(page: Page, s: HomeState): Promise<void> {
@@ -118,22 +116,20 @@ async function routeAll(page: Page, s: HomeState): Promise<void> {
   );
   await page.route(PURCHASE_RE, (route: Route) => {
     s.purchaseCount.n += 1;
-    route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+    const selection = route.request().postDataJSON();
+    s.purchaseBodies?.push(selection);
+    const paid = (s.purchaseStatus ?? 200) === 200;
+    s.truth = {owned:false, plotOwned:paid, requiresBuild:paid,
+      status:paid ? "PLOT_OWNED" : "REJECTED_INSUFFICIENT_FUNDS",
+      neighbourhoodKey:selection.neighbourhoodKey, plotId:selection.plotId,
+      frameId:`published-frame-${selection.plotId}`,layoutRevision:selection.layoutRevision,
+      onboardingState:"NEIGHBOURHOOD_CHOSEN",priceKco:350};
+    route.fulfill({ status: s.purchaseStatus ?? 200, contentType: "application/json",
+      body: JSON.stringify({status:paid ? "PLOT_OWNED" : "INSUFFICIENT_FUNDS"}) });
   });
   await page.route(TRUTH_RE, (route: Route) => {
-    // Once a purchase has settled, the authoritative truth reports the OWNED deed.
-    const body =
-      s.purchaseCount.n > 0
-        ? {
-            owned: true,
-            status: "OWNED",
-            neighbourhoodKey: "coastal",
-            plotId: "starter-home:demo-user",
-            frameId: "starter-home-frame:demo-user",
-            onboardingState: "OWNED",
-            priceKco: 350,
-          }
-        : s.truth;
+    // The fixture authority reports land payment separately from completed-home truth.
+    const body = s.truth;
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -169,12 +165,11 @@ const NOT_OWNED = {
 
 // The SERVER returns only public, eligible starter neighbourhoods — a private hamlet is omitted by the
 // authority and so can never appear (the client adds no choice of its own).
-const ELIGIBLE_PUBLIC = {
-  neighbourhoods: [
-    { key: "coastal", name: "Coastal Commons", priceKco: 350 },
-    { key: "vale2", name: "Green Vale", priceKco: 350 },
-  ],
-};
+const ELIGIBLE_PUBLIC = ["wood1", "wood2"].map(neighbourhoodKey => ({
+  plotId:`${neighbourhoodKey}_lot_1`, frameId:`published-frame-${neighbourhoodKey}-lot-1`,priceKco:350,
+  geometry:{plotId:`${neighbourhoodKey}_lot_1`,neighbourhoodKey,worldId:"seed-4242",
+    layoutRevision:"a".repeat(64),parcel:{x:1,y:1,width:9,depth:11}},
+}));
 
 test("paid published plot stays unbuilt across reload without a synthetic house or another purchase", async ({page}) => {
   const state: HomeState = {
@@ -228,7 +223,7 @@ test("HOME.1C: feature-OFF AND flag-unavailable both fail closed (legacy entry p
   await expect(page.locator(OVERLAY)).toHaveCount(0);
 });
 
-test("HOME.1C: eligible-only render, double-tap-idempotent purchase, deterministic identity-bound house, cross-boot convergence", async ({
+test("actual plot offers submit the selected parcel once and retain paid land across reload", async ({
   page,
 }) => {
   test.setTimeout(330_000);
@@ -237,6 +232,7 @@ test("HOME.1C: eligible-only render, double-tap-idempotent purchase, determinist
     eligible: ELIGIBLE_PUBLIC,
     truth: NOT_OWNED,
     purchaseCount: { n: 0 },
+    purchaseBodies: [],
   };
   await bootAs(page, "demo-user", state);
 
@@ -247,11 +243,11 @@ test("HOME.1C: eligible-only render, double-tap-idempotent purchase, determinist
 
   // Server-eligible choices only + canonical price + wallet truth are shown.
   await expect(
-    page.locator('[data-testid="home-choice-coastal"]'),
+    page.locator('[data-testid="home-choice-wood1_lot_1"]'),
   ).toBeVisible();
-  await expect(page.locator('[data-testid="home-choice-vale2"]')).toBeVisible();
+  await expect(page.locator('[data-testid="home-choice-wood2_lot_1"]')).toBeVisible();
   await expect(
-    page.locator('[data-testid="home-price-coastal"]'),
+    page.locator('[data-testid="home-price-wood1_lot_1"]'),
   ).toContainText("350");
   await expect(page.locator('[data-testid="home-wallet"]')).toBeVisible();
   // Private / non-eligible neighbourhood is omitted by the authority → never rendered.
@@ -265,36 +261,35 @@ test("HOME.1C: eligible-only render, double-tap-idempotent purchase, determinist
   });
 
   // Double-tap the purchase control: one logical purchase, never two.
+  await touchTap(page, '[data-testid="home-choice-wood2_lot_1"]');
   await touchTap(page, '[data-testid="home-purchase"]');
   await touchTap(page, '[data-testid="home-purchase"]').catch(() => {
     /* the button flips to a disabled pending/owned state — a second tap is a no-op */
   });
 
-  // Exactly one deterministic, identity-bound house projects.
-  const owned = page.locator('[data-testid="home-owned"]');
+  // Land is paid, but house construction must remain outstanding.
+  const owned = page.locator('[data-testid="home-plot-owned"]');
   await expect(owned).toBeVisible({ timeout: ASSERT_TIMEOUT });
   await expect(owned).toHaveCount(1);
   expect(state.purchaseCount.n).toBe(1); // the double-tap fired ONE POST
 
-  const seed = await owned.getAttribute("data-house-seed");
-  const placement = await owned.getAttribute("data-placement");
-  expect(seed).toBeTruthy();
-  expect(placement).toMatch(/^\d+,\d+$/);
+  expect(state.purchaseBodies).toEqual([{plotId:"wood2_lot_1",neighbourhoodKey:"wood2",layoutRevision:"a".repeat(64)}]);
+  await expect(owned).toHaveAttribute("data-plot-id","wood2_lot_1");
+  await expect(page.getByTestId("home-owned")).toHaveCount(0);
 
   await page.screenshot({
     path: "test-results/home1c-owned.png",
     fullPage: false,
   });
 
-  // Cross-boot convergence: a re-login / second device re-fetching the SAME authoritative truth must
-  // land on the SAME house at the SAME place (pure projection of server truth, no client authority).
+  // Reload re-fetches the same paid parcel without inventing a house or another purchase.
   await page.reload({ timeout: NAV_TIMEOUT });
   await page.waitForSelector(READY_MARKER, { timeout: READY_TIMEOUT });
   await touchTap(page, ENTRY);
-  const owned2 = page.locator('[data-testid="home-owned"]');
+  const owned2 = page.locator('[data-testid="home-plot-owned"]');
   await expect(owned2).toBeVisible({ timeout: ASSERT_TIMEOUT });
-  expect(await owned2.getAttribute("data-house-seed")).toBe(seed);
-  expect(await owned2.getAttribute("data-placement")).toBe(placement);
+  await expect(owned2).toHaveAttribute("data-plot-id","wood2_lot_1");
+  expect(state.purchaseCount.n).toBe(1);
 });
 
 test("HOME.1C: eligible-list read failure shows retry, then recovers", async ({
@@ -325,9 +320,33 @@ test("HOME.1C: eligible-list read failure shows retry, then recovers", async ({
     }),
   );
   await touchTap(page, '[data-testid="home-retry"]');
-  await expect(page.locator('[data-testid="home-choice-coastal"]')).toBeVisible(
+  await expect(page.locator('[data-testid="home-choice-wood1_lot_1"]')).toBeVisible(
     {
       timeout: ASSERT_TIMEOUT,
     },
   );
+});
+
+test("insufficient funds retains the selected plot across reload and retries the same purchase", async ({page}) => {
+  const state: HomeState = {flagMode:"on",eligible:ELIGIBLE_PUBLIC,truth:NOT_OWNED,
+    purchaseCount:{n:0},purchaseBodies:[],purchaseStatus:422};
+  await bootAs(page,"shortfall-owner",state);
+  await touchTap(page,ENTRY);
+  await touchTap(page,'[data-testid="home-choice-wood2_lot_1"]');
+  await touchTap(page,'[data-testid="home-purchase"]');
+  await expect(page.getByTestId("home-existing-purchase")).toContainText("Payment needs more funds");
+  expect(state.purchaseCount.n).toBe(1);
+  state.eligible = []; // reserved intent is no longer part of the available catalogue
+  await page.reload();
+  await page.waitForSelector(READY_MARKER,{timeout:READY_TIMEOUT});
+  await touchTap(page,ENTRY);
+  await expect(page.getByTestId("home-existing-purchase")).toContainText("wood2_lot_1");
+  await expect(page.getByTestId("home-choices")).toHaveCount(0);
+  expect(state.purchaseCount.n).toBe(1);
+  state.purchaseStatus = 200; // fixture authority now accepts payment; no real wallet mutation
+  await touchTap(page,'[data-testid="home-resume-purchase"]');
+  await expect(page.getByTestId("home-plot-owned")).toHaveAttribute("data-plot-id","wood2_lot_1");
+  expect(state.purchaseCount.n).toBe(2);
+  expect(state.purchaseBodies?.[1]).toEqual(state.purchaseBodies?.[0]);
+  await expect(page.getByTestId("home-owned")).toHaveCount(0);
 });

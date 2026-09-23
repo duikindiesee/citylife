@@ -1,3 +1,5 @@
+// Legacy neighbourhood helper contract retained for compatibility. The current selector uses
+// starterPlotOffers.ts for exact published parcel IDs/revisions; shared truth/outcomes live here.
 // PLAYER.HOME.1C — the dark, server-truth client contract for the starter-property selection and
 // identity-bound house projection. It mirrors PLAYER.CAR.1.S4's carAcquisition purity rules:
 //
