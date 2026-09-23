@@ -64,6 +64,7 @@ import {
   isCarAcquisitionEnabled,
   shouldAutoOpenShowroom,
 } from "../car/carAcquisition";
+import { resolveOwnedCar } from "../car/ownedCar";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
 import {
   FURNITURE_KINDS,
@@ -847,6 +848,7 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
   // positive entitlement can never outlive the authenticated session or bleed across a switch.
   const [journeyEntitlement, setJourneyEntitlement] =
     useState<JourneyEntitlement | null>(null);
+  const [arrivalAttempt, setArrivalAttempt] = useState(0);
   // ARCADE.2A — the fail-closed `citylife-arcade-3d-v1` entitlement for THIS session. Same discipline
   // as the journey flag: default null (fails closed while loading), memory-only (never persisted), and
   // re-evaluated on identity change so a positive can never outlive the session or bleed across a switch.
@@ -1057,7 +1059,7 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth, operatorUserId]);
+  }, [auth, operatorUserId, arrivalAttempt]);
 
   // PLAYER.CAR.1.S5 — auto-spawn into the Gearbox Auto Hub showroom on login when an authenticated
   // player does not own a car on their profile. Runs once per session identity. Evaluates authoritative
@@ -1065,10 +1067,12 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
   // in dev bypass without an account, or when backend truth is unreachable.
   const autoShowroomCheckedRef = useRef(false);
   const [arrivalError, setArrivalError] = useState(false);
-  const [arrivalAttempt, setArrivalAttempt] = useState(0);
+  const [arrivalReady, setArrivalReady] = useState(false);
   useEffect(() => {
     autoShowroomCheckedRef.current = false;
     setShowroomAutoAcquire(false);
+    setArrivalError(false);
+    setArrivalReady(false);
   }, [operatorUserId]);
 
   useEffect(() => {
@@ -1082,12 +1086,15 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
     }
     let cancelled = false;
     setArrivalError(false);
+    setArrivalReady(false);
     runtime.clearPlayerHome();
     if (operatorUserId) runtime.applyVehicleOwnership(String(operatorUserId), null);
     void (async () => {
+      if (journeyEntitlement.unavailable) throw new Error("Arrival entitlement unavailable");
       const truth = await fetchOwnedVehicleKeysBackend();
       if (cancelled) return;
       if (!truth) throw new Error("Vehicle ownership unavailable");
+      if (truth.length && !resolveOwnedCar(truth)) throw new Error("Ambiguous vehicle ownership");
       if (newPlayerJourneyEnabled) {
         if (!playerInventory) throw new Error("Home inventory unavailable");
         const home = await fetchHomeTruth();
@@ -1100,11 +1107,10 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
             throw new Error("Completed home unavailable");
         }
       }
-      if (operatorUserId)
-        runtime.applyVehicleOwnership(String(operatorUserId), truth);
-      // Hydrate existing owners even when onboarding is off. If entitlement is still
-      // loading, its later change must get a chance to route a no-car player.
-      autoShowroomCheckedRef.current = newPlayerJourneyEnabled;
+      if (!operatorUserId || !runtime.applyVehicleOwnership(String(operatorUserId), truth))
+        throw new Error("Player identity changed");
+      autoShowroomCheckedRef.current = true;
+      setArrivalReady(true);
       if (
         shouldAutoOpenShowroom({
           hasRealAccount,
@@ -1909,10 +1915,10 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
   return (
     <div className="colony">
       <div className="canvas-host" ref={hostRef} />
-      {arrivalError && <div role="alert" style={{position:"absolute",inset:0,zIndex:10000,
+      {hasRealAccount && !arrivalReady && <div role={arrivalError ? "alert" : "status"} style={{position:"absolute",inset:0,zIndex:10000,
         background:"#08131ff5",display:"grid",placeContent:"center",gap:16,padding:24}}>
-        <p>We couldn't load your car and home. Please try again.</p>
-        <button onClick={() => setArrivalAttempt(n => n + 1)}>Retry arrival</button>
+        <p>{arrivalError ? "We couldn't load your car and home. Please try again." : "Loading your car and home…"}</p>
+        {arrivalError && <button onClick={() => setArrivalAttempt(n => n + 1)}>Retry arrival</button>}
       </div>}
       <FirstPersonPanel
         runtime={runtime}
