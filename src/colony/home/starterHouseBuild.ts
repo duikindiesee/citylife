@@ -42,6 +42,17 @@ export function parseHouseBuildContext(raw: unknown, inventory: PublishedPlayerI
       Number(zone.width) < 1 || Number(zone.width) > 24 || Number(zone.depth) < 1 || Number(zone.depth) > 24)
     throw new Error("Your plot does not match the published world. Please retry.");
   const context = value as unknown as HouseBuildContext;
+  const published = inventory.plotGeometry.get(context.plotId);
+  const canonical = (input: unknown): string => {
+    if (Array.isArray(input)) return `[${input.map(canonical).join(",")}]`;
+    if (input && typeof input === "object") return `{${Object.entries(input).sort(([a],[b])=>a.localeCompare(b))
+      .map(([key,val])=>`${JSON.stringify(key)}:${canonical(val)}`).join(",")}}`;
+    return JSON.stringify(input);
+  };
+  const geometryKey = (g: StarterParcelGeometry) => canonical({...g,
+    roadCells:[...g.roadCells].sort((a,b)=>a.x-b.x || a.y-b.y)});
+  if (!published || geometryKey(context.geometry) !== geometryKey(published))
+    throw new Error("House geometry differs from the published plot");
   const door = houseDoor(context.geometry);
   if (context.completed && !context.script) throw new Error("Completed house design is missing");
   if (context.script) {
@@ -66,10 +77,10 @@ async function request(userId: string, body?: unknown): Promise<unknown> {
     : "House building is unavailable. Please retry.");
   return result;
 }
-export async function loadHouseBuild(): Promise<HouseBuildSession> {
+export async function loadHouseBuild(loadedInventory?: PublishedPlayerInventory): Promise<HouseBuildSession> {
   const userId = getAuthClient().operator?.userId;
   if (!userId) throw new Error("Sign in to CityLife before building your house.");
-  const inventory = await fetchPublishedStarterWorld(`seed-${COLONY.render.seed}`);
+  const inventory = loadedInventory ?? await fetchPublishedStarterWorld(`seed-${COLONY.render.seed}`);
   const context = parseHouseBuildContext(await request(userId), inventory);
   return {userId,inventory,context,door:houseDoor(context.geometry)};
 }

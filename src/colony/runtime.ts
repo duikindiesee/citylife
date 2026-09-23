@@ -1,5 +1,7 @@
 // Browser runtime for the colony: fixed-timestep sim loop + planet renderer + camera presets.
 import { COLONY } from "./config";
+import { parseHouseBuildContext, type HouseBuildSession } from "./home/starterHouseBuild";
+import { surveyStarterDrivewayClearance } from "./starterParcelSurvey";
 import {
   MAX_LOCOMOTION_DT,
   advanceSprintCharge,
@@ -1093,6 +1095,58 @@ export class ColonyRuntime {
   private readonly surveyOnly: boolean;
   private readonly playerParcelIds = new Set<string>();
   private playerParcelLayoutSignature: string | null = null;
+  private playerHomeProjection: {lotId:string; originalSeed:number; driveway:Set<string>; spawn:OwnedDrivePose} | null = null;
+
+  /** Server readback projection only: no colony materials, local blueprint persistence or new debit. */
+  applyCompletedPlayerHome(session: HouseBuildSession): boolean {
+    if (session.userId !== this.operatorUserId) return false;
+    const document = this.worldLayoutDocument();
+    if (!document || document.worldId !== session.inventory.worldId ||
+        document.revision.contentHash !== session.inventory.layoutRevision) return false;
+    let context;
+    try { context = parseHouseBuildContext(session.context,session.inventory); }
+    catch { return false; }
+    if (!context.completed || !context.script || !this.isPlayerParcel(context.plotId) ||
+        !document.frames.some(frame => frame.id === context.frameId)) return false;
+    const lot = this.neighborhood.lots.find(item => item.id === context.plotId);
+    const zone = context.geometry.houseZone;
+    if (!lot || lot.ownerCitizenId || lot.houseZone.x !== zone.x || lot.houseZone.y !== zone.y ||
+        lot.houseZone.w !== zone.width || lot.houseZone.d !== zone.depth) return false;
+    const roads=[...this.sim.state.roadSet].map(key=>{const [x,y]=key.split(",").map(Number);return {x,y};});
+    const clearance=surveyStarterDrivewayClearance(context.geometry,lot,roads,
+      cell=>cellOk(this.sim.state.terrain,cell.x,cell.y));
+    if (!clearance.clear) return false;
+    this.clearPlayerHome();
+    this.playerHomeProjection = {lotId:lot.id,originalSeed:lot.houseSeed,
+      driveway:new Set(context.geometry.driveway.map(cell=>`${cell.x},${cell.y}`)),
+      spawn:{...context.geometry.spawn,heading:clearance.heading,speed:0}};
+    lot.blueprint=context.script;
+    lot.houseSeed=session.inventory.layout.seed;
+    lot.built=true;
+    this.ownedDrivePose=null;
+    this.ownedDriveInput={};
+    this.ownedDriveInputGeneration++;
+    this.updateOperatorCar();
+    this.emit();
+    return true;
+  }
+
+  clearPlayerHome(): void {
+    if (!this.playerHomeProjection) return;
+    const lot=this.neighborhood.lots.find(item=>item.id===this.playerHomeProjection!.lotId);
+    if (lot) {
+      lot.built=false;
+      lot.blueprint=undefined;
+      lot.houseSeed=this.playerHomeProjection.originalSeed;
+    }
+    this.playerHomeProjection=null;
+    this.ownedDrivePose=null;
+    this.ownedDriveInput={};
+    this.ownedDriveSeated=false;
+    this.ownedDriveInputGeneration++;
+    this.updateOperatorCar();
+    this.emit();
+  }
 
   isPlayerParcel(lotId: string): boolean {
     return this.playerParcelIds.has(lotId);
@@ -2282,6 +2336,7 @@ export class ColonyRuntime {
   setOperatorUserId(userId: string | null): void {
     const nextUserId = userId && userId.trim() ? userId.trim() : null;
     if (nextUserId !== this.operatorUserId) {
+      this.clearPlayerHome();
       this.ownedDriveInputGeneration++;
       this.authoritativeCar = null;
       this.ownedDrivePose = null;
@@ -2577,12 +2632,10 @@ export class ColonyRuntime {
     if (!this.renderer) return;
     if (this.operatorUserId && this.authoritativeCar) {
       const pose = this.ownedDrivePose;
-      const entrance = pose ?? this.commercialDistrict?.garagePad?.roadTarget;
+      const entrance = pose ?? this.playerHomeProjection?.spawn ?? this.commercialDistrict?.garagePad?.roadTarget;
       if (
         entrance &&
-        this.sim.state.roadSet.has(
-          `${Math.round(entrance.x)},${Math.round(entrance.y)}`,
-        )
+        this.canOwnedCarOccupy(entrance.x,entrance.y)
       ) {
         this.renderer.setOperatorCar(this.authoritativeCar, {
           x: entrance.x,
@@ -2601,11 +2654,11 @@ export class ColonyRuntime {
               `${Math.round(entrance.x) + dx},${Math.round(entrance.y) + dy}`,
             ),
           );
-          if (ahead) {
+          if (this.playerHomeProjection || ahead) {
             this.ownedDrivePose = {
               x: entrance.x,
               y: entrance.y,
-              heading: Math.atan2(ahead[1], ahead[0]),
+              heading: this.playerHomeProjection?.spawn.heading ?? Math.atan2(ahead![1], ahead![0]),
               speed: 0,
             };
             this.ownedDriveSeated = true;
@@ -2706,6 +2759,19 @@ export class ColonyRuntime {
     this.ownedDriveInput = this.getOwnedDrivePose() ? { ...input } : {};
   }
 
+  private canOwnedCarOccupy(x:number,y:number): boolean {
+    const ix=Math.round(x),iy=Math.round(y),key=`${ix},${iy}`;
+    if (this.sim.state.roadSet.has(key)) return this.blockedStepReason(x,y) === null;
+    const home=this.playerHomeProjection;
+    if (!home?.driveway.has(key)) return false;
+    const lot=this.neighborhood.lots.find(item=>item.id===home.lotId);
+    if (!lot || !cellOk(this.sim.state.terrain,ix,iy)) return false;
+    const h=lot.houseZone;
+    if (ix>=h.x && ix<h.x+h.w && iy>=h.y && iy<h.y+h.d) return false;
+    if (lot.fence.some(cell=>cell.x===ix && cell.y===iy && !(lot.gate?.x===ix && lot.gate?.y===iy))) return false;
+    return !this.sim.state.buildings.some(building=>Math.round(building.x)===ix && Math.round(building.y)===iy);
+  }
+
   private tickOwnedDrive(dt: number): void {
     if (
       !this.getOwnedDrivePose() ||
@@ -2718,9 +2784,7 @@ export class ColonyRuntime {
       this.ownedDriveInput,
       deriveStats(this.authoritativeCar),
       dt,
-      (x, y) =>
-        this.sim.state.roadSet.has(`${Math.round(x)},${Math.round(y)}`) &&
-        this.blockedStepReason(x, y) === null,
+      (x, y) => this.canOwnedCarOccupy(x,y),
     );
     const car = this.sim.state.operatorCar;
     if (car) {

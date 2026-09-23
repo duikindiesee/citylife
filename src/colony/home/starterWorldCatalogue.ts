@@ -1,11 +1,13 @@
 import { getAuthClient } from "../authClient";
 import { parseWorldLayoutDocument, type WorldLayoutDocument } from "../spatial/worldLayoutDocument";
+import type { StarterParcelGeometry } from "../starterParcelSurvey";
 
 export interface PublishedPlayerInventory {
   worldId: string;
   layoutRevision: string;
   plotIds: readonly string[];
   plotFrames: ReadonlyMap<string, string>;
+  plotGeometry: ReadonlyMap<string, StarterParcelGeometry>;
   layout: WorldLayoutDocument;
 }
 export const STARTER_CATALOGUE_TIMEOUT_MS = 10_000;
@@ -24,6 +26,7 @@ export function parsePublishedStarterWorld(raw: unknown, worldId: string): Publi
       layout.revision.parentHash !== manifest.sourceLayoutRevision)
     throw new Error("World catalogue revision does not match its layout");
   const plotIds = new Set<string>(), frameIds = new Set<string>(), plotFrames = new Map<string, string>();
+  const plotGeometry = new Map<string, StarterParcelGeometry>();
   for (const entry of manifest.plots) {
     const plot = object(entry), geometry = object(plot.geometry);
     if (typeof plot.plotId !== "string" || !/^[A-Za-z0-9_.:-]{1,120}$/.test(plot.plotId) ||
@@ -34,8 +37,9 @@ export function parsePublishedStarterWorld(raw: unknown, worldId: string): Publi
       throw new Error("World catalogue has inconsistent plot bindings");
     plotIds.add(plot.plotId); frameIds.add(plot.frameId);
     plotFrames.set(plot.plotId, plot.frameId);
+    plotGeometry.set(plot.plotId, geometry as unknown as StarterParcelGeometry);
   }
-  return { worldId, layoutRevision: layout.revision.contentHash, plotIds: [...plotIds], plotFrames, layout };
+  return { worldId, layoutRevision: layout.revision.contentHash, plotIds: [...plotIds], plotFrames, plotGeometry, layout };
 }
 
 export async function fetchPublishedStarterWorld(worldId: string, signal?: AbortSignal): Promise<PublishedPlayerInventory> {

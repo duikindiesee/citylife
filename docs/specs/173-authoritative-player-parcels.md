@@ -77,7 +77,7 @@ debit, live catalogue publication, starting balance or house completion.
 - Runtime isolation now accepts an immutable player-inventory list pinned to the exact generated world ID and layout hash before residents or blueprint restoration start. It rejects duplicate, unknown, occupied, commercial and unnamed coastal/founder parcels. Legacy allocation, purchase, builder, blueprint restoration, construction, demolition and citizen cleanup exclude these IDs. This is a local guard, not publication or ownership authority: the authenticated bootstrap now consumes the reviewed server manifest, including sold parcels (an available-only list would expose sold land to NPCs). Explicit local authoring boots remain inventory-free. Focused tests cover mismatched inventories, unchanged protected geometry/materials/ledger, citizen cleanup and ordinary parcel construction.
 - Import the reviewed manifest server-side, pin the world revision, and verify public neighbourhood registration. Client-authored geometry cannot publish land. Prices come from server offers.
 - Authoritative offer selection and insufficient-funds resume are implemented locally. Still verify the real published catalogue, real ledger outcomes and uncertain-debit convergence after deployment.
-- Project the server-completed player home and driveway into the world. Existing driving only permits road cells, so it must explicitly authorize the owned driveway before home spawning.
+- Verify rendered foundations, driveway slopes, road turning and the full deployed arrival journey.
 - Preserve legacy synthetic deeds through explicit no-recharge recovery; do not silently remap them to these shared parcels.
 - Review the coherent backend/frontend exact heads, then build, deploy and prove all three arrival states in the real interface.
 
@@ -161,5 +161,23 @@ exact script. Pending requests prevent another submit and design edits. Failure 
 visible and retryable; account changes invalidate both requests and results. Reload of a
 completed build shows a return link without another write. Server eligibility, ownership,
 design validation, atomic completion and residence remain authoritative. The accepted
-design is not yet projected into the game scene; the return link alone does not prove
-home spawning or full deployed onboarding.
+design is projected into its protected canonical parcel on the next game load. The return
+link alone does not prove full deployed onboarding.
+
+## Completed home and driveway projection
+
+The game reads home truth and the completed build for the current identity. The build geometry
+must match the published manifest exactly (road-cell set order is irrelevant), including the
+plot-to-frame binding and revision. Runtime checks the actual lot footprint and straight
+driveway body clearance before displaying the accepted script. This path changes rendered
+house state only: it does not claim an NPC, charge colony materials, write local blueprints,
+or call the ledger. Changing accounts clears the prior projection and driveway permission.
+
+The owned car uses the published off-road spawn, oriented towards the connected road.
+Driving permits road cells and only the current owned home's driveway, still excluding
+water, house footprint, fences outside the gate and other buildings. The shared swept
+vehicle footprint checks continue to apply. Keyboard driving onto the road and reload
+back to the home spawn are covered in the browser with fixture APIs. This is not yet proof
+of all slopes, road-turn clearance or live deployment. Ownership reads currently arrive
+asynchronously; a unified arrival loading/error barrier remains to prevent a temporary
+garage spawn while completed-home truth is still loading.

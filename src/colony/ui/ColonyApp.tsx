@@ -99,6 +99,8 @@ import { GaragePanel } from "./GaragePanel";
 import { WindTunnelLab } from "./WindTunnelLab";
 import { ShowroomOverlay } from "./ShowroomOverlay";
 import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
+import { fetchHomeTruth, isHomeOwned } from "../home/starterProperty";
+import { loadHouseBuild } from "../home/starterHouseBuild";
 import { DriveHomeOverlay } from "./DriveHomeOverlay";
 import { OwnedCarControls } from "./OwnedCarControls";
 import { RaceMobileControls } from "./RaceMobileControls";
@@ -995,7 +997,7 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
     // Player data isolation: a CITYLIFE_PLAYER gets the restricted own-data view (activates the dormant
     // player-view from the isolation slice); operators/admins keep the whole-colony view.
     runtime.setPlayerView(auth.isCityLifePlayer);
-  }, [auth, runtime]);
+  }, [auth, runtime, auth.operator?.userId]);
   // PLAYER.FLAG.S3 — evaluate the new-player-journey entitlement during authenticated bootstrap, and
   // whenever the identity changes. It resets to `null` (fail-closed OFF) the instant the identity
   // changes — logout does a full reload, but keying on the userId means an in-place account switch
@@ -1062,6 +1064,18 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
   // server truth only. Cached cosmetics/default cars cannot establish ownership. Fails closed when unauthenticated,
   // in dev bypass without an account, or when backend truth is unreachable.
   const autoShowroomCheckedRef = useRef(false);
+  useEffect(() => {
+    runtime.clearPlayerHome();
+    if (!operatorUserId || !playerInventory || !newPlayerJourneyEnabled) return;
+    let cancelled=false;
+    void (async () => {
+      const truth=await fetchHomeTruth();
+      if (cancelled || !isHomeOwned(truth)) return;
+      const session=await loadHouseBuild(playerInventory);
+      if (!cancelled && session.userId === String(operatorUserId)) runtime.applyCompletedPlayerHome(session);
+    })().catch(() => { /* No invented home when authoritative completion cannot be read. */ });
+    return () => {cancelled=true;};
+  },[operatorUserId,playerInventory,newPlayerJourneyEnabled,runtime]);
   useEffect(() => {
     autoShowroomCheckedRef.current = false;
     setShowroomAutoAcquire(false);
