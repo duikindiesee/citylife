@@ -2248,6 +2248,7 @@ export class ColonyRuntime {
   setOperatorUserId(userId: string | null): void {
     const nextUserId = userId && userId.trim() ? userId.trim() : null;
     if (nextUserId !== this.operatorUserId) {
+      this.ownedDriveInputGeneration++;
       this.authoritativeCar = null;
       this.ownedDrivePose = null;
       this.ownedDriveInput = {};
@@ -2353,6 +2354,7 @@ export class ColonyRuntime {
     if (userId !== this.operatorUserId) return false;
     const owned = resolveOwnedCar(keys);
     if (owned?.id !== this.authoritativeCar?.id || !owned) {
+      this.ownedDriveInputGeneration++;
       this.ownedDrivePose = null;
       this.ownedDriveInput = {};
     }
@@ -2618,6 +2620,12 @@ export class ColonyRuntime {
   private ownedDrivePose: OwnedDrivePose | null = null;
   private ownedDriveInput: OwnedDriveInput = {};
   private ownedDriveSeated = false;
+  private ownedDriveInputGeneration = 0;
+
+  /** Changes synchronously when input authority changes, even before React renders. */
+  getOwnedDriveInputGeneration(): number {
+    return this.ownedDriveInputGeneration;
+  }
 
   getOwnedDrivePose(): OwnedDrivePose | null {
     return this.operatorUserId &&
@@ -2643,6 +2651,7 @@ export class ColonyRuntime {
 
   enterOwnedCar(): boolean {
     if (!this.canEnterOwnedCar()) return false;
+    this.ownedDriveInputGeneration++;
     this.ownedDriveSeated = true;
     this.ownedDriveInput = {};
     this.emit();
@@ -2659,6 +2668,7 @@ export class ColonyRuntime {
       }))
       .find((cell) => this.blockedStepReason(cell.x, cell.y) === null);
     if (!side) return false;
+    this.ownedDriveInputGeneration++;
     car.speed = 0;
     this.ownedDriveSeated = false;
     this.ownedDriveInput = {};

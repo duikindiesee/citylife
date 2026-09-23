@@ -52,3 +52,11 @@ were obscured on mobile. Seating now waits for both prerequisites, and controls 
 members of the shared corner rail. Four movement unit tests and 34 focused tests pass.
 The full suite passed 2,360 tests in 266 files; TypeScript and the production build passed.
 Independent exact-head review and deployed validation remain required before completion.
+
+Independent review found that a retained controls ref could restore old throttle after a batched
+seated owner-to-owner switch. Input authority now has a runtime generation changed synchronously
+on identity, vehicle authority and seat changes. Controls check it on every input event as well
+as effect cleanup, so an event arriving before React renders cannot reuse old input. Keyboard
+auto-repeat never reactivates an input cleared by a switch; a new press is required. The browser
+regression keeps the controls mounted, holds W, switches owners in place and steers in the same
+JavaScript turn. This is a targeted fixture regression, not a deployed authentication-flow claim.

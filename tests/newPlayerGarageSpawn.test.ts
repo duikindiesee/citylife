@@ -368,14 +368,18 @@ describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
       setOperatorCar: render,
     };
     rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"]);
+    const originalGeneration = rt.getOwnedDriveInputGeneration();
+    rt.setOperatorUserId("owner-a");
+    rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"]);
+    expect(rt.getOwnedDriveInputGeneration()).toBe(originalGeneration);
     expect(loadCar(citizen.id).id).toBe(SHOWROOM_VEHICLES[2]!.spec.id);
     expect(render.mock.calls.at(-1)![0].id).toBe(SHOWROOM_VEHICLES[2]!.spec.id);
     rt.applyVehicleOwnership("owner-a", []);
+    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(originalGeneration);
+    const revokedGeneration = rt.getOwnedDriveInputGeneration();
     expect(render).toHaveBeenLastCalledWith(null, null);
     rt.setOperatorUserId("owner-b");
-    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(
-      false,
-    );
+    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(revokedGeneration);`n    const switchedGeneration = rt.getOwnedDriveInputGeneration();`n    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(false);`n    expect(rt.getOwnedDriveInputGeneration()).toBe(switchedGeneration);
     expect(render).toHaveBeenLastCalledWith(null, null);
   });
 
