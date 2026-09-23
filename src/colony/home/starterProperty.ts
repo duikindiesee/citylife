@@ -119,6 +119,10 @@ export interface HomeTruth {
   readonly onboardingState: HomeOnboardingState;
   /** The canonical price the server charged/charges, display only. */
   readonly priceKco: number | null;
+  /** Published land ownership does not imply a completed house. */
+  readonly plotOwned?: boolean;
+  readonly requiresBuild?: boolean;
+  readonly layoutRevision?: string | null;
 }
 
 /** Coerce a raw home-truth body into a HomeTruth, or null if it is not a usable object. `owned` is true
@@ -136,6 +140,9 @@ export function parseHomeTruth(raw: unknown): HomeTruth | null {
     neighbourhoodKey: str(o.neighbourhoodKey),
     plotId: str(o.plotId),
     frameId: str(o.frameId),
+    plotOwned: o.plotOwned === true,
+    requiresBuild: o.requiresBuild === true,
+    layoutRevision: str(o.layoutRevision),
     onboardingState: str(o.onboardingState) ?? "NONE",
     priceKco:
       typeof priceRaw === "number" && Number.isFinite(priceRaw)
@@ -150,6 +157,7 @@ export function parseHomeTruth(raw: unknown): HomeTruth | null {
 export function isHomeOwned(truth: HomeTruth | null): boolean {
   if (!truth) return false;
   if (!truth.owned) return false;
+  if (truth.requiresBuild) return false;
   // A status is optional, but if the server sent one it must not say the home is unowned/pending.
   if (truth.status && truth.status.toUpperCase() !== "OWNED") return false;
   return true;
@@ -160,6 +168,7 @@ export function isHomeOwned(truth: HomeTruth | null): boolean {
 /** The states one purchase attempt can settle into — the overlay renders exactly one. */
 export type PurchaseOutcome =
   | { kind: "owned" } // 200/201 — the server granted (or confirms prior) ownership
+  | { kind: "plot_owned" } // paid land, house completion still required
   | { kind: "insufficient_funds" } // 422 — not enough KCO; the service moved no coin
   | { kind: "pending" } // 202/409 — accepted or a replay of an in-flight/settled request
   | { kind: "disabled" } // 401/403/503 — signed out, feature off, or kill switch; never blind-retry
@@ -171,7 +180,9 @@ export type PurchaseOutcome =
  *  insufficient-funds shortfall (distinct from the vehicle flow's 402). 503 is the home kill switch and
  *  403 the feature-flag/off gate — both fail closed to disabled so the journey holds on the legacy
  *  path. Pure. */
-export function classifyPurchaseStatus(status: number): PurchaseOutcome {
+export function classifyPurchaseStatus(status: number, body?: unknown): PurchaseOutcome {
+  if ((status === 200 || status === 201) && asRecord(body)?.status === "PLOT_OWNED")
+    return { kind: "plot_owned" };
   if (status === 200 || status === 201) return { kind: "owned" };
   if (status === 422) return { kind: "insufficient_funds" };
   if (status === 202 || status === 409) return { kind: "pending" };
@@ -189,6 +200,7 @@ export interface PurchaseButtonView {
     | "ready"
     | "pending"
     | "owned"
+    | "plot_owned"
     | "insufficient_funds"
     | "disabled"
     | "error";
@@ -207,6 +219,8 @@ export function purchaseButtonView(
   if (isPending)
     return { state: "pending", label: "⏳ Securing…", disabled: true };
   switch (outcome?.kind) {
+    case "plot_owned":
+      return { state: "plot_owned", label: "Plot secured — house still to build", disabled: true };
     case "insufficient_funds":
       return {
         state: "insufficient_funds",
@@ -234,6 +248,7 @@ export function purchaseButtonView(
  *  but separated from {@link purchaseButtonView} so the state machine stays colour-free and testable. */
 export function purchaseStateColor(state: PurchaseButtonView["state"]): string {
   switch (state) {
+    case "plot_owned":
     case "owned":
       return "#9fd4a6";
     case "pending":
@@ -333,7 +348,8 @@ export async function postPurchaseHome(
       },
       body: JSON.stringify({ neighbourhoodKey }),
     });
-    return classifyPurchaseStatus(resp.status);
+    const body: unknown = await resp.json().catch(() => null);
+    return classifyPurchaseStatus(resp.status, body);
   } catch {
     return { kind: "error" };
   }

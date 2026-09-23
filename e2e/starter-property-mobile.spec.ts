@@ -176,6 +176,29 @@ const ELIGIBLE_PUBLIC = {
   ],
 };
 
+test("paid published plot stays unbuilt across reload without a synthetic house or another purchase", async ({page}) => {
+  const state: HomeState = {
+    flagMode: "on", eligible: ELIGIBLE_PUBLIC, purchaseCount: {n:0},
+    truth: {owned:false, plotOwned:true, requiresBuild:true, status:"PLOT_OWNED",
+      plotId:"wood1_lot_1", frameId:"published-frame-wood1-lot-1", neighbourhoodKey:"wood1",
+      layoutRevision:"a".repeat(64), priceKco:350, onboardingState:"NEIGHBOURHOOD_CHOSEN"},
+  };
+  await bootAs(page, "paid-land-owner", state);
+  for (let boot = 0; boot < 2; boot++) {
+    if (boot) {
+      await page.reload();
+      await page.waitForSelector(READY_MARKER, {timeout:READY_TIMEOUT});
+    }
+    await touchTap(page, ENTRY);
+    await expect(page.getByTestId("home-plot-owned")).toContainText("Your house still needs to be built");
+    await expect(page.getByTestId("home-plot-owned")).toHaveAttribute("data-plot-id", "wood1_lot_1");
+    await expect(page.getByTestId("home-owned")).toHaveCount(0);
+    await expect(page.getByTestId("home-purchase")).toHaveCount(0);
+  }
+  expect(state.purchaseCount.n).toBe(0);
+  await page.screenshot({path:"test-results/paid-plot-requires-build.png"});
+});
+
 test("HOME.1C: feature-OFF AND flag-unavailable both fail closed (legacy entry preserved)", async ({
   page,
 }) => {

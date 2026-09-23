@@ -29,6 +29,22 @@ Local validation on 2026-09-23: 2,367 tests in 268 files passed (275.26 s), Type
 
 ## Required before publication
 
+### Land/home truth correction
+
+Paid published land uses `PLOT_OWNED`, `plotOwned:true`, `requiresBuild:true` and `owned:false`.
+The home truth includes its canonical frame/revision and price; backend current ownership
+must still belong to the authenticated user. The UI shows that the plot is secured but the
+house is still unbuilt, hides further land purchase, and does not show a completed home.
+The legacy hash-grid house projection rejects every published layout revision, including
+an apparently completed response: the new path must render actual server geometry and a
+durable blueprint instead. Old neighbourhood-only selection is still present and must be
+replaced before release; this intermediate paid-land view has no builder entry yet.
+
+Focused validation: 28 client unit tests, typecheck/build and a Chromium paid-land reload
+test passed. The browser booted the real UI with fixture APIs, reloaded, found no synthetic
+house and observed zero purchase requests. This is state-display evidence, not a real
+purchase/build/deployment or starting-wallet acceptance result.
+
 - Validate swept vehicle clearance, elevation/slope, gate opening and turning onto the connected road with the actual supported car dimensions. Centre-line connectivity alone is insufficient.
 - Create canonical parcel child frames in the reviewed world document. The existing document has a shared surface frame and venue frames, not individual parcel frames; do not invent a different frame for each buyer.
 - Reserve the exact published inventory from NPC assignment, purchase and local blueprint restoration before residents start. This is not implemented by the survey.

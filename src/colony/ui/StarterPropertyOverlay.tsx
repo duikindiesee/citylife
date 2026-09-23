@@ -96,7 +96,7 @@ export function StarterPropertyOverlay({
         setChoices([]);
         // If the player already owns a home, an eligible-list miss is not an error — we go straight to
         // the owned projection. Otherwise it is a genuine read failure the player can retry.
-        setPhase(isHomeOwned(home) ? "ready" : "error");
+        setPhase(isHomeOwned(home) || home?.plotOwned ? "ready" : "error");
         return;
       }
       setChoices(elig);
@@ -109,6 +109,7 @@ export function StarterPropertyOverlay({
   }, [reloadToken]);
 
   const owned = isHomeOwned(truth);
+  const plotOwned = truth?.plotOwned === true;
   // EXACTLY ONE deterministic, identity-bound house — a pure function of the authoritative truth, so a
   // refresh / re-login / second device all converge on this same projection.
   const projected = useMemo(() => projectStarterHome(truth), [truth]);
@@ -117,12 +118,12 @@ export function StarterPropertyOverlay({
   const selectedChoice = choices.find((c) => c.key === selected) ?? null;
 
   const purchase = useCallback(() => {
-    if (pending || owned || !selected) return;
+    if (pending || owned || plotOwned || !selected) return;
     const key = selected;
     setPending(true);
     void postPurchaseHome(key, eligibleKeys).then((result) => {
       setOutcome(result);
-      if (result.kind === "owned") {
+      if (result.kind === "owned" || result.kind === "plot_owned") {
         // Confirmed by the authority — reconcile against a FRESH re-fetch of the server truth (never a
         // local guess), which is what the house projection binds to.
         void fetchHomeTruth().then((fresh) => {
@@ -133,7 +134,7 @@ export function StarterPropertyOverlay({
         setPending(false);
       }
     });
-  }, [pending, owned, selected, eligibleKeys]);
+  }, [pending, owned, plotOwned, selected, eligibleKeys]);
 
   const view = purchaseButtonView(owned, !!selected, pending, outcome);
 
@@ -271,7 +272,15 @@ export function StarterPropertyOverlay({
       )}
 
       {/* SELECT — server-eligible choices only */}
-      {!owned && phase === "ready" && (
+      {plotOwned && truth?.requiresBuild && (
+        <div data-testid="home-plot-owned" data-plot-id={truth.plotId ?? ""}
+          style={{...panelStyle, marginTop:10, padding:16}}>
+          <strong>Your plot is secured</strong>
+          <p>{truth.plotId} · {truth.neighbourhoodKey}</p>
+          <p>Your house still needs to be built.</p>
+        </div>
+      )}
+      {!owned && !plotOwned && phase === "ready" && (
         <div
           style={{
             marginTop: 10,
