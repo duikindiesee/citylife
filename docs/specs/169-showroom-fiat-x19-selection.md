@@ -16,6 +16,7 @@ This specification integrates the authored yellow Fiat X1/9 GLB model into the s
 ## Mechanic
 
 1. **Asset Placement:**
+
    - Static models located at:
      - `public/assets/citylife/cars/karoo_vonk.glb` (474 KB): Karoo Vonk 1.1 compact starter hatch with dual-tone Azure Blue body, Bianco White curved roof, chrome grille bar, round LED headlights, and alloy rims.
      - `public/assets/citylife/cars/karoo_kaap_gt.glb` (405 KB): Karoo Kaap GT-V8 coupe with Obsidian Crimson body, carbon-fiber aerodynamics, quad chrome exhausts, active rear spoiler, and twin-spoke alloy wheels.

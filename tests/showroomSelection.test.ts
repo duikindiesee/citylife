@@ -272,8 +272,12 @@ describe("GLB turntable model resource ownership", () => {
   });
 
   it("retains loader cache ownership and leaves cached geometries and materials undisposed across component mount, selection away, and unmount", async () => {
-    const x19 = SHOWROOM_VEHICLES.find((v) => v.spec.id === "showroom:karoo-x19-targa")!;
-    const otherCar = SHOWROOM_VEHICLES.find((v) => v.spec.id === "showroom:karoo-vonk-11")!;
+    const x19 = SHOWROOM_VEHICLES.find(
+      (v) => v.spec.id === "showroom:karoo-x19-targa",
+    )!;
+    const otherCar = SHOWROOM_VEHICLES.find(
+      (v) => v.spec.id === "showroom:karoo-vonk-11",
+    )!;
     expect(x19).toBeDefined();
     expect(otherCar).toBeDefined();
 

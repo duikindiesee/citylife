@@ -151,7 +151,10 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).toContain("road");
     expect(html).toContain("1.4 units away");
     expect(html).toContain("Guiding to road · 1.4 units away");
-    const content = html.replace(/<div class="build-stamp[^>]*>.*?<\/div>/s, "");
+    const content = html.replace(
+      /<div class="build-stamp[^>]*>.*?<\/div>/s,
+      "",
+    );
     expect(content).not.toContain("301");
     expect(content).not.toContain("306");
     expect(content).not.toContain("Ground");
@@ -178,7 +181,10 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(html).toContain("road");
     expect(html).toContain("2.8 units away");
     expect(html).toContain("Guiding to road · 2.8 units away");
-    const content = html.replace(/<div class="build-stamp[^>]*>.*?<\/div>/s, "");
+    const content = html.replace(
+      /<div class="build-stamp[^>]*>.*?<\/div>/s,
+      "",
+    );
     expect(content).not.toContain("Next leg");
     expect(content).not.toContain("300");
     expect(content).not.toContain("307");

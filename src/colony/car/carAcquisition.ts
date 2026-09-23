@@ -32,12 +32,11 @@ export const LEGACY_BACKEND_ACQUIRE_PATH =
  *  Scoped per user/session so switching accounts never suppresses another account's new-player showroom. */
 export function carOwnershipCacheKey(scope?: string | null): string {
   const clean =
-    typeof scope === "string" && scope.trim().length > 0
-      ? scope.trim()
-      : null;
-  return clean ? `citylife.car.ownership.v1.${clean}` : "citylife.car.ownership.v1";
+    typeof scope === "string" && scope.trim().length > 0 ? scope.trim() : null;
+  return clean
+    ? `citylife.car.ownership.v1.${clean}`
+    : "citylife.car.ownership.v1";
 }
-
 
 /** The feature is DARK by default. It turns on only when the operator sets VITE_CITYLIFE_CAR_ACQUISITION
  *  to "on"/"1"/"true" in the build env for UAT — this worker never sets it, so production stays dark. */
@@ -354,8 +353,14 @@ export interface AutoShowroomDecisionArgs {
  *  Fails closed: only opens when a real authenticated player session is active, the journey is enabled,
  *  no car is present in local store or cache, AND the server explicitly reports 0 owned cars (`[]`).
  *  If backend is unreachable (`null`), unauthenticated, or in dev bypass without an account, returns false. */
-export function shouldAutoOpenShowroom(args: AutoShowroomDecisionArgs): boolean {
-  if (!args.hasRealAccount || !args.isAuthenticated || !args.newPlayerJourneyEnabled) {
+export function shouldAutoOpenShowroom(
+  args: AutoShowroomDecisionArgs,
+): boolean {
+  if (
+    !args.hasRealAccount ||
+    !args.isAuthenticated ||
+    !args.newPlayerJourneyEnabled
+  ) {
     return false;
   }
   if (args.hasStoredCarLocally || args.ownedKeysInCache.length > 0) {

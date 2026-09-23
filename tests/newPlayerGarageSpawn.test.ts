@@ -1,11 +1,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import {
-  hasStoredCar,
-  saveCar,
-  loadCar,
-} from "../src/colony/car/garageStore";
+import { hasStoredCar, saveCar, loadCar } from "../src/colony/car/garageStore";
 import {
   isCanonicalVehicleKey,
   serverVehicleKeyOf,
@@ -180,11 +176,20 @@ function findNodeByAttr(
 }
 
 function clickNode(node: Record<string, unknown>): void {
-  const event = { type: "click", target: node, button: 0, bubbles: true,
-    preventDefault: () => {}, stopPropagation: () => {} };
+  const event = {
+    type: "click",
+    target: node,
+    button: 0,
+    bubbles: true,
+    preventDefault: () => {},
+    stopPropagation: () => {},
+  };
   let current: Record<string, unknown> | null = node;
   while (current) {
-    const listeners = current._listeners as Map<string, Set<(e: unknown) => void>>;
+    const listeners = current._listeners as Map<
+      string,
+      Set<(e: unknown) => void>
+    >;
     listeners?.get("click")?.forEach((fn) => fn(event));
     current = current.parentNode as Record<string, unknown> | null;
   }
@@ -216,8 +221,12 @@ describe("PLAYER.CAR.1.S5 — garageStore vehicle presence & persistence", () =>
 describe("PLAYER.CAR.1.S5 — canonical key handling for server authority", () => {
   it("strips showroom: prefix for server authority endpoint", () => {
     expect(serverVehicleKeyOf("showroom:karoo-vonk-11")).toBe("karoo-vonk-11");
-    expect(serverVehicleKeyOf("showroom:karoo-kaap-gt-v8")).toBe("karoo-kaap-gt-v8");
-    expect(serverVehicleKeyOf("showroom:karoo-x19-targa")).toBe("karoo-x19-targa");
+    expect(serverVehicleKeyOf("showroom:karoo-kaap-gt-v8")).toBe(
+      "karoo-kaap-gt-v8",
+    );
+    expect(serverVehicleKeyOf("showroom:karoo-x19-targa")).toBe(
+      "karoo-x19-targa",
+    );
     expect(serverVehicleKeyOf("karoo-vonk-11")).toBe("karoo-vonk-11");
   });
 
@@ -378,46 +387,90 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
     setupMountedDOM();
   });
 
-  it.each(["selected", "different", "unavailable", "empty"])("persists only fresh server ownership: %s", async (scenario) => {
-    const rt = new ColonyRuntime(4242);
-    const citizen = rt.getUiState().citizens.list[0]!;
-    rt.setOperatorName(citizen.displayName);
-    rt.setOperatorUserId("buyer-test");
-    const auth = getAuthClient();
-    vi.spyOn(auth, "getValidToken").mockResolvedValue("test-jwt");
-    (auth as unknown as { session: unknown }).session = {
-      token: "test-jwt", expiresAt: Date.now() + 100000,
-      operator: { id: "Buyer", userId: "buyer-test", scopes: [], roles: ["CITYLIFE_PLAYER"] },
-    };
-    const confirmed = SHOWROOM_VEHICLES[scenario === "different" ? 2 : 0]!;
-    const purchaseStarted = vi.fn();
-    vi.stubGlobal("fetch", async (url: string) => {
-      if (url.includes("/vehicle/purchase")) {
-        purchaseStarted();
-        return { ok: true, status: 200, json: async () => ({ owned: true, vehicleKey: serverVehicleKeyOf(vehicleKeyOf(confirmed)) }) };
+  it.each(["selected", "different", "unavailable", "empty"])(
+    "persists only fresh server ownership: %s",
+    async (scenario) => {
+      const rt = new ColonyRuntime(4242);
+      const citizen = rt.getUiState().citizens.list[0]!;
+      rt.setOperatorName(citizen.displayName);
+      rt.setOperatorUserId("buyer-test");
+      const auth = getAuthClient();
+      vi.spyOn(auth, "getValidToken").mockResolvedValue("test-jwt");
+      (auth as unknown as { session: unknown }).session = {
+        token: "test-jwt",
+        expiresAt: Date.now() + 100000,
+        operator: {
+          id: "Buyer",
+          userId: "buyer-test",
+          scopes: [],
+          roles: ["CITYLIFE_PLAYER"],
+        },
+      };
+      const confirmed = SHOWROOM_VEHICLES[scenario === "different" ? 2 : 0]!;
+      const purchaseStarted = vi.fn();
+      vi.stubGlobal("fetch", async (url: string) => {
+        if (url.includes("/vehicle/purchase")) {
+          purchaseStarted();
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              owned: true,
+              vehicleKey: serverVehicleKeyOf(vehicleKeyOf(confirmed)),
+            }),
+          };
+        }
+        if (!purchaseStarted.mock.calls.length)
+          return { ok: true, status: 200, json: async () => [] };
+        if (scenario === "unavailable") return { ok: false, status: 503 };
+        return {
+          ok: true,
+          status: 200,
+          json: async () =>
+            scenario === "empty"
+              ? []
+              : {
+                  owned: true,
+                  vehicleKey: serverVehicleKeyOf(vehicleKeyOf(confirmed)),
+                },
+        };
+      });
+      const container = (
+        globalThis as unknown as {
+          document: { createElement: (t: string) => Record<string, unknown> };
+        }
+      ).document.createElement("div");
+      let root: Root | null = null;
+      await act(async () => {
+        root = createRoot(container as unknown as HTMLElement);
+        root.render(
+          React.createElement(ShowroomOverlay, {
+            runtime: rt,
+            canAcquire: true,
+            onClose: () => {},
+          }),
+        );
+      });
+      await act(async () => {
+        clickNode(
+          findNodeByAttr(container, "data-build-action", "showroom-acquire")!,
+        );
+      });
+      expect(purchaseStarted).toHaveBeenCalledTimes(1);
+      if (scenario === "unavailable" || scenario === "empty") {
+        expect(hasStoredCar(citizen.id)).toBe(false);
+        expect(loadOwnedKeysCache("buyer-test")).toEqual([]);
+      } else {
+        expect(loadCar(citizen.id).id).toBe(confirmed.spec.id);
+        expect(loadOwnedKeysCache("buyer-test")).toEqual([
+          serverVehicleKeyOf(vehicleKeyOf(confirmed)),
+        ]);
       }
-      if (!purchaseStarted.mock.calls.length) return { ok: true, status: 200, json: async () => [] };
-      if (scenario === "unavailable") return { ok: false, status: 503 };
-      return { ok: true, status: 200, json: async () => scenario === "empty" ? [] :
-        ({ owned: true, vehicleKey: serverVehicleKeyOf(vehicleKeyOf(confirmed)) }) };
-    });
-    const container = (globalThis as unknown as { document: { createElement: (t: string) => Record<string, unknown> } }).document.createElement("div");
-    let root: Root | null = null;
-    await act(async () => {
-      root = createRoot(container as unknown as HTMLElement);
-      root.render(React.createElement(ShowroomOverlay, { runtime: rt, canAcquire: true, onClose: () => {} }));
-    });
-    await act(async () => { clickNode(findNodeByAttr(container, "data-build-action", "showroom-acquire")!); });
-    expect(purchaseStarted).toHaveBeenCalledTimes(1);
-    if (scenario === "unavailable" || scenario === "empty") {
-      expect(hasStoredCar(citizen.id)).toBe(false);
-      expect(loadOwnedKeysCache("buyer-test")).toEqual([]);
-    } else {
-      expect(loadCar(citizen.id).id).toBe(confirmed.spec.id);
-      expect(loadOwnedKeysCache("buyer-test")).toEqual([serverVehicleKeyOf(vehicleKeyOf(confirmed))]);
-    }
-    await act(async () => { root?.unmount(); });
-  });
+      await act(async () => {
+        root?.unmount();
+      });
+    },
+  );
 
   it("suppresses completion if account switches while acquisition request is in flight", async () => {
     const rt = new ColonyRuntime(4242);
@@ -459,8 +512,14 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
         purchaseStarted();
         return purchasePromise;
       }
-      return { ok: true, status: 200, json: async () => purchaseStarted.mock.calls.length
-        ? { owned: true, vehicleKey: "karoo-vonk-11" } : [] };
+      return {
+        ok: true,
+        status: 200,
+        json: async () =>
+          purchaseStarted.mock.calls.length
+            ? { owned: true, vehicleKey: "karoo-vonk-11" }
+            : [],
+      };
     });
 
     const container = (
@@ -559,8 +618,14 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
         purchaseStarted();
         return purchasePromise;
       }
-      return { ok: true, status: 200, json: async () => purchaseStarted.mock.calls.length
-        ? { owned: true, vehicleKey: "karoo-vonk-11" } : [] };
+      return {
+        ok: true,
+        status: 200,
+        json: async () =>
+          purchaseStarted.mock.calls.length
+            ? { owned: true, vehicleKey: "karoo-vonk-11" }
+            : [],
+      };
     });
 
     const container = (

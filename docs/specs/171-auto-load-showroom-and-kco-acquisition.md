@@ -13,6 +13,7 @@ A newcomer arriving in CityLife needs reliable personal mobility before embarkin
 Previously, vehicle acquisition remained locked behind a preview-only dark feature gate (`VITE_CITYLIFE_CAR_ACQUISITION`), and new players were required to manually seek out the showroom affordance from the world HUD. Furthermore, backend acquisition contracts in `kooker-service-user` (PR #224, `PLAYER.CAR.1.S2`) finalized authoritative coin debiting and vehicle ownership tracking under `/api/v1/citylife/players/me/vehicle` and `/api/v1/citylife/players/me/vehicle/purchase`.
 
 This specification completes `PLAYER.CAR.1.S5`:
+
 1. When an authenticated player logs into CityLife without an owned car on their profile, they immediately load into the **Gearbox Auto Hub showroom** interior.
 2. The showroom enables acquisition using the player's authoritative **KCO** currency balance.
 3. The client integrates with `kooker-service-user` S2 endpoints, mapping canonical vehicle keys per Contract A15 and translating HTTP 422 / 402 statuses into user-friendly outcomes.
@@ -21,6 +22,7 @@ This specification completes `PLAYER.CAR.1.S5`:
 ## Mechanic
 
 1. **Auto-Load Showroom on Login Without Car (`src/colony/ui/ColonyApp.tsx`):**
+
    - When identity resolution completes and the session is entitled (`newPlayerJourneyEnabled === true`):
      - An idempotent check evaluates whether the player owns a car across three layers:
        1. Local `garageStore.hasStoredCar(citizenId)`.
@@ -30,6 +32,7 @@ This specification completes `PLAYER.CAR.1.S5`:
      - Guarded by `autoShowroomCheckedRef` so this check occurs once per login session; explicitly exiting the showroom does not re-trigger the auto-spawn.
 
 2. **Authoritative KCO Acquisition Client (`src/colony/car/carAcquisition.ts`):**
+
    - **Endpoints:**
      - Truth: `/kooker/api/v1/citylife/players/me/vehicle` (falling back to legacy `/kooker/api/v1/citylife/car-ownership` if 404).
      - Purchase: `/kooker/api/v1/citylife/players/me/vehicle/purchase` (falling back to legacy `/kooker/api/v1/citylife/car-acquisitions` if 404).
