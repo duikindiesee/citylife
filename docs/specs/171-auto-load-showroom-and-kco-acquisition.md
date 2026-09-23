@@ -30,6 +30,7 @@ This specification completes `PLAYER.CAR.1.S5`:
        3. Authoritative backend GET `fetchOwnedVehicleKeysBackend()`.
      - If all three indicate no vehicle is owned, the showroom overlay is automatically opened (`setShowroomOpen(true)`).
      - Guarded by `autoShowroomCheckedRef` so this check occurs once per login session; explicitly exiting the showroom does not re-trigger the auto-spawn.
+     - Server-confirmed new-player acquisition eligibility survives closing and manually reopening the showroom in the same session. It resets on identity change; the journey entitlement still gates every entry. Exiting must not strand a qualifying newcomer behind the preview-only control.
 
 2. **Authoritative KCO Acquisition Client (`src/colony/car/carAcquisition.ts`):**
 

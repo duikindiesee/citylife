@@ -907,7 +907,7 @@ export function ColonyApp() {
   // interior even by invoking this handler out of band.
   const openShowroom = () => {
     if (!newPlayerJourneyEnabled) return;
-    setShowroomAutoAcquire(false);
+    // Retain this identity's server-confirmed new-player acquisition eligibility on re-entry.
     setShowroomOpen(true);
   };
   // HQ.ENTER.1 — is Kooker HQ open to THIS session? Fails closed while loading and on every error.
@@ -1920,7 +1920,6 @@ export function ColonyApp() {
           runtime={runtime}
           canAcquire={showroomAutoAcquire || isCarAcquisitionEnabled()}
           onClose={() => {
-            setShowroomAutoAcquire(false);
             setShowroomOpen(false);
           }}
         />
