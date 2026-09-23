@@ -1,4 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
+import { installStarterWorldFixture } from "./starterWorldFixture";
+
+test.beforeEach(async ({ page }) => { await installStarterWorldFixture(page); });
 
 // Regression coverage for the P0 access bug: ColonyApp rendered BuilderPanel unconditionally, so a
 // signed-in CITYLIFE_PLAYER (or any other non-operator) could see and enter City Builder. These
@@ -67,21 +70,20 @@ test.describe("City Builder role gate (P0 CITYLIFE_PLAYER access regression)", (
     await expect(worldViewBtn(page)).toBeVisible();
   });
 
-  test("ADMIN can still see, enter and use City Builder", async ({ page }) => {
+  test("ADMIN cannot locally edit a published player world", async ({ page }) => {
     await seedSession(page, ["ADMIN"]);
     await page.goto("/");
     await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForTimeout(2000);
 
-    await expect(cityBuilderBtn(page)).toBeVisible();
-    await cityBuilderBtn(page).click({ force: true });
-    await page.waitForTimeout(500);
+    await expect(cityBuilderBtn(page)).toHaveCount(0);
+    await expect(worldViewBtn(page)).toBeVisible();
     await expect(
       page.locator("button", { hasText: "EXIT BUILDER" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
   });
 
-  test("a CITYLIFE_PLAYER who also holds ADMIN keeps builder access (operator role is authoritative)", async ({
+  test("combined player and ADMIN roles cannot locally edit published land", async ({
     page,
   }) => {
     await seedSession(page, ["CITYLIFE_PLAYER", "ADMIN"]);
@@ -89,7 +91,7 @@ test.describe("City Builder role gate (P0 CITYLIFE_PLAYER access regression)", (
     await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForTimeout(2000);
 
-    await expect(cityBuilderBtn(page)).toBeVisible();
+    await expect(cityBuilderBtn(page)).toHaveCount(0);
   });
 
   test("a stale builderActive=true is forced off for a restricted session (defense in depth)", async ({

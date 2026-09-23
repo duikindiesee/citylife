@@ -1,4 +1,5 @@
 import { test, expect, devices, type Page, type Route } from "@playwright/test";
+import { installStarterWorldFixture } from "./starterWorldFixture";
 
 // Spec 173 — actual plot offers in the real mobile UI with authenticated fixture APIs.
 // Proves exact selection, double-tap exclusion, paid-land reload, insufficient-funds recovery,
@@ -140,6 +141,7 @@ async function routeAll(page: Page, s: HomeState): Promise<void> {
 
 async function bootAs(page: Page, userId: string, s: HomeState): Promise<void> {
   await routeAll(page, s);
+  await installStarterWorldFixture(page);
   await page.addInitScript(
     ([key, session]) => {
       try {

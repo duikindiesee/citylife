@@ -1,4 +1,5 @@
 import { test, expect, devices } from "@playwright/test";
+import { installStarterWorldFixture } from "./starterWorldFixture";
 
 // PLAYER.FLAG.S3 — prove the fail-closed, default-OFF new-player-journey gate on a representative
 // touch/mobile viewport, driven through the REAL authenticated bootstrap. We do not log in through
@@ -84,6 +85,7 @@ async function bootAs(
   userId: string,
   enabled: boolean,
 ): Promise<void> {
+  await installStarterWorldFixture(page);
   // Stub the token-derived entitlement to the desired state (fail-closed = enabled:false).
   await page.route(FLAG_GLOB, (route) =>
     route.fulfill({

@@ -1,4 +1,5 @@
 import { test, expect, devices, type Page, type Route } from "@playwright/test";
+import { installStarterWorldFixture } from "./starterWorldFixture";
 
 // PLAYER.HOME.1D.S2 — prove the dark, server-truth drive-home + home-garage step on a representative
 // touch/mobile viewport, driven through the REAL authenticated bootstrap. We seed an authenticated
@@ -145,6 +146,7 @@ async function bootAs(
   s: DriveState,
 ): Promise<void> {
   await routeAll(page, s);
+  await installStarterWorldFixture(page);
   await page.addInitScript(
     ([key, session]) => {
       try {

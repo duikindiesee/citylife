@@ -1,4 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
+import { installStarterWorldFixture } from "./starterWorldFixture";
+
+test.beforeEach(async ({ page }) => { await installStarterWorldFixture(page); });
 
 // Deterministic coverage for the CityLife password-change activation UX (PWD.ACT PR-E). The backend
 // is fully mocked via route interception so these tests never depend on a live gateway: they assert

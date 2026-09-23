@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import type { PublishedPlayerInventory } from "../home/starterWorldCatalogue";
 import {
   FIRST_PERSON_KEY_CODES,
   RACE_KEY_CODES,
@@ -114,7 +115,7 @@ import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
 import { GeoReadout } from "./GeoReadout";
 import { BugReportPanel } from "./BugReportPanel";
 import "./colony.css";
-import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
+import { useRoadNetwork, RoadMask, enforceBuilderAccess } from "../stores/useRoadNetwork";
 import {
   WorldLayoutBootCoordinator,
   type WorldLayoutBootResult,
@@ -126,6 +127,7 @@ import {
 import {
   parseWorldLayoutDocument,
   serializeWorldLayoutDocument,
+  worldLayoutRevisionId,
   type WorldLayoutDocument,
 } from "../spatial/worldLayoutDocument";
 import { formatAmount } from "./currencyFormat";
@@ -538,10 +540,11 @@ export function publicWorldLayoutHistoryEntries(
   }));
 }
 
-function useRuntime(): ColonyRuntime {
+function useRuntime(playerInventory?: PublishedPlayerInventory): ColonyRuntime {
   const ref = useRef<ColonyRuntime | null>(null);
   if (!ref.current) {
-    ref.current = new ColonyRuntime();
+    if (playerInventory) enforceBuilderAccess(false);
+    ref.current = new ColonyRuntime(undefined, { playerInventory });
     // Local dev visual fixture for landmark screenshots. Production bundles and non-local hosts can
     // never enter this branch; ordinary local play is unchanged unless the explicit query is present.
     if (
@@ -727,11 +730,12 @@ function detectTouchCapable(): boolean {
   );
 }
 
-export function ColonyApp() {
+export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlayerInventory } = {}) {
   const { builderActive, worldViewActive } = useRoadNetwork();
-  const runtime = useRuntime();
+  const runtime = useRuntime(playerInventory);
   const [, forceRuntimeRender] = useReducer((x) => x + 1, 0);
   const worldLayoutPersistence = useMemo(() => {
+    if (playerInventory) return { store: null, coordinator: null, error: null };
     try {
       const store = new WorldLayoutStore();
       const worldId = runtime.captureWorldLayout().worldId;
@@ -752,7 +756,7 @@ export function ColonyApp() {
     } catch (error: unknown) {
       return { store: null, coordinator: null, error };
     }
-  }, [runtime]);
+  }, [runtime, playerInventory]);
   const [worldLayoutBoot, setWorldLayoutBoot] = useState<
     | { status: "loading" }
     | { status: "ready"; result: WorldLayoutBootResult }
@@ -899,7 +903,7 @@ export function ColonyApp() {
   const auth = useMemo(() => new AuthClient(), []);
   // City Builder authorization (see authClient.canEnterCityBuilder for the fail-closed rule and why
   // a null operator is safe here — it can only be AuthGate's own local DEV/E2E skip-auth bypass).
-  const canBuildCity = canEnterCityBuilder(auth);
+  const canBuildCity = !playerInventory && canEnterCityBuilder(auth);
   // Offer "Change password" only for a real logged-in account — the local DEV/E2E skip-auth bypass
   // has a null operator and no account to change.
   const hasRealAccount = auth.operator !== null;
@@ -1290,14 +1294,15 @@ export function ColonyApp() {
     void (async () => {
       try {
         if (worldLayoutPersistence.error) throw worldLayoutPersistence.error;
-        if (!worldLayoutPersistence.coordinator)
+        if (!playerInventory && !worldLayoutPersistence.coordinator)
           throw new Error("World layout persistence is unavailable");
 
         // WB.1d boot barrier: durable truth is loaded (or initialized), validated and hydrated
         // before either the renderer/simulation or its React render subscription can observe it.
-        const result = await worldLayoutPersistence.coordinator.boot(
-          abort.signal,
-        );
+        const result: WorldLayoutBootResult = playerInventory ? {
+          ready: true, worldId: playerInventory.worldId,
+          revision: worldLayoutRevisionId(playerInventory.layout.revision), source: "stored",
+        } : await worldLayoutPersistence.coordinator!.boot(abort.signal);
         if (abort.signal.aborted) return;
         const document = runtime.worldLayoutDocument();
         if (!document)
@@ -1341,6 +1346,7 @@ export function ColonyApp() {
     runtime,
     worldLayoutBootAttempt,
     worldLayoutPersistence,
+    playerInventory,
   ]);
 
   useEffect(() => {

@@ -72,8 +72,8 @@ reload/resume with identical request bodies. These use fixture APIs and prove no
 debit, live catalogue publication, starting balance or house completion.
 
 - Validate swept vehicle clearance, elevation/slope, gate opening and turning onto the connected road with the actual supported car dimensions. Centre-line connectivity alone is insufficient.
-- Canonical parcel child-frame generation now exists in `starterParcelManifest.ts`. Generate a review artifact with `node scripts/createStarterParcelManifest.mjs <output.json>` from the configured untouched seed. It creates surface-region children, with local cell zero at the first parcel cell centre and no invented building elevation. The resulting document hash is embedded in every plot geometry, while `sourceLayoutRevision` retains the original survey hash. Ten seed-4242 candidates qualify; the ten unnamed coastal plots remain excluded. Publication still requires review, server import and client bootstrap wiring.
-- Runtime isolation now accepts an immutable player-inventory list pinned to the exact generated world ID and layout hash before residents or blueprint restoration start. It rejects duplicate, unknown, occupied, commercial and unnamed coastal/founder parcels. Legacy allocation, purchase, builder, blueprint restoration, construction, demolition and citizen cleanup exclude these IDs. This is a local guard, not publication or ownership authority: the production bootstrap still needs the reviewed server manifest, including sold parcels (an available-only list would expose sold land to NPCs). Default boots do not reserve player land until that manifest is connected. Focused tests cover mismatched inventories, unchanged protected geometry/materials/ledger, citizen cleanup and ordinary parcel construction.
+- Canonical parcel child-frame generation now exists in `starterParcelManifest.ts`. Generate a review artifact with `node scripts/createStarterParcelManifest.mjs <output.json>` from the configured untouched seed. It creates surface-region children, with local cell zero at the first parcel cell centre and no invented building elevation. The resulting document hash is embedded in every plot geometry, while `sourceLayoutRevision` retains the original survey hash. Ten seed-4242 candidates qualify; the ten unnamed coastal plots remain excluded. Publication still requires review and a live server import; authenticated client bootstrap is wired locally.
+- Runtime isolation now accepts an immutable player-inventory list pinned to the exact generated world ID and layout hash before residents or blueprint restoration start. It rejects duplicate, unknown, occupied, commercial and unnamed coastal/founder parcels. Legacy allocation, purchase, builder, blueprint restoration, construction, demolition and citizen cleanup exclude these IDs. This is a local guard, not publication or ownership authority: the authenticated bootstrap now consumes the reviewed server manifest, including sold parcels (an available-only list would expose sold land to NPCs). Explicit local authoring boots remain inventory-free. Focused tests cover mismatched inventories, unchanged protected geometry/materials/ledger, citizen cleanup and ordinary parcel construction.
 - Import the reviewed manifest server-side, pin the world revision, and verify public neighbourhood registration. Client-authored geometry cannot publish land. Prices come from server offers.
 - Authoritative offer selection and insufficient-funds resume are implemented locally. Still verify the real published catalogue, real ledger outcomes and uncertain-debit convergence after deployment.
 - Connect owned land to the builder, validate/persist completion and project the correct home and driveway. Existing driving only permits road cells, so it must explicitly authorize the owned driveway before home spawning.
@@ -89,7 +89,7 @@ footprint clearance and refuses reusing an already parcel-framed document as a f
 survey. It is deterministic under parcel input reordering. The runtime constructor can
 hydrate the supplied canonical document before accepting inventory and populating
 residents; document identity and revision must match the inventory. This constructor
-seam is tested but is not yet connected to the production server catalogue. Do not
+seam is now connected through the authenticated starter-catalogue boot gate. Do not
 mistake the artifact for a published catalogue or rendered foundation/grade proof.
 
 ### Player inventory HUD and remaining authority boundaries
@@ -105,10 +105,34 @@ revision adoption against the canonical durable geometry captured when the inven
 was accepted. `WorldLayoutBootCoordinator` can advance persistence metadata without
 changing that geometry. Changed roads, terrain, frames or other durable spatial data
 are rejected before mutation; accepting a changed world requires an explicit reviewed
-inventory migration. This guard does not police every live editor mutation: production
-wiring must also prevent local world editing while published player land is active,
-or validate those edits before they enter the runtime. Default inventory-free editor
-boots retain their existing behavior.
+inventory migration. Published-world boots disable the legacy City Builder for every
+role, including ADMIN, and clear stale drawing mode before runtime construction.
+The existing BuilderPanel access enforcement also clears later stale mode toggles.
+Explicit local DEV skip-auth authoring boots retain their existing editor behavior.
+These are application flow guards, not a claim that client code is an ownership authority.
+
+### Authenticated boot barrier
+
+`StarterWorldGate` loads `/kooker/api/v1/citylife/worlds/seed-4242/starter-catalogue`
+before constructing ColonyRuntime. Only a published response with a valid canonical
+world hash and unique plot/frame bindings can proceed. Missing, malformed and failed
+responses show a retry screen; no empty or locally generated playable fallback is
+created. Token refresh and late-response identity changes are rejected. Fetches have
+a ten-second timeout, and runtime construction errors have a retry boundary.
+
+Published boots use the server document directly and do not load or overwrite the
+browser's edited IndexedDB world. The private editor's old save remains intact. No
+runtime or NPC restoration happens until this barrier succeeds. This is now required
+for authenticated game entry, so deployment must be coordinated with reviewed backend
+publication; do not deploy this frontend alone to an unpublished world. It does not
+enable the journey flag or grant ownership, money or purchase eligibility.
+
+Validation for the boot integration: 2,386 unit tests across 272 files passed, plus
+TypeScript and the production build. Thirteen Chromium checks passed: unpublished
+world/retry, exact returning-car hydration, six editor-access cases and five property
+selection/recovery cases. Browser fixtures generate the same canonical world document
+through the production generator. The post-warm-up screenshot shows rendered ground
+and sky; the tests do not prove a live service publication or finished home journey.
 
 The existing User `CitylifeBlueprintService.upsert` stores per-user scripts after basic
 text screening. It does not validate a paid deed, parcel dimensions, driveway clearance
