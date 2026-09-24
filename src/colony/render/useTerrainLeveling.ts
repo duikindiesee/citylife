@@ -43,6 +43,10 @@ export function computeTerrainLeveling(
 ): Map<number, number> {
   const N = state.terrain.size;
   const next = new Map<number, number>();
+  // A rendered house is seated on this exact pad. Road grading runs later so it
+  // can repair a road across a slope, but it must never replace a home's
+  // foundation height and leave the mesh partially buried or hovering.
+  const housePadCells = new Set<number>();
   const t = state.terrain;
   const DRY = RENDER_DRY_FLOOR;
 
@@ -103,7 +107,10 @@ export function computeTerrainLeveling(
       for (let y = hz.y - SKIRT + 1; y < fy1 + SKIRT; y++) {
         for (let x = hz.x - SKIRT + 1; x < fx1 + SKIRT; x++) {
           const dist = Math.max(0, hz.x - x, x - fx1, hz.y - y, y - fy1);
-          if (dist === 0) put(x, y, py);
+          if (dist === 0) {
+            put(x, y, py);
+            housePadCells.add(y * N + x);
+          }
           else if (dist < SKIRT && x >= 0 && y >= 0 && x < N && y < N) {
             const nat = Math.max(t.worldY(x, y), DRY);
             const s = dist / SKIRT;
@@ -237,6 +244,11 @@ export function computeTerrainLeveling(
       if (x < 0 || y < 0 || x >= N || y >= N) continue;
       const i = y * N + x;
       ribbon.add(i);
+      // The road ribbon can touch a lot boundary after a curved route is
+      // widened. The building has physical/rendering priority at its own pad;
+      // preserving it prevents a later road cut-fill pass from breaking the
+      // shared padSeatY contract.
+      if (housePadCells.has(i)) continue;
       const h = Math.max(0, surfaceH);
       // A corrupt (non-finite) ribbon height must not enter `graded`: NaN passes the
       // deadzone test below (|NaN - eff| <= DEADZONE is false) and its skirt entries would
