@@ -440,6 +440,14 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
       const confirmed = SHOWROOM_VEHICLES[scenario === "different" ? 2 : 0]!;
       const purchaseStarted = vi.fn();
       vi.stubGlobal("fetch", async (url: string) => {
+        if (url.includes("/vehicle/offers")) return {
+          ok: true, status: 200,
+          json: async () => SHOWROOM_VEHICLES.map((vehicle, index) => ({
+            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(vehicle)),
+            priceKco: [250, 950, 2400][index]!,
+            currency: "KCO",
+          })),
+        };
         if (url.includes("/vehicle/purchase")) {
           purchaseStarted();
           return {
@@ -536,6 +544,14 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
 
     const purchaseStarted = vi.fn();
     vi.stubGlobal("fetch", async (url: string) => {
+        if (url.includes("/vehicle/offers")) return {
+          ok: true, status: 200,
+          json: async () => SHOWROOM_VEHICLES.map((vehicle, index) => ({
+            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(vehicle)),
+            priceKco: [250, 950, 2400][index]!,
+            currency: "KCO",
+          })),
+        };
       if (
         url.includes("/vehicle/purchase") ||
         url.includes("/car-acquisitions")
@@ -642,6 +658,14 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
 
     const purchaseStarted = vi.fn();
     vi.stubGlobal("fetch", async (url: string) => {
+        if (url.includes("/vehicle/offers")) return {
+          ok: true, status: 200,
+          json: async () => SHOWROOM_VEHICLES.map((vehicle, index) => ({
+            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(vehicle)),
+            priceKco: [250, 950, 2400][index]!,
+            currency: "KCO",
+          })),
+        };
       if (
         url.includes("/vehicle/purchase") ||
         url.includes("/car-acquisitions")
