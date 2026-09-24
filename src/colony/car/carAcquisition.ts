@@ -269,7 +269,8 @@ export async function fetchOwnedVehicleKeysBackend(): Promise<string[] | null> {
       };
       if (Array.isArray(obj.ownedVehicleKeys)) {
         return obj.ownedVehicleKeys.every(isCanonicalVehicleKey)
-          ? safeOwnedKeys(obj.ownedVehicleKeys) : null;
+          ? safeOwnedKeys(obj.ownedVehicleKeys)
+          : null;
       }
       if (obj.owned === true && typeof obj.vehicleKey === "string") {
         return isCanonicalVehicleKey(obj.vehicleKey) ? [obj.vehicleKey] : null;
