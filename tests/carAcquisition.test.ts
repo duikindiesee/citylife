@@ -51,17 +51,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("carAcquisition — feature gate (dark by default)", () => {
-  it("is OFF when the env var is absent or empty — the shipped production default", () => {
-    expect(isCarAcquisitionEnabled({})).toBe(false);
+describe("carAcquisition — feature gate (enabled by default)", () => {
+  it("is ON when the env var is absent or empty, and an explicit off remains available", () => {
+    expect(isCarAcquisitionEnabled({})).toBe(true);
     expect(isCarAcquisitionEnabled({ VITE_CITYLIFE_CAR_ACQUISITION: "" })).toBe(
-      false,
+      true,
     );
     expect(
       isCarAcquisitionEnabled({ VITE_CITYLIFE_CAR_ACQUISITION: "off" }),
     ).toBe(false);
-    // called with no argument it reads the real (test) env, which never sets the flag → still dark
-    expect(isCarAcquisitionEnabled()).toBe(false);
+    // called with no argument it reads the real test env, which keeps the enabled default
+    expect(isCarAcquisitionEnabled()).toBe(true);
   });
   it("is ON only for an explicit affirmative value (case/space tolerant)", () => {
     for (const v of ["on", "1", "true", "enabled", "  ON ", "True"]) {
@@ -247,11 +247,11 @@ describe("carAcquisition — backend ownership truth (GET)", () => {
 });
 
 describe("carAcquisition — POST acquire (server authority, vehicleKey only)", () => {
-  it("refuses locally WITHOUT any network call when the gate is dark", async () => {
+  it("refuses locally WITHOUT any network call when the gate is explicitly dark", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
-    expect(await postAcquireVehicle(VONK, {})).toEqual({ kind: "disabled" });
+    expect(await postAcquireVehicle(VONK, { VITE_CITYLIFE_CAR_ACQUISITION: "off" })).toEqual({ kind: "disabled" });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
   it("refuses a non-canonical key without posting, even when enabled", async () => {

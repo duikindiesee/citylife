@@ -66,10 +66,13 @@ export function ShowroomOverlay({
   onClose,
   canAcquire = isCarAcquisitionEnabled(),
   runtime,
+  walletKco = null,
 }: {
   onClose: () => void;
   canAcquire?: boolean;
   runtime?: ColonyRuntime;
+  /** Current player-scoped wallet snapshot. It is display-only; the server still decides a debit. */
+  walletKco?: number | null;
 }) {
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(SHOWROOM_DEFAULT_ZOOM);
@@ -369,6 +372,8 @@ export function ShowroomOverlay({
             isOwned={isOwned}
             isPending={isPending}
             outcome={outcome}
+            priceKco={vehicle.plannedPriceK}
+            walletKco={walletKco}
             onAcquire={acquire}
           />
         ) : (
@@ -462,36 +467,59 @@ function AcquireButton({
   isOwned,
   isPending,
   outcome,
+  priceKco,
+  walletKco,
   onAcquire,
 }: {
   isOwned: boolean;
   isPending: boolean;
   outcome: AcquireOutcome | undefined;
+  priceKco: number | null;
+  walletKco: number | null;
   onAcquire: () => void;
 }) {
   const view = acquireButtonView(isOwned, isPending, outcome);
+  const shortage =
+    typeof priceKco === "number" && typeof walletKco === "number"
+      ? Math.max(0, priceKco - walletKco)
+      : null;
+  const affordability =
+    shortage === null
+      ? "Balance checked by server"
+      : shortage > 0
+        ? `Need ₭${shortage.toLocaleString()} more`
+        : `You have ₭${walletKco!.toLocaleString()}`;
   return (
-    <button
-      data-build-action="showroom-acquire"
-      data-testid="showroom-acquire"
-      data-acquire-state={view.state}
-      disabled={view.disabled}
-      onClick={onAcquire}
-      title="Acquire this vehicle — the server checks your balance and moves the coin"
-      style={{
-        padding: "6px 10px",
-        fontSize: 12,
-        borderRadius: 6,
-        border: `1px solid ${view.disabled ? "#3a4a5a" : "#b6892f"}`,
-        background: view.disabled
-          ? "rgba(255,255,255,0.05)"
-          : "rgba(182,137,47,0.18)",
-        color: acquireStateColor(view.state),
-        cursor: view.disabled ? "not-allowed" : "pointer",
-        fontWeight: 700,
-      }}
-    >
-      {view.label}
-    </button>
+    <>
+      <span
+        data-testid="showroom-affordability"
+        data-affordability={shortage === null ? "unknown" : shortage > 0 ? "insufficient" : "affordable"}
+        style={{ color: shortage && shortage > 0 ? "#f2a35a" : "#9fd4a6", fontSize: 11, fontWeight: 700 }}
+      >
+        {affordability}
+      </span>
+      <button
+        data-build-action="showroom-acquire"
+        data-testid="showroom-acquire"
+        data-acquire-state={view.state}
+        disabled={view.disabled}
+        onClick={onAcquire}
+        title="Acquire this vehicle — the server checks your balance and moves the coin"
+        style={{
+          padding: "6px 10px",
+          fontSize: 12,
+          borderRadius: 6,
+          border: `1px solid ${view.disabled ? "#3a4a5a" : "#b6892f"}`,
+          background: view.disabled
+            ? "rgba(255,255,255,0.05)"
+            : "rgba(182,137,47,0.18)",
+          color: acquireStateColor(view.state),
+          cursor: view.disabled ? "not-allowed" : "pointer",
+          fontWeight: 700,
+        }}
+      >
+        {view.label}
+      </button>
+    </>
   );
 }

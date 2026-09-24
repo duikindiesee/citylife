@@ -1902,6 +1902,7 @@ export function ColonyApp() {
         <ShowroomOverlay
           runtime={runtime}
           canAcquire={showroomAutoAcquire || isCarAcquisitionEnabled()}
+          walletKco={playerWalletKco}
           onClose={() => {
             setShowroomOpen(false);
           }}

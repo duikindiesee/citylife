@@ -38,13 +38,14 @@ export function carOwnershipCacheKey(scope?: string | null): string {
     : "citylife.car.ownership.v1";
 }
 
-/** The feature is DARK by default. It turns on only when the operator sets VITE_CITYLIFE_CAR_ACQUISITION
- *  to "on"/"1"/"true" in the build env for UAT — this worker never sets it, so production stays dark. */
+/** Acquisition is enabled by default for the player journey. An explicit build value can still turn it
+ *  off for an incident response, but absence must never turn an otherwise eligible player into a
+ *  preview-only visitor. The server remains the authority for eligibility, balance and debit. */
 export function isCarAcquisitionEnabled(
   env?: Record<string, string | undefined>,
 ): boolean {
   const raw = (env ?? readViteEnv())["VITE_CITYLIFE_CAR_ACQUISITION"];
-  if (typeof raw !== "string") return false;
+  if (typeof raw !== "string" || raw.trim() === "") return true;
   const v = raw.trim().toLowerCase();
   return v === "on" || v === "1" || v === "true" || v === "enabled";
 }
