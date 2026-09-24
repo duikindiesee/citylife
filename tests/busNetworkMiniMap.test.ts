@@ -47,6 +47,7 @@ describe("always-visible bus network minimap model", () => {
     expect(model.busClusters.reduce((sum, c) => sum + c.ids.length, 0)).toBe(2);
     expect(model.depot).not.toBeNull();
     expect(model.player).not.toBeNull();
+    expect(model.player!.outOfBounds).toBe(false);
     for (const p of [...model.stops, ...model.buses, model.depot!, model.player!]) {
       expect(p.x).toBeGreaterThanOrEqual(8);
       expect(p.x).toBeLessThanOrEqual(192);
@@ -82,5 +83,37 @@ describe("always-visible bus network minimap model", () => {
     expect(model.roads[0]!.points).toMatch(/^\d/);
     expect(model.bounds.spanX).toBeGreaterThan(0);
     expect(model.bounds.spanY).toBeGreaterThan(0);
+  });
+
+  it("keeps network bounds fixed as moving markers travel and indicates off-map positions", () => {
+    const first = buildBusNetworkMiniMapModel({
+      ways,
+      routeStops: [{ x: 12, y: 10 }],
+      depot: { x: 20, y: 14 },
+      buses: [{ id: 0, x: 15, y: 10 }],
+      player: { x: 16, y: 10 },
+      width: 200,
+      height: 132,
+      padding: 8,
+    });
+    const moved = buildBusNetworkMiniMapModel({
+      ways,
+      routeStops: [{ x: 12, y: 10 }],
+      depot: { x: 20, y: 14 },
+      buses: [{ id: 0, x: 500, y: 400 }],
+      player: { x: -100, y: 900 },
+      width: 200,
+      height: 132,
+      padding: 8,
+    });
+
+    expect(moved.bounds).toEqual(first.bounds);
+    expect(moved.roads).toEqual(first.roads);
+    expect(moved.buses[0]!.outOfBounds).toBe(true);
+    expect(moved.player!.outOfBounds).toBe(true);
+    expect(moved.buses[0]!.x).toBe(192);
+    expect(moved.buses[0]!.y).toBe(124);
+    expect(moved.player!.x).toBe(8);
+    expect(moved.player!.y).toBe(124);
   });
 });

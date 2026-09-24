@@ -361,6 +361,24 @@ Queue line for the operator:
   map remains visible in street and World View, contains every road way, every route stop,
   the depot and all five coaches, and observes a live coach marker move during service.
 
+### 4.3 Compact player map and wallet HUD
+
+The compact map is a local-session city view. Its wallet label is shown only when the
+player-scoped bank projection is active; an operator/city view does not present the
+city balance as a player's personal funds. The player marker uses the exact local
+presence fix while on foot and the active owned-car pose while seated. Unknown or
+coarse presence stays unavailable rather than being guessed from a home or spawn.
+
+Roads, stops and the depot set a stable map frame. Moving buses and the player never
+change that frame; a moving marker beyond the mapped road extent is clamped to the map
+edge and marked as outside it. This compact panel describes the local simulation only;
+it does not imply remote multiplayer presence. Shared-network players are a separate
+Street Rod milestone tracked by CityLife issue #529.
+
+This slice adds the wallet, exact local marker and local-session label to the existing
+bus map. A full-screen/mode-switching map and driving with that map open remain open
+acceptance work; the compact panel alone does not complete the player HUD/map goal.
+
 **Phase 2 (Jack's GLB).** Loader gate swaps the primitives for `bus-depot.glb` by
 node-name contract; `busDepotGlb.test.ts` lands with the asset PR; screenshot pass.
 

@@ -4,10 +4,14 @@ export interface MiniMapPoint {
   x: number;
   y: number;
 }
-export interface MiniMapBusPoint extends MiniMapPoint {
+export interface MiniMapMovingPoint extends MiniMapPoint {
+  /** The world position is outside the fixed road-network map bounds. */
+  outOfBounds: boolean;
+}
+export interface MiniMapBusPoint extends MiniMapMovingPoint {
   id: number;
 }
-export interface MiniMapBusCluster extends MiniMapPoint {
+export interface MiniMapBusCluster extends MiniMapMovingPoint {
   ids: number[];
 }
 export interface BusNetworkMiniMapModel {
@@ -17,7 +21,7 @@ export interface BusNetworkMiniMapModel {
   buses: MiniMapBusPoint[];
   busClusters: MiniMapBusCluster[];
   /** The local player's exact surface-grid fix, when the runtime has one. */
-  player: MiniMapPoint | null;
+  player: MiniMapMovingPoint | null;
   bounds: { minX: number; minY: number; spanX: number; spanY: number };
 }
 
@@ -35,15 +39,15 @@ interface Input {
 export function buildBusNetworkMiniMapModel(
   input: Input,
 ): BusNetworkMiniMapModel {
-  const all = [
+  // The map frame is derived only from fixed network geometry. Including moving buses or
+  // the player here made the projection rescale every time a marker reached a new extreme.
+  const network = [
     ...input.ways.flatMap((way) => way.path),
     ...input.routeStops,
-    ...input.buses,
-    ...(input.player ? [input.player] : []),
     ...(input.depot ? [input.depot] : []),
   ];
-  const xs = all.map((p) => p.x);
-  const ys = all.map((p) => p.y);
+  const xs = network.map((p) => p.x);
+  const ys = network.map((p) => p.y);
   const rawMinX = xs.length ? Math.min(...xs) : 0;
   const rawMaxX = xs.length ? Math.max(...xs) : 1;
   const rawMinY = ys.length ? Math.min(...ys) : 0;
@@ -61,17 +65,35 @@ export function buildBusNetworkMiniMapModel(
     x: ox + (p.x - rawMinX) * scale,
     y: oy + (p.y - rawMinY) * scale,
   });
-  const buses = input.buses.map((b) => ({ id: b.id, ...project(b) }));
+  const projectMoving = (p: { x: number; y: number }): MiniMapMovingPoint => {
+    const projected = project(p);
+    const outOfBounds =
+      p.x < rawMinX || p.x > rawMaxX || p.y < rawMinY || p.y > rawMaxY;
+    return {
+      x: Math.min(input.width - input.padding, Math.max(input.padding, projected.x)),
+      y: Math.min(input.height - input.padding, Math.max(input.padding, projected.y)),
+      outOfBounds,
+    };
+  };
+  const buses = input.buses.map((b) => ({ id: b.id, ...projectMoving(b) }));
   const busClusters: MiniMapBusCluster[] = [];
   for (const bus of buses) {
     const cluster = busClusters.find(
       (c) => Math.hypot(c.x - bus.x, c.y - bus.y) < 8,
     );
-    if (!cluster) busClusters.push({ x: bus.x, y: bus.y, ids: [bus.id] });
+    if (!cluster) {
+      busClusters.push({
+        x: bus.x,
+        y: bus.y,
+        outOfBounds: bus.outOfBounds,
+        ids: [bus.id],
+      });
+    }
     else {
       const n = cluster.ids.length;
       cluster.x = (cluster.x * n + bus.x) / (n + 1);
       cluster.y = (cluster.y * n + bus.y) / (n + 1);
+      cluster.outOfBounds ||= bus.outOfBounds;
       cluster.ids.push(bus.id);
     }
   }
@@ -89,7 +111,7 @@ export function buildBusNetworkMiniMapModel(
     depot: input.depot ? project(input.depot) : null,
     buses,
     busClusters,
-    player: input.player ? project(input.player) : null,
+    player: input.player ? projectMoving(input.player) : null,
     bounds: { minX: rawMinX, minY: rawMinY, spanX, spanY },
   };
 }

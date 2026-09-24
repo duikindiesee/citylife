@@ -1,6 +1,7 @@
 import type { ColonyRuntime } from "../runtime";
 import type { PresenceReadout } from "../spatial/presenceReadout";
 import { buildBusNetworkMiniMapModel } from "./busNetworkMiniMapModel";
+import { formatAmount } from "./currencyFormat";
 
 const WIDTH = 200;
 const HEIGHT = 132;
@@ -18,12 +19,19 @@ export function BusNetworkMiniMap({
   const state = runtime.sim.state;
   const depot = runtime.busDepot?.site ?? null;
   const local = presenceReadout?.entries.find((entry) => entry.isLocal) ?? null;
-  // Presence resolution is already the authoritative grid projection. Do not make a second guess
-  // from renderer coordinates: an unavailable or coarse position stays absent from the map.
+  // While seated, the car pose is the player's actual location. On foot, use the already-authorized
+  // exact presence projection; never guess from a spawn/home or draw a coarse position as exact.
+  const driving = (
+    runtime as ColonyRuntime & {
+      getOwnedDrivePose?: () => { x: number; y: number } | null;
+    }
+  ).getOwnedDrivePose?.();
   const player =
-    local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
-      ? { x: local.fix.cell.x, y: local.fix.cell.y }
-      : null;
+    driving
+      ? { x: driving.x, y: driving.y }
+      : local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
+        ? { x: local.fix.cell.x, y: local.fix.cell.y }
+        : null;
   const model = buildBusNetworkMiniMapModel({
     ways: state.roadWays ?? [],
     routeStops: runtime.busRoute?.stops ?? [],
@@ -37,15 +45,16 @@ export function BusNetworkMiniMap({
     padding: 8,
   });
   return (
-    <aside className="bus-network-minimap" aria-label="City map and live bus network">
+    <aside className="bus-network-minimap" aria-label="Live bus network map">
       <div className="bus-network-minimap__title">
         <span>CITY MAP</span>
         <span>{model.buses.length} BUS{model.buses.length === 1 ? "" : "ES"}</span>
       </div>
       <div className="bus-network-minimap__summary">
-        <span>{walletKco === null ? "City view" : `Wallet ₭${Math.round(walletKco).toLocaleString("en-US")}`}</span>
+        <span>{walletKco === null ? "City view" : `Wallet ₭${formatAmount(walletKco)}`}</span>
         <span>{model.player ? "You are here" : "Position unavailable"}</span>
       </div>
+      <div className="bus-network-minimap__mode">LOCAL SESSION</div>
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
@@ -93,18 +102,26 @@ export function BusNetworkMiniMap({
           </g>
         )}
         {model.player && (
-          <g aria-label="Your current location" data-testid="city-map-player-marker">
+          <g
+            aria-label={
+              model.player.outOfBounds
+                ? "Your current location beyond mapped roads"
+                : "Your current location"
+            }
+            data-testid="city-map-player-marker"
+            data-off-map={model.player.outOfBounds ? "true" : "false"}
+          >
             <circle
               cx={model.player.x}
               cy={model.player.y}
               r="5.4"
-              className="bus-network-minimap__player-ring"
+              className={`bus-network-minimap__player-ring${model.player.outOfBounds ? " bus-network-minimap__player-ring--edge" : ""}`}
             />
             <circle
               cx={model.player.x}
               cy={model.player.y}
               r="3"
-              className="bus-network-minimap__player"
+              className={`bus-network-minimap__player${model.player.outOfBounds ? " bus-network-minimap__player--edge" : ""}`}
             />
           </g>
         )}
@@ -113,17 +130,19 @@ export function BusNetworkMiniMap({
             cluster.ids.length === 1
               ? `Bus ${cluster.ids[0]! + 1}`
               : `${cluster.ids.length} buses: ${cluster.ids.map((id) => id + 1).join(", ")}`;
+          const accessibleLabel = cluster.outOfBounds ? `${label}, at map edge` : label;
           return (
             <g
               key={`buses-${cluster.ids.join("-")}`}
-              aria-label={label}
+              aria-label={accessibleLabel}
               data-bus-count={cluster.ids.length}
+              data-off-map={cluster.outOfBounds ? "true" : "false"}
             >
               <circle
                 cx={cluster.x}
                 cy={cluster.y}
                 r={cluster.ids.length > 1 ? 5.5 : 4}
-                className="bus-network-minimap__bus"
+                className={`bus-network-minimap__bus${cluster.outOfBounds ? " bus-network-minimap__bus--edge" : ""}`}
               />
               <text x={cluster.x} y={cluster.y + 1.8} textAnchor="middle">
                 {cluster.ids.length > 1
