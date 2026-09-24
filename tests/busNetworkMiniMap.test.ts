@@ -48,7 +48,12 @@ describe("always-visible bus network minimap model", () => {
     expect(model.depot).not.toBeNull();
     expect(model.player).not.toBeNull();
     expect(model.player!.outOfBounds).toBe(false);
-    for (const p of [...model.stops, ...model.buses, model.depot!, model.player!]) {
+    for (const p of [
+      ...model.stops,
+      ...model.buses,
+      model.depot!,
+      model.player!,
+    ]) {
       expect(p.x).toBeGreaterThanOrEqual(8);
       expect(p.x).toBeLessThanOrEqual(192);
       expect(p.y).toBeGreaterThanOrEqual(8);
