@@ -31,3 +31,11 @@ Status: active implementation and deployed acceptance; not complete.
 6. Verify all three ownership states, insufficient funds, re-entry, reload/login, and identity isolation in the deployed interface. Retain screenshots and runtime receipts and explicitly record gaps.
 
 Tests, asset HTTP200, merge and release are separate evidence layers. None substitutes for the complete live player journey.
+
+## Arrival authority correction (2026-09-23, not yet deployed)
+
+Task dd18507c-8ce4-4405-b7f2-10fb78b9f313: login must read current server vehicle ownership even when a local garage or ownership cache already contains a car. The no-car route now ignores those local hints; an explicit empty server result opens Gearbox. Unsupported/malformed server vehicle keys and token-refresh failures remain unavailable truth, never an empty ownership list. The existing cancellation guard drops responses from a previous session.
+
+Coverage: pure stale-cache decisions, unknown server-owned model and refresh-rejection cases; browser regression seeds stale X19 ownership before authenticated login and expects a server read plus enabled Gearbox acquisition after an explicit no-vehicle response.
+
+This change does not yet hydrate the exact owned car into the driving runtime, resolve an owned home's real parcel, invoke player house building, or place a car on a road-connected driveway. These remain required acceptance work. Deployed browser evidence remains outstanding.

@@ -151,6 +151,22 @@ test("new player can exit and re-enter the showroom without losing acquisition",
   await expect(acquire).toHaveCount(0);
 });
 
+test("server ownership opens Gearbox despite a stale cached car", async ({ page }) => {
+  test.setTimeout(120_000);
+  let ownershipReads = 0;
+  await page.addInitScript(() => {
+    localStorage.setItem("citylife.car.ownership.v1.stale-cache-player", JSON.stringify(["karoo-x19-targa"]));
+  });
+  await page.route("**/citylife/players/me/vehicle", route => {
+    ownershipReads++;
+    return route.fulfill({ status: 200, contentType: "application/json", body: '{"owned":false}' });
+  });
+  await bootAs(page, "stale-cache-player", true);
+  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
+  expect(ownershipReads).toBeGreaterThan(0);
+  await expect(page.locator('[data-build-action="showroom-acquire"]')).toBeEnabled({ timeout: ASSERT_TIMEOUT });
+});
+
 test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switch re-hides", async ({
   page,
 }) => {
