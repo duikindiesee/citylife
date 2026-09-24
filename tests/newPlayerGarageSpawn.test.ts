@@ -12,6 +12,7 @@ import {
   clearOwnedKeysCache,
   postAcquireVehicle,
   BACKEND_VEHICLE_PURCHASE_PATH,
+  BACKEND_VEHICLE_OFFERS_PATH,
   shouldAutoOpenShowroom,
   fetchOwnedVehicleKeysBackend,
 } from "../src/colony/car/carAcquisition";
@@ -174,6 +175,14 @@ function findNodeByAttr(
     if (found) return found;
   }
   return null;
+}
+
+function readNodeText(node: Record<string, unknown>): string {
+  if (node.nodeType === 3) return String(node.nodeValue ?? "");
+  if (typeof node.textContent === "string") return node.textContent;
+  return ((node.children as Record<string, unknown>[]) ?? [])
+    .map(readNodeText)
+    .join("");
 }
 
 function clickNode(node: Record<string, unknown>): void {
@@ -433,6 +442,17 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
       const confirmed = SHOWROOM_VEHICLES[scenario === "different" ? 2 : 0]!;
       const purchaseStarted = vi.fn();
       vi.stubGlobal("fetch", async (url: string) => {
+        if (url.includes(BACKEND_VEHICLE_OFFERS_PATH)) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => SHOWROOM_VEHICLES.map((entry) => ({
+              vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+              priceKco: entry.plannedPriceK,
+              currency: "KCO",
+            })),
+          };
+        }
         if (url.includes("/vehicle/purchase")) {
           purchaseStarted();
           return {
@@ -529,6 +549,17 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
 
     const purchaseStarted = vi.fn();
     vi.stubGlobal("fetch", async (url: string) => {
+      if (url.includes(BACKEND_VEHICLE_OFFERS_PATH)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => SHOWROOM_VEHICLES.map((entry) => ({
+            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+            priceKco: entry.plannedPriceK,
+            currency: "KCO",
+          })),
+        };
+      }
       if (
         url.includes("/vehicle/purchase") ||
         url.includes("/car-acquisitions")
@@ -635,6 +666,17 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
 
     const purchaseStarted = vi.fn();
     vi.stubGlobal("fetch", async (url: string) => {
+      if (url.includes(BACKEND_VEHICLE_OFFERS_PATH)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => SHOWROOM_VEHICLES.map((entry) => ({
+            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+            priceKco: entry.plannedPriceK,
+            currency: "KCO",
+          })),
+        };
+      }
       if (
         url.includes("/vehicle/purchase") ||
         url.includes("/car-acquisitions")
@@ -730,6 +772,73 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
       "showroom-acquire",
     );
     expect(acquireBtn).toBeNull();
+  });
+
+  it("shows the server X19 price and exact shortfall before purchase", async () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId("buyer-x19");
+    const auth = getAuthClient();
+    vi.spyOn(auth, "getValidToken").mockResolvedValue("test-jwt");
+    (auth as unknown as { session: unknown }).session = {
+      token: "test-jwt",
+      expiresAt: Date.now() + 100000,
+      operator: {
+        id: "Buyer",
+        userId: "buyer-x19",
+        scopes: [],
+        roles: ["CITYLIFE_PLAYER"],
+      },
+    };
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url.includes(BACKEND_VEHICLE_OFFERS_PATH)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => SHOWROOM_VEHICLES.map((entry) => ({
+            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+            priceKco: entry.publicName.includes("X19") ? 950 : entry.plannedPriceK,
+            currency: "KCO",
+          })),
+        };
+      }
+      return { ok: true, status: 200, json: async () => [] };
+    });
+
+    const container = (
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
+      }
+    ).document.createElement("div");
+    let root: Root | null = null;
+    await act(async () => {
+      root = createRoot(container as unknown as HTMLElement);
+      root.render(React.createElement(ShowroomOverlay, {
+        runtime: rt,
+        canAcquire: true,
+        accountKey: "buyer-x19",
+        walletKco: 750,
+        onClose: () => {},
+      }));
+    });
+    await act(async () => {
+      clickNode(findNodeByAttr(container, "data-build-action", "showroom-next")!);
+      clickNode(findNodeByAttr(container, "data-build-action", "showroom-next")!);
+    });
+
+    const price = findNodeByAttr(container, "data-testid", "showroom-card-price")!;
+    const getAttribute = price.getAttribute as (attr: string) => unknown;
+    expect(getAttribute("data-price-source")).toBe("server");
+    expect(getAttribute("data-price-kco")).toBe("950");
+    const acquire = findNodeByAttr(container, "data-build-action", "showroom-acquire")!;
+    const hasAttribute = acquire.hasAttribute as (attr: string) => boolean;
+    expect(hasAttribute("disabled")).toBe(true);
+    const affordability = findNodeByAttr(container, "data-testid", "showroom-affordability")!;
+    const affordabilityAttr = affordability.getAttribute as (attr: string) => unknown;
+    expect(affordabilityAttr("data-affordability")).toBe("insufficient");
+    expect(readNodeText(affordability)).toContain("Need ₭200 more");
+    await act(async () => root?.unmount());
   });
 });
 

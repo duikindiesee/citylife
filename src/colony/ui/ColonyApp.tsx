@@ -60,7 +60,6 @@ import { PasswordChangePanel } from "./PasswordChangePanel";
 import { markPasswordChangePending } from "../pendingPasswordNotice";
 import {
   fetchOwnedVehicleKeysBackend,
-  isCarAcquisitionEnabled,
   shouldAutoOpenShowroom,
 } from "../car/carAcquisition";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
@@ -1901,7 +1900,8 @@ export function ColonyApp() {
       {showroomOpen && newPlayerJourneyEnabled && (
         <ShowroomOverlay
           runtime={runtime}
-          canAcquire={showroomAutoAcquire || isCarAcquisitionEnabled()}
+          canAcquire={showroomAutoAcquire}
+          accountKey={operatorUserId === null ? null : String(operatorUserId)}
           walletKco={playerWalletKco}
           onClose={() => {
             setShowroomOpen(false);

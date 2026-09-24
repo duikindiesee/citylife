@@ -13,9 +13,12 @@ import {
   clearOwnedKeysCache,
   carOwnershipCacheKey,
   fetchOwnedVehicleKeysBackend,
+  parseVehicleOfferPrices,
+  fetchVehicleOfferPricesBackend,
   postAcquireVehicle,
   acquireIdempotencyKey,
   BACKEND_VEHICLE_PURCHASE_PATH,
+  BACKEND_VEHICLE_OFFERS_PATH,
 } from "../src/colony/car/carAcquisition";
 import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
 import { getAuthClient } from "../src/colony/authClient";
@@ -243,6 +246,56 @@ describe("carAcquisition — backend ownership truth (GET)", () => {
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
     vi.stubGlobal("fetch", async () => ({ ok: false, status: 404 }));
     expect(await fetchOwnedVehicleKeysBackend()).toBeNull();
+  });
+});
+
+describe("carAcquisition — authoritative server offers (GET)", () => {
+  it("accepts canonical KCO offers and rejects malformed or duplicate catalogs", () => {
+    expect(parseVehicleOfferPrices([
+      { vehicleKey: serverVehicleKeyOf(VONK), priceKco: 250, currency: "KCO" },
+      { vehicleKey: serverVehicleKeyOf(KAAP), priceKco: 2400, currency: "KCO" },
+      { vehicleKey: "showroom:unknown", priceKco: 1, currency: "KCO" },
+    ])).toEqual({
+      [serverVehicleKeyOf(VONK)]: 250,
+      [serverVehicleKeyOf(KAAP)]: 2400,
+    });
+    expect(parseVehicleOfferPrices([
+      { vehicleKey: serverVehicleKeyOf(VONK), priceKco: "250", currency: "KCO" },
+    ])).toBeNull();
+    expect(parseVehicleOfferPrices([
+      { vehicleKey: serverVehicleKeyOf(VONK), priceKco: 250, currency: "USD" },
+    ])).toBeNull();
+    expect(parseVehicleOfferPrices([
+      { vehicleKey: serverVehicleKeyOf(VONK), priceKco: 250, currency: "KCO" },
+      { vehicleKey: serverVehicleKeyOf(VONK), priceKco: 260, currency: "KCO" },
+    ])).toBeNull();
+    expect(parseVehicleOfferPrices({ offers: [] })).toBeNull();
+  });
+
+  it("fetches prices with the current bearer token and fails closed when unavailable", async () => {
+    vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
+    let url = "";
+    let init: RequestInit = {};
+    vi.stubGlobal("fetch", async (u: string, i: RequestInit) => {
+      url = u;
+      init = i;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          { vehicleKey: serverVehicleKeyOf(VONK), priceKco: 250, currency: "KCO" },
+        ],
+      };
+    });
+    expect(await fetchVehicleOfferPricesBackend()).toEqual({
+      [serverVehicleKeyOf(VONK)]: 250,
+    });
+    expect(url).toBe(BACKEND_VEHICLE_OFFERS_PATH);
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer jwt.tok");
+    expect(init.cache).toBe("no-store");
+
+    vi.stubGlobal("fetch", async () => ({ ok: false, status: 503 }));
+    expect(await fetchVehicleOfferPricesBackend()).toBeNull();
   });
 });
 
