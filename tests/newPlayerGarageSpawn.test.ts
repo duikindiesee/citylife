@@ -583,11 +583,12 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
           return {
             ok: true,
             status: 200,
-            json: async () => SHOWROOM_VEHICLES.map((entry) => ({
-              vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
-              priceKco: entry.plannedPriceK,
-              currency: "KCO",
-            })),
+            json: async () =>
+              SHOWROOM_VEHICLES.map((entry) => ({
+                vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+                priceKco: entry.plannedPriceK,
+                currency: "KCO",
+              })),
           };
         }
         if (url.includes("/vehicle/purchase")) {
@@ -690,11 +691,12 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
         return {
           ok: true,
           status: 200,
-          json: async () => SHOWROOM_VEHICLES.map((entry) => ({
-            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
-            priceKco: entry.plannedPriceK,
-            currency: "KCO",
-          })),
+          json: async () =>
+            SHOWROOM_VEHICLES.map((entry) => ({
+              vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+              priceKco: entry.plannedPriceK,
+              currency: "KCO",
+            })),
         };
       }
       if (
@@ -807,11 +809,12 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
         return {
           ok: true,
           status: 200,
-          json: async () => SHOWROOM_VEHICLES.map((entry) => ({
-            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
-            priceKco: entry.plannedPriceK,
-            currency: "KCO",
-          })),
+          json: async () =>
+            SHOWROOM_VEHICLES.map((entry) => ({
+              vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+              priceKco: entry.plannedPriceK,
+              currency: "KCO",
+            })),
         };
       }
       if (
@@ -933,11 +936,14 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
         return {
           ok: true,
           status: 200,
-          json: async () => SHOWROOM_VEHICLES.map((entry) => ({
-            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
-            priceKco: entry.publicName.includes("X19") ? 950 : entry.plannedPriceK,
-            currency: "KCO",
-          })),
+          json: async () =>
+            SHOWROOM_VEHICLES.map((entry) => ({
+              vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+              priceKco: entry.publicName.includes("X19")
+                ? 950
+                : entry.plannedPriceK,
+              currency: "KCO",
+            })),
         };
       }
       return { ok: true, status: 200, json: async () => [] };
@@ -951,28 +957,48 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
     let root: Root | null = null;
     await act(async () => {
       root = createRoot(container as unknown as HTMLElement);
-      root.render(React.createElement(ShowroomOverlay, {
-        runtime: rt,
-        canAcquire: true,
-        accountKey: "buyer-x19",
-        walletKco: 750,
-        onClose: () => {},
-      }));
+      root.render(
+        React.createElement(ShowroomOverlay, {
+          runtime: rt,
+          canAcquire: true,
+          accountKey: "buyer-x19",
+          walletKco: 750,
+          onClose: () => {},
+        }),
+      );
     });
     await act(async () => {
-      clickNode(findNodeByAttr(container, "data-build-action", "showroom-next")!);
-      clickNode(findNodeByAttr(container, "data-build-action", "showroom-next")!);
+      clickNode(
+        findNodeByAttr(container, "data-build-action", "showroom-next")!,
+      );
+      clickNode(
+        findNodeByAttr(container, "data-build-action", "showroom-next")!,
+      );
     });
 
-    const price = findNodeByAttr(container, "data-testid", "showroom-card-price")!;
+    const price = findNodeByAttr(
+      container,
+      "data-testid",
+      "showroom-card-price",
+    )!;
     const getAttribute = price.getAttribute as (attr: string) => unknown;
     expect(getAttribute("data-price-source")).toBe("server");
     expect(getAttribute("data-price-kco")).toBe("950");
-    const acquire = findNodeByAttr(container, "data-build-action", "showroom-acquire")!;
+    const acquire = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire",
+    )!;
     const hasAttribute = acquire.hasAttribute as (attr: string) => boolean;
     expect(hasAttribute("disabled")).toBe(true);
-    const affordability = findNodeByAttr(container, "data-testid", "showroom-affordability")!;
-    const affordabilityAttr = affordability.getAttribute as (attr: string) => unknown;
+    const affordability = findNodeByAttr(
+      container,
+      "data-testid",
+      "showroom-affordability",
+    )!;
+    const affordabilityAttr = affordability.getAttribute as (
+      attr: string,
+    ) => unknown;
     expect(affordabilityAttr("data-affordability")).toBe("insufficient");
     expect(readNodeText(affordability)).toContain("Need ₭200 more");
     await act(async () => root?.unmount());

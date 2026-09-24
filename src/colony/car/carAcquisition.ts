@@ -298,7 +298,8 @@ export function parseVehicleOfferPrices(
   if (!Array.isArray(raw)) return null;
   const prices: Record<string, number> = {};
   for (const entry of raw) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry))
+      return null;
     const offer = entry as {
       vehicleKey?: unknown;
       priceKco?: unknown;
@@ -323,7 +324,9 @@ export function parseVehicleOfferPrices(
 
 /** Fetch the current human player's server-authoritative vehicle offers. Never falls back to
  *  showroom planned prices; unavailable/malformed responses return null and must disable purchase. */
-export async function fetchVehicleOfferPricesBackend(): Promise<Readonly<Record<string, number>> | null> {
+export async function fetchVehicleOfferPricesBackend(): Promise<Readonly<
+  Record<string, number>
+> | null> {
   try {
     const token = await getAuthClient().getValidToken();
     if (!token) return null;
