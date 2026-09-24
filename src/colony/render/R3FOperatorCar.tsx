@@ -1,5 +1,7 @@
 import { leveledWorldY } from "./terrainLeveling";
-import React, { Suspense, useEffect, useMemo } from "react";
+import React, { Suspense, useEffect, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
+import type { Group } from "three";
 import { Html, useGLTF } from "@react-three/drei";
 import { Box3 } from "three";
 import type { ShowroomVehicle } from "../showroom/showroomCatalog";
@@ -87,6 +89,33 @@ export function R3FOperatorCar({
   runtime,
   terrainLevel,
 }: R3FOperatorCarProps) {
+  const group = useRef<Group>(null);
+  useFrame(() => {
+    const car = sim.state.operatorCar;
+    if (!group.current || !car) return;
+    const t = sim.state.terrain;
+    const onRoad = sim.state.roadSet.has(
+      `${Math.round(car.cell.x)},${Math.round(car.cell.y)}`,
+    );
+    const y = onRoad
+      ? Math.max(0, getSmoothRoadY(t, car.cell.x, car.cell.y)) +
+        ROAD_RIBBON_LIFT
+      : Math.max(
+          0,
+          leveledWorldY(
+            t,
+            terrainLevel,
+            Math.round(car.cell.x),
+            Math.round(car.cell.y),
+          ),
+        ) + 0.02;
+    group.current.position.set(
+      (car.cell.x - t.size / 2) * 4,
+      y,
+      (car.cell.y - t.size / 2) * 4,
+    );
+    group.current.rotation.y = -(car.heading ?? 0);
+  });
   const sig = useSimSignal(runtime, () => operatorCarSignature(sim.state));
 
   const placement = useMemo(() => {
@@ -121,7 +150,7 @@ export function R3FOperatorCar({
   if (!placement || !parked) return null;
   const vehicle = SHOWROOM_VEHICLES.find((v) => v.spec.id === parked.spec.id);
   return (
-    <group name="operator-car" position={placement}>
+    <group ref={group} name="operator-car" position={placement}>
       {vehicle?.glbUrl ? (
         <VehicleModelBoundary key={vehicle.spec.id}>
           <Suspense

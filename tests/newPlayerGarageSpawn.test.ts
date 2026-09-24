@@ -17,6 +17,8 @@ import {
 } from "../src/colony/car/carAcquisition";
 import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
 import { type CarSpec } from "../src/colony/car/carSpec";
+import { deriveStats } from "../src/colony/car/carParts";
+import { stepOwnedDrive } from "../src/colony/car/ownedDriving";
 import { getAuthClient } from "../src/colony/authClient";
 import { ColonyRuntime } from "../src/colony/runtime";
 
@@ -357,6 +359,25 @@ describe("PLAYER.CAR.1.S5 — distinct user ID vs citizen ID persistence via run
 });
 
 describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
+  function tickOwnedDriveOnce(rt: ColonyRuntime): number {
+    const roadKey = [...rt.sim.state.roadSet][0];
+    expect(roadKey).toBeDefined();
+    const [x, y] = roadKey!.split(",").map(Number);
+    const internals = rt as unknown as {
+      ownedDrivePose: { x: number; y: number; heading: number; speed: number } | null;
+      ownedDriveSeated: boolean;
+      ownedDriveInput: { throttle: boolean };
+      blockedStepReason: (x: number, y: number) => string | null;
+      tickOwnedDrive: (dt: number) => void;
+    };
+    internals.blockedStepReason = () => null;
+    internals.ownedDrivePose = { x: x!, y: y!, heading: 0, speed: 0 };
+    internals.ownedDriveSeated = true;
+    internals.ownedDriveInput = { throttle: true };
+    internals.tickOwnedDrive(1 / 60);
+    return internals.ownedDrivePose!.speed;
+  }
+
   it("replaces the wrong cached model and rejects a stale account ownership response", () => {
     const rt = new ColonyRuntime(4242);
     const citizen = rt.getUiState().citizens.list[0]!;
@@ -368,15 +389,119 @@ describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
       setOperatorCar: render,
     };
     rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"]);
+    const originalGeneration = rt.getOwnedDriveInputGeneration();
+    rt.setOperatorUserId("owner-a");
+    rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"]);
+    expect(rt.getOwnedDriveInputGeneration()).toBe(originalGeneration);
     expect(loadCar(citizen.id).id).toBe(SHOWROOM_VEHICLES[2]!.spec.id);
     expect(render.mock.calls.at(-1)![0].id).toBe(SHOWROOM_VEHICLES[2]!.spec.id);
     rt.applyVehicleOwnership("owner-a", []);
+    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(originalGeneration);
+    const revokedGeneration = rt.getOwnedDriveInputGeneration();
     expect(render).toHaveBeenLastCalledWith(null, null);
     rt.setOperatorUserId("owner-b");
-    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(
-      false,
-    );
+    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(revokedGeneration);
+    const switchedGeneration = rt.getOwnedDriveInputGeneration();
+    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(false);
+    expect(rt.getOwnedDriveInputGeneration()).toBe(switchedGeneration);
     expect(render).toHaveBeenLastCalledWith(null, null);
+  });
+
+  it("uses the current owner's matching mounted upgrades for rendering and owned driving", () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId("owner-with-tuned-x19");
+    const tunedX19 = { ...SHOWROOM_VEHICLES[2]!.spec, parts: ["blower"] };
+    saveCar(citizen.id, tunedX19);
+    const render = vi.fn();
+    (rt as unknown as { renderer: unknown }).renderer = {
+      setOperatorCar: render,
+    };
+
+    expect(
+      rt.applyVehicleOwnership("owner-with-tuned-x19", ["karoo-x19-targa"]),
+    ).toBe(true);
+    expect(render.mock.calls.at(-1)![0].parts).toEqual(["blower"]);
+
+    const actualSpeed = tickOwnedDriveOnce(rt);
+    const expected = stepOwnedDrive(
+      { x: 0, y: 0, heading: 0, speed: 0 },
+      { throttle: true },
+      deriveStats(tunedX19),
+      1 / 60,
+      () => true,
+    ).speed;
+    expect(actualSpeed).toBeCloseTo(expected, 10);
+    expect(actualSpeed).toBeGreaterThan(
+      stepOwnedDrive(
+        { x: 0, y: 0, heading: 0, speed: 0 },
+        { throttle: true },
+        deriveStats(SHOWROOM_VEHICLES[2]!.spec),
+        1 / 60,
+        () => true,
+      ).speed,
+    );
+  });
+
+  it("rejects mismatched local tuning and uses the authoritative model's stock spec", () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId("owner-with-different-cached-model");
+    saveCar(citizen.id, { ...SHOWROOM_VEHICLES[0]!.spec, parts: ["blower"] });
+    const render = vi.fn();
+    (rt as unknown as { renderer: unknown }).renderer = {
+      setOperatorCar: render,
+    };
+
+    expect(
+      rt.applyVehicleOwnership("owner-with-different-cached-model", [
+        "karoo-x19-targa",
+      ]),
+    ).toBe(true);
+    expect(loadCar(citizen.id)).toEqual(SHOWROOM_VEHICLES[2]!.spec);
+    expect(render.mock.calls.at(-1)![0]).toEqual(SHOWROOM_VEHICLES[2]!.spec);
+    expect(tickOwnedDriveOnce(rt)).toBeCloseTo(
+      stepOwnedDrive(
+        { x: 0, y: 0, heading: 0, speed: 0 },
+        { throttle: true },
+        deriveStats(SHOWROOM_VEHICLES[2]!.spec),
+        1 / 60,
+        () => true,
+      ).speed,
+      10,
+    );
+  });
+
+  it("uses the authoritative stock car without a local citizen or garage", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.setOperatorUserId("owner-with-no-citizen");
+    expect(rt.operatorCitizenId()).toBeNull();
+    const render = vi.fn();
+    (rt as unknown as { renderer: unknown }).renderer = {
+      setOperatorCar: render,
+    };
+
+    expect(
+      rt.applyVehicleOwnership("owner-with-no-citizen", ["karoo-x19-targa"]),
+    ).toBe(true);
+    expect(rt.operatorCitizenId()).toBeNull();
+    expect(
+      (rt as unknown as { currentPlayerOwnedCarSpec: () => CarSpec | null })
+        .currentPlayerOwnedCarSpec(),
+    ).toEqual(SHOWROOM_VEHICLES[2]!.spec);
+    expect(tickOwnedDriveOnce(rt)).toBeCloseTo(
+      stepOwnedDrive(
+        { x: 0, y: 0, heading: 0, speed: 0 },
+        { throttle: true },
+        deriveStats(SHOWROOM_VEHICLES[2]!.spec),
+        1 / 60,
+        () => true,
+      ).speed,
+      10,
+    );
+    expect(render.mock.calls.at(-1)![0]).toEqual(SHOWROOM_VEHICLES[2]!.spec);
   });
 
   it("isolates ownership cache between distinct user accounts", () => {

@@ -28,6 +28,8 @@ import {
   rampedGroundSpeedMps,
 } from "../../colony/playerSpeed";
 import { replayPose } from "../../colony/perf/replayBridge";
+import type { OwnedDrivePose } from "../../colony/car/ownedDriving";
+import { ROAD_RIBBON_LIFT } from "../../colony/render/roadRibbon";
 
 const LOOK_SPEED = 2;
 const BUS_RIDER_EYE = 2.4; // eye height above the road while seated on the 3 m coach (spec 149)
@@ -35,6 +37,7 @@ const BUS_RIDER_EYE = 2.4; // eye height above the road while seated on the 3 m 
 // Spec 149 — the slice of the runtime the walker capsule talks to: ride pinning, one-shot
 // teleports, and reporting where the camera stands so bus prompts measure from the real player.
 interface FpRuntimeBridge {
+  getOwnedDrivePose?: () => OwnedDrivePose | null;
   fpRidingBusId?: number | null;
   busPoseOf?: (id: number) => { x: number; y: number; heading: number } | null;
   fpTeleportRequest?: {
@@ -171,6 +174,26 @@ export function FirstPersonController({
     const toGridZ = (wz: number) => wz / 4 + terrainSizeForGrid / 2;
     const toWorldX = (gx: number) => (gx - terrainSizeForGrid / 2) * 4;
     const toWorldZ = (gy: number) => (gy - terrainSizeForGrid / 2) * 4;
+
+    const driving = runtime?.getOwnedDrivePose?.();
+    if (driving && sim?.state?.terrain) {
+      const eyeY =
+        Math.max(0, getSmoothRoadY(sim.state.terrain, driving.x, driving.y)) +
+        ROAD_RIBBON_LIFT +
+        COLONY.ownedDriving.seatedEyeMetres;
+      const wx = toWorldX(driving.x);
+      const wz = toWorldZ(driving.y);
+      rigidBody.current.setTranslation(
+        { x: wx, y: eyeY - PLAYER_EYE_OFFSET, z: wz },
+        true,
+      );
+      rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      rotation.current.set(0, -driving.heading - Math.PI / 2, 0);
+      camera.position.set(wx, eyeY, wz);
+      camera.quaternion.setFromEuler(rotation.current);
+      if (runtime) runtime.fpCameraCell = { x: driving.x, y: driving.y };
+      return;
+    }
 
     // Spec 149 — one-shot teleports (debug placement, stepping off a bus) land the CAPSULE, not
     // just the roster citizen, so the player's eyes actually go there.

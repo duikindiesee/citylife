@@ -2,6 +2,20 @@
 import { PLAYER_WALK_SPEED_MPS } from "./scale";
 
 export const COLONY = {
+  ownedDriving: {
+    cellMetres: 4,
+    topSpeedMps: 12,
+    reverseMps: 3,
+    accelerationMps2: 4,
+    brakingMps2: 8,
+    coastDrag: 1.5,
+    steerRadiansPerSecond: 1.2,
+    maxFrameSeconds: 0.25,
+    substepSeconds: 1 / 60,
+    halfLengthMetres: 2,
+    halfWidthMetres: 0.85,
+    seatedEyeMetres: 1.05,
+  },
   world: {
     // Spec 084 S6 — WORLD v2: ~10x the area (608 = 8x76 for clean terrain chunking). heightScale
     // rises by exactly the same x3.17 as the linear size, so per-cell slope statistics — and with
