@@ -36,6 +36,7 @@ describe("always-visible bus network minimap model", () => {
         { id: 0, x: 15, y: 10 },
         { id: 1, x: 20, y: 12 },
       ],
+      player: { x: 16, y: 10 },
       width: 200,
       height: 132,
       padding: 8,
@@ -45,7 +46,8 @@ describe("always-visible bus network minimap model", () => {
     expect(model.buses).toHaveLength(2);
     expect(model.busClusters.reduce((sum, c) => sum + c.ids.length, 0)).toBe(2);
     expect(model.depot).not.toBeNull();
-    for (const p of [...model.stops, ...model.buses, model.depot!]) {
+    expect(model.player).not.toBeNull();
+    for (const p of [...model.stops, ...model.buses, model.depot!, model.player!]) {
       expect(p.x).toBeGreaterThanOrEqual(8);
       expect(p.x).toBeLessThanOrEqual(192);
       expect(p.y).toBeGreaterThanOrEqual(8);

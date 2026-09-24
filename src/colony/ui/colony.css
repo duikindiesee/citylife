@@ -2167,6 +2167,15 @@ body.tv-mode .radio-iframe.is-visible {
   letter-spacing: 0.12em;
   padding: 0 3px 5px;
 }
+.bus-network-minimap__summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 3px 6px;
+  color: #93b8ca;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
 .bus-network-minimap svg {
   display: block;
   width: 100%;
@@ -2205,6 +2214,16 @@ body.tv-mode .radio-iframe.is-visible {
   fill: #2ddfff;
   stroke: #fff;
   stroke-width: 1.2;
+}
+.bus-network-minimap__player-ring {
+  fill: rgba(91, 255, 181, 0.18);
+  stroke: #5bffb5;
+  stroke-width: 1.4;
+}
+.bus-network-minimap__player {
+  fill: #5bffb5;
+  stroke: #f2fffb;
+  stroke-width: 1;
 }
 @media (max-width: 700px) {
   .bus-network-minimap {

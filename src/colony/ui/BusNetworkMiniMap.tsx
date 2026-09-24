@@ -1,12 +1,29 @@
 import type { ColonyRuntime } from "../runtime";
+import type { PresenceReadout } from "../spatial/presenceReadout";
 import { buildBusNetworkMiniMapModel } from "./busNetworkMiniMapModel";
 
 const WIDTH = 200;
 const HEIGHT = 132;
 
-export function BusNetworkMiniMap({ runtime }: { runtime: ColonyRuntime }) {
+export function BusNetworkMiniMap({
+  runtime,
+  walletKco,
+  presenceReadout,
+}: {
+  runtime: ColonyRuntime;
+  /** Server-synced player wallet only; null when this is an operator/city view. */
+  walletKco: number | null;
+  presenceReadout: PresenceReadout | null;
+}) {
   const state = runtime.sim.state;
   const depot = runtime.busDepot?.site ?? null;
+  const local = presenceReadout?.entries.find((entry) => entry.isLocal) ?? null;
+  // Presence resolution is already the authoritative grid projection. Do not make a second guess
+  // from renderer coordinates: an unavailable or coarse position stays absent from the map.
+  const player =
+    local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
+      ? { x: local.fix.cell.x, y: local.fix.cell.y }
+      : null;
   const model = buildBusNetworkMiniMapModel({
     ways: state.roadWays ?? [],
     routeStops: runtime.busRoute?.stops ?? [],
@@ -14,15 +31,20 @@ export function BusNetworkMiniMap({ runtime }: { runtime: ColonyRuntime }) {
       ? { x: depot.x + (depot.w - 1) / 2, y: depot.y + (depot.h - 1) / 2 }
       : null,
     buses: runtime.busPoses().map((p, id) => ({ id, x: p.x, y: p.y })),
+    player,
     width: WIDTH,
     height: HEIGHT,
     padding: 8,
   });
   return (
-    <aside className="bus-network-minimap" aria-label="Live bus network map">
+    <aside className="bus-network-minimap" aria-label="City map and live bus network">
       <div className="bus-network-minimap__title">
-        <span>BUS NETWORK</span>
-        <span>{model.buses.length} LIVE</span>
+        <span>CITY MAP</span>
+        <span>{model.buses.length} BUS{model.buses.length === 1 ? "" : "ES"}</span>
+      </div>
+      <div className="bus-network-minimap__summary">
+        <span>{walletKco === null ? "City view" : `Wallet ₭${Math.round(walletKco).toLocaleString("en-US")}`}</span>
+        <span>{model.player ? "You are here" : "Position unavailable"}</span>
       </div>
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
@@ -68,6 +90,22 @@ export function BusNetworkMiniMap({ runtime }: { runtime: ColonyRuntime }) {
             <text x={model.depot.x + 6} y={model.depot.y + 3}>
               D
             </text>
+          </g>
+        )}
+        {model.player && (
+          <g aria-label="Your current location" data-testid="city-map-player-marker">
+            <circle
+              cx={model.player.x}
+              cy={model.player.y}
+              r="5.4"
+              className="bus-network-minimap__player-ring"
+            />
+            <circle
+              cx={model.player.x}
+              cy={model.player.y}
+              r="3"
+              className="bus-network-minimap__player"
+            />
           </g>
         )}
         {model.busClusters.map((cluster) => {

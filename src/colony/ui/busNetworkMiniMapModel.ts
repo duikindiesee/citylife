@@ -16,6 +16,8 @@ export interface BusNetworkMiniMapModel {
   depot: MiniMapPoint | null;
   buses: MiniMapBusPoint[];
   busClusters: MiniMapBusCluster[];
+  /** The local player's exact surface-grid fix, when the runtime has one. */
+  player: MiniMapPoint | null;
   bounds: { minX: number; minY: number; spanX: number; spanY: number };
 }
 
@@ -24,6 +26,7 @@ interface Input {
   routeStops: { x: number; y: number }[];
   depot: { x: number; y: number } | null;
   buses: { id: number; x: number; y: number }[];
+  player?: { x: number; y: number } | null;
   width: number;
   height: number;
   padding: number;
@@ -36,6 +39,7 @@ export function buildBusNetworkMiniMapModel(
     ...input.ways.flatMap((way) => way.path),
     ...input.routeStops,
     ...input.buses,
+    ...(input.player ? [input.player] : []),
     ...(input.depot ? [input.depot] : []),
   ];
   const xs = all.map((p) => p.x);
@@ -85,6 +89,7 @@ export function buildBusNetworkMiniMapModel(
     depot: input.depot ? project(input.depot) : null,
     buses,
     busClusters,
+    player: input.player ? project(input.player) : null,
     bounds: { minX: rawMinX, minY: rawMinY, spanX, spanY },
   };
 }

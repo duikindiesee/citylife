@@ -2200,7 +2200,11 @@ export function ColonyApp() {
           />
         )}
       </header>
-      <BusNetworkMiniMap runtime={runtime} />
+      <BusNetworkMiniMap
+        runtime={runtime}
+        walletKco={playerWalletKco}
+        presenceReadout={presenceReadout}
+      />
       {/* BUG.GEO.1 — the presence readout (so any screenshot of this frame is self-locating) is
           rendered above, as a member of `.hud-corner-rail-left`. UI.GEO.OVERLAP.1 moved it there
           from here: it used to position itself into the bottom-left corner and collide with the
