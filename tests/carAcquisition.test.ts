@@ -251,24 +251,56 @@ describe("carAcquisition — backend ownership truth (GET)", () => {
 
 describe("carAcquisition — authoritative server offers (GET)", () => {
   it("accepts canonical KCO offers and rejects malformed or duplicate catalogs", () => {
-    expect(parseVehicleOfferPrices([
-      { vehicleKey: serverVehicleKeyOf(VONK), priceKco: 250, currency: "KCO" },
-      { vehicleKey: serverVehicleKeyOf(KAAP), priceKco: 2400, currency: "KCO" },
-      { vehicleKey: "showroom:unknown", priceKco: 1, currency: "KCO" },
-    ])).toEqual({
+    expect(
+      parseVehicleOfferPrices([
+        {
+          vehicleKey: serverVehicleKeyOf(VONK),
+          priceKco: 250,
+          currency: "KCO",
+        },
+        {
+          vehicleKey: serverVehicleKeyOf(KAAP),
+          priceKco: 2400,
+          currency: "KCO",
+        },
+        { vehicleKey: "showroom:unknown", priceKco: 1, currency: "KCO" },
+      ]),
+    ).toEqual({
       [serverVehicleKeyOf(VONK)]: 250,
       [serverVehicleKeyOf(KAAP)]: 2400,
     });
-    expect(parseVehicleOfferPrices([
-      { vehicleKey: serverVehicleKeyOf(VONK), priceKco: "250", currency: "KCO" },
-    ])).toBeNull();
-    expect(parseVehicleOfferPrices([
-      { vehicleKey: serverVehicleKeyOf(VONK), priceKco: 250, currency: "USD" },
-    ])).toBeNull();
-    expect(parseVehicleOfferPrices([
-      { vehicleKey: serverVehicleKeyOf(VONK), priceKco: 250, currency: "KCO" },
-      { vehicleKey: serverVehicleKeyOf(VONK), priceKco: 260, currency: "KCO" },
-    ])).toBeNull();
+    expect(
+      parseVehicleOfferPrices([
+        {
+          vehicleKey: serverVehicleKeyOf(VONK),
+          priceKco: "250",
+          currency: "KCO",
+        },
+      ]),
+    ).toBeNull();
+    expect(
+      parseVehicleOfferPrices([
+        {
+          vehicleKey: serverVehicleKeyOf(VONK),
+          priceKco: 250,
+          currency: "USD",
+        },
+      ]),
+    ).toBeNull();
+    expect(
+      parseVehicleOfferPrices([
+        {
+          vehicleKey: serverVehicleKeyOf(VONK),
+          priceKco: 250,
+          currency: "KCO",
+        },
+        {
+          vehicleKey: serverVehicleKeyOf(VONK),
+          priceKco: 260,
+          currency: "KCO",
+        },
+      ]),
+    ).toBeNull();
     expect(parseVehicleOfferPrices({ offers: [] })).toBeNull();
   });
 
@@ -283,7 +315,11 @@ describe("carAcquisition — authoritative server offers (GET)", () => {
         ok: true,
         status: 200,
         json: async () => [
-          { vehicleKey: serverVehicleKeyOf(VONK), priceKco: 250, currency: "KCO" },
+          {
+            vehicleKey: serverVehicleKeyOf(VONK),
+            priceKco: 250,
+            currency: "KCO",
+          },
         ],
       };
     });
@@ -291,7 +327,9 @@ describe("carAcquisition — authoritative server offers (GET)", () => {
       [serverVehicleKeyOf(VONK)]: 250,
     });
     expect(url).toBe(BACKEND_VEHICLE_OFFERS_PATH);
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer jwt.tok");
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer jwt.tok",
+    );
     expect(init.cache).toBe("no-store");
 
     vi.stubGlobal("fetch", async () => ({ ok: false, status: 503 }));
@@ -304,7 +342,9 @@ describe("carAcquisition — POST acquire (server authority, vehicleKey only)", 
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
-    expect(await postAcquireVehicle(VONK, { VITE_CITYLIFE_CAR_ACQUISITION: "off" })).toEqual({ kind: "disabled" });
+    expect(
+      await postAcquireVehicle(VONK, { VITE_CITYLIFE_CAR_ACQUISITION: "off" }),
+    ).toEqual({ kind: "disabled" });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
   it("refuses a non-canonical key without posting, even when enabled", async () => {

@@ -92,14 +92,20 @@ export function ShowroomOverlay({
     prices: Readonly<Record<string, number>> | null;
   }>({ accountKey: null, status: "loading", prices: null });
   const [offerRetry, setOfferRetry] = useState(0);
-  const currentAccountKey = getAuthClient().operator?.userId == null
-    ? null
-    : String(getAuthClient().operator!.userId);
+  const currentAccountKey =
+    getAuthClient().operator?.userId == null
+      ? null
+      : String(getAuthClient().operator!.userId);
   // Bind quotes to the account that fetched them. On an account switch, the old price is unusable
   // during the render before the effect runs, so it cannot flash as an actionable offer.
-  const offerBelongsToCurrentAccount = offerState.accountKey === currentAccountKey;
-  const serverOfferPrices = offerBelongsToCurrentAccount ? offerState.prices : null;
-  const offerStatus = offerBelongsToCurrentAccount ? offerState.status : "loading";
+  const offerBelongsToCurrentAccount =
+    offerState.accountKey === currentAccountKey;
+  const serverOfferPrices = offerBelongsToCurrentAccount
+    ? offerState.prices
+    : null;
+  const offerStatus = offerBelongsToCurrentAccount
+    ? offerState.status
+    : "loading";
   // The set of vehicleKeys the SERVER says the player owns. Seeded from the cache-only mirror for an
   // instant first paint, then overwritten by the authoritative GET — never merged ahead of it.
   const [owned, setOwned] = useState<readonly string[]>([]);
@@ -119,7 +125,8 @@ export function ShowroomOverlay({
     let live = true;
     const auth = getAuthClient();
     const initialUserId = auth.operator?.userId ?? null;
-    const initialUserKey = initialUserId === null ? null : String(initialUserId);
+    const initialUserKey =
+      initialUserId === null ? null : String(initialUserId);
     const initialCitizenId = runtime?.operatorCitizenId() ?? null;
 
     if (
@@ -127,19 +134,28 @@ export function ShowroomOverlay({
       initialUserKey === null ||
       (accountKey !== undefined && accountKey !== initialUserKey)
     ) {
-      setOfferState({ accountKey: initialUserKey, status: "unavailable", prices: null });
+      setOfferState({
+        accountKey: initialUserKey,
+        status: "unavailable",
+        prices: null,
+      });
       return () => {
         live = false;
       };
     }
 
-    setOfferState({ accountKey: initialUserKey, status: "loading", prices: null });
+    setOfferState({
+      accountKey: initialUserKey,
+      status: "loading",
+      prices: null,
+    });
     void fetchVehicleOfferPricesBackend().then((prices) => {
       if (!live || !isMountedRef.current) return;
       const freshAuth = getAuthClient();
       const freshUserId = freshAuth.operator?.userId ?? null;
       if (
-        (freshUserId === null ? null : String(freshUserId)) !== initialUserKey ||
+        (freshUserId === null ? null : String(freshUserId)) !==
+          initialUserKey ||
         (initialCitizenId && runtime?.operatorCitizenId() !== initialCitizenId)
       ) {
         return;
@@ -211,7 +227,8 @@ export function ShowroomOverlay({
   const isOwned =
     owned.includes(vehicleKey) ||
     owned.includes(serverVehicleKeyOf(vehicleKey));
-  const serverPriceKco = serverOfferPrices?.[serverVehicleKeyOf(vehicleKey)] ?? null;
+  const serverPriceKco =
+    serverOfferPrices?.[serverVehicleKeyOf(vehicleKey)] ?? null;
   const outcome = outcomes[vehicleKey];
   const isPending = pendingKey === vehicleKey;
 
@@ -222,7 +239,8 @@ export function ShowroomOverlay({
       offerStatus !== "ready" ||
       isOwned ||
       pendingKey !== null
-    ) return;
+    )
+      return;
     const key = vehicleKey;
     const initiatingAuth = getAuthClient();
     const initiatingUserId = initiatingAuth.operator?.userId ?? null;
@@ -289,7 +307,15 @@ export function ShowroomOverlay({
         saveOwnedKeysCache(truth, scope);
       }
     });
-  }, [acquireEnabled, isOwned, offerStatus, pendingKey, runtime, serverPriceKco, vehicleKey]);
+  }, [
+    acquireEnabled,
+    isOwned,
+    offerStatus,
+    pendingKey,
+    runtime,
+    serverPriceKco,
+    vehicleKey,
+  ]);
 
   const retryOfferPrice = useCallback(() => {
     setOfferRetry((current) => current + 1);
@@ -602,7 +628,11 @@ function AcquireButton({
       <span
         data-testid="showroom-affordability"
         data-affordability={affordabilityState}
-        style={{ color: shortage && shortage > 0 ? "#f2a35a" : "#9fd4a6", fontSize: 11, fontWeight: 700 }}
+        style={{
+          color: shortage && shortage > 0 ? "#f2a35a" : "#9fd4a6",
+          fontSize: 11,
+          fontWeight: 700,
+        }}
       >
         {affordability}
       </span>

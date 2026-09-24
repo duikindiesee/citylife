@@ -395,7 +395,10 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   await expect(acquire).toBeDisabled({ timeout: ASSERT_TIMEOUT });
   await expect(acquire).toHaveText("Need ₭250 more");
-  await expect(acquire).toHaveAttribute("data-acquire-state", "insufficient_funds");
+  await expect(acquire).toHaveAttribute(
+    "data-acquire-state",
+    "insufficient_funds",
+  );
 
   await touchTap(page, '[data-build-action="showroom-exit"]');
   await expect(page.locator(OVERLAY)).toHaveCount(0);
@@ -403,7 +406,10 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   await expect(page.locator(OVERLAY)).toBeVisible();
   await expect(acquire).toBeDisabled({ timeout: ASSERT_TIMEOUT });
   await expect(acquire).toHaveText("Need ₭250 more");
-  await expect(acquire).toHaveAttribute("data-acquire-state", "insufficient_funds");
+  await expect(acquire).toHaveAttribute(
+    "data-acquire-state",
+    "insufficient_funds",
+  );
   await expect(
     page.locator('[data-build-action="showroom-acquire-preview"]'),
   ).toHaveCount(0);
@@ -447,17 +453,15 @@ test("server ownership opens Gearbox despite a stale cached car", async ({
   await bootAs(page, "stale-cache-player", true);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   expect(ownershipReads).toBeGreaterThan(0);
-  await expect(page.locator('[data-testid="showroom-card-price"]')).toHaveAttribute(
-    "data-price-source",
-    "server",
-  );
+  await expect(
+    page.locator('[data-testid="showroom-card-price"]'),
+  ).toHaveAttribute("data-price-source", "server");
   await expect(
     page.locator('[data-build-action="showroom-acquire"]'),
   ).toBeDisabled({ timeout: ASSERT_TIMEOUT });
-  await expect(page.locator('[data-testid="showroom-affordability"]')).toHaveText(
-    "Need ₭250 more",
-    { timeout: ASSERT_TIMEOUT },
-  );
+  await expect(
+    page.locator('[data-testid="showroom-affordability"]'),
+  ).toHaveText("Need ₭250 more", { timeout: ASSERT_TIMEOUT });
 });
 
 test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switch re-hides", async ({
@@ -486,15 +490,15 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   await allowVehicleOffers(page);
   await bootAs(page, "uat-allow-1", true);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
-  await expect(page.locator('[data-testid="showroom-card-price"]')).toHaveAttribute(
-    "data-price-source",
-    "server",
-  );
-  await expect(page.locator('[data-testid="showroom-affordability"]')).toHaveText(
-    "Need ₭250 more",
-    { timeout: ASSERT_TIMEOUT },
-  );
-  await expect(page.locator('[data-build-action="showroom-acquire"]')).toBeDisabled();
+  await expect(
+    page.locator('[data-testid="showroom-card-price"]'),
+  ).toHaveAttribute("data-price-source", "server");
+  await expect(
+    page.locator('[data-testid="showroom-affordability"]'),
+  ).toHaveText("Need ₭250 more", { timeout: ASSERT_TIMEOUT });
+  await expect(
+    page.locator('[data-build-action="showroom-acquire"]'),
+  ).toBeDisabled();
   await touchTap(page, '[data-build-action="showroom-exit"]');
   await expect(page.locator(OVERLAY)).toHaveCount(0, {
     timeout: ASSERT_TIMEOUT,
