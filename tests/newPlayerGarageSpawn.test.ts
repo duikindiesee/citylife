@@ -379,7 +379,10 @@ describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
     const revokedGeneration = rt.getOwnedDriveInputGeneration();
     expect(render).toHaveBeenLastCalledWith(null, null);
     rt.setOperatorUserId("owner-b");
-    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(revokedGeneration);`n    const switchedGeneration = rt.getOwnedDriveInputGeneration();`n    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(false);`n    expect(rt.getOwnedDriveInputGeneration()).toBe(switchedGeneration);
+    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(revokedGeneration);
+    const switchedGeneration = rt.getOwnedDriveInputGeneration();
+    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(false);
+    expect(rt.getOwnedDriveInputGeneration()).toBe(switchedGeneration);
     expect(render).toHaveBeenLastCalledWith(null, null);
   });
 
