@@ -38,12 +38,11 @@ export function BusNetworkMiniMap({
       getOwnedDrivePose?: () => { x: number; y: number } | null;
     }
   ).getOwnedDrivePose?.();
-  const player =
-    driving
-      ? { x: driving.x, y: driving.y }
-      : local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
-        ? { x: local.fix.cell.x, y: local.fix.cell.y }
-        : null;
+  const player = driving
+    ? { x: driving.x, y: driving.y }
+    : local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
+      ? { x: local.fix.cell.x, y: local.fix.cell.y }
+      : null;
   const model = buildBusNetworkMiniMapModel({
     ways: state.roadWays ?? [],
     routeStops: runtime.busRoute?.stops ?? [],
@@ -64,7 +63,9 @@ export function BusNetworkMiniMap({
     >
       <div className="bus-network-minimap__title">
         <span>CITY MAP</span>
-        <span>{model.buses.length} BUS{model.buses.length === 1 ? "" : "ES"}</span>
+        <span>
+          {model.buses.length} BUS{model.buses.length === 1 ? "" : "ES"}
+        </span>
         <button
           className="bus-network-minimap__toggle"
           type="button"
@@ -77,7 +78,11 @@ export function BusNetworkMiniMap({
         </button>
       </div>
       <div className="bus-network-minimap__summary">
-        <span>{walletKco === null ? "City view" : `Wallet ₭${formatAmount(walletKco)}`}</span>
+        <span>
+          {walletKco === null
+            ? "City view"
+            : `Wallet ₭${formatAmount(walletKco)}`}
+        </span>
         <span>{model.player ? "You are here" : "Position unavailable"}</span>
       </div>
       <div className="bus-network-minimap__mode">LOCAL SESSION</div>
@@ -156,7 +161,9 @@ export function BusNetworkMiniMap({
             cluster.ids.length === 1
               ? `Bus ${cluster.ids[0]! + 1}`
               : `${cluster.ids.length} buses: ${cluster.ids.map((id) => id + 1).join(", ")}`;
-          const accessibleLabel = cluster.outOfBounds ? `${label}, at map edge` : label;
+          const accessibleLabel = cluster.outOfBounds
+            ? `${label}, at map edge`
+            : label;
           return (
             <g
               key={`buses-${cluster.ids.join("-")}`}

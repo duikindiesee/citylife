@@ -2183,7 +2183,9 @@ body.tv-mode .radio-iframe.is-visible {
   border-radius: 8px;
   background: rgba(18, 42, 57, 0.94);
   color: #d8f4ff;
-  font: 700 10px/1.2 system-ui, sans-serif;
+  font:
+    700 10px/1.2 system-ui,
+    sans-serif;
   white-space: nowrap;
   cursor: pointer;
   pointer-events: auto;

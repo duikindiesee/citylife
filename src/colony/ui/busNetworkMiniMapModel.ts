@@ -70,8 +70,14 @@ export function buildBusNetworkMiniMapModel(
     const outOfBounds =
       p.x < rawMinX || p.x > rawMaxX || p.y < rawMinY || p.y > rawMaxY;
     return {
-      x: Math.min(input.width - input.padding, Math.max(input.padding, projected.x)),
-      y: Math.min(input.height - input.padding, Math.max(input.padding, projected.y)),
+      x: Math.min(
+        input.width - input.padding,
+        Math.max(input.padding, projected.x),
+      ),
+      y: Math.min(
+        input.height - input.padding,
+        Math.max(input.padding, projected.y),
+      ),
       outOfBounds,
     };
   };
@@ -88,8 +94,7 @@ export function buildBusNetworkMiniMapModel(
         outOfBounds: bus.outOfBounds,
         ids: [bus.id],
       });
-    }
-    else {
+    } else {
       const n = cluster.ids.length;
       cluster.x = (cluster.x * n + bus.x) / (n + 1);
       cluster.y = (cluster.y * n + bus.y) / (n + 1);

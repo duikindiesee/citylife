@@ -211,7 +211,9 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   expect(compactMap).not.toBeNull();
   await touchTap(page, '[data-testid="city-map-toggle"]');
   await expect(cityMap).toHaveAttribute("data-expanded", "true");
-  await expect(page.getByRole("button", { name: "Collapse city map" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Collapse city map" }),
+  ).toBeVisible();
   const expandedMap = await cityMap.boundingBox();
   expect(expandedMap).not.toBeNull();
   expect(expandedMap!.width).toBeGreaterThan(compactMap!.width * 2);
@@ -221,10 +223,11 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   const mapThrottleBox = await mapThrottle.boundingBox();
   expect(mapThrottleBox).not.toBeNull();
   expect(
-    await page.evaluate(({ x, y }) => {
-      const top = document.elementFromPoint(x, y);
-      return !!top?.closest('[data-drive-action="throttle"]');
-    },
+    await page.evaluate(
+      ({ x, y }) => {
+        const top = document.elementFromPoint(x, y);
+        return !!top?.closest('[data-drive-action="throttle"]');
+      },
       {
         x: mapThrottleBox!.x + mapThrottleBox!.width / 2,
         y: mapThrottleBox!.y + mapThrottleBox!.height / 2,
@@ -232,9 +235,12 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
     ),
   ).toBe(true);
   const mapMarkerPosition = async () =>
-    playerMarker.locator("circle").first().evaluate((node) =>
-      `${node.getAttribute("cx")},${node.getAttribute("cy")}`,
-    );
+    playerMarker
+      .locator("circle")
+      .first()
+      .evaluate(
+        (node) => `${node.getAttribute("cx")},${node.getAttribute("cy")}`,
+      );
   const markerBeforeDriving = await mapMarkerPosition();
   await page.keyboard.down("KeyW");
   await expect
@@ -252,7 +258,9 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       { timeout: 10_000 },
     )
     .toBeGreaterThan(0.1);
-  await expect.poll(mapMarkerPosition, { timeout: 10_000 }).not.toBe(markerBeforeDriving);
+  await expect
+    .poll(mapMarkerPosition, { timeout: 10_000 })
+    .not.toBe(markerBeforeDriving);
   await page.keyboard.up("KeyW");
   await page.keyboard.down("Space");
   await expect

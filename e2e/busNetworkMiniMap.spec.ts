@@ -16,7 +16,9 @@ test.describe("spec 149 — persistent live bus network minimap", () => {
       name: "Live bus network map",
     });
     await expect(map).toBeVisible({ timeout: 30000 });
-    await expect(map.locator(".bus-network-minimap__mode")).toHaveText("LOCAL SESSION");
+    await expect(map.locator(".bus-network-minimap__mode")).toHaveText(
+      "LOCAL SESSION",
+    );
     await page.waitForFunction(
       () => !!window.__colony?.busDepot && !!window.__colony?.busRoute,
       null,
