@@ -60,3 +60,22 @@ as effect cleanup, so an event arriving before React renders cannot reuse old in
 auto-repeat never reactivates an input cleared by a switch; a new press is required. The browser
 regression keeps the controls mounted, holds W, switches owners in place and steers in the same
 JavaScript turn. This is a targeted fixture regression, not a deployed authentication-flow claim.
+
+## Matching-model mounted tuning
+
+An exact server ownership match selects the vehicle model. For that authenticated owner only, a
+stored spec may supply mounted parts when its model ID matches the server-owned model; that same
+effective spec feeds both world rendering and drive handling. A mismatched cached model is replaced
+by the server-owned stock spec, and an owner without a local citizen/garage uses the server-owned
+stock spec without creating a citizen or local ownership.
+
+Independent review of PR #523 reproduced the prior regression at exact head
+`7623ef1465022b6dff9ccbeefd84a8d25fa3735a`: mounted blower parts remained stored but the renderer
+and movement used stock stats. The correction adds runtime tests for matching tuned, mismatched
+cached-model, and no-citizen cases. Local verification on the correction worktree: TypeScript
+typecheck passed; `tests/newPlayerGarageSpawn.test.ts` passed 33 tests; production build passed;
+the returning-owner browser selection passed four Chromium scenarios (5.4 minutes), including
+actual model render, driving, re-entry, stale-cache denial and feature-gate switching. The browser
+uses fixture responses; localhost Kooker APIs were unavailable. These results do not establish
+deployed ownership or player-flow acceptance. Fresh hosted checks and independent exact-head
+re-review remain required.

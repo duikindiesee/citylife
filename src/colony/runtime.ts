@@ -2542,6 +2542,11 @@ export class ColonyRuntime {
   private updateOperatorCar(): void {
     if (!this.renderer) return;
     if (this.operatorUserId && this.authoritativeCar) {
+      const ownedCar = this.currentPlayerOwnedCarSpec();
+      if (!ownedCar) {
+        this.renderer.setOperatorCar(null, null);
+        return;
+      }
       const pose = this.ownedDrivePose;
       const entrance = pose ?? this.commercialDistrict?.garagePad?.roadTarget;
       if (
@@ -2550,7 +2555,7 @@ export class ColonyRuntime {
           `${Math.round(entrance.x)},${Math.round(entrance.y)}`,
         )
       ) {
-        this.renderer.setOperatorCar(this.authoritativeCar, {
+        this.renderer.setOperatorCar(ownedCar, {
           x: entrance.x,
           y: entrance.y,
         });
@@ -2600,7 +2605,7 @@ export class ColonyRuntime {
         entrance &&
         this.sim.state.roadSet.has(`${entrance.x},${entrance.y}`)
       ) {
-        this.renderer.setOperatorCar(this.authoritativeCar, entrance);
+        this.renderer.setOperatorCar(this.currentPlayerOwnedCarSpec(), entrance);
         return;
       }
       this.renderer.setOperatorCar(null, null);
@@ -2615,6 +2620,16 @@ export class ColonyRuntime {
         : this.authoritativeCar
       : stored;
     this.renderer.setOperatorCar(spec, spec ? cell : null);
+  }
+
+  /** Keep server ownership authoritative while retaining this owner's mounted parts for that model. */
+  private currentPlayerOwnedCarSpec(): CarSpec | null {
+    const owned = this.authoritativeCar;
+    if (!this.operatorUserId || !owned) return null;
+    const citizenId = this.operatorCitizenId();
+    if (!citizenId || !hasStoredCar(citizenId)) return owned;
+    const stored = loadCar(citizenId);
+    return stored.id === owned.id ? stored : owned;
   }
 
   private ownedDrivePose: OwnedDrivePose | null = null;
@@ -2686,16 +2701,17 @@ export class ColonyRuntime {
   }
 
   private tickOwnedDrive(dt: number): void {
+    const ownedCar = this.currentPlayerOwnedCarSpec();
     if (
       !this.getOwnedDrivePose() ||
       !this.ownedDrivePose ||
-      !this.authoritativeCar
+      !ownedCar
     )
       return;
     this.ownedDrivePose = stepOwnedDrive(
       this.ownedDrivePose,
       this.ownedDriveInput,
-      deriveStats(this.authoritativeCar),
+      deriveStats(ownedCar),
       dt,
       (x, y) =>
         this.sim.state.roadSet.has(`${Math.round(x)},${Math.round(y)}`) &&
