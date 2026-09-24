@@ -2605,7 +2605,10 @@ export class ColonyRuntime {
         entrance &&
         this.sim.state.roadSet.has(`${entrance.x},${entrance.y}`)
       ) {
-        this.renderer.setOperatorCar(this.currentPlayerOwnedCarSpec(), entrance);
+        this.renderer.setOperatorCar(
+          this.currentPlayerOwnedCarSpec(),
+          entrance,
+        );
         return;
       }
       this.renderer.setOperatorCar(null, null);
@@ -2702,12 +2705,7 @@ export class ColonyRuntime {
 
   private tickOwnedDrive(dt: number): void {
     const ownedCar = this.currentPlayerOwnedCarSpec();
-    if (
-      !this.getOwnedDrivePose() ||
-      !this.ownedDrivePose ||
-      !ownedCar
-    )
-      return;
+    if (!this.getOwnedDrivePose() || !this.ownedDrivePose || !ownedCar) return;
     this.ownedDrivePose = stepOwnedDrive(
       this.ownedDrivePose,
       this.ownedDriveInput,

@@ -364,7 +364,12 @@ describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
     expect(roadKey).toBeDefined();
     const [x, y] = roadKey!.split(",").map(Number);
     const internals = rt as unknown as {
-      ownedDrivePose: { x: number; y: number; heading: number; speed: number } | null;
+      ownedDrivePose: {
+        x: number;
+        y: number;
+        heading: number;
+        speed: number;
+      } | null;
       ownedDriveSeated: boolean;
       ownedDriveInput: { throttle: boolean };
       blockedStepReason: (x: number, y: number) => string | null;
@@ -396,13 +401,19 @@ describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
     expect(loadCar(citizen.id).id).toBe(SHOWROOM_VEHICLES[2]!.spec.id);
     expect(render.mock.calls.at(-1)![0].id).toBe(SHOWROOM_VEHICLES[2]!.spec.id);
     rt.applyVehicleOwnership("owner-a", []);
-    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(originalGeneration);
+    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(
+      originalGeneration,
+    );
     const revokedGeneration = rt.getOwnedDriveInputGeneration();
     expect(render).toHaveBeenLastCalledWith(null, null);
     rt.setOperatorUserId("owner-b");
-    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(revokedGeneration);
+    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(
+      revokedGeneration,
+    );
     const switchedGeneration = rt.getOwnedDriveInputGeneration();
-    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(false);
+    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(
+      false,
+    );
     expect(rt.getOwnedDriveInputGeneration()).toBe(switchedGeneration);
     expect(render).toHaveBeenLastCalledWith(null, null);
   });
@@ -488,8 +499,9 @@ describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
     ).toBe(true);
     expect(rt.operatorCitizenId()).toBeNull();
     expect(
-      (rt as unknown as { currentPlayerOwnedCarSpec: () => CarSpec | null })
-        .currentPlayerOwnedCarSpec(),
+      (
+        rt as unknown as { currentPlayerOwnedCarSpec: () => CarSpec | null }
+      ).currentPlayerOwnedCarSpec(),
     ).toEqual(SHOWROOM_VEHICLES[2]!.spec);
     expect(tickOwnedDriveOnce(rt)).toBeCloseTo(
       stepOwnedDrive(
