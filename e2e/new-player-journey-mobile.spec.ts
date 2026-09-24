@@ -285,16 +285,32 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   // Navigation would erase the component ref and miss the stale held-throttle regression.
   await page.keyboard.down("KeyW");
   const switchedInput = await page.evaluate(() => {
-    const runtime = (window as unknown as {
-      __colony: import("../src/colony/runtime").ColonyRuntime;
-    }).__colony;
+    const runtime = (
+      window as unknown as {
+        __colony: import("../src/colony/runtime").ColonyRuntime;
+      }
+    ).__colony;
     runtime.setOperatorUserId("second-seated-owner");
     runtime.applyVehicleOwnership("second-seated-owner", ["karoo-x19-targa"]);
     // Same JavaScript turn: even before React effects run, steering must not restore throttle.
-    document.body.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", repeat: true, bubbles: true }));
-    document.body.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyD", bubbles: true }));
-    const input = (runtime as unknown as { ownedDriveInput: Record<string, boolean> }).ownedDriveInput;
-    return { seated: !!runtime.getOwnedDrivePose(), throttle: !!input.throttle, right: !!input.right };
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        code: "KeyW",
+        repeat: true,
+        bubbles: true,
+      }),
+    );
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "KeyD", bubbles: true }),
+    );
+    const input = (
+      runtime as unknown as { ownedDriveInput: Record<string, boolean> }
+    ).ownedDriveInput;
+    return {
+      seated: !!runtime.getOwnedDrivePose(),
+      throttle: !!input.throttle,
+      right: !!input.right,
+    };
   });
   expect(switchedInput).toEqual({ seated: true, throttle: false, right: true });
   await page.keyboard.up("KeyW");
