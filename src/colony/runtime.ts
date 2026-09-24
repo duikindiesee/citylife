@@ -2336,7 +2336,10 @@ export class ColonyRuntime {
 
   /** Apply a server ownership read only to the identity that requested it.
    * Local tuning may survive only when its model matches the authoritative car. */
-  applyVehicleOwnership(userId: string, keys: readonly string[] | null): boolean {
+  applyVehicleOwnership(
+    userId: string,
+    keys: readonly string[] | null,
+  ): boolean {
     if (userId !== this.operatorUserId) return false;
     const owned = resolveOwnedCar(keys);
     this.authoritativeCar = owned;
@@ -2529,8 +2532,12 @@ export class ColonyRuntime {
       // Their verified car still exists: stage it at the surveyed Gearbox road
       // entrance without minting a citizen, a local deed, or a fictional home.
       const entrance = this.commercialDistrict?.garagePad?.roadTarget;
-      if (this.operatorUserId && this.authoritativeCar && entrance &&
-          this.sim.state.roadSet.has(`${entrance.x},${entrance.y}`)) {
+      if (
+        this.operatorUserId &&
+        this.authoritativeCar &&
+        entrance &&
+        this.sim.state.roadSet.has(`${entrance.x},${entrance.y}`)
+      ) {
         this.renderer.setOperatorCar(this.authoritativeCar, entrance);
         return;
       }
@@ -2541,8 +2548,9 @@ export class ColonyRuntime {
     const cell = { x: Math.round(home.x) + 1, y: Math.round(home.y) };
     const stored = loadCar(id);
     const spec = this.operatorUserId
-      ? (this.authoritativeCar && stored.id === this.authoritativeCar.id
-          ? stored : this.authoritativeCar)
+      ? this.authoritativeCar && stored.id === this.authoritativeCar.id
+        ? stored
+        : this.authoritativeCar
       : stored;
     this.renderer.setOperatorCar(spec, spec ? cell : null);
   }

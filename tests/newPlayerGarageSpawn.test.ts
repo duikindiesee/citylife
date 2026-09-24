@@ -373,7 +373,9 @@ describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
     rt.applyVehicleOwnership("owner-a", []);
     expect(render).toHaveBeenLastCalledWith(null, null);
     rt.setOperatorUserId("owner-b");
-    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(false);
+    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(
+      false,
+    );
     expect(render).toHaveBeenLastCalledWith(null, null);
   });
 
@@ -743,13 +745,11 @@ describe("PLAYER.CAR.1.S5 — shouldAutoOpenShowroom pure decision rule", () => 
     ]) {
       vi.stubGlobal(
         "fetch",
-        vi
-          .fn()
-          .mockResolvedValue({
-            ok: true,
-            status: 200,
-            json: async () => response,
-          }),
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => response,
+        }),
       );
       expect(await fetchOwnedVehicleKeysBackend()).toBeNull();
     }

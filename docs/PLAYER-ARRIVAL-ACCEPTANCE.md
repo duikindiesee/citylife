@@ -39,6 +39,7 @@ Task dd18507c-8ce4-4405-b7f2-10fb78b9f313: login must read current server vehicl
 Coverage: pure stale-cache decisions, unknown server-owned model and refresh-rejection cases; browser regression seeds stale X19 ownership before authenticated login and expects a server read plus enabled Gearbox acquisition after an explicit no-vehicle response.
 
 This change does not yet hydrate the exact owned car into the driving runtime, resolve an owned home's real parcel, invoke player house building, or place a car on a road-connected driveway. These remain required acceptance work. Deployed browser evidence remains outstanding.
+
 # Owned-car hydration follow-up (not complete arrival)
 
 Browser acceptance on 2026-09-23 exposed an additional prerequisite: a fresh authenticated
