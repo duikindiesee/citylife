@@ -1,0 +1,33 @@
+name: Publish CI run reports
+
+on:
+  workflow_run:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Existing CityLife CI run ID to backfill
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  publish:
+    if: (github.event_name == 'workflow_run' && github.event.workflow_run.repository.full_name == github.repository && github.event.workflow_run.name != 'Publish CI run reports') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Publish sanitized run metadata
+        run: node .github/scripts/ci-report-publisher.mjs
+        env:
+          CI_REPORT_REPOSITORY: ${{ github.repository }}
+          CI_REPORT_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
