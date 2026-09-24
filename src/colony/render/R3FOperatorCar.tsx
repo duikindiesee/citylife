@@ -1,5 +1,10 @@
 import { leveledWorldY } from "./terrainLeveling";
-import React, { useEffect, useMemo } from "react";
+import React, { Suspense, useEffect, useMemo } from "react";
+import { Html, useGLTF } from "@react-three/drei";
+import { Box3 } from "three";
+import type { ShowroomVehicle } from "../showroom/showroomCatalog";
+import { SHOWROOM_VEHICLES } from "../showroom/showroomCatalog";
+import type { CarSpec } from "../car/carSpec";
 import type { ColonySim } from "../sim";
 import { buildCarMesh } from "../car/carMesh";
 import { getSmoothRoadY } from "./roadSurface";
@@ -8,10 +13,66 @@ import { disposeDeep } from "./disposeDeep";
 import { useSimSignal, type SimBridge } from "./useSimSignal";
 import { operatorCarSignature } from "./simSignals";
 
+/** Cached GLB resources belong to the loader, not this instance or the showroom. */
+function OwnedVehicleModel({ vehicle }: { vehicle: ShowroomVehicle }) {
+  const { scene } = useGLTF(vehicle.glbUrl!);
+  const model = useMemo(() => {
+    const copy = scene.clone(true);
+    copy.traverse((node) => {
+      node.castShadow = true;
+      node.receiveShadow = true;
+    });
+    const rotation = vehicle.rotationOffset ?? [0, 0, 0];
+    copy.rotation.set(rotation[0], rotation[1], rotation[2]);
+    // Model origins differ. Centre the footprint on the runtime anchor and put
+    // the lowest tyre/body point on its surveyed surface, using world metres.
+    const bounds = new Box3().setFromObject(copy);
+    if (!bounds.isEmpty()) {
+      copy.position.x -= (bounds.min.x + bounds.max.x) / 2;
+      copy.position.y -= bounds.min.y;
+      copy.position.z -= (bounds.min.z + bounds.max.z) / 2;
+    }
+    return copy;
+  }, [scene, vehicle]);
+  return (
+    <primitive
+      object={model}
+      dispose={null}
+      name="owned-vehicle-model"
+      userData={{ vehicleId: vehicle.spec.id, assetUrl: vehicle.glbUrl }}
+    />
+  );
+}
+
+function LegacyVehicleModel({ spec }: { spec: CarSpec }) {
+  const model = useMemo(() => buildCarMesh(spec), [spec]);
+  useEffect(() => () => disposeDeep(model), [model]);
+  return <primitive object={model} />;
+}
+
+class VehicleModelBoundary extends React.Component<
+  React.PropsWithChildren,
+  { failed: boolean }
+> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? (
+      <Html center>
+        <span role="alert">Vehicle model unavailable. Reload to retry.</span>
+      </Html>
+    ) : (
+      this.props.children
+    );
+  }
+}
+
 // Spec 131 — the signed-in operator's tuned car parked at their home cell (legacy
 // setOperatorCar). The runtime attaches { spec, cell } on sim.state (the raceState
-// precedent); this builds the shared buildCarMesh and seats it on the road surface when
-// parked on a road cell, else on the ground.
+// precedent). Catalog vehicles use the actual showroom GLB; legacy custom cars
+// keep their procedural build. Both sit on the road surface or leveled ground.
 
 interface R3FOperatorCarProps {
   sim: ColonySim;
@@ -28,13 +89,12 @@ export function R3FOperatorCar({
 }: R3FOperatorCarProps) {
   const sig = useSimSignal(runtime, () => operatorCarSignature(sim.state));
 
-  const built = useMemo(() => {
+  const placement = useMemo(() => {
     const parked = sim.state.operatorCar;
     if (!parked) return null;
-    const { spec, cell } = parked;
+    const { cell } = parked;
     const t = sim.state.terrain;
     const N = t.size;
-    const g = buildCarMesh(spec);
     const onRoad = sim.state.roadSet.has(
       `${Math.round(cell.x)},${Math.round(cell.y)}`,
     );
@@ -49,20 +109,34 @@ export function R3FOperatorCar({
             Math.round(cell.y),
           ),
         ) + 0.02;
-    g.position.set((cell.x - N / 2) * 4, y, (cell.y - N / 2) * 4);
-    g.name = "operator-car";
-    return g;
+    return [(cell.x - N / 2) * 4, y, (cell.y - N / 2) * 4] as [
+      number,
+      number,
+      number,
+    ];
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sim, sig, terrainLevel]);
 
-  // Spec 119 — the superseded car mesh is disposed on every swap and on unmount.
-  useEffect(
-    () => () => {
-      if (built) disposeDeep(built);
-    },
-    [built],
+  const parked = sim.state.operatorCar;
+  if (!placement || !parked) return null;
+  const vehicle = SHOWROOM_VEHICLES.find((v) => v.spec.id === parked.spec.id);
+  return (
+    <group name="operator-car" position={placement}>
+      {vehicle?.glbUrl ? (
+        <VehicleModelBoundary key={vehicle.spec.id}>
+          <Suspense
+            fallback={
+              <Html center>
+                <span role="status">Loading your vehicle…</span>
+              </Html>
+            }
+          >
+            <OwnedVehicleModel vehicle={vehicle} />
+          </Suspense>
+        </VehicleModelBoundary>
+      ) : (
+        <LegacyVehicleModel spec={parked.spec} />
+      )}
+    </group>
   );
-
-  if (!built) return null;
-  return <primitive object={built} />;
 }

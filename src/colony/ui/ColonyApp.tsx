@@ -1056,7 +1056,6 @@ export function ColonyApp() {
     if (
       !hasRealAccount ||
       !auth.isAuthenticated ||
-      !newPlayerJourneyEnabled ||
       autoShowroomCheckedRef.current
     ) {
       return;
@@ -1065,7 +1064,10 @@ export function ColonyApp() {
     void (async () => {
       const truth = await fetchOwnedVehicleKeysBackend();
       if (cancelled) return;
-      autoShowroomCheckedRef.current = true;
+      if (operatorUserId) runtime.applyVehicleOwnership(String(operatorUserId), truth);
+      // Hydrate existing owners even when onboarding is off. If entitlement is still
+      // loading, its later change must get a chance to route a no-car player.
+      autoShowroomCheckedRef.current = newPlayerJourneyEnabled;
       if (
         shouldAutoOpenShowroom({
           hasRealAccount,
