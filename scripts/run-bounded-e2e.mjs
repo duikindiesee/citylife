@@ -9,7 +9,7 @@
 // timer (no polling, no shell loop, no grep-on-output wait), and on timeout forcibly kills the
 // entire descendant tree — Node, Vite dev server, Chromium, everything this run spawned.
 //
-// Usage: node scripts/run-bounded-e2e.mjs [--config <path>] [--hang-canary]
+// Usage: node scripts/run-bounded-e2e.mjs [--config <path>] [--hang-canary] [Playwright options...]
 import { spawn, execFileSync } from "node:child_process";
 
 const HARD_TIMEOUT_MS = Number(
@@ -19,12 +19,17 @@ const HARD_TIMEOUT_MS = Number(
 const args = process.argv.slice(2);
 let configPath = "playwright.mobile-harness.config.ts";
 let includeHangCanary = false;
+const playwrightArgs = [];
 for (let i = 0; i < args.length; i += 1) {
   if (args[i] === "--config") {
     configPath = args[i + 1];
     i += 1;
   } else if (args[i] === "--hang-canary") {
     includeHangCanary = true;
+  } else {
+    // Preserve Playwright filters and other CLI options so a long mobile journey can be
+    // run alone during diagnosis instead of spending time on unrelated scenarios.
+    playwrightArgs.push(args[i]);
   }
 }
 
@@ -50,18 +55,22 @@ function killTree(pid) {
   }
 }
 
-const child = spawn("npx", ["playwright", "test", "--config", configPath], {
-  stdio: "inherit",
-  env: {
-    ...process.env,
-    ...(includeHangCanary ? { MOBILE_HARNESS_INCLUDE_HANG_CANARY: "1" } : {}),
+const child = spawn(
+  "npx",
+  ["playwright", "test", "--config", configPath, ...playwrightArgs],
+  {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      ...(includeHangCanary ? { MOBILE_HARNESS_INCLUDE_HANG_CANARY: "1" } : {}),
+    },
+    // POSIX: make the child its own process-group leader so -pid kills the whole tree.
+    // Windows: `shell: true` is required to resolve npx.cmd at all; tree-kill on timeout goes
+    // through `taskkill /T`, which walks descendants by PID regardless of the shell hop.
+    detached: process.platform !== "win32",
+    shell: process.platform === "win32",
   },
-  // POSIX: make the child its own process-group leader so -pid kills the whole tree.
-  // Windows: `shell: true` is required to resolve npx.cmd at all; tree-kill on timeout goes
-  // through `taskkill /T`, which walks descendants by PID regardless of the shell hop.
-  detached: process.platform !== "win32",
-  shell: process.platform === "win32",
-});
+);
 
 let settled = false;
 

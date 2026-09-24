@@ -1,12 +1,49 @@
 import type { ColonyRuntime } from "../runtime";
+import { useState } from "react";
+import type { PresenceReadout } from "../spatial/presenceReadout";
+import { useSimSignal } from "../render/useSimSignal";
 import { buildBusNetworkMiniMapModel } from "./busNetworkMiniMapModel";
+import { formatAmount } from "./currencyFormat";
 
 const WIDTH = 200;
 const HEIGHT = 132;
 
-export function BusNetworkMiniMap({ runtime }: { runtime: ColonyRuntime }) {
+export function BusNetworkMiniMap({
+  runtime,
+  walletKco,
+  presenceReadout,
+}: {
+  runtime: ColonyRuntime;
+  /** Server-synced player wallet only; null when this is an operator/city view. */
+  walletKco: number | null;
+  presenceReadout: PresenceReadout | null;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  // The HUD can be memoized independently of the scene. Subscribe to the runtime's 200ms
+  // heartbeat while seated so the player marker follows the live car pose on the map.
+  const drivePosition = useSimSignal(runtime, () => {
+    const pose = runtime.getOwnedDrivePose();
+    return pose
+      ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}`
+      : "drive:parked";
+  });
+  void drivePosition;
   const state = runtime.sim.state;
   const depot = runtime.busDepot?.site ?? null;
+  const local = presenceReadout?.entries.find((entry) => entry.isLocal) ?? null;
+  // While seated, the car pose is the player's actual location. On foot, use the already-authorized
+  // exact presence projection; never guess from a spawn/home or draw a coarse position as exact.
+  const driving = (
+    runtime as ColonyRuntime & {
+      getOwnedDrivePose?: () => { x: number; y: number } | null;
+    }
+  ).getOwnedDrivePose?.();
+  const player =
+    driving
+      ? { x: driving.x, y: driving.y }
+      : local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
+        ? { x: local.fix.cell.x, y: local.fix.cell.y }
+        : null;
   const model = buildBusNetworkMiniMapModel({
     ways: state.roadWays ?? [],
     routeStops: runtime.busRoute?.stops ?? [],
@@ -14,16 +51,36 @@ export function BusNetworkMiniMap({ runtime }: { runtime: ColonyRuntime }) {
       ? { x: depot.x + (depot.w - 1) / 2, y: depot.y + (depot.h - 1) / 2 }
       : null,
     buses: runtime.busPoses().map((p, id) => ({ id, x: p.x, y: p.y })),
+    player,
     width: WIDTH,
     height: HEIGHT,
     padding: 8,
   });
   return (
-    <aside className="bus-network-minimap" aria-label="Live bus network map">
+    <aside
+      className={`bus-network-minimap${expanded ? " bus-network-minimap--expanded" : ""}`}
+      aria-label="Live bus network map"
+      data-expanded={expanded ? "true" : "false"}
+    >
       <div className="bus-network-minimap__title">
-        <span>BUS NETWORK</span>
-        <span>{model.buses.length} LIVE</span>
+        <span>CITY MAP</span>
+        <span>{model.buses.length} BUS{model.buses.length === 1 ? "" : "ES"}</span>
+        <button
+          className="bus-network-minimap__toggle"
+          type="button"
+          aria-label={expanded ? "Collapse city map" : "Expand city map"}
+          aria-expanded={expanded}
+          data-testid="city-map-toggle"
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {expanded ? "Close map" : "Open map"}
+        </button>
       </div>
+      <div className="bus-network-minimap__summary">
+        <span>{walletKco === null ? "City view" : `Wallet ₭${formatAmount(walletKco)}`}</span>
+        <span>{model.player ? "You are here" : "Position unavailable"}</span>
+      </div>
+      <div className="bus-network-minimap__mode">LOCAL SESSION</div>
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
@@ -70,22 +127,48 @@ export function BusNetworkMiniMap({ runtime }: { runtime: ColonyRuntime }) {
             </text>
           </g>
         )}
+        {model.player && (
+          <g
+            aria-label={
+              model.player.outOfBounds
+                ? "Your current location beyond mapped roads"
+                : "Your current location"
+            }
+            data-testid="city-map-player-marker"
+            data-off-map={model.player.outOfBounds ? "true" : "false"}
+          >
+            <circle
+              cx={model.player.x}
+              cy={model.player.y}
+              r="5.4"
+              className={`bus-network-minimap__player-ring${model.player.outOfBounds ? " bus-network-minimap__player-ring--edge" : ""}`}
+            />
+            <circle
+              cx={model.player.x}
+              cy={model.player.y}
+              r="3"
+              className={`bus-network-minimap__player${model.player.outOfBounds ? " bus-network-minimap__player--edge" : ""}`}
+            />
+          </g>
+        )}
         {model.busClusters.map((cluster) => {
           const label =
             cluster.ids.length === 1
               ? `Bus ${cluster.ids[0]! + 1}`
               : `${cluster.ids.length} buses: ${cluster.ids.map((id) => id + 1).join(", ")}`;
+          const accessibleLabel = cluster.outOfBounds ? `${label}, at map edge` : label;
           return (
             <g
               key={`buses-${cluster.ids.join("-")}`}
-              aria-label={label}
+              aria-label={accessibleLabel}
               data-bus-count={cluster.ids.length}
+              data-off-map={cluster.outOfBounds ? "true" : "false"}
             >
               <circle
                 cx={cluster.x}
                 cy={cluster.y}
                 r={cluster.ids.length > 1 ? 5.5 : 4}
-                className="bus-network-minimap__bus"
+                className={`bus-network-minimap__bus${cluster.outOfBounds ? " bus-network-minimap__bus--edge" : ""}`}
               />
               <text x={cluster.x} y={cluster.y + 1.8} textAnchor="middle">
                 {cluster.ids.length > 1
