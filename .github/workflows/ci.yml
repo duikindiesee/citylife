@@ -32,7 +32,13 @@ jobs:
       - run: npm ci
       - run: npx playwright install chromium
       - run: npm run typecheck
-      - run: npm test
+      # CI.SIGNAL.1: the self-hosted GPU runner also owns browser/WebGL work.
+      # Keep the boot-heavy Vitest suite bounded to half the logical workers so
+      # the job produces a repeatable signal instead of starving world-layout
+      # runtimes under full-suite contention. Assertions/retries/timeouts stay
+      # in vite.config.ts; this only caps runner pressure and suppresses passing
+      # test noise so failure logs stay actionable.
+      - run: npm run test:ci
       - run: npm run test:e2e
       # Explicit step-level bound (PLAYER.MOBILE.E2E.1): the mobile/touch harness has its own
       # 90s whole-test timeout and a wrapper-enforced OS-level process-tree kill, but this step
