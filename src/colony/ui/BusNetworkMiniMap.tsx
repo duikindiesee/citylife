@@ -1,5 +1,7 @@
 import type { ColonyRuntime } from "../runtime";
+import { useState } from "react";
 import type { PresenceReadout } from "../spatial/presenceReadout";
+import { useSimSignal } from "../render/useSimSignal";
 import { buildBusNetworkMiniMapModel } from "./busNetworkMiniMapModel";
 import { formatAmount } from "./currencyFormat";
 
@@ -16,6 +18,16 @@ export function BusNetworkMiniMap({
   walletKco: number | null;
   presenceReadout: PresenceReadout | null;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  // The HUD can be memoized independently of the scene. Subscribe to the runtime's 200ms
+  // heartbeat while seated so the player marker follows the live car pose on the map.
+  const drivePosition = useSimSignal(runtime, () => {
+    const pose = runtime.getOwnedDrivePose();
+    return pose
+      ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}`
+      : "drive:parked";
+  });
+  void drivePosition;
   const state = runtime.sim.state;
   const depot = runtime.busDepot?.site ?? null;
   const local = presenceReadout?.entries.find((entry) => entry.isLocal) ?? null;
@@ -45,10 +57,24 @@ export function BusNetworkMiniMap({
     padding: 8,
   });
   return (
-    <aside className="bus-network-minimap" aria-label="Live bus network map">
+    <aside
+      className={`bus-network-minimap${expanded ? " bus-network-minimap--expanded" : ""}`}
+      aria-label="Live bus network map"
+      data-expanded={expanded ? "true" : "false"}
+    >
       <div className="bus-network-minimap__title">
         <span>CITY MAP</span>
         <span>{model.buses.length} BUS{model.buses.length === 1 ? "" : "ES"}</span>
+        <button
+          className="bus-network-minimap__toggle"
+          type="button"
+          aria-label={expanded ? "Collapse city map" : "Expand city map"}
+          aria-expanded={expanded}
+          data-testid="city-map-toggle"
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {expanded ? "Close map" : "Open map"}
+        </button>
       </div>
       <div className="bus-network-minimap__summary">
         <span>{walletKco === null ? "City view" : `Wallet ₭${formatAmount(walletKco)}`}</span>

@@ -2158,6 +2158,15 @@ body.tv-mode .radio-iframe.is-visible {
   pointer-events: none;
   backdrop-filter: blur(7px);
 }
+.bus-network-minimap.bus-network-minimap--expanded {
+  /* Keep the large map above the world view but clear the bottom HUD/control band. The panel stays
+     passive so pointer/touch input passes through to driving controls behind it. */
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(920px, calc(100vw - 24px), calc((100vh - 240px) * 1.515));
+  padding: clamp(9px, 1.1vw, 16px);
+  z-index: 48;
+}
 .bus-network-minimap__title {
   display: flex;
   justify-content: space-between;
@@ -2166,6 +2175,23 @@ body.tv-mode .radio-iframe.is-visible {
   font-weight: 800;
   letter-spacing: 0.12em;
   padding: 0 3px 5px;
+}
+.bus-network-minimap__toggle {
+  min-height: 28px;
+  padding: 3px 8px;
+  border: 1px solid rgba(133, 214, 255, 0.42);
+  border-radius: 8px;
+  background: rgba(18, 42, 57, 0.94);
+  color: #d8f4ff;
+  font: 700 10px/1.2 system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+.bus-network-minimap__toggle:focus-visible {
+  outline: 2px solid #5bffb5;
+  outline-offset: 2px;
 }
 .bus-network-minimap__summary {
   display: flex;
@@ -2249,6 +2275,11 @@ body.tv-mode .radio-iframe.is-visible {
   }
   .bus-network-minimap__title {
     font-size: 8px;
+  }
+  .bus-network-minimap.bus-network-minimap--expanded {
+    top: calc(52px + env(safe-area-inset-top));
+    width: min(920px, calc(100vw - 24px), calc((100vh - 230px) * 1.515));
+    padding: 9px;
   }
 }
 
