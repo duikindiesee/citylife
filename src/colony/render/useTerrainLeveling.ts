@@ -119,6 +119,26 @@ export function computeTerrainLeveling(
           }
         }
       }
+
+      // The driveway is the player car's first surface after loading at home.
+      // Grade its centre-line from the actual rendered road height to the pad,
+      // retaining road cells themselves so asphalt always wins at the join.
+      const drive = lot.driveway.filter((cell) =>
+        cell.x >= 0 && cell.y >= 0 && cell.x < N && cell.y < N,
+      );
+      if (drive.length > 1) {
+        const roadStart = roadRibbonCells?.get(`${drive[0]!.x},${drive[0]!.y}`);
+        const startY = Number.isFinite(roadStart)
+          ? Math.max(0, roadStart!)
+          : Math.max(DRY, t.worldY(drive[0]!.x, drive[0]!.y));
+        for (let index = 1; index < drive.length; index++) {
+          const cell = drive[index]!;
+          if (roadRibbonCells?.has(`${cell.x},${cell.y}`) ||
+              cell.x >= hz.x && cell.x <= fx1 && cell.y >= hz.y && cell.y <= fy1) continue;
+          const ratio = index / (drive.length - 1);
+          put(cell.x, cell.y, startY + (py - startY) * ratio);
+        }
+      }
     }
   }
 

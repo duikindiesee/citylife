@@ -50,19 +50,17 @@ it("audits every published starter home's pad and driveway grade", () => {
       index === 0 ? 0 : Math.max(maximum, Math.abs(height - drivewayHeights[index - 1]!)), 0);
     return {
       plotId: plot.plotId,
-      houseZone: h,
-      overlappingRoadCells: Array.from({ length: h.width + 1 }, (_, dx) =>
-        Array.from({ length: h.depth + 1 }, (_, dy) => `${h.x + dx},${h.y + dy}`),
-      ).flat().filter((key) => cover.has(key)),
       padError: Math.max(...footprint.map((point) => point.error)),
-      padErrorCells: footprint.filter((point) => point.error >= 0.001),
       maxDrivewayStepMetres: maxStep,
       roadTransitionMetres: Math.abs(
         drivewayHeights[0]! - getSmoothRoadY(terrain, plot.geometry.driveway[0]!.x, plot.geometry.driveway[0]!.y),
       ),
     };
   });
-  console.info(JSON.stringify(audit));
   expect(audit).toHaveLength(10);
   expect(audit.every((plot) => plot.padError < 0.001)).toBe(true);
+  // Grid cells are four metres apart, so 1.2 m is a maximum 30% car grade.
+  expect(Math.max(...audit.map((plot) => plot.maxDrivewayStepMetres))).toBeLessThanOrEqual(1.2);
+  // Keep the driveway-to-rendered-road join within the road system's 0.6 m fill tolerance.
+  expect(Math.max(...audit.map((plot) => plot.roadTransitionMetres))).toBeLessThanOrEqual(0.6);
 });
