@@ -118,7 +118,8 @@ export function ShowroomOverlay({
 
       setOwned(truth);
       saveOwnedKeysCache(truth, scope); // the cache follows the truth, never leads it
-      if (initialUserId) runtime?.applyVehicleOwnership(String(initialUserId), truth);
+      if (initialUserId)
+        runtime?.applyVehicleOwnership(String(initialUserId), truth);
 
       // Hydrate garageStore/runtime if the player owns a vehicle on the server but doesn't have it saved locally yet
       const citizenId =
@@ -207,7 +208,8 @@ export function ShowroomOverlay({
       }));
       setPendingKey((cur) => (cur === key ? null : cur));
       if (result.kind === "owned" && confirmed && truth) {
-        if (currentUserId) runtime?.applyVehicleOwnership(String(currentUserId), truth);
+        if (currentUserId)
+          runtime?.applyVehicleOwnership(String(currentUserId), truth);
         // Confirmed by authority — persist via identity-bound runtime method to update parked car
         const targetCitizenId =
           currentCitizenId ??
