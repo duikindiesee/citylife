@@ -525,6 +525,22 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   // 2) Operator UAT allowlists this player and the server confirms no owned car. The player goes
   //    directly to Gearbox; the server quote is shown and the zero wallet reports its exact shortfall.
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  // Keep the economy fixture explicit: showroom affordability and HUD display use the same
+  // self-scoped ledger snapshot, never the local simulation bank projection.
+  await page.route("**/api/ledger/me/wallet", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ownerId: "uat-allow-1",
+        appName: "citylife",
+        walletType: "DEFAULT",
+        instrument: "KCO",
+        realm: "TEST",
+        balance: 0,
+      }),
+    }),
+  );
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -535,6 +551,13 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   await allowVehicleOffers(page);
   await bootAs(page, "uat-allow-1", true);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
+  await expect(page.getByTestId("showroom-wallet")).toHaveAttribute(
+    "data-wallet-status",
+    "ready",
+  );
+  await expect(page.getByTestId("showroom-wallet-balance")).toHaveText(
+    "₭0 KCO",
+  );
   await expect(
     page.locator('[data-testid="showroom-card-price"]'),
   ).toHaveAttribute("data-price-source", "server");
@@ -548,6 +571,8 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   await expect(page.locator(OVERLAY)).toHaveCount(0, {
     timeout: ASSERT_TIMEOUT,
   });
+  await expect(page.getByTestId("player-wallet-hud")).toBeVisible();
+  await expect(page.getByTestId("player-wallet-hud")).toContainText("₭0 KCO");
 
   // 3) Account switch to a different, OFF player → the entry is hidden again. No positive
   //    entitlement bled across the session boundary.
