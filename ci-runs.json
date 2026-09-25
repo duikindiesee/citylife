@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-25T09:55:09.157Z",
+  "updatedAt": "2026-09-25T09:55:59.531Z",
   "runs": [
     {
       "runId": 36121076756,
@@ -38,6 +38,45 @@
           "startedAt": "2026-09-25T09:54:51Z",
           "completedAt": "2026-09-25T09:54:57Z",
           "durationSeconds": 6
+        }
+      ]
+    },
+    {
+      "runId": 36121076678,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36121076678",
+      "event": "pull_request",
+      "branch": "codex/showroom-wallet-balance",
+      "sha": "376061f7b83e36a3f91a5bfa8def513e65182ccc",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/376061f7b83e36a3f91a5bfa8def513e65182ccc",
+      "pullRequestNumbers": "#540",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/540",
+      "pullRequests": [
+        {
+          "number": 540,
+          "url": "https://github.com/duikindiesee/citylife/pull/540"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-25T09:54:48Z",
+      "completedAt": "2026-09-25T09:55:47Z",
+      "durationSeconds": 59,
+      "runnerSummary": "GitHub Actions 1000010337",
+      "jobs": [
+        {
+          "id": 108026453938,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010337",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-09-25T09:54:52Z",
+          "completedAt": "2026-09-25T09:55:46Z",
+          "durationSeconds": 54
         }
       ]
     },
