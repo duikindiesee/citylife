@@ -1,5 +1,9 @@
 /** A self-scoped snapshot from kooker-service-ledger. Missing or failed reads are never zero. */
-export type PlayerWalletStatus = "loading" | "ready" | "missing" | "unavailable";
+export type PlayerWalletStatus =
+  | "loading"
+  | "ready"
+  | "missing"
+  | "unavailable";
 
 export interface PlayerWalletSnapshot {
   accountKey: string | null;
@@ -52,7 +56,8 @@ export async function readPlayerWallet(
   fetcher: FetchLike = fetch,
   signal?: AbortSignal,
 ): Promise<PlayerWalletSnapshot> {
-  const unavailable = () => emptyPlayerWallet(expectedAccountKey, "unavailable");
+  const unavailable = () =>
+    emptyPlayerWallet(expectedAccountKey, "unavailable");
   try {
     const token = await auth.getValidToken();
     if (
@@ -95,9 +100,13 @@ export async function readPlayerWallet(
     const appName =
       typeof wallet.appName === "string" ? wallet.appName.toLowerCase() : "";
     const walletType =
-      typeof wallet.walletType === "string" ? wallet.walletType.toUpperCase() : "";
+      typeof wallet.walletType === "string"
+        ? wallet.walletType.toUpperCase()
+        : "";
     const instrument =
-      typeof wallet.instrument === "string" ? wallet.instrument.toUpperCase() : "";
+      typeof wallet.instrument === "string"
+        ? wallet.instrument.toUpperCase()
+        : "";
     const balance =
       typeof wallet.balance === "number"
         ? wallet.balance

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import {
   FIRST_PERSON_KEY_CODES,
   RACE_KEY_CODES,
@@ -1036,12 +1043,10 @@ export function ColonyApp() {
     );
     void refreshPlayerWallet();
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible")
-        void refreshPlayerWallet();
+      if (document.visibilityState === "visible") void refreshPlayerWallet();
     }, 30_000);
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible")
-        void refreshPlayerWallet();
+      if (document.visibilityState === "visible") void refreshPlayerWallet();
     };
     window.addEventListener("focus", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);

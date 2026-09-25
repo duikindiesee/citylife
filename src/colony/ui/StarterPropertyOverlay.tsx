@@ -214,7 +214,11 @@ export function StarterPropertyOverlay({
               type="button"
               data-testid="home-wallet-refresh"
               onClick={onWalletRefresh}
-              style={{ ...controlButtonStyle, padding: "4px 7px", fontSize: 10 }}
+              style={{
+                ...controlButtonStyle,
+                padding: "4px 7px",
+                fontSize: 10,
+              }}
             >
               Retry
             </button>
