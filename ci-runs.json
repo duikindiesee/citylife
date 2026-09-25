@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-25T07:47:44.772Z",
+  "updatedAt": "2026-09-25T08:02:37.109Z",
   "runs": [
     {
       "runId": 36107531929,
@@ -38,6 +38,49 @@
           "startedAt": "2026-09-25T07:25:20Z",
           "completedAt": "2026-09-25T07:25:27Z",
           "durationSeconds": 7
+        }
+      ]
+    },
+    {
+      "runId": 36107531926,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36107531926",
+      "event": "pull_request",
+      "branch": "chore/bump-0.57.2",
+      "sha": "e0c4120dd08a3d03d996812a25a8282605479288",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/e0c4120dd08a3d03d996812a25a8282605479288",
+      "pullRequestNumbers": "#539",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/539",
+      "pullRequests": [
+        {
+          "number": 539,
+          "url": "https://github.com/duikindiesee/citylife/pull/539"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-25T07:25:11Z",
+      "completedAt": "2026-09-25T08:02:25Z",
+      "durationSeconds": 2234,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 107983382157,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-09-25T07:43:31Z",
+          "completedAt": "2026-09-25T08:02:24Z",
+          "durationSeconds": 1133
         }
       ]
     },
