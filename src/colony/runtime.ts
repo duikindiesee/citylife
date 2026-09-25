@@ -2735,12 +2735,30 @@ export class ColonyRuntime {
   exitOwnedCar(): boolean {
     const car = this.getOwnedDrivePose();
     if (!car) return false;
-    const side = [-1, 1]
+    const perpendicular = [-1, 1]
       .map((s) => ({
         x: Math.round(car.x - Math.sin(car.heading) * s),
         y: Math.round(car.y + Math.cos(car.heading) * s),
-      }))
-      .find((cell) => this.blockedStepReason(cell.x, cell.y) === null);
+      }));
+    const adjacent = [
+      ...perpendicular,
+      ...[
+        { x: Math.round(car.x + 1), y: Math.round(car.y) },
+        { x: Math.round(car.x - 1), y: Math.round(car.y) },
+        { x: Math.round(car.x), y: Math.round(car.y + 1) },
+        { x: Math.round(car.x), y: Math.round(car.y - 1) },
+      ],
+    ];
+    // First-person movement normally treats every parcel cell as blocked. The current owner's
+    // driveway is the deliberate exception: it is a legal place to step out beside the car. A
+    // straight driveway can leave both lateral cells inside the parcel, so also check adjacent
+    // driveway/road cells while keeping the choice deterministic and outside the car footprint.
+    const side = adjacent.find(
+      (cell) =>
+        Math.hypot(cell.x - car.x, cell.y - car.y) >= 0.75 &&
+        (this.blockedStepReason(cell.x, cell.y) === null ||
+          this.canOwnedCarOccupy(cell.x, cell.y)),
+    );
     if (!side) return false;
     this.ownedDriveInputGeneration++;
     car.speed = 0;
@@ -2748,7 +2766,9 @@ export class ColonyRuntime {
     this.ownedDriveInput = {};
     this.fpTeleportRequest = {
       ...side,
-      yaw: -car.heading - Math.PI / 2,
+      // Face the parked car from the selected exit cell. Lateral driveway exits and the
+      // longitudinal fallback have different headings, so derive this from the actual pair.
+      yaw: Math.atan2(-(car.x - side.x), -(car.y - side.y)),
       seq: (this.fpTeleportRequest?.seq ?? 0) + 1,
     };
     this.emit();

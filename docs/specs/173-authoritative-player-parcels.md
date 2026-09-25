@@ -196,6 +196,14 @@ Visual acceptance initially failed: the complete fixture journey passed its owne
 
 Task `6c9c937d-3179-4a2e-a739-e91b7feec406` remains open for review/deployment and broader rendered proof. This local correction does not establish all parcel grades, road turns, house foundations or the deployed arrival experience. A matching runtime pose alone remains insufficient evidence.
 
+### Seated-car visibility and driveway exit follow-up — 2026-09-25
+
+The seated first-person camera no longer renders its own exterior vehicle mesh around the camera; the catalogue model has no interior, so the previous frame was mostly bodywork. The local renderer hides that one client-side operator-car instance only while its driver is seated. On foot, the parked vehicle remains visible. This changes render visibility only; it neither changes ownership nor proves multiplayer visibility.
+
+`Park and exit` now considers deterministic adjacent driveway and road cells, including the current player's validated driveway, rather than refusing every owned parcel cell. The exit camera faces the selected parked-car position. Chromium coverage verifies the seated eye height, hidden local exterior, successful exit and re-entry, car visible within the actual camera frustum, and movement onto the road. Captures are retained in `docs/evidence/player-onboarding-2026-09-25/owned-car-seated-view.png` and `owned-car-parked-view.png`.
+
+This fixture scene still does not show the house, car and driveway together, and it does not establish deployed ownership, service state, persistence or multiplayer visibility. The task remains open for that visual relationship and live player-flow proof.
+
 Resolve entitlement and required home reads before applying vehicle ownership. A completed home projection must succeed before seating its car, avoiding an intermediate garage spawn. Failed required ownership reads expose Retry arrival and do not seat the car. Browser regression covers a failed home read followed by retry, home spawn, road access, reload and account switch. Deployed acceptance remains outstanding.
 
 Arrival distinguishes a failed entitlement read from an explicit OFF/killed response. Failed or malformed reads hold arrival with a retry that refreshes entitlement; explicit OFF preserves the existing non-onboarding path. A loading boundary covers pending ownership reads. Nonempty vehicle truth must resolve to exactly one supported model, otherwise arrival retries instead of silently selecting no car. The browser regression also holds a home response open to prove no intermediate car spawn, and checks automatic Gearbox entry for a carless, homeless account. These are fixture tests, not deployment receipts.

@@ -3,11 +3,14 @@
 // heartbeat (runtime.loop), so subscribing to it and snapshotting a primitive signature gives
 // components exactly-when-needed re-renders without a new state-manager dependency.
 import { useCallback, useSyncExternalStore } from "react";
+import type { OwnedDrivePose } from "../car/ownedDriving";
 
 /** The slice of ColonyRuntime the bridge needs — kept structural so tests and headless
  *  harnesses can pass a stub, and so this module never imports the runtime. */
 export interface SimBridge {
   subscribe(cb: () => void): () => void;
+  /** Non-null only while this local operator is seated in their owned car. */
+  getOwnedDrivePose?(): OwnedDrivePose | null;
 }
 
 /** Fallback heartbeat for render trees mounted without a runtime (dev harnesses): poll at the

@@ -72,3 +72,11 @@ spawn. The subsequent actual-model renderer change passed TypeScript and the Chr
 returning-owner regression, which checks the mounted X19 GLB has mesh geometry and verifies
 ownership/placement after reload. API responses in this browser regression are fixtures;
 this is not deployed ownership, acquisition, camera seating or driving acceptance.
+
+## Seated owned-car view and driveway exit — 2026-09-25
+
+The local seated driver view hides only that player's exterior catalogue model, which has no interior. `Park and exit` selects a deterministic adjacent walkable, owned-driveway or road cell, faces the parked car, and allows re-entry. The focused Chromium test checks camera height, clear seated view, successful exit, visible car within the camera frustum, re-entry and keyboard driving onto the road.
+
+The exact-PR-branch local run passed one Chromium test in 44.4 seconds with hardware WebGL; `npm run typecheck` passed. The test used fixture service responses, and the world microservice fell back to local assets. Screenshots and camera measurements are retained under `docs/evidence/player-onboarding-2026-09-25/`.
+
+The fixture still does not show the house, car and driveway together. Deployed ownership, service state, persistence, and the complete player flow remain unverified.
