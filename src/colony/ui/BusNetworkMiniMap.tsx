@@ -3,19 +3,18 @@ import { useState } from "react";
 import type { PresenceReadout } from "../spatial/presenceReadout";
 import { useSimSignal } from "../render/useSimSignal";
 import { buildBusNetworkMiniMapModel } from "./busNetworkMiniMapModel";
-import { formatAmount } from "./currencyFormat";
 
 const WIDTH = 200;
 const HEIGHT = 132;
 
 export function BusNetworkMiniMap({
   runtime,
-  walletKco,
+  walletLabel,
   presenceReadout,
 }: {
   runtime: ColonyRuntime;
-  /** Server-synced player wallet only; null when this is an operator/city view. */
-  walletKco: number | null;
+  /** Server-authenticated wallet state, or City view for an operator. */
+  walletLabel: string;
   presenceReadout: PresenceReadout | null;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -79,9 +78,7 @@ export function BusNetworkMiniMap({
       </div>
       <div className="bus-network-minimap__summary">
         <span>
-          {walletKco === null
-            ? "City view"
-            : `Wallet ₭${formatAmount(walletKco)}`}
+          {walletLabel}
         </span>
         <span>{model.player ? "You are here" : "Position unavailable"}</span>
       </div>

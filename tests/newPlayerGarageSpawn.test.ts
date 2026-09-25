@@ -963,6 +963,8 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
           canAcquire: true,
           accountKey: "buyer-x19",
           walletKco: 750,
+          walletStatus: "ready",
+          walletLabel: "₭750 KCO",
           onClose: () => {},
         }),
       );
@@ -984,6 +986,12 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
     const getAttribute = price.getAttribute as (attr: string) => unknown;
     expect(getAttribute("data-price-source")).toBe("server");
     expect(getAttribute("data-price-kco")).toBe("950");
+    const wallet = findNodeByAttr(
+      container,
+      "data-testid",
+      "showroom-wallet-balance",
+    )!;
+    expect(readNodeText(wallet)).toBe("₭750 KCO");
     const acquire = findNodeByAttr(
       container,
       "data-build-action",

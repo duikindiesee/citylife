@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   FIRST_PERSON_KEY_CODES,
   RACE_KEY_CODES,
@@ -128,6 +128,12 @@ import {
   type WorldLayoutDocument,
 } from "../spatial/worldLayoutDocument";
 import { formatAmount } from "./currencyFormat";
+import {
+  emptyPlayerWallet,
+  playerWalletLabel,
+  readPlayerWallet,
+  type PlayerWalletSnapshot,
+} from "../wallet/playerWallet";
 
 // Spec 089 — the CityLife HUD shows only the city-relevant stats (citizens, homesteads, the bank, the
 // commercial district, the border). The old colony-sim survival/economy dashboard (water/food/health/
@@ -186,14 +192,17 @@ export type BankPanelCopy = {
   rows: { label: string; value: string; status?: "ok" | "pending" }[];
   ledgerRows: string[];
 };
-export function bankPanelCopy(bank: ColonyUiState["bank"]): BankPanelCopy {
+export function bankPanelCopy(
+  bank: ColonyUiState["bank"],
+  playerWallet: PlayerWalletSnapshot,
+): BankPanelCopy {
   if (bank.scope === "player") {
     return {
       title: `Your wallet · ${bank.currency}`,
       rows: [
         {
           label: "Your balance",
-          value: `${bank.currency}${formatAmount(bank.deposits)}`,
+          value: playerWalletLabel(playerWallet, bank.currency),
         },
       ],
       ledgerRows: [],
@@ -969,9 +978,9 @@ export function ColonyApp() {
     if (!newPlayerJourneyEnabled) return;
     setDriveHomeOpen(true);
   };
-  // The server-synced wallet truth to display (player scope only; the operator/admin bank is the whole
-  // city, not a personal wallet). Display only — the overlay never submits it.
-  const playerWalletKco = ui.bank.scope === "player" ? ui.bank.deposits : null;
+  // The current session's personal wallet is separate from the operator's city-wide bank view. Read
+  // it from the self-scoped ledger endpoint, never infer it from the local simulation wallet. Display
+  // only — purchase requests never submit this value.
   useEffect(() => {
     runtime.setOperatorName(auth.operator?.id ?? null);
     // Identity key: bind the player view to the authenticated kooker userId (from the JWT), so own-data
@@ -987,6 +996,75 @@ export function ColonyApp() {
   // can never carry a prior user's positive entitlement forward. A stale in-flight response is
   // ignored (`cancelled`) so it can never overwrite the current identity's decision.
   const operatorUserId = auth.operator?.userId ?? null;
+  const walletAccountKey =
+    auth.isAuthenticated && operatorUserId !== null
+      ? String(operatorUserId)
+      : null;
+  const [playerWallet, setPlayerWallet] = useState<PlayerWalletSnapshot>(() =>
+    emptyPlayerWallet(null, "unavailable"),
+  );
+  const walletReadSequence = useRef(0);
+  const refreshPlayerWallet = useCallback(async () => {
+    const accountKey = walletAccountKey;
+    if (accountKey === null) {
+      setPlayerWallet(emptyPlayerWallet(null, "unavailable"));
+      return;
+    }
+    setPlayerWallet((current) =>
+      current.accountKey === accountKey
+        ? current
+        : emptyPlayerWallet(accountKey, "loading"),
+    );
+    const sequence = ++walletReadSequence.current;
+    const result = await readPlayerWallet(auth, accountKey);
+    if (
+      sequence === walletReadSequence.current &&
+      String(auth.operator?.userId ?? "") === accountKey
+    ) {
+      setPlayerWallet(result);
+    }
+  }, [auth, walletAccountKey]);
+  useEffect(() => {
+    if (walletAccountKey === null) {
+      setPlayerWallet(emptyPlayerWallet(null, "unavailable"));
+      return;
+    }
+    setPlayerWallet((current) =>
+      current.accountKey === walletAccountKey
+        ? current
+        : emptyPlayerWallet(walletAccountKey, "loading"),
+    );
+    void refreshPlayerWallet();
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible")
+        void refreshPlayerWallet();
+    }, 30_000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible")
+        void refreshPlayerWallet();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [refreshPlayerWallet, walletAccountKey]);
+  // Render state is keyed by account before effects run, so switching identities cannot flash another
+  // player's prior balance for one frame.
+  const visiblePlayerWallet =
+    walletAccountKey !== null && playerWallet.accountKey === walletAccountKey
+      ? playerWallet
+      : emptyPlayerWallet(walletAccountKey, "loading");
+  const playerWalletKco =
+    visiblePlayerWallet.status === "ready"
+      ? visiblePlayerWallet.balanceKco
+      : null;
+  const playerWalletText = playerWalletLabel(
+    visiblePlayerWallet,
+    ui.bank.currency,
+  );
   // UI.STATE.1 slice 1 — evaluate `hud-player-state-v1` with the same identity discipline as the
   // journey flag: reset to null (fail closed -> legacy topbar) on every identity change, drop a stale
   // in-flight response. Signed-out sessions short-circuit inside evaluateHudEntitlement before any
@@ -1905,6 +1983,9 @@ export function ColonyApp() {
           canAcquire={showroomAutoAcquire}
           accountKey={operatorUserId === null ? null : String(operatorUserId)}
           walletKco={playerWalletKco}
+          walletStatus={visiblePlayerWallet.status}
+          walletLabel={playerWalletText}
+          onWalletRefresh={refreshPlayerWallet}
           onClose={() => {
             setShowroomOpen(false);
           }}
@@ -1939,7 +2020,9 @@ export function ColonyApp() {
       {homeOpen && newPlayerJourneyEnabled && (
         <StarterPropertyOverlay
           onClose={() => setHomeOpen(false)}
-          walletKco={playerWalletKco}
+          walletStatus={visiblePlayerWallet.status}
+          walletLabel={playerWalletText}
+          onWalletRefresh={refreshPlayerWallet}
           currency={ui.bank.currency}
         />
       )}
@@ -2202,7 +2285,7 @@ export function ColonyApp() {
       </header>
       <BusNetworkMiniMap
         runtime={runtime}
-        walletKco={playerWalletKco}
+        walletLabel={walletAccountKey === null ? "City view" : playerWalletText}
         presenceReadout={presenceReadout}
       />
       {/* BUG.GEO.1 — the presence readout (so any screenshot of this frame is self-locating) is
@@ -2230,6 +2313,25 @@ export function ColonyApp() {
           >
             <div className="hud-essentials" aria-label="City HUD essentials">
               <h2>{ui.name}</h2>
+              {walletAccountKey !== null && (
+                <div
+                  className="hud-essential-row hud-wallet-row"
+                  data-testid="player-wallet-hud"
+                  data-wallet-status={visiblePlayerWallet.status}
+                >
+                  <span>Wallet</span>
+                  <b>{playerWalletText}</b>
+                  <button
+                    type="button"
+                    className="hud-wallet-refresh"
+                    aria-label="Refresh wallet balance"
+                    title="Refresh wallet balance"
+                    onClick={() => void refreshPlayerWallet()}
+                  >
+                    ↻
+                  </button>
+                </div>
+              )}
               <button
                 className="hud-detail-toggle"
                 type="button"
@@ -3883,7 +3985,7 @@ export function ColonyApp() {
               )}
 
               {(() => {
-                const bankCopy = bankPanelCopy(ui.bank);
+                const bankCopy = bankPanelCopy(ui.bank, visiblePlayerWallet);
                 return (
                   <>
                     <h2 style={{ marginTop: 18 }}>{bankCopy.title}</h2>

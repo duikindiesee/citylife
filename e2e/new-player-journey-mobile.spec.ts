@@ -129,6 +129,27 @@ async function allowVehicleOffers(page: import("@playwright/test").Page) {
   );
 }
 
+async function allowWalletSnapshot(
+  page: import("@playwright/test").Page,
+  userId: string,
+  balance: number,
+) {
+  await page.route("**/api/ledger/me/wallet", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ownerId: userId,
+        appName: "citylife",
+        walletType: "DEFAULT",
+        instrument: "KCO",
+        realm: "TEST",
+        balance,
+      }),
+    }),
+  );
+}
+
 test("returning owner hydrates their exact car without opening Gearbox", async ({
   page,
 }) => {
@@ -435,6 +456,7 @@ test("new player can exit and re-enter without losing server-priced acquisition 
     }),
   );
   await allowVehicleOffers(page);
+  await allowWalletSnapshot(page, "showroom-reentry-1", 0);
   await bootAs(page, "showroom-reentry-1", true);
   const acquire = page.locator('[data-build-action="showroom-acquire"]');
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
@@ -460,19 +482,22 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   ).toHaveCount(0);
 
   // A different identity with unavailable ownership truth must not inherit eligibility.
-  await page.unrouteAll({ behavior: "ignoreErrors" });
-  await page.route("**/citylife/players/me/vehicle", (route) =>
+  // Close the continuously rendering WebGL page before booting the second account. Reusing the same
+  // page can starve Playwright's navigation/init-script control channel after the long showroom run.
+  const switchedPage = await page.context().newPage();
+  await page.close();
+  await switchedPage.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({ status: 503, body: "unavailable" }),
   );
-  await bootAs(page, "showroom-reentry-2", true);
-  await expect(page.locator(ENTRY)).toBeVisible({ timeout: READY_TIMEOUT });
-  await touchTap(page, ENTRY);
-  const unavailableAcquire = page.locator(ACQUIRE_CONTROL);
+  await bootAs(switchedPage, "showroom-reentry-2", true);
+  await expect(switchedPage.locator(ENTRY)).toBeVisible({ timeout: READY_TIMEOUT });
+  await touchTap(switchedPage, ENTRY);
+  const unavailableAcquire = switchedPage.locator(ACQUIRE_CONTROL);
   await expect(unavailableAcquire).toHaveCount(1);
   await expect(unavailableAcquire).toBeDisabled();
-  await expect(page.locator('[data-testid="showroom-card-price"]')).toHaveText(
-    "Price unavailable",
-  );
+  await expect(
+    switchedPage.locator('[data-testid="showroom-card-price"]'),
+  ).toHaveText("Price unavailable");
 });
 
 test("server ownership opens Gearbox despite a stale cached car", async ({
@@ -495,6 +520,7 @@ test("server ownership opens Gearbox despite a stale cached car", async ({
     });
   });
   await allowVehicleOffers(page);
+  await allowWalletSnapshot(page, "stale-cache-player", 0);
   await bootAs(page, "stale-cache-player", true);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   expect(ownershipReads).toBeGreaterThan(0);
@@ -525,6 +551,9 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   // 2) Operator UAT allowlists this player and the server confirms no owned car. The player goes
   //    directly to Gearbox; the server quote is shown and the zero wallet reports its exact shortfall.
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  // Keep the economy fixture explicit: showroom affordability and HUD display use the same
+  // self-scoped ledger snapshot, never the local simulation bank projection.
+  await allowWalletSnapshot(page, "uat-allow-1", 0);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -535,6 +564,13 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   await allowVehicleOffers(page);
   await bootAs(page, "uat-allow-1", true);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
+  await expect(page.getByTestId("showroom-wallet")).toHaveAttribute(
+    "data-wallet-status",
+    "ready",
+  );
+  await expect(page.getByTestId("showroom-wallet-balance")).toHaveText(
+    "₭0 KCO",
+  );
   await expect(
     page.locator('[data-testid="showroom-card-price"]'),
   ).toHaveAttribute("data-price-source", "server");
@@ -548,6 +584,8 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   await expect(page.locator(OVERLAY)).toHaveCount(0, {
     timeout: ASSERT_TIMEOUT,
   });
+  await expect(page.getByTestId("player-wallet-hud")).toBeVisible();
+  await expect(page.getByTestId("player-wallet-hud")).toContainText("₭0 KCO");
 
   // 3) Account switch to a different, OFF player → the entry is hidden again. No positive
   //    entitlement bled across the session boundary.
