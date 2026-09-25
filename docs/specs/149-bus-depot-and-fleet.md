@@ -363,9 +363,13 @@ Queue line for the operator:
 
 ### 4.3 Compact player map and wallet HUD
 
-The compact map is a local-session city view. Its wallet label is shown only when the
-player-scoped bank projection is active; an operator/city view does not present the
-city balance as a player's personal funds. The player marker uses the exact local
+The compact map is a local-session city view. A player's wallet label comes from the
+self-scoped `/kooker/api/ledger/me/wallet` projection for the signed-in caller's
+`citylife` DEFAULT KCO wallet; it is not the local simulation bank. Missing, loading,
+invalid and unavailable wallet reads remain distinct from a real zero balance. The same
+balance is visible in the always-on HUD and Gearbox showroom even while the map is
+collapsed. An operator/city view does not present the city balance as personal funds.
+The player marker uses the exact local
 presence fix while on foot and the active owned-car pose while seated. Unknown or
 coarse presence stays unavailable rather than being guessed from a home or spawn.
 While driving, the map subscribes to the runtime's 200ms UI heartbeat so the marker
