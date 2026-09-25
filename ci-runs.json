@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-25T10:15:15.522Z",
+  "updatedAt": "2026-09-25T10:17:10.314Z",
   "runs": [
+    {
+      "runId": 36123111302,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36123111302",
+      "event": "pull_request",
+      "branch": "codex/showroom-wallet-balance",
+      "sha": "d3509c7643b63bc5a277469546cd1f5240b745e1",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/d3509c7643b63bc5a277469546cd1f5240b745e1",
+      "pullRequestNumbers": "#540",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/540",
+      "pullRequests": [
+        {
+          "number": 540,
+          "url": "https://github.com/duikindiesee/citylife/pull/540"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-25T10:16:49Z",
+      "completedAt": "2026-09-25T10:17:01Z",
+      "durationSeconds": 12,
+      "runnerSummary": "GitHub Actions 1000010343",
+      "jobs": [
+        {
+          "id": 108032992650,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010343",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-09-25T10:16:52Z",
+          "completedAt": "2026-09-25T10:17:00Z",
+          "durationSeconds": 8
+        }
+      ]
+    },
     {
       "runId": 36121076794,
       "workflowName": "CI",
