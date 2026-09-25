@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-25T10:41:07.516Z",
+  "updatedAt": "2026-09-25T10:43:17.512Z",
   "runs": [
+    {
+      "runId": 36125274918,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36125274918",
+      "event": "pull_request",
+      "branch": "codex/showroom-wallet-balance",
+      "sha": "deb9d646b574a7fc0139c6a21fd56ff457bbe27c",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/deb9d646b574a7fc0139c6a21fd56ff457bbe27c",
+      "pullRequestNumbers": "#540",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/540",
+      "pullRequests": [
+        {
+          "number": 540,
+          "url": "https://github.com/duikindiesee/citylife/pull/540"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-25T10:40:45Z",
+      "completedAt": "2026-09-25T10:41:58Z",
+      "durationSeconds": 73,
+      "runnerSummary": "GitHub Actions 1000010347",
+      "jobs": [
+        {
+          "id": 108039839823,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010347",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-09-25T10:40:50Z",
+          "completedAt": "2026-09-25T10:41:57Z",
+          "durationSeconds": 67
+        }
+      ]
+    },
     {
       "runId": 36125274915,
       "workflowName": "Secret scan",
