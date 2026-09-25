@@ -2,6 +2,12 @@ name: Publish CI run reports
 
 on:
   workflow_run:
+    workflows:
+      - CI
+      - Build CityLife Debug APK
+      - Docker
+      - Secret scan
+      - CityLife Kooker2 Trusted Main
     types: [completed]
   workflow_dispatch:
     inputs:

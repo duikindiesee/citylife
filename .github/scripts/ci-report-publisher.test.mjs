@@ -1,10 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   durationSeconds,
   makeRunRecord,
   mergeRunIntoReport,
 } from "./ci-report-publisher.mjs";
+
+test("publisher workflow explicitly subscribes to CityLife workflow_run sources", async () => {
+  const workflow = await readFile(new URL("../workflows/publish-ci-run-reports.yml", import.meta.url), "utf8");
+  assert.match(workflow, /workflow_run:\s*\n\s+workflows:/);
+  for (const workflowName of ["CI", "Build CityLife Debug APK", "Docker", "Secret scan", "CityLife Kooker2 Trusted Main"]) {
+    const escaped = workflowName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(workflow, new RegExp(`^\\s+- ${escaped}$`, "m"));
+  }
+});
 
 test("durationSeconds returns whole seconds and rejects incomplete ranges", () => {
   assert.equal(
