@@ -77,9 +77,7 @@ export function BusNetworkMiniMap({
         </button>
       </div>
       <div className="bus-network-minimap__summary">
-        <span>
-          {walletLabel}
-        </span>
+        <span>{walletLabel}</span>
         <span>{model.player ? "You are here" : "Position unavailable"}</span>
       </div>
       <div className="bus-network-minimap__mode">LOCAL SESSION</div>

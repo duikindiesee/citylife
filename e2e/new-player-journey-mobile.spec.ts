@@ -490,7 +490,9 @@ test("new player can exit and re-enter without losing server-priced acquisition 
     route.fulfill({ status: 503, body: "unavailable" }),
   );
   await bootAs(switchedPage, "showroom-reentry-2", true);
-  await expect(switchedPage.locator(ENTRY)).toBeVisible({ timeout: READY_TIMEOUT });
+  await expect(switchedPage.locator(ENTRY)).toBeVisible({
+    timeout: READY_TIMEOUT,
+  });
   await touchTap(switchedPage, ENTRY);
   const unavailableAcquire = switchedPage.locator(ACQUIRE_CONTROL);
   await expect(unavailableAcquire).toHaveCount(1);

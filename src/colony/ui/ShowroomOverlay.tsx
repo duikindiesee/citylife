@@ -484,7 +484,11 @@ export function ShowroomOverlay({
                 type="button"
                 data-testid="showroom-wallet-refresh"
                 onClick={onWalletRefresh}
-                style={{ ...controlButtonStyle, padding: "4px 7px", fontSize: 10 }}
+                style={{
+                  ...controlButtonStyle,
+                  padding: "4px 7px",
+                  fontSize: 10,
+                }}
               >
                 Retry
               </button>
