@@ -2,7 +2,6 @@
 // The mobile-first layout keeps the world visible: a compact destination strip,
 // edge movement joystick, and a small action cluster instead of a blocking report panel.
 import { useState } from "react";
-import { isPublicSafe } from "../newcomers";
 import { isKookerBeaconPrompt } from "../roadmap";
 import { BuildStamp } from "./BuildStamp";
 import type { ColonyRuntime } from "../runtime";
@@ -18,18 +17,6 @@ function distanceLabel(distance: number): string {
 function fpActionName(label: string, spoken: string): string {
   if (label === "·") return "narrate";
   return `walk-${spoken.replaceAll(" ", "-")}`;
-}
-
-export function nightFriendBannerCopy(
-  view: ColonyUiState["firstPerson"]["view"],
-): string | null {
-  if (!view || view.clock.isDay || view.neighbours.length === 0) return null;
-  const names = view.neighbours
-    .filter((n) => isPublicSafe(n.displayName))
-    .slice(0, 2)
-    .map((n) => n.displayName.split(" ")[0])
-    .join(", ");
-  return names ? `Friend nearby at the night rally: ${names}` : null;
 }
 
 const DIR: {
@@ -51,14 +38,16 @@ const DIR: {
 ];
 
 function destinationLabel(fp: ColonyUiState["firstPerson"]): string {
-  if (fp.guidedTarget) return fp.guidedTarget.label;
+  if (fp.guidedTarget && !/rally/i.test(fp.guidedTarget.label))
+    return fp.guidedTarget.label;
   const prompt = fp.view?.interactionPrompt;
   if (prompt) return prompt.label;
   return "Free roam";
 }
 
 function destinationDistance(fp: ColonyUiState["firstPerson"]): string | null {
-  if (fp.guidedTarget) return distanceLabel(fp.guidedTarget.remainingDistance);
+  if (fp.guidedTarget && !/rally/i.test(fp.guidedTarget.label))
+    return distanceLabel(fp.guidedTarget.remainingDistance);
   const prompt = fp.view?.interactionPrompt;
   if (prompt) return `${Math.round(prompt.distance)} away`;
   return null;
@@ -75,7 +64,7 @@ function moodWarning(
 }
 
 function guidanceCaption(fp: ColonyUiState["firstPerson"]): string {
-  if (fp.guidedTarget) {
+  if (fp.guidedTarget && !/rally/i.test(fp.guidedTarget.label)) {
     return `Guiding to ${fp.guidedTarget.label} · ${distanceLabel(fp.guidedTarget.remainingDistance)}`;
   }
   if (fp.narrating) return "Reading the street…";
@@ -100,7 +89,6 @@ export function FirstPersonPanel({
   const [showHelp, setShowHelp] = useState(false);
   if (!fp.active || !fp.citizenId) return null;
   const v = fp.view;
-  const nightFriendBanner = nightFriendBannerCopy(v);
   const targetLabel = destinationLabel(fp);
   const targetDistance = destinationDistance(fp);
   const warning = moodWarning(v);
@@ -123,11 +111,6 @@ export function FirstPersonPanel({
             already an owned box at the TOP of the edge-HUD grid — no new grid area, no new pinned
             element, and nowhere near the thumb controls. */}
         <BuildStamp variant="fp" />
-        {nightFriendBanner && (
-          <div className="first-person-panel__friend-banner">
-            {nightFriendBanner}
-          </div>
-        )}
         {warning && (
           <div className="first-person-panel__warning">⚠ {warning}</div>
         )}
@@ -268,15 +251,6 @@ export function FirstPersonPanel({
               {v.nearestCivic
                 .slice(0, 2)
                 .map((b) => `${b.kind} (${Math.round(b.distance)})`)
-                .join(", ")}
-            </div>
-          )}
-          {v.neighbours.length > 0 && (
-            <div>
-              <span>Neighbours</span>{" "}
-              {v.neighbours
-                .slice(0, 2)
-                .map((n) => n.displayName.split(" ")[0])
                 .join(", ")}
             </div>
           )}

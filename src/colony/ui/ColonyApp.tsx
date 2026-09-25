@@ -49,15 +49,7 @@ import {
   type HqEntitlement,
 } from "../entitlement/kookerHq";
 import { HqReceptionView } from "../render/HqReceptionView";
-// UI.STATE.1 slice 1 — the fail-closed `hud-player-state-v1` gate and the pure topbar plan (spec 170
-// §8). Deliberately NO dev/e2e bypass on this one: e2e runs under skip-auth and clicks legacy topbar
-// controls by role/name, so the flag must stay OFF there — see hudPlayerState.ts for the measurement.
-import {
-  evaluateHudEntitlement,
-  defaultHudDeps,
-  hudPlayerStateAvailable,
-  type HudEntitlement,
-} from "../entitlement/hudPlayerState";
+// P0 player-state HUD — all players share this menu and map baseline; no HUD feature flag is fetched.
 import { planTopbar } from "./topbarPlan";
 import { TopbarMenu } from "./TopbarMenu";
 import { BuildStamp } from "./BuildStamp";
@@ -106,7 +98,6 @@ import { ShowroomOverlay } from "./ShowroomOverlay";
 import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
 import { DriveHomeOverlay } from "./DriveHomeOverlay";
 import { OwnedCarControls } from "./OwnedCarControls";
-import { RaceMobileControls } from "./RaceMobileControls";
 import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
 import {
@@ -117,7 +108,6 @@ import {
   type WorldLayoutOperatorStatus,
 } from "./BuilderPanel";
 import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
-import { GeoReadout } from "./GeoReadout";
 import { BugReportPanel } from "./BugReportPanel";
 import "./colony.css";
 import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
@@ -592,46 +582,6 @@ const MOUSE_SENSITIVITY_PRESETS: {
   { id: "high", label: "High" },
 ];
 
-export type RallyCitizenRead = { id: string; displayName: string };
-type RallyRead = NonNullable<ColonyUiState["rally"]> & {
-  presentCitizens?: RallyCitizenRead[];
-};
-
-export function rallyWhoIsHereCopy(
-  rally: ColonyUiState["rally"],
-  isDay: boolean,
-): {
-  title: string;
-  summary: string;
-  citizens: RallyCitizenRead[];
-  signature: string;
-} | null {
-  if (!rally) return null;
-  const presentCitizens = ((rally as RallyRead).presentCitizens ?? [])
-    .filter(
-      (c): c is RallyCitizenRead =>
-        !!c &&
-        typeof c.id === "string" &&
-        typeof c.displayName === "string" &&
-        isPublicSafe(c.id) &&
-        isPublicSafe(c.displayName),
-    )
-    .slice(0, Math.max(0, Math.round(rally.present)));
-  const label = presentCitizens.length
-    ? presentCitizens.map((c) => c.displayName.split(" ")[0]).join(", ")
-    : `${Math.round(rally.present)} present`;
-  return {
-    title: isDay ? "Rally point" : "Night rally",
-    summary: presentCitizens.length ? label : `${label} at the hilltop`,
-    citizens: presentCitizens,
-    signature: presentCitizens.map((c) => `${c.id}:${c.displayName}`).join("|"),
-  };
-}
-
-type RuntimeRendererHandle = {
-  setRallyPresentCitizens?: (citizens: RallyCitizenRead[]) => void;
-};
-
 export function FirstPersonMouseLookBar({
   citizenName,
   mouseLookLocked,
@@ -815,7 +765,6 @@ export function ColonyApp() {
     recent: ui.settlers.recent,
     playerScoped: ui.bank.scope === "player",
   });
-  const rallyRead = rallyWhoIsHereCopy(ui.rally, ui.clock.isDay);
   const showBorderControl = canShowBorderControl({
     playerScoped: ui.bank.scope === "player",
   });
@@ -824,6 +773,7 @@ export function ColonyApp() {
   // the local DEV/E2E skip-auth bypass has a null operator and no account to change.
   const [pwdChangeOpen, setPwdChangeOpen] = useState(false);
   const [rightHudOpen, setRightHudOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   const [mouseLookLocked, setMouseLookLocked] = useState(false);
   const [pointerLockError, setPointerLockError] = useState<string | null>(null);
   const [touchCapable, setTouchCapable] = useState(detectTouchCapable);
@@ -1070,37 +1020,8 @@ export function ColonyApp() {
     visiblePlayerWallet,
     ui.bank.currency,
   );
-  // UI.STATE.1 slice 1 — evaluate `hud-player-state-v1` with the same identity discipline as the
-  // journey flag: reset to null (fail closed -> legacy topbar) on every identity change, drop a stale
-  // in-flight response. Signed-out sessions short-circuit inside evaluateHudEntitlement before any
-  // network call, so e2e (skip-auth, no gateway) deterministically renders the legacy topbar.
-  const [hudEntitlement, setHudEntitlement] = useState<HudEntitlement | null>(
-    null,
-  );
-  useEffect(() => {
-    setHudEntitlement(null);
-    let cancelled = false;
-    void (async () => {
-      const result = await evaluateHudEntitlement(defaultHudDeps());
-      if (!cancelled) setHudEntitlement(result);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth, operatorUserId]);
-  // The pure decision for WHICH topbar controls exist this render (tests/topbarPlan.test.ts pins
-  // both branches). The Space-key gate reads a ref because the keydown listener mounts once with
-  // [] deps and must see the CURRENT plan, not the mount-time closure.
-  const topbar = planTopbar({
-    hudPlayerStateEnabled: hudPlayerStateAvailable({
-      entitlement: hudEntitlement,
-    }),
-    raceAvailable: ui.race.available,
-  });
-  const spacePausesSimRef = useRef(true);
-  spacePausesSimRef.current = topbar.spacePausesSim;
-  // Shared by the inline snapshot button (legacy) and the menu item (new HUD) — one handler.
+  const topbar = planTopbar();
+  // Shared by the menu item and the snapshot action — one handler.
   const saveSnapshot = () => {
     const url = runtime.snapshot();
     if (!url) return;
@@ -1340,13 +1261,6 @@ export function ColonyApp() {
   }, [runtime]);
 
   useEffect(() => {
-    const renderer = (runtime as unknown as Record<string, unknown>)[
-      "renderer"
-    ] as RuntimeRendererHandle | null | undefined;
-    renderer?.setRallyPresentCitizens?.(rallyRead?.citizens ?? []);
-  });
-
-  useEffect(() => {
     const el = hostRef.current;
     if (!el) return;
 
@@ -1513,13 +1427,6 @@ export function ColonyApp() {
         }
       }
       switch (e.code) {
-        case "Space":
-          // UI.STATE.1 slice 1 — under the new HUD the world's clock is not a control (spec 170 §6):
-          // pause never stopped sol time, only the citizen sim, and the shortcut goes with the button.
-          if (!spacePausesSimRef.current) break;
-          e.preventDefault();
-          runtime.setPaused(!runtime.getUiState().paused);
-          break;
         case "Digit1":
           runtime.setPreset("street");
           break;
@@ -2039,55 +1946,9 @@ export function ColonyApp() {
       {driveHomeOpen && newPlayerJourneyEnabled && (
         <DriveHomeOverlay onClose={() => setDriveHomeOpen(false)} />
       )}
-      {/* UI.GEO.OVERLAP.1 — the ONE owner of the bottom-LEFT corner, mirroring what #421 did for the
-          bottom-right. The BUG.GEO.1 presence readout (`position: absolute; left: 16; bottom: 24;
-          z-index: 6`) and the rally "who is here" card (`position: fixed; left: 18; bottom: 24;
-          z-index: 49`) each pinned themselves into this corner with no shared owner. Being both
-          bottom-anchored, the rally card landed WHOLLY inside the readout's box and the higher
-          z-index painted it over the readout's last rows — measured 15161px^2 at 1280x800 AND at
-          390x844, with the readout's reproducibility stamp failing a centre hit-test. A flex column
-          cannot overlap itself, so the collision is removed by construction rather than nudged
-          elsewhere by an offset or z-index tweak. Layout rules live in `.hud-corner-rail-left`
-          (colony.css); the rail deliberately owns LAYOUT only and each member keeps its own layer.
-          Order is DOM order: the readout above, then the rally card, which keeps hugging the corner
-          exactly where it already sat. The readout is the flexible member and the card is rigid, so
-          a long presence list shrinks the readout instead of pushing the card off-screen.
-          SCOPE, measured: in first person the rally card unmounts, so this defect cannot occur
-          there, but the touch joystick takes the bottom-left and the readout is buried under it
-          instead (34532px^2 at 1280x800, 39324px^2 + 6630px^2 against the guidance caption at
-          390x844). That is a DIFFERENT owner — the first-person edge-HUD grid — and it does not
-          fit: the free band between the bus mini-map's bottom edge (224px) and the joystick's top
-          (528px) is ~304px, while the first-person readout measures 389px tall. Folding it into
-          that grid was tried and measured: it merely relocated the collision onto the bus mini-map
-          (20520px^2). It needs a compact first-person readout form, not a layout owner, so it is
-          reported separately rather than half-fixed here. First-person layout is unchanged by this
-          PR. */}
+      {/* The player map deliberately shows only this player's exact local position and bus state.
+          Simulated resident names and coarse location readouts are not multiplayer presence. */}
       <div className="hud-corner-rail-left" data-testid="hud-corner-rail-left">
-        {presenceReadout && !runtime.getOwnedDrivePose() && (
-          <GeoReadout readout={presenceReadout} />
-        )}
-        {!ui.firstPerson.active &&
-          !builderActive &&
-          !worldViewActive &&
-          !runtime.getOwnedDrivePose() &&
-          rallyRead && (
-            <div
-              className={`rally-social-read ${ui.clock.isDay ? "" : "rally-social-read--night"}`}
-              aria-label="Who is here at the rally"
-            >
-              <span className="rally-social-read__eyebrow">
-                {rallyRead.title}
-              </span>
-              <b>{rallyRead.summary}</b>
-              <span className="rally-social-read__status">
-                {ui.rally?.ready
-                  ? "Friend present · race ready"
-                  : ui.rally && ui.rally.present > 0
-                    ? "Waiting for a friend"
-                    : "Rally point empty"}
-              </span>
-            </div>
-          )}
         {/* UI.VERSION.1 — the build stamp is the LAST member of the rail, so it sits closest to
             the corner. It joins the rail rather than pinning itself, for the reason documented
             above this element.
@@ -2101,66 +1962,6 @@ export function ColonyApp() {
             which is that view's real layout owner. */}
         {!ui.firstPerson.active && <BuildStamp />}
       </div>
-      {ui.race.mode !== "idle" && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 18,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 52,
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            background: "rgba(10,14,28,0.82)",
-            border: "1px solid #33415f",
-            borderRadius: 8,
-            padding: "8px 14px",
-            backdropFilter: "blur(4px)",
-            color: "#d8e6ff",
-            fontSize: 13,
-          }}
-        >
-          <b style={{ color: "#ffcf66" }}>Road Rally</b>
-          {ui.race.mode === "countdown" ? (
-            <span>{Math.ceil(ui.race.countdownMs / 1000)}</span>
-          ) : (
-            <span>{raceTime(ui.race.finishedMs ?? ui.race.timeMs)}</span>
-          )}
-          <span style={{ color: ui.race.offTrack ? "#e0a14d" : "#8fb6d8" }}>
-            {ui.race.checkpoint}/{ui.race.checkpoints}
-          </span>
-          {controllerConnected && (
-            <span data-race-controller="connected" style={{ color: "#9ee6ff" }}>
-              Controller connected · left stick/D-pad steer · A throttle · B
-              brake
-            </span>
-          )}
-          {ui.race.bestMs !== null && (
-            <span style={{ color: "#8fd0a6" }}>
-              Best {raceTime(ui.race.bestMs)}
-            </span>
-          )}
-          <button
-            style={{ padding: "3px 10px" }}
-            onClick={() => runtime.startRace()}
-          >
-            Restart
-          </button>
-          <button
-            style={{ padding: "3px 10px" }}
-            onClick={() => runtime.exitRace()}
-          >
-            Exit
-          </button>
-        </div>
-      )}
-      <RaceMobileControls
-        race={ui.race}
-        runtime={runtime}
-        isTouch={touchCapable}
-      />
-
       <header className="topbar">
         <div className="brand">
           City<span>Life</span> <em>· Colony</em>
@@ -2173,112 +1974,53 @@ export function ColonyApp() {
         {/* UI.STATE.1 slice 1 — the pause/speed group exists only on the legacy branch. Measured
             (spec 170 §6): these gate the citizen-sim accumulator alone; sol time, the sky and the
             buses never stopped. The runtime methods stay as debug API. */}
-        {topbar.showPauseSpeedGroup && (
-          <div className="group">
-            <button
-              className={ui.paused ? "on" : ""}
-              onClick={() => runtime.setPaused(!ui.paused)}
-            >
-              {ui.paused ? "▶" : "❚❚"}
-            </button>
-            {[1, 2, 5].map((s) => (
-              <button
-                key={s}
-                className={!ui.paused && ui.speed === s ? "on" : ""}
-                onClick={() => {
-                  runtime.setPaused(false);
-                  runtime.setSpeed(s);
-                }}
-              >
-                {s}×
-              </button>
-            ))}
-          </div>
-        )}
-        {/* UI.STATE.1 slice 1 — on the new HUD the disabled-button state becomes absence: Road
-            Rally shows only where a race can actually start (spec 170 §5, the contextual slot). */}
-        {topbar.showRoadRally && (
-          <div className="group">
-            <button
-              className={ui.race.mode !== "idle" ? "on" : ""}
-              disabled={!ui.race.available}
-              onClick={() => {
-                if (ui.race.mode === "idle") runtime.startRace();
-                else runtime.exitRace();
-              }}
-              title="Road Rally"
-            >
-              Road Rally
-            </button>
-          </div>
-        )}
-        {ui.rally?.ready && ui.race.mode === "idle" && (
-          <div className="group">
-            <button
-              className="on"
-              onClick={() => runtime.joinRallyRace()}
-              title="Two players are at the Rally Point — start a race from the hilltop"
-            >
-              Join Race
-            </button>
-          </div>
-        )}
         <div className="group">
           <button
+            aria-label="Log a reproducible in-world bug"
             title="Log a reproducible in-world bug"
             onClick={() => setBugReportOpen(true)}
           >
-            🐞 Log Bug
+            🐞
           </button>
-          {topbar.showInlineSnapshot && (
-            <button
-              title="Save a PNG snapshot of the city"
-              onClick={saveSnapshot}
-            >
-              📷
-            </button>
-          )}
         </div>
+        {topbar.showMap && (
+          <button
+            type="button"
+            className={mapOpen ? "on" : ""}
+            aria-label={mapOpen ? "Hide map" : "Open map"}
+            aria-expanded={mapOpen}
+            data-testid="player-map-shortcut"
+            onClick={() => setMapOpen((open) => !open)}
+          >
+            Map
+          </button>
+        )}
+        {walletAccountKey !== null && (
+          <button
+            type="button"
+            className="topbar-wallet"
+            data-testid="player-wallet-hud"
+            data-wallet-status={visiblePlayerWallet.status}
+            aria-label={`Wallet balance ${playerWalletText}. Refresh balance`}
+            title="Refresh wallet balance"
+            onClick={() => void refreshPlayerWallet()}
+          >
+            Wallet <b>{playerWalletText}</b>
+          </button>
+        )}
         <BuilderPanel
           runtime={runtime}
           sim={runtime.sim}
           worldLayoutControls={worldLayoutControls}
           canBuild={canBuildCity}
         />
-        {topbar.showInlineAccountGroup && (
-          <div className="group">
-            <a
-              className="linkbtn"
-              href="/ask-kooker.html"
-              title="Open the Ask Kooker board"
-            >
-              Ask Kooker
-            </a>
-            {hasRealAccount && (
-              <button
-                title="Change your CityLife password"
-                onClick={() => setPwdChangeOpen(true)}
-              >
-                Change password
-              </button>
-            )}
-            <button
-              title="Sign out of CityLife"
-              onClick={() => {
-                auth.logout();
-                window.location.reload();
-              }}
-            >
-              Log out
-            </button>
-          </div>
-        )}
-        {/* UI.STATE.1 slice 1 — the menu absorbs Ask Kooker / Change password / snapshot / Log out
-            on the new HUD, taking the bar from up to 14 interactive controls toward the 5-slot
-            target (spec 170 §5). */}
         {topbar.showMenu && (
           <TopbarMenu
             hasRealAccount={hasRealAccount}
+            playerId={operatorUserId}
+            firstPersonActive={ui.firstPerson.active}
+            onOpenMap={() => setMapOpen(true)}
+            onExitFirstPerson={() => runtime.exitFirstPerson()}
             onChangePassword={() => setPwdChangeOpen(true)}
             onLogout={() => {
               auth.logout();
@@ -2292,6 +2034,8 @@ export function ColonyApp() {
         runtime={runtime}
         walletLabel={walletAccountKey === null ? "City view" : playerWalletText}
         presenceReadout={presenceReadout}
+        open={mapOpen}
+        onClose={() => setMapOpen(false)}
       />
       {/* BUG.GEO.1 — the presence readout (so any screenshot of this frame is self-locating) is
           rendered above, as a member of `.hud-corner-rail-left`. UI.GEO.OVERLAP.1 moved it there
@@ -2321,7 +2065,7 @@ export function ColonyApp() {
               {walletAccountKey !== null && (
                 <div
                   className="hud-essential-row hud-wallet-row"
-                  data-testid="player-wallet-hud"
+                  data-testid="legacy-player-wallet-hud"
                   data-wallet-status={visiblePlayerWallet.status}
                 >
                   <span>Wallet</span>
