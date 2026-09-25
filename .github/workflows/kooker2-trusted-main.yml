@@ -19,6 +19,12 @@ jobs:
     if: github.ref == 'refs/heads/main' && vars.CITYLIFE_KOOKER2_RUNNER_ENABLED == 'true'
     runs-on: [self-hosted, Windows, X64, citylife-webgl, kooker2-gpu]
     timeout-minutes: 60
+    # The dedicated runner service runs under a non-interactive account whose
+    # machine policy blocks generated PowerShell job scripts by default. Scope
+    # the bypass to this already-restricted, trusted workflow only.
+    defaults:
+      run:
+        shell: powershell -ExecutionPolicy Bypass -File {0}
     env:
       CITYLIFE_HARDWARE_WEBGL: "1"
     steps:
