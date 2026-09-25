@@ -6,8 +6,8 @@ import * as path from "node:path";
 // touch/mobile viewport (Pixel 5, coarse pointer, real tap gestures — never a synthetic mouse click).
 // A mobile player reaches the hub from the ground/walker frame, so entry, selection, bounded zoom and
 // exit are all driven from there by touch; the fitted daylit exterior (PR #360 plot-fit lineage) is
-// captured from the aerial survey first. Acquisition stays honestly locked. Screenshots are committed
-// evidence (docs/evidence/).
+// captured from the aerial survey first. This unauthenticated smoke path must keep acquisition
+// fail-closed. Screenshots are visual-test artifacts (docs/evidence/), not deployed acceptance proof.
 
 const EVIDENCE_DIR = path.join("docs", "evidence");
 
@@ -186,13 +186,24 @@ test("garage showroom on mobile touch: reachable portal, non-blank interior, tou
     EVIDENCE_DIR,
     "player-garage1-mobile-showroom-vonk.png",
   );
-  await page.screenshot({ path: vonkPng });
+  // This mobile WebGL page is rendered in software in local CI. Capture at CSS resolution to keep
+  // the evidence legible without making the screenshot itself the bottleneck; allow one bounded
+  // 30-second window for the compositor under the continuous turntable load.
+  await page.screenshot({
+    path: vonkPng,
+    scale: "css",
+    animations: "disabled",
+    timeout: 30_000,
+  });
   assertNonBlank(vonkPng);
 
-  // Acquisition stays honestly gated (disabled) — no economy/ownership yet.
-  await expect(
-    page.locator('[data-build-action="showroom-acquire-preview"]'),
-  ).toBeDisabled({ timeout: ASSERT_TIMEOUT });
+  // Default-on acquisition still fails closed without an eligible player and server price quote.
+  // The rendered control may be the locked preview or a real button disabled for missing authority.
+  const acquireControl = page.locator(
+    '[data-build-action="showroom-acquire"], [data-build-action="showroom-acquire-preview"]',
+  );
+  await expect(acquireControl).toHaveCount(1);
+  await expect(acquireControl).toBeDisabled({ timeout: ASSERT_TIMEOUT });
 
   // 4) Left/right selection by touch — the card and its stats must visibly change.
   await touchTap(page, '[data-build-action="showroom-next"]');

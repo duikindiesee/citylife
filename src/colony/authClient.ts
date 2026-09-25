@@ -172,16 +172,16 @@ function jwtRoles(token: string): string[] {
 }
 
 /** Decode the kooker userId claim from a JWT WITHOUT verifying the signature (verification is the
- *  gateway's job; this only reads who the already-validated token belongs to). Reads the usual claim
- *  shapes — userId / userid / sub — and mirrors bot/ledgerSync.userIdFromToken, including the
+ *  gateway's job; this only reads who the already-validated token belongs to). Reads the supported claim
+ *  shapes — userId / userid / id / sub — and mirrors bot/ledgerSync.userIdFromToken, including the
  *  base64url padding atob needs. Returns null when no such claim is present. */
-function jwtUserId(token: string): string | null {
+export function jwtUserId(token: string): string | null {
   try {
     const b64 = token.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/");
     if (!b64) return null;
     const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
     const payload = JSON.parse(atob(padded)) as Record<string, unknown>;
-    const id = payload["userId"] ?? payload["userid"] ?? payload["sub"];
+    const id = payload["userId"] ?? payload["userid"] ?? payload["id"] ?? payload["sub"];
     return id == null ? null : String(id);
   } catch {
     return null;

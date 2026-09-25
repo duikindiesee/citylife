@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { PublishedPlayerInventory } from "../home/starterWorldCatalogue";
 import {
   FIRST_PERSON_KEY_CODES,
@@ -61,7 +61,6 @@ import { PasswordChangePanel } from "./PasswordChangePanel";
 import { markPasswordChangePending } from "../pendingPasswordNotice";
 import {
   fetchOwnedVehicleKeysBackend,
-  isCarAcquisitionEnabled,
   shouldAutoOpenShowroom,
 } from "../car/carAcquisition";
 import { resolveOwnedCar } from "../car/ownedCar";
@@ -101,6 +100,7 @@ import { WindTunnelLab } from "./WindTunnelLab";
 import { ShowroomOverlay } from "./ShowroomOverlay";
 import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
 import { fetchHomeTruth, isHomeOwned } from "../home/starterProperty";
+import { defaultPlayerWalletDeps, readPlayerWalletKco } from "../playerWallet";
 import { loadHouseBuild } from "../home/starterHouseBuild";
 import { DriveHomeOverlay } from "./DriveHomeOverlay";
 import { OwnedCarControls } from "./OwnedCarControls";
@@ -836,6 +836,18 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
   // PLAYER.GARAGE.1 — the Gearbox Auto Hub showroom interior (its own streamed scene overlay).
   const [showroomOpen, setShowroomOpen] = useState(false);
   const [showroomAutoAcquire, setShowroomAutoAcquire] = useState(false);
+  const [serverPlayerWallet, setServerPlayerWallet] = useState<{
+    userId: string;
+    balanceKco: number | null;
+  } | null>(null);
+  const [walletRefreshAttempt, setWalletRefreshAttempt] = useState(0);
+  const refreshPlayerWallet = useCallback(
+    () => {
+      setServerPlayerWallet(null);
+      setWalletRefreshAttempt((current) => current + 1);
+    },
+    [],
+  );
   // ARCADE.2A — the authenticated Gamehouse venue interior (its own streamed overlay; the isolated 3D
   // cabinet inspection mounts only on a cabinet interaction inside it).
   const [gamehouseOpen, setGamehouseOpen] = useState(false);
@@ -925,6 +937,7 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
   const openShowroom = () => {
     if (!newPlayerJourneyEnabled) return;
     // Retain this identity's server-confirmed new-player acquisition eligibility on re-entry.
+    refreshPlayerWallet();
     setShowroomOpen(true);
   };
   // HQ.ENTER.1 — is Kooker HQ open to THIS session? Fails closed while loading and on every error.
@@ -977,6 +990,7 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
   // exactly like the hidden button, so gating is never merely cosmetic.
   const openHome = () => {
     if (!newPlayerJourneyEnabled) return;
+    refreshPlayerWallet();
     setHomeOpen(true);
   };
   // PLAYER.HOME.1D.S2 — the guided drive-home step is gated on the SAME fail-closed new-player-journey
@@ -988,9 +1002,13 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
     if (!newPlayerJourneyEnabled) return;
     setDriveHomeOpen(true);
   };
-  // The server-synced wallet truth to display (player scope only; the operator/admin bank is the whole
-  // city, not a personal wallet). Display only — the overlay never submits it.
-  const playerWalletKco = ui.bank.scope === "player" ? ui.bank.deposits : null;
+  // Display only: this comes from the authenticated Ledger balance endpoint, never from the local
+  // simulation ledger. The operator/admin bank is the whole city, not a personal wallet.
+  const currentWalletUserId = auth.operator?.userId ?? null;
+  const playerWalletKco =
+    ui.bank.scope === "player" && serverPlayerWallet?.userId === currentWalletUserId
+      ? serverPlayerWallet.balanceKco
+      : null;
   useEffect(() => {
     runtime.setOperatorName(auth.operator?.id ?? null);
     // Identity key: bind the player view to the authenticated kooker userId (from the JWT), so own-data
@@ -1058,8 +1076,37 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth, operatorUserId, arrivalAttempt]);
+
+  // PLAYER.WALLET.1 — the HUD and purchase overlays use the caller's server-owned Ledger balance.
+  // The read is scoped by the verified token's user/app/realm at the service; local simulation state
+  // is never used as a spendable KCO snapshot. Refresh on identity change, explicit purchase flow
+  // entry/completion, and when the tab becomes visible again after an operator funding action.
+  useEffect(() => {
+    setServerPlayerWallet(null);
+    if (!operatorUserId || ui.bank.scope !== "player") return;
+    let cancelled = false;
+    void readPlayerWalletKco(defaultPlayerWalletDeps(), operatorUserId).then((balance) => {
+      if (!cancelled) setServerPlayerWallet({ userId: operatorUserId, balanceKco: balance });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth, operatorUserId, ui.bank.scope, walletRefreshAttempt]);
+
+  useEffect(() => {
+    if (!operatorUserId) return;
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshPlayerWallet();
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [operatorUserId, refreshPlayerWallet]);
 
   // PLAYER.CAR.1.S5 — auto-spawn into the Gearbox Auto Hub showroom on login when an authenticated
   // player does not own a car on their profile. Runs once per session identity. Evaluates authoritative
@@ -1543,9 +1590,9 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
     });
   const worldLayoutDirty = Boolean(
     capturedWorldLayout &&
-    worldLayoutHead &&
-    capturedWorldLayout.revision.contentHash !==
-      worldLayoutHead.document.revision.contentHash,
+      worldLayoutHead &&
+      capturedWorldLayout.revision.contentHash !==
+        worldLayoutHead.document.revision.contentHash,
   );
   const worldLayoutOperatorStatus: WorldLayoutOperatorStatus = captureError
     ? "error"
@@ -1958,12 +2005,15 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
         <ShowroomOverlay
           key={operatorUserId ?? "signed-out"}
           runtime={runtime}
-          canAcquire={showroomAutoAcquire || isCarAcquisitionEnabled()}
+          canAcquire={showroomAutoAcquire}
+          accountKey={operatorUserId === null ? null : String(operatorUserId)}
+          walletKco={playerWalletKco}
           onOwnershipConfirmed={() => {
+            refreshPlayerWallet();
             setShowroomOpen(false);
             autoShowroomCheckedRef.current = false;
             setArrivalReady(false);
-            setArrivalAttempt(n => n + 1);
+            setArrivalAttempt((n) => n + 1);
           }}
           onClose={() => {
             setShowroomOpen(false);
@@ -2000,6 +2050,7 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
         <StarterPropertyOverlay
           key={operatorUserId ?? "signed-out"}
           playerInventory={playerInventory}
+          onWalletChanged={refreshPlayerWallet}
           onClose={() => setHomeOpen(false)}
           walletKco={playerWalletKco}
           currency={ui.bank.currency}
@@ -2262,7 +2313,11 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
           />
         )}
       </header>
-      <BusNetworkMiniMap runtime={runtime} />
+      <BusNetworkMiniMap
+        runtime={runtime}
+        walletKco={playerWalletKco}
+        presenceReadout={presenceReadout}
+      />
       {/* BUG.GEO.1 — the presence readout (so any screenshot of this frame is self-locating) is
           rendered above, as a member of `.hud-corner-rail-left`. UI.GEO.OVERLAP.1 moved it there
           from here: it used to position itself into the bottom-left corner and collide with the

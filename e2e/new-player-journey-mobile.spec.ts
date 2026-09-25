@@ -19,10 +19,13 @@ const READY_TIMEOUT = 90_000; // one-off world-layout boot on a slow software-We
 // The endpoint the client GETs (through the /kooker proxy). Matched loosely so a proxied host prefix
 // never breaks the route.
 const FLAG_GLOB = "**/feature-flags/new-player-journey-v1";
+const VEHICLE_OFFERS_GLOB = "**/vehicle/offers";
 const SESSION_KEY = "citylife.session.v5";
 const READY_MARKER = 'button[title="Sign out of CityLife"]';
 const ENTRY = '[data-build-action="open-showroom"]';
 const OVERLAY = '[data-testid="showroom-overlay"]';
+const ACQUIRE_CONTROL =
+  '[data-build-action="showroom-acquire"], [data-build-action="showroom-acquire-preview"]';
 
 test.use({
   ...devices["Pixel 5"],
@@ -65,11 +68,13 @@ async function touchTap(
 }
 
 /** Seed an authenticated (non-null operator) CityLife session for `userId` before any app script
- *  runs, so AuthGate mounts the colony straight into the authenticated bootstrap. The token is opaque
- *  (not a real JWT) — the entitlement endpoint is stubbed, so only the session identity matters. */
+ *  runs, so AuthGate mounts the colony straight into the authenticated bootstrap. The JWT is only a
+ *  fixture token — requests are intercepted — but its payload keeps the UI's token-derived identity
+ *  and Ledger read path aligned with the account under test. */
 function authAs(userId: string) {
+  const payload = Buffer.from(JSON.stringify({ userId }), "utf8").toString("base64url");
   return {
-    token: `opaque.${userId}.token`,
+    token: `fixture.${payload}.sig`,
     expiresAt: Date.now() + 60 * 60 * 1000,
     operator: {
       id: `Player ${userId}`,
@@ -86,6 +91,23 @@ async function bootAs(
   enabled: boolean,
 ): Promise<void> {
   await installStarterWorldFixture(page);
+  await page.route("**/api/ledger/wallets/**/balances**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          ownerId: userId,
+          ownerType: "USER",
+          walletType: "DEFAULT",
+          appName: "citylife",
+          currency: "KCO",
+          realm: "TEST",
+          balance: "700.0000",
+        },
+      ]),
+    }),
+  );
   // Stub the token-derived entitlement to the desired state (fail-closed = enabled:false).
   await page.route(FLAG_GLOB, (route) =>
     route.fulfill({
@@ -112,6 +134,20 @@ async function bootAs(
   // The authenticated colony HUD (and thus the gated entry decision) is mounted once the world layout
   // boot resolves and the top bar renders its Log-out control.
   await page.waitForSelector(READY_MARKER, { timeout: READY_TIMEOUT });
+}
+
+async function allowVehicleOffers(page: import("@playwright/test").Page) {
+  await page.route(VEHICLE_OFFERS_GLOB, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        { vehicleKey: "karoo-vonk-11", priceKco: 250, currency: "KCO" },
+        { vehicleKey: "karoo-kaap-gt-v8", priceKco: 2400, currency: "KCO" },
+        { vehicleKey: "karoo-x19-targa", priceKco: 950, currency: "KCO" },
+      ]),
+    }),
+  );
 }
 
 test("returning owner hydrates their exact car without opening Gearbox", async ({
@@ -189,6 +225,44 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
     )
     .toEqual({ asset: "/assets/citylife/cars/fiat_x19.glb", vertices: true });
   await expect(page.getByTestId("owned-car-controls")).toBeVisible();
+  const cityMap = page.getByRole("complementary", {
+    name: "Live bus network map",
+  });
+  const compactMap = await cityMap.boundingBox();
+  expect(compactMap).not.toBeNull();
+  await touchTap(page, '[data-testid="city-map-toggle"]');
+  await expect(cityMap).toHaveAttribute("data-expanded", "true");
+  await expect(
+    page.getByRole("button", { name: "Collapse city map" }),
+  ).toBeVisible();
+  const expandedMap = await cityMap.boundingBox();
+  expect(expandedMap).not.toBeNull();
+  expect(expandedMap!.width).toBeGreaterThan(compactMap!.width * 2);
+  const playerMarker = page.getByTestId("city-map-player-marker");
+  await expect(playerMarker).toBeVisible();
+  const mapThrottle = page.locator('[data-drive-action="throttle"]');
+  const mapThrottleBox = await mapThrottle.boundingBox();
+  expect(mapThrottleBox).not.toBeNull();
+  expect(
+    await page.evaluate(
+      ({ x, y }) => {
+        const top = document.elementFromPoint(x, y);
+        return !!top?.closest('[data-drive-action="throttle"]');
+      },
+      {
+        x: mapThrottleBox!.x + mapThrottleBox!.width / 2,
+        y: mapThrottleBox!.y + mapThrottleBox!.height / 2,
+      },
+    ),
+  ).toBe(true);
+  const mapMarkerPosition = async () =>
+    playerMarker
+      .locator("circle")
+      .first()
+      .evaluate(
+        (node) => `${node.getAttribute("cx")},${node.getAttribute("cy")}`,
+      );
+  const markerBeforeDriving = await mapMarkerPosition();
   await page.keyboard.down("KeyW");
   await expect
     .poll(
@@ -205,6 +279,9 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       { timeout: 10_000 },
     )
     .toBeGreaterThan(0.1);
+  await expect
+    .poll(mapMarkerPosition, { timeout: 10_000 })
+    .not.toBe(markerBeforeDriving);
   await page.keyboard.up("KeyW");
   await page.keyboard.down("Space");
   await expect
@@ -283,23 +360,45 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
     });
     await cdp.detach();
   }
+  await expect(cityMap).toHaveAttribute("data-expanded", "true");
+  await expect(page.getByTestId("owned-car-controls")).toBeVisible();
+  await touchTap(page, '[data-testid="city-map-toggle"]');
+  await expect(cityMap).toHaveAttribute("data-expanded", "false");
   // Keep the production controls mounted across a batched seated owner-to-owner change.
   // Navigation would erase the component ref and miss the stale held-throttle regression.
   await page.keyboard.down("KeyW");
   const switchedInput = await page.evaluate(() => {
-    const runtime = (window as unknown as {
-      __colony: import("../src/colony/runtime").ColonyRuntime;
-    }).__colony;
+    const runtime = (
+      window as unknown as {
+        __colony: import("../src/colony/runtime").ColonyRuntime;
+      }
+    ).__colony;
     const inputs = () => (runtime as unknown as { ownedDriveInput: Record<string, boolean> }).ownedDriveInput;
     const throttleBeforeSwitch = !!inputs().throttle;
     runtime.setOperatorUserId("second-seated-owner");
     runtime.applyVehicleOwnership("second-seated-owner", ["karoo-x19-targa"]);
     const emptyAfterSwitch = Object.keys(inputs()).length === 0;
     // Same JavaScript turn: even before React effects run, steering must not restore throttle.
-    document.body.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyW", repeat: true, bubbles: true }));
-    document.body.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyD", bubbles: true }));
-    const input = (runtime as unknown as { ownedDriveInput: Record<string, boolean> }).ownedDriveInput;
-    return { throttleBeforeSwitch, emptyAfterSwitch, seated: !!runtime.getOwnedDrivePose(), throttle: !!input.throttle, right: !!input.right };
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        code: "KeyW",
+        repeat: true,
+        bubbles: true,
+      }),
+    );
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", { code: "KeyD", bubbles: true }),
+    );
+    const input = (
+      runtime as unknown as { ownedDriveInput: Record<string, boolean> }
+    ).ownedDriveInput;
+    return {
+      throttleBeforeSwitch,
+      emptyAfterSwitch,
+      seated: !!runtime.getOwnedDrivePose(),
+      throttle: !!input.throttle,
+      right: !!input.right,
+    };
   });
   expect(switchedInput).toEqual({ throttleBeforeSwitch: true, emptyAfterSwitch: true, seated: true, throttle: false, right: true });
   await page.keyboard.up("KeyW");
@@ -350,7 +449,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   ).toBeNull();
 });
 
-test("new player can exit and re-enter the showroom without losing acquisition", async ({
+test("new player can exit and re-enter without losing server-priced acquisition eligibility", async ({
   page,
 }) => {
   test.setTimeout(180_000);
@@ -361,16 +460,27 @@ test("new player can exit and re-enter the showroom without losing acquisition",
       body: '{"owned":false}',
     }),
   );
+  await allowVehicleOffers(page);
   await bootAs(page, "showroom-reentry-1", true);
   const acquire = page.locator('[data-build-action="showroom-acquire"]');
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
-  await expect(acquire).toBeEnabled({ timeout: ASSERT_TIMEOUT });
+  await expect(acquire).toBeDisabled({ timeout: ASSERT_TIMEOUT });
+  await expect(acquire).toHaveText("Need ₭250 more");
+  await expect(acquire).toHaveAttribute(
+    "data-acquire-state",
+    "insufficient_funds",
+  );
 
   await touchTap(page, '[data-build-action="showroom-exit"]');
   await expect(page.locator(OVERLAY)).toHaveCount(0);
   await touchTap(page, ENTRY);
   await expect(page.locator(OVERLAY)).toBeVisible();
-  await expect(acquire).toBeEnabled({ timeout: ASSERT_TIMEOUT });
+  await expect(acquire).toBeDisabled({ timeout: ASSERT_TIMEOUT });
+  await expect(acquire).toHaveText("Need ₭250 more");
+  await expect(acquire).toHaveAttribute(
+    "data-acquire-state",
+    "insufficient_funds",
+  );
   await expect(
     page.locator('[data-build-action="showroom-acquire-preview"]'),
   ).toHaveCount(0);
@@ -383,10 +493,12 @@ test("new player can exit and re-enter the showroom without losing acquisition",
   await bootAs(page, "showroom-reentry-2", true);
   await expect(page.locator(ENTRY)).toBeVisible({ timeout: READY_TIMEOUT });
   await touchTap(page, ENTRY);
-  await expect(
-    page.locator('[data-build-action="showroom-acquire-preview"]'),
-  ).toBeDisabled();
-  await expect(acquire).toHaveCount(0);
+  const unavailableAcquire = page.locator(ACQUIRE_CONTROL);
+  await expect(unavailableAcquire).toHaveCount(1);
+  await expect(unavailableAcquire).toBeDisabled();
+  await expect(page.locator('[data-testid="showroom-card-price"]')).toHaveText(
+    "Price unavailable",
+  );
 });
 
 test("server ownership opens Gearbox despite a stale cached car", async ({
@@ -408,12 +520,19 @@ test("server ownership opens Gearbox despite a stale cached car", async ({
       body: '{"owned":false}',
     });
   });
+  await allowVehicleOffers(page);
   await bootAs(page, "stale-cache-player", true);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   expect(ownershipReads).toBeGreaterThan(0);
   await expect(
+    page.locator('[data-testid="showroom-card-price"]'),
+  ).toHaveAttribute("data-price-source", "server");
+  await expect(
     page.locator('[data-build-action="showroom-acquire"]'),
-  ).toBeEnabled({ timeout: ASSERT_TIMEOUT });
+  ).toBeDisabled({ timeout: ASSERT_TIMEOUT });
+  await expect(
+    page.locator('[data-testid="showroom-affordability"]'),
+  ).toHaveText("Need ₭250 more", { timeout: ASSERT_TIMEOUT });
 });
 
 test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switch re-hides", async ({
@@ -429,16 +548,28 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   await expect(page.locator(ENTRY)).toHaveCount(0, { timeout: ASSERT_TIMEOUT });
   await expect(page.locator(OVERLAY)).toHaveCount(0);
 
-  // 2) Operator UAT allowlists this player → entry appears and enters the showroom by touch.
+  // 2) Operator UAT allowlists this player and the server confirms no owned car. The player goes
+  //    directly to Gearbox; the server quote is shown and the zero wallet reports its exact shortfall.
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  await page.route("**/citylife/players/me/vehicle", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: '{"owned":false}',
+    }),
+  );
+  await allowVehicleOffers(page);
   await bootAs(page, "uat-allow-1", true);
-  await expect(page.locator(ENTRY)).toBeVisible({ timeout: READY_TIMEOUT });
-  await touchTap(page, ENTRY);
-  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: ASSERT_TIMEOUT });
-  // Acquisition stays honestly locked (preview only) — no economy/ownership in this slice.
+  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   await expect(
-    page.locator('[data-build-action="showroom-acquire-preview"]'),
-  ).toBeDisabled({ timeout: ASSERT_TIMEOUT });
+    page.locator('[data-testid="showroom-card-price"]'),
+  ).toHaveAttribute("data-price-source", "server");
+  await expect(
+    page.locator('[data-testid="showroom-affordability"]'),
+  ).toHaveText("Need ₭250 more", { timeout: ASSERT_TIMEOUT });
+  await expect(
+    page.locator('[data-build-action="showroom-acquire"]'),
+  ).toBeDisabled();
   await touchTap(page, '[data-build-action="showroom-exit"]');
   await expect(page.locator(OVERLAY)).toHaveCount(0, {
     timeout: ASSERT_TIMEOUT,

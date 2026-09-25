@@ -1,18 +1,18 @@
 {
   "camera": [
-    748.0011596679688,
-    19.88728446960449,
-    240.00115966796875
+    748,
+    19.81479897499085,
+    236
   ],
   "car": [
     748,
     18.76479897499085,
     236
   ],
-  "carVisible": true,
-  "seated": false,
-  "carOnScreen": true,
-  "eyeHeight": 1.1224854946136418,
+  "carVisible": false,
+  "seated": true,
+  "carOnScreen": false,
+  "eyeHeight": 1.0500000000000007,
   "dimensions": [
     1.8249999775155175,
     1.010000080208009,

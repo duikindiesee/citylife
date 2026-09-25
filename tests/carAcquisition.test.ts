@@ -13,9 +13,12 @@ import {
   clearOwnedKeysCache,
   carOwnershipCacheKey,
   fetchOwnedVehicleKeysBackend,
+  parseVehicleOfferPrices,
+  fetchVehicleOfferPricesBackend,
   postAcquireVehicle,
   acquireIdempotencyKey,
   BACKEND_VEHICLE_PURCHASE_PATH,
+  BACKEND_VEHICLE_OFFERS_PATH,
 } from "../src/colony/car/carAcquisition";
 import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
 import { getAuthClient } from "../src/colony/authClient";
@@ -51,17 +54,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("carAcquisition — feature gate (dark by default)", () => {
-  it("is OFF when the env var is absent or empty — the shipped production default", () => {
-    expect(isCarAcquisitionEnabled({})).toBe(false);
+describe("carAcquisition — feature gate (enabled by default)", () => {
+  it("is ON when the env var is absent or empty, and an explicit off remains available", () => {
+    expect(isCarAcquisitionEnabled({})).toBe(true);
     expect(isCarAcquisitionEnabled({ VITE_CITYLIFE_CAR_ACQUISITION: "" })).toBe(
-      false,
+      true,
     );
     expect(
       isCarAcquisitionEnabled({ VITE_CITYLIFE_CAR_ACQUISITION: "off" }),
     ).toBe(false);
-    // called with no argument it reads the real (test) env, which never sets the flag → still dark
-    expect(isCarAcquisitionEnabled()).toBe(false);
+    // called with no argument it reads the real test env, which keeps the enabled default
+    expect(isCarAcquisitionEnabled()).toBe(true);
   });
   it("is ON only for an explicit affirmative value (case/space tolerant)", () => {
     for (const v of ["on", "1", "true", "enabled", "  ON ", "True"]) {
@@ -246,12 +249,102 @@ describe("carAcquisition — backend ownership truth (GET)", () => {
   });
 });
 
+describe("carAcquisition — authoritative server offers (GET)", () => {
+  it("accepts canonical KCO offers and rejects malformed or duplicate catalogs", () => {
+    expect(
+      parseVehicleOfferPrices([
+        {
+          vehicleKey: serverVehicleKeyOf(VONK),
+          priceKco: 250,
+          currency: "KCO",
+        },
+        {
+          vehicleKey: serverVehicleKeyOf(KAAP),
+          priceKco: 2400,
+          currency: "KCO",
+        },
+        { vehicleKey: "showroom:unknown", priceKco: 1, currency: "KCO" },
+      ]),
+    ).toEqual({
+      [serverVehicleKeyOf(VONK)]: 250,
+      [serverVehicleKeyOf(KAAP)]: 2400,
+    });
+    expect(
+      parseVehicleOfferPrices([
+        {
+          vehicleKey: serverVehicleKeyOf(VONK),
+          priceKco: "250",
+          currency: "KCO",
+        },
+      ]),
+    ).toBeNull();
+    expect(
+      parseVehicleOfferPrices([
+        {
+          vehicleKey: serverVehicleKeyOf(VONK),
+          priceKco: 250,
+          currency: "USD",
+        },
+      ]),
+    ).toBeNull();
+    expect(
+      parseVehicleOfferPrices([
+        {
+          vehicleKey: serverVehicleKeyOf(VONK),
+          priceKco: 250,
+          currency: "KCO",
+        },
+        {
+          vehicleKey: serverVehicleKeyOf(VONK),
+          priceKco: 260,
+          currency: "KCO",
+        },
+      ]),
+    ).toBeNull();
+    expect(parseVehicleOfferPrices({ offers: [] })).toBeNull();
+  });
+
+  it("fetches prices with the current bearer token and fails closed when unavailable", async () => {
+    vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
+    let url = "";
+    let init: RequestInit = {};
+    vi.stubGlobal("fetch", async (u: string, i: RequestInit) => {
+      url = u;
+      init = i;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          {
+            vehicleKey: serverVehicleKeyOf(VONK),
+            priceKco: 250,
+            currency: "KCO",
+          },
+        ],
+      };
+    });
+    expect(await fetchVehicleOfferPricesBackend()).toEqual({
+      [serverVehicleKeyOf(VONK)]: 250,
+    });
+    expect(url).toBe(BACKEND_VEHICLE_OFFERS_PATH);
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer jwt.tok",
+    );
+    expect(init.cache).toBe("no-store");
+
+    vi.stubGlobal("fetch", async () => ({ ok: false, status: 503 }));
+    expect(await fetchVehicleOfferPricesBackend()).toBeNull();
+  });
+});
+
 describe("carAcquisition — POST acquire (server authority, vehicleKey only)", () => {
-  it("refuses locally WITHOUT any network call when the gate is dark", async () => {
+  it("refuses locally WITHOUT any network call when the gate is explicitly dark", async () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
-    expect(await postAcquireVehicle(VONK, {})).toEqual({ kind: "disabled" });
+    expect(
+      await postAcquireVehicle(VONK, { VITE_CITYLIFE_CAR_ACQUISITION: "off" }),
+    ).toEqual({ kind: "disabled" });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
   it("refuses a non-canonical key without posting, even when enabled", async () => {

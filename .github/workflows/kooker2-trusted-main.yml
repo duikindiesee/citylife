@@ -1,0 +1,37 @@
+name: CityLife Kooker2 Trusted Main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: citylife-kooker2-main-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    # Activation is deliberately gated until an organization runner group is
+    # restricted to this workflow on main and the host is isolated.
+    if: github.ref == 'refs/heads/main' && vars.CITYLIFE_KOOKER2_RUNNER_ENABLED == 'true'
+    runs-on: [self-hosted, Windows, X64, citylife-webgl, kooker2-gpu]
+    timeout-minutes: 60
+    env:
+      CITYLIFE_HARDWARE_WEBGL: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm ci
+      - run: npx playwright install chromium
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:ci-report-publisher
+      - run: npm run test:e2e
+      - run: npm run test:e2e:mobile-harness
+        timeout-minutes: 4
+      - run: npm run build

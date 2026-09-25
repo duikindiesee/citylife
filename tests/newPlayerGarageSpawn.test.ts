@@ -12,11 +12,17 @@ import {
   clearOwnedKeysCache,
   postAcquireVehicle,
   BACKEND_VEHICLE_PURCHASE_PATH,
+  BACKEND_VEHICLE_OFFERS_PATH,
   shouldAutoOpenShowroom,
   fetchOwnedVehicleKeysBackend,
 } from "../src/colony/car/carAcquisition";
 import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
 import { type CarSpec } from "../src/colony/car/carSpec";
+import { deriveStats } from "../src/colony/car/carParts";
+import {
+  ownedDriveFootprintClear,
+  stepOwnedDrive,
+} from "../src/colony/car/ownedDriving";
 import { getAuthClient } from "../src/colony/authClient";
 import { ColonyRuntime } from "../src/colony/runtime";
 
@@ -174,6 +180,14 @@ function findNodeByAttr(
     if (found) return found;
   }
   return null;
+}
+
+function readNodeText(node: Record<string, unknown>): string {
+  if (node.nodeType === 3) return String(node.nodeValue ?? "");
+  if (typeof node.textContent === "string") return node.textContent;
+  return ((node.children as Record<string, unknown>[]) ?? [])
+    .map(readNodeText)
+    .join("");
 }
 
 function clickNode(node: Record<string, unknown>): void {
@@ -357,6 +371,54 @@ describe("PLAYER.CAR.1.S5 — distinct user ID vs citizen ID persistence via run
 });
 
 describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
+  function tickOwnedDriveOnce(rt: ColonyRuntime): number {
+    const internals = rt as unknown as {
+      ownedDrivePose: {
+        x: number;
+        y: number;
+        heading: number;
+        speed: number;
+      } | null;
+      ownedDriveSeated: boolean;
+      ownedDriveInput: { throttle: boolean };
+      blockedStepReason: (x: number, y: number) => string | null;
+      canOwnedCarOccupy: (x: number, y: number) => boolean;
+      currentPlayerOwnedCarSpec: () => CarSpec | null;
+      tickOwnedDrive: (dt: number) => void;
+    };
+    internals.blockedStepReason = () => null;
+    const canOccupy = (x: number, y: number) =>
+      internals.canOwnedCarOccupy(x, y);
+    const car = internals.currentPlayerOwnedCarSpec();
+    expect(car).not.toBeNull();
+    let start: { x: number; y: number; heading: number } | null = null;
+    for (const roadKey of rt.sim.state.roadSet) {
+      const [x, y] = roadKey.split(",").map(Number);
+      for (const heading of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
+        const candidate = { x: x!, y: y!, heading };
+        if (!ownedDriveFootprintClear(candidate, canOccupy)) continue;
+        const next = stepOwnedDrive(
+          { ...candidate, speed: 0 },
+          { throttle: true },
+          deriveStats(car!),
+          1 / 60,
+          canOccupy,
+        );
+        if (next.speed > 0) {
+          start = candidate;
+          break;
+        }
+      }
+      if (start) break;
+    }
+    expect(start).not.toBeNull();
+    internals.ownedDrivePose = { ...start!, speed: 0 };
+    internals.ownedDriveSeated = true;
+    internals.ownedDriveInput = { throttle: true };
+    internals.tickOwnedDrive(1 / 60);
+    return internals.ownedDrivePose!.speed;
+  }
+
   it("replaces the wrong cached model and rejects a stale account ownership response", () => {
     const rt = new ColonyRuntime(4242);
     const citizen = rt.getUiState().citizens.list[0]!;
@@ -375,15 +437,119 @@ describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
     expect(loadCar(citizen.id).id).toBe(SHOWROOM_VEHICLES[2]!.spec.id);
     expect(render.mock.calls.at(-1)![0].id).toBe(SHOWROOM_VEHICLES[2]!.spec.id);
     rt.applyVehicleOwnership("owner-a", []);
-    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(originalGeneration);
+    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(
+      originalGeneration,
+    );
     const revokedGeneration = rt.getOwnedDriveInputGeneration();
     expect(render).toHaveBeenLastCalledWith(null, null);
     rt.setOperatorUserId("owner-b");
-    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(revokedGeneration);
+    expect(rt.getOwnedDriveInputGeneration()).toBeGreaterThan(
+      revokedGeneration,
+    );
     const switchedGeneration = rt.getOwnedDriveInputGeneration();
-    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(false);
+    expect(rt.applyVehicleOwnership("owner-a", ["karoo-x19-targa"])).toBe(
+      false,
+    );
     expect(rt.getOwnedDriveInputGeneration()).toBe(switchedGeneration);
     expect(render).toHaveBeenLastCalledWith(null, null);
+  });
+
+  it("uses the current owner's matching mounted upgrades for rendering and owned driving", () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId("owner-with-tuned-x19");
+    const tunedX19 = { ...SHOWROOM_VEHICLES[2]!.spec, parts: ["blower"] };
+    saveCar(citizen.id, tunedX19);
+    const render = vi.fn();
+    (rt as unknown as { renderer: unknown }).renderer = {
+      setOperatorCar: render,
+    };
+
+    expect(
+      rt.applyVehicleOwnership("owner-with-tuned-x19", ["karoo-x19-targa"]),
+    ).toBe(true);
+    expect(render.mock.calls.at(-1)![0].parts).toEqual(["blower"]);
+
+    const actualSpeed = tickOwnedDriveOnce(rt);
+    const expected = stepOwnedDrive(
+      { x: 0, y: 0, heading: 0, speed: 0 },
+      { throttle: true },
+      deriveStats(tunedX19),
+      1 / 60,
+      () => true,
+    ).speed;
+    expect(actualSpeed).toBeCloseTo(expected, 10);
+    expect(actualSpeed).toBeGreaterThan(
+      stepOwnedDrive(
+        { x: 0, y: 0, heading: 0, speed: 0 },
+        { throttle: true },
+        deriveStats(SHOWROOM_VEHICLES[2]!.spec),
+        1 / 60,
+        () => true,
+      ).speed,
+    );
+  });
+
+  it("rejects mismatched local tuning and uses the authoritative model's stock spec", () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId("owner-with-different-cached-model");
+    saveCar(citizen.id, { ...SHOWROOM_VEHICLES[0]!.spec, parts: ["blower"] });
+    const render = vi.fn();
+    (rt as unknown as { renderer: unknown }).renderer = {
+      setOperatorCar: render,
+    };
+
+    expect(
+      rt.applyVehicleOwnership("owner-with-different-cached-model", [
+        "karoo-x19-targa",
+      ]),
+    ).toBe(true);
+    expect(loadCar(citizen.id)).toEqual(SHOWROOM_VEHICLES[2]!.spec);
+    expect(render.mock.calls.at(-1)![0]).toEqual(SHOWROOM_VEHICLES[2]!.spec);
+    expect(tickOwnedDriveOnce(rt)).toBeCloseTo(
+      stepOwnedDrive(
+        { x: 0, y: 0, heading: 0, speed: 0 },
+        { throttle: true },
+        deriveStats(SHOWROOM_VEHICLES[2]!.spec),
+        1 / 60,
+        () => true,
+      ).speed,
+      10,
+    );
+  });
+
+  it("uses the authoritative stock car without a local citizen or garage", () => {
+    const rt = new ColonyRuntime(4242);
+    rt.setOperatorUserId("owner-with-no-citizen");
+    expect(rt.operatorCitizenId()).toBeNull();
+    const render = vi.fn();
+    (rt as unknown as { renderer: unknown }).renderer = {
+      setOperatorCar: render,
+    };
+
+    expect(
+      rt.applyVehicleOwnership("owner-with-no-citizen", ["karoo-x19-targa"]),
+    ).toBe(true);
+    expect(rt.operatorCitizenId()).toBeNull();
+    expect(
+      (
+        rt as unknown as { currentPlayerOwnedCarSpec: () => CarSpec | null }
+      ).currentPlayerOwnedCarSpec(),
+    ).toEqual(SHOWROOM_VEHICLES[2]!.spec);
+    expect(tickOwnedDriveOnce(rt)).toBeCloseTo(
+      stepOwnedDrive(
+        { x: 0, y: 0, heading: 0, speed: 0 },
+        { throttle: true },
+        deriveStats(SHOWROOM_VEHICLES[2]!.spec),
+        1 / 60,
+        () => true,
+      ).speed,
+      10,
+    );
+    expect(render.mock.calls.at(-1)![0]).toEqual(SHOWROOM_VEHICLES[2]!.spec);
   });
 
   it("isolates ownership cache between distinct user accounts", () => {
@@ -440,14 +606,18 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
       const confirmed = SHOWROOM_VEHICLES[scenario === "different" ? 2 : 0]!;
       const purchaseStarted = vi.fn();
       vi.stubGlobal("fetch", async (url: string) => {
-        if (url.includes("/vehicle/offers")) return {
-          ok: true, status: 200,
-          json: async () => SHOWROOM_VEHICLES.map((vehicle, index) => ({
-            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(vehicle)),
-            priceKco: [250, 950, 2400][index]!,
-            currency: "KCO",
-          })),
-        };
+        if (url.includes(BACKEND_VEHICLE_OFFERS_PATH)) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () =>
+              SHOWROOM_VEHICLES.map((entry) => ({
+                vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+                priceKco: entry.plannedPriceK,
+                currency: "KCO",
+              })),
+          };
+        }
         if (url.includes("/vehicle/purchase")) {
           purchaseStarted();
           return {
@@ -544,14 +714,18 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
 
     const purchaseStarted = vi.fn();
     vi.stubGlobal("fetch", async (url: string) => {
-        if (url.includes("/vehicle/offers")) return {
-          ok: true, status: 200,
-          json: async () => SHOWROOM_VEHICLES.map((vehicle, index) => ({
-            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(vehicle)),
-            priceKco: [250, 950, 2400][index]!,
-            currency: "KCO",
-          })),
+      if (url.includes(BACKEND_VEHICLE_OFFERS_PATH)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () =>
+            SHOWROOM_VEHICLES.map((entry) => ({
+              vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+              priceKco: entry.plannedPriceK,
+              currency: "KCO",
+            })),
         };
+      }
       if (
         url.includes("/vehicle/purchase") ||
         url.includes("/car-acquisitions")
@@ -658,14 +832,18 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
 
     const purchaseStarted = vi.fn();
     vi.stubGlobal("fetch", async (url: string) => {
-        if (url.includes("/vehicle/offers")) return {
-          ok: true, status: 200,
-          json: async () => SHOWROOM_VEHICLES.map((vehicle, index) => ({
-            vehicleKey: serverVehicleKeyOf(vehicleKeyOf(vehicle)),
-            priceKco: [250, 950, 2400][index]!,
-            currency: "KCO",
-          })),
+      if (url.includes(BACKEND_VEHICLE_OFFERS_PATH)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () =>
+            SHOWROOM_VEHICLES.map((entry) => ({
+              vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+              priceKco: entry.plannedPriceK,
+              currency: "KCO",
+            })),
         };
+      }
       if (
         url.includes("/vehicle/purchase") ||
         url.includes("/car-acquisitions")
@@ -762,23 +940,124 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
     );
     expect(acquireBtn).toBeNull();
   });
+
+  it("shows the server X19 price and exact shortfall before purchase", async () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId("buyer-x19");
+    const auth = getAuthClient();
+    vi.spyOn(auth, "getValidToken").mockResolvedValue("test-jwt");
+    (auth as unknown as { session: unknown }).session = {
+      token: "test-jwt",
+      expiresAt: Date.now() + 100000,
+      operator: {
+        id: "Buyer",
+        userId: "buyer-x19",
+        scopes: [],
+        roles: ["CITYLIFE_PLAYER"],
+      },
+    };
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url.includes(BACKEND_VEHICLE_OFFERS_PATH)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () =>
+            SHOWROOM_VEHICLES.map((entry) => ({
+              vehicleKey: serverVehicleKeyOf(vehicleKeyOf(entry)),
+              priceKco: entry.publicName.includes("X19")
+                ? 950
+                : entry.plannedPriceK,
+              currency: "KCO",
+            })),
+        };
+      }
+      return { ok: true, status: 200, json: async () => [] };
+    });
+
+    const container = (
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
+      }
+    ).document.createElement("div");
+    let root: Root | null = null;
+    await act(async () => {
+      root = createRoot(container as unknown as HTMLElement);
+      root.render(
+        React.createElement(ShowroomOverlay, {
+          runtime: rt,
+          canAcquire: true,
+          accountKey: "buyer-x19",
+          walletKco: 750,
+          onClose: () => {},
+        }),
+      );
+    });
+    await act(async () => {
+      clickNode(
+        findNodeByAttr(container, "data-build-action", "showroom-next")!,
+      );
+      clickNode(
+        findNodeByAttr(container, "data-build-action", "showroom-next")!,
+      );
+    });
+
+    const price = findNodeByAttr(
+      container,
+      "data-testid",
+      "showroom-card-price",
+    )!;
+    const getAttribute = price.getAttribute as (attr: string) => unknown;
+    expect(getAttribute("data-price-source")).toBe("server");
+    expect(getAttribute("data-price-kco")).toBe("950");
+    const acquire = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire",
+    )!;
+    const hasAttribute = acquire.hasAttribute as (attr: string) => boolean;
+    expect(hasAttribute("disabled")).toBe(true);
+    const affordability = findNodeByAttr(
+      container,
+      "data-testid",
+      "showroom-affordability",
+    )!;
+    const affordabilityAttr = affordability.getAttribute as (
+      attr: string,
+    ) => unknown;
+    expect(affordabilityAttr("data-affordability")).toBe("insufficient");
+    expect(readNodeText(affordability)).toContain("Need ₭200 more");
+    await act(async () => root?.unmount());
+  });
 });
 
 describe("PLAYER.CAR.1.S5 — shouldAutoOpenShowroom pure decision rule", () => {
   it("does not turn unknown server-owned vehicles into an empty ownership list", async () => {
-    vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("fixture-token");
+    vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue(
+      "fixture-token",
+    );
     for (const response of [
       { owned: true, vehicleKey: "future-vehicle" },
       { ownedVehicleKeys: ["future-vehicle"] },
       ["future-vehicle"],
     ]) {
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => response }));
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: async () => response,
+        }),
+      );
       expect(await fetchOwnedVehicleKeysBackend()).toBeNull();
     }
   });
 
   it("fails closed when session token refresh rejects", async () => {
-    vi.spyOn(getAuthClient(), "getValidToken").mockRejectedValue(new Error("Refresh unavailable"));
+    vi.spyOn(getAuthClient(), "getValidToken").mockRejectedValue(
+      new Error("Refresh unavailable"),
+    );
     expect(await fetchOwnedVehicleKeysBackend()).toBeNull();
   });
 
@@ -824,16 +1103,15 @@ describe("PLAYER.CAR.1.S5 — shouldAutoOpenShowroom pure decision rule", () => 
 
   it("server-reported no ownership wins over an extra stale local car hint", () => {
     const staleLocalHints = { ...baseValidArgs, hasStoredCarLocally: true };
-    expect(
-      shouldAutoOpenShowroom(staleLocalHints),
-    ).toBe(true);
+    expect(shouldAutoOpenShowroom(staleLocalHints)).toBe(true);
   });
 
   it("server-reported no ownership wins over extra stale cached vehicle keys", () => {
-    const staleLocalHints = { ...baseValidArgs, ownedKeysInCache: ["karoo-vonk-11"] };
-    expect(
-      shouldAutoOpenShowroom(staleLocalHints),
-    ).toBe(true);
+    const staleLocalHints = {
+      ...baseValidArgs,
+      ownedKeysInCache: ["karoo-vonk-11"],
+    };
+    expect(shouldAutoOpenShowroom(staleLocalHints)).toBe(true);
   });
 
   it("returns false when backend truth is null (fails closed on network/endpoint error)", () => {

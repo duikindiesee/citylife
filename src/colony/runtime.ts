@@ -2631,13 +2631,18 @@ export class ColonyRuntime {
   private updateOperatorCar(): void {
     if (!this.renderer) return;
     if (this.operatorUserId && this.authoritativeCar) {
+      const ownedCar = this.currentPlayerOwnedCarSpec();
+      if (!ownedCar) {
+        this.renderer.setOperatorCar(null, null);
+        return;
+      }
       const pose = this.ownedDrivePose;
       const entrance = pose ?? this.playerHomeProjection?.spawn ?? this.commercialDistrict?.garagePad?.roadTarget;
       if (
         entrance &&
         this.canOwnedCarOccupy(entrance.x,entrance.y)
       ) {
-        this.renderer.setOperatorCar(this.authoritativeCar, {
+        this.renderer.setOperatorCar(ownedCar, {
           x: entrance.x,
           y: entrance.y,
         });
@@ -2677,6 +2682,22 @@ export class ColonyRuntime {
     const id = this.operatorCitizenId();
     const c = id ? this.citizens.byId(id) : null;
     if (!id || !c) {
+      // A signed-in human is not necessarily a Border Patrol household/citizen.
+      // Their verified car still exists: stage it at the surveyed Gearbox road
+      // entrance without minting a citizen, a local deed, or a fictional home.
+      const entrance = this.commercialDistrict?.garagePad?.roadTarget;
+      if (
+        this.operatorUserId &&
+        this.authoritativeCar &&
+        entrance &&
+        this.sim.state.roadSet.has(`${entrance.x},${entrance.y}`)
+      ) {
+        this.renderer.setOperatorCar(
+          this.currentPlayerOwnedCarSpec(),
+          entrance,
+        );
+        return;
+      }
       this.renderer.setOperatorCar(null, null);
       return;
     }
@@ -2689,6 +2710,16 @@ export class ColonyRuntime {
         : this.authoritativeCar
       : stored;
     this.renderer.setOperatorCar(spec, spec ? cell : null);
+  }
+
+  /** Keep server ownership authoritative while retaining this owner's mounted parts for that model. */
+  private currentPlayerOwnedCarSpec(): CarSpec | null {
+    const owned = this.authoritativeCar;
+    if (!this.operatorUserId || !owned) return null;
+    const citizenId = this.operatorCitizenId();
+    if (!citizenId || !hasStoredCar(citizenId)) return owned;
+    const stored = loadCar(citizenId);
+    return stored.id === owned.id ? stored : owned;
   }
 
   private ownedDrivePose: OwnedDrivePose | null = null;
@@ -2793,16 +2824,12 @@ export class ColonyRuntime {
   }
 
   private tickOwnedDrive(dt: number): void {
-    if (
-      !this.getOwnedDrivePose() ||
-      !this.ownedDrivePose ||
-      !this.authoritativeCar
-    )
-      return;
+    const ownedCar = this.currentPlayerOwnedCarSpec();
+    if (!this.getOwnedDrivePose() || !this.ownedDrivePose || !ownedCar) return;
     this.ownedDrivePose = stepOwnedDrive(
       this.ownedDrivePose,
       this.ownedDriveInput,
-      deriveStats(this.authoritativeCar),
+      deriveStats(ownedCar),
       dt,
       (x, y) => this.canOwnedCarOccupy(x,y),
     );

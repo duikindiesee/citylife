@@ -1,5 +1,5 @@
-// PLAYER.CAR.1.S4 — showroom acquisition wired to AUTHORITATIVE SERVER TRUTH, kept DARK behind a
-// feature gate until operator UAT. The contract is deliberately thin on the client:
+// PLAYER.CAR.1.S4 — showroom acquisition uses AUTHORITATIVE SERVER TRUTH and is on by default for
+// eligible new players. The contract is deliberately thin on the client:
 //
 //   • The acquire button posts the CANONICAL vehicleKey ONLY. The client never names a price, never
 //     moves KCO and never decides ownership — the kooker service is the sole authority. A tampered or
@@ -9,7 +9,7 @@
 //     resolves — and is always overwritten by, never merged ahead of, the server response.
 //   • Every acquire response is classified into a small closed set of states the overlay renders:
 //     owned (success), insufficient_funds, pending (replay / already in flight), disabled
-//     (feature off, signed out, or refused), error.
+//     (service gate off, signed out, missing quote, or refused), error.
 //
 // Pure model ops (the gate, key screen, cache codec and response classifier) take no DOM and are
 // node-testable, mirroring the carSpec / showroomState purity rule. The backend layer is best-effort
@@ -23,6 +23,9 @@ export const BACKEND_VEHICLE_TRUTH_PATH =
   "/kooker/api/v1/citylife/players/me/vehicle";
 export const BACKEND_VEHICLE_PURCHASE_PATH =
   "/kooker/api/v1/citylife/players/me/vehicle/purchase";
+/** Human-authenticated price discovery from the same server catalog used by purchase. */
+export const BACKEND_VEHICLE_OFFERS_PATH =
+  "/kooker/api/v1/citylife/players/me/vehicle/offers";
 /** Legacy endpoint paths for backwards compatibility / local dev fallback. */
 export const LEGACY_BACKEND_OWNERSHIP_PATH =
   "/kooker/api/v1/citylife/car-ownership";
@@ -38,13 +41,14 @@ export function carOwnershipCacheKey(scope?: string | null): string {
     : "citylife.car.ownership.v1";
 }
 
-/** The feature is DARK by default. It turns on only when the operator sets VITE_CITYLIFE_CAR_ACQUISITION
- *  to "on"/"1"/"true" in the build env for UAT — this worker never sets it, so production stays dark. */
+/** Acquisition is enabled by default for the player journey. An explicit build value can still turn it
+ *  off for an incident response, but absence must never turn an otherwise eligible player into a
+ *  preview-only visitor. The server remains the authority for eligibility, balance and debit. */
 export function isCarAcquisitionEnabled(
   env?: Record<string, string | undefined>,
 ): boolean {
   const raw = (env ?? readViteEnv())["VITE_CITYLIFE_CAR_ACQUISITION"];
-  if (typeof raw !== "string") return false;
+  if (typeof raw !== "string" || raw.trim() === "") return true;
   const v = raw.trim().toLowerCase();
   return v === "on" || v === "1" || v === "true" || v === "enabled";
 }
@@ -273,7 +277,8 @@ export async function fetchOwnedVehicleKeysBackend(): Promise<string[] | null> {
       };
       if (Array.isArray(obj.ownedVehicleKeys)) {
         return obj.ownedVehicleKeys.every(isCanonicalVehicleKey)
-          ? safeOwnedKeys(obj.ownedVehicleKeys) : null;
+          ? safeOwnedKeys(obj.ownedVehicleKeys)
+          : null;
       }
       if (obj.owned === true && typeof obj.vehicleKey === "string") {
         return isCanonicalVehicleKey(obj.vehicleKey) ? [obj.vehicleKey] : null;
@@ -283,6 +288,58 @@ export async function fetchOwnedVehicleKeysBackend(): Promise<string[] | null> {
       }
     }
     return null;
+  } catch {
+    return null;
+  }
+}
+
+/** Parse the server's offer list into prices keyed by canonical service vehicle key.
+ *  Malformed price/currency data fails closed. Unknown but well-formed server keys are ignored so
+ *  a future server model cannot accidentally bind to a different local showroom vehicle. */
+export function parseVehicleOfferPrices(
+  raw: unknown,
+): Readonly<Record<string, number>> | null {
+  if (!Array.isArray(raw)) return null;
+  const prices: Record<string, number> = {};
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry))
+      return null;
+    const offer = entry as {
+      vehicleKey?: unknown;
+      priceKco?: unknown;
+      currency?: unknown;
+    };
+    if (
+      typeof offer.vehicleKey !== "string" ||
+      typeof offer.priceKco !== "number" ||
+      !Number.isFinite(offer.priceKco) ||
+      offer.priceKco < 0 ||
+      offer.currency !== "KCO"
+    ) {
+      return null;
+    }
+    if (!isCanonicalVehicleKey(offer.vehicleKey)) continue;
+    const serverKey = serverVehicleKeyOf(offer.vehicleKey);
+    if (Object.prototype.hasOwnProperty.call(prices, serverKey)) return null;
+    prices[serverKey] = offer.priceKco;
+  }
+  return prices;
+}
+
+/** Fetch the current human player's server-authoritative vehicle offers. Never falls back to
+ *  showroom planned prices; unavailable/malformed responses return null and must disable purchase. */
+export async function fetchVehicleOfferPricesBackend(): Promise<Readonly<
+  Record<string, number>
+> | null> {
+  try {
+    const token = await getAuthClient().getValidToken();
+    if (!token) return null;
+    const response = await fetch(BACKEND_VEHICLE_OFFERS_PATH, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    return parseVehicleOfferPrices(await response.json());
   } catch {
     return null;
   }

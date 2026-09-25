@@ -2,12 +2,10 @@
 // rotating plinth (ShowroomView), left/right carousel between the Karoo vehicles, bounded zoom and
 // the specification card.
 //
-// PLAYER.CAR.1.S4 — acquisition is wired to the AUTHORITATIVE SERVER, but stays DARK behind the
-// carAcquisition feature gate until operator UAT. While the gate is off (the shipped default) the
-// button is exactly the honest "preview only" lock this slice inherited — no KCO movement, grant,
-// ownership write or service call can originate here. Only when the operator turns the gate on does
-// the acquire button post the canonical vehicleKey to the service (which alone checks funds and moves
-// coin) and render the server ownership truth.
+// PLAYER.CAR.1.S4 — eligible signed-in players without an owned vehicle enter the real server-backed
+// purchase flow by default. The client first requires authoritative no-car eligibility and a valid
+// server offer; it never supplies a price or changes KCO. Purchase and ownership remain server-owned,
+// so a disabled service gate, missing quote, insufficient balance or signed-out session fails closed.
 import {
   useCallback,
   useEffect,
@@ -34,13 +32,13 @@ import {
   loadOwnedKeysCache,
   saveOwnedKeysCache,
   fetchOwnedVehicleKeysBackend,
+  fetchVehicleOfferPricesBackend,
   postAcquireVehicle,
   acquireButtonView,
   acquireStateColor,
   type AcquireOutcome,
 } from "../car/carAcquisition";
 import { getAuthClient } from "../authClient";
-import {fetchVehicleOffers,type VehicleOffer} from "../car/vehicleOffers";
 import { hasStoredCar, saveCar } from "../car/garageStore";
 import type { ColonyRuntime } from "../runtime";
 
@@ -65,13 +63,19 @@ const controlButtonStyle: CSSProperties = {
 
 export function ShowroomOverlay({
   onClose,
-  canAcquire = isCarAcquisitionEnabled(),
+  canAcquire = false,
+  accountKey,
   runtime,
+  walletKco = null,
   onOwnershipConfirmed,
 }: {
   onClose: () => void;
   canAcquire?: boolean;
+  /** Authenticated player identity; changing it clears stale offer prices. */
+  accountKey?: string | null;
   runtime?: ColonyRuntime;
+  /** Current player-scoped wallet snapshot. It is display-only; the server still decides a debit. */
+  walletKco?: number | null;
   onOwnershipConfirmed?: () => void;
 }) {
   const [index, setIndex] = useState(0);
@@ -81,18 +85,29 @@ export function ShowroomOverlay({
   const card = showroomCardModel(vehicle);
   const vehicleKey = vehicleKeyOf(vehicle);
 
-  // PLAYER.CAR.1.S5 — acquisition enabled when canAcquire is explicitly true or feature gate is on.
-  const acquireEnabled = Boolean(canAcquire);
-  const [offers,setOffers]=useState<VehicleOffer[]|null>(null);
-  const [offersLoading,setOffersLoading]=useState(true);
-  const [offerAttempt,setOfferAttempt]=useState(0);
-  const offer=offers?.find(item=>item.vehicleKey===serverVehicleKeyOf(vehicleKey));
-  useEffect(()=>{
-    if(!acquireEnabled)return;
-    let live=true;setOffers(null);setOffersLoading(true);
-    void fetchVehicleOffers().then(result=>{if(live){setOffers(result);setOffersLoading(false);}});
-    return()=>{live=false;};
-  },[acquireEnabled,offerAttempt]);
+  // The feature switch defaults ON, but it cannot grant eligibility. Only the login flow's
+  // authoritative no-car decision may enable acquisition, and the explicit switch can still kill it.
+  const acquireEnabled = Boolean(canAcquire && isCarAcquisitionEnabled());
+  const [offerState, setOfferState] = useState<{
+    accountKey: string | null;
+    status: "loading" | "ready" | "unavailable";
+    prices: Readonly<Record<string, number>> | null;
+  }>({ accountKey: null, status: "loading", prices: null });
+  const [offerRetry, setOfferRetry] = useState(0);
+  const currentAccountKey =
+    getAuthClient().operator?.userId == null
+      ? null
+      : String(getAuthClient().operator!.userId);
+  // Bind quotes to the account that fetched them. On an account switch, the old price is unusable
+  // during the render before the effect runs, so it cannot flash as an actionable offer.
+  const offerBelongsToCurrentAccount =
+    offerState.accountKey === currentAccountKey;
+  const serverOfferPrices = offerBelongsToCurrentAccount
+    ? offerState.prices
+    : null;
+  const offerStatus = offerBelongsToCurrentAccount
+    ? offerState.status
+    : "loading";
   // The set of vehicleKeys the SERVER says the player owns. Seeded from the cache-only mirror for an
   // instant first paint, then overwritten by the authoritative GET — never merged ahead of it.
   const [owned, setOwned] = useState<readonly string[]>([]);
@@ -107,6 +122,56 @@ export function ShowroomOverlay({
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    const auth = getAuthClient();
+    const initialUserId = auth.operator?.userId ?? null;
+    const initialUserKey =
+      initialUserId === null ? null : String(initialUserId);
+    const initialCitizenId = runtime?.operatorCitizenId() ?? null;
+
+    if (
+      !auth.isAuthenticated ||
+      initialUserKey === null ||
+      (accountKey !== undefined && accountKey !== initialUserKey)
+    ) {
+      setOfferState({
+        accountKey: initialUserKey,
+        status: "unavailable",
+        prices: null,
+      });
+      return () => {
+        live = false;
+      };
+    }
+
+    setOfferState({
+      accountKey: initialUserKey,
+      status: "loading",
+      prices: null,
+    });
+    void fetchVehicleOfferPricesBackend().then((prices) => {
+      if (!live || !isMountedRef.current) return;
+      const freshAuth = getAuthClient();
+      const freshUserId = freshAuth.operator?.userId ?? null;
+      if (
+        (freshUserId === null ? null : String(freshUserId)) !==
+          initialUserKey ||
+        (initialCitizenId && runtime?.operatorCitizenId() !== initialCitizenId)
+      ) {
+        return;
+      }
+      setOfferState({
+        accountKey: initialUserKey,
+        status: prices === null ? "unavailable" : "ready",
+        prices,
+      });
+    });
+    return () => {
+      live = false;
+    };
+  }, [accountKey, currentAccountKey, offerRetry, runtime]);
 
   useEffect(() => {
     if (!acquireEnabled) return;
@@ -131,7 +196,8 @@ export function ShowroomOverlay({
 
       setOwned(truth);
       saveOwnedKeysCache(truth, scope); // the cache follows the truth, never leads it
-      if (initialUserId) runtime?.applyVehicleOwnership(String(initialUserId), truth);
+      if (initialUserId)
+        runtime?.applyVehicleOwnership(String(initialUserId), truth);
 
       // Hydrate garageStore/runtime if the player owns a vehicle on the server but doesn't have it saved locally yet
       const citizenId =
@@ -163,11 +229,20 @@ export function ShowroomOverlay({
   const isOwned =
     owned.includes(vehicleKey) ||
     owned.includes(serverVehicleKeyOf(vehicleKey));
+  const serverPriceKco =
+    serverOfferPrices?.[serverVehicleKeyOf(vehicleKey)] ?? null;
   const outcome = outcomes[vehicleKey];
   const isPending = pendingKey === vehicleKey;
 
   const acquire = useCallback(() => {
-    if (!acquireEnabled || !offer || isOwned || pendingKey !== null) return;
+    if (
+      !acquireEnabled ||
+      serverPriceKco === null ||
+      offerStatus !== "ready" ||
+      isOwned ||
+      pendingKey !== null
+    )
+      return;
     const key = vehicleKey;
     const initiatingAuth = getAuthClient();
     const initiatingUserId = initiatingAuth.operator?.userId ?? null;
@@ -177,9 +252,7 @@ export function ShowroomOverlay({
       : (initiatingCitizenId ?? "anon");
 
     setPendingKey(key);
-    void postAcquireVehicle(key, undefined, {
-      bypassGate: acquireEnabled,
-    }).then(async (result) => {
+    void postAcquireVehicle(key).then(async (result) => {
       if (!isMountedRef.current) return;
       const currentAuth = getAuthClient();
       const currentUserId = currentAuth.operator?.userId ?? null;
@@ -220,7 +293,8 @@ export function ShowroomOverlay({
       }));
       setPendingKey((cur) => (cur === key ? null : cur));
       if (result.kind === "owned" && confirmed && truth) {
-        if (currentUserId) runtime?.applyVehicleOwnership(String(currentUserId), truth);
+        if (currentUserId)
+          runtime?.applyVehicleOwnership(String(currentUserId), truth);
         // Confirmed by authority — persist via identity-bound runtime method to update parked car
         const targetCitizenId =
           currentCitizenId ??
@@ -236,7 +310,20 @@ export function ShowroomOverlay({
         onOwnershipConfirmed?.();
       }
     });
-  }, [acquireEnabled, offer, isOwned, pendingKey, vehicleKey, runtime, onOwnershipConfirmed]);
+  }, [
+    acquireEnabled,
+    isOwned,
+    offerStatus,
+    pendingKey,
+    runtime,
+    serverPriceKco,
+    vehicleKey,
+    onOwnershipConfirmed,
+  ]);
+
+  const retryOfferPrice = useCallback(() => {
+    setOfferRetry((current) => current + 1);
+  }, []);
 
   const prev = useCallback(
     () => setIndex((i) => stepSelection(i, count, -1)),
@@ -372,21 +459,26 @@ export function ShowroomOverlay({
         </div>
         <span
           data-testid="showroom-card-price"
+          data-price-source={serverPriceKco === null ? "unavailable" : "server"}
+          data-price-kco={serverPriceKco === null ? undefined : serverPriceKco}
           style={{ color: "#ffd25a", fontWeight: 700 }}
         >
-          {acquireEnabled ? (offer ? `${offer.priceKco.toLocaleString()} KCO` :
-            offersLoading ? "Loading price…" : offers === null ? "Price unavailable" : "Not currently offered") : card.priceLabel}
+          {offerStatus === "loading"
+            ? "Checking server price…"
+            : serverPriceKco === null
+              ? offerStatus === "ready"
+                ? "Not currently offered for purchase"
+                : "Price unavailable"
+              : `₭${serverPriceKco.toLocaleString()} KCO`}
         </span>
-        {acquireEnabled && !offer ? (
-          <button data-testid="showroom-retry-price" disabled={offersLoading}
-            onClick={()=>setOfferAttempt(n=>n+1)} style={controlButtonStyle}>
-            {offersLoading ? "Loading offers…" : "Refresh prices"}
-          </button>
-        ) : acquireEnabled ? (
+        {acquireEnabled ? (
           <AcquireButton
             isOwned={isOwned}
             isPending={isPending}
             outcome={outcome}
+            offerStatus={offerStatus}
+            priceKco={serverPriceKco}
+            walletKco={walletKco}
             onAcquire={acquire}
           />
         ) : (
@@ -406,6 +498,16 @@ export function ShowroomOverlay({
             }}
           >
             🔒 Acquire · preview only
+          </button>
+        )}
+        {offerStatus !== "loading" && serverPriceKco === null && (
+          <button
+            data-build-action="showroom-offers-retry"
+            data-testid="showroom-retry-price"
+            onClick={retryOfferPrice}
+            style={{ ...controlButtonStyle, padding: "5px 8px", fontSize: 11 }}
+          >
+            Retry server price
           </button>
         )}
       </div>
@@ -470,46 +572,97 @@ export function ShowroomOverlay({
   );
 }
 
-// PLAYER.CAR.1.S4 — the server-truth acquire control. Rendered ONLY when the feature gate is on; the
-// dark default keeps the inherited "preview only" lock instead. Its state + label + disabled come from
-// the pure acquireButtonView state machine (carAcquisition), so this stays a thin view. It carries a
-// stable data-acquire-state for deterministic E2E once the operator enables UAT, and never fires while a
+// PLAYER.CAR.1.S4 — the server-truth acquire control. Rendered for an eligible account by default;
+// missing authority still keeps the control disabled. Its state + label + disabled come from the pure
+// acquireButtonView state machine (carAcquisition), so this stays a thin view. It carries a stable
+// data-acquire-state for deterministic E2E, and never fires while a
 // request is in flight (pending) or the car is already owned. The click posts the canonical vehicleKey
 // and the authority decides — the button never names a price or moves coin.
 function AcquireButton({
   isOwned,
   isPending,
   outcome,
+  offerStatus,
+  priceKco,
+  walletKco,
   onAcquire,
 }: {
   isOwned: boolean;
   isPending: boolean;
   outcome: AcquireOutcome | undefined;
+  offerStatus: "loading" | "ready" | "unavailable";
+  priceKco: number | null;
+  walletKco: number | null;
   onAcquire: () => void;
 }) {
   const view = acquireButtonView(isOwned, isPending, outcome);
+  const shortage =
+    typeof priceKco === "number" && typeof walletKco === "number"
+      ? Math.max(0, priceKco - walletKco)
+      : null;
+  const affordabilityState =
+    offerStatus === "loading"
+      ? "price-loading"
+      : offerStatus !== "ready"
+        ? "price-unavailable"
+        : priceKco === null
+          ? "not-offered"
+          : shortage === null
+            ? "balance-unavailable"
+            : shortage > 0
+              ? "insufficient"
+              : "affordable";
+  const affordability =
+    affordabilityState === "price-loading"
+      ? "Checking server price…"
+      : affordabilityState === "price-unavailable"
+        ? "Server price unavailable"
+        : affordabilityState === "not-offered"
+          ? "Not offered for purchase"
+          : affordabilityState === "balance-unavailable"
+            ? "Balance unavailable — server will check"
+            : affordabilityState === "insufficient"
+              ? `Need ₭${shortage!.toLocaleString()} more`
+              : `You have ₭${walletKco!.toLocaleString()}`;
+  const unavailablePrice = offerStatus !== "ready" || priceKco === null;
+  const insufficient = shortage !== null && shortage > 0;
+  const disabled = view.disabled || unavailablePrice || insufficient;
+  const state = insufficient ? "insufficient_funds" : view.state;
   return (
-    <button
-      data-build-action="showroom-acquire"
-      data-testid="showroom-acquire"
-      data-acquire-state={view.state}
-      disabled={view.disabled}
-      onClick={onAcquire}
-      title="Acquire this vehicle — the server checks your balance and moves the coin"
-      style={{
-        padding: "6px 10px",
-        fontSize: 12,
-        borderRadius: 6,
-        border: `1px solid ${view.disabled ? "#3a4a5a" : "#b6892f"}`,
-        background: view.disabled
-          ? "rgba(255,255,255,0.05)"
-          : "rgba(182,137,47,0.18)",
-        color: acquireStateColor(view.state),
-        cursor: view.disabled ? "not-allowed" : "pointer",
-        fontWeight: 700,
-      }}
-    >
-      {view.label}
-    </button>
+    <>
+      <span
+        data-testid="showroom-affordability"
+        data-affordability={affordabilityState}
+        style={{
+          color: shortage && shortage > 0 ? "#f2a35a" : "#9fd4a6",
+          fontSize: 11,
+          fontWeight: 700,
+        }}
+      >
+        {affordability}
+      </span>
+      <button
+        data-build-action="showroom-acquire"
+        data-testid="showroom-acquire"
+        data-acquire-state={state}
+        disabled={disabled}
+        onClick={onAcquire}
+        title="Acquire this vehicle — the server checks your balance and moves the coin"
+        style={{
+          padding: "6px 10px",
+          fontSize: 12,
+          borderRadius: 6,
+          border: `1px solid ${disabled ? "#3a4a5a" : "#b6892f"}`,
+          background: disabled
+            ? "rgba(255,255,255,0.05)"
+            : "rgba(182,137,47,0.18)",
+          color: acquireStateColor(state),
+          cursor: disabled ? "not-allowed" : "pointer",
+          fontWeight: 700,
+        }}
+      >
+        {insufficient ? `Need ₭${shortage!.toLocaleString()} more` : view.label}
+      </button>
+    </>
   );
 }

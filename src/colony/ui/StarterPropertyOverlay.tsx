@@ -53,11 +53,14 @@ type LoadPhase = "loading" | "ready" | "error";
 
 export function StarterPropertyOverlay({
   onClose,
+  onWalletChanged,
   walletKco,
   currency = "₭",
   playerInventory,
 }: {
   onClose: () => void;
+  /** Refresh the authenticated wallet after the server decides a plot payment. */
+  onWalletChanged?: () => void;
   /** The current server-synced wallet balance for the signed-in player, display only. null = unknown. */
   walletKco: number | null;
   currency?: string;
@@ -118,14 +121,24 @@ export function StarterPropertyOverlay({
         const result = resume && truth ? await postResumePlotPurchase(truth)
           : await postPurchasePlot(selected!, choices);
         setOutcome(result);
-        const fresh = await fetchHomeTruth();
-        if (fresh) setTruth(fresh);
+      } catch {
+        setOutcome({kind:"error"});
       } finally {
         purchaseInFlight.current = false;
         setPending(false);
+        onWalletChanged?.();
+      }
+      // A successful purchase response is already an authoritative settlement. Do not leave the
+      // purchase control in its in-flight state while a separate ownership read is slow. The Build
+      // House action remains gated on this subsequent server truth, so the client never invents land.
+      try {
+        const fresh = await fetchHomeTruth();
+        if (fresh) setTruth(fresh);
+      } catch {
+        // The confirmed outcome remains visible; the player can explicitly refresh server state.
       }
     })();
-  }, [pending, owned, plotOwned, selected, choices, truth]);
+  }, [pending, owned, plotOwned, selected, choices, truth, onWalletChanged]);
 
   const view = purchaseButtonView(owned, !!selected, pending, outcome);
   const selectionConflict = outcome?.kind === "error" && outcome.status === 409;
@@ -390,6 +403,11 @@ export function StarterPropertyOverlay({
                 ? ` · ${money(currency, selectedChoice.priceKco)}`
                 : ""}
             </button>
+          )}
+          {outcome?.kind === "plot_owned" && !plotOwned && phase === "ready" && (
+            <p data-testid="home-purchase-confirmed" role="status">
+              Plot purchase confirmed. Loading your server-owned plot details…
+            </p>
           )}
           <button data-testid="home-refresh-plots" style={controlButtonStyle}
             disabled={pending} onClick={refresh}>Refresh available plots</button>
