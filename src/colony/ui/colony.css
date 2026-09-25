@@ -287,9 +287,6 @@ body,
 .hud-corner-rail > aside.hud {
   display: none;
 }
-.hud-corner-rail > aside.hud {
-  display: none;
-}
 .hud-corner-rail > button {
   flex: 0 0 auto;
   /* `relative` with no offsets changes nothing about layout — it only makes `z-index` apply, so the

@@ -20,7 +20,7 @@ const READY_TIMEOUT = 90_000; // one-off world-layout boot on a slow software-We
 const FLAG_GLOB = "**/feature-flags/new-player-journey-v1";
 const VEHICLE_OFFERS_GLOB = "**/vehicle/offers";
 const SESSION_KEY = "citylife.session.v5";
-const READY_MARKER = 'button[title="Sign out of CityLife"]';
+const READY_MARKER = '[data-testid="player-wallet-hud"]';
 const ENTRY = '[data-build-action="open-showroom"]';
 const OVERLAY = '[data-testid="showroom-overlay"]';
 const ACQUIRE_CONTROL =
@@ -110,8 +110,8 @@ async function bootAs(
   );
   await page.goto("/", { timeout: NAV_TIMEOUT });
   await page.waitForSelector("canvas", { timeout: NAV_TIMEOUT });
-  // The authenticated colony HUD (and thus the gated entry decision) is mounted once the world layout
-  // boot resolves and the top bar renders its Log-out control.
+  // The self-scoped wallet chip only renders for an authenticated account. Do not couple readiness
+  // to a particular menu page's logout control.
   await page.waitForSelector(READY_MARKER, { timeout: READY_TIMEOUT });
 }
 

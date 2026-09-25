@@ -119,7 +119,7 @@ _You step off the bus into the evening street and the city is just… there. No 
 
 ## 8. Migration — slice 1 implementation status
 
-The implementation is in isolated branch `codex/p0-hud-pause-map-20260925`, based on `b29ea366364884b9442a9694f73ca533c63d4cb7`. It is local work only; no PR, merge, build pipeline run, or deployment is claimed.
+The implementation is in isolated branch `codex/p0-hud-pause-map-20260925`, based on `b29ea366364884b9442a9694f73ca533c63d4cb7`, and is under review in PR #542. Source and browser-fixture checks do not establish deployed player acceptance.
 
 **Implemented in the branch:**
 
@@ -130,6 +130,7 @@ The implementation is in isolated branch `codex/p0-hud-pause-map-20260925`, base
 5. Removed the `hud-player-state-v1` entitlement fetch. The journey/shop entitlements remain separate.
 6. Kept World View and Survey Map available to player sessions, kept City Builder role-gated, and compressed their labels to accessible icon controls on narrow screens.
 7. Added desktop/mobile HUD browser coverage and adapted map and journey tests to the on-demand map behavior.
+8. Removed the legacy lower-right city-stat panel from the visible HUD; signed-in players retain the self-scoped wallet chip in the topbar, while signed-out sessions show no balance.
 
 **Still incomplete:** real-account wallet rendering and account-switch clearing need a runtime session check; multiplayer lobby/friends and shared player positions are not implemented; the legacy corner journey buttons remain; the radio strip remains outside the menu; and actual deployed-interface acceptance is outstanding. The map currently reports position unavailable when the local player's authoritative position is missing.
 

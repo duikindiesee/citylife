@@ -27,16 +27,13 @@ import { test, expect } from "@playwright/test";
 
 type Region = { name: string; sel: string };
 
-// Every interactive region that shares the bottom-right corner in a default ADMIN/operator session.
-// No feature flag is set: the local DEV skip-auth bypass (?skipauth=1) is what makes the journey and
-// venue affordances live, which is exactly the operator-observed multi-affordance state.
+// Every live journey affordance that shares the bottom-right corner. The retired city-stat panel is
+// intentionally excluded and separately asserted hidden below.
 const REGIONS: Region[] = [
   { name: "Drive home", sel: '[data-build-action="open-drive-home"]' },
   { name: "Choose your home", sel: '[data-build-action="open-home"]' },
   { name: "The Gamehouse", sel: '[data-build-action="open-gamehouse"]' },
   { name: "Gearbox Auto Hub", sel: '[data-build-action="open-showroom"]' },
-  { name: "City HUD title", sel: "aside.hud .hud-essentials h2" },
-  { name: "HUD details expander", sel: "aside.hud .hud-detail-toggle" },
 ];
 
 type Probe = {
@@ -176,8 +173,8 @@ async function bootOperatorSession(
     undefined,
     { timeout: 60_000 },
   );
-  // The corner rail only settles once the HUD panel has its real content height.
-  await page.waitForSelector("aside.hud .hud-detail-toggle", {
+  // The journey entry is the last corner affordance to mount after the local entitlement bypass.
+  await page.waitForSelector('[data-build-action="open-showroom"]', {
     timeout: 30_000,
   });
   await page.waitForTimeout(1500);
@@ -187,27 +184,16 @@ for (const [label, viewport] of [
   ["desktop 1280x800", { width: 1280, height: 800 }],
   ["mobile 390x844", { width: 390, height: 844 }],
 ] as const) {
-  test(`bottom-right HUD corner: no overlap and every control clickable (${label})`, async ({
+  test(`bottom-right journey rail: no overlap and every control clickable (${label})`, async ({
     page,
   }) => {
     test.setTimeout(240_000);
     await page.setViewportSize(viewport);
     await bootOperatorSession(page);
 
-    // Collapsed — the default operator state the defect was reported in.
-    assertCornerIsSane(await probeCorner(page, REGIONS), `${label} collapsed`);
-
-    // Expanding the detail stack is the load case that makes the panel tall: the affordances must
-    // still be laid out clear of it and must not be pushed off the top of the viewport. This click is
-    // itself the proof the expander is usable — it was unclickable before the fix.
-    await page.click("aside.hud .hud-detail-toggle", { timeout: 60_000 });
-    await expect(page.locator("aside.hud")).toHaveAttribute(
-      "data-hud-expanded",
-      "true",
-      { timeout: 30_000 },
-    );
-    await page.waitForTimeout(500);
-
-    assertCornerIsSane(await probeCorner(page, REGIONS), `${label} expanded`);
+    // The retired colony-stat panel must not return to the player corner. The signed-in wallet is a
+    // separate self-scoped topbar chip and is covered by authenticated journey tests.
+    await expect(page.locator("aside.hud")).toBeHidden();
+    assertCornerIsSane(await probeCorner(page, REGIONS), label);
   });
 }

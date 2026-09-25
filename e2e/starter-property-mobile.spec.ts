@@ -21,7 +21,7 @@ const ELIGIBLE_RE = /\/players\/me\/home\/eligible-neighbourhoods/;
 const PURCHASE_RE = /\/players\/me\/home\/purchase/;
 const TRUTH_RE = /\/players\/me\/home(\?.*)?$/; // GET truth only — not /home/purchase or /home/eligible-*
 const SESSION_KEY = "citylife.session.v5";
-const READY_MARKER = 'button[title="Sign out of CityLife"]';
+const READY_MARKER = '[data-testid="player-wallet-hud"]';
 const ENTRY = '[data-build-action="open-home"]';
 const OVERLAY = '[data-testid="starter-property-overlay"]';
 
