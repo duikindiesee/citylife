@@ -3,7 +3,7 @@
 - **Status:** proposed for review. **Design only** — no runtime, gateway or deployment change ships with this spec.
 - **Date:** 2026-09-24
 - **Tracking:** CityLife issue #529 (Network multiplayer free-drive on shared CityLife roads).
-- **Depends on:** #523 (owned-car world driving; merged); #528 (player map/HUD; exact-head review and integration still required); a verified server-readable world/layout/road revision; server-authoritative player and vehicle ownership reads.
+- **Depends on:** #523 (owned-car world driving; merged); #528 (player map/HUD; merged as `69bddc3`); a verified server-readable world/layout/road revision; server-authoritative player and vehicle ownership reads.
 - **Design provenance:** the player goal requires at least two signed-in players to drive their own cars on shared roads, see each other in-world and on the map, and preserve identity/isolation through reconnects. Inspected source snapshots: CityLife `a28547e868e6108e271bb3152be85ac2ca696ef0` ([owned-car controller](https://github.com/duikindiesee/citylife/blob/a28547e868e6108e271bb3152be85ac2ca696ef0/src/colony/car/ownedDriving.ts), [presence readout](https://github.com/duikindiesee/citylife/blob/a28547e868e6108e271bb3152be85ac2ca696ef0/src/colony/spatial/presenceReadout.ts)); Kooker Infra `ca00f4ea3a1093b67f9e5576b2ad92310b927fc3` ([APISIX routes](https://github.com/duikindiesee/kooker-infra/blob/ca00f4ea3a1093b67f9e5576b2ad92310b927fc3/manifests/base/apisix-routes/apisix-routes.yaml)); and issue #529. Current client source has local car movement and presence projection but no gameplay transport; the inspected gateway config has an authenticated CityLife HTTP route but no gameplay WSS route, and marks the old Games service retired. This spec is not evidence that any realtime service exists or is deployed.
 
 ## Why
@@ -73,7 +73,7 @@ No in-world materials or KCO are consumed. Engineering cost is one authenticated
 
 ## Open gates and explicit non-goals
 
-- #528 is still awaiting exact-head review and integration. The multiplayer map view depends on its approved map surface, but may not be represented as shipped by this design.
+- #528 is merged and supplies the local map, wallet, player marker and bus presence. It does not supply network peers. The multiplayer map view must consume authoritative session snapshots from a future implementation and must not be represented as shipped by this design.
 - The canonical production road/layout revision and server-consumable collision surface have not been proven by this design. Until they are, server movement remains unimplemented and no shared-road claim is accepted.
 - Race synchronization, voice/text chat, public matchmaking, cross-world travel, persistent room history, purchases and cross-player collision are out of scope.
 - This document does not authorize a feature-flag change, infrastructure merge, runtime deployment, release or player-facing launch.
