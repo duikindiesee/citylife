@@ -90,7 +90,6 @@ async function bootAs(
   userId: string,
   enabled: boolean,
 ): Promise<void> {
-  await installStarterWorldFixture(page);
   await page.route("**/api/ledger/wallets/**/balances**", (route) =>
     route.fulfill({
       status: 200,
@@ -103,7 +102,7 @@ async function bootAs(
           appName: "citylife",
           currency: "KCO",
           realm: "TEST",
-          balance: "700.0000",
+          balance: "0.0000",
         },
       ]),
     }),
@@ -154,6 +153,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   page,
 }) => {
   test.setTimeout(180_000);
+  await installStarterWorldFixture(page);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -224,6 +224,11 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       { timeout: READY_TIMEOUT },
     )
     .toEqual({ asset: "/assets/citylife/cars/fiat_x19.glb", vertices: true });
+  // The owned-car owner has no completed home, so login routes them into plot selection. Dismiss that
+  // guided step to inspect the exact owned-car controls and live map without opening Gearbox.
+  await expect(page.getByTestId("starter-property-overlay")).toBeVisible({timeout:READY_TIMEOUT});
+  await touchTap(page, '[data-testid="home-exit"]');
+  await expect(page.getByTestId("starter-property-overlay")).toHaveCount(0);
   await expect(page.getByTestId("owned-car-controls")).toBeVisible();
   const cityMap = page.getByRole("complementary", {
     name: "Live bus network map",
@@ -428,6 +433,8 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       { timeout: READY_TIMEOUT },
     )
     .toEqual({ id: "showroom:karoo-x19-targa", cell: placement.cell });
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await installStarterWorldFixture(page);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -453,6 +460,7 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   page,
 }) => {
   test.setTimeout(180_000);
+  await installStarterWorldFixture(page);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -465,7 +473,8 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   const acquire = page.locator('[data-build-action="showroom-acquire"]');
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   await expect(acquire).toBeDisabled({ timeout: ASSERT_TIMEOUT });
-  await expect(acquire).toHaveText("Need ₭250 more");
+  await expect(acquire).toHaveText("Insufficient funds");
+  await expect(page.getByTestId("showroom-affordability")).toHaveText("Need ₭250 more");
   await expect(acquire).toHaveAttribute(
     "data-acquire-state",
     "insufficient_funds",
@@ -476,7 +485,8 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   await touchTap(page, ENTRY);
   await expect(page.locator(OVERLAY)).toBeVisible();
   await expect(acquire).toBeDisabled({ timeout: ASSERT_TIMEOUT });
-  await expect(acquire).toHaveText("Need ₭250 more");
+  await expect(acquire).toHaveText("Insufficient funds");
+  await expect(page.getByTestId("showroom-affordability")).toHaveText("Need ₭250 more");
   await expect(acquire).toHaveAttribute(
     "data-acquire-state",
     "insufficient_funds",
@@ -487,24 +497,24 @@ test("new player can exit and re-enter without losing server-priced acquisition 
 
   // A different identity with unavailable ownership truth must not inherit eligibility.
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  await installStarterWorldFixture(page);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({ status: 503, body: "unavailable" }),
   );
   await bootAs(page, "showroom-reentry-2", true);
-  await expect(page.locator(ENTRY)).toBeVisible({ timeout: READY_TIMEOUT });
-  await touchTap(page, ENTRY);
-  const unavailableAcquire = page.locator(ACQUIRE_CONTROL);
-  await expect(unavailableAcquire).toHaveCount(1);
-  await expect(unavailableAcquire).toBeDisabled();
-  await expect(page.locator('[data-testid="showroom-card-price"]')).toHaveText(
-    "Price unavailable",
-  );
+  // Unknown ownership must hold the full-screen arrival gate. Do not let a cached no-car state
+  // enter the showroom when authoritative ownership truth is unavailable.
+  await expect(page.getByRole("alert")).toContainText("We couldn't load your car and home.");
+  await expect(page.getByRole("button", {name:"Retry arrival"})).toBeVisible();
+  await expect(page.locator(OVERLAY)).toHaveCount(0);
+  await expect(page.locator(ACQUIRE_CONTROL)).toHaveCount(0);
 });
 
 test("server ownership opens Gearbox despite a stale cached car", async ({
   page,
 }) => {
   test.setTimeout(120_000);
+  await installStarterWorldFixture(page);
   let ownershipReads = 0;
   await page.addInitScript(() => {
     localStorage.setItem(
@@ -544,6 +554,7 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
 
   // 1) Default-OFF authenticated player: the garage entry affordance is absent (not merely hidden)
   //    and the interior overlay never mounts — the gate is not cosmetic.
+  await installStarterWorldFixture(page);
   await bootAs(page, "uat-off-1", false);
   await expect(page.locator(ENTRY)).toHaveCount(0, { timeout: ASSERT_TIMEOUT });
   await expect(page.locator(OVERLAY)).toHaveCount(0);
@@ -551,6 +562,7 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   // 2) Operator UAT allowlists this player and the server confirms no owned car. The player goes
   //    directly to Gearbox; the server quote is shown and the zero wallet reports its exact shortfall.
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  await installStarterWorldFixture(page);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -578,6 +590,7 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   // 3) Account switch to a different, OFF player → the entry is hidden again. No positive
   //    entitlement bled across the session boundary.
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  await installStarterWorldFixture(page);
   await bootAs(page, "uat-off-2", false);
   await expect(page.locator(ENTRY)).toHaveCount(0, { timeout: ASSERT_TIMEOUT });
   await expect(page.locator(OVERLAY)).toHaveCount(0);

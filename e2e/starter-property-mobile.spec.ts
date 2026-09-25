@@ -108,13 +108,6 @@ async function routeAll(page: Page, s: HomeState): Promise<void> {
       body: JSON.stringify(s.eligible ?? { neighbourhoods: [] }),
     }),
   );
-  await page.route(ELIGIBLE_RE, (route: Route) =>
-    route.fulfill({
-      status: s.eligibleStatus ?? 200,
-      contentType: "application/json",
-      body: JSON.stringify(s.eligible ?? { neighbourhoods: [] }),
-    }),
-  );
   await page.route(PURCHASE_RE, (route: Route) => {
     s.purchaseCount.n += 1;
     const selection = route.request().postDataJSON();
@@ -128,6 +121,10 @@ async function routeAll(page: Page, s: HomeState): Promise<void> {
     route.fulfill({ status: s.purchaseStatus ?? 200, contentType: "application/json",
       body: JSON.stringify({status:paid ? "PLOT_OWNED" : "INSUFFICIENT_FUNDS"}) });
   });
+  await page.route("**/players/me/vehicle", (route: Route) =>
+    route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ owned: true, vehicleKey: "karoo-vonk-11" }) }),
+  );
   await page.route(TRUTH_RE, (route: Route) => {
     // The fixture authority reports land payment separately from completed-home truth.
     const body = s.truth;
@@ -140,8 +137,9 @@ async function routeAll(page: Page, s: HomeState): Promise<void> {
 }
 
 async function bootAs(page: Page, userId: string, s: HomeState): Promise<void> {
-  await routeAll(page, s);
   await installStarterWorldFixture(page);
+  // Keep account/feature/home scenario responses ahead of safe shared defaults.
+  await routeAll(page, s);
   await page.addInitScript(
     ([key, session]) => {
       try {
@@ -192,7 +190,7 @@ test("paid published plot stays unbuilt across reload without a synthetic house 
       await page.reload();
       await page.waitForSelector(READY_MARKER, {timeout:READY_TIMEOUT});
     }
-    await touchTap(page, ENTRY);
+    await expect(page.locator(OVERLAY)).toBeVisible({timeout:READY_TIMEOUT});
     await expect(page.getByTestId("home-plot-owned")).toContainText("Your house still needs to be built");
     await expect(page.getByTestId("home-plot-owned")).toHaveAttribute("data-plot-id", "wood1_lot_1");
     await expect(page.getByTestId("home-build-house")).toHaveAttribute("href","/builder.html?mode=player-home");
@@ -245,10 +243,8 @@ test("actual plot offers submit the selected parcel once and retain paid land ac
   };
   await bootAs(page, "demo-user", state);
 
-  // Enter the guided property step by touch.
-  await expect(page.locator(ENTRY)).toBeVisible({ timeout: READY_TIMEOUT });
-  await touchTap(page, ENTRY);
-  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: ASSERT_TIMEOUT });
+  // An authenticated owner without a completed home is routed directly into the property step.
+  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
 
   // Server-eligible choices only + canonical price + wallet truth are shown.
   await expect(
@@ -294,7 +290,7 @@ test("actual plot offers submit the selected parcel once and retain paid land ac
   // Reload re-fetches the same paid parcel without inventing a house or another purchase.
   await page.reload({ timeout: NAV_TIMEOUT });
   await page.waitForSelector(READY_MARKER, { timeout: READY_TIMEOUT });
-  await touchTap(page, ENTRY);
+  await expect(page.locator(OVERLAY)).toBeVisible({timeout:READY_TIMEOUT});
   const owned2 = page.locator('[data-testid="home-plot-owned"]');
   await expect(owned2).toBeVisible({ timeout: ASSERT_TIMEOUT });
   await expect(owned2).toHaveAttribute("data-plot-id","wood2_lot_1");
@@ -313,8 +309,8 @@ test("HOME.1C: eligible-list read failure shows retry, then recovers", async ({
     purchaseCount: { n: 0 },
   };
   await bootAs(page, "retry-user", state);
-  await expect(page.locator(ENTRY)).toBeVisible({ timeout: READY_TIMEOUT });
-  await touchTap(page, ENTRY);
+  // A car owner without a home is routed directly into plot selection during onboarding.
+  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   await expect(page.locator('[data-testid="home-error"]')).toBeVisible({
     timeout: ASSERT_TIMEOUT,
   });
@@ -350,7 +346,7 @@ test("insufficient funds retains the selected plot across reload and retries the
   const state: HomeState = {flagMode:"on",eligible:ELIGIBLE_PUBLIC,truth:NOT_OWNED,
     purchaseCount:{n:0},purchaseBodies:[],purchaseStatus:422};
   await bootAs(page,"shortfall-owner",state);
-  await touchTap(page,ENTRY);
+  await expect(page.locator(OVERLAY)).toBeVisible({timeout:READY_TIMEOUT});
   await touchTap(page,'[data-testid="home-choice-wood2_lot_1"]');
   await touchTap(page,'[data-testid="home-purchase"]');
   await expect(page.getByTestId("home-existing-purchase")).toContainText("Payment needs more funds");
@@ -358,7 +354,7 @@ test("insufficient funds retains the selected plot across reload and retries the
   state.eligible = []; // reserved intent is no longer part of the available catalogue
   await page.reload();
   await page.waitForSelector(READY_MARKER,{timeout:READY_TIMEOUT});
-  await touchTap(page,ENTRY);
+  await expect(page.locator(OVERLAY)).toBeVisible({timeout:READY_TIMEOUT});
   await expect(page.getByTestId("home-existing-purchase")).toContainText("wood2_lot_1");
   await expect(page.getByTestId("home-choices")).toHaveCount(0);
   expect(state.purchaseCount.n).toBe(1);

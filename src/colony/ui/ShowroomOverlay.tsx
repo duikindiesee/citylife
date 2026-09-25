@@ -641,28 +641,30 @@ function AcquireButton({
       >
         {affordability}
       </span>
-      <button
-        data-build-action="showroom-acquire"
-        data-testid="showroom-acquire"
-        data-acquire-state={state}
-        disabled={disabled}
-        onClick={onAcquire}
-        title="Acquire this vehicle — the server checks your balance and moves the coin"
-        style={{
-          padding: "6px 10px",
-          fontSize: 12,
-          borderRadius: 6,
-          border: `1px solid ${disabled ? "#3a4a5a" : "#b6892f"}`,
-          background: disabled
-            ? "rgba(255,255,255,0.05)"
-            : "rgba(182,137,47,0.18)",
-          color: acquireStateColor(state),
-          cursor: disabled ? "not-allowed" : "pointer",
-          fontWeight: 700,
-        }}
-      >
-        {insufficient ? `Need ₭${shortage!.toLocaleString()} more` : view.label}
-      </button>
+      {!unavailablePrice && (
+        <button
+          data-build-action="showroom-acquire"
+          data-testid="showroom-acquire"
+          data-acquire-state={state}
+          disabled={disabled}
+          onClick={onAcquire}
+          title="Acquire this vehicle — the server checks your balance and moves the coin"
+          style={{
+            padding: "6px 10px",
+            fontSize: 12,
+            borderRadius: 6,
+            border: `1px solid ${disabled ? "#3a4a5a" : "#b6892f"}`,
+            background: disabled
+              ? "rgba(255,255,255,0.05)"
+              : "rgba(182,137,47,0.18)",
+            color: acquireStateColor(state),
+            cursor: disabled ? "not-allowed" : "pointer",
+            fontWeight: 700,
+          }}
+        >
+          {insufficient ? "Insufficient funds" : view.label}
+        </button>
+      )}
     </>
   );
 }
