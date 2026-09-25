@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-25T06:20:39.950Z",
+  "updatedAt": "2026-09-25T06:22:14.111Z",
   "runs": [
+    {
+      "runId": 36102522479,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36102522479",
+      "event": "pull_request",
+      "branch": "codex/kooker2-runner-powershell-policy-2026-09-25",
+      "sha": "35641d3d016b5862b648a35a2a715e4e5befba04",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/35641d3d016b5862b648a35a2a715e4e5befba04",
+      "pullRequestNumbers": "#538",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/538",
+      "pullRequests": [
+        {
+          "number": 538,
+          "url": "https://github.com/duikindiesee/citylife/pull/538"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-25T06:21:50Z",
+      "completedAt": "2026-09-25T06:22:03Z",
+      "durationSeconds": 13,
+      "runnerSummary": "GitHub Actions 1000010303",
+      "jobs": [
+        {
+          "id": 107967890611,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010303",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-09-25T06:21:55Z",
+          "completedAt": "2026-09-25T06:22:02Z",
+          "durationSeconds": 7
+        }
+      ]
+    },
     {
       "runId": 36102386070,
       "workflowName": "CityLife Kooker2 Trusted Main",
