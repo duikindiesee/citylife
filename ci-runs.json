@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-25T11:08:18.715Z",
+  "updatedAt": "2026-09-25T11:09:08.637Z",
   "runs": [
+    {
+      "runId": 36127718763,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36127718763",
+      "event": "pull_request",
+      "branch": "chore/bump-0.57.3",
+      "sha": "b51d1f75a6478e61d6472ffb487b78f9f75ea349",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/b51d1f75a6478e61d6472ffb487b78f9f75ea349",
+      "pullRequestNumbers": "#541",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/541",
+      "pullRequests": [
+        {
+          "number": 541,
+          "url": "https://github.com/duikindiesee/citylife/pull/541"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-25T11:07:55Z",
+      "completedAt": "2026-09-25T11:08:59Z",
+      "durationSeconds": 64,
+      "runnerSummary": "GitHub Actions 1000010355",
+      "jobs": [
+        {
+          "id": 108047572831,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010355",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-09-25T11:07:59Z",
+          "completedAt": "2026-09-25T11:08:58Z",
+          "durationSeconds": 59
+        }
+      ]
+    },
     {
       "runId": 36127718726,
       "workflowName": "Secret scan",
