@@ -38,6 +38,9 @@ export function TopbarMenu({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        // This menu owns Escape while it is open. Do not let the world-level
+        // handler also consume it and exit first-person or release pointer lock.
+        event.stopPropagation();
         setOpen(false);
       }
     };

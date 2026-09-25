@@ -18,6 +18,10 @@ test.describe("player city map", () => {
     await expect(page.locator(".rally-social-read")).toHaveCount(0);
     await page.getByTestId("player-map-shortcut").click();
     await expect(map).toBeVisible();
+    await page.getByRole("button", { name: "Close map" }).click();
+    await expect(map).toBeHidden();
+    await page.getByTestId("player-map-shortcut").click();
+    await expect(map).toBeVisible();
     await expect(map).toHaveCSS("pointer-events", "none");
     await expect(map.locator(".bus-network-minimap__mode")).toHaveText(
       "LOCAL SESSION",

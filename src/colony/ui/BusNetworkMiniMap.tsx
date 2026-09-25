@@ -6,13 +6,7 @@ import { buildBusNetworkMiniMapModel } from "./busNetworkMiniMapModel";
 const WIDTH = 200;
 const HEIGHT = 132;
 
-export function BusNetworkMiniMap({
-  runtime,
-  walletLabel,
-  presenceReadout,
-  open,
-  onClose,
-}: {
+type BusNetworkMiniMapProps = {
   runtime: ColonyRuntime;
   /** Server-authenticated wallet state, or City view for an operator. */
   walletLabel: string;
@@ -20,8 +14,21 @@ export function BusNetworkMiniMap({
   /** The map is summoned on demand so it does not cover the driving view. */
   open: boolean;
   onClose: () => void;
-}) {
-  if (!open) return null;
+};
+
+export function BusNetworkMiniMap(props: BusNetworkMiniMapProps) {
+  // Keep the signal subscription out of the closed HUD. When open toggles, React
+  // mounts/unmounts a separate hooked component instead of changing hook order.
+  if (!props.open) return null;
+  return <OpenBusNetworkMiniMap {...props} />;
+}
+
+function OpenBusNetworkMiniMap({
+  runtime,
+  walletLabel,
+  presenceReadout,
+  onClose,
+}: Omit<BusNetworkMiniMapProps, "open">) {
   // The HUD can be memoized independently of the scene. Subscribe to the runtime's 200ms
   // heartbeat while seated so the player marker follows the live car pose on the map.
   const drivePosition = useSimSignal(runtime, () => {

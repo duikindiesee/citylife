@@ -68,5 +68,38 @@ for (const viewport of [
     });
     await page.getByRole("button", { name: "Close map" }).click();
     await expect(map).toBeHidden();
+
+    const enteredFirstPerson = await page.evaluate(() => {
+      const runtime = window.__colony;
+      // This unauthenticated browser fixture has no resident, so seed one only
+      // in memory to exercise the real first-person input lifecycle.
+      const citizen = runtime.citizens.seedFounder({
+        id: "citizen_hud_escape_test",
+        householdId: "household_hud_escape_test",
+        displayName: "HUD Escape Test",
+        plotId: "plot_hud_escape_test",
+        plotName: "HUD Escape Test Plot",
+        home: { x: 5, y: 5 },
+        kind: "human",
+        nowMs: Date.now(),
+      });
+      if (citizen) runtime.setOperatorName(citizen.displayName);
+      return citizen ? runtime.enterFirstPerson(citizen.id) : false;
+    });
+    expect(enteredFirstPerson).toBe(true);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__colony.getUiState().firstPerson.active),
+      )
+      .toBe(true);
+    await page.getByTestId("topbar-menu").click();
+    await expect(menu).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__colony.getUiState().firstPerson.active),
+      )
+      .toBe(true);
   });
 }
