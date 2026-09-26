@@ -20,7 +20,7 @@ test("unpublished world blocks runtime and retry loads canonical inventory", asy
   await page.screenshot({path:"test-results/starter-world-unpublished.png"});
   published = true;
   await page.getByRole("button",{name:"Retry",exact:true}).click();
-  await expect(page.locator('button[title="Sign out of CityLife"]')).toBeVisible({timeout:90000});
+  await expect(page.locator("canvas")).toBeVisible({timeout:90000});
   const inventory = await page.evaluate(() => {
     const runtime = (window as any).__colony;
     return {protected:runtime.lots().filter((lot:any)=>runtime.isPlayerParcel(lot.id)).length,

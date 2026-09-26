@@ -87,7 +87,7 @@ test("game hydrates the completed owned house on reload and removes it for anoth
     sessionStorage.setItem("citylife.session.v5",JSON.stringify(session));
   });
   await page.reload();
-  await expect(page.locator('button[title="Sign out of CityLife"]')).toBeVisible({timeout:90000});
+  await expect(page.locator("canvas")).toBeVisible({timeout:90000});
   await expect.poll(snapshot).toEqual([]);
   await expect(page.getByTestId(`home-price-${plot.plotId}`)).toContainText("350");
   await expect(page.getByTestId("home-purchase")).toBeVisible();

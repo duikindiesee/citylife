@@ -17,12 +17,11 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
   const json=(body:unknown,status=200)=>({status,contentType:"application/json",body:JSON.stringify(body)});
   await page.route("**/kooker/**",route=>route.fulfill(json({})));
   await installVehicleOffersFixture(page);
-  await page.route("**/api/ledger/wallets/**/balances**",route=>{
-    const requestUrl=new URL(route.request().url());
-    expect(requestUrl.pathname).toContain("/onboarding-fixture/balances");
-    expect(requestUrl.searchParams.get("appName")).toBe("citylife");
-    return route.fulfill(json([{ownerId:"onboarding-fixture",ownerType:"USER",walletType:"DEFAULT",
-      appName:"citylife",currency:"KCO",realm:"TEST",balance:balance.toFixed(4)}]));
+  await page.route("**/kooker/api/ledger/me/wallet",route=>{
+    expect(route.request().method()).toBe("GET");
+    expect(route.request().headers().authorization).toMatch(/^Bearer /);
+    return route.fulfill(json({ownerId:"onboarding-fixture",walletType:"DEFAULT",
+      appName:"citylife",instrument:"KCO",realm:"TEST",balance:balance.toFixed(4)}));
   });
   await page.route("**/worlds/seed-4242/starter-catalogue",route=>route.fulfill({status:200,contentType:"application/json",body:fixture}));
   await page.route("**/feature-flags/new-player-journey-v1",route=>route.fulfill(json({enabled:true})));
@@ -84,7 +83,7 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
   await expect(acquire).toBeEnabled();
   await acquire.press("Enter");
   await expect(page.getByTestId(`home-price-${plot.plotId}`)).toContainText("350",{timeout:30000});
-  await expect(page.getByTestId("home-wallet-balance")).toHaveText("₭350");
+  await expect(page.getByTestId("home-wallet-balance")).toHaveText("₭350 KCO");
   expect(balance).toBe(350);expect(vehicleRequests).toHaveLength(1);
   expect(vehicleRequests[0].body).toEqual({vehicleKey:"karoo-x19-targa"});
   expect(vehicleRequests[0].key).toBeTruthy();
@@ -95,7 +94,7 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
   await expect(page.getByTestId("home-purchase")).toHaveAttribute("data-purchase-state","plot_owned");
   releasePaidPlotTruth();
   await expect(page.getByTestId("home-build-house")).toBeVisible({timeout:30000});
-  await expect(page.getByTestId("home-wallet-balance")).toHaveText("₭0");
+  await expect(page.getByTestId("home-wallet-balance")).toHaveText("₭0 KCO");
   expect(balance).toBe(0);expect(plotRequests).toEqual([{plotId:plot.plotId,
     neighbourhoodKey:plot.geometry.neighbourhoodKey,layoutRevision:manifest.layoutRevision}]);
   await page.screenshot({path:info.outputPath("paid-plot.png")});
@@ -137,9 +136,9 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
     const canvas=document.createElement("canvas");canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
     const context=canvas.getContext("2d");if(!context)throw new Error("Screenshot pixel reader unavailable");
     context.drawImage(image,0,0);
-    // Sample the unobstructed foreground instead of the sky: night lighting legitimately makes
-    // the sky nearly black, which must not be mistaken for an unpresented WebGL frame.
-    return context.getImageData(Math.floor(image.naturalWidth/2),Math.floor(image.naturalHeight*0.56),1,1).data[0];
+    // The camera's horizon can sit above the midpoint; sample the unobstructed ground below it.
+    // Night lighting legitimately makes the sky nearly black, which is not a missing WebGL frame.
+    return context.getImageData(Math.floor(image.naturalWidth/2),Math.floor(image.naturalHeight*0.82),1,1).data[0];
   },encoded);
   await expect.poll(async()=>{
     const capture=await page.screenshot({path:info.outputPath("home-arrival.png")});
@@ -149,10 +148,11 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
   await expect.poll(arrival,{timeout:90000}).toEqual(expected);
   expect(vehicleRequests).toHaveLength(1);expect(plotRequests).toHaveLength(1);
   expect(buildRequests).toHaveLength(1);expect(balance).toBe(0);
-  const cityMap=page.getByRole("complementary",{name:"Live bus network map"});
-  await expect(cityMap).toBeVisible();
-  await page.getByTestId("city-map-toggle").click();
+  const cityMap=page.getByTestId("player-map");
+  await expect(cityMap).toBeHidden();
+  await page.getByTestId("player-map-shortcut").click();
   await expect(cityMap).toHaveAttribute("data-expanded","true");
+  await expect(page.getByRole("button",{name:"Close map"})).toBeVisible();
   await expect(cityMap.locator("[data-bus-count]").first()).toBeVisible();
   const playerMarker=page.getByTestId("city-map-player-marker");
   await expect(playerMarker).toBeVisible();

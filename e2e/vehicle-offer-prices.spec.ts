@@ -6,9 +6,9 @@ test("Gearbox retries unavailable prices and displays authority instead of the p
   let unavailable=true,posts=0;
   await page.route("**/kooker/**",r=>r.fulfill({status:200,contentType:"application/json",body:"{}"}));
   await installStarterWorldFixture(page);
-  await page.route("**/api/ledger/wallets/**/balances**",r=>r.fulfill({status:200,
-    contentType:"application/json",body:JSON.stringify([{ownerId:"offer-fixture",ownerType:"USER",
-      walletType:"DEFAULT",appName:"citylife",currency:"KCO",realm:"TEST",balance:"700.0000"}])}));
+  await page.route("**/kooker/api/ledger/me/wallet",r=>r.fulfill({status:200,
+    contentType:"application/json",body:JSON.stringify({ownerId:"offer-fixture",
+      walletType:"DEFAULT",appName:"citylife",instrument:"KCO",realm:"TEST",balance:"700.0000"})}));
   await page.route("**/feature-flags/new-player-journey-v1",r=>r.fulfill({status:200,contentType:"application/json",body:'{"enabled":true}'}));
   await page.route("**/players/me/vehicle",r=>r.fulfill({status:200,contentType:"application/json",body:'{"owned":false}'}));
   await page.route("**/players/me/home",r=>r.fulfill({status:200,contentType:"application/json",body:'{"owned":false}'}));
