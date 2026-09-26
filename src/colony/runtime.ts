@@ -1,5 +1,7 @@
 // Browser runtime for the colony: fixed-timestep sim loop + planet renderer + camera presets.
 import { COLONY } from "./config";
+import { parseHouseBuildContext, type HouseBuildSession } from "./home/starterHouseBuild";
+import { surveyStarterDrivewayClearance } from "./starterParcelSurvey";
 import {
   MAX_LOCOMOTION_DT,
   advanceSprintCharge,
@@ -856,6 +858,7 @@ export interface ColonyUiState {
       ownerId: string | null;
       occupied: boolean;
       reserved: boolean;
+      playerManaged: boolean;
       price: number | null;
       priceZar: number | null;
       neighbourhoodKey: string | null;
@@ -1090,10 +1093,72 @@ export class ColonyRuntime {
   /** WORLD.SURVEY.1 — built for measurement, not for play: no residents, no social, no bots.
    *  See the early return near the end of the constructor. */
   private readonly surveyOnly: boolean;
+  private readonly playerParcelIds = new Set<string>();
+  private playerParcelLayoutSignature: string | null = null;
+  private playerHomeProjection: {lotId:string; originalSeed:number; driveway:Set<string>; spawn:OwnedDrivePose} | null = null;
+
+  /** Server readback projection only: no colony materials, local blueprint persistence or new debit. */
+  applyCompletedPlayerHome(session: HouseBuildSession): boolean {
+    if (session.userId !== this.operatorUserId) return false;
+    const document = this.worldLayoutDocument();
+    if (!document || document.worldId !== session.inventory.worldId ||
+        document.revision.contentHash !== session.inventory.layoutRevision) return false;
+    let context;
+    try { context = parseHouseBuildContext(session.context,session.inventory); }
+    catch { return false; }
+    if (!context.completed || !context.script || !this.isPlayerParcel(context.plotId) ||
+        !document.frames.some(frame => frame.id === context.frameId)) return false;
+    const lot = this.neighborhood.lots.find(item => item.id === context.plotId);
+    const zone = context.geometry.houseZone;
+    if (!lot || lot.ownerCitizenId || lot.houseZone.x !== zone.x || lot.houseZone.y !== zone.y ||
+        lot.houseZone.w !== zone.width || lot.houseZone.d !== zone.depth) return false;
+    const roads=[...this.sim.state.roadSet].map(key=>{const [x,y]=key.split(",").map(Number);return {x,y};});
+    const clearance=surveyStarterDrivewayClearance(context.geometry,lot,roads,
+      cell=>cellOk(this.sim.state.terrain,cell.x,cell.y));
+    if (!clearance.clear) return false;
+    this.clearPlayerHome();
+    this.playerHomeProjection = {lotId:lot.id,originalSeed:lot.houseSeed,
+      driveway:new Set(context.geometry.driveway.map(cell=>`${cell.x},${cell.y}`)),
+      spawn:{...context.geometry.spawn,heading:clearance.heading,speed:0}};
+    lot.blueprint=context.script;
+    lot.houseSeed=session.inventory.layout.seed;
+    lot.built=true;
+    this.ownedDrivePose=null;
+    this.ownedDriveInput={};
+    this.ownedDriveInputGeneration++;
+    this.updateOperatorCar();
+    this.emit();
+    return true;
+  }
+
+  clearPlayerHome(): void {
+    if (!this.playerHomeProjection) return;
+    const lot=this.neighborhood.lots.find(item=>item.id===this.playerHomeProjection!.lotId);
+    if (lot) {
+      lot.built=false;
+      lot.blueprint=undefined;
+      lot.houseSeed=this.playerHomeProjection.originalSeed;
+    }
+    this.playerHomeProjection=null;
+    this.ownedDrivePose=null;
+    this.ownedDriveInput={};
+    this.ownedDriveSeated=false;
+    this.ownedDriveInputGeneration++;
+    this.updateOperatorCar();
+    this.emit();
+  }
+
+  isPlayerParcel(lotId: string): boolean {
+    return this.playerParcelIds.has(lotId);
+  }
 
   constructor(
     seed: number = COLONY.render.seed,
-    opts: { surveyOnly?: boolean } = {},
+    opts: {
+      surveyOnly?: boolean;
+      playerInventory?: { worldId: string; layoutRevision: string; plotIds: readonly string[];
+        layout?: WorldLayoutDocument };
+    } = {},
   ) {
     this.surveyOnly = opts.surveyOnly === true;
     this.worldSeed = seed;
@@ -1989,6 +2054,29 @@ export class ColonyRuntime {
     //
     // This exists so seeds can be QUALIFIED in bulk (scripts/seedQualify.ts). It is not a "fast
     // mode" for the game: a surveyed runtime has no residents and must never be handed to the UI.
+    if (opts.playerInventory) {
+      const inventory = opts.playerInventory;
+      if (inventory.layout) {
+        const published = parseWorldLayoutDocument(serializeWorldLayoutDocument(inventory.layout));
+        if (published.worldId !== inventory.worldId || published.revision.contentHash !== inventory.layoutRevision)
+          throw new Error("Published parcel document does not match inventory identity");
+        this.hydrateWorldLayout(published);
+      }
+      const layout = this.captureWorldLayout();
+      if (inventory.worldId !== layout.worldId || inventory.layoutRevision !== layout.revision.contentHash)
+        throw new Error("Player parcel inventory does not match this world layout");
+      const ids = new Set(inventory.plotIds);
+      if (ids.size !== inventory.plotIds.length)
+        throw new Error("Duplicate player parcel inventory identity");
+      // Unnamed coastal lots include founder homes seeded below. Validate the whole set first.
+      for (const id of ids) {
+        const lot = this.neighborhood.lots.find(l => l.id === id);
+        if (!lot || !lot.neighborhoodKey || lot.ownerCitizenId || lot.reservedFor || lot.built || lot.zone === "commercial")
+          throw new Error("Player parcel inventory contains an unavailable parcel");
+      }
+      for (const id of ids) this.playerParcelIds.add(id);
+      this.playerParcelLayoutSignature = this.worldLayoutDurableSignature(layout);
+    }
     if (this.surveyOnly) return;
     // Spec 082 — restore stored Kookerbook profiles BEFORE seeding Joe: ensureKbProfile skips
     // citizens that already have a profile, so a restored timeline is never clobbered by a fresh
@@ -2096,7 +2184,7 @@ export class ColonyRuntime {
             // a free plot, then hires Viw to build what they can afford. The whole trade in one move.
             this.seedDeposit(citizen.id);
             const freeLot = this.neighborhood.lots.find(
-              (l) => !l.ownerCitizenId && !l.reservedFor,
+              (l) => !this.isPlayerParcel(l.id) && !l.ownerCitizenId && !l.reservedFor,
             );
             if (freeLot && this.purchaseLot(citizen.id, freeLot.id)) {
               this.commissionLot(freeLot.id); // Viw raises a home for the remaining purse
@@ -2248,6 +2336,7 @@ export class ColonyRuntime {
   setOperatorUserId(userId: string | null): void {
     const nextUserId = userId && userId.trim() ? userId.trim() : null;
     if (nextUserId !== this.operatorUserId) {
+      this.clearPlayerHome();
       this.ownedDriveInputGeneration++;
       this.authoritativeCar = null;
       this.ownedDrivePose = null;
@@ -2548,12 +2637,10 @@ export class ColonyRuntime {
         return;
       }
       const pose = this.ownedDrivePose;
-      const entrance = pose ?? this.commercialDistrict?.garagePad?.roadTarget;
+      const entrance = pose ?? this.playerHomeProjection?.spawn ?? this.commercialDistrict?.garagePad?.roadTarget;
       if (
         entrance &&
-        this.sim.state.roadSet.has(
-          `${Math.round(entrance.x)},${Math.round(entrance.y)}`,
-        )
+        this.canOwnedCarOccupy(entrance.x,entrance.y)
       ) {
         this.renderer.setOperatorCar(ownedCar, {
           x: entrance.x,
@@ -2572,11 +2659,11 @@ export class ColonyRuntime {
               `${Math.round(entrance.x) + dx},${Math.round(entrance.y) + dy}`,
             ),
           );
-          if (ahead) {
+          if (this.playerHomeProjection || ahead) {
             this.ownedDrivePose = {
               x: entrance.x,
               y: entrance.y,
-              heading: Math.atan2(ahead[1], ahead[0]),
+              heading: this.playerHomeProjection?.spawn.heading ?? Math.atan2(ahead![1], ahead![0]),
               speed: 0,
             };
             this.ownedDriveSeated = true;
@@ -2679,12 +2766,30 @@ export class ColonyRuntime {
   exitOwnedCar(): boolean {
     const car = this.getOwnedDrivePose();
     if (!car) return false;
-    const side = [-1, 1]
+    const perpendicular = [-1, 1]
       .map((s) => ({
         x: Math.round(car.x - Math.sin(car.heading) * s),
         y: Math.round(car.y + Math.cos(car.heading) * s),
-      }))
-      .find((cell) => this.blockedStepReason(cell.x, cell.y) === null);
+      }));
+    const adjacent = [
+      ...perpendicular,
+      ...[
+        { x: Math.round(car.x + 1), y: Math.round(car.y) },
+        { x: Math.round(car.x - 1), y: Math.round(car.y) },
+        { x: Math.round(car.x), y: Math.round(car.y + 1) },
+        { x: Math.round(car.x), y: Math.round(car.y - 1) },
+      ],
+    ];
+    // First-person movement normally treats every parcel cell as blocked. The current owner's
+    // driveway is the deliberate exception: it is a legal place to step out beside the car. A
+    // straight driveway can leave both lateral cells inside the parcel, so also check adjacent
+    // driveway/road cells while keeping the choice deterministic and outside the car footprint.
+    const side = adjacent.find(
+      (cell) =>
+        Math.hypot(cell.x - car.x, cell.y - car.y) >= 0.75 &&
+        (this.blockedStepReason(cell.x, cell.y) === null ||
+          this.canOwnedCarOccupy(cell.x, cell.y)),
+    );
     if (!side) return false;
     this.ownedDriveInputGeneration++;
     car.speed = 0;
@@ -2692,7 +2797,9 @@ export class ColonyRuntime {
     this.ownedDriveInput = {};
     this.fpTeleportRequest = {
       ...side,
-      yaw: -car.heading - Math.PI / 2,
+      // Face the parked car from the selected exit cell. Lateral driveway exits and the
+      // longitudinal fallback have different headings, so derive this from the actual pair.
+      yaw: Math.atan2(-(car.x - side.x), -(car.y - side.y)),
       seq: (this.fpTeleportRequest?.seq ?? 0) + 1,
     };
     this.emit();
@@ -2703,6 +2810,19 @@ export class ColonyRuntime {
     this.ownedDriveInput = this.getOwnedDrivePose() ? { ...input } : {};
   }
 
+  private canOwnedCarOccupy(x:number,y:number): boolean {
+    const ix=Math.round(x),iy=Math.round(y),key=`${ix},${iy}`;
+    if (this.sim.state.roadSet.has(key)) return this.blockedStepReason(x,y) === null;
+    const home=this.playerHomeProjection;
+    if (!home?.driveway.has(key)) return false;
+    const lot=this.neighborhood.lots.find(item=>item.id===home.lotId);
+    if (!lot || !cellOk(this.sim.state.terrain,ix,iy)) return false;
+    const h=lot.houseZone;
+    if (ix>=h.x && ix<h.x+h.w && iy>=h.y && iy<h.y+h.d) return false;
+    if (lot.fence.some(cell=>cell.x===ix && cell.y===iy && !(lot.gate?.x===ix && lot.gate?.y===iy))) return false;
+    return !this.sim.state.buildings.some(building=>Math.round(building.x)===ix && Math.round(building.y)===iy);
+  }
+
   private tickOwnedDrive(dt: number): void {
     const ownedCar = this.currentPlayerOwnedCarSpec();
     if (!this.getOwnedDrivePose() || !this.ownedDrivePose || !ownedCar) return;
@@ -2711,9 +2831,7 @@ export class ColonyRuntime {
       this.ownedDriveInput,
       deriveStats(ownedCar),
       dt,
-      (x, y) =>
-        this.sim.state.roadSet.has(`${Math.round(x)},${Math.round(y)}`) &&
-        this.blockedStepReason(x, y) === null,
+      (x, y) => this.canOwnedCarOccupy(x,y),
     );
     const car = this.sim.state.operatorCar;
     if (car) {
@@ -3241,6 +3359,13 @@ export class ColonyRuntime {
     while (used.has(candidate)) candidate = `${stem}:${occurrence++}`;
     used.add(candidate);
     return candidate;
+  }
+
+  private assertPlayerParcelLayout(document: WorldLayoutDocument): void {
+    if (this.playerParcelLayoutSignature === null) return;
+    const canonical = parseWorldLayoutDocument(serializeWorldLayoutDocument(document));
+    if (this.worldLayoutDurableSignature(canonical) !== this.playerParcelLayoutSignature)
+      throw new Error("World layout conflicts with published player parcel geometry");
   }
 
   private worldLayoutDurableSignature(document: WorldLayoutDocument): string {
@@ -3962,6 +4087,7 @@ export class ColonyRuntime {
   /** Complete side-effect-free candidate validation shared by import CAS and boot hydration. */
   preflightWorldLayout(document: WorldLayoutDocument): HydratedWorldLayout {
     const candidate = applyWorldLayoutDocument(document);
+    this.assertPlayerParcelLayout(document);
     const expectedWorldId = `seed-${this.worldSeed}`;
     if (
       candidate.worldId !== expectedWorldId ||
@@ -4164,6 +4290,7 @@ export class ColonyRuntime {
    *  hydration this is safe while running: it cannot replace roads, terrain, renderer inputs or
    *  builder state, only the validated immutable head and its matching layout metadata. */
   adoptWorldLayoutRevision(document: WorldLayoutDocument): WorldLayoutDocument {
+    this.assertPlayerParcelLayout(document);
     const active = this.activeWorldLayout;
     if (!active)
       throw new Error("cannot adopt a world layout revision before hydration");
@@ -5502,7 +5629,7 @@ export class ColonyRuntime {
   /** The ₭ price of a plot: its buildable area + a waterfront premium (spec 085). Reserved founder
    *  plots are not for sale (Infinity). */
   plotPriceK(lot: Lot): number {
-    if (lot.reservedFor) return Infinity;
+    if (this.isPlayerParcel(lot.id) || lot.reservedFor) return Infinity;
     const t = this.sim.state.terrain;
     const dw =
       t.distToWater[t.idx(Math.round(lot.x), Math.round(lot.y))] ?? 999;
@@ -5519,7 +5646,7 @@ export class ColonyRuntime {
   purchaseLot(citizenId: string, lotId: string): boolean {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
     const c = this.citizens.byId(citizenId);
-    if (!lot || !c || lot.ownerCitizenId || lot.reservedFor) return false;
+    if (!lot || this.isPlayerParcel(lotId) || !c || lot.ownerCitizenId || lot.reservedFor) return false;
     const price = this.plotPriceK(lot);
     // Gate on the EXACT balance (walletK rounds — a fractional balance could otherwise overspend).
     if (
@@ -5813,7 +5940,7 @@ export class ColonyRuntime {
 
     // Find any free lot in the neighborhood
     const freeLot = this.neighborhood.lots.find(
-      (l) => !l.ownerCitizenId && !l.reservedFor && l.zone === "residential",
+      (l) => !this.isPlayerParcel(l.id) && !l.ownerCitizenId && !l.reservedFor && l.zone === "residential",
     );
     if (!freeLot) return;
 
@@ -5867,9 +5994,9 @@ export class ColonyRuntime {
   assignLot(citizenId: string, lotId: string): boolean {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
     const c = this.citizens.byId(citizenId);
-    if (!lot || !c || lot.ownerCitizenId) return false;
+    if (!lot || this.isPlayerParcel(lotId) || !c || lot.ownerCitizenId) return false;
     for (const l of this.neighborhood.lots)
-      if (l.ownerCitizenId === citizenId) {
+      if (l.ownerCitizenId === citizenId && !this.isPlayerParcel(l.id)) {
         l.ownerCitizenId = undefined;
         l.built = false;
       }
@@ -5987,7 +6114,7 @@ export class ColonyRuntime {
    *  builder loads the citizen's current design for editing. Null for an unowned lot. */
   builderUrl(lotId: string): string | null {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
-    if (!lot || !lot.ownerCitizenId) return null;
+    if (!lot || this.isPlayerParcel(lotId) || !lot.ownerCitizenId) return null;
     const q = new URLSearchParams({
       citizenId: lot.ownerCitizenId,
       lotId: lot.id,
@@ -6018,7 +6145,7 @@ export class ColonyRuntime {
     eventText?: string | null,
   ): boolean {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
-    if (!lot || !lot.ownerCitizenId) return false;
+    if (!lot || this.isPlayerParcel(lotId) || !lot.ownerCitizenId) return false;
     if (!validateBlueprint(script).ok) return false;
     const isRedesign = lot.built && !!lot.blueprint;
     lot.blueprint = script;
@@ -6250,7 +6377,7 @@ export class ColonyRuntime {
         if (!lot) continue;
         // Spec 084 S2 — founder plots only restore THEIR OWN stored design: a stale or foreign
         // entry must never clobber a crafted founder house.
-        if (!canRestoreBlueprint(lot, entry.citizenId)) continue;
+        if (this.isPlayerParcel(lotId) || !canRestoreBlueprint(lot, entry.citizenId)) continue;
         lot.blueprint = entry.script;
         lot.built = true; // the design was accepted and built before; it stands again on reload
         retargetParcelAccess(lot, parseBlueprint(entry.script).doorDir);
@@ -6274,7 +6401,7 @@ export class ColonyRuntime {
    *  trace so callers (and the HUD/bots) can narrate what the citizen changed and why. */
   selfDesignLot(lotId: string): SelfDesignResult | null {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
-    if (!lot || !lot.ownerCitizenId) return null;
+    if (!lot || this.isPlayerParcel(lotId) || !lot.ownerCitizenId) return null;
     // Spec 084 S2 — self-design respects the citizen's CHOSEN door: a bot that put its door on the
     // east side keeps it there through every improvement pass (the old code forced the street door,
     // silently undoing an authored choice). Fresh lots still start street-facing.
@@ -6306,6 +6433,7 @@ export class ColonyRuntime {
     if (
       !lot ||
       !lot.ownerCitizenId ||
+      this.isPlayerParcel(lotId) ||
       lot.ownerCitizenId === VIW_ID ||
       lot.reservedFor
     )
@@ -6375,7 +6503,7 @@ export class ColonyRuntime {
    *  economic gate arrives with spec 083: Viw the Builder charges Kookercurrency for the job. */
   buildHouse(lotId: string): boolean {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
-    if (!lot || lot.built) return false;
+    if (!lot || this.isPlayerParcel(lotId) || lot.built) return false;
     const s = this.sim.state;
     s.materials = Math.max(0, s.materials - COLONY.build.matNeighborHouse);
     lot.built = true;
@@ -6395,7 +6523,7 @@ export class ColonyRuntime {
    *  Founder plots (spec 078) are protected — they cannot be demolished. */
   demolishLot(lotId: string): string | null {
     const lot = this.neighborhood.lots.find((l) => l.id === lotId);
-    if (!lot || lot.reservedFor) return null;
+    if (!lot || this.isPlayerParcel(lotId) || lot.reservedFor) return null;
     const owner = lot.ownerCitizenId ?? null;
     lot.built = false;
     lot.ownerCitizenId = undefined;
@@ -6416,7 +6544,7 @@ export class ColonyRuntime {
     const c = this.citizens.byId(citizenId);
     if (!c) return false;
     for (const l of this.neighborhood.lots)
-      if (l.ownerCitizenId === citizenId) {
+      if (l.ownerCitizenId === citizenId && !this.isPlayerParcel(l.id)) {
         l.ownerCitizenId = undefined;
         l.built = false;
       }
@@ -7349,6 +7477,7 @@ export class ColonyRuntime {
             owner: scopedOwner.owner,
             ownerId: scopedOwner.ownerId,
             occupied: !!l.ownerCitizenId,
+            playerManaged: this.isPlayerParcel(l.id),
             reserved: !!l.reservedFor, // spec 078 — founder plots show a nameplate and hide demolish/evict
             price: Number.isFinite(price) ? price : null, // ₭ — null = not for sale
             priceZar: Number.isFinite(price)

@@ -37,6 +37,8 @@ export interface JourneyFlagBody {
 export interface JourneyEntitlement {
   /** True ONLY for an unambiguous, live, non-killed positive from the backend. Default/every-error = false. */
   enabled: boolean;
+  /** A failed read is not an authoritative OFF decision; arrival must offer retry. */
+  unavailable?: boolean;
   /** A short reason, for logging/telemetry only — never a bearer of access. */
   reason?: string;
 }
@@ -58,8 +60,8 @@ export interface JourneyEntitlementDeps {
   getUserId: (token: string) => string | null;
 }
 
-function deny(reason: string): JourneyEntitlement {
-  return { enabled: false, reason };
+function deny(reason: string, unavailable = true): JourneyEntitlement {
+  return { enabled: false, reason, unavailable };
 }
 
 /**
@@ -79,14 +81,15 @@ export function decideJourneyEntitlement(
   const killed =
     body.killed === true ||
     (typeof body.state === "string" && body.state.toUpperCase() === "KILLED");
-  if (killed) return deny("New-player journey is killed");
+  if (killed) return deny("New-player journey is killed", false);
   if (body.enabled === true) {
     return {
       enabled: true,
       reason: typeof body.reason === "string" ? body.reason : undefined,
     };
   }
-  return deny("New-player journey is off");
+  if (body.enabled === false) return deny("New-player journey is off", false);
+  return deny("Malformed entitlement payload");
 }
 
 /**
@@ -96,16 +99,16 @@ export function decideJourneyEntitlement(
 export async function evaluateJourneyEntitlement(
   deps: JourneyEntitlementDeps,
 ): Promise<JourneyEntitlement> {
-  const token = await deps.getToken();
-  if (!token) return deny("Sign in to access the new-player journey");
-  const userId = deps.getUserId(token);
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-  // Token-derived only — a convenience mirror of the server-side identity, never a caller-supplied id.
-  if (userId) headers["X-Kooker-User-Id"] = userId;
   try {
+    const token = await deps.getToken();
+    if (!token) return deny("Sign in to access the new-player journey");
+    const userId = deps.getUserId(token);
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+    // Token-derived only — a convenience mirror of the server-side identity, never a caller-supplied id.
+    if (userId) headers["X-Kooker-User-Id"] = userId;
     const res = await deps.transport(NEW_PLAYER_JOURNEY_PATH, headers);
     return decideJourneyEntitlement(res);
   } catch (e) {

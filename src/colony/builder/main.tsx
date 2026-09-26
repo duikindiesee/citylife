@@ -1,8 +1,11 @@
 import { createRoot } from "react-dom/client";
 import { BuilderApp } from "./BuilderApp";
 import { getAuthClient } from "../authClient";
+import { PlayerHouseBuilder } from "./PlayerHouseBuilder";
 
-// ACCESS GATE (operator directive): the house builder is ADMIN-ONLY. Only an operator role
+// Legacy free authoring is ADMIN-ONLY. Player onboarding is a separate server-deed-backed mode
+// that ignores URL geometry/ownership and requires API eligibility and a paid current deed.
+// For legacy authoring, only an operator role
 // — ADMIN, KOOKER_ADMIN, or CITYLIFE_ADMIN — may open /builder.html. This FAILS CLOSED: no
 // session, or any non-operator role (CITYLIFE_PLAYER, CITYLIFE_VISITOR, a plain KOOKER_USER,
 // COLLABORATOR, or a newcomer) is refused. isCityLifePlayer is true for every non-operator, so
@@ -11,7 +14,9 @@ import { getAuthClient } from "../authClient";
 const root = createRoot(document.getElementById("root")!);
 const auth = getAuthClient();
 
-if (!auth.isCityLifePlayer) {
+if (new URLSearchParams(window.location.search).get("mode") === "player-home") {
+  root.render(<PlayerHouseBuilder />);
+} else if (!auth.isCityLifePlayer) {
   root.render(<BuilderApp />);
 } else {
   root.render(

@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { PublishedPlayerInventory } from "../home/starterWorldCatalogue";
 import {
   FIRST_PERSON_KEY_CODES,
   RACE_KEY_CODES,
@@ -61,6 +62,7 @@ import {
   fetchOwnedVehicleKeysBackend,
   shouldAutoOpenShowroom,
 } from "../car/carAcquisition";
+import { resolveOwnedCar } from "../car/ownedCar";
 // Spec 088 Slice D/F UI — the Furniture studio HUD panel (design + buy into the player's inventory).
 import {
   FURNITURE_KINDS,
@@ -96,6 +98,8 @@ import { GaragePanel } from "./GaragePanel";
 import { WindTunnelLab } from "./WindTunnelLab";
 import { ShowroomOverlay } from "./ShowroomOverlay";
 import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
+import { fetchHomeTruth, isHomeOwned } from "../home/starterProperty";
+import { loadHouseBuild } from "../home/starterHouseBuild";
 import { DriveHomeOverlay } from "./DriveHomeOverlay";
 import { OwnedCarControls } from "./OwnedCarControls";
 import { RoadmapPanel } from "./RoadmapPanel";
@@ -111,7 +115,7 @@ import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
 import { RaceMobileControls } from "./RaceMobileControls";
 import { BugReportPanel } from "./BugReportPanel";
 import "./colony.css";
-import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
+import { useRoadNetwork, RoadMask, enforceBuilderAccess } from "../stores/useRoadNetwork";
 import {
   WorldLayoutBootCoordinator,
   type WorldLayoutBootResult,
@@ -123,6 +127,7 @@ import {
 import {
   parseWorldLayoutDocument,
   serializeWorldLayoutDocument,
+  worldLayoutRevisionId,
   type WorldLayoutDocument,
 } from "../spatial/worldLayoutDocument";
 import { formatAmount } from "./currencyFormat";
@@ -309,10 +314,15 @@ export function lotHudCopy(args: {
   owner: string | null;
   built: boolean;
   reserved: boolean;
+  playerManaged?: boolean;
   price: number | null;
   priceZar: number | null;
   playerScoped: boolean;
 }): LotHudCopy {
+  if (args.playerManaged) return {
+    label: `${args.id} · Player home site`,
+    title: "Check your property screen for availability, ownership and building progress.",
+  };
   const siteLabel = args.playerScoped
     ? args.id.replace("lot_", "Home site ")
     : args.id.replace("lot_", "Plot ");
@@ -364,7 +374,12 @@ export function homesteadActionVisibility(args: {
   occupied: boolean;
   built: boolean;
   reserved: boolean;
+  playerManaged?: boolean;
 }): HomesteadActionVisibility {
+  if (args.playerManaged) return {
+    showDesign: false, showCommission: false, showBuild: false,
+    showDemolish: false, showEvict: false,
+  };
   const hasOwner = args.ownerId !== null;
   const playerOwnsLot =
     args.operatorCitizenId !== null && args.ownerId === args.operatorCitizenId;
@@ -534,10 +549,11 @@ export function publicWorldLayoutHistoryEntries(
   }));
 }
 
-function useRuntime(): ColonyRuntime {
+function useRuntime(playerInventory?: PublishedPlayerInventory): ColonyRuntime {
   const ref = useRef<ColonyRuntime | null>(null);
   if (!ref.current) {
-    ref.current = new ColonyRuntime();
+    if (playerInventory) enforceBuilderAccess(false);
+    ref.current = new ColonyRuntime(undefined, { playerInventory });
     // Local dev visual fixture for landmark screenshots. Production bundles and non-local hosts can
     // never enter this branch; ordinary local play is unchanged unless the explicit query is present.
     if (
@@ -683,11 +699,12 @@ function detectTouchCapable(): boolean {
   );
 }
 
-export function ColonyApp() {
+export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlayerInventory } = {}) {
   const { builderActive, worldViewActive } = useRoadNetwork();
-  const runtime = useRuntime();
+  const runtime = useRuntime(playerInventory);
   const [, forceRuntimeRender] = useReducer((x) => x + 1, 0);
   const worldLayoutPersistence = useMemo(() => {
+    if (playerInventory) return { store: null, coordinator: null, error: null };
     try {
       const store = new WorldLayoutStore();
       const worldId = runtime.captureWorldLayout().worldId;
@@ -708,7 +725,7 @@ export function ColonyApp() {
     } catch (error: unknown) {
       return { store: null, coordinator: null, error };
     }
-  }, [runtime]);
+  }, [runtime, playerInventory]);
   const [worldLayoutBoot, setWorldLayoutBoot] = useState<
     | { status: "loading" }
     | { status: "ready"; result: WorldLayoutBootResult }
@@ -797,6 +814,7 @@ export function ColonyApp() {
   // positive entitlement can never outlive the authenticated session or bleed across a switch.
   const [journeyEntitlement, setJourneyEntitlement] =
     useState<JourneyEntitlement | null>(null);
+  const [arrivalAttempt, setArrivalAttempt] = useState(0);
   // ARCADE.2A — the fail-closed `citylife-arcade-3d-v1` entitlement for THIS session. Same discipline
   // as the journey flag: default null (fails closed while loading), memory-only (never persisted), and
   // re-evaluated on identity change so a positive can never outlive the session or bleed across a switch.
@@ -855,7 +873,7 @@ export function ColonyApp() {
   const auth = useMemo(() => new AuthClient(), []);
   // City Builder authorization (see authClient.canEnterCityBuilder for the fail-closed rule and why
   // a null operator is safe here — it can only be AuthGate's own local DEV/E2E skip-auth bypass).
-  const canBuildCity = canEnterCityBuilder(auth);
+  const canBuildCity = !playerInventory && canEnterCityBuilder(auth);
   // Offer "Change password" only for a real logged-in account — the local DEV/E2E skip-auth bypass
   // has a null operator and no account to change.
   const hasRealAccount = auth.operator !== null;
@@ -873,6 +891,7 @@ export function ColonyApp() {
   const openShowroom = () => {
     if (!newPlayerJourneyEnabled) return;
     // Retain this identity's server-confirmed new-player acquisition eligibility on re-entry.
+    refreshPlayerWallet();
     setShowroomOpen(true);
   };
   // HQ.ENTER.1 — is Kooker HQ open to THIS session? Fails closed while loading and on every error.
@@ -925,6 +944,7 @@ export function ColonyApp() {
   // exactly like the hidden button, so gating is never merely cosmetic.
   const openHome = () => {
     if (!newPlayerJourneyEnabled) return;
+    refreshPlayerWallet();
     setHomeOpen(true);
   };
   // PLAYER.HOME.1D.S2 — the guided drive-home step is gated on the SAME fail-closed new-player-journey
@@ -947,7 +967,7 @@ export function ColonyApp() {
     // Player data isolation: a CITYLIFE_PLAYER gets the restricted own-data view (activates the dormant
     // player-view from the isolation slice); operators/admins keep the whole-colony view.
     runtime.setPlayerView(auth.isCityLifePlayer);
-  }, [auth, runtime]);
+  }, [auth, runtime, auth.operator?.userId]);
   // PLAYER.FLAG.S3 — evaluate the new-player-journey entitlement during authenticated bootstrap, and
   // whenever the identity changes. It resets to `null` (fail-closed OFF) the instant the identity
   // changes — logout does a full reload, but keying on the userId means an in-place account switch
@@ -1044,36 +1064,64 @@ export function ColonyApp() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth, operatorUserId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth, operatorUserId, arrivalAttempt]);
 
   // PLAYER.CAR.1.S5 — auto-spawn into the Gearbox Auto Hub showroom on login when an authenticated
   // player does not own a car on their profile. Runs once per session identity. Evaluates authoritative
   // server truth only. Cached cosmetics/default cars cannot establish ownership. Fails closed when unauthenticated,
   // in dev bypass without an account, or when backend truth is unreachable.
   const autoShowroomCheckedRef = useRef(false);
+  const [arrivalError, setArrivalError] = useState(false);
+  const [arrivalReady, setArrivalReady] = useState(false);
   useEffect(() => {
     autoShowroomCheckedRef.current = false;
     setShowroomAutoAcquire(false);
+    setArrivalError(false);
+    setArrivalReady(false);
+    setHomeOpen(false);
+    setShowroomOpen(false);
   }, [operatorUserId]);
 
   useEffect(() => {
     if (
       !hasRealAccount ||
       !auth.isAuthenticated ||
+      !journeyEntitlement ||
       autoShowroomCheckedRef.current
     ) {
       return;
     }
     let cancelled = false;
+    setArrivalError(false);
+    setArrivalReady(false);
+    runtime.clearPlayerHome();
+    if (operatorUserId) runtime.applyVehicleOwnership(String(operatorUserId), null);
     void (async () => {
+      if (journeyEntitlement.unavailable) throw new Error("Arrival entitlement unavailable");
       const truth = await fetchOwnedVehicleKeysBackend();
       if (cancelled) return;
-      if (operatorUserId)
-        runtime.applyVehicleOwnership(String(operatorUserId), truth);
-      // Hydrate existing owners even when onboarding is off. If entitlement is still
-      // loading, its later change must get a chance to route a no-car player.
-      autoShowroomCheckedRef.current = newPlayerJourneyEnabled;
+      if (!truth) throw new Error("Vehicle ownership unavailable");
+      if (truth.length && !resolveOwnedCar(truth)) throw new Error("Ambiguous vehicle ownership");
+      let needsHome = false;
+      if (newPlayerJourneyEnabled) {
+        if (!playerInventory) throw new Error("Home inventory unavailable");
+        const home = await fetchHomeTruth();
+        if (cancelled) return;
+        if (!home) throw new Error("Home ownership unavailable");
+        needsHome = !isHomeOwned(home);
+        if (isHomeOwned(home)) {
+          const session = await loadHouseBuild(playerInventory);
+          if (cancelled) return;
+          if (session.userId !== String(operatorUserId) || !runtime.applyCompletedPlayerHome(session))
+            throw new Error("Completed home unavailable");
+        }
+      }
+      if (!operatorUserId || !runtime.applyVehicleOwnership(String(operatorUserId), truth))
+        throw new Error("Player identity changed");
+      autoShowroomCheckedRef.current = true;
+      setArrivalReady(true);
+      if (truth.length > 0 && needsHome) setHomeOpen(true);
       if (
         shouldAutoOpenShowroom({
           hasRealAccount,
@@ -1085,12 +1133,13 @@ export function ColonyApp() {
         setShowroomAutoAcquire(true);
         setShowroomOpen(true);
       }
-    })();
+    })().catch(() => { if (!cancelled) setArrivalError(true); });
 
     return () => {
       cancelled = true;
     };
-  }, [hasRealAccount, newPlayerJourneyEnabled, auth, operatorUserId, runtime]);
+  }, [hasRealAccount, newPlayerJourneyEnabled, auth, operatorUserId, runtime,
+    journeyEntitlement, playerInventory, arrivalAttempt]);
   // HQ.ENTER.1 — evaluate `kooker-hq-v1` for the current identity, same discipline as the journey flag:
   // reset to null (fail closed) on every identity change, skip the network for the DEV/E2E bypass, and
   // drop a stale in-flight response so a prior user's positive can never carry forward. Closing `hqOpen`
@@ -1277,14 +1326,15 @@ export function ColonyApp() {
     void (async () => {
       try {
         if (worldLayoutPersistence.error) throw worldLayoutPersistence.error;
-        if (!worldLayoutPersistence.coordinator)
+        if (!playerInventory && !worldLayoutPersistence.coordinator)
           throw new Error("World layout persistence is unavailable");
 
         // WB.1d boot barrier: durable truth is loaded (or initialized), validated and hydrated
         // before either the renderer/simulation or its React render subscription can observe it.
-        const result = await worldLayoutPersistence.coordinator.boot(
-          abort.signal,
-        );
+        const result: WorldLayoutBootResult = playerInventory ? {
+          ready: true, worldId: playerInventory.worldId,
+          revision: worldLayoutRevisionId(playerInventory.layout.revision), source: "stored",
+        } : await worldLayoutPersistence.coordinator!.boot(abort.signal);
         if (abort.signal.aborted) return;
         const document = runtime.worldLayoutDocument();
         if (!document)
@@ -1328,6 +1378,7 @@ export function ColonyApp() {
     runtime,
     worldLayoutBootAttempt,
     worldLayoutPersistence,
+    playerInventory,
   ]);
 
   useEffect(() => {
@@ -1861,6 +1912,11 @@ export function ColonyApp() {
   return (
     <div className="colony">
       <div className="canvas-host" ref={hostRef} />
+      {hasRealAccount && !arrivalReady && <div role={arrivalError ? "alert" : "status"} style={{position:"absolute",inset:0,zIndex:10000,
+        background:"#08131ff5",display:"grid",placeContent:"center",gap:16,padding:24}}>
+        <p>{arrivalError ? "We couldn't load your car and home. Please try again." : "Loading your car and home…"}</p>
+        {arrivalError && <button onClick={() => setArrivalAttempt(n => n + 1)}>Retry arrival</button>}
+      </div>}
       <FirstPersonPanel
         runtime={runtime}
         fp={ui.firstPerson}
@@ -1892,6 +1948,7 @@ export function ColonyApp() {
           switch) closes it immediately. */}
       {showroomOpen && newPlayerJourneyEnabled && (
         <ShowroomOverlay
+          key={operatorUserId ?? "signed-out"}
           runtime={runtime}
           canAcquire={showroomAutoAcquire}
           accountKey={operatorUserId === null ? null : String(operatorUserId)}
@@ -1899,6 +1956,13 @@ export function ColonyApp() {
           walletStatus={visiblePlayerWallet.status}
           walletLabel={playerWalletText}
           onWalletRefresh={refreshPlayerWallet}
+          onOwnershipConfirmed={() => {
+            refreshPlayerWallet();
+            setShowroomOpen(false);
+            autoShowroomCheckedRef.current = false;
+            setArrivalReady(false);
+            setArrivalAttempt((n) => n + 1);
+          }}
           onClose={() => {
             setShowroomOpen(false);
           }}
@@ -1932,6 +1996,8 @@ export function ColonyApp() {
           can never mount it and a mid-session revocation (account switch) closes it immediately. */}
       {homeOpen && newPlayerJourneyEnabled && (
         <StarterPropertyOverlay
+          key={operatorUserId ?? "signed-out"}
+          playerInventory={playerInventory}
           onClose={() => setHomeOpen(false)}
           walletStatus={visiblePlayerWallet.status}
           walletLabel={playerWalletText}
@@ -3354,6 +3420,7 @@ export function ColonyApp() {
                       owner: l.owner,
                       built: l.built,
                       reserved: l.reserved,
+                      playerManaged: l.playerManaged,
                       price: l.price,
                       priceZar: l.priceZar,
                       playerScoped: ui.bank.scope === "player",
@@ -3365,6 +3432,7 @@ export function ColonyApp() {
                       occupied: l.occupied,
                       built: l.built,
                       reserved: l.reserved,
+                      playerManaged: l.playerManaged,
                     });
                     return (
                       <div
@@ -3408,6 +3476,7 @@ export function ColonyApp() {
                         )}
                         {!l.occupied &&
                           !l.reserved &&
+                          !l.playerManaged &&
                           firstFree &&
                           (() => {
                             const canBuy =

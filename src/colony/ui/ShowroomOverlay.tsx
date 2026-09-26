@@ -68,6 +68,7 @@ export function ShowroomOverlay({
   accountKey,
   runtime,
   walletKco = null,
+  onOwnershipConfirmed,
   walletStatus = "unavailable",
   walletLabel = "Balance unavailable",
   onWalletRefresh,
@@ -79,6 +80,7 @@ export function ShowroomOverlay({
   runtime?: ColonyRuntime;
   /** Current player-scoped wallet snapshot. It is display-only; the server still decides a debit. */
   walletKco?: number | null;
+  onOwnershipConfirmed?: () => void;
   walletStatus?: PlayerWalletStatus;
   walletLabel?: string;
   onWalletRefresh?: () => void;
@@ -315,6 +317,7 @@ export function ShowroomOverlay({
 
         setOwned(truth);
         saveOwnedKeysCache(truth, scope);
+        onOwnershipConfirmed?.();
       }
     });
   }, [
@@ -326,6 +329,7 @@ export function ShowroomOverlay({
     runtime,
     serverPriceKco,
     vehicleKey,
+    onOwnershipConfirmed,
   ]);
 
   const retryOfferPrice = useCallback(() => {
@@ -540,6 +544,7 @@ export function ShowroomOverlay({
         {offerStatus !== "loading" && serverPriceKco === null && (
           <button
             data-build-action="showroom-offers-retry"
+            data-testid="showroom-retry-price"
             onClick={retryOfferPrice}
             style={{ ...controlButtonStyle, padding: "5px 8px", fontSize: 11 }}
           >
@@ -677,28 +682,30 @@ function AcquireButton({
       >
         {affordability}
       </span>
-      <button
-        data-build-action="showroom-acquire"
-        data-testid="showroom-acquire"
-        data-acquire-state={state}
-        disabled={disabled}
-        onClick={onAcquire}
-        title="Acquire this vehicle — the server checks your balance and moves the coin"
-        style={{
-          padding: "6px 10px",
-          fontSize: 12,
-          borderRadius: 6,
-          border: `1px solid ${disabled ? "#3a4a5a" : "#b6892f"}`,
-          background: disabled
-            ? "rgba(255,255,255,0.05)"
-            : "rgba(182,137,47,0.18)",
-          color: acquireStateColor(state),
-          cursor: disabled ? "not-allowed" : "pointer",
-          fontWeight: 700,
-        }}
-      >
-        {insufficient ? `Need ₭${shortage!.toLocaleString()} more` : view.label}
-      </button>
+      {!unavailablePrice && (
+        <button
+          data-build-action="showroom-acquire"
+          data-testid="showroom-acquire"
+          data-acquire-state={state}
+          disabled={disabled}
+          onClick={onAcquire}
+          title="Acquire this vehicle — the server checks your balance and moves the coin"
+          style={{
+            padding: "6px 10px",
+            fontSize: 12,
+            borderRadius: 6,
+            border: `1px solid ${disabled ? "#3a4a5a" : "#b6892f"}`,
+            background: disabled
+              ? "rgba(255,255,255,0.05)"
+              : "rgba(182,137,47,0.18)",
+            color: acquireStateColor(state),
+            cursor: disabled ? "not-allowed" : "pointer",
+            fontWeight: 700,
+          }}
+        >
+          {insufficient ? "Insufficient funds" : view.label}
+        </button>
+      )}
     </>
   );
 }

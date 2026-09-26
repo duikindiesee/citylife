@@ -27,6 +27,10 @@ function ownedTruth(over: Partial<HomeTruth> = {}): HomeTruth {
 }
 
 describe("projects exactly one house only for an OWNED deed", () => {
+  it("never fabricates a house for paid land or a published spatial revision", () => {
+    expect(projectStarterHome(ownedTruth({plotOwned:true, requiresBuild:true}))).toBeNull();
+    expect(projectStarterHome(ownedTruth({plotOwned:true, layoutRevision:"a".repeat(64)}))).toBeNull();
+  });
   it("returns null for a not-owned / pending / malformed truth", () => {
     expect(projectStarterHome(null)).toBeNull();
     expect(

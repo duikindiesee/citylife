@@ -1,4 +1,4 @@
-import { leveledWorldY } from "./terrainLeveling";
+import { ownedVehicleSurfaceY } from "./ownedVehicleSurface";
 import React, { Suspense, useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { Group } from "three";
@@ -9,8 +9,6 @@ import { SHOWROOM_VEHICLES } from "../showroom/showroomCatalog";
 import type { CarSpec } from "../car/carSpec";
 import type { ColonySim } from "../sim";
 import { buildCarMesh } from "../car/carMesh";
-import { getSmoothRoadY } from "./roadSurface";
-import { ROAD_RIBBON_LIFT } from "./roadRibbon";
 import { disposeDeep } from "./disposeDeep";
 import { useSimSignal, type SimBridge } from "./useSimSignal";
 import { operatorCarSignature } from "./simSignals";
@@ -93,22 +91,12 @@ export function R3FOperatorCar({
   useFrame(() => {
     const car = sim.state.operatorCar;
     if (!group.current || !car) return;
+    // The owned-car camera is at the driver's eye. Until the catalogue model has an interior,
+    // drawing its exterior around that camera fills the view with bodywork. Hide only this local
+    // scene instance while its driver is seated; ownership and world state remain unchanged.
+    group.current.visible = !runtime?.getOwnedDrivePose?.();
     const t = sim.state.terrain;
-    const onRoad = sim.state.roadSet.has(
-      `${Math.round(car.cell.x)},${Math.round(car.cell.y)}`,
-    );
-    const y = onRoad
-      ? Math.max(0, getSmoothRoadY(t, car.cell.x, car.cell.y)) +
-        ROAD_RIBBON_LIFT
-      : Math.max(
-          0,
-          leveledWorldY(
-            t,
-            terrainLevel,
-            Math.round(car.cell.x),
-            Math.round(car.cell.y),
-          ),
-        ) + 0.02;
+    const y = ownedVehicleSurfaceY(sim, terrainLevel, car.cell.x, car.cell.y);
     group.current.position.set(
       (car.cell.x - t.size / 2) * 4,
       y,
@@ -124,20 +112,7 @@ export function R3FOperatorCar({
     const { cell } = parked;
     const t = sim.state.terrain;
     const N = t.size;
-    const onRoad = sim.state.roadSet.has(
-      `${Math.round(cell.x)},${Math.round(cell.y)}`,
-    );
-    const y = onRoad
-      ? Math.max(0, getSmoothRoadY(t, cell.x, cell.y)) + ROAD_RIBBON_LIFT
-      : Math.max(
-          0,
-          leveledWorldY(
-            t,
-            terrainLevel,
-            Math.round(cell.x),
-            Math.round(cell.y),
-          ),
-        ) + 0.02;
+    const y = ownedVehicleSurfaceY(sim, terrainLevel, cell.x, cell.y);
     return [(cell.x - N / 2) * 4, y, (cell.y - N / 2) * 4] as [
       number,
       number,

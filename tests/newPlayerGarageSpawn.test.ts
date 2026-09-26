@@ -19,7 +19,10 @@ import {
 import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
 import { type CarSpec } from "../src/colony/car/carSpec";
 import { deriveStats } from "../src/colony/car/carParts";
-import { stepOwnedDrive } from "../src/colony/car/ownedDriving";
+import {
+  ownedDriveFootprintClear,
+  stepOwnedDrive,
+} from "../src/colony/car/ownedDriving";
 import { getAuthClient } from "../src/colony/authClient";
 import { ColonyRuntime } from "../src/colony/runtime";
 
@@ -369,9 +372,6 @@ describe("PLAYER.CAR.1.S5 — distinct user ID vs citizen ID persistence via run
 
 describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
   function tickOwnedDriveOnce(rt: ColonyRuntime): number {
-    const roadKey = [...rt.sim.state.roadSet][0];
-    expect(roadKey).toBeDefined();
-    const [x, y] = roadKey!.split(",").map(Number);
     const internals = rt as unknown as {
       ownedDrivePose: {
         x: number;
@@ -382,10 +382,37 @@ describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
       ownedDriveSeated: boolean;
       ownedDriveInput: { throttle: boolean };
       blockedStepReason: (x: number, y: number) => string | null;
+      canOwnedCarOccupy: (x: number, y: number) => boolean;
+      currentPlayerOwnedCarSpec: () => CarSpec | null;
       tickOwnedDrive: (dt: number) => void;
     };
     internals.blockedStepReason = () => null;
-    internals.ownedDrivePose = { x: x!, y: y!, heading: 0, speed: 0 };
+    const canOccupy = (x: number, y: number) =>
+      internals.canOwnedCarOccupy(x, y);
+    const car = internals.currentPlayerOwnedCarSpec();
+    expect(car).not.toBeNull();
+    let start: { x: number; y: number; heading: number } | null = null;
+    for (const roadKey of rt.sim.state.roadSet) {
+      const [x, y] = roadKey.split(",").map(Number);
+      for (const heading of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
+        const candidate = { x: x!, y: y!, heading };
+        if (!ownedDriveFootprintClear(candidate, canOccupy)) continue;
+        const next = stepOwnedDrive(
+          { ...candidate, speed: 0 },
+          { throttle: true },
+          deriveStats(car!),
+          1 / 60,
+          canOccupy,
+        );
+        if (next.speed > 0) {
+          start = candidate;
+          break;
+        }
+      }
+      if (start) break;
+    }
+    expect(start).not.toBeNull();
+    internals.ownedDrivePose = { ...start!, speed: 0 };
     internals.ownedDriveSeated = true;
     internals.ownedDriveInput = { throttle: true };
     internals.tickOwnedDrive(1 / 60);

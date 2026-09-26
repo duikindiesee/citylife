@@ -29,7 +29,7 @@ the car while seated instead of also applying walking movement.
 Until authoritative home parcels and driveway construction are connected, the surveyed
 Gearbox road entrance is the available spawn anchor. A local citizen home is not used
 as proof of an owned home. Current driving permits road surfaces and blocks water/building
-cells; dynamic traffic collisions, calibrated model-specific footprints and home driveway
+cells; dynamic traffic collisions and home driveway
 surfaces remain integration work. Car acquisition and funding are existing authoritative
 economy operations; this movement slice grants no money, parts, vehicle or property.
 
@@ -79,3 +79,10 @@ actual model render, driving, re-entry, stale-cache denial and feature-gate swit
 uses fixture responses; localhost Kooker APIs were unavailable. These results do not establish
 deployed ownership or player-flow acceptance. Fresh hosted checks and independent exact-head
 re-review remain required.
+
+The player-parcel branch measures the current GLBs (4.08 by 1.825 m) and expands the shared
+collision envelope to 4.10 by 1.84 m. Movement checks every intersected grid cell of the
+rotated rectangle as well as edge samples, and shares this check with the driveway survey
+in spec 173. An asset contract test prevents a new/larger model silently exceeding it.
+The browser switch regression also asserts throttle was active before switching and that
+runtime input was empty immediately afterward, before testing the retained-controls case.

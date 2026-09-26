@@ -1,4 +1,5 @@
 import { test, expect, devices, type Page, type Route } from "@playwright/test";
+import { installStarterWorldFixture, starterWorldFixture } from "./starterWorldFixture";
 
 // PLAYER.HOME.1D.S2 — prove the dark, server-truth drive-home + home-garage step on a representative
 // touch/mobile viewport, driven through the REAL authenticated bootstrap. We seed an authenticated
@@ -97,16 +98,12 @@ interface DriveState {
   bootResident?: boolean;
 }
 
-const OWNED_TRUTH = {
-  owned: true,
-  status: "OWNED",
-  neighbourhoodKey: "coastal",
-  plotId: "starter-home:demo-user",
-  frameId: "starter-home-frame:demo-user",
-  priceKco: 350,
-};
-
 async function routeAll(page: Page, s: DriveState): Promise<void> {
+  const {manifest} = JSON.parse(await starterWorldFixture());
+  const plot = manifest.plots.find((candidate: {plotId:string}) => candidate.plotId === "wood1_lot_1");
+  if (!plot) throw new Error("Drive-home fixture requires its published home plot");
+  const zone = plot.geometry.houseZone;
+  const script = `house{w:${zone.width} d:${zone.depth} wallH:1 door:s} room{kind:living x:0 y:0 w:${zone.width} d:${zone.depth} win:1}`;
   await page.route(FLAG_GLOB, (route: Route) => {
     if (s.flagMode === "unavailable") return route.abort("failed");
     const enabled = s.flagMode === "on";
@@ -126,13 +123,29 @@ async function routeAll(page: Page, s: DriveState): Promise<void> {
     s.resident = true;
     route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
+  await page.route("**/players/me/vehicle", (route: Route) =>
+    route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ owned: true, vehicleKey: "karoo-vonk-11" }) }),
+  );
+  await page.route("**/players/me/home/build", (route: Route) =>
+    route.fulfill({status:200,contentType:"application/json",body:JSON.stringify({
+      plotId:plot.plotId,frameId:plot.frameId,layoutRevision:manifest.layoutRevision,
+      geometry:plot.geometry,script,completed:true,
+    })}),
+  );
   await page.route(TRUTH_RE, (route: Route) => {
     const resident = s.resident || s.bootResident === true;
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        ...OWNED_TRUTH,
+        owned: true,
+        status: "OWNED",
+        neighbourhoodKey: plot.geometry.neighbourhoodKey,
+        plotId: plot.plotId,
+        frameId: plot.frameId,
+        priceKco: 350,
+        layoutRevision: manifest.layoutRevision,
         onboardingState: resident ? "RESIDENT" : "OWNED",
       }),
     });
@@ -144,6 +157,8 @@ async function bootAs(
   userId: string,
   s: DriveState,
 ): Promise<void> {
+  await installStarterWorldFixture(page);
+  // Scenario truth is registered after safe defaults so Playwright gives it precedence.
   await routeAll(page, s);
   await page.addInitScript(
     ([key, session]) => {
