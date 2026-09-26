@@ -45,19 +45,19 @@ _You step off the bus into the evening street and the city is just… there. No 
 
 ### 3.2 Persistent panels outside the topbar
 
-| #     | Element                                                          | Shows when                                                         | Verdict                                                      |
-| ----- | ---------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------ |
-| 13    | Radio strip                                                      | always (own open state)                                            | summoned from Escape                                         |
-| 14    | Bus-network mini-map                                             | **always — no condition ever unmounts it, including first person** | persistent only while riding a bus; otherwise summoned       |
-| 15    | Presence readout (`GeoReadout`)                                  | whenever non-null, incl. first person                              | diagnostic by design (BUG.GEO.1) — fold into Log Bug capture |
-| 16    | Rally "who is here" card                                         | contextual already                                                 | keep                                                         |
-| 17    | Build stamp                                                      | `!firstPerson.active` (+FP variant)                                | keep — spec 167, deliberately tiny                           |
-| 18    | City HUD panel                                                   | `!builder && !worldView`                                           | Escape overlay ("City" tab)                                  |
-| 19-22 | Drive home / Choose your home / The Gamehouse / Gearbox Auto Hub | entitlement-gated                                                  | become world prompts — §5                                    |
+| #     | Element                                                          | Shows when                                                         | Verdict                                                       |
+| ----- | ---------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------- |
+| 13    | Radio strip                                                      | always (own open state)                                            | summoned from Escape                                          |
+| 14    | Bus-network mini-map                                             | **always — no condition ever unmounts it, including first person** | persistent only while riding a bus; otherwise summoned        |
+| 15    | Presence readout (`GeoReadout`)                                  | whenever non-null, incl. first person                              | diagnostic by design (BUG.GEO.1) — fold into Log Bug capture  |
+| 16    | Rally "who is here" card                                         | contextual already                                                 | keep                                                          |
+| 17    | Build stamp                                                      | `!firstPerson.active` (+FP variant)                                | keep — spec 167, deliberately tiny                            |
+| 18    | City HUD panel                                                   | `!builder && !worldView`                                           | Escape overlay ("City" tab)                                   |
+| 19-22 | Drive home / Choose your home / The Gamehouse / Gearbox Auto Hub | entitlement-gated                                                  | become world prompts — §5                                     |
 | 23    | Active driving-session status                                    | `race.mode !== "idle"`                                             | keep only while a session is active; use generic driving copy |
-| 24    | `RaceMobileControls`                                             | race + touch                                                       | keep                                                         |
-| 25    | `FirstPersonPanel`                                               | `fp.active`                                                        | slim per §4                                                  |
-| 26    | `GaragePanel`                                                    | `ui.garage` non-null — **mount condition unverified**              | out of scope                                                 |
+| 24    | `RaceMobileControls`                                             | race + touch                                                       | keep                                                          |
+| 25    | `FirstPersonPanel`                                               | `fp.active`                                                        | slim per §4                                                   |
+| 26    | `GaragePanel`                                                    | `ui.garage` non-null — **mount condition unverified**              | out of scope                                                  |
 
 **The honest count: in the default third-person view a fully entitled signed-in player has ~24 persistent elements on screen at once.** The operator's complaint is measured, not felt.
 
@@ -79,20 +79,20 @@ _You step off the bus into the evening street and the city is just… there. No 
 | **S3 Third person**            | default                                                                                               | clock chip + ≤5 topbar icons + rally card when at the rally point                                                                                                           |
 | **S4 First person on foot**    | `fp.active && fp.citizenId`                                                                           | **contextual prompt + at most one status chip.** Sprint meter appears **only when `fp.sprintCharge ≤ 20`** — the Roblox damaged-health-bar pattern. Joystick on touch only. |
 | **S4b Riding a bus**           | `fpRidingBusId !== null`                                                                              | next-stop chip + alight prompt + **the mini-map** — the one state where it earns persistence                                                                                |
-| **S5 Active driving session**  | `ui.race.mode !== "idle"`                                                                             | generic session status/actions + `RaceMobileControls` on touch; nothing else                                     |
+| **S5 Active driving session**  | `ui.race.mode !== "idle"`                                                                             | generic session status/actions + `RaceMobileControls` on touch; nothing else                                                                                                |
 | **S6 Interior overlays**       | `showroomOpen` / `gamehouseOpen` / `homeOpen` / `driveHomeOpen`, each ANDed with its live entitlement | the overlay's chrome + close affordance; suppress city HUD underneath                                                                                                       |
 
 ## 5. What becomes summoned
 
 **Topbar target — 4 icons + 1 status chip + 1 contextual slot:**
 
-| Slot         | Contents                                                                |
-| ------------ | ----------------------------------------------------------------------- |
-| Clock chip   | `Sol N · HH:MM ☀/☾` — status, not a button                             |
-| 🗺 Map       | Survey Map, World View enter/exit, bus network map                      |
-| 🐞 Report    | Log Bug                                                                 |
-| ☰ Menu       | opens the Escape overlay                                                |
-| _contextual_ | Exit World View only when active; empty otherwise                        |
+| Slot         | Contents                                           |
+| ------------ | -------------------------------------------------- |
+| Clock chip   | `Sol N · HH:MM ☀/☾` — status, not a button        |
+| 🗺 Map       | Survey Map, World View enter/exit, bus network map |
+| 🐞 Report    | Log Bug                                            |
+| ☰ Menu       | opens the Escape overlay                           |
+| _contextual_ | Exit World View only when active; empty otherwise  |
 
 **Escape overlay:** City (the HUD-details stack + courier headline) · Account (Ask Kooker, Change password, Log out) · Extras (Radio, snapshot, Roadmap, Help) · Operator (role-gated: City Builder, Border Control, layout revisions). Escape's existing priority order — race → pointer lock → first person — is preserved.
 

@@ -614,7 +614,9 @@ export function BuilderPanel({
             title="Enter Aerial World View"
             aria-label={worldViewActive ? "Exit World View" : "World View"}
           >
-            <span className="builder-action-icon" aria-hidden="true">🌍</span>
+            <span className="builder-action-icon" aria-hidden="true">
+              🌍
+            </span>
             <span className="builder-action-label">World View</span>
           </button>
           {canBuild && (
@@ -623,7 +625,9 @@ export function BuilderPanel({
               title="Enter City Builder Mode"
               aria-label="City Builder"
             >
-              <span className="builder-action-icon" aria-hidden="true">🏗️</span>
+              <span className="builder-action-icon" aria-hidden="true">
+                🏗️
+              </span>
               <span className="builder-action-label">City Builder</span>
             </button>
           )}
@@ -632,7 +636,9 @@ export function BuilderPanel({
             title="Open exact world survey map"
             aria-label="Survey Map"
           >
-            <span className="builder-action-icon" aria-hidden="true">🗺️</span>
+            <span className="builder-action-icon" aria-hidden="true">
+              🗺️
+            </span>
             <span className="builder-action-label">Survey Map</span>
           </button>
         </div>
