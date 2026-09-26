@@ -7,6 +7,7 @@ export interface TopbarMenuProps {
   readonly playerId: string | null;
   readonly firstPersonActive: boolean;
   readonly onOpenMap: () => void;
+  readonly onBugReport: () => void;
   readonly onExitFirstPerson: () => void;
   readonly onChangePassword: () => void;
   readonly onLogout: () => void;
@@ -25,6 +26,7 @@ export function TopbarMenu({
   playerId,
   firstPersonActive,
   onOpenMap,
+  onBugReport,
   onExitFirstPerson,
   onChangePassword,
   onLogout,
@@ -61,7 +63,7 @@ export function TopbarMenu({
         aria-label={open ? "Close game menu" : "Open game menu"}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className={open ? "on" : ""}
+        className={`topbar-menu-button${open ? " on" : ""}`}
         onClick={() => setOpen((wasOpen) => !wasOpen)}
       >
         ☰
@@ -151,6 +153,9 @@ export function TopbarMenu({
                 <section aria-label="More options">
                   <h3>More</h3>
                   <a href="/ask-kooker.html">Ask Kooker</a>
+                  <button type="button" onClick={closeAnd(onBugReport)}>
+                    Log a reproducible bug
+                  </button>
                   {hasRealAccount && (
                     <button type="button" onClick={closeAnd(onChangePassword)}>
                       Change password

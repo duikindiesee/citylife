@@ -33,6 +33,20 @@ for (const viewport of [
     await expect(page.getByRole("button", { name: /Road Rally/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Join Race/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Open map" })).toBeVisible();
+    const solClock = page.getByTestId("player-sol-clock");
+    await expect(solClock).toBeVisible();
+    await expect(solClock).toContainText(/Sol \d+ · \d{2}:\d{2}/);
+    if (viewport.name === "mobile") {
+      const clockBox = await solClock.boundingBox();
+      expect(clockBox).not.toBeNull();
+      expect(clockBox!.x).toBeGreaterThanOrEqual(0);
+      expect(clockBox!.y).toBeGreaterThanOrEqual(0);
+      expect(clockBox!.x + clockBox!.width).toBeLessThanOrEqual(viewport.width);
+      expect(clockBox!.y + clockBox!.height).toBeLessThanOrEqual(viewport.height);
+      await expect(
+        page.getByRole("button", { name: "Log a reproducible bug" }),
+      ).toHaveCount(0);
+    }
     await expect(page.getByTestId("build-stamp")).toBeVisible();
     await expect(page.getByTestId("player-wallet-hud")).toHaveCount(0);
     expect(hudFlagRequests).toEqual([]);
@@ -55,6 +69,10 @@ for (const viewport of [
     await page.getByRole("button", { name: "Friends" }).click();
     await expect(menu).toContainText("Online multiplayer is not connected yet");
     await expect(menu).not.toContainText("Cole the Racer");
+    await page.getByRole("button", { name: "More" }).click();
+    await expect(
+      page.getByRole("button", { name: "Log a reproducible bug" }),
+    ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
 

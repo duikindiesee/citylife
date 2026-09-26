@@ -1966,27 +1966,15 @@ export function ColonyApp() {
         <div className="brand">
           City<span>Life</span> <em>· Colony</em>
         </div>
-        <div className="clock">
+        <div className="clock" data-testid="player-sol-clock">
           Sol {ui.clock.sol} · {pad(ui.clock.hour)}:{pad(ui.clock.minute)}{" "}
           <span>{ui.clock.isDay ? "☀" : "☾"}</span>
         </div>
         <div className="spacer" />
-        {/* UI.STATE.1 slice 1 — the pause/speed group exists only on the legacy branch. Measured
-            (spec 170 §6): these gate the citizen-sim accumulator alone; sol time, the sky and the
-            buses never stopped. The runtime methods stay as debug API. */}
-        <div className="group">
-          <button
-            aria-label="Log a reproducible in-world bug"
-            title="Log a reproducible in-world bug"
-            onClick={() => setBugReportOpen(true)}
-          >
-            🐞
-          </button>
-        </div>
         {topbar.showMap && (
           <button
             type="button"
-            className={mapOpen ? "on" : ""}
+            className={`player-map-shortcut${mapOpen ? " on" : ""}`}
             aria-label={mapOpen ? "Hide map" : "Open map"}
             aria-expanded={mapOpen}
             data-testid="player-map-shortcut"
@@ -2020,6 +2008,7 @@ export function ColonyApp() {
             playerId={operatorUserId}
             firstPersonActive={ui.firstPerson.active}
             onOpenMap={() => setMapOpen(true)}
+            onBugReport={() => setBugReportOpen(true)}
             onExitFirstPerson={() => runtime.exitFirstPerson()}
             onChangePassword={() => setPwdChangeOpen(true)}
             onLogout={() => {

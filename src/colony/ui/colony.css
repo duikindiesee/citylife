@@ -1993,7 +1993,8 @@ body.tv-mode .radio-iframe.is-visible {
   .topbar {
     left: 0;
     gap: 4px;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
+    row-gap: 4px;
     padding: 7px 10px 7px 96px;
     overflow-x: auto;
     scrollbar-width: none;
@@ -2002,11 +2003,18 @@ body.tv-mode .radio-iframe.is-visible {
     display: none;
   }
   .topbar .brand,
-  .topbar .spacer,
-  .topbar .clock {
+  .topbar .spacer {
     display: none;
   }
+  .topbar .clock {
+    order: 0;
+    flex: 0 0 auto;
+    font-size: 10px;
+    white-space: nowrap;
+  }
   .topbar-wallet {
+    order: 1;
+    margin-left: auto;
     gap: 4px;
     padding: 4px 6px;
     font-size: 10px;
@@ -2017,10 +2025,15 @@ body.tv-mode .radio-iframe.is-visible {
     padding: 4px 7px;
     font-size: 11px;
   }
-  .topbar .clock {
-    flex: 0 0 auto;
-    font-size: 10px;
-    white-space: nowrap;
+  .topbar .player-map-shortcut {
+    order: 2;
+    margin-left: auto;
+  }
+  .topbar .builder-entry-actions {
+    order: 3;
+  }
+  .topbar .topbar-menu-button {
+    order: 4;
   }
   .topbar .group {
     flex: 0 0 auto;
