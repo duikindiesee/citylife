@@ -58,7 +58,9 @@ test.describe("player city map", () => {
             token: `opaque.${userId}.token`,
             expiresAt: Date.now() + 60 * 60 * 1000,
             operator: {
-              id: `Player ${userId}`,
+              // Bind this isolated mock player to a deterministic seeded citizen so the positive
+              // map case exercises an identity-matched camera, not another citizen marked `local`.
+              id: "KOOKER the Builder",
               userId,
               scopes: [],
               roles: ["CITYLIFE_PLAYER"],

@@ -31,9 +31,14 @@ describe("local player map position", () => {
     expect(
       resolveLocalPlayerMapPosition({
         playerLocationAuthorized: true,
+        operatorCitizenId: "player-1",
+        activeCitizenId: "player-1",
         drivePose: { x: 24, y: 31 },
         cameraCell: { x: 23, y: 30 },
-        exactLocalPresence: { x: 22, y: 29 },
+        exactOwnPresence: {
+          subjectId: "player-1",
+          cell: { x: 22, y: 29 },
+        },
       }),
     ).toEqual({ x: 24, y: 31 });
   });
@@ -42,10 +47,41 @@ describe("local player map position", () => {
     expect(
       resolveLocalPlayerMapPosition({
         playerLocationAuthorized: true,
+        operatorCitizenId: "player-1",
+        activeCitizenId: "player-1",
         cameraCell: { x: 14.25, y: 18.5 },
-        exactLocalPresence: null,
+        exactOwnPresence: null,
       }),
     ).toEqual({ x: 14.25, y: 18.5 });
+  });
+
+  it("never uses an inspected citizen's camera or marker as the signed-in player's position", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
+        operatorCitizenId: "player-1",
+        activeCitizenId: "citizen-under-inspection",
+        cameraCell: { x: 50, y: 60 },
+        exactOwnPresence: {
+          subjectId: "citizen-under-inspection",
+          cell: { x: 50, y: 60 },
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("uses an exact presence fix only when it belongs to the account's citizen", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
+        operatorCitizenId: "player-1",
+        activeCitizenId: null,
+        exactOwnPresence: {
+          subjectId: "player-1",
+          cell: { x: 22, y: 29 },
+        },
+      }),
+    ).toEqual({ x: 22, y: 29 });
   });
 
   it("does not fabricate a location from absent, malformed, or non-local pose data", () => {
@@ -60,8 +96,10 @@ describe("local player map position", () => {
       resolveLocalPlayerMapPosition({
         playerLocationAuthorized: true,
         drivePose: { x: Number.NaN, y: 4 },
+        operatorCitizenId: "player-1",
+        activeCitizenId: null,
         cameraCell: null,
-        exactLocalPresence: null,
+        exactOwnPresence: null,
       }),
     ).toBeNull();
   });
@@ -70,9 +108,14 @@ describe("local player map position", () => {
     expect(
       resolveLocalPlayerMapPosition({
         playerLocationAuthorized: false,
+        operatorCitizenId: "player-1",
+        activeCitizenId: "player-1",
         drivePose: { x: 24, y: 31 },
         cameraCell: { x: 23, y: 30 },
-        exactLocalPresence: { x: 22, y: 29 },
+        exactOwnPresence: {
+          subjectId: "player-1",
+          cell: { x: 22, y: 29 },
+        },
       }),
     ).toBeNull();
   });

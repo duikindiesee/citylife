@@ -35,9 +35,13 @@ export interface MapGridPosition {
 export function resolveLocalPlayerMapPosition(input: {
   /** True only for an authenticated player in the interactive player view. */
   playerLocationAuthorized?: boolean;
+  /** The citizen identity bound to the authenticated account, when one exists. */
+  operatorCitizenId?: string | null;
+  /** Citizen currently driving the first-person camera; may differ in operator inspection mode. */
+  activeCitizenId?: string | null;
   drivePose?: MapGridPosition | null;
   cameraCell?: MapGridPosition | null;
-  exactLocalPresence?: MapGridPosition | null;
+  exactOwnPresence?: { subjectId: string; cell: MapGridPosition } | null;
 }): MapGridPosition | null {
   // Fail closed: local camera state is not a player's private marker while signed out,
   // even though the development preview has a perfectly valid camera cell.
@@ -46,10 +50,21 @@ export function resolveLocalPlayerMapPosition(input: {
     point && Number.isFinite(point.x) && Number.isFinite(point.y)
       ? point
       : null;
+  const operatorCitizenId = input.operatorCitizenId ?? null;
+  const cameraCell =
+    operatorCitizenId !== null &&
+    input.activeCitizenId === operatorCitizenId
+      ? input.cameraCell
+      : null;
+  const exactOwnPresence =
+    operatorCitizenId !== null &&
+    input.exactOwnPresence?.subjectId === operatorCitizenId
+      ? input.exactOwnPresence.cell
+      : null;
   return (
     valid(input.drivePose) ??
-    valid(input.cameraCell) ??
-    valid(input.exactLocalPresence)
+    valid(cameraCell) ??
+    valid(exactOwnPresence)
   );
 }
 

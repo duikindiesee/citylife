@@ -67,10 +67,13 @@ spawn remain required. The legacy drive-home overlay cursor is not evidence of d
 Task `9298ced6-7e43-41d7-8eba-b2bdf4c846e6` (child of HUD/map acceptance
 `608c29b4-bbfd-414b-a931-31d85037a199`). The expanded bus map now resolves the viewer's
 marker from the live owned-car pose first, then the live first-person camera capsule grid
-cell, then the viewer's own authorized exact citizen presence fix. It suppresses the marker
+cell only when first person is controlling the citizen bound to the signed-in account, then
+the viewer's own exact citizen presence fix matched by subject ID. It does not use the
+runtime's generic `isLocal` bit because operator inspection can make another citizen local.
+It suppresses the marker
 unless the session has an authenticated player identity and is in the interactive player
 view; signed-out/skip-auth preview, builder and aerial view fail closed. It ignores coarse
-and non-local presence records and does not turn the server's garage/plot spawn destination
+and other-account presence records and does not turn the server's garage/plot spawn destination
 into a claim about the player's current location.
 The camera/citizen pose is local runtime evidence; it does not establish server-authoritative
 shared movement or multiplayer presence. Those remain separate acceptance gates.

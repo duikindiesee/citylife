@@ -39,7 +39,12 @@ function OpenBusNetworkMiniMap({
   // heartbeat while seated so the player marker follows the live car pose on the map.
   const playerPosition = useSimSignal(runtime, () => {
     const pose = runtime.getOwnedDrivePose();
-    const camera = runtime.fpCameraCell;
+    const firstPerson = runtime.getUiState().firstPerson;
+    const camera =
+      firstPerson.operatorCitizenId !== null &&
+      firstPerson.citizenId === firstPerson.operatorCitizenId
+        ? runtime.fpCameraCell
+        : null;
     return pose
       ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}:${camera?.x.toFixed(2) ?? "?"}:${camera?.y.toFixed(2) ?? "?"}`
       : camera
@@ -49,17 +54,39 @@ function OpenBusNetworkMiniMap({
   void playerPosition;
   const state = runtime.sim.state;
   const depot = runtime.busDepot?.site ?? null;
-  const local = presenceReadout?.entries.find((entry) => entry.isLocal) ?? null;
+  const firstPerson = runtime.getUiState().firstPerson;
+  const operatorCitizenId = firstPerson.operatorCitizenId;
+  const ownPresence = operatorCitizenId
+    ? presenceReadout?.entries.find(
+        (entry) => entry.subjectId === operatorCitizenId,
+      ) ?? null
+    : null;
+  const ownCamera =
+    operatorCitizenId !== null &&
+    firstPerson.citizenId === operatorCitizenId
+      ? runtime.fpCameraCell
+      : null;
   // The capsule/camera is the live local position while walking, and the owned drive pose is the
-  // live car position while seated. Fall back only to this viewer's authorized exact citizen fix;
-  // never infer a current position from a spawn/home anchor or use anyone else's coarse marker.
+  // live car position while seated. Camera and presence fallbacks are bound to the authenticated
+  // account's citizen id, not `isLocal`, which can mean an inspected citizen in operator view.
+  // Never infer a current position from a spawn/home anchor or another citizen's marker.
   const player = resolveLocalPlayerMapPosition({
     playerLocationAuthorized,
+    operatorCitizenId,
+    activeCitizenId: firstPerson.citizenId,
     drivePose: runtime.getOwnedDrivePose(),
-    cameraCell: runtime.fpCameraCell,
-    exactLocalPresence:
-      local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
-        ? { x: local.fix.cell.x, y: local.fix.cell.y }
+    cameraCell: ownCamera,
+    exactOwnPresence:
+      ownPresence?.resolution === "exact" &&
+      ownPresence.fix?.withinExtent &&
+      ownPresence.fix.cell
+        ? {
+            subjectId: ownPresence.subjectId,
+            cell: {
+              x: ownPresence.fix.cell.x,
+              y: ownPresence.fix.cell.y,
+            },
+          }
         : null,
   });
   const model = buildBusNetworkMiniMapModel({
