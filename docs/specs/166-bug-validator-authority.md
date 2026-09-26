@@ -28,6 +28,12 @@ Validator authority stops being something a caller **asserts** and becomes somet
 - `kcoPerValidatedFix` — default `100`.
 - `setBugValidatorAuthority(fn)` — the seam where the real auth boundary plugs in.
 
+`src/colony/authClient.ts` installs that seam for the live browser path. The principal is derived
+from the already-accepted CityLife JWT's stable `userId` claim (`operator:<userId>` unless the claim is
+already namespaced) and is honored only while the session holds an admin/operator role. Signed-out
+sessions, CityLife players/visitors, wrong admin identities and bot principals all fail closed before
+any validation ledger entry or bounty signal can be produced.
+
 `guardTransition` now additionally requires, for `VALIDATE_FIX` **and** `REJECT_FIX`, that the
 actor's identity resolves to a configured validator principal.
 
@@ -56,9 +62,9 @@ stranger veto every proposed fix indefinitely.
 
 It does not prove the caller **is** the principal they name. That is an identity question and only
 the auth boundary can answer it; a client-side module cannot verify a signature it has no key for.
-`setBugValidatorAuthority` is where that answer arrives — the Task API already refuses operator-gated
-actions without a user JWT holding an admin role (unauthenticated `operator-report` returns HTTP 401,
-"requires a user JWT with an admin role"). Until an authority is installed, the gate is allowlist-only.
+`setBugValidatorAuthority` is where that answer arrives. The shipped AuthClient wiring installs it
+from the signed-in JWT role/user identity; without a signed-in admin/operator session, validation is
+denied even when a caller names the configured principal.
 
 This is stated plainly rather than papered over, because a security note that overclaims is worse
 than none. What changed is real: the role name alone is no longer sufficient, and the check now
