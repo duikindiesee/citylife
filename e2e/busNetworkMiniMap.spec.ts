@@ -169,6 +169,24 @@ test.describe("player city map", () => {
     await page.screenshot({
       path: testInfo.outputPath("bus-network-minimap-night.png"),
     });
+    // Switching accounts must not carry the prior player's exact location into the new session.
+    // This second opaque identity has no matching seeded citizen, so a marker here would be stale
+    // camera/presence state leaking across the account boundary.
+    await page.evaluate((key) => {
+      const stored = window.sessionStorage.getItem(key);
+      if (!stored) throw new Error("Expected authenticated map test session");
+      const session = JSON.parse(stored);
+      session.token = "opaque.map-test-player-2.token";
+      session.operator.userId = "map-test-player-2";
+      session.operator.id = "Unmatched map account";
+      window.sessionStorage.setItem(key, JSON.stringify(session));
+    }, SESSION_KEY);
+    await page.reload();
+    await page.waitForSelector("canvas", { timeout: 90000 });
+    await page.getByTestId("player-map-shortcut").click();
+    await expect(map).toContainText("Position unavailable");
+    await expect(page.getByTestId("city-map-player-marker")).toHaveCount(0);
+
     await page.evaluate((key) => {
       window.sessionStorage.removeItem(key);
       window.history.replaceState(null, "", `${window.location.pathname}?skipauth=1`);

@@ -92,6 +92,15 @@ commit `d29d08bd0cc681c571fdc107317f0d99e1351f46` passed 10 minimap unit tests, 
 All browser credentials and API state are local fixtures; this is not deployed evidence. Real
 account-switch/logout behavior and live deployed map verification remain outstanding.
 
+### 2026-09-27 mocked account-switch regression
+
+The mounted Chromium map test now changes from the authenticated fixture player to a different
+opaque account with no matching seeded citizen, reloads, opens the map, and requires `Position
+unavailable` with no player marker before separately checking logout suppression. The focused
+Playwright run passed (1/1) after this addition. This proves fixture-level stale-marker suppression
+across an account boundary; real account switching and deployed player-position verification remain
+outstanding.
+
 ### 2026-09-26 revalidation
 
 The deployed CityLife `v0.58.0` at merge `f6432ca` shows the wallet control and five-bus
