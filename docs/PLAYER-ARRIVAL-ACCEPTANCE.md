@@ -62,6 +62,28 @@ This is a prerequisite, not seated gameplay acceptance. Runtime vehicle controls
 authoritative purchased parcels, completed house persistence and road-connected driveway
 spawn remain required. The legacy drive-home overlay cursor is not evidence of driving.
 
+## Local map position slice (2026-09-26, source validation only)
+
+Task `9298ced6-7e43-41d7-8eba-b2bdf4c846e6` (child of HUD/map acceptance
+`608c29b4-bbfd-414b-a931-31d85037a199`). The expanded bus map now resolves the viewer's
+marker from the live owned-car pose first, then the live first-person camera capsule grid
+cell, then the viewer's own authorized exact citizen presence fix. It suppresses the marker
+outside player view (builder/aerial mode), ignores coarse and non-local presence records and
+does not turn the server's garage/plot spawn destination into a claim about the player's
+current location.
+The camera/citizen pose is local runtime evidence; it does not establish server-authoritative
+shared movement or multiplayer presence. Those remain separate acceptance gates.
+
+The server `GET /api/v1/citylife/players/me/spawn` contract supplies a token-bound decision
+and garage/plot/neighbourhood anchor without coordinates. Until the client has a verified
+world mapping for a given anchor, it must not render that destination as the current-position
+marker. Local validation: focused Vitest (2 files, 13 tests), `npm run typecheck`,
+`npm run build`, `git diff --check`, and mounted Chromium map test (1/1) passed on branch
+`codex/authenticated-map-position-20260926`, based on
+`b4afe825c7ed888221bff1fbe925a5ffc9ceac67`. The browser test used the local mocked/skip-auth
+harness and is not deployed evidence. Live deployed map verification and authenticated
+account-switch/logout checks remain outstanding.
+
 The world renderer now uses the owned catalog vehicle's actual showroom GLB instead of
 giving every model the same procedural block body. It retains loader ownership of cached
 geometry/materials, centres the asset on the runtime anchor and seats its bounds on the

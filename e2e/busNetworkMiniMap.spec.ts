@@ -26,6 +26,41 @@ test.describe("player city map", () => {
     await expect(map.locator(".bus-network-minimap__mode")).toHaveText(
       "LOCAL SESSION",
     );
+    await expect(map).toContainText("You are here");
+    const playerMarker = page.getByTestId("city-map-player-marker");
+    await expect(playerMarker).toBeVisible();
+    const cameraBefore = await page.evaluate(() =>
+      window.__colony.fpCameraCell
+        ? { ...window.__colony.fpCameraCell }
+        : null,
+    );
+    expect(cameraBefore).not.toBeNull();
+    const playerMarkerPosition = () =>
+      playerMarker
+        .locator("circle")
+        .first()
+        .evaluate(
+          (node) => `${node.getAttribute("cx")},${node.getAttribute("cy")}`,
+        );
+    const markerBeforeWalking = await playerMarkerPosition();
+    await page.keyboard.down("KeyW");
+    try {
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => ({
+              x: window.__colony.fpCameraCell?.x,
+              y: window.__colony.fpCameraCell?.y,
+            })),
+          { timeout: 15000 },
+        )
+        .not.toEqual(cameraBefore);
+      await expect
+        .poll(playerMarkerPosition, { timeout: 15000 })
+        .not.toBe(markerBeforeWalking);
+    } finally {
+      await page.keyboard.up("KeyW");
+    }
     await page.waitForFunction(
       () => !!window.__colony?.busDepot && !!window.__colony?.busRoute,
       null,

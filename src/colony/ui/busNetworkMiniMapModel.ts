@@ -25,6 +25,31 @@ export interface BusNetworkMiniMapModel {
   bounds: { minX: number; minY: number; spanX: number; spanY: number };
 }
 
+export interface MapGridPosition {
+  x: number;
+  y: number;
+}
+
+/** Resolve the viewer's own map point from live local movement, then their own exact presence.
+ * Coarse or non-local presence must never become the player's marker. */
+export function resolveLocalPlayerMapPosition(input: {
+  playerViewActive?: boolean;
+  drivePose?: MapGridPosition | null;
+  cameraCell?: MapGridPosition | null;
+  exactLocalPresence?: MapGridPosition | null;
+}): MapGridPosition | null {
+  if (input.playerViewActive === false) return null;
+  const valid = (point: MapGridPosition | null | undefined) =>
+    point && Number.isFinite(point.x) && Number.isFinite(point.y)
+      ? point
+      : null;
+  return (
+    valid(input.drivePose) ??
+    valid(input.cameraCell) ??
+    valid(input.exactLocalPresence)
+  );
+}
+
 interface Input {
   ways: RoadWay[];
   routeStops: { x: number; y: number }[];

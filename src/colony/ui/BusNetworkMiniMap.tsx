@@ -1,7 +1,10 @@
 import type { ColonyRuntime } from "../runtime";
 import type { PresenceReadout } from "../spatial/presenceReadout";
 import { useSimSignal } from "../render/useSimSignal";
-import { buildBusNetworkMiniMapModel } from "./busNetworkMiniMapModel";
+import {
+  buildBusNetworkMiniMapModel,
+  resolveLocalPlayerMapPosition,
+} from "./busNetworkMiniMapModel";
 
 const WIDTH = 200;
 const HEIGHT = 132;
@@ -11,6 +14,8 @@ type BusNetworkMiniMapProps = {
   /** Server-authenticated wallet state, or City view for an operator. */
   walletLabel: string;
   presenceReadout: PresenceReadout | null;
+  /** False while the camera is in the aerial builder/world view, where a prior capsule pose is stale. */
+  playerViewActive: boolean;
   /** The map is summoned on demand so it does not cover the driving view. */
   open: boolean;
   onClose: () => void;
@@ -27,32 +32,36 @@ function OpenBusNetworkMiniMap({
   runtime,
   walletLabel,
   presenceReadout,
+  playerViewActive,
   onClose,
 }: Omit<BusNetworkMiniMapProps, "open">) {
   // The HUD can be memoized independently of the scene. Subscribe to the runtime's 200ms
   // heartbeat while seated so the player marker follows the live car pose on the map.
-  const drivePosition = useSimSignal(runtime, () => {
+  const playerPosition = useSimSignal(runtime, () => {
     const pose = runtime.getOwnedDrivePose();
+    const camera = runtime.fpCameraCell;
     return pose
-      ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}`
-      : "drive:parked";
+      ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}:${camera?.x.toFixed(2) ?? "?"}:${camera?.y.toFixed(2) ?? "?"}`
+      : camera
+        ? `camera:${camera.x.toFixed(2)}:${camera.y.toFixed(2)}`
+        : "camera:unknown";
   });
-  void drivePosition;
+  void playerPosition;
   const state = runtime.sim.state;
   const depot = runtime.busDepot?.site ?? null;
   const local = presenceReadout?.entries.find((entry) => entry.isLocal) ?? null;
-  // While seated, the car pose is the player's actual location. On foot, use the already-authorized
-  // exact presence projection; never guess from a spawn/home or draw a coarse position as exact.
-  const driving = (
-    runtime as ColonyRuntime & {
-      getOwnedDrivePose?: () => { x: number; y: number } | null;
-    }
-  ).getOwnedDrivePose?.();
-  const player = driving
-    ? { x: driving.x, y: driving.y }
-    : local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
-      ? { x: local.fix.cell.x, y: local.fix.cell.y }
-      : null;
+  // The capsule/camera is the live local position while walking, and the owned drive pose is the
+  // live car position while seated. Fall back only to this viewer's authorized exact citizen fix;
+  // never infer a current position from a spawn/home anchor or use anyone else's coarse marker.
+  const player = resolveLocalPlayerMapPosition({
+    playerViewActive,
+    drivePose: runtime.getOwnedDrivePose(),
+    cameraCell: runtime.fpCameraCell,
+    exactLocalPresence:
+      local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
+        ? { x: local.fix.cell.x, y: local.fix.cell.y }
+        : null,
+  });
   const model = buildBusNetworkMiniMapModel({
     ways: state.roadWays ?? [],
     routeStops: runtime.busRoute?.stops ?? [],

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
+import {
+  buildBusNetworkMiniMapModel,
+  resolveLocalPlayerMapPosition,
+} from "../src/colony/ui/busNetworkMiniMapModel";
 import type { RoadWay } from "../src/colony/render/roadRibbon";
 
 const ways: RoadWay[] = [
@@ -22,6 +25,49 @@ const ways: RoadWay[] = [
     ],
   },
 ];
+
+describe("local player map position", () => {
+  it("uses the live owned-car pose before the first-person camera or roster pose", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        drivePose: { x: 24, y: 31 },
+        cameraCell: { x: 23, y: 30 },
+        exactLocalPresence: { x: 22, y: 29 },
+      }),
+    ).toEqual({ x: 24, y: 31 });
+  });
+
+  it("uses the live camera capsule for an on-foot player without a citizen-roster match", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        cameraCell: { x: 14.25, y: 18.5 },
+        exactLocalPresence: null,
+      }),
+    ).toEqual({ x: 14.25, y: 18.5 });
+  });
+
+  it("does not fabricate a location from absent, malformed, or non-local pose data", () => {
+    expect(resolveLocalPlayerMapPosition({})).toBeNull();
+    expect(
+      resolveLocalPlayerMapPosition({
+        drivePose: { x: Number.NaN, y: 4 },
+        cameraCell: null,
+        exactLocalPresence: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not reuse a stale first-person pose in builder or aerial view", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerViewActive: false,
+        drivePose: { x: 24, y: 31 },
+        cameraCell: { x: 23, y: 30 },
+        exactLocalPresence: { x: 22, y: 29 },
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("always-visible bus network minimap model", () => {
   it("projects every road way, route stop, depot and live coach into the fixed viewport", () => {
