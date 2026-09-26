@@ -1,128 +1,181 @@
-// UI.STATE.1 slice 1 — the ☰ menu that absorbs the four collapsed topbar controls (spec 170 §5/§8).
-//
-// Slice 1 scope ONLY: Ask Kooker, Change password, Log out, 📷 snapshot — the controls the plan's
-// `showInlineAccountGroup`/`showInlineSnapshot` fields hide. The fuller Escape overlay (City tab,
-// Extras, the operator section) is slice 2 and is deliberately NOT started here.
-//
-// Interaction contract, chosen to keep slice 1 out of ColonyApp's global key handling:
-//   - opens/closes on the ☰ button;
-//   - closes on backdrop click and after any item;
-//   - does NOT bind Escape. ColonyApp's Escape chain (race → pointer lock → first person) has a
-//     documented priority order that spec 170 says must be preserved; wiring a menu into it is
-//     slice-2 work, not a topbar edit.
-//
-// Styling stays inline and minimal, the codebase's overlay idiom (HqReceptionView, the corner
-// actions), with `env(safe-area-inset-*)` so the sheet clears notches — the convention colony.css
-// already uses for the topbar's neighbours.
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+type MenuPage = "profile" | "controls" | "friends" | "more";
 
 export interface TopbarMenuProps {
-  /** Offer "Change password" only for a real logged-in account (mirrors the inline button's gate). */
   readonly hasRealAccount: boolean;
+  readonly playerId: string | null;
+  readonly firstPersonActive: boolean;
+  readonly onOpenMap: () => void;
+  readonly onBugReport: () => void;
+  readonly onExitFirstPerson: () => void;
   readonly onChangePassword: () => void;
   readonly onLogout: () => void;
   readonly onSnapshot: () => void;
 }
 
-const ITEM_STYLE: React.CSSProperties = {
-  display: "block",
-  width: "100%",
-  textAlign: "left",
-  padding: "10px 14px",
-  background: "none",
-  border: "none",
-  borderRadius: 8,
-  color: "#e8eef5",
-  fontSize: 14,
-  cursor: "pointer",
-  textDecoration: "none",
-};
+const PAGES: { id: MenuPage; label: string }[] = [
+  { id: "profile", label: "Profile" },
+  { id: "controls", label: "Controls" },
+  { id: "friends", label: "Friends" },
+  { id: "more", label: "More" },
+];
 
 export function TopbarMenu({
   hasRealAccount,
+  playerId,
+  firstPersonActive,
+  onOpenMap,
+  onBugReport,
+  onExitFirstPerson,
   onChangePassword,
   onLogout,
   onSnapshot,
 }: TopbarMenuProps) {
   const [open, setOpen] = useState(false);
-  const closeAnd = (fn?: () => void) => () => {
+  const [page, setPage] = useState<MenuPage>("profile");
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        // This menu owns Escape while it is open. Do not let the world-level
+        // handler also consume it and exit first-person or release pointer lock.
+        event.stopPropagation();
+        setOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [open]);
+
+  const closeAnd = (action?: () => void) => () => {
     setOpen(false);
-    fn?.();
+    action?.();
   };
+
   return (
-    <div className="group" style={{ position: "relative" }}>
+    <>
       <button
+        type="button"
         data-testid="topbar-menu"
-        title="Menu"
-        aria-haspopup="menu"
+        aria-label={open ? "Close game menu" : "Open game menu"}
         aria-expanded={open}
-        className={open ? "on" : ""}
-        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="dialog"
+        className={`topbar-menu-button${open ? " on" : ""}`}
+        onClick={() => setOpen((wasOpen) => !wasOpen)}
       >
         ☰
       </button>
       {open && (
-        <>
-          {/* Backdrop: any click outside the sheet closes it. z-index sits under the sheet. */}
-          <div
-            data-testid="topbar-menu-backdrop"
-            onClick={closeAnd()}
-            style={{ position: "fixed", inset: 0, zIndex: 58 }}
-          />
-          <div
-            role="menu"
-            data-testid="topbar-menu-sheet"
-            style={{
-              position: "absolute",
-              top: "calc(100% + 6px)",
-              right: `max(0px, env(safe-area-inset-right))`,
-              zIndex: 59,
-              minWidth: 200,
-              padding: 6,
-              borderRadius: 12,
-              border: "1px solid #3a4550",
-              background: "#161b21",
-              boxShadow: "0 8px 28px rgba(0,0,0,0.45)",
-            }}
+        <div
+          className="player-pause-menu-backdrop"
+          data-testid="player-pause-menu-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setOpen(false);
+          }}
+        >
+          <section
+            className="player-pause-menu"
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby="player-pause-menu-title"
+            data-testid="player-pause-menu"
           >
-            <a
-              role="menuitem"
-              style={ITEM_STYLE}
-              href="/ask-kooker.html"
-              title="Open the Ask Kooker board"
-              onClick={closeAnd()}
-            >
-              Ask Kooker
-            </a>
-            {hasRealAccount && (
+            <header className="player-pause-menu__header">
+              <div>
+                <span className="player-pause-menu__eyebrow">CITYLIFE</span>
+                <h2 id="player-pause-menu-title">Game menu</h2>
+              </div>
               <button
-                role="menuitem"
-                style={ITEM_STYLE}
-                title="Change your CityLife password"
-                onClick={closeAnd(onChangePassword)}
+                type="button"
+                aria-label="Close game menu"
+                onClick={() => setOpen(false)}
               >
-                Change password
+                ×
               </button>
-            )}
-            <button
-              role="menuitem"
-              style={ITEM_STYLE}
-              title="Save a PNG snapshot of the city"
-              onClick={closeAnd(onSnapshot)}
-            >
-              📷 Snapshot
-            </button>
-            <button
-              role="menuitem"
-              style={ITEM_STYLE}
-              title="Sign out of CityLife"
-              onClick={closeAnd(onLogout)}
-            >
-              Log out
-            </button>
-          </div>
-        </>
+            </header>
+            <nav className="player-pause-menu__tabs" aria-label="Game menu">
+              <button type="button" onClick={closeAnd(onOpenMap)}>
+                Map
+              </button>
+              {PAGES.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={page === item.id}
+                  className={page === item.id ? "on" : ""}
+                  onClick={() => setPage(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+            <div className="player-pause-menu__content">
+              {page === "profile" && (
+                <section aria-label="Player profile">
+                  <h3>Profile</h3>
+                  <p>
+                    {playerId === null
+                      ? "Sign in to load your player profile."
+                      : `Player account ${playerId}`}
+                  </p>
+                  {firstPersonActive && (
+                    <button type="button" onClick={closeAnd(onExitFirstPerson)}>
+                      Exit walking view
+                    </button>
+                  )}
+                </section>
+              )}
+              {page === "controls" && (
+                <section aria-label="Controls">
+                  <h3>Controls</h3>
+                  <dl className="player-pause-menu__controls">
+                    <div><dt>W A S D / arrows</dt><dd>Move</dd></div>
+                    <div><dt>Shift</dt><dd>Sprint</dd></div>
+                    <div><dt>E</dt><dd>Use the nearby action</dd></div>
+                    <div><dt>1 / 2 / 3</dt><dd>Change camera view</dd></div>
+                  </dl>
+                </section>
+              )}
+              {page === "friends" && (
+                <section aria-label="Friends and lobby">
+                  <h3>Friends</h3>
+                  <p>No friends are connected to this session.</p>
+                  <p className="player-pause-menu__note">
+                    Online multiplayer is not connected yet. City residents are
+                    not shown as player friends or on your map.
+                  </p>
+                </section>
+              )}
+              {page === "more" && (
+                <section aria-label="More options">
+                  <h3>More</h3>
+                  <a href="/ask-kooker.html">Ask Kooker</a>
+                  <button type="button" onClick={closeAnd(onBugReport)}>
+                    Log a reproducible bug
+                  </button>
+                  {hasRealAccount && (
+                    <button type="button" onClick={closeAnd(onChangePassword)}>
+                      Change password
+                    </button>
+                  )}
+                  <button type="button" onClick={closeAnd(onSnapshot)}>
+                    Save city snapshot
+                  </button>
+                  <button type="button" onClick={closeAnd(onLogout)}>
+                    Log out
+                  </button>
+                </section>
+              )}
+            </div>
+            <p className="player-pause-menu__world-status">
+              The city keeps running while this menu is open.
+            </p>
+          </section>
+        </div>
       )}
-    </div>
+    </>
   );
 }

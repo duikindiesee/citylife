@@ -1,5 +1,4 @@
 import type { ColonyRuntime } from "../runtime";
-import { useState } from "react";
 import type { PresenceReadout } from "../spatial/presenceReadout";
 import { useSimSignal } from "../render/useSimSignal";
 import { buildBusNetworkMiniMapModel } from "./busNetworkMiniMapModel";
@@ -7,17 +6,29 @@ import { buildBusNetworkMiniMapModel } from "./busNetworkMiniMapModel";
 const WIDTH = 200;
 const HEIGHT = 132;
 
-export function BusNetworkMiniMap({
-  runtime,
-  walletLabel,
-  presenceReadout,
-}: {
+type BusNetworkMiniMapProps = {
   runtime: ColonyRuntime;
   /** Server-authenticated wallet state, or City view for an operator. */
   walletLabel: string;
   presenceReadout: PresenceReadout | null;
-}) {
-  const [expanded, setExpanded] = useState(false);
+  /** The map is summoned on demand so it does not cover the driving view. */
+  open: boolean;
+  onClose: () => void;
+};
+
+export function BusNetworkMiniMap(props: BusNetworkMiniMapProps) {
+  // Keep the signal subscription out of the closed HUD. When open toggles, React
+  // mounts/unmounts a separate hooked component instead of changing hook order.
+  if (!props.open) return null;
+  return <OpenBusNetworkMiniMap {...props} />;
+}
+
+function OpenBusNetworkMiniMap({
+  runtime,
+  walletLabel,
+  presenceReadout,
+  onClose,
+}: Omit<BusNetworkMiniMapProps, "open">) {
   // The HUD can be memoized independently of the scene. Subscribe to the runtime's 200ms
   // heartbeat while seated so the player marker follows the live car pose on the map.
   const drivePosition = useSimSignal(runtime, () => {
@@ -56,9 +67,12 @@ export function BusNetworkMiniMap({
   });
   return (
     <aside
-      className={`bus-network-minimap${expanded ? " bus-network-minimap--expanded" : ""}`}
+      className="bus-network-minimap bus-network-minimap--expanded"
       aria-label="Live bus network map"
-      data-expanded={expanded ? "true" : "false"}
+      data-expanded="true"
+      role="dialog"
+      aria-modal="false"
+      data-testid="player-map"
     >
       <div className="bus-network-minimap__title">
         <span>CITY MAP</span>
@@ -68,12 +82,12 @@ export function BusNetworkMiniMap({
         <button
           className="bus-network-minimap__toggle"
           type="button"
-          aria-label={expanded ? "Collapse city map" : "Expand city map"}
-          aria-expanded={expanded}
+          aria-label="Close map"
+          aria-expanded="true"
           data-testid="city-map-toggle"
-          onClick={() => setExpanded((open) => !open)}
+          onClick={onClose}
         >
-          {expanded ? "Close map" : "Open map"}
+          Close map
         </button>
       </div>
       <div className="bus-network-minimap__summary">

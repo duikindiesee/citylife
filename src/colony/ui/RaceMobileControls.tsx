@@ -169,7 +169,7 @@ export function RaceMobileControls({
     <div
       className="race-mobile-controls"
       role="group"
-      aria-label="Mobile Road Rally driving controls"
+      aria-label="Mobile driving controls"
     >
       <div className="race-mobile-controls__hint">
         Hold throttle · steer left/right · brake to reverse

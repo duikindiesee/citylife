@@ -1,10 +1,7 @@
 import React from "react";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import {
-  FirstPersonPanel,
-  nightFriendBannerCopy,
-} from "../src/colony/ui/FirstPersonPanel";
+import { FirstPersonPanel } from "../src/colony/ui/FirstPersonPanel";
 import type { ColonyUiState, ColonyRuntime } from "../src/colony/runtime";
 
 function makeRuntime(): ColonyRuntime {
@@ -192,51 +189,18 @@ describe("FirstPersonPanel immersive HUD", () => {
     expect(content).not.toContain("Neighbours");
   });
 
-  it("shows a night-only friend banner from nearby public names", () => {
+  it("does not present offline city residents as online friends", () => {
     const fp = makeFirstPerson();
     if (!fp.view) throw new Error("expected first-person view");
     fp.view.clock.isDay = false;
     fp.view.neighbours = [
-      { displayName: "Orin Reed", plotName: "Occupied", distance: 4 },
-      { displayName: "Mara Lane", plotName: "Occupied", distance: 5 },
-      { displayName: "Third Friend", plotName: "Occupied", distance: 6 },
+      { displayName: "Cole the Racer", plotName: "Occupied", distance: 2 },
     ];
-
-    expect(nightFriendBannerCopy(fp.view)).toBe(
-      "Friend nearby at the night rally: Orin, Mara",
-    );
-
     const html = renderToStaticMarkup(
-      React.createElement(FirstPersonPanel, {
-        runtime: makeRuntime(),
-        fp,
-      }),
+      React.createElement(FirstPersonPanel, { runtime: makeRuntime(), fp }),
     );
-    expect(html).toContain("Friend nearby at the night rally: Orin, Mara");
-    expect(html).not.toContain("Third");
-  });
-
-  it("screens unsafe neighbour names from the night friend banner", () => {
-    const fp = makeFirstPerson();
-    if (!fp.view) throw new Error("expected first-person view");
-    fp.view.clock.isDay = false;
-    fp.view.neighbours = [
-      { displayName: "Hermes token keeper", plotName: "Occupied", distance: 4 },
-      { displayName: "Orin Reed", plotName: "Occupied", distance: 5 },
-    ];
-
-    expect(nightFriendBannerCopy(fp.view)).toBe(
-      "Friend nearby at the night rally: Orin",
-    );
-  });
-
-  it("hides the friend banner by day and when nobody is nearby", () => {
-    const fp = makeFirstPerson();
-    if (!fp.view) throw new Error("expected first-person view");
-    expect(nightFriendBannerCopy(fp.view)).toBeNull();
-    fp.view.clock.isDay = false;
-    fp.view.neighbours = [];
-    expect(nightFriendBannerCopy(fp.view)).toBeNull();
+    expect(html).not.toContain("Friend nearby at the night rally");
+    expect(html).not.toContain("Cole the Racer");
   });
 
   it("renders the first-person HUD as a mobile-friendly control dock", () => {
@@ -321,14 +285,14 @@ describe("FirstPersonPanel immersive HUD", () => {
       'class="first-person-panel first-person-panel--edge-hud"',
     );
     expect(html).toContain('class="first-person-panel__destination-strip"');
-    expect(html).toContain("Rally Point");
-    expect(html).toContain("201.1 units away");
-    expect(html).toContain("Friend nearby at the night rally: Cole");
+    expect(html).not.toContain("Rally Point");
+    expect(html).not.toContain("201.1 units away");
+    expect(html).not.toContain("Cole the Racer");
     expect(html).toContain('class="first-person-panel__joystick"');
     expect(html).toContain('aria-label="Mobile movement joystick"');
     expect(html).toContain('class="first-person-panel__action-cluster"');
     expect(html).toContain('class="first-person-panel__guidance-caption"');
-    expect(html).toContain("Guiding to Rally Point · 201.1 units away");
+    expect(html).not.toContain("Guiding to Rally Point");
     expect(html).toContain('data-fp-action="toggle-details"');
     expect(html).toContain('data-fp-action="toggle-help"');
     expect(html).not.toContain('data-fp-action="walk-to-rally"');

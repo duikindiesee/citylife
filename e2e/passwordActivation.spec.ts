@@ -120,6 +120,8 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
     await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForTimeout(1500);
 
+    await page.getByTestId("topbar-menu").click();
+    await page.getByRole("button", { name: "More", exact: true }).click();
     await page.getByRole("button", { name: "Change password" }).click();
     await expect(page.getByTestId("password-change-modal")).toBeVisible();
     await page.getByPlaceholder("current password").fill("old-pass-1234");
@@ -159,6 +161,8 @@ test.describe("Password activation UX (PWD.ACT PR-E)", () => {
     await page.waitForSelector("canvas", { timeout: 90000 });
     await page.waitForTimeout(1500);
 
+    await page.getByTestId("topbar-menu").click();
+    await page.getByRole("button", { name: "More", exact: true }).click();
     await page.getByRole("button", { name: "Change password" }).click();
     await page.getByPlaceholder("current password").fill("old-pass-1234");
     await page

@@ -20,7 +20,7 @@ const READY_TIMEOUT = 90_000; // one-off world-layout boot on a slow software-We
 const FLAG_GLOB = "**/feature-flags/new-player-journey-v1";
 const VEHICLE_OFFERS_GLOB = "**/vehicle/offers";
 const SESSION_KEY = "citylife.session.v5";
-const READY_MARKER = 'button[title="Sign out of CityLife"]';
+const READY_MARKER = '[data-testid="player-wallet-hud"]';
 const ENTRY = '[data-build-action="open-showroom"]';
 const OVERLAY = '[data-testid="showroom-overlay"]';
 const ACQUIRE_CONTROL =
@@ -110,8 +110,8 @@ async function bootAs(
   );
   await page.goto("/", { timeout: NAV_TIMEOUT });
   await page.waitForSelector("canvas", { timeout: NAV_TIMEOUT });
-  // The authenticated colony HUD (and thus the gated entry decision) is mounted once the world layout
-  // boot resolves and the top bar renders its Log-out control.
+  // The self-scoped wallet chip only renders for an authenticated account. Do not couple readiness
+  // to a particular menu page's logout control.
   await page.waitForSelector(READY_MARKER, { timeout: READY_TIMEOUT });
 }
 
@@ -225,19 +225,15 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
     )
     .toEqual({ asset: "/assets/citylife/cars/fiat_x19.glb", vertices: true });
   await expect(page.getByTestId("owned-car-controls")).toBeVisible();
-  const cityMap = page.getByRole("complementary", {
-    name: "Live bus network map",
-  });
-  const compactMap = await cityMap.boundingBox();
-  expect(compactMap).not.toBeNull();
-  await touchTap(page, '[data-testid="city-map-toggle"]');
+  const cityMap = page.getByTestId("player-map");
+  await expect(cityMap).toBeHidden();
+  await touchTap(page, '[data-testid="player-map-shortcut"]');
   await expect(cityMap).toHaveAttribute("data-expanded", "true");
   await expect(
-    page.getByRole("button", { name: "Collapse city map" }),
+    page.getByRole("button", { name: "Close map" }),
   ).toBeVisible();
   const expandedMap = await cityMap.boundingBox();
   expect(expandedMap).not.toBeNull();
-  expect(expandedMap!.width).toBeGreaterThan(compactMap!.width * 2);
   const playerMarker = page.getByTestId("city-map-player-marker");
   await expect(playerMarker).toBeVisible();
   const mapThrottle = page.locator('[data-drive-action="throttle"]');
@@ -363,7 +359,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   await expect(cityMap).toHaveAttribute("data-expanded", "true");
   await expect(page.getByTestId("owned-car-controls")).toBeVisible();
   await touchTap(page, '[data-testid="city-map-toggle"]');
-  await expect(cityMap).toHaveAttribute("data-expanded", "false");
+  await expect(cityMap).toBeHidden();
   // Keep the production controls mounted across a batched seated owner-to-owner change.
   // Navigation would erase the component ref and miss the stale held-throttle regression.
   await page.keyboard.down("KeyW");
