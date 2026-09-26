@@ -37,6 +37,8 @@ This specification completes `PLAYER.CAR.1.S5`:
      - Purchase: `/kooker/api/v1/citylife/players/me/vehicle/purchase` (falling back to legacy `/kooker/api/v1/citylife/car-acquisitions` if 404).
    - Show each vehicle's server quote, never its planned client catalogue price. If the offer endpoint is missing, unavailable, malformed, or does not include a vehicle, keep its acquire control disabled and show that the price is unavailable/not offered. Do not use a local-price fallback.
    - Compare the server quote with the current player's wallet snapshot. When the snapshot is below the quote, show the exact shortfall (for example, `Need ₭200 more`) and disable Acquire; the purchase service still makes the final balance decision.
+   - Fetch that snapshot from the self-scoped ledger endpoint `/kooker/api/ledger/me/wallet` with the current session bearer. Accept only the authenticated caller's `citylife` / `DEFAULT` / `KCO` projection. Never use the local simulation bank or a client-selected owner id as a fallback.
+   - Keep the player's KCO balance visible in both the always-visible in-game HUD and the Gearbox showroom card. Refresh on login, window focus, periodic foreground use, explicit retry, and confirmed/insufficient-funds purchase results. Distinguish a valid zero balance, the ledger's explicit no-wallet response, loading, and an unavailable/invalid read; neither a missing wallet nor a failed read may be rendered as `₭0`.
    - The client acquisition switch defaults on unless explicitly set off. This does not override the authenticated new-player journey entitlement or the service's own purchase gates.
    - **Contract A15 Canonical Key Mapping:**
      - Client-side showroom catalog keys (`"showroom:karoo-vonk-11"`) are stripped of the `"showroom:"` prefix via `serverVehicleKeyOf()` before being posted to the server as `"karoo-vonk-11"`.
@@ -68,7 +70,7 @@ This specification completes `PLAYER.CAR.1.S5`:
 1. Authenticated session without a stored or server-owned vehicle automatically mounts `ShowroomOverlay`.
 2. A player with authenticated no-car server truth and an active journey entitlement automatically enters Gearbox; acquisition is enabled by default for that eligible account when a valid server quote is available.
 3. Each offered vehicle shows its server-authoritative KCO price; unavailable, malformed or missing quotes never fall back to planned client prices and keep Acquire disabled.
-4. If the current wallet snapshot cannot cover the quoted price, show the precise shortfall and disable Acquire. Server HTTP 422 / 402 still renders an insufficient-funds result if the authoritative balance changed after the snapshot.
+4. The authenticated player's authoritative wallet balance is visible in the ordinary HUD and showroom. If a valid snapshot cannot cover the quoted price, show the precise shortfall and disable Acquire. Server HTTP 422 / 402 still refreshes the balance and renders an insufficient-funds result if the authoritative balance changed after the snapshot.
 5. Clicking Acquire posts `{ vehicleKey: serverKey }` with `Idempotency-Key` to `/kooker/api/v1/citylife/players/me/vehicle/purchase`.
 6. Successful acquisition persists the `CarSpec` to `citylife.garage.v1` via `garageStore.saveCar`.
 7. Full test suite (`npm test`) and `npm run typecheck` pass with zero errors.

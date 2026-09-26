@@ -22,7 +22,7 @@ const FLAG_GLOB = "**/feature-flags/new-player-journey-v1";
 const ARRIVAL_RE = /\/players\/me\/home\/arrival/;
 const TRUTH_RE = /\/players\/me\/home(\?.*)?$/; // GET truth only — not /home/arrival
 const SESSION_KEY = "citylife.session.v5";
-const READY_MARKER = 'button[title="Sign out of CityLife"]';
+const READY_MARKER = '[data-testid="player-wallet-hud"]';
 const ENTRY = '[data-build-action="open-drive-home"]';
 const OVERLAY = '[data-testid="drive-home-overlay"]';
 

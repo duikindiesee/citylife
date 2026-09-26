@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { bankPanelCopy } from "../src/colony/ui/ColonyApp";
 import { ColonyRuntime } from "../src/colony/runtime";
+import {
+  playerWalletLabel,
+  type PlayerWalletSnapshot,
+} from "../src/colony/wallet/playerWallet";
 
 // Player-scoped HUD privacy: normal users should see their own balance only,
 // not city-wide ledger/accounting labels that imply other residents' wallets,
@@ -15,12 +19,18 @@ describe("player-scoped bank HUD copy", () => {
     rt.setPlayerView(true);
 
     const playerBank = rt.getUiState().bank;
-    const copy = bankPanelCopy(playerBank);
+    const wallet: PlayerWalletSnapshot = {
+      accountKey: "player-42",
+      status: "ready",
+      balanceKco: 987654,
+    };
+    const copy = bankPanelCopy(playerBank, wallet);
 
     expect(playerBank.scope).toBe("player");
     expect(copy.title).toBe("Your wallet · ₭");
     expect(copy.rows.map((r) => r.label)).toEqual(["Your balance"]);
-    expect(copy.rows[0]!.value).toBe(
+    expect(copy.rows[0]!.value).toBe(playerWalletLabel(wallet, "₭"));
+    expect(copy.rows[0]!.value).not.toBe(
       `₭${playerBank.deposits.toLocaleString()}`,
     );
     expect(copy.rows.map((r) => r.label).join(" ")).not.toMatch(
@@ -32,7 +42,11 @@ describe("player-scoped bank HUD copy", () => {
   it("keeps admin bank copy unrestricted", () => {
     const rt = new ColonyRuntime(4242);
     const adminBank = rt.getUiState().bank;
-    const copy = bankPanelCopy(adminBank);
+    const copy = bankPanelCopy(adminBank, {
+      accountKey: null,
+      status: "unavailable",
+      balanceKco: null,
+    });
 
     expect(adminBank.scope).toBe("city");
     expect(copy.title).toBe("City Bank · ₭");

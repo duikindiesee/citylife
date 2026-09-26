@@ -40,6 +40,7 @@ import {
 } from "../car/carAcquisition";
 import { getAuthClient } from "../authClient";
 import { hasStoredCar, saveCar } from "../car/garageStore";
+import type { PlayerWalletStatus } from "../wallet/playerWallet";
 import type { ColonyRuntime } from "../runtime";
 
 const panelStyle: CSSProperties = {
@@ -68,6 +69,9 @@ export function ShowroomOverlay({
   runtime,
   walletKco = null,
   onOwnershipConfirmed,
+  walletStatus = "unavailable",
+  walletLabel = "Balance unavailable",
+  onWalletRefresh,
 }: {
   onClose: () => void;
   canAcquire?: boolean;
@@ -77,6 +81,9 @@ export function ShowroomOverlay({
   /** Current player-scoped wallet snapshot. It is display-only; the server still decides a debit. */
   walletKco?: number | null;
   onOwnershipConfirmed?: () => void;
+  walletStatus?: PlayerWalletStatus;
+  walletLabel?: string;
+  onWalletRefresh?: () => void;
 }) {
   const [index, setIndex] = useState(0);
   const [zoom, setZoom] = useState(SHOWROOM_DEFAULT_ZOOM);
@@ -264,6 +271,9 @@ export function ShowroomOverlay({
         // Cross-account / session switch guard: suppress stale completion
         return;
       }
+      if (result.kind === "owned" || result.kind === "insufficient_funds") {
+        onWalletRefresh?.();
+      }
 
       // A successful purchase can confirm a different, already-owned car.
       // Resolve authority before writing the garage; never infer it from the offer.
@@ -313,6 +323,7 @@ export function ShowroomOverlay({
   }, [
     acquireEnabled,
     isOwned,
+    onWalletRefresh,
     offerStatus,
     pendingKey,
     runtime,
@@ -456,6 +467,36 @@ export function ShowroomOverlay({
               </div>
             </div>
           ))}
+        </div>
+        <div
+          data-testid="showroom-wallet"
+          data-wallet-status={walletStatus}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+            color: "#b7c9d7",
+            fontSize: 12,
+          }}
+        >
+          <span>Your wallet</span>
+          <strong data-testid="showroom-wallet-balance">{walletLabel}</strong>
+          {(walletStatus === "missing" || walletStatus === "unavailable") &&
+            onWalletRefresh && (
+              <button
+                type="button"
+                data-testid="showroom-wallet-refresh"
+                onClick={onWalletRefresh}
+                style={{
+                  ...controlButtonStyle,
+                  padding: "4px 7px",
+                  fontSize: 10,
+                }}
+              >
+                Retry
+              </button>
+            )}
         </div>
         <span
           data-testid="showroom-card-price"

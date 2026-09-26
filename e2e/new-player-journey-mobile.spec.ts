@@ -21,7 +21,7 @@ const READY_TIMEOUT = 90_000; // one-off world-layout boot on a slow software-We
 const FLAG_GLOB = "**/feature-flags/new-player-journey-v1";
 const VEHICLE_OFFERS_GLOB = "**/vehicle/offers";
 const SESSION_KEY = "citylife.session.v5";
-const READY_MARKER = 'button[title="Sign out of CityLife"]';
+const READY_MARKER = '[data-testid="player-wallet-hud"]';
 const ENTRY = '[data-build-action="open-showroom"]';
 const OVERLAY = '[data-testid="showroom-overlay"]';
 const ACQUIRE_CONTROL =
@@ -130,8 +130,8 @@ async function bootAs(
   );
   await page.goto("/", { timeout: NAV_TIMEOUT });
   await page.waitForSelector("canvas", { timeout: NAV_TIMEOUT });
-  // The authenticated colony HUD (and thus the gated entry decision) is mounted once the world layout
-  // boot resolves and the top bar renders its Log-out control.
+  // The self-scoped wallet chip only renders for an authenticated account. Do not couple readiness
+  // to a particular menu page's logout control.
   await page.waitForSelector(READY_MARKER, { timeout: READY_TIMEOUT });
 }
 
@@ -145,6 +145,27 @@ async function allowVehicleOffers(page: import("@playwright/test").Page) {
         { vehicleKey: "karoo-kaap-gt-v8", priceKco: 2400, currency: "KCO" },
         { vehicleKey: "karoo-x19-targa", priceKco: 950, currency: "KCO" },
       ]),
+    }),
+  );
+}
+
+async function allowWalletSnapshot(
+  page: import("@playwright/test").Page,
+  userId: string,
+  balance: number,
+) {
+  await page.route("**/api/ledger/me/wallet", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ownerId: userId,
+        appName: "citylife",
+        walletType: "DEFAULT",
+        instrument: "KCO",
+        realm: "TEST",
+        balance,
+      }),
     }),
   );
 }
@@ -230,19 +251,13 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   await touchTap(page, '[data-testid="home-exit"]');
   await expect(page.getByTestId("starter-property-overlay")).toHaveCount(0);
   await expect(page.getByTestId("owned-car-controls")).toBeVisible();
-  const cityMap = page.getByRole("complementary", {
-    name: "Live bus network map",
-  });
-  const compactMap = await cityMap.boundingBox();
-  expect(compactMap).not.toBeNull();
-  await touchTap(page, '[data-testid="city-map-toggle"]');
+  const cityMap = page.getByTestId("player-map");
+  await expect(cityMap).toBeHidden();
+  await touchTap(page, '[data-testid="player-map-shortcut"]');
   await expect(cityMap).toHaveAttribute("data-expanded", "true");
-  await expect(
-    page.getByRole("button", { name: "Collapse city map" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close map" })).toBeVisible();
   const expandedMap = await cityMap.boundingBox();
   expect(expandedMap).not.toBeNull();
-  expect(expandedMap!.width).toBeGreaterThan(compactMap!.width * 2);
   const playerMarker = page.getByTestId("city-map-player-marker");
   await expect(playerMarker).toBeVisible();
   const mapThrottle = page.locator('[data-drive-action="throttle"]');
@@ -368,7 +383,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   await expect(cityMap).toHaveAttribute("data-expanded", "true");
   await expect(page.getByTestId("owned-car-controls")).toBeVisible();
   await touchTap(page, '[data-testid="city-map-toggle"]');
-  await expect(cityMap).toHaveAttribute("data-expanded", "false");
+  await expect(cityMap).toBeHidden();
   // Keep the production controls mounted across a batched seated owner-to-owner change.
   // Navigation would erase the component ref and miss the stale held-throttle regression.
   await page.keyboard.down("KeyW");
@@ -469,6 +484,7 @@ test("new player can exit and re-enter without losing server-priced acquisition 
     }),
   );
   await allowVehicleOffers(page);
+  await allowWalletSnapshot(page, "showroom-reentry-1", 0);
   await bootAs(page, "showroom-reentry-1", true);
   const acquire = page.locator('[data-build-action="showroom-acquire"]');
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
@@ -496,18 +512,21 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   ).toHaveCount(0);
 
   // A different identity with unavailable ownership truth must not inherit eligibility.
-  await page.unrouteAll({ behavior: "ignoreErrors" });
-  await installStarterWorldFixture(page);
-  await page.route("**/citylife/players/me/vehicle", (route) =>
+  // Close the continuously rendering WebGL page before booting the second account. Reusing the same
+  // page can starve Playwright's navigation/init-script control channel after the long showroom run.
+  const switchedPage = await page.context().newPage();
+  await page.close();
+  await installStarterWorldFixture(switchedPage);
+  await switchedPage.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({ status: 503, body: "unavailable" }),
   );
-  await bootAs(page, "showroom-reentry-2", true);
+  await bootAs(switchedPage, "showroom-reentry-2", true);
   // Unknown ownership must hold the full-screen arrival gate. Do not let a cached no-car state
   // enter the showroom when authoritative ownership truth is unavailable.
-  await expect(page.getByRole("alert")).toContainText("We couldn't load your car and home.");
-  await expect(page.getByRole("button", {name:"Retry arrival"})).toBeVisible();
-  await expect(page.locator(OVERLAY)).toHaveCount(0);
-  await expect(page.locator(ACQUIRE_CONTROL)).toHaveCount(0);
+  await expect(switchedPage.getByRole("alert")).toContainText("We couldn't load your car and home.");
+  await expect(switchedPage.getByRole("button", {name:"Retry arrival"})).toBeVisible();
+  await expect(switchedPage.locator(OVERLAY)).toHaveCount(0);
+  await expect(switchedPage.locator(ACQUIRE_CONTROL)).toHaveCount(0);
 });
 
 test("server ownership opens Gearbox despite a stale cached car", async ({
@@ -531,6 +550,7 @@ test("server ownership opens Gearbox despite a stale cached car", async ({
     });
   });
   await allowVehicleOffers(page);
+  await allowWalletSnapshot(page, "stale-cache-player", 0);
   await bootAs(page, "stale-cache-player", true);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   expect(ownershipReads).toBeGreaterThan(0);
@@ -563,6 +583,9 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   //    directly to Gearbox; the server quote is shown and the zero wallet reports its exact shortfall.
   await page.unrouteAll({ behavior: "ignoreErrors" });
   await installStarterWorldFixture(page);
+  // Keep the economy fixture explicit: showroom affordability and HUD display use the same
+  // self-scoped ledger snapshot, never the local simulation bank projection.
+  await allowWalletSnapshot(page, "uat-allow-1", 0);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -573,6 +596,13 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   await allowVehicleOffers(page);
   await bootAs(page, "uat-allow-1", true);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
+  await expect(page.getByTestId("showroom-wallet")).toHaveAttribute(
+    "data-wallet-status",
+    "ready",
+  );
+  await expect(page.getByTestId("showroom-wallet-balance")).toHaveText(
+    "₭0 KCO",
+  );
   await expect(
     page.locator('[data-testid="showroom-card-price"]'),
   ).toHaveAttribute("data-price-source", "server");
@@ -586,6 +616,8 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   await expect(page.locator(OVERLAY)).toHaveCount(0, {
     timeout: ASSERT_TIMEOUT,
   });
+  await expect(page.getByTestId("player-wallet-hud")).toBeVisible();
+  await expect(page.getByTestId("player-wallet-hud")).toContainText("₭0 KCO");
 
   // 3) Account switch to a different, OFF player → the entry is hidden again. No positive
   //    entitlement bled across the session boundary.

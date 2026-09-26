@@ -1,6 +1,6 @@
 # Spec 170 — The player-state HUD (UI.STATE.1)
 
-- **Status:** proposed for review. **Docs only** — no runtime, scene or UI change ships with this spec; slice 1 is defined in §8.
+- **Status:** P0 HUD slice 1 implemented on `codex/p0-hud-pause-map-20260925`; CI and deployed player-flow verification pending. Remaining map, journey, and multiplayer items stay open.
 - **Depends on:** UI.HUD.OVERLAP.1 (PR 421, bottom-right rail), UI.GEO.OVERLAP.1 (PR 432, bottom-left rail), spec 150 PR2 (canonical sol time), spec 167 (build stamp placement), the entitlement pattern in `src/colony/entitlement/*.ts`.
 - **Design provenance:** operator, verbatim — _"our screens are full of HUD shit"_ and _"I dont know why we still have pause button and speed buttons, since our world never stops"_ — with the confirmed decision that CityLife time never stops: it is an auditable real measurement. Developed by a Fable concept panel against the live source.
 - **Prior research (established input):** Roblox ships almost no persistent chrome — a thin collapsible topbar plus a health bar shown **only when damaged**; everything else is summoned. Their published UX guidance is context-driven ("swap HUD elements by player state"). Mobile guidance reserves the bottom-left (thumbstick) and bottom-right (jump) corners and uses safe-area insets. ProximityPrompt appears only within ~10 studs with line-of-sight and shows the key inline — **the prompt is the tutorial**.
@@ -16,7 +16,7 @@ _You step off the bus into the evening street and the city is just… there. No 
 3. **The prompt is the tutorial.** `interactionPrompt` + `activateFirstPersonInteraction()` already exist; contextual prompts replace persistent buttons wherever a location can carry the affordance.
 4. **Summoned, not deleted.** Everything removed stays one deliberate action away. Operator surfaces stay reachable — they just stop being player-facing.
 5. **Corners have owners.** PRs 421/432 exist because elements self-pinned into corners and buried each other.
-6. **Fail-closed gate.** Flag OFF renders today's HUD byte-identically.
+6. **One player baseline.** The everyday HUD is not gated by an operator-managed feature flag. Access control for operator tools, purchases, and account actions remains server-authoritative.
 
 ## 3. The inventory, measured against `ColonyApp.tsx` (4,463 lines)
 
@@ -45,19 +45,19 @@ _You step off the bus into the evening street and the city is just… there. No 
 
 ### 3.2 Persistent panels outside the topbar
 
-| #     | Element                                                          | Shows when                                                         | Verdict                                                      |
-| ----- | ---------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------ |
-| 13    | Radio strip                                                      | always (own open state)                                            | summoned from Escape                                         |
-| 14    | Bus-network mini-map                                             | **always — no condition ever unmounts it, including first person** | persistent only while riding a bus; otherwise summoned       |
-| 15    | Presence readout (`GeoReadout`)                                  | whenever non-null, incl. first person                              | diagnostic by design (BUG.GEO.1) — fold into Log Bug capture |
-| 16    | Rally "who is here" card                                         | contextual already                                                 | keep                                                         |
-| 17    | Build stamp                                                      | `!firstPerson.active` (+FP variant)                                | keep — spec 167, deliberately tiny                           |
-| 18    | City HUD panel                                                   | `!builder && !worldView`                                           | Escape overlay ("City" tab)                                  |
-| 19-22 | Drive home / Choose your home / The Gamehouse / Gearbox Auto Hub | entitlement-gated                                                  | become world prompts — §5                                    |
-| 23    | Road Rally pill                                                  | `race.mode !== "idle"`                                             | keep — correct state-scoped HUD                              |
-| 24    | `RaceMobileControls`                                             | race + touch                                                       | keep                                                         |
-| 25    | `FirstPersonPanel`                                               | `fp.active`                                                        | slim per §4                                                  |
-| 26    | `GaragePanel`                                                    | `ui.garage` non-null — **mount condition unverified**              | out of scope                                                 |
+| #     | Element                                                          | Shows when                                                         | Verdict                                                       |
+| ----- | ---------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------- |
+| 13    | Radio strip                                                      | always (own open state)                                            | summoned from Escape                                          |
+| 14    | Bus-network mini-map                                             | **always — no condition ever unmounts it, including first person** | persistent only while riding a bus; otherwise summoned        |
+| 15    | Presence readout (`GeoReadout`)                                  | whenever non-null, incl. first person                              | diagnostic by design (BUG.GEO.1) — fold into Log Bug capture  |
+| 16    | Rally "who is here" card                                         | contextual already                                                 | keep                                                          |
+| 17    | Build stamp                                                      | `!firstPerson.active` (+FP variant)                                | keep — spec 167, deliberately tiny                            |
+| 18    | City HUD panel                                                   | `!builder && !worldView`                                           | Escape overlay ("City" tab)                                   |
+| 19-22 | Drive home / Choose your home / The Gamehouse / Gearbox Auto Hub | entitlement-gated                                                  | become world prompts — §5                                     |
+| 23    | Active driving-session status                                    | `race.mode !== "idle"`                                             | keep only while a session is active; use generic driving copy |
+| 24    | `RaceMobileControls`                                             | race + touch                                                       | keep                                                          |
+| 25    | `FirstPersonPanel`                                               | `fp.active`                                                        | slim per §4                                                   |
+| 26    | `GaragePanel`                                                    | `ui.garage` non-null — **mount condition unverified**              | out of scope                                                  |
 
 **The honest count: in the default third-person view a fully entitled signed-in player has ~24 persistent elements on screen at once.** The operator's complaint is measured, not felt.
 
@@ -79,20 +79,20 @@ _You step off the bus into the evening street and the city is just… there. No 
 | **S3 Third person**            | default                                                                                               | clock chip + ≤5 topbar icons + rally card when at the rally point                                                                                                           |
 | **S4 First person on foot**    | `fp.active && fp.citizenId`                                                                           | **contextual prompt + at most one status chip.** Sprint meter appears **only when `fp.sprintCharge ≤ 20`** — the Roblox damaged-health-bar pattern. Joystick on touch only. |
 | **S4b Riding a bus**           | `fpRidingBusId !== null`                                                                              | next-stop chip + alight prompt + **the mini-map** — the one state where it earns persistence                                                                                |
-| **S5 Driving / Rally**         | `ui.race.mode !== "idle"`                                                                             | the race pill + `RaceMobileControls`; nothing else                                                                                                                          |
+| **S5 Active driving session**  | `ui.race.mode !== "idle"`                                                                             | generic session status/actions + `RaceMobileControls` on touch; nothing else                                                                                                |
 | **S6 Interior overlays**       | `showroomOpen` / `gamehouseOpen` / `homeOpen` / `driveHomeOpen`, each ANDed with its live entitlement | the overlay's chrome + close affordance; suppress city HUD underneath                                                                                                       |
 
 ## 5. What becomes summoned
 
 **Topbar target — 4 icons + 1 status chip + 1 contextual slot:**
 
-| Slot         | Contents                                                                |
-| ------------ | ----------------------------------------------------------------------- |
-| Clock chip   | `Sol N · HH:MM ☀/☾` — status, not a button                             |
-| 🗺 Map       | Survey Map, World View enter/exit, bus network map                      |
-| 🐞 Report    | Log Bug                                                                 |
-| ☰ Menu       | opens the Escape overlay                                                |
-| _contextual_ | exactly one: Join Race / Road Rally / Exit World View — empty otherwise |
+| Slot         | Contents                                           |
+| ------------ | -------------------------------------------------- |
+| Clock chip   | `Sol N · HH:MM ☀/☾` — status, not a button        |
+| 🗺 Map       | Survey Map, World View enter/exit, bus network map |
+| 🐞 Report    | Log Bug                                            |
+| ☰ Menu       | opens the Escape overlay                           |
+| _contextual_ | Exit World View only when active; empty otherwise  |
 
 **Escape overlay:** City (the HUD-details stack + courier headline) · Account (Ask Kooker, Change password, Log out) · Extras (Radio, snapshot, Roadmap, Help) · Operator (role-gated: City Builder, Border Control, layout revisions). Escape's existing priority order — race → pointer lock → first person — is preserved.
 
@@ -117,32 +117,42 @@ _You step off the bus into the evening street and the city is just… there. No 
 - **Topbar:** ≤5 icons fit 390px without the current hidden-scrollbar overflow strip. The Escape overlay is a full-screen sheet with a thumb-reachable close.
 - **Differs from desktop:** joystick and `RaceMobileControls` are touch-only; keyboard hints desktop-only; prompts render as ≥44px tap targets.
 
-## 8. Migration — slice 1
+## 8. Migration — slice 1 implementation status
 
-**Gate:** `hud-player-state-v1`, a new `src/colony/entitlement/hudPlayerState.ts` cloned from `kookerHq.ts` (fail-closed on OFF/killed/401/403/timeout/malformed/network, default OFF, re-evaluated on identity change).
+The implementation is in isolated branch `codex/p0-hud-pause-map-20260925`, based on `b29ea366364884b9442a9694f73ca533c63d4cb7`, and is under review in PR #542. Source and browser-fixture checks do not establish deployed player acceptance.
 
-**In slice 1 — topbar only, a bounded edit at ColonyApp.tsx:1909-2015 plus one small component:**
+**Implemented in the branch:**
 
-1. Remove the pause/speed group and the Space shortcut.
-2. Collapse Ask Kooker / Change password / Log out / snapshot into a ☰ menu.
-3. Hide Road Rally unless `ui.race.available` — the disabled state becomes absence.
+1. Removed the player-facing pause/speed controls and their Space shortcut; runtime controls remain available for tests and authoring.
+2. Replaced the old topbar account links with the ☰ menu containing Profile, Controls, Friends, and More. The menu explicitly says online multiplayer is not connected and does not list simulated residents as friends.
+3. Added the topbar Map shortcut and made the bus map open on demand. The open map is pointer-transparent except for its close control so driving input reaches the game.
+4. Removed coarse simulated-resident location and legacy rally-as-friend panels, and removed the old Road Rally / Join Race entry controls. An already-active drive session retains only a generic transient status/actions and touch controls until the shared-road driving session replaces the legacy race runtime.
+5. Removed the `hud-player-state-v1` entitlement fetch. The journey/shop entitlements remain separate.
+6. Kept World View and Survey Map available to player sessions, kept City Builder role-gated, and compressed their labels to accessible icon controls on narrow screens.
+7. Added desktop/mobile HUD browser coverage and adapted map and journey tests to the on-demand map behavior.
+8. Removed the legacy lower-right city-stat panel from the visible HUD; signed-in players retain the self-scoped wallet chip in the topbar, while signed-out sessions show no balance.
 
-**Deliberately untouched in slice 1**, each a recently measured, test-locked region: `BuilderPanel` stays inline exactly as-is (`cityBuilderRoleGate.spec.ts`, `busDepotFoliage.spec.ts:167`, `junctionCapOvershoot.spec.ts`, `showroom.spec.ts` locate "World View"/"Survey Map" by role/title and must stay green); both corner rails; `FirstPersonPanel`; the mini-map; `GeoReadout`.
+**Still incomplete:** real-account wallet rendering and account-switch clearing need a runtime session check; multiplayer lobby/friends and shared player positions are not implemented; the legacy corner journey buttons remain; the radio strip remains outside the menu; and actual deployed-interface acceptance is outstanding. The map currently reports position unavailable when the local player's authoritative position is missing.
 
-**Slice order after that:** 2 — Escape overlay absorbs the City HUD panel; 3 — corner actions become door prompts + Map pins; 4 — mini-map becomes state-driven; 5 — FP slimming.
+**Next slices:** absorb nonessential HUD controls (including radio and appropriate corner actions) into the game menu/map without breaking onboarding; add the real authenticated account wallet and self-only live presence contract; then prove the complete layout and driving/map behavior in the deployed player session.
 
 ## 9. Acceptance
 
-1. Flag OFF: today's HUD byte-identical; full unit + e2e suites green.
-2. Flag ON, S3: ≤5 topbar slots + clock; zero corner buttons for a player with no nearby door.
-3. Flag ON, S4 away from any door: exactly one chip, zero prompts; near a door: one prompt.
-4. `transitSolDriver` "ignores sim speed" and the sol-clock suites stay green.
-5. Screenshots at 1280×800 and 390×844 per state, before/after, **counting visible persistent elements — the count is the deliverable the complaint is measured against.**
+1. No request for a HUD feature-flag endpoint is needed to render the HUD.
+2. Default view does not render coarse simulated-resident readouts or rally-as-friend labels.
+3. Map is hidden until requested, then shows roads and buses, uses only the authenticated local player's exact position when available, and lets driving controls receive pointer input.
+4. Wallet remains self-scoped and visible as a compact account chip; a signed-out session renders no balance.
+5. Menu exposes Profile, Controls, Friends and More. It explicitly reports multiplayer presence as unavailable and does not represent simulated residents as online friends.
+6. Legacy pause/speed and Road Rally / Join Race entry controls are absent; an active drive session keeps its transient status/checkpoint/restart/exit controls and mobile steering until the shared-road driving session replaces the legacy race runtime. Runtime/debug simulation APIs remain for test and authoring use.
+7. `transitSolDriver` "ignores sim speed" and the sol-clock suites stay green.
+8. Screenshots at 1280×800 and 390×844, before/after, **counting visible persistent elements.** Deployed interface proof is still required before the overall HUD goal is complete.
 
-## 10. Deliberately not done here
+## 10. Deliberately not done in slice 1
 
 - No split or refactor of `ColonyApp.tsx` — slices edit bounded regions only.
 - No removal of `ColonyRuntime.setPaused`/`setSpeed` (debug API).
 - No sol-time-driven citizen sim (own spec; determinism risk).
 - No 3D in-world prompt rendering — slice 3 reuses the existing 2D affordance.
-- No change to City Builder, Border Control, the two corner rails' layout contracts, or `GaragePanel`.
+- No change to City Builder or Border Control authorization. Builder entry controls are compact on mobile, but the corner rails and `GaragePanel` still need a later menu/map redesign.
+- No authenticated friend service, shared online positions, lobby invites, or network multiplayer transport.
+- No proof that the new HUD is deployed or accepted in the real player interface.

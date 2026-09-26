@@ -23,6 +23,7 @@ import { projectStarterHome } from "../home/starterHouseProjection";
 import { fetchStarterPlotOffers, postPurchasePlot, postResumePlotPurchase, type StarterPlotOffer } from "../home/starterPlotOffers";
 import { CELL_SIZE } from "../scale";
 import type { PublishedPlayerInventory } from "../home/starterWorldCatalogue";
+import type { PlayerWalletStatus } from "../wallet/playerWallet";
 
 const panelStyle: CSSProperties = {
   background: "rgba(8,14,24,0.92)",
@@ -53,16 +54,16 @@ type LoadPhase = "loading" | "ready" | "error";
 
 export function StarterPropertyOverlay({
   onClose,
-  onWalletChanged,
-  walletKco,
+  walletStatus = "unavailable",
+  walletLabel = "Balance unavailable",
+  onWalletRefresh,
   currency = "₭",
   playerInventory,
 }: {
   onClose: () => void;
-  /** Refresh the authenticated wallet after the server decides a plot payment. */
-  onWalletChanged?: () => void;
-  /** The current server-synced wallet balance for the signed-in player, display only. null = unknown. */
-  walletKco: number | null;
+  walletStatus?: PlayerWalletStatus;
+  walletLabel?: string;
+  onWalletRefresh?: () => void;
   currency?: string;
   playerInventory?: PublishedPlayerInventory;
 }) {
@@ -126,7 +127,7 @@ export function StarterPropertyOverlay({
       } finally {
         purchaseInFlight.current = false;
         setPending(false);
-        onWalletChanged?.();
+        onWalletRefresh?.();
       }
       // A successful purchase response is already an authoritative settlement. Do not leave the
       // purchase control in its in-flight state while a separate ownership read is slow. The Build
@@ -138,7 +139,7 @@ export function StarterPropertyOverlay({
         // The confirmed outcome remains visible; the player can explicitly refresh server state.
       }
     })();
-  }, [pending, owned, plotOwned, selected, choices, truth, onWalletChanged]);
+  }, [pending, owned, plotOwned, selected, choices, truth, onWalletRefresh]);
 
   const view = purchaseButtonView(owned, !!selected, pending, outcome);
   const selectionConflict = outcome?.kind === "error" && outcome.status === 409;
@@ -193,6 +194,7 @@ export function StarterPropertyOverlay({
       {/* wallet truth — server-synced, display only */}
       <div
         data-testid="home-wallet"
+        data-wallet-status={walletStatus}
         style={{
           ...panelStyle,
           marginTop: 10,
@@ -207,8 +209,23 @@ export function StarterPropertyOverlay({
           data-testid="home-wallet-balance"
           style={{ color: "#9fd4a6", fontWeight: 700 }}
         >
-          {money(currency, walletKco)}
+          {walletLabel}
         </span>
+        {(walletStatus === "missing" || walletStatus === "unavailable") &&
+          onWalletRefresh && (
+            <button
+              type="button"
+              data-testid="home-wallet-refresh"
+              onClick={onWalletRefresh}
+              style={{
+                ...controlButtonStyle,
+                padding: "4px 7px",
+                fontSize: 10,
+              }}
+            >
+              Retry
+            </button>
+          )}
       </div>
 
       {phase === "loading" && (

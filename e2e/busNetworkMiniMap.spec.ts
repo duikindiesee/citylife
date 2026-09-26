@@ -6,16 +6,23 @@ declare global {
   }
 }
 
-test.describe("spec 149 — persistent live bus network minimap", () => {
-  test("stays visible in street and world view and tracks moving coaches", async ({
+test.describe("player city map", () => {
+  test("opens on demand, tracks buses, and lets driving input pass through", async ({
     page,
   }, testInfo) => {
     test.setTimeout(180000);
     await page.goto("/?skipauth=1");
-    const map = page.getByRole("complementary", {
-      name: "Live bus network map",
-    });
-    await expect(map).toBeVisible({ timeout: 30000 });
+    const map = page.getByTestId("player-map");
+    await expect(map).toBeHidden({ timeout: 30000 });
+    await expect(page.locator(".geo-readout")).toHaveCount(0);
+    await expect(page.locator(".rally-social-read")).toHaveCount(0);
+    await page.getByTestId("player-map-shortcut").click();
+    await expect(map).toBeVisible();
+    await page.getByRole("button", { name: "Close map" }).click();
+    await expect(map).toBeHidden();
+    await page.getByTestId("player-map-shortcut").click();
+    await expect(map).toBeVisible();
+    await expect(map).toHaveCSS("pointer-events", "none");
     await expect(map.locator(".bus-network-minimap__mode")).toHaveText(
       "LOCAL SESSION",
     );
@@ -62,8 +69,6 @@ test.describe("spec 149 — persistent live bus network minimap", () => {
       window.__colony.debugSetSolTimeOfDay(8, 0);
     });
     await expect.poll(markerPositions, { timeout: 90000 }).not.toBe(before);
-    await page.getByRole("button", { name: /World View/i }).click();
-    await expect(map).toBeVisible();
     await page.waitForTimeout(1200);
     await page.screenshot({
       path: testInfo.outputPath("bus-network-minimap-day.png"),

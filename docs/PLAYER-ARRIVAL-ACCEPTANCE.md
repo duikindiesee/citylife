@@ -125,3 +125,23 @@ integration, account isolation, deployment or player-visible arrival.
 Local correction: `ShowroomOverlay` now omits Acquire while its authoritative offer is unavailable, retains the retry control, and labels an underfunded quoted car “Insufficient funds” with the exact gap. The 5-case core Chromium run passed in 8.5 minutes; five additional focused cases passed together and the corrected re-entry case passed in a separate 2.2-minute run. Changes remain in the isolated PR #524 worktree and have not been deployed.
 
 Admin flag audit note: while inspecting the feature-flag control, a click briefly saved `new-player-journey-v1=OFF`; a second click restored `UAT_ALLOWLIST`, and the admin UI read back the restored state. This produced two audit writes. The flag was not set to global `ON`; no purchase, deployment, or balance mutation was performed. The existing funded-player/recovery safety gate and the API's lack of an `ON` state remain blockers to global default enablement.
+
+### Mainline refresh and wallet/HUD reconciliation — 2026-09-26
+
+The isolated PR #524 refresh was resolved against current `main` at
+`b4afe825c7ed888221bff1fbe925a5ffc9ceac67`, starting from PR head
+`40b4dea79759f657262fbea7a46487e3338478f0`. The refresh keeps the server-owned plot offers,
+purchase/resume flow, published player inventory and house-builder transition while using the
+current account-keyed, self-scoped wallet snapshot for the HUD, showroom and property overlay. An
+unavailable ownership read keeps the full-screen retry gate; it does not guess “no car” or open
+Acquire. This refresh remains an uncommitted local candidate: the GitHub PR is still draft at its
+previous head, dirty against `main`, and reports no hosted checks.
+
+| Claim | Status | Evidence | Remaining gap |
+| ----- | ------ | -------- | ------------- |
+| Current wallet and property-flow changes typecheck and pass the full unit suite. | Verified locally | `npm run typecheck`; `npm test` passed 276 files / 2,395 tests; the wallet, plot-offer, garage-arrival and journey-entitlement focus passed 70/70. | Fixture/source coverage does not prove privacy or balances against the deployed Ledger. |
+| Returning-owner, showroom-reentry, stale-cache ownership and journey-gate browser cases pass with the current HUD. | Verified locally with fixture APIs | `e2e/new-player-journey-mobile.spec.ts`: returning owner 1/1; showroom re-entry 1/1; stale-cache/server ownership 1/1; journey gate 1/1. The 150-second combined harness reached its process-tree bound after the first two cases; the remaining cases were then run separately and passed. | No live purchase, plot settlement, house completion, logout/account-switch privacy or deployed player-flow proof. |
+| The refreshed production bundle builds. | Verified locally | `npm run build` completed. | Existing `CommercialBlock` output is 2.65 MB, above Vite's 500 kB advisory threshold. |
+| PR #524 is ready for independent review or merge. | Not yet | `gh pr view 524`: remote head `40b4dea79759f657262fbea7a46487e3338478f0`, draft, `DIRTY` / `CONFLICTING`; `gh pr checks 524` reports no checks. | Publish the reviewed local refresh after the current MoJoJo queue item is reconciled, run hosted checks and route the exact resulting head. User Service #243's release hold also remains a dependency; do not merge #524 until the service contract is integrated and its release gate is cleared. |
+
+These checks establish source and fixture regressions only. They do not establish a deployed wallet, live transaction outcome, car/plot/home ownership, or the complete visible arrival journey.

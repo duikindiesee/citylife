@@ -1,90 +1,150 @@
 import { describe, expect, it, vi } from "vitest";
-import { parsePlayerWalletKco, readPlayerWalletKco } from "../src/colony/playerWallet";
+import {
+  playerWalletLabel,
+  readPlayerWallet,
+  type PlayerWalletSnapshot,
+} from "../src/colony/wallet/playerWallet";
 
-const wallet = (overrides: Record<string, unknown> = {}) => ({
-  ownerId: "191",
-  ownerType: "USER",
+function auth(userId: string | null, token: string | null = "test-token") {
+  return {
+    operator: userId === null ? null : { userId },
+    getValidToken: vi.fn(async () => token),
+  };
+}
+
+function response(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+const validWallet = {
+  ownerId: "player-42",
+  appName: "CITYLIFE",
   walletType: "DEFAULT",
-  appName: "citylife",
-  currency: "KCO",
+  instrument: "KCO",
   realm: "TEST",
-  balance: "1300.0000",
-  ...overrides,
-});
+  balance: "750.00",
+};
 
 describe("authoritative player wallet read", () => {
-  it("parses only the caller's CityLife KCO default wallet", () => {
-    expect(parsePlayerWalletKco([wallet()], "191")).toBe(1300);
-    expect(
-      parsePlayerWalletKco(
-        [wallet({ walletType: "TREASURY", balance: 5000 }), wallet()],
-        "191",
-      ),
-    ).toBe(1300);
-  });
+  it("reads the self-scoped CityLife KCO wallet and never sends an owner selector", async () => {
+    const requests: { input: RequestInfo | URL; init?: RequestInit }[] = [];
+    const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ input, init });
+      return response(validWallet);
+    };
 
-  it("treats a valid empty balance list as zero but rejects ambiguous or cross-account data", () => {
-    expect(parsePlayerWalletKco([], "191")).toBe(0);
-    expect(parsePlayerWalletKco([wallet({ ownerId: "192" })], "191")).toBeNull();
-    expect(parsePlayerWalletKco([wallet(), wallet()], "191")).toBeNull();
-    expect(parsePlayerWalletKco({ balance: 1300 }, "191")).toBeNull();
-  });
+    const wallet = await readPlayerWallet(
+      auth("player-42"),
+      "player-42",
+      fetcher,
+    );
 
-  it("rejects non-CityLife currency and invalid amounts rather than displaying guesses", () => {
-    expect(parsePlayerWalletKco([wallet({ appName: "sportifine" })], "191")).toBeNull();
-    expect(parsePlayerWalletKco([wallet({ currency: "USD" })], "191")).toBeNull();
-    expect(parsePlayerWalletKco([wallet({ balance: "NaN" })], "191")).toBeNull();
-    expect(parsePlayerWalletKco([wallet({ balance: -1 })], "191")).toBeNull();
-  });
-
-  it("requests only the token-derived user and returns the server's balance", async () => {
-    const transport = vi.fn(async () => ({ ok: true, status: 200, body: [wallet()] }));
-    const result = await readPlayerWalletKco({
-      getToken: async () => "signed-token",
-      getUserId: (token) => (token === "signed-token" ? "191" : null),
-      transport,
-    });
-
-    expect(result).toBe(1300);
-    expect(transport).toHaveBeenCalledWith(
-      "/kooker/api/ledger/wallets/191/balances?appName=citylife",
-      {
+    expect(wallet).toEqual({
+      accountKey: "player-42",
+      status: "ready",
+      balanceKco: 750,
+    } satisfies PlayerWalletSnapshot);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.input).toBe("/kooker/api/ledger/me/wallet");
+    expect(requests[0]!.init).toMatchObject({
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        Authorization: "Bearer test-token",
         Accept: "application/json",
-        Authorization: "Bearer signed-token",
-        "X-Kooker-User-Id": "191",
+      },
+    });
+    expect(JSON.stringify(requests[0]!.init)).not.toContain("ownerId");
+  });
+
+  it("keeps a missing wallet separate from a zero balance", async () => {
+    const wallet = await readPlayerWallet(
+      auth("player-42"),
+      "player-42",
+      async () =>
+        response(
+          { message: "No DEFAULT wallet exists yet for this account" },
+          404,
+        ),
+    );
+
+    expect(wallet).toEqual({
+      accountKey: "player-42",
+      status: "missing",
+      balanceKco: null,
+    });
+    expect(playerWalletLabel(wallet)).toBe("Wallet not set up");
+    expect(
+      playerWalletLabel({
+        accountKey: "player-42",
+        status: "ready",
+        balanceKco: 0,
+      }),
+    ).toBe("₭0 KCO");
+  });
+
+  it.each([
+    ["another account", { ...validWallet, ownerId: "player-99" }],
+    ["another app", { ...validWallet, appName: "KOOKER_WEB" }],
+    ["another wallet type", { ...validWallet, walletType: "SAVINGS" }],
+    ["another instrument", { ...validWallet, instrument: "ZAR" }],
+    ["malformed balance", { ...validWallet, balance: "not-money" }],
+  ])("fails closed for %s", async (_name, body) => {
+    const wallet = await readPlayerWallet(
+      auth("player-42"),
+      "player-42",
+      async () => response(body),
+    );
+    expect(wallet.status).toBe("unavailable");
+    expect(wallet.balanceKco).toBeNull();
+  });
+
+  it("does not request when the session identity or bearer token is missing", async () => {
+    const fetcher = vi.fn(async () => response(validWallet));
+
+    const mismatch = await readPlayerWallet(
+      auth("player-99"),
+      "player-42",
+      fetcher,
+    );
+    const signedOut = await readPlayerWallet(
+      auth("player-42", null),
+      "player-42",
+      fetcher,
+    );
+
+    expect(mismatch.status).toBe("unavailable");
+    expect(signedOut.status).toBe("unavailable");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("does not convert HTTP and transport failures into zero", async () => {
+    const denied = await readPlayerWallet(
+      auth("player-42"),
+      "player-42",
+      async () => response({}, 503),
+    );
+    const offline = await readPlayerWallet(
+      auth("player-42"),
+      "player-42",
+      async () => {
+        throw new Error("offline");
       },
     );
-  });
+    const routeMissing = await readPlayerWallet(
+      auth("player-42"),
+      "player-42",
+      async () => response({ message: "Not Found" }, 404),
+    );
 
-  it("fails closed when authentication or the ledger response is unavailable", async () => {
-    const transport = vi.fn(async () => ({ ok: false, status: 403, body: [] }));
-    expect(
-      await readPlayerWalletKco({
-        getToken: async () => null,
-        getUserId: () => "191",
-        transport,
-      }),
-    ).toBeNull();
-    expect(transport).not.toHaveBeenCalled();
-
-    expect(
-      await readPlayerWalletKco(
-        {
-          getToken: async () => "signed-token",
-          getUserId: () => "191",
-          transport,
-        },
-        "192",
-      ),
-    ).toBeNull();
-    expect(transport).not.toHaveBeenCalled();
-
-    expect(
-      await readPlayerWalletKco({
-        getToken: async () => "signed-token",
-        getUserId: () => "191",
-        transport,
-      }),
-    ).toBeNull();
+    expect(denied.status).toBe("unavailable");
+    expect(offline.status).toBe("unavailable");
+    expect(routeMissing.status).toBe("unavailable");
+    expect(denied.balanceKco).toBeNull();
+    expect(offline.balanceKco).toBeNull();
+    expect(playerWalletLabel(denied)).toBe("Balance unavailable");
   });
 });
