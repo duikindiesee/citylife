@@ -108,6 +108,7 @@ import {
   type WorldLayoutOperatorStatus,
 } from "./BuilderPanel";
 import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
+import { RaceMobileControls } from "./RaceMobileControls";
 import { BugReportPanel } from "./BugReportPanel";
 import "./colony.css";
 import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
@@ -1962,6 +1963,74 @@ export function ColonyApp() {
             which is that view's real layout owner. */}
         {!ui.firstPerson.active && <BuildStamp />}
       </div>
+      {/* Keep only the transient controls for a drive session already in progress. The legacy
+          Road Rally / Join Race entry points and rally branding stay retired; this shell exists
+          until the shared-road driving session replaces the old race runtime. */}
+      {ui.race.mode !== "idle" && (
+        <section
+          className="active-race-hud"
+          data-testid="active-race-hud"
+          data-race-mode={ui.race.mode}
+          aria-label="Active driving session"
+        >
+          <div className="active-race-hud__facts">
+            <strong>
+              {ui.race.mode === "countdown"
+                ? "Get ready"
+                : ui.race.mode === "finished"
+                  ? "Drive complete"
+                  : "Driving"}
+            </strong>
+            <span data-testid="active-race-time">
+              {ui.race.mode === "countdown"
+                ? `Starts in ${Math.ceil(ui.race.countdownMs / 1000)}`
+                : raceTime(ui.race.finishedMs ?? ui.race.timeMs)}
+            </span>
+            {ui.race.checkpoints > 0 && (
+              <span
+                className="active-race-hud__checkpoint"
+                aria-label={`Checkpoint ${ui.race.checkpoint} of ${ui.race.checkpoints}`}
+              >
+                CP {ui.race.checkpoint}/{ui.race.checkpoints}
+              </span>
+            )}
+            {ui.race.offTrack && (
+              <span className="active-race-hud__off-track">Off road</span>
+            )}
+            {controllerConnected && (
+              <span className="active-race-hud__optional">
+                Controller connected
+              </span>
+            )}
+            {ui.race.bestMs !== null && (
+              <span className="active-race-hud__optional">
+                Best {raceTime(ui.race.bestMs)}
+              </span>
+            )}
+          </div>
+          <div className="active-race-hud__actions">
+            <button
+              type="button"
+              aria-label="Restart driving session"
+              onClick={() => runtime.startRace()}
+            >
+              Restart
+            </button>
+            <button
+              type="button"
+              aria-label="Exit driving session"
+              onClick={() => runtime.exitRace()}
+            >
+              Exit
+            </button>
+          </div>
+        </section>
+      )}
+      <RaceMobileControls
+        race={ui.race}
+        runtime={runtime}
+        isTouch={touchCapable}
+      />
       <header className="topbar">
         <div className="brand">
           City<span>Life</span> <em>· Colony</em>

@@ -121,3 +121,68 @@ for (const viewport of [
       .toBe(true);
   });
 }
+
+test.describe("mobile active driving session", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test("shows only state-scoped session controls and routes touch input", async ({
+    page,
+  }) => {
+    test.setTimeout(180000);
+    await page.goto("/?skipauth=1");
+    await page.waitForFunction(
+      () => !!window.__colony?.busDepot && !!window.__colony?.busRoute,
+      null,
+      { timeout: 90000 },
+    );
+
+    await expect(page.getByTestId("active-race-hud")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Road Rally|Join Race/i })).toHaveCount(0);
+
+    const started = await page.evaluate(() => window.__colony.startRace());
+    expect(started).toBe(true);
+    const status = page.getByTestId("active-race-hud");
+    await expect(status).toBeVisible();
+    await expect(status).toHaveAttribute("data-race-mode", /countdown|running/);
+    await expect(status).toContainText(/Get ready|Driving/);
+    await expect(status.getByLabel(/Checkpoint \d+ of \d+/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Restart driving session" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Exit driving session" })).toBeVisible();
+
+    const controls = page.getByRole("group", { name: "Mobile driving controls" });
+    await expect(controls).toBeVisible();
+    await expect(controls.getByRole("button", { name: "Hold throttle" })).toBeVisible();
+    await page.evaluate(() => {
+      const runtime = window.__colony;
+      const original = runtime.setRaceKey.bind(runtime);
+      (window as any).__raceInputCalls = [];
+      runtime.setRaceKey = (key: string, down: boolean) => {
+        (window as any).__raceInputCalls.push([key, down]);
+        original(key, down);
+      };
+    });
+    const throttle = controls.getByRole("button", { name: "Hold throttle" });
+    await throttle.dispatchEvent("pointerdown", {
+      pointerId: 1,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    await throttle.dispatchEvent("pointerup", {
+      pointerId: 1,
+      pointerType: "touch",
+      isPrimary: true,
+    });
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__raceInputCalls))
+      .toContainEqual(["KeyW", true]);
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__raceInputCalls))
+      .toContainEqual(["KeyW", false]);
+
+    await page.getByRole("button", { name: "Restart driving session" }).click();
+    await expect(status).toHaveAttribute("data-race-mode", "countdown");
+    await page.getByRole("button", { name: "Exit driving session" }).click();
+    await expect(status).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Road Rally|Join Race/i })).toHaveCount(0);
+  });
+});

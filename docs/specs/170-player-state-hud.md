@@ -54,7 +54,7 @@ _You step off the bus into the evening street and the city is just… there. No 
 | 17    | Build stamp                                                      | `!firstPerson.active` (+FP variant)                                | keep — spec 167, deliberately tiny                           |
 | 18    | City HUD panel                                                   | `!builder && !worldView`                                           | Escape overlay ("City" tab)                                  |
 | 19-22 | Drive home / Choose your home / The Gamehouse / Gearbox Auto Hub | entitlement-gated                                                  | become world prompts — §5                                    |
-| 23    | Road Rally pill                                                  | `race.mode !== "idle"`                                             | keep — correct state-scoped HUD                              |
+| 23    | Active driving-session status                                    | `race.mode !== "idle"`                                             | keep only while a session is active; use generic driving copy |
 | 24    | `RaceMobileControls`                                             | race + touch                                                       | keep                                                         |
 | 25    | `FirstPersonPanel`                                               | `fp.active`                                                        | slim per §4                                                  |
 | 26    | `GaragePanel`                                                    | `ui.garage` non-null — **mount condition unverified**              | out of scope                                                 |
@@ -79,7 +79,7 @@ _You step off the bus into the evening street and the city is just… there. No 
 | **S3 Third person**            | default                                                                                               | clock chip + ≤5 topbar icons + rally card when at the rally point                                                                                                           |
 | **S4 First person on foot**    | `fp.active && fp.citizenId`                                                                           | **contextual prompt + at most one status chip.** Sprint meter appears **only when `fp.sprintCharge ≤ 20`** — the Roblox damaged-health-bar pattern. Joystick on touch only. |
 | **S4b Riding a bus**           | `fpRidingBusId !== null`                                                                              | next-stop chip + alight prompt + **the mini-map** — the one state where it earns persistence                                                                                |
-| **S5 Driving / Rally**         | `ui.race.mode !== "idle"`                                                                             | the race pill + `RaceMobileControls`; nothing else                                                                                                                          |
+| **S5 Active driving session**  | `ui.race.mode !== "idle"`                                                                             | generic session status/actions + `RaceMobileControls` on touch; nothing else                                     |
 | **S6 Interior overlays**       | `showroomOpen` / `gamehouseOpen` / `homeOpen` / `driveHomeOpen`, each ANDed with its live entitlement | the overlay's chrome + close affordance; suppress city HUD underneath                                                                                                       |
 
 ## 5. What becomes summoned
@@ -92,7 +92,7 @@ _You step off the bus into the evening street and the city is just… there. No 
 | 🗺 Map       | Survey Map, World View enter/exit, bus network map                      |
 | 🐞 Report    | Log Bug                                                                 |
 | ☰ Menu       | opens the Escape overlay                                                |
-| _contextual_ | exactly one: Join Race / Road Rally / Exit World View — empty otherwise |
+| _contextual_ | Exit World View only when active; empty otherwise                        |
 
 **Escape overlay:** City (the HUD-details stack + courier headline) · Account (Ask Kooker, Change password, Log out) · Extras (Radio, snapshot, Roadmap, Help) · Operator (role-gated: City Builder, Border Control, layout revisions). Escape's existing priority order — race → pointer lock → first person — is preserved.
 
@@ -126,7 +126,7 @@ The implementation is in isolated branch `codex/p0-hud-pause-map-20260925`, base
 1. Removed the player-facing pause/speed controls and their Space shortcut; runtime controls remain available for tests and authoring.
 2. Replaced the old topbar account links with the ☰ menu containing Profile, Controls, Friends, and More. The menu explicitly says online multiplayer is not connected and does not list simulated residents as friends.
 3. Added the topbar Map shortcut and made the bus map open on demand. The open map is pointer-transparent except for its close control so driving input reaches the game.
-4. Removed coarse simulated-resident location and legacy rally-as-friend panels, and removed the old Road Rally / Join Race player controls.
+4. Removed coarse simulated-resident location and legacy rally-as-friend panels, and removed the old Road Rally / Join Race entry controls. An already-active drive session retains only a generic transient status/actions and touch controls until the shared-road driving session replaces the legacy race runtime.
 5. Removed the `hud-player-state-v1` entitlement fetch. The journey/shop entitlements remain separate.
 6. Kept World View and Survey Map available to player sessions, kept City Builder role-gated, and compressed their labels to accessible icon controls on narrow screens.
 7. Added desktop/mobile HUD browser coverage and adapted map and journey tests to the on-demand map behavior.
@@ -143,7 +143,7 @@ The implementation is in isolated branch `codex/p0-hud-pause-map-20260925`, base
 3. Map is hidden until requested, then shows roads and buses, uses only the authenticated local player's exact position when available, and lets driving controls receive pointer input.
 4. Wallet remains self-scoped and visible as a compact account chip; a signed-out session renders no balance.
 5. Menu exposes Profile, Controls, Friends and More. It explicitly reports multiplayer presence as unavailable and does not represent simulated residents as online friends.
-6. Legacy pause/speed and Road Rally player controls are absent; runtime/debug simulation APIs remain for test and authoring use.
+6. Legacy pause/speed and Road Rally / Join Race entry controls are absent; an active drive session keeps its transient status/checkpoint/restart/exit controls and mobile steering until the shared-road driving session replaces the legacy race runtime. Runtime/debug simulation APIs remain for test and authoring use.
 7. `transitSolDriver` "ignores sim speed" and the sol-clock suites stay green.
 8. Screenshots at 1280×800 and 390×844, before/after, **counting visible persistent elements.** Deployed interface proof is still required before the overall HUD goal is complete.
 
