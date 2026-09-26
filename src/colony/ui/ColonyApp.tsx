@@ -2092,7 +2092,9 @@ export function ColonyApp() {
         runtime={runtime}
         walletLabel={walletAccountKey === null ? "City view" : playerWalletText}
         presenceReadout={presenceReadout}
-        playerViewActive={!builderActive && !worldViewActive}
+        playerLocationAuthorized={
+          walletAccountKey !== null && !builderActive && !worldViewActive
+        }
         open={mapOpen}
         onClose={() => setMapOpen(false)}
       />

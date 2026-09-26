@@ -14,8 +14,8 @@ type BusNetworkMiniMapProps = {
   /** Server-authenticated wallet state, or City view for an operator. */
   walletLabel: string;
   presenceReadout: PresenceReadout | null;
-  /** False while the camera is in the aerial builder/world view, where a prior capsule pose is stale. */
-  playerViewActive: boolean;
+  /** True only for an authenticated player in the interactive view; hides personal position on logout/preview. */
+  playerLocationAuthorized: boolean;
   /** The map is summoned on demand so it does not cover the driving view. */
   open: boolean;
   onClose: () => void;
@@ -32,7 +32,7 @@ function OpenBusNetworkMiniMap({
   runtime,
   walletLabel,
   presenceReadout,
-  playerViewActive,
+  playerLocationAuthorized,
   onClose,
 }: Omit<BusNetworkMiniMapProps, "open">) {
   // The HUD can be memoized independently of the scene. Subscribe to the runtime's 200ms
@@ -54,7 +54,7 @@ function OpenBusNetworkMiniMap({
   // live car position while seated. Fall back only to this viewer's authorized exact citizen fix;
   // never infer a current position from a spawn/home anchor or use anyone else's coarse marker.
   const player = resolveLocalPlayerMapPosition({
-    playerViewActive,
+    playerLocationAuthorized,
     drivePose: runtime.getOwnedDrivePose(),
     cameraCell: runtime.fpCameraCell,
     exactLocalPresence:

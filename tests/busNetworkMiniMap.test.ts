@@ -30,6 +30,7 @@ describe("local player map position", () => {
   it("uses the live owned-car pose before the first-person camera or roster pose", () => {
     expect(
       resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
         drivePose: { x: 24, y: 31 },
         cameraCell: { x: 23, y: 30 },
         exactLocalPresence: { x: 22, y: 29 },
@@ -40,6 +41,7 @@ describe("local player map position", () => {
   it("uses the live camera capsule for an on-foot player without a citizen-roster match", () => {
     expect(
       resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
         cameraCell: { x: 14.25, y: 18.5 },
         exactLocalPresence: null,
       }),
@@ -50,6 +52,13 @@ describe("local player map position", () => {
     expect(resolveLocalPlayerMapPosition({})).toBeNull();
     expect(
       resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: false,
+        cameraCell: { x: 14.25, y: 18.5 },
+      }),
+    ).toBeNull();
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
         drivePose: { x: Number.NaN, y: 4 },
         cameraCell: null,
         exactLocalPresence: null,
@@ -57,10 +66,10 @@ describe("local player map position", () => {
     ).toBeNull();
   });
 
-  it("does not reuse a stale first-person pose in builder or aerial view", () => {
+  it("does not show personal location in builder or aerial view", () => {
     expect(
       resolveLocalPlayerMapPosition({
-        playerViewActive: false,
+        playerLocationAuthorized: false,
         drivePose: { x: 24, y: 31 },
         cameraCell: { x: 23, y: 30 },
         exactLocalPresence: { x: 22, y: 29 },

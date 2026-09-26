@@ -33,12 +33,15 @@ export interface MapGridPosition {
 /** Resolve the viewer's own map point from live local movement, then their own exact presence.
  * Coarse or non-local presence must never become the player's marker. */
 export function resolveLocalPlayerMapPosition(input: {
-  playerViewActive?: boolean;
+  /** True only for an authenticated player in the interactive player view. */
+  playerLocationAuthorized?: boolean;
   drivePose?: MapGridPosition | null;
   cameraCell?: MapGridPosition | null;
   exactLocalPresence?: MapGridPosition | null;
 }): MapGridPosition | null {
-  if (input.playerViewActive === false) return null;
+  // Fail closed: local camera state is not a player's private marker while signed out,
+  // even though the development preview has a perfectly valid camera cell.
+  if (input.playerLocationAuthorized !== true) return null;
   const valid = (point: MapGridPosition | null | undefined) =>
     point && Number.isFinite(point.x) && Number.isFinite(point.y)
       ? point
