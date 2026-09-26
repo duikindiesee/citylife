@@ -68,7 +68,8 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
     await expect(page.getByTestId("showroom-card-name")).toContainText("X19");
   };
   await selectX19();
-  await expect(acquire).toHaveText("Need ₭200 more");
+  await expect(page.getByTestId("showroom-affordability")).toHaveText("Need ₭200 more");
+  await expect(acquire).toHaveText("Insufficient funds");
   await expect(acquire).toHaveAttribute("data-acquire-state","insufficient_funds");
   await expect(acquire).toBeDisabled();
   expect(vehicleRequests).toHaveLength(0);expect(car).toBe(false);expect(balance).toBe(750);
