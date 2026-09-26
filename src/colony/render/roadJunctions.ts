@@ -10,7 +10,7 @@
 // must reach to clear every other arm's carriageway. Pure math, node-testable; the cap
 // builder (junctionCap.ts) turns zones into draped geometry and the React layer draws it.
 import type { RoadWay } from "./roadRibbon";
-import { chaikin, densify } from "./roadRibbon";
+import { roadCentreLine } from "./roadRibbon";
 
 export interface JunctionArm {
   /** Unit heading OUT of the junction (grid coords). Traffic approaches along -u. */
@@ -112,7 +112,7 @@ interface JunctionEvent {
 /** Find the junction zones of a road network from way-pair centre-line events. */
 export function findJunctionZones(ways: RoadWay[]): JunctionZone[] {
   const paths = ways.map((w) =>
-    w.path.length >= 2 ? densify(chaikin(w.path, 2), 1.5) : null,
+    w.path.length >= 2 ? roadCentreLine(w.path, 1.5) : null,
   );
   const events: JunctionEvent[] = [];
   const addEvent = (x: number, y: number, wi: number, wj: number) => {
@@ -390,9 +390,7 @@ export function junctionFurniture(
   };
   // Global carriageway test over the whole network (only when ways given).
   const smoothed = ways
-    ? ways.map((w) =>
-        w.path.length >= 2 ? densify(chaikin(w.path, 2), 1.5) : null,
-      )
+    ? ways.map((w) => (w.path.length >= 2 ? roadCentreLine(w.path, 1.5) : null))
     : null;
   const onAnyRoad = (px: number, py: number): boolean => {
     if (!smoothed || !ways) return false;

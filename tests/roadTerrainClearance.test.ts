@@ -76,6 +76,41 @@ function protrusions(seed: number): Violation[] {
   const level = computeTerrainLeveling(rt.sim.state, cover, new Map());
   // Inverse of wx/wz, back to fractional grid coordinates.
   const gridOf = (world: number) => world / 4 + N / 2;
+  // The GRADED ground the terrain mesh actually renders at a FRACTIONAL position.
+  //
+  // buildChunkedTerrain (terrainChunks.ts) emits ONE VERTEX PER CELL at that cell's leveled
+  // height and indexes each quad as (a,c,b),(b,c,e) — so the visible ground between cell centres
+  // is the PLANE of the triangle the sample falls in, with the quad split on the diagonal from
+  // (x+1,y) to (x,y+1). Resolving a fractional sample with Math.round() instead reads the nearest
+  // cell centre, which on a slope over-reports the ground by up to half the cell-to-cell delta:
+  // seed 4242's ways cross ground falling ~0.75 m per cell, where that snap alone invents a
+  // 0.097 m "protrusion" at a point the mesh renders 0.188 m clear. terrainLeveling.ts documents
+  // exactly this trap (leveledWorldY vs leveledWorldYAt) — it is the same mis-sampling that made
+  // the road feel bumpy to walk over. Interpolate the way the mesh does, so this measures rendered
+  // geometry rather than the sampler.
+  const cellY = (x: number, y: number) =>
+    Math.max(
+      0,
+      leveledWorldY(
+        terrain,
+        level,
+        Math.max(0, Math.min(N - 1, x)),
+        Math.max(0, Math.min(N - 1, y)),
+      ),
+    );
+  const groundAt = (gx: number, gy: number): number => {
+    const x0 = Math.floor(gx),
+      y0 = Math.floor(gy);
+    const fx = gx - x0,
+      fy = gy - y0;
+    const h00 = cellY(x0, y0),
+      h10 = cellY(x0 + 1, y0),
+      h01 = cellY(x0, y0 + 1),
+      h11 = cellY(x0 + 1, y0 + 1);
+    return fx + fy <= 1
+      ? h00 + fx * (h10 - h00) + fy * (h01 - h00)
+      : h11 + (1 - fx) * (h01 - h11) + (1 - fy) * (h10 - h11);
+  };
   const out: Violation[] = [];
   for (const t of roadTriangles(group)) {
     const [a, b, c] = t as [number[], number[], number[]];
@@ -94,11 +129,7 @@ function protrusions(seed: number): Violation[] {
     for (const s of samples) {
       const gx = gridOf(s[0]!);
       const gy = gridOf(s[2]!);
-      // The rendered mesh is per-cell, so resolve the graded height at the cell under the sample.
-      const groundY = Math.max(
-        0,
-        leveledWorldY(terrain, level, Math.round(gx), Math.round(gy)),
-      );
+      const groundY = groundAt(gx, gy);
       const protrusion = groundY - s[1]!;
       if (protrusion > CLEARANCE_EPSILON_M)
         out.push({ seed, gx, gy, surfaceY: s[1]!, groundY, protrusion });
