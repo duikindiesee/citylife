@@ -82,14 +82,15 @@ The server `GET /api/v1/citylife/players/me/spawn` contract supplies a token-bou
 and garage/plot/neighbourhood anchor without coordinates. Until the client has a verified
 world mapping for a given anchor, it must not render that destination as the current-position
 marker. After review exposed that a signed-out local preview could show its camera as a personal
-marker, the resolver was changed to require an explicit authenticated-player authorization. The
-mounted regression now verifies signed-out suppression, an opaque mocked player session, map
-movement, and suppression again after the session is removed. Latest local validation: 8 focused
-minimap unit tests, `npm run typecheck`, `npm run build`, `git diff --check`, and mounted Chromium
-map test (1/1) passed on branch `codex/authenticated-map-position-20260926`, based on
-`b4afe825c7ed888221bff1fbe925a5ffc9ceac67`. All browser credentials and API state are local
-fixtures; this is not deployed evidence. Real account-switch/logout behavior and live deployed
-map verification remain outstanding.
+marker, the resolver was changed to require explicit authenticated-player authorization and to
+bind camera/presence fixes to the account's own citizen identity. The mounted regression verifies
+signed-out suppression, an opaque mocked player session tied to a deterministic seeded citizen,
+map movement, and suppression again after the session is removed. After this identity correction,
+commit `d29d08bd0cc681c571fdc107317f0d99e1351f46` passed 10 minimap unit tests, `npm run typecheck`,
+`npm run build`, and the mounted Chromium map test (1/1). Inspectable day/night screenshots are in
+`test-results/busNetworkMiniMap-player-c-d5ade-tracks-the-player-and-buses-chromium/`.
+All browser credentials and API state are local fixtures; this is not deployed evidence. Real
+account-switch/logout behavior and live deployed map verification remain outstanding.
 
 The world renderer now uses the owned catalog vehicle's actual showroom GLB instead of
 giving every model the same procedural block body. It retains loader ownership of cached
