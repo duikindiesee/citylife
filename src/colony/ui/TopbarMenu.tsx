@@ -132,10 +132,22 @@ export function TopbarMenu({
                 <section aria-label="Controls">
                   <h3>Controls</h3>
                   <dl className="player-pause-menu__controls">
-                    <div><dt>W A S D / arrows</dt><dd>Move</dd></div>
-                    <div><dt>Shift</dt><dd>Sprint</dd></div>
-                    <div><dt>E</dt><dd>Use the nearby action</dd></div>
-                    <div><dt>1 / 2 / 3</dt><dd>Change camera view</dd></div>
+                    <div>
+                      <dt>W A S D / arrows</dt>
+                      <dd>Move</dd>
+                    </div>
+                    <div>
+                      <dt>Shift</dt>
+                      <dd>Sprint</dd>
+                    </div>
+                    <div>
+                      <dt>E</dt>
+                      <dd>Use the nearby action</dd>
+                    </div>
+                    <div>
+                      <dt>1 / 2 / 3</dt>
+                      <dd>Change camera view</dd>
+                    </div>
                   </dl>
                 </section>
               )}

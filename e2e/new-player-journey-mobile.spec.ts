@@ -229,9 +229,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   await expect(cityMap).toBeHidden();
   await touchTap(page, '[data-testid="player-map-shortcut"]');
   await expect(cityMap).toHaveAttribute("data-expanded", "true");
-  await expect(
-    page.getByRole("button", { name: "Close map" }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close map" })).toBeVisible();
   const expandedMap = await cityMap.boundingBox();
   expect(expandedMap).not.toBeNull();
   const playerMarker = page.getByTestId("city-map-player-marker");

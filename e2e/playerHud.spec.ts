@@ -14,7 +14,10 @@ for (const viewport of [
     page,
   }, testInfo) => {
     test.setTimeout(180000);
-    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.setViewportSize({
+      width: viewport.width,
+      height: viewport.height,
+    });
     const hudFlagRequests: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("hud-player-state-v1"))
@@ -29,9 +32,15 @@ for (const viewport of [
 
     await expect(page.locator(".geo-readout")).toHaveCount(0);
     await expect(page.locator(".rally-social-read")).toHaveCount(0);
-    await expect(page.locator(".first-person-panel__friend-banner")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Road Rally/i })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Join Race/i })).toHaveCount(0);
+    await expect(
+      page.locator(".first-person-panel__friend-banner"),
+    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Road Rally/i })).toHaveCount(
+      0,
+    );
+    await expect(page.getByRole("button", { name: /Join Race/i })).toHaveCount(
+      0,
+    );
     await expect(page.getByRole("button", { name: "Open map" })).toBeVisible();
     const solClock = page.getByTestId("player-sol-clock");
     await expect(solClock).toBeVisible();
@@ -42,7 +51,9 @@ for (const viewport of [
       expect(clockBox!.x).toBeGreaterThanOrEqual(0);
       expect(clockBox!.y).toBeGreaterThanOrEqual(0);
       expect(clockBox!.x + clockBox!.width).toBeLessThanOrEqual(viewport.width);
-      expect(clockBox!.y + clockBox!.height).toBeLessThanOrEqual(viewport.height);
+      expect(clockBox!.y + clockBox!.height).toBeLessThanOrEqual(
+        viewport.height,
+      );
       await expect(
         page.getByRole("button", { name: "Log a reproducible bug" }),
       ).toHaveCount(0);
@@ -123,7 +134,11 @@ for (const viewport of [
 }
 
 test.describe("mobile active driving session", () => {
-  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  test.use({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
 
   test("shows only state-scoped session controls and routes touch input", async ({
     page,
@@ -137,7 +152,9 @@ test.describe("mobile active driving session", () => {
     );
 
     await expect(page.getByTestId("active-race-hud")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Road Rally|Join Race/i })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: /Road Rally|Join Race/i }),
+    ).toHaveCount(0);
 
     const started = await page.evaluate(() => window.__colony.startRace());
     expect(started).toBe(true);
@@ -146,12 +163,20 @@ test.describe("mobile active driving session", () => {
     await expect(status).toHaveAttribute("data-race-mode", /countdown|running/);
     await expect(status).toContainText(/Get ready|Driving/);
     await expect(status.getByLabel(/Checkpoint \d+ of \d+/)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Restart driving session" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Exit driving session" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Restart driving session" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Exit driving session" }),
+    ).toBeVisible();
 
-    const controls = page.getByRole("group", { name: "Mobile driving controls" });
+    const controls = page.getByRole("group", {
+      name: "Mobile driving controls",
+    });
     await expect(controls).toBeVisible();
-    await expect(controls.getByRole("button", { name: "Hold throttle" })).toBeVisible();
+    await expect(
+      controls.getByRole("button", { name: "Hold throttle" }),
+    ).toBeVisible();
     await page.evaluate(() => {
       const runtime = window.__colony;
       const original = runtime.setRaceKey.bind(runtime);
@@ -183,6 +208,8 @@ test.describe("mobile active driving session", () => {
     await expect(status).toHaveAttribute("data-race-mode", "countdown");
     await page.getByRole("button", { name: "Exit driving session" }).click();
     await expect(status).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Road Rally|Join Race/i })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: /Road Rally|Join Race/i }),
+    ).toHaveCount(0);
   });
 });
