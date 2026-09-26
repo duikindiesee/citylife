@@ -392,7 +392,10 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   expect(switchedInput).toEqual({ seated: true, throttle: false, right: true });
   await page.keyboard.up("KeyW");
   await page.keyboard.up("KeyD");
-  await page.reload();
+  // Re-enter after the owner swap as soon as the document is usable. Waiting for the full
+  // `load` event can hang on optional third-party/service requests; the following assertion
+  // still waits for the runtime to hydrate the exact server-owned vehicle after reload.
+  await page.reload({ waitUntil: "domcontentloaded" });
   await expect
     .poll(
       () =>

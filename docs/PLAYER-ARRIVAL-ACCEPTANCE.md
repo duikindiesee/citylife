@@ -92,6 +92,19 @@ commit `d29d08bd0cc681c571fdc107317f0d99e1351f46` passed 10 minimap unit tests, 
 All browser credentials and API state are local fixtures; this is not deployed evidence. Real
 account-switch/logout behavior and live deployed map verification remain outstanding.
 
+### 2026-09-26 revalidation
+
+The deployed CityLife `v0.58.0` at merge `f6432ca` shows the wallet control and five-bus
+map, but the expanded map still says `Position unavailable` and renders no self marker.
+This is a live acceptance failure, not evidence that the local resolver is deployed. On the
+isolated map branch, `npm run typecheck`, the focused minimap suite (10/10), the mounted map
+test (1/1), and the returning-owner map-open driving test (1/1) passed. That last browser test
+uses mocked account/service state; it verifies the throttle hit target, keyboard movement,
+marker following, braking, touch throttle with the map open, and exact owned-car hydration
+after reload. Its final reload now waits for `domcontentloaded` instead of optional network
+requests completing the full `load` event; the exact-car post-reload assertion remains.
+None of these fixture results proves real-account identity mapping or deployed position.
+
 The world renderer now uses the owned catalog vehicle's actual showroom GLB instead of
 giving every model the same procedural block body. It retains loader ownership of cached
 geometry/materials, centres the asset on the runtime anchor and seats its bounds on the
