@@ -216,12 +216,20 @@ function driveCar(state: RaceState, input: RaceInput, dt: number): void {
   const kind = cell
     ? (state.track.roadKinds[`${cell.x},${cell.y}`] ?? "street")
     : "street";
-  const onTrack = before.distance <= 0.9;
+  // Spec 169 §3.2 — an authored signature route carries its racing character on the PROFILE; a BFS
+  // rally track has none, and absence means exactly the legacy numbers below, digit for digit.
+  const profile = state.track.racingProfile;
+  // The legacy 0.9 threshold is the width-1 case: on a 4-cell-wide signature carriageway you are
+  // still on asphalt at 1.4 cells from the centreline, and calling that off-track was measured to
+  // punish correct driving (spec 169 §3.2, width-awareness).
+  const halfWidth = profile?.halfWidthCells ?? 0.9;
+  const onTrack = before.distance <= halfWidth;
   // CAR.STATS.DRIVE.1 — the road kind still sets the ceiling; the car's top-speed stat scales it, so a
   // blown motor is faster everywhere rather than only on the avenues.
   const stats = state.stats ?? STOCK_STATS;
   const maxForward =
-    (kind === "avenue" ? 8.8 : kind === "street" ? 7.2 : 4.8) *
+    (profile?.topSpeedCellsPerSec ??
+      (kind === "avenue" ? 8.8 : kind === "street" ? 7.2 : 4.8)) *
     statScale(stats.topSpeed, TOP_SPEED_SPREAD) *
     (onTrack ? 1 : 0.48);
   const maxReverse = onTrack ? -2.8 : -1.4;
@@ -244,20 +252,32 @@ function driveCar(state: RaceState, input: RaceInput, dt: number): void {
     const handbrake = drive.handbrake ? 1.45 : 1;
     // Grip is cornering: slicks and a ducktail turn the car harder at the same speed. This is the stat
     // the operator's ducktail complaint was actually about — it had no effect whatsoever.
-    car.heading +=
-      drive.steer *
-      dir *
+    const yawRate =
       (2.25 + Math.min(5, Math.abs(car.speed)) * 0.12) *
       statScale(stats.grip, GRIP_SPREAD) *
-      handbrake *
-      dt;
+      handbrake;
+    // Spec 169 §3.2 — the lateral-grip cap, ONLY under a racing profile: ω ≤ A_LAT·gripScale / |v|.
+    // This is what makes a corner PRICE speed. Measured on the base formula, the flat-out turn
+    // radius at top speed is 3.1 cells — no corner on any road ever forces a lift. Under the cap the
+    // flat-out radius at an 11.5 ceiling is v²/A_LAT ≈ 9.4 cells stock, and braking to 7 cells/s
+    // tightens it to 3.5 — so braking and grip now buy corner speed, the operator's stated critical.
+    // Off-profile the cap does not exist and the base formula is bit-identical.
+    const capped = profile
+      ? Math.min(
+          yawRate,
+          (profile.lateralGripCapCellsPerSec2 *
+            statScale(stats.grip, GRIP_SPREAD)) /
+            Math.max(Math.abs(car.speed), 0.001),
+        )
+      : yawRate;
+    car.heading += drive.steer * dir * capped * dt;
   }
 
   car.x += Math.cos(car.heading) * car.speed * dt;
   car.y += Math.sin(car.heading) * car.speed * dt;
 
   const after = nearestTrackPoint(state.track, car.x, car.y);
-  state.offTrack = after.distance > 0.9;
+  state.offTrack = after.distance > halfWidth;
   if (state.offTrack) {
     const pull = Math.min(0.45, after.distance * 0.08 + dt * 0.35);
     car.x += (after.x - car.x) * pull;
