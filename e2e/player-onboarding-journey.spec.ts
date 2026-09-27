@@ -6,7 +6,7 @@ import {starterWorldFixture,installVehicleOffersFixture} from "./starterWorldFix
 test("first move-in starts at Gearbox and free-roam destinations wait for server RESIDENT truth",async({page},info)=>{
   // Three world loads plus two showroom visits and screenshot capture on software WebGL.
   // Each individual arrival still has its own 90-second assertion budget.
-  test.setTimeout(420000);
+  test.setTimeout(600000);
   const fixture=await starterWorldFixture(),manifest=JSON.parse(fixture).manifest;
   const plot=manifest.plots.find((p:{plotId:string})=>p.plotId==="wood1_lot_1");
   let balance=750,car=false,land=false,script:string|null=null,resident=false;
@@ -37,7 +37,7 @@ test("first move-in starts at Gearbox and free-roam destinations wait for server
     return route.fulfill(json({owned:!!script,status:land?"OWNED":null,
       plotOwned:land,requiresBuild:land&&!script,plotId:land?plot.plotId:null,frameId:land?plot.frameId:null,
       neighbourhoodKey:plot.geometry.neighbourhoodKey,layoutRevision:manifest.layoutRevision,priceKco:350,
-      onboardingState:script?(resident?"RESIDENT":"OWNED"):"NONE"}));
+      onboardingState:script?(resident?"RESIDENT":"CAR_OWNED"):"NONE"}));
   });
   await page.route("**/players/me/home/available-plots",route=>route.fulfill(json(land?[]:[{...plot,priceKco:350}])));
   await page.route("**/players/me/home/purchase",route=>{
@@ -196,8 +196,16 @@ test("first move-in starts at Gearbox and free-roam destinations wait for server
   await page.reload();
   const returningHome={...plot.geometry.spawn,car:"showroom:karoo-x19-targa",built:[plot.plotId],firstMoveInRequired:false};
   await expect.poll(arrival,{timeout:90000}).toEqual(returningHome);
+  await page.waitForFunction(()=>{
+    let found=false;
+    (window as any).__r3fScene?.traverse((object:any)=>{if(object.name==="foliage")found=true;});
+    return found;
+  },undefined,{timeout:60000});
+  await page.waitForTimeout(500);
   await page.getByTestId("player-map-shortcut").click();
   await expect(page.getByTestId("city-map-mode")).toHaveText("FREE ROAM");
   await expect(page.getByTestId("city-map-destination-alice-shop")).toBeVisible();
+  await expect(page.locator('[data-build-action="open-drive-home"]')).toHaveCount(0);
+  await expect(page.locator('[data-build-action="open-home"]')).toHaveCount(0);
   await page.screenshot({path:info.outputPath("resident-free-roam-map.png")});
 });

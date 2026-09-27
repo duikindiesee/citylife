@@ -183,6 +183,10 @@ runtime now distinguishes OWNED from RESIDENT for the initial spawn and map stat
 first-move-in flow is still incomplete until the client, server arrival contract, and
 runtime agree on an authenticated physical-arrival proof.
 
+User Service draft PR #249, stacked on catalogue PR #248, preserves `CAR_OWNED` when a
+published house is completed. This prevents construction alone from presenting the player
+as a returning resident. Its MySQL regression and deploy remain separate gates.
+
 The map shows loaded, server-backed destinations: Gearbox's surveyed road approach and the
 current identity's published home driveway target. During first move-in it labels the stage
 "First move-in · follow your home" and omits the Games Studio / Alice Shop. Once the server

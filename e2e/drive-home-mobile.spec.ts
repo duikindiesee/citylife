@@ -1,14 +1,9 @@
 import { test, expect, devices, type Page, type Route } from "@playwright/test";
 import { installStarterWorldFixture, starterWorldFixture } from "./starterWorldFixture";
 
-// PLAYER.HOME.1D.S2 — prove the dark, server-truth drive-home + home-garage step on a representative
-// touch/mobile viewport, driven through the REAL authenticated bootstrap. We seed an authenticated
-// (non-null) CITYLIFE_PLAYER session into sessionStorage before boot (NOT the DEV skip-auth null-operator
-// bypass) and stub the token-derived endpoints to drive: feature-OFF/unavailable legacy fallback, the
-// mobile touch driving controls + live route guidance + route recovery, the bounded arrival check-in that
-// is idempotent under a double-tap (exactly one POST → one RESIDENT transition), convergence on the server
-// RESIDENT truth, the home-garage portal that opens only on the server-confirmed unlock, and a
-// relogin/second-device boot that converges on RESIDENT without re-driving.
+// PLAYER.HOME.1D.S2 — verify mobile owned-car/map presentation for first move-in and
+// returning residency through authenticated fixture truth. Physical arrival and its
+// server-authoritative check remain a separate integration gate; this fixture never posts one.
 //
 // The whole step is gated on the SERVER new-player-journey entitlement alone (no build flag), which each
 // test stubs per-case, so the dev server is a plain build — exactly what hosted CI runs — and both the ON
@@ -59,19 +54,6 @@ async function touchTap(page: Page, selector: string): Promise<void> {
     `${selector} must be the top-most element at its centre (reachable by touch)`,
   ).toBe(true);
   await page.touchscreen.tap(hit.cx, hit.cy);
-}
-
-/** Resolve the hit-tested centre of a control once, so a driving loop can tap it many times fast without
- *  re-scrolling/re-evaluating each press. */
-async function centreOf(
-  page: Page,
-  selector: string,
-): Promise<{ x: number; y: number }> {
-  return page.evaluate((sel) => {
-    const t = document.querySelector(sel)!;
-    const r = t.getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-  }, selector);
 }
 
 /** An opaque (NOT real-JWT) authenticated CITYLIFE_PLAYER session — the entitlement endpoint is stubbed so
@@ -146,7 +128,7 @@ async function routeAll(page: Page, s: DriveState): Promise<void> {
         frameId: plot.frameId,
         priceKco: 350,
         layoutRevision: manifest.layoutRevision,
-        onboardingState: resident ? "RESIDENT" : "OWNED",
+        onboardingState: resident ? "RESIDENT" : "CAR_OWNED",
       }),
     });
   });
@@ -175,37 +157,6 @@ async function bootAs(
   await page.waitForSelector(READY_MARKER, { timeout: READY_TIMEOUT });
 }
 
-/** Follow the live server-derived guidance by touch: read the heading, tap the matching D-pad control, and
- *  repeat until the guidance reports arrival. Proves the mobile vehicle controls AND that guidance
- *  recomputes purely from position (route recovery) — no stored waypoint. Returns the tap count. */
-async function driveToHome(page: Page): Promise<number> {
-  const dpad = {
-    N: await centreOf(page, '[data-testid="drive-up"]'),
-    S: await centreOf(page, '[data-testid="drive-down"]'),
-    E: await centreOf(page, '[data-testid="drive-right"]'),
-    W: await centreOf(page, '[data-testid="drive-left"]'),
-  };
-  const guidance = page.locator('[data-testid="drive-home-guidance"]');
-  let taps = 0;
-  for (let i = 0; i < 400; i += 1) {
-    if ((await guidance.getAttribute("data-arrived")) === "true") break;
-    const heading = (await guidance.getAttribute("data-heading")) ?? "";
-    const axis = heading.includes("N")
-      ? "N"
-      : heading.includes("S")
-        ? "S"
-        : heading.includes("E")
-          ? "E"
-          : heading.includes("W")
-            ? "W"
-            : null;
-    if (!axis) break;
-    await page.touchscreen.tap(dpad[axis].x, dpad[axis].y);
-    taps += 1;
-  }
-  return taps;
-}
-
 test("HOME.1D.S2: feature-OFF AND flag-unavailable both fail closed (legacy world play preserved)", async ({
   page,
 }) => {
@@ -229,7 +180,7 @@ test("HOME.1D.S2: feature-OFF AND flag-unavailable both fail closed (legacy worl
   await expect(page.locator(OVERLAY)).toHaveCount(0);
 });
 
-test("HOME.1D.S2: mobile drive to owned home, idempotent bounded arrival, RESIDENT convergence, garage portal", async ({
+test("HOME.1D.S2: mobile first move-in uses the owned car and map, without the legacy cursor", async ({
   page,
 }) => {
   test.setTimeout(330_000);
@@ -240,55 +191,17 @@ test("HOME.1D.S2: mobile drive to owned home, idempotent bounded arrival, RESIDE
   };
   await bootAs(page, "demo-user", state);
 
-  await expect(page.locator(ENTRY)).toBeVisible({ timeout: READY_TIMEOUT });
-  await touchTap(page, ENTRY);
-  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: ASSERT_TIMEOUT });
-
-  // The destination is server-derived and the arrival control starts 'far' (cannot submit until inside).
-  const arrive = page.locator('[data-testid="drive-home-arrive"]');
-  await expect(arrive).toHaveAttribute("data-arrival-state", "far");
-
-  await page.screenshot({
-    path: "test-results/home1d-s2-guidance.png",
-    fullPage: false,
-  });
-
-  // Drive by touch, following the live guidance (proves mobile controls + route recovery).
-  const taps = await driveToHome(page);
-  expect(taps).toBeGreaterThan(0);
-  await expect(
-    page.locator('[data-testid="drive-home-guidance"]'),
-  ).toHaveAttribute("data-arrived", "true", { timeout: ASSERT_TIMEOUT });
-  await expect(arrive).toHaveAttribute("data-arrival-state", "ready");
-
-  // Double-tap the arrival control: one logical arrival, never two (bounded evidence + idempotency key).
-  await touchTap(page, '[data-testid="drive-home-arrive"]');
-  await touchTap(page, '[data-testid="drive-home-arrive"]').catch(() => {
-    /* the button flips to a disabled pending/confirmed state — a second tap is a no-op */
-  });
-
-  // Convergence on the server RESIDENT truth → the home-garage portal appears, unlocked by the server.
-  await expect(page.locator('[data-testid="drive-home-resident"]')).toBeVisible(
-    {
-      timeout: ASSERT_TIMEOUT,
-    },
-  );
-  expect(state.arrivalCount.n).toBe(1); // the double-tap fired ONE POST
-  const portal = page.locator('[data-testid="home-garage-portal"]');
-  await expect(portal).toHaveAttribute("data-garage-unlocked", "true");
-
-  await touchTap(page, '[data-testid="home-garage-portal"]');
-  await expect(page.locator('[data-testid="home-garage-open"]')).toBeVisible({
-    timeout: ASSERT_TIMEOUT,
-  });
-
-  await page.screenshot({
-    path: "test-results/home1d-s2-resident-garage.png",
-    fullPage: false,
-  });
+  await expect(page.locator(ENTRY)).toHaveCount(0, { timeout: READY_TIMEOUT });
+  await expect(page.locator(OVERLAY)).toHaveCount(0);
+  await expect(page.getByTestId("owned-car-controls")).toBeVisible({ timeout: READY_TIMEOUT });
+  await touchTap(page, '[data-testid="player-map-shortcut"]');
+  await expect(page.getByTestId("city-map-mode")).toContainText("FIRST MOVE-IN");
+  await expect(page.getByTestId("city-map-destination-home")).toBeVisible();
+  await expect(page.getByTestId("city-map-destination-gearbox")).toBeVisible();
+  expect(state.arrivalCount.n).toBe(0);
 });
 
-test("HOME.1D.S2: relogin / second-device boot converges on RESIDENT without re-driving", async ({
+test("HOME.1D.S2: relogin / second-device boot shows resident free roam without the legacy cursor", async ({
   page,
 }) => {
   test.setTimeout(300_000);
@@ -301,20 +214,10 @@ test("HOME.1D.S2: relogin / second-device boot converges on RESIDENT without re-
     arrivalCount: { n: 0 },
   };
   await bootAs(page, "demo-user", state);
-  await expect(page.locator(ENTRY)).toBeVisible({ timeout: READY_TIMEOUT });
-  await touchTap(page, ENTRY);
-  await expect(page.locator(OVERLAY)).toBeVisible({ timeout: ASSERT_TIMEOUT });
-
-  await expect(page.locator('[data-testid="drive-home-resident"]')).toBeVisible(
-    {
-      timeout: ASSERT_TIMEOUT,
-    },
-  );
-  await expect(
-    page.locator('[data-testid="drive-home-arrive"]'),
-  ).toHaveAttribute("data-arrival-state", "confirmed");
-  await expect(
-    page.locator('[data-testid="home-garage-portal"]'),
-  ).toHaveAttribute("data-garage-unlocked", "true");
-  expect(state.arrivalCount.n).toBe(0); // convergence is a pure read of server truth — no re-arrival
+  await expect(page.locator(ENTRY)).toHaveCount(0, { timeout: READY_TIMEOUT });
+  await expect(page.getByTestId("owned-car-controls")).toBeVisible({ timeout: READY_TIMEOUT });
+  await touchTap(page, '[data-testid="player-map-shortcut"]');
+  await expect(page.getByTestId("city-map-mode")).toContainText("FREE ROAM");
+  await expect(page.getByTestId("city-map-destination-home")).toBeVisible();
+  expect(state.arrivalCount.n).toBe(0);
 });
