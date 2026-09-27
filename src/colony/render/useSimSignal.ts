@@ -11,6 +11,7 @@ export interface SimBridge {
   subscribe(cb: () => void): () => void;
   /** Non-null only while this local operator is seated in their owned car. */
   getOwnedDrivePose?(): OwnedDrivePose | null;
+  getPlayerHomeDriveway?(): {plotId:string; cells:readonly {x:number;y:number}[]} | null;
 }
 
 /** Fallback heartbeat for render trees mounted without a runtime (dev harnesses): poll at the

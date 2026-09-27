@@ -85,6 +85,7 @@ import { R3FTarentaal } from "./R3FTarentaal";
 import { R3FArtifacts } from "./R3FArtifacts";
 import { R3FPorters } from "./R3FPorters";
 import { R3FOperatorCar } from "./R3FOperatorCar";
+import { HomeDrivewaySurface } from "./HomeDrivewaySurface";
 import { R3FRallyNameplates } from "./R3FRallyNameplates";
 import { R3FCameraDirector } from "./R3FCameraDirector";
 import { R3FCommercialDistrict } from "./R3FCommercialDistrict";
@@ -96,9 +97,11 @@ import { aerialMouseButtons } from "./panControls";
 function ZoneManager({
   sim,
   runtime,
+  terrainLevel,
 }: {
   sim: ColonySim;
   runtime?: SimBridge;
+  terrainLevel?: ReadonlyMap<number, number> | null;
 }) {
   const state = sim.state;
   const { assets, fetchManifest } = useWorldAssets();
@@ -109,6 +112,11 @@ function ZoneManager({
 
   // Subscribe to the mutable sim — a lot placed, demolished or built must re-render here.
   const zoneSig = useSimSignal(runtime, () => zoneSignature(state));
+  const drivewaySig = useSimSignal(runtime, () => {
+    const home = runtime?.getPlayerHomeDriveway?.();
+    return home ? `${home.plotId}:${home.cells.map(c => `${c.x},${c.y}`).join(";")}` : "";
+  });
+  const homeDriveway = runtime?.getPlayerHomeDriveway?.();
   const buildings = useMemo(() => {
     const elements: React.ReactElement[] = [];
     const overlays: React.ReactElement[] = [];
@@ -233,6 +241,8 @@ function ZoneManager({
   return (
     <group>
       {buildings.elements}
+      {homeDriveway && <HomeDrivewaySurface sim={sim} terrainLevel={terrainLevel}
+        plotId={homeDriveway.plotId} cells={homeDriveway.cells} key={drivewaySig} />}
       <group name="zone-overlays" visible={state.zonesVisible !== false}>
         {buildings.overlays}
       </group>
@@ -705,7 +715,7 @@ function R3FWorld({
                 on purpose: they have their own forked geometry, their own rocky-ground siting, and
                 they are NOT cleared by construction. One instanced draw call for the whole stand. */}
             <R3FQuiverTrees runtime={runtime} />
-            <ZoneManager sim={sim} runtime={runtime} />
+            <ZoneManager sim={sim} runtime={runtime} terrainLevel={debouncedTerrainLevel} />
             <R3FPlayerCar sim={sim} />
             <R3FAvatars
               sim={sim}
