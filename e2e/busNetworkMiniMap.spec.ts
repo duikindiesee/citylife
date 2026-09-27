@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
 
+const SESSION_KEY = "citylife.session.v5";
+const MAP_FLAG_GLOB = "**/feature-flags/new-player-journey-v1";
+
 declare global {
   interface Window {
     __colony: any;
@@ -7,7 +10,7 @@ declare global {
 }
 
 test.describe("player city map", () => {
-  test("opens on demand, tracks buses, and lets driving input pass through", async ({
+  test("hides personal position when signed out; authenticated map tracks the player and buses", async ({
     page,
   }, testInfo) => {
     test.setTimeout(180000);
@@ -18,7 +21,60 @@ test.describe("player city map", () => {
     await expect(page.locator(".rally-social-read")).toHaveCount(0);
     await page.getByTestId("player-map-shortcut").click();
     await expect(map).toBeVisible();
+    await expect(map).toContainText("Position unavailable");
+    await expect(page.getByTestId("city-map-player-marker")).toHaveCount(0);
     await page.getByRole("button", { name: "Close map" }).click();
+    await expect(map).toBeHidden();
+
+    // Switch from the local signed-out preview to a mocked authenticated CITYLIFE_PLAYER. The token
+    // is opaque and all token-derived endpoints used here are stubbed; no real account is contacted.
+    const testUserId = "map-test-player";
+    await page.route(MAP_FLAG_GLOB, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ enabled: false, state: "OFF" }),
+      }),
+    );
+    await page.route("**/api/ledger/me/wallet", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ownerId: testUserId,
+          appName: "citylife",
+          walletType: "DEFAULT",
+          instrument: "KCO",
+          realm: "TEST",
+          balance: 750,
+        }),
+      }),
+    );
+    await page.evaluate(
+      ([key, userId]) => {
+        window.sessionStorage.setItem(
+          key,
+          JSON.stringify({
+            token: `opaque.${userId}.token`,
+            expiresAt: Date.now() + 60 * 60 * 1000,
+            operator: {
+              // Bind this isolated mock player to a deterministic seeded citizen so the positive
+              // map case exercises an identity-matched camera, not another citizen marked `local`.
+              id: "KOOKER the Builder",
+              userId,
+              scopes: [],
+              roles: ["CITYLIFE_PLAYER"],
+            },
+          }),
+        );
+        window.history.replaceState(null, "", window.location.pathname);
+      },
+      [SESSION_KEY, testUserId] as const,
+    );
+    await page.reload();
+    await page.waitForSelector('[data-testid="player-wallet-hud"]', {
+      timeout: 90000,
+    });
     await expect(map).toBeHidden();
     await page.getByTestId("player-map-shortcut").click();
     await expect(map).toBeVisible();
@@ -26,6 +82,41 @@ test.describe("player city map", () => {
     await expect(map.locator(".bus-network-minimap__mode")).toHaveText(
       "LOCAL SESSION",
     );
+    await expect(map).toContainText("You are here");
+    const playerMarker = page.getByTestId("city-map-player-marker");
+    await expect(playerMarker).toBeVisible();
+    const cameraBefore = await page.evaluate(() =>
+      window.__colony.fpCameraCell
+        ? { ...window.__colony.fpCameraCell }
+        : null,
+    );
+    expect(cameraBefore).not.toBeNull();
+    const playerMarkerPosition = () =>
+      playerMarker
+        .locator("circle")
+        .first()
+        .evaluate(
+          (node) => `${node.getAttribute("cx")},${node.getAttribute("cy")}`,
+        );
+    const markerBeforeWalking = await playerMarkerPosition();
+    await page.keyboard.down("KeyW");
+    try {
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => ({
+              x: window.__colony.fpCameraCell?.x,
+              y: window.__colony.fpCameraCell?.y,
+            })),
+          { timeout: 15000 },
+        )
+        .not.toEqual(cameraBefore);
+      await expect
+        .poll(playerMarkerPosition, { timeout: 15000 })
+        .not.toBe(markerBeforeWalking);
+    } finally {
+      await page.keyboard.up("KeyW");
+    }
     await page.waitForFunction(
       () => !!window.__colony?.busDepot && !!window.__colony?.busRoute,
       null,
@@ -78,5 +169,32 @@ test.describe("player city map", () => {
     await page.screenshot({
       path: testInfo.outputPath("bus-network-minimap-night.png"),
     });
+    // Switching accounts must not carry the prior player's exact location into the new session.
+    // This second opaque identity has no matching seeded citizen, so a marker here would be stale
+    // camera/presence state leaking across the account boundary.
+    await page.evaluate((key) => {
+      const stored = window.sessionStorage.getItem(key);
+      if (!stored) throw new Error("Expected authenticated map test session");
+      const session = JSON.parse(stored);
+      session.token = "opaque.map-test-player-2.token";
+      session.operator.userId = "map-test-player-2";
+      session.operator.id = "Unmatched map account";
+      window.sessionStorage.setItem(key, JSON.stringify(session));
+    }, SESSION_KEY);
+    await page.reload();
+    await page.waitForSelector("canvas", { timeout: 90000 });
+    await page.getByTestId("player-map-shortcut").click();
+    await expect(map).toContainText("Position unavailable");
+    await expect(page.getByTestId("city-map-player-marker")).toHaveCount(0);
+
+    await page.evaluate((key) => {
+      window.sessionStorage.removeItem(key);
+      window.history.replaceState(null, "", `${window.location.pathname}?skipauth=1`);
+    }, SESSION_KEY);
+    await page.reload();
+    await page.waitForSelector("canvas", { timeout: 90000 });
+    await page.getByTestId("player-map-shortcut").click();
+    await expect(map).toContainText("Position unavailable");
+    await expect(page.getByTestId("city-map-player-marker")).toHaveCount(0);
   });
 });

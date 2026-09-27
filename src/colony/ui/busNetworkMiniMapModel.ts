@@ -25,6 +25,65 @@ export interface BusNetworkMiniMapModel {
   bounds: { minX: number; minY: number; spanX: number; spanY: number };
 }
 
+export interface MapGridPosition {
+  x: number;
+  y: number;
+}
+
+/** Player-private map data requires both a player role and a runtime bound to that exact account. */
+export function canShowPlayerLocationForAccount(input: {
+  isCityLifePlayer: boolean;
+  authenticatedAccountKey: string | null;
+  runtimeAccountKey: string | null;
+}): boolean {
+  return (
+    input.isCityLifePlayer &&
+    input.authenticatedAccountKey !== null &&
+    input.runtimeAccountKey !== null &&
+    input.authenticatedAccountKey === input.runtimeAccountKey
+  );
+}
+
+/** Resolve the viewer's own map point from live local movement, then their own exact presence.
+ * Coarse or non-local presence must never become the player's marker. */
+export function resolveLocalPlayerMapPosition(input: {
+  /** True only for an authenticated player in the interactive player view. */
+  playerLocationAuthorized?: boolean;
+  /** The citizen identity bound to the authenticated account, when one exists. */
+  operatorCitizenId?: string | null;
+  /** Citizen currently driving the first-person camera; may differ in operator inspection mode. */
+  activeCitizenId?: string | null;
+  drivePose?: MapGridPosition | null;
+  cameraCell?: MapGridPosition | null;
+  exactOwnPresence?: { subjectId: string; cell: MapGridPosition } | null;
+}): MapGridPosition | null {
+  // Fail closed: local camera state is not a player's private marker while signed out,
+  // even though the development preview has a perfectly valid camera cell.
+  if (input.playerLocationAuthorized !== true) return null;
+  const valid = (point: MapGridPosition | null | undefined) =>
+    point && Number.isFinite(point.x) && Number.isFinite(point.y)
+      ? point
+      : null;
+  const operatorCitizenId = input.operatorCitizenId ?? null;
+  const cameraCell =
+    operatorCitizenId !== null &&
+    input.activeCitizenId === operatorCitizenId
+      ? input.cameraCell
+      : null;
+  const exactOwnPresence =
+    operatorCitizenId !== null &&
+    input.exactOwnPresence?.subjectId === operatorCitizenId
+      ? input.exactOwnPresence.cell
+      : null;
+  // A seated drive pose comes from the runtime's server-authoritative car owned by the bound user;
+  // it remains exact account-owned position even if that account has no mapped citizen yet.
+  return (
+    valid(input.drivePose) ??
+    valid(cameraCell) ??
+    valid(exactOwnPresence)
+  );
+}
+
 interface Input {
   ways: RoadWay[];
   routeStops: { x: number; y: number }[];
