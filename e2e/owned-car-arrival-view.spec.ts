@@ -109,5 +109,23 @@ test("returning resident sees the owned car at the published home spawn",async({
     return {visible:group.visible,onScreen:Math.abs(target.x)<0.9&&Math.abs(target.y)<0.9&&target.z>-1&&target.z<1,
       distance:Math.hypot(camera.position.x-group.position.x,camera.position.z-group.position.z)};
   }),{timeout:90000}).toMatchObject({visible:true,onScreen:true});
+  await expect.poll(()=>page.evaluate(()=>{
+    const surface=(window as any).__r3fScene?.getObjectByName("player-home-driveway");
+    return surface ? {plotId:surface.userData.plotId,
+      vertices:surface.geometry?.getAttribute("position")?.count} : null;
+  }),{timeout:90000}).toEqual({plotId:plot.plotId,vertices:expect.any(Number)});
+  expect(await page.evaluate(()=>(window as any).__r3fScene
+    ?.getObjectByName("player-home-driveway")?.geometry?.getAttribute("position")?.count)).toBeGreaterThan(0);
   await page.screenshot({path:info.outputPath("returning-home-spawn.png")});
+  await page.keyboard.down("KeyW");
+  try {
+    await expect.poll(()=>page.evaluate(()=>{
+      const r=(window as any).__colony,p=r.getOwnedDrivePose();
+      return !!p&&r.sim.state.roadSet.has(`${Math.round(p.x)},${Math.round(p.y)}`);
+    }),{timeout:20000}).toBe(true);
+  } finally {await page.keyboard.up("KeyW");}
+  await page.keyboard.down("Space");
+  await expect.poll(()=>page.evaluate(()=>(window as any).__colony.getOwnedDrivePose()?.speed)).toBe(0);
+  await page.keyboard.up("Space");
+  await page.screenshot({path:info.outputPath("home-driveway-road-exit.png")});
 });

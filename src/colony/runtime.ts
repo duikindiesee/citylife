@@ -1095,7 +1095,7 @@ export class ColonyRuntime {
   private readonly surveyOnly: boolean;
   private readonly playerParcelIds = new Set<string>();
   private playerParcelLayoutSignature: string | null = null;
-  private playerHomeProjection: {lotId:string; originalSeed:number; driveway:Set<string>; spawn:OwnedDrivePose; resident:boolean} | null = null;
+  private playerHomeProjection: {lotId:string; originalSeed:number; driveway:Set<string>; drivewayCells:readonly Cell[]; spawn:OwnedDrivePose; resident:boolean} | null = null;
 
   /** Server readback projection only: no colony materials, local blueprint persistence or new debit. */
   applyCompletedPlayerHome(session: HouseBuildSession, resident: boolean): boolean {
@@ -1119,6 +1119,7 @@ export class ColonyRuntime {
     this.clearPlayerHome();
     this.playerHomeProjection = {lotId:lot.id,originalSeed:lot.houseSeed,resident,
       driveway:new Set(context.geometry.driveway.map(cell=>`${cell.x},${cell.y}`)),
+      drivewayCells:context.geometry.driveway.map(cell=>({...cell})),
       spawn:{...context.geometry.spawn,heading:clearance.heading,speed:0}};
     lot.blueprint=context.script;
     lot.houseSeed=session.inventory.layout.seed;
@@ -1150,6 +1151,12 @@ export class ColonyRuntime {
 
   isPlayerParcel(lotId: string): boolean {
     return this.playerParcelIds.has(lotId);
+  }
+
+  /** Render-only readback of the authenticated, validated published home approach. */
+  getPlayerHomeDriveway(): {plotId:string; cells:readonly Cell[]} | null {
+    const home=this.playerHomeProjection;
+    return home ? {plotId:home.lotId,cells:home.drivewayCells} : null;
   }
 
   constructor(
