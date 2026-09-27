@@ -68,10 +68,15 @@ test("first move-in starts at Gearbox and free-roam destinations wait for server
     await expect(page.getByTestId("showroom-card-name")).toContainText("X19");
   };
   await selectX19();
-  await expect(page.getByTestId("showroom-affordability")).toHaveText("Need ₭200 more");
-  await expect(acquire).toHaveText("Insufficient funds");
-  await expect(acquire).toHaveAttribute("data-acquire-state","insufficient_funds");
-  await expect(acquire).toBeDisabled();
+  // Read label and button in one browser task: wallet refreshes can re-render between
+  // separate locator assertions, but both must converge to one coherent insufficient state.
+  await expect.poll(()=>page.evaluate(()=>{
+    const label=document.querySelector('[data-testid="showroom-affordability"]');
+    const button=document.querySelector('[data-testid="showroom-acquire"]') as HTMLButtonElement|null;
+    return {affordability:label?.textContent?.trim(),button:button?.textContent?.trim(),
+      state:button?.dataset.acquireState,disabled:button?.disabled};
+  }),{timeout:30000}).toEqual({affordability:"Need ₭200 more",button:"Insufficient funds",
+    state:"insufficient_funds",disabled:true});
   expect(vehicleRequests).toHaveLength(0);expect(car).toBe(false);expect(balance).toBe(750);
   await page.screenshot({path:info.outputPath("insufficient-funds.png")});
   await page.locator('[data-build-action="showroom-exit"]').press("Enter");
