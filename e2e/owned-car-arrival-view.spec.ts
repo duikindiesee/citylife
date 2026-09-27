@@ -74,3 +74,40 @@ test("owned-car chase view stays clear through Gearbox departure and park/exit",
   await expect.poll(async()=> (await measurement())?.carOnScreen).toBe(true);
   await page.screenshot({path:info.outputPath("road-view.png")});
 });
+
+test("returning resident sees the owned car at the published home spawn",async({page},info)=>{
+  test.setTimeout(150000);
+  const fixture=await starterWorldFixture(),manifest=JSON.parse(fixture).manifest;
+  const plot=manifest.plots.find((p:{plotId:string})=>p.plotId==="wood1_lot_1");
+  const h=plot.geometry.houseZone;
+  const script=`house{w:${h.width} d:${h.depth} wallH:1 door:s} room{kind:living x:0 y:0 w:${h.width} d:${h.depth} win:1}`;
+  const json=(body:unknown)=>({status:200,contentType:"application/json",body:JSON.stringify(body)});
+  await page.route("**/kooker/**",r=>r.fulfill(json({})));
+  await page.route("**/worlds/seed-4242/starter-catalogue",r=>r.fulfill({status:200,contentType:"application/json",body:fixture}));
+  await page.route("**/feature-flags/new-player-journey-v1",r=>r.fulfill(json({enabled:true})));
+  await page.route("**/players/me/vehicle",r=>r.fulfill(json({owned:true,vehicleKey:"karoo-x19-targa"})));
+  await page.route("**/players/me/home",r=>r.fulfill(json({owned:true,status:"OWNED",plotOwned:true,
+    plotId:plot.plotId,frameId:plot.frameId,layoutRevision:manifest.layoutRevision,
+    onboardingState:"RESIDENT"})));
+  await page.route("**/players/me/home/build",r=>r.fulfill(json({plotId:plot.plotId,frameId:plot.frameId,
+    layoutRevision:manifest.layoutRevision,geometry:plot.geometry,script,completed:true})));
+  await page.addInitScript(()=>sessionStorage.setItem("citylife.session.v5",JSON.stringify({
+    token:"opaque.returning-camera-fixture.token",expiresAt:Date.now()+3600000,
+    operator:{id:"Returning camera fixture",userId:"returning-camera-fixture",roles:["CITYLIFE_PLAYER"],scopes:[]},
+  })));
+  await page.goto("/");
+  await expect.poll(()=>page.evaluate(()=>{
+    const r=(window as any).__colony,p=r?.getOwnedDrivePose();
+    if(!p)return null;
+    return {x:p.x,y:p.y,car:r.sim.state.operatorCar?.spec.id,firstMoveInRequired:r.isPlayerHomeArrivalPending()};
+  }),{timeout:90000}).toEqual({x:plot.geometry.spawn.x,y:plot.geometry.spawn.y,
+    car:"showroom:karoo-x19-targa",firstMoveInRequired:false});
+  await expect.poll(()=>page.evaluate(()=>{
+    const w=window as any,group=w.__r3fScene?.getObjectByName("operator-car"),camera=w.__r3fCamera;
+    if(!group||!camera)return null;
+    const target=group.position.clone();target.y+=0.5;target.project(camera);
+    return {visible:group.visible,onScreen:Math.abs(target.x)<0.9&&Math.abs(target.y)<0.9&&target.z>-1&&target.z<1,
+      distance:Math.hypot(camera.position.x-group.position.x,camera.position.z-group.position.z)};
+  }),{timeout:90000}).toMatchObject({visible:true,onScreen:true});
+  await page.screenshot({path:info.outputPath("returning-home-spawn.png")});
+});
