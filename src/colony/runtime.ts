@@ -1095,10 +1095,10 @@ export class ColonyRuntime {
   private readonly surveyOnly: boolean;
   private readonly playerParcelIds = new Set<string>();
   private playerParcelLayoutSignature: string | null = null;
-  private playerHomeProjection: {lotId:string; originalSeed:number; driveway:Set<string>; spawn:OwnedDrivePose} | null = null;
+  private playerHomeProjection: {lotId:string; originalSeed:number; driveway:Set<string>; spawn:OwnedDrivePose; resident:boolean} | null = null;
 
   /** Server readback projection only: no colony materials, local blueprint persistence or new debit. */
-  applyCompletedPlayerHome(session: HouseBuildSession): boolean {
+  applyCompletedPlayerHome(session: HouseBuildSession, resident: boolean): boolean {
     if (session.userId !== this.operatorUserId) return false;
     const document = this.worldLayoutDocument();
     if (!document || document.worldId !== session.inventory.worldId ||
@@ -1117,7 +1117,7 @@ export class ColonyRuntime {
       cell=>cellOk(this.sim.state.terrain,cell.x,cell.y));
     if (!clearance.clear) return false;
     this.clearPlayerHome();
-    this.playerHomeProjection = {lotId:lot.id,originalSeed:lot.houseSeed,
+    this.playerHomeProjection = {lotId:lot.id,originalSeed:lot.houseSeed,resident,
       driveway:new Set(context.geometry.driveway.map(cell=>`${cell.x},${cell.y}`)),
       spawn:{...context.geometry.spawn,heading:clearance.heading,speed:0}};
     lot.blueprint=context.script;
@@ -2637,7 +2637,10 @@ export class ColonyRuntime {
         return;
       }
       const pose = this.ownedDrivePose;
-      const entrance = pose ?? this.playerHomeProjection?.spawn ?? this.commercialDistrict?.garagePad?.roadTarget;
+      const homeSpawn = this.playerHomeProjection?.resident
+        ? this.playerHomeProjection.spawn
+        : null;
+      const entrance = pose ?? homeSpawn ?? this.commercialDistrict?.garagePad?.roadTarget;
       if (
         entrance &&
         this.canOwnedCarOccupy(entrance.x,entrance.y)
@@ -2659,11 +2662,11 @@ export class ColonyRuntime {
               `${Math.round(entrance.x) + dx},${Math.round(entrance.y) + dy}`,
             ),
           );
-          if (this.playerHomeProjection || ahead) {
+          if (homeSpawn || ahead) {
             this.ownedDrivePose = {
               x: entrance.x,
               y: entrance.y,
-              heading: this.playerHomeProjection?.spawn.heading ?? Math.atan2(ahead![1], ahead![0]),
+              heading: homeSpawn?.heading ?? Math.atan2(ahead![1], ahead![0]),
               speed: 0,
             };
             this.ownedDriveSeated = true;
@@ -2739,6 +2742,27 @@ export class ColonyRuntime {
       (!this.raceState || this.raceState.mode === "idle")
       ? this.ownedDrivePose
       : null;
+  }
+
+  /** The current account's published home driveway target for map wayfinding.
+   * Returns a copy of the server-published geometry projected for this identity only. */
+  getPlayerHomeMapDestination(): { plotId: string; x: number; y: number } | null {
+    const home = this.playerHomeProjection;
+    return home
+      ? { plotId: home.lotId, x: home.spawn.x, y: home.spawn.y }
+      : null;
+  }
+
+  /** True only while an accepted home exists but the authenticated home truth has not confirmed RESIDENT.
+   * First move-in stays at Gearbox; the home pin remains available for the real vehicle drive. */
+  isPlayerHomeArrivalPending(): boolean {
+    return this.playerHomeProjection !== null && !this.playerHomeProjection.resident;
+  }
+
+  /** Free roam destinations such as Alice's network mission are shown only after server-confirmed
+   * residency. Missing home truth is not treated as arrival. */
+  isPlayerHomeResident(): boolean {
+    return this.playerHomeProjection?.resident === true;
   }
 
   canEnterOwnedCar(): boolean {

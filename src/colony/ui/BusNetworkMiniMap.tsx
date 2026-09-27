@@ -1,7 +1,12 @@
 import type { ColonyRuntime } from "../runtime";
 import type { PresenceReadout } from "../spatial/presenceReadout";
 import { useSimSignal } from "../render/useSimSignal";
-import { buildBusNetworkMiniMapModel } from "./busNetworkMiniMapModel";
+import { resolveGamehousePortalSite } from "../spatial/gamehousePortal";
+import {
+  buildBusNetworkMiniMapModel,
+  type MiniMapLandmarkInput,
+} from "./busNetworkMiniMapModel";
+import { formatAmount } from "./currencyFormat";
 
 const WIDTH = 200;
 const HEIGHT = 132;
@@ -53,6 +58,17 @@ function OpenBusNetworkMiniMap({
     : local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
       ? { x: local.fix.cell.x, y: local.fix.cell.y }
       : null;
+  const landmarks: MiniMapLandmarkInput[] = [];
+  const gearbox = runtime.commercialDistrict?.garagePad?.roadTarget;
+  if (gearbox) landmarks.push({ id: "gearbox" as const, x: gearbox.x, y: gearbox.y });
+  const home = runtime.getPlayerHomeMapDestination();
+  if (home) landmarks.push({ id: "home" as const, x: home.x, y: home.y });
+  const homeArrivalPending = runtime.isPlayerHomeArrivalPending();
+  const homeResident = runtime.isPlayerHomeResident();
+  const aliceShop = homeResident && runtime.commercialDistrict
+    ? resolveGamehousePortalSite(runtime.commercialDistrict)?.entranceCell
+    : null;
+  if (aliceShop) landmarks.push({ id: "alice-shop" as const, x: aliceShop.x, y: aliceShop.y });
   const model = buildBusNetworkMiniMapModel({
     ways: state.roadWays ?? [],
     routeStops: runtime.busRoute?.stops ?? [],
@@ -61,6 +77,7 @@ function OpenBusNetworkMiniMap({
       : null,
     buses: runtime.busPoses().map((p, id) => ({ id, x: p.x, y: p.y })),
     player,
+    landmarks,
     width: WIDTH,
     height: HEIGHT,
     padding: 8,
@@ -94,11 +111,17 @@ function OpenBusNetworkMiniMap({
         <span>{walletLabel}</span>
         <span>{model.player ? "You are here" : "Position unavailable"}</span>
       </div>
-      <div className="bus-network-minimap__mode">LOCAL SESSION</div>
+      <div className="bus-network-minimap__mode" data-testid="city-map-mode">
+        {homeArrivalPending
+          ? "FIRST MOVE-IN · FOLLOW YOUR HOME"
+          : homeResident
+            ? "FREE ROAM"
+            : "LOCAL SESSION"}
+      </div>
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
-        aria-label="Roads, depot, stops and live buses"
+        aria-label="City roads, your location, live buses and destinations"
       >
         <rect
           width={WIDTH}
@@ -194,7 +217,65 @@ function OpenBusNetworkMiniMap({
             </g>
           );
         })}
+        {model.landmarks.map((landmark) => {
+          const marker = landmarkPresentation[landmark.id];
+          return (
+            <g
+              key={landmark.id}
+              aria-label={marker.label}
+              data-testid={`city-map-destination-${landmark.id}`}
+              data-map-destination={landmark.id}
+              data-off-map={landmark.outOfBounds ? "true" : "false"}
+              data-world-position={`${landmark.x},${landmark.y}`}
+              data-marker-position={`${landmark.markerX},${landmark.markerY}`}
+            >
+              <title>{marker.label}</title>
+              {(landmark.markerX !== landmark.x || landmark.markerY !== landmark.y) && (
+                <line
+                  x1={landmark.x}
+                  y1={landmark.y}
+                  x2={landmark.markerX}
+                  y2={landmark.markerY}
+                  className="bus-network-minimap__landmark-leader"
+                />
+              )}
+              <circle
+                cx={landmark.markerX}
+                cy={landmark.markerY}
+                r="5.2"
+                className={`bus-network-minimap__landmark bus-network-minimap__landmark--${landmark.id}`}
+              />
+              <text
+                x={landmark.markerX}
+                y={landmark.markerY + 1.8}
+                textAnchor="middle"
+                className="bus-network-minimap__landmark-glyph"
+              >
+                {marker.glyph}
+              </text>
+            </g>
+          );
+        })}
       </svg>
+      <div className="bus-network-minimap__legend" aria-label="Map destinations">
+          {model.landmarks.map((landmark) => {
+            const marker = landmarkPresentation[landmark.id];
+            return (
+              <span key={landmark.id}>
+                <b className={`bus-network-minimap__legend-glyph bus-network-minimap__legend-glyph--${landmark.id}`}>
+                  {marker.glyph}
+                </b>
+                {marker.label}
+              </span>
+            );
+          })}
+      </div>
     </aside>
   );
 }
+
+const landmarkPresentation = {
+  gearbox: { glyph: "G", label: "Gearbox Auto Hub" },
+  home: { glyph: "H", label: "Your home" },
+  "alice-shop": { glyph: "A", label: "Games Studio · Alice Shop" },
+} as const;

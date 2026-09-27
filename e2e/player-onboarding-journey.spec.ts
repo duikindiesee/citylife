@@ -3,13 +3,13 @@ import {starterWorldFixture,installVehicleOffersFixture} from "./starterWorldFix
 
 // Browser/UI contract proof with a stateful fixture authority. This is deliberately
 // not a real ledger, grant or deployment receipt; service integration tests cover those.
-test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",async({page},info)=>{
+test("first move-in starts at Gearbox and free-roam destinations wait for server RESIDENT truth",async({page},info)=>{
   // Three world loads plus two showroom visits and screenshot capture on software WebGL.
   // Each individual arrival still has its own 90-second assertion budget.
   test.setTimeout(420000);
   const fixture=await starterWorldFixture(),manifest=JSON.parse(fixture).manifest;
   const plot=manifest.plots.find((p:{plotId:string})=>p.plotId==="wood1_lot_1");
-  let balance=750,car=false,land=false,script:string|null=null;
+  let balance=750,car=false,land=false,script:string|null=null,resident=false;
   const vehicleRequests:{body:unknown;key:string|undefined}[]=[],plotRequests:unknown[]=[],buildRequests:unknown[]=[];
   let delayPaidPlotTruth=false,releasePaidPlotTruth:()=>void=()=>{},signalPaidPlotTruthRead:()=>void=()=>{};
   const paidPlotTruthGate=new Promise<void>(resolve=>{releasePaidPlotTruth=resolve;});
@@ -36,7 +36,8 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
     if(delayPaidPlotTruth){delayPaidPlotTruth=false;signalPaidPlotTruthRead();await paidPlotTruthGate;}
     return route.fulfill(json({owned:!!script,status:land?"OWNED":null,
       plotOwned:land,requiresBuild:land&&!script,plotId:land?plot.plotId:null,frameId:land?plot.frameId:null,
-      neighbourhoodKey:plot.geometry.neighbourhoodKey,layoutRevision:manifest.layoutRevision,priceKco:350}));
+      neighbourhoodKey:plot.geometry.neighbourhoodKey,layoutRevision:manifest.layoutRevision,priceKco:350,
+      onboardingState:script?(resident?"RESIDENT":"OWNED"):"NONE"}));
   });
   await page.route("**/players/me/home/available-plots",route=>route.fulfill(json(land?[]:[{...plot,priceKco:350}])));
   await page.route("**/players/me/home/purchase",route=>{
@@ -108,9 +109,15 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
   const arrival=()=>page.evaluate(()=>{
     const r=(window as any).__colony,p=r?.getOwnedDrivePose();
     return p?{x:p.x,y:p.y,car:r.sim.state.operatorCar?.spec.id,
-      built:r.lots().filter((lot:any)=>r.isPlayerParcel(lot.id)&&lot.built).map((lot:any)=>lot.id)}:null;
+      built:r.lots().filter((lot:any)=>r.isPlayerParcel(lot.id)&&lot.built).map((lot:any)=>lot.id),
+      firstMoveInRequired:r.isPlayerHomeArrivalPending()}:null;
   });
-  const expected={...plot.geometry.spawn,car:"showroom:karoo-x19-targa",built:[plot.plotId]};
+  await expect.poll(arrival,{timeout:90000}).not.toBeNull();
+  const gearbox=await page.evaluate(()=>{
+    const p=(window as any).__colony.commercialDistrict.garagePad.roadTarget;
+    return {x:p.x,y:p.y};
+  });
+  const expected={...gearbox,car:"showroom:karoo-x19-targa",built:[plot.plotId],firstMoveInRequired:true};
   await expect.poll(arrival,{timeout:90000}).toEqual(expected);
   await expect(page.getByTestId("starter-property-overlay")).toHaveCount(0);
   const renderLayers=await page.evaluate(()=>Array.from(document.querySelectorAll(".canvas-host"),host=>{
@@ -128,22 +135,15 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
   }));
   expect(renderLayers).toHaveLength(1);
   expect(renderLayers[0]).toMatchObject({connected:true,canvasCount:1,centerHit:"CANVAS"});
-  // Runtime arrival can become authoritative just before the compositor presents the next R3F
-  // frame. Poll the actual browser screenshot rather than mistaking the transparent WebGL buffer
-  // for the rendered page; retain the first capture that visibly contains the world sky.
-  const readLandscapeRed=async(encoded:string)=>page.evaluate(async(value)=>{
-    const image=new Image();image.src=`data:image/png;base64,${value}`;await image.decode();
-    const canvas=document.createElement("canvas");canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
-    const context=canvas.getContext("2d");if(!context)throw new Error("Screenshot pixel reader unavailable");
-    context.drawImage(image,0,0);
-    // The camera's horizon can sit above the midpoint; sample the unobstructed ground below it.
-    // Night lighting legitimately makes the sky nearly black, which is not a missing WebGL frame.
-    return context.getImageData(Math.floor(image.naturalWidth/2),Math.floor(image.naturalHeight*0.82),1,1).data[0];
-  },encoded);
-  await expect.poll(async()=>{
-    const capture=await page.screenshot({path:info.outputPath("home-arrival.png")});
-    return readLandscapeRed(capture.toString("base64"));
-  },{timeout:10000,intervals:[100,250,500,1000]}).toBeGreaterThan(50);
+  // Runtime truth can settle before the staged world renderer has presented its first city layer.
+  // Wait for the actual scene object so the retained screenshot is not just the black page fallback.
+  await page.waitForFunction(()=>{
+    let found=false;
+    (window as any).__r3fScene?.traverse((object:any)=>{if(object.name==="foliage")found=true;});
+    return found;
+  },undefined,{timeout:60000});
+  await page.waitForTimeout(500);
+  await page.screenshot({path:info.outputPath("first-move-in-at-gearbox.png")});
   await page.reload();
   await expect.poll(arrival,{timeout:90000}).toEqual(expected);
   expect(vehicleRequests).toHaveLength(1);expect(plotRequests).toHaveLength(1);
@@ -157,6 +157,15 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
   const playerMarker=page.getByTestId("city-map-player-marker");
   await expect(playerMarker).toBeVisible();
   await expect(playerMarker).toHaveAttribute("data-off-map","false");
+  const homeDestination=page.getByTestId("city-map-destination-home");
+  await expect(homeDestination).toBeVisible();
+  await expect(homeDestination).toHaveAttribute("data-off-map","false");
+  await expect(page.getByTestId("city-map-destination-gearbox")).toBeVisible();
+  await expect(page.getByTestId("city-map-destination-alice-shop")).toHaveCount(0);
+  await expect(page.getByTestId("city-map-mode")).toContainText("FIRST MOVE-IN");
+  await expect(page.getByLabel("Map destinations")).toContainText("Your home");
+  await expect(page.getByLabel("Map destinations")).toContainText("Gearbox Auto Hub");
+  await expect(page.getByLabel("Map destinations")).not.toContainText("Games Studio · Alice Shop");
   await expect(page.getByTestId("owned-car-controls")).toBeVisible();
   const throttle=page.locator('[data-drive-action="throttle"]');
   const throttleBox=await throttle.boundingBox();
@@ -180,5 +189,15 @@ test("insufficient X19 buyer re-enters, buys a plot, builds and returns home",as
   }
   await expect.poll(()=>playerMarker.locator("circle").first().evaluate(node=>
     `${node.getAttribute("cx")},${node.getAttribute("cy")}`),{timeout:10000}).not.toBe(markerBefore);
-  await page.screenshot({path:info.outputPath("home-map-driving.png")});
+  await page.screenshot({path:info.outputPath("first-drive-map.png")});
+  // Simulate a later authoritative server read after the arrival service accepted the physical trip.
+  // This verifies the returning-resident presentation only; it does not prove a real arrival API.
+  resident=true;
+  await page.reload();
+  const returningHome={...plot.geometry.spawn,car:"showroom:karoo-x19-targa",built:[plot.plotId],firstMoveInRequired:false};
+  await expect.poll(arrival,{timeout:90000}).toEqual(returningHome);
+  await page.getByTestId("player-map-shortcut").click();
+  await expect(page.getByTestId("city-map-mode")).toHaveText("FREE ROAM");
+  await expect(page.getByTestId("city-map-destination-alice-shop")).toBeVisible();
+  await page.screenshot({path:info.outputPath("resident-free-roam-map.png")});
 });

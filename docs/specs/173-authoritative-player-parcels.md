@@ -173,12 +173,52 @@ driveway body clearance before displaying the accepted script. This path changes
 house state only: it does not claim an NPC, charge colony materials, write local blueprints,
 or call the ledger. Changing accounts clears the prior projection and driveway permission.
 
-The owned car uses the published off-road spawn, oriented towards the connected road.
+Returning RESIDENT players may use the published off-road driveway spawn, oriented toward
+the connected road. On a first move-in, spawn the exact owned car at Gearbox and keep the
+player in that car. Show the exact server-published home driveway target on the map; the
+player drives there using the normal vehicle controls. Only the server's authenticated
+RESIDENT truth changes the next login to the home spawn and opens free roam. Do not teleport
+first-time buyers directly home or treat a separate UI cursor as vehicle movement. Local
+runtime now distinguishes OWNED from RESIDENT for the initial spawn and map state; the
+first-move-in flow is still incomplete until the client, server arrival contract, and
+runtime agree on an authenticated physical-arrival proof.
+
+The map shows loaded, server-backed destinations: Gearbox's surveyed road approach and the
+current identity's published home driveway target. During first move-in it labels the stage
+"First move-in · follow your home" and omits the Games Studio / Alice Shop. Once the server
+confirms RESIDENT, it labels the map "Free roam" and adds the governed Alice Shop entrance as
+an optional destination. This is also the unlock boundary for Alice Hermes's optional tank
+network mission at the Games Studio. The mission is distinct from the map pin and from
+car/plot/home onboarding; mission authentication and multiplayer are a separate follow-on,
+not implemented or proven by this local UI slice. The home marker is omitted without an
+accepted server-backed home projection; changing account clears it with the home projection.
+
+The minimap model includes static landmark geometry in its stable bounds. If destination
+badges overlap live buses, route stops, or one another, only the drawn badges move; leader
+lines retain their exact projected destination points. The expanded map includes a readable
+legend. This local UI slice is fixture-tested and is not evidence of deployed multiplayer.
+
+### Arrival API contract audit — 2026-09-25
+
+The current client is not wired to the checked-in arrival controller. `driveHome.ts` posts
+`{cell, plotRef}` to `/api/v1/citylife/players/me/home/arrival`. In the inspected
+`kooker-service-user` worktree at `345f6700addd74fdb0c53ebcd28509ddd0ec8b20`,
+`CitylifeDriveHomeArrivalController` maps
+`/api/v1/citylife/players/me/home-deed/drive-home-arrival` and accepts
+`{plotId, frameId, vehicleKey}`. The orchestrator checks owned-car/deed state and moves
+storage to HOME, but does not read or validate a player's physical location. APISIX at
+`kooker-infra` commit `002b61e8f7a7e23be03bb5234c5834001d3722e2` routes
+`/api/v1/citylife/*` through JWT auth to User Service without a path rewrite; the catch-all
+does not reconcile the two paths or payloads. This proves only the checked-in source/config
+contract, not which config is live. Do not use the cursor POST or current server endpoint as
+physical-arrival proof. A reviewed API contract and an authoritative multiplayer position
+source are required before the first move-in can advance RESIDENT or move car storage.
+
 Driving permits road cells and only the current owned home's driveway, still excluding
 water, house footprint, fences outside the gate and other buildings. The shared swept
 vehicle footprint checks continue to apply. Keyboard driving onto the road and reload
 back to the home spawn are covered in the browser with fixture APIs. This is not yet proof
-of all slopes, road-turn clearance or live deployment.
+of first-move-in arrival, all slopes, road-turn clearance or live deployment.
 
 ## Arrival read ordering
 

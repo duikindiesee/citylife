@@ -7,9 +7,10 @@ Status: active implementation and deployed acceptance; not complete.
 1. Resolve the current user's vehicle and home from authoritative server state on login/reload.
 2. With an owned car, enter that exact car. With an owned home, place it safely in front of the home on a usable driveway connected to the road.
 3. Without a car, open Gearbox Auto Hub, show the actual models including X19, and allow server-priced acquisition. Closing and reopening must preserve the qualifying player's acquisition eligibility.
-4. Without a home, show available plots and prices, purchase a selected plot, continue into house building, then arrive at the completed owned home with the owned car.
-5. Fund the intended starter path, including X19, plot and house completion. New-player grants and existing-player recovery must be authoritative, idempotent and auditable; never replenish ordinary spending on every login.
-6. Preserve ownership, balance, house and spawn across reload/login and isolate users. No guessed ownership, duplicate charges or client-authored money.
+4. Without a home, show available plots and prices, purchase a selected plot, and continue into house building. On first move-in, load the player into the exact owned car at Gearbox, show the server-published home driveway target on the map, and let them drive there in the real world. Confirm arrival from authoritative server state; subsequent login/reload may start at the owned home's driveway. Then open free roam.
+5. Only after the player reaches the driveway and the server confirms residence does free roam open. From there, the map may offer the Games Studio / Alice Shop as an optional destination and Alice Hermes's tank game as a separate authenticated network mission. Neither the studio visit nor mission can gate car/plot/home onboarding.
+6. Fund the intended starter path, including X19, plot and house completion. New-player grants and existing-player recovery must be authoritative, idempotent and auditable; never replenish ordinary spending on every login.
+7. Preserve ownership, balance, house and spawn across reload/login and isolate users. No guessed ownership, duplicate charges or client-authored money.
 
 ## Evidence and gaps
 
@@ -21,6 +22,7 @@ Status: active implementation and deployed acceptance; not complete.
 | Home         | Spec156 selects neighbourhoods and projects a deterministic house for a 350 KCO deed                                 | Actual priced plot choice and house-building transition unproven                                                 |
 | Plot settlement | Local Chromium journey verifies purchase confirmation settles before a deliberately delayed ownership read; Build House waits for that server truth | Fixture only; live debit and deployed readback remain unverified |
 | Arrival      | Runtime parks a locally loaded car east of citizen home; DriveHomeOverlay moves a separate cursor                    | Server-owned car, real spawn/entry, driveway and home geometry must converge                                     |
+| First move-in and Alice mission unlock | Local fixture tests verify the owned car starts at Gearbox, the home pin and driving controls remain visible, and Alice Shop appears only after fixture-supplied server `RESIDENT` truth. Evidence: `tests/playerHomeProjection.test.ts`, `e2e/player-onboarding-journey.spec.ts`, [Gearbox start](evidence/player-onboarding-2026-09-25/first-move-in-at-gearbox.png), [first-drive map](evidence/player-onboarding-2026-09-25/first-drive-map.png), [resident free-roam map](evidence/player-onboarding-2026-09-25/resident-free-roam-map.png). | Fixture only. Client and server arrival contracts still disagree, and the server does not validate physical vehicle position. The Alice network mission is not implemented here. No deployed garage-to-driveway trip or authoritative arrival check-in. |
 
 ## Dependency-ordered integration
 

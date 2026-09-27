@@ -2539,6 +2539,60 @@ body.tv-mode .radio-iframe.is-visible {
 .bus-network-minimap__player--edge {
   fill: #ffb84a;
 }
+.bus-network-minimap__landmark {
+  stroke: #f4f7ff;
+  stroke-width: 1.1;
+}
+.bus-network-minimap__landmark-leader {
+  stroke: rgba(242, 247, 255, 0.75);
+  stroke-width: 1;
+  stroke-dasharray: 2 1.5;
+}
+.bus-network-minimap__landmark--gearbox {
+  fill: #ffb84a;
+}
+.bus-network-minimap__landmark--home {
+  fill: #5bffb5;
+}
+.bus-network-minimap__landmark--alice-shop {
+  fill: #bd9bff;
+}
+.bus-network-minimap__landmark-glyph {
+  fill: #07101c !important;
+  font-size: 5px !important;
+  font-weight: 900 !important;
+}
+.bus-network-minimap__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 6px 3px 1px;
+  color: #d8e7f0;
+  font-size: 12px;
+}
+.bus-network-minimap__legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.bus-network-minimap__legend-glyph {
+  display: inline-grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 50%;
+  color: #07101c;
+  font-size: 10px;
+}
+.bus-network-minimap__legend-glyph--gearbox {
+  background: #ffb84a;
+}
+.bus-network-minimap__legend-glyph--home {
+  background: #5bffb5;
+}
+.bus-network-minimap__legend-glyph--alice-shop {
+  background: #bd9bff;
+}
 @media (max-width: 700px) {
   .bus-network-minimap {
     width: 168px;

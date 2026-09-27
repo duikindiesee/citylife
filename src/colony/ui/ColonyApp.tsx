@@ -1113,7 +1113,8 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
         if (isHomeOwned(home)) {
           const session = await loadHouseBuild(playerInventory);
           if (cancelled) return;
-          if (session.userId !== String(operatorUserId) || !runtime.applyCompletedPlayerHome(session))
+          if (session.userId !== String(operatorUserId) ||
+              !runtime.applyCompletedPlayerHome(session, home.onboardingState.toUpperCase() === "RESIDENT"))
             throw new Error("Completed home unavailable");
         }
       }
@@ -4309,6 +4310,7 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
           !showroomOpen &&
           !homeOpen &&
           !driveHomeOpen &&
+          !runtime.isPlayerHomeArrivalPending() &&
           newPlayerJourneyEnabled && (
             <button
               data-build-action="open-drive-home"

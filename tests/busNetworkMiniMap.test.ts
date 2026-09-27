@@ -121,4 +121,56 @@ describe("always-visible bus network minimap model", () => {
     expect(moved.player!.x).toBe(8);
     expect(moved.player!.y).toBe(124);
   });
+
+  it("keeps published home, Gearbox and Alice Shop destinations inside the fixed map frame", () => {
+    const model = buildBusNetworkMiniMapModel({
+      ways,
+      routeStops: [],
+      depot: null,
+      buses: [],
+      landmarks: [
+        { id: "gearbox", x: 9, y: 10 },
+        { id: "home", x: 34, y: 24 },
+        { id: "alice-shop", x: 18, y: 12 },
+      ],
+      width: 200,
+      height: 132,
+      padding: 8,
+    });
+
+    expect(model.landmarks.map(({ id }) => id)).toEqual([
+      "gearbox",
+      "home",
+      "alice-shop",
+    ]);
+    expect(model.landmarks[1]).toMatchObject({ id: "home", outOfBounds: false });
+    expect(model.bounds).toEqual({ minX: 9, minY: 10, spanX: 25, spanY: 14 });
+    for (const landmark of model.landmarks) {
+      expect(landmark.x).toBeGreaterThanOrEqual(8);
+      expect(landmark.x).toBeLessThanOrEqual(192);
+      expect(landmark.y).toBeGreaterThanOrEqual(8);
+      expect(landmark.y).toBeLessThanOrEqual(124);
+      expect(landmark.markerX).toBeGreaterThanOrEqual(8);
+      expect(landmark.markerX).toBeLessThanOrEqual(192);
+      expect(landmark.markerY).toBeGreaterThanOrEqual(8);
+      expect(landmark.markerY).toBeLessThanOrEqual(124);
+    }
+  });
+
+  it("moves destination badges away from overlapping live bus markers while preserving exact pin coordinates", () => {
+    const model = buildBusNetworkMiniMapModel({
+      ways,
+      routeStops: [],
+      depot: null,
+      buses: [{ id: 0, x: 20, y: 10 }],
+      landmarks: [{ id: "home", x: 20, y: 10 }],
+      width: 200,
+      height: 132,
+      padding: 8,
+    });
+    const home = model.landmarks[0]!;
+    const bus = model.busClusters[0]!;
+    expect(home).toMatchObject({ x: bus.x, y: bus.y });
+    expect(Math.hypot(home.markerX - bus.x, home.markerY - bus.y)).toBeGreaterThanOrEqual(11);
+  });
 });
