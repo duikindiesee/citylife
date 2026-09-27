@@ -30,6 +30,7 @@ import {
 } from "../../colony/playerSpeed";
 import { replayPose } from "../../colony/perf/replayBridge";
 import type { OwnedDrivePose } from "../../colony/car/ownedDriving";
+import { ownedDriveCamera } from "../../colony/car/ownedDriveCamera";
 
 const LOOK_SPEED = 2;
 const BUS_RIDER_EYE = 2.4; // eye height above the road while seated on the 3 m coach (spec 149)
@@ -188,8 +189,13 @@ export function FirstPersonController({
       );
       rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
       rotation.current.set(0, -driving.heading - Math.PI / 2, 0);
-      camera.position.set(wx, eyeY, wz);
-      camera.quaternion.setFromEuler(rotation.current);
+      const chase = ownedDriveCamera(
+        driving,
+        terrainSizeForGrid,
+        (x, y) => ownedVehicleSurfaceY(sim, terrainLevel, x, y),
+      );
+      camera.position.set(...chase.position);
+      camera.lookAt(...chase.target);
       if (runtime) runtime.fpCameraCell = { x: driving.x, y: driving.y };
       return;
     }
