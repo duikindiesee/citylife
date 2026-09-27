@@ -116,6 +116,23 @@ test("returning resident sees the owned car at the published home spawn",async({
   }),{timeout:90000}).toEqual({plotId:plot.plotId,vertices:expect.any(Number)});
   expect(await page.evaluate(()=>(window as any).__r3fScene
     ?.getObjectByName("player-home-driveway")?.geometry?.getAttribute("position")?.count)).toBeGreaterThan(0);
+  const houseWorldX=(h.x-manifest.size/2)*4-2;
+  const houseWorldZ=(h.y-manifest.size/2)*4-2;
+  await expect.poll(()=>page.evaluate(({plotId,x,z})=>{
+    const w=window as any;
+    const built=!!w.__colony?.sim.state.neighborhood?.lots
+      ?.find((lot:{id:string})=>lot.id===plotId)?.built;
+    let rendered=false;
+    w.__r3fScene?.traverse((object:any)=>{
+      if(object.type!=="Group"||Math.abs(object.position.x-x)>0.01||
+          Math.abs(object.position.z-z)>0.01)return;
+      object.traverse((child:any)=>{
+        if(child.isMesh&&child.geometry?.getAttribute("position")?.count>0)rendered=true;
+      });
+    });
+    return {built,rendered};
+  },{plotId:plot.plotId,x:houseWorldX,z:houseWorldZ}),{timeout:90000})
+    .toEqual({built:true,rendered:true});
   await page.screenshot({path:info.outputPath("returning-home-spawn.png")});
   await page.keyboard.down("KeyW");
   try {
