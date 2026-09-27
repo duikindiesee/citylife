@@ -24,5 +24,3 @@ lastPose=p;if(success)break;}
 results.push({plotId:c.plotId,direction:d,road,success,lastPose,nearbyRoads:success?undefined:input.roads.filter(p=>Math.abs(p.x-road.x)<=4&&Math.abs(p.y-road.y)<=4)});}}
 writeFileSync(output,JSON.stringify({layoutRevision:layout.revision.contentHash,scope:'Production movement pilot; failure does not prove no possible route. Not rendered or deployed proof.',results},null,2));console.log(JSON.stringify(results));
 }finally{await s.close();}
-
-
