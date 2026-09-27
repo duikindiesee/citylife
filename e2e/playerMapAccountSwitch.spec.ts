@@ -48,8 +48,21 @@ test("mounted player map hides A's pose on B's first render during an in-place s
   expect(
     accountBFrames.every(
       (render) =>
-        render.authenticatedAccount === render.runtimeAccount ||
+        (render.authenticatedAccount === render.runtimeAccount &&
+          render.isCityLifePlayer) ||
         !render.markerVisible,
     ),
   ).toBe(true);
+
+  await page.getByRole("button", { name: "Switch role to operator" }).click();
+  await expect(marker).toHaveCount(0);
+  const operatorFrame = await page.evaluate(() =>
+    (window.__playerMapAccountRenders ?? []).at(-1),
+  );
+  expect(operatorFrame).toMatchObject({
+    authenticatedAccount: "player-b",
+    runtimeAccount: "player-b",
+    isCityLifePlayer: false,
+    markerVisible: false,
+  });
 });

@@ -2,11 +2,12 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { ColonyRuntime } from "../../src/colony/runtime";
 import { BusNetworkMiniMap } from "../../src/colony/ui/BusNetworkMiniMap";
-import { isPlayerLocationAccountBound } from "../../src/colony/ui/busNetworkMiniMapModel";
+import { canShowPlayerLocationForAccount } from "../../src/colony/ui/busNetworkMiniMapModel";
 
 type RenderSnapshot = {
   authenticatedAccount: string;
   runtimeAccount: string;
+  isCityLifePlayer: boolean;
   markerVisible: boolean;
 };
 
@@ -40,6 +41,7 @@ const fixtureRuntime = {
 function Fixture() {
   const [authenticatedAccount, setAuthenticatedAccount] = useState("player-a");
   const [runtimeAccountView, setRuntimeAccountView] = useState(runtimeAccount);
+  const [isCityLifePlayer, setIsCityLifePlayer] = useState(true);
 
   // Mirror the app's passive auth-to-runtime binding. The delay keeps the transition frame
   // observable so the assertion proves the map fails closed while the previous pose still exists.
@@ -59,25 +61,30 @@ function Fixture() {
     renders.push({
       authenticatedAccount,
       runtimeAccount: runtimeAccountView,
+      isCityLifePlayer,
       markerVisible: !!document.querySelector(
         '[data-testid="city-map-player-marker"]',
       ),
     });
-  }, [authenticatedAccount, runtimeAccountView]);
+  }, [authenticatedAccount, isCityLifePlayer, runtimeAccountView]);
 
   return (
     <>
       <button type="button" onClick={() => setAuthenticatedAccount("player-b")}>
         Switch account to B
       </button>
+      <button type="button" onClick={() => setIsCityLifePlayer(false)}>
+        Switch role to operator
+      </button>
       <BusNetworkMiniMap
         runtime={fixtureRuntime}
         walletLabel="Test wallet"
         presenceReadout={null}
-        playerLocationAuthorized={isPlayerLocationAccountBound(
-          authenticatedAccount,
-          runtimeAccountView,
-        )}
+        playerLocationAuthorized={canShowPlayerLocationForAccount({
+          isCityLifePlayer,
+          authenticatedAccountKey: authenticatedAccount,
+          runtimeAccountKey: runtimeAccountView,
+        })}
         open
         onClose={() => undefined}
       />

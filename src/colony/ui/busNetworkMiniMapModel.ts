@@ -30,15 +30,17 @@ export interface MapGridPosition {
   y: number;
 }
 
-/** Keep private player-map data hidden until the runtime has synchronously rebound to this account. */
-export function isPlayerLocationAccountBound(
-  authenticatedAccountKey: string | null,
-  runtimeAccountKey: string | null,
-): boolean {
+/** Player-private map data requires both a player role and a runtime bound to that exact account. */
+export function canShowPlayerLocationForAccount(input: {
+  isCityLifePlayer: boolean;
+  authenticatedAccountKey: string | null;
+  runtimeAccountKey: string | null;
+}): boolean {
   return (
-    authenticatedAccountKey !== null &&
-    runtimeAccountKey !== null &&
-    authenticatedAccountKey === runtimeAccountKey
+    input.isCityLifePlayer &&
+    input.authenticatedAccountKey !== null &&
+    input.runtimeAccountKey !== null &&
+    input.authenticatedAccountKey === input.runtimeAccountKey
   );
 }
 
@@ -73,6 +75,8 @@ export function resolveLocalPlayerMapPosition(input: {
     input.exactOwnPresence?.subjectId === operatorCitizenId
       ? input.exactOwnPresence.cell
       : null;
+  // A seated drive pose comes from the runtime's server-authoritative car owned by the bound user;
+  // it remains exact account-owned position even if that account has no mapped citizen yet.
   return (
     valid(input.drivePose) ??
     valid(cameraCell) ??

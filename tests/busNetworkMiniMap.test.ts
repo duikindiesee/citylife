@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBusNetworkMiniMapModel,
-  isPlayerLocationAccountBound,
+  canShowPlayerLocationForAccount,
   resolveLocalPlayerMapPosition,
 } from "../src/colony/ui/busNetworkMiniMapModel";
 import type { RoadWay } from "../src/colony/render/roadRibbon";
@@ -29,13 +29,55 @@ const ways: RoadWay[] = [
 
 describe("local player map position", () => {
   it("fails closed for every render until runtime identity matches the current account", () => {
-    expect(isPlayerLocationAccountBound("player-a", "player-a")).toBe(true);
+    const canShow = (
+      isCityLifePlayer: boolean,
+      authenticatedAccountKey: string | null,
+      runtimeAccountKey: string | null,
+    ) =>
+      canShowPlayerLocationForAccount({
+        isCityLifePlayer,
+        authenticatedAccountKey,
+        runtimeAccountKey,
+      });
+
+    expect(canShow(true, "player-a", "player-a")).toBe(true);
     // The account changed in place, but the passive runtime-binding effect has not run yet.
-    expect(isPlayerLocationAccountBound("player-b", "player-a")).toBe(false);
-    expect(isPlayerLocationAccountBound("player-b", null)).toBe(false);
-    expect(isPlayerLocationAccountBound(null, "player-a")).toBe(false);
+    expect(canShow(true, "player-b", "player-a")).toBe(false);
+    expect(canShow(true, "player-b", null)).toBe(false);
+    expect(canShow(true, null, "player-a")).toBe(false);
+    // An operator account does not receive player-private map data just because it has an ID.
+    expect(canShow(false, "player-a", "player-a")).toBe(false);
     // The map may reveal the new account's location after the runtime has rebound.
-    expect(isPlayerLocationAccountBound("player-b", "player-b")).toBe(true);
+    expect(canShow(true, "player-b", "player-b")).toBe(true);
+  });
+
+  it("allows an exact runtime-owned car pose without a mapped citizen", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
+        operatorCitizenId: null,
+        activeCitizenId: null,
+        drivePose: { x: 24, y: 31 },
+        cameraCell: { x: 23, y: 30 },
+        exactOwnPresence: null,
+      }),
+    ).toEqual({ x: 24, y: 31 });
+  });
+
+  it("does not use camera or presence when no citizen is mapped", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
+        operatorCitizenId: null,
+        activeCitizenId: null,
+        drivePose: null,
+        cameraCell: { x: 23, y: 30 },
+        exactOwnPresence: {
+          subjectId: "unmapped-player",
+          cell: { x: 22, y: 29 },
+        },
+      }),
+    ).toBeNull();
   });
 
   it("uses the live owned-car pose before the first-person camera or roster pose", () => {

@@ -108,7 +108,7 @@ import {
   type WorldLayoutOperatorStatus,
 } from "./BuilderPanel";
 import { BusNetworkMiniMap } from "./BusNetworkMiniMap";
-import { isPlayerLocationAccountBound } from "./busNetworkMiniMapModel";
+import { canShowPlayerLocationForAccount } from "./busNetworkMiniMapModel";
 import { RaceMobileControls } from "./RaceMobileControls";
 import { BugReportPanel } from "./BugReportPanel";
 import "./colony.css";
@@ -2094,10 +2094,11 @@ export function ColonyApp() {
         walletLabel={walletAccountKey === null ? "City view" : playerWalletText}
         presenceReadout={presenceReadout}
         playerLocationAuthorized={
-          isPlayerLocationAccountBound(
-            walletAccountKey,
-            runtime.getBoundOperatorUserId(),
-          ) &&
+          canShowPlayerLocationForAccount({
+            isCityLifePlayer: auth.isCityLifePlayer,
+            authenticatedAccountKey: walletAccountKey,
+            runtimeAccountKey: runtime.getBoundOperatorUserId(),
+          }) &&
           !builderActive &&
           !worldViewActive
         }
