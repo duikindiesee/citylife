@@ -91,10 +91,8 @@ export function R3FOperatorCar({
   useFrame(() => {
     const car = sim.state.operatorCar;
     if (!group.current || !car) return;
-    // The owned-car camera is at the driver's eye. Until the catalogue model has an interior,
-    // drawing its exterior around that camera fills the view with bodywork. Hide only this local
-    // scene instance while its driver is seated; ownership and world state remain unchanged.
-    group.current.visible = !runtime?.getOwnedDrivePose?.();
+    // The camera follows behind the owned car, so its model stays visible while driving.
+    group.current.visible = true;
     const t = sim.state.terrain;
     const y = ownedVehicleSurfaceY(sim, terrainLevel, car.cell.x, car.cell.y);
     group.current.position.set(

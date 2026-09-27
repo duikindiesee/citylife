@@ -2,8 +2,8 @@ import {test,expect} from "@playwright/test";
 import {starterWorldFixture} from "./starterWorldFixture";
 import {writeFile} from "node:fs/promises";
 
-test("owned-car view stays clear and driveway park/exit presents the parked car",async({page},info)=>{
-  test.setTimeout(120000);
+test("owned-car chase view stays clear through Gearbox departure and park/exit",async({page},info)=>{
+  test.setTimeout(180000);
   const fixture=await starterWorldFixture(),manifest=JSON.parse(fixture).manifest;
   const plot=manifest.plots.find((p:{plotId:string})=>p.plotId==="wood1_lot_1"),h=plot.geometry.houseZone;
   const script=`house{w:${h.width} d:${h.depth} wallH:1 door:s} room{kind:living x:0 y:0 w:${h.width} d:${h.depth} win:1}`;
@@ -40,8 +40,11 @@ test("owned-car view stays clear and driveway park/exit presents the parked car"
       eyeHeight:camera.position.y-group.position.y,dimensions:max.clone().sub(min).toArray()};
   });
   await expect.poll(async()=> (await measurement())?.seated,{timeout:90000}).toBe(true);
-  await expect.poll(async()=> (await measurement())?.eyeHeight,{timeout:90000}).toBeCloseTo(1.05,2);
-  await expect.poll(async()=> (await measurement())?.carVisible).toBe(false);
+  await expect.poll(async()=> (await measurement())?.eyeHeight,{timeout:90000}).toBeGreaterThan(2);
+  await expect.poll(async()=> (await measurement())?.carVisible).toBe(true);
+  await expect.poll(async()=> (await measurement())?.carOnScreen).toBe(true);
+  const arrival=await measurement();
+  expect(Math.hypot(arrival!.camera[0]-arrival!.car[0],arrival!.camera[2]-arrival!.car[2])).toBeGreaterThan(6);
   await info.attach("camera-and-model-measurements",{body:JSON.stringify(await measurement()),contentType:"application/json"});
   await writeFile(info.outputPath("measurements.json"),JSON.stringify(await measurement(),null,2));
   await page.screenshot({path:info.outputPath("driveway-view.png")});
@@ -57,7 +60,7 @@ test("owned-car view stays clear and driveway park/exit presents the parked car"
   await page.screenshot({path:info.outputPath("parked-car-outside-view.png")});
   await page.getByTestId("enter-owned-car").click();
   await expect(page.getByTestId("owned-car-controls")).toBeVisible();
-  await expect.poll(async()=> (await measurement())?.carVisible).toBe(false);
+  await expect.poll(async()=> (await measurement())?.carVisible).toBe(true);
   await page.keyboard.down("KeyW");
   try {
     await expect.poll(()=>page.evaluate(()=>{
@@ -68,6 +71,6 @@ test("owned-car view stays clear and driveway park/exit presents the parked car"
   await page.keyboard.down("Space");
   await expect.poll(()=>page.evaluate(()=>(window as any).__colony.getOwnedDrivePose()?.speed)).toBe(0);
   await page.keyboard.up("Space");
-  await expect.poll(async()=> (await measurement())?.eyeHeight).toBeCloseTo(1.05,2);
+  await expect.poll(async()=> (await measurement())?.carOnScreen).toBe(true);
   await page.screenshot({path:info.outputPath("road-view.png")});
 });
