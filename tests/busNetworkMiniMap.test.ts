@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBusNetworkMiniMapModel,
+  isPlayerLocationAccountBound,
   resolveLocalPlayerMapPosition,
 } from "../src/colony/ui/busNetworkMiniMapModel";
 import type { RoadWay } from "../src/colony/render/roadRibbon";
@@ -27,6 +28,16 @@ const ways: RoadWay[] = [
 ];
 
 describe("local player map position", () => {
+  it("fails closed for every render until runtime identity matches the current account", () => {
+    expect(isPlayerLocationAccountBound("player-a", "player-a")).toBe(true);
+    // The account changed in place, but the passive runtime-binding effect has not run yet.
+    expect(isPlayerLocationAccountBound("player-b", "player-a")).toBe(false);
+    expect(isPlayerLocationAccountBound("player-b", null)).toBe(false);
+    expect(isPlayerLocationAccountBound(null, "player-a")).toBe(false);
+    // The map may reveal the new account's location after the runtime has rebound.
+    expect(isPlayerLocationAccountBound("player-b", "player-b")).toBe(true);
+  });
+
   it("uses the live owned-car pose before the first-person camera or roster pose", () => {
     expect(
       resolveLocalPlayerMapPosition({

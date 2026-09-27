@@ -30,6 +30,18 @@ export interface MapGridPosition {
   y: number;
 }
 
+/** Keep private player-map data hidden until the runtime has synchronously rebound to this account. */
+export function isPlayerLocationAccountBound(
+  authenticatedAccountKey: string | null,
+  runtimeAccountKey: string | null,
+): boolean {
+  return (
+    authenticatedAccountKey !== null &&
+    runtimeAccountKey !== null &&
+    authenticatedAccountKey === runtimeAccountKey
+  );
+}
+
 /** Resolve the viewer's own map point from live local movement, then their own exact presence.
  * Coarse or non-local presence must never become the player's marker. */
 export function resolveLocalPlayerMapPosition(input: {
