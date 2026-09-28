@@ -14,12 +14,24 @@ export interface MiniMapBusPoint extends MiniMapMovingPoint {
 export interface MiniMapBusCluster extends MiniMapMovingPoint {
   ids: number[];
 }
+export type MiniMapLandmarkId = "gearbox" | "home" | "alice-shop";
+export interface MiniMapLandmarkInput extends MiniMapPoint {
+  id: MiniMapLandmarkId;
+}
+export interface MiniMapLandmark extends MiniMapMovingPoint {
+  id: MiniMapLandmarkId;
+  /** Collision-adjusted badge location; x/y remain the exact projected destination. */
+  markerX: number;
+  markerY: number;
+}
 export interface BusNetworkMiniMapModel {
   roads: { points: string; source: RoadWay["source"] }[];
   stops: MiniMapPoint[];
   depot: MiniMapPoint | null;
   buses: MiniMapBusPoint[];
   busClusters: MiniMapBusCluster[];
+  /** Static, world-derived wayfinding targets. Account-specific home data is optional. */
+  landmarks: MiniMapLandmark[];
   /** The local player's exact surface-grid fix, when the runtime has one. */
   player: MiniMapMovingPoint | null;
   bounds: { minX: number; minY: number; spanX: number; spanY: number };
@@ -31,6 +43,7 @@ interface Input {
   depot: { x: number; y: number } | null;
   buses: { id: number; x: number; y: number }[];
   player?: { x: number; y: number } | null;
+  landmarks?: MiniMapLandmarkInput[];
   width: number;
   height: number;
   padding: number;
@@ -39,12 +52,16 @@ interface Input {
 export function buildBusNetworkMiniMapModel(
   input: Input,
 ): BusNetworkMiniMapModel {
-  // The map frame is derived only from fixed network geometry. Including moving buses or
-  // the player here made the projection rescale every time a marker reached a new extreme.
+  // The map frame is derived from fixed roads plus static wayfinding targets. Including moving
+  // buses or the player made the projection rescale every time a marker reached a new extreme.
+  const landmarks = (input.landmarks ?? []).filter(
+    (landmark) => Number.isFinite(landmark.x) && Number.isFinite(landmark.y),
+  );
   const network = [
     ...input.ways.flatMap((way) => way.path),
     ...input.routeStops,
     ...(input.depot ? [input.depot] : []),
+    ...landmarks,
   ];
   const xs = network.map((p) => p.x);
   const ys = network.map((p) => p.y);
@@ -102,6 +119,54 @@ export function buildBusNetworkMiniMapModel(
       cluster.ids.push(bus.id);
     }
   }
+  const projectedLandmarks = landmarks.map((landmark) => ({
+    id: landmark.id,
+    ...projectMoving(landmark),
+  }));
+  const occupied = [
+    ...busClusters.map(({ x, y }) => ({ x, y })),
+    ...input.routeStops.map(project),
+    ...(input.depot ? [project(input.depot)] : []),
+    ...(input.player ? [projectMoving(input.player)] : []),
+  ];
+  const badgeOffsets = [
+    [0, 0],
+    [0, -12],
+    [12, 0],
+    [-12, 0],
+    [0, 12],
+    [9, -9],
+    [-9, -9],
+    [9, 9],
+    [-9, 9],
+    [0, -18],
+    [18, 0],
+    [-18, 0],
+    [0, 18],
+  ] as const;
+  const separatedLandmarks: MiniMapLandmark[] = [];
+  for (const landmark of projectedLandmarks) {
+    const otherLandmarks = separatedLandmarks.map(({ markerX, markerY }) => ({
+      x: markerX,
+      y: markerY,
+    }));
+    const candidates = badgeOffsets
+      .map(([dx, dy]) => ({ x: landmark.x + dx, y: landmark.y + dy }))
+      .filter(
+        (candidate) =>
+          candidate.x >= input.padding &&
+          candidate.x <= input.width - input.padding &&
+          candidate.y >= input.padding &&
+          candidate.y <= input.height - input.padding,
+      );
+    const candidate =
+      candidates.find((point) =>
+        [...occupied, ...otherLandmarks].every(
+          (other) => Math.hypot(point.x - other.x, point.y - other.y) >= 11,
+        ),
+      ) ?? candidates[0] ?? { x: landmark.x, y: landmark.y };
+    separatedLandmarks.push({ ...landmark, markerX: candidate.x, markerY: candidate.y });
+  }
   return {
     roads: input.ways.map((way) => ({
       source: way.source,
@@ -116,6 +181,7 @@ export function buildBusNetworkMiniMapModel(
     depot: input.depot ? project(input.depot) : null,
     buses,
     busClusters,
+    landmarks: separatedLandmarks,
     player: input.player ? projectMoving(input.player) : null,
     bounds: { minX: rawMinX, minY: rawMinY, spanX, spanY },
   };

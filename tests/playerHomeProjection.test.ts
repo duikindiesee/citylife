@@ -25,27 +25,43 @@ it("projects the exact completed design without another material or ledger charg
   const runtime=boot(),lot=runtime.lots().find(l=>l.id===session.context.plotId)!;
   const before={seed:lot.houseSeed,materials:runtime.sim.state.materials,ledger:JSON.stringify(runtime.sim.state.ledger)};
   const spawn=session.context.geometry.spawn;
+  expect(runtime.getPlayerHomeMapDestination()).toBeNull();
   expect(runtime["canOwnedCarOccupy"](spawn.x,spawn.y)).toBe(false);
-  expect(runtime.applyCompletedPlayerHome(session)).toBe(true);
+  expect(runtime.applyCompletedPlayerHome(session,false)).toBe(true);
+  expect(runtime.isPlayerHomeArrivalPending()).toBe(true);
+  expect(runtime.isPlayerHomeResident()).toBe(false);
+  expect(runtime.getPlayerHomeMapDestination()).toEqual({
+    plotId: session.context.plotId,
+    x: spawn.x,
+    y: spawn.y,
+  });
   expect(lot.built).toBe(true);expect(lot.blueprint).toBe(session.context.script);
   expect(lot.houseSeed).toBe(session.inventory.layout.seed);
   expect(lot.ownerCitizenId).toBeUndefined();
   expect(runtime["canOwnedCarOccupy"](spawn.x,spawn.y)).toBe(true);
   expect(runtime["canOwnedCarOccupy"](lot.houseZone.x,lot.houseZone.y)).toBe(false);
-  expect(runtime.applyCompletedPlayerHome(session)).toBe(true);
+  expect(runtime.applyCompletedPlayerHome(session,false)).toBe(true);
   expect(runtime.sim.state.materials).toBe(before.materials);
   expect(JSON.stringify(runtime.sim.state.ledger)).toBe(before.ledger);
   expect(runtime.applyBlueprint(lot.id,session.context.script!)).toBe(false);
   runtime.setOperatorUserId("player-b");
+  expect(runtime.getPlayerHomeMapDestination()).toBeNull();
   expect(runtime["canOwnedCarOccupy"](spawn.x,spawn.y)).toBe(false);
   expect(lot.built).toBe(false);expect(lot.blueprint).toBeUndefined();expect(lot.houseSeed).toBe(before.seed);
-  expect(runtime.applyCompletedPlayerHome(session)).toBe(false);
+  expect(runtime.applyCompletedPlayerHome(session,false)).toBe(false);
+});
+it("marks the exact first-move-in home as free-roam only after authoritative RESIDENT truth",()=>{
+  const runtime=boot();
+  expect(runtime.applyCompletedPlayerHome(session,true)).toBe(true);
+  expect(runtime.isPlayerHomeArrivalPending()).toBe(false);
+  expect(runtime.isPlayerHomeResident()).toBe(true);
+  expect(runtime.getPlayerHomeMapDestination()).toMatchObject({plotId:session.context.plotId});
 });
 it("refuses unfinished, stale or displaced house data before touching the parcel",()=>{
   const runtime=boot(),before=JSON.stringify(runtime.lots());
-  expect(runtime.applyCompletedPlayerHome({...session,context:{...session.context,completed:false}})).toBe(false);
-  expect(runtime.applyCompletedPlayerHome({...session,context:{...session.context,layoutRevision:"b".repeat(64)}})).toBe(false);
+  expect(runtime.applyCompletedPlayerHome({...session,context:{...session.context,completed:false}},false)).toBe(false);
+  expect(runtime.applyCompletedPlayerHome({...session,context:{...session.context,layoutRevision:"b".repeat(64)}},false)).toBe(false);
   expect(runtime.applyCompletedPlayerHome({...session,context:{...session.context,geometry:{...session.context.geometry,
-    houseZone:{...session.context.geometry.houseZone,x:session.context.geometry.houseZone.x+1}}}})).toBe(false);
+    houseZone:{...session.context.geometry.houseZone,x:session.context.geometry.houseZone.x+1}}}},false)).toBe(false);
   expect(JSON.stringify(runtime.lots())).toBe(before);
 });

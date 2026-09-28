@@ -1113,7 +1113,8 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
         if (isHomeOwned(home)) {
           const session = await loadHouseBuild(playerInventory);
           if (cancelled) return;
-          if (session.userId !== String(operatorUserId) || !runtime.applyCompletedPlayerHome(session))
+          if (session.userId !== String(operatorUserId) ||
+              !runtime.applyCompletedPlayerHome(session, home.onboardingState.toUpperCase() === "RESIDENT"))
             throw new Error("Completed home unavailable");
         }
       }
@@ -4301,14 +4302,14 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
             </div>
           </aside>
         )}
-        {/* PLAYER.HOME.1D.S2 — enter the guided drive out of the dealership to the owned home. Gated on
-            the fail-closed new-player-journey entitlement: hidden (absent from the DOM, not merely
-            styled away) until operator UAT, so the legacy world play is preserved when OFF or a read
-            fails. */}
+        {/* Legacy separate-cursor drive entry remains available only for homes without a published
+            map destination. A published home uses the owned car and the map for first move-in. */}
         {!builderActive &&
           !showroomOpen &&
           !homeOpen &&
           !driveHomeOpen &&
+          arrivalReady &&
+          !runtime.getPlayerHomeMapDestination() &&
           newPlayerJourneyEnabled && (
             <button
               data-build-action="open-drive-home"
@@ -4319,12 +4320,12 @@ export function ColonyApp({ playerInventory }: { playerInventory?: PublishedPlay
               🚗 Drive home
             </button>
           )}
-        {/* PLAYER.HOME.1C — enter the guided starter-property selection. Gated on the SAME fail-closed
-            new-player-journey entitlement AND its own dark build-env flag: hidden until operator UAT,
-            so the legacy entry is preserved when OFF or an entitlement read fails. */}
+        {/* Starter-property entry is for players without a published completed home. */}
         {!builderActive &&
           !showroomOpen &&
           !homeOpen &&
+          arrivalReady &&
+          !runtime.getPlayerHomeMapDestination() &&
           newPlayerJourneyEnabled && (
             <button
               data-build-action="open-home"

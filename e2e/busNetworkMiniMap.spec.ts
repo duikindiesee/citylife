@@ -26,6 +26,11 @@ test.describe("player city map", () => {
     await expect(map.locator(".bus-network-minimap__mode")).toHaveText(
       "LOCAL SESSION",
     );
+    await expect(map.getByTestId("city-map-destination-gearbox")).toBeVisible();
+    // Alice Shop is an optional post-arrival destination; this local session
+    // has no server-confirmed RESIDENT home and must not expose it yet.
+    await expect(map.getByTestId("city-map-destination-alice-shop")).toHaveCount(0);
+    await expect(map.getByTestId("city-map-destination-home")).toHaveCount(0);
     await page.waitForFunction(
       () => !!window.__colony?.busDepot && !!window.__colony?.busRoute,
       null,
