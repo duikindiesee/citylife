@@ -8,8 +8,8 @@
 //     CACHE ONLY — a fail-soft mirror so a returning player sees their garage before the truth call
 //     resolves — and is always overwritten by, never merged ahead of, the server response.
 //   • Every acquire response is classified into a small closed set of states the overlay renders:
-//     owned (success), insufficient_funds, pending (replay / already in flight), disabled
-//     (service gate off, signed out, missing quote, or refused), error.
+//     owned (success), insufficient_funds, pending (accepted), reconciliation_required (ambiguous),
+//     disabled (service gate off, signed out, missing quote, or refused), error.
 //
 // Pure model ops (the gate, key screen, cache codec and response classifier) take no DOM and are
 // node-testable, mirroring the carSpec / showroomState purity rule. The backend layer is best-effort
@@ -39,6 +39,52 @@ export function carOwnershipCacheKey(scope?: string | null): string {
   return clean
     ? `citylife.car.ownership.v1.${clean}`
     : "citylife.car.ownership.v1";
+}
+
+/** An ambiguous result leaves purchase outcome unresolved, so persist a per-account latch across
+ *  showroom close/reopen and page reload. Only authoritative ownership truth for that exact car clears it. */
+function carAcquisitionConflictCacheKey(scope?: string | null): string | null {
+  const clean =
+    typeof scope === "string" && scope.trim().length > 0 ? scope.trim() : null;
+  return clean ? `citylife.car.acquire-conflict.v1.${clean}` : null;
+}
+
+export function loadCarAcquisitionConflict(
+  scope?: string | null,
+): string | null {
+  try {
+    const key = carAcquisitionConflictCacheKey(scope);
+    if (!key) return null;
+    const vehicleKey = localStorage.getItem(key);
+    return isCanonicalVehicleKey(vehicleKey)
+      ? serverVehicleKeyOf(vehicleKey)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCarAcquisitionConflict(
+  vehicleKey: string,
+  scope?: string | null,
+): boolean {
+  try {
+    const cacheKey = carAcquisitionConflictCacheKey(scope);
+    if (!cacheKey || !isCanonicalVehicleKey(vehicleKey)) return false;
+    localStorage.setItem(cacheKey, serverVehicleKeyOf(vehicleKey));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearCarAcquisitionConflict(scope?: string | null): void {
+  try {
+    const key = carAcquisitionConflictCacheKey(scope);
+    if (key) localStorage.removeItem(key);
+  } catch {
+    /* storage unavailable */
+  }
 }
 
 /** Acquisition is enabled by default for the player journey. An explicit build value can still turn it
@@ -94,21 +140,21 @@ export function isCanonicalVehicleKey(key: unknown): key is string {
 export type AcquireOutcome =
   | { kind: "owned" } // 200/201 — the server granted (or confirms prior) ownership
   | { kind: "insufficient_funds" } // 402 — not enough KCO; no coin moved
-  | { kind: "pending" } // 202/409 — accepted or a replay of an in-flight/settled request
+  | { kind: "pending" } // 202 — accepted for asynchronous processing
+  | { kind: "reconciliation_required"; status?: number } // ambiguous result; verify ownership before retry
   | { kind: "disabled" } // 401/403 — signed out or refused; the client never retries blindly
   | { kind: "unsupported" } // 400 — vehicle model not in server catalog
   | { kind: "error"; status?: number }; // anything else — a transient/unknown failure
 
-/** Map an acquire HTTP status to a closed outcome. The kooker service owns the decision; the client only
- *  interprets it. 409 (conflict) and 202 (accepted) both mean "already being handled" — a safe, idempotent
- *  replay that must never double-charge, so we surface a neutral pending rather than a second POST. Pure. */
+/** Map an acquire HTTP status to a closed outcome. Anything other than a documented terminal result or
+ *  accepted request has an uncertain debit/ownership outcome and must be reconciled before retry. */
 export function classifyAcquireStatus(status: number): AcquireOutcome {
   if (status === 200 || status === 201) return { kind: "owned" };
   if (status === 402 || status === 422) return { kind: "insufficient_funds" };
-  if (status === 202 || status === 409) return { kind: "pending" };
+  if (status === 202) return { kind: "pending" };
   if (status === 401 || status === 403) return { kind: "disabled" };
   if (status === 400) return { kind: "unsupported" };
-  return { kind: "error", status };
+  return { kind: "reconciliation_required", status };
 }
 
 /** The rendered shape of the acquire control, derived purely from ownership + in-flight + last outcome so
@@ -119,6 +165,7 @@ export interface AcquireButtonView {
   readonly state:
     | "ready"
     | "pending"
+    | "reconciliation_required"
     | "owned"
     | "insufficient_funds"
     | "disabled"
@@ -146,6 +193,12 @@ export function acquireButtonView(
       };
     case "pending":
       return { state: "pending", label: "⏳ Processing…", disabled: true };
+    case "reconciliation_required":
+      return {
+        state: "reconciliation_required",
+        label: "⚠ Purchase status unclear",
+        disabled: true,
+      };
     case "disabled":
       return {
         state: "disabled",
@@ -160,9 +213,9 @@ export function acquireButtonView(
       };
     case "error":
       return {
-        state: "error",
-        label: "Couldn't acquire — retry",
-        disabled: false,
+        state: "reconciliation_required",
+        label: "⚠ Purchase status unclear",
+        disabled: true,
       };
     default:
       return { state: "ready", label: "Acquire", disabled: false };
@@ -180,6 +233,8 @@ export function acquireStateColor(state: AcquireButtonView["state"]): string {
     case "insufficient_funds":
       return "#f2a35a";
     case "error":
+      return "#e07a7a";
+    case "reconciliation_required":
       return "#e07a7a";
     case "disabled":
     case "unsupported":
@@ -398,7 +453,7 @@ export async function postAcquireVehicle(
     }
     return classifyAcquireStatus(resp.status);
   } catch {
-    return { kind: "error" };
+    return { kind: "reconciliation_required" };
   }
 }
 

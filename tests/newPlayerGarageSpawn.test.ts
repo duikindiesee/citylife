@@ -10,6 +10,11 @@ import {
   loadOwnedKeysCache,
   saveOwnedKeysCache,
   clearOwnedKeysCache,
+  classifyAcquireStatus,
+  acquireButtonView,
+  loadCarAcquisitionConflict,
+  saveCarAcquisitionConflict,
+  clearCarAcquisitionConflict,
   postAcquireVehicle,
   BACKEND_VEHICLE_PURCHASE_PATH,
   BACKEND_VEHICLE_OFFERS_PATH,
@@ -262,6 +267,29 @@ describe("PLAYER.CAR.1.S5 — canonical key handling for server authority", () =
       "invalid-model",
     ]);
     expect(screened).toEqual(["karoo-vonk-11", "showroom:karoo-x19-targa"]);
+  });
+
+  it("keeps accepted purchases distinct from ambiguous outcomes and latches conflict per account", () => {
+    expect(classifyAcquireStatus(202)).toEqual({ kind: "pending" });
+    expect(classifyAcquireStatus(409)).toEqual({
+      kind: "reconciliation_required",
+      status: 409,
+    });
+    expect(classifyAcquireStatus(503)).toEqual({
+      kind: "reconciliation_required",
+      status: 503,
+    });
+    expect(
+      acquireButtonView(false, false, { kind: "reconciliation_required" }),
+    ).toMatchObject({ state: "reconciliation_required", disabled: true });
+
+    expect(
+      saveCarAcquisitionConflict("showroom:karoo-vonk-11", "buyer-a"),
+    ).toBe(true);
+    expect(loadCarAcquisitionConflict("buyer-a")).toBe("karoo-vonk-11");
+    expect(loadCarAcquisitionConflict("buyer-b")).toBeNull();
+    clearCarAcquisitionConflict("buyer-a");
+    expect(loadCarAcquisitionConflict("buyer-a")).toBeNull();
   });
 });
 
@@ -680,6 +708,113 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
       });
     },
   );
+
+  it("keeps a 409 purchase blocked across showroom re-entry without another POST", async () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId("buyer-conflict");
+    const auth = getAuthClient();
+    vi.spyOn(auth, "getValidToken").mockResolvedValue("test-jwt");
+    (auth as unknown as { session: unknown }).session = {
+      token: "test-jwt",
+      expiresAt: Date.now() + 100000,
+      operator: {
+        id: "Buyer",
+        userId: "buyer-conflict",
+        scopes: [],
+        roles: ["CITYLIFE_PLAYER"],
+      },
+    };
+    const purchaseStarted = vi.fn();
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url.includes(BACKEND_VEHICLE_OFFERS_PATH)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () =>
+            SHOWROOM_VEHICLES.map((vehicle) => ({
+              vehicleKey: serverVehicleKeyOf(vehicleKeyOf(vehicle)),
+              priceKco: vehicle.plannedPriceK,
+              currency: "KCO",
+            })),
+        };
+      }
+      if (url.includes(BACKEND_VEHICLE_PURCHASE_PATH)) {
+        purchaseStarted();
+        return { ok: false, status: 409 };
+      }
+      return { ok: true, status: 200, json: async () => [] };
+    });
+
+    const container = (
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
+      }
+    ).document.createElement("div");
+    let root: Root | null = createRoot(container as unknown as HTMLElement);
+    const render = async () => {
+      await act(async () => {
+        root!.render(
+          React.createElement(ShowroomOverlay, {
+            runtime: rt,
+            canAcquire: true,
+            onClose: () => {},
+          }),
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    };
+
+    await render();
+    const firstButton = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire",
+    );
+    expect(firstButton).not.toBeNull();
+    await act(async () => {
+      clickNode(firstButton!);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(purchaseStarted).toHaveBeenCalledTimes(1);
+    expect(loadCarAcquisitionConflict("buyer-conflict")).toBe("karoo-vonk-11");
+    const blockedButton = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire",
+    ) as unknown as {
+      hasAttribute: (name: string) => boolean;
+      getAttribute: (name: string) => string | null;
+    };
+    expect(blockedButton.getAttribute("data-acquire-state")).toBe(
+      "reconciliation_required",
+    );
+    expect(blockedButton.hasAttribute("disabled")).toBe(true);
+    expect(
+      findNodeByAttr(
+        container,
+        "data-testid",
+        "showroom-purchase-reconciliation",
+      ),
+    ).not.toBeNull();
+
+    await act(async () => root!.unmount());
+    root = createRoot(container as unknown as HTMLElement);
+    await render();
+    const reopenedButton = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire",
+    ) as unknown as { hasAttribute: (name: string) => boolean };
+    expect(reopenedButton.hasAttribute("disabled")).toBe(true);
+    expect(purchaseStarted).toHaveBeenCalledTimes(1);
+    await act(async () => root!.unmount());
+    root = null;
+  });
 
   it("suppresses completion if account switches while acquisition request is in flight", async () => {
     const rt = new ColonyRuntime(4242);

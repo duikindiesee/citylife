@@ -46,7 +46,12 @@ This specification completes `PLAYER.CAR.1.S5`:
    - **Status Code Mapping:**
      - `200` / `201`: `{ kind: "owned" }` (server granted or confirms ownership).
      - `402` / `422`: `{ kind: "insufficient_funds" }` (not enough KCO; no coin moved).
-     - `202` / `409`: `{ kind: "pending" }` (accepted or in-flight idempotent replay).
+     - `202`: `{ kind: "pending" }` (the server accepted an asynchronous request).
+     - `409`, undocumented statuses, server failures, and network errors: `reconciliation_required`.
+       They do not prove whether KCO moved or ownership persisted. Store an account-scoped conflict latch;
+       disable further purchases across showroom re-entry/reload and clear it only when authoritative
+       ownership confirms the exact car. A successful POST without matching ownership truth uses the same
+       latch. Never turn an ambiguous result into a retry prompt.
      - `401` / `403`: `{ kind: "disabled" }` (signed out or unauthorized).
 
 3. **In-World Garage Synchronization (`src/colony/ui/ShowroomOverlay.tsx`):**
@@ -74,6 +79,10 @@ This specification completes `PLAYER.CAR.1.S5`:
 5. Clicking Acquire posts `{ vehicleKey: serverKey }` with `Idempotency-Key` to `/kooker/api/v1/citylife/players/me/vehicle/purchase`.
 6. Successful acquisition persists the `CarSpec` to `citylife.garage.v1` via `garageStore.saveCar`.
 7. Full test suite (`npm test`) and `npm run typecheck` pass with zero errors.
+8. `202 Accepted` shows a pending state, while `409 Conflict` and other ambiguous outcomes do not leave an
+   indefinite spinner or permit another POST. The player sees that the outcome must be checked; the
+   conflict remains account-scoped across showroom re-entry and reload until server ownership confirms
+   the exact vehicle.
 
 ## Review correction evidence
 

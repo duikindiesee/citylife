@@ -31,6 +31,9 @@ import {
   serverVehicleKeyOf,
   loadOwnedKeysCache,
   saveOwnedKeysCache,
+  loadCarAcquisitionConflict,
+  saveCarAcquisitionConflict,
+  clearCarAcquisitionConflict,
   fetchOwnedVehicleKeysBackend,
   fetchVehicleOfferPricesBackend,
   postAcquireVehicle,
@@ -105,6 +108,8 @@ export function ShowroomOverlay({
     getAuthClient().operator?.userId == null
       ? null
       : String(getAuthClient().operator!.userId);
+  const unresolvedPurchaseVehicleKey =
+    loadCarAcquisitionConflict(currentAccountKey);
   // Bind quotes to the account that fetched them. On an account switch, the old price is unusable
   // during the render before the effect runs, so it cannot flash as an actionable offer.
   const offerBelongsToCurrentAccount =
@@ -203,6 +208,20 @@ export function ShowroomOverlay({
 
       setOwned(truth);
       saveOwnedKeysCache(truth, scope); // the cache follows the truth, never leads it
+      const unresolvedKey = loadCarAcquisitionConflict(scope);
+      if (
+        unresolvedKey &&
+        truth.some((key) => serverVehicleKeyOf(key) === unresolvedKey)
+      ) {
+        clearCarAcquisitionConflict(scope);
+        setOutcomes((current) =>
+          Object.fromEntries(
+            Object.entries(current).filter(
+              ([, outcome]) => outcome.kind !== "reconciliation_required",
+            ),
+          ),
+        );
+      }
       if (initialUserId)
         runtime?.applyVehicleOwnership(String(initialUserId), truth);
 
@@ -238,7 +257,9 @@ export function ShowroomOverlay({
     owned.includes(serverVehicleKeyOf(vehicleKey));
   const serverPriceKco =
     serverOfferPrices?.[serverVehicleKeyOf(vehicleKey)] ?? null;
-  const outcome = outcomes[vehicleKey];
+  const outcome = unresolvedPurchaseVehicleKey
+    ? ({ kind: "reconciliation_required" } as const)
+    : outcomes[vehicleKey];
   const isPending = pendingKey === vehicleKey;
 
   const acquire = useCallback(() => {
@@ -247,6 +268,7 @@ export function ShowroomOverlay({
       serverPriceKco === null ||
       offerStatus !== "ready" ||
       isOwned ||
+      unresolvedPurchaseVehicleKey !== null ||
       pendingKey !== null
     )
       return;
@@ -271,14 +293,25 @@ export function ShowroomOverlay({
         // Cross-account / session switch guard: suppress stale completion
         return;
       }
-      if (result.kind === "owned" || result.kind === "insufficient_funds") {
+      if (
+        result.kind === "owned" ||
+        result.kind === "insufficient_funds" ||
+        result.kind === "reconciliation_required"
+      ) {
         onWalletRefresh?.();
       }
 
-      // A successful purchase can confirm a different, already-owned car.
-      // Resolve authority before writing the garage; never infer it from the offer.
+      // A conflict, timeout, server error, or lost connection may have happened after a debit.
+      // Latch the account before awaiting any read so unmount/reload cannot trigger another POST.
+      if (result.kind === "reconciliation_required")
+        saveCarAcquisitionConflict(key, scope);
+
+      // Resolve authority after a successful or ambiguous POST. A conflict only clears when the
+      // server confirms ownership of this exact car; an empty or unavailable read leaves the latch.
       const truth =
-        result.kind === "owned" ? await fetchOwnedVehicleKeysBackend() : null;
+        result.kind === "owned" || result.kind === "reconciliation_required"
+          ? await fetchOwnedVehicleKeysBackend()
+          : null;
       if (
         !isMountedRef.current ||
         (getAuthClient().operator?.userId ?? null) !== initiatingUserId ||
@@ -293,16 +326,40 @@ export function ShowroomOverlay({
             truth.includes(vehicleKeyOf(v)) ||
             truth.includes(serverVehicleKeyOf(vehicleKeyOf(v))),
         );
+      const confirmedRequestedVehicle = Boolean(
+        truth?.some(
+          (ownedKey) =>
+            serverVehicleKeyOf(ownedKey) === serverVehicleKeyOf(key),
+        ),
+      );
+      const resolvedAmbiguousPurchase = Boolean(
+        result.kind === "reconciliation_required" &&
+        confirmedRequestedVehicle &&
+        confirmed,
+      );
+      if (resolvedAmbiguousPurchase) clearCarAcquisitionConflict(scope);
+      const finalOutcome: AcquireOutcome = resolvedAmbiguousPurchase
+        ? { kind: "owned" }
+        : result.kind === "owned" && !confirmedRequestedVehicle
+          ? { kind: "reconciliation_required" }
+          : result;
+      if (
+        result.kind === "owned" &&
+        finalOutcome.kind === "reconciliation_required"
+      ) {
+        saveCarAcquisitionConflict(key, scope);
+      }
       setOutcomes((m) => ({
         ...m,
-        [key]:
-          result.kind === "owned" &&
-          (!confirmed || vehicleKeyOf(confirmed) !== key)
-            ? { kind: "error" }
-            : result,
+        [key]: finalOutcome,
       }));
       setPendingKey((cur) => (cur === key ? null : cur));
-      if (result.kind === "owned" && confirmed && truth) {
+      if (
+        (result.kind === "owned" ||
+          result.kind === "reconciliation_required") &&
+        confirmed &&
+        truth
+      ) {
         if (currentUserId)
           runtime?.applyVehicleOwnership(String(currentUserId), truth);
         // Confirmed by authority — persist via identity-bound runtime method to update parked car
@@ -326,6 +383,7 @@ export function ShowroomOverlay({
     onWalletRefresh,
     offerStatus,
     pendingKey,
+    unresolvedPurchaseVehicleKey,
     runtime,
     serverPriceKco,
     vehicleKey,
@@ -668,7 +726,13 @@ function AcquireButton({
   const unavailablePrice = offerStatus !== "ready" || priceKco === null;
   const insufficient = shortage !== null && shortage > 0;
   const disabled = view.disabled || unavailablePrice || insufficient;
-  const state = insufficient ? "insufficient_funds" : view.state;
+  const needsReconciliation =
+    outcome?.kind === "reconciliation_required" || outcome?.kind === "error";
+  const state = needsReconciliation
+    ? "reconciliation_required"
+    : insufficient
+      ? "insufficient_funds"
+      : view.state;
   return (
     <>
       <span
@@ -703,8 +767,22 @@ function AcquireButton({
             fontWeight: 700,
           }}
         >
-          {insufficient ? "Insufficient funds" : view.label}
+          {needsReconciliation
+            ? "⚠ Purchase status unclear"
+            : insufficient
+              ? "Insufficient funds"
+              : view.label}
         </button>
+      )}
+      {needsReconciliation && (
+        <span
+          role="status"
+          data-testid="showroom-purchase-reconciliation"
+          style={{ color: "#e07a7a", fontSize: 11, fontWeight: 700 }}
+        >
+          Purchase status is unclear. Check your garage after ownership refresh;
+          don’t try again until this purchase is reconciled.
+        </span>
       )}
     </>
   );
