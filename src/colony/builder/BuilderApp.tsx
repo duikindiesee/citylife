@@ -38,6 +38,7 @@ import {
 } from "./blueprintEdit";
 import { FURNITURE_CATALOG, FURNITURE_KINDS } from "../furniture";
 import { BuilderDesk } from "./BuilderDesk";
+import { completeHouseBuild, type HouseBuildSession } from "../home/starterHouseBuild";
 
 const ROOM_COLOR: Record<RoomKind, string> = {
   living: "#caa86a",
@@ -182,17 +183,23 @@ function Preview({
   );
 }
 
-export function BuilderApp() {
-  const params = useMemo(readParams, []);
+export function BuilderApp({playerBuild}: {playerBuild?: HouseBuildSession} = {}) {
+  const params = useMemo(() => playerBuild ? {
+    citizenId:playerBuild.userId, lotId:playerBuild.context.plotId,
+    w:playerBuild.context.geometry.houseZone.width, d:playerBuild.context.geometry.houseZone.depth,
+    seed:playerBuild.inventory.layout.seed, bp:playerBuild.context.script,
+  } : readParams(), [playerBuild]);
   const [design, setDesign] = useState<ParsedBlueprint>(() => {
     if (params.bp) {
       try {
-        return parseBlueprint(decodeURIComponent(params.bp));
+        return parseBlueprint(playerBuild ? params.bp : decodeURIComponent(params.bp));
       } catch {
         /* fall through to the starter design */
       }
     }
-    return defaultDesign(params.w, params.d);
+    const initial = defaultDesign(params.w, params.d);
+    return playerBuild ? {...initial,w:params.w,d:params.d,doorDir:playerBuild.door,
+      rooms:[{kind:"living",x:0,y:0,w:params.w,d:params.d,win:true}]} : initial;
   });
   const [sel, setSel] = useState(0);
   // The selection is ALSO held in a ref so a synchronous burst of clicks (a batching bot) always edits
@@ -213,6 +220,9 @@ export function BuilderApp() {
   // the 2D plan shows it solid while the other storeys ghost behind. Clamped to the design's storeys.
   const [activeStorey, setActiveStorey] = useState(0);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [saving,setSaving] = useState(false);
+  const [saveError,setSaveError] = useState<string>();
+  const savingRef = useRef(false);
 
   const script = blueprintToScript(design);
   const validation = validateBlueprint(script);
@@ -228,8 +238,10 @@ export function BuilderApp() {
     op: (p: ParsedBlueprint) => ParsedBlueprint,
     selectLast = false,
   ) => {
+    if (playerBuild && (savingRef.current || savedAt !== null)) return;
     setDesign((prev) => {
       const next = op(prev);
+      if (playerBuild && (next.w !== params.w || next.d !== params.d || next.doorDir !== playerBuild.door)) return prev;
       const ns = selectLast
         ? next.rooms.length - 1
         : Math.min(selRef.current, Math.max(0, next.rooms.length - 1));
@@ -246,6 +258,7 @@ export function BuilderApp() {
     op: (p: ParsedBlueprint) => ParsedBlueprint,
     selectLast = false,
   ) => {
+    if (playerBuild && (savingRef.current || savedAt !== null)) return;
     setDesign((prev) => {
       const next = op(prev);
       const ns = selectLast
@@ -258,8 +271,17 @@ export function BuilderApp() {
     setSavedAt(null);
   };
 
-  const accept = () => {
-    if (!validation.ok) return;
+  const accept = async () => {
+    if (!validation.ok || savingRef.current || (playerBuild && savedAt !== null)) return;
+    if (playerBuild) {
+      savingRef.current=true; setSaving(true); setSaveError(undefined);
+      try {
+        await completeHouseBuild(playerBuild,script);
+        setSavedAt(script);
+      } catch (error) {setSaveError(error instanceof Error ? error.message : "House save failed. Please retry.");}
+      finally {savingRef.current=false;setSaving(false);}
+      return;
+    }
     const msg = {
       type: "blueprint_saved",
       citizenId: params.citizenId,
@@ -327,7 +349,9 @@ export function BuilderApp() {
         display: "flex",
         gap: 14,
         padding: 14,
-        height: "100vh",
+        height: playerBuild ? "auto" : "100vh",
+        minHeight: "100vh",
+        flexWrap: playerBuild ? "wrap" : "nowrap",
         boxSizing: "border-box",
         background: "#0a0d14",
         color: "#dfe7f2",
@@ -337,7 +361,8 @@ export function BuilderApp() {
     >
       {/* left — the 2D floor plan */}
       <div
-        style={{ ...panel, display: "flex", flexDirection: "column", gap: 8 }}
+        style={{ ...panel, display: "flex", flexDirection: "column", gap: 8,
+          ...(playerBuild ? {flex:"1 1 580px",minWidth:0} : {}) }}
       >
         <b data-build-area="budget">
           Floor plan · {design.w}×{design.d} cells · door{" "}
@@ -486,6 +511,7 @@ export function BuilderApp() {
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button
             data-build-action="door-cycle"
+            disabled={!!playerBuild}
             style={btn}
             onClick={() => apply(cycleDoor)}
           >
@@ -820,10 +846,12 @@ export function BuilderApp() {
           style={{ fontSize: 12, color: validation.ok ? "#9fd0a0" : "#e0a06a" }}
         >
           {validation.ok
-            ? `✓ valid · est. materials ${validation.estMaterials}`
+            ? playerBuild ? "✓ Ready · construction is included in your plot purchase"
+              : `✓ valid · est. materials ${validation.estMaterials}`
             : validation.errors.map((e, i) => <div key={i}>✗ {e}</div>)}
         </div>
         <textarea
+          hidden={!!playerBuild}
           data-build-area="script"
           readOnly
           value={script}
@@ -842,7 +870,7 @@ export function BuilderApp() {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button
             data-build-action="accept"
-            disabled={!validation.ok}
+            disabled={!validation.ok || saving || (!!playerBuild && savedAt !== null)}
             style={{
               ...btn,
               padding: "6px 18px",
@@ -853,34 +881,37 @@ export function BuilderApp() {
             }}
             onClick={accept}
           >
-            Accept · build this house
+            {saving ? "Saving your house…" : "Accept · build this house"}
           </button>
           {savedAt === script && (
             <span
               data-build-area="saved"
               style={{ color: "#9fd0a0", fontSize: 12 }}
             >
-              ✓ blueprint saved
+              {playerBuild ? "✓ House saved and confirmed" : "✓ blueprint saved"}
             </span>
           )}
         </div>
+        {saveError && <p role="alert">{saveError}</p>}
+        {playerBuild && <a href="/" style={{color:"#9fd6ff"}}>Return to CityLife</a>}
         <div style={{ opacity: 0.55, fontSize: 11 }}>
-          for {params.citizenId} · {params.lotId} · plot {params.w}×{params.d} ·
-          seed {params.seed}
+          {playerBuild ? `Home site ${params.lotId} · ${params.w}×${params.d} cells`
+            : `for ${params.citizenId} · ${params.lotId} · plot ${params.w}×${params.d} · seed ${params.seed}`}
         </div>
       </div>
       {/* middle — Viw's Builder Desk: dream → haggle → blueprint (spec 083 P2) */}
-      <BuilderDesk
+      {!playerBuild && <BuilderDesk
         seed={params.seed}
         zoneW={params.w}
         zoneD={params.d}
         onAccept={loadNegotiated}
-      />
+      />}
       {/* right — the live 3D brick preview */}
       <div
         style={{
           ...panel,
-          flex: 1,
+          flex: playerBuild ? "1 1 360px" : 1,
+          minWidth: 0,
           display: "flex",
           flexDirection: "column",
           gap: 6,

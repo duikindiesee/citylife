@@ -45,6 +45,15 @@ function deps(
 }
 
 describe("decideJourneyEntitlement (pure fail-closed decision)", () => {
+  it("distinguishes unavailable truth from an authoritative off or killed flag", () => {
+    for (const body of [null, {}, {enabled:"false"}]) {
+      expect(decideJourneyEntitlement({ok:true,status:200,body}).unavailable).toBe(true);
+    }
+    expect(decideJourneyEntitlement({ok:false,status:503,body:null}).unavailable).toBe(true);
+    for (const body of [{enabled:false}, {enabled:true,killed:true}]) {
+      expect(decideJourneyEntitlement({ok:true,status:200,body}).unavailable).toBe(false);
+    }
+  });
   it("enables ONLY on an unambiguous enabled:true from a non-killed flag (UAT_ALLOWLIST)", () => {
     expect(
       decideJourneyEntitlement({
@@ -118,6 +127,11 @@ describe("decideJourneyEntitlement (pure fail-closed decision)", () => {
 });
 
 describe("evaluateJourneyEntitlement (transport + token wiring)", () => {
+  it("returns retryable failure when token refresh throws", async () => {
+    const {deps:d}=deps();
+    d.getToken=async()=>{throw new Error("refresh unavailable");};
+    expect(await evaluateJourneyEntitlement(d)).toMatchObject({enabled:false,unavailable:true});
+  });
   it("targets the token-derived players/me endpoint through the /kooker proxy", () => {
     expect(NEW_PLAYER_JOURNEY_PATH).toBe(
       "/kooker/api/v1/citylife/players/me/feature-flags/new-player-journey-v1",

@@ -15,6 +15,40 @@ export interface OwnedDriveInput {
   brake?: boolean;
 }
 
+/** Shared spawn/movement clearance. Check every grid cell intersecting the rotated
+ * body, not only the corners: a small obstacle under the middle is still solid.
+ * The continuous samples also preserve callers with finer-than-cell constraints.
+ */
+export function ownedDriveFootprintClear(
+  pose: Pick<OwnedDrivePose, "x" | "y" | "heading">,
+  canOccupy: (x: number, y: number) => boolean,
+): boolean {
+  if (![pose.x, pose.y, pose.heading].every(Number.isFinite)) return false;
+  const cfg = COLONY.ownedDriving;
+  const length = cfg.halfLengthMetres / cfg.cellMetres;
+  const width = cfg.halfWidthMetres / cfg.cellMetres;
+  const c = Math.cos(pose.heading), s = Math.sin(pose.heading);
+  for (const along of [-length, 0, length]) {
+    for (const across of [-width, width]) {
+      if (!canOccupy(pose.x + c * along - s * across, pose.y + s * along + c * across)) return false;
+    }
+  }
+  const rx = Math.abs(c) * length + Math.abs(s) * width;
+  const ry = Math.abs(s) * length + Math.abs(c) * width;
+  const cellProjection = (Math.abs(c) + Math.abs(s)) / 2;
+  for (let x = Math.ceil(pose.x - rx - 0.5); x <= Math.floor(pose.x + rx + 0.5); x++) {
+    for (let y = Math.ceil(pose.y - ry - 0.5); y <= Math.floor(pose.y + ry + 0.5); y++) {
+      const dx = x - pose.x, dy = y - pose.y;
+      // Separating-axis test of the car rectangle and this unit grid cell.
+      if (Math.abs(dx) > rx + 0.5 || Math.abs(dy) > ry + 0.5 ||
+          Math.abs(dx * c + dy * s) > length + cellProjection ||
+          Math.abs(-dx * s + dy * c) > width + cellProjection) continue;
+      if (!canOccupy(x, y)) return false;
+    }
+  }
+  return true;
+}
+
 /** Real world movement, without the race's checkpoint attraction/teleport correction. */
 export function stepOwnedDrive(
   pose: OwnedDrivePose,
@@ -62,21 +96,7 @@ export function stepOwnedDrive(
     const y = next.y + (Math.sin(heading) * next.speed * dt) / cfg.cellMetres;
     // Sweep in small bounded steps. The entire footprint must remain on a
     // permitted surface; a long frame cannot jump across a missing road cell.
-    let clear = true;
-    for (const along of [-cfg.halfLengthMetres, 0, cfg.halfLengthMetres]) {
-      for (const across of [-cfg.halfWidthMetres, cfg.halfWidthMetres]) {
-        const px =
-          x +
-          (Math.cos(heading) * along - Math.sin(heading) * across) /
-            cfg.cellMetres;
-        const py =
-          y +
-          (Math.sin(heading) * along + Math.cos(heading) * across) /
-            cfg.cellMetres;
-        if (!canOccupy(px, py)) clear = false;
-      }
-    }
-    if (!clear) {
+    if (!ownedDriveFootprintClear({ x, y, heading }, canOccupy)) {
       next.speed = 0;
       break;
     }

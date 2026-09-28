@@ -1,4 +1,5 @@
 import { test, expect, devices } from "@playwright/test";
+import { installStarterWorldFixture } from "./starterWorldFixture";
 
 // PLAYER.FLAG.S3 — prove the fail-closed, default-OFF new-player-journey gate on a representative
 // touch/mobile viewport, driven through the REAL authenticated bootstrap. We do not log in through
@@ -67,11 +68,13 @@ async function touchTap(
 }
 
 /** Seed an authenticated (non-null operator) CityLife session for `userId` before any app script
- *  runs, so AuthGate mounts the colony straight into the authenticated bootstrap. The token is opaque
- *  (not a real JWT) — the entitlement endpoint is stubbed, so only the session identity matters. */
+ *  runs, so AuthGate mounts the colony straight into the authenticated bootstrap. The JWT is only a
+ *  fixture token — requests are intercepted — but its payload keeps the UI's token-derived identity
+ *  and Ledger read path aligned with the account under test. */
 function authAs(userId: string) {
+  const payload = Buffer.from(JSON.stringify({ userId }), "utf8").toString("base64url");
   return {
-    token: `opaque.${userId}.token`,
+    token: `fixture.${payload}.sig`,
     expiresAt: Date.now() + 60 * 60 * 1000,
     operator: {
       id: `Player ${userId}`,
@@ -87,6 +90,23 @@ async function bootAs(
   userId: string,
   enabled: boolean,
 ): Promise<void> {
+  await page.route("**/api/ledger/wallets/**/balances**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          ownerId: userId,
+          ownerType: "USER",
+          walletType: "DEFAULT",
+          appName: "citylife",
+          currency: "KCO",
+          realm: "TEST",
+          balance: "0.0000",
+        },
+      ]),
+    }),
+  );
   // Stub the token-derived entitlement to the desired state (fail-closed = enabled:false).
   await page.route(FLAG_GLOB, (route) =>
     route.fulfill({
@@ -154,6 +174,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
   page,
 }) => {
   test.setTimeout(180_000);
+  await installStarterWorldFixture(page);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -224,6 +245,11 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       { timeout: READY_TIMEOUT },
     )
     .toEqual({ asset: "/assets/citylife/cars/fiat_x19.glb", vertices: true });
+  // The owned-car owner has no completed home, so login routes them into plot selection. Dismiss that
+  // guided step to inspect the exact owned-car controls and live map without opening Gearbox.
+  await expect(page.getByTestId("starter-property-overlay")).toBeVisible({timeout:READY_TIMEOUT});
+  await touchTap(page, '[data-testid="home-exit"]');
+  await expect(page.getByTestId("starter-property-overlay")).toHaveCount(0);
   await expect(page.getByTestId("owned-car-controls")).toBeVisible();
   const cityMap = page.getByTestId("player-map");
   await expect(cityMap).toBeHidden();
@@ -367,8 +393,11 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
         __colony: import("../src/colony/runtime").ColonyRuntime;
       }
     ).__colony;
+    const inputs = () => (runtime as unknown as { ownedDriveInput: Record<string, boolean> }).ownedDriveInput;
+    const throttleBeforeSwitch = !!inputs().throttle;
     runtime.setOperatorUserId("second-seated-owner");
     runtime.applyVehicleOwnership("second-seated-owner", ["karoo-x19-targa"]);
+    const emptyAfterSwitch = Object.keys(inputs()).length === 0;
     // Same JavaScript turn: even before React effects run, steering must not restore throttle.
     document.body.dispatchEvent(
       new KeyboardEvent("keydown", {
@@ -384,12 +413,14 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       runtime as unknown as { ownedDriveInput: Record<string, boolean> }
     ).ownedDriveInput;
     return {
+      throttleBeforeSwitch,
+      emptyAfterSwitch,
       seated: !!runtime.getOwnedDrivePose(),
       throttle: !!input.throttle,
       right: !!input.right,
     };
   });
-  expect(switchedInput).toEqual({ seated: true, throttle: false, right: true });
+  expect(switchedInput).toEqual({ throttleBeforeSwitch: true, emptyAfterSwitch: true, seated: true, throttle: false, right: true });
   await page.keyboard.up("KeyW");
   await page.keyboard.up("KeyD");
   await page.reload();
@@ -417,6 +448,8 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
       { timeout: READY_TIMEOUT },
     )
     .toEqual({ id: "showroom:karoo-x19-targa", cell: placement.cell });
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+  await installStarterWorldFixture(page);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -442,6 +475,7 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   page,
 }) => {
   test.setTimeout(180_000);
+  await installStarterWorldFixture(page);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -455,7 +489,8 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   const acquire = page.locator('[data-build-action="showroom-acquire"]');
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: READY_TIMEOUT });
   await expect(acquire).toBeDisabled({ timeout: ASSERT_TIMEOUT });
-  await expect(acquire).toHaveText("Need ₭250 more");
+  await expect(acquire).toHaveText("Insufficient funds");
+  await expect(page.getByTestId("showroom-affordability")).toHaveText("Need ₭250 more");
   await expect(acquire).toHaveAttribute(
     "data-acquire-state",
     "insufficient_funds",
@@ -466,7 +501,8 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   await touchTap(page, ENTRY);
   await expect(page.locator(OVERLAY)).toBeVisible();
   await expect(acquire).toBeDisabled({ timeout: ASSERT_TIMEOUT });
-  await expect(acquire).toHaveText("Need ₭250 more");
+  await expect(acquire).toHaveText("Insufficient funds");
+  await expect(page.getByTestId("showroom-affordability")).toHaveText("Need ₭250 more");
   await expect(acquire).toHaveAttribute(
     "data-acquire-state",
     "insufficient_funds",
@@ -480,26 +516,24 @@ test("new player can exit and re-enter without losing server-priced acquisition 
   // page can starve Playwright's navigation/init-script control channel after the long showroom run.
   const switchedPage = await page.context().newPage();
   await page.close();
+  await installStarterWorldFixture(switchedPage);
   await switchedPage.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({ status: 503, body: "unavailable" }),
   );
   await bootAs(switchedPage, "showroom-reentry-2", true);
-  await expect(switchedPage.locator(ENTRY)).toBeVisible({
-    timeout: READY_TIMEOUT,
-  });
-  await touchTap(switchedPage, ENTRY);
-  const unavailableAcquire = switchedPage.locator(ACQUIRE_CONTROL);
-  await expect(unavailableAcquire).toHaveCount(1);
-  await expect(unavailableAcquire).toBeDisabled();
-  await expect(
-    switchedPage.locator('[data-testid="showroom-card-price"]'),
-  ).toHaveText("Price unavailable");
+  // Unknown ownership must hold the full-screen arrival gate. Do not let a cached no-car state
+  // enter the showroom when authoritative ownership truth is unavailable.
+  await expect(switchedPage.getByRole("alert")).toContainText("We couldn't load your car and home.");
+  await expect(switchedPage.getByRole("button", {name:"Retry arrival"})).toBeVisible();
+  await expect(switchedPage.locator(OVERLAY)).toHaveCount(0);
+  await expect(switchedPage.locator(ACQUIRE_CONTROL)).toHaveCount(0);
 });
 
 test("server ownership opens Gearbox despite a stale cached car", async ({
   page,
 }) => {
   test.setTimeout(120_000);
+  await installStarterWorldFixture(page);
   let ownershipReads = 0;
   await page.addInitScript(() => {
     localStorage.setItem(
@@ -540,6 +574,7 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
 
   // 1) Default-OFF authenticated player: the garage entry affordance is absent (not merely hidden)
   //    and the interior overlay never mounts — the gate is not cosmetic.
+  await installStarterWorldFixture(page);
   await bootAs(page, "uat-off-1", false);
   await expect(page.locator(ENTRY)).toHaveCount(0, { timeout: ASSERT_TIMEOUT });
   await expect(page.locator(OVERLAY)).toHaveCount(0);
@@ -547,6 +582,7 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   // 2) Operator UAT allowlists this player and the server confirms no owned car. The player goes
   //    directly to Gearbox; the server quote is shown and the zero wallet reports its exact shortfall.
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  await installStarterWorldFixture(page);
   // Keep the economy fixture explicit: showroom affordability and HUD display use the same
   // self-scoped ledger snapshot, never the local simulation bank projection.
   await allowWalletSnapshot(page, "uat-allow-1", 0);
@@ -586,6 +622,7 @@ test("new-player journey gate: OFF hides+blocks entry, allowlist opens it, switc
   // 3) Account switch to a different, OFF player → the entry is hidden again. No positive
   //    entitlement bled across the session boundary.
   await page.unrouteAll({ behavior: "ignoreErrors" });
+  await installStarterWorldFixture(page);
   await bootAs(page, "uat-off-2", false);
   await expect(page.locator(ENTRY)).toHaveCount(0, { timeout: ASSERT_TIMEOUT });
   await expect(page.locator(OVERLAY)).toHaveCount(0);

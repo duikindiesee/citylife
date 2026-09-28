@@ -99,12 +99,21 @@ describe("carAcquisition — response classification", () => {
     expect(classifyAcquireStatus(402)).toEqual({ kind: "insufficient_funds" });
     expect(classifyAcquireStatus(422)).toEqual({ kind: "insufficient_funds" });
     expect(classifyAcquireStatus(202)).toEqual({ kind: "pending" });
-    expect(classifyAcquireStatus(409)).toEqual({ kind: "pending" });
+    expect(classifyAcquireStatus(409)).toEqual({
+      kind: "reconciliation_required",
+      status: 409,
+    });
     expect(classifyAcquireStatus(401)).toEqual({ kind: "disabled" });
     expect(classifyAcquireStatus(403)).toEqual({ kind: "disabled" });
     expect(classifyAcquireStatus(400)).toEqual({ kind: "unsupported" });
-    expect(classifyAcquireStatus(500)).toEqual({ kind: "error", status: 500 });
-    expect(classifyAcquireStatus(404)).toEqual({ kind: "error", status: 404 });
+    expect(classifyAcquireStatus(500)).toEqual({
+      kind: "reconciliation_required",
+      status: 500,
+    });
+    expect(classifyAcquireStatus(404)).toEqual({
+      kind: "reconciliation_required",
+      status: 404,
+    });
   });
 });
 
@@ -119,18 +128,23 @@ describe("carAcquisition — button state machine", () => {
       "owned",
     );
   });
-  it("surfaces insufficient funds and errors as retryable, but replay/refusal as locked", () => {
+  it("keeps known insufficient-funds outcomes retryable but locks unknown results", () => {
     expect(acquireButtonView(false, false, undefined).state).toBe("ready");
     expect(acquireButtonView(false, false, undefined).disabled).toBe(false);
     expect(
       acquireButtonView(false, false, { kind: "insufficient_funds" }).disabled,
     ).toBe(false);
-    expect(acquireButtonView(false, false, { kind: "error" }).disabled).toBe(
-      false,
-    );
+    expect(acquireButtonView(false, false, { kind: "error" })).toMatchObject({
+      state: "reconciliation_required",
+      disabled: true,
+    });
     expect(acquireButtonView(false, false, { kind: "pending" }).disabled).toBe(
       true,
     );
+    expect(
+      acquireButtonView(false, false, { kind: "reconciliation_required" })
+        .disabled,
+    ).toBe(true);
     expect(acquireButtonView(false, false, { kind: "disabled" }).disabled).toBe(
       true,
     );
@@ -148,6 +162,7 @@ describe("carAcquisition — button state machine", () => {
     for (const s of [
       "ready",
       "pending",
+      "reconciliation_required",
       "owned",
       "insufficient_funds",
       "disabled",
@@ -384,7 +399,7 @@ describe("carAcquisition — POST acquire (server authority, vehicleKey only)", 
       vehicleKey: serverVehicleKeyOf(VONK),
     });
   });
-  it("maps a 402 or 422 to insufficient funds and a 409 to a neutral pending replay", async () => {
+  it("maps 402 and 422 to insufficient funds and a 409 to reconciliation", async () => {
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
     vi.stubGlobal("fetch", async () => ({ ok: false, status: 402 }));
     expect(await postAcquireVehicle(KAAP, ON)).toEqual({
@@ -395,14 +410,19 @@ describe("carAcquisition — POST acquire (server authority, vehicleKey only)", 
       kind: "insufficient_funds",
     });
     vi.stubGlobal("fetch", async () => ({ ok: false, status: 409 }));
-    expect(await postAcquireVehicle(KAAP, ON)).toEqual({ kind: "pending" });
+    expect(await postAcquireVehicle(KAAP, ON)).toEqual({
+      kind: "reconciliation_required",
+      status: 409,
+    });
   });
-  it("maps a thrown/network failure to a transient error", async () => {
+  it("maps a thrown/network failure to reconciliation", async () => {
     vi.spyOn(getAuthClient(), "getValidToken").mockResolvedValue("jwt.tok");
     vi.stubGlobal("fetch", async () => {
       throw new Error("offline");
     });
-    expect(await postAcquireVehicle(VONK, ON)).toEqual({ kind: "error" });
+    expect(await postAcquireVehicle(VONK, ON)).toEqual({
+      kind: "reconciliation_required",
+    });
   });
 });
 

@@ -10,6 +10,11 @@ import {
   loadOwnedKeysCache,
   saveOwnedKeysCache,
   clearOwnedKeysCache,
+  classifyAcquireStatus,
+  acquireButtonView,
+  loadCarAcquisitionConflict,
+  saveCarAcquisitionConflict,
+  clearCarAcquisitionConflict,
   postAcquireVehicle,
   BACKEND_VEHICLE_PURCHASE_PATH,
   BACKEND_VEHICLE_OFFERS_PATH,
@@ -19,7 +24,10 @@ import {
 import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
 import { type CarSpec } from "../src/colony/car/carSpec";
 import { deriveStats } from "../src/colony/car/carParts";
-import { stepOwnedDrive } from "../src/colony/car/ownedDriving";
+import {
+  ownedDriveFootprintClear,
+  stepOwnedDrive,
+} from "../src/colony/car/ownedDriving";
 import { getAuthClient } from "../src/colony/authClient";
 import { ColonyRuntime } from "../src/colony/runtime";
 
@@ -260,6 +268,29 @@ describe("PLAYER.CAR.1.S5 — canonical key handling for server authority", () =
     ]);
     expect(screened).toEqual(["karoo-vonk-11", "showroom:karoo-x19-targa"]);
   });
+
+  it("keeps accepted purchases distinct from ambiguous outcomes and latches conflict per account", () => {
+    expect(classifyAcquireStatus(202)).toEqual({ kind: "pending" });
+    expect(classifyAcquireStatus(409)).toEqual({
+      kind: "reconciliation_required",
+      status: 409,
+    });
+    expect(classifyAcquireStatus(503)).toEqual({
+      kind: "reconciliation_required",
+      status: 503,
+    });
+    expect(
+      acquireButtonView(false, false, { kind: "reconciliation_required" }),
+    ).toMatchObject({ state: "reconciliation_required", disabled: true });
+
+    expect(
+      saveCarAcquisitionConflict("showroom:karoo-vonk-11", "buyer-a"),
+    ).toBe(true);
+    expect(loadCarAcquisitionConflict("buyer-a")).toBe("karoo-vonk-11");
+    expect(loadCarAcquisitionConflict("buyer-b")).toBeNull();
+    clearCarAcquisitionConflict("buyer-a");
+    expect(loadCarAcquisitionConflict("buyer-a")).toBeNull();
+  });
 });
 
 describe("PLAYER.CAR.1.S5 — acquisition persistence integration", () => {
@@ -369,9 +400,6 @@ describe("PLAYER.CAR.1.S5 — distinct user ID vs citizen ID persistence via run
 
 describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
   function tickOwnedDriveOnce(rt: ColonyRuntime): number {
-    const roadKey = [...rt.sim.state.roadSet][0];
-    expect(roadKey).toBeDefined();
-    const [x, y] = roadKey!.split(",").map(Number);
     const internals = rt as unknown as {
       ownedDrivePose: {
         x: number;
@@ -382,10 +410,37 @@ describe("PLAYER.CAR.1.S5 — account-scoped cache isolation", () => {
       ownedDriveSeated: boolean;
       ownedDriveInput: { throttle: boolean };
       blockedStepReason: (x: number, y: number) => string | null;
+      canOwnedCarOccupy: (x: number, y: number) => boolean;
+      currentPlayerOwnedCarSpec: () => CarSpec | null;
       tickOwnedDrive: (dt: number) => void;
     };
     internals.blockedStepReason = () => null;
-    internals.ownedDrivePose = { x: x!, y: y!, heading: 0, speed: 0 };
+    const canOccupy = (x: number, y: number) =>
+      internals.canOwnedCarOccupy(x, y);
+    const car = internals.currentPlayerOwnedCarSpec();
+    expect(car).not.toBeNull();
+    let start: { x: number; y: number; heading: number } | null = null;
+    for (const roadKey of rt.sim.state.roadSet) {
+      const [x, y] = roadKey.split(",").map(Number);
+      for (const heading of [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]) {
+        const candidate = { x: x!, y: y!, heading };
+        if (!ownedDriveFootprintClear(candidate, canOccupy)) continue;
+        const next = stepOwnedDrive(
+          { ...candidate, speed: 0 },
+          { throttle: true },
+          deriveStats(car!),
+          1 / 60,
+          canOccupy,
+        );
+        if (next.speed > 0) {
+          start = candidate;
+          break;
+        }
+      }
+      if (start) break;
+    }
+    expect(start).not.toBeNull();
+    internals.ownedDrivePose = { ...start!, speed: 0 };
     internals.ownedDriveSeated = true;
     internals.ownedDriveInput = { throttle: true };
     internals.tickOwnedDrive(1 / 60);
@@ -653,6 +708,113 @@ describe("PLAYER.CAR.1.S5 — ShowroomOverlay cross-account late completion & un
       });
     },
   );
+
+  it("keeps a 409 purchase blocked across showroom re-entry without another POST", async () => {
+    const rt = new ColonyRuntime(4242);
+    const citizen = rt.getUiState().citizens.list[0]!;
+    rt.setOperatorName(citizen.displayName);
+    rt.setOperatorUserId("buyer-conflict");
+    const auth = getAuthClient();
+    vi.spyOn(auth, "getValidToken").mockResolvedValue("test-jwt");
+    (auth as unknown as { session: unknown }).session = {
+      token: "test-jwt",
+      expiresAt: Date.now() + 100000,
+      operator: {
+        id: "Buyer",
+        userId: "buyer-conflict",
+        scopes: [],
+        roles: ["CITYLIFE_PLAYER"],
+      },
+    };
+    const purchaseStarted = vi.fn();
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url.includes(BACKEND_VEHICLE_OFFERS_PATH)) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () =>
+            SHOWROOM_VEHICLES.map((vehicle) => ({
+              vehicleKey: serverVehicleKeyOf(vehicleKeyOf(vehicle)),
+              priceKco: vehicle.plannedPriceK,
+              currency: "KCO",
+            })),
+        };
+      }
+      if (url.includes(BACKEND_VEHICLE_PURCHASE_PATH)) {
+        purchaseStarted();
+        return { ok: false, status: 409 };
+      }
+      return { ok: true, status: 200, json: async () => [] };
+    });
+
+    const container = (
+      globalThis as unknown as {
+        document: { createElement: (t: string) => Record<string, unknown> };
+      }
+    ).document.createElement("div");
+    let root: Root | null = createRoot(container as unknown as HTMLElement);
+    const render = async () => {
+      await act(async () => {
+        root!.render(
+          React.createElement(ShowroomOverlay, {
+            runtime: rt,
+            canAcquire: true,
+            onClose: () => {},
+          }),
+        );
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    };
+
+    await render();
+    const firstButton = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire",
+    );
+    expect(firstButton).not.toBeNull();
+    await act(async () => {
+      clickNode(firstButton!);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(purchaseStarted).toHaveBeenCalledTimes(1);
+    expect(loadCarAcquisitionConflict("buyer-conflict")).toBe("karoo-vonk-11");
+    const blockedButton = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire",
+    ) as unknown as {
+      hasAttribute: (name: string) => boolean;
+      getAttribute: (name: string) => string | null;
+    };
+    expect(blockedButton.getAttribute("data-acquire-state")).toBe(
+      "reconciliation_required",
+    );
+    expect(blockedButton.hasAttribute("disabled")).toBe(true);
+    expect(
+      findNodeByAttr(
+        container,
+        "data-testid",
+        "showroom-purchase-reconciliation",
+      ),
+    ).not.toBeNull();
+
+    await act(async () => root!.unmount());
+    root = createRoot(container as unknown as HTMLElement);
+    await render();
+    const reopenedButton = findNodeByAttr(
+      container,
+      "data-build-action",
+      "showroom-acquire",
+    ) as unknown as { hasAttribute: (name: string) => boolean };
+    expect(reopenedButton.hasAttribute("disabled")).toBe(true);
+    expect(purchaseStarted).toHaveBeenCalledTimes(1);
+    await act(async () => root!.unmount());
+    root = null;
+  });
 
   it("suppresses completion if account switches while acquisition request is in flight", async () => {
     const rt = new ColonyRuntime(4242);

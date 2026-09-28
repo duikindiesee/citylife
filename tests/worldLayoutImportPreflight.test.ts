@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import {
   ColonyRuntime,
   WorldLayoutPreflightError,
@@ -134,11 +134,31 @@ function genericPlacement(
 }
 
 describe("world layout import runtime preflight", () => {
-  it("rejects a correctly hashed catalog footprint on forbidden terrain before CAS and leaves live truth untouched", () => {
-    const runtime = new ColonyRuntime(4242);
+  let fixture: {
+    runtime: ColonyRuntime;
+    base: WorldLayoutDocument;
+    invalid: WorldLayoutPlacement;
+    valid: WorldLayoutPlacement;
+  };
+
+  // These cases all exercise the same seeded spatial authority. Build it once, without
+  // residents, bots or render state, and reuse the immutable base plus surveyed placements.
+  // Reconstructing the full city in every test multiplied this file's CPU cost under Vitest's
+  // worker pool without adding coverage to the side-effect-free preflight boundary.
+  beforeAll(() => {
+    const runtime = new ColonyRuntime(4242, { surveyOnly: true });
     const base = runtime.captureWorldLayout();
     runtime.hydrateWorldLayout(base);
-    const invalid = surveyedPlacement(runtime, base, false);
+    fixture = {
+      runtime,
+      base,
+      invalid: surveyedPlacement(runtime, base, false),
+      valid: surveyedPlacement(runtime, base, true),
+    };
+  }, 180_000);
+
+  it("rejects a correctly hashed catalog footprint on forbidden terrain before CAS and leaves live truth untouched", () => {
+    const { runtime, base, invalid } = fixture;
     const imported = child(base, { placements: [...base.placements, invalid] });
     const before = serializeWorldLayoutDocument(runtime.worldLayoutDocument()!);
     const elevationBefore = new Float32Array(runtime.sim.state.terrain.elev);
@@ -169,10 +189,7 @@ describe("world layout import runtime preflight", () => {
   });
 
   it("accepts a valid surveyed catalog footprint and rejects Float32 overflow before CAS", () => {
-    const runtime = new ColonyRuntime(4242);
-    const base = runtime.captureWorldLayout();
-    runtime.hydrateWorldLayout(base);
-    const valid = surveyedPlacement(runtime, base, true);
+    const { runtime, base, valid } = fixture;
     const validImport = child(base, {
       placements: [...base.placements, valid],
     });
@@ -210,11 +227,8 @@ describe("world layout import runtime preflight", () => {
   }, 60_000);
 
   it("allows disjoint and boundary-touch reservations but rejects overlap", () => {
-    const runtime = new ColonyRuntime(4242);
-    const base = runtime.captureWorldLayout();
-    runtime.hydrateWorldLayout(base);
-    const fixture = surveyedPlacement(runtime, base, true);
-    const placement = genericPlacement(fixture, "placement:zz-reserved", 0, 10);
+    const { runtime, base, valid } = fixture;
+    const placement = genericPlacement(valid, "placement:zz-reserved", 0, 10);
     const cell = placement.cells[0]!;
     const cases = [
       { label: "disjoint", min: -20, max: -10, accepted: true },
@@ -245,11 +259,8 @@ describe("world layout import runtime preflight", () => {
   }, 60_000);
 
   it("allows disjoint and boundary-touch stacked placements but rejects overlap", () => {
-    const runtime = new ColonyRuntime(4242);
-    const base = runtime.captureWorldLayout();
-    runtime.hydrateWorldLayout(base);
-    const fixture = surveyedPlacement(runtime, base, true);
-    const lower = genericPlacement(fixture, "placement:zz-stack-a", 0, 10);
+    const { runtime, base, valid } = fixture;
+    const lower = genericPlacement(valid, "placement:zz-stack-a", 0, 10);
     const cases = [
       { label: "disjoint", min: 20, max: 30, accepted: true },
       { label: "boundary", min: 10, max: 20, accepted: true },
@@ -258,7 +269,7 @@ describe("world layout import runtime preflight", () => {
 
     for (const testCase of cases) {
       const upper = genericPlacement(
-        fixture,
+        valid,
         `placement:zz-stack-b-${testCase.label}`,
         testCase.min,
         testCase.max,

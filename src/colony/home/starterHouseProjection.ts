@@ -109,6 +109,9 @@ export function projectStarterHome(
   truth: HomeTruth | null,
 ): ProjectedStarterHouse | null {
   if (!isHomeOwned(truth)) return null;
+  // This legacy projection invents a hash-grid placement. A published parcel must
+  // use its server geometry and completed blueprint, never this synthetic fallback.
+  if (truth?.layoutRevision) return null;
   const t = truth as HomeTruth;
   // A deed with no server reference at all cannot be bound to an identity — fail closed rather than
   // place a floating, non-deterministic house.

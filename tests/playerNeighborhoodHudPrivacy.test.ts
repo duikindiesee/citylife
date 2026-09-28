@@ -8,6 +8,18 @@ import {
 import { isPublicSafe } from "../src/colony/newcomers";
 
 describe("player neighborhood HUD privacy", () => {
+  it("keeps published player land out of legacy controls for players and operators", () => {
+    for (const playerScoped of [true, false]) {
+      const copy = lotHudCopy({ id: "wood1_lot_1", owner: "Stale Resident", built: true,
+        reserved: false, price: null, priceZar: null, playerManaged: true, playerScoped });
+      expect(copy.label).toBe("wood1_lot_1 · Player home site");
+      expect(copy.label).not.toMatch(/free|Founder|Stale/);
+      expect(homesteadActionVisibility({ playerScoped, playerManaged: true,
+        ownerId: "same-user", operatorCitizenId: "same-user", occupied: true,
+        built: true, reserved: false })).toEqual({ showDesign: false,
+        showCommission: false, showBuild: false, showDemolish: false, showEvict: false });
+    }
+  });
   it("masks raw owner names before player HUDs render home sites", () => {
     const copy = lotHudCopy({
       id: "lot_7",

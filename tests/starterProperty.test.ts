@@ -100,10 +100,21 @@ describe("authoritative home-truth parser", () => {
     expect(parseHomeTruth(null)).toBeNull();
     expect(parseHomeTruth("owned")).toBeNull();
   });
+  it("distinguishes paid land from a completed house and refuses contradictory build truth", () => {
+    const land = parseHomeTruth({owned:false, plotOwned:true, requiresBuild:true,
+      status:"PLOT_OWNED", plotId:"wood1_lot_1", layoutRevision:"a".repeat(64)});
+    expect(land?.plotOwned).toBe(true);
+    expect(land?.requiresBuild).toBe(true);
+    expect(land?.layoutRevision).toBe("a".repeat(64));
+    expect(isHomeOwned(land)).toBe(false);
+    expect(isHomeOwned(parseHomeTruth({owned:true, status:"OWNED", requiresBuild:true}))).toBe(false);
+  });
 });
 
 describe("purchase status classifier (closed set, fail-closed)", () => {
   it("maps each deployed status to its outcome", () => {
+    expect(classifyPurchaseStatus(200, {status:"PLOT_OWNED"})).toEqual({kind:"plot_owned"});
+    expect(purchaseButtonView(false, true, false, {kind:"plot_owned"}).disabled).toBe(true);
     expect(classifyPurchaseStatus(200)).toEqual({ kind: "owned" });
     expect(classifyPurchaseStatus(201)).toEqual({ kind: "owned" });
     expect(classifyPurchaseStatus(422)).toEqual({ kind: "insufficient_funds" });

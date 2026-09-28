@@ -1,4 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
+import { installStarterWorldFixture } from "./starterWorldFixture";
+
+test.beforeEach(async ({ page }) => { await installStarterWorldFixture(page); });
 
 // Deterministic coverage for the PERMANENT signed-out activation-token redemption route (PWD.REC.9),
 // which explicitly supersedes PWD.REC.6's removal of that entry. The backend is fully mocked via route
