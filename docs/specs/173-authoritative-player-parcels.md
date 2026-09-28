@@ -207,3 +207,11 @@ This fixture scene still does not show the house, car and driveway together, and
 Resolve entitlement and required home reads before applying vehicle ownership. A completed home projection must succeed before seating its car, avoiding an intermediate garage spawn. Failed required ownership reads expose Retry arrival and do not seat the car. Browser regression covers a failed home read followed by retry, home spawn, road access, reload and account switch. Deployed acceptance remains outstanding.
 
 Arrival distinguishes a failed entitlement read from an explicit OFF/killed response. Failed or malformed reads hold arrival with a retry that refreshes entitlement; explicit OFF preserves the existing non-onboarding path. A loading boundary covers pending ownership reads. Nonempty vehicle truth must resolve to exactly one supported model, otherwise arrival retries instead of silently selecting no car. The browser regression also holds a home response open to prove no intermediate car spawn, and checks automatic Gearbox entry for a carless, homeless account. These are fixture tests, not deployment receipts.
+
+## Driveway turning evidence (2026-09-27)
+
+The supplementary `scripts/probeStarterDrivewayTurns.mjs` diagnostic drives the X19 from each surveyed spawn through production `stepOwnedDrive` and full-footprint collision, then turns and advances two road cells. It found at least one exit direction for all ten plots (18 of 20 directions). The two incomplete westward attempts are at road ends: wood2_lot_3 has no road at x=150 near its y=466 approach; wood3_lot_1 has no road west of x=420 near y=121. They must not be labelled blocked driveways solely because a controller attempted to drive beyond the road.
+
+This is local geometric evidence only. The probe uses survey road/driveway/fence/terrain occupancy, not authenticated runtime ownership or the complete building occupancy predicate. Rendered terrain height, usable controls and deployed home/car persistence remain acceptance requirements. No map geometry was changed.
+
+Repeat with: node scripts/probeStarterDrivewayTurns.mjs <output.json>. The automated starterParcelSurvey regression requires at least one two-cell road exit from every candidate using actual movement inputs; the diagnostic additionally retains direction-specific outcomes.

@@ -85,4 +85,37 @@ describe("starter parcel survey of the real generated world", () => {
     expect(() => surveyStarterParcels({...input, parcels:[lot, lot]})).toThrow("Duplicate parcel");
     expect(() => surveyStarterParcels({...input, layoutRevision:"latest"})).toThrow("SHA256");
   });
+  it("lets every candidate X19 leave its driveway and turn along an existing road", () => {
+    const stats = SHOWROOM_VEHICLES.find(v => v.spec.id === "showroom:karoo-x19-targa")!.spec.stats;
+    for (const candidate of surveyStarterParcels(input).candidates) {
+      const lot = input.parcels.find(l => l.id === candidate.plotId)!;
+      const {heading} = surveyStarterDrivewayClearance(candidate, lot, input.roads, input.groundClear);
+      const road = candidate.driveway[0];
+      const permitted = new Set([...input.roads, ...candidate.driveway].map(c => `${c.x},${c.y}`));
+      const fence = new Set(lot.fence.map(c => `${c.x},${c.y}`));
+      const canOccupy = (x:number,y:number) => permitted.has(`${Math.round(x)},${Math.round(y)}`) &&
+        !fence.has(`${Math.round(x)},${Math.round(y)}`) && input.groundClear({x:Math.round(x),y:Math.round(y)});
+      let exits = 0;
+      for (const direction of [-1, 1]) {
+        let pose = {...candidate.spawn, heading, speed:0};
+        let turning = false;
+        const target = heading + direction * Math.PI / 2;
+        // Advance 0.4 cells into the real road before the quarter turn.
+        // This pilot supplies inputs only: no pose correction or teleport.
+        for (let frame=0; frame<2400; frame++) {
+          const ahead=(road.x-pose.x)*Math.cos(heading)+(road.y-pose.y)*Math.sin(heading);
+          if (ahead <= -0.4) turning=true;
+          const steer=turning && direction*(target-pose.heading)>0.01;
+          pose=stepOwnedDrive(pose, {
+            ...(pose.speed<1 ? {throttle:true} : {brake:true}),
+            left:steer && direction<0, right:steer && direction>0,
+          }, stats, 1/60, canOccupy);
+          const progress=(pose.x-road.x)*Math.cos(target)+(pose.y-road.y)*Math.sin(target);
+          if (progress>=2 && Math.abs(pose.heading-target)<0.03) { exits++; break; }
+        }
+      }
+      // End-of-road lots need an exit along the road, not beyond its end.
+      expect(exits, `${candidate.plotId} has no drivable road exit`).toBeGreaterThan(0);
+    }
+  });
 });
