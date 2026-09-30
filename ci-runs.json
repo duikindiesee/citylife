@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-30T15:12:14.754Z",
+  "updatedAt": "2026-09-30T15:12:43.824Z",
   "runs": [
     {
       "runId": 36734765650,
@@ -38,6 +38,45 @@
           "startedAt": "2026-09-30T15:11:05Z",
           "completedAt": "2026-09-30T15:11:15Z",
           "durationSeconds": 10
+        }
+      ]
+    },
+    {
+      "runId": 36734765542,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36734765542",
+      "event": "pull_request",
+      "branch": "antigravity/1907c3ce-a1d0-4134-8c15-7c436d33550d-raceable-roads",
+      "sha": "f6007e535abc07a37c3a81f941bf1d6b35cafcc3",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/f6007e535abc07a37c3a81f941bf1d6b35cafcc3",
+      "pullRequestNumbers": "#549",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/549",
+      "pullRequests": [
+        {
+          "number": 549,
+          "url": "https://github.com/duikindiesee/citylife/pull/549"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T15:11:00Z",
+      "completedAt": "2026-09-30T15:12:31Z",
+      "durationSeconds": 91,
+      "runnerSummary": "GitHub Actions 1000010522",
+      "jobs": [
+        {
+          "id": 109953451230,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010522",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-09-30T15:11:04Z",
+          "completedAt": "2026-09-30T15:12:30Z",
+          "durationSeconds": 86
         }
       ]
     },
