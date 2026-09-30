@@ -277,43 +277,6 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   forecourt.position.set(0, model.forecourt.y, model.forecourt.frontOffset);
   forecourt.receiveShadow = true;
 
-  // Spec 176: Paved driveway throat / entrance apron connecting municipal road to forecourt.
-  // Fills the setback gap between the road ribbon and the garage forecourt so vehicles drive in smoothly.
-  const apronMat = new THREE.MeshStandardMaterial({
-    color: 0x353b46,
-    roughness: 0.74,
-    metalness: 0.03,
-    emissive: 0xff9f2f,
-    emissiveIntensity:
-      garageAnchorNightFloorEmissive(C.state.clock.daylight) * 0.45,
-  });
-  C.garageFloorMats.push(apronMat);
-  const drivewayApronMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(model.drivewayApron.w, 0.036, model.drivewayApron.d),
-    apronMat,
-  );
-  drivewayApronMesh.name = "garageAnchorPavedEntranceApron";
-  drivewayApronMesh.position.set(0, model.drivewayApron.y, model.drivewayApron.z);
-  drivewayApronMesh.receiveShadow = true;
-  g.add(drivewayApronMesh);
-
-  // Tapered yellow driveway curb transitions on left & right
-  for (const side of [-1, 1]) {
-    const curbX = (model.drivewayApron.w / 2) * side;
-    const curb = new THREE.Mesh(
-      new THREE.BoxGeometry(0.22, 0.055, model.drivewayApron.d),
-      new THREE.MeshStandardMaterial({
-        color: 0xffc83b,
-        emissive: 0xff9f2f,
-        emissiveIntensity: 0.5,
-        roughness: 0.38,
-      }),
-    );
-    curb.name = `garageAnchorDrivewayCurb.${side < 0 ? "left" : "right"}`;
-    curb.position.set(curbX, model.drivewayApron.y + 0.02, model.drivewayApron.z);
-    g.add(curb);
-  }
-
   // Spec 176: Dedicated customer parking bays painted on the forecourt
   const stallLineMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
@@ -327,20 +290,20 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     stallGroup.position.set(bay.x, model.forecourt.y + 0.032, bay.z);
     stallGroup.rotation.y = bay.rot;
 
-    // White parking stall boundary lines (left, right, back)
-    const leftLine = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.015, bay.d), stallLineMat);
+    // White parking stall boundary lines (left, right, back) - realistic line widths (~14cm)
+    const leftLine = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.015, bay.d), stallLineMat);
     leftLine.position.set(-bay.w / 2, 0, 0);
-    const rightLine = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.015, bay.d), stallLineMat);
+    const rightLine = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.015, bay.d), stallLineMat);
     rightLine.position.set(bay.w / 2, 0, 0);
-    const backLine = new THREE.Mesh(new THREE.BoxGeometry(bay.w, 0.015, 0.12), stallLineMat);
+    const backLine = new THREE.Mesh(new THREE.BoxGeometry(bay.w, 0.015, 0.035), stallLineMat);
     backLine.position.set(0, 0, -bay.d / 2);
 
     // Concrete wheel stop block
     const wheelStop = new THREE.Mesh(
-      new THREE.BoxGeometry(bay.w * 0.68, 0.09, 0.16),
+      new THREE.BoxGeometry(bay.w * 0.72, 0.045, 0.08),
       new THREE.MeshStandardMaterial({ color: 0x828d99, roughness: 0.72 }),
     );
-    wheelStop.position.set(0, 0.045, -bay.d / 2 + 0.35);
+    wheelStop.position.set(0, 0.025, -bay.d / 2 + 0.12);
     stallGroup.add(leftLine, rightLine, backLine, wheelStop);
     g.add(stallGroup);
   }
