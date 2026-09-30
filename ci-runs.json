@@ -1,7 +1,50 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-30T15:35:27.866Z",
+  "updatedAt": "2026-09-30T15:47:50.536Z",
   "runs": [
+    {
+      "runId": 36737681516,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36737681516",
+      "event": "pull_request",
+      "branch": "antigravity/1907c3ce-a1d0-4134-8c15-7c436d33550d-raceable-roads",
+      "sha": "d606dd5a77a1741343dcb235adf1d4d7999b9dcc",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/d606dd5a77a1741343dcb235adf1d4d7999b9dcc",
+      "pullRequestNumbers": "#549",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/549",
+      "pullRequests": [
+        {
+          "number": 549,
+          "url": "https://github.com/duikindiesee/citylife/pull/549"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "cancelled",
+      "startedAt": "2026-09-30T15:33:48Z",
+      "completedAt": "2026-09-30T15:47:37Z",
+      "durationSeconds": 829,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 109963808726,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "cancelled",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-09-30T15:34:23Z",
+          "completedAt": "2026-09-30T15:47:36Z",
+          "durationSeconds": 793
+        }
+      ]
+    },
     {
       "runId": 36737681426,
       "workflowName": "Secret scan",
