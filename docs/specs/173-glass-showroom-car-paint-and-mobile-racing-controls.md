@@ -29,7 +29,7 @@ Branch: `antigravity/1907c3ce-a1d0-4134-8c15-7c436d33550d-raceable-roads`
    - Procedural desert textures provide fine sand micro-grit, wind ripple striations, and pebble detail, with a tactile bump map (`bumpScale: 0.08`) that enriches terrain shading under sunlight and headlights.
 
 6. **Vehicle Night Lighting & Road Clearance**:
-   - The player's vehicle features dual high-intensity forward spotlights (headlights) projecting 48m beams onto the road, forward tarmac wash, ruby red rear taillights, glowing lenses, and soft ambient vehicle body fill.
+   - The player's vehicle features dual high-intensity forward spotlights (headlights) projecting 48m beams onto the road, forward tarmac wash, ruby red rear taillights, glowing lenses, automotive satin clearcoat roughness (`>= 0.38`), and subtle paint self-emissive floor (`0.08` of body color) providing rich night visibility while eliminating harsh point-source specular glare spots on the roof and boot lid.
    - Road surface checks (`isRoadSurface` / `isPointOnRoadSurface`) ensure cars cruise at full highway speed across road ribbons, carriageways, verges, and junctions without invisible collision barriers or parcel setbacks.
 
 ## Verification

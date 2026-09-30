@@ -4,7 +4,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { Group } from "three";
 import { Html, useGLTF } from "@react-three/drei";
-import { Box3 } from "three";
+import { Box3, Color } from "three";
 import type { ShowroomVehicle } from "../showroom/showroomCatalog";
 import { SHOWROOM_VEHICLES } from "../showroom/showroomCatalog";
 import type { CarSpec } from "../car/carSpec";
@@ -39,13 +39,37 @@ function OwnedVehicleModel({
           const clonedMats = rawMats.map((m) => {
             const cm = m.clone();
             const mat = cm as any;
-            if (/carpaint/i.test(cm.name) && paint?.body !== undefined) {
-              mat.color?.set(paint.body);
-            } else if (
-              /targa|roof|cabin/i.test(cm.name) &&
-              paint?.cabin !== undefined
-            ) {
-              mat.color?.set(paint.cabin);
+            if (/carpaint/i.test(cm.name)) {
+              if (paint?.body !== undefined) {
+                mat.color?.set(paint.body);
+              }
+              // Automotive satin finish: prevents harsh point-specular glare pinpricks
+              if (mat.roughness !== undefined) {
+                mat.roughness = Math.max(mat.roughness, 0.38);
+              }
+              if (mat.metalness !== undefined) {
+                mat.metalness = Math.min(mat.metalness, 0.25);
+              }
+              // Subtle emissive base provides soft body presence at night without creating artificial glare dots
+              if (mat.emissive) {
+                const bodyColor =
+                  paint?.body !== undefined
+                    ? new Color(paint.body)
+                    : mat.color
+                      ? mat.color.clone()
+                      : new Color(0xd0e4ff);
+                mat.emissive.copy(bodyColor).multiplyScalar(0.08);
+              }
+            } else if (/targa|roof|cabin/i.test(cm.name)) {
+              if (paint?.cabin !== undefined) {
+                mat.color?.set(paint.cabin);
+              }
+              if (mat.roughness !== undefined) {
+                mat.roughness = Math.max(mat.roughness, 0.4);
+              }
+              if (mat.metalness !== undefined) {
+                mat.metalness = Math.min(mat.metalness, 0.2);
+              }
             } else if (
               /alloy|rim|accent/i.test(cm.name) &&
               paint?.accent !== undefined
@@ -208,15 +232,6 @@ function CarLighting() {
         <boxGeometry args={[0.04, 0.08, 0.16]} />
         <meshBasicMaterial color="#ff2222" />
       </mesh>
-
-      {/* Soft Ambient Body Fill: keeps custom car paint, cabin and rims visible and vivid at night */}
-      <pointLight
-        position={[0, 1.8, 0]}
-        color="#d0e4ff"
-        intensity={1.2}
-        distance={7.5}
-        decay={1.6}
-      />
     </group>
   );
 }
