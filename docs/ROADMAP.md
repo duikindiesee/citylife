@@ -35,6 +35,7 @@
 - **Shipped** ✅ **HUD, clock & UX** — roadmap HUD `spec112` · canonical Sol clock + commercial transit `spec150` · narrow-width world-view HUD fix `#310`
 - **Shipped** ✅ **Ship-CI hardening** — e2e headroom + flaky-suite retries `#299 · #300 · #303 · #311 · #328` · repository secret-scanning gate `#326`
 - **Merging** 🔨 **v3 → main cutover (in review)** — the whole R3F renderer ships to `main` via `#220` · NaN bounding-sphere boot fix `#259` · main-drift real-merges into the lane `#286 · cf74112 · 9340e7e`
+- **Merging** 🔨 **Open-World Road Racing, Showroom & Onboarding (PR #549)** — Specs 173–176 · Task 1907c3ce-a1d0-4134-8c15-7c436d33550d · luminous architectural showroom pavilion, paved driveway apron, customer parking bays, road flora clearance, bus AI collision & overtaking, GPS navigation, and dual-mode boot flythrough
 
 > **Deliberately retired in v3 (not ported, per `spec131`):** biome/buildable/elevation view-tints ·
 > street/district/planet camera presets · the gradient sky dome (replaced by the dark-city cosmos) ·
