@@ -43,8 +43,10 @@ export function isPointOnRoadSurface(
     const rx = Math.round(x);
     const ry = Math.round(y);
     if (roadSet.has(`${rx},${ry}`)) return true;
-    const fx = Math.floor(x), fy = Math.floor(y);
-    const cx = Math.ceil(x), cy = Math.ceil(y);
+    const fx = Math.floor(x),
+      fy = Math.floor(y);
+    const cx = Math.ceil(x),
+      cy = Math.ceil(y);
     if (
       roadSet.has(`${fx},${fy}`) ||
       roadSet.has(`${cx},${fy}`) ||

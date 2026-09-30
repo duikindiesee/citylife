@@ -341,7 +341,8 @@ export function DriveHomeOverlay({
               border: "1px solid rgba(58, 90, 106, 0.5)",
             }}
           >
-            🎮 Steer with <b style={{ color: "#ffd25a" }}>WASD</b> or <b style={{ color: "#ffd25a" }}>Arrow keys</b>
+            🎮 Steer with <b style={{ color: "#ffd25a" }}>WASD</b> or{" "}
+            <b style={{ color: "#ffd25a" }}>Arrow keys</b>
           </div>
 
           {/* Mobile first-person / vehicle controls — a touch D-pad that drives the car cursor. */}

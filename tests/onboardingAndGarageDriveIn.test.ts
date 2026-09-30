@@ -11,10 +11,18 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(garagePad).toBeTruthy();
     // Forecourt center cell facing the road
     const forecourtCell = {
-      x: garagePad.roadTarget.x + (garagePad.x + garagePad.w / 2 - garagePad.roadTarget.x) * 0.5,
-      y: garagePad.roadTarget.y + (garagePad.y + garagePad.h / 2 - garagePad.roadTarget.y) * 0.5,
+      x:
+        garagePad.roadTarget.x +
+        (garagePad.x + garagePad.w / 2 - garagePad.roadTarget.x) * 0.5,
+      y:
+        garagePad.roadTarget.y +
+        (garagePad.y + garagePad.h / 2 - garagePad.roadTarget.y) * 0.5,
     };
-    const isDrivable = rt.isGaragePadDrivable(forecourtCell.x, forecourtCell.y, garagePad);
+    const isDrivable = rt.isGaragePadDrivable(
+      forecourtCell.x,
+      forecourtCell.y,
+      garagePad,
+    );
     expect(isDrivable).toBe(true);
   });
 
@@ -64,7 +72,9 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(Number.isFinite(homeTarget?.y)).toBe(true);
 
     // Lot is marked built
-    const lot = (rt as any).neighborhood.lots.find((l: any) => l.id === homeTarget!.lotId);
+    const lot = (rt as any).neighborhood.lots.find(
+      (l: any) => l.id === homeTarget!.lotId,
+    );
     expect(lot?.built).toBe(true);
     expect(lot?.ownerCitizenId).toBe(opId);
 
@@ -157,7 +167,9 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(testRt.hasOperatorHome()).toBe(true);
     const target = testRt.getOperatorHomeTarget();
     expect(target).toBeTruthy();
-    const claimedLot = (testRt as any).neighborhood.lots.find((l: any) => l.id === target!.lotId);
+    const claimedLot = (testRt as any).neighborhood.lots.find(
+      (l: any) => l.id === target!.lotId,
+    );
     expect(claimedLot?.neighborhoodKey).toBe("coast4");
     expect(claimedLot?.built).toBe(true);
     expect(claimedLot?.ownerCitizenId).toBe(opId);
@@ -180,7 +192,9 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(okTruth).toBe(true);
     const truthTarget = testRt.getOperatorHomeTarget();
     expect(truthTarget?.lotId).toBe("coast4_lot_2");
-    const truthLot = (testRt as any).neighborhood.lots.find((l: any) => l.id === "coast4_lot_2");
+    const truthLot = (testRt as any).neighborhood.lots.find(
+      (l: any) => l.id === "coast4_lot_2",
+    );
     expect(truthLot?.neighborhoodKey).toBe("coast4");
     expect(truthLot?.ownerCitizenId).toBe(opId);
     expect(truthLot?.built).toBe(true);
@@ -197,7 +211,9 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
       expect(v.spec.paint.body).toBeDefined();
     }
     // Hero sports targa matching player car
-    const x19 = SHOWROOM_VEHICLES.find((v) => v.spec.id === "showroom:karoo-x19-targa");
+    const x19 = SHOWROOM_VEHICLES.find(
+      (v) => v.spec.id === "showroom:karoo-x19-targa",
+    );
     expect(x19).toBeDefined();
     expect(x19?.glbUrl).toContain("fiat_x19.glb");
   });
@@ -205,10 +221,16 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
   it("identifies garagePad forecourt and showroom as walkable on foot", () => {
     // Forecourt center cell
     const forecourtCell = {
-      x: garagePad.roadTarget.x + (garagePad.x + garagePad.w / 2 - garagePad.roadTarget.x) * 0.5,
-      y: garagePad.roadTarget.y + (garagePad.y + garagePad.h / 2 - garagePad.roadTarget.y) * 0.5,
+      x:
+        garagePad.roadTarget.x +
+        (garagePad.x + garagePad.w / 2 - garagePad.roadTarget.x) * 0.5,
+      y:
+        garagePad.roadTarget.y +
+        (garagePad.y + garagePad.h / 2 - garagePad.roadTarget.y) * 0.5,
     };
-    expect(rt.isGaragePadWalkable(forecourtCell.x, forecourtCell.y, garagePad)).toBe(true);
+    expect(
+      rt.isGaragePadWalkable(forecourtCell.x, forecourtCell.y, garagePad),
+    ).toBe(true);
 
     // Showroom pedestrian floor: localX = -2.5, localZ = -0.5
     const cx = garagePad.x + (garagePad.w - 1) / 2;

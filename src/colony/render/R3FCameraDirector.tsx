@@ -69,7 +69,12 @@ export function R3FCameraDirector({ sim, runtime }: R3FCameraDirectorProps) {
     const rt = runtime as {
       bootCinematicActive?: boolean;
       hasOwnedCar?: () => boolean;
-      getOwnedDrivePose?: () => { x: number; y: number; heading: number; speed: number } | null;
+      getOwnedDrivePose?: () => {
+        x: number;
+        y: number;
+        heading: number;
+        speed: number;
+      } | null;
       teleportFirstPerson?: (x: number, y: number) => void;
       fpCameraCell?: { x: number; y: number } | null;
     } | null;
@@ -185,7 +190,10 @@ export function R3FCameraDirector({ sim, runtime }: R3FCameraDirectorProps) {
         // Cubic ease-out
         const ease = 1 - Math.pow(1 - progress, 3);
 
-        const groundY = Math.max(0, t.worldY(Math.round(driving.x), Math.round(driving.y)));
+        const groundY = Math.max(
+          0,
+          t.worldY(Math.round(driving.x), Math.round(driving.y)),
+        );
         const carWx = wx(driving.x);
         const carWz = wz(driving.y);
 
@@ -242,7 +250,11 @@ export function R3FCameraDirector({ sim, runtime }: R3FCameraDirectorProps) {
           if (lookAheadPoint && !isNaN(lookAheadPoint.x)) {
             if (progress > 0.75) {
               const blend = (progress - 0.75) / 0.25;
-              scratch.target.lerpVectors(lookAheadPoint, bootLookTarget.current, blend);
+              scratch.target.lerpVectors(
+                lookAheadPoint,
+                bootLookTarget.current,
+                blend,
+              );
             } else {
               scratch.target.copy(lookAheadPoint);
             }

@@ -229,7 +229,8 @@ export function OwnedCarControls({
               textAlign: "right",
             }}
           >
-            {speedKmH} <span style={{ fontSize: 12, fontWeight: 600 }}>km/h</span>
+            {speedKmH}{" "}
+            <span style={{ fontSize: 12, fontWeight: 600 }}>km/h</span>
           </span>
           <button
             data-testid="exit-owned-car"
@@ -415,7 +416,9 @@ export function OwnedCarControls({
                 ? "linear-gradient(135deg, rgba(90, 230, 255, 0.6), rgba(0, 150, 220, 0.8))"
                 : "rgba(255, 255, 255, 0.08)",
               border: `2px solid ${pressedActions.left ? "#5ae6ff" : "rgba(90, 230, 255, 0.4)"}`,
-              boxShadow: pressedActions.left ? "0 0 20px rgba(90, 230, 255, 0.8)" : "none",
+              boxShadow: pressedActions.left
+                ? "0 0 20px rgba(90, 230, 255, 0.8)"
+                : "none",
               color: "#ffffff",
               fontSize: 26,
               fontWeight: 900,
@@ -430,7 +433,9 @@ export function OwnedCarControls({
               transition: "transform 0.08s ease, background 0.08s ease",
             }}
             onPointerDown={(e) => {
-              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch (_) {}
               change("left", true);
             }}
             onPointerUp={() => change("left", false)}
@@ -444,7 +449,16 @@ export function OwnedCarControls({
             onTouchCancel={() => change("left", false)}
           >
             <span>◀</span>
-            <span style={{ fontSize: 10, letterSpacing: "0.05em", fontWeight: 700, marginTop: 2 }}>LEFT</span>
+            <span
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.05em",
+                fontWeight: 700,
+                marginTop: 2,
+              }}
+            >
+              LEFT
+            </span>
           </button>
 
           <button
@@ -458,7 +472,9 @@ export function OwnedCarControls({
                 ? "linear-gradient(135deg, rgba(90, 230, 255, 0.6), rgba(0, 150, 220, 0.8))"
                 : "rgba(255, 255, 255, 0.08)",
               border: `2px solid ${pressedActions.right ? "#5ae6ff" : "rgba(90, 230, 255, 0.4)"}`,
-              boxShadow: pressedActions.right ? "0 0 20px rgba(90, 230, 255, 0.8)" : "none",
+              boxShadow: pressedActions.right
+                ? "0 0 20px rgba(90, 230, 255, 0.8)"
+                : "none",
               color: "#ffffff",
               fontSize: 26,
               fontWeight: 900,
@@ -473,7 +489,9 @@ export function OwnedCarControls({
               transition: "transform 0.08s ease, background 0.08s ease",
             }}
             onPointerDown={(e) => {
-              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch (_) {}
               change("right", true);
             }}
             onPointerUp={() => change("right", false)}
@@ -487,7 +505,16 @@ export function OwnedCarControls({
             onTouchCancel={() => change("right", false)}
           >
             <span>▶</span>
-            <span style={{ fontSize: 10, letterSpacing: "0.05em", fontWeight: 700, marginTop: 2 }}>RIGHT</span>
+            <span
+              style={{
+                fontSize: 10,
+                letterSpacing: "0.05em",
+                fontWeight: 700,
+                marginTop: 2,
+              }}
+            >
+              RIGHT
+            </span>
           </button>
         </div>
 
@@ -519,7 +546,9 @@ export function OwnedCarControls({
                 ? "linear-gradient(135deg, rgba(245, 167, 66, 0.7), rgba(200, 100, 20, 0.9))"
                 : "rgba(255, 255, 255, 0.08)",
               border: `2px solid ${pressedActions.reverse ? "#f5a742" : "rgba(245, 167, 66, 0.4)"}`,
-              boxShadow: pressedActions.reverse ? "0 0 16px rgba(245, 167, 66, 0.7)" : "none",
+              boxShadow: pressedActions.reverse
+                ? "0 0 16px rgba(245, 167, 66, 0.7)"
+                : "none",
               color: "#ffffff",
               fontSize: 18,
               fontWeight: 800,
@@ -534,7 +563,9 @@ export function OwnedCarControls({
               transition: "transform 0.08s ease, background 0.08s ease",
             }}
             onPointerDown={(e) => {
-              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch (_) {}
               change("reverse", true);
             }}
             onPointerUp={() => change("reverse", false)}
@@ -548,7 +579,11 @@ export function OwnedCarControls({
             onTouchCancel={() => change("reverse", false)}
           >
             <span>▼</span>
-            <span style={{ fontSize: 9, letterSpacing: "0.05em", fontWeight: 700 }}>REV</span>
+            <span
+              style={{ fontSize: 9, letterSpacing: "0.05em", fontWeight: 700 }}
+            >
+              REV
+            </span>
           </button>
 
           {/* Brake button */}
@@ -563,7 +598,9 @@ export function OwnedCarControls({
                 ? "linear-gradient(135deg, rgba(255, 77, 109, 0.7), rgba(180, 20, 50, 0.9))"
                 : "rgba(255, 255, 255, 0.08)",
               border: `2px solid ${pressedActions.brake ? "#ff4d6d" : "rgba(255, 77, 109, 0.4)"}`,
-              boxShadow: pressedActions.brake ? "0 0 20px rgba(255, 77, 109, 0.8)" : "none",
+              boxShadow: pressedActions.brake
+                ? "0 0 20px rgba(255, 77, 109, 0.8)"
+                : "none",
               color: "#ffffff",
               fontSize: 20,
               fontWeight: 900,
@@ -578,7 +615,9 @@ export function OwnedCarControls({
               transition: "transform 0.08s ease, background 0.08s ease",
             }}
             onPointerDown={(e) => {
-              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch (_) {}
               change("brake", true);
             }}
             onPointerUp={() => change("brake", false)}
@@ -592,7 +631,11 @@ export function OwnedCarControls({
             onTouchCancel={() => change("brake", false)}
           >
             <span>■</span>
-            <span style={{ fontSize: 10, letterSpacing: "0.05em", fontWeight: 700 }}>BRAKE</span>
+            <span
+              style={{ fontSize: 10, letterSpacing: "0.05em", fontWeight: 700 }}
+            >
+              BRAKE
+            </span>
           </button>
 
           {/* Throttle (Gas) button */}
@@ -624,7 +667,9 @@ export function OwnedCarControls({
               transition: "transform 0.08s ease, background 0.08s ease",
             }}
             onPointerDown={(e) => {
-              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch (_) {}
               change("throttle", true);
             }}
             onPointerUp={() => change("throttle", false)}
@@ -638,7 +683,11 @@ export function OwnedCarControls({
             onTouchCancel={() => change("throttle", false)}
           >
             <span>▲</span>
-            <span style={{ fontSize: 11, letterSpacing: "0.05em", fontWeight: 800 }}>GAS</span>
+            <span
+              style={{ fontSize: 11, letterSpacing: "0.05em", fontWeight: 800 }}
+            >
+              GAS
+            </span>
           </button>
         </div>
       </div>

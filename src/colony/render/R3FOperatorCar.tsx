@@ -319,10 +319,7 @@ export function R3FOperatorCar({
               </Html>
             }
           >
-            <OwnedVehicleModel
-              vehicle={vehicle}
-              paint={parked.spec.paint}
-            />
+            <OwnedVehicleModel vehicle={vehicle} paint={parked.spec.paint} />
           </Suspense>
         </VehicleModelBoundary>
       ) : (

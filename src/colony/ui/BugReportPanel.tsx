@@ -202,7 +202,10 @@ export function BugReportPanel({
   };
 
   const [promptText, setPromptText] = useState("");
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const applyPreset = (preset: {
     title: string;
@@ -225,35 +228,68 @@ export function BugReportPanel({
     const lower = raw.toLowerCase();
 
     let newTitle = raw;
-    let newSteps = "1. Navigate to location in world\n2. Observe reported behavior";
-    let newExpected = "Normal operation without visual defects, collision blockers, or darkness";
+    let newSteps =
+      "1. Navigate to location in world\n2. Observe reported behavior";
+    let newExpected =
+      "Normal operation without visual defects, collision blockers, or darkness";
     let newActual = raw;
 
     if (lower.includes("tree") && lower.includes("road")) {
       newTitle = "Quiver tree spawned in middle of roadway";
-      newSteps = "1. Drive vehicle along highway or municipal road\n2. Observe flora generation inside the travel lanes";
-      newExpected = "Trees and flora strictly clear of all road corridors and verges";
-      newActual = "Quiver tree grows directly out of asphalt surface, obstructing driving";
-    } else if (lower.includes("dark") || lower.includes("lighting") || lower.includes("showroom")) {
+      newSteps =
+        "1. Drive vehicle along highway or municipal road\n2. Observe flora generation inside the travel lanes";
+      newExpected =
+        "Trees and flora strictly clear of all road corridors and verges";
+      newActual =
+        "Quiver tree grows directly out of asphalt surface, obstructing driving";
+    } else if (
+      lower.includes("dark") ||
+      lower.includes("lighting") ||
+      lower.includes("showroom")
+    ) {
       newTitle = "Showroom interior is pitch black at night";
-      newSteps = "1. Approach Gearbox Auto Hub at evening / night\n2. Inspect showroom interior through glass facade";
-      newExpected = "Luminous showroom with warm interior lighting and clearly visible vehicle models";
-      newActual = "Interior is an unlit black cavity with invisible vehicle silhouettes";
-    } else if (lower.includes("curb") || lower.includes("drive into") || lower.includes("garage") || lower.includes("parking")) {
+      newSteps =
+        "1. Approach Gearbox Auto Hub at evening / night\n2. Inspect showroom interior through glass facade";
+      newExpected =
+        "Luminous showroom with warm interior lighting and clearly visible vehicle models";
+      newActual =
+        "Interior is an unlit black cavity with invisible vehicle silhouettes";
+    } else if (
+      lower.includes("curb") ||
+      lower.includes("drive into") ||
+      lower.includes("garage") ||
+      lower.includes("parking")
+    ) {
       newTitle = "Cannot drive into garage: unpaved gap and curb lip";
-      newSteps = "1. Approach Gearbox Auto Hub from highway\n2. Steer car toward entrance forecourt and bays";
-      newExpected = "Continuous paved driveway apron bridging road to garage forecourt with parking stalls";
-      newActual = "Dirt verge and elevated concrete slab lip block smooth vehicle entry";
-    } else if (lower.includes("walk") || lower.includes("plot") || lower.includes("parcel")) {
+      newSteps =
+        "1. Approach Gearbox Auto Hub from highway\n2. Steer car toward entrance forecourt and bays";
+      newExpected =
+        "Continuous paved driveway apron bridging road to garage forecourt with parking stalls";
+      newActual =
+        "Dirt verge and elevated concrete slab lip block smooth vehicle entry";
+    } else if (
+      lower.includes("walk") ||
+      lower.includes("plot") ||
+      lower.includes("parcel")
+    ) {
       newTitle = "Player avatar on foot cannot walk on garage plot";
-      newSteps = "1. Exit vehicle or approach garage on foot\n2. Attempt to walk onto showroom floor or forecourt";
+      newSteps =
+        "1. Exit vehicle or approach garage on foot\n2. Attempt to walk onto showroom floor or forecourt";
       newExpected = "Commercial garage plot is fully walkable for pedestrians";
       newActual = "First-person walk blocked with 'parcel' reason";
-    } else if (lower.includes("overlap") || lower.includes("button") || lower.includes("hud") || lower.includes("above")) {
+    } else if (
+      lower.includes("overlap") ||
+      lower.includes("button") ||
+      lower.includes("hud") ||
+      lower.includes("above")
+    ) {
       newTitle = "HUD buttons and banners overlapping modal dialogs";
-      newSteps = "1. Open modal (e.g. Log Bug, Roadmap, or Settings) while driving\n2. Observe top driving HUD and mission banner";
-      newExpected = "Modals and overlays sit above gameplay HUD; buttons never overlap or obscure dialogs";
-      newActual = "Driving HUD and mission pills render directly on top of modal controls";
+      newSteps =
+        "1. Open modal (e.g. Log Bug, Roadmap, or Settings) while driving\n2. Observe top driving HUD and mission banner";
+      newExpected =
+        "Modals and overlays sit above gameplay HUD; buttons never overlap or obscure dialogs";
+      newActual =
+        "Driving HUD and mission pills render directly on top of modal controls";
     } else {
       // General freeform parse
       newTitle = raw.length > 60 ? raw.slice(0, 57) + "…" : raw;
@@ -266,7 +302,9 @@ export function BugReportPanel({
     setSteps(newSteps);
     setExpected(newExpected);
     setActual(newActual);
-    setDetail((prev) => (prev ? `${prev}\n[Prompt]: ${raw}` : `[Prompt]: ${raw}`));
+    setDetail((prev) =>
+      prev ? `${prev}\n[Prompt]: ${raw}` : `[Prompt]: ${raw}`,
+    );
     setStatus("Auto-filled form from prompt");
   };
 
@@ -322,9 +360,12 @@ export function BugReportPanel({
             onClick={() =>
               applyPreset({
                 title: "Quiver tree spawned in middle of roadway",
-                steps: "1. Drive vehicle along highway or municipal road\n2. Observe flora generation inside the travel lanes",
-                expected: "Trees and flora strictly clear of all road corridors and verges",
-                actual: "Quiver tree grows directly out of asphalt surface, obstructing driving",
+                steps:
+                  "1. Drive vehicle along highway or municipal road\n2. Observe flora generation inside the travel lanes",
+                expected:
+                  "Trees and flora strictly clear of all road corridors and verges",
+                actual:
+                  "Quiver tree grows directly out of asphalt surface, obstructing driving",
               })
             }
           >
@@ -336,9 +377,12 @@ export function BugReportPanel({
             onClick={() =>
               applyPreset({
                 title: "Showroom interior is pitch black at night",
-                steps: "1. Approach Gearbox Auto Hub at evening / night\n2. Inspect showroom interior through glass facade",
-                expected: "Luminous showroom with warm interior lighting and clearly visible vehicle models",
-                actual: "Interior is an unlit black cavity with invisible vehicle silhouettes",
+                steps:
+                  "1. Approach Gearbox Auto Hub at evening / night\n2. Inspect showroom interior through glass facade",
+                expected:
+                  "Luminous showroom with warm interior lighting and clearly visible vehicle models",
+                actual:
+                  "Interior is an unlit black cavity with invisible vehicle silhouettes",
               })
             }
           >
@@ -350,9 +394,12 @@ export function BugReportPanel({
             onClick={() =>
               applyPreset({
                 title: "Cannot drive into garage: unpaved gap and curb lip",
-                steps: "1. Approach Gearbox Auto Hub from highway\n2. Steer car toward entrance forecourt and bays",
-                expected: "Continuous paved driveway apron bridging road to garage forecourt with parking stalls",
-                actual: "Dirt verge and elevated concrete slab lip block smooth vehicle entry",
+                steps:
+                  "1. Approach Gearbox Auto Hub from highway\n2. Steer car toward entrance forecourt and bays",
+                expected:
+                  "Continuous paved driveway apron bridging road to garage forecourt with parking stalls",
+                actual:
+                  "Dirt verge and elevated concrete slab lip block smooth vehicle entry",
               })
             }
           >
@@ -364,8 +411,10 @@ export function BugReportPanel({
             onClick={() =>
               applyPreset({
                 title: "Player avatar on foot cannot walk on garage plot",
-                steps: "1. Exit vehicle or approach garage on foot\n2. Attempt to walk onto showroom floor or forecourt",
-                expected: "Commercial garage plot is fully walkable for pedestrians",
+                steps:
+                  "1. Exit vehicle or approach garage on foot\n2. Attempt to walk onto showroom floor or forecourt",
+                expected:
+                  "Commercial garage plot is fully walkable for pedestrians",
                 actual: "First-person walk blocked with 'parcel' reason",
               })
             }
@@ -378,9 +427,12 @@ export function BugReportPanel({
             onClick={() =>
               applyPreset({
                 title: "HUD buttons and banners overlapping modal dialogs",
-                steps: "1. Open modal (e.g. Log Bug, Roadmap, or Settings) while driving\n2. Observe top driving HUD and mission banner",
-                expected: "Modals and overlays sit above gameplay HUD; buttons never overlap or obscure dialogs",
-                actual: "Driving HUD and mission pills render directly on top of modal controls",
+                steps:
+                  "1. Open modal (e.g. Log Bug, Roadmap, or Settings) while driving\n2. Observe top driving HUD and mission banner",
+                expected:
+                  "Modals and overlays sit above gameplay HUD; buttons never overlap or obscure dialogs",
+                actual:
+                  "Driving HUD and mission pills render directly on top of modal controls",
               })
             }
           >
@@ -392,7 +444,9 @@ export function BugReportPanel({
         <div className="bug-report-panel__prompt-container">
           <div className="bug-report-panel__prompt-label">
             <span>✨ Freelance Talk / Write</span>
-            <small style={{ color: "#a5c2d6", fontSize: 10 }}>Right-click anywhere to rework</small>
+            <small style={{ color: "#a5c2d6", fontSize: 10 }}>
+              Right-click anywhere to rework
+            </small>
           </div>
           <textarea
             className="bug-report-panel__prompt-input"

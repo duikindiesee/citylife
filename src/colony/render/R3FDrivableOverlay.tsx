@@ -38,7 +38,11 @@ export function R3FDrivableOverlay({ sim, runtime }: R3FDrivableOverlayProps) {
     const structures = sim.state.structures ?? [];
 
     // Collect all candidate cells on or immediately adjacent to road surfaces
-    const cells: { x: number; y: number; kind: "road" | "verge" | "blocked" }[] = [];
+    const cells: {
+      x: number;
+      y: number;
+      kind: "road" | "verge" | "blocked";
+    }[] = [];
     const checked = new Set<string>();
 
     const checkCell = (x: number, y: number) => {
@@ -48,7 +52,7 @@ export function R3FDrivableOverlay({ sim, runtime }: R3FDrivableOverlayProps) {
       if (x < 2 || x >= size - 2 || y < 2 || y >= size - 2) return;
       if (terrain.isWater(x, y)) return;
 
-      const isRoad = runtime?.isRoadSurface(x, y) ?? (roadSet?.has(key) ?? false);
+      const isRoad = runtime?.isRoadSurface(x, y) ?? roadSet?.has(key) ?? false;
       const isBlocked =
         buildings.some((b) => Math.round(b.x) === x && Math.round(b.y) === y) ||
         structures.some((s) => Math.round(s.x) === x && Math.round(s.y) === y);

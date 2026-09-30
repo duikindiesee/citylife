@@ -32,7 +32,14 @@ export interface GarageAnchorShellModel {
   };
   pylon: { w: number; h: number; d: number; x: number; z: number; y: number };
   forecourt: { w: number; d: number; frontOffset: number; y: number };
-  parkingBays: { x: number; z: number; w: number; d: number; rot: number; label: string }[];
+  parkingBays: {
+    x: number;
+    z: number;
+    w: number;
+    d: number;
+    rot: number;
+    label: string;
+  }[];
   nightFloor: {
     w: number;
     d: number;
@@ -116,9 +123,30 @@ export function buildGarageAnchorShellModel(
   const bayW = 0.65;
   const bayD = 1.25;
   const parkingBays = [
-    { x: -footprint.w * 0.28, z: forecourt.frontOffset, w: bayW, d: bayD, rot: 0, label: "BAY 01" },
-    { x: -footprint.w * 0.16, z: forecourt.frontOffset, w: bayW, d: bayD, rot: 0, label: "BAY 02" },
-    { x: -footprint.w * 0.04, z: forecourt.frontOffset, w: bayW, d: bayD, rot: 0, label: "BAY 03" },
+    {
+      x: -footprint.w * 0.28,
+      z: forecourt.frontOffset,
+      w: bayW,
+      d: bayD,
+      rot: 0,
+      label: "BAY 01",
+    },
+    {
+      x: -footprint.w * 0.16,
+      z: forecourt.frontOffset,
+      w: bayW,
+      d: bayD,
+      rot: 0,
+      label: "BAY 02",
+    },
+    {
+      x: -footprint.w * 0.04,
+      z: forecourt.frontOffset,
+      w: bayW,
+      d: bayD,
+      rot: 0,
+      label: "BAY 03",
+    },
   ];
 
   return {

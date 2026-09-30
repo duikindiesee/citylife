@@ -1303,7 +1303,11 @@ export class ColonyRuntime {
           let room = 0;
           for (let dy = -10; dy <= 10; dy += 2) {
             for (let dx = -10; dx <= 10; dx += 2) {
-              if (cellOk(t0, x + dx, y + dy) && !taken.has(`${x + dx},${y + dy}`)) room++;
+              if (
+                cellOk(t0, x + dx, y + dy) &&
+                !taken.has(`${x + dx},${y + dy}`)
+              )
+                room++;
             }
           }
           if (room < 50) continue;
@@ -1315,7 +1319,10 @@ export class ColonyRuntime {
         }
       }
       if (bestAnchor) {
-        const nbhd = makeNeighborhoodAt(t0, bestAnchor, { small: true, blocked: taken });
+        const nbhd = makeNeighborhoodAt(t0, bestAnchor, {
+          small: true,
+          blocked: taken,
+        });
         if (nbhd.lots.length > 0) {
           const name = `coast${satellites.length + 1}`;
           for (const lot of nbhd.lots) {
@@ -1489,9 +1496,15 @@ export class ColonyRuntime {
       if (meshed.has(key)) continue;
       meshed.add(key);
       // Snap connecting road to satellite spine endpoint if within 1 cell to ensure seamless junction alignment
-      const [from, to] = nearestPair(satellites[i]!.carriage, satellites[nearest]!.carriage);
+      const [from, to] = nearestPair(
+        satellites[i]!.carriage,
+        satellites[nearest]!.carriage,
+      );
       const spineEnd = satellites[nearest]!.spine.at(-1);
-      const target = spineEnd && Math.hypot(to.x - spineEnd.x, to.y - spineEnd.y) <= 1.5 ? spineEnd : to;
+      const target =
+        spineEnd && Math.hypot(to.x - spineEnd.x, to.y - spineEnd.y) <= 1.5
+          ? spineEnd
+          : to;
       const path =
         leastCostPath(t0, from, target, {
           slopeWeight: 0.5,
@@ -2843,7 +2856,8 @@ export class ColonyRuntime {
       this.sim.state.operatorCar.cell = { x, y };
       this.sim.state.operatorCar.heading = heading;
     } else {
-      const spec = this.currentPlayerOwnedCarSpec() ?? defaultCarSpec("test-operator");
+      const spec =
+        this.currentPlayerOwnedCarSpec() ?? defaultCarSpec("test-operator");
       this.sim.state.operatorCar = {
         spec,
         cell: { x, y },
@@ -2870,7 +2884,8 @@ export class ColonyRuntime {
         const iy = Math.round(y);
         if (ix < 2 || ix >= size - 2 || iy < 2 || iy >= size - 2) return false;
         // Keep car on drivable land; deep ocean water blocks
-        if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05) return false;
+        if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05)
+          return false;
 
         // Municipal buses are solid physical obstacles (Spec 174: no phasing through buses)
         for (let i = 0; i < activeBuses.length; i++) {
@@ -2990,7 +3005,7 @@ export class ColonyRuntime {
     // 3. Glass Showroom: customer walking area around display cars
     if (localX < -0.2 && localX > -halfW + 0.3 && localZ > -halfD + 0.5) {
       // Keep clear of center plinth collision
-      const plinthDist = Math.hypot(localX - (-garagePad.w * 0.25), localZ - 0.2);
+      const plinthDist = Math.hypot(localX - -garagePad.w * 0.25, localZ - 0.2);
       if (plinthDist < 1.2) return false;
       return true;
     }
@@ -3003,7 +3018,9 @@ export class ColonyRuntime {
   isHomesteadDriveway(ix: number, iy: number): boolean {
     const citizenId = this.operatorCitizenId();
     if (!citizenId) return false;
-    const lot = this.neighborhood.lots.find((l) => l.ownerCitizenId === citizenId);
+    const lot = this.neighborhood.lots.find(
+      (l) => l.ownerCitizenId === citizenId,
+    );
     if (!lot) return false;
     // Driveway, gate, or door access cells are always drivable
     if (lot.driveway?.some((c) => c.x === ix && c.y === iy)) return true;
@@ -3043,10 +3060,17 @@ export class ColonyRuntime {
     this.emit();
   }
 
-  getOperatorHomeTarget(): { x: number; y: number; lotId: string; name: string } | null {
+  getOperatorHomeTarget(): {
+    x: number;
+    y: number;
+    lotId: string;
+    name: string;
+  } | null {
     const citizenId = this.operatorCitizenId();
     if (!citizenId) return null;
-    const lot = this.neighborhood.lots.find((l) => l.ownerCitizenId === citizenId);
+    const lot = this.neighborhood.lots.find(
+      (l) => l.ownerCitizenId === citizenId,
+    );
     if (!lot) return null;
     return {
       x: lot.doorX ?? Math.round(lot.houseZone.x + (lot.houseZone.w - 1) / 2),
@@ -3089,7 +3113,8 @@ export class ColonyRuntime {
       const clean = target.trim();
       // Check if the string matches an existing lot ID
       const directLot = this.neighborhood.lots.find(
-        (l) => l.id === clean || l.id === `lot-${clean}` || l.id === `lot_${clean}`,
+        (l) =>
+          l.id === clean || l.id === `lot-${clean}` || l.id === `lot_${clean}`,
       );
       if (directLot) {
         targetPlotId = directLot.id;
@@ -3115,7 +3140,8 @@ export class ColonyRuntime {
         return false; // Mismatched or non-existent plot ID — fail closed
       }
       if (targetNeighbourhoodKey) {
-        const lotKey = found.neighborhoodKey ?? neighbourhoodKeyForLot(found.id);
+        const lotKey =
+          found.neighborhoodKey ?? neighbourhoodKeyForLot(found.id);
         if (lotKey && lotKey !== targetNeighbourhoodKey) {
           return false; // Neighbourhood key mismatch with plot ID — fail closed
         }
@@ -3140,7 +3166,9 @@ export class ColonyRuntime {
         matchingLots.find(
           (l) => !l.ownerCitizenId && l.zone !== "commercial" && !l.built,
         ) ??
-        matchingLots.find((l) => !l.ownerCitizenId && l.zone !== "commercial") ??
+        matchingLots.find(
+          (l) => !l.ownerCitizenId && l.zone !== "commercial",
+        ) ??
         null;
       if (!lot) {
         return false; // No available lots in requested neighbourhood — fail closed, never fall back to unrelated lots
@@ -3367,9 +3395,23 @@ export class ColonyRuntime {
       const drivePose = this.getOwnedDrivePose();
       const opCar = this.sim.state.operatorCar;
       const obstacles = drivePose
-        ? [{ x: drivePose.x, y: drivePose.y, heading: drivePose.heading, speed: drivePose.speed }]
+        ? [
+            {
+              x: drivePose.x,
+              y: drivePose.y,
+              heading: drivePose.heading,
+              speed: drivePose.speed,
+            },
+          ]
         : opCar
-          ? [{ x: opCar.cell.x, y: opCar.cell.y, heading: opCar.heading ?? 0, speed: 0 }]
+          ? [
+              {
+                x: opCar.cell.x,
+                y: opCar.cell.y,
+                heading: opCar.heading ?? 0,
+                speed: 0,
+              },
+            ]
           : undefined;
 
       stepFleet(

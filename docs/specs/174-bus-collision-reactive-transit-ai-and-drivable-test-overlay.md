@@ -6,11 +6,13 @@ Branch: `antigravity/1907c3ce-a1d0-4134-8c15-7c436d33550d-raceable-roads`
 ## Player contract
 
 1. **Solid Municipal Bus Collision (Anti-Phasing)**:
+
    - Municipal buses (`COLONY.transit.busLengthM = 12m`, `busWidthM = 2.5m`) are solid physical obstacles across the colony road network.
    - When driving an owned vehicle, `stepOwnedDrive` / `canOccupy` performs oriented bounding-box collision tests against all active transit bus poses (`busPoses`).
    - Vehicles cannot phantom-phase or drive through buses from the front, rear, or flanks; glancing collisions slide along the bus body, while direct impact arrests vehicle forward velocity cleanly (`speed = 0`).
 
 2. **Reactive Transit Traffic AI (Braking and Overtaking)**:
+
    - Municipal buses monitor traffic in their travel corridor. When a player vehicle drives or stops in front of a bus within headway range (less than 14 cells / 56m ahead along the route loop):
      - **Dynamic Deceleration**: The bus decelerates smoothly and maintains a safe buffer distance (4 cells / 16m) behind the vehicle.
      - **Autonomous Overtaking**: If the vehicle remains stopped or drives slowly for more than 0.04 sim-minutes (~0.6s real time), and oncoming loop traffic is clear, the bus activates an overtaking maneuver:
