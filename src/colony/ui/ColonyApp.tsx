@@ -1946,9 +1946,11 @@ export function ColonyApp() {
           walletLabel={playerWalletText}
           onWalletRefresh={refreshPlayerWallet}
           currency={ui.bank.currency}
-          onHomePurchased={(lotId) => {
-            runtime.claimStarterHome(lotId);
-            setHomeOpen(false);
+          onHomePurchased={(target) => {
+            const ok = runtime.claimStarterHome(target);
+            if (ok) {
+              setHomeOpen(false);
+            }
           }}
         />
       )}

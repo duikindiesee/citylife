@@ -76,7 +76,7 @@ export function StarterPropertyOverlay({
   walletLabel?: string;
   onWalletRefresh?: () => void;
   currency?: string;
-  onHomePurchased?: (lotId: string) => void;
+  onHomePurchased?: (target: HomeTruth | string) => void;
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [choices, setChoices] = useState<EligibleNeighbourhood[]>([]);
@@ -131,13 +131,15 @@ export function StarterPropertyOverlay({
       setOutcome(result);
       if (result.kind === "owned") {
         onWalletRefresh?.();
-        onHomePurchased?.(selected);
         // Confirmed by the authority — reconcile against a FRESH re-fetch of the server truth (never a
         // local guess), which is what the house projection binds to.
         void fetchHomeTruth().then((fresh) => {
           setTruth(fresh);
           setPending(false);
           setRelocateMode(false);
+          if (fresh && isHomeOwned(fresh)) {
+            onHomePurchased?.(fresh);
+          }
         });
       } else {
         setPending(false);

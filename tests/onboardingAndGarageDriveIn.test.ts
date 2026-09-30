@@ -79,6 +79,100 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(rt.isHomesteadDriveway(houseCenterX, houseCenterY)).toBe(false);
   });
 
+  it("enforces authority-bound and neighbourhood-matched starter home resolution (MoJoJo finding)", () => {
+    const testRt = new ColonyRuntime(4242);
+    const citizen = (testRt as any).citizens.list()[0]!;
+    testRt.setOperatorName(citizen.displayName);
+    testRt.setOperatorUserId("test-operator-authority");
+    const opId = testRt.operatorCitizenId()!;
+    expect(opId).toBeTruthy();
+
+    // Clear operator home
+    for (const l of (testRt as any).neighborhood.lots) {
+      if (l.ownerCitizenId === opId) {
+        l.ownerCitizenId = undefined;
+        l.built = false;
+      }
+    }
+
+    // 1. Negative: Unowned or invalid HomeTruth refuses resolution without fallback
+    const unownedTruth = {
+      owned: false,
+      status: "NONE",
+      neighbourhoodKey: "coast4",
+      plotId: null,
+      frameId: null,
+      onboardingState: "NONE",
+      priceKco: null,
+    };
+    expect(testRt.claimStarterHome(unownedTruth as any)).toBe(false);
+    expect(testRt.hasOperatorHome()).toBe(false);
+
+    // 2. Negative: Non-existent plot ID refuses resolution
+    const bogusPlotTruth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "coast4",
+      plotId: "nonexistent-lot-99",
+      frameId: null,
+      onboardingState: "NONE",
+      priceKco: null,
+    };
+    expect(testRt.claimStarterHome(bogusPlotTruth as any)).toBe(false);
+    expect(testRt.hasOperatorHome()).toBe(false);
+
+    // 3. Negative: Mismatched neighbourhood with plot ID refuses resolution
+    const mismatchedTruth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "wood1",
+      plotId: "coast4_lot_1",
+      frameId: null,
+      onboardingState: "NONE",
+      priceKco: null,
+    };
+    expect(testRt.claimStarterHome(mismatchedTruth as any)).toBe(false);
+    expect(testRt.hasOperatorHome()).toBe(false);
+
+    // 4. Negative: Non-existent neighbourhood key string refuses without falling back to unrelated lots
+    expect(testRt.claimStarterHome("nonexistent_hamlet_99")).toBe(false);
+    expect(testRt.hasOperatorHome()).toBe(false);
+
+    // 5. Positive: Explicit neighbourhood key string 'coast4' resolves strictly to a coast4 lot
+    const okKey = testRt.claimStarterHome("coast4");
+    expect(okKey).toBe(true);
+    expect(testRt.hasOperatorHome()).toBe(true);
+    const target = testRt.getOperatorHomeTarget();
+    expect(target).toBeTruthy();
+    const claimedLot = (testRt as any).neighborhood.lots.find((l: any) => l.id === target!.lotId);
+    expect(claimedLot?.neighborhoodKey).toBe("coast4");
+    expect(claimedLot?.built).toBe(true);
+    expect(claimedLot?.ownerCitizenId).toBe(opId);
+
+    // 6. Positive: Authoritative owned HomeTruth resolves matching plot and neighbourhood
+    // Reset home
+    claimedLot.ownerCitizenId = undefined;
+    claimedLot.built = false;
+
+    const validTruth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: "coast4",
+      plotId: "coast4_lot_2",
+      frameId: null,
+      onboardingState: "NONE",
+      priceKco: 350,
+    };
+    const okTruth = testRt.claimStarterHome(validTruth as any);
+    expect(okTruth).toBe(true);
+    const truthTarget = testRt.getOperatorHomeTarget();
+    expect(truthTarget?.lotId).toBe("coast4_lot_2");
+    const truthLot = (testRt as any).neighborhood.lots.find((l: any) => l.id === "coast4_lot_2");
+    expect(truthLot?.neighborhoodKey).toBe("coast4");
+    expect(truthLot?.ownerCitizenId).toBe(opId);
+    expect(truthLot?.built).toBe(true);
+  });
+
   it("ensures showroom catalog carries authentic GLB models for all display vehicles", async () => {
     const { SHOWROOM_VEHICLES } = await import(
       "../src/colony/showroom/showroomCatalog"

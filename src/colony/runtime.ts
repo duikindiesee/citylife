@@ -250,6 +250,7 @@ import {
   type AccessDecision,
   type NeighbourhoodAccessDeps,
 } from "./bot/neighbourhoodAccess";
+import { isHomeOwned, type HomeTruth } from "./home/starterProperty";
 import { furniturePriceK, FURNITURE_SHOP_ACCOUNT } from "./furnitureShop";
 import type { FurnitureKind } from "./furniture";
 import {
@@ -3058,27 +3059,113 @@ export class ColonyRuntime {
     return !!(lot && lot.built);
   }
 
-  claimStarterHome(lotIdOrKey?: string): boolean {
+  claimStarterHome(target?: string | HomeTruth): boolean {
     const citizenId = this.operatorCitizenId();
     if (!citizenId) return false;
-    let lot = lotIdOrKey
-      ? this.neighborhood.lots.find(
-          (l) => l.id === lotIdOrKey || l.id === `lot-${lotIdOrKey}`,
-        )
-      : null;
-    if (!lot) {
-      lot = this.neighborhood.lots.find(
-        (l) => !l.built && !l.ownerCitizenId && l.zone !== "commercial",
+
+    let targetPlotId: string | null = null;
+    let targetNeighbourhoodKey: string | null = null;
+
+    if (target && typeof target === "object") {
+      // Authority-bound resolution: only an unambiguously owned truth may claim a starter home
+      if (!isHomeOwned(target)) {
+        return false;
+      }
+      targetPlotId = target.plotId ?? null;
+      targetNeighbourhoodKey = target.neighbourhoodKey ?? null;
+    } else if (typeof target === "string" && target.trim().length > 0) {
+      const clean = target.trim();
+      // Check if the string matches an existing lot ID
+      const directLot = this.neighborhood.lots.find(
+        (l) => l.id === clean || l.id === `lot-${clean}` || l.id === `lot_${clean}`,
       );
+      if (directLot) {
+        targetPlotId = directLot.id;
+        targetNeighbourhoodKey =
+          directLot.neighborhoodKey ?? neighbourhoodKeyForLot(directLot.id);
+      } else {
+        // Treat as a neighbourhood key (e.g. "coast4", "wood1", "vale2")
+        targetNeighbourhoodKey = clean;
+      }
     }
-    if (!lot) {
+
+    let lot: (typeof this.neighborhood.lots)[number] | null = null;
+
+    if (targetPlotId) {
+      // Must match the exact plot ID
+      const found = this.neighborhood.lots.find(
+        (l) =>
+          l.id === targetPlotId ||
+          l.id === `lot-${targetPlotId}` ||
+          l.id === `lot_${targetPlotId}`,
+      );
+      if (!found) {
+        return false; // Mismatched or non-existent plot ID — fail closed
+      }
+      if (targetNeighbourhoodKey) {
+        const lotKey = found.neighborhoodKey ?? neighbourhoodKeyForLot(found.id);
+        if (lotKey && lotKey !== targetNeighbourhoodKey) {
+          return false; // Neighbourhood key mismatch with plot ID — fail closed
+        }
+      }
+      if (found.ownerCitizenId && found.ownerCitizenId !== citizenId) {
+        return false; // Already owned by another citizen
+      }
+      lot = found;
+    } else if (targetNeighbourhoodKey) {
+      // Must resolve strictly within the requested neighbourhood
+      const matchingLots = this.neighborhood.lots.filter(
+        (l) =>
+          l.neighborhoodKey === targetNeighbourhoodKey ||
+          neighbourhoodKeyForLot(l.id) === targetNeighbourhoodKey,
+      );
+      if (matchingLots.length === 0) {
+        return false; // Requested neighbourhood does not exist on this island — fail closed
+      }
+      // Prefer lot already owned by this operator, or first free residential lot in this neighbourhood
       lot =
-        this.neighborhood.lots.find((l) => l.zone !== "commercial") ??
-        this.neighborhood.lots[0];
+        matchingLots.find((l) => l.ownerCitizenId === citizenId) ??
+        matchingLots.find(
+          (l) => !l.ownerCitizenId && l.zone !== "commercial" && !l.built,
+        ) ??
+        matchingLots.find((l) => !l.ownerCitizenId && l.zone !== "commercial") ??
+        null;
+      if (!lot) {
+        return false; // No available lots in requested neighbourhood — fail closed, never fall back to unrelated lots
+      }
+    } else {
+      // Default open land fallback (no specific neighbourhood or plot requested)
+      lot =
+        this.neighborhood.lots.find((l) => l.ownerCitizenId === citizenId) ??
+        this.neighborhood.lots.find(
+          (l) =>
+            !l.built &&
+            !l.ownerCitizenId &&
+            l.zone !== "commercial" &&
+            !l.neighborhoodKey &&
+            !neighbourhoodKeyForLot(l.id),
+        ) ??
+        this.neighborhood.lots.find(
+          (l) =>
+            !l.ownerCitizenId &&
+            l.zone !== "commercial" &&
+            !l.neighborhoodKey &&
+            !neighbourhoodKeyForLot(l.id),
+        ) ??
+        null;
+      if (!lot) {
+        return false;
+      }
     }
+
     if (!lot) return false;
 
-    this.assignLot(citizenId, lot.id);
+    // Check assignment
+    if (lot.ownerCitizenId !== citizenId) {
+      const assigned = this.assignLot(citizenId, lot.id);
+      if (!assigned) return false;
+    }
+
     if (!lot.built) {
       this.buildHouse(lot.id);
     }
