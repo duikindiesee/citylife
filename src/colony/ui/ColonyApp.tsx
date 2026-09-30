@@ -1357,8 +1357,14 @@ export function ColonyApp() {
     };
   }, [runtime]);
 
+  useEffect(() => {
+    if (runtime.getOwnedDrivePose() && typeof document !== "undefined" && document.pointerLockElement) {
+      document.exitPointerLock?.();
+    }
+  }, [runtime, runtime.getOwnedDrivePose()]);
+
   const requestMouseLook = () => {
-    if (!ui.firstPerson.active) return;
+    if (!ui.firstPerson.active || !!runtime.getOwnedDrivePose()) return;
     const host = hostRef.current;
     if (!host?.requestPointerLock) {
       setPointerLockError(

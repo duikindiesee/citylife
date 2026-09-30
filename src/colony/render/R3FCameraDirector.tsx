@@ -71,6 +71,7 @@ export function R3FCameraDirector({ sim, runtime }: R3FCameraDirectorProps) {
       hasOwnedCar?: () => boolean;
       getOwnedDrivePose?: () => { x: number; y: number; heading: number; speed: number } | null;
       teleportFirstPerson?: (x: number, y: number) => void;
+      fpCameraCell?: { x: number; y: number } | null;
     } | null;
 
     // --- 1. cinematic orbit (owns camera during login screen backdrop) ---
@@ -157,7 +158,17 @@ export function R3FCameraDirector({ sim, runtime }: R3FCameraDirectorProps) {
           pts.push(new THREE.Vector3(wx(startX), 8, wz(startY)));
         }
 
-        bootSpline.current = new THREE.CatmullRomCurve3(pts);
+        if (pts.length >= 2) {
+          try {
+            bootSpline.current = new THREE.CatmullRomCurve3(pts);
+          } catch {
+            bootMode.current = "none";
+            if (rt) rt.bootCinematicActive = false;
+          }
+        } else {
+          bootMode.current = "none";
+          if (rt) rt.bootCinematicActive = false;
+        }
       }
     }
 
@@ -213,37 +224,51 @@ export function R3FCameraDirector({ sim, runtime }: R3FCameraDirectorProps) {
         bootMode.current = "none";
         if (rt) rt.bootCinematicActive = false;
       } else {
-        const elapsed = performance.now() - bootStartMs.current;
-        const dur = 4200;
-        const progress = Math.min(1, elapsed / dur);
-        // Smooth sine ease in/out
-        const ease = 0.5 - 0.5 * Math.cos(progress * Math.PI);
+        try {
+          const elapsed = performance.now() - bootStartMs.current;
+          const dur = 4200;
+          const progress = Math.min(1, elapsed / dur);
+          // Smooth sine ease in/out
+          const ease = 0.5 - 0.5 * Math.cos(progress * Math.PI);
 
-        const pos = spline.getPointAt(ease);
-        camera.position.copy(pos);
+          const pos = spline.getPointAt(ease);
+          if (pos && !isNaN(pos.x)) {
+            camera.position.copy(pos);
+          }
 
-        // Lookahead along the curve tangent; in the last 25%, transition smoothly towards showroom hero car
-        const lookAheadProgress = Math.min(1, ease + 0.06);
-        const lookAheadPoint = spline.getPointAt(lookAheadProgress);
-        if (progress > 0.75) {
-          const blend = (progress - 0.75) / 0.25;
-          scratch.target.lerpVectors(lookAheadPoint, bootLookTarget.current, blend);
-        } else {
-          scratch.target.copy(lookAheadPoint);
-        }
-        camera.lookAt(scratch.target);
+          // Lookahead along the curve tangent; in the last 25%, transition smoothly towards showroom hero car
+          const lookAheadProgress = Math.min(1, ease + 0.06);
+          const lookAheadPoint = spline.getPointAt(lookAheadProgress);
+          if (lookAheadPoint && !isNaN(lookAheadPoint.x)) {
+            if (progress > 0.75) {
+              const blend = (progress - 0.75) / 0.25;
+              scratch.target.lerpVectors(lookAheadPoint, bootLookTarget.current, blend);
+            } else {
+              scratch.target.copy(lookAheadPoint);
+            }
+            camera.lookAt(scratch.target);
+          }
 
-        if (progress >= 1) {
-          bootMode.current = "none";
-          if (rt) {
-            rt.bootCinematicActive = false;
-            const garagePad = sim.state.commercialDistrict?.garagePad;
-            if (garagePad && rt.teleportFirstPerson) {
-              const arrivalX = garagePad.roadTarget.x;
-              const arrivalY = garagePad.roadTarget.y;
-              rt.teleportFirstPerson(arrivalX, arrivalY);
+          if (progress >= 1) {
+            bootMode.current = "none";
+            if (rt) {
+              rt.bootCinematicActive = false;
+              const garagePad = sim.state.commercialDistrict?.garagePad;
+              if (garagePad) {
+                const hubX = garagePad.x + (garagePad.w - 1) / 2;
+                const hubY = garagePad.y + (garagePad.h - 1) / 2;
+                rt.fpCameraCell = { x: hubX, y: hubY };
+                if (rt.teleportFirstPerson) {
+                  const arrivalX = garagePad.roadTarget.x;
+                  const arrivalY = garagePad.roadTarget.y;
+                  rt.teleportFirstPerson(arrivalX, arrivalY);
+                }
+              }
             }
           }
+        } catch {
+          bootMode.current = "none";
+          if (rt) rt.bootCinematicActive = false;
         }
         return;
       }

@@ -2434,7 +2434,7 @@ body.tv-mode .radio-iframe.is-visible {
   transform: translateX(-50%);
   width: min(920px, calc(100vw - 24px), calc((100vh - 240px) * 1.515));
   padding: clamp(9px, 1.1vw, 16px);
-  z-index: 48;
+  z-index: 60;
 }
 .bus-network-minimap__title {
   display: flex;

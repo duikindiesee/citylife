@@ -2245,6 +2245,10 @@ export class ColonyRuntime {
    *  over the twin's `pos` wherever it exists, so a bot asking "where am I and what is near me"
    *  would otherwise get an answer that lags the player's actual eyes. Null means "use the twin". */
   private fpViewOrigin(citizenId: string): { x: number; y: number } | null {
+    if (this.fpRidingBusId !== null && citizenId === this.fpCitizenId) {
+      const pose = this.busPoseOf(this.fpRidingBusId);
+      if (pose) return { x: pose.x, y: pose.y };
+    }
     return citizenId === this.fpCitizenId ? this.fpCameraCell : null;
   }
 
@@ -3386,6 +3390,7 @@ export class ColonyRuntime {
         c.pos.y = pose.y;
         c.target = { x: pose.x, y: pose.y };
         c.heading = pose.heading;
+        this.fpCameraCell = { x: pose.x, y: pose.y };
       } else {
         this.fpRidingBusId = null;
       }
@@ -4889,6 +4894,7 @@ export class ColonyRuntime {
     if (!c) return false;
     c.pos.x = x;
     c.pos.y = y;
+    this.fpCameraCell = { x, y };
     this.citizens.setTarget(id, { x, y });
     this.fpGuidedTarget = null;
     this.fpTeleportRequest = {
@@ -4915,6 +4921,14 @@ export class ColonyRuntime {
     if (busAct) {
       if (busAct.action === "board") {
         this.fpRidingBusId = busAct.busId;
+        const pose = this.busPoseOf(busAct.busId);
+        if (pose) {
+          c.pos.x = pose.x;
+          c.pos.y = pose.y;
+          c.target = { x: pose.x, y: pose.y };
+          c.heading = pose.heading;
+          this.fpCameraCell = { x: pose.x, y: pose.y };
+        }
         this.fpGuidedTarget = null;
         this.fpWalkSpeed = 0;
         this.citizens.setTarget(id, { x: c.pos.x, y: c.pos.y });

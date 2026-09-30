@@ -33,6 +33,22 @@ export function OwnedCarControls({
   const [pressedActions, setPressedActions] = useState<
     Partial<Record<keyof OwnedDriveInput, boolean>>
   >({});
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!active) return;
+    let animId: number;
+    let lastTime = 0;
+    const loop = (t: number) => {
+      if (t - lastTime > 60) {
+        lastTime = t;
+        setTick((n) => n + 1);
+      }
+      animId = requestAnimationFrame(loop);
+    };
+    animId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(animId);
+  }, [active]);
 
   const change = useCallback(
     (action: keyof OwnedDriveInput, down: boolean) => {
@@ -160,7 +176,7 @@ export function OwnedCarControls({
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
-        padding: "16px 20px",
+        padding: "16px clamp(8px, 2vw, 20px)",
         boxSizing: "border-box",
       }}
     >
@@ -378,10 +394,10 @@ export function OwnedCarControls({
           style={{
             pointerEvents: "auto",
             display: "flex",
-            gap: "12px",
+            gap: "clamp(6px, 1.5vw, 12px)",
             background: "rgba(8, 21, 34, 0.75)",
             backdropFilter: "blur(12px)",
-            padding: "10px 14px",
+            padding: "8px clamp(8px, 1.8vw, 14px)",
             borderRadius: "28px",
             border: "1px solid rgba(90, 230, 255, 0.3)",
             boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
@@ -392,8 +408,8 @@ export function OwnedCarControls({
             aria-label="Left"
             data-drive-action="left"
             style={{
-              width: 68,
-              height: 68,
+              width: "clamp(46px, 11vw, 68px)",
+              height: "clamp(46px, 11vw, 68px)",
               borderRadius: 20,
               background: pressedActions.left
                 ? "linear-gradient(135deg, rgba(90, 230, 255, 0.6), rgba(0, 150, 220, 0.8))"
@@ -423,6 +439,9 @@ export function OwnedCarControls({
             onMouseDown={() => change("left", true)}
             onMouseUp={() => change("left", false)}
             onMouseLeave={() => change("left", false)}
+            onTouchStart={() => change("left", true)}
+            onTouchEnd={() => change("left", false)}
+            onTouchCancel={() => change("left", false)}
           >
             <span>◀</span>
             <span style={{ fontSize: 10, letterSpacing: "0.05em", fontWeight: 700, marginTop: 2 }}>LEFT</span>
@@ -432,8 +451,8 @@ export function OwnedCarControls({
             aria-label="Right"
             data-drive-action="right"
             style={{
-              width: 68,
-              height: 68,
+              width: "clamp(46px, 11vw, 68px)",
+              height: "clamp(46px, 11vw, 68px)",
               borderRadius: 20,
               background: pressedActions.right
                 ? "linear-gradient(135deg, rgba(90, 230, 255, 0.6), rgba(0, 150, 220, 0.8))"
@@ -463,6 +482,9 @@ export function OwnedCarControls({
             onMouseDown={() => change("right", true)}
             onMouseUp={() => change("right", false)}
             onMouseLeave={() => change("right", false)}
+            onTouchStart={() => change("right", true)}
+            onTouchEnd={() => change("right", false)}
+            onTouchCancel={() => change("right", false)}
           >
             <span>▶</span>
             <span style={{ fontSize: 10, letterSpacing: "0.05em", fontWeight: 700, marginTop: 2 }}>RIGHT</span>
@@ -474,11 +496,11 @@ export function OwnedCarControls({
           style={{
             pointerEvents: "auto",
             display: "flex",
-            gap: "12px",
+            gap: "clamp(6px, 1.5vw, 12px)",
             alignItems: "center",
             background: "rgba(8, 21, 34, 0.75)",
             backdropFilter: "blur(12px)",
-            padding: "10px 14px",
+            padding: "8px clamp(8px, 1.8vw, 14px)",
             borderRadius: "28px",
             border: "1px solid rgba(255, 255, 255, 0.2)",
             boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
@@ -490,8 +512,8 @@ export function OwnedCarControls({
             aria-label="Reverse"
             data-drive-action="reverse"
             style={{
-              width: 58,
-              height: 58,
+              width: "clamp(40px, 9vw, 58px)",
+              height: "clamp(40px, 9vw, 58px)",
               borderRadius: 18,
               background: pressedActions.reverse
                 ? "linear-gradient(135deg, rgba(245, 167, 66, 0.7), rgba(200, 100, 20, 0.9))"
@@ -521,6 +543,9 @@ export function OwnedCarControls({
             onMouseDown={() => change("reverse", true)}
             onMouseUp={() => change("reverse", false)}
             onMouseLeave={() => change("reverse", false)}
+            onTouchStart={() => change("reverse", true)}
+            onTouchEnd={() => change("reverse", false)}
+            onTouchCancel={() => change("reverse", false)}
           >
             <span>▼</span>
             <span style={{ fontSize: 9, letterSpacing: "0.05em", fontWeight: 700 }}>REV</span>
@@ -531,8 +556,8 @@ export function OwnedCarControls({
             aria-label="Brake"
             data-drive-action="brake"
             style={{
-              width: 64,
-              height: 64,
+              width: "clamp(44px, 10vw, 64px)",
+              height: "clamp(44px, 10vw, 64px)",
               borderRadius: 20,
               background: pressedActions.brake
                 ? "linear-gradient(135deg, rgba(255, 77, 109, 0.7), rgba(180, 20, 50, 0.9))"
@@ -562,6 +587,9 @@ export function OwnedCarControls({
             onMouseDown={() => change("brake", true)}
             onMouseUp={() => change("brake", false)}
             onMouseLeave={() => change("brake", false)}
+            onTouchStart={() => change("brake", true)}
+            onTouchEnd={() => change("brake", false)}
+            onTouchCancel={() => change("brake", false)}
           >
             <span>■</span>
             <span style={{ fontSize: 10, letterSpacing: "0.05em", fontWeight: 700 }}>BRAKE</span>
@@ -572,8 +600,8 @@ export function OwnedCarControls({
             aria-label="Accelerate"
             data-drive-action="throttle"
             style={{
-              width: 76,
-              height: 76,
+              width: "clamp(48px, 12vw, 76px)",
+              height: "clamp(48px, 12vw, 76px)",
               borderRadius: 24,
               background: pressedActions.throttle
                 ? "linear-gradient(135deg, rgba(0, 229, 163, 0.7), rgba(0, 160, 100, 0.9))"
@@ -605,6 +633,9 @@ export function OwnedCarControls({
             onMouseDown={() => change("throttle", true)}
             onMouseUp={() => change("throttle", false)}
             onMouseLeave={() => change("throttle", false)}
+            onTouchStart={() => change("throttle", true)}
+            onTouchEnd={() => change("throttle", false)}
+            onTouchCancel={() => change("throttle", false)}
           >
             <span>▲</span>
             <span style={{ fontSize: 11, letterSpacing: "0.05em", fontWeight: 800 }}>GAS</span>
