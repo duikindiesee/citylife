@@ -39,14 +39,26 @@ export function isPointOnRoadSurface(
   roadSet?: ReadonlySet<string> | null,
   roadWays?: readonly MinimalRoadWay[] | null,
 ): boolean {
-  const rx = Math.round(x);
-  const ry = Math.round(y);
-  if (roadSet && roadSet.has(`${rx},${ry}`)) return true;
+  if (roadSet) {
+    const rx = Math.round(x);
+    const ry = Math.round(y);
+    if (roadSet.has(`${rx},${ry}`)) return true;
+    const fx = Math.floor(x), fy = Math.floor(y);
+    const cx = Math.ceil(x), cy = Math.ceil(y);
+    if (
+      roadSet.has(`${fx},${fy}`) ||
+      roadSet.has(`${cx},${fy}`) ||
+      roadSet.has(`${fx},${cy}`) ||
+      roadSet.has(`${cx},${cy}`)
+    ) {
+      return true;
+    }
+  }
   if (!roadWays || roadWays.length === 0) return false;
   for (let w = 0; w < roadWays.length; w++) {
     const way = roadWays[w]!;
     if (!way.path || way.path.length < 2) continue;
-    const halfWidth = (way.width ?? 4) / 2 + 0.4;
+    const halfWidth = (way.width ?? 4) / 2 + 0.8;
     const hwSq = halfWidth * halfWidth;
     for (let i = 0; i < way.path.length - 1; i++) {
       const a = way.path[i]!;

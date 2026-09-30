@@ -136,6 +136,64 @@ describe("Spec 174 — Bus Collision & Reactive Transit Traffic AI", () => {
     expect(bus.lateralOffset).toBeLessThan(0); // Shifted toward passing lane
   });
 
+  it("bus does not initiate overtaking when passing/oncoming lane is occupied", () => {
+    const loop = buildPath([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 0, y: 100 },
+    ], true);
+
+    const spur = buildPath([{ x: 0, y: -10 }, { x: 0, y: 0 }], false);
+    const bays = [buildPath([{ x: -5, y: -10 }, { x: 0, y: -10 }], false)];
+
+    const geom: FleetGeometry = {
+      loopLen: loop.total,
+      joinT: 0,
+      spurLen: spur.total,
+      bayLen: [bays[0]!.total],
+      stopsFromJoin: [80],
+      loopPath: loop,
+    };
+
+    const cfg: FleetConfig = {
+      busesOwned: 1,
+      baysTotal: 1,
+      firstDepartureMin: 8 * 60,
+      lastServiceMin: 23 * 60,
+      busSpeedCellsPerMin: 20,
+      stopDwellMin: 1,
+      minHeadwayCells: 5,
+      depotBoardMin: 1,
+      breakMin: 10,
+      lapsPerShift: 10,
+      bayPullOutCells: 2,
+      busLaneOffsetCells: 1,
+    };
+
+    const fleet = makeFleet(cfg);
+    const bus = fleet.buses[0]!;
+    bus.mode = "service";
+    bus.t = 0;
+    bus.lapT = 20;
+    bus.dwell = 0;
+    bus.heldMinutes = 0;
+
+    // Fixture: stopped car in left lane at (25, 1) + opposing oncoming vehicle in passing lane at (28, -0.8)
+    const carAhead = { x: 25, y: 1, speed: 0 };
+    const opposingCar = { x: 28, y: -0.8, heading: Math.PI, speed: 0 };
+
+    for (let i = 0; i < 5; i++) {
+      stepFleet(fleet, 0.02, 9 * 60, geom, cfg, [carAhead, opposingCar]);
+    }
+
+    // Bus must NOT overtake because passing lane has oncoming traffic
+    expect(bus.overtaking).toBe(false);
+    expect(bus.lateralOffset).toBe(0);
+    // Bus stays held behind carAhead
+    expect(bus.lapT).toBeLessThanOrEqual(21.1);
+  });
+
   it("seed 4242 road surface is continuous and POIs are accessible", () => {
     const runtime = new ColonyRuntime(4242);
     const sim = runtime.sim;

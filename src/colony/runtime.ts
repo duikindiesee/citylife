@@ -1288,6 +1288,50 @@ export class ColonyRuntime {
       for (const c of cells) residentialKeys.add(`${c.x},${c.y}`);
       satellites.push(nbhd);
     }
+    // Spec 175 — WESTERN COASTAL HAMLET & COAST ROAD:
+    // Survey ocean-view parcels along the western coast and connect them with a coastal road.
+    let coastalNbhd: Neighborhood | null = null;
+    if (this.worldSeed === 4242) {
+      let bestAnchor: Cell | null = null;
+      let bestScore = -Infinity;
+      // Scan western shoreline between y = 330 and 420, x = 80 and 130
+      for (let y = 330; y <= 420; y += 8) {
+        for (let x = 80; x <= 130; x += 6) {
+          if (!cellOk(t0, x, y) || taken.has(`${x},${y}`)) continue;
+          let room = 0;
+          for (let dy = -10; dy <= 10; dy += 2) {
+            for (let dx = -10; dx <= 10; dx += 2) {
+              if (cellOk(t0, x + dx, y + dy) && !taken.has(`${x + dx},${y + dy}`)) room++;
+            }
+          }
+          if (room < 50) continue;
+          const score = room - Math.abs(y - 360) * 0.3 - x * 0.2;
+          if (score > bestScore) {
+            bestScore = score;
+            bestAnchor = { x, y };
+          }
+        }
+      }
+      if (bestAnchor) {
+        const nbhd = makeNeighborhoodAt(t0, bestAnchor, { small: true, blocked: taken });
+        if (nbhd.lots.length > 0) {
+          const name = `coast${satellites.length + 1}`;
+          for (const lot of nbhd.lots) {
+            lot.id = `${name}_${lot.id}`;
+            lot.neighborhoodKey = name;
+          }
+          this.neighborhood.parcels.push(...nbhd.parcels);
+          const cells = footprintCells(nbhd);
+          reserveParcelLand(this.sim.state, cells);
+          mergeAvenue(this.sim.state, nbhd.carriage);
+          addCells(cells);
+          addCells(nbhd.carriage);
+          addCells(nbhd.verge);
+          for (const c of cells) residentialKeys.add(`${c.x},${c.y}`);
+          coastalNbhd = nbhd;
+        }
+      }
+    }
     // Spec 114 — roads laid after parcel placement must keep the same one-cell setback from
     // floor/border footprints. Build a deterministic exclusion halo around residential parcels
     // before routing/widening trunk connectors so no final road cell can 4-neighbour touch a fence.
@@ -1441,8 +1485,21 @@ export class ColonyRuntime {
       if (nearest < 0) continue;
       const key = `${Math.min(i, nearest)}-${Math.max(i, nearest)}`;
       if (meshed.has(key)) continue;
-      paveLink(satellites[i]!.carriage, satellites[nearest]!.carriage); // the cross-link that makes it a web
+      meshed.add(key);
+      // Snap connecting road to satellite spine endpoint if within 1 cell to ensure seamless junction alignment
+      const [from, to] = nearestPair(satellites[i]!.carriage, satellites[nearest]!.carriage);
+      const spineEnd = satellites[nearest]!.spine.at(-1);
+      const target = spineEnd && Math.hypot(to.x - spineEnd.x, to.y - spineEnd.y) <= 1.5 ? spineEnd : to;
+      const path =
+        leastCostPath(t0, from, target, {
+          slopeWeight: 0.5,
+          diagonal: true,
+          forbidBeach: true,
+          blocked: (x, y) => residentialSetbackKeys.has(`${x},${y}`),
+        }) ?? [];
+      if (path.length > 0) mergeAvenue(this.sim.state, layRoad(path, 1));
     }
+    if (coastalNbhd) satellites.push(coastalNbhd);
     // Spec 079 — survey the shop district in its reserved room; shops avoid every homestead + road.
     const blockedForShops = new Set<string>(residentialKeys);
     for (const r of this.sim.state.roads) blockedForShops.add(`${r.x},${r.y}`);
@@ -1531,6 +1588,26 @@ export class ColonyRuntime {
           }) ?? [];
         mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
       }
+      // Spec 175 — coastal road connecting the commercial high street down to the coastal hamlet
+      if (coastalNbhd && coastalNbhd.spine.length > 0) {
+        const [nearComm, nearCoast] = nearestPair(
+          this.commercialDistrict.street,
+          coastalNbhd.spine,
+        );
+        const coastalConnector =
+          leastCostPath(t, nearComm, nearCoast, {
+            slopeWeight: 0.5,
+            diagonal: true,
+            forbidBeach: true,
+            blocked: (x, y) =>
+              residentialSetbackKeys.has(`${x},${y}`) ||
+              shopCells.has(`${x},${y}`),
+            margin: 160,
+          }) ?? [];
+        if (coastalConnector.length > 0) {
+          mergeAvenue(this.sim.state, layRoad(coastalConnector, 1, "avenue"));
+        }
+      }
       mergeAvenue(this.sim.state, streetCells);
       mergeAvenue(this.sim.state, crossStreetCells);
     }
@@ -1597,11 +1674,34 @@ export class ColonyRuntime {
     const commercialStop =
       this.commercialDistrict?.garagePad?.roadTarget ??
       this.commercialDistrict?.intersection;
-    const busAnchors = [
-      hoodCentroid(this.neighborhood.carriage),
-      ...satellites.map((s) => hoodCentroid(s.carriage)),
-      ...(commercialStop ? [commercialStop] : []),
-    ];
+    const busAnchors = (() => {
+      if (this.worldSeed === 4242) {
+        // Spec 175 / User requirement: on Seed 4242, traverse the southern highway (bottom road)
+        // by ordering the perimeter circuit: Commercial -> Wood3 -> Wood1 -> Wood2 -> Coast1 -> Founders.
+        const stopsMap = new Map<string, Cell>();
+        for (const s of satellites) {
+          const c = hoodCentroid(s.carriage);
+          stopsMap.set(s.lots[0]?.neighborhoodKey ?? "", c);
+        }
+        const order: Cell[] = [];
+        if (commercialStop) order.push(commercialStop);
+        const wood3 = stopsMap.get("wood3");
+        if (wood3) order.push(wood3);
+        const wood1 = stopsMap.get("wood1");
+        if (wood1) order.push(wood1);
+        const wood2 = stopsMap.get("wood2");
+        if (wood2) order.push(wood2);
+        const coast = stopsMap.get("coast4") ?? stopsMap.get("coast1");
+        if (coast) order.push(coast);
+        order.push(hoodCentroid(this.neighborhood.carriage));
+        return order;
+      }
+      return [
+        hoodCentroid(this.neighborhood.carriage),
+        ...satellites.map((s) => hoodCentroid(s.carriage)),
+        ...(commercialStop ? [commercialStop] : []),
+      ];
+    })();
     // TRANSIT.COMPLETE.1 — the route build MOVED from here to after the spec 148 connectivity
     // repair below. Measured: 12 of 24 seeds routed NO bus loop at all, and 11 of those failed
     // because makeBusRoute ran while the road network was still FRAGMENTED. Spec 148's own comment
@@ -1841,6 +1941,7 @@ export class ColonyRuntime {
     this.busRoute = makeBusRoute(
       { roadKind: this.sim.state.roadKind },
       busAnchors,
+      this.worldSeed === 4242 ? { preserveOrder: true } : undefined,
     );
     if (this.busRoute) {
       const tr = COLONY.transit;

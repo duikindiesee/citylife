@@ -469,10 +469,14 @@ export function stepFleet(
 
           const coachCap = headwayCapLapT(fleet, b, geom, cfg);
 
-          // Headway & obstacle detection against player vehicle
+          // Headway & obstacle detection against player vehicle and passing-lane traffic
           let obstacleCap = Infinity;
           let closeObstacle = false;
           let obstacleAheadDistance = Infinity;
+          let passingLaneClear = coachCap > b.lapT + 15.0;
+
+          const busOffset = b.lateralOffset ?? 0;
+          const busInPassingLane = busOffset <= -0.9;
 
           if (obstacles && obstacles.length > 0 && geom.loopPath) {
             const loopLen = geom.loopLen;
@@ -481,14 +485,40 @@ export function stepFleet(
               const obs = obstacles[oi]!;
               const obsArc = projectPath(geom.loopPath, obs);
               const nearestPt = samplePath(geom.loopPath, obsArc);
-              const distToLoop = Math.hypot(obs.x - nearestPt.x, obs.y - nearestPt.y);
+              const dx = obs.x - nearestPt.x;
+              const dy = obs.y - nearestPt.y;
+              const heading = nearestPt.heading;
+              // Lateral offset of obstacle relative to road centerline:
+              // positive is left lane, negative is right/passing lane
+              const lateral = -dx * Math.sin(heading) + dy * Math.cos(heading);
+              const distToLoop = Math.hypot(dx, dy);
+
               // Only consider obstacles within 3.5 cells (14m) of road centerline
               if (distToLoop <= 3.5) {
                 let forward = (obsArc - busLoopS) % loopLen;
                 if (forward < 0) forward += loopLen;
-                // If obstacle is ahead along the route loop within 14 cells (56m)
-                if (forward > 0.4 && forward < 14.0) {
+
+                // Check for oncoming or passing-lane traffic ahead
+                const isOpposing = (() => {
+                  if (obs.heading === undefined) return false;
+                  let dH = Math.abs(obs.heading - heading);
+                  while (dH > Math.PI) dH = 2 * Math.PI - dH;
+                  return dH > Math.PI / 2;
+                })();
+
+                if (isOpposing && forward > 0.4 && forward < 35.0) {
+                  passingLaneClear = false;
+                } else if (lateral <= -0.3 && forward > 0.4 && forward < 25.0) {
+                  passingLaneClear = false;
+                }
+
+                if (forward > 0.4 && forward < 16.0) {
                   obstacleAheadDistance = Math.min(obstacleAheadDistance, forward);
+                }
+
+                // Obstacle braking: only apply when the obstacle is in the bus's current travel lane
+                const inBusLane = busInPassingLane ? lateral < 0.3 : lateral > -0.3;
+                if (inBusLane && forward > 0.4 && forward < 14.0) {
                   // Safe buffer: keep 4.0 cells (16m) behind the vehicle
                   const minCarGap = 4.0;
                   const carCap = b.lapT + forward - minCarGap;
@@ -502,8 +532,8 @@ export function stepFleet(
           }
 
           // Dynamic Overtaking AI:
-          // Check if overtaking lane is clear of other buses (no coach within 15 cells ahead)
-          const overtakingLaneClear = coachCap > b.lapT + 15.0;
+          // Check if overtaking lane is clear of other buses and oncoming/occupying vehicles
+          const overtakingLaneClear = passingLaneClear;
 
           if (closeObstacle && !b.overtaking && overtakingLaneClear) {
             b.heldMinutes = (b.heldMinutes ?? 0) + dtMin;
@@ -529,9 +559,7 @@ export function stepFleet(
             b.lateralOffset = currentOffset + Math.sign(offsetDelta) * maxShift;
           }
 
-          // If bus is shifted into passing lane (offset < -1.0), it does not need to brake for the car
-          const effectiveObstacleCap = (b.lateralOffset ?? 0) < -1.0 ? Infinity : obstacleCap;
-          const cap = Math.min(coachCap, effectiveObstacleCap);
+          const cap = Math.min(coachCap, obstacleCap);
           const target = Math.min(nextEvent, cap);
           const need = (target - b.lapT) / v;
           if (target <= b.lapT) {
