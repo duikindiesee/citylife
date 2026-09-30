@@ -3066,13 +3066,21 @@ export class ColonyRuntime {
     let targetPlotId: string | null = null;
     let targetNeighbourhoodKey: string | null = null;
 
-    if (target && typeof target === "object") {
+    const isTruthObject = Boolean(target && typeof target === "object");
+    if (isTruthObject) {
+      const truth = target as HomeTruth;
       // Authority-bound resolution: only an unambiguously owned truth may claim a starter home
-      if (!isHomeOwned(target)) {
+      if (!isHomeOwned(truth)) {
         return false;
       }
-      targetPlotId = target.plotId ?? null;
-      targetNeighbourhoodKey = target.neighbourhoodKey ?? null;
+      targetPlotId = truth.plotId ?? null;
+      targetNeighbourhoodKey = truth.neighbourhoodKey ?? null;
+      // An authoritative HomeTruth must specify a server-allocated plot ID or neighbourhood key.
+      // An unambiguous owned status is not an authoritative plot allocation.
+      // Fail closed if neither identifier is provided — never fall back to arbitrary open land.
+      if (!targetPlotId && !targetNeighbourhoodKey) {
+        return false;
+      }
     } else if (typeof target === "string" && target.trim().length > 0) {
       const clean = target.trim();
       // Check if the string matches an existing lot ID
@@ -3134,6 +3142,9 @@ export class ColonyRuntime {
         return false; // No available lots in requested neighbourhood — fail closed, never fall back to unrelated lots
       }
     } else {
+      if (isTruthObject) {
+        return false; // Truth objects must never enter open land fallback
+      }
       // Default open land fallback (no specific neighbourhood or plot requested)
       lot =
         this.neighborhood.lots.find((l) => l.ownerCitizenId === citizenId) ??

@@ -43,6 +43,7 @@ import { R3FPerfProbe } from "./R3FPerfProbe";
 import { perfExperiment } from "../perf/perfExperiment";
 import { R3FTerrain } from "./R3FTerrain";
 import { R3FOcean } from "./R3FOcean";
+import { R3FFoliage } from "./R3FFoliage";
 import { R3FQuiverTrees } from "./R3FQuiverTrees";
 import { R3FCloud } from "./R3FCloud";
 import { R3FFoam } from "./R3FFoam";
@@ -796,8 +797,10 @@ function R3FWorld({
             <R3FRoadBuilder sim={sim} runtime={runtime} />
             <R3FRoadRibbons sim={sim} runtime={runtime} />
             <R3FRoadNetwork sim={sim} runtime={runtime} />
-            {/* WORLD.KOKERBOOM.1 — the quiver trees (kokerbome) are the exclusive authentic flora of this world;
-                generic cone trees are removed. One instanced draw call for the whole stand. */}
+            {/* Dynamic World Elements */}
+            {perfExperiment().foliage && (
+              <R3FFoliage sim={sim} runtime={runtime} />
+            )}
             <R3FQuiverTrees runtime={runtime} />
             <ZoneManager sim={sim} runtime={runtime} />
             <R3FPlayerCar sim={sim} />

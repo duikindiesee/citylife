@@ -134,6 +134,19 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(testRt.claimStarterHome(mismatchedTruth as any)).toBe(false);
     expect(testRt.hasOperatorHome()).toBe(false);
 
+    // 3b. Negative: Owned truth with null plotId AND null neighbourhoodKey refuses without falling back to open land (MoJoJo finding)
+    const unlocatedOwnedTruth = {
+      owned: true,
+      status: "OWNED",
+      neighbourhoodKey: null,
+      plotId: null,
+      frameId: null,
+      onboardingState: "NONE",
+      priceKco: null,
+    };
+    expect(testRt.claimStarterHome(unlocatedOwnedTruth as any)).toBe(false);
+    expect(testRt.hasOperatorHome()).toBe(false);
+
     // 4. Negative: Non-existent neighbourhood key string refuses without falling back to unrelated lots
     expect(testRt.claimStarterHome("nonexistent_hamlet_99")).toBe(false);
     expect(testRt.hasOperatorHome()).toBe(false);
