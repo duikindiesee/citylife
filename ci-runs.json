@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-30T11:24:49.535Z",
+  "updatedAt": "2026-09-30T11:25:04.773Z",
   "runs": [
     {
       "runId": 36708339636,
@@ -77,6 +77,49 @@
           "startedAt": "2026-09-30T11:22:43Z",
           "completedAt": "2026-09-30T11:23:40Z",
           "durationSeconds": 57
+        }
+      ]
+    },
+    {
+      "runId": 36708158782,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36708158782",
+      "event": "pull_request",
+      "branch": "antigravity/1907c3ce-a1d0-4134-8c15-7c436d33550d-raceable-roads",
+      "sha": "9b1154b4e5c3a852d87e60b465a41481db314329",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/9b1154b4e5c3a852d87e60b465a41481db314329",
+      "pullRequestNumbers": "#549",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/549",
+      "pullRequests": [
+        {
+          "number": 549,
+          "url": "https://github.com/duikindiesee/citylife/pull/549"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "cancelled",
+      "startedAt": "2026-09-30T11:22:38Z",
+      "completedAt": "2026-09-30T11:24:52Z",
+      "durationSeconds": 134,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 109863271632,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "cancelled",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-09-30T11:22:42Z",
+          "completedAt": "2026-09-30T11:24:51Z",
+          "durationSeconds": 129
         }
       ]
     },
