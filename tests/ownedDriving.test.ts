@@ -4,6 +4,7 @@ import {
   type OwnedDrivePose,
 } from "../src/colony/car/ownedDriving";
 import { STOCK_STATS } from "../src/colony/car/carSpec";
+import { ColonyRuntime } from "../src/colony/runtime";
 
 const start: OwnedDrivePose = { x: 0, y: 0, heading: 0, speed: 0 };
 describe("owned vehicle world driving", () => {
@@ -141,5 +142,15 @@ describe("owned vehicle world driving", () => {
     );
     expect(onRoad.speed).toBeGreaterThan(offRoad.speed);
     expect(offRoad.speed).toBeGreaterThan(0);
+  });
+
+  it("runtime.isRoadSurface recognizes road ribbons and keeps cars at highway speed", () => {
+    const rt = new ColonyRuntime(4242);
+    const ways = rt.sim.state.roadWays!;
+    expect(ways.length).toBeGreaterThan(0);
+    const firstWay = ways[0]!;
+    const p0 = firstWay.path[0]!;
+    expect(rt.isRoadSurface(p0.x, p0.y)).toBe(true);
+    expect(rt.isRoadSurface(5, 5)).toBe(false);
   });
 });

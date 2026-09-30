@@ -15,8 +15,8 @@ export const COLONY = {
     halfLengthMetres: 1.8,
     halfWidthMetres: 0.75,
     seatedEyeMetres: 1.05,
-    offRoadTopSpeedMultiplier: 0.68,
-    offRoadDrag: 2.0,
+    offRoadTopSpeedMultiplier: 0.75,
+    offRoadDrag: 0.5,
   },
   world: {
     // Spec 084 S6 — WORLD v2: ~10x the area (608 = 8x76 for clean terrain chunking). heightScale

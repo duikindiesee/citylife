@@ -33,6 +33,8 @@ import {
   commercialShopNightFloorEmissive,
   type CommercialShopMassing,
 } from "./commercialShopMassing";
+import { buildCarMesh } from "../car/carMesh";
+import { SHOWROOM_VEHICLES } from "../showroom/showroomCatalog";
 import { isPublicSafe } from "../newcomers";
 import { padSeatY, RENDER_DRY_FLOOR } from "./useTerrainLeveling";
 import {
@@ -293,72 +295,184 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     forecourtLane.add(lane);
   }
 
+  // Spec 174 / REALISTIC SHOWROOM — transparent architectural glass pavilion with real 3D cars
+  // on an illuminated turntable plinth and polished showroom floor, fully visible when driving past.
+  const showroomGroup = new THREE.Group();
+  showroomGroup.name = "garageAnchorGlassShowroomGroup";
+
+  // 1. Crystal clear transparent architectural glass outer box
+  const showroomGlassMat = new THREE.MeshStandardMaterial({
+    color: 0xdbf0ff,
+    roughness: 0.04,
+    metalness: 0.75,
+    transparent: true,
+    opacity: 0.16,
+    emissive: 0x122a36,
+    emissiveIntensity: 0.12,
+  });
   const showroom = new THREE.Mesh(
     new THREE.BoxGeometry(model.showroom.w, model.showroom.h, model.showroom.d),
-    new THREE.MeshStandardMaterial({
-      // Spec 109/110 — COOL glazing (not a warm frosted cube): low-opacity blue-teal glass with a
-      // metallic sheen reads against the warm sign/forecourt for material contrast, and the dark
-      // interior box below gives it depth so it reads as glass with a lit showroom behind it.
-      color: 0x8fd2e6,
-      roughness: 0.05,
-      metalness: 0.28,
-      emissive: 0x123642,
-      emissiveIntensity: 0.16,
-      transparent: true,
-      opacity: 0.38,
-    }),
+    showroomGlassMat,
   );
   showroom.name = "garageAnchorGlassShowroom";
   showroom.position.set(model.showroom.x, model.showroom.y, model.showroom.z);
-  showroom.castShadow = true;
-  showroom.receiveShadow = true;
+  showroom.castShadow = false;
+  showroom.receiveShadow = false;
 
-  // Dark lit interior behind the glass so the showroom reads as glazing with depth (not a frosted
-  // cube). Warm interior glow at night via the night-floor emissive helper.
-  const showroomInteriorMat = new THREE.MeshStandardMaterial({
-    color: 0x14202c,
-    roughness: 0.85,
-    emissive: 0x3a2a12,
-    emissiveIntensity: 0.12,
+  // Dark metallic structural mullions / corner pillars framing the glass
+  const frameMat = new THREE.MeshStandardMaterial({
+    color: 0x182028,
+    metalness: 0.7,
+    roughness: 0.35,
   });
-  const showroomInterior = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      model.showroom.w * 0.9,
-      model.showroom.h * 0.86,
-      model.showroom.d * 0.9,
-    ),
-    showroomInteriorMat,
-  );
-  showroomInterior.name = "garageAnchorShowroomInterior";
-  showroomInterior.position.set(
-    model.showroom.x,
-    model.showroom.y * 0.96,
-    model.showroom.z,
-  );
+  const frameCorners: [number, number][] = [
+    [-model.showroom.w / 2 + 0.05, -model.showroom.d / 2 + 0.05],
+    [model.showroom.w / 2 - 0.05, -model.showroom.d / 2 + 0.05],
+    [-model.showroom.w / 2 + 0.05, model.showroom.d / 2 - 0.05],
+    [model.showroom.w / 2 - 0.05, model.showroom.d / 2 - 0.05],
+    [0, model.showroom.d / 2 - 0.05], // center mullion facing the road
+  ];
+  for (const [fx, fz] of frameCorners) {
+    const post = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, model.showroom.h, 0.12),
+      frameMat,
+    );
+    post.position.set(model.showroom.x + fx, model.showroom.y, model.showroom.z + fz);
+    showroomGroup.add(post);
+  }
 
-  const showroomFront = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      model.showroom.w * 0.84,
-      model.showroom.h * 0.58,
-      0.08,
-    ),
+  // 2. Interior room environment (Group named garageAnchorShowroomInterior)
+  const showroomInterior = new THREE.Group();
+  showroomInterior.name = "garageAnchorShowroomInterior";
+
+  // Polished showroom floor
+  const intFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(model.showroom.w * 0.98, 0.06, model.showroom.d * 0.98),
     new THREE.MeshStandardMaterial({
-      color: 0xffd3a0,
-      roughness: 0.08,
-      metalness: 0.04,
-      emissive: 0xffb24a,
-      emissiveIntensity: 0.58,
-      transparent: true,
-      opacity: 0.8,
+      color: 0x1c242e,
+      roughness: 0.22,
+      metalness: 0.35,
+      emissive: 0x141b24,
+      emissiveIntensity: 0.35,
     }),
   );
-  showroomFront.name = "garageAnchorGlassShowroomFront";
-  showroomFront.position.set(
-    model.showroom.x,
-    model.showroom.h * 0.54,
-    model.showroom.z + model.showroom.d / 2 + 0.06,
-  );
+  intFloor.position.set(model.showroom.x, 0.05, model.showroom.z);
+  intFloor.receiveShadow = true;
+  showroomInterior.add(intFloor);
 
+  // Back feature wall separating showroom from service bay
+  const backWall = new THREE.Mesh(
+    new THREE.BoxGeometry(model.showroom.w * 0.98, model.showroom.h * 0.96, 0.14),
+    new THREE.MeshStandardMaterial({
+      color: 0x222a36,
+      roughness: 0.72,
+      metalness: 0.1,
+    }),
+  );
+  backWall.position.set(
+    model.showroom.x,
+    model.showroom.y,
+    model.showroom.z - model.showroom.d * 0.46,
+  );
+  showroomInterior.add(backWall);
+
+  // Showroom ceiling canopy
+  const ceiling = new THREE.Mesh(
+    new THREE.BoxGeometry(model.showroom.w * 0.99, 0.12, model.showroom.d * 0.99),
+    new THREE.MeshStandardMaterial({
+      color: 0x1a212a,
+      roughness: 0.8,
+    }),
+  );
+  ceiling.position.set(model.showroom.x, model.showroom.h + 0.02, model.showroom.z);
+  showroomInterior.add(ceiling);
+
+  // Ceiling recessed LED spotlights illuminating the showroom floor & plinth
+  const spotMat = new THREE.MeshStandardMaterial({
+    color: 0xfff3d6,
+    emissive: 0xffe2a8,
+    emissiveIntensity: 1.4,
+    roughness: 0.2,
+  });
+  const spotPositions: [number, number][] = [
+    [-model.showroom.w * 0.22, 0],
+    [model.showroom.w * 0.22, 0],
+    [0, model.showroom.d * 0.18],
+    [0, -model.showroom.d * 0.18],
+  ];
+  for (const [sx, sz] of spotPositions) {
+    const spot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.22, 0.04, 16),
+      spotMat,
+    );
+    spot.position.set(model.showroom.x + sx, model.showroom.h - 0.02, model.showroom.z + sz);
+    showroomInterior.add(spot);
+  }
+
+  // 3. Central illuminated presentation turntable plinth
+  const plinth = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.65, 1.72, 0.12, 32),
+    new THREE.MeshStandardMaterial({
+      color: 0x222832,
+      roughness: 0.26,
+      metalness: 0.45,
+      emissive: 0x161c24,
+      emissiveIntensity: 0.22,
+    }),
+  );
+  plinth.position.set(
+    model.showroom.x - model.showroom.w * 0.06,
+    0.11,
+    model.showroom.z + model.showroom.d * 0.04,
+  );
+  plinth.receiveShadow = true;
+  showroomInterior.add(plinth);
+
+  // Plinth outer glowing neon ring
+  const plinthRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.58, 1.66, 32),
+    new THREE.MeshStandardMaterial({
+      color: 0xffad42,
+      emissive: 0xff9928,
+      emissiveIntensity: 1.25,
+      side: THREE.DoubleSide,
+    }),
+  );
+  plinthRing.rotation.x = -Math.PI / 2;
+  plinthRing.position.set(
+    model.showroom.x - model.showroom.w * 0.06,
+    0.175,
+    model.showroom.z + model.showroom.d * 0.04,
+  );
+  showroomInterior.add(plinthRing);
+
+  // 4. HERO CAR ON THE PLINTH (Karoo Kaap GT-V8 coupe)
+  const heroSpec = SHOWROOM_VEHICLES[1]!.spec;
+  const heroCar = buildCarMesh(heroSpec);
+  heroCar.name = "garageAnchorShowroomHeroCar";
+  heroCar.scale.setScalar(1.55);
+  heroCar.position.set(
+    model.showroom.x - model.showroom.w * 0.06,
+    0.18,
+    model.showroom.z + model.showroom.d * 0.04,
+  );
+  heroCar.rotation.y = -0.38; // 3/4 beauty angle toward the road-facing glass
+  showroomInterior.add(heroCar);
+
+  // 5. SECONDARY CAR IN SHOWROOM (Karoo X19 Targa)
+  const secondarySpec = SHOWROOM_VEHICLES[2]!.spec;
+  const secondaryCar = buildCarMesh(secondarySpec);
+  secondaryCar.name = "garageAnchorShowroomSecondCar";
+  secondaryCar.scale.setScalar(1.42);
+  secondaryCar.position.set(
+    model.showroom.x + model.showroom.w * 0.25,
+    0.09,
+    model.showroom.z - model.showroom.d * 0.08,
+  );
+  secondaryCar.rotation.y = 0.22;
+  showroomInterior.add(secondaryCar);
+
+  // 6. Header sign and branding
   const showroomHeader = new THREE.Mesh(
     new THREE.BoxGeometry(model.showroom.w * 0.9, 0.32, 0.14),
     new THREE.MeshStandardMaterial({
@@ -375,78 +489,27 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     model.showroom.z + model.showroom.d / 2 + 0.08,
   );
 
+  // Subtle lower glass kickplate / front accent
+  const showroomFront = new THREE.Mesh(
+    new THREE.BoxGeometry(model.showroom.w * 0.84, 0.16, 0.08),
+    new THREE.MeshStandardMaterial({
+      color: 0x1b232c,
+      roughness: 0.3,
+      metalness: 0.6,
+    }),
+  );
+  showroomFront.name = "garageAnchorGlassShowroomFront";
+  showroomFront.position.set(
+    model.showroom.x,
+    0.12,
+    model.showroom.z + model.showroom.d / 2 + 0.05,
+  );
+
   const showroomCarSilhouette = new THREE.Group();
   showroomCarSilhouette.name = "garageAnchorShowroomFrontCarSilhouette";
-  showroomCarSilhouette.position.set(
-    model.showroom.x,
-    model.showroom.h * 0.43,
-    model.showroom.z + model.showroom.d / 2 + 0.13,
-  );
-  const silhouetteMat = new THREE.MeshStandardMaterial({
-    color: 0x6fe7ff,
-    emissive: 0x35d8ff,
-    emissiveIntensity: 0.78,
-    roughness: 0.18,
-    transparent: true,
-    opacity: 0.88,
-  });
-  const silhouetteBody = new THREE.Mesh(
-    new THREE.BoxGeometry(model.showroom.w * 0.44, 0.13, 0.04),
-    silhouetteMat,
-  );
-  silhouetteBody.name = "garageAnchorShowroomFrontCarSilhouette.body";
-  const silhouetteCab = new THREE.Mesh(
-    new THREE.BoxGeometry(model.showroom.w * 0.18, 0.17, 0.045),
-    silhouetteMat,
-  );
-  silhouetteCab.name = "garageAnchorShowroomFrontCarSilhouette.cab";
-  silhouetteCab.position.y = 0.14;
-  showroomCarSilhouette.add(silhouetteBody, silhouetteCab);
 
   const showroomCarGlow = new THREE.Group();
   showroomCarGlow.name = "garageAnchorShowroomCarGlow";
-  showroomCarGlow.position.set(
-    model.showroom.x - model.showroom.w * 0.03,
-    0.16,
-    model.showroom.z + model.showroom.d * 0.26,
-  );
-  const showroomCarBody = new THREE.Mesh(
-    new THREE.BoxGeometry(1.18, 0.24, 0.54),
-    new THREE.MeshStandardMaterial({
-      color: 0xff6f3a,
-      roughness: 0.42,
-      emissive: 0xff6f3a,
-      emissiveIntensity: 0.38,
-    }),
-  );
-  showroomCarBody.name = "garageAnchorShowroomCarGlow.body";
-  showroomCarBody.position.y = 0.2;
-  const showroomCarCab = new THREE.Mesh(
-    new THREE.BoxGeometry(0.5, 0.25, 0.4),
-    new THREE.MeshStandardMaterial({
-      color: 0xffe3b8,
-      roughness: 0.12,
-      emissive: 0xffc47a,
-      emissiveIntensity: 0.5,
-      transparent: true,
-      opacity: 0.82,
-    }),
-  );
-  showroomCarCab.name = "garageAnchorShowroomCarGlow.cab";
-  showroomCarCab.position.set(-0.08, 0.42, 0);
-  const showroomUnderGlow = new THREE.Mesh(
-    new THREE.BoxGeometry(1.38, 0.035, 0.68),
-    new THREE.MeshStandardMaterial({
-      color: 0xffb24a,
-      emissive: 0xff8f2f,
-      emissiveIntensity: 0.9,
-      transparent: true,
-      opacity: 0.7,
-    }),
-  );
-  showroomUnderGlow.name = "garageAnchorShowroomCarUnderGlow";
-  showroomUnderGlow.position.y = 0.04;
-  showroomCarGlow.add(showroomUnderGlow, showroomCarBody, showroomCarCab);
 
   const service = new THREE.Mesh(
     new THREE.BoxGeometry(
@@ -692,24 +755,9 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     cg.name = `garageAnchorDisplayCar.${i + 1}`;
     cg.position.set(car.x, 0.08, car.z);
     cg.rotation.y = car.rot;
-    cg.scale.setScalar(car.scale);
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(1.15, 0.22, 0.56),
-      new THREE.MeshStandardMaterial({
-        color: i === 0 ? 0x31d6ff : 0xff6b4a,
-        roughness: 0.5,
-      }),
-    );
-    body.position.y = 0.22;
-    const cab = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 0.24, 0.42),
-      new THREE.MeshStandardMaterial({
-        color: 0xb9f1ff,
-        emissive: 0x1f7d99,
-        emissiveIntensity: 0.18,
-      }),
-    );
-    cab.position.set(-0.05, 0.43, 0);
+    cg.scale.setScalar(car.scale * 1.5);
+    const displaySpec = SHOWROOM_VEHICLES[i % SHOWROOM_VEHICLES.length]!.spec;
+    const realCar = buildCarMesh(displaySpec);
     const underGlow = new THREE.Mesh(
       new THREE.BoxGeometry(1.26, 0.025, 0.62),
       new THREE.MeshStandardMaterial({
@@ -721,8 +769,8 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       }),
     );
     underGlow.name = `garageAnchorDisplayCarUnderGlow.${i + 1}`;
-    underGlow.position.y = 0.035;
-    cg.add(underGlow, body, cab);
+    underGlow.position.y = 0.02;
+    cg.add(underGlow, realCar);
     g.add(cg);
   }
 
@@ -730,6 +778,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     floor,
     forecourt,
     forecourtLane,
+    showroomGroup,
     showroomInterior,
     showroom,
     showroomFront,

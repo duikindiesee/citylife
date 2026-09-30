@@ -18,6 +18,114 @@ interface R3FTerrainProps {
   terrainLevel?: Map<number, number>;
 }
 
+/**
+ * Procedural ground detail texture generator.
+ * Creates a seamless sand/gravel/earth micro-detail texture that blends with vertex colors
+ * to replace flat shading with rich, realistic desert ground textures.
+ */
+function createGroundTextures(): {
+  map: THREE.CanvasTexture | null;
+  bumpMap: THREE.CanvasTexture | null;
+} {
+  if (typeof document === "undefined" || !document.createElement) {
+    return { map: null, bumpMap: null };
+  }
+  try {
+    const size = 512;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return { map: null, bumpMap: null };
+
+    // Fill base desert ground tone (normalized lightness ~0.86 so vertexColors are preserved)
+    ctx.fillStyle = "#ded6c4";
+    ctx.fillRect(0, 0, size, size);
+
+    const imgData = ctx.getImageData(0, 0, size, size);
+    const data = imgData.data;
+
+    let seed = 4242;
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return (seed & 0xffff) / 65536;
+    };
+
+    // Layer 1: Sand grain / micro-grit & tiny stone granules
+    for (let i = 0; i < data.length; i += 4) {
+      const noise = (rnd() - 0.5) * 36;
+      data[i] = Math.min(255, Math.max(0, data[i]! + noise));
+      data[i + 1] = Math.min(255, Math.max(0, data[i + 1]! + noise * 0.9));
+      data[i + 2] = Math.min(255, Math.max(0, data[i + 2]! + noise * 0.8));
+    }
+
+    // Layer 2: Subtle wind ripple striations
+    for (let y = 0; y < size; y++) {
+      const ripple = Math.sin((y / size) * Math.PI * 16) * 8;
+      for (let x = 0; x < size; x++) {
+        const idx = (y * size + x) * 4;
+        data[idx] = Math.min(255, Math.max(0, data[idx]! + ripple));
+        data[idx + 1] = Math.min(255, Math.max(0, data[idx + 1]! + ripple * 0.85));
+        data[idx + 2] = Math.min(255, Math.max(0, data[idx + 2]! + ripple * 0.7));
+      }
+    }
+
+    // Layer 3: Scattered pebbles/gravel
+    for (let p = 0; p < 800; p++) {
+      const px = Math.floor(rnd() * size);
+      const py = Math.floor(rnd() * size);
+      const radius = 1 + Math.floor(rnd() * 2);
+      const shade = (rnd() - 0.5) * 45;
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (dx * dx + dy * dy <= radius * radius) {
+            const sx = (px + dx + size) % size;
+            const sy = (py + dy + size) % size;
+            const idx = (sy * size + sx) * 4;
+            data[idx] = Math.min(255, Math.max(0, data[idx]! + shade));
+            data[idx + 1] = Math.min(255, Math.max(0, data[idx + 1]! + shade * 0.9));
+            data[idx + 2] = Math.min(255, Math.max(0, data[idx + 2]! + shade * 0.8));
+          }
+        }
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+
+    const map = new THREE.CanvasTexture(canvas);
+    map.wrapS = THREE.RepeatWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.generateMipmaps = true;
+
+    // Create matching grayscale bump map for tactile micro-relief
+    const bumpCanvas = document.createElement("canvas");
+    bumpCanvas.width = size;
+    bumpCanvas.height = size;
+    const bumpCtx = bumpCanvas.getContext("2d");
+    if (bumpCtx) {
+      const bumpData = bumpCtx.createImageData(size, size);
+      for (let i = 0; i < data.length; i += 4) {
+        const lum = data[i]! * 0.299 + data[i + 1]! * 0.587 + data[i + 2]! * 0.114;
+        bumpData.data[i] = lum;
+        bumpData.data[i + 1] = lum;
+        bumpData.data[i + 2] = lum;
+        bumpData.data[i + 3] = 255;
+      }
+      bumpCtx.putImageData(bumpData, 0, 0);
+      const bumpMap = new THREE.CanvasTexture(bumpCanvas);
+      bumpMap.wrapS = THREE.RepeatWrapping;
+      bumpMap.wrapT = THREE.RepeatWrapping;
+      bumpMap.generateMipmaps = true;
+      return { map, bumpMap };
+    }
+
+    return { map, bumpMap: null };
+  } catch {
+    return { map: null, bumpMap: null };
+  }
+}
+
 export function R3FTerrain({ sim, terrainLevel }: R3FTerrainProps) {
   const terrainGroup = useMemo(() => {
     const t = sim.state.terrain;
@@ -25,11 +133,15 @@ export function R3FTerrain({ sim, terrainLevel }: R3FTerrainProps) {
     const wx = (x: number) => (x - N / 2) * 4;
     const wz = (y: number) => (y - N / 2) * 4;
 
+    const { map, bumpMap } = createGroundTextures();
     const terrainMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.95,
+      roughness: 0.9,
       metalness: 0.02,
       flatShading: false,
+      map: map ?? undefined,
+      bumpMap: bumpMap ?? undefined,
+      bumpScale: bumpMap ? 0.08 : 0,
     });
 
     const leveledTerrain = new Proxy(t, {

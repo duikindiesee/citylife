@@ -41,11 +41,10 @@ const BIOME_HIGHLAND = 5;
 const BIOME_MOUNTAIN = 6;
 
 /**
- * One tree per this many cells, on eligible ground. Tuned so a 608-wide world carries a few
- * hundred rather than a few thousand: enough that a ridge line reads as a stand of kokerbome,
- * few enough that each one is still a landmark.
+ * One tree per this many cells, on eligible ground. Tuned so a 608-wide world carries a rich,
+ * authentic stand of kokerbome across the rocky ground and dunes without overcrowding parcels.
  */
-const RARITY = 900;
+const RARITY = 320;
 
 export function calculateQuiverTrees(
   terrain: {

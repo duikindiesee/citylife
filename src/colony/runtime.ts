@@ -299,6 +299,7 @@ import {
   type BusStopAnchor,
 } from "./transit/busStopAnchor";
 import type { RoadWay } from "./render/roadRibbon";
+import { isPointOnRoadSurface } from "./render/roadSurface";
 import { conservativeRoadRibbonBlockedCells } from "./placementValidation";
 import { findJunctionZones } from "./render/roadJunctions";
 import { attachCapPolys } from "./render/junctionCap";
@@ -1440,26 +1441,6 @@ export class ColonyRuntime {
       const key = `${Math.min(i, nearest)}-${Math.max(i, nearest)}`;
       if (meshed.has(key)) continue;
       paveLink(satellites[i]!.carriage, satellites[nearest]!.carriage); // the cross-link that makes it a web
-    }
-    // Spec 172 / RACING — close the circuit: link the outer coastal avenue ends to the inland highway
-    // so racers enjoy a continuous high-speed loop without dead-ends.
-    if (coast.length > 0 && satellites.length > 0) {
-      let westCoast = coast[0]!,
-        eastCoast = coast[0]!;
-      for (const c of coast) {
-        if (c.x < westCoast.x) westCoast = c;
-        if (c.x > eastCoast.x) eastCoast = c;
-      }
-      let westSat = satellites[0]!.carriage[0]!,
-        eastSat = satellites[0]!.carriage[0]!;
-      for (const s of satellites) {
-        for (const c of s.carriage) {
-          if (c.x < westSat.x) westSat = c;
-          if (c.x > eastSat.x) eastSat = c;
-        }
-      }
-      paveLink([westCoast], [westSat]);
-      paveLink([eastCoast], [eastSat]);
     }
     // Spec 079 — survey the shop district in its reserved room; shops avoid every homestead + road.
     const blockedForShops = new Set<string>(residentialKeys);
@@ -2722,6 +2703,16 @@ export class ColonyRuntime {
     this.ownedDriveInput = this.getOwnedDrivePose() ? { ...input } : {};
   }
 
+  /** Spec 172 / RACING — True if (x, y) is on a drivable road cell or within any road ribbon/junction surface. */
+  isRoadSurface(x: number, y: number): boolean {
+    return isPointOnRoadSurface(
+      x,
+      y,
+      this.sim.state.roadSet,
+      this.sim.state.roadWays ?? this.roadWays,
+    );
+  }
+
   private tickOwnedDrive(dt: number): void {
     const ownedCar = this.currentPlayerOwnedCarSpec();
     if (!this.getOwnedDrivePose() || !this.ownedDrivePose || !ownedCar) return;
@@ -2738,11 +2729,25 @@ export class ColonyRuntime {
         if (ix < 2 || ix >= size - 2 || iy < 2 || iy >= size - 2) return false;
         // Keep car on drivable land; deep ocean water blocks
         if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05) return false;
+        // Public road ribbons are never blocked by parcels or setbacks
+        if (this.isRoadSurface(x, y)) return true;
         // Buildings and static structures block
+        if (
+          this.sim.state.buildings.some(
+            (b) => Math.round(b.x) === ix && Math.round(b.y) === iy,
+          )
+        )
+          return false;
+        if (
+          this.sim.state.structures.some(
+            (s) => Math.round(s.x) === ix && Math.round(s.y) === iy,
+          )
+        )
+          return false;
         if (this.blockedStepReason(x, y) !== null) return false;
         return true;
       },
-      (x, y) => this.sim.state.roadSet.has(`${Math.round(x)},${Math.round(y)}`),
+      (x, y) => this.isRoadSurface(x, y),
     );
     const car = this.sim.state.operatorCar;
     if (car) {

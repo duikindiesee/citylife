@@ -26,3 +26,54 @@ export function getSmoothRoadY(
   }
   return mx;
 }
+
+export interface MinimalRoadWay {
+  readonly path: readonly { readonly x: number; readonly y: number }[];
+  readonly width?: number;
+}
+
+/** Spec 172 / RACING — True if (x, y) is on a discrete road cell or within any road ribbon surface. */
+export function isPointOnRoadSurface(
+  x: number,
+  y: number,
+  roadSet?: ReadonlySet<string> | null,
+  roadWays?: readonly MinimalRoadWay[] | null,
+): boolean {
+  const rx = Math.round(x);
+  const ry = Math.round(y);
+  if (roadSet && roadSet.has(`${rx},${ry}`)) return true;
+  if (!roadWays || roadWays.length === 0) return false;
+  for (let w = 0; w < roadWays.length; w++) {
+    const way = roadWays[w]!;
+    if (!way.path || way.path.length < 2) continue;
+    const halfWidth = (way.width ?? 4) / 2 + 0.4;
+    const hwSq = halfWidth * halfWidth;
+    for (let i = 0; i < way.path.length - 1; i++) {
+      const a = way.path[i]!;
+      const b = way.path[i + 1]!;
+      const minX = Math.min(a.x, b.x) - halfWidth;
+      const maxX = Math.max(a.x, b.x) + halfWidth;
+      const minY = Math.min(a.y, b.y) - halfWidth;
+      const maxY = Math.max(a.y, b.y) + halfWidth;
+      if (x < minX || x > maxX || y < minY || y > maxY) continue;
+
+      const vx = b.x - a.x;
+      const vy = b.y - a.y;
+      const len2 = vx * vx + vy * vy;
+      let distSq: number;
+      if (len2 < 1e-6) {
+        distSq = (x - a.x) ** 2 + (y - a.y) ** 2;
+      } else {
+        const t = Math.max(
+          0,
+          Math.min(1, ((x - a.x) * vx + (y - a.y) * vy) / len2),
+        );
+        const px = a.x + vx * t;
+        const py = a.y + vy * t;
+        distSq = (x - px) ** 2 + (y - py) ** 2;
+      }
+      if (distSq <= hwSq) return true;
+    }
+  }
+  return false;
+}

@@ -1,6 +1,7 @@
 import { leveledWorldY } from "./terrainLeveling";
 import React, { Suspense, useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
+import * as THREE from "three";
 import type { Group } from "three";
 import { Html, useGLTF } from "@react-three/drei";
 import { Box3 } from "three";
@@ -9,20 +10,55 @@ import { SHOWROOM_VEHICLES } from "../showroom/showroomCatalog";
 import type { CarSpec } from "../car/carSpec";
 import type { ColonySim } from "../sim";
 import { buildCarMesh } from "../car/carMesh";
-import { getSmoothRoadY } from "./roadSurface";
+import { getSmoothRoadY, isPointOnRoadSurface } from "./roadSurface";
 import { ROAD_RIBBON_LIFT } from "./roadRibbon";
 import { disposeDeep } from "./disposeDeep";
 import { useSimSignal, type SimBridge } from "./useSimSignal";
 import { operatorCarSignature } from "./simSignals";
 
 /** Cached GLB resources belong to the loader, not this instance or the showroom. */
-function OwnedVehicleModel({ vehicle }: { vehicle: ShowroomVehicle }) {
+function OwnedVehicleModel({
+  vehicle,
+  paint,
+}: {
+  vehicle: ShowroomVehicle;
+  paint?: { body?: number; cabin?: number; accent?: number };
+}) {
   const { scene } = useGLTF(vehicle.glbUrl!);
   const model = useMemo(() => {
     const copy = scene.clone(true);
     copy.traverse((node) => {
-      node.castShadow = true;
-      node.receiveShadow = true;
+      if ((node as THREE.Mesh).isMesh) {
+        node.castShadow = true;
+        node.receiveShadow = true;
+        const mesh = node as THREE.Mesh;
+        if (mesh.material) {
+          const rawMats = Array.isArray(mesh.material)
+            ? mesh.material
+            : [mesh.material];
+          const clonedMats = rawMats.map((m) => {
+            const cm = m.clone();
+            const mat = cm as any;
+            if (/carpaint/i.test(cm.name) && paint?.body !== undefined) {
+              mat.color?.set(paint.body);
+            } else if (
+              /targa|roof|cabin/i.test(cm.name) &&
+              paint?.cabin !== undefined
+            ) {
+              mat.color?.set(paint.cabin);
+            } else if (
+              /alloy|rim|accent/i.test(cm.name) &&
+              paint?.accent !== undefined
+            ) {
+              mat.color?.set(paint.accent);
+            }
+            return cm;
+          });
+          mesh.material = Array.isArray(mesh.material)
+            ? clonedMats
+            : clonedMats[0]!;
+        }
+      }
     });
     const rotation = vehicle.rotationOffset ?? [0, 0, 0];
     copy.rotation.set(rotation[0], rotation[1], rotation[2]);
@@ -35,7 +71,7 @@ function OwnedVehicleModel({ vehicle }: { vehicle: ShowroomVehicle }) {
       copy.position.z -= (bounds.min.z + bounds.max.z) / 2;
     }
     return copy;
-  }, [scene, vehicle]);
+  }, [scene, vehicle, paint?.body, paint?.cabin, paint?.accent]);
   return (
     <primitive
       object={model}
@@ -84,6 +120,107 @@ interface R3FOperatorCarProps {
   terrainLevel?: ReadonlyMap<number, number> | null;
 }
 
+function CarLighting() {
+  const leftTarget = useRef<THREE.Object3D>(null);
+  const rightTarget = useRef<THREE.Object3D>(null);
+  const leftSpot = useRef<THREE.SpotLight>(null);
+  const rightSpot = useRef<THREE.SpotLight>(null);
+
+  useEffect(() => {
+    if (leftSpot.current && leftTarget.current) {
+      leftSpot.current.target = leftTarget.current;
+    }
+    if (rightSpot.current && rightTarget.current) {
+      rightSpot.current.target = rightTarget.current;
+    }
+  }, []);
+
+  return (
+    <group name="car-lighting">
+      {/* Front Headlight Aim Targets */}
+      <object3D ref={leftTarget} position={[24, 0, -0.6]} />
+      <object3D ref={rightTarget} position={[24, 0, 0.6]} />
+
+      {/* Left Headlight */}
+      <spotLight
+        ref={leftSpot}
+        position={[1.85, 0.48, -0.55]}
+        color="#f4f8ff"
+        intensity={5.0}
+        distance={48}
+        angle={Math.PI / 7}
+        penumbra={0.65}
+        decay={1.2}
+      />
+      {/* Right Headlight */}
+      <spotLight
+        ref={rightSpot}
+        position={[1.85, 0.48, 0.55]}
+        color="#f4f8ff"
+        intensity={5.0}
+        distance={48}
+        angle={Math.PI / 7}
+        penumbra={0.65}
+        decay={1.2}
+      />
+
+      {/* Forward Road Wash Light: illuminates the asphalt immediately ahead of the bumper */}
+      <pointLight
+        position={[3.2, 0.6, 0]}
+        color="#eef6ff"
+        intensity={2.2}
+        distance={18}
+        decay={1.4}
+      />
+
+      {/* Headlight Lenses */}
+      <mesh position={[1.86, 0.48, -0.55]}>
+        <sphereGeometry args={[0.07, 8, 8]} />
+        <meshBasicMaterial color="#ffffff" />
+      </mesh>
+      <mesh position={[1.86, 0.48, 0.55]}>
+        <sphereGeometry args={[0.07, 8, 8]} />
+        <meshBasicMaterial color="#ffffff" />
+      </mesh>
+
+      {/* Rear Taillights */}
+      <pointLight
+        position={[-1.85, 0.5, -0.55]}
+        color="#ff1a1a"
+        intensity={1.8}
+        distance={7.0}
+        decay={1.5}
+      />
+      <pointLight
+        position={[-1.85, 0.5, 0.55]}
+        color="#ff1a1a"
+        intensity={1.8}
+        distance={7.0}
+        decay={1.5}
+      />
+
+      {/* Taillight Ruby Red Lenses */}
+      <mesh position={[-1.86, 0.5, -0.55]}>
+        <boxGeometry args={[0.04, 0.08, 0.16]} />
+        <meshBasicMaterial color="#ff2222" />
+      </mesh>
+      <mesh position={[-1.86, 0.5, 0.55]}>
+        <boxGeometry args={[0.04, 0.08, 0.16]} />
+        <meshBasicMaterial color="#ff2222" />
+      </mesh>
+
+      {/* Soft Ambient Body Fill: keeps custom car paint, cabin and rims visible and vivid at night */}
+      <pointLight
+        position={[0, 1.8, 0]}
+        color="#d0e4ff"
+        intensity={1.2}
+        distance={7.5}
+        decay={1.6}
+      />
+    </group>
+  );
+}
+
 export function R3FOperatorCar({
   sim,
   runtime,
@@ -94,8 +231,11 @@ export function R3FOperatorCar({
     const car = sim.state.operatorCar;
     if (!group.current || !car) return;
     const t = sim.state.terrain;
-    const onRoad = sim.state.roadSet.has(
-      `${Math.round(car.cell.x)},${Math.round(car.cell.y)}`,
+    const onRoad = isPointOnRoadSurface(
+      car.cell.x,
+      car.cell.y,
+      sim.state.roadSet,
+      sim.state.roadWays,
     );
     const y = onRoad
       ? Math.max(0, getSmoothRoadY(t, car.cell.x, car.cell.y)) +
@@ -124,8 +264,11 @@ export function R3FOperatorCar({
     const { cell } = parked;
     const t = sim.state.terrain;
     const N = t.size;
-    const onRoad = sim.state.roadSet.has(
-      `${Math.round(cell.x)},${Math.round(cell.y)}`,
+    const onRoad = isPointOnRoadSurface(
+      cell.x,
+      cell.y,
+      sim.state.roadSet,
+      sim.state.roadWays,
     );
     const y = onRoad
       ? Math.max(0, getSmoothRoadY(t, cell.x, cell.y)) + ROAD_RIBBON_LIFT
@@ -151,6 +294,7 @@ export function R3FOperatorCar({
   const vehicle = SHOWROOM_VEHICLES.find((v) => v.spec.id === parked.spec.id);
   return (
     <group ref={group} name="operator-car" position={placement}>
+      <CarLighting />
       {vehicle?.glbUrl ? (
         <VehicleModelBoundary key={vehicle.spec.id}>
           <Suspense
@@ -160,7 +304,10 @@ export function R3FOperatorCar({
               </Html>
             }
           >
-            <OwnedVehicleModel vehicle={vehicle} />
+            <OwnedVehicleModel
+              vehicle={vehicle}
+              paint={parked.spec.paint}
+            />
           </Suspense>
         </VehicleModelBoundary>
       ) : (
