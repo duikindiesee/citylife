@@ -113,6 +113,7 @@ import {
 } from "./car/ownedDriving";
 import {
   PAINT_PALETTES,
+  defaultCarSpec,
   type PaintChannel,
   type CarStatVector,
   type CarSpec,
@@ -2832,13 +2833,19 @@ export class ColonyRuntime {
   }
 
   teleportCar(x: number, y: number, heading = 0): void {
-    if (this.ownedDrivePose) {
-      this.ownedDrivePose = { x, y, heading, speed: 0 };
-    }
+    this.ownedDrivePose = { x, y, heading, speed: 0 };
     if (this.sim.state.operatorCar) {
       this.sim.state.operatorCar.cell = { x, y };
       this.sim.state.operatorCar.heading = heading;
+    } else {
+      const spec = this.currentPlayerOwnedCarSpec() ?? defaultCarSpec("test-operator");
+      this.sim.state.operatorCar = {
+        spec,
+        cell: { x, y },
+        heading,
+      };
     }
+    this.debugPlaceFirstPerson(x, y);
     this.emit();
   }
 

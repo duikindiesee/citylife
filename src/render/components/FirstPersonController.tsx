@@ -123,23 +123,16 @@ export function FirstPersonController({
       }
     };
 
-    const handleClick = (e: MouseEvent) => {
-      // Only lock pointer if clicking directly on the 3D canvas, not UI elements!
-      if (e.target instanceof HTMLCanvasElement) {
-        document.body.requestPointerLock();
-      }
-    };
-
+    // Pointer lock for mouse look is managed explicitly via ColonyApp's FirstPersonMouseLookBar
+    // to prevent unexpected cursor trapping or breaking UI button interactions while driving.
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("click", handleClick);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("click", handleClick);
     };
   }, []);
 

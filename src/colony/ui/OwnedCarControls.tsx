@@ -414,12 +414,15 @@ export function OwnedCarControls({
               transition: "transform 0.08s ease, background 0.08s ease",
             }}
             onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
+              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
               change("left", true);
             }}
             onPointerUp={() => change("left", false)}
             onPointerCancel={() => change("left", false)}
             onLostPointerCapture={() => change("left", false)}
+            onMouseDown={() => change("left", true)}
+            onMouseUp={() => change("left", false)}
+            onMouseLeave={() => change("left", false)}
           >
             <span>◀</span>
             <span style={{ fontSize: 10, letterSpacing: "0.05em", fontWeight: 700, marginTop: 2 }}>LEFT</span>
@@ -451,12 +454,15 @@ export function OwnedCarControls({
               transition: "transform 0.08s ease, background 0.08s ease",
             }}
             onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
+              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
               change("right", true);
             }}
             onPointerUp={() => change("right", false)}
             onPointerCancel={() => change("right", false)}
             onLostPointerCapture={() => change("right", false)}
+            onMouseDown={() => change("right", true)}
+            onMouseUp={() => change("right", false)}
+            onMouseLeave={() => change("right", false)}
           >
             <span>▶</span>
             <span style={{ fontSize: 10, letterSpacing: "0.05em", fontWeight: 700, marginTop: 2 }}>RIGHT</span>
@@ -506,12 +512,15 @@ export function OwnedCarControls({
               transition: "transform 0.08s ease, background 0.08s ease",
             }}
             onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
+              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
               change("reverse", true);
             }}
             onPointerUp={() => change("reverse", false)}
             onPointerCancel={() => change("reverse", false)}
             onLostPointerCapture={() => change("reverse", false)}
+            onMouseDown={() => change("reverse", true)}
+            onMouseUp={() => change("reverse", false)}
+            onMouseLeave={() => change("reverse", false)}
           >
             <span>▼</span>
             <span style={{ fontSize: 9, letterSpacing: "0.05em", fontWeight: 700 }}>REV</span>
@@ -544,12 +553,15 @@ export function OwnedCarControls({
               transition: "transform 0.08s ease, background 0.08s ease",
             }}
             onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
+              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
               change("brake", true);
             }}
             onPointerUp={() => change("brake", false)}
             onPointerCancel={() => change("brake", false)}
             onLostPointerCapture={() => change("brake", false)}
+            onMouseDown={() => change("brake", true)}
+            onMouseUp={() => change("brake", false)}
+            onMouseLeave={() => change("brake", false)}
           >
             <span>■</span>
             <span style={{ fontSize: 10, letterSpacing: "0.05em", fontWeight: 700 }}>BRAKE</span>
@@ -584,12 +596,15 @@ export function OwnedCarControls({
               transition: "transform 0.08s ease, background 0.08s ease",
             }}
             onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
+              try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
               change("throttle", true);
             }}
             onPointerUp={() => change("throttle", false)}
             onPointerCancel={() => change("throttle", false)}
             onLostPointerCapture={() => change("throttle", false)}
+            onMouseDown={() => change("throttle", true)}
+            onMouseUp={() => change("throttle", false)}
+            onMouseLeave={() => change("throttle", false)}
           >
             <span>▲</span>
             <span style={{ fontSize: 11, letterSpacing: "0.05em", fontWeight: 800 }}>GAS</span>

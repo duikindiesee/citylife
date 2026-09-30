@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef } from "react";
+import React, { useMemo, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import type { ColonySim } from "../sim";
 import type { ColonyRuntime } from "../runtime";
@@ -16,7 +16,16 @@ interface R3FDrivableOverlayProps {
  */
 export function R3FDrivableOverlay({ sim, runtime }: R3FDrivableOverlayProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
-  const visible = runtime?.showDrivableOverlay ?? false;
+  const [visible, setVisible] = useState(runtime?.showDrivableOverlay ?? false);
+
+  useEffect(() => {
+    if (!runtime) return;
+    setVisible(runtime.showDrivableOverlay ?? false);
+    return runtime.subscribe(() => {
+      setVisible(runtime.showDrivableOverlay ?? false);
+    });
+  }, [runtime]);
+
   const terrain = sim.state.terrain;
   const size = terrain.size;
 

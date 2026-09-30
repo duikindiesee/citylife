@@ -30,6 +30,15 @@ export function DrivableRoadTestModal({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hoverCell, setHoverCell] = useState<{ x: number; y: number; road: boolean } | null>(null);
   const [overlay3D, setOverlay3D] = useState(runtime?.showDrivableOverlay ?? false);
+  const [teleportStatus, setTeleportStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!runtime) return;
+    setOverlay3D(runtime.showDrivableOverlay ?? false);
+    return runtime.subscribe(() => {
+      setOverlay3D(runtime.showDrivableOverlay ?? false);
+    });
+  }, [runtime]);
 
   const terrain = sim.state.terrain;
   const size = terrain.size;
@@ -274,13 +283,18 @@ export function DrivableRoadTestModal({
     runtime?.setShowDrivableOverlay(next);
   };
 
-  const teleportTo = (tx: number, ty: number) => {
+  const teleportTo = (tx: number, ty: number, label?: string) => {
     if (runtime?.teleportCar) {
       runtime.teleportCar(tx, ty);
+    }
+    if (runtime?.debugPlaceFirstPerson) {
+      runtime.debugPlaceFirstPerson(tx, ty);
     }
     if (runtime?.focusSurveyCell) {
       runtime.focusSurveyCell(tx, ty);
     }
+    setTeleportStatus(`✓ Teleported to ${label ?? `${tx}, ${ty}`}!`);
+    setTimeout(() => setTeleportStatus(null), 3000);
   };
 
   return (
@@ -529,34 +543,55 @@ export function DrivableRoadTestModal({
                 <span>{overlay3D ? "👁️ 3D In-World Mesh: ON" : "👁️ 3D In-World Mesh: OFF"}</span>
               </button>
 
+              {teleportStatus && (
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "#34d399",
+                    textAlign: "center",
+                    fontWeight: 700,
+                    padding: "6px 10px",
+                    backgroundColor: "rgba(52, 211, 153, 0.15)",
+                    border: "1px solid rgba(52, 211, 153, 0.3)",
+                    borderRadius: "6px",
+                  }}
+                >
+                  {teleportStatus}
+                </div>
+              )}
+
               <div style={{ fontSize: "11px", color: "#9ca3af", textAlign: "center" }}>
                 Quick Teleport Car To Nodes:
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
                 <button
-                  onClick={() => teleportTo(138, 142)}
+                  onClick={() => teleportTo(138, 142, "Showroom")}
                   style={{
-                    padding: "6px",
+                    padding: "8px 6px",
                     borderRadius: "6px",
                     backgroundColor: "rgba(255,255,255,0.08)",
-                    border: "1px solid rgba(255,255,255,0.12)",
+                    border: "1px solid rgba(255,255,255,0.15)",
                     color: "#f3f4f6",
-                    fontSize: "11px",
+                    fontSize: "12px",
+                    fontWeight: 600,
                     cursor: "pointer",
+                    transition: "background 0.1s ease",
                   }}
                 >
                   🏎️ Showroom
                 </button>
                 <button
-                  onClick={() => teleportTo(148, 148)}
+                  onClick={() => teleportTo(148, 148, "Kooker HQ")}
                   style={{
-                    padding: "6px",
+                    padding: "8px 6px",
                     borderRadius: "6px",
                     backgroundColor: "rgba(255,255,255,0.08)",
-                    border: "1px solid rgba(255,255,255,0.12)",
+                    border: "1px solid rgba(255,255,255,0.15)",
                     color: "#f3f4f6",
-                    fontSize: "11px",
+                    fontSize: "12px",
+                    fontWeight: 600,
                     cursor: "pointer",
+                    transition: "background 0.1s ease",
                   }}
                 >
                   🏛️ Kooker HQ
@@ -564,30 +599,34 @@ export function DrivableRoadTestModal({
                 <button
                   onClick={() => {
                     const starter = sim.state.parcels.find((p) => p.id === 0);
-                    if (starter) teleportTo(starter.x, starter.y);
+                    if (starter) teleportTo(starter.x, starter.y, "Starter Home");
                   }}
                   style={{
-                    padding: "6px",
+                    padding: "8px 6px",
                     borderRadius: "6px",
                     backgroundColor: "rgba(255,255,255,0.08)",
-                    border: "1px solid rgba(255,255,255,0.12)",
+                    border: "1px solid rgba(255,255,255,0.15)",
                     color: "#f3f4f6",
-                    fontSize: "11px",
+                    fontSize: "12px",
+                    fontWeight: 600,
                     cursor: "pointer",
+                    transition: "background 0.1s ease",
                   }}
                 >
                   🏡 Starter Home
                 </button>
                 <button
-                  onClick={() => teleportTo(120, 160)}
+                  onClick={() => teleportTo(98, 362, "Coastal Highway")}
                   style={{
-                    padding: "6px",
+                    padding: "8px 6px",
                     borderRadius: "6px",
                     backgroundColor: "rgba(255,255,255,0.08)",
-                    border: "1px solid rgba(255,255,255,0.12)",
+                    border: "1px solid rgba(255,255,255,0.15)",
                     color: "#f3f4f6",
-                    fontSize: "11px",
+                    fontSize: "12px",
+                    fontWeight: 600,
                     cursor: "pointer",
+                    transition: "background 0.1s ease",
                   }}
                 >
                   🏖️ Coastal Highway
