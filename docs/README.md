@@ -37,6 +37,7 @@ repo, on protected `main` (PRs + review only).
 11. **[specs/173-glass-showroom-car-paint-and-mobile-racing-controls.md](specs/173-glass-showroom-car-paint-and-mobile-racing-controls.md)** — Architectural glass showroom, dynamic car paint customizer, and mobile racing controls.
 12. **[specs/174-bus-collision-reactive-transit-ai-and-drivable-test-overlay.md](specs/174-bus-collision-reactive-transit-ai-and-drivable-test-overlay.md)** — Solid municipal bus collision, reactive transit AI with deceleration and autonomous overtaking, and drivable surface validator overlay.
 13. **[specs/175-smooth-onboarding-homestead-acquisition-gps-and-garage-drive-in.md](specs/175-smooth-onboarding-homestead-acquisition-gps-and-garage-drive-in.md)** — Smooth onboarding journey, homestead acquisition popup with immediate building, in-car GPS navigation, and garage drive-in clearance.
+14. **[specs/176-luminous-showroom-paved-apron-and-cinematic-flythrough.md](specs/176-luminous-showroom-paved-apron-and-cinematic-flythrough.md)** — Luminous showroom pavilion, paved entrance apron, road flora clearance, and cinematic boot flythrough.
 
 ---
 

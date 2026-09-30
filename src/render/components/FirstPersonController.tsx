@@ -145,11 +145,8 @@ export function FirstPersonController({
 
   useFrame((state, delta) => {
     if (!rigidBody.current) return;
-    // Spec 131 (verify F2) — yield the camera while the cinematic fly-around owns it. The
-    // R3FCameraDirector wins over this controller only by useFrame registration order,
-    // which flips when the builder toggle remounts this component — the explicit guard
-    // makes camera ownership deterministic instead of mount-order luck.
-    if (sim?.state?.cinematic) return;
+    // Spec 131 / Spec 176 — yield the camera while the cinematic fly-around OR boot arrival cinematic owns it.
+    if (sim?.state?.cinematic || (runtime as any)?.bootCinematicActive) return;
 
     // Spec 158 — a movement trace is replaying: the walker is driven from the recorded POSE
     // instead of from live input, so the camera path (and therefore the render workload) is

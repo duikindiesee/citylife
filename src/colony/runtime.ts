@@ -2850,6 +2850,42 @@ export class ColonyRuntime {
     return false;
   }
 
+  /** Spec 176: Test whether a coordinate within garagePad is walkable on foot (forecourt, apron, open bay, showroom floor). */
+  isGaragePadWalkable(x: number, y: number, garagePad: GaragePad): boolean {
+    const cx = garagePad.x + (garagePad.w - 1) / 2;
+    const cy = garagePad.y + (garagePad.h - 1) / 2;
+    const dx = x - cx;
+    const dy = y - cy;
+    const cos = Math.cos(garagePad.facingAngle);
+    const sin = Math.sin(garagePad.facingAngle);
+    const localX = dx * cos - dy * sin;
+    const localZ = dx * sin + dy * cos;
+
+    // Pad perimeter boundary guard
+    const halfW = (garagePad.w * 0.98) / 2;
+    const halfD = (garagePad.h * 0.98) / 2;
+    if (Math.abs(localX) > halfW || Math.abs(localZ) > halfD) return false;
+
+    // 1. Forecourt, parking bays & entrance apron: open walkable paved ground
+    if (localZ > -0.5) return true;
+
+    // 2. Open Service Bay (middle door): open walkable floor
+    if (localX > 0.3 && localX < 2.9 && localZ > -3.2) {
+      return true;
+    }
+
+    // 3. Glass Showroom: customer walking area around display cars
+    if (localX < -0.2 && localX > -halfW + 0.3 && localZ > -halfD + 0.5) {
+      // Keep clear of center plinth collision
+      const plinthDist = Math.hypot(localX - (-garagePad.w * 0.25), localZ - 0.2);
+      if (plinthDist < 1.2) return false;
+      return true;
+    }
+
+    // Structural perimeter walls and closed bays 1 and 3 block
+    return false;
+  }
+
   /** Spec 175: Test whether a coordinate is on the operator citizen's owned homestead driveway/yard. */
   isHomesteadDriveway(ix: number, iy: number): boolean {
     const citizenId = this.operatorCitizenId();
@@ -5006,6 +5042,21 @@ export class ColonyRuntime {
       return "building";
     }
     const fromKey = from ? `${Math.round(from.x)},${Math.round(from.y)}` : null;
+    // Spec 176: Allow pedestrian walking on public commercial garage plot (forecourt, showroom, open bay)
+    const garagePad = this.commercialDistrict?.garagePad;
+    if (
+      garagePad &&
+      ix >= garagePad.x &&
+      ix < garagePad.x + garagePad.w &&
+      iy >= garagePad.y &&
+      iy < garagePad.y + garagePad.h
+    ) {
+      if (this.isGaragePadWalkable(x, y, garagePad)) {
+        return null; // Walkable!
+      }
+      return "building";
+    }
+
     const key = `${ix},${iy}`;
     const fromInsideOccupied = fromKey
       ? this.sim.state.occupied.has(fromKey)

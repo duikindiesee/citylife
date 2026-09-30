@@ -818,7 +818,7 @@ function R3FWorld({
               terrainLevel={debouncedTerrainLevel}
             />
             <R3FRallyNameplates sim={sim} runtime={runtime} refs={avatarRefs} />
-            <R3FCameraDirector sim={sim} />
+            <R3FCameraDirector sim={sim} runtime={runtime} />
             <R3FCommercialDistrict
               sim={sim}
               runtime={runtime}

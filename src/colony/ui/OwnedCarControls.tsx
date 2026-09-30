@@ -156,7 +156,7 @@ export function OwnedCarControls({
         right: 0,
         top: 0,
         pointerEvents: "none",
-        zIndex: 1200,
+        zIndex: 55,
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",

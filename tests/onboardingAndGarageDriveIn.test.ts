@@ -33,14 +33,14 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
 
   it("allows operator to claim a starter home and immediately builds house with GPS target", () => {
     // Find or create operator citizen
-    const citizen = rt.citizens.list()[0]!;
+    const citizen = (rt as any).citizens.list()[0]!;
     rt.setOperatorName(citizen.displayName);
     rt.setOperatorUserId("test-player-1");
     const opId = rt.operatorCitizenId();
     expect(opId).toBeTruthy();
 
     // Clear any existing lot to test new-player onboarding journey
-    for (const l of rt.neighborhood.lots) {
+    for (const l of (rt as any).neighborhood.lots) {
       if (l.ownerCitizenId === opId) {
         l.ownerCitizenId = undefined;
         l.built = false;
@@ -64,7 +64,7 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(Number.isFinite(homeTarget?.y)).toBe(true);
 
     // Lot is marked built
-    const lot = rt.neighborhood.lots.find((l) => l.id === homeTarget!.lotId);
+    const lot = (rt as any).neighborhood.lots.find((l: any) => l.id === homeTarget!.lotId);
     expect(lot?.built).toBe(true);
     expect(lot?.ownerCitizenId).toBe(opId);
 
@@ -94,5 +94,22 @@ describe("spec 175 — garage drive-in clearance and homestead acquisition", () 
     expect(x19).toBeDefined();
     expect(x19?.glbUrl).toContain("fiat_x19.glb");
   });
-});
 
+  it("identifies garagePad forecourt and showroom as walkable on foot", () => {
+    // Forecourt center cell
+    const forecourtCell = {
+      x: garagePad.roadTarget.x + (garagePad.x + garagePad.w / 2 - garagePad.roadTarget.x) * 0.5,
+      y: garagePad.roadTarget.y + (garagePad.y + garagePad.h / 2 - garagePad.roadTarget.y) * 0.5,
+    };
+    expect(rt.isGaragePadWalkable(forecourtCell.x, forecourtCell.y, garagePad)).toBe(true);
+
+    // Showroom pedestrian floor: localX = -2.5, localZ = -0.5
+    const cx = garagePad.x + (garagePad.w - 1) / 2;
+    const cy = garagePad.y + (garagePad.h - 1) / 2;
+    const cos = Math.cos(garagePad.facingAngle);
+    const sin = Math.sin(garagePad.facingAngle);
+    const showroomX = cx - 2.5 * cos + -0.5 * sin;
+    const showroomY = cy + 2.5 * sin + -0.5 * cos;
+    expect(rt.isGaragePadWalkable(showroomX, showroomY, garagePad)).toBe(true);
+  });
+});

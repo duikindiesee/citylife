@@ -4364,7 +4364,9 @@ export function ColonyApp() {
             driveHomeOpen ||
             hqOpen ||
             gamehouseOpen ||
-            drivableModalOpen
+            drivableModalOpen ||
+            bugReportOpen ||
+            roadmapOpen
           }
           onOpenRoadMap={() => setDrivableModalOpen(true)}
           onOpenChooseHome={() => setHomeOpen(true)}
