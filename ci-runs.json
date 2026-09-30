@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-30T11:23:52.852Z",
+  "updatedAt": "2026-09-30T11:24:49.535Z",
   "runs": [
+    {
+      "runId": 36708339636,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36708339636",
+      "event": "pull_request",
+      "branch": "antigravity/1907c3ce-a1d0-4134-8c15-7c436d33550d-raceable-roads",
+      "sha": "304a220415ca53a34ce49699e31b5afea8e3069f",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/304a220415ca53a34ce49699e31b5afea8e3069f",
+      "pullRequestNumbers": "#549",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/549",
+      "pullRequests": [
+        {
+          "number": 549,
+          "url": "https://github.com/duikindiesee/citylife/pull/549"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-09-30T11:24:24Z",
+      "completedAt": "2026-09-30T11:24:38Z",
+      "durationSeconds": 14,
+      "runnerSummary": "GitHub Actions 1000010498",
+      "jobs": [
+        {
+          "id": 109863863076,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010498",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-09-30T11:24:28Z",
+          "completedAt": "2026-09-30T11:24:37Z",
+          "durationSeconds": 9
+        }
+      ]
+    },
     {
       "runId": 36708158933,
       "workflowName": "Build CityLife Debug APK",
