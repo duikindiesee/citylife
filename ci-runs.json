@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-30T18:51:31.677Z",
+  "updatedAt": "2026-09-30T18:56:29.157Z",
   "runs": [
     {
       "runId": 36753078567,
@@ -18,20 +18,20 @@
           "url": "https://github.com/duikindiesee/citylife/pull/549"
         }
       ],
-      "status": "queued",
-      "conclusion": "",
+      "status": "completed",
+      "conclusion": "failure",
       "startedAt": "2026-09-30T18:51:24Z",
-      "completedAt": "2026-09-30T18:51:26Z",
-      "durationSeconds": 2,
-      "runnerSummary": "No runner assigned",
+      "completedAt": "2026-09-30T18:56:18Z",
+      "durationSeconds": 294,
+      "runnerSummary": "kooker1-org-docker-1",
       "jobs": [
         {
           "id": 110045127069,
           "name": "version-bump / bump",
-          "status": "queued",
-          "conclusion": "",
-          "runnerName": "",
-          "runnerGroup": "",
+          "status": "completed",
+          "conclusion": "failure",
+          "runnerName": "kooker1-org-docker-1",
+          "runnerGroup": "trusted-kooker1",
           "runnerLabels": [
             "self-hosted",
             "Linux",
@@ -39,8 +39,46 @@
             "kooker1-org",
             "docker"
           ],
-          "startedAt": "2026-09-30T18:51:27Z",
-          "completedAt": "",
+          "startedAt": "2026-09-30T18:55:18Z",
+          "completedAt": "2026-09-30T18:56:17Z",
+          "durationSeconds": 59
+        },
+        {
+          "id": 110047077977,
+          "name": "build-and-push",
+          "status": "completed",
+          "conclusion": "skipped",
+          "runnerName": "",
+          "runnerGroup": "",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-09-30T18:56:17Z",
+          "completedAt": "2026-09-30T18:56:17Z",
+          "durationSeconds": 0
+        },
+        {
+          "id": 110047079125,
+          "name": "retention",
+          "status": "completed",
+          "conclusion": "skipped",
+          "runnerName": "",
+          "runnerGroup": "",
+          "runnerLabels": [],
+          "startedAt": "2026-09-30T18:56:17Z",
+          "completedAt": "2026-09-30T18:56:17Z",
+          "durationSeconds": 0
+        },
+        {
+          "id": 110047079795,
+          "name": "deploy",
+          "status": "completed",
+          "conclusion": "skipped",
+          "runnerName": "",
+          "runnerGroup": "",
+          "runnerLabels": [],
+          "startedAt": "2026-09-30T18:56:18Z",
+          "completedAt": "2026-09-30T18:56:17Z",
           "durationSeconds": null
         }
       ]
