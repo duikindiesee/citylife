@@ -145,9 +145,22 @@ export function StarterPropertyOverlay({
         setPending(false);
       }
     });
-  }, [pending, owned, relocateMode, selected, eligibleKeys, onWalletRefresh, onHomePurchased]);
+  }, [
+    pending,
+    owned,
+    relocateMode,
+    selected,
+    eligibleKeys,
+    onWalletRefresh,
+    onHomePurchased,
+  ]);
 
-  const view = purchaseButtonView(relocateMode ? false : owned, !!selected, pending, outcome);
+  const view = purchaseButtonView(
+    relocateMode ? false : owned,
+    !!selected,
+    pending,
+    outcome,
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -306,7 +319,9 @@ export function StarterPropertyOverlay({
               fontSize: 12,
             }}
           >
-            {relocateMode ? "✕ Cancel plot change" : "📍 Select a different coastal plot"}
+            {relocateMode
+              ? "✕ Cancel plot change"
+              : "📍 Select a different coastal plot"}
           </button>
         </div>
       )}

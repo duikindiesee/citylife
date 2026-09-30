@@ -291,11 +291,7 @@ function R3FHomeGpsBeacon({
   );
 
   return (
-    <group
-      ref={beaconRef}
-      name="home-gps-beacon"
-      position={[wx, wy, wz]}
-    >
+    <group ref={beaconRef} name="home-gps-beacon" position={[wx, wy, wz]}>
       {/* Vertical light beam stretching into the sky */}
       <mesh position={[0, 16, 0]}>
         <cylinderGeometry args={[0.3, 0.6, 32, 16, 1, true]} />

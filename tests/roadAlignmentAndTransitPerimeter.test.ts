@@ -19,10 +19,15 @@ describe("Road Alignment, Transit Bus Loop Pavement & Coastal Roads", () => {
         waySignatures.add(sig);
       }
     }
-    expect(duplicates, "Found duplicate reverse road ways in the road network").toBe(0);
+    expect(
+      duplicates,
+      "Found duplicate reverse road ways in the road network",
+    ).toBe(0);
 
     // Check top-right alignment: Wood3 spine endpoint and Wood3 trunk connector endpoint must match
-    const wood3Spine = ways.find((w) => w.path.some((p) => p.x === 420 && p.y === 120));
+    const wood3Spine = ways.find((w) =>
+      w.path.some((p) => p.x === 420 && p.y === 120),
+    );
     expect(wood3Spine).toBeDefined();
     const wood3Connector = ways.find(
       (w) => w !== wood3Spine && w.path.some((p) => p.x === 437 && p.y === 123),
@@ -67,7 +72,9 @@ describe("Road Alignment, Transit Bus Loop Pavement & Coastal Roads", () => {
     expect(loop.length).toBeGreaterThan(10);
 
     // Southern highway / bottom road spans y >= 367 and x between 200 and 480
-    const bottomRoadPoints = loop.filter((p) => p.y >= 367 && p.x >= 200 && p.x <= 480);
+    const bottomRoadPoints = loop.filter(
+      (p) => p.y >= 367 && p.x >= 200 && p.x <= 480,
+    );
     expect(
       bottomRoadPoints.length,
       "Bus route must traverse the southern highway / bottom road between eastern and western hamlets",
@@ -79,7 +86,10 @@ describe("Road Alignment, Transit Bus Loop Pavement & Coastal Roads", () => {
     const coastalParcels = rt.sim.state.neighborhood!.parcels.filter(
       (p) => p.id.startsWith("coast") || p.neighborhoodKey?.startsWith("coast"),
     );
-    expect(coastalParcels.length, "Must survey ocean-view parcels along the western coast").toBeGreaterThanOrEqual(2);
+    expect(
+      coastalParcels.length,
+      "Must survey ocean-view parcels along the western coast",
+    ).toBeGreaterThanOrEqual(2);
 
     // Verify parcels are located on the western coast (x < 120)
     for (const p of coastalParcels) {
@@ -91,6 +101,9 @@ describe("Road Alignment, Transit Bus Loop Pavement & Coastal Roads", () => {
     const coastalRoadWay = ways.find((w) =>
       w.path.some((p) => p.x <= 125 && p.y >= 320 && p.y <= 420),
     );
-    expect(coastalRoadWay, "Must have a coastal road way running along the western shore").toBeDefined();
+    expect(
+      coastalRoadWay,
+      "Must have a coastal road way running along the western shore",
+    ).toBeDefined();
   });
 });

@@ -433,11 +433,7 @@ export function ShowroomOverlay({
       data-testid="showroom-overlay"
       style={{ position: "fixed", inset: 0, zIndex: 80, background: "#0a0f16" }}
     >
-      <ShowroomView
-        vehicle={vehicle}
-        zoom={zoom}
-        paint={currentPaint}
-      />
+      <ShowroomView vehicle={vehicle} zoom={zoom} paint={currentPaint} />
 
       <div
         style={{

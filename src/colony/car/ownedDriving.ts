@@ -80,26 +80,20 @@ export function stepOwnedDrive(
       next.speed *= Math.max(0, 1 - offRoadDragVal * dt);
     }
 
-    next.speed = Math.max(
-      -cfg.reverseMps,
-      Math.min(maxSpeed, next.speed),
-    );
+    next.speed = Math.max(-cfg.reverseMps, Math.min(maxSpeed, next.speed));
 
     // Steer authority: allows steering even when stationary or moving slowly,
     // and reverses steering direction when moving backwards.
     const steer = (input.right ? 1 : 0) - (input.left ? 1 : 0);
     const movingBackward =
-      next.speed < -0.1 || (next.speed <= 0.1 && !!input.reverse && !input.throttle);
+      next.speed < -0.1 ||
+      (next.speed <= 0.1 && !!input.reverse && !input.throttle);
     const steerDir = movingBackward ? -1 : 1;
     // Steer authority is at least 0.4 even when stationary, ramping to 1.0 at 2 m/s:
     const steerAuthority = Math.max(0.4, Math.min(1, Math.abs(next.speed) / 2));
     const heading =
       next.heading +
-      steer *
-        cfg.steerRadiansPerSecond *
-        steerAuthority *
-        steerDir *
-        dt;
+      steer * cfg.steerRadiansPerSecond * steerAuthority * steerDir * dt;
 
     // Heading always updates if the car can turn at its current position
     if (

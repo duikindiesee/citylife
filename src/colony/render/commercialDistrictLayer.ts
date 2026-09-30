@@ -291,11 +291,20 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     stallGroup.rotation.y = bay.rot;
 
     // White parking stall boundary lines (left, right, back) - realistic line widths (~14cm)
-    const leftLine = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.015, bay.d), stallLineMat);
+    const leftLine = new THREE.Mesh(
+      new THREE.BoxGeometry(0.035, 0.015, bay.d),
+      stallLineMat,
+    );
     leftLine.position.set(-bay.w / 2, 0, 0);
-    const rightLine = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.015, bay.d), stallLineMat);
+    const rightLine = new THREE.Mesh(
+      new THREE.BoxGeometry(0.035, 0.015, bay.d),
+      stallLineMat,
+    );
     rightLine.position.set(bay.w / 2, 0, 0);
-    const backLine = new THREE.Mesh(new THREE.BoxGeometry(bay.w, 0.015, 0.035), stallLineMat);
+    const backLine = new THREE.Mesh(
+      new THREE.BoxGeometry(bay.w, 0.015, 0.035),
+      stallLineMat,
+    );
     backLine.position.set(0, 0, -bay.d / 2);
 
     // Concrete wheel stop block
@@ -314,7 +323,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     const poleZ = model.forecourt.frontOffset + model.forecourt.d / 2 - 0.3;
     const pole = new THREE.Mesh(
       new THREE.CylinderGeometry(0.08, 0.11, 4.2, 10),
-      new THREE.MeshStandardMaterial({ color: 0x1f2732, roughness: 0.35, metalness: 0.8 }),
+      new THREE.MeshStandardMaterial({
+        color: 0x1f2732,
+        roughness: 0.35,
+        metalness: 0.8,
+      }),
     );
     pole.position.set(poleX, 2.1, poleZ);
     const luminaire = new THREE.Mesh(
@@ -401,7 +414,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       new THREE.BoxGeometry(0.12, model.showroom.h, 0.12),
       frameMat,
     );
-    post.position.set(model.showroom.x + fx, model.showroom.y, model.showroom.z + fz);
+    post.position.set(
+      model.showroom.x + fx,
+      model.showroom.y,
+      model.showroom.z + fz,
+    );
     showroomGroup.add(post);
 
     // Front road-facing mullions get vertical glowing edge strips
@@ -410,7 +427,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
         new THREE.BoxGeometry(0.04, model.showroom.h * 0.95, 0.03),
         mullionNeonMat,
       );
-      edgeStrip.position.set(model.showroom.x + fx, model.showroom.y, model.showroom.z + fz + 0.06);
+      edgeStrip.position.set(
+        model.showroom.x + fx,
+        model.showroom.y,
+        model.showroom.z + fz + 0.06,
+      );
       showroomGroup.add(edgeStrip);
     }
   }
@@ -429,7 +450,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   });
   C.garageFloorMats.push(intFloorMat);
   const intFloor = new THREE.Mesh(
-    new THREE.BoxGeometry(model.showroom.w * 0.98, 0.06, model.showroom.d * 0.98),
+    new THREE.BoxGeometry(
+      model.showroom.w * 0.98,
+      0.06,
+      model.showroom.d * 0.98,
+    ),
     intFloorMat,
   );
   intFloor.position.set(model.showroom.x, 0.05, model.showroom.z);
@@ -438,7 +463,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
 
   // Back feature wall separating showroom from service bay (warm architectural wood / bronze styling)
   const backWall = new THREE.Mesh(
-    new THREE.BoxGeometry(model.showroom.w * 0.98, model.showroom.h * 0.96, 0.14),
+    new THREE.BoxGeometry(
+      model.showroom.w * 0.98,
+      model.showroom.h * 0.96,
+      0.14,
+    ),
     new THREE.MeshStandardMaterial({
       color: 0x543c28,
       roughness: 0.65,
@@ -456,13 +485,21 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
 
   // Luminous Ceiling Light Grid (bright architectural LED softbox ceiling)
   const ceilingFrame = new THREE.Mesh(
-    new THREE.BoxGeometry(model.showroom.w * 0.99, 0.12, model.showroom.d * 0.99),
+    new THREE.BoxGeometry(
+      model.showroom.w * 0.99,
+      0.12,
+      model.showroom.d * 0.99,
+    ),
     new THREE.MeshStandardMaterial({
       color: 0x1a212a,
       roughness: 0.8,
     }),
   );
-  ceilingFrame.position.set(model.showroom.x, model.showroom.h + 0.02, model.showroom.z);
+  ceilingFrame.position.set(
+    model.showroom.x,
+    model.showroom.h + 0.02,
+    model.showroom.z,
+  );
   showroomInterior.add(ceilingFrame);
 
   const ceilingLightMat = new THREE.MeshStandardMaterial({
@@ -473,10 +510,18 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   });
   C.garageFloorMats.push(ceilingLightMat);
   const ceilingLightPanel = new THREE.Mesh(
-    new THREE.BoxGeometry(model.showroom.w * 0.92, 0.04, model.showroom.d * 0.92),
+    new THREE.BoxGeometry(
+      model.showroom.w * 0.92,
+      0.04,
+      model.showroom.d * 0.92,
+    ),
     ceilingLightMat,
   );
-  ceilingLightPanel.position.set(model.showroom.x, model.showroom.h - 0.02, model.showroom.z);
+  ceilingLightPanel.position.set(
+    model.showroom.x,
+    model.showroom.h - 0.02,
+    model.showroom.z,
+  );
   showroomInterior.add(ceilingLightPanel);
 
   // Spec 176: Real Three.js Interior PointLights illuminating hero car & showroom space
@@ -515,7 +560,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       new THREE.CylinderGeometry(0.24, 0.24, 0.04, 16),
       spotMat,
     );
-    spot.position.set(model.showroom.x + sx, model.showroom.h - 0.03, model.showroom.z + sz);
+    spot.position.set(
+      model.showroom.x + sx,
+      model.showroom.h - 0.03,
+      model.showroom.z + sz,
+    );
     showroomInterior.add(spot);
   }
 
@@ -754,7 +803,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       const bayInspectionLight = new THREE.PointLight(0xfff8ee, 24, 15, 1.8);
       bayInspectionLight.position.set(
         sx,
-        model.serviceBay.h * 0.70,
+        model.serviceBay.h * 0.7,
         bayFaceZ - model.serviceBay.d * 0.22,
       );
       g.add(bayInspectionLight);
@@ -774,7 +823,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
         );
         post.name = `garageAnchorHydraulicLift.${side < 0 ? "left" : "right"}`;
         post.position.set(
-          sx + (model.serviceBay.bayDoorW * 0.38) * side,
+          sx + model.serviceBay.bayDoorW * 0.38 * side,
           model.serviceBay.h * 0.32,
           bayFaceZ - model.serviceBay.d * 0.26,
         );

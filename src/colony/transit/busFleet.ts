@@ -513,11 +513,16 @@ export function stepFleet(
                 }
 
                 if (forward > 0.4 && forward < 16.0) {
-                  obstacleAheadDistance = Math.min(obstacleAheadDistance, forward);
+                  obstacleAheadDistance = Math.min(
+                    obstacleAheadDistance,
+                    forward,
+                  );
                 }
 
                 // Obstacle braking: only apply when the obstacle is in the bus's current travel lane
-                const inBusLane = busInPassingLane ? lateral < 0.3 : lateral > -0.3;
+                const inBusLane = busInPassingLane
+                  ? lateral < 0.3
+                  : lateral > -0.3;
                 if (inBusLane && forward > 0.4 && forward < 14.0) {
                   // Safe buffer: keep 4.0 cells (16m) behind the vehicle
                   const minCarGap = 4.0;

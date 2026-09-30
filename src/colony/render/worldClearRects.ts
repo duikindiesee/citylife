@@ -90,7 +90,10 @@ export function worldClearRects(state: ClearRectState): ClearRect[] {
   }
 
   if (Array.isArray(state.roadWays)) {
-    for (const rw of state.roadWays as { path?: { x: number; y: number }[]; width?: number }[]) {
+    for (const rw of state.roadWays as {
+      path?: { x: number; y: number }[];
+      width?: number;
+    }[]) {
       if (Array.isArray(rw.path)) {
         const r = Math.max(1, Math.ceil((rw.width ?? 3) / 2));
         for (const pt of rw.path) {

@@ -65,8 +65,14 @@ function createGroundTextures(): {
       for (let x = 0; x < size; x++) {
         const idx = (y * size + x) * 4;
         data[idx] = Math.min(255, Math.max(0, data[idx]! + ripple));
-        data[idx + 1] = Math.min(255, Math.max(0, data[idx + 1]! + ripple * 0.85));
-        data[idx + 2] = Math.min(255, Math.max(0, data[idx + 2]! + ripple * 0.7));
+        data[idx + 1] = Math.min(
+          255,
+          Math.max(0, data[idx + 1]! + ripple * 0.85),
+        );
+        data[idx + 2] = Math.min(
+          255,
+          Math.max(0, data[idx + 2]! + ripple * 0.7),
+        );
       }
     }
 
@@ -83,8 +89,14 @@ function createGroundTextures(): {
             const sy = (py + dy + size) % size;
             const idx = (sy * size + sx) * 4;
             data[idx] = Math.min(255, Math.max(0, data[idx]! + shade));
-            data[idx + 1] = Math.min(255, Math.max(0, data[idx + 1]! + shade * 0.9));
-            data[idx + 2] = Math.min(255, Math.max(0, data[idx + 2]! + shade * 0.8));
+            data[idx + 1] = Math.min(
+              255,
+              Math.max(0, data[idx + 1]! + shade * 0.9),
+            );
+            data[idx + 2] = Math.min(
+              255,
+              Math.max(0, data[idx + 2]! + shade * 0.8),
+            );
           }
         }
       }
@@ -106,7 +118,8 @@ function createGroundTextures(): {
     if (bumpCtx) {
       const bumpData = bumpCtx.createImageData(size, size);
       for (let i = 0; i < data.length; i += 4) {
-        const lum = data[i]! * 0.299 + data[i + 1]! * 0.587 + data[i + 2]! * 0.114;
+        const lum =
+          data[i]! * 0.299 + data[i + 1]! * 0.587 + data[i + 2]! * 0.114;
         bumpData.data[i] = lum;
         bumpData.data[i + 1] = lum;
         bumpData.data[i + 2] = lum;

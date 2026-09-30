@@ -1358,7 +1358,11 @@ export function ColonyApp() {
   }, [runtime]);
 
   useEffect(() => {
-    if (runtime.getOwnedDrivePose() && typeof document !== "undefined" && document.pointerLockElement) {
+    if (
+      runtime.getOwnedDrivePose() &&
+      typeof document !== "undefined" &&
+      document.pointerLockElement
+    ) {
       document.exitPointerLock?.();
     }
   }, [runtime, runtime.getOwnedDrivePose()]);
@@ -4442,7 +4446,11 @@ export function ColonyApp() {
                           className="plan-claim-btn"
                           data-testid={`claim-plot-${p.id}`}
                           onClick={() => {
-                            if (p.x !== undefined && p.y !== undefined && runtime) {
+                            if (
+                              p.x !== undefined &&
+                              p.y !== undefined &&
+                              runtime
+                            ) {
                               runtime.focusSurveyCell(p.x, p.y);
                             }
                             setHomeOpen(true);

@@ -6,15 +6,18 @@ Branch: `antigravity/1907c3ce-a1d0-4134-8c15-7c436d33550d-raceable-roads`
 ## Player contract
 
 1. **Architectural Glass Showroom (Gearbox Auto Hub)**:
+
    - When driving or walking past the auto dealership in the commercial district, players see an architectural glass pavilion with crystal-clear transparent glass walls (`opacity: 0.16`, `metalness: 0.75`), steel structural mullions, a polished interior stone floor, back feature wall, ceiling canopy, and 4 recessed LED downlights.
    - The centerpiece is an illuminated rotating turntable plinth with a glowing golden neon ring displaying real 3D hero vehicles (`Karoo Kaap GT-V8` and `Karoo X19 Targa`), replacing placeholder block models.
 
 2. **Car Paint Selection & Persistence**:
+
    - In the showroom overlay and vehicle inspection, players can customize car paint across 8 authentic South African and racing finishes: Alpine White, Speed Yellow, Midnight Blue, Kalahari Sand, Track Red, British Racing Green, Karoo Bronze, and Stealth Black.
    - The chosen paint dynamically colorizes body panels, cabin/roof elements, and accents on both the turntable plinth and the driving vehicle model.
    - Selected paint is persisted in `localStorage` under `citylife:car-spec:<citizenId>` and sent to `runtime.acquireCar`, ensuring the purchased vehicle remembers its paint job across reloads and sessions.
 
 3. **Mobile-First Dual-Thumb Driving Controls**:
+
    - Mobile and touch devices use a best-practice split ergonomic layout:
      - **Bottom-Left Thumb**: Large steering paddles for Left (◀) and Right (▶) with glowing cyan borders and tactile press animations.
      - **Bottom-Right Thumb**: Drive pedals with prominent Throttle (▲ GAS), Brake (■ BRAKE), and Reverse (▼ REV).
@@ -22,9 +25,11 @@ Branch: `antigravity/1907c3ce-a1d0-4134-8c15-7c436d33550d-raceable-roads`
    - Multi-touch pointer capture prevents missed taps, while desktop keyboard controls (WASD, Arrows, Space) remain fully active.
 
 4. **Authentic Desert Ecology (Kokerboom Only)**:
-   - All generic cone foliage (`R3FFoliage`) is removed, keeping exclusively authentic protected *Aloe dichotoma* (quiver trees / kokerbome) across dunes and rocky ground (`RARITY = 320`).
+
+   - All generic cone foliage (`R3FFoliage`) is removed, keeping exclusively authentic protected _Aloe dichotoma_ (quiver trees / kokerbome) across dunes and rocky ground (`RARITY = 320`).
 
 5. **Realistic Ground Textures**:
+
    - Terrain chunk geometries feature continuous `uv` buffer coordinates across chunk boundaries.
    - Procedural desert textures provide fine sand micro-grit, wind ripple striations, and pebble detail, with a tactile bump map (`bumpScale: 0.08`) that enriches terrain shading under sunlight and headlights.
 

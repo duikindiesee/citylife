@@ -32,7 +32,11 @@ describe("Spec 176 — roads are strictly clear of quiver trees and foliage", ()
       roadSet,
     });
 
-    const clearedTrees = calculateQuiverTrees(worldOf(Biome.Plains), SEA, rects);
+    const clearedTrees = calculateQuiverTrees(
+      worldOf(Biome.Plains),
+      SEA,
+      rects,
+    );
 
     // Verify the tree at (target.x, target.y) was prevented
     const foundOnRoad = clearedTrees.some(

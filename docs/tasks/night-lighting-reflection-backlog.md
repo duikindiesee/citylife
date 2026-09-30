@@ -19,18 +19,21 @@ During nighttime in CityLife (diurnal cycle hour ~20:00 to 05:00), dynamic point
 ## 2. Deliverable Tasks & Acceptance Criteria
 
 ### Task LIGHT-NIGHT-01: Night Road Surface Reflection Tuning
+
 - **Scope:** Calibrate asphalt and road ribbon roughness, metalness, and bump map depth under nighttime directional and point illumination.
 - **Acceptance Criteria:**
   - Night road surfaces maintain diffuse readability without blown-out specular glare patches.
   - Headlight cones project soft-edged radial gradients (`penumbra >= 0.6`).
 
 ### Task LIGHT-NIGHT-02: Showroom & Architecture Night Glare Damping
+
 - **Scope:** Audit emission intensity, bloom threshold, and tone mapping parameters (`ACESFilmicToneMapping` exposure balance) in the night lighting configuration.
 - **Acceptance Criteria:**
   - Glass curtain walls and ceiling lightboxes exhibit soft luminous diffusion rather than blinding bloom halos.
   - Interior floor reflections (terrazzo slab) maintain realistic Fresnel falloff.
 
 ### Task LIGHT-NIGHT-03: Vehicle Clearcoat & Environment Reflection Polish
+
 - **Scope:** Ensure all drivable vehicle models (`karoo_kaap_gt`, `fiat_x19`, `karoo_vonk`, `modern_car`) utilize roughness >= 0.35 and physically balanced clearcoat under night streetlamps.
 - **Acceptance Criteria:**
   - Clean ambient readability of vehicle contours from chase camera at night without single-pixel specular glitter.

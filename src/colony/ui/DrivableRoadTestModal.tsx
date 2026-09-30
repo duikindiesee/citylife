@@ -28,8 +28,14 @@ export function DrivableRoadTestModal({
   onClose,
 }: DrivableRoadTestModalProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [hoverCell, setHoverCell] = useState<{ x: number; y: number; road: boolean } | null>(null);
-  const [overlay3D, setOverlay3D] = useState(runtime?.showDrivableOverlay ?? false);
+  const [hoverCell, setHoverCell] = useState<{
+    x: number;
+    y: number;
+    road: boolean;
+  } | null>(null);
+  const [overlay3D, setOverlay3D] = useState(
+    runtime?.showDrivableOverlay ?? false,
+  );
   const [teleportStatus, setTeleportStatus] = useState<string | null>(null);
 
   useEffect(() => {
@@ -88,7 +94,11 @@ export function DrivableRoadTestModal({
     }
 
     // POI Accessibility checks
-    const checkRadiusAccessible = (targetX: number, targetY: number, radius = 5) => {
+    const checkRadiusAccessible = (
+      targetX: number,
+      targetY: number,
+      radius = 5,
+    ) => {
       for (let dx = -radius; dx <= radius; dx++) {
         for (let dy = -radius; dy <= radius; dy++) {
           const x = targetX + dx;
@@ -102,7 +112,8 @@ export function DrivableRoadTestModal({
     // Showroom / commercial venue coordinates
     const garageRoadTarget = runtime?.commercialDistrict?.garagePad?.roadTarget;
     const showroomAccessible = garageRoadTarget
-      ? (runtime?.isRoadSurface(garageRoadTarget.x, garageRoadTarget.y) ?? false)
+      ? (runtime?.isRoadSurface(garageRoadTarget.x, garageRoadTarget.y) ??
+        false)
       : checkRadiusAccessible(138, 142, 8);
     // Kooker HQ coordinates (civic center at landing)
     const landing = terrain.landing;
@@ -182,7 +193,12 @@ export function DrivableRoadTestModal({
           const g = Math.round(145 + t * 35);
           const b = Math.round(105 + t * 25);
           ctx.fillStyle = `rgb(${r},${g},${b})`;
-          ctx.fillRect(x * scale, y * scale, Math.ceil(scale), Math.ceil(scale));
+          ctx.fillRect(
+            x * scale,
+            y * scale,
+            Math.ceil(scale),
+            Math.ceil(scale),
+          );
         }
       }
     }
@@ -192,7 +208,12 @@ export function DrivableRoadTestModal({
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         if (runtime?.isRoadSurface(x, y)) {
-          ctx.fillRect(x * scale, y * scale, Math.ceil(scale), Math.ceil(scale));
+          ctx.fillRect(
+            x * scale,
+            y * scale,
+            Math.ceil(scale),
+            Math.ceil(scale),
+          );
         }
       }
     }
@@ -230,7 +251,8 @@ export function DrivableRoadTestModal({
     drawPoi(138, 142, "#ffaa00", "Showroom");
     drawPoi(148, 148, "#3388ff", "Kooker HQ");
     const starterHome = sim.state.parcels.find((p) => p.id === 0);
-    if (starterHome) drawPoi(starterHome.x, starterHome.y, "#00ff88", "Starter Home");
+    if (starterHome)
+      drawPoi(starterHome.x, starterHome.y, "#00ff88", "Starter Home");
     if (runtime?.busDepot) {
       drawPoi(
         runtime.busDepot.site.roadCell.x,
@@ -250,7 +272,8 @@ export function DrivableRoadTestModal({
     }
 
     // 6. Draw player car
-    const car = runtime?.getOwnedDrivePose() ?? runtime?.sim.state.operatorCar?.cell;
+    const car =
+      runtime?.getOwnedDrivePose() ?? runtime?.sim.state.operatorCar?.cell;
     if (car) {
       ctx.fillStyle = "#ff1744";
       ctx.beginPath();
@@ -321,7 +344,8 @@ export function DrivableRoadTestModal({
           backgroundColor: "#111827",
           border: "1px solid rgba(0, 240, 255, 0.3)",
           borderRadius: "16px",
-          boxShadow: "0 24px 60px rgba(0,0,0,0.8), 0 0 40px rgba(0,240,255,0.12)",
+          boxShadow:
+            "0 24px 60px rgba(0,0,0,0.8), 0 0 40px rgba(0,240,255,0.12)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
@@ -343,7 +367,15 @@ export function DrivableRoadTestModal({
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
             <span style={{ fontSize: "24px" }}>🛣️</span>
             <div>
-              <h2 style={{ margin: 0, fontSize: "18px", fontWeight: 700, color: "#00f0ff", letterSpacing: "0.5px" }}>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  color: "#00f0ff",
+                  letterSpacing: "0.5px",
+                }}
+              >
                 Drivable Road Surface Validator · Seed {seed}
               </h2>
               <div style={{ fontSize: "12px", color: "#9ca3af" }}>
@@ -369,7 +401,9 @@ export function DrivableRoadTestModal({
         </div>
 
         {/* Content Body */}
-        <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}>
+        <div
+          style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden" }}
+        >
           {/* Left: 2D Canvas Map */}
           <div
             style={{
@@ -383,7 +417,14 @@ export function DrivableRoadTestModal({
               borderRight: "1px solid rgba(255,255,255,0.08)",
             }}
           >
-            <div style={{ position: "relative", borderRadius: "8px", overflow: "hidden", border: "1px solid #1f293d" }}>
+            <div
+              style={{
+                position: "relative",
+                borderRadius: "8px",
+                overflow: "hidden",
+                border: "1px solid #1f293d",
+              }}
+            >
               <canvas
                 ref={canvasRef}
                 width={400}
@@ -405,49 +446,129 @@ export function DrivableRoadTestModal({
                     color: hoverCell.road ? "#00f0ff" : "#9ca3af",
                   }}
                 >
-                  Cell ({hoverCell.x}, {hoverCell.y}) · {hoverCell.road ? "PAVED ROAD" : "TERRAIN"}
+                  Cell ({hoverCell.x}, {hoverCell.y}) ·{" "}
+                  {hoverCell.road ? "PAVED ROAD" : "TERRAIN"}
                 </div>
               )}
             </div>
 
             {/* Legend */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginTop: "12px", fontSize: "11px" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                <span style={{ width: "10px", height: "10px", backgroundColor: "#00f0ff", borderRadius: "2px" }} />
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "10px",
+                marginTop: "12px",
+                fontSize: "11px",
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <span
+                  style={{
+                    width: "10px",
+                    height: "10px",
+                    backgroundColor: "#00f0ff",
+                    borderRadius: "2px",
+                  }}
+                />
                 Drivable Road
               </span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                <span style={{ width: "10px", height: "10px", backgroundColor: "#b300ff", borderRadius: "2px" }} />
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <span
+                  style={{
+                    width: "10px",
+                    height: "10px",
+                    backgroundColor: "#b300ff",
+                    borderRadius: "2px",
+                  }}
+                />
                 Transit Bus Loop
               </span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                <span style={{ width: "10px", height: "10px", backgroundColor: "#ff1744", borderRadius: "50%" }} />
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <span
+                  style={{
+                    width: "10px",
+                    height: "10px",
+                    backgroundColor: "#ff1744",
+                    borderRadius: "50%",
+                  }}
+                />
                 Player Car
               </span>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                <span style={{ width: "10px", height: "10px", backgroundColor: "#ffee00", borderRadius: "50%" }} />
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                <span
+                  style={{
+                    width: "10px",
+                    height: "10px",
+                    backgroundColor: "#ffee00",
+                    borderRadius: "50%",
+                  }}
+                />
                 Transit Bus
               </span>
             </div>
           </div>
 
           {/* Right: Validation Suite & Metrics */}
-          <div style={{ flex: 1, padding: "20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div
+            style={{
+              flex: 1,
+              padding: "20px",
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: "16px",
+            }}
+          >
             {/* Status Banner */}
             <div
               style={{
                 padding: "14px 18px",
                 borderRadius: "10px",
-                backgroundColor: report.allPassing ? "rgba(16, 185, 129, 0.12)" : "rgba(239, 68, 68, 0.12)",
+                backgroundColor: report.allPassing
+                  ? "rgba(16, 185, 129, 0.12)"
+                  : "rgba(239, 68, 68, 0.12)",
                 border: `1px solid ${report.allPassing ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)"}`,
                 display: "flex",
                 alignItems: "center",
                 gap: "12px",
               }}
             >
-              <span style={{ fontSize: "24px" }}>{report.allPassing ? "✅" : "⚠️"}</span>
+              <span style={{ fontSize: "24px" }}>
+                {report.allPassing ? "✅" : "⚠️"}
+              </span>
               <div>
-                <div style={{ fontWeight: 700, fontSize: "14px", color: report.allPassing ? "#34d399" : "#f87171" }}>
+                <div
+                  style={{
+                    fontWeight: 700,
+                    fontSize: "14px",
+                    color: report.allPassing ? "#34d399" : "#f87171",
+                  }}
+                >
                   {report.allPassing
                     ? "CERTIFIED CONTINUOUS: SEED 4242 ROAD CIRCUIT PASSED"
                     : "ROAD DISCONTINUITY DETECTED"}
@@ -461,42 +582,105 @@ export function DrivableRoadTestModal({
             </div>
 
             {/* Test Checklist */}
-            <div style={{ backgroundColor: "#1e293b", borderRadius: "10px", padding: "14px 16px" }}>
-              <div style={{ fontSize: "12px", fontWeight: 700, color: "#9ca3af", textTransform: "uppercase", marginBottom: "8px" }}>
+            <div
+              style={{
+                backgroundColor: "#1e293b",
+                borderRadius: "10px",
+                padding: "14px 16px",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: "#9ca3af",
+                  textTransform: "uppercase",
+                  marginBottom: "8px",
+                }}
+              >
                 Automated Verification Suite
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                  fontSize: "13px",
+                }}
+              >
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
                   <span>🛣️ Road Ribbon 100% Connected:</span>
-                  <strong style={{ color: report.isContinuous ? "#34d399" : "#f87171" }}>
-                    {report.isContinuous ? "✓ PASS (1 Graph)" : `✗ FAIL (${report.connectedComponents} Graphs)`}
+                  <strong
+                    style={{
+                      color: report.isContinuous ? "#34d399" : "#f87171",
+                    }}
+                  >
+                    {report.isContinuous
+                      ? "✓ PASS (1 Graph)"
+                      : `✗ FAIL (${report.connectedComponents} Graphs)`}
                   </strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
                   <span>🏎️ Glass Showroom Accessible:</span>
-                  <strong style={{ color: report.showroomAccessible ? "#34d399" : "#f87171" }}>
-                    {report.showroomAccessible ? "✓ PASS (Cell 138, 142)" : "✗ FAIL"}
+                  <strong
+                    style={{
+                      color: report.showroomAccessible ? "#34d399" : "#f87171",
+                    }}
+                  >
+                    {report.showroomAccessible
+                      ? "✓ PASS (Cell 138, 142)"
+                      : "✗ FAIL"}
                   </strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
                   <span>🏛️ Kooker HQ Avenue Accessible:</span>
-                  <strong style={{ color: report.kookerHqAccessible ? "#34d399" : "#f87171" }}>
-                    {report.kookerHqAccessible ? "✓ PASS (Cell 148, 148)" : "✗ FAIL"}
+                  <strong
+                    style={{
+                      color: report.kookerHqAccessible ? "#34d399" : "#f87171",
+                    }}
+                  >
+                    {report.kookerHqAccessible
+                      ? "✓ PASS (Cell 148, 148)"
+                      : "✗ FAIL"}
                   </strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
                   <span>🏡 Starter Home Driveway Clear:</span>
-                  <strong style={{ color: report.starterHomeAccessible ? "#34d399" : "#f87171" }}>
+                  <strong
+                    style={{
+                      color: report.starterHomeAccessible
+                        ? "#34d399"
+                        : "#f87171",
+                    }}
+                  >
                     {report.starterHomeAccessible ? "✓ PASS" : "✗ FAIL"}
                   </strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
                   <span>🚌 Transit Bus Loop On Pavement:</span>
-                  <strong style={{ color: report.busLoopContinuous ? "#34d399" : "#f87171" }}>
-                    {report.busLoopContinuous ? "✓ PASS (100% Paved)" : "✗ FAIL"}
+                  <strong
+                    style={{
+                      color: report.busLoopContinuous ? "#34d399" : "#f87171",
+                    }}
+                  >
+                    {report.busLoopContinuous
+                      ? "✓ PASS (100% Paved)"
+                      : "✗ FAIL"}
                   </strong>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <div
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
                   <span>🛑 Bus Collision & Reactive AI:</span>
                   <strong style={{ color: "#34d399" }}>
                     ✓ ACTIVE (Anti-Phasing + Overtake)
@@ -506,30 +690,73 @@ export function DrivableRoadTestModal({
             </div>
 
             {/* Metrics */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-              <div style={{ backgroundColor: "#1e293b", padding: "12px", borderRadius: "8px" }}>
-                <div style={{ fontSize: "11px", color: "#9ca3af" }}>PAVED CELLS</div>
-                <div style={{ fontSize: "18px", fontWeight: 700, color: "#00f0ff" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "10px",
+              }}
+            >
+              <div
+                style={{
+                  backgroundColor: "#1e293b",
+                  padding: "12px",
+                  borderRadius: "8px",
+                }}
+              >
+                <div style={{ fontSize: "11px", color: "#9ca3af" }}>
+                  PAVED CELLS
+                </div>
+                <div
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    color: "#00f0ff",
+                  }}
+                >
                   {report.totalRoadCells.toLocaleString()}
                 </div>
               </div>
-              <div style={{ backgroundColor: "#1e293b", padding: "12px", borderRadius: "8px" }}>
-                <div style={{ fontSize: "11px", color: "#9ca3af" }}>SURFACE AREA</div>
-                <div style={{ fontSize: "18px", fontWeight: 700, color: "#00f0ff" }}>
+              <div
+                style={{
+                  backgroundColor: "#1e293b",
+                  padding: "12px",
+                  borderRadius: "8px",
+                }}
+              >
+                <div style={{ fontSize: "11px", color: "#9ca3af" }}>
+                  SURFACE AREA
+                </div>
+                <div
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    color: "#00f0ff",
+                  }}
+                >
                   {report.totalRoadAreaM2.toLocaleString()} m²
                 </div>
               </div>
             </div>
 
             {/* Actions & Toggles */}
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "auto" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+                marginTop: "auto",
+              }}
+            >
               <button
                 onClick={toggle3D}
                 style={{
                   padding: "10px 16px",
                   borderRadius: "8px",
                   border: `1px solid ${overlay3D ? "#00f0ff" : "rgba(255,255,255,0.2)"}`,
-                  backgroundColor: overlay3D ? "rgba(0, 240, 255, 0.15)" : "rgba(255,255,255,0.06)",
+                  backgroundColor: overlay3D
+                    ? "rgba(0, 240, 255, 0.15)"
+                    : "rgba(255,255,255,0.06)",
                   color: overlay3D ? "#00f0ff" : "#e5e7eb",
                   fontWeight: 600,
                   fontSize: "13px",
@@ -540,7 +767,11 @@ export function DrivableRoadTestModal({
                   gap: "8px",
                 }}
               >
-                <span>{overlay3D ? "👁️ 3D In-World Mesh: ON" : "👁️ 3D In-World Mesh: OFF"}</span>
+                <span>
+                  {overlay3D
+                    ? "👁️ 3D In-World Mesh: ON"
+                    : "👁️ 3D In-World Mesh: OFF"}
+                </span>
               </button>
 
               {teleportStatus && (
@@ -560,10 +791,22 @@ export function DrivableRoadTestModal({
                 </div>
               )}
 
-              <div style={{ fontSize: "11px", color: "#9ca3af", textAlign: "center" }}>
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "#9ca3af",
+                  textAlign: "center",
+                }}
+              >
                 Quick Teleport Car To Nodes:
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: "6px",
+                }}
+              >
                 <button
                   onClick={() => teleportTo(138, 142, "Showroom")}
                   style={{
@@ -599,7 +842,8 @@ export function DrivableRoadTestModal({
                 <button
                   onClick={() => {
                     const starter = sim.state.parcels.find((p) => p.id === 0);
-                    if (starter) teleportTo(starter.x, starter.y, "Starter Home");
+                    if (starter)
+                      teleportTo(starter.x, starter.y, "Starter Home");
                   }}
                   style={{
                     padding: "8px 6px",

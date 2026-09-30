@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
-import { makeFleet, stepFleet, type FleetGeometry, type FleetConfig } from "../src/colony/transit/busFleet";
+import {
+  makeFleet,
+  stepFleet,
+  type FleetGeometry,
+  type FleetConfig,
+} from "../src/colony/transit/busFleet";
 import { buildPath } from "../src/colony/transit/path";
 
 describe("Spec 174 — Bus Collision & Reactive Transit Traffic AI", () => {
@@ -30,15 +35,32 @@ describe("Spec 174 — Bus Collision & Reactive Transit Traffic AI", () => {
   });
 
   it("bus slows down when player car is directly ahead in same lane", () => {
-    const loop = buildPath([
-      { x: 0, y: 0 },
-      { x: 100, y: 0 },
-      { x: 100, y: 100 },
-      { x: 0, y: 100 },
-    ], true);
+    const loop = buildPath(
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ],
+      true,
+    );
 
-    const spur = buildPath([{ x: 0, y: -10 }, { x: 0, y: 0 }], false);
-    const bays = [buildPath([{ x: -5, y: -10 }, { x: 0, y: -10 }], false)];
+    const spur = buildPath(
+      [
+        { x: 0, y: -10 },
+        { x: 0, y: 0 },
+      ],
+      false,
+    );
+    const bays = [
+      buildPath(
+        [
+          { x: -5, y: -10 },
+          { x: 0, y: -10 },
+        ],
+        false,
+      ),
+    ];
 
     const geom: FleetGeometry = {
       loopLen: loop.total,
@@ -82,15 +104,32 @@ describe("Spec 174 — Bus Collision & Reactive Transit Traffic AI", () => {
   });
 
   it("bus initiates overtaking maneuver when held behind a slow obstacle", () => {
-    const loop = buildPath([
-      { x: 0, y: 0 },
-      { x: 100, y: 0 },
-      { x: 100, y: 100 },
-      { x: 0, y: 100 },
-    ], true);
+    const loop = buildPath(
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ],
+      true,
+    );
 
-    const spur = buildPath([{ x: 0, y: -10 }, { x: 0, y: 0 }], false);
-    const bays = [buildPath([{ x: -5, y: -10 }, { x: 0, y: -10 }], false)];
+    const spur = buildPath(
+      [
+        { x: 0, y: -10 },
+        { x: 0, y: 0 },
+      ],
+      false,
+    );
+    const bays = [
+      buildPath(
+        [
+          { x: -5, y: -10 },
+          { x: 0, y: -10 },
+        ],
+        false,
+      ),
+    ];
 
     const geom: FleetGeometry = {
       loopLen: loop.total,
@@ -137,15 +176,32 @@ describe("Spec 174 — Bus Collision & Reactive Transit Traffic AI", () => {
   });
 
   it("bus does not initiate overtaking when passing/oncoming lane is occupied", () => {
-    const loop = buildPath([
-      { x: 0, y: 0 },
-      { x: 100, y: 0 },
-      { x: 100, y: 100 },
-      { x: 0, y: 100 },
-    ], true);
+    const loop = buildPath(
+      [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ],
+      true,
+    );
 
-    const spur = buildPath([{ x: 0, y: -10 }, { x: 0, y: 0 }], false);
-    const bays = [buildPath([{ x: -5, y: -10 }, { x: 0, y: -10 }], false)];
+    const spur = buildPath(
+      [
+        { x: 0, y: -10 },
+        { x: 0, y: 0 },
+      ],
+      false,
+    );
+    const bays = [
+      buildPath(
+        [
+          { x: -5, y: -10 },
+          { x: 0, y: -10 },
+        ],
+        false,
+      ),
+    ];
 
     const geom: FleetGeometry = {
       loopLen: loop.total,
@@ -248,7 +304,9 @@ describe("Spec 174 — Bus Collision & Reactive Transit Traffic AI", () => {
     const garageRoadTarget = runtime.commercialDistrict?.garagePad?.roadTarget;
     expect(garageRoadTarget).toBeDefined();
     if (garageRoadTarget) {
-      expect(runtime.isRoadSurface(garageRoadTarget.x, garageRoadTarget.y)).toBe(true);
+      expect(
+        runtime.isRoadSurface(garageRoadTarget.x, garageRoadTarget.y),
+      ).toBe(true);
     }
 
     // Toggle 3D overlay test
