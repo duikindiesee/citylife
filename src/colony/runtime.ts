@@ -2800,19 +2800,67 @@ export class ColonyRuntime {
   exitOwnedCar(): boolean {
     const car = this.getOwnedDrivePose();
     if (!car) return false;
-    const side = [-1, 1]
-      .map((s) => ({
-        x: Math.round(car.x - Math.sin(car.heading) * s),
-        y: Math.round(car.y + Math.cos(car.heading) * s),
-      }))
-      .find((cell) => this.blockedStepReason(cell.x, cell.y) === null);
-    if (!side) return false;
+    const t = this.sim.state.terrain;
+
+    // Search candidate exit positions around the car so the driver is never trapped,
+    // even on coastal roads, water edges, bridges, or tight parking situations.
+    const candidates: { x: number; y: number }[] = [
+      // 1. Driver/passenger doors (immediate lateral offset)
+      { x: Math.round(car.x - Math.sin(car.heading)), y: Math.round(car.y + Math.cos(car.heading)) },
+      { x: Math.round(car.x + Math.sin(car.heading)), y: Math.round(car.y - Math.cos(car.heading)) },
+      // 2. Behind or in front of the vehicle
+      { x: Math.round(car.x - Math.cos(car.heading)), y: Math.round(car.y - Math.sin(car.heading)) },
+      { x: Math.round(car.x + Math.cos(car.heading)), y: Math.round(car.y + Math.sin(car.heading)) },
+      // 3. Diagonal corners
+      { x: Math.round(car.x - Math.sin(car.heading) - Math.cos(car.heading)), y: Math.round(car.y + Math.cos(car.heading) - Math.sin(car.heading)) },
+      { x: Math.round(car.x + Math.sin(car.heading) - Math.cos(car.heading)), y: Math.round(car.y - Math.cos(car.heading) - Math.sin(car.heading)) },
+    ];
+
+    let exitCell = candidates.find(
+      (c) => this.blockedStepReason(c.x, c.y) === null && !t.isWater(c.x, c.y)
+    );
+
+    // 4. Spiral search within 4 cells for any valid dry walkable cell
+    if (!exitCell) {
+      for (let r = 2; r <= 4; r++) {
+        for (let dx = -r; dx <= r; dx++) {
+          for (let dy = -r; dy <= r; dy++) {
+            if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+            const cx = Math.round(car.x + dx);
+            const cy = Math.round(car.y + dy);
+            if (cx >= 2 && cx < t.size - 2 && cy >= 2 && cy < t.size - 2) {
+              if (this.blockedStepReason(cx, cy) === null && !t.isWater(cx, cy)) {
+                exitCell = { x: cx, y: cy };
+                break;
+              }
+            }
+          }
+          if (exitCell) break;
+        }
+        if (exitCell) break;
+      }
+    }
+
+    // 5. Ultimate fallback: if stranded on water, exit onto nearest road cell
+    if (!exitCell && this.sim.state.roadSet && this.sim.state.roadSet.size > 0) {
+      let bestDist = Infinity;
+      for (const rk of this.sim.state.roadSet) {
+        const [rx, ry] = rk.split(",").map(Number);
+        const d = Math.hypot(rx - car.x, ry - car.y);
+        if (d < bestDist && this.blockedStepReason(rx, ry) === null) {
+          bestDist = d;
+          exitCell = { x: rx, y: ry };
+        }
+      }
+    }
+
+    if (!exitCell) return false;
     this.ownedDriveInputGeneration++;
     car.speed = 0;
     this.ownedDriveSeated = false;
     this.ownedDriveInput = {};
     this.fpTeleportRequest = {
-      ...side,
+      ...exitCell,
       yaw: -car.heading - Math.PI / 2,
       seq: (this.fpTeleportRequest?.seq ?? 0) + 1,
     };
@@ -2883,9 +2931,6 @@ export class ColonyRuntime {
         const ix = Math.round(x);
         const iy = Math.round(y);
         if (ix < 2 || ix >= size - 2 || iy < 2 || iy >= size - 2) return false;
-        // Keep car on drivable land; deep ocean water blocks
-        if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05)
-          return false;
 
         // Municipal buses are solid physical obstacles (Spec 174: no phasing through buses)
         for (let i = 0; i < activeBuses.length; i++) {
@@ -2902,8 +2947,12 @@ export class ColonyRuntime {
           }
         }
 
-        // Public road ribbons are never blocked by parcels or setbacks
+        // Public road ribbons are elevated, paved surfaces (bridges, causeways, coastal avenues)
+        // and are always drivable regardless of water or terrain elevation underneath.
         if (this.isRoadSurface(x, y)) return true;
+
+        // Keep car on drivable land when off-road; deep ocean water blocks
+        if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05) return false;
 
         // Spec 175: Commercial garage pad (forecourt apron, open service bay) is drivable
         const garagePad = this.commercialDistrict?.garagePad;

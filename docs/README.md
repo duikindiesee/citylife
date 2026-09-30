@@ -41,6 +41,7 @@ repo, on protected `main` (PRs + review only).
 15. **[tasks/thermal-performance-backlog.md](tasks/thermal-performance-backlog.md)** — Thermal load management, background tab frame throttling, and optional eco-mode limiter backlog.
 16. **[tasks/night-lighting-reflection-backlog.md](tasks/night-lighting-reflection-backlog.md)** — Night lighting calibration, road surface specular reflection, and bloom attenuation backlog.
 17. **[incidents/INCIDENT-2026-09-30-production-pod-drift.md](incidents/INCIDENT-2026-09-30-production-pod-drift.md)** — Production drift investigation, served bundle reconciliation, and recovery proposal.
+18. **[tasks/next-build-acceptance-blockers.md](tasks/next-build-acceptance-blockers.md)** — Next-build acceptance blockers resolution: showroom geometry clearance, coastal road grounding, testing diagnostic HUD, top-bar UI integration, and wallet/purchase edge-case hardening.
 
 ---
 

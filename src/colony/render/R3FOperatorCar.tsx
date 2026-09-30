@@ -252,24 +252,52 @@ export function R3FOperatorCar({
       sim.state.roadSet,
       sim.state.roadWays,
     );
-    const y = onRoad
-      ? Math.max(0, getSmoothRoadY(t, car.cell.x, car.cell.y)) +
-        ROAD_RIBBON_LIFT
-      : Math.max(
-          0,
-          leveledWorldY(
-            t,
-            terrainLevel,
-            Math.round(car.cell.x),
-            Math.round(car.cell.y),
-          ),
-        ) + 0.02;
+
+    const roadElevation =
+      Math.max(0, getSmoothRoadY(t, car.cell.x, car.cell.y)) +
+      ROAD_RIBBON_LIFT;
+    const groundElevation =
+      Math.max(
+        0,
+        leveledWorldY(
+          t,
+          terrainLevel,
+          Math.round(car.cell.x),
+          Math.round(car.cell.y),
+        ),
+      ) + 0.02;
+
+    // Grounding: on road sits on road ribbon. If near road edge, prevent wheels from sinking below the road deck.
+    const centerY = onRoad ? roadElevation : Math.max(groundElevation, isPointOnRoadSurface(car.cell.x, car.cell.y, sim.state.roadSet, sim.state.roadWays) ? roadElevation : groundElevation);
+
+    // Slope pitch and roll alignment (4.2m wheelbase)
+    const heading = car.heading ?? 0;
+    const cosH = Math.cos(heading);
+    const sinH = Math.sin(heading);
+    const halfLenCells = 2.1 / 4.0;
+    const halfWidCells = 0.95 / 4.0;
+
+    const sampleElevation = (cx: number, cy: number) => {
+      const isR = isPointOnRoadSurface(cx, cy, sim.state.roadSet, sim.state.roadWays);
+      return isR
+        ? Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT
+        : Math.max(0, leveledWorldY(t, terrainLevel, Math.round(cx), Math.round(cy))) + 0.02;
+    };
+
+    const yFront = sampleElevation(car.cell.x + cosH * halfLenCells, car.cell.y + sinH * halfLenCells);
+    const yRear = sampleElevation(car.cell.x - cosH * halfLenCells, car.cell.y - sinH * halfLenCells);
+    const pitch = Math.atan2(yFront - yRear, 4.2);
+
+    const yLeft = sampleElevation(car.cell.x - sinH * halfWidCells, car.cell.y + cosH * halfWidCells);
+    const yRight = sampleElevation(car.cell.x + sinH * halfWidCells, car.cell.y - cosH * halfWidCells);
+    const roll = Math.atan2(yLeft - yRight, 1.9);
+
     group.current.position.set(
       (car.cell.x - t.size / 2) * 4,
-      y,
+      centerY,
       (car.cell.y - t.size / 2) * 4,
     );
-    group.current.rotation.y = -(car.heading ?? 0);
+    group.current.rotation.set(pitch, -heading, roll, "YXZ");
   });
   const sig = useSimSignal(runtime, () => operatorCarSignature(sim.state));
 

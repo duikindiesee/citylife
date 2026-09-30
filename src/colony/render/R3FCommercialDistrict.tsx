@@ -108,12 +108,13 @@ function R3FGarageCars({ layerGroup }: { layerGroup?: THREE.Group | null }) {
     };
 
     // Hero Car on showroom plinth: Karoo Kaap GT-V8
+    // In local cells (shell group scaled by 4), scale 0.262 produces an authentic life-size 4.28m car.
     replaceCar(
       "garageAnchorShowroomHeroCar",
       kaap.scene,
       SHOWROOM_VEHICLES[1]?.spec.paint,
       SHOWROOM_VEHICLES[1]?.rotationOffset,
-      0.45,
+      0.262,
     );
 
     // Secondary Car in showroom: Karoo X19 Targa
@@ -122,7 +123,7 @@ function R3FGarageCars({ layerGroup }: { layerGroup?: THREE.Group | null }) {
       x19.scene,
       SHOWROOM_VEHICLES[2]?.spec.paint,
       SHOWROOM_VEHICLES[2]?.rotationOffset,
-      0.52,
+      0.262,
     );
 
     // Forecourt Display Car 1: Karoo Vonk 1.1
@@ -131,7 +132,7 @@ function R3FGarageCars({ layerGroup }: { layerGroup?: THREE.Group | null }) {
       vonk.scene,
       SHOWROOM_VEHICLES[0]?.spec.paint,
       SHOWROOM_VEHICLES[0]?.rotationOffset,
-      0.48,
+      0.255,
     );
 
     // Forecourt Display Car 2: Karoo Kaap GT-V8
@@ -140,9 +141,22 @@ function R3FGarageCars({ layerGroup }: { layerGroup?: THREE.Group | null }) {
       kaap.scene,
       SHOWROOM_VEHICLES[1]?.spec.paint,
       SHOWROOM_VEHICLES[1]?.rotationOffset,
-      0.44,
+      0.262,
     );
   }, [layerGroup, vonk.scene, kaap.scene, x19.scene]);
+
+  // Spec 176: Smooth continuous turntable rotation for the hero presentation display
+  useFrame((_, delta) => {
+    if (!layerGroup) return;
+    const hero = layerGroup.getObjectByName("garageAnchorShowroomHeroCar");
+    if (hero) {
+      hero.rotation.y += delta * 0.22;
+    }
+    const plinth = layerGroup.getObjectByName("garageAnchorShowroomPlinth");
+    if (plinth) {
+      plinth.rotation.y += delta * 0.22;
+    }
+  });
 
   return null;
 }

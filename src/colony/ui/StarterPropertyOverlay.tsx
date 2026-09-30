@@ -65,6 +65,7 @@ type LoadPhase = "loading" | "ready" | "error";
 
 export function StarterPropertyOverlay({
   onClose,
+  walletKco = null,
   walletStatus = "unavailable",
   walletLabel = "Balance unavailable",
   onWalletRefresh,
@@ -72,6 +73,7 @@ export function StarterPropertyOverlay({
   onHomePurchased,
 }: {
   onClose: () => void;
+  walletKco?: number | null;
   walletStatus?: PlayerWalletStatus;
   walletLabel?: string;
   onWalletRefresh?: () => void;
@@ -161,6 +163,19 @@ export function StarterPropertyOverlay({
     pending,
     outcome,
   );
+  const shortage =
+    typeof selectedChoice?.priceKco === "number" && typeof walletKco === "number"
+      ? Math.max(0, selectedChoice.priceKco - walletKco)
+      : null;
+  const isInsufficient = shortage !== null && shortage > 0;
+  const isMissingWallet = walletStatus === "missing";
+  const purchaseDisabled = view.disabled || isInsufficient || isMissingWallet;
+  const purchaseState = isInsufficient ? "insufficient_funds" : view.state;
+  const purchaseLabel = isMissingWallet
+    ? "Wallet not set up"
+    : isInsufficient
+      ? `Need ₭${shortage!.toLocaleString()} more`
+      : view.label;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -400,8 +415,8 @@ export function StarterPropertyOverlay({
             <button
               data-build-action="home-purchase"
               data-testid="home-purchase"
-              data-purchase-state={view.state}
-              disabled={view.disabled}
+              data-purchase-state={purchaseState}
+              disabled={purchaseDisabled}
               onClick={purchase}
               title="Secure this starter home — the server checks your balance and grants the deed"
               style={{
@@ -409,17 +424,17 @@ export function StarterPropertyOverlay({
                 padding: "12px 16px",
                 fontSize: 15,
                 borderRadius: 8,
-                border: `1px solid ${view.disabled ? "#3a4a5a" : "#b6892f"}`,
-                background: view.disabled
+                border: `1px solid ${purchaseDisabled ? "#3a4a5a" : "#b6892f"}`,
+                background: purchaseDisabled
                   ? "rgba(255,255,255,0.05)"
                   : "rgba(182,137,47,0.18)",
-                color: purchaseStateColor(view.state),
-                cursor: view.disabled ? "not-allowed" : "pointer",
+                color: purchaseStateColor(purchaseState),
+                cursor: purchaseDisabled ? "not-allowed" : "pointer",
                 fontWeight: 700,
               }}
             >
-              {view.label}
-              {selectedChoice && view.state === "ready"
+              {purchaseLabel}
+              {selectedChoice && purchaseState === "ready"
                 ? ` · ${money(currency, selectedChoice.priceKco)}`
                 : ""}
             </button>

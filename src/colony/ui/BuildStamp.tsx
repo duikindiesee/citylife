@@ -8,21 +8,122 @@
  * login screen it is a normal in-flow element under the card. Adding a third self-pinning corner
  * element is exactly the defect those two PRs fixed, so it is not done here.
  */
-import { buildStampTitle, formatBuildStamp } from "../buildStamp";
+import React, { useEffect, useState } from "react";
+import { buildStampParts, buildStampTitle, formatBuildStamp } from "../buildStamp";
+import type { ColonyRuntime } from "../runtime";
+
+export interface BuildStampProps {
+  readonly variant?: "hud" | "fp" | "login";
+  readonly runtime?: ColonyRuntime;
+}
 
 export function BuildStamp({
   variant = "hud",
-}: {
-  readonly variant?: "hud" | "fp" | "login";
-}) {
-  const text = formatBuildStamp();
+  runtime,
+}: BuildStampProps) {
+  const parts = buildStampParts();
+  const text = formatBuildStamp(parts);
+
+  const [diag, setDiag] = useState<{
+    x: number;
+    y: number;
+    elev: number;
+    headingDeg: number;
+    seed: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!runtime) return;
+    const updateDiag = () => {
+      const sim = runtime.sim;
+      if (!sim) return;
+      const t = sim.state.terrain;
+      const seed = runtime.getSeed?.() ?? sim.state.seed ?? 4242;
+      const drivePose = runtime.getOwnedDrivePose?.();
+      const opCar = sim.state.operatorCar;
+      const fpCell = (runtime as any).fpCameraCell;
+
+      const cellX = drivePose?.x ?? opCar?.cell.x ?? fpCell?.x ?? t.size / 2;
+      const cellY = drivePose?.y ?? opCar?.cell.y ?? fpCell?.y ?? t.size / 2;
+      const headingRad = drivePose?.heading ?? opCar?.heading ?? (runtime as any).fpCameraYaw ?? 0;
+
+      const worldX = (cellX - t.size / 2) * 4;
+      const worldZ = (cellY - t.size / 2) * 4;
+      const elev = runtime.isRoadSurface?.(cellX, cellY)
+        ? (t.worldYAt(cellX, cellY) + 0.18)
+        : t.worldYAt(cellX, cellY);
+      const headingDeg = Math.round((((headingRad * 180) / Math.PI) % 360 + 360) % 360);
+
+      setDiag({
+        x: Math.round(worldX * 10) / 10,
+        y: Math.round(worldZ * 10) / 10,
+        elev: Math.round(elev * 100) / 100,
+        headingDeg,
+        seed,
+      });
+    };
+
+    updateDiag();
+    const interval = window.setInterval(updateDiag, 250);
+    return () => window.clearInterval(interval);
+  }, [runtime]);
+
+  const showDiag = Boolean(
+    runtime &&
+    typeof window !== "undefined" &&
+    (window.location.search.includes("test") ||
+     (window as any).__TESTING_MODE__ === true ||
+     variant !== "login")
+  );
+
   return (
     <div
       className={`build-stamp build-stamp--${variant}`}
       data-testid="build-stamp"
-      title={buildStampTitle()}
+      title={buildStampTitle(parts)}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+        fontFamily: "monospace",
+        fontSize: "11px",
+        lineHeight: "1.3",
+        color: "rgba(255, 255, 255, 0.75)",
+        background: "rgba(10, 16, 26, 0.72)",
+        padding: "4px 8px",
+        borderRadius: "4px",
+        backdropFilter: "blur(6px)",
+        border: "1px solid rgba(255, 255, 255, 0.12)",
+        pointerEvents: "auto",
+        userSelect: "text",
+      }}
     >
-      {text}
+      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+        <span style={{ fontWeight: 600, color: "#6fe3ff" }}>{text}</span>
+        {parts.builtAt && (
+          <span style={{ opacity: 0.65, fontSize: "10px" }} title="Build timestamp">
+            {parts.builtAt}
+          </span>
+        )}
+      </div>
+      {showDiag && diag && (
+        <div
+          data-testid="diagnostic-readout"
+          style={{
+            fontSize: "10.5px",
+            color: "#ffda79",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "6px",
+          }}
+        >
+          <span>X: <b>{diag.x}m</b></span>
+          <span>Elev: <b>{diag.elev}m</b></span>
+          <span>Z: <b>{diag.y}m</b></span>
+          <span>Hdg: <b>{diag.headingDeg}°</b></span>
+          <span>Seed: <b>{diag.seed}</b></span>
+        </div>
+      )}
     </div>
   );
 }
