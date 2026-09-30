@@ -4376,9 +4376,34 @@ export function ColonyApp() {
                       <b>{p.name}</b>{" "}
                       <span className="plan-vibe">{p.vibe}</span>
                       <span className="plan-desc">{p.description}</span>
-                      <span className="plan-status">
-                        {p.assignedTo ? "allocated" : "available"}
-                      </span>
+                      {!p.assignedTo ? (
+                        <button
+                          type="button"
+                          className="plan-claim-btn"
+                          data-testid={`claim-plot-${p.id}`}
+                          onClick={() => {
+                            if (p.x !== undefined && p.y !== undefined && runtime) {
+                              runtime.focusSurveyCell(p.x, p.y);
+                            }
+                            setHomeOpen(true);
+                          }}
+                          style={{
+                            marginLeft: "auto",
+                            padding: "4px 8px",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            borderRadius: 6,
+                            border: "1px solid #b6892f",
+                            background: "rgba(182,137,47,0.25)",
+                            color: "#ffd25a",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Select plot
+                        </button>
+                      ) : (
+                        <span className="plan-status">allocated</span>
+                      )}
                     </div>
                   ))}
                 </div>

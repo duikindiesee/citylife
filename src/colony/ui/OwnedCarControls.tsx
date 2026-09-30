@@ -84,23 +84,53 @@ export function OwnedCarControls({
         Enter your car
       </button>
     ) : null;
+  const onRoad = pose
+    ? runtime.sim.state.roadSet.has(
+        `${Math.round(pose.x)},${Math.round(pose.y)}`,
+      )
+    : true;
+  const speedKmH = Math.round(Math.abs(pose!.speed) * 3.6);
+
   return (
     <section
       aria-label="Owned car controls"
       data-testid="owned-car-controls"
       style={{
-        background: "#081522",
+        background: "rgba(8, 21, 34, 0.85)",
+        backdropFilter: "blur(12px)",
+        border: `1px solid ${onRoad ? "rgba(90, 230, 255, 0.3)" : "rgba(245, 167, 66, 0.4)"}`,
+        boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
         color: "white",
-        padding: 8,
+        padding: 10,
         borderRadius: 12,
       }}
     >
-      <div style={{ textAlign: "center" }}>
-        Driving · {Math.round(Math.abs(pose!.speed) * 3.6)} km/h
+      <div
+        style={{
+          textAlign: "center",
+          fontWeight: 700,
+          letterSpacing: "0.05em",
+          fontSize: 14,
+          marginBottom: 6,
+          color: onRoad ? "#5ae6ff" : "#f5a742",
+        }}
+      >
+        {onRoad ? "🏎️ HIGHWAY" : "🏜️ OFF-ROAD"} · {speedKmH} km/h
       </div>
       <button
         data-testid="exit-owned-car"
         onClick={() => runtime.exitOwnedCar()}
+        style={{
+          width: "100%",
+          padding: "6px 10px",
+          marginBottom: 8,
+          background: "rgba(255, 255, 255, 0.1)",
+          border: "1px solid rgba(255, 255, 255, 0.2)",
+          color: "#e0f0ff",
+          borderRadius: 6,
+          cursor: "pointer",
+          fontSize: 12,
+        }}
       >
         Park and exit
       </button>

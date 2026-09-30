@@ -30,40 +30,10 @@ const CAMP_KINDS: ReadonlySet<SeedStructure["kind"]> = new Set([
 ]);
 
 export function buildLandingCamp(
-  opts: LandingCampOptions,
+  _opts: LandingCampOptions,
 ): LandingCampLayer | null {
-  const camp = opts.structures.filter((s) => CAMP_KINDS.has(s.kind));
-  if (camp.length === 0) return null;
-
-  const group = new THREE.Group();
-  group.name = "LandingCamp";
-  const beaconMats: THREE.MeshStandardMaterial[] = [];
-
-  for (const s of camp) {
-    const mesh = makeStructure(s, beaconMats);
-    const baseY = Math.max(0.05, opts.terrain.worldY(s.x, s.y));
-    mesh.position.set(opts.wx(s.x), baseY, opts.wz(s.y));
-    group.add(mesh);
-  }
-
-  return {
-    group,
-    update(timeMs: number) {
-      // The landed dropship still has power — its nav beacon pulses red.
-      const pulse = (Math.sin((timeMs / 1000) * 2.2) + 1) * 0.5;
-      for (const mat of beaconMats) mat.emissiveIntensity = 0.9 + pulse * 1.4;
-    },
-    dispose() {
-      group.traverse((obj) => {
-        const mesh = obj as THREE.Mesh;
-        if (mesh.geometry) mesh.geometry.dispose();
-        const mat = mesh.material;
-        if (Array.isArray(mat)) for (const m of mat) m.dispose();
-        else if (mat) (mat as THREE.Material).dispose();
-      });
-      group.parent?.remove(group);
-    },
-  };
+  // Decluttered landing site per operator feedback (dropship, solar, battery, caravan removed)
+  return null;
 }
 
 // Legacy PlanetRenderer.makeStructure, verbatim geometry for the four camp kinds.

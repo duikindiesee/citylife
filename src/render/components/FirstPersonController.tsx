@@ -177,20 +177,42 @@ export function FirstPersonController({
 
     const driving = runtime?.getOwnedDrivePose?.();
     if (driving && sim?.state?.terrain) {
-      const eyeY =
-        Math.max(0, getSmoothRoadY(sim.state.terrain, driving.x, driving.y)) +
-        ROAD_RIBBON_LIFT +
-        COLONY.ownedDriving.seatedEyeMetres;
+      const onRoad = sim.state.roadSet.has(
+        `${Math.round(driving.x)},${Math.round(driving.y)}`,
+      );
+      const groundY = onRoad
+        ? Math.max(0, getSmoothRoadY(sim.state.terrain, driving.x, driving.y)) +
+          ROAD_RIBBON_LIFT
+        : Math.max(
+            0,
+            leveledWorldY(
+              sim.state.terrain,
+              terrainLevel,
+              Math.round(driving.x),
+              Math.round(driving.y),
+            ),
+          ) + 0.02;
       const wx = toWorldX(driving.x);
       const wz = toWorldZ(driving.y);
       rigidBody.current.setTranslation(
-        { x: wx, y: eyeY - PLAYER_EYE_OFFSET, z: wz },
+        { x: wx, y: groundY + 0.5, z: wz },
         true,
       );
       rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-      rotation.current.set(0, -driving.heading - Math.PI / 2, 0);
-      camera.position.set(wx, eyeY, wz);
-      camera.quaternion.setFromEuler(rotation.current);
+
+      // Dynamic arcade chase camera: smooth distance and FOV following vehicle heading
+      const chaseDist = 6.2;
+      const chaseHeight = 2.4 + Math.min(2.0, Math.abs(driving.speed) * 0.04);
+      const camX = wx - Math.cos(driving.heading) * chaseDist;
+      const camZ = wz - Math.sin(driving.heading) * chaseDist;
+      const camY = groundY + chaseHeight;
+
+      camera.position.set(camX, camY, camZ);
+      camera.lookAt(
+        wx + Math.cos(driving.heading) * 4,
+        groundY + 1.2,
+        wz + Math.sin(driving.heading) * 4,
+      );
       if (runtime) runtime.fpCameraCell = { x: driving.x, y: driving.y };
       return;
     }

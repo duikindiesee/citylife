@@ -1439,8 +1439,27 @@ export class ColonyRuntime {
       if (nearest < 0) continue;
       const key = `${Math.min(i, nearest)}-${Math.max(i, nearest)}`;
       if (meshed.has(key)) continue;
-      meshed.add(key);
       paveLink(satellites[i]!.carriage, satellites[nearest]!.carriage); // the cross-link that makes it a web
+    }
+    // Spec 172 / RACING — close the circuit: link the outer coastal avenue ends to the inland highway
+    // so racers enjoy a continuous high-speed loop without dead-ends.
+    if (coast.length > 0 && satellites.length > 0) {
+      let westCoast = coast[0]!,
+        eastCoast = coast[0]!;
+      for (const c of coast) {
+        if (c.x < westCoast.x) westCoast = c;
+        if (c.x > eastCoast.x) eastCoast = c;
+      }
+      let westSat = satellites[0]!.carriage[0]!,
+        eastSat = satellites[0]!.carriage[0]!;
+      for (const s of satellites) {
+        for (const c of s.carriage) {
+          if (c.x < westSat.x) westSat = c;
+          if (c.x > eastSat.x) eastSat = c;
+        }
+      }
+      paveLink([westCoast], [westSat]);
+      paveLink([eastCoast], [eastSat]);
     }
     // Spec 079 — survey the shop district in its reserved room; shops avoid every homestead + road.
     const blockedForShops = new Set<string>(residentialKeys);
@@ -2706,14 +2725,24 @@ export class ColonyRuntime {
   private tickOwnedDrive(dt: number): void {
     const ownedCar = this.currentPlayerOwnedCarSpec();
     if (!this.getOwnedDrivePose() || !this.ownedDrivePose || !ownedCar) return;
+    const terrain = this.sim.state.terrain;
+    const size = terrain.size;
     this.ownedDrivePose = stepOwnedDrive(
       this.ownedDrivePose,
       this.ownedDriveInput,
       deriveStats(ownedCar),
       dt,
-      (x, y) =>
-        this.sim.state.roadSet.has(`${Math.round(x)},${Math.round(y)}`) &&
-        this.blockedStepReason(x, y) === null,
+      (x, y) => {
+        const ix = Math.round(x);
+        const iy = Math.round(y);
+        if (ix < 2 || ix >= size - 2 || iy < 2 || iy >= size - 2) return false;
+        // Keep car on drivable land; deep ocean water blocks
+        if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05) return false;
+        // Buildings and static structures block
+        if (this.blockedStepReason(x, y) !== null) return false;
+        return true;
+      },
+      (x, y) => this.sim.state.roadSet.has(`${Math.round(x)},${Math.round(y)}`),
     );
     const car = this.sim.state.operatorCar;
     if (car) {
