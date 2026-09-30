@@ -26,8 +26,8 @@ export function BuildStamp({
 
   const [diag, setDiag] = useState<{
     x: number;
-    y: number;
     elev: number;
+    z: number;
     headingDeg: number;
     seed: number;
   } | null>(null);
@@ -40,12 +40,22 @@ export function BuildStamp({
       const t = sim.state.terrain;
       const seed = runtime.getSeed?.() ?? sim.state.seed ?? 4242;
       const drivePose = runtime.getOwnedDrivePose?.();
-      const opCar = sim.state.operatorCar;
       const fpCell = (runtime as any).fpCameraCell;
+      const fpCitizenId = (runtime as any)?.fpCitizenId;
+      const citizen = fpCitizenId && typeof (runtime as any)?.citizen === "function" ? (runtime as any).citizen(fpCitizenId) : null;
+      const citizenPos = citizen?.positionXY ?? citizen?.pos;
+      const opCar = sim.state.operatorCar;
 
-      const cellX = drivePose?.x ?? opCar?.cell.x ?? fpCell?.x ?? t.size / 2;
-      const cellY = drivePose?.y ?? opCar?.cell.y ?? fpCell?.y ?? t.size / 2;
-      const headingRad = drivePose?.heading ?? opCar?.heading ?? (runtime as any).fpCameraYaw ?? 0;
+      // Prioritize active player (driving > first-person/walking > citizen > parked operator car)
+      const cellX = drivePose?.x ?? fpCell?.x ?? citizenPos?.x ?? opCar?.cell?.x ?? t.size / 2;
+      const cellY = drivePose?.y ?? fpCell?.y ?? citizenPos?.y ?? opCar?.cell?.y ?? t.size / 2;
+      const headingRad = drivePose
+        ? drivePose.heading
+        : fpCell
+          ? ((runtime as any).fpCameraYaw ?? 0)
+          : opCar
+            ? opCar.heading
+            : 0;
 
       const worldX = (cellX - t.size / 2) * 4;
       const worldZ = (cellY - t.size / 2) * 4;
@@ -56,8 +66,8 @@ export function BuildStamp({
 
       setDiag({
         x: Math.round(worldX * 10) / 10,
-        y: Math.round(worldZ * 10) / 10,
         elev: Math.round(elev * 100) / 100,
+        z: Math.round(worldZ * 10) / 10,
         headingDeg,
         seed,
       });
@@ -68,12 +78,11 @@ export function BuildStamp({
     return () => window.clearInterval(interval);
   }, [runtime]);
 
+  // Always show coordinates for in-game views so any screen capture captures exact coordinates
   const showDiag = Boolean(
     runtime &&
     typeof window !== "undefined" &&
-    (window.location.search.includes("test") ||
-     (window as any).__TESTING_MODE__ === true ||
-     variant !== "login")
+    variant !== "login"
   );
 
   return (
@@ -119,7 +128,7 @@ export function BuildStamp({
         >
           <span>X: <b>{diag.x}m</b></span>
           <span>Elev: <b>{diag.elev}m</b></span>
-          <span>Z: <b>{diag.y}m</b></span>
+          <span>Z: <b>{diag.z}m</b></span>
           <span>Hdg: <b>{diag.headingDeg}°</b></span>
           <span>Seed: <b>{diag.seed}</b></span>
         </div>

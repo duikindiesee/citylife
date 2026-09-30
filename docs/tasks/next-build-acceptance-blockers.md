@@ -114,11 +114,38 @@ This task record documents the investigation, root causes, implementation fixes,
 
 ---
 
+### Blocker 6: Bug Logger Black Capture & Coordinates Display
+
+- **Root Cause:**
+  - In `R3FPlanetRenderer.tsx`, `<Canvas>` lacked `gl={{ preserveDrawingBuffer: true, antialias: true }}`. In Chromium/WebGL, drawing buffers are discarded by the compositor immediately after presenting, causing `canvas.toDataURL()` in user event callbacks to return a blank/black canvas.
+  - `capturePNG()` called `gl.render(scene, camera)` without resetting `gl.setRenderTarget(null)`. Because `EffectComposer` was mounted, `gl.getRenderTarget()` pointed to an offscreen postprocessing buffer; `gl.render` rendered into that offscreen target instead of `gl.domElement`.
+  - `BugReportPanel.tsx` lacked an `<img>` preview of `capture.pngDataUrl`, concealing black captures from the user.
+  - `BuildStamp.tsx` prioritized `opCar?.cell` over `fpCell`, causing players on foot to display parked car coordinates instead of their walking coordinates.
+- **Resolution:**
+  - Added `gl={{ preserveDrawingBuffer: true, antialias: true, powerPreference: "high-performance" }}` to `<Canvas>`.
+  - In `capturePNG()`:
+    - Detaches active postprocessing render target with `gl.setRenderTarget(null)`.
+    - Forces camera world matrix update with `camera.updateMatrixWorld(true)`.
+    - Renders direct frame to `gl.domElement` with `THREE.ACESFilmicToneMapping`.
+    - Restores previous tone mapping and render target cleanly in `finally`.
+    - Composites frame onto an offscreen 2D canvas with the spatial coordinates (`X`, `Elev`, `Z`), heading (`Hdg`), world seed, commit SHA, version, and build timestamp permanently burned into a sleek bottom HUD banner.
+  - In `BugReportPanel.tsx`:
+    - Added thumbnail preview `<img>` (`data-testid="bug-capture-preview"`) displaying `capture.pngDataUrl` immediately after capture, with a warning if the screenshot buffer is missing.
+    - Fixed React hook ordering rules by keeping all `useState` calls at the top of the component.
+  - In `BuildStamp.tsx`:
+    - Reordered coordinate priority to active player (`drivePose` $\to$ `fpCell` $\to$ `citizenPos` $\to$ `opCar?.cell`).
+    - Unconditionally displays diagnostic coordinate readout for in-game HUD and FP variants (`variant !== "login"`).
+    - Corrected Z axis display to `diag.z`.
+- **Evidence:**
+  - Unit tests: `tests/bugCaptureAndCoordinates.test.ts` (4/4 PASS), `tests/bugReportPanel.test.ts` (2/2 PASS), `tests/buildStamp.test.ts` (5/5 PASS).
+
+---
+
 ## 3. Verification & Test Summary
 
-- `npm test`: **273 test files passed, 2382 tests passed** (including all unit and integration tests).
+- `npm test`: **273 test files passed, 2395 tests passed** (including all unit and integration tests).
 - `npm run typecheck`: **0 errors**.
-- `npm run build`: **Built successfully** in 503ms.
+- `npm run build`: **Built successfully** in 438ms.
 - `c:\kooker`: `npm test`, `npm run validate`, `npm run public-safety` **all PASS**.
 
 ---
