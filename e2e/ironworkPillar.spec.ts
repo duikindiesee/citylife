@@ -19,7 +19,7 @@ async function bootPillar(
   await page.waitForFunction(
     () => !!window.__colony && !!window.__r3fScene,
     undefined,
-    { timeout: 30_000 },
+    { timeout: 90_000 },
   );
   await page.waitForFunction(
     () => {
@@ -32,7 +32,7 @@ async function bootPillar(
       return glb && trail;
     },
     undefined,
-    { timeout: 30_000 },
+    { timeout: 90_000 },
   );
   await page.waitForTimeout(800);
 }

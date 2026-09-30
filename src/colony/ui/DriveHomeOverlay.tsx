@@ -73,7 +73,13 @@ const dpadButtonStyle: CSSProperties = {
 
 type LoadPhase = "loading" | "ready" | "error";
 
-export function DriveHomeOverlay({ onClose }: { onClose: () => void }) {
+export function DriveHomeOverlay({
+  onClose,
+  runtime,
+}: {
+  onClose: () => void;
+  runtime?: { focusSurveyCell(x: number, y: number): boolean };
+}) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [residency, setResidency] = useState<HomeResidency | null>(null);
   const [cursor, setCursor] = useState<Cell | null>(null);
@@ -130,6 +136,13 @@ export function DriveHomeOverlay({ onClose }: { onClose: () => void }) {
     setOutcome(undefined);
   }, []);
 
+  // Smoothly center the 3D camera over the driving cursor as the vehicle moves through the city.
+  useEffect(() => {
+    if (cursor && runtime) {
+      runtime.focusSurveyCell(cursor.x, cursor.y);
+    }
+  }, [cursor, runtime]);
+
   const arrive = useCallback(() => {
     if (pending || resident || !cursor || !withinBounds) return;
     setPending(true);
@@ -150,13 +163,48 @@ export function DriveHomeOverlay({ onClose }: { onClose: () => void }) {
 
   const view = arrivalButtonView(resident, withinBounds, pending, outcome);
 
+  // Keyboard navigation: WASD or Arrow keys drive the car, Escape exits the guidance HUD.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      switch (e.code) {
+        case "KeyW":
+        case "ArrowUp":
+          e.preventDefault();
+          move("up");
+          break;
+        case "KeyS":
+        case "ArrowDown":
+          e.preventDefault();
+          move("down");
+          break;
+        case "KeyA":
+        case "ArrowLeft":
+          e.preventDefault();
+          move("left");
+          break;
+        case "KeyD":
+        case "ArrowRight":
+          e.preventDefault();
+          move("right");
+          break;
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, move]);
 
   return (
     <div
@@ -164,11 +212,20 @@ export function DriveHomeOverlay({ onClose }: { onClose: () => void }) {
       data-testid="drive-home-overlay"
       style={{
         position: "fixed",
-        inset: 0,
+        top: 64,
+        right: 20,
+        width: 380,
+        maxWidth: "calc(100vw - 32px)",
+        maxHeight: "calc(100vh - 96px)",
         zIndex: 82,
-        background: "#0a0f16",
+        background: "rgba(10, 15, 24, 0.92)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        borderRadius: 14,
+        border: "1px solid rgba(40, 75, 115, 0.8)",
+        boxShadow: "0 16px 40px rgba(0, 0, 0, 0.65)",
         overflowY: "auto",
-        padding: "16px 14px 96px",
+        padding: "16px 14px",
         boxSizing: "border-box",
       }}
     >
@@ -269,6 +326,22 @@ export function DriveHomeOverlay({ onClose }: { onClose: () => void }) {
             <span style={{ color: "#ffd25a" }}>
               Home {home.x},{home.y}
             </span>
+          </div>
+
+          {/* Steer guidance badge for desktop & keyboard players */}
+          <div
+            style={{
+              fontSize: 11,
+              color: "#a0d4f0",
+              textAlign: "center",
+              marginTop: 10,
+              padding: "6px 10px",
+              background: "rgba(30, 58, 90, 0.4)",
+              borderRadius: 6,
+              border: "1px solid rgba(58, 90, 106, 0.5)",
+            }}
+          >
+            🎮 Steer with <b style={{ color: "#ffd25a" }}>WASD</b> or <b style={{ color: "#ffd25a" }}>Arrow keys</b>
           </div>
 
           {/* Mobile first-person / vehicle controls — a touch D-pad that drives the car cursor. */}

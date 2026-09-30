@@ -69,12 +69,14 @@ export function StarterPropertyOverlay({
   walletLabel = "Balance unavailable",
   onWalletRefresh,
   currency = "₭",
+  onHomePurchased,
 }: {
   onClose: () => void;
   walletStatus?: PlayerWalletStatus;
   walletLabel?: string;
   onWalletRefresh?: () => void;
   currency?: string;
+  onHomePurchased?: (target: HomeTruth | string) => void;
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [choices, setChoices] = useState<EligibleNeighbourhood[]>([]);
@@ -82,6 +84,7 @@ export function StarterPropertyOverlay({
   const [selected, setSelected] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<PurchaseOutcome | undefined>();
   const [pending, setPending] = useState(false);
+  const [relocateMode, setRelocateMode] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
 
   // Load the authoritative eligible choices + home truth together. Fail-soft: a null from either read
@@ -121,7 +124,7 @@ export function StarterPropertyOverlay({
   const selectedChoice = choices.find((c) => c.key === selected) ?? null;
 
   const purchase = useCallback(() => {
-    if (pending || owned || !selected) return;
+    if (pending || (!relocateMode && owned) || !selected) return;
     const key = selected;
     setPending(true);
     void postPurchaseHome(key, eligibleKeys).then((result) => {
@@ -133,14 +136,18 @@ export function StarterPropertyOverlay({
         void fetchHomeTruth().then((fresh) => {
           setTruth(fresh);
           setPending(false);
+          setRelocateMode(false);
+          if (fresh && isHomeOwned(fresh)) {
+            onHomePurchased?.(fresh);
+          }
         });
       } else {
         setPending(false);
       }
     });
-  }, [pending, owned, selected, eligibleKeys, onWalletRefresh]);
+  }, [pending, owned, relocateMode, selected, eligibleKeys, onWalletRefresh, onHomePurchased]);
 
-  const view = purchaseButtonView(owned, !!selected, pending, outcome);
+  const view = purchaseButtonView(relocateMode ? false : owned, !!selected, pending, outcome);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -288,11 +295,24 @@ export function StarterPropertyOverlay({
             Placed at {projected.placement.x},{projected.placement.y} · the same
             on every device.
           </span>
+          <button
+            type="button"
+            data-testid="home-relocate-btn"
+            onClick={() => setRelocateMode((m) => !m)}
+            style={{
+              ...controlButtonStyle,
+              marginTop: 6,
+              alignSelf: "flex-start",
+              fontSize: 12,
+            }}
+          >
+            {relocateMode ? "✕ Cancel plot change" : "📍 Select a different coastal plot"}
+          </button>
         </div>
       )}
 
       {/* SELECT — server-eligible choices only */}
-      {!owned && phase === "ready" && (
+      {(!owned || relocateMode) && phase === "ready" && (
         <div
           style={{
             marginTop: 10,

@@ -32,6 +32,7 @@ export interface GarageAnchorShellModel {
   };
   pylon: { w: number; h: number; d: number; x: number; z: number; y: number };
   forecourt: { w: number; d: number; frontOffset: number; y: number };
+  parkingBays: { x: number; z: number; w: number; d: number; rot: number; label: string }[];
   nightFloor: {
     w: number;
     d: number;
@@ -100,16 +101,26 @@ export function buildGarageAnchorShellModel(
     z: pylonLocal.z,
     y: 2.7,
   };
-  const forecourtDepth = footprint.d * 0.34;
+  const forecourtDepth = footprint.d * 0.32;
   const forecourt = {
-    w: footprint.w * 0.92,
+    w: footprint.w * 0.88,
     d: forecourtDepth,
-    // Spec 114 — the driveway apron is a floor footprint too. Keep its
-    // front edge inside the surveyed pad instead of letting it project into
-    // the widened road cells.
-    frontOffset: Math.max(0, footprint.d / 2 - forecourtDepth / 2 - 0.01),
+    // Spec 114 — the forecourt slab sits in front of the workshop & showroom.
+    // Kept strictly within the surveyed pad boundaries, never projecting onto road cells.
+    frontOffset: Math.max(0, footprint.d / 2 - forecourtDepth / 2 - 0.05),
     y: 0.045,
   };
+
+  // Spec 176 — Customer parking bays painted on the forecourt in front of showroom
+  // 1 cell = 4 m. Dimensions in cells: ~2.6 m wide (0.65 cells) x 5.0 m deep (1.25 cells).
+  const bayW = 0.65;
+  const bayD = 1.25;
+  const parkingBays = [
+    { x: -footprint.w * 0.28, z: forecourt.frontOffset, w: bayW, d: bayD, rot: 0, label: "BAY 01" },
+    { x: -footprint.w * 0.16, z: forecourt.frontOffset, w: bayW, d: bayD, rot: 0, label: "BAY 02" },
+    { x: -footprint.w * 0.04, z: forecourt.frontOffset, w: bayW, d: bayD, rot: 0, label: "BAY 03" },
+  ];
+
   return {
     kind: "garage_anchor_shell",
     publicName: "Gearbox Auto Hub",
@@ -123,6 +134,7 @@ export function buildGarageAnchorShellModel(
     serviceBay,
     pylon,
     forecourt,
+    parkingBays,
     nightFloor: {
       w: footprint.w * 0.98,
       d: footprint.d * 0.92,

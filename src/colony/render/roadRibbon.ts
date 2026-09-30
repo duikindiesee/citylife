@@ -288,6 +288,125 @@ function assignWayLifts(count: number, zones: JunctionZone[]): number[] {
   return layer.map((l) => l * 0.01);
 }
 
+function projectPointToSegment(
+  p: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): { x: number; y: number; t: number; dist: number } {
+  const vx = b.x - a.x;
+  const vy = b.y - a.y;
+  const len2 = vx * vx + vy * vy || 1;
+  const t = Math.max(
+    0,
+    Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2),
+  );
+  const projX = a.x + vx * t;
+  const projY = a.y + vy * t;
+  const dist = Math.hypot(p.x - projX, p.y - projY);
+  return { x: projX, y: projY, t, dist };
+}
+
+/** Spec 173 — ROAD NETWORK CONTINUITY AND STITCHING.
+ *  Snaps and stitches candidate roadWays so all approaching spoke roads, connectors,
+ *  and avenues connect centre-line to centre-line with zero gaps.
+ *  1. End-to-end snapping: endpoints within SNAP_THRESHOLD merge to identical coordinates.
+ *  2. T-junction snapping: endpoints within SNAP_THRESHOLD of an interior segment project
+ *     perpendicularly onto the through road, and the intersection point is inserted into
+ *     the through road's path so both ways share the vertex.
+ */
+export function stitchRoadWays(ways: RoadWay[]): RoadWay[] {
+  const result: RoadWay[] = ways.map((w) => ({
+    ...w,
+    path: w.path.map((p) => ({ ...p })),
+  }));
+
+  const SNAP_THRESHOLD = 5.0; // 5 cells = 20 meters
+
+  // Pass 1: End-to-end snapping
+  for (let i = 0; i < result.length; i++) {
+    const wi = result[i]!;
+    if (wi.source === "depot-spur") continue;
+
+    for (const endI of [0, wi.path.length - 1]) {
+      const pi = wi.path[endI]!;
+      let bestD = SNAP_THRESHOLD;
+      let target: { x: number; y: number } | null = null;
+
+      for (let j = 0; j < result.length; j++) {
+        if (i === j) continue;
+        const wj = result[j]!;
+        if (wj.source === "depot-spur") continue;
+
+        for (const endJ of [0, wj.path.length - 1]) {
+          const pj = wj.path[endJ]!;
+          const d = Math.hypot(pi.x - pj.x, pi.y - pj.y);
+          if (d < bestD && d > 1e-4) {
+            bestD = d;
+            target = pj;
+          }
+        }
+      }
+
+      if (target) {
+        pi.x = target.x;
+        pi.y = target.y;
+      }
+    }
+  }
+
+  // Pass 2: T-junction snapping & vertex insertion
+  for (let i = 0; i < result.length; i++) {
+    const wi = result[i]!;
+    if (wi.source === "depot-spur") continue;
+
+    for (const endI of [0, wi.path.length - 1]) {
+      const pi = wi.path[endI]!;
+      let bestD = SNAP_THRESHOLD;
+      let bestProj: {
+        x: number;
+        y: number;
+        segIdx: number;
+        wayIdx: number;
+      } | null = null;
+
+      for (let j = 0; j < result.length; j++) {
+        if (i === j) continue;
+        const wj = result[j]!;
+        if (wj.source === "depot-spur") continue;
+
+        for (let s = 0; s < wj.path.length - 1; s++) {
+          const a = wj.path[s]!;
+          const b = wj.path[s + 1]!;
+          const proj = projectPointToSegment(pi, a, b);
+          if (proj.dist < bestD && proj.dist > 1e-4) {
+            bestD = proj.dist;
+            bestProj = { x: proj.x, y: proj.y, segIdx: s, wayIdx: j };
+          }
+        }
+      }
+
+      if (bestProj) {
+        pi.x = Math.round(bestProj.x);
+        pi.y = Math.round(bestProj.y);
+
+        const targetWay = result[bestProj.wayIdx]!;
+        const segA = targetWay.path[bestProj.segIdx]!;
+        const segB = targetWay.path[bestProj.segIdx + 1]!;
+        const dA = Math.hypot(pi.x - segA.x, pi.y - segA.y);
+        const dB = Math.hypot(pi.x - segB.x, pi.y - segB.y);
+        if (dA > 0.5 && dB > 0.5) {
+          targetWay.path.splice(bestProj.segIdx + 1, 0, {
+            x: pi.x,
+            y: pi.y,
+          });
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
 export function buildRoadRibbons(
   ways: RoadWay[],
   opts: RoadRibbonOptions,

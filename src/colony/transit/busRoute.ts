@@ -31,6 +31,7 @@ const key = (x: number, y: number) => `${x},${y}`;
 export function makeBusRoute(
   state: BusRoadState,
   anchors: Cell[],
+  options?: { preserveOrder?: boolean },
 ): BusRoute | null {
   const road = state.roadKind;
   if (anchors.length < 2) return null;
@@ -57,14 +58,20 @@ export function makeBusRoute(
     stopsUniq.push(s);
   }
   if (stopsUniq.length < 2) return null;
-  // Order into a non-crossing loop: sort by angle about the centroid of the stops.
-  const cx = stopsUniq.reduce((s, c) => s + c.x, 0) / stopsUniq.length;
-  const cy = stopsUniq.reduce((s, c) => s + c.y, 0) / stopsUniq.length;
-  const stops = [...stopsUniq].sort((a, b) => {
-    const aa = Math.atan2(a.y - cy, a.x - cx),
-      ab = Math.atan2(b.y - cy, b.x - cx);
-    return aa !== ab ? aa - ab : a.x - b.x || a.y - b.y; // stable tie-break -> deterministic
-  });
+  // Order into a non-crossing loop: preserve explicit anchor sequence if requested,
+  // otherwise sort by angle about the centroid of the stops.
+  let stops: Cell[];
+  if (options?.preserveOrder) {
+    stops = stopsUniq;
+  } else {
+    const cx = stopsUniq.reduce((s, c) => s + c.x, 0) / stopsUniq.length;
+    const cy = stopsUniq.reduce((s, c) => s + c.y, 0) / stopsUniq.length;
+    stops = [...stopsUniq].sort((a, b) => {
+      const aa = Math.atan2(a.y - cy, a.x - cx),
+        ab = Math.atan2(b.y - cy, b.x - cx);
+      return aa !== ab ? aa - ab : a.x - b.x || a.y - b.y; // stable tie-break -> deterministic
+    });
+  }
   // BFS-connect consecutive stops over the road graph, closing the loop.
   const loop: Cell[] = [];
   for (let i = 0; i < stops.length; i++) {

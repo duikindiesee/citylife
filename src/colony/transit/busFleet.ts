@@ -66,6 +66,15 @@ export interface FleetGeometry {
   bayLen: number[];
   /** Route stop positions as distances AFTER the join point, ascending, in (0, loopLen]. */
   stopsFromJoin: number[];
+  /** Original path polyline for obstacle detection and headway math */
+  loopPath?: PathData;
+}
+
+export interface FleetObstacle {
+  x: number;
+  y: number;
+  heading?: number;
+  speed?: number;
 }
 
 export type BusMode =
@@ -109,6 +118,12 @@ export interface BusState {
   dwell: number;
   /** Absolute sim-minute the bay break ends; dispatch-ineligible before it. */
   breakUntil: number;
+  /** Lateral offset from standard lane (cells). Negative shifts toward road center / overtaking lane. */
+  lateralOffset?: number;
+  /** Sim-minutes bus has been held behind a slow obstacle */
+  heldMinutes?: number;
+  /** Whether the bus is currently executing an overtaking maneuver */
+  overtaking?: boolean;
 }
 
 export interface BusFleet {
@@ -135,6 +150,9 @@ export function makeFleet(cfg: FleetConfig, seed = 1): BusFleet {
       stopsReached: 0,
       dwell: 0,
       breakUntil: 0,
+      lateralOffset: 0,
+      heldMinutes: 0,
+      overtaking: false,
     });
   return {
     buses,
@@ -196,6 +214,7 @@ export function makeFleetGeometry(
     spurLen: spur.total,
     bayLen: bays.map((b) => b.total),
     stopsFromJoin,
+    loopPath: loop,
   };
 }
 
@@ -320,6 +339,7 @@ export function stepFleet(
   nowMin: number,
   geom: FleetGeometry,
   cfg: FleetConfig,
+  obstacles?: readonly FleetObstacle[],
 ): void {
   if (!(dtMin > 0)) return;
   const tod = ((nowMin % 1440) + 1440) % 1440;
@@ -413,17 +433,6 @@ export function stepFleet(
             b.t += rem * v;
             rem = 0;
           } else if (!joinIsClear(fleet, geom, cfg)) {
-            // BUS.COLLIDE.1 — do not merge onto an occupied join.
-            //
-            // Joining set `lapT = 0` unconditionally, so a bus arriving from the spur was placed
-            // at the join whatever was already standing there. On seed 1 a coach that had LAPPED
-            // was dwelling at exactly that point, and the newcomer materialised inside it — 0.00
-            // cells. The following-distance rule then held them apart only as far as it could
-            // after the fact, which measured 0.39 cells: still one coach inside another.
-            //
-            // Waiting at the spur nose is the honest behaviour and costs nothing: the corridor is
-            // already this bus's, so nobody is blocked behind it, and it merges as soon as the
-            // coach ahead pulls away.
             b.t = geom.spurLen;
             rem = 0;
           } else {
@@ -440,6 +449,9 @@ export function stepFleet(
         }
         case "service": {
           if (b.dwell > 0) {
+            b.lateralOffset = (b.lateralOffset ?? 0) * 0.85;
+            b.overtaking = false;
+            b.heldMinutes = 0;
             if (b.dwell > rem) {
               b.dwell -= rem;
               rem = 0;
@@ -455,28 +467,103 @@ export function stepFleet(
             ? b.laps * geom.loopLen + stops[b.nextStopIdx]!
             : (b.laps + 1) * geom.loopLen;
 
-          // BUS.COLLIDE.1 (same-direction half) — do not drive into the back of the coach ahead.
-          //
-          // Departures were spaced by the dispatch gate (the next bus leaves once this one clears
-          // its 2nd stop) and NOTHING held them apart afterwards. A bus that has LAPPED can
-          // therefore land exactly on one that has just come out of the depot.
-          //
-          // Measured on main, both at the same stop, both dwelling:
-          //   seed  1  sol 448  loopLen 1094.8  bus0 lapT 1204.14 (lap 1) -> 109.34 on the loop
-          //                                     bus4 lapT  109.33 (lap 0) -> 109.33 on the loop
-          //   seed 55  sol 359  loopLen 2024.7  bus0 lapT 2049.13 (lap 1) ->  24.43
-          //                                     bus4 lapT   24.40 (lap 0) ->  24.40
-          // i.e. 0.00 cells apart, one coach inside another.
-          //
-          // NOTE this is a DIFFERENT defect from the one PR 465 fixed. There the coaches were 315
-          // cells apart along the route and only close in space, because the route doubled back on
-          // itself — no following-distance rule could ever see that. Here they are genuinely
-          // adjacent in the queue, which is exactly what a following distance is for.
-          const cap = headwayCapLapT(fleet, b, geom, cfg);
+          const coachCap = headwayCapLapT(fleet, b, geom, cfg);
+
+          // Headway & obstacle detection against player vehicle and passing-lane traffic
+          let obstacleCap = Infinity;
+          let closeObstacle = false;
+          let obstacleAheadDistance = Infinity;
+          let passingLaneClear = coachCap > b.lapT + 15.0;
+
+          const busOffset = b.lateralOffset ?? 0;
+          const busInPassingLane = busOffset <= -0.9;
+
+          if (obstacles && obstacles.length > 0 && geom.loopPath) {
+            const loopLen = geom.loopLen;
+            const busLoopS = (geom.joinT + (b.lapT % loopLen)) % loopLen;
+            for (let oi = 0; oi < obstacles.length; oi++) {
+              const obs = obstacles[oi]!;
+              const obsArc = projectPath(geom.loopPath, obs);
+              const nearestPt = samplePath(geom.loopPath, obsArc);
+              const dx = obs.x - nearestPt.x;
+              const dy = obs.y - nearestPt.y;
+              const heading = nearestPt.heading;
+              // Lateral offset of obstacle relative to road centerline:
+              // positive is left lane, negative is right/passing lane
+              const lateral = -dx * Math.sin(heading) + dy * Math.cos(heading);
+              const distToLoop = Math.hypot(dx, dy);
+
+              // Only consider obstacles within 3.5 cells (14m) of road centerline
+              if (distToLoop <= 3.5) {
+                let forward = (obsArc - busLoopS) % loopLen;
+                if (forward < 0) forward += loopLen;
+
+                // Check for oncoming or passing-lane traffic ahead
+                const isOpposing = (() => {
+                  if (obs.heading === undefined) return false;
+                  let dH = Math.abs(obs.heading - heading);
+                  while (dH > Math.PI) dH = 2 * Math.PI - dH;
+                  return dH > Math.PI / 2;
+                })();
+
+                if (isOpposing && forward > 0.4 && forward < 35.0) {
+                  passingLaneClear = false;
+                } else if (lateral <= -0.3 && forward > 0.4 && forward < 25.0) {
+                  passingLaneClear = false;
+                }
+
+                if (forward > 0.4 && forward < 16.0) {
+                  obstacleAheadDistance = Math.min(obstacleAheadDistance, forward);
+                }
+
+                // Obstacle braking: only apply when the obstacle is in the bus's current travel lane
+                const inBusLane = busInPassingLane ? lateral < 0.3 : lateral > -0.3;
+                if (inBusLane && forward > 0.4 && forward < 14.0) {
+                  // Safe buffer: keep 4.0 cells (16m) behind the vehicle
+                  const minCarGap = 4.0;
+                  const carCap = b.lapT + forward - minCarGap;
+                  obstacleCap = Math.min(obstacleCap, carCap);
+                  if (forward < minCarGap + 1.5) {
+                    closeObstacle = true;
+                  }
+                }
+              }
+            }
+          }
+
+          // Dynamic Overtaking AI:
+          // Check if overtaking lane is clear of other buses and oncoming/occupying vehicles
+          const overtakingLaneClear = passingLaneClear;
+
+          if (closeObstacle && !b.overtaking && overtakingLaneClear) {
+            b.heldMinutes = (b.heldMinutes ?? 0) + dtMin;
+            // After being slowed / held behind the car for 0.04 sim-minutes (~0.6s real time):
+            if ((b.heldMinutes ?? 0) >= 0.04) {
+              b.overtaking = true;
+            }
+          } else if (!closeObstacle && obstacleAheadDistance > 16.0) {
+            b.heldMinutes = 0;
+            b.overtaking = false;
+          }
+
+          // Lateral offset shift:
+          // In standard service: busLaneOffsetCells = 1 (left lane).
+          // While overtaking: lateralOffset shifts toward -1.8 cells (passing lane on the right).
+          const targetOffset = b.overtaking ? -1.8 : 0;
+          const currentOffset = b.lateralOffset ?? 0;
+          const offsetDelta = targetOffset - currentOffset;
+          const maxShift = dtMin * 16;
+          if (Math.abs(offsetDelta) <= maxShift) {
+            b.lateralOffset = targetOffset;
+          } else {
+            b.lateralOffset = currentOffset + Math.sign(offsetDelta) * maxShift;
+          }
+
+          const cap = Math.min(coachCap, obstacleCap);
           const target = Math.min(nextEvent, cap);
           const need = (target - b.lapT) / v;
           if (target <= b.lapT) {
-            // Held by the coach ahead: consume the tick without moving. Never reverse.
+            // Held by the coach or car ahead: consume the tick without moving. Never reverse.
             rem = 0;
           } else if (rem < need || target < nextEvent) {
             b.lapT += Math.min(rem * v, target - b.lapT);
@@ -487,6 +574,9 @@ export function stepFleet(
             if (atStop) {
               b.dwell = cfg.stopDwellMin;
               b.stopsReached++;
+              b.overtaking = false;
+              b.lateralOffset = 0;
+              b.heldMinutes = 0;
               // Route spacing: the NEXT bus may leave once this one clears its 2nd stop (or its only
               // stop on a single-stop loop).
               if (b.stopsReached >= Math.min(GATE_RELEASE_STOP, stops.length))
@@ -503,6 +593,8 @@ export function stepFleet(
                 releaseGate(b); // a bus going home can't keep spacing departures
                 b.mode = "spur-in";
                 b.t = 0;
+                b.overtaking = false;
+                b.lateralOffset = 0;
               }
             }
           }
@@ -641,10 +733,12 @@ export function busPose(
       // BUS.LANE.1 — in service the bus keeps LEFT rather than straddling the centre-line. Only
       // here: the depot apron, its bays and the single-lane spur have no oncoming traffic and no
       // lane to keep, and offsetting there would push the coach off its own manoeuvring geometry.
+      // Spec 174: Dynamic overtaking offset shifts laterally to the right/passing lane.
+      const offset = cfg.busLaneOffsetCells + (b.lateralOffset ?? 0);
       const p = lanePose(
         paths.loop,
         geom.joinT + (b.lapT % geom.loopLen),
-        cfg.busLaneOffsetCells,
+        offset,
       );
       return {
         x: p.x,

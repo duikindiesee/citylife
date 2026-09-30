@@ -4,17 +4,19 @@ import { PLAYER_WALK_SPEED_MPS } from "./scale";
 export const COLONY = {
   ownedDriving: {
     cellMetres: 4,
-    topSpeedMps: 12,
-    reverseMps: 3,
-    accelerationMps2: 4,
-    brakingMps2: 8,
-    coastDrag: 1.5,
-    steerRadiansPerSecond: 1.2,
+    topSpeedMps: 32,
+    reverseMps: 8,
+    accelerationMps2: 12,
+    brakingMps2: 18,
+    coastDrag: 1.2,
+    steerRadiansPerSecond: 2.2,
     maxFrameSeconds: 0.25,
     substepSeconds: 1 / 60,
-    halfLengthMetres: 2,
-    halfWidthMetres: 0.85,
+    halfLengthMetres: 1.8,
+    halfWidthMetres: 0.75,
     seatedEyeMetres: 1.05,
+    offRoadTopSpeedMultiplier: 0.75,
+    offRoadDrag: 0.5,
   },
   world: {
     // Spec 084 S6 — WORLD v2: ~10x the area (608 = 8x76 for clean terrain chunking). heightScale

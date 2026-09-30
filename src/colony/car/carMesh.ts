@@ -85,7 +85,19 @@ export function buildCarMesh(spec: CarSpec): THREE.Group {
     lights.push(h);
   }
 
-  g.add(body, cabin, stripe, ...wheels, ...lights);
+  // rear tail lights bar
+  const tailMat = new THREE.MeshStandardMaterial({
+    color: 0xff2222,
+    emissive: 0xff1111,
+    emissiveIntensity: 0.8,
+  });
+  const tailLight = new THREE.Mesh(
+    new THREE.BoxGeometry(0.04, 0.06, 0.36),
+    tailMat,
+  );
+  tailLight.position.set(-0.48, 0.24, 0);
+
+  g.add(body, cabin, stripe, ...wheels, ...lights, tailLight);
 
   // mount every bolt-on part as a child mesh at its socket anchor. The wheels + body sockets reshape the
   // car (tyres above, cabin chop) rather than adding a child, so they are skipped here.

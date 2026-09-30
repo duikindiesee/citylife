@@ -113,6 +113,7 @@ import {
 } from "./car/ownedDriving";
 import {
   PAINT_PALETTES,
+  defaultCarSpec,
   type PaintChannel,
   type CarStatVector,
   type CarSpec,
@@ -249,6 +250,7 @@ import {
   type AccessDecision,
   type NeighbourhoodAccessDeps,
 } from "./bot/neighbourhoodAccess";
+import { isHomeOwned, type HomeTruth } from "./home/starterProperty";
 import { furniturePriceK, FURNITURE_SHOP_ACCOUNT } from "./furnitureShop";
 import type { FurnitureKind } from "./furniture";
 import {
@@ -273,6 +275,7 @@ import {
 import {
   makeCommercialDistrict,
   type CommercialDistrict,
+  type GaragePad,
   type ShopKind,
   type ShopParcel,
 } from "./commerce/district";
@@ -299,6 +302,7 @@ import {
   type BusStopAnchor,
 } from "./transit/busStopAnchor";
 import type { RoadWay } from "./render/roadRibbon";
+import { isPointOnRoadSurface } from "./render/roadSurface";
 import { conservativeRoadRibbonBlockedCells } from "./placementValidation";
 import { findJunctionZones } from "./render/roadJunctions";
 import { attachCapPolys } from "./render/junctionCap";
@@ -1286,6 +1290,50 @@ export class ColonyRuntime {
       for (const c of cells) residentialKeys.add(`${c.x},${c.y}`);
       satellites.push(nbhd);
     }
+    // Spec 175 — WESTERN COASTAL HAMLET & COAST ROAD:
+    // Survey ocean-view parcels along the western coast and connect them with a coastal road.
+    let coastalNbhd: Neighborhood | null = null;
+    if (this.worldSeed === 4242) {
+      let bestAnchor: Cell | null = null;
+      let bestScore = -Infinity;
+      // Scan western shoreline between y = 330 and 420, x = 80 and 130
+      for (let y = 330; y <= 420; y += 8) {
+        for (let x = 80; x <= 130; x += 6) {
+          if (!cellOk(t0, x, y) || taken.has(`${x},${y}`)) continue;
+          let room = 0;
+          for (let dy = -10; dy <= 10; dy += 2) {
+            for (let dx = -10; dx <= 10; dx += 2) {
+              if (cellOk(t0, x + dx, y + dy) && !taken.has(`${x + dx},${y + dy}`)) room++;
+            }
+          }
+          if (room < 50) continue;
+          const score = room - Math.abs(y - 360) * 0.3 - x * 0.2;
+          if (score > bestScore) {
+            bestScore = score;
+            bestAnchor = { x, y };
+          }
+        }
+      }
+      if (bestAnchor) {
+        const nbhd = makeNeighborhoodAt(t0, bestAnchor, { small: true, blocked: taken });
+        if (nbhd.lots.length > 0) {
+          const name = `coast${satellites.length + 1}`;
+          for (const lot of nbhd.lots) {
+            lot.id = `${name}_${lot.id}`;
+            lot.neighborhoodKey = name;
+          }
+          this.neighborhood.parcels.push(...nbhd.parcels);
+          const cells = footprintCells(nbhd);
+          reserveParcelLand(this.sim.state, cells);
+          mergeAvenue(this.sim.state, nbhd.carriage);
+          addCells(cells);
+          addCells(nbhd.carriage);
+          addCells(nbhd.verge);
+          for (const c of cells) residentialKeys.add(`${c.x},${c.y}`);
+          coastalNbhd = nbhd;
+        }
+      }
+    }
     // Spec 114 — roads laid after parcel placement must keep the same one-cell setback from
     // floor/border footprints. Build a deterministic exclusion halo around residential parcels
     // before routing/widening trunk connectors so no final road cell can 4-neighbour touch a fence.
@@ -1440,8 +1488,20 @@ export class ColonyRuntime {
       const key = `${Math.min(i, nearest)}-${Math.max(i, nearest)}`;
       if (meshed.has(key)) continue;
       meshed.add(key);
-      paveLink(satellites[i]!.carriage, satellites[nearest]!.carriage); // the cross-link that makes it a web
+      // Snap connecting road to satellite spine endpoint if within 1 cell to ensure seamless junction alignment
+      const [from, to] = nearestPair(satellites[i]!.carriage, satellites[nearest]!.carriage);
+      const spineEnd = satellites[nearest]!.spine.at(-1);
+      const target = spineEnd && Math.hypot(to.x - spineEnd.x, to.y - spineEnd.y) <= 1.5 ? spineEnd : to;
+      const path =
+        leastCostPath(t0, from, target, {
+          slopeWeight: 0.5,
+          diagonal: true,
+          forbidBeach: true,
+          blocked: (x, y) => residentialSetbackKeys.has(`${x},${y}`),
+        }) ?? [];
+      if (path.length > 0) mergeAvenue(this.sim.state, layRoad(path, 1));
     }
+    if (coastalNbhd) satellites.push(coastalNbhd);
     // Spec 079 — survey the shop district in its reserved room; shops avoid every homestead + road.
     const blockedForShops = new Set<string>(residentialKeys);
     for (const r of this.sim.state.roads) blockedForShops.add(`${r.x},${r.y}`);
@@ -1530,6 +1590,26 @@ export class ColonyRuntime {
           }) ?? [];
         mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
       }
+      // Spec 175 — coastal road connecting the commercial high street down to the coastal hamlet
+      if (coastalNbhd && coastalNbhd.spine.length > 0) {
+        const [nearComm, nearCoast] = nearestPair(
+          this.commercialDistrict.street,
+          coastalNbhd.spine,
+        );
+        const coastalConnector =
+          leastCostPath(t, nearComm, nearCoast, {
+            slopeWeight: 0.5,
+            diagonal: true,
+            forbidBeach: true,
+            blocked: (x, y) =>
+              residentialSetbackKeys.has(`${x},${y}`) ||
+              shopCells.has(`${x},${y}`),
+            margin: 160,
+          }) ?? [];
+        if (coastalConnector.length > 0) {
+          mergeAvenue(this.sim.state, layRoad(coastalConnector, 1, "avenue"));
+        }
+      }
       mergeAvenue(this.sim.state, streetCells);
       mergeAvenue(this.sim.state, crossStreetCells);
     }
@@ -1596,11 +1676,34 @@ export class ColonyRuntime {
     const commercialStop =
       this.commercialDistrict?.garagePad?.roadTarget ??
       this.commercialDistrict?.intersection;
-    const busAnchors = [
-      hoodCentroid(this.neighborhood.carriage),
-      ...satellites.map((s) => hoodCentroid(s.carriage)),
-      ...(commercialStop ? [commercialStop] : []),
-    ];
+    const busAnchors = (() => {
+      if (this.worldSeed === 4242) {
+        // Spec 175 / User requirement: on Seed 4242, traverse the southern highway (bottom road)
+        // by ordering the perimeter circuit: Commercial -> Wood3 -> Wood1 -> Wood2 -> Coast1 -> Founders.
+        const stopsMap = new Map<string, Cell>();
+        for (const s of satellites) {
+          const c = hoodCentroid(s.carriage);
+          stopsMap.set(s.lots[0]?.neighborhoodKey ?? "", c);
+        }
+        const order: Cell[] = [];
+        if (commercialStop) order.push(commercialStop);
+        const wood3 = stopsMap.get("wood3");
+        if (wood3) order.push(wood3);
+        const wood1 = stopsMap.get("wood1");
+        if (wood1) order.push(wood1);
+        const wood2 = stopsMap.get("wood2");
+        if (wood2) order.push(wood2);
+        const coast = stopsMap.get("coast4") ?? stopsMap.get("coast1");
+        if (coast) order.push(coast);
+        order.push(hoodCentroid(this.neighborhood.carriage));
+        return order;
+      }
+      return [
+        hoodCentroid(this.neighborhood.carriage),
+        ...satellites.map((s) => hoodCentroid(s.carriage)),
+        ...(commercialStop ? [commercialStop] : []),
+      ];
+    })();
     // TRANSIT.COMPLETE.1 — the route build MOVED from here to after the spec 148 connectivity
     // repair below. Measured: 12 of 24 seeds routed NO bus loop at all, and 11 of those failed
     // because makeBusRoute ran while the road network was still FRAGMENTED. Spec 148's own comment
@@ -1840,6 +1943,7 @@ export class ColonyRuntime {
     this.busRoute = makeBusRoute(
       { roadKind: this.sim.state.roadKind },
       busAnchors,
+      this.worldSeed === 4242 ? { preserveOrder: true } : undefined,
     );
     if (this.busRoute) {
       const tr = COLONY.transit;
@@ -2141,6 +2245,10 @@ export class ColonyRuntime {
    *  over the twin's `pos` wherever it exists, so a bot asking "where am I and what is near me"
    *  would otherwise get an answer that lags the player's actual eyes. Null means "use the twin". */
   private fpViewOrigin(citizenId: string): { x: number; y: number } | null {
+    if (this.fpRidingBusId !== null && citizenId === this.fpCitizenId) {
+      const pose = this.busPoseOf(this.fpRidingBusId);
+      if (pose) return { x: pose.x, y: pose.y };
+    }
     return citizenId === this.fpCitizenId ? this.fpCameraCell : null;
   }
 
@@ -2703,23 +2811,382 @@ export class ColonyRuntime {
     this.ownedDriveInput = this.getOwnedDrivePose() ? { ...input } : {};
   }
 
+  /** Spec 172 / RACING — True if (x, y) is on a drivable road cell or within any road ribbon/junction surface. */
+  isRoadSurface(x: number, y: number): boolean {
+    return isPointOnRoadSurface(
+      x,
+      y,
+      this.sim.state.roadSet,
+      this.sim.state.roadWays ?? this.roadWays,
+    );
+  }
+
+  /** Spec 174 — Toggle visual 3D and 2D test overlay of drivable surface on seed 4242 */
+  showDrivableOverlay: boolean = false;
+
+  setShowDrivableOverlay(show: boolean): void {
+    this.showDrivableOverlay = show;
+    this.emit();
+  }
+
+  getSeed(): number {
+    return this.worldSeed;
+  }
+
+  getFleetPaths(): FleetPaths | null {
+    return this.fleetPaths;
+  }
+
+  teleportCar(x: number, y: number, heading = 0): void {
+    this.ownedDrivePose = { x, y, heading, speed: 0 };
+    if (this.sim.state.operatorCar) {
+      this.sim.state.operatorCar.cell = { x, y };
+      this.sim.state.operatorCar.heading = heading;
+    } else {
+      const spec = this.currentPlayerOwnedCarSpec() ?? defaultCarSpec("test-operator");
+      this.sim.state.operatorCar = {
+        spec,
+        cell: { x, y },
+        heading,
+      };
+    }
+    this.debugPlaceFirstPerson(x, y);
+    this.emit();
+  }
+
   private tickOwnedDrive(dt: number): void {
     const ownedCar = this.currentPlayerOwnedCarSpec();
     if (!this.getOwnedDrivePose() || !this.ownedDrivePose || !ownedCar) return;
+    const terrain = this.sim.state.terrain;
+    const size = terrain.size;
+    const activeBuses = this.busPoses();
     this.ownedDrivePose = stepOwnedDrive(
       this.ownedDrivePose,
       this.ownedDriveInput,
       deriveStats(ownedCar),
       dt,
-      (x, y) =>
-        this.sim.state.roadSet.has(`${Math.round(x)},${Math.round(y)}`) &&
-        this.blockedStepReason(x, y) === null,
+      (x, y) => {
+        const ix = Math.round(x);
+        const iy = Math.round(y);
+        if (ix < 2 || ix >= size - 2 || iy < 2 || iy >= size - 2) return false;
+        // Keep car on drivable land; deep ocean water blocks
+        if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05) return false;
+
+        // Municipal buses are solid physical obstacles (Spec 174: no phasing through buses)
+        for (let i = 0; i < activeBuses.length; i++) {
+          const b = activeBuses[i]!;
+          const dx = x - b.x;
+          const dy = y - b.y;
+          const cosB = Math.cos(b.heading);
+          const sinB = Math.sin(b.heading);
+          const along = dx * cosB + dy * sinB;
+          const across = -dx * sinB + dy * cosB;
+          // Bus is 12m long (3.0 cells, half = 1.5) and 2.5m wide (0.625 cells, half = 0.3125)
+          if (Math.abs(along) < 1.7 && Math.abs(across) < 0.52) {
+            return false;
+          }
+        }
+
+        // Public road ribbons are never blocked by parcels or setbacks
+        if (this.isRoadSurface(x, y)) return true;
+
+        // Spec 175: Commercial garage pad (forecourt apron, open service bay) is drivable
+        const garagePad = this.commercialDistrict?.garagePad;
+        if (
+          garagePad &&
+          ix >= garagePad.x &&
+          ix < garagePad.x + garagePad.w &&
+          iy >= garagePad.y &&
+          iy < garagePad.y + garagePad.h
+        ) {
+          if (this.isGaragePadDrivable(x, y, garagePad)) {
+            return true;
+          }
+          return false;
+        }
+
+        // Spec 175: Homestead driveway and front yard access for owned home is drivable
+        if (this.isHomesteadDriveway(ix, iy)) {
+          return true;
+        }
+
+        // Buildings and static structures block
+        if (
+          this.sim.state.buildings.some(
+            (b) => Math.round(b.x) === ix && Math.round(b.y) === iy,
+          )
+        )
+          return false;
+        if (
+          this.sim.state.structures.some(
+            (s) => Math.round(s.x) === ix && Math.round(s.y) === iy,
+          )
+        )
+          return false;
+        if (this.blockedStepReason(x, y) !== null) return false;
+        return true;
+      },
+      (x, y) => this.isRoadSurface(x, y),
     );
     const car = this.sim.state.operatorCar;
     if (car) {
       car.cell = { x: this.ownedDrivePose.x, y: this.ownedDrivePose.y };
       car.heading = this.ownedDrivePose.heading;
     }
+  }
+
+  /** Spec 175: Test whether a coordinate within garagePad is on the drivable forecourt or in the open bay. */
+  isGaragePadDrivable(x: number, y: number, garagePad: GaragePad): boolean {
+    const cx = garagePad.x + (garagePad.w - 1) / 2;
+    const cy = garagePad.y + (garagePad.h - 1) / 2;
+    const dx = x - cx;
+    const dy = y - cy;
+    const cos = Math.cos(garagePad.facingAngle);
+    const sin = Math.sin(garagePad.facingAngle);
+    const localX = dx * cos - dy * sin;
+    const localZ = dx * sin + dy * cos;
+
+    // Pad perimeter boundary guard
+    const halfW = (garagePad.w * 0.96) / 2;
+    const halfD = (garagePad.h * 0.96) / 2;
+    if (Math.abs(localX) > halfW || Math.abs(localZ) > halfD) return false;
+
+    // Forecourt & road-facing entrance apron (localZ > -0.4): open concrete slab
+    if (localZ > -0.4) return true;
+
+    // Open Service Bay (door 1): rolled up, open cavity allows driving into the bay
+    if (localX > 0.4 && localX < 2.8 && localZ > -2.9) {
+      return true;
+    }
+
+    // Solid showroom walls, closed bays, and rear exterior wall block
+    return false;
+  }
+
+  /** Spec 176: Test whether a coordinate within garagePad is walkable on foot (forecourt, apron, open bay, showroom floor). */
+  isGaragePadWalkable(x: number, y: number, garagePad: GaragePad): boolean {
+    const cx = garagePad.x + (garagePad.w - 1) / 2;
+    const cy = garagePad.y + (garagePad.h - 1) / 2;
+    const dx = x - cx;
+    const dy = y - cy;
+    const cos = Math.cos(garagePad.facingAngle);
+    const sin = Math.sin(garagePad.facingAngle);
+    const localX = dx * cos - dy * sin;
+    const localZ = dx * sin + dy * cos;
+
+    // Pad perimeter boundary guard
+    const halfW = (garagePad.w * 0.98) / 2;
+    const halfD = (garagePad.h * 0.98) / 2;
+    if (Math.abs(localX) > halfW || Math.abs(localZ) > halfD) return false;
+
+    // 1. Forecourt, parking bays & entrance apron: open walkable paved ground
+    if (localZ > -0.5) return true;
+
+    // 2. Open Service Bay (middle door): open walkable floor
+    if (localX > 0.3 && localX < 2.9 && localZ > -3.2) {
+      return true;
+    }
+
+    // 3. Glass Showroom: customer walking area around display cars
+    if (localX < -0.2 && localX > -halfW + 0.3 && localZ > -halfD + 0.5) {
+      // Keep clear of center plinth collision
+      const plinthDist = Math.hypot(localX - (-garagePad.w * 0.25), localZ - 0.2);
+      if (plinthDist < 1.2) return false;
+      return true;
+    }
+
+    // Structural perimeter walls and closed bays 1 and 3 block
+    return false;
+  }
+
+  /** Spec 175: Test whether a coordinate is on the operator citizen's owned homestead driveway/yard. */
+  isHomesteadDriveway(ix: number, iy: number): boolean {
+    const citizenId = this.operatorCitizenId();
+    if (!citizenId) return false;
+    const lot = this.neighborhood.lots.find((l) => l.ownerCitizenId === citizenId);
+    if (!lot) return false;
+    // Driveway, gate, or door access cells are always drivable
+    if (lot.driveway?.some((c) => c.x === ix && c.y === iy)) return true;
+    if (lot.gate && lot.gate.x === ix && lot.gate.y === iy) return true;
+    if (lot.doorX === ix && lot.doorY === iy) return true;
+    // Yard within lot bounds
+    const xHalf = (lot.w - 1) / 2;
+    const x0 = Math.min(lot.x, lot.x - xHalf);
+    const x1 = Math.max(lot.x + lot.w - 1, lot.x + xHalf);
+    const y0 = Math.min(lot.y, lot.gate ? lot.gate.y : lot.y);
+    const y1 = Math.max(
+      lot.y + lot.h - 1,
+      lot.gate ? lot.gate.y + lot.h - 1 : lot.y + lot.h - 1,
+    );
+    if (ix < x0 || ix > x1 || iy < y0 || iy > y1) return false;
+    // Solid house interior blocks
+    const hz = lot.houseZone;
+    if (
+      ix > hz.x &&
+      ix < hz.x + hz.w - 1 &&
+      iy > hz.y &&
+      iy < hz.y + hz.d - 1
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  private isGpsNavigatingHome = false;
+
+  isGpsNavigating(): boolean {
+    return this.isGpsNavigatingHome;
+  }
+
+  setGpsNavigating(active: boolean): void {
+    this.isGpsNavigatingHome = active;
+    this.emit();
+  }
+
+  getOperatorHomeTarget(): { x: number; y: number; lotId: string; name: string } | null {
+    const citizenId = this.operatorCitizenId();
+    if (!citizenId) return null;
+    const lot = this.neighborhood.lots.find((l) => l.ownerCitizenId === citizenId);
+    if (!lot) return null;
+    return {
+      x: lot.doorX ?? Math.round(lot.houseZone.x + (lot.houseZone.w - 1) / 2),
+      y: lot.doorY ?? Math.round(lot.houseZone.y + (lot.houseZone.d - 1) / 2),
+      lotId: lot.id,
+      name: `Plot ${lot.id}`,
+    };
+  }
+
+  hasOperatorHome(): boolean {
+    const target = this.getOperatorHomeTarget();
+    if (!target) return false;
+    const lot = this.neighborhood.lots.find((l) => l.id === target.lotId);
+    return !!(lot && lot.built);
+  }
+
+  claimStarterHome(target?: string | HomeTruth): boolean {
+    const citizenId = this.operatorCitizenId();
+    if (!citizenId) return false;
+
+    let targetPlotId: string | null = null;
+    let targetNeighbourhoodKey: string | null = null;
+
+    const isTruthObject = Boolean(target && typeof target === "object");
+    if (isTruthObject) {
+      const truth = target as HomeTruth;
+      // Authority-bound resolution: only an unambiguously owned truth may claim a starter home
+      if (!isHomeOwned(truth)) {
+        return false;
+      }
+      targetPlotId = truth.plotId ?? null;
+      targetNeighbourhoodKey = truth.neighbourhoodKey ?? null;
+      // An authoritative HomeTruth must specify a server-allocated plot ID or neighbourhood key.
+      // An unambiguous owned status is not an authoritative plot allocation.
+      // Fail closed if neither identifier is provided — never fall back to arbitrary open land.
+      if (!targetPlotId && !targetNeighbourhoodKey) {
+        return false;
+      }
+    } else if (typeof target === "string" && target.trim().length > 0) {
+      const clean = target.trim();
+      // Check if the string matches an existing lot ID
+      const directLot = this.neighborhood.lots.find(
+        (l) => l.id === clean || l.id === `lot-${clean}` || l.id === `lot_${clean}`,
+      );
+      if (directLot) {
+        targetPlotId = directLot.id;
+        targetNeighbourhoodKey =
+          directLot.neighborhoodKey ?? neighbourhoodKeyForLot(directLot.id);
+      } else {
+        // Treat as a neighbourhood key (e.g. "coast4", "wood1", "vale2")
+        targetNeighbourhoodKey = clean;
+      }
+    }
+
+    let lot: (typeof this.neighborhood.lots)[number] | null = null;
+
+    if (targetPlotId) {
+      // Must match the exact plot ID
+      const found = this.neighborhood.lots.find(
+        (l) =>
+          l.id === targetPlotId ||
+          l.id === `lot-${targetPlotId}` ||
+          l.id === `lot_${targetPlotId}`,
+      );
+      if (!found) {
+        return false; // Mismatched or non-existent plot ID — fail closed
+      }
+      if (targetNeighbourhoodKey) {
+        const lotKey = found.neighborhoodKey ?? neighbourhoodKeyForLot(found.id);
+        if (lotKey && lotKey !== targetNeighbourhoodKey) {
+          return false; // Neighbourhood key mismatch with plot ID — fail closed
+        }
+      }
+      if (found.ownerCitizenId && found.ownerCitizenId !== citizenId) {
+        return false; // Already owned by another citizen
+      }
+      lot = found;
+    } else if (targetNeighbourhoodKey) {
+      // Must resolve strictly within the requested neighbourhood
+      const matchingLots = this.neighborhood.lots.filter(
+        (l) =>
+          l.neighborhoodKey === targetNeighbourhoodKey ||
+          neighbourhoodKeyForLot(l.id) === targetNeighbourhoodKey,
+      );
+      if (matchingLots.length === 0) {
+        return false; // Requested neighbourhood does not exist on this island — fail closed
+      }
+      // Prefer lot already owned by this operator, or first free residential lot in this neighbourhood
+      lot =
+        matchingLots.find((l) => l.ownerCitizenId === citizenId) ??
+        matchingLots.find(
+          (l) => !l.ownerCitizenId && l.zone !== "commercial" && !l.built,
+        ) ??
+        matchingLots.find((l) => !l.ownerCitizenId && l.zone !== "commercial") ??
+        null;
+      if (!lot) {
+        return false; // No available lots in requested neighbourhood — fail closed, never fall back to unrelated lots
+      }
+    } else {
+      if (isTruthObject) {
+        return false; // Truth objects must never enter open land fallback
+      }
+      // Default open land fallback (no specific neighbourhood or plot requested)
+      lot =
+        this.neighborhood.lots.find((l) => l.ownerCitizenId === citizenId) ??
+        this.neighborhood.lots.find(
+          (l) =>
+            !l.built &&
+            !l.ownerCitizenId &&
+            l.zone !== "commercial" &&
+            !l.neighborhoodKey &&
+            !neighbourhoodKeyForLot(l.id),
+        ) ??
+        this.neighborhood.lots.find(
+          (l) =>
+            !l.ownerCitizenId &&
+            l.zone !== "commercial" &&
+            !l.neighborhoodKey &&
+            !neighbourhoodKeyForLot(l.id),
+        ) ??
+        null;
+      if (!lot) {
+        return false;
+      }
+    }
+
+    if (!lot) return false;
+
+    // Check assignment
+    if (lot.ownerCitizenId !== citizenId) {
+      const assigned = this.assignLot(citizenId, lot.id);
+      if (!assigned) return false;
+    }
+
+    if (!lot.built) {
+      this.buildHouse(lot.id);
+    }
+    this.isGpsNavigatingHome = true;
+    this.emit();
+    return true;
   }
 
   /** Spec 096 E — the land-next-to-your-car payoff. Drop the signed-in player into first person
@@ -2897,12 +3364,21 @@ export class ColonyRuntime {
         this.transitLastMin = targetMin;
         break;
       }
+      const drivePose = this.getOwnedDrivePose();
+      const opCar = this.sim.state.operatorCar;
+      const obstacles = drivePose
+        ? [{ x: drivePose.x, y: drivePose.y, heading: drivePose.heading, speed: drivePose.speed }]
+        : opCar
+          ? [{ x: opCar.cell.x, y: opCar.cell.y, heading: opCar.heading ?? 0, speed: 0 }]
+          : undefined;
+
       stepFleet(
         this.busFleet,
         step,
         this.transitLastMin!,
         this.fleetGeom,
         COLONY.transit,
+        obstacles,
       );
       this.transitLastMin = targetMin;
     }
@@ -2914,6 +3390,7 @@ export class ColonyRuntime {
         c.pos.y = pose.y;
         c.target = { x: pose.x, y: pose.y };
         c.heading = pose.heading;
+        this.fpCameraCell = { x: pose.x, y: pose.y };
       } else {
         this.fpRidingBusId = null;
       }
@@ -4417,6 +4894,7 @@ export class ColonyRuntime {
     if (!c) return false;
     c.pos.x = x;
     c.pos.y = y;
+    this.fpCameraCell = { x, y };
     this.citizens.setTarget(id, { x, y });
     this.fpGuidedTarget = null;
     this.fpTeleportRequest = {
@@ -4443,6 +4921,14 @@ export class ColonyRuntime {
     if (busAct) {
       if (busAct.action === "board") {
         this.fpRidingBusId = busAct.busId;
+        const pose = this.busPoseOf(busAct.busId);
+        if (pose) {
+          c.pos.x = pose.x;
+          c.pos.y = pose.y;
+          c.target = { x: pose.x, y: pose.y };
+          c.heading = pose.heading;
+          this.fpCameraCell = { x: pose.x, y: pose.y };
+        }
         this.fpGuidedTarget = null;
         this.fpWalkSpeed = 0;
         this.citizens.setTarget(id, { x: c.pos.x, y: c.pos.y });
@@ -4776,6 +5262,21 @@ export class ColonyRuntime {
       return "building";
     }
     const fromKey = from ? `${Math.round(from.x)},${Math.round(from.y)}` : null;
+    // Spec 176: Allow pedestrian walking on public commercial garage plot (forecourt, showroom, open bay)
+    const garagePad = this.commercialDistrict?.garagePad;
+    if (
+      garagePad &&
+      ix >= garagePad.x &&
+      ix < garagePad.x + garagePad.w &&
+      iy >= garagePad.y &&
+      iy < garagePad.y + garagePad.h
+    ) {
+      if (this.isGaragePadWalkable(x, y, garagePad)) {
+        return null; // Walkable!
+      }
+      return "building";
+    }
+
     const key = `${ix},${iy}`;
     const fromInsideOccupied = fromKey
       ? this.sim.state.occupied.has(fromKey)

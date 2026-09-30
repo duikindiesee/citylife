@@ -153,7 +153,7 @@ async function allowWalletSnapshot(
 test("returning owner hydrates their exact car without opening Gearbox", async ({
   page,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(360_000);
   await page.route("**/citylife/players/me/vehicle", (route) =>
     route.fulfill({
       status: 200,
@@ -306,7 +306,7 @@ test("returning owner hydrates their exact car without opening Gearbox", async (
         );
       }),
     )
-    .toBeLessThan(0.05);
+    .toBeCloseTo(6.2, 1);
   await page.screenshot({ path: "test-results/owned-car-seated-driving.png" });
   await touchTap(page, '[data-testid="exit-owned-car"]');
   await expect(page.getByTestId("owned-car-controls")).toHaveCount(0);

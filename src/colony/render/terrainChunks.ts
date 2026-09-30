@@ -70,6 +70,7 @@ export function buildChunkedTerrain(
       const verts = new Float32Array(w * d * 3);
       const norms = new Float32Array(w * d * 3);
       const colors = new Float32Array(w * d * 3);
+      const uvs = new Float32Array(w * d * 2);
       for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {
           const v = (y - y0) * w + (x - x0);
@@ -92,6 +93,8 @@ export function buildChunkedTerrain(
           colors[v * 3] = col.r;
           colors[v * 3 + 1] = col.g;
           colors[v * 3 + 2] = col.b;
+          uvs[v * 2] = x * 0.25;
+          uvs[v * 2 + 1] = y * 0.25;
         }
       }
       const indices: number[] = [];
@@ -108,6 +111,7 @@ export function buildChunkedTerrain(
       geo.setAttribute("position", new THREE.BufferAttribute(verts, 3));
       geo.setAttribute("normal", new THREE.BufferAttribute(norms, 3));
       geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+      geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
       geo.setIndex(indices);
       geo.computeBoundingSphere(); // per-chunk culling needs a real bound
       const mesh = new THREE.Mesh(geo, material);

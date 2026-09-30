@@ -123,33 +123,23 @@ export function FirstPersonController({
       }
     };
 
-    const handleClick = (e: MouseEvent) => {
-      // Only lock pointer if clicking directly on the 3D canvas, not UI elements!
-      if (e.target instanceof HTMLCanvasElement) {
-        document.body.requestPointerLock();
-      }
-    };
-
+    // Pointer lock for mouse look is managed explicitly via ColonyApp's FirstPersonMouseLookBar
+    // to prevent unexpected cursor trapping or breaking UI button interactions while driving.
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("click", handleClick);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("click", handleClick);
     };
   }, []);
 
   useFrame((state, delta) => {
     if (!rigidBody.current) return;
-    // Spec 131 (verify F2) — yield the camera while the cinematic fly-around owns it. The
-    // R3FCameraDirector wins over this controller only by useFrame registration order,
-    // which flips when the builder toggle remounts this component — the explicit guard
-    // makes camera ownership deterministic instead of mount-order luck.
-    if (sim?.state?.cinematic) return;
+    // Spec 131 / Spec 176 — yield the camera while the cinematic fly-around OR boot arrival cinematic owns it.
+    if (sim?.state?.cinematic || (runtime as any)?.bootCinematicActive) return;
 
     // Spec 158 — a movement trace is replaying: the walker is driven from the recorded POSE
     // instead of from live input, so the camera path (and therefore the render workload) is
@@ -177,20 +167,42 @@ export function FirstPersonController({
 
     const driving = runtime?.getOwnedDrivePose?.();
     if (driving && sim?.state?.terrain) {
-      const eyeY =
-        Math.max(0, getSmoothRoadY(sim.state.terrain, driving.x, driving.y)) +
-        ROAD_RIBBON_LIFT +
-        COLONY.ownedDriving.seatedEyeMetres;
+      const onRoad = sim.state.roadSet.has(
+        `${Math.round(driving.x)},${Math.round(driving.y)}`,
+      );
+      const groundY = onRoad
+        ? Math.max(0, getSmoothRoadY(sim.state.terrain, driving.x, driving.y)) +
+          ROAD_RIBBON_LIFT
+        : Math.max(
+            0,
+            leveledWorldY(
+              sim.state.terrain,
+              terrainLevel,
+              Math.round(driving.x),
+              Math.round(driving.y),
+            ),
+          ) + 0.02;
       const wx = toWorldX(driving.x);
       const wz = toWorldZ(driving.y);
       rigidBody.current.setTranslation(
-        { x: wx, y: eyeY - PLAYER_EYE_OFFSET, z: wz },
+        { x: wx, y: groundY + 0.5, z: wz },
         true,
       );
       rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-      rotation.current.set(0, -driving.heading - Math.PI / 2, 0);
-      camera.position.set(wx, eyeY, wz);
-      camera.quaternion.setFromEuler(rotation.current);
+
+      // Dynamic arcade chase camera: smooth distance and FOV following vehicle heading
+      const chaseDist = 6.2;
+      const chaseHeight = 2.4 + Math.min(2.0, Math.abs(driving.speed) * 0.04);
+      const camX = wx - Math.cos(driving.heading) * chaseDist;
+      const camZ = wz - Math.sin(driving.heading) * chaseDist;
+      const camY = groundY + chaseHeight;
+
+      camera.position.set(camX, camY, camZ);
+      camera.lookAt(
+        wx + Math.cos(driving.heading) * 4,
+        groundY + 1.2,
+        wz + Math.sin(driving.heading) * 4,
+      );
       if (runtime) runtime.fpCameraCell = { x: driving.x, y: driving.y };
       return;
     }

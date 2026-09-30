@@ -37,10 +37,12 @@ function GlbTurntableCarModel({
   url,
   scale = 0.56,
   rotationOffset = [0, -Math.PI / 2, 0],
+  paint,
 }: {
   url: string;
   scale?: number;
   rotationOffset?: readonly [number, number, number];
+  paint?: { body?: number; cabin?: number; accent?: number };
 }) {
   const { scene } = useGLTF(url);
   const cloned = useMemo(() => {
@@ -49,10 +51,37 @@ function GlbTurntableCarModel({
       if ((node as THREE.Mesh).isMesh) {
         node.castShadow = true;
         node.receiveShadow = true;
+        const mesh = node as THREE.Mesh;
+        if (mesh.material) {
+          const raw = Array.isArray(mesh.material)
+            ? mesh.material
+            : [mesh.material];
+          const clonedMats = raw.map((m) => {
+            const cm = m.clone();
+            const mat = cm as any;
+            if (/carpaint/i.test(cm.name) && paint?.body !== undefined) {
+              mat.color?.set(paint.body);
+            } else if (
+              /targa|roof|cabin/i.test(cm.name) &&
+              paint?.cabin !== undefined
+            ) {
+              mat.color?.set(paint.cabin);
+            } else if (
+              /alloy|rim|accent/i.test(cm.name) &&
+              paint?.accent !== undefined
+            ) {
+              mat.color?.set(paint.accent);
+            }
+            return cm;
+          });
+          mesh.material = Array.isArray(mesh.material)
+            ? clonedMats
+            : clonedMats[0]!;
+        }
       }
     });
     return c;
-  }, [scene]);
+  }, [scene, paint?.body, paint?.cabin, paint?.accent]);
 
   // Retain loader ownership: do not dispose shared cache-owned geometries/materials.
   // Explicitly suppress R3F automatic disposal via dispose={null}.
@@ -86,7 +115,13 @@ function ProceduralTurntableCarModel({ spec }: { spec: CarSpec }) {
   return <primitive object={car} scale={CAR_PRESENTATION_SCALE} />;
 }
 
-function TurntableCar({ vehicle }: { vehicle: ShowroomVehicle }) {
+function TurntableCar({
+  vehicle,
+  paint,
+}: {
+  vehicle: ShowroomVehicle;
+  paint?: { body?: number; cabin?: number; accent?: number };
+}) {
   const group = useRef<THREE.Group>(null);
   useFrame((_, delta) => {
     if (group.current) group.current.rotation.y += delta * TURNTABLE_RATE;
@@ -158,9 +193,19 @@ function TurntableCar({ vehicle }: { vehicle: ShowroomVehicle }) {
               url={vehicle.glbUrl}
               scale={vehicle.presentationScale}
               rotationOffset={vehicle.rotationOffset}
+              paint={paint}
             />
           ) : (
-            <ProceduralTurntableCarModel spec={vehicle.spec} />
+            <ProceduralTurntableCarModel
+              spec={{
+                ...vehicle.spec,
+                paint: {
+                  body: paint?.body ?? vehicle.spec.paint.body,
+                  cabin: paint?.cabin ?? vehicle.spec.paint.cabin,
+                  accent: paint?.accent ?? vehicle.spec.paint.accent,
+                },
+              }}
+            />
           )}
         </Suspense>
       </group>
@@ -273,9 +318,11 @@ function StudioRoom() {
 export function ShowroomView({
   vehicle,
   zoom,
+  paint,
 }: {
   vehicle: ShowroomVehicle;
   zoom: number;
+  paint?: { body?: number; cabin?: number; accent?: number };
 }) {
   return (
     <Canvas
@@ -301,7 +348,7 @@ export function ShowroomView({
       <ShowroomSky />
       <ShowroomEnvironment />
       <StudioRoom />
-      <TurntableCar vehicle={vehicle} />
+      <TurntableCar vehicle={vehicle} paint={paint} />
       <ShowroomCameraRig zoom={zoom} />
     </Canvas>
   );

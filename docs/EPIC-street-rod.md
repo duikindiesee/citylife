@@ -251,6 +251,15 @@ Every research doc and working plan captured so the research survives the cron j
 - **Road foundation:** road grading PR **#89 / #98** (spec 095 — terrain grades up to the road ribbon, render-only height override).
 - **Verification:** 120-seed spur sweep (110→116/120, no regression), 8-seed walk-reachability (`cellOk` true), demo seed 4242 regression pinned, node tests (`openBonnet.test.ts`, `tunePoints.test.ts`, `rallySpur.test.ts`), tsc clean + suite green on every commit, live `window.__colony` checks on :5191.
 
+### In Review (PR #549 — Specs 173–176, Task 1907c3ce-a1d0-4134-8c15-7c436d33550d)
+
+- **Luminous Showroom Pavilion (Spec 176):** High-ceiling glass curtain walls, true dynamic 3D interior PointLights, glowing ceiling LED lightbox panels, reflective terrazzo floor, warm wood-slat feature wall, and forecourt floodlight poles.
+- **Paved Driveway Apron & Road Integration (Spec 176):** Direct paved asphalt apron connecting municipal roads to the showroom, 3 marked customer parking bays (`BAY 01`, `02`, `03`), continuous road flora clearance (no trees on carriageways), and fully walkable commercial plot (`isGaragePadWalkable`).
+- **Smooth 9/10 Onboarding Journey & GPS (Spec 175):** Progressive homestead acquisition dialog with immediate building placement, in-car GPS navigation with dynamic road waypoints, authentic sports car showroom models, and garage drive-in clearance.
+- **Solid Bus Collision & Reactive Transit AI (Spec 174):** Solid municipal bus collision boundaries, transit AI deceleration behind player vehicles and autonomous overtaking, and drivable surface validator overlay.
+- **Glass Showroom, Custom Paint & Mobile Controls (Spec 173):** Dynamic car paint customizer with palette chips, mobile racing touch controls, night lighting, and terrain textures.
+- **Cinematic Boot Flythrough (Spec 176):** Dual-mode startup camera sequence (new player road flythrough to showroom entrance; returning player aerial settle behind owned car).
+
 ### Remains (in-lane, not gated)
 
 - **Showroom vehicle selection — Yellow Fiat X1/9 GLB (modern_car.glb / Karoo X19 Targa, spec 169):** Authored 3D model (`modern_car.glb` placed at `public/assets/citylife/cars/fiat_x19.glb`) added to `SHOWROOM_VEHICLES` as `showroom:karoo-x19-targa` (fictional Karoo Motors marque). Rendered on the rotating showroom plinth in `ShowroomView.tsx` with scaling (0.56) and orientation, selectable via carousel overlay.

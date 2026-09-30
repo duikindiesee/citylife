@@ -9,6 +9,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -39,7 +40,8 @@ import {
   type AcquireOutcome,
 } from "../car/carAcquisition";
 import { getAuthClient } from "../authClient";
-import { hasStoredCar, saveCar } from "../car/garageStore";
+import { hasStoredCar, saveCar, loadCar } from "../car/garageStore";
+import { PAINT_PALETTES } from "../car/carSpec";
 import type { PlayerWalletStatus } from "../wallet/playerWallet";
 import type { ColonyRuntime } from "../runtime";
 
@@ -119,6 +121,9 @@ export function ShowroomOverlay({
   // The per-vehicle outcome of the last acquire attempt (keyed by vehicleKey), and which key is in flight.
   const [outcomes, setOutcomes] = useState<Record<string, AcquireOutcome>>({});
   const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [customPaints, setCustomPaints] = useState<
+    Record<string, { body: number; cabin: number; accent: number }>
+  >({});
 
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -239,6 +244,59 @@ export function ShowroomOverlay({
   const outcome = outcomes[vehicleKey];
   const isPending = pendingKey === vehicleKey;
 
+  const currentPaint = useMemo(() => {
+    if (customPaints[vehicleKey]) return customPaints[vehicleKey]!;
+    const activeCitizenId =
+      runtime?.operatorCitizenId() ??
+      (currentAccountKey ? String(currentAccountKey) : "citizen-me");
+    const stored = hasStoredCar(activeCitizenId)
+      ? loadCar(activeCitizenId)
+      : null;
+    if (
+      stored &&
+      (stored.id === vehicle.spec.id ||
+        stored.id.replace(/^showroom:/, "") ===
+          vehicle.spec.id.replace(/^showroom:/, ""))
+    ) {
+      return stored.paint;
+    }
+    return vehicle.spec.paint;
+  }, [
+    currentAccountKey,
+    customPaints,
+    runtime,
+    vehicle.spec.id,
+    vehicle.spec.paint,
+    vehicleKey,
+  ]);
+
+  const selectBodyPaint = useCallback(
+    (color: number) => {
+      const nextPaint = { ...currentPaint, body: color };
+      setCustomPaints((prev) => ({
+        ...prev,
+        [vehicleKey]: nextPaint,
+      }));
+      // If the vehicle is already owned, immediately persist the chosen color
+      if (isOwned) {
+        if (runtime) {
+          runtime.setCarPaint("body", color);
+        } else {
+          const activeCitizenId = currentAccountKey
+            ? String(currentAccountKey)
+            : "citizen-me";
+          const stored = hasStoredCar(activeCitizenId)
+            ? loadCar(activeCitizenId)
+            : null;
+          if (stored) {
+            saveCar(activeCitizenId, { ...stored, paint: nextPaint });
+          }
+        }
+      }
+    },
+    [currentAccountKey, currentPaint, isOwned, runtime, vehicleKey],
+  );
+
   const acquire = useCallback(() => {
     if (
       !acquireEnabled ||
@@ -307,10 +365,14 @@ export function ShowroomOverlay({
         const targetCitizenId =
           currentCitizenId ??
           (currentUserId ? String(currentUserId) : "citizen-me");
+        const specToSave = {
+          ...confirmed.spec,
+          paint: customPaints[key] ?? currentPaint ?? confirmed.spec.paint,
+        };
         if (runtime) {
-          runtime.acquireCar(confirmed.spec, targetCitizenId);
+          runtime.acquireCar(specToSave, targetCitizenId);
         } else {
-          saveCar(targetCitizenId, confirmed.spec);
+          saveCar(targetCitizenId, specToSave);
         }
 
         setOwned(truth);
@@ -319,6 +381,8 @@ export function ShowroomOverlay({
     });
   }, [
     acquireEnabled,
+    currentPaint,
+    customPaints,
     isOwned,
     onWalletRefresh,
     offerStatus,
@@ -369,7 +433,11 @@ export function ShowroomOverlay({
       data-testid="showroom-overlay"
       style={{ position: "fixed", inset: 0, zIndex: 80, background: "#0a0f16" }}
     >
-      <ShowroomView vehicle={vehicle} zoom={zoom} />
+      <ShowroomView
+        vehicle={vehicle}
+        zoom={zoom}
+        paint={currentPaint}
+      />
 
       <div
         style={{
@@ -493,6 +561,75 @@ export function ShowroomOverlay({
                 Retry
               </button>
             )}
+        </div>
+        {/* Paint customisation */}
+        <div
+          data-testid="showroom-paint-selector"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 5,
+            padding: "6px 8px",
+            background: "rgba(14,24,38,0.7)",
+            borderRadius: 6,
+            border: "1px solid #1a3048",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span style={{ color: "#7ab0d0", fontSize: 11, fontWeight: 700 }}>
+              🎨 Paint job
+            </span>
+            {isOwned && (
+              <span style={{ color: "#9fd4a6", fontSize: 10, fontWeight: 700 }}>
+                ✓ Saved to car
+              </span>
+            )}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 5,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            {PAINT_PALETTES.body.map((c) => {
+              const hex = `#${c.toString(16).padStart(6, "0")}`;
+              const isSelected = c === currentPaint.body;
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  data-testid={`showroom-paint-${hex.slice(1)}`}
+                  data-build-action={`showroom-paint-${hex.slice(1)}`}
+                  title={`Select paint ${hex}`}
+                  aria-label={`Select paint ${hex}`}
+                  onClick={() => selectBodyPaint(c)}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 4,
+                    cursor: "pointer",
+                    background: hex,
+                    border: isSelected
+                      ? "2px solid #ffffff"
+                      : "1px solid rgba(255,255,255,0.25)",
+                    boxShadow: isSelected
+                      ? "0 0 6px rgba(255,255,255,0.7), 0 0 2px #fff"
+                      : "none",
+                    transform: isSelected ? "scale(1.15)" : "scale(1)",
+                    transition: "transform 0.15s ease",
+                  }}
+                />
+              );
+            })}
+          </div>
         </div>
         <span
           data-testid="showroom-card-price"

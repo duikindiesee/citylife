@@ -27,6 +27,10 @@ Reviewers (and the MoJoJo merge gate) treat a missing doc update the same as a m
 standard: someone could resume the game from `docs/` alone, with every chat log and out-of-repo note
 gone.
 
+## Task management & focus
+
+- When the user posts feedback, observations, bugs, or requests that are not part of the active focus, record a task immediately in the knowledge base/task backlog so it is preserved without causing distraction from the active goal.
+
 ## Architecture rules (do not break these)
 
 - **`src/engine/` is framework-agnostic.** No React, no three.js, no DOM imports. It must run in tests (node) and, later, in a Web Worker. The renderer and UI depend on the engine, never the reverse.

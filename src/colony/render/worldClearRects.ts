@@ -30,6 +30,8 @@ export interface ClearRectState {
     garagePad?: { x: number; y: number; w: number; h: number } | null;
   } | null;
   busDepotPad?: { x: number; y: number; w: number; h: number } | null;
+  roads?: readonly { x: number; y: number }[] | null;
+  roadSet?: ReadonlySet<string> | null;
   roadWays?: unknown;
   structures?: unknown;
 }
@@ -67,6 +69,42 @@ export function worldClearRects(state: ClearRectState): ClearRect[] {
     });
   }
 
+  // Spec 176 — Roadways & Road Network: trees growing inside the carriageway (operator report:
+  // "tree in middle of the road") are a severe navigation defect. Clear all road cells and way corridors
+  // with a safety buffer so no tree or foliage can spawn within the travel lanes.
+  if (state.roadSet && state.roadSet.size > 0) {
+    for (const key of state.roadSet) {
+      const idx = key.indexOf(",");
+      if (idx !== -1) {
+        const x = Number(key.slice(0, idx));
+        const y = Number(key.slice(idx + 1));
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          rects.push({ x0: x - 1, y0: y - 1, x1: x + 1, y1: y + 1 });
+        }
+      }
+    }
+  } else if (state.roads && state.roads.length > 0) {
+    for (const r of state.roads) {
+      rects.push({ x0: r.x - 1, y0: r.y - 1, x1: r.x + 1, y1: r.y + 1 });
+    }
+  }
+
+  if (Array.isArray(state.roadWays)) {
+    for (const rw of state.roadWays as { path?: { x: number; y: number }[]; width?: number }[]) {
+      if (Array.isArray(rw.path)) {
+        const r = Math.max(1, Math.ceil((rw.width ?? 3) / 2));
+        for (const pt of rw.path) {
+          rects.push({
+            x0: Math.floor(pt.x - r),
+            y0: Math.floor(pt.y - r),
+            x1: Math.ceil(pt.x + r),
+            y1: Math.ceil(pt.y + r),
+          });
+        }
+      }
+    }
+  }
+
   // Spec 149 — the bus depot pad, or plants grow across the apron and half-bury the parked fleet.
   const depot = state.busDepotPad;
   if (depot) {
@@ -91,17 +129,19 @@ export function worldClearRects(state: ClearRectState): ClearRect[] {
 
   // Spec 144 — the highland route is a footpath, not a road, so it never enters `roads`. Clear its
   // tread and the mountain dais explicitly or plants hide the destination and grow through the gravel.
-  for (const cell of buildIronworkHikePath(state as never)) {
-    rects.push({ x0: cell.x, y0: cell.y, x1: cell.x, y1: cell.y });
-  }
-  const pillar = ironworkPillarCell(state.structures as never);
-  if (pillar) {
-    rects.push({
-      x0: pillar.x - 3,
-      y0: pillar.y - 3,
-      x1: pillar.x + 3,
-      y1: pillar.y + 3,
-    });
+  if (Array.isArray(state.structures)) {
+    for (const cell of buildIronworkHikePath(state as never)) {
+      rects.push({ x0: cell.x, y0: cell.y, x1: cell.x, y1: cell.y });
+    }
+    const pillar = ironworkPillarCell(state.structures as never);
+    if (pillar) {
+      rects.push({
+        x0: pillar.x - 3,
+        y0: pillar.y - 3,
+        x1: pillar.x + 3,
+        y1: pillar.y + 3,
+      });
+    }
   }
 
   return rects;
