@@ -17,9 +17,13 @@ const keys: Record<string, keyof OwnedDriveInput> = {
 export function OwnedCarControls({
   runtime,
   suspended,
+  onOpenRoadMap,
+  onOpenChooseHome,
 }: {
   runtime: ColonyRuntime;
   suspended: boolean;
+  onOpenRoadMap?: () => void;
+  onOpenChooseHome?: () => void;
 }) {
   const pose = runtime.getOwnedDrivePose();
   const active = !!pose && !suspended;
@@ -105,6 +109,42 @@ export function OwnedCarControls({
   const onRoad = pose ? runtime.isRoadSurface(pose.x, pose.y) : true;
   const speedKmH = Math.round(Math.abs(pose!.speed) * 3.6);
 
+  const hasHome = runtime.hasOperatorHome();
+  const homeTarget = runtime.getOperatorHomeTarget();
+  const isNavigating = runtime.isGpsNavigating();
+
+  let distanceMeters = 0;
+  let navArrow = "⬆️";
+  let navInstruction = "Head straight";
+  let isNearHome = false;
+
+  if (pose && homeTarget) {
+    const dx = homeTarget.x - pose.x;
+    const dy = homeTarget.y - pose.y;
+    const distCells = Math.hypot(dx, dy);
+    distanceMeters = Math.round(distCells * 4);
+    isNearHome = distCells <= 3.5;
+
+    const targetAngle = Math.atan2(dx, -dy);
+    let diff = targetAngle - pose.heading;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+
+    if (Math.abs(diff) < Math.PI / 6) {
+      navArrow = "⬆️";
+      navInstruction = `${distanceMeters}m straight ahead`;
+    } else if (diff >= Math.PI / 6 && diff < (2 * Math.PI) / 3) {
+      navArrow = diff < Math.PI / 3 ? "↗️" : "➡️";
+      navInstruction = `Turn right in ${distanceMeters}m`;
+    } else if (diff <= -Math.PI / 6 && diff > (-2 * Math.PI) / 3) {
+      navArrow = diff > -Math.PI / 3 ? "↖️" : "⬅️";
+      navInstruction = `Turn left in ${distanceMeters}m`;
+    } else {
+      navArrow = "⬇️";
+      navInstruction = `Make a U-turn (${distanceMeters}m)`;
+    }
+  }
+
   return (
     <section
       aria-label="Owned car controls"
@@ -124,7 +164,7 @@ export function OwnedCarControls({
         boxSizing: "border-box",
       }}
     >
-      {/* Top / Center HUD: Status Badge */}
+      {/* Top / Center HUD: Status Badge & Mission / GPS Bar */}
       <div
         style={{
           alignSelf: "center",
@@ -133,7 +173,7 @@ export function OwnedCarControls({
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 6,
+          gap: 8,
         }}
       >
         <div
@@ -194,7 +234,133 @@ export function OwnedCarControls({
           >
             Park & Exit ✕
           </button>
+          {onOpenRoadMap && (
+            <button
+              data-testid="open-drivable-overlay"
+              onClick={onOpenRoadMap}
+              style={{
+                background: "rgba(0, 240, 255, 0.18)",
+                border: "1px solid rgba(0, 240, 255, 0.5)",
+                color: "#00f0ff",
+                borderRadius: 14,
+                padding: "4px 12px",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 700,
+                pointerEvents: "auto",
+              }}
+              title="Test & visualize drivable road actual on seed 4242"
+            >
+              🛣️ Road Map
+            </button>
+          )}
         </div>
+
+        {/* Spec 175: Onboarding Mission Banner if player has not claimed a home yet */}
+        {!hasHome && onOpenChooseHome && (
+          <div
+            data-testid="onboarding-claim-home-banner"
+            onClick={onOpenChooseHome}
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(255, 210, 90, 0.22), rgba(15, 25, 40, 0.94))",
+              backdropFilter: "blur(14px)",
+              border: "1.5px solid rgba(255, 210, 90, 0.8)",
+              boxShadow: "0 6px 24px rgba(255, 210, 90, 0.25)",
+              color: "#ffd25a",
+              padding: "8px 18px",
+              borderRadius: 20,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+          >
+            <span>
+              🏡 <strong>Mission:</strong> Claim Your Homestead
+            </span>
+            <span
+              style={{
+                background: "#ffd25a",
+                color: "#0a101d",
+                padding: "3px 10px",
+                borderRadius: 12,
+                fontWeight: 800,
+                fontSize: 12,
+              }}
+            >
+              Select Plot →
+            </span>
+          </div>
+        )}
+
+        {/* Spec 175: Active In-Car GPS Navigation HUD to Owned Homestead */}
+        {hasHome && isNavigating && homeTarget && (
+          <div
+            data-testid="driving-home-gps-hud"
+            style={{
+              background: isNearHome
+                ? "linear-gradient(135deg, rgba(80, 255, 120, 0.25), rgba(10, 30, 20, 0.95))"
+                : "linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(10, 25, 40, 0.95))",
+              backdropFilter: "blur(14px)",
+              border: `1.5px solid ${isNearHome ? "rgba(80, 255, 120, 0.8)" : "rgba(0, 240, 255, 0.7)"}`,
+              boxShadow: `0 6px 24px ${isNearHome ? "rgba(80, 255, 120, 0.3)" : "rgba(0, 240, 255, 0.25)"}`,
+              color: isNearHome ? "#50ff78" : "#00f0ff",
+              padding: "8px 18px",
+              borderRadius: 20,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              fontWeight: 700,
+              fontSize: 13,
+            }}
+          >
+            {isNearHome ? (
+              <>
+                <span>
+                  🎉 <strong>ARRIVED AT HOMESTEAD!</strong> Welcome home
+                </span>
+                <button
+                  data-testid="park-at-home-btn"
+                  onClick={() => runtime.exitOwnedCar()}
+                  style={{
+                    background: "#50ff78",
+                    color: "#0a1d10",
+                    border: "none",
+                    borderRadius: 12,
+                    padding: "4px 12px",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  🅿️ Park & Walk In
+                </button>
+              </>
+            ) : (
+              <>
+                <span style={{ fontSize: 16 }}>{navArrow}</span>
+                <span>
+                  🏡 <strong>GPS:</strong> {homeTarget.name}
+                </span>
+                <span
+                  style={{
+                    fontFamily: "monospace",
+                    fontSize: 14,
+                    color: "#ffffff",
+                  }}
+                >
+                  {distanceMeters}m
+                </span>
+                <span style={{ fontSize: 11, opacity: 0.85, color: "#a0e0ff" }}>
+                  {navInstruction}
+                </span>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Bottom Split Controls: Ergonomic Left (Steering) and Right (Throttle/Brake) Clusters */}

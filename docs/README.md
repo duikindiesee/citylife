@@ -34,6 +34,9 @@ repo, on protected `main` (PRs + review only).
 8. **[specs/167-local-neighbourhood-console-and-bot-households.md](specs/167-local-neighbourhood-console-and-bot-households.md)** — the proposed local connector, server-side vault and DNS boundary, and the rule that a bot household fits its authoritative building plan.
 9. **[specs/169-showroom-fiat-x19-selection.md](specs/169-showroom-fiat-x19-selection.md)** — Showroom vehicle selection for the yellow Fiat X1/9 GLB (Karoo X19 Targa) on the rotating turntable plinth.
 10. **[specs/171-auto-load-showroom-and-kco-acquisition.md](specs/171-auto-load-showroom-and-kco-acquisition.md)** — Auto-load showroom for new players without a car and authoritative KCO vehicle acquisition (PLAYER.CAR.1.S5).
+11. **[specs/173-glass-showroom-car-paint-and-mobile-racing-controls.md](specs/173-glass-showroom-car-paint-and-mobile-racing-controls.md)** — Architectural glass showroom, dynamic car paint customizer, and mobile racing controls.
+12. **[specs/174-bus-collision-reactive-transit-ai-and-drivable-test-overlay.md](specs/174-bus-collision-reactive-transit-ai-and-drivable-test-overlay.md)** — Solid municipal bus collision, reactive transit AI with deceleration and autonomous overtaking, and drivable surface validator overlay.
+13. **[specs/175-smooth-onboarding-homestead-acquisition-gps-and-garage-drive-in.md](specs/175-smooth-onboarding-homestead-acquisition-gps-and-garage-drive-in.md)** — Smooth onboarding journey, homestead acquisition popup with immediate building, in-car GPS navigation, and garage drive-in clearance.
 
 ---
 

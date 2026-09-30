@@ -87,6 +87,7 @@ import { R3FOperatorCar } from "./R3FOperatorCar";
 import { R3FRallyNameplates } from "./R3FRallyNameplates";
 import { R3FCameraDirector } from "./R3FCameraDirector";
 import { R3FCommercialDistrict } from "./R3FCommercialDistrict";
+import { R3FDrivableOverlay } from "./R3FDrivableOverlay";
 import { R3FDarkCity } from "./R3FDarkCity";
 import { R3FIronworkPillar } from "./R3FIronworkPillar";
 import { isPublicSafe } from "../newcomers";
@@ -235,6 +236,105 @@ function ZoneManager({
       <group name="zone-overlays" visible={state.zonesVisible !== false}>
         {buildings.overlays}
       </group>
+    </group>
+  );
+}
+
+// Spec 175: 3D Homestead GPS Waypoint Beacon
+function R3FHomeGpsBeacon({
+  sim,
+  runtime,
+  terrainLevel,
+}: {
+  sim: ColonySim;
+  runtime?: SimBridge;
+  terrainLevel?: Map<number, number>;
+}) {
+  const beaconRef = useRef<THREE.Group>(null);
+  const ringRef = useRef<THREE.Mesh>(null);
+
+  const sig = useSimSignal(runtime, () => {
+    const rt = runtime as any;
+    const isNav = rt?.isGpsNavigating?.() ?? false;
+    const target = rt?.getOperatorHomeTarget?.();
+    return `${isNav}:${target ? `${target.x},${target.y}` : "none"}`;
+  });
+
+  const rt = runtime as any;
+  const isNavigating = rt?.isGpsNavigating?.() ?? false;
+  const homeTarget = rt?.getOperatorHomeTarget?.();
+
+  useFrame((state, delta) => {
+    if (!beaconRef.current || !isNavigating || !homeTarget) return;
+    if (ringRef.current) {
+      ringRef.current.rotation.z += delta * 1.5;
+      const s = 1 + Math.sin(state.clock.elapsedTime * 3) * 0.15;
+      ringRef.current.scale.set(s, s, 1);
+    }
+  });
+
+  if (!isNavigating || !homeTarget) return null;
+
+  const t = sim.state.terrain;
+  const N = t.size;
+  const wx = (homeTarget.x - N / 2) * 4;
+  const wz = (homeTarget.y - N / 2) * 4;
+  const wy = Math.max(
+    0,
+    leveledWorldY(
+      t,
+      terrainLevel,
+      Math.round(homeTarget.x),
+      Math.round(homeTarget.y),
+    ),
+  );
+
+  return (
+    <group
+      ref={beaconRef}
+      name="home-gps-beacon"
+      position={[wx, wy, wz]}
+    >
+      {/* Vertical light beam stretching into the sky */}
+      <mesh position={[0, 16, 0]}>
+        <cylinderGeometry args={[0.3, 0.6, 32, 16, 1, true]} />
+        <meshStandardMaterial
+          color={0x00f0ff}
+          emissive={0x00d0ff}
+          emissiveIntensity={1.2}
+          transparent
+          opacity={0.35}
+          side={THREE.DoubleSide}
+          depthWrite={false}
+        />
+      </mesh>
+
+      {/* Ground pulsing beacon rings */}
+      <mesh
+        ref={ringRef}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, 0.08, 0]}
+      >
+        <ringGeometry args={[0.8, 1.4, 24]} />
+        <meshStandardMaterial
+          color={0x50ff78}
+          emissive={0x50ff78}
+          emissiveIntensity={1.0}
+          transparent
+          opacity={0.65}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+
+      {/* Center glowing flare */}
+      <mesh position={[0, 0.6, 0]}>
+        <sphereGeometry args={[0.45, 12, 12]} />
+        <meshStandardMaterial
+          color={0xffffff}
+          emissive={0x50ff78}
+          emissiveIntensity={1.5}
+        />
+      </mesh>
     </group>
   );
 }
@@ -720,6 +820,12 @@ function R3FWorld({
             <R3FRallyNameplates sim={sim} runtime={runtime} refs={avatarRefs} />
             <R3FCameraDirector sim={sim} />
             <R3FCommercialDistrict
+              sim={sim}
+              runtime={runtime}
+              terrainLevel={debouncedTerrainLevel}
+            />
+            <R3FDrivableOverlay sim={sim} runtime={runtime} />
+            <R3FHomeGpsBeacon
               sim={sim}
               runtime={runtime}
               terrainLevel={debouncedTerrainLevel}

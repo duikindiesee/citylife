@@ -98,6 +98,7 @@ import { ShowroomOverlay } from "./ShowroomOverlay";
 import { StarterPropertyOverlay } from "./StarterPropertyOverlay";
 import { DriveHomeOverlay } from "./DriveHomeOverlay";
 import { OwnedCarControls } from "./OwnedCarControls";
+import { DrivableRoadTestModal } from "./DrivableRoadTestModal";
 import { RoadmapPanel } from "./RoadmapPanel";
 import { gamepadRaceInput } from "../racing/race";
 import {
@@ -792,6 +793,14 @@ export function ColonyApp() {
   const [homeOpen, setHomeOpen] = useState(false);
   // PLAYER.HOME.1D.S2 — the guided mobile drive out of the dealership to the owned home + home garage.
   const [driveHomeOpen, setDriveHomeOpen] = useState(false);
+  // Spec 174 — Drivable road surface validator & 2D/3D test overlay
+  const [drivableModalOpen, setDrivableModalOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      const q = window.location.search;
+      return q.includes("drivable=1") || q.includes("testroads=1");
+    }
+    return false;
+  });
   // PLAYER.FLAG.S3 — the new-player-journey entitlement. `null` = not yet evaluated (treated as
   // OFF), so the gate fails closed while loading. Kept in memory ONLY — never persisted — so a
   // positive entitlement can never outlive the authenticated session or bleed across a switch.
@@ -1937,6 +1946,10 @@ export function ColonyApp() {
           walletLabel={playerWalletText}
           onWalletRefresh={refreshPlayerWallet}
           currency={ui.bank.currency}
+          onHomePurchased={(lotId) => {
+            runtime.claimStarterHome(lotId);
+            setHomeOpen(false);
+          }}
         />
       )}
       {/* PLAYER.HOME.1D.S2 — enter the guided drive out of the dealership to the owned home. Gated on the
@@ -1946,6 +1959,13 @@ export function ColonyApp() {
           driveHomeOpen can never mount it and a mid-session revocation (account switch) closes it. */}
       {driveHomeOpen && newPlayerJourneyEnabled && (
         <DriveHomeOverlay onClose={() => setDriveHomeOpen(false)} />
+      )}
+      {drivableModalOpen && (
+        <DrivableRoadTestModal
+          runtime={runtime}
+          sim={runtime.sim}
+          onClose={() => setDrivableModalOpen(false)}
+        />
       )}
       {/* The player map deliberately shows only this player's exact local position and bus state.
           Simulated resident names and coarse location readouts are not multiplayer presence. */}
@@ -4236,7 +4256,9 @@ export function ColonyApp() {
             the fail-closed new-player-journey entitlement: hidden (absent from the DOM, not merely
             styled away) until operator UAT, so the legacy world play is preserved when OFF or a read
             fails. */}
+        {/* Spec 175: Bottom-right corner action rail is suppressed when driving, keeping mobile drive pedals clear and uncluttered */}
         {!builderActive &&
+          !runtime.getOwnedDrivePose() &&
           !showroomOpen &&
           !homeOpen &&
           !driveHomeOpen &&
@@ -4254,6 +4276,7 @@ export function ColonyApp() {
             new-player-journey entitlement AND its own dark build-env flag: hidden until operator UAT,
             so the legacy entry is preserved when OFF or an entitlement read fails. */}
         {!builderActive &&
+          !runtime.getOwnedDrivePose() &&
           !showroomOpen &&
           !homeOpen &&
           newPlayerJourneyEnabled && (
@@ -4270,31 +4293,37 @@ export function ColonyApp() {
             on the fail-closed `citylife-arcade-3d-v1` entitlement: hidden (absent from the DOM, not
             merely styled away) unless the operator has enabled the flag for this authenticated
             CITYLIFE_PLAYER (default OFF). Signed-out and non-entitled sessions never see it. */}
-        {!builderActive && !gamehouseOpen && arcadeGamehouseEnabled && (
-          <button
-            data-build-action="open-gamehouse"
-            data-testid="open-gamehouse"
-            title="Step into The Gamehouse"
-            onClick={openGamehouse}
-            style={CORNER_ACTION_STYLE}
-          >
-            🕹️ The Gamehouse
-          </button>
-        )}
+        {!builderActive &&
+          !runtime.getOwnedDrivePose() &&
+          !gamehouseOpen &&
+          arcadeGamehouseEnabled && (
+            <button
+              data-build-action="open-gamehouse"
+              data-testid="open-gamehouse"
+              title="Step into The Gamehouse"
+              onClick={openGamehouse}
+              style={CORNER_ACTION_STYLE}
+            >
+              🕹️ The Gamehouse
+            </button>
+          )}
         {/* PLAYER.GARAGE.1 — enter the Gearbox Auto Hub showroom. The interior is its own streamed
             scene (ShowroomOverlay); this affordance is the door until spec-152 portal streaming lands
             in the walker. PLAYER.FLAG.S3 gates it on the fail-closed new-player-journey entitlement:
             hidden until operator UAT allowlists this player (default OFF). */}
-        {!builderActive && !showroomOpen && newPlayerJourneyEnabled && (
-          <button
-            data-build-action="open-showroom"
-            title="Step into the Gearbox Auto Hub showroom"
-            onClick={openShowroom}
-            style={CORNER_ACTION_STYLE}
-          >
-            🏬 Gearbox Auto Hub
-          </button>
-        )}
+        {!builderActive &&
+          !runtime.getOwnedDrivePose() &&
+          !showroomOpen &&
+          newPlayerJourneyEnabled && (
+            <button
+              data-build-action="open-showroom"
+              title="Step into the Gearbox Auto Hub showroom"
+              onClick={openShowroom}
+              style={CORNER_ACTION_STYLE}
+            >
+              🏬 Gearbox Auto Hub
+            </button>
+          )}
         {/* HQ.ENTER.1 — walk into Kooker HQ reception. Like the Gamehouse and the showroom, this
             affordance is the door until spec-152 portal streaming lands in the walker: the spatial
             layer already carries the real building frame, reception room and the inverse enter/exit
@@ -4302,22 +4331,43 @@ export function ColonyApp() {
 
             Gated on the fail-closed `kooker-hq-v1` entitlement and ABSENT FROM THE DOM — not merely
             styled away — unless the operator has allowlisted this player. Default OFF. */}
-        {!builderActive && !hqOpen && kookerHqEnabled && (
+        {!builderActive &&
+          !runtime.getOwnedDrivePose() &&
+          !hqOpen &&
+          kookerHqEnabled && (
+            <button
+              data-build-action="open-kooker-hq"
+              data-testid="open-kooker-hq"
+              title="Step into Kooker HQ reception"
+              onClick={openKookerHq}
+              style={CORNER_ACTION_STYLE}
+            >
+              🏛️ Kooker HQ
+            </button>
+          )}
+        {!builderActive && !runtime.getOwnedDrivePose() && (
           <button
-            data-build-action="open-kooker-hq"
-            data-testid="open-kooker-hq"
-            title="Step into Kooker HQ reception"
-            onClick={openKookerHq}
+            data-build-action="open-drivable-test"
+            data-testid="open-drivable-test"
+            title="Validate drivable road network on seed 4242 without driving"
+            onClick={() => setDrivableModalOpen(true)}
             style={CORNER_ACTION_STYLE}
           >
-            🏛️ Kooker HQ
+            🛣️ Test Roads (4242)
           </button>
         )}
         <OwnedCarControls
           runtime={runtime}
           suspended={
-            showroomOpen || homeOpen || driveHomeOpen || hqOpen || gamehouseOpen
+            showroomOpen ||
+            homeOpen ||
+            driveHomeOpen ||
+            hqOpen ||
+            gamehouseOpen ||
+            drivableModalOpen
           }
+          onOpenRoadMap={() => setDrivableModalOpen(true)}
+          onOpenChooseHome={() => setHomeOpen(true)}
         />
       </div>
 

@@ -69,12 +69,14 @@ export function StarterPropertyOverlay({
   walletLabel = "Balance unavailable",
   onWalletRefresh,
   currency = "₭",
+  onHomePurchased,
 }: {
   onClose: () => void;
   walletStatus?: PlayerWalletStatus;
   walletLabel?: string;
   onWalletRefresh?: () => void;
   currency?: string;
+  onHomePurchased?: (lotId: string) => void;
 }) {
   const [phase, setPhase] = useState<LoadPhase>("loading");
   const [choices, setChoices] = useState<EligibleNeighbourhood[]>([]);
@@ -129,6 +131,7 @@ export function StarterPropertyOverlay({
       setOutcome(result);
       if (result.kind === "owned") {
         onWalletRefresh?.();
+        onHomePurchased?.(selected);
         // Confirmed by the authority — reconcile against a FRESH re-fetch of the server truth (never a
         // local guess), which is what the house projection binds to.
         void fetchHomeTruth().then((fresh) => {
@@ -140,7 +143,7 @@ export function StarterPropertyOverlay({
         setPending(false);
       }
     });
-  }, [pending, owned, relocateMode, selected, eligibleKeys, onWalletRefresh]);
+  }, [pending, owned, relocateMode, selected, eligibleKeys, onWalletRefresh, onHomePurchased]);
 
   const view = purchaseButtonView(relocateMode ? false : owned, !!selected, pending, outcome);
 
