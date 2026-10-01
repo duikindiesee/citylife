@@ -129,6 +129,19 @@ export function computeTerrainLeveling(
               w: cd.garagePad.w,
               h: cd.garagePad.h,
             },
+            (() => {
+              const g = cd.garagePad;
+              const backDirX = -Math.sin(g.facingAngle);
+              const backDirY = -Math.cos(g.facingAngle);
+              const hqX = Math.round(g.x + (g.w - 1) / 2 + backDirX * 10.5);
+              const hqY = Math.round(g.y + (g.h - 1) / 2 + backDirY * 10.5);
+              return {
+                x: hqX - 5,
+                y: hqY - 4,
+                w: 11,
+                h: 9,
+              };
+            })(),
           ]
         : []),
     ];

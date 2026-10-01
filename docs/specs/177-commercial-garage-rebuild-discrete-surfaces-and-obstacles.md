@@ -88,9 +88,17 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
      - Physical obstacle colliders in distinct wireframe/translucent crimson volumes.
      - Visual proof of clear open bay and rotated stall lines.
 
+6. **Kooker HQ Landmark & World Foliage Alignment**:
+   - Sited on the parcel setback directly behind the Gearbox Auto Hub commercial garage (approx. 42m behind garage center, separated by an authentic 16m courtyard plaza).
+   - Architecture: 3-storey central command tower with ribbon windows, East ("Forge") and West ("Flow") operations wings, double-height glazed entrance reception lobby with brass pilasters, illuminated "KOOKER HQ" fascia sign, and rooftop telemetry array with satellite dish and aviation warning beacon.
+   - Terrain leveling: footprint pad leveled in `useTerrainLeveling.ts`.
+   - Foliage clearing: footprint registered in `worldClearRects.ts`.
+   - Desert flora alignment: legacy cone foliage (`R3FFoliage`) is completely retired so that only authentic _Aloe dichotoma_ (`R3FQuiverTrees` / kokerboom) remain across dunes and rocky ground.
+
 ## Verification & Acceptance
 
 - `tests/garageRebuildAndCollision.test.ts`: Unit test suite verifying asset version metadata, parking stall car rotation ($\pi/2$), open bay clearance, closed door blocking, wall collision, lift post clearance, swept footprint obstacle detection, drive-in/drive-out trajectories, pedestrian walkability, and car exit safety.
+- `tests/kookerHqGarageSetback.test.ts`: Kooker HQ landmark placement behind garage, architectural components, and footprint foliage clearance.
 - `tests/garageAnchorShellScale.test.ts`: Pad scaling verification.
 - `tests/parkingLotAndWallClearance.test.ts`: Display car stall alignment and wall clearance.
 - `tests/placementSetback.test.ts`: Setback invariant verification.

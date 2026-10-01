@@ -1000,6 +1000,356 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   C.group.add(g);
 }
 
+/**
+ * Spec 177 / Kooker HQ Landmark:
+ * Builds the Kooker HQ corporate innovation campus directly on the parcel setback behind
+ * the Gearbox Auto Hub commercial garage. Features a 3-storey command hub tower, East ("Forge")
+ * and West ("Flow") operations wings, double-height glazed reception lobby with brass entrance
+ * pilasters, illuminated "KOOKER HQ" fascia sign, and rooftop telemetry array.
+ */
+function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
+  if (!d.garagePad) return;
+  const garage = d.garagePad;
+  const t = C.state.terrain;
+
+  // Sited on the parcel setback directly behind the Gearbox Auto Hub commercial garage.
+  const facing = garage.facingAngle;
+  const backDirX = -Math.sin(facing);
+  const backDirY = -Math.cos(facing);
+
+  // Position Kooker HQ 10.5 cells behind garage center (~42m behind garage center, leaving a 16m courtyard plaza)
+  const hqCenterGX = garage.x + (garage.w - 1) / 2 + backDirX * 10.5;
+  const hqCenterGY = garage.y + (garage.h - 1) / 2 + backDirY * 10.5;
+
+  const baseY = padSeatY(
+    t,
+    Math.round(hqCenterGX - 5),
+    Math.round(hqCenterGY - 4),
+    11,
+    9,
+  );
+
+  const g = new THREE.Group();
+  g.name = "commercialDistrict.kookerHq";
+  g.userData = {
+    kind: "kooker_hq_landmark",
+    publicName: "Kooker HQ",
+    isPublicSafe: true,
+    facingAngle: facing,
+  };
+  g.position.set(C.wx(hqCenterGX), baseY, C.wz(hqCenterGY));
+  g.rotation.y = facing;
+
+  // 1. Foundation Plaza Slab
+  const plazaMat = new THREE.MeshStandardMaterial({
+    color: 0x272e3a,
+    roughness: 0.8,
+    metalness: 0.1,
+  });
+  const plaza = new THREE.Mesh(new THREE.BoxGeometry(44, 0.16, 32), plazaMat);
+  plaza.name = "kookerHqPlazaBase";
+  plaza.position.set(0, 0.08, 1);
+  plaza.receiveShadow = true;
+  g.add(plaza);
+
+  // Entrance Steps
+  const stepMat = new THREE.MeshStandardMaterial({
+    color: 0x364050,
+    roughness: 0.7,
+    metalness: 0.15,
+  });
+  const step1 = new THREE.Mesh(new THREE.BoxGeometry(20, 0.14, 8), stepMat);
+  step1.position.set(0, 0.21, 13);
+  const step2 = new THREE.Mesh(new THREE.BoxGeometry(16, 0.14, 6), stepMat);
+  step2.position.set(0, 0.35, 12);
+  g.add(step1, step2);
+
+  // Pathway Bollard Lights
+  const bollardMat = new THREE.MeshStandardMaterial({
+    color: 0x475569,
+    roughness: 0.5,
+    metalness: 0.6,
+  });
+  const bollardLightMat = new THREE.MeshStandardMaterial({
+    color: 0xffd479,
+    emissive: 0xffb347,
+    emissiveIntensity: 1.5,
+    roughness: 0.2,
+  });
+  C.garageFloorMats.push(bollardLightMat);
+  for (const bx of [-7, -3.5, 3.5, 7]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.9, 12), bollardMat);
+    post.position.set(bx, 0.45, 14.5);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.15, 12), bollardLightMat);
+    cap.position.set(bx, 0.92, 14.5);
+    g.add(post, cap);
+  }
+
+  // 2. Central Command Tower (3-Storey Headquarters Pavilion)
+  const facadeMat = new THREE.MeshStandardMaterial({
+    color: 0x1e2633,
+    roughness: 0.62,
+    metalness: 0.25,
+  });
+  const tower = new THREE.Mesh(new THREE.BoxGeometry(22, 15, 16), facadeMat);
+  tower.name = "kookerHqCentralTower";
+  tower.position.set(0, 7.5, -2);
+  tower.castShadow = true;
+  tower.receiveShadow = true;
+  g.add(tower);
+
+  // Ribbon Window Bands (tinted curtain glass with glowing night emissive)
+  const windowMat = new THREE.MeshStandardMaterial({
+    color: 0x142e45,
+    roughness: 0.12,
+    metalness: 0.85,
+    transparent: true,
+    opacity: 0.78,
+    emissive: 0x00d8f0,
+    emissiveIntensity: 0.42,
+  });
+  C.garageFloorMats.push(windowMat);
+
+  const ribbon1 = new THREE.Mesh(new THREE.BoxGeometry(22.3, 2.4, 16.3), windowMat);
+  ribbon1.position.set(0, 2.4, -2);
+  const ribbon2 = new THREE.Mesh(new THREE.BoxGeometry(22.3, 2.2, 16.3), windowMat);
+  ribbon2.position.set(0, 6.8, -2);
+  const ribbon3 = new THREE.Mesh(new THREE.BoxGeometry(22.3, 2.2, 16.3), windowMat);
+  ribbon3.position.set(0, 11.2, -2);
+  g.add(ribbon1, ribbon2, ribbon3);
+
+  // Tower Overhanging Parapet
+  const parapetMat = new THREE.MeshStandardMaterial({
+    color: 0x2e3848,
+    roughness: 0.4,
+    metalness: 0.35,
+  });
+  const towerParapet = new THREE.Mesh(new THREE.BoxGeometry(23.5, 0.6, 17.5), parapetMat);
+  towerParapet.position.set(0, 15.2, -2);
+  g.add(towerParapet);
+
+  // 3. East & West Campus Wings
+  const wingMat = new THREE.MeshStandardMaterial({
+    color: 0x232c3a,
+    roughness: 0.65,
+    metalness: 0.2,
+  });
+  // West Wing ("Flow")
+  const westWing = new THREE.Mesh(new THREE.BoxGeometry(11, 9.5, 13), wingMat);
+  westWing.name = "kookerHqWestWing";
+  westWing.position.set(-16, 4.75, -2);
+  westWing.castShadow = true;
+  const westRibbon1 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  westRibbon1.position.set(-16, 2.4, -2);
+  const westRibbon2 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  westRibbon2.position.set(-16, 6.8, -2);
+  const westParapet = new THREE.Mesh(new THREE.BoxGeometry(12, 0.45, 14), parapetMat);
+  westParapet.position.set(-16, 9.65, -2);
+  g.add(westWing, westRibbon1, westRibbon2, westParapet);
+
+  // East Wing ("Forge")
+  const eastWing = new THREE.Mesh(new THREE.BoxGeometry(11, 9.5, 13), wingMat);
+  eastWing.name = "kookerHqEastWing";
+  eastWing.position.set(16, 4.75, -2);
+  eastWing.castShadow = true;
+  const eastRibbon1 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  eastRibbon1.position.set(16, 2.4, -2);
+  const eastRibbon2 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  eastRibbon2.position.set(16, 6.8, -2);
+  const eastParapet = new THREE.Mesh(new THREE.BoxGeometry(12, 0.45, 14), parapetMat);
+  eastParapet.position.set(16, 9.65, -2);
+  g.add(eastWing, eastRibbon1, eastRibbon2, eastParapet);
+
+  // 4. Double-Height Glazed Entrance Lobby (Spec 152/153 Reception)
+  const lobbyGroup = new THREE.Group();
+  lobbyGroup.name = "kookerHqReceptionLobby";
+  lobbyGroup.position.set(0, 0, 6.5);
+
+  const lobbyGlassMat = new THREE.MeshStandardMaterial({
+    color: 0x163854,
+    roughness: 0.1,
+    metalness: 0.85,
+    transparent: true,
+    opacity: 0.7,
+    emissive: 0x00f0ff,
+    emissiveIntensity: 0.45,
+  });
+  C.garageFloorMats.push(lobbyGlassMat);
+
+  const lobbyBody = new THREE.Mesh(new THREE.BoxGeometry(14, 5.4, 8), facadeMat);
+  lobbyBody.position.set(0, 2.7, 0);
+  lobbyGroup.add(lobbyBody);
+
+  // Front Glass Curtain Wall
+  const lobbyGlass = new THREE.Mesh(new THREE.PlaneGeometry(13.6, 5.1), lobbyGlassMat);
+  lobbyGlass.position.set(0, 2.7, 4.02);
+  lobbyGroup.add(lobbyGlass);
+
+  // Architectural Brass Columns
+  const brassMat = new THREE.MeshStandardMaterial({
+    color: 0xd4af37,
+    roughness: 0.32,
+    metalness: 0.8,
+    emissive: 0x5a4210,
+    emissiveIntensity: 0.25,
+  });
+  for (const px of [-6.8, -2.4, 2.4, 6.8]) {
+    const col = new THREE.Mesh(new THREE.BoxGeometry(0.45, 5.5, 0.5), brassMat);
+    col.position.set(px, 2.75, 4.05);
+    lobbyGroup.add(col);
+  }
+
+  // Brass Door Frame (2.4m wide x 3.0m high)
+  const leftDoorPost = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.0, 0.2), brassMat);
+  leftDoorPost.position.set(-1.2, 1.5, 4.08);
+  const rightDoorPost = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.0, 0.2), brassMat);
+  rightDoorPost.position.set(1.2, 1.5, 4.08);
+  const doorLintel = new THREE.Mesh(new THREE.BoxGeometry(2.55, 0.15, 0.2), brassMat);
+  doorLintel.position.set(0, 3.05, 4.08);
+  lobbyGroup.add(leftDoorPost, rightDoorPost, doorLintel);
+
+  // Interior Reception Desk
+  const desk = new THREE.Mesh(
+    new THREE.BoxGeometry(3.6, 1.1, 1.2),
+    new THREE.MeshStandardMaterial({ color: 0x222b37, roughness: 0.6, metalness: 0.2 }),
+  );
+  desk.position.set(0, 0.55, -1.0);
+  const deskNeon = new THREE.Mesh(
+    new THREE.BoxGeometry(3.65, 0.08, 1.22),
+    new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 1.8 }),
+  );
+  deskNeon.position.set(0, 0.95, -1.0);
+  lobbyGroup.add(desk, deskNeon);
+
+  // Interior Lobby Light
+  const lobbyLight = new THREE.PointLight(0xfffaed, 30, 22, 1.6);
+  lobbyLight.position.set(0, 4.2, 0.5);
+  lobbyGroup.add(lobbyLight);
+
+  // Cantilevered Porch Canopy
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(16, 0.45, 4.5), parapetMat);
+  canopy.position.set(0, 5.5, 2.2);
+  const canopyTrim = new THREE.Mesh(
+    new THREE.BoxGeometry(16.2, 0.08, 0.08),
+    new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 1.5 }),
+  );
+  canopyTrim.position.set(0, 5.3, 4.45);
+  lobbyGroup.add(canopy, canopyTrim);
+  g.add(lobbyGroup);
+
+  // 5. Grand Illuminated "KOOKER HQ" Signage
+  const signBacking = new THREE.Mesh(
+    new THREE.BoxGeometry(12.5, 2.4, 0.35),
+    new THREE.MeshStandardMaterial({ color: 0x141a24, roughness: 0.4, metalness: 0.4 }),
+  );
+  signBacking.position.set(0, 8.8, 6.2);
+  g.add(signBacking);
+
+  // Paint dynamic CanvasTexture for billboard sign
+  if (typeof document !== "undefined") {
+    const cv = document.createElement("canvas");
+    cv.width = 512;
+    cv.height = 128;
+    const ctx = cv.getContext("2d");
+    if (ctx) {
+      const grad = ctx.createLinearGradient(0, 0, 512, 128);
+      grad.addColorStop(0, "#0a111a");
+      grad.addColorStop(0.5, "#101b2a");
+      grad.addColorStop(1, "#0a111a");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 512, 128);
+
+      ctx.strokeStyle = "#00e5ff";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(6, 6, 500, 116);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 44px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = "#00e5ff";
+      ctx.shadowBlur = 12;
+      ctx.fillText("🏛️ KOOKER HQ", 256, 48);
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#7de7ff";
+      ctx.font = "600 16px monospace";
+      ctx.fillText("AUTONOMOUS CAMPUS · GLOBAL COMMONS", 256, 88);
+    }
+    const signTex = new THREE.CanvasTexture(cv);
+    const signFace = new THREE.Mesh(
+      new THREE.PlaneGeometry(12.2, 2.1),
+      new THREE.MeshStandardMaterial({
+        map: signTex,
+        emissiveMap: signTex,
+        emissive: 0xffffff,
+        emissiveIntensity: 0.85,
+        roughness: 0.3,
+      }),
+    );
+    signFace.position.set(0, 8.8, 6.4);
+    g.add(signFace);
+  }
+
+  // 6. Rooftop Telemetry & Communications Arrays
+  const dishMat = new THREE.MeshStandardMaterial({
+    color: 0x94a3b8,
+    metalness: 0.7,
+    roughness: 0.3,
+  });
+  const dish = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 0.4, 0.5, 24), dishMat);
+  dish.rotation.x = 0.55;
+  dish.rotation.y = 0.4;
+  dish.position.set(-6, 17.0, -4.5);
+  const dishStem = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 1.8, 12), dishMat);
+  dishStem.position.set(-6, 15.9, -4.5);
+  g.add(dish, dishStem);
+
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.2, 6.5, 8), dishMat);
+  mast.position.set(6.5, 18.5, -4.5);
+  const beacon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.25, 12, 12),
+    new THREE.MeshStandardMaterial({ color: 0xff2a3e, emissive: 0xff2a3e, emissiveIntensity: 2.5 }),
+  );
+  beacon.position.set(6.5, 21.8, -4.5);
+  const beaconLight = new THREE.PointLight(0xff2a3e, 14, 25);
+  beaconLight.position.set(6.5, 21.8, -4.5);
+  g.add(mast, beacon, beaconLight);
+
+  // Rooftop Solar Photovoltaic Arrays on wings
+  const solarMat = new THREE.MeshStandardMaterial({
+    color: 0x163255,
+    metalness: 0.9,
+    roughness: 0.15,
+  });
+  for (const side of [-1, 1]) {
+    for (const offset of [-3.5, 0, 3.5]) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 3.2), solarMat);
+      panel.rotation.x = 0.25;
+      panel.position.set(side * 16 + offset * 0.4, 9.9, -2 + offset);
+      g.add(panel);
+    }
+  }
+
+  // 7. Architectural Facade Uplights & Planters
+  for (const side of [-1, 1]) {
+    const uplight = new THREE.PointLight(0x00d2ff, 18, 14, 1.8);
+    uplight.position.set(side * 7, 0.4, 10);
+    g.add(uplight);
+
+    const planter = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.75, 2.8), stepMat);
+    planter.position.set(side * 8.5, 0.45, 11);
+    const planterSoil = new THREE.Mesh(
+      new THREE.BoxGeometry(2.5, 0.1, 2.5),
+      new THREE.MeshStandardMaterial({ color: 0x4a3b2c, roughness: 0.9 }),
+    );
+    planterSoil.position.set(side * 8.5, 0.8, 11);
+    g.add(planter, planterSoil);
+  }
+
+  C.group.add(g);
+}
+
 /** Raise a vibrant neon market stall on each surveyed shop plot: a dark counter body, a glowing
  *  awning canopy, and a bright signage panel facing the street. Disposes any prior build first. */
 function buildCommercialDistrict(C: CommercialCtx): void {
@@ -1029,6 +1379,7 @@ function buildCommercialDistrict(C: CommercialCtx): void {
 
   buildMallAnchorShell(C, d);
   buildGarageAnchorShell(C, d);
+  buildKookerHqLandmark(C, d);
 
   // Spec 143 — venue placements: ONE pure survey (venuePlacement.ts) decides each shop's
   // seat, facing, plot-filling footprint and entrance; the live junction zones carve

@@ -27,7 +27,7 @@ export interface ClearRectState {
   } | null;
   commercialDistrict?: {
     parcels?: readonly { x: number; y: number; w: number; h: number }[];
-    garagePad?: { x: number; y: number; w: number; h: number } | null;
+    garagePad?: { x: number; y: number; w: number; h: number; facingAngle?: number } | null;
   } | null;
   busDepotPad?: { x: number; y: number; w: number; h: number } | null;
   roads?: readonly { x: number; y: number }[] | null;
@@ -127,6 +127,18 @@ export function worldClearRects(state: ClearRectState): ClearRect[] {
       y0: garage.y,
       x1: garage.x + garage.w - 1,
       y1: garage.y + garage.h - 1,
+    });
+    // Spec 177 / Kooker HQ: clear the HQ campus footprint on the parcel setback directly behind the garage
+    const facing = garage.facingAngle ?? 0;
+    const backDirX = -Math.sin(facing);
+    const backDirY = -Math.cos(facing);
+    const hqX = Math.round(garage.x + (garage.w - 1) / 2 + backDirX * 10.5);
+    const hqY = Math.round(garage.y + (garage.h - 1) / 2 + backDirY * 10.5);
+    rects.push({
+      x0: hqX - 6,
+      y0: hqY - 5,
+      x1: hqX + 6,
+      y1: hqY + 5,
     });
   }
 

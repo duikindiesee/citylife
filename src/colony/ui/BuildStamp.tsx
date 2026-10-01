@@ -145,24 +145,6 @@ export function BuildStamp({ variant = "hud", runtime }: BuildStampProps) {
             marginLeft: "2px",
           }}
         >
-<<<<<<< HEAD
-          <span>
-            X: <b>{diag.x}m</b>
-          </span>
-          <span>
-            Elev: <b>{diag.elev}m</b>
-          </span>
-          <span>
-            Z: <b>{diag.z}m</b>
-          </span>
-          <span>
-            Hdg: <b>{diag.headingDeg}°</b>
-          </span>
-          <span>
-            Seed: <b>{diag.seed}</b>
-          </span>
-        </div>
-=======
           <span style={{ opacity: 0.35 }}>|</span>
           <span>X: <b>{diag.x}m</b></span>
           <span>Elev: <b>{diag.elev}m</b></span>
@@ -170,7 +152,6 @@ export function BuildStamp({ variant = "hud", runtime }: BuildStampProps) {
           <span>Hdg: <b>{diag.headingDeg}°</b></span>
           <span>Seed: <b>{diag.seed}</b></span>
         </span>
->>>>>>> 3cfa36a (fix(hud): footer single line versioning, road crosswalk clearance and transit backlog)
       )}
     </div>
   );

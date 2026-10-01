@@ -216,6 +216,7 @@ export function R3FQuiverTrees({ runtime }: { readonly runtime: unknown }) {
   return (
     <instancedMesh
       ref={meshRef}
+      name="quiverTrees"
       args={[geometry, material, trees.length]}
       castShadow
       receiveShadow
