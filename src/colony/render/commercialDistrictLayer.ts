@@ -628,20 +628,6 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   heroCar.rotation.y = -0.38; // initial angle toward the road-facing glass
   showroomInterior.add(heroCar);
 
-  // 5. SECONDARY CAR IN SHOWROOM (Karoo Kaap GT-V8 coupe)
-  // Positioned in the eastern showroom bay, well clear of the plinth (>4.4m plinth edge clearance).
-  const secondarySpec = SHOWROOM_VEHICLES[1]!.spec;
-  const secondaryCar = buildCarMesh(secondarySpec);
-  secondaryCar.name = "garageAnchorShowroomSecondCar";
-  secondaryCar.scale.setScalar(1.0);
-  secondaryCar.position.set(
-    model.showroom.x + model.showroom.w * 0.24,
-    0.05,
-    model.showroom.z - model.showroom.d * 0.02,
-  );
-  secondaryCar.rotation.y = -0.06;
-  showroomInterior.add(secondaryCar);
-
   // 6. Header sign and branding
   const showroomHeader = new THREE.Mesh(
     new THREE.BoxGeometry(model.showroom.w * 0.9, 0.32, 0.14),

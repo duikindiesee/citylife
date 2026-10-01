@@ -108,21 +108,12 @@ function R3FGarageCars({ layerGroup }: { layerGroup?: THREE.Group | null }) {
     };
 
     // Hero Car on showroom plinth: Karoo X19 Targa (Yellow Fiat X1/9 GLB)
-    // Sized to authentic life-size proportion (scale 0.56 from SHOWROOM_VEHICLES[2].presentationScale).
+    // Sized to authentic life-size proportion (0.262 in parent 4x scaled group).
     replaceCar(
       "garageAnchorShowroomHeroCar",
       x19.scene,
       SHOWROOM_VEHICLES[2]?.spec.paint,
       SHOWROOM_VEHICLES[2]?.rotationOffset,
-      0.56,
-    );
-
-    // Secondary Car in showroom: Karoo Kaap GT-V8 coupe
-    replaceCar(
-      "garageAnchorShowroomSecondCar",
-      kaap.scene,
-      SHOWROOM_VEHICLES[1]?.spec.paint,
-      SHOWROOM_VEHICLES[1]?.rotationOffset,
       0.262,
     );
 
