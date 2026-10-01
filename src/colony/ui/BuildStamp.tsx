@@ -17,6 +17,59 @@ export interface BuildStampProps {
   readonly runtime?: ColonyRuntime;
 }
 
+export function deriveDiagnosticReadout(runtime?: ColonyRuntime): {
+  x: number;
+  elev: number;
+  z: number;
+  headingDeg: number;
+  seed: number;
+} | null {
+  if (!runtime) return null;
+  const sim = runtime.sim;
+  if (!sim) return null;
+  const t = sim.state.terrain;
+  const seed = runtime.getSeed?.() ?? sim.state.seed ?? 4242;
+  const drivePose = runtime.getOwnedDrivePose?.();
+  const fpCell = (runtime as any).fpCameraCell;
+  const fpCitizenId = (runtime as any)?.fpCitizenId;
+  const citizen =
+    fpCitizenId && typeof (runtime as any)?.citizen === "function"
+      ? (runtime as any).citizen(fpCitizenId)
+      : null;
+  const citizenPos = citizen?.positionXY ?? citizen?.pos;
+  const opCar = sim.state.operatorCar;
+
+  // Prioritize active player (driving > first-person/walking > citizen > parked operator car)
+  const cellX =
+    drivePose?.x ?? fpCell?.x ?? citizenPos?.x ?? opCar?.cell?.x ?? t.size / 2;
+  const cellY =
+    drivePose?.y ?? fpCell?.y ?? citizenPos?.y ?? opCar?.cell?.y ?? t.size / 2;
+  const headingRad = drivePose
+    ? drivePose.heading
+    : fpCell
+      ? ((runtime as any).fpCameraYaw ?? 0)
+      : opCar
+        ? opCar.heading
+        : 0;
+
+  const worldX = (cellX - t.size / 2) * 4;
+  const worldZ = (cellY - t.size / 2) * 4;
+  const elev = runtime.isRoadSurface?.(cellX, cellY)
+    ? t.worldYAt(cellX, cellY) + 0.18
+    : t.worldYAt(cellX, cellY);
+  const headingDeg = Math.round(
+    (((headingRad * 180) / Math.PI) % 360 + 360) % 360,
+  );
+
+  return {
+    x: Math.round(worldX * 10) / 10,
+    elev: Math.round(elev * 100) / 100,
+    z: Math.round(worldZ * 10) / 10,
+    headingDeg,
+    seed,
+  };
+}
+
 export function BuildStamp({
   variant = "hud",
   runtime,
@@ -35,42 +88,7 @@ export function BuildStamp({
   useEffect(() => {
     if (!runtime) return;
     const updateDiag = () => {
-      const sim = runtime.sim;
-      if (!sim) return;
-      const t = sim.state.terrain;
-      const seed = runtime.getSeed?.() ?? sim.state.seed ?? 4242;
-      const drivePose = runtime.getOwnedDrivePose?.();
-      const fpCell = (runtime as any).fpCameraCell;
-      const fpCitizenId = (runtime as any)?.fpCitizenId;
-      const citizen = fpCitizenId && typeof (runtime as any)?.citizen === "function" ? (runtime as any).citizen(fpCitizenId) : null;
-      const citizenPos = citizen?.positionXY ?? citizen?.pos;
-      const opCar = sim.state.operatorCar;
-
-      // Prioritize active player (driving > first-person/walking > citizen > parked operator car)
-      const cellX = drivePose?.x ?? fpCell?.x ?? citizenPos?.x ?? opCar?.cell?.x ?? t.size / 2;
-      const cellY = drivePose?.y ?? fpCell?.y ?? citizenPos?.y ?? opCar?.cell?.y ?? t.size / 2;
-      const headingRad = drivePose
-        ? drivePose.heading
-        : fpCell
-          ? ((runtime as any).fpCameraYaw ?? 0)
-          : opCar
-            ? opCar.heading
-            : 0;
-
-      const worldX = (cellX - t.size / 2) * 4;
-      const worldZ = (cellY - t.size / 2) * 4;
-      const elev = runtime.isRoadSurface?.(cellX, cellY)
-        ? (t.worldYAt(cellX, cellY) + 0.18)
-        : t.worldYAt(cellX, cellY);
-      const headingDeg = Math.round((((headingRad * 180) / Math.PI) % 360 + 360) % 360);
-
-      setDiag({
-        x: Math.round(worldX * 10) / 10,
-        elev: Math.round(elev * 100) / 100,
-        z: Math.round(worldZ * 10) / 10,
-        headingDeg,
-        seed,
-      });
+      setDiag(deriveDiagnosticReadout(runtime));
     };
 
     updateDiag();

@@ -2123,12 +2123,12 @@ export function ColonyApp() {
             </div>
           );
         })()}
-        {!runtime.hasOperatorHome() && (
+        {!runtime.hasOperatorHome() && newPlayerJourneyEnabled && (
           <button
             type="button"
             className="topbar-starter-plot"
             data-testid="onboarding-claim-home-banner"
-            onClick={() => setHomeOpen(true)}
+            onClick={openHome}
             title="Choose and claim your starter plot"
             style={{
               border: "1px solid rgba(255, 210, 90, 0.45)",
@@ -2164,8 +2164,9 @@ export function ColonyApp() {
           <button
             type="button"
             className={`player-map-shortcut${mapOpen ? " on" : ""}`}
-            aria-label={mapOpen ? "Hide transit map" : "Open transit map"}
+            aria-label={mapOpen ? "Hide map" : "Open map"}
             aria-expanded={mapOpen}
+            title={mapOpen ? "Hide Transit Map" : "Open Transit Map"}
             data-testid="player-map-shortcut"
             onClick={() => setMapOpen((open) => !open)}
           >

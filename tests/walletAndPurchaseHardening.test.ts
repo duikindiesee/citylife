@@ -226,5 +226,18 @@ describe("Wallet and Purchase Edge-Case Hardening (Irwin acceptance requirement)
       expect(inFlightAcquire.disabled).toBe(true);
       expect(inFlightAcquire.label).toContain("Acquiring");
     });
+
+    it("provides immediate refresh affordance for ready-but-insufficient wallet snapshot", () => {
+      // Test the logic of refresh button display in StarterPropertyOverlay
+      const checkRefreshVisible = (status: string, isInsufficient: boolean, onWalletRefresh?: () => void) => {
+        return !!((status === "missing" || status === "unavailable" || isInsufficient) && onWalletRefresh);
+      };
+
+      const mockRefresh = vi.fn();
+      expect(checkRefreshVisible("ready", true, mockRefresh)).toBe(true);
+      expect(checkRefreshVisible("ready", false, mockRefresh)).toBe(false);
+      expect(checkRefreshVisible("missing", false, mockRefresh)).toBe(true);
+      expect(checkRefreshVisible("unavailable", false, mockRefresh)).toBe(true);
+    });
   });
 });

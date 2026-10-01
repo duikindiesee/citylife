@@ -163,15 +163,40 @@ This task record documents the investigation, root causes, implementation fixes,
      - Forward drive (`speed > 0`) validates that front corners are unobstructed (`target.front === 0`).
      - When stopped against an obstacle, Reverse (`speed < 0`) is allowed because the rear path is clear (`target.rear === 0`), enabling instant unsticking.
 - **Evidence:**
-  - Unit and integration tests: `tests/parkingLotAndWallClearance.test.ts` (4/4 PASS), `tests/showroomGeometryClearance.test.ts` (1/1 PASS).
+  - Unit and integration tests: `tests/parkingLotAndWallClearance.test.ts` (5/5 PASS), `tests/showroomGeometryClearance.test.ts` (1/1 PASS).
+
+---
+
+### Blocker 8: Exact-Head Review Hardening & Regression Resolution (Joekookerbot Review #551)
+
+- **Root Causes & Findings:**
+  1. *Occupied Parcel Off-Road Drivability:* In `runtime.ts` `tickOwnedDrive`, accepting `"parcel"` allowed vehicles to drive through occupied/reserved plots off-road.
+  2. *Vehicle Slope Axes Inversion:* In `R3FOperatorCar.tsx`, longitudinal elevation gradient was applied as Euler X and roll as Euler Z. In `carMesh.ts`, headlights are on local +X and doors along +/-Z, so pitching required rotation around local Z and roll around local X in `"YXZ"` order.
+  3. *Unbounded Water-Exit Teleport:* In `runtime.ts` `exitOwnedCar`, scanning all of `roadSet` without a distance cap allowed teleporting hundreds of cells away across the map when stranded in deep water.
+  4. *Dead Starter-Plot Entry:* In `ColonyApp.tsx`, topbar button rendered on `!runtime.hasOperatorHome()` alone and called `setHomeOpen(true)`, but the modal was additionally gated by `newPlayerJourneyEnabled`.
+  5. *Wallet Snapshot Refresh Path:* `StarterPropertyOverlay.tsx` previously offered a Retry button only on missing/unavailable states, leaving ready-but-insufficient balance without a direct refresh affordance when funds arrive.
+  6. *Playwright E2E Button Name:* Renaming the topbar map button aria-label broke `e2e/playerHud.spec.ts` selector `getByRole("button", { name: "Open map" })`.
+- **Resolutions:**
+  1. Restored strict `if (this.blockedStepReason(x, y) !== null) return false;` in `tickOwnedDrive`, blocking non-road occupied parcels while preserving garage pad and homestead driveway clearance.
+  2. Corrected vehicle rotation in `R3FOperatorCar.tsx` to `group.current.rotation.set(-roll, -heading, pitch, "YXZ")`.
+  3. Bounded `exitOwnedCar` road fallback to `MAX_EXIT_TELEPORT_RADIUS = 6.0` cells (24m). Stranded vehicles with no reachable dry land fail safely (`return false`) without teleporting.
+  4. Gated topbar starter plot button on `newPlayerJourneyEnabled` and routed click through `openHome`.
+  5. Added `Refresh Balance` button beside the balance when `isInsufficient === true` in `StarterPropertyOverlay.tsx`.
+  6. Preserved `aria-label={mapOpen ? "Hide map" : "Open map"}` on the topbar Transit Map button.
+  7. Reconciled `docs/specs/170-player-state-hud.md` §3.2 and `docs/specs/175-smooth-onboarding-homestead-acquisition-gps-and-garage-drive-in.md` §§2, 4.
+- **Evidence:**
+  - `tests/parkingLotAndWallClearance.test.ts` (5/5 PASS, including occupied parcel collision).
+  - `tests/vehicleSlopeTransform.test.ts` (3/3 PASS, including 1m grade Three.js vector probe and bounded exit).
+  - `tests/bugCaptureAndCoordinates.test.ts` (5/5 PASS, including coordinate derivation and 2D canvas banner burn-in).
+  - `tests/walletAndPurchaseHardening.test.ts` (12/12 PASS, including refresh affordance).
 
 ---
 
 ## 3. Verification & Test Summary
 
-- `npm test`: **274 test files passed, 2399 tests passed** (including all unit and integration tests).
+- `npm test`: **275 test files passed, 2404 tests passed**.
 - `npm run typecheck`: **0 errors**.
-- `npm run build`: **Built successfully** in 527ms.
+- `npm run build`: **Built successfully**.
 - `c:\kooker`: `npm test`, `npm run validate`, `npm run public-safety` **all PASS**.
 
 ---

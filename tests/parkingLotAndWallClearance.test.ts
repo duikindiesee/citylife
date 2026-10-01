@@ -104,4 +104,48 @@ describe("Parking Lot Alignment, Wall Clearance & Roadside Unsticking", () => {
 
     expect(rt.isGaragePadDrivable(edgeX, edgeY, garagePad)).toBe(true);
   });
+
+  it("strictly blocks driving onto non-road occupied parcels", () => {
+    const rt = new ColonyRuntime(4242);
+    const t = rt.sim.state.terrain;
+    let targetX = 300;
+    let targetY = 300;
+    for (let x = 250; x < 350; x++) {
+      for (let y = 250; y < 350; y++) {
+        if (!t.isWater(x, y) && t.worldY(x, y) > 2.0 && !rt.sim.state.roadSet.has(`${x},${y}`)) {
+          targetX = x;
+          targetY = y;
+          break;
+        }
+      }
+      if (targetX !== 300 || targetY !== 300) break;
+    }
+    const key = `${targetX},${targetY}`;
+    rt.sim.state.occupied.add(key);
+
+    expect((rt as any).blockedStepReason(targetX, targetY)).toBe("parcel");
+
+    // Place car facing +X towards the occupied parcel cell
+    const spec = { id: "karoo_kaap_gt_v8" } as any;
+    (rt as any).authoritativeCar = spec;
+    (rt as any).operatorUserId = "test-operator";
+    (rt as any).ownedDriveSeated = true;
+    (rt as any).sim.state.operatorCar = {
+      spec,
+      cell: { x: targetX - 0.4, y: targetY },
+    };
+    (rt as any).ownedDrivePose = {
+      x: targetX - 0.4,
+      y: targetY,
+      heading: 0,
+      speed: 10,
+    };
+    (rt as any).ownedDriveInput = { throttle: true };
+
+    // Run tickOwnedDrive
+    (rt as any).tickOwnedDrive(0.1);
+
+    const postDrivePose = rt.getOwnedDrivePose()!;
+    expect(postDrivePose.x).toBeLessThan(targetX);
+  });
 });

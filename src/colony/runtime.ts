@@ -2841,13 +2841,15 @@ export class ColonyRuntime {
       }
     }
 
-    // 5. Ultimate fallback: if stranded on water, exit onto nearest road cell
+    // 5. Reachable road fallback: if stranded on water/bridge, exit onto nearest reachable road cell
+    // (capped at 6.0 cells = 24m radius to prevent unbounded teleport across the map)
+    const MAX_EXIT_TELEPORT_RADIUS = 6.0;
     if (!exitCell && this.sim.state.roadSet && this.sim.state.roadSet.size > 0) {
-      let bestDist = Infinity;
+      let bestDist = MAX_EXIT_TELEPORT_RADIUS;
       for (const rk of this.sim.state.roadSet) {
         const [rx, ry] = rk.split(",").map(Number);
         const d = Math.hypot(rx - car.x, ry - car.y);
-        if (d < bestDist && this.blockedStepReason(rx, ry) === null) {
+        if (d <= bestDist && this.blockedStepReason(rx, ry) === null) {
           bestDist = d;
           exitCell = { x: rx, y: ry };
         }
@@ -2988,7 +2990,7 @@ export class ColonyRuntime {
         )
           return false;
         const stepReason = this.blockedStepReason(x, y);
-        if (stepReason === "building" || stepReason === "water" || stepReason === "edge of map") return false;
+        if (stepReason !== null) return false;
         return true;
       },
       (x, y) => this.isRoadSurface(x, y),

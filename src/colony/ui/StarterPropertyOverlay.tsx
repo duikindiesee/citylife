@@ -243,19 +243,20 @@ export function StarterPropertyOverlay({
         >
           {walletLabel}
         </span>
-        {(walletStatus === "missing" || walletStatus === "unavailable") &&
+        {(walletStatus === "missing" || walletStatus === "unavailable" || isInsufficient) &&
           onWalletRefresh && (
             <button
               type="button"
               data-testid="home-wallet-refresh"
               onClick={onWalletRefresh}
+              title={isInsufficient ? "Refresh wallet balance" : "Retry connecting to wallet"}
               style={{
                 ...controlButtonStyle,
                 padding: "4px 7px",
                 fontSize: 10,
               }}
             >
-              Retry
+              {isInsufficient ? "Refresh Balance" : "Retry"}
             </button>
           )}
       </div>

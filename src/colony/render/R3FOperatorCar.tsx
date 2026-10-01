@@ -297,7 +297,10 @@ export function R3FOperatorCar({
       centerY,
       (car.cell.y - t.size / 2) * 4,
     );
-    group.current.rotation.set(pitch, -heading, roll, "YXZ");
+    // Car mesh has longitudinal axis along local +X (headlights) and lateral along local +/-Z.
+    // In Euler "YXZ" order, local longitudinal pitch is around Z (+pitch raises front +X),
+    // and local lateral roll is around X (-roll raises left +Z).
+    group.current.rotation.set(-roll, -heading, pitch, "YXZ");
   });
   const sig = useSimSignal(runtime, () => operatorCarSignature(sim.state));
 
