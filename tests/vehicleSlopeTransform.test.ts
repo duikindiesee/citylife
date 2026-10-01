@@ -108,4 +108,95 @@ describe("Vehicle Slope Transform, Bounded Exit & Review Hardening", () => {
     expect(exitResult).toBe(false);
     expect((rt as any).fpTeleportRequest).toBeFalsy();
   });
+
+  it("rejects disconnected near-road exit when separated by water or impassable barriers (negative regression)", () => {
+    const rt = new ColonyRuntime(4242);
+    const spec = { id: "karoo_kaap_gt_v8" } as any;
+    (rt as any).authoritativeCar = spec;
+    (rt as any).operatorUserId = "test-operator";
+    (rt as any).ownedDriveSeated = true;
+
+    // Place car at (100, 100)
+    const carPose = { x: 100, y: 100, heading: 0, speed: 0 };
+    (rt as any).ownedDrivePose = carPose;
+    (rt as any).sim.state.operatorCar = { spec, cell: { x: 100, y: 100 } };
+
+    // Clear any roads near (100, 100)
+    for (let dx = -10; dx <= 10; dx++) {
+      for (let dy = -10; dy <= 10; dy++) {
+        rt.sim.state.roadSet.delete(`${100 + dx},${100 + dy}`);
+      }
+    }
+
+    // Add a road cell 5 cells away at (105, 100) (within MAX_EXIT_TELEPORT_RADIUS = 6.0)
+    rt.sim.state.roadSet.add("105,100");
+
+    // Mock: all intermediate/nearby cells within distance <= 4 are water,
+    // only (105, 100) is passable. No connected path exists between (100, 100) and (105, 100).
+    const origBlocked = (rt as any).blockedStepReason.bind(rt);
+    (rt as any).blockedStepReason = (x: number, y: number) => {
+      if (Math.round(x) === 105 && Math.round(y) === 100) return null;
+      if (Math.hypot(x - 100, y - 100) <= 4.5) return "water";
+      return origBlocked(x, y);
+    };
+
+    const exitResult = rt.exitOwnedCar();
+
+    // Must fail safely (false) because (105, 100) is disconnected from the car
+    expect(exitResult).toBe(false);
+    expect((rt as any).fpTeleportRequest).toBeFalsy();
+  });
+
+  it("allows path-connected near-road exit when a walkable path exists (positive regression)", () => {
+    const rt = new ColonyRuntime(4242);
+    const spec = { id: "karoo_kaap_gt_v8" } as any;
+    (rt as any).authoritativeCar = spec;
+    (rt as any).operatorUserId = "test-operator";
+    (rt as any).ownedDriveSeated = true;
+
+    // Place car at (100, 100), facing East (heading 0)
+    const carPose = { x: 100, y: 100, heading: 0, speed: 0 };
+    (rt as any).ownedDrivePose = carPose;
+    (rt as any).sim.state.operatorCar = { spec, cell: { x: 100, y: 100 } };
+
+    // Clear any roads near (100, 100)
+    for (let dx = -10; dx <= 10; dx++) {
+      for (let dy = -10; dy <= 10; dy++) {
+        rt.sim.state.roadSet.delete(`${100 + dx},${100 + dy}`);
+      }
+    }
+
+    // Add a road cell at (103, 101) (distance ~3.16 cells away)
+    rt.sim.state.roadSet.add("103,101");
+
+    // Block immediate candidates (doors: (100,101), (100,99); front: (101,100); back: (99,100); rear diagonals: (99,101), (99,99))
+    // but leave an open path leading to the road: (101,101) -> (102,101) -> (103,101)
+    const origIsWater = rt.sim.state.terrain.isWater.bind(rt.sim.state.terrain);
+    rt.sim.state.terrain.isWater = (x: number, y: number) => {
+      const rx = Math.round(x);
+      const ry = Math.round(y);
+      if (ry === 101 && (rx === 101 || rx === 102 || rx === 103)) return false;
+      return origIsWater(x, y);
+    };
+
+    const origBlocked = (rt as any).blockedStepReason.bind(rt);
+    (rt as any).blockedStepReason = (x: number, y: number) => {
+      const rx = Math.round(x);
+      const ry = Math.round(y);
+      // Path cells to road
+      if (ry === 101 && (rx === 101 || rx === 102 || rx === 103)) return null;
+      // All other nearby cells including all 6 immediate candidates are blocked
+      if (Math.hypot(rx - 100, ry - 100) <= 2.5) return "building";
+      return origBlocked(x, y);
+    };
+
+    const exitResult = rt.exitOwnedCar();
+
+    // Must succeed because (103, 101) is path-connected to the car
+    expect(exitResult).toBe(true);
+    const teleport = (rt as any).fpTeleportRequest;
+    expect(teleport).toBeTruthy();
+    expect(teleport.x).toBe(103);
+    expect(teleport.y).toBe(101);
+  });
 });

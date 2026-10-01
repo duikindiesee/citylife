@@ -2820,38 +2820,74 @@ export class ColonyRuntime {
       (c) => this.blockedStepReason(c.x, c.y) === null && !t.isWater(c.x, c.y)
     );
 
-    // 4. Spiral search within 4 cells for any valid dry walkable cell
-    if (!exitCell) {
-      for (let r = 2; r <= 4; r++) {
-        for (let dx = -r; dx <= r; dx++) {
-          for (let dy = -r; dy <= r; dy++) {
-            if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
-            const cx = Math.round(car.x + dx);
-            const cy = Math.round(car.y + dy);
-            if (cx >= 2 && cx < t.size - 2 && cy >= 2 && cy < t.size - 2) {
-              if (this.blockedStepReason(cx, cy) === null && !t.isWater(cx, cy)) {
-                exitCell = { x: cx, y: cy };
-                break;
-              }
-            }
-          }
-          if (exitCell) break;
-        }
-        if (exitCell) break;
-      }
-    }
-
-    // 5. Reachable road fallback: if stranded on water/bridge, exit onto nearest reachable road cell
-    // (capped at 6.0 cells = 24m radius to prevent unbounded teleport across the map)
+    // 4. Reachable path-connected fallback search (up to 6.0 cells = 24m radius)
+    // Constrained to a path-connected component so the player never teleports across water or barriers.
     const MAX_EXIT_TELEPORT_RADIUS = 6.0;
-    if (!exitCell && this.sim.state.roadSet && this.sim.state.roadSet.size > 0) {
-      let bestDist = MAX_EXIT_TELEPORT_RADIUS;
-      for (const rk of this.sim.state.roadSet) {
-        const [rx, ry] = rk.split(",").map(Number);
-        const d = Math.hypot(rx - car.x, ry - car.y);
-        if (d <= bestDist && this.blockedStepReason(rx, ry) === null) {
-          bestDist = d;
-          exitCell = { x: rx, y: ry };
+    if (!exitCell) {
+      const startX = Math.round(car.x);
+      const startY = Math.round(car.y);
+
+      // Starting seed points: the car's origin cell and immediate perimeter
+      const reachable = new Set<string>();
+      const queue: { x: number; y: number }[] = [];
+
+      const tryEnqueue = (x: number, y: number) => {
+        const key = `${x},${y}`;
+        if (!reachable.has(key) && this.blockedStepReason(x, y) === null && !t.isWater(x, y)) {
+          reachable.add(key);
+          queue.push({ x, y });
+        }
+      };
+
+      tryEnqueue(startX, startY);
+      for (const [dx, dy] of [
+        [1, 0], [-1, 0], [0, 1], [0, -1],
+        [1, 1], [1, -1], [-1, 1], [-1, -1],
+      ]) {
+        tryEnqueue(startX + dx, startY + dy);
+      }
+
+      while (queue.length > 0) {
+        const curr = queue.shift()!;
+        for (const [dx, dy] of [
+          [1, 0], [-1, 0], [0, 1], [0, -1],
+          [1, 1], [1, -1], [-1, 1], [-1, -1],
+        ]) {
+          const nx = curr.x + dx;
+          const ny = curr.y + dy;
+          const key = `${nx},${ny}`;
+          if (reachable.has(key)) continue;
+          if (Math.hypot(nx - car.x, ny - car.y) > MAX_EXIT_TELEPORT_RADIUS) continue;
+          if (nx < 2 || nx >= t.size - 2 || ny < 2 || ny >= t.size - 2) continue;
+          if (this.blockedStepReason(nx, ny) !== null || t.isWater(nx, ny)) continue;
+
+          reachable.add(key);
+          queue.push({ x: nx, y: ny });
+        }
+      }
+
+      if (reachable.size > 0) {
+        const reachableRoads: { x: number; y: number; dist: number }[] = [];
+        const reachableDry: { x: number; y: number; dist: number }[] = [];
+
+        for (const key of reachable) {
+          const [cx, cy] = key.split(",").map(Number);
+          const d = Math.hypot(cx - car.x, cy - car.y);
+          if (cx === startX && cy === startY) continue;
+
+          if (this.sim.state.roadSet?.has(key)) {
+            reachableRoads.push({ x: cx, y: cy, dist: d });
+          } else {
+            reachableDry.push({ x: cx, y: cy, dist: d });
+          }
+        }
+
+        if (reachableRoads.length > 0) {
+          reachableRoads.sort((a, b) => a.dist - b.dist);
+          exitCell = { x: reachableRoads[0]!.x, y: reachableRoads[0]!.y };
+        } else if (reachableDry.length > 0) {
+          reachableDry.sort((a, b) => a.dist - b.dist);
+          exitCell = { x: reachableDry[0]!.x, y: reachableDry[0]!.y };
         }
       }
     }
