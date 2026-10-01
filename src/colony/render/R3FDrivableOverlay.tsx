@@ -3,6 +3,7 @@ import * as THREE from "three";
 import type { ColonySim } from "../sim";
 import type { ColonyRuntime } from "../runtime";
 import { getSmoothRoadY } from "./roadSurface";
+import { isPointInGarageVicinity } from "./garageAnchorShell";
 
 interface R3FDrivableOverlayProps {
   sim: ColonySim;
@@ -89,6 +90,26 @@ export function R3FDrivableOverlay({ sim, runtime }: R3FDrivableOverlayProps) {
         for (let dx = -2; dx <= 2; dx++) {
           for (let dy = -2; dy <= 2; dy++) {
             checkCell(rx + dx, ry + dy);
+          }
+        }
+      }
+    }
+
+    // 3. Spec 177: Check commercial garage vicinity (drivable apron, parking stalls, service bay, and obstacles)
+    const garagePad = sim.state.commercialDistrict?.garagePad;
+    if (garagePad && runtime) {
+      for (let gx = garagePad.x - 2; gx <= garagePad.x + garagePad.w + 5; gx++) {
+        for (let gy = garagePad.y - 2; gy <= garagePad.y + garagePad.h + 5; gy++) {
+          if (gx < 2 || gx >= size - 2 || gy < 2 || gy >= size - 2) continue;
+          if (isPointInGarageVicinity(gx, gy, garagePad)) {
+            const key = `${gx},${gy}`;
+            if (checked.has(key)) continue;
+            checked.add(key);
+            if (runtime.isGaragePadDrivable(gx, gy, garagePad)) {
+              cells.push({ x: gx, y: gy, kind: "road" });
+            } else {
+              cells.push({ x: gx, y: gy, kind: "blocked" });
+            }
           }
         }
       }

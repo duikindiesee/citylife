@@ -26,12 +26,20 @@ function isFootprintClear(
 ): boolean {
   const cos = Math.cos(heading);
   const sin = Math.sin(heading);
-  for (const along of [-halfLength, 0, halfLength]) {
-    for (const across of [-halfWidth, halfWidth]) {
-      const px = x + (cos * along - sin * across) / cellMetres;
-      const py = y + (sin * along + cos * across) / cellMetres;
-      if (!canOccupy(px, py)) return false;
-    }
+  const samples: [number, number][] = [
+    [halfLength, -halfWidth],
+    [halfLength, 0],
+    [halfLength, halfWidth],
+    [0, -halfWidth],
+    [0, halfWidth],
+    [-halfLength, -halfWidth],
+    [-halfLength, 0],
+    [-halfLength, halfWidth],
+  ];
+  for (const [along, across] of samples) {
+    const px = x + (cos * along - sin * across) / cellMetres;
+    const py = y + (sin * along + cos * across) / cellMetres;
+    if (!canOccupy(px, py)) return false;
   }
   return true;
 }
@@ -57,15 +65,23 @@ function inspectFootprint(
   let front = 0;
   let center = 0;
   let rear = 0;
-  for (const along of [-halfLength, 0, halfLength]) {
-    for (const across of [-halfWidth, halfWidth]) {
-      const px = x + (cos * along - sin * across) / cellMetres;
-      const py = y + (sin * along + cos * across) / cellMetres;
-      if (!canOccupy(px, py)) {
-        if (along > 0) front++;
-        else if (along < 0) rear++;
-        else center++;
-      }
+  const samples: [number, number][] = [
+    [halfLength, -halfWidth],
+    [halfLength, 0],
+    [halfLength, halfWidth],
+    [0, -halfWidth],
+    [0, halfWidth],
+    [-halfLength, -halfWidth],
+    [-halfLength, 0],
+    [-halfLength, halfWidth],
+  ];
+  for (const [along, across] of samples) {
+    const px = x + (cos * along - sin * across) / cellMetres;
+    const py = y + (sin * along + cos * across) / cellMetres;
+    if (!canOccupy(px, py)) {
+      if (along > 0) front++;
+      else if (along < 0) rear++;
+      else center++;
     }
   }
   return { front, center, rear, total: front + center + rear };

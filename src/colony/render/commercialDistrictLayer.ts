@@ -277,7 +277,8 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   forecourt.position.set(0, model.forecourt.y, model.forecourt.frontOffset);
   forecourt.receiveShadow = true;
 
-  // Spec 176: Dedicated customer parking bays painted on the forecourt
+  // Spec 176 / 177: Dedicated customer parking bays painted on the forecourt
+  // Aligned with stall depth along world Z and vehicle orientation (rot: Math.PI / 2)
   const stallLineMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xdddddd,
@@ -290,36 +291,80 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     stallGroup.position.set(bay.x, model.forecourt.y + 0.032, bay.z);
     stallGroup.rotation.y = bay.rot;
 
-    // White parking stall boundary lines (left, right, back) - realistic line widths (~14cm)
+    // In stall local coordinates (rotated by Math.PI / 2):
+    // Depth (bay.d) is along local X (pointing toward forecourt / road)
+    // Width (bay.w) is along local Z (stall width)
     const leftLine = new THREE.Mesh(
-      new THREE.BoxGeometry(0.035, 0.015, bay.d),
+      new THREE.BoxGeometry(bay.d, 0.015, 0.035),
       stallLineMat,
     );
-    leftLine.position.set(-bay.w / 2, 0, 0);
+    leftLine.position.set(0, 0, -bay.w / 2);
     const rightLine = new THREE.Mesh(
-      new THREE.BoxGeometry(0.035, 0.015, bay.d),
+      new THREE.BoxGeometry(bay.d, 0.015, 0.035),
       stallLineMat,
     );
-    rightLine.position.set(bay.w / 2, 0, 0);
+    rightLine.position.set(0, 0, bay.w / 2);
     const backLine = new THREE.Mesh(
-      new THREE.BoxGeometry(bay.w, 0.015, 0.035),
+      new THREE.BoxGeometry(0.035, 0.015, bay.w),
       stallLineMat,
     );
-    backLine.position.set(0, 0, -bay.d / 2);
+    backLine.position.set(-bay.d / 2, 0, 0);
 
-    // Concrete wheel stop block
+    // Concrete wheel stop block behind the car
     const wheelStop = new THREE.Mesh(
-      new THREE.BoxGeometry(bay.w * 0.72, 0.045, 0.08),
+      new THREE.BoxGeometry(0.08, 0.045, bay.w * 0.72),
       new THREE.MeshStandardMaterial({ color: 0x828d99, roughness: 0.72 }),
     );
-    wheelStop.position.set(0, 0.025, -bay.d / 2 + 0.12);
+    wheelStop.position.set(-bay.d / 2 + 0.12, 0.025, 0);
     stallGroup.add(leftLine, rightLine, backLine, wheelStop);
     g.add(stallGroup);
   }
 
-  // Forecourt twin architectural light stanchions / floodlights
-  for (const side of [-1, 1]) {
-    const poleX = (model.forecourt.w / 2 - 0.4) * side;
+  // Spec 177: Driveway Apron connecting forecourt forward to the municipal road edge
+  const apronMat = new THREE.MeshStandardMaterial({
+    color: 0x2e353f,
+    roughness: 0.68,
+    metalness: 0.05,
+  });
+  const apron = new THREE.Mesh(
+    new THREE.BoxGeometry(model.drivewayApron.w, 0.036, model.drivewayApron.d),
+    apronMat,
+  );
+  apron.name = "garageAnchorDrivewayEntranceThroat";
+  apron.position.set(
+    model.drivewayApron.x,
+    model.drivewayApron.y,
+    model.drivewayApron.z,
+  );
+  apron.receiveShadow = true;
+  g.add(apron);
+
+  // Yellow entrance curb transitions
+  const curbMat = new THREE.MeshStandardMaterial({
+    color: 0xffc83b,
+    roughness: 0.4,
+    emissive: 0x8a6500,
+    emissiveIntensity: 0.25,
+  });
+  for (const curbSide of [-1, 1]) {
+    const curb = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.06, model.drivewayApron.d),
+      curbMat,
+    );
+    curb.name = `garageAnchorEntranceCurb.${curbSide < 0 ? "left" : "right"}`;
+    curb.position.set(
+      model.drivewayApron.x + (model.drivewayApron.w / 2) * curbSide,
+      model.drivewayApron.y + 0.02,
+      model.drivewayApron.z,
+    );
+    g.add(curb);
+  }
+
+  // Spec 177: Forecourt perimeter architectural light stanchion
+  // Placed strictly on the far western perimeter curb corner, completely clear of all vehicle driving paths.
+  // The old stanchion on the east side (which blocked the service bay entrance) is eliminated!
+  {
+    const poleX = -model.forecourt.w / 2 + 0.4;
     const poleZ = model.forecourt.frontOffset + model.forecourt.d / 2 - 0.3;
     const pole = new THREE.Mesh(
       new THREE.CylinderGeometry(0.08, 0.11, 4.2, 10),
@@ -340,7 +385,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     );
     luminaire.position.set(poleX, 4.15, poleZ - 0.18);
     luminaire.rotation.x = 0.35;
-    const flood = new THREE.PointLight(0xffeed4, 18, 14, 1.8);
+    const flood = new THREE.PointLight(0xffeed4, 22, 16, 1.8);
     flood.position.set(poleX, 4.0, poleZ - 0.18);
     g.add(pole, luminaire, flood);
   }

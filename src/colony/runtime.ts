@@ -313,6 +313,16 @@ import {
   surveyVenuePlacements,
   venueRoadBlockedCells,
 } from "./render/venuePlacement";
+import {
+  buildGarageAnchorShellModel,
+  isPointInGarageVicinity,
+  localFromGridCoordinates,
+  isPointInsideGarageObstacle,
+  isPointInDrivableSurface,
+  isPointInWalkableSurface,
+  isCarFootprintClearOfGarageObstacles,
+  type GarageAnchorShellModel,
+} from "./render/garageAnchorShell";
 import { cellOk, leastCostPath, roadCellOk, type Cell } from "./pathfind";
 import { roadComponents } from "./roadConnectivity";
 import {
@@ -3080,15 +3090,9 @@ export class ColonyRuntime {
         if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05)
           return false;
 
-        // Spec 175: Commercial garage pad (forecourt apron, open service bay) is drivable
+        // Spec 175 / 177: Commercial garage pad and driveway apron
         const garagePad = this.commercialDistrict?.garagePad;
-        if (
-          garagePad &&
-          ix >= garagePad.x &&
-          ix < garagePad.x + garagePad.w &&
-          iy >= garagePad.y &&
-          iy < garagePad.y + garagePad.h
-        ) {
+        if (garagePad && isPointInGarageVicinity(x, y, garagePad)) {
           if (this.isGaragePadDrivable(x, y, garagePad)) {
             return true;
           }
@@ -3126,68 +3130,61 @@ export class ColonyRuntime {
     }
   }
 
-  /** Spec 175: Test whether a coordinate within garagePad is on the drivable forecourt or in the open bay. */
-  isGaragePadDrivable(x: number, y: number, garagePad: GaragePad): boolean {
-    const cx = garagePad.x + (garagePad.w - 1) / 2;
-    const cy = garagePad.y + (garagePad.h - 1) / 2;
-    const dx = x - cx;
-    const dy = y - cy;
-    const cos = Math.cos(garagePad.facingAngle);
-    const sin = Math.sin(garagePad.facingAngle);
-    const localX = dx * cos - dy * sin;
-    const localZ = dx * sin + dy * cos;
-
-    // Pad perimeter boundary guard: full pad dimensions without artificial border shrink
-    const halfW = garagePad.w / 2;
-    const halfD = garagePad.h / 2;
-    if (Math.abs(localX) > halfW || Math.abs(localZ) > halfD) return false;
-
-    // Forecourt & road-facing entrance apron (localZ > -0.6): open concrete slab
-    if (localZ > -0.6) return true;
-
-    // Open Service Bay (door 1): rolled up, open cavity allows driving into the bay
-    if (localX > 0.4 && localX < 2.8 && localZ > -2.9) {
-      return true;
+  private garageModelCache: GarageAnchorShellModel | null = null;
+  getGarageModel(): GarageAnchorShellModel | null {
+    const pad = this.commercialDistrict?.garagePad;
+    if (!pad) return null;
+    const cx = pad.x + (pad.w - 1) / 2;
+    const cy = pad.y + (pad.h - 1) / 2;
+    if (
+      !this.garageModelCache ||
+      this.garageModelCache.center.x !== cx ||
+      this.garageModelCache.center.y !== cy
+    ) {
+      this.garageModelCache = buildGarageAnchorShellModel(pad, (gx, gy) =>
+        this.sim.state.terrain.worldY(Math.round(gx), Math.round(gy)),
+      );
     }
-
-    // Solid showroom walls, closed bays, and rear exterior wall block
-    return false;
+    return this.garageModelCache;
   }
 
-  /** Spec 176: Test whether a coordinate within garagePad is walkable on foot (forecourt, apron, open bay, showroom floor). */
+  /** Spec 175 / 177: Test whether coordinate (x, y) is within a drivable garage surface (apron, forecourt, open service bay) and clear of obstacles. */
+  isGaragePadDrivable(x: number, y: number, garagePad: GaragePad): boolean {
+    const model = this.getGarageModel();
+    if (!model) return false;
+    const local = localFromGridCoordinates(garagePad, x, y);
+    // 1. Must be inside a designated drivable surface (apron throat, forecourt, open bay floor)
+    if (!isPointInDrivableSurface(local.x, local.z, model.surfaces)) {
+      return false;
+    }
+    // 2. Must not penetrate any discrete obstacle (walls, closed rollup doors, columns, pylon)
+    if (isPointInsideGarageObstacle(local.x, local.z, model.obstacles, 0.08)) {
+      return false;
+    }
+    return true;
+  }
+
+  /** Spec 176 / 177: Test whether coordinate (x, y) is walkable on foot (apron, forecourt, open bay, showroom floor) and clear of obstacles. */
   isGaragePadWalkable(x: number, y: number, garagePad: GaragePad): boolean {
-    const cx = garagePad.x + (garagePad.w - 1) / 2;
-    const cy = garagePad.y + (garagePad.h - 1) / 2;
-    const dx = x - cx;
-    const dy = y - cy;
-    const cos = Math.cos(garagePad.facingAngle);
-    const sin = Math.sin(garagePad.facingAngle);
-    const localX = dx * cos - dy * sin;
-    const localZ = dx * sin + dy * cos;
-
-    // Pad perimeter boundary guard
-    const halfW = (garagePad.w * 0.98) / 2;
-    const halfD = (garagePad.h * 0.98) / 2;
-    if (Math.abs(localX) > halfW || Math.abs(localZ) > halfD) return false;
-
-    // 1. Forecourt, parking bays & entrance apron: open walkable paved ground
-    if (localZ > -0.5) return true;
-
-    // 2. Open Service Bay (middle door): open walkable floor
-    if (localX > 0.3 && localX < 2.9 && localZ > -3.2) {
-      return true;
+    const model = this.getGarageModel();
+    if (!model) return false;
+    const local = localFromGridCoordinates(garagePad, x, y);
+    // 1. Must be inside a designated walkable surface
+    if (!isPointInWalkableSurface(local.x, local.z, model.surfaces)) {
+      return false;
     }
+    // 2. Turntable plinth collision for pedestrian avatars
+    const plinthDist = Math.hypot(
+      local.x - (model.showroom.x - model.showroom.w * 0.1),
+      local.z - (model.showroom.z + model.showroom.d * 0.04),
+    );
+    if (plinthDist < 1.4) return false;
 
-    // 3. Glass Showroom: customer walking area around display cars
-    if (localX < -0.2 && localX > -halfW + 0.3 && localZ > -halfD + 0.5) {
-      // Keep clear of center plinth collision
-      const plinthDist = Math.hypot(localX - -garagePad.w * 0.25, localZ - 0.2);
-      if (plinthDist < 1.2) return false;
-      return true;
+    // 3. Must not penetrate any discrete obstacle
+    if (isPointInsideGarageObstacle(local.x, local.z, model.obstacles, 0.05)) {
+      return false;
     }
-
-    // Structural perimeter walls and closed bays 1 and 3 block
-    return false;
+    return true;
   }
 
   /** Spec 175: Test whether a coordinate is on the operator citizen's owned homestead driveway/yard. */
@@ -5480,15 +5477,9 @@ export class ColonyRuntime {
       return "building";
     }
     const fromKey = from ? `${Math.round(from.x)},${Math.round(from.y)}` : null;
-    // Spec 176: Allow pedestrian walking on public commercial garage plot (forecourt, showroom, open bay)
+    // Spec 176 / 177: Allow pedestrian walking on public commercial garage plot and driveway apron
     const garagePad = this.commercialDistrict?.garagePad;
-    if (
-      garagePad &&
-      ix >= garagePad.x &&
-      ix < garagePad.x + garagePad.w &&
-      iy >= garagePad.y &&
-      iy < garagePad.y + garagePad.h
-    ) {
+    if (garagePad && isPointInGarageVicinity(x, y, garagePad)) {
       if (this.isGaragePadWalkable(x, y, garagePad)) {
         return null; // Walkable!
       }
