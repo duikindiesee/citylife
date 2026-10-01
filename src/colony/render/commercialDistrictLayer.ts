@@ -614,9 +614,9 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   );
   showroomInterior.add(plinthRing);
 
-  // 4. HERO CAR ON THE PLINTH (Karoo Kaap GT-V8 coupe)
-  // Sized to authentic life-size proportion (4.28m in world metres), clearing walls and adjacent displays throughout 360° turntable rotation.
-  const heroSpec = SHOWROOM_VEHICLES[1]!.spec;
+  // 4. HERO CAR ON THE PLINTH (Karoo X19 Targa - Yellow Fiat X1/9 GLB)
+  // Centered on the turntable plinth and illuminated by ceiling spotlights.
+  const heroSpec = SHOWROOM_VEHICLES[2]!.spec;
   const heroCar = buildCarMesh(heroSpec);
   heroCar.name = "garageAnchorShowroomHeroCar";
   heroCar.scale.setScalar(1.0);
@@ -628,14 +628,14 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   heroCar.rotation.y = -0.38; // initial angle toward the road-facing glass
   showroomInterior.add(heroCar);
 
-  // 5. SECONDARY CAR IN SHOWROOM (Karoo X19 Targa)
-  // Dedicated showroom bay centered between turntable plinth and service bay dividing wall (>5m wall clearance, >3m plinth clearance).
-  const secondarySpec = SHOWROOM_VEHICLES[2]!.spec;
+  // 5. SECONDARY CAR IN SHOWROOM (Karoo Kaap GT-V8 coupe)
+  // Positioned in the eastern showroom bay, well clear of the plinth (>4.4m plinth edge clearance).
+  const secondarySpec = SHOWROOM_VEHICLES[1]!.spec;
   const secondaryCar = buildCarMesh(secondarySpec);
   secondaryCar.name = "garageAnchorShowroomSecondCar";
   secondaryCar.scale.setScalar(1.0);
   secondaryCar.position.set(
-    model.showroom.x + model.showroom.w * 0.085,
+    model.showroom.x + model.showroom.w * 0.24,
     0.05,
     model.showroom.z - model.showroom.d * 0.02,
   );

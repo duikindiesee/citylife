@@ -220,13 +220,15 @@ export function buildGarageAnchorShellModel(
   // Spec 176 / 177: Customer parking bays on the forecourt in front of showroom.
   // Oriented lengthwise into/out of the stall with rot: Math.PI / 2.
   // Stall depth (bayD = 1.25 cells = 5.0m) along Z; stall width (bayW = 0.68 cells = 2.72m) along X.
+  // Positioned at bayZ = 4.28 on forecourt, providing 1.48m clearance from showroom glass wall (z = 3.41).
   const bayW = 0.68;
   const bayD = 1.25;
+  const bayZ = 4.28;
   const stallRotation = Math.PI / 2; // Aligned with stall lines (not sideways across lines)
   const parkingBays = [
     {
       x: -footprint.w * 0.28,
-      z: forecourt.frontOffset,
+      z: bayZ,
       w: bayW,
       d: bayD,
       rot: stallRotation,
@@ -234,7 +236,7 @@ export function buildGarageAnchorShellModel(
     },
     {
       x: -footprint.w * 0.16,
-      z: forecourt.frontOffset,
+      z: bayZ,
       w: bayW,
       d: bayD,
       rot: stallRotation,
@@ -242,7 +244,7 @@ export function buildGarageAnchorShellModel(
     },
     {
       x: -footprint.w * 0.04,
-      z: forecourt.frontOffset,
+      z: bayZ,
       w: bayW,
       d: bayD,
       rot: stallRotation,

@@ -44,6 +44,7 @@ repo, on protected `main` (PRs + review only).
 18. **[incidents/INCIDENT-2026-09-30-production-pod-drift.md](incidents/INCIDENT-2026-09-30-production-pod-drift.md)** — Production drift investigation, served bundle reconciliation, and recovery proposal.
 19. **[tasks/next-build-acceptance-blockers.md](tasks/next-build-acceptance-blockers.md)** — Next-build acceptance blockers resolution: showroom geometry clearance, coastal road grounding, testing diagnostic HUD, top-bar UI integration, and wallet/purchase edge-case hardening.
 20. **[tasks/bus-transit-stop-alignment-and-rider-flow.md](tasks/bus-transit-stop-alignment-and-rider-flow.md)** — Bus transit route alignment to 3D ribbon roads, stop furniture verge calibration, and automated next-stop rider onboarding/offboarding flow.
+21. **[tasks/road-intersections-and-signal-poles.md](tasks/road-intersections-and-signal-poles.md)** — Road intersection geometry, safe verge clearance for signal poles, and crosswalk termination pruning.
 
 ---
 
