@@ -9,7 +9,11 @@
  * element is exactly the defect those two PRs fixed, so it is not done here.
  */
 import React, { useEffect, useState } from "react";
-import { buildStampParts, buildStampTitle, formatBuildStamp } from "../buildStamp";
+import {
+  buildStampParts,
+  buildStampTitle,
+  formatBuildStamp,
+} from "../buildStamp";
 import type { ColonyRuntime } from "../runtime";
 
 export interface BuildStampProps {
@@ -58,7 +62,7 @@ export function deriveDiagnosticReadout(runtime?: ColonyRuntime): {
     ? t.worldYAt(cellX, cellY) + 0.18
     : t.worldYAt(cellX, cellY);
   const headingDeg = Math.round(
-    (((headingRad * 180) / Math.PI) % 360 + 360) % 360,
+    ((((headingRad * 180) / Math.PI) % 360) + 360) % 360,
   );
 
   return {
@@ -70,10 +74,7 @@ export function deriveDiagnosticReadout(runtime?: ColonyRuntime): {
   };
 }
 
-export function BuildStamp({
-  variant = "hud",
-  runtime,
-}: BuildStampProps) {
+export function BuildStamp({ variant = "hud", runtime }: BuildStampProps) {
   const parts = buildStampParts();
   const text = formatBuildStamp(parts);
 
@@ -98,9 +99,7 @@ export function BuildStamp({
 
   // Always show coordinates for in-game views so any screen capture captures exact coordinates
   const showDiag = Boolean(
-    runtime &&
-    typeof window !== "undefined" &&
-    variant !== "login"
+    runtime && typeof window !== "undefined" && variant !== "login",
   );
 
   return (
@@ -128,7 +127,10 @@ export function BuildStamp({
       <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
         <span style={{ fontWeight: 600, color: "#6fe3ff" }}>{text}</span>
         {parts.builtAt && (
-          <span style={{ opacity: 0.65, fontSize: "10px" }} title="Build timestamp">
+          <span
+            style={{ opacity: 0.65, fontSize: "10px" }}
+            title="Build timestamp"
+          >
             {parts.builtAt}
           </span>
         )}
@@ -144,11 +146,21 @@ export function BuildStamp({
             gap: "6px",
           }}
         >
-          <span>X: <b>{diag.x}m</b></span>
-          <span>Elev: <b>{diag.elev}m</b></span>
-          <span>Z: <b>{diag.z}m</b></span>
-          <span>Hdg: <b>{diag.headingDeg}°</b></span>
-          <span>Seed: <b>{diag.seed}</b></span>
+          <span>
+            X: <b>{diag.x}m</b>
+          </span>
+          <span>
+            Elev: <b>{diag.elev}m</b>
+          </span>
+          <span>
+            Z: <b>{diag.z}m</b>
+          </span>
+          <span>
+            Hdg: <b>{diag.headingDeg}°</b>
+          </span>
+          <span>
+            Seed: <b>{diag.seed}</b>
+          </span>
         </div>
       )}
     </div>

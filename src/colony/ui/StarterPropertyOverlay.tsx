@@ -164,7 +164,8 @@ export function StarterPropertyOverlay({
     outcome,
   );
   const shortage =
-    typeof selectedChoice?.priceKco === "number" && typeof walletKco === "number"
+    typeof selectedChoice?.priceKco === "number" &&
+    typeof walletKco === "number"
       ? Math.max(0, selectedChoice.priceKco - walletKco)
       : null;
   const isInsufficient = shortage !== null && shortage > 0;
@@ -243,13 +244,19 @@ export function StarterPropertyOverlay({
         >
           {walletLabel}
         </span>
-        {(walletStatus === "missing" || walletStatus === "unavailable" || isInsufficient) &&
+        {(walletStatus === "missing" ||
+          walletStatus === "unavailable" ||
+          isInsufficient) &&
           onWalletRefresh && (
             <button
               type="button"
               data-testid="home-wallet-refresh"
               onClick={onWalletRefresh}
-              title={isInsufficient ? "Refresh wallet balance" : "Retry connecting to wallet"}
+              title={
+                isInsufficient
+                  ? "Refresh wallet balance"
+                  : "Retry connecting to wallet"
+              }
               style={{
                 ...controlButtonStyle,
                 padding: "4px 7px",

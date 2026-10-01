@@ -140,7 +140,10 @@ export function BugReportPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [promptText, setPromptText] = useState("");
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   if (!open) return null;
 
@@ -478,8 +481,14 @@ export function BugReportPanel({
           Capture current view
         </button>
         {capture && (
-          <div className="bug-report-panel__capture-preview-container" style={{ marginTop: 8 }}>
-            <p className="bug-report-panel__capture-id" style={{ margin: "0 0 6px 0" }}>
+          <div
+            className="bug-report-panel__capture-preview-container"
+            style={{ marginTop: 8 }}
+          >
+            <p
+              className="bug-report-panel__capture-id"
+              style={{ margin: "0 0 6px 0" }}
+            >
               Capture <code>{capture.context.captureId}</code> · sol{" "}
               {capture.context.sol.sol} · {capture.context.viewport.width}×
               {capture.context.viewport.height}

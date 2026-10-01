@@ -2222,7 +2222,8 @@ body.tv-mode .radio-iframe.is-visible {
   }
 
   .first-person-panel {
-    inset: max(60px, calc(52px + env(safe-area-inset-top))) 8px max(8px, env(safe-area-inset-bottom)) !important;
+    inset: max(60px, calc(52px + env(safe-area-inset-top))) 8px
+      max(8px, env(safe-area-inset-bottom)) !important;
   }
   .first-person-panel--edge-hud {
     grid-template-areas:

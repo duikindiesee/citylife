@@ -2104,7 +2104,8 @@ export function ColonyApp() {
                   color: "#ffffff",
                 }}
               >
-                {speedKmH} <span style={{ fontSize: 10, color: "#85d6ff" }}>km/h</span>
+                {speedKmH}{" "}
+                <span style={{ fontSize: 10, color: "#85d6ff" }}>km/h</span>
               </span>
               <button
                 type="button"
@@ -2127,42 +2128,42 @@ export function ColonyApp() {
           !ui.firstPerson.active &&
           !runtime.getOwnedDrivePose() &&
           newPlayerJourneyEnabled && (
-          <button
-            type="button"
-            className="topbar-starter-plot"
-            data-testid="onboarding-claim-home-banner"
-            onClick={openHome}
-            title="Choose and claim your starter plot"
-            style={{
-              border: "1px solid rgba(255, 210, 90, 0.45)",
-              background: "rgba(255, 210, 90, 0.12)",
-              color: "#ffd25a",
-              minHeight: 36,
-              padding: "6px 12px",
-              borderRadius: 10,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              fontWeight: 600,
-              fontSize: 13,
-            }}
-          >
-            <span>🏡 Starter Plot</span>
-            <span
+            <button
+              type="button"
+              className="topbar-starter-plot"
+              data-testid="onboarding-claim-home-banner"
+              onClick={openHome}
+              title="Choose and claim your starter plot"
               style={{
-                background: "#ffd25a",
-                color: "#08121e",
-                padding: "1px 6px",
-                borderRadius: 6,
-                fontSize: 11,
-                fontWeight: 800,
+                border: "1px solid rgba(255, 210, 90, 0.45)",
+                background: "rgba(255, 210, 90, 0.12)",
+                color: "#ffd25a",
+                minHeight: 36,
+                padding: "6px 12px",
+                borderRadius: 10,
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                fontWeight: 600,
+                fontSize: 13,
               }}
             >
-              Select →
-            </span>
-          </button>
-        )}
+              <span>🏡 Starter Plot</span>
+              <span
+                style={{
+                  background: "#ffd25a",
+                  color: "#08121e",
+                  padding: "1px 6px",
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontWeight: 800,
+                }}
+              >
+                Select →
+              </span>
+            </button>
+          )}
         {topbar.showMap && (
           <button
             type="button"

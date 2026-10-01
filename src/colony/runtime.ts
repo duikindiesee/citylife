@@ -2806,18 +2806,40 @@ export class ColonyRuntime {
     // even on coastal roads, water edges, bridges, or tight parking situations.
     const candidates: { x: number; y: number }[] = [
       // 1. Driver/passenger doors (immediate lateral offset)
-      { x: Math.round(car.x - Math.sin(car.heading)), y: Math.round(car.y + Math.cos(car.heading)) },
-      { x: Math.round(car.x + Math.sin(car.heading)), y: Math.round(car.y - Math.cos(car.heading)) },
+      {
+        x: Math.round(car.x - Math.sin(car.heading)),
+        y: Math.round(car.y + Math.cos(car.heading)),
+      },
+      {
+        x: Math.round(car.x + Math.sin(car.heading)),
+        y: Math.round(car.y - Math.cos(car.heading)),
+      },
       // 2. Behind or in front of the vehicle
-      { x: Math.round(car.x - Math.cos(car.heading)), y: Math.round(car.y - Math.sin(car.heading)) },
-      { x: Math.round(car.x + Math.cos(car.heading)), y: Math.round(car.y + Math.sin(car.heading)) },
+      {
+        x: Math.round(car.x - Math.cos(car.heading)),
+        y: Math.round(car.y - Math.sin(car.heading)),
+      },
+      {
+        x: Math.round(car.x + Math.cos(car.heading)),
+        y: Math.round(car.y + Math.sin(car.heading)),
+      },
       // 3. Diagonal corners
-      { x: Math.round(car.x - Math.sin(car.heading) - Math.cos(car.heading)), y: Math.round(car.y + Math.cos(car.heading) - Math.sin(car.heading)) },
-      { x: Math.round(car.x + Math.sin(car.heading) - Math.cos(car.heading)), y: Math.round(car.y - Math.cos(car.heading) - Math.sin(car.heading)) },
+      {
+        x: Math.round(car.x - Math.sin(car.heading) - Math.cos(car.heading)),
+        y: Math.round(car.y + Math.cos(car.heading) - Math.sin(car.heading)),
+      },
+      {
+        x: Math.round(car.x + Math.sin(car.heading) - Math.cos(car.heading)),
+        y: Math.round(car.y - Math.cos(car.heading) - Math.sin(car.heading)),
+      },
     ];
 
     const isPassable = (x: number, y: number): boolean => {
-      if (t && typeof t.size === "number" && (x < 2 || x >= t.size - 2 || y < 2 || y >= t.size - 2)) {
+      if (
+        t &&
+        typeof t.size === "number" &&
+        (x < 2 || x >= t.size - 2 || y < 2 || y >= t.size - 2)
+      ) {
         return false;
       }
       return this.blockedStepReason(x, y) === null && !t.isWater(x, y);
@@ -2832,7 +2854,10 @@ export class ColonyRuntime {
       const dy = c.y - startY;
       // Refuse crossing two blocked orthogonal sides on diagonal moves
       if (dx !== 0 && dy !== 0) {
-        if (!isPassable(startX + dx, startY) && !isPassable(startX, startY + dy)) {
+        if (
+          !isPassable(startX + dx, startY) &&
+          !isPassable(startX, startY + dy)
+        ) {
           return false;
         }
       }
@@ -2854,7 +2879,10 @@ export class ColonyRuntime {
 
       // Orthogonal perimeter seeds
       for (const [dx, dy] of [
-        [1, 0], [-1, 0], [0, 1], [0, -1],
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
       ]) {
         const nx = startX + dx;
         const ny = startY + dy;
@@ -2867,13 +2895,19 @@ export class ColonyRuntime {
 
       // Diagonal perimeter seeds: refuse crossing two blocked orthogonal sides
       for (const [dx, dy] of [
-        [1, 1], [1, -1], [-1, 1], [-1, -1],
+        [1, 1],
+        [1, -1],
+        [-1, 1],
+        [-1, -1],
       ]) {
         const nx = startX + dx;
         const ny = startY + dy;
         const key = `${nx},${ny}`;
         if (reachable.has(key)) continue;
-        if (!isPassable(startX + dx, startY) && !isPassable(startX, startY + dy)) {
+        if (
+          !isPassable(startX + dx, startY) &&
+          !isPassable(startX, startY + dy)
+        ) {
           continue;
         }
         if (isPassable(nx, ny)) {
@@ -2886,18 +2920,28 @@ export class ColonyRuntime {
       while (queue.length > 0) {
         const curr = queue.shift()!;
         for (const [dx, dy] of [
-          [1, 0], [-1, 0], [0, 1], [0, -1],
-          [1, 1], [1, -1], [-1, 1], [-1, -1],
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+          [1, 1],
+          [1, -1],
+          [-1, 1],
+          [-1, -1],
         ]) {
           const nx = curr.x + dx;
           const ny = curr.y + dy;
           const key = `${nx},${ny}`;
           if (reachable.has(key)) continue;
-          if (Math.hypot(nx - car.x, ny - car.y) > MAX_EXIT_TELEPORT_RADIUS) continue;
+          if (Math.hypot(nx - car.x, ny - car.y) > MAX_EXIT_TELEPORT_RADIUS)
+            continue;
 
           // Diagonal expansion: refuse crossing two blocked orthogonal sides
           if (dx !== 0 && dy !== 0) {
-            if (!isPassable(curr.x + dx, curr.y) && !isPassable(curr.x, curr.y + dy)) {
+            if (
+              !isPassable(curr.x + dx, curr.y) &&
+              !isPassable(curr.x, curr.y + dy)
+            ) {
               continue;
             }
           }
@@ -3033,7 +3077,8 @@ export class ColonyRuntime {
         if (this.isRoadSurface(x, y)) return true;
 
         // Keep car on drivable land when off-road; deep ocean water blocks
-        if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05) return false;
+        if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05)
+          return false;
 
         // Spec 175: Commercial garage pad (forecourt apron, open service bay) is drivable
         const garagePad = this.commercialDistrict?.garagePad;

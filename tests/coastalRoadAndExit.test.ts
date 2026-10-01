@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
-import { getSmoothRoadY, isPointOnRoadSurface } from "../src/colony/render/roadSurface";
+import {
+  getSmoothRoadY,
+  isPointOnRoadSurface,
+} from "../src/colony/render/roadSurface";
 
 describe("Coastal Road Grounding & Exit Resilience Acceptance", () => {
   it("verifies Coastal Highway (98, 358) is on road surface and elevation is continuous", () => {
