@@ -98,7 +98,7 @@ export function TopbarMenu({
             </header>
             <nav className="player-pause-menu__tabs" aria-label="Game menu">
               <button type="button" onClick={closeAnd(onOpenMap)}>
-                Map
+                Transit Map
               </button>
               {PAGES.map((item) => (
                 <button

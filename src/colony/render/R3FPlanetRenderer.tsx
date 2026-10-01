@@ -58,6 +58,7 @@ import { useTerrainLeveling } from "./useTerrainLeveling";
 import { leveledWorldY } from "./terrainLeveling";
 import { solClockOfDay } from "../sol";
 import { solNowMs } from "../solRuntimeClock";
+import { buildStampParts, formatBuildStamp } from "../buildStamp";
 import { useRoadNetwork } from "../stores/useRoadNetwork";
 import { COLONY } from "../config";
 import { Html, MapControls } from "@react-three/drei";
@@ -915,7 +916,15 @@ export class PlanetRenderer {
     // Spec 136 — the far plane reaches the starfields (5-6.7k) and the gas giant (3.7k);
     // near raised to keep the depth ratio sane. The old far of 1000 culled the cosmos.
     this.root.render(
-      <Canvas shadows camera={{ fov: 45, near: 0.5, far: 12000 }}>
+      <Canvas
+        shadows
+        camera={{ fov: 45, near: 0.5, far: 12000 }}
+        gl={{
+          preserveDrawingBuffer: true,
+          antialias: true,
+          powerPreference: "high-performance",
+        }}
+      >
         <R3FWorld
           sim={this.sim}
           runtime={this.runtime}
@@ -1008,20 +1017,119 @@ export class PlanetRenderer {
   }
 
   capturePNG(): string | null {
-    // Spec 131 — the HUD snapshot button. R3F does not preserve the drawing buffer, so
-    // render one fresh frame straight through the base renderer (no postprocessing) and
-    // read it out before the buffer is cleared. The mounted EffectComposer forces
-    // gl.toneMapping to none (it tone-maps in its own pass), so reapply ACES for this one
-    // frame or the capture comes out washed out vs the on-screen look (verify F4).
+    // Spec 131 — the HUD snapshot button & bug capture.
+    // R3F does not preserve the drawing buffer by default, and mounted postprocessing (EffectComposer)
+    // redirects rendering to offscreen WebGLRenderTargets. To ensure a pristine, non-black frame:
+    // 1. Explicitly detach any active render target (gl.setRenderTarget(null)) so the render targets the default canvas framebuffer.
+    // 2. Refresh the camera's world matrix.
+    // 3. Re-apply ACESFilmicToneMapping for this direct frame pass.
+    // 4. Render the scene directly to gl.domElement.
+    // 5. In client environments, composite the frame onto an offscreen 2D canvas with the spatial
+    //    coordinates (X, Elev, Z), heading, world seed, and build stamp permanently burned into the image.
     const { gl, scene, camera } = r3fProbe;
     if (!gl || !scene || !camera) return null;
     const prevToneMapping = gl.toneMapping;
+    const prevRenderTarget = typeof gl.getRenderTarget === "function" ? gl.getRenderTarget() : null;
     try {
+      if (typeof gl.setRenderTarget === "function") {
+        gl.setRenderTarget(null);
+      }
       gl.toneMapping = THREE.ACESFilmicToneMapping;
+      if (typeof camera.updateMatrixWorld === "function") {
+        camera.updateMatrixWorld(true);
+      }
       gl.render(scene, camera);
-      return gl.domElement.toDataURL("image/png");
+
+      const dom = gl.domElement;
+      if (!dom || dom.width === 0 || dom.height === 0) return null;
+
+      // Extract spatial diagnostic coordinates
+      const sim = this.sim;
+      const rt = this.runtime;
+      const t = sim?.state?.terrain;
+      const seed = rt?.getSeed?.() ?? sim?.state?.seed ?? 4242;
+      const drivePose = rt?.getOwnedDrivePose?.();
+      const fpCell = rt?.fpCameraCell;
+      const opCar = sim?.state?.operatorCar;
+      const fpCitizenId = (rt as any)?.fpCitizenId;
+      const citizen = fpCitizenId && typeof (rt as any)?.citizen === "function" ? (rt as any).citizen(fpCitizenId) : null;
+      const citizenPos = citizen?.positionXY ?? citizen?.pos;
+
+      const cellX = drivePose?.x ?? fpCell?.x ?? citizenPos?.x ?? opCar?.cell?.x ?? (t ? t.size / 2 : 0);
+      const cellY = drivePose?.y ?? fpCell?.y ?? citizenPos?.y ?? opCar?.cell?.y ?? (t ? t.size / 2 : 0);
+      const headingRad = drivePose
+        ? drivePose.heading
+        : fpCell
+          ? (rt?.fpCameraYaw ?? 0)
+          : opCar
+            ? opCar.heading
+            : 0;
+
+      const worldX = t ? (cellX - t.size / 2) * 4 : 0;
+      const worldZ = t ? (cellY - t.size / 2) * 4 : 0;
+      const elev = t
+        ? (rt?.isRoadSurface?.(cellX, cellY)
+            ? (t.worldYAt(cellX, cellY) + 0.18)
+            : t.worldYAt(cellX, cellY))
+        : 0;
+      const headingDeg = Math.round((((headingRad * 180) / Math.PI) % 360 + 360) % 360);
+
+      const parts = buildStampParts();
+      const stampText = formatBuildStamp(parts);
+      const timeText = parts.builtAt ? ` · ${parts.builtAt}` : "";
+      const leftBanner = `${stampText}${timeText}`;
+      const rightBanner = `X: ${Math.round(worldX * 10) / 10}m  Elev: ${Math.round(elev * 100) / 100}m  Z: ${Math.round(worldZ * 10) / 10}m  Hdg: ${headingDeg}°  Seed: ${seed}`;
+
+      // Composite onto 2D canvas with coordinates burn-in
+      if (typeof document !== "undefined" && typeof document.createElement === "function") {
+        try {
+          const canvas2d = document.createElement("canvas");
+          canvas2d.width = dom.width;
+          canvas2d.height = dom.height;
+          const ctx = canvas2d.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(dom, 0, 0);
+
+            // Diagnostic HUD Banner at bottom
+            const bannerHeight = Math.max(28, Math.round(dom.height * 0.04));
+            const y = dom.height - bannerHeight;
+            ctx.fillStyle = "rgba(10, 16, 26, 0.85)";
+            ctx.fillRect(0, y, dom.width, bannerHeight);
+
+            // Border line
+            ctx.fillStyle = "rgba(111, 227, 255, 0.4)";
+            ctx.fillRect(0, y, dom.width, 1);
+
+            // Text formatting
+            const fontSize = Math.max(11, Math.round(bannerHeight * 0.44));
+            ctx.font = `600 ${fontSize}px monospace`;
+            ctx.textBaseline = "middle";
+            const textY = y + bannerHeight / 2;
+
+            // Left text (Version & build stamp)
+            ctx.fillStyle = "#6fe3ff";
+            ctx.fillText(leftBanner, 12, textY);
+
+            // Right text (Coordinates, Elevation, Heading, Seed)
+            ctx.fillStyle = "#ffda79";
+            const rightWidth = ctx.measureText(rightBanner).width;
+            ctx.fillText(rightBanner, Math.max(dom.width - rightWidth - 12, 12), textY);
+
+            return canvas2d.toDataURL("image/png");
+          }
+        } catch {
+          // If 2D context fails, fall back to domElement.toDataURL
+        }
+      }
+
+      return dom.toDataURL("image/png");
+    } catch {
+      return null;
     } finally {
       gl.toneMapping = prevToneMapping;
+      if (prevRenderTarget && typeof gl.setRenderTarget === "function") {
+        gl.setRenderTarget(prevRenderTarget);
+      }
     }
   }
 

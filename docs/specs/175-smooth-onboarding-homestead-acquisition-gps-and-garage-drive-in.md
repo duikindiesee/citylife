@@ -20,21 +20,21 @@ Players entering CityLife with their newly acquired hero sports car (`Karoo X19 
    - In `R3FCommercialDistrict.tsx`, `R3FGarageCars` dynamically populates the showroom window and forecourt display plinths with cloned, authentic GLB models from `SHOWROOM_VEHICLES` (`Karoo Kaap GT-V8`, `Karoo X19 Targa`, `Karoo Vonk 1.1`), ensuring the showroom vehicles match the player's authentic car quality.
    - `buildCarMesh` in `carMesh.ts` has been upgraded with rear taillight styling for procedural fallbacks.
 2. **Garage Pad & Homestead Driveway Clearance**:
-   - In `runtime.ts` `tickOwnedDrive`, `isGaragePadDrivable(x, y, garagePad)` permits driving onto the concrete forecourt apron (`localZ > -0.4`) and inside open service bay 1 (`localX: 0.4..2.8, localZ > -2.9`), while maintaining collision against the solid showroom glass and closed rear walls.
+   - In `runtime.ts` `tickOwnedDrive`, `isGaragePadDrivable(x, y, garagePad)` permits driving onto the concrete forecourt apron (`localZ > -0.6`) and inside open service bay 1 (`localX: 0.4..2.8, localZ > -2.9`), while maintaining collision against the solid showroom glass, dividing partition walls, and closed rear walls.
    - `isHomesteadDriveway(ix, iy)` ensures the operator citizen's owned homestead driveway, gate, and yard are drivable, while the solid house structure blocks.
 3. **Clean Driving HUD & Suppression of Corner Rails**:
    - In `ColonyApp.tsx`, all bottom-right corner action buttons are gated with `!runtime.getOwnedDrivePose()`, ensuring the mobile pedals (`OwnedCarControls`) have an unobstructed, dedicated touch surface while driving.
 4. **Seamless Homestead Acquisition & In-Car GPS Navigation**:
-   - When driving without a home, `OwnedCarControls` renders a top in-car mission HUD banner: `🏡 Mission: Claim Your Homestead [Select Plot →]`.
+   - When driving without a home, the starter plot claim banner is cleanly integrated into the topbar (`header.topbar`) matching standard topbar styling (`🏡 Starter Plot [Select →]`) without floating over or intercepting vehicle controls, gated on `newPlayerJourneyEnabled` and invoking `openHome`.
    - Selecting a plot in `StarterPropertyOverlay` calls `runtime.claimStarterHome(lotId)`, which immediately assigns the plot to the operator citizen and triggers `buildHouse(lotId)` so the house raises in 3D right away.
    - Upon purchase, GPS navigation automatically activates:
      - In 3D: `R3FHomeGpsBeacon` renders a 32m tall glowing cyan/green waypoint beam with pulsing ground rings over the home driveway.
-     - In HUD: A dynamic GPS navigation bar displays live distance (meters), dynamic directional arrows (`⬆️`, `↗️`, `➡️`, `↖️`, `⬅️`, `⬇️`), and turn-by-turn guidance.
+     - In HUD: A dynamic GPS navigation bar displays live distance (meters), dynamic directional arrows (`⬆️`, `↗️`, `➡️`, `↖️`, `⬅️`, `⬇️`), and turn-by-turn guidance docked cleanly below the topbar (`marginTop: 56px`).
      - Upon reaching the home (distance <= 14m), the HUD celebrates arrival and presents `[🅿️ Park & Walk In]`, transitioning the driver directly to their front door.
 
 ## Rules & data
 
-- Garage Pad Forecourt Drivable Z: `localZ > -0.4`
+- Garage Pad Forecourt Drivable Z: `localZ > -0.6` (permits smooth apron entry from public road onto pad without border shrink)
 - Open Service Bay Drivable Bounds: `localX ∈ (0.4, 2.8)`, `localZ > -2.9`
 - GPS Waypoint Beacon Height: 32 meters
 - Arrival Radius Threshold: 14 meters (3.5 grid cells)

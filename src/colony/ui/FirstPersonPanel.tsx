@@ -110,7 +110,7 @@ export function FirstPersonPanel({
             stamp here (the touch joystick owns that corner), so it rides in this strip, which is
             already an owned box at the TOP of the edge-HUD grid — no new grid area, no new pinned
             element, and nowhere near the thumb controls. */}
-        <BuildStamp variant="fp" />
+        <BuildStamp variant="fp" runtime={runtime} />
         {warning && (
           <div className="first-person-panel__warning">⚠ {warning}</div>
         )}

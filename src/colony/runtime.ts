@@ -2800,19 +2800,148 @@ export class ColonyRuntime {
   exitOwnedCar(): boolean {
     const car = this.getOwnedDrivePose();
     if (!car) return false;
-    const side = [-1, 1]
-      .map((s) => ({
-        x: Math.round(car.x - Math.sin(car.heading) * s),
-        y: Math.round(car.y + Math.cos(car.heading) * s),
-      }))
-      .find((cell) => this.blockedStepReason(cell.x, cell.y) === null);
-    if (!side) return false;
+    const t = this.sim.state.terrain;
+
+    // Search candidate exit positions around the car so the driver is never trapped,
+    // even on coastal roads, water edges, bridges, or tight parking situations.
+    const candidates: { x: number; y: number }[] = [
+      // 1. Driver/passenger doors (immediate lateral offset)
+      { x: Math.round(car.x - Math.sin(car.heading)), y: Math.round(car.y + Math.cos(car.heading)) },
+      { x: Math.round(car.x + Math.sin(car.heading)), y: Math.round(car.y - Math.cos(car.heading)) },
+      // 2. Behind or in front of the vehicle
+      { x: Math.round(car.x - Math.cos(car.heading)), y: Math.round(car.y - Math.sin(car.heading)) },
+      { x: Math.round(car.x + Math.cos(car.heading)), y: Math.round(car.y + Math.sin(car.heading)) },
+      // 3. Diagonal corners
+      { x: Math.round(car.x - Math.sin(car.heading) - Math.cos(car.heading)), y: Math.round(car.y + Math.cos(car.heading) - Math.sin(car.heading)) },
+      { x: Math.round(car.x + Math.sin(car.heading) - Math.cos(car.heading)), y: Math.round(car.y - Math.cos(car.heading) - Math.sin(car.heading)) },
+    ];
+
+    const isPassable = (x: number, y: number): boolean => {
+      if (t && typeof t.size === "number" && (x < 2 || x >= t.size - 2 || y < 2 || y >= t.size - 2)) {
+        return false;
+      }
+      return this.blockedStepReason(x, y) === null && !t.isWater(x, y);
+    };
+
+    const startX = Math.round(car.x);
+    const startY = Math.round(car.y);
+
+    let exitCell = candidates.find((c) => {
+      if (!isPassable(c.x, c.y)) return false;
+      const dx = c.x - startX;
+      const dy = c.y - startY;
+      // Refuse crossing two blocked orthogonal sides on diagonal moves
+      if (dx !== 0 && dy !== 0) {
+        if (!isPassable(startX + dx, startY) && !isPassable(startX, startY + dy)) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    // 4. Reachable path-connected fallback search (up to 6.0 cells = 24m radius)
+    // Constrained to a path-connected component so the player never teleports across water or barriers.
+    const MAX_EXIT_TELEPORT_RADIUS = 6.0;
+    if (!exitCell) {
+      // Starting seed points: the car's origin cell and immediate perimeter
+      const reachable = new Set<string>();
+      const queue: { x: number; y: number }[] = [];
+
+      if (isPassable(startX, startY)) {
+        reachable.add(`${startX},${startY}`);
+        queue.push({ x: startX, y: startY });
+      }
+
+      // Orthogonal perimeter seeds
+      for (const [dx, dy] of [
+        [1, 0], [-1, 0], [0, 1], [0, -1],
+      ]) {
+        const nx = startX + dx;
+        const ny = startY + dy;
+        const key = `${nx},${ny}`;
+        if (!reachable.has(key) && isPassable(nx, ny)) {
+          reachable.add(key);
+          queue.push({ x: nx, y: ny });
+        }
+      }
+
+      // Diagonal perimeter seeds: refuse crossing two blocked orthogonal sides
+      for (const [dx, dy] of [
+        [1, 1], [1, -1], [-1, 1], [-1, -1],
+      ]) {
+        const nx = startX + dx;
+        const ny = startY + dy;
+        const key = `${nx},${ny}`;
+        if (reachable.has(key)) continue;
+        if (!isPassable(startX + dx, startY) && !isPassable(startX, startY + dy)) {
+          continue;
+        }
+        if (isPassable(nx, ny)) {
+          reachable.add(key);
+          queue.push({ x: nx, y: ny });
+        }
+      }
+
+      // BFS traversal expanding 8-connected neighbors with corner clearance
+      while (queue.length > 0) {
+        const curr = queue.shift()!;
+        for (const [dx, dy] of [
+          [1, 0], [-1, 0], [0, 1], [0, -1],
+          [1, 1], [1, -1], [-1, 1], [-1, -1],
+        ]) {
+          const nx = curr.x + dx;
+          const ny = curr.y + dy;
+          const key = `${nx},${ny}`;
+          if (reachable.has(key)) continue;
+          if (Math.hypot(nx - car.x, ny - car.y) > MAX_EXIT_TELEPORT_RADIUS) continue;
+
+          // Diagonal expansion: refuse crossing two blocked orthogonal sides
+          if (dx !== 0 && dy !== 0) {
+            if (!isPassable(curr.x + dx, curr.y) && !isPassable(curr.x, curr.y + dy)) {
+              continue;
+            }
+          }
+
+          if (!isPassable(nx, ny)) continue;
+
+          reachable.add(key);
+          queue.push({ x: nx, y: ny });
+        }
+      }
+
+      if (reachable.size > 0) {
+        const reachableRoads: { x: number; y: number; dist: number }[] = [];
+        const reachableDry: { x: number; y: number; dist: number }[] = [];
+
+        for (const key of reachable) {
+          const [cx, cy] = key.split(",").map(Number);
+          const d = Math.hypot(cx - car.x, cy - car.y);
+          if (cx === startX && cy === startY) continue;
+
+          if (this.sim.state.roadSet?.has(key)) {
+            reachableRoads.push({ x: cx, y: cy, dist: d });
+          } else {
+            reachableDry.push({ x: cx, y: cy, dist: d });
+          }
+        }
+
+        if (reachableRoads.length > 0) {
+          reachableRoads.sort((a, b) => a.dist - b.dist);
+          exitCell = { x: reachableRoads[0]!.x, y: reachableRoads[0]!.y };
+        } else if (reachableDry.length > 0) {
+          reachableDry.sort((a, b) => a.dist - b.dist);
+          exitCell = { x: reachableDry[0]!.x, y: reachableDry[0]!.y };
+        }
+      }
+    }
+
+    if (!exitCell) return false;
     this.ownedDriveInputGeneration++;
     car.speed = 0;
     this.ownedDriveSeated = false;
     this.ownedDriveInput = {};
     this.fpTeleportRequest = {
-      ...side,
+      ...exitCell,
       yaw: -car.heading - Math.PI / 2,
       seq: (this.fpTeleportRequest?.seq ?? 0) + 1,
     };
@@ -2883,9 +3012,6 @@ export class ColonyRuntime {
         const ix = Math.round(x);
         const iy = Math.round(y);
         if (ix < 2 || ix >= size - 2 || iy < 2 || iy >= size - 2) return false;
-        // Keep car on drivable land; deep ocean water blocks
-        if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05)
-          return false;
 
         // Municipal buses are solid physical obstacles (Spec 174: no phasing through buses)
         for (let i = 0; i < activeBuses.length; i++) {
@@ -2902,8 +3028,12 @@ export class ColonyRuntime {
           }
         }
 
-        // Public road ribbons are never blocked by parcels or setbacks
+        // Public road ribbons are elevated, paved surfaces (bridges, causeways, coastal avenues)
+        // and are always drivable regardless of water or terrain elevation underneath.
         if (this.isRoadSurface(x, y)) return true;
+
+        // Keep car on drivable land when off-road; deep ocean water blocks
+        if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05) return false;
 
         // Spec 175: Commercial garage pad (forecourt apron, open service bay) is drivable
         const garagePad = this.commercialDistrict?.garagePad;
@@ -2938,7 +3068,8 @@ export class ColonyRuntime {
           )
         )
           return false;
-        if (this.blockedStepReason(x, y) !== null) return false;
+        const stepReason = this.blockedStepReason(x, y);
+        if (stepReason !== null) return false;
         return true;
       },
       (x, y) => this.isRoadSurface(x, y),
@@ -2961,13 +3092,13 @@ export class ColonyRuntime {
     const localX = dx * cos - dy * sin;
     const localZ = dx * sin + dy * cos;
 
-    // Pad perimeter boundary guard
-    const halfW = (garagePad.w * 0.96) / 2;
-    const halfD = (garagePad.h * 0.96) / 2;
+    // Pad perimeter boundary guard: full pad dimensions without artificial border shrink
+    const halfW = garagePad.w / 2;
+    const halfD = garagePad.h / 2;
     if (Math.abs(localX) > halfW || Math.abs(localZ) > halfD) return false;
 
-    // Forecourt & road-facing entrance apron (localZ > -0.4): open concrete slab
-    if (localZ > -0.4) return true;
+    // Forecourt & road-facing entrance apron (localZ > -0.6): open concrete slab
+    if (localZ > -0.6) return true;
 
     // Open Service Bay (door 1): rolled up, open cavity allows driving into the bay
     if (localX > 0.4 && localX < 2.8 && localZ > -2.9) {

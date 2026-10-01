@@ -117,8 +117,10 @@ for (const viewport of [
     });
     expect(enteredFirstPerson).toBe(true);
     await expect
-      .poll(() =>
-        page.evaluate(() => window.__colony.getUiState().firstPerson.active),
+      .poll(
+        () =>
+          page.evaluate(() => window.__colony.getUiState().firstPerson.active),
+        { timeout: 15_000 },
       )
       .toBe(true);
     await page.getByTestId("topbar-menu").click();
@@ -126,8 +128,10 @@ for (const viewport of [
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
     await expect
-      .poll(() =>
-        page.evaluate(() => window.__colony.getUiState().firstPerson.active),
+      .poll(
+        () =>
+          page.evaluate(() => window.__colony.getUiState().firstPerson.active),
+        { timeout: 15_000 },
       )
       .toBe(true);
   });

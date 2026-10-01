@@ -860,7 +860,7 @@ export function DrivableRoadTestModal({
                   🏡 Starter Home
                 </button>
                 <button
-                  onClick={() => teleportTo(98, 362, "Coastal Highway")}
+                  onClick={() => teleportTo(98, 358, "Coastal Highway")}
                   style={{
                     padding: "8px 6px",
                     borderRadius: "6px",

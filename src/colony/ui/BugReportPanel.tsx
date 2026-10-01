@@ -139,6 +139,8 @@ export function BugReportPanel({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [promptText, setPromptText] = useState("");
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
   if (!open) return null;
 
@@ -200,12 +202,6 @@ export function BugReportPanel({
       setBusy(false);
     }
   };
-
-  const [promptText, setPromptText] = useState("");
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
 
   const applyPreset = (preset: {
     title: string;
@@ -482,11 +478,36 @@ export function BugReportPanel({
           Capture current view
         </button>
         {capture && (
-          <p className="bug-report-panel__capture-id">
-            Capture <code>{capture.context.captureId}</code> · sol{" "}
-            {capture.context.sol.sol} · {capture.context.viewport.width}×
-            {capture.context.viewport.height}
-          </p>
+          <div className="bug-report-panel__capture-preview-container" style={{ marginTop: 8 }}>
+            <p className="bug-report-panel__capture-id" style={{ margin: "0 0 6px 0" }}>
+              Capture <code>{capture.context.captureId}</code> · sol{" "}
+              {capture.context.sol.sol} · {capture.context.viewport.width}×
+              {capture.context.viewport.height}
+            </p>
+            {capture.pngDataUrl ? (
+              <img
+                src={capture.pngDataUrl}
+                alt="Captured viewport preview"
+                data-testid="bug-capture-preview"
+                style={{
+                  width: "100%",
+                  maxHeight: "180px",
+                  objectFit: "contain",
+                  borderRadius: "6px",
+                  border: "1px solid rgba(138, 203, 255, 0.3)",
+                  background: "#0a101d",
+                  display: "block",
+                }}
+              />
+            ) : (
+              <p
+                data-testid="bug-capture-warning"
+                style={{ color: "#ff8080", fontSize: "11px", margin: "4px 0" }}
+              >
+                ⚠️ Warning: No visual screenshot buffer was captured.
+              </p>
+            )}
+          </div>
         )}
         <form onSubmit={queueGoal}>
           <label>

@@ -579,8 +579,9 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       emissiveIntensity: 0.22,
     }),
   );
+  plinth.name = "garageAnchorShowroomPlinth";
   plinth.position.set(
-    model.showroom.x - model.showroom.w * 0.06,
+    model.showroom.x - model.showroom.w * 0.10,
     0.11,
     model.showroom.z + model.showroom.d * 0.04,
   );
@@ -597,39 +598,42 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       side: THREE.DoubleSide,
     }),
   );
+  plinthRing.name = "garageAnchorShowroomPlinthRing";
   C.garageFloorMats.push(plinthRing.material as THREE.MeshStandardMaterial);
   plinthRing.rotation.x = -Math.PI / 2;
   plinthRing.position.set(
-    model.showroom.x - model.showroom.w * 0.06,
-    0.175,
+    model.showroom.x - model.showroom.w * 0.10,
+    0.171,
     model.showroom.z + model.showroom.d * 0.04,
   );
   showroomInterior.add(plinthRing);
 
   // 4. HERO CAR ON THE PLINTH (Karoo Kaap GT-V8 coupe)
+  // Sized to authentic life-size proportion (4.28m in world metres), clearing walls and adjacent displays throughout 360° turntable rotation.
   const heroSpec = SHOWROOM_VEHICLES[1]!.spec;
   const heroCar = buildCarMesh(heroSpec);
   heroCar.name = "garageAnchorShowroomHeroCar";
-  heroCar.scale.setScalar(1.55);
+  heroCar.scale.setScalar(1.0);
   heroCar.position.set(
-    model.showroom.x - model.showroom.w * 0.06,
-    0.18,
+    model.showroom.x - model.showroom.w * 0.10,
+    0.17,
     model.showroom.z + model.showroom.d * 0.04,
   );
-  heroCar.rotation.y = -0.38; // 3/4 beauty angle toward the road-facing glass
+  heroCar.rotation.y = -0.38; // initial angle toward the road-facing glass
   showroomInterior.add(heroCar);
 
   // 5. SECONDARY CAR IN SHOWROOM (Karoo X19 Targa)
+  // Dedicated showroom bay centered between turntable plinth and service bay dividing wall (>5m wall clearance, >3m plinth clearance).
   const secondarySpec = SHOWROOM_VEHICLES[2]!.spec;
   const secondaryCar = buildCarMesh(secondarySpec);
   secondaryCar.name = "garageAnchorShowroomSecondCar";
-  secondaryCar.scale.setScalar(1.42);
+  secondaryCar.scale.setScalar(1.0);
   secondaryCar.position.set(
-    model.showroom.x + model.showroom.w * 0.25,
-    0.09,
-    model.showroom.z - model.showroom.d * 0.08,
+    model.showroom.x + model.showroom.w * 0.085,
+    0.05,
+    model.showroom.z - model.showroom.d * 0.02,
   );
-  secondaryCar.rotation.y = 0.22;
+  secondaryCar.rotation.y = -0.06;
   showroomInterior.add(secondaryCar);
 
   // 6. Header sign and branding
@@ -963,7 +967,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     cg.name = `garageAnchorDisplayCar.${i + 1}`;
     cg.position.set(car.x, 0.08, car.z);
     cg.rotation.y = car.rot;
-    cg.scale.setScalar(car.scale * 1.5);
+    cg.scale.setScalar(car.scale);
     const displaySpec = SHOWROOM_VEHICLES[i % SHOWROOM_VEHICLES.length]!.spec;
     const realCar = buildCarMesh(displaySpec);
     const underGlow = new THREE.Mesh(

@@ -1952,6 +1952,7 @@ export function ColonyApp() {
       {homeOpen && newPlayerJourneyEnabled && (
         <StarterPropertyOverlay
           onClose={() => setHomeOpen(false)}
+          walletKco={playerWalletKco}
           walletStatus={visiblePlayerWallet.status}
           walletLabel={playerWalletText}
           onWalletRefresh={refreshPlayerWallet}
@@ -1993,7 +1994,7 @@ export function ColonyApp() {
             that invariant and put a second occupant under the joystick on the mobile view that
             matters most. First person is covered instead by FirstPersonPanel's edge-HUD grid,
             which is that view's real layout owner. */}
-        {!ui.firstPerson.active && <BuildStamp />}
+        {!ui.firstPerson.active && <BuildStamp runtime={runtime} />}
       </div>
       {/* Keep only the transient controls for a drive session already in progress. The legacy
           Road Rally / Join Race entry points and rally branding stay retired; this shell exists
@@ -2072,16 +2073,107 @@ export function ColonyApp() {
           <span>{ui.clock.isDay ? "☀" : "☾"}</span>
         </div>
         <div className="spacer" />
+        {(() => {
+          const pose = runtime.getOwnedDrivePose();
+          if (!pose) return null;
+          const onRoad = runtime.isRoadSurface(pose.x, pose.y);
+          const speedKmH = Math.round(Math.abs(pose.speed) * 3.6);
+          return (
+            <div
+              className="group"
+              data-testid="topbar-driving-status"
+              style={{
+                alignItems: "center",
+                gap: 8,
+                padding: "3px 10px",
+              }}
+            >
+              <span
+                style={{
+                  fontWeight: 700,
+                  fontSize: 13,
+                  color: onRoad ? "#57d1c4" : "#f5a742",
+                }}
+              >
+                {onRoad ? "🏎️ Highway" : "🏜️ Off-Road"}
+              </span>
+              <span
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: 13,
+                  color: "#ffffff",
+                }}
+              >
+                {speedKmH} <span style={{ fontSize: 10, color: "#85d6ff" }}>km/h</span>
+              </span>
+              <button
+                type="button"
+                data-testid="exit-owned-car"
+                onClick={() => runtime.exitOwnedCar()}
+                title="Park vehicle and return to foot"
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: "3px 8px",
+                  cursor: "pointer",
+                }}
+              >
+                Park & Exit
+              </button>
+            </div>
+          );
+        })()}
+        {!runtime.hasOperatorHome() &&
+          !ui.firstPerson.active &&
+          !runtime.getOwnedDrivePose() &&
+          newPlayerJourneyEnabled && (
+          <button
+            type="button"
+            className="topbar-starter-plot"
+            data-testid="onboarding-claim-home-banner"
+            onClick={openHome}
+            title="Choose and claim your starter plot"
+            style={{
+              border: "1px solid rgba(255, 210, 90, 0.45)",
+              background: "rgba(255, 210, 90, 0.12)",
+              color: "#ffd25a",
+              minHeight: 36,
+              padding: "6px 12px",
+              borderRadius: 10,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontWeight: 600,
+              fontSize: 13,
+            }}
+          >
+            <span>🏡 Starter Plot</span>
+            <span
+              style={{
+                background: "#ffd25a",
+                color: "#08121e",
+                padding: "1px 6px",
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 800,
+              }}
+            >
+              Select →
+            </span>
+          </button>
+        )}
         {topbar.showMap && (
           <button
             type="button"
             className={`player-map-shortcut${mapOpen ? " on" : ""}`}
             aria-label={mapOpen ? "Hide map" : "Open map"}
             aria-expanded={mapOpen}
+            title={mapOpen ? "Hide Transit Map" : "Open Transit Map"}
             data-testid="player-map-shortcut"
             onClick={() => setMapOpen((open) => !open)}
           >
-            Map
+            Transit Map
           </button>
         )}
         {walletAccountKey !== null && (

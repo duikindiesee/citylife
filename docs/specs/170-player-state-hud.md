@@ -61,7 +61,7 @@ _You step off the bus into the evening street and the city is just… there. No 
 
 **The honest count: in the default third-person view a fully entitled signed-in player has ~24 persistent elements on screen at once.** The operator's complaint is measured, not felt.
 
-**Honest about debug surfaces:** the presence readout's seed/sol/rev stamp, grid coordinates and yaw, the 📷 snapshot, and pause/speed are diagnostic or operator tools. The readout was _designed_ to burn evidence into screenshots — that mission moves into the Log Bug capture path rather than living on every player's screen.
+**Honest about debug surfaces:** the presence readout's seed/sol/rev stamp, grid coordinates and yaw, the 📷 snapshot, and pause/speed are diagnostic or operator tools. The readout was _designed_ to burn evidence into screenshots — full diagnostic metadata is permanently burned into Log Bug canvas captures (BUG.GEO.1 / Spec 167), while a compact diagnostic readout (`data-testid="diagnostic-readout"`) displaying spatial coordinates (`X`, `Elev`, `Z`), heading (`Hdg`), seed, commit SHA, and build timestamp sits beside the bottom build stamp during testing and active play, ensuring screen recordings and user captures always preserve world coordinates without obscuring controls.
 
 ### 3.3 Corrections found by reading the source
 
