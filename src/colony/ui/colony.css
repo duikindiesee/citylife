@@ -41,6 +41,7 @@ body,
   top: 0;
   left: 0;
   right: 0;
+  z-index: 70;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -2096,10 +2097,14 @@ body.tv-mode .radio-iframe.is-visible {
     font-size: 10px;
     white-space: nowrap;
   }
-  .topbar > button {
+  .topbar > button,
+  .topbar-starter-plot {
     min-height: 32px;
     padding: 4px 7px;
     font-size: 11px;
+  }
+  .topbar .topbar-starter-plot {
+    order: 1;
   }
   .topbar .player-map-shortcut {
     order: 2;
@@ -2217,7 +2222,7 @@ body.tv-mode .radio-iframe.is-visible {
   }
 
   .first-person-panel {
-    inset: 58px 8px max(8px, env(safe-area-inset-bottom)) !important;
+    inset: max(60px, calc(52px + env(safe-area-inset-top))) 8px max(8px, env(safe-area-inset-bottom)) !important;
   }
   .first-person-panel--edge-hud {
     grid-template-areas:
@@ -2434,7 +2439,7 @@ body.tv-mode .radio-iframe.is-visible {
   transform: translateX(-50%);
   width: min(920px, calc(100vw - 24px), calc((100vh - 240px) * 1.515));
   padding: clamp(9px, 1.1vw, 16px);
-  z-index: 60;
+  z-index: 75;
 }
 .bus-network-minimap__title {
   display: flex;

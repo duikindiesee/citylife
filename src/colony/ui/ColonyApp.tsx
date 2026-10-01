@@ -2123,7 +2123,10 @@ export function ColonyApp() {
             </div>
           );
         })()}
-        {!runtime.hasOperatorHome() && newPlayerJourneyEnabled && (
+        {!runtime.hasOperatorHome() &&
+          !ui.firstPerson.active &&
+          !runtime.getOwnedDrivePose() &&
+          newPlayerJourneyEnabled && (
           <button
             type="button"
             className="topbar-starter-plot"
