@@ -35,7 +35,8 @@ describe("Vehicle Slope Transform, Bounded Exit & Review Hardening", () => {
     const frontTransformedPiOver2 = frontLocal.clone().applyEuler(eulerPiOver2);
     const rearTransformedPiOver2 = rearLocal.clone().applyEuler(eulerPiOver2);
 
-    const heightDiffPiOver2 = frontTransformedPiOver2.y - rearTransformedPiOver2.y;
+    const heightDiffPiOver2 =
+      frontTransformedPiOver2.y - rearTransformedPiOver2.y;
     expect(heightDiffPiOver2).toBeCloseTo(0.973, 2);
 
     // Test heading pi (facing -X)
@@ -175,7 +176,8 @@ describe("Vehicle Slope Transform, Bounded Exit & Review Hardening", () => {
     rt.sim.state.terrain.isWater = (x: number, y: number) => {
       const rx = Math.round(x);
       const ry = Math.round(y);
-      if (ry === 100 && (rx === 100 || rx === 101 || rx === 102 || rx === 103)) return false;
+      if (ry === 100 && (rx === 100 || rx === 101 || rx === 102 || rx === 103))
+        return false;
       return origIsWater(x, y);
     };
 
@@ -186,7 +188,8 @@ describe("Vehicle Slope Transform, Bounded Exit & Review Hardening", () => {
       const rx = Math.round(x);
       const ry = Math.round(y);
       // Car origin and path cells to road are completely passable
-      if (ry === 100 && (rx === 100 || rx === 101 || rx === 102 || rx === 103)) return null;
+      if (ry === 100 && (rx === 100 || rx === 101 || rx === 102 || rx === 103))
+        return null;
       // All other nearby cells including all 6 immediate candidates are blocked
       if (Math.hypot(rx - 100, ry - 100) <= 2.5) return "building";
       return origBlocked(x, y);

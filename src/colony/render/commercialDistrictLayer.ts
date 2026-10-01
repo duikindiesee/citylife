@@ -581,7 +581,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   );
   plinth.name = "garageAnchorShowroomPlinth";
   plinth.position.set(
-    model.showroom.x - model.showroom.w * 0.10,
+    model.showroom.x - model.showroom.w * 0.1,
     0.11,
     model.showroom.z + model.showroom.d * 0.04,
   );
@@ -602,7 +602,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   C.garageFloorMats.push(plinthRing.material as THREE.MeshStandardMaterial);
   plinthRing.rotation.x = -Math.PI / 2;
   plinthRing.position.set(
-    model.showroom.x - model.showroom.w * 0.10,
+    model.showroom.x - model.showroom.w * 0.1,
     0.171,
     model.showroom.z + model.showroom.d * 0.04,
   );
@@ -615,7 +615,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   heroCar.name = "garageAnchorShowroomHeroCar";
   heroCar.scale.setScalar(1.0);
   heroCar.position.set(
-    model.showroom.x - model.showroom.w * 0.10,
+    model.showroom.x - model.showroom.w * 0.1,
     0.17,
     model.showroom.z + model.showroom.d * 0.04,
   );

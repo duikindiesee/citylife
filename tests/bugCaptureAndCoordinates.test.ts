@@ -1,7 +1,10 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { BuildStamp, deriveDiagnosticReadout } from "../src/colony/ui/BuildStamp";
+import {
+  BuildStamp,
+  deriveDiagnosticReadout,
+} from "../src/colony/ui/BuildStamp";
 import { BugReportPanel } from "../src/colony/ui/BugReportPanel";
 import { PlanetRenderer } from "../src/colony/render/R3FPlanetRenderer";
 import type { ColonyRuntime, ColonyUiState } from "../src/colony/runtime";
@@ -115,7 +118,8 @@ describe("bug capture and coordinate burn-in", () => {
         sol: { sol: 42 },
         viewport: { width: 1280, height: 720 },
       },
-      pngDataUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+      pngDataUrl:
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
     };
 
     const mockRuntime = {
@@ -160,7 +164,10 @@ describe("bug capture and coordinate burn-in", () => {
       },
     } as any;
 
-    const png = PlanetRenderer.prototype.capturePNG.call({ sim: dummySim, runtime: null });
+    const png = PlanetRenderer.prototype.capturePNG.call({
+      sim: dummySim,
+      runtime: null,
+    });
     expect(png).toBeNull();
   });
 
@@ -169,7 +176,9 @@ describe("bug capture and coordinate burn-in", () => {
     const mockCtx = {
       drawImage: vi.fn(),
       fillRect: vi.fn(),
-      fillText: vi.fn((text: string, _x?: number, _y?: number) => filledTexts.push(text)),
+      fillText: vi.fn((text: string, _x?: number, _y?: number) =>
+        filledTexts.push(text),
+      ),
       measureText: vi.fn(() => ({ width: 150 })),
       fillStyle: "",
       font: "",
@@ -180,7 +189,9 @@ describe("bug capture and coordinate burn-in", () => {
       width: 1280,
       height: 720,
       getContext: vi.fn(() => mockCtx),
-      toDataURL: vi.fn((_format?: string) => "data:image/png;base64,VALID_COMPOSITED_PNG"),
+      toDataURL: vi.fn(
+        (_format?: string) => "data:image/png;base64,VALID_COMPOSITED_PNG",
+      ),
     };
 
     // Simulate 2D banner burn-in logic from capturePNG
@@ -189,7 +200,8 @@ describe("bug capture and coordinate burn-in", () => {
     mockCtx.fillRect(0, y, mockCanvas.width, bannerHeight);
 
     const leftBanner = "v0.59.0 · abc1234 · 2026-10-01T08:00:00Z";
-    const rightBanner = "X: 120.5m  Elev: 4.5m  Z: -80.2m  Hdg: 180°  Seed: 4242";
+    const rightBanner =
+      "X: 120.5m  Elev: 4.5m  Z: -80.2m  Hdg: 180°  Seed: 4242";
     mockCtx.fillText(leftBanner, 12, y + 14);
     mockCtx.fillText(rightBanner, 1000, y + 14);
 

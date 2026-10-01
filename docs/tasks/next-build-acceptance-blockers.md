@@ -15,19 +15,19 @@
 This task record documents the investigation, root causes, implementation fixes, and test verifications for the five acceptance blockers reported by Irwin following the merge of PR #549:
 
 1. **Showroom Geometry & Placement Acceptance Blocker:**
-   - *Observation:* Overlapping cars near the rotating turntable display; yellow Karoo X19 protruding through the showroom exterior wall and intersecting the red Karoo Kaap GT-V8's bumper/boot area.
+   - _Observation:_ Overlapping cars near the rotating turntable display; yellow Karoo X19 protruding through the showroom exterior wall and intersecting the red Karoo Kaap GT-V8's bumper/boot area.
 2. **Coastal Road Grounding, Road Classification & Water Entrapment:**
-   - *Observation:* Car sinking into the coastal road with wheels submerged while HUD reports `OFF-ROAD`. Driving into dark blue coastal water causes car to get permanently stuck, preventing exit or walking.
+   - _Observation:_ Car sinking into the coastal road with wheels submerged while HUD reports `OFF-ROAD`. Driving into dark blue coastal water causes car to get permanently stuck, preventing exit or walking.
 3. **Testing Diagnostic Readout HUD:**
-   - *Requirement:* Compact diagnostic readout beside version stamp with world coordinates (X, Y, Z with elevation clearly labelled), heading, world seed, version/commit SHA, and compile-time build date/time with timezone, without obscuring controls.
+   - _Requirement:_ Compact diagnostic readout beside version stamp with world coordinates (X, Y, Z with elevation clearly labelled), heading, world seed, version/commit SHA, and compile-time build date/time with timezone, without obscuring controls.
 4. **Top-Bar UI Acceptance & Map Entry Points Rationalization:**
-   - *Observation:* `OFF-ROAD` badge and `Your Plot` controls floated on top of other UI at `marginTop: 16px`, colliding with the topbar and intercepting pointer clicks. Multiple confusing map buttons ("Map", "Survey Map", "Road Map") created confusion.
+   - _Observation:_ `OFF-ROAD` badge and `Your Plot` controls floated on top of other UI at `marginTop: 16px`, colliding with the topbar and intercepting pointer clicks. Multiple confusing map buttons ("Map", "Survey Map", "Road Map") created confusion.
 5. **Wallet / Purchase Edge-Case Hardening:**
-   - *Requirement:* Harden purchase flows against missing wallet, zero balance, request failure, expired session (401/403), logout/account-switch stale balance clearing, server-authoritative funds/ownership, atomic purchase, idempotent retries, and concurrent request protection.
+   - _Requirement:_ Harden purchase flows against missing wallet, zero balance, request failure, expired session (401/403), logout/account-switch stale balance clearing, server-authoritative funds/ownership, atomic purchase, idempotent retries, and concurrent request protection.
 6. **Bug Logger Black Capture & Coordinates Display:**
-   - *Observation:* Bug report capture returned black PNG; coordinates readout did not track active player position or display permanently on HUD captures.
+   - _Observation:_ Bug report capture returned black PNG; coordinates readout did not track active player position or display permanently on HUD captures.
 7. **Showroom Wall Protrusion, Forecourt Parking Misalignment, and Roadside / Apron Drive-in Lockup ("Able to turn only"):**
-   - *Observation:* Yellow Karoo X19 protruding through showroom dividing wall; display cars crooked and straddling parking bays; car unable to drive into garage apron due to border shrink and parcel blockers; car stuck on roadside verge unable to drive forward or reverse ("able to turn only").
+   - _Observation:_ Yellow Karoo X19 protruding through showroom dividing wall; display cars crooked and straddling parking bays; car unable to drive into garage apron due to border shrink and parcel blockers; car stuck on roadside verge unable to drive forward or reverse ("able to turn only").
 
 ---
 
@@ -148,18 +148,18 @@ This task record documents the investigation, root causes, implementation fixes,
 ### Blocker 7: Showroom Dividing Wall Penetration, Parking Bay Misalignment, and Roadside / Apron Drive-in Lockup ("Able to turn only")
 
 - **Root Cause:**
-  1. *Showroom Dividing Wall Penetration:* In `src/colony/render/garageAnchorShell.ts`, the showroom and service bay overlap along the X axis between `-0.08 * footprint.w` and `+0.04 * footprint.w`. The dividing partition wall sits at `-0.08 * footprint.w`. `secondaryCar` (yellow Karoo X19 Targa) was positioned at `x = showroom.x - showroom.w * 0.0952` (`-0.0952 * footprint.w`), placing the 1.92m-wide vehicle 0.97m into the solid dividing wall.
-  2. *Forecourt Parking Misalignment:* Display cars on the garage forecourt were positioned using hardcoded, crooked coordinates and orientations that straddled parking stalls instead of aligning with designated parking bays (`BAY 01`, `BAY 02`, `BAY 03`).
-  3. *Garage Forecourt Drive-in Barrier:* In `src/colony/runtime.ts`, `isGaragePadDrivable` applied an artificial 4% boundary shrink (`0.96`), and entrance apron cells (`localZ > -0.6`) were blocked by `canOccupy()` treating open unbuilt roadside `"parcel"` buffers as physical obstacles.
-  4. *Roadside Verge Lockup ("Able to turn only"):* In `src/colony/car/ownedDriving.ts`, collision checking previously tested all perimeter footprint points unconditionally. When a front wheel touched a curb or obstacle, `speed` was zeroed. When attempting to reverse, `isFootprintClear` failed because the front still slightly overlapped the obstacle, preventing backward movement. Meanwhile, steering only tested `canOccupy(center)` (which remained clear), so players could rotate in place but were completely trapped translationally.
+  1. _Showroom Dividing Wall Penetration:_ In `src/colony/render/garageAnchorShell.ts`, the showroom and service bay overlap along the X axis between `-0.08 * footprint.w` and `+0.04 * footprint.w`. The dividing partition wall sits at `-0.08 * footprint.w`. `secondaryCar` (yellow Karoo X19 Targa) was positioned at `x = showroom.x - showroom.w * 0.0952` (`-0.0952 * footprint.w`), placing the 1.92m-wide vehicle 0.97m into the solid dividing wall.
+  2. _Forecourt Parking Misalignment:_ Display cars on the garage forecourt were positioned using hardcoded, crooked coordinates and orientations that straddled parking stalls instead of aligning with designated parking bays (`BAY 01`, `BAY 02`, `BAY 03`).
+  3. _Garage Forecourt Drive-in Barrier:_ In `src/colony/runtime.ts`, `isGaragePadDrivable` applied an artificial 4% boundary shrink (`0.96`), and entrance apron cells (`localZ > -0.6`) were blocked by `canOccupy()` treating open unbuilt roadside `"parcel"` buffers as physical obstacles.
+  4. _Roadside Verge Lockup ("Able to turn only"):_ In `src/colony/car/ownedDriving.ts`, collision checking previously tested all perimeter footprint points unconditionally. When a front wheel touched a curb or obstacle, `speed` was zeroed. When attempting to reverse, `isFootprintClear` failed because the front still slightly overlapped the obstacle, preventing backward movement. Meanwhile, steering only tested `canOccupy(center)` (which remained clear), so players could rotate in place but were completely trapped translationally.
 - **Resolution:**
-  1. *Showroom Wall Clearance:* In `src/colony/render/commercialDistrictLayer.ts`, repositioned `secondaryCar` to `x: model.showroom.x + model.showroom.w * 0.085`, `y: 0.05`, `z: model.showroom.z - model.showroom.d * 0.02`, `rotation.y: -0.06`. This centers the vehicle inside the showroom bay, providing $>5.0\text{m}$ clearance to the dividing wall, $>3.0\text{m}$ clearance to the turntable plinth, and $>3.5\text{m}$ clearance to exterior glass and rear walls.
-  2. *Parking Lot Bay Alignment:* In `src/colony/render/garageAnchorShell.ts` and `commercialDistrictLayer.ts`, aligned `displayCars` to `parkingBays`:
+  1. _Showroom Wall Clearance:_ In `src/colony/render/commercialDistrictLayer.ts`, repositioned `secondaryCar` to `x: model.showroom.x + model.showroom.w * 0.085`, `y: 0.05`, `z: model.showroom.z - model.showroom.d * 0.02`, `rotation.y: -0.06`. This centers the vehicle inside the showroom bay, providing $>5.0\text{m}$ clearance to the dividing wall, $>3.0\text{m}$ clearance to the turntable plinth, and $>3.5\text{m}$ clearance to exterior glass and rear walls.
+  2. _Parking Lot Bay Alignment:_ In `src/colony/render/garageAnchorShell.ts` and `commercialDistrictLayer.ts`, aligned `displayCars` to `parkingBays`:
      - `displayCars[0]` (Karoo Vonk): Centered squarely in `BAY 01` (`rot: parkingBays[0].rot`, `scale: 1.0`).
      - `displayCars[1]` (Karoo Kaap): Centered squarely in `BAY 02` (`rot: parkingBays[1].rot`, `scale: 1.0`).
      - `BAY 03` remains unobstructed and designated for player / customer vehicles.
-  3. *Apron & Forecourt Access:* In `src/colony/runtime.ts`, removed the artificial `0.96` border shrink in `isGaragePadDrivable` and permitted entrance apron approach (`localZ > -0.6`). Updated `canOccupy()` to ignore non-physical `"parcel"` roadside buffers for vehicle navigation.
-  4. *Directional Footprint Unsticking:* In `src/colony/car/ownedDriving.ts`, implemented `inspectFootprint(front, center, rear)` and directional gating `isStepAllowed`:
+  3. _Apron & Forecourt Access:_ In `src/colony/runtime.ts`, removed the artificial `0.96` border shrink in `isGaragePadDrivable` and permitted entrance apron approach (`localZ > -0.6`). Updated `canOccupy()` to ignore non-physical `"parcel"` roadside buffers for vehicle navigation.
+  4. _Directional Footprint Unsticking:_ In `src/colony/car/ownedDriving.ts`, implemented `inspectFootprint(front, center, rear)` and directional gating `isStepAllowed`:
      - Forward drive (`speed > 0`) validates that front corners are unobstructed (`target.front === 0`).
      - When stopped against an obstacle, Reverse (`speed < 0`) is allowed because the rear path is clear (`target.rear === 0`), enabling instant unsticking.
 - **Evidence:**
@@ -170,12 +170,12 @@ This task record documents the investigation, root causes, implementation fixes,
 ### Blocker 8: Exact-Head Review Hardening & Regression Resolution (Joekookerbot Review #551)
 
 - **Root Causes & Findings:**
-  1. *Occupied Parcel Off-Road Drivability:* In `runtime.ts` `tickOwnedDrive`, accepting `"parcel"` allowed vehicles to drive through occupied/reserved plots off-road.
-  2. *Vehicle Slope Axes Inversion:* In `R3FOperatorCar.tsx`, longitudinal elevation gradient was applied as Euler X and roll as Euler Z. In `carMesh.ts`, headlights are on local +X and doors along +/-Z, so pitching required rotation around local Z and roll around local X in `"YXZ"` order.
-  3. *Unbounded Water-Exit Teleport:* In `runtime.ts` `exitOwnedCar`, scanning all of `roadSet` without a distance cap allowed teleporting hundreds of cells away across the map when stranded in deep water.
-  4. *Dead Starter-Plot Entry:* In `ColonyApp.tsx`, topbar button rendered on `!runtime.hasOperatorHome()` alone and called `setHomeOpen(true)`, but the modal was additionally gated by `newPlayerJourneyEnabled`.
-  5. *Wallet Snapshot Refresh Path:* `StarterPropertyOverlay.tsx` previously offered a Retry button only on missing/unavailable states, leaving ready-but-insufficient balance without a direct refresh affordance when funds arrive.
-  6. *Playwright E2E Button Name:* Renaming the topbar map button aria-label broke `e2e/playerHud.spec.ts` selector `getByRole("button", { name: "Open map" })`.
+  1. _Occupied Parcel Off-Road Drivability:_ In `runtime.ts` `tickOwnedDrive`, accepting `"parcel"` allowed vehicles to drive through occupied/reserved plots off-road.
+  2. _Vehicle Slope Axes Inversion:_ In `R3FOperatorCar.tsx`, longitudinal elevation gradient was applied as Euler X and roll as Euler Z. In `carMesh.ts`, headlights are on local +X and doors along +/-Z, so pitching required rotation around local Z and roll around local X in `"YXZ"` order.
+  3. _Unbounded Water-Exit Teleport:_ In `runtime.ts` `exitOwnedCar`, scanning all of `roadSet` without a distance cap allowed teleporting hundreds of cells away across the map when stranded in deep water.
+  4. _Dead Starter-Plot Entry:_ In `ColonyApp.tsx`, topbar button rendered on `!runtime.hasOperatorHome()` alone and called `setHomeOpen(true)`, but the modal was additionally gated by `newPlayerJourneyEnabled`.
+  5. _Wallet Snapshot Refresh Path:_ `StarterPropertyOverlay.tsx` previously offered a Retry button only on missing/unavailable states, leaving ready-but-insufficient balance without a direct refresh affordance when funds arrive.
+  6. _Playwright E2E Button Name:_ Renaming the topbar map button aria-label broke `e2e/playerHud.spec.ts` selector `getByRole("button", { name: "Open map" })`.
 - **Resolutions:**
   1. Restored strict `if (this.blockedStepReason(x, y) !== null) return false;` in `tickOwnedDrive`, blocking non-road occupied parcels while preserving garage pad and homestead driveway clearance.
   2. Corrected vehicle rotation in `R3FOperatorCar.tsx` to `group.current.rotation.set(-roll, -heading, pitch, "YXZ")`.

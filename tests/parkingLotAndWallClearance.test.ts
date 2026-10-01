@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildGarageAnchorShellModel } from "../src/colony/render/garageAnchorShell";
-import { stepOwnedDrive, type OwnedDrivePose } from "../src/colony/car/ownedDriving";
+import {
+  stepOwnedDrive,
+  type OwnedDrivePose,
+} from "../src/colony/car/ownedDriving";
 import { ColonyRuntime } from "../src/colony/runtime";
 
 describe("Parking Lot Alignment, Wall Clearance & Roadside Unsticking", () => {
@@ -39,7 +42,8 @@ describe("Parking Lot Alignment, Wall Clearance & Roadside Unsticking", () => {
   });
 
   it("guarantees secondary car in showroom does not penetrate service bay dividing wall", () => {
-    const serviceBayLeftWall = (model.serviceBay.x - model.serviceBay.w / 2) * 4;
+    const serviceBayLeftWall =
+      (model.serviceBay.x - model.serviceBay.w / 2) * 4;
     const secondCarX = (model.showroom.x + model.showroom.w * 0.085) * 4;
     const carHalfWidth = 1.92 / 2;
 
@@ -112,7 +116,11 @@ describe("Parking Lot Alignment, Wall Clearance & Roadside Unsticking", () => {
     let targetY = 300;
     for (let x = 250; x < 350; x++) {
       for (let y = 250; y < 350; y++) {
-        if (!t.isWater(x, y) && t.worldY(x, y) > 2.0 && !rt.sim.state.roadSet.has(`${x},${y}`)) {
+        if (
+          !t.isWater(x, y) &&
+          t.worldY(x, y) > 2.0 &&
+          !rt.sim.state.roadSet.has(`${x},${y}`)
+        ) {
           targetX = x;
           targetY = y;
           break;

@@ -1029,7 +1029,8 @@ export class PlanetRenderer {
     const { gl, scene, camera } = r3fProbe;
     if (!gl || !scene || !camera) return null;
     const prevToneMapping = gl.toneMapping;
-    const prevRenderTarget = typeof gl.getRenderTarget === "function" ? gl.getRenderTarget() : null;
+    const prevRenderTarget =
+      typeof gl.getRenderTarget === "function" ? gl.getRenderTarget() : null;
     try {
       if (typeof gl.setRenderTarget === "function") {
         gl.setRenderTarget(null);
@@ -1052,11 +1053,24 @@ export class PlanetRenderer {
       const fpCell = rt?.fpCameraCell;
       const opCar = sim?.state?.operatorCar;
       const fpCitizenId = (rt as any)?.fpCitizenId;
-      const citizen = fpCitizenId && typeof (rt as any)?.citizen === "function" ? (rt as any).citizen(fpCitizenId) : null;
+      const citizen =
+        fpCitizenId && typeof (rt as any)?.citizen === "function"
+          ? (rt as any).citizen(fpCitizenId)
+          : null;
       const citizenPos = citizen?.positionXY ?? citizen?.pos;
 
-      const cellX = drivePose?.x ?? fpCell?.x ?? citizenPos?.x ?? opCar?.cell?.x ?? (t ? t.size / 2 : 0);
-      const cellY = drivePose?.y ?? fpCell?.y ?? citizenPos?.y ?? opCar?.cell?.y ?? (t ? t.size / 2 : 0);
+      const cellX =
+        drivePose?.x ??
+        fpCell?.x ??
+        citizenPos?.x ??
+        opCar?.cell?.x ??
+        (t ? t.size / 2 : 0);
+      const cellY =
+        drivePose?.y ??
+        fpCell?.y ??
+        citizenPos?.y ??
+        opCar?.cell?.y ??
+        (t ? t.size / 2 : 0);
       const headingRad = drivePose
         ? drivePose.heading
         : fpCell
@@ -1068,11 +1082,13 @@ export class PlanetRenderer {
       const worldX = t ? (cellX - t.size / 2) * 4 : 0;
       const worldZ = t ? (cellY - t.size / 2) * 4 : 0;
       const elev = t
-        ? (rt?.isRoadSurface?.(cellX, cellY)
-            ? (t.worldYAt(cellX, cellY) + 0.18)
-            : t.worldYAt(cellX, cellY))
+        ? rt?.isRoadSurface?.(cellX, cellY)
+          ? t.worldYAt(cellX, cellY) + 0.18
+          : t.worldYAt(cellX, cellY)
         : 0;
-      const headingDeg = Math.round((((headingRad * 180) / Math.PI) % 360 + 360) % 360);
+      const headingDeg = Math.round(
+        ((((headingRad * 180) / Math.PI) % 360) + 360) % 360,
+      );
 
       const parts = buildStampParts();
       const stampText = formatBuildStamp(parts);
@@ -1081,7 +1097,10 @@ export class PlanetRenderer {
       const rightBanner = `X: ${Math.round(worldX * 10) / 10}m  Elev: ${Math.round(elev * 100) / 100}m  Z: ${Math.round(worldZ * 10) / 10}m  Hdg: ${headingDeg}°  Seed: ${seed}`;
 
       // Composite onto 2D canvas with coordinates burn-in
-      if (typeof document !== "undefined" && typeof document.createElement === "function") {
+      if (
+        typeof document !== "undefined" &&
+        typeof document.createElement === "function"
+      ) {
         try {
           const canvas2d = document.createElement("canvas");
           canvas2d.width = dom.width;
@@ -1113,7 +1132,11 @@ export class PlanetRenderer {
             // Right text (Coordinates, Elevation, Heading, Seed)
             ctx.fillStyle = "#ffda79";
             const rightWidth = ctx.measureText(rightBanner).width;
-            ctx.fillText(rightBanner, Math.max(dom.width - rightWidth - 12, 12), textY);
+            ctx.fillText(
+              rightBanner,
+              Math.max(dom.width - rightWidth - 12, 12),
+              textY,
+            );
 
             return canvas2d.toDataURL("image/png");
           }

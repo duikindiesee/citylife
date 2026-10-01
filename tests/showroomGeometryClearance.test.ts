@@ -19,7 +19,7 @@ describe("Showroom Geometry & 360° Clearance Acceptance (Spec 176)", () => {
     const backWall = model.showroom.z - model.showroom.d / 2;
     const frontWall = model.showroom.z + model.showroom.d / 2;
 
-    const heroX = model.showroom.x - model.showroom.w * 0.10;
+    const heroX = model.showroom.x - model.showroom.w * 0.1;
     const heroZ = model.showroom.z + model.showroom.d * 0.04;
     const secondX = model.showroom.x + model.showroom.w * 0.085;
     const secondZ = model.showroom.z - model.showroom.d * 0.02;
@@ -69,7 +69,10 @@ describe("Showroom Geometry & 360° Clearance Acceptance (Spec 176)", () => {
         expect(worldZ - backWall * 4).toBeGreaterThan(0.5);
 
         // Distance to secondary car > 2.5m for walkable customer passage:
-        const distToSecond = Math.hypot(worldX - secondWorldX, worldZ - secondWorldZ);
+        const distToSecond = Math.hypot(
+          worldX - secondWorldX,
+          worldZ - secondWorldZ,
+        );
         expect(distToSecond).toBeGreaterThan(2.5);
       }
     }
