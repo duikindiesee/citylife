@@ -2816,37 +2816,73 @@ export class ColonyRuntime {
       { x: Math.round(car.x + Math.sin(car.heading) - Math.cos(car.heading)), y: Math.round(car.y - Math.cos(car.heading) - Math.sin(car.heading)) },
     ];
 
-    let exitCell = candidates.find(
-      (c) => this.blockedStepReason(c.x, c.y) === null && !t.isWater(c.x, c.y)
-    );
+    const isPassable = (x: number, y: number): boolean => {
+      if (t && typeof t.size === "number" && (x < 2 || x >= t.size - 2 || y < 2 || y >= t.size - 2)) {
+        return false;
+      }
+      return this.blockedStepReason(x, y) === null && !t.isWater(x, y);
+    };
+
+    const startX = Math.round(car.x);
+    const startY = Math.round(car.y);
+
+    let exitCell = candidates.find((c) => {
+      if (!isPassable(c.x, c.y)) return false;
+      const dx = c.x - startX;
+      const dy = c.y - startY;
+      // Refuse crossing two blocked orthogonal sides on diagonal moves
+      if (dx !== 0 && dy !== 0) {
+        if (!isPassable(startX + dx, startY) && !isPassable(startX, startY + dy)) {
+          return false;
+        }
+      }
+      return true;
+    });
 
     // 4. Reachable path-connected fallback search (up to 6.0 cells = 24m radius)
     // Constrained to a path-connected component so the player never teleports across water or barriers.
     const MAX_EXIT_TELEPORT_RADIUS = 6.0;
     if (!exitCell) {
-      const startX = Math.round(car.x);
-      const startY = Math.round(car.y);
-
       // Starting seed points: the car's origin cell and immediate perimeter
       const reachable = new Set<string>();
       const queue: { x: number; y: number }[] = [];
 
-      const tryEnqueue = (x: number, y: number) => {
-        const key = `${x},${y}`;
-        if (!reachable.has(key) && this.blockedStepReason(x, y) === null && !t.isWater(x, y)) {
-          reachable.add(key);
-          queue.push({ x, y });
-        }
-      };
-
-      tryEnqueue(startX, startY);
-      for (const [dx, dy] of [
-        [1, 0], [-1, 0], [0, 1], [0, -1],
-        [1, 1], [1, -1], [-1, 1], [-1, -1],
-      ]) {
-        tryEnqueue(startX + dx, startY + dy);
+      if (isPassable(startX, startY)) {
+        reachable.add(`${startX},${startY}`);
+        queue.push({ x: startX, y: startY });
       }
 
+      // Orthogonal perimeter seeds
+      for (const [dx, dy] of [
+        [1, 0], [-1, 0], [0, 1], [0, -1],
+      ]) {
+        const nx = startX + dx;
+        const ny = startY + dy;
+        const key = `${nx},${ny}`;
+        if (!reachable.has(key) && isPassable(nx, ny)) {
+          reachable.add(key);
+          queue.push({ x: nx, y: ny });
+        }
+      }
+
+      // Diagonal perimeter seeds: refuse crossing two blocked orthogonal sides
+      for (const [dx, dy] of [
+        [1, 1], [1, -1], [-1, 1], [-1, -1],
+      ]) {
+        const nx = startX + dx;
+        const ny = startY + dy;
+        const key = `${nx},${ny}`;
+        if (reachable.has(key)) continue;
+        if (!isPassable(startX + dx, startY) && !isPassable(startX, startY + dy)) {
+          continue;
+        }
+        if (isPassable(nx, ny)) {
+          reachable.add(key);
+          queue.push({ x: nx, y: ny });
+        }
+      }
+
+      // BFS traversal expanding 8-connected neighbors with corner clearance
       while (queue.length > 0) {
         const curr = queue.shift()!;
         for (const [dx, dy] of [
@@ -2858,8 +2894,15 @@ export class ColonyRuntime {
           const key = `${nx},${ny}`;
           if (reachable.has(key)) continue;
           if (Math.hypot(nx - car.x, ny - car.y) > MAX_EXIT_TELEPORT_RADIUS) continue;
-          if (nx < 2 || nx >= t.size - 2 || ny < 2 || ny >= t.size - 2) continue;
-          if (this.blockedStepReason(nx, ny) !== null || t.isWater(nx, ny)) continue;
+
+          // Diagonal expansion: refuse crossing two blocked orthogonal sides
+          if (dx !== 0 && dy !== 0) {
+            if (!isPassable(curr.x + dx, curr.y) && !isPassable(curr.x, curr.y + dy)) {
+              continue;
+            }
+          }
+
+          if (!isPassable(nx, ny)) continue;
 
           reachable.add(key);
           queue.push({ x: nx, y: ny });
