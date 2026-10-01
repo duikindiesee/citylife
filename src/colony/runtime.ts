@@ -2987,7 +2987,8 @@ export class ColonyRuntime {
           )
         )
           return false;
-        if (this.blockedStepReason(x, y) !== null) return false;
+        const stepReason = this.blockedStepReason(x, y);
+        if (stepReason === "building" || stepReason === "water" || stepReason === "edge of map") return false;
         return true;
       },
       (x, y) => this.isRoadSurface(x, y),
@@ -3010,13 +3011,13 @@ export class ColonyRuntime {
     const localX = dx * cos - dy * sin;
     const localZ = dx * sin + dy * cos;
 
-    // Pad perimeter boundary guard
-    const halfW = (garagePad.w * 0.96) / 2;
-    const halfD = (garagePad.h * 0.96) / 2;
+    // Pad perimeter boundary guard: full pad dimensions without artificial border shrink
+    const halfW = garagePad.w / 2;
+    const halfD = garagePad.h / 2;
     if (Math.abs(localX) > halfW || Math.abs(localZ) > halfD) return false;
 
-    // Forecourt & road-facing entrance apron (localZ > -0.4): open concrete slab
-    if (localZ > -0.4) return true;
+    // Forecourt & road-facing entrance apron (localZ > -0.6): open concrete slab
+    if (localZ > -0.6) return true;
 
     // Open Service Bay (door 1): rolled up, open cavity allows driving into the bay
     if (localX > 0.4 && localX < 2.8 && localZ > -2.9) {

@@ -21,8 +21,9 @@ describe("Showroom Geometry & 360° Clearance Acceptance (Spec 176)", () => {
 
     const heroX = model.showroom.x - model.showroom.w * 0.10;
     const heroZ = model.showroom.z + model.showroom.d * 0.04;
-    const secondX = model.showroom.x + model.showroom.w * 0.24;
-    const secondZ = model.showroom.z - model.showroom.d * 0.04;
+    const secondX = model.showroom.x + model.showroom.w * 0.085;
+    const secondZ = model.showroom.z - model.showroom.d * 0.02;
+    const serviceBayLeftWall = model.serviceBay.x - model.serviceBay.w / 2;
 
     // Authentic vehicle dimensions in world metres (scale 1.05x):
     const kaapLength = 4.28;
@@ -30,7 +31,8 @@ describe("Showroom Geometry & 360° Clearance Acceptance (Spec 176)", () => {
     const x19Length = 4.28;
     const x19Width = 1.92;
 
-    // 1. Secondary car fits entirely within showroom right bay without wall penetration
+    // 1. Secondary car fits entirely within showroom bay without wall penetration,
+    // maintaining >= 2.5m clearance to both the service bay dividing wall and showroom exterior.
     const secondWorldX = secondX * 4;
     const secondWorldZ = secondZ * 4;
     const secondMinX = secondWorldX - x19Length / 2;
@@ -38,7 +40,8 @@ describe("Showroom Geometry & 360° Clearance Acceptance (Spec 176)", () => {
     const secondMinZ = secondWorldZ - x19Width / 2;
     const secondMaxZ = secondWorldZ + x19Width / 2;
 
-    expect(secondMaxX).toBeLessThan(rightWall * 4 - 0.5); // at least 0.5m right wall clearance
+    expect(secondMaxX).toBeLessThan(serviceBayLeftWall * 4 - 2.5); // at least 2.5m clearance to service bay wall!
+    expect(secondMaxX).toBeLessThan(rightWall * 4 - 0.5);
     expect(secondMinX).toBeGreaterThan(leftWall * 4 + 0.5);
     expect(secondMinZ).toBeGreaterThan(backWall * 4 + 0.5);
     expect(secondMaxZ).toBeLessThan(frontWall * 4 - 0.5);

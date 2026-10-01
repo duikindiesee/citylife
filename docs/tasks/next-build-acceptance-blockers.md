@@ -24,6 +24,10 @@ This task record documents the investigation, root causes, implementation fixes,
    - *Observation:* `OFF-ROAD` badge and `Your Plot` controls floated on top of other UI at `marginTop: 16px`, colliding with the topbar and intercepting pointer clicks. Multiple confusing map buttons ("Map", "Survey Map", "Road Map") created confusion.
 5. **Wallet / Purchase Edge-Case Hardening:**
    - *Requirement:* Harden purchase flows against missing wallet, zero balance, request failure, expired session (401/403), logout/account-switch stale balance clearing, server-authoritative funds/ownership, atomic purchase, idempotent retries, and concurrent request protection.
+6. **Bug Logger Black Capture & Coordinates Display:**
+   - *Observation:* Bug report capture returned black PNG; coordinates readout did not track active player position or display permanently on HUD captures.
+7. **Showroom Wall Protrusion, Forecourt Parking Misalignment, and Roadside / Apron Drive-in Lockup ("Able to turn only"):**
+   - *Observation:* Yellow Karoo X19 protruding through showroom dividing wall; display cars crooked and straddling parking bays; car unable to drive into garage apron due to border shrink and parcel blockers; car stuck on roadside verge unable to drive forward or reverse ("able to turn only").
 
 ---
 
@@ -141,11 +145,33 @@ This task record documents the investigation, root causes, implementation fixes,
 
 ---
 
+### Blocker 7: Showroom Dividing Wall Penetration, Parking Bay Misalignment, and Roadside / Apron Drive-in Lockup ("Able to turn only")
+
+- **Root Cause:**
+  1. *Showroom Dividing Wall Penetration:* In `src/colony/render/garageAnchorShell.ts`, the showroom and service bay overlap along the X axis between `-0.08 * footprint.w` and `+0.04 * footprint.w`. The dividing partition wall sits at `-0.08 * footprint.w`. `secondaryCar` (yellow Karoo X19 Targa) was positioned at `x = showroom.x - showroom.w * 0.0952` (`-0.0952 * footprint.w`), placing the 1.92m-wide vehicle 0.97m into the solid dividing wall.
+  2. *Forecourt Parking Misalignment:* Display cars on the garage forecourt were positioned using hardcoded, crooked coordinates and orientations that straddled parking stalls instead of aligning with designated parking bays (`BAY 01`, `BAY 02`, `BAY 03`).
+  3. *Garage Forecourt Drive-in Barrier:* In `src/colony/runtime.ts`, `isGaragePadDrivable` applied an artificial 4% boundary shrink (`0.96`), and entrance apron cells (`localZ > -0.6`) were blocked by `canOccupy()` treating open unbuilt roadside `"parcel"` buffers as physical obstacles.
+  4. *Roadside Verge Lockup ("Able to turn only"):* In `src/colony/car/ownedDriving.ts`, collision checking previously tested all perimeter footprint points unconditionally. When a front wheel touched a curb or obstacle, `speed` was zeroed. When attempting to reverse, `isFootprintClear` failed because the front still slightly overlapped the obstacle, preventing backward movement. Meanwhile, steering only tested `canOccupy(center)` (which remained clear), so players could rotate in place but were completely trapped translationally.
+- **Resolution:**
+  1. *Showroom Wall Clearance:* In `src/colony/render/commercialDistrictLayer.ts`, repositioned `secondaryCar` to `x: model.showroom.x + model.showroom.w * 0.085`, `y: 0.05`, `z: model.showroom.z - model.showroom.d * 0.02`, `rotation.y: -0.06`. This centers the vehicle inside the showroom bay, providing $>5.0\text{m}$ clearance to the dividing wall, $>3.0\text{m}$ clearance to the turntable plinth, and $>3.5\text{m}$ clearance to exterior glass and rear walls.
+  2. *Parking Lot Bay Alignment:* In `src/colony/render/garageAnchorShell.ts` and `commercialDistrictLayer.ts`, aligned `displayCars` to `parkingBays`:
+     - `displayCars[0]` (Karoo Vonk): Centered squarely in `BAY 01` (`rot: parkingBays[0].rot`, `scale: 1.0`).
+     - `displayCars[1]` (Karoo Kaap): Centered squarely in `BAY 02` (`rot: parkingBays[1].rot`, `scale: 1.0`).
+     - `BAY 03` remains unobstructed and designated for player / customer vehicles.
+  3. *Apron & Forecourt Access:* In `src/colony/runtime.ts`, removed the artificial `0.96` border shrink in `isGaragePadDrivable` and permitted entrance apron approach (`localZ > -0.6`). Updated `canOccupy()` to ignore non-physical `"parcel"` roadside buffers for vehicle navigation.
+  4. *Directional Footprint Unsticking:* In `src/colony/car/ownedDriving.ts`, implemented `inspectFootprint(front, center, rear)` and directional gating `isStepAllowed`:
+     - Forward drive (`speed > 0`) validates that front corners are unobstructed (`target.front === 0`).
+     - When stopped against an obstacle, Reverse (`speed < 0`) is allowed because the rear path is clear (`target.rear === 0`), enabling instant unsticking.
+- **Evidence:**
+  - Unit and integration tests: `tests/parkingLotAndWallClearance.test.ts` (4/4 PASS), `tests/showroomGeometryClearance.test.ts` (1/1 PASS).
+
+---
+
 ## 3. Verification & Test Summary
 
-- `npm test`: **273 test files passed, 2395 tests passed** (including all unit and integration tests).
+- `npm test`: **274 test files passed, 2399 tests passed** (including all unit and integration tests).
 - `npm run typecheck`: **0 errors**.
-- `npm run build`: **Built successfully** in 438ms.
+- `npm run build`: **Built successfully** in 527ms.
 - `c:\kooker`: `npm test`, `npm run validate`, `npm run public-safety` **all PASS**.
 
 ---

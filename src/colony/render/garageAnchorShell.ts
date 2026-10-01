@@ -171,16 +171,16 @@ export function buildGarageAnchorShellModel(
     },
     displayCars: [
       {
-        x: -footprint.w * 0.22,
-        z: forecourt.frontOffset,
-        rot: -0.22,
-        scale: 0.7,
+        x: parkingBays[0]!.x,
+        z: parkingBays[0]!.z,
+        rot: parkingBays[0]!.rot,
+        scale: 1.0,
       },
       {
-        x: footprint.w * 0.18,
-        z: forecourt.frontOffset * 0.92,
-        rot: 0.18,
-        scale: 0.68,
+        x: parkingBays[1]!.x,
+        z: parkingBays[1]!.z,
+        rot: parkingBays[1]!.rot,
+        scale: 1.0,
       },
     ],
   };

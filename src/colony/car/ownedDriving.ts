@@ -36,6 +36,82 @@ function isFootprintClear(
   return true;
 }
 
+interface FootprintInspection {
+  front: number;
+  center: number;
+  rear: number;
+  total: number;
+}
+
+function inspectFootprint(
+  x: number,
+  y: number,
+  heading: number,
+  canOccupy: (x: number, y: number) => boolean,
+  halfLength: number,
+  halfWidth: number,
+  cellMetres: number,
+): FootprintInspection {
+  const cos = Math.cos(heading);
+  const sin = Math.sin(heading);
+  let front = 0;
+  let center = 0;
+  let rear = 0;
+  for (const along of [-halfLength, 0, halfLength]) {
+    for (const across of [-halfWidth, halfWidth]) {
+      const px = x + (cos * along - sin * across) / cellMetres;
+      const py = y + (sin * along + cos * across) / cellMetres;
+      if (!canOccupy(px, py)) {
+        if (along > 0) front++;
+        else if (along < 0) rear++;
+        else center++;
+      }
+    }
+  }
+  return { front, center, rear, total: front + center + rear };
+}
+
+function isStepAllowed(
+  targetX: number,
+  targetY: number,
+  heading: number,
+  speed: number,
+  canOccupy: (x: number, y: number) => boolean,
+  halfLength: number,
+  halfWidth: number,
+  cellMetres: number,
+): boolean {
+  if (!canOccupy(targetX, targetY)) return false;
+
+  const target = inspectFootprint(
+    targetX,
+    targetY,
+    heading,
+    canOccupy,
+    halfLength,
+    halfWidth,
+    cellMetres,
+  );
+
+  // If 100% clear of all obstacles: step is valid
+  if (target.total === 0) return true;
+
+  // If moving forward (speed > 0), front cannot penetrate obstacles
+  if (speed > 0 && target.front > 0) return false;
+
+  // If moving backward (speed < 0), rear cannot penetrate obstacles
+  if (speed < 0 && target.rear > 0) return false;
+
+  // Recovery / unsticking:
+  // If moving backward while front is touching obstacle, allowed!
+  if (speed < 0 && target.rear === 0) return true;
+
+  // If moving forward while rear is touching obstacle, allowed!
+  if (speed > 0 && target.front === 0) return true;
+
+  return false;
+}
+
 /** Real world movement, without the race's checkpoint attraction/teleport correction. */
 export function stepOwnedDrive(
   pose: OwnedDrivePose,
@@ -116,12 +192,13 @@ export function stepOwnedDrive(
     const targetX = next.x + stepX;
     const targetY = next.y + stepY;
 
-    // 1. Full translation clear
+    // 1. Full translation clear or recovery
     if (
-      isFootprintClear(
+      isStepAllowed(
         targetX,
         targetY,
         next.heading,
+        next.speed,
         canOccupy,
         cfg.halfLengthMetres,
         cfg.halfWidthMetres,
@@ -131,12 +208,13 @@ export function stepOwnedDrive(
       next.x = targetX;
       next.y = targetY;
     } else if (
-      // 2. Glancing collision response: slide along X axis if free
+      // 2. Glancing collision response: slide along X axis if free or recovering
       stepX !== 0 &&
-      isFootprintClear(
+      isStepAllowed(
         targetX,
         next.y,
         next.heading,
+        next.speed,
         canOccupy,
         cfg.halfLengthMetres,
         cfg.halfWidthMetres,
@@ -146,12 +224,13 @@ export function stepOwnedDrive(
       next.x = targetX;
       next.speed *= 0.85;
     } else if (
-      // 3. Glancing collision response: slide along Y axis if free
+      // 3. Glancing collision response: slide along Y axis if free or recovering
       stepY !== 0 &&
-      isFootprintClear(
+      isStepAllowed(
         next.x,
         targetY,
         next.heading,
+        next.speed,
         canOccupy,
         cfg.halfLengthMetres,
         cfg.halfWidthMetres,

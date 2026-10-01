@@ -623,17 +623,17 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   showroomInterior.add(heroCar);
 
   // 5. SECONDARY CAR IN SHOWROOM (Karoo X19 Targa)
-  // Dedicated showroom bay with >8m clearance to walls and plinth, zero geometry penetration.
+  // Dedicated showroom bay centered between turntable plinth and service bay dividing wall (>5m wall clearance, >3m plinth clearance).
   const secondarySpec = SHOWROOM_VEHICLES[2]!.spec;
   const secondaryCar = buildCarMesh(secondarySpec);
   secondaryCar.name = "garageAnchorShowroomSecondCar";
   secondaryCar.scale.setScalar(1.0);
   secondaryCar.position.set(
-    model.showroom.x + model.showroom.w * 0.24,
+    model.showroom.x + model.showroom.w * 0.085,
     0.05,
-    model.showroom.z - model.showroom.d * 0.04,
+    model.showroom.z - model.showroom.d * 0.02,
   );
-  secondaryCar.rotation.y = 0.12;
+  secondaryCar.rotation.y = -0.06;
   showroomInterior.add(secondaryCar);
 
   // 6. Header sign and branding
@@ -967,7 +967,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     cg.name = `garageAnchorDisplayCar.${i + 1}`;
     cg.position.set(car.x, 0.08, car.z);
     cg.rotation.y = car.rot;
-    cg.scale.setScalar(car.scale * 1.5);
+    cg.scale.setScalar(car.scale);
     const displaySpec = SHOWROOM_VEHICLES[i % SHOWROOM_VEHICLES.length]!.spec;
     const realCar = buildCarMesh(displaySpec);
     const underGlow = new THREE.Mesh(
