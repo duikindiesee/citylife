@@ -320,45 +320,6 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     g.add(stallGroup);
   }
 
-  // Spec 177: Driveway Apron connecting forecourt forward to the municipal road edge
-  const apronMat = new THREE.MeshStandardMaterial({
-    color: 0x2e353f,
-    roughness: 0.68,
-    metalness: 0.05,
-  });
-  const apron = new THREE.Mesh(
-    new THREE.BoxGeometry(model.drivewayApron.w, 0.036, model.drivewayApron.d),
-    apronMat,
-  );
-  apron.name = "garageAnchorDrivewayEntranceThroat";
-  apron.position.set(
-    model.drivewayApron.x,
-    model.drivewayApron.y,
-    model.drivewayApron.z,
-  );
-  apron.receiveShadow = true;
-  g.add(apron);
-
-  // Yellow entrance curb transitions
-  const curbMat = new THREE.MeshStandardMaterial({
-    color: 0xffc83b,
-    roughness: 0.4,
-    emissive: 0x8a6500,
-    emissiveIntensity: 0.25,
-  });
-  for (const curbSide of [-1, 1]) {
-    const curb = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.06, model.drivewayApron.d),
-      curbMat,
-    );
-    curb.name = `garageAnchorEntranceCurb.${curbSide < 0 ? "left" : "right"}`;
-    curb.position.set(
-      model.drivewayApron.x + (model.drivewayApron.w / 2) * curbSide,
-      model.drivewayApron.y + 0.02,
-      model.drivewayApron.z,
-    );
-    g.add(curb);
-  }
 
   // Spec 177: Forecourt perimeter architectural light stanchion
   // Placed strictly on the far western perimeter curb corner, completely clear of all vehicle driving paths.
