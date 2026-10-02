@@ -39,11 +39,12 @@ describe("CityLife Expanded QA Findings Verification (2026-10-02)", () => {
     });
 
     expect(heroCar).not.toBeNull();
-    // In model space (inside group scaled 4x), scale must be 0.25 (1 / renderScale)
-    expect((heroCar as any).scale.x).toBeCloseTo(0.25, 4);
+    // Anchor container group scale must be 1.0 so replaced GLB car (scaled ~0.26 in R3FCommercialDistrict) inside 4x parent renders at 1:1 real-world size
+    expect((heroCar as any).scale.x).toBeCloseTo(1.0, 4);
 
     expect(displayCars.length).toBeGreaterThanOrEqual(2);
     for (const car of displayCars) {
+      expect((car as any).scale.x).toBeCloseTo(1.0, 4);
       // Find the realCar inside displayCar group
       let carMesh: THREE.Object3D | null = null;
       car.traverse((child) => {

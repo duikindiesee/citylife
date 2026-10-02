@@ -618,18 +618,23 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
 
   // 4. HERO CAR ON THE PLINTH (Karoo X19 Targa - Yellow Fiat X1/9 GLB)
   // Centered on the turntable plinth and illuminated by ceiling spotlights.
-  // Model group is scaled by model.renderScale (4x); scale real-metre car by 1 / renderScale
-  const heroSpec = SHOWROOM_VEHICLES[2]!.spec;
-  const heroCar = buildCarMesh(heroSpec);
-  heroCar.name = "garageAnchorShowroomHeroCar";
-  heroCar.scale.setScalar(1.0 / model.renderScale);
-  heroCar.position.set(
+  // Container group has scale 1.0 so GLB replacement (scale 0.262) inside 4x parent group renders at authentic 1:1 real-world proportion (~1.05m net scale).
+  const heroGroup = new THREE.Group();
+  heroGroup.name = "garageAnchorShowroomHeroCar";
+  heroGroup.position.set(
     model.showroom.x - model.showroom.w * 0.1,
     0.17,
     model.showroom.z + model.showroom.d * 0.04,
   );
-  heroCar.rotation.y = -0.38; // initial angle toward the road-facing glass
-  showroomInterior.add(heroCar);
+  heroGroup.rotation.y = -0.38; // initial angle toward the road-facing glass
+  heroGroup.scale.setScalar(1.0);
+
+  const heroSpec = SHOWROOM_VEHICLES[2]!.spec;
+  const heroFallbackMesh = buildCarMesh(heroSpec);
+  heroFallbackMesh.name = "garageAnchorShowroomHeroCarFallback";
+  heroFallbackMesh.scale.setScalar(1.0);
+  heroGroup.add(heroFallbackMesh);
+  showroomInterior.add(heroGroup);
 
   // 6. Header sign and branding
   const showroomHeader = new THREE.Mesh(
@@ -965,7 +970,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     cg.scale.setScalar(car.scale);
     const displaySpec = SHOWROOM_VEHICLES[i % SHOWROOM_VEHICLES.length]!.spec;
     const realCar = buildCarMesh(displaySpec);
-    realCar.scale.setScalar(1.0 / model.renderScale);
+    realCar.scale.setScalar(1.0);
     const underGlow = new THREE.Mesh(
       new THREE.BoxGeometry(1.26, 0.025, 0.62),
       new THREE.MeshStandardMaterial({
