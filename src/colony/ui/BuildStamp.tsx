@@ -108,60 +108,50 @@ export function BuildStamp({ variant = "hud", runtime }: BuildStampProps) {
       data-testid="build-stamp"
       title={buildStampTitle(parts)}
       style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 2,
+        display: "inline-flex",
+        flexDirection: "row",
+        alignItems: "center",
+        flexWrap: "nowrap",
+        gap: "6px",
         fontFamily: "monospace",
-        fontSize: "11px",
-        lineHeight: "1.3",
+        fontSize: "10.5px",
+        lineHeight: "1.2",
         color: "rgba(255, 255, 255, 0.75)",
-        background: "rgba(10, 16, 26, 0.72)",
-        padding: "4px 8px",
+        background: "rgba(10, 16, 26, 0.78)",
+        padding: "3px 8px",
         borderRadius: "4px",
         backdropFilter: "blur(6px)",
         border: "1px solid rgba(255, 255, 255, 0.12)",
         pointerEvents: "auto",
         userSelect: "text",
+        whiteSpace: "nowrap",
       }}
     >
-      <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-        <span style={{ fontWeight: 600, color: "#6fe3ff" }}>{text}</span>
-        {parts.builtAt && (
-          <span
-            style={{ opacity: 0.65, fontSize: "10px" }}
-            title="Build timestamp"
-          >
-            {parts.builtAt}
-          </span>
-        )}
-      </div>
+      <span style={{ fontWeight: 600, color: "#6fe3ff" }}>{text}</span>
+      {parts.builtAt && (
+        <span style={{ opacity: 0.65, fontSize: "10px" }} title="Build timestamp">
+          {parts.builtAt}
+        </span>
+      )}
       {showDiag && diag && (
-        <div
+        <span
           data-testid="diagnostic-readout"
           style={{
-            fontSize: "10.5px",
+            fontSize: "10px",
             color: "#ffda79",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "6px",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "5px",
+            marginLeft: "2px",
           }}
         >
-          <span>
-            X: <b>{diag.x}m</b>
-          </span>
-          <span>
-            Elev: <b>{diag.elev}m</b>
-          </span>
-          <span>
-            Z: <b>{diag.z}m</b>
-          </span>
-          <span>
-            Hdg: <b>{diag.headingDeg}°</b>
-          </span>
-          <span>
-            Seed: <b>{diag.seed}</b>
-          </span>
-        </div>
+          <span style={{ opacity: 0.35 }}>|</span>
+          <span>X: <b>{diag.x}m</b></span>
+          <span>Elev: <b>{diag.elev}m</b></span>
+          <span>Z: <b>{diag.z}m</b></span>
+          <span>Hdg: <b>{diag.headingDeg}°</b></span>
+          <span>Seed: <b>{diag.seed}</b></span>
+        </span>
       )}
     </div>
   );

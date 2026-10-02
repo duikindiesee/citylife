@@ -324,16 +324,17 @@ body,
    member re-declares its own layer below. */
 .hud-corner-rail-left {
   position: absolute;
-  left: 16px;
-  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(6px, env(safe-area-inset-bottom));
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
   gap: 8px;
-  max-height: calc(100vh - 260px);
-  /* The rail is only a layout frame — the world must stay draggable through its empty space.
-     Members opt back in individually; the readout deliberately does NOT (see `.geo-readout`). */
+  max-width: calc(100vw - 32px);
   pointer-events: none;
+  z-index: 50;
 }
 
 /* UI.VERSION.1 — the build stamp. Deliberately has NO position of its own: in the game it is a

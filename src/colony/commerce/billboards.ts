@@ -67,7 +67,17 @@ export function surveyBillboards(
       const bx = e.fromX + e.step * ring;
       for (const perp of PERP_TRIES) {
         const by = ys + perp;
-        if (!cellOk(t, bx, by) || blocked.has(`${bx},${by}`)) continue;
+        let clear = true;
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (!cellOk(t, bx + dx, by + dy) || blocked.has(`${bx + dx},${by + dy}`)) {
+              clear = false;
+              break;
+            }
+          }
+          if (!clear) break;
+        }
+        if (!clear) continue;
         if (!farEnough(bx, by)) continue; // never stack / sit behind another board
         const shopId = shops.length
           ? shops[(rotation + sites.length) % shops.length]!

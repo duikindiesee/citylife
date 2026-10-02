@@ -15,6 +15,38 @@ export interface OwnedDriveInput {
   brake?: boolean;
 }
 
+function getDenseFootprintSamples(
+  halfLength: number,
+  halfWidth: number,
+): readonly [number, number][] {
+  return [
+    // 5 front bumper points
+    [halfLength, -halfWidth],
+    [halfLength, -halfWidth * 0.5],
+    [halfLength, 0],
+    [halfLength, halfWidth * 0.5],
+    [halfLength, halfWidth],
+    // 3 front-quarter points
+    [halfLength * 0.5, -halfWidth],
+    [halfLength * 0.5, 0],
+    [halfLength * 0.5, halfWidth],
+    // 3 center/mid points
+    [0, -halfWidth],
+    [0, 0],
+    [0, halfWidth],
+    // 3 rear-quarter points
+    [-halfLength * 0.5, -halfWidth],
+    [-halfLength * 0.5, 0],
+    [-halfLength * 0.5, halfWidth],
+    // 5 rear bumper points
+    [-halfLength, -halfWidth],
+    [-halfLength, -halfWidth * 0.5],
+    [-halfLength, 0],
+    [-halfLength, halfWidth * 0.5],
+    [-halfLength, halfWidth],
+  ];
+}
+
 function isFootprintClear(
   x: number,
   y: number,
@@ -23,15 +55,16 @@ function isFootprintClear(
   halfLength: number,
   halfWidth: number,
   cellMetres: number,
+  isFootprintValid?: (x: number, y: number, heading: number) => boolean,
 ): boolean {
+  if (isFootprintValid && !isFootprintValid(x, y, heading)) return false;
   const cos = Math.cos(heading);
   const sin = Math.sin(heading);
-  for (const along of [-halfLength, 0, halfLength]) {
-    for (const across of [-halfWidth, halfWidth]) {
-      const px = x + (cos * along - sin * across) / cellMetres;
-      const py = y + (sin * along + cos * across) / cellMetres;
-      if (!canOccupy(px, py)) return false;
-    }
+  const samples = getDenseFootprintSamples(halfLength, halfWidth);
+  for (const [along, across] of samples) {
+    const px = x + (cos * along - sin * across) / cellMetres;
+    const py = y + (sin * along + cos * across) / cellMetres;
+    if (!canOccupy(px, py)) return false;
   }
   return true;
 }
@@ -51,27 +84,53 @@ function inspectFootprint(
   halfLength: number,
   halfWidth: number,
   cellMetres: number,
+  isFootprintValid?: (x: number, y: number, heading: number) => boolean,
 ): FootprintInspection {
   const cos = Math.cos(heading);
   const sin = Math.sin(heading);
   let front = 0;
   let center = 0;
   let rear = 0;
-  for (const along of [-halfLength, 0, halfLength]) {
-    for (const across of [-halfWidth, halfWidth]) {
-      const px = x + (cos * along - sin * across) / cellMetres;
-      const py = y + (sin * along + cos * across) / cellMetres;
-      if (!canOccupy(px, py)) {
-        if (along > 0) front++;
-        else if (along < 0) rear++;
-        else center++;
-      }
+  const samples = getDenseFootprintSamples(halfLength, halfWidth);
+  for (const [along, across] of samples) {
+    const px = x + (cos * along - sin * across) / cellMetres;
+    const py = y + (sin * along + cos * across) / cellMetres;
+    if (!canOccupy(px, py)) {
+      if (along > 0) front++;
+      else if (along < 0) rear++;
+      else center++;
+    }
+  }
+  if (isFootprintValid && !isFootprintValid(x, y, heading)) {
+    // If continuous OBB SAT detects collision, probe front vs rear half to identify
+    // whether the obstacle impinges on the front, rear, or spans the chassis.
+    const probeDist = halfLength / cellMetres;
+    const frontClear = isFootprintValid(
+      x + cos * probeDist,
+      y + sin * probeDist,
+      heading,
+    );
+    const rearClear = isFootprintValid(
+      x - cos * probeDist,
+      y - sin * probeDist,
+      heading,
+    );
+    if (!frontClear && rearClear) {
+      front++;
+    } else if (frontClear && !rearClear) {
+      rear++;
+    } else {
+      front++;
+      rear++;
+      center++;
     }
   }
   return { front, center, rear, total: front + center + rear };
 }
 
 function isStepAllowed(
+  currentX: number,
+  currentY: number,
   targetX: number,
   targetY: number,
   heading: number,
@@ -80,8 +139,29 @@ function isStepAllowed(
   halfLength: number,
   halfWidth: number,
   cellMetres: number,
+  isFootprintValid?: (x: number, y: number, heading: number) => boolean,
 ): boolean {
   if (!canOccupy(targetX, targetY)) return false;
+
+  // Hard gate: SAT clear-to-overlap transition is strictly blocked.
+  if (
+    isFootprintValid &&
+    isFootprintValid(currentX, currentY, heading) &&
+    !isFootprintValid(targetX, targetY, heading)
+  ) {
+    return false;
+  }
+
+  const current = inspectFootprint(
+    currentX,
+    currentY,
+    heading,
+    canOccupy,
+    halfLength,
+    halfWidth,
+    cellMetres,
+    isFootprintValid,
+  );
 
   const target = inspectFootprint(
     targetX,
@@ -91,10 +171,14 @@ function isStepAllowed(
     halfLength,
     halfWidth,
     cellMetres,
+    isFootprintValid,
   );
 
   // If 100% clear of all obstacles: step is valid
   if (target.total === 0) return true;
+
+  // Hard gate: Any clear-to-overlap transition is strictly blocked.
+  if (current.total === 0 && target.total > 0) return false;
 
   // If moving forward (speed > 0), front cannot penetrate obstacles
   if (speed > 0 && target.front > 0) return false;
@@ -102,12 +186,12 @@ function isStepAllowed(
   // If moving backward (speed < 0), rear cannot penetrate obstacles
   if (speed < 0 && target.rear > 0) return false;
 
-  // Recovery / unsticking:
-  // If moving backward while front is touching obstacle, allowed!
-  if (speed < 0 && target.rear === 0) return true;
+  // Directional unsticking / recovery from an already overlapping pose:
+  // If moving backward away from an obstacle in front: allowed if rear remains clear
+  if (speed < 0 && target.rear === 0 && current.rear === 0) return true;
 
-  // If moving forward while rear is touching obstacle, allowed!
-  if (speed > 0 && target.front === 0) return true;
+  // If moving forward away from an obstacle in rear: allowed if front remains clear
+  if (speed > 0 && target.front === 0 && current.front === 0) return true;
 
   return false;
 }
@@ -120,6 +204,7 @@ export function stepOwnedDrive(
   delta: number,
   canOccupy: (x: number, y: number) => boolean,
   isRoad?: (x: number, y: number) => boolean,
+  isFootprintValid?: (x: number, y: number, heading: number) => boolean,
 ): OwnedDrivePose {
   const cfg = COLONY.ownedDriving;
   const next = { ...pose };
@@ -171,9 +256,18 @@ export function stepOwnedDrive(
       next.heading +
       steer * cfg.steerRadiansPerSecond * steerAuthority * steerDir * dt;
 
-    // Heading always updates if the car can turn at its current position
-    if (
-      isFootprintClear(
+    if (steer !== 0) {
+      const currentInspection = inspectFootprint(
+        next.x,
+        next.y,
+        next.heading,
+        canOccupy,
+        cfg.halfLengthMetres,
+        cfg.halfWidthMetres,
+        cfg.cellMetres,
+        isFootprintValid,
+      );
+      const targetInspection = inspectFootprint(
         next.x,
         next.y,
         heading,
@@ -181,10 +275,17 @@ export function stepOwnedDrive(
         cfg.halfLengthMetres,
         cfg.halfWidthMetres,
         cfg.cellMetres,
-      ) ||
-      canOccupy(next.x, next.y)
-    ) {
-      next.heading = heading;
+        isFootprintValid,
+      );
+      // Hard gate: clear-to-overlap transition is strictly blocked.
+      // Turn allowed if target heading is completely clear, or preserves/improves unsticking recovery
+      if (
+        targetInspection.total === 0 ||
+        (currentInspection.total > 0 &&
+          targetInspection.total <= currentInspection.total)
+      ) {
+        next.heading = heading;
+      }
     }
 
     const stepX = (Math.cos(next.heading) * next.speed * dt) / cfg.cellMetres;
@@ -195,6 +296,8 @@ export function stepOwnedDrive(
     // 1. Full translation clear or recovery
     if (
       isStepAllowed(
+        next.x,
+        next.y,
         targetX,
         targetY,
         next.heading,
@@ -203,6 +306,7 @@ export function stepOwnedDrive(
         cfg.halfLengthMetres,
         cfg.halfWidthMetres,
         cfg.cellMetres,
+        isFootprintValid,
       )
     ) {
       next.x = targetX;
@@ -211,6 +315,8 @@ export function stepOwnedDrive(
       // 2. Glancing collision response: slide along X axis if free or recovering
       stepX !== 0 &&
       isStepAllowed(
+        next.x,
+        next.y,
         targetX,
         next.y,
         next.heading,
@@ -219,6 +325,7 @@ export function stepOwnedDrive(
         cfg.halfLengthMetres,
         cfg.halfWidthMetres,
         cfg.cellMetres,
+        isFootprintValid,
       )
     ) {
       next.x = targetX;
@@ -228,6 +335,8 @@ export function stepOwnedDrive(
       stepY !== 0 &&
       isStepAllowed(
         next.x,
+        next.y,
+        next.x,
         targetY,
         next.heading,
         next.speed,
@@ -235,6 +344,7 @@ export function stepOwnedDrive(
         cfg.halfLengthMetres,
         cfg.halfWidthMetres,
         cfg.cellMetres,
+        isFootprintValid,
       )
     ) {
       next.y = targetY;

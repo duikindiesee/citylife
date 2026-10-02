@@ -192,9 +192,38 @@ This task record documents the investigation, root causes, implementation fixes,
 
 ---
 
+### Blocker 9: SAT Hard Gate for Clear-to-Overlap Transitions & Directional Unsticking (Joekookerbot Review #553)
+
+- **Root Causes & Findings:**
+  1. _SAT Soft Collision Gate:_ In `src/colony/car/ownedDriving.ts`, SAT overlap was added only to `center`. `isStepAllowed` permitted forward motion when `target.front === 0`, or reverse motion when `target.rear === 0`. Narrow obstacles (such as poles) passing between the 19 perimeter sample points did not trigger `target.front`, allowing the car to penetrate into SAT-detected obstacles from clear space.
+  2. _Clear-to-Overlap Bypass:_ Clear-to-overlap transitions were not strictly gated against the prior step state, allowing forward steps to enter obstacles.
+- **Resolutions:**
+  1. _SAT Hard Gate:_ Added explicit check in `isStepAllowed`: if vehicle was clear at `current` (`isFootprintValid` clear and `current.total === 0`), any step resulting in `!isFootprintValid` or `target.total > 0` is strictly blocked.
+  2. _Longitudinal SAT Probing:_ In `inspectFootprint`, when continuous SAT detects overlap, probed front half (`+hL`) and rear half (`-hL`) to accurately attribute obstacle impingement to `front`, `rear`, or spanning both.
+  3. _Directional Unsticking:_ Preserved unsticking from an already overlapping pose: reversing away from an obstacle in front is allowed if `speed < 0 && target.rear === 0 && current.rear === 0`; driving forward away from an obstacle behind is allowed if `speed > 0 && target.front === 0 && current.front === 0`.
+  4. _Negative Proof & Escape Regression:_ Added comprehensive regression test in `tests/garageRebuildAndCollision.test.ts` matching the exact negative proof fixture (0.035-cell pole at local 0.51, 0.08), verifying forward drive stops before penetration, forward drive while overlapping is blocked, and reverse unsticking escape successfully reaches a clear pose.
+- **Evidence:**
+  - `tests/garageRebuildAndCollision.test.ts` (12/12 PASS, including SAT hard gate and reverse escape).
+  - `tests/citylifeQaExpandedFindings.test.ts` (4/4 PASS).
+### Blocker 10: Service Bay Interior Partition and Structural Pier Colliders (Joekookerbot Review #553 / 5392115777)
+
+- **Root Causes & Findings:**
+  1. _Mesh / Collider Disconnect:_ In `commercialDistrictLayer.ts`, the solid workshop block was partitioned into discrete walls, including full-depth solid interior partition walls (`garageAnchorWorkshopPartition.1_2` / `2_3`) and front facade piers. However, `garageAnchorShell.ts` `obstacles` did not contain matching obstacle colliders for the partitions or piers.
+  2. _Drivable Floor Boundary Spill:_ `open_service_bay_floor` surface width was $1.35 \times \text{bayDoorW}$ ($2.484$ cells), which crossed laterally into the west partition center at $X = 2.69$. A probe at $X = 2.69, Z = -0.55$ returned `isPointInDrivableSurface = true` and `isPointInsideGarageObstacle = false`.
+- **Resolutions:**
+  1. _Discrete Partition & Pier Obstacles:_ Added `service_bay_partition_1_2` ($X = 2.69$), `service_bay_partition_2_3` ($X = 4.99$), and front piers (`west`, `1_2`, `2_3`, `east`) to `model.obstacles` in `garageAnchorShell.ts`.
+  2. _Constrained Bay Floor Width:_ Resized `open_service_bay_floor` to $1.05 \times \text{bayDoorW}$ ($1.932$ cells), fitting cleanly within the $2.14$-cell corridor between partition inner faces.
+  3. _Standardized Mesh Thickness:_ Aligned visual partition thickness in `commercialDistrictLayer.ts` to $0.22$ cells to match collider thickness.
+  4. _Regression Testing:_ Added exact runtime-model probe assertions and production movement-path regression in `tests/garageRebuildAndCollision.test.ts`. Updated Spec 177.
+- **Evidence:**
+  - `tests/garageRebuildAndCollision.test.ts` (15/15 PASS, including exact partition/pier probes and movement regression).
+  - `tests/garageBayCavityAndSightline.test.ts` (6/6 PASS).
+
+---
+
 ## 3. Verification & Test Summary
 
-- `npm test`: **275 test files passed, 2404 tests passed**.
+- `npm test`: **278 test files passed, 2427 tests passed**.
 - `npm run typecheck`: **0 errors**.
 - `npm run build`: **Built successfully**.
 - `c:\kooker`: `npm test`, `npm run validate`, `npm run public-safety` **all PASS**.

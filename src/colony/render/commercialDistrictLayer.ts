@@ -27,7 +27,9 @@ import {
 import {
   buildGarageAnchorShellModel,
   garageAnchorNightFloorEmissive,
+  isPointInGarageVicinity,
 } from "./garageAnchorShell";
+import { ribbonSurfaceCells, type RoadWay } from "./roadRibbon";
 import {
   commercialShopMassing,
   commercialShopNightFloorEmissive,
@@ -277,7 +279,8 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   forecourt.position.set(0, model.forecourt.y, model.forecourt.frontOffset);
   forecourt.receiveShadow = true;
 
-  // Spec 176: Dedicated customer parking bays painted on the forecourt
+  // Spec 176 / 177: Dedicated customer parking bays painted on the forecourt
+  // Aligned with stall depth along world Z and vehicle orientation (rot: Math.PI / 2)
   const stallLineMat = new THREE.MeshStandardMaterial({
     color: 0xffffff,
     emissive: 0xdddddd,
@@ -290,36 +293,41 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     stallGroup.position.set(bay.x, model.forecourt.y + 0.032, bay.z);
     stallGroup.rotation.y = bay.rot;
 
-    // White parking stall boundary lines (left, right, back) - realistic line widths (~14cm)
+    // In stall local coordinates (rotated by Math.PI / 2):
+    // Depth (bay.d) is along local X (pointing toward forecourt / road)
+    // Width (bay.w) is along local Z (stall width)
     const leftLine = new THREE.Mesh(
-      new THREE.BoxGeometry(0.035, 0.015, bay.d),
+      new THREE.BoxGeometry(bay.d, 0.015, 0.035),
       stallLineMat,
     );
-    leftLine.position.set(-bay.w / 2, 0, 0);
+    leftLine.position.set(0, 0, -bay.w / 2);
     const rightLine = new THREE.Mesh(
-      new THREE.BoxGeometry(0.035, 0.015, bay.d),
+      new THREE.BoxGeometry(bay.d, 0.015, 0.035),
       stallLineMat,
     );
-    rightLine.position.set(bay.w / 2, 0, 0);
+    rightLine.position.set(0, 0, bay.w / 2);
     const backLine = new THREE.Mesh(
-      new THREE.BoxGeometry(bay.w, 0.015, 0.035),
+      new THREE.BoxGeometry(0.035, 0.015, bay.w),
       stallLineMat,
     );
-    backLine.position.set(0, 0, -bay.d / 2);
+    backLine.position.set(-bay.d / 2, 0, 0);
 
-    // Concrete wheel stop block
+    // Concrete wheel stop block behind the car
     const wheelStop = new THREE.Mesh(
-      new THREE.BoxGeometry(bay.w * 0.72, 0.045, 0.08),
+      new THREE.BoxGeometry(0.08, 0.045, bay.w * 0.72),
       new THREE.MeshStandardMaterial({ color: 0x828d99, roughness: 0.72 }),
     );
-    wheelStop.position.set(0, 0.025, -bay.d / 2 + 0.12);
+    wheelStop.position.set(-bay.d / 2 + 0.12, 0.025, 0);
     stallGroup.add(leftLine, rightLine, backLine, wheelStop);
     g.add(stallGroup);
   }
 
-  // Forecourt twin architectural light stanchions / floodlights
-  for (const side of [-1, 1]) {
-    const poleX = (model.forecourt.w / 2 - 0.4) * side;
+
+  // Spec 177: Forecourt perimeter architectural light stanchion
+  // Placed strictly on the far western perimeter curb corner, completely clear of all vehicle driving paths.
+  // The old stanchion on the east side (which blocked the service bay entrance) is eliminated!
+  {
+    const poleX = -model.forecourt.w / 2 + 0.4;
     const poleZ = model.forecourt.frontOffset + model.forecourt.d / 2 - 0.3;
     const pole = new THREE.Mesh(
       new THREE.CylinderGeometry(0.08, 0.11, 4.2, 10),
@@ -340,7 +348,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     );
     luminaire.position.set(poleX, 4.15, poleZ - 0.18);
     luminaire.rotation.x = 0.35;
-    const flood = new THREE.PointLight(0xffeed4, 18, 14, 1.8);
+    const flood = new THREE.PointLight(0xffeed4, 22, 16, 1.8);
     flood.position.set(poleX, 4.0, poleZ - 0.18);
     g.add(pole, luminaire, flood);
   }
@@ -608,33 +616,25 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   );
   showroomInterior.add(plinthRing);
 
-  // 4. HERO CAR ON THE PLINTH (Karoo Kaap GT-V8 coupe)
-  // Sized to authentic life-size proportion (4.28m in world metres), clearing walls and adjacent displays throughout 360° turntable rotation.
-  const heroSpec = SHOWROOM_VEHICLES[1]!.spec;
-  const heroCar = buildCarMesh(heroSpec);
-  heroCar.name = "garageAnchorShowroomHeroCar";
-  heroCar.scale.setScalar(1.0);
-  heroCar.position.set(
+  // 4. HERO CAR ON THE PLINTH (Karoo X19 Targa - Yellow Fiat X1/9 GLB)
+  // Centered on the turntable plinth and illuminated by ceiling spotlights.
+  // Container group has scale 1.0 so GLB replacement (scale 0.262) inside 4x parent group renders at authentic 1:1 real-world proportion (~1.05m net scale).
+  const heroGroup = new THREE.Group();
+  heroGroup.name = "garageAnchorShowroomHeroCar";
+  heroGroup.position.set(
     model.showroom.x - model.showroom.w * 0.1,
     0.17,
     model.showroom.z + model.showroom.d * 0.04,
   );
-  heroCar.rotation.y = -0.38; // initial angle toward the road-facing glass
-  showroomInterior.add(heroCar);
+  heroGroup.rotation.y = -0.38; // initial angle toward the road-facing glass
+  heroGroup.scale.setScalar(1.0);
 
-  // 5. SECONDARY CAR IN SHOWROOM (Karoo X19 Targa)
-  // Dedicated showroom bay centered between turntable plinth and service bay dividing wall (>5m wall clearance, >3m plinth clearance).
-  const secondarySpec = SHOWROOM_VEHICLES[2]!.spec;
-  const secondaryCar = buildCarMesh(secondarySpec);
-  secondaryCar.name = "garageAnchorShowroomSecondCar";
-  secondaryCar.scale.setScalar(1.0);
-  secondaryCar.position.set(
-    model.showroom.x + model.showroom.w * 0.085,
-    0.05,
-    model.showroom.z - model.showroom.d * 0.02,
-  );
-  secondaryCar.rotation.y = -0.06;
-  showroomInterior.add(secondaryCar);
+  const heroSpec = SHOWROOM_VEHICLES[2]!.spec;
+  const heroFallbackMesh = buildCarMesh(heroSpec);
+  heroFallbackMesh.name = "garageAnchorShowroomHeroCarFallback";
+  heroFallbackMesh.scale.setScalar(1.0);
+  heroGroup.add(heroFallbackMesh);
+  showroomInterior.add(heroGroup);
 
   // 6. Header sign and branding
   const showroomHeader = new THREE.Mesh(
@@ -675,56 +675,230 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   const showroomCarGlow = new THREE.Group();
   showroomCarGlow.name = "garageAnchorShowroomCarGlow";
 
-  const service = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      model.serviceBay.w,
-      model.serviceBay.h,
-      model.serviceBay.d,
-    ),
-    new THREE.MeshStandardMaterial({
-      color: 0x46505d,
-      roughness: 0.78,
-      metalness: 0.08,
-      emissive: 0x121a24,
-      emissiveIntensity: 0.08,
-    }),
-  );
+  // Spec 177: Discrete Workshop Building Shell (garageAnchorServiceBayBlock)
+  // Partitioned into solid exterior walls, roof lintel, and front piers around the bay openings.
+  // Bay 2 is an authentic hollow drive-through cavity with zero geometry occluding the drive-in path.
+  const service = new THREE.Group();
   service.name = "garageAnchorServiceBayBlock";
-  service.position.set(
+
+  const workshopWallMat = new THREE.MeshStandardMaterial({
+    color: 0x3e4754,
+    roughness: 0.78,
+    metalness: 0.12,
+    emissive: 0x121a24,
+    emissiveIntensity: 0.08,
+  });
+
+  const wallThickness = 0.22;
+  const doorH = model.serviceBay.h * 0.78;
+  const lintelH = model.serviceBay.h - doorH;
+  const hdw = model.serviceBay.bayDoorW / 2;
+  const bayFrontZ = model.serviceBay.z + model.serviceBay.d / 2;
+  const bayBackZ = model.serviceBay.z - model.serviceBay.d / 2;
+
+  // 1. Back Wall spanning full workshop width
+  const workshopBackWall = new THREE.Mesh(
+    new THREE.BoxGeometry(model.serviceBay.w, model.serviceBay.h, wallThickness),
+    workshopWallMat,
+  );
+  workshopBackWall.name = "garageAnchorWorkshopBackWall";
+  workshopBackWall.position.set(
     model.serviceBay.x,
-    model.serviceBay.y,
+    model.serviceBay.h / 2,
+    bayBackZ + wallThickness / 2,
+  );
+  workshopBackWall.castShadow = true;
+  workshopBackWall.receiveShadow = true;
+  service.add(workshopBackWall);
+
+  // 2. East Side Wall spanning full workshop depth
+  const eastWall = new THREE.Mesh(
+    new THREE.BoxGeometry(wallThickness, model.serviceBay.h, model.serviceBay.d),
+    workshopWallMat,
+  );
+  eastWall.name = "garageAnchorWorkshopEastWall";
+  eastWall.position.set(
+    model.serviceBay.x + model.serviceBay.w / 2 - wallThickness / 2,
+    model.serviceBay.h / 2,
     model.serviceBay.z,
   );
-  service.castShadow = true;
-  service.receiveShadow = true;
+  eastWall.castShadow = true;
+  eastWall.receiveShadow = true;
+  service.add(eastWall);
 
+  // 3. Workshop Floor Slab
+  const workshopFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(model.serviceBay.w, 0.04, model.serviceBay.d),
+    workshopWallMat,
+  );
+  workshopFloor.name = "garageAnchorWorkshopFloor";
+  workshopFloor.position.set(
+    model.serviceBay.x,
+    0.02,
+    model.serviceBay.z,
+  );
+  workshopFloor.receiveShadow = true;
+  service.add(workshopFloor);
+
+  // 4. Upper Spandrel Lintel above all door openings
+  const lintel = new THREE.Mesh(
+    new THREE.BoxGeometry(model.serviceBay.w, lintelH, wallThickness),
+    workshopWallMat,
+  );
+  lintel.name = "garageAnchorWorkshopLintel";
+  lintel.position.set(
+    model.serviceBay.x,
+    doorH + lintelH / 2,
+    bayFrontZ - wallThickness / 2,
+  );
+  lintel.castShadow = true;
+  lintel.receiveShadow = true;
+  service.add(lintel);
+
+  // 5. Front Piers partitioned cleanly around the three bay openings:
+  const bayDoorSpacing = model.serviceBay.bayDoorW * 1.25;
+  const bay1X = model.serviceBay.x - bayDoorSpacing;
+  const bay2X = model.serviceBay.x;
+  const bay3X = model.serviceBay.x + bayDoorSpacing;
+  const westX = model.serviceBay.x - model.serviceBay.w / 2;
+  const eastX = model.serviceBay.x + model.serviceBay.w / 2;
+
+  const piers: [number, number, string][] = [
+    [westX, bay1X - hdw, "garageAnchorWorkshopPier.west"],
+    [bay1X + hdw, bay2X - hdw, "garageAnchorWorkshopPier.1_2"],
+    [bay2X + hdw, bay3X - hdw, "garageAnchorWorkshopPier.2_3"],
+    [bay3X + hdw, eastX, "garageAnchorWorkshopPier.east"],
+  ];
+  for (const [xLeft, xRight, pierName] of piers) {
+    const pw = xRight - xLeft;
+    if (pw > 0.02) {
+      const pier = new THREE.Mesh(
+        new THREE.BoxGeometry(pw, doorH, wallThickness),
+        workshopWallMat,
+      );
+      pier.name = pierName;
+      pier.position.set(
+        (xLeft + xRight) / 2,
+        doorH / 2,
+        bayFrontZ - wallThickness / 2,
+      );
+      pier.castShadow = true;
+      pier.receiveShadow = true;
+      service.add(pier);
+    }
+  }
+
+  // 6. Interior Partitions enclosing closed bays 1 and 3 while leaving Bay 2 completely open
+  const partitionThickness = 0.22;
+  const partitionD = model.serviceBay.d - wallThickness * 2;
+  for (const [px, partName] of [
+    [(bay1X + hdw + bay2X - hdw) / 2, "garageAnchorWorkshopPartition.1_2"],
+    [(bay2X + hdw + bay3X - hdw) / 2, "garageAnchorWorkshopPartition.2_3"],
+  ] as [number, string][]) {
+    const partition = new THREE.Mesh(
+      new THREE.BoxGeometry(partitionThickness, model.serviceBay.h, partitionD),
+      workshopWallMat,
+    );
+    partition.name = partName;
+    partition.position.set(
+      px,
+      model.serviceBay.h / 2,
+      model.serviceBay.z,
+    );
+    partition.castShadow = true;
+    partition.receiveShadow = true;
+    service.add(partition);
+  }
+
+  // Spec 177: Solid architectural dividing core between showroom and service workshop
+  const dividingCore = new THREE.Mesh(
+    new THREE.BoxGeometry(0.32, model.showroom.h, model.showroom.d),
+    new THREE.MeshStandardMaterial({
+      color: 0x1e2733,
+      roughness: 0.65,
+      metalness: 0.35,
+    }),
+  );
+  dividingCore.name = "garageAnchorCentralDividingCore";
+  dividingCore.position.set(0.0, model.showroom.h / 2, model.showroom.z);
+  dividingCore.castShadow = true;
+  dividingCore.receiveShadow = true;
+  g.add(dividingCore);
+
+  // Spec 177: Dedicated floating architectural roof canopy over the showroom pavilion
+  const showroomRoof = new THREE.Mesh(
+    new THREE.BoxGeometry(model.showroom.w + 0.35, 0.16, model.showroom.d + 0.4),
+    new THREE.MeshStandardMaterial({
+      color: 0x222a36,
+      roughness: 0.7,
+      metalness: 0.25,
+    }),
+  );
+  showroomRoof.name = "garageAnchorShowroomCanopyRoof";
+  showroomRoof.position.set(
+    model.showroom.x,
+    model.showroom.h + 0.08,
+    model.showroom.z,
+  );
+  showroomRoof.castShadow = true;
+
+  const showroomRoofGlow = new THREE.Mesh(
+    new THREE.BoxGeometry(model.showroom.w + 0.38, 0.04, model.showroom.d + 0.42),
+    mullionNeonMat,
+  );
+  showroomRoofGlow.position.set(
+    model.showroom.x,
+    model.showroom.h + 0.02,
+    model.showroom.z,
+  );
+  g.add(showroomRoof, showroomRoofGlow);
+
+  // Spec 177: Modern parapet roof over the service bays (garageAnchorGraphiteFlatRoofCanopy)
   const roof = new THREE.Mesh(
     new THREE.BoxGeometry(
-      model.footprint.w * 0.86,
+      model.serviceBay.w + 0.25,
       0.16,
-      // overhang the road frontage so the canted roof reads as a canopy, not a lid
-      model.footprint.d * 0.78,
+      model.serviceBay.d + 0.35,
     ),
     new THREE.MeshStandardMaterial({
       color: 0x303845,
       roughness: 0.82,
-      metalness: 0.06,
+      metalness: 0.12,
     }),
   );
   roof.name = "garageAnchorGraphiteFlatRoofCanopy";
-  roof.position.set(0.12, model.serviceBay.h + 0.16, 0.02);
-  // Spec 110 — MONO-SLOPE the roof (tilt toward the road) so the garage silhouette is no longer a flat
-  // box lid; the canted plane + the cool glass below are the two non-orthogonal moves that break the
-  // "detailed box" read the design critique flagged.
-  roof.rotation.x = -0.19;
+  roof.position.set(model.serviceBay.x, model.serviceBay.h + 0.08, model.serviceBay.z);
   roof.castShadow = true;
+
+  // Spec 177: Wide continuous driveway apron connecting municipal street to forecourt and all service bays
+  const fullApronMat = new THREE.MeshStandardMaterial({
+    color: 0x3d4450,
+    roughness: 0.68,
+    metalness: 0.05,
+    emissive: 0xff9f2f,
+    emissiveIntensity:
+      garageAnchorNightFloorEmissive(C.state.clock.daylight) * 0.52,
+  });
+  C.garageFloorMats.push(fullApronMat);
+  const fullApron = new THREE.Mesh(
+    new THREE.BoxGeometry(model.drivewayApron.w, 0.036, model.drivewayApron.d),
+    fullApronMat,
+  );
+  fullApron.name = "garageAnchorDrivewayApron";
+  fullApron.position.set(
+    model.drivewayApron.x,
+    model.drivewayApron.y,
+    model.drivewayApron.z,
+  );
+  fullApron.receiveShadow = true;
+  g.add(fullApron);
 
   const wrenchGroup = new THREE.Group();
   wrenchGroup.name = "garageAnchorRooftopWrenchEmblem";
   wrenchGroup.position.set(
-    model.serviceBay.x + model.serviceBay.w * 0.04,
-    model.serviceBay.h + 0.27,
-    model.serviceBay.z - model.serviceBay.d * 0.04,
+    model.serviceBay.x,
+    model.serviceBay.h + 0.28,
+    model.serviceBay.z,
   );
   wrenchGroup.rotation.y = -0.28;
   const wrenchMat = new THREE.MeshStandardMaterial({
@@ -787,20 +961,22 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
         emissiveIntensity: 0.45,
       });
       C.garageFloorMats.push(cavityMat);
+      // Spec 177: Authentic hollow service bay interior floor lining (not a solid obstructive volume)
       const cavity = new THREE.Mesh(
         new THREE.BoxGeometry(
           model.serviceBay.bayDoorW * 1.05,
-          model.serviceBay.h * 0.72,
-          model.serviceBay.d * 0.52,
+          0.02,
+          model.serviceBay.d * 0.88,
         ),
         cavityMat,
       );
       cavity.name = "garageAnchorOpenBayInterior";
       cavity.position.set(
         sx,
-        model.serviceBay.h * 0.36,
-        bayFaceZ - model.serviceBay.d * 0.27,
+        0.03,
+        bayFaceZ - model.serviceBay.d * 0.46,
       );
+      cavity.receiveShadow = true;
       g.add(cavity);
 
       // Spec 176: High-output service bay inspection PointLight
@@ -874,24 +1050,37 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       );
       g.add(apron);
     }
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(
-        model.serviceBay.bayDoorW * 1.14,
-        model.serviceBay.h * 0.77,
-        0.04,
-      ),
-      new THREE.MeshStandardMaterial({
-        color: 0xffb24a,
-        emissive: 0xff8f2f,
-        emissiveIntensity: 0.38,
-        roughness: 0.36,
-      }),
-    );
+    const doorFrameMat = new THREE.MeshStandardMaterial({
+      color: 0xffb24a,
+      emissive: 0xff8f2f,
+      emissiveIntensity: 0.38,
+      roughness: 0.36,
+    });
+    const frame = new THREE.Group();
     frame.name = `garageAnchorRollupDoorFrame.${i + 1}`;
+    const jambW = 0.12;
+    const jambH = model.serviceBay.h * 0.78;
+    const jambD = 0.08;
+    const leftJamb = new THREE.Mesh(
+      new THREE.BoxGeometry(jambW, jambH, jambD),
+      doorFrameMat,
+    );
+    leftJamb.position.set(-model.serviceBay.bayDoorW * 0.52, jambH / 2, 0);
+    const rightJamb = new THREE.Mesh(
+      new THREE.BoxGeometry(jambW, jambH, jambD),
+      doorFrameMat,
+    );
+    rightJamb.position.set(model.serviceBay.bayDoorW * 0.52, jambH / 2, 0);
+    const lintel = new THREE.Mesh(
+      new THREE.BoxGeometry(model.serviceBay.bayDoorW * 1.14, 0.18, jambD),
+      doorFrameMat,
+    );
+    lintel.position.set(0, jambH + 0.09, 0);
+    frame.add(leftJamb, rightJamb, lintel);
     frame.position.set(
       door.position.x,
-      door.position.y,
-      door.position.z - 0.018,
+      0,
+      bayFaceZ + 0.01,
     );
     g.add(frame);
     for (let slat = 1; slat <= 5 && !open; slat++) {
@@ -901,11 +1090,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       );
       rib.name = `garageAnchorDoorSlat.${i + 1}.${slat}`;
       rib.position.set(
-        door.position.x,
-        door.position.y + (slat - 3) * 0.25,
-        door.position.z + 0.02,
+        0,
+        (slat - 3) * 0.25,
+        0.02,
       );
-      g.add(rib);
+      door.add(rib);
     }
   }
 
@@ -970,6 +1159,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     cg.scale.setScalar(car.scale);
     const displaySpec = SHOWROOM_VEHICLES[i % SHOWROOM_VEHICLES.length]!.spec;
     const realCar = buildCarMesh(displaySpec);
+    realCar.scale.setScalar(1.0);
     const underGlow = new THREE.Mesh(
       new THREE.BoxGeometry(1.26, 0.025, 0.62),
       new THREE.MeshStandardMaterial({
@@ -1008,6 +1198,356 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   C.group.add(g);
 }
 
+/**
+ * Spec 177 / Kooker HQ Landmark:
+ * Builds the Kooker HQ corporate innovation campus directly on the parcel setback behind
+ * the Gearbox Auto Hub commercial garage. Features a 3-storey command hub tower, East ("Forge")
+ * and West ("Flow") operations wings, double-height glazed reception lobby with brass entrance
+ * pilasters, illuminated "KOOKER HQ" fascia sign, and rooftop telemetry array.
+ */
+function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
+  if (!d.garagePad) return;
+  const garage = d.garagePad;
+  const t = C.state.terrain;
+
+  // Sited on the parcel setback directly behind the Gearbox Auto Hub commercial garage.
+  const facing = garage.facingAngle;
+  const backDirX = -Math.sin(facing);
+  const backDirY = -Math.cos(facing);
+
+  // Position Kooker HQ 10.5 cells behind garage center (~42m behind garage center, leaving a 16m courtyard plaza)
+  const hqCenterGX = garage.x + (garage.w - 1) / 2 + backDirX * 10.5;
+  const hqCenterGY = garage.y + (garage.h - 1) / 2 + backDirY * 10.5;
+
+  const baseY = padSeatY(
+    t,
+    Math.round(hqCenterGX - 5),
+    Math.round(hqCenterGY - 5),
+    11,
+    11,
+  );
+
+  const g = new THREE.Group();
+  g.name = "commercialDistrict.kookerHq";
+  g.userData = {
+    kind: "kooker_hq_landmark",
+    publicName: "Kooker HQ",
+    isPublicSafe: true,
+    facingAngle: facing + Math.PI / 2,
+  };
+  g.position.set(C.wx(hqCenterGX), baseY, C.wz(hqCenterGY));
+  g.rotation.y = facing + Math.PI / 2;
+
+  // 1. Foundation Plaza Slab
+  const plazaMat = new THREE.MeshStandardMaterial({
+    color: 0x272e3a,
+    roughness: 0.8,
+    metalness: 0.1,
+  });
+  const plaza = new THREE.Mesh(new THREE.BoxGeometry(44, 0.16, 32), plazaMat);
+  plaza.name = "kookerHqPlazaBase";
+  plaza.position.set(0, 0.08, 1);
+  plaza.receiveShadow = true;
+  g.add(plaza);
+
+  // Entrance Steps
+  const stepMat = new THREE.MeshStandardMaterial({
+    color: 0x364050,
+    roughness: 0.7,
+    metalness: 0.15,
+  });
+  const step1 = new THREE.Mesh(new THREE.BoxGeometry(20, 0.14, 8), stepMat);
+  step1.position.set(0, 0.21, 13);
+  const step2 = new THREE.Mesh(new THREE.BoxGeometry(16, 0.14, 6), stepMat);
+  step2.position.set(0, 0.35, 12);
+  g.add(step1, step2);
+
+  // Pathway Bollard Lights
+  const bollardMat = new THREE.MeshStandardMaterial({
+    color: 0x475569,
+    roughness: 0.5,
+    metalness: 0.6,
+  });
+  const bollardLightMat = new THREE.MeshStandardMaterial({
+    color: 0xffd479,
+    emissive: 0xffb347,
+    emissiveIntensity: 1.5,
+    roughness: 0.2,
+  });
+  C.garageFloorMats.push(bollardLightMat);
+  for (const bx of [-7, -3.5, 3.5, 7]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.9, 12), bollardMat);
+    post.position.set(bx, 0.45, 14.5);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.15, 12), bollardLightMat);
+    cap.position.set(bx, 0.92, 14.5);
+    g.add(post, cap);
+  }
+
+  // 2. Central Command Tower (3-Storey Headquarters Pavilion)
+  const facadeMat = new THREE.MeshStandardMaterial({
+    color: 0x1e2633,
+    roughness: 0.62,
+    metalness: 0.25,
+  });
+  const tower = new THREE.Mesh(new THREE.BoxGeometry(22, 15, 16), facadeMat);
+  tower.name = "kookerHqCentralTower";
+  tower.position.set(0, 7.5, -2);
+  tower.castShadow = true;
+  tower.receiveShadow = true;
+  g.add(tower);
+
+  // Ribbon Window Bands (tinted curtain glass with glowing night emissive)
+  const windowMat = new THREE.MeshStandardMaterial({
+    color: 0x142e45,
+    roughness: 0.12,
+    metalness: 0.85,
+    transparent: true,
+    opacity: 0.78,
+    emissive: 0x00d8f0,
+    emissiveIntensity: 0.42,
+  });
+  C.garageFloorMats.push(windowMat);
+
+  const ribbon1 = new THREE.Mesh(new THREE.BoxGeometry(22.3, 2.4, 16.3), windowMat);
+  ribbon1.position.set(0, 2.4, -2);
+  const ribbon2 = new THREE.Mesh(new THREE.BoxGeometry(22.3, 2.2, 16.3), windowMat);
+  ribbon2.position.set(0, 6.8, -2);
+  const ribbon3 = new THREE.Mesh(new THREE.BoxGeometry(22.3, 2.2, 16.3), windowMat);
+  ribbon3.position.set(0, 11.2, -2);
+  g.add(ribbon1, ribbon2, ribbon3);
+
+  // Tower Overhanging Parapet
+  const parapetMat = new THREE.MeshStandardMaterial({
+    color: 0x2e3848,
+    roughness: 0.4,
+    metalness: 0.35,
+  });
+  const towerParapet = new THREE.Mesh(new THREE.BoxGeometry(23.5, 0.6, 17.5), parapetMat);
+  towerParapet.position.set(0, 15.2, -2);
+  g.add(towerParapet);
+
+  // 3. East & West Campus Wings
+  const wingMat = new THREE.MeshStandardMaterial({
+    color: 0x232c3a,
+    roughness: 0.65,
+    metalness: 0.2,
+  });
+  // West Wing ("Flow")
+  const westWing = new THREE.Mesh(new THREE.BoxGeometry(11, 9.5, 13), wingMat);
+  westWing.name = "kookerHqWestWing";
+  westWing.position.set(-16, 4.75, -2);
+  westWing.castShadow = true;
+  const westRibbon1 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  westRibbon1.position.set(-16, 2.4, -2);
+  const westRibbon2 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  westRibbon2.position.set(-16, 6.8, -2);
+  const westParapet = new THREE.Mesh(new THREE.BoxGeometry(12, 0.45, 14), parapetMat);
+  westParapet.position.set(-16, 9.65, -2);
+  g.add(westWing, westRibbon1, westRibbon2, westParapet);
+
+  // East Wing ("Forge")
+  const eastWing = new THREE.Mesh(new THREE.BoxGeometry(11, 9.5, 13), wingMat);
+  eastWing.name = "kookerHqEastWing";
+  eastWing.position.set(16, 4.75, -2);
+  eastWing.castShadow = true;
+  const eastRibbon1 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  eastRibbon1.position.set(16, 2.4, -2);
+  const eastRibbon2 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  eastRibbon2.position.set(16, 6.8, -2);
+  const eastParapet = new THREE.Mesh(new THREE.BoxGeometry(12, 0.45, 14), parapetMat);
+  eastParapet.position.set(16, 9.65, -2);
+  g.add(eastWing, eastRibbon1, eastRibbon2, eastParapet);
+
+  // 4. Double-Height Glazed Entrance Lobby (Spec 152/153 Reception)
+  const lobbyGroup = new THREE.Group();
+  lobbyGroup.name = "kookerHqReceptionLobby";
+  lobbyGroup.position.set(0, 0, 6.5);
+
+  const lobbyGlassMat = new THREE.MeshStandardMaterial({
+    color: 0x163854,
+    roughness: 0.1,
+    metalness: 0.85,
+    transparent: true,
+    opacity: 0.7,
+    emissive: 0x00f0ff,
+    emissiveIntensity: 0.45,
+  });
+  C.garageFloorMats.push(lobbyGlassMat);
+
+  const lobbyBody = new THREE.Mesh(new THREE.BoxGeometry(14, 5.4, 8), facadeMat);
+  lobbyBody.position.set(0, 2.7, 0);
+  lobbyGroup.add(lobbyBody);
+
+  // Front Glass Curtain Wall
+  const lobbyGlass = new THREE.Mesh(new THREE.PlaneGeometry(13.6, 5.1), lobbyGlassMat);
+  lobbyGlass.position.set(0, 2.7, 4.02);
+  lobbyGroup.add(lobbyGlass);
+
+  // Architectural Brass Columns
+  const brassMat = new THREE.MeshStandardMaterial({
+    color: 0xd4af37,
+    roughness: 0.32,
+    metalness: 0.8,
+    emissive: 0x5a4210,
+    emissiveIntensity: 0.25,
+  });
+  for (const px of [-6.8, -2.4, 2.4, 6.8]) {
+    const col = new THREE.Mesh(new THREE.BoxGeometry(0.45, 5.5, 0.5), brassMat);
+    col.position.set(px, 2.75, 4.05);
+    lobbyGroup.add(col);
+  }
+
+  // Brass Door Frame (2.4m wide x 3.0m high)
+  const leftDoorPost = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.0, 0.2), brassMat);
+  leftDoorPost.position.set(-1.2, 1.5, 4.08);
+  const rightDoorPost = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.0, 0.2), brassMat);
+  rightDoorPost.position.set(1.2, 1.5, 4.08);
+  const doorLintel = new THREE.Mesh(new THREE.BoxGeometry(2.55, 0.15, 0.2), brassMat);
+  doorLintel.position.set(0, 3.05, 4.08);
+  lobbyGroup.add(leftDoorPost, rightDoorPost, doorLintel);
+
+  // Interior Reception Desk
+  const desk = new THREE.Mesh(
+    new THREE.BoxGeometry(3.6, 1.1, 1.2),
+    new THREE.MeshStandardMaterial({ color: 0x222b37, roughness: 0.6, metalness: 0.2 }),
+  );
+  desk.position.set(0, 0.55, -1.0);
+  const deskNeon = new THREE.Mesh(
+    new THREE.BoxGeometry(3.65, 0.08, 1.22),
+    new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 1.8 }),
+  );
+  deskNeon.position.set(0, 0.95, -1.0);
+  lobbyGroup.add(desk, deskNeon);
+
+  // Interior Lobby Light
+  const lobbyLight = new THREE.PointLight(0xfffaed, 30, 22, 1.6);
+  lobbyLight.position.set(0, 4.2, 0.5);
+  lobbyGroup.add(lobbyLight);
+
+  // Cantilevered Porch Canopy
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(16, 0.45, 4.5), parapetMat);
+  canopy.position.set(0, 5.5, 2.2);
+  const canopyTrim = new THREE.Mesh(
+    new THREE.BoxGeometry(16.2, 0.08, 0.08),
+    new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 1.5 }),
+  );
+  canopyTrim.position.set(0, 5.3, 4.45);
+  lobbyGroup.add(canopy, canopyTrim);
+  g.add(lobbyGroup);
+
+  // 5. Grand Illuminated "KOOKER HQ" Signage
+  const signBacking = new THREE.Mesh(
+    new THREE.BoxGeometry(12.5, 2.4, 0.35),
+    new THREE.MeshStandardMaterial({ color: 0x141a24, roughness: 0.4, metalness: 0.4 }),
+  );
+  signBacking.position.set(0, 8.8, 6.2);
+  g.add(signBacking);
+
+  // Paint dynamic CanvasTexture for billboard sign
+  if (typeof document !== "undefined") {
+    const cv = document.createElement("canvas");
+    cv.width = 512;
+    cv.height = 128;
+    const ctx = cv.getContext("2d");
+    if (ctx) {
+      const grad = ctx.createLinearGradient(0, 0, 512, 128);
+      grad.addColorStop(0, "#0a111a");
+      grad.addColorStop(0.5, "#101b2a");
+      grad.addColorStop(1, "#0a111a");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 512, 128);
+
+      ctx.strokeStyle = "#00e5ff";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(6, 6, 500, 116);
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 44px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = "#00e5ff";
+      ctx.shadowBlur = 12;
+      ctx.fillText("🏛️ KOOKER HQ", 256, 48);
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#7de7ff";
+      ctx.font = "600 16px monospace";
+      ctx.fillText("AUTONOMOUS CAMPUS · GLOBAL COMMONS", 256, 88);
+    }
+    const signTex = new THREE.CanvasTexture(cv);
+    const signFace = new THREE.Mesh(
+      new THREE.PlaneGeometry(12.2, 2.1),
+      new THREE.MeshStandardMaterial({
+        map: signTex,
+        emissiveMap: signTex,
+        emissive: 0xffffff,
+        emissiveIntensity: 0.85,
+        roughness: 0.3,
+      }),
+    );
+    signFace.position.set(0, 8.8, 6.4);
+    g.add(signFace);
+  }
+
+  // 6. Rooftop Telemetry & Communications Arrays
+  const dishMat = new THREE.MeshStandardMaterial({
+    color: 0x94a3b8,
+    metalness: 0.7,
+    roughness: 0.3,
+  });
+  const dish = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 0.4, 0.5, 24), dishMat);
+  dish.rotation.x = 0.55;
+  dish.rotation.y = 0.4;
+  dish.position.set(-6, 17.0, -4.5);
+  const dishStem = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 1.8, 12), dishMat);
+  dishStem.position.set(-6, 15.9, -4.5);
+  g.add(dish, dishStem);
+
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.2, 6.5, 8), dishMat);
+  mast.position.set(6.5, 18.5, -4.5);
+  const beacon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.25, 12, 12),
+    new THREE.MeshStandardMaterial({ color: 0xff2a3e, emissive: 0xff2a3e, emissiveIntensity: 2.5 }),
+  );
+  beacon.position.set(6.5, 21.8, -4.5);
+  const beaconLight = new THREE.PointLight(0xff2a3e, 14, 25);
+  beaconLight.position.set(6.5, 21.8, -4.5);
+  g.add(mast, beacon, beaconLight);
+
+  // Rooftop Solar Photovoltaic Arrays on wings
+  const solarMat = new THREE.MeshStandardMaterial({
+    color: 0x163255,
+    metalness: 0.9,
+    roughness: 0.15,
+  });
+  for (const side of [-1, 1]) {
+    for (const offset of [-3.5, 0, 3.5]) {
+      const panel = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 3.2), solarMat);
+      panel.rotation.x = 0.25;
+      panel.position.set(side * 16 + offset * 0.4, 9.9, -2 + offset);
+      g.add(panel);
+    }
+  }
+
+  // 7. Architectural Facade Uplights & Planters
+  for (const side of [-1, 1]) {
+    const uplight = new THREE.PointLight(0x00d2ff, 18, 14, 1.8);
+    uplight.position.set(side * 7, 0.4, 10);
+    g.add(uplight);
+
+    const planter = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.75, 2.8), stepMat);
+    planter.position.set(side * 8.5, 0.45, 11);
+    const planterSoil = new THREE.Mesh(
+      new THREE.BoxGeometry(2.5, 0.1, 2.5),
+      new THREE.MeshStandardMaterial({ color: 0x4a3b2c, roughness: 0.9 }),
+    );
+    planterSoil.position.set(side * 8.5, 0.8, 11);
+    g.add(planter, planterSoil);
+  }
+
+  C.group.add(g);
+}
+
 /** Raise a vibrant neon market stall on each surveyed shop plot: a dark counter body, a glowing
  *  awning canopy, and a bright signage panel facing the street. Disposes any prior build first. */
 function buildCommercialDistrict(C: CommercialCtx): void {
@@ -1037,6 +1577,7 @@ function buildCommercialDistrict(C: CommercialCtx): void {
 
   buildMallAnchorShell(C, d);
   buildGarageAnchorShell(C, d);
+  buildKookerHqLandmark(C, d);
 
   // Spec 143 — venue placements: ONE pure survey (venuePlacement.ts) decides each shop's
   // seat, facing, plot-filling footprint and entrance; the live junction zones carve
@@ -1077,35 +1618,90 @@ function buildCommercialDistrict(C: CommercialCtx): void {
       emissiveIntensity: 0.82,
       roughness: 0.4,
     }); // warm, but under the 0.9 bloom threshold
+    const ways = (C.state.roadWays ?? []) as RoadWay[];
+    const ribbonCells = ribbonSurfaceCells(ways, t);
+    const junctionPads = junctionZonesToPads(attachCapPolys(findJunctionZones(ways)));
+
+    // Spatial tracker to prevent any overlap between furniture, ensure clear pedestrian routes,
+    // and keep all elements out of carriageways and pads.
+    const placedFurniture: { wx: number; wz: number }[] = [];
+    const isFurniturePosClear = (wx: number, wz: number, minDistance = 3.0): boolean => {
+      for (const p of placedFurniture) {
+        if (Math.hypot(p.wx - wx, p.wz - wz) < minDistance) return false;
+      }
+      return true;
+    };
+
+    const isCellInForbiddenZone = (gx: number, gy: number): boolean => {
+      // 1. Never on road asphalt or within its buffer
+      const rx = Math.round(gx);
+      const ry = Math.round(gy);
+      if (ribbonCells.has(`${rx},${ry}`)) return true;
+      if (C.state.roadSet.has(`${rx},${ry}`)) return true;
+
+      // 2. Never inside any junction pad (clear vehicle turning and crossing paths)
+      for (const pad of junctionPads) {
+        if (Math.hypot(pad.cx - gx, pad.cy - gy) <= pad.r + 0.8) return true;
+      }
+
+      // 3. Never inside garage pad or apron
+      if (d.garagePad && isPointInGarageVicinity(gx, gy, d.garagePad)) return true;
+
+      // 4. Never inside mall pad
+      if (
+        gx >= d.mallPad.x - 1 &&
+        gx <= d.mallPad.x + d.mallPad.w + 1 &&
+        gy >= d.mallPad.y - 1 &&
+        gy <= d.mallPad.y + d.mallPad.h + 1
+      ) {
+        return true;
+      }
+
+      return false;
+    };
+
     for (let i = 0; i < street.length; i += 5) {
       const c = street[i]!;
-      const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)));
       const side = Math.floor(i / 5) % 2 === 0 ? 1 : -1; // alternate verges down the strip
+      // Verge offset: 2.55 cells (10.2m from street centreline; the 4-cell way carriageway edge is at 8m).
+      // This places the pole 2.2m clear of the white road stripe into the safe pedestrian verge.
+      const lampGy = c.y + side * 2.55;
+      if (isCellInForbiddenZone(c.x, lampGy)) continue;
+
+      const wx = C.wx(c.x);
+      const wz = C.wz(lampGy);
+      if (!isFurniturePosClear(wx, wz, 3.2)) continue;
+
+      const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(lampGy)));
       const lamp = new THREE.Group();
-      // Spec 143 — the verge starts past the RIBBON edge (the 4-cell way is 8 m half-
-      // width); the old 1.4-cell offset planted every pole on the carriageway.
-      lamp.position.set(C.wx(c.x), by, C.wz(c.y + side * 2.35));
+      lamp.position.set(wx, by, wz);
+
       const pole = new THREE.Mesh(
         new THREE.CylinderGeometry(0.07, 0.09, 3.2, 6),
         poleMat,
       );
       pole.position.y = 1.6;
       pole.castShadow = true;
+
+      // Arm points TOWARD the carriageway (-side), illuminating the walkway and curb
       const arm = new THREE.Mesh(
         new THREE.BoxGeometry(0.09, 0.09, 0.7),
         poleMat,
       );
-      arm.position.set(0, 3.2, side * 0.3);
+      arm.position.set(0, 3.2, -side * 0.35);
+
       const head = new THREE.Mesh(
         new THREE.SphereGeometry(0.24, 8, 6),
         headMat,
       );
-      head.position.set(0, 3.15, side * 0.62);
+      head.position.set(0, 3.15, -side * 0.7);
+
       lamp.add(pole, arm, head);
       C.group.add(lamp);
+      placedFurniture.push({ wx, wz });
     }
-    // promenade FURNITURE between the lamps — a few benches + leafy planters on the verges so the
-    // strip feels strolled, not just lit. Placed on a different phase/offset from the lamps.
+
+    // promenade FURNITURE between the lamps — benches + leafy planters on the verges
     const woodMat = new THREE.MeshStandardMaterial({
       color: 0x6b4a2f,
       roughness: 0.85,
@@ -1122,14 +1718,22 @@ function buildCommercialDistrict(C: CommercialCtx): void {
       color: 0x3fae5a,
       roughness: 0.8,
     });
-    for (let i = 3; i < street.length; i += 8) {
+
+    for (let i = 2; i < street.length; i += 7) {
       const c = street[i]!;
-      const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)));
-      const side = Math.floor(i / 8) % 2 === 0 ? -1 : 1; // opposite phase to the lamps
-      const fz = C.wz(c.y + side * 2.35); // spec 143 — past the ribbon edge, like the lamps
-      // a bench facing the street (backrest on the verge side), sized for the 1.8 m citizen
+      const side = Math.floor(i / 7) % 2 === 0 ? -1 : 1;
+      // Offset 2.85 cells (11.4m from centreline; 3.4m clear of road edge, set back against parcel frontages)
+      const benchGy = c.y + side * 2.85;
+      if (isCellInForbiddenZone(c.x, benchGy)) continue;
+
+      const wx = C.wx(c.x);
+      const fz = C.wz(benchGy);
+      if (!isFurniturePosClear(wx, fz, 3.0)) continue;
+
+      const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(benchGy)));
+      // a bench facing the street (backrest on the verge side, seat facing the street)
       const bench = new THREE.Group();
-      bench.position.set(C.wx(c.x), by, fz);
+      bench.position.set(wx, by, fz);
       const seat = new THREE.Mesh(
         new THREE.BoxGeometry(1.8, 0.12, 0.55),
         woodMat,
@@ -1151,22 +1755,29 @@ function buildCommercialDistrict(C: CommercialCtx): void {
       }
       bench.add(seat, back);
       C.group.add(bench);
-      // a leafy planter just along from the bench
-      const planter = new THREE.Group();
-      planter.position.set(C.wx(c.x + 1.1), by, fz);
-      const tub = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.4, 0.32, 0.5, 10),
-        planterMat,
-      );
-      tub.position.y = 0.25;
-      tub.castShadow = true;
-      const bush = new THREE.Mesh(
-        new THREE.SphereGeometry(0.42, 8, 7),
-        leafMat,
-      );
-      bush.position.y = 0.85;
-      planter.add(tub, bush);
-      C.group.add(planter);
+      placedFurniture.push({ wx, wz: fz });
+
+      // leafy planter safely beside the bench (1.4m along the street, same safe setback)
+      const planterGx = c.x + 0.35;
+      const planterWx = C.wx(planterGx);
+      if (!isCellInForbiddenZone(planterGx, benchGy) && isFurniturePosClear(planterWx, fz, 1.2)) {
+        const planter = new THREE.Group();
+        planter.position.set(planterWx, by, fz);
+        const tub = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.4, 0.32, 0.5, 10),
+          planterMat,
+        );
+        tub.position.y = 0.25;
+        tub.castShadow = true;
+        const bush = new THREE.Mesh(
+          new THREE.SphereGeometry(0.42, 8, 7),
+          leafMat,
+        );
+        bush.position.y = 0.85;
+        planter.add(tub, bush);
+        C.group.add(planter);
+        placedFurniture.push({ wx: planterWx, wz: fz });
+      }
     }
     // Spec 081 P0 — AD BOARDS at the strip approaches. Each board is a post pair + frame + a screen
     // plane carrying a CanvasTexture painted by adCanvas (a deterministic poster for one real shop, or
@@ -1174,10 +1785,35 @@ function buildCommercialDistrict(C: CommercialCtx): void {
     // roads + shop footprints); the screen faces inward down the strip and glows softly after dark
     // (emissive under the bloom threshold). Disposed with the group — texture too (see the teardown).
     const boardBlocked = new Set<string>(C.state.roadSet);
+    for (const k of ribbonCells) boardBlocked.add(k);
     for (const p of d.parcels)
       for (let yy = p.y; yy < p.y + p.h; yy++)
         for (let xx = p.x; xx < p.x + p.w; xx++)
           boardBlocked.add(`${xx},${yy}`);
+    if (d.garagePad) {
+      for (let yy = d.garagePad.y - 1; yy <= d.garagePad.y + d.garagePad.h + 1; yy++) {
+        for (let xx = d.garagePad.x - 1; xx <= d.garagePad.x + d.garagePad.w + 1; xx++) {
+          boardBlocked.add(`${xx},${yy}`);
+        }
+      }
+    }
+    if (d.mallPad) {
+      for (let yy = d.mallPad.y - 1; yy <= d.mallPad.y + d.mallPad.h + 1; yy++) {
+        for (let xx = d.mallPad.x - 1; xx <= d.mallPad.x + d.mallPad.w + 1; xx++) {
+          boardBlocked.add(`${xx},${yy}`);
+        }
+      }
+    }
+    for (const pad of junctionPads) {
+      const pr = Math.ceil(pad.r) + 1;
+      for (let dy = -pr; dy <= pr; dy++) {
+        for (let dx = -pr; dx <= pr; dx++) {
+          if (Math.hypot(dx, dy) <= pad.r + 1) {
+            boardBlocked.add(`${Math.round(pad.cx + dx)},${Math.round(pad.cy + dy)}`);
+          }
+        }
+      }
+    }
     const shopById = new Map(d.parcels.map((p) => [p.id, p]));
     const postMat = new THREE.MeshStandardMaterial({
       color: 0x3a3f4a,
@@ -1186,6 +1822,7 @@ function buildCommercialDistrict(C: CommercialCtx): void {
     for (const site of surveyBillboards(d, t, boardBlocked)) {
       const by = Math.max(0, t.worldY(Math.round(site.x), Math.round(site.y)));
       const grp = new THREE.Group();
+      grp.name = `commercialBillboard.${site.id}`;
       grp.position.set(C.wx(site.x), by, C.wz(site.y));
       grp.rotation.y = site.faceX === 1 ? Math.PI / 2 : -Math.PI / 2; // a +z plane turned to face along the street
       for (const px of [-2.0, 2.0]) {
@@ -1205,26 +1842,27 @@ function buildCommercialDistrict(C: CommercialCtx): void {
       frame.castShadow = true;
       grp.add(frame);
       const shop = site.shopId ? shopById.get(site.shopId) : undefined;
-      if (typeof document === "undefined") continue; // headless: frame without poster
-      const cv = document.createElement("canvas");
-      cv.width = 256;
-      cv.height = 160;
-      const ctx = cv.getContext("2d");
-      if (ctx)
-        paintPoster(ctx, posterModel(shop?.business), cv.width, cv.height);
-      const tex = new THREE.CanvasTexture(cv);
-      const screen = new THREE.Mesh(
-        new THREE.PlaneGeometry(4.8, 2.85),
-        new THREE.MeshStandardMaterial({
-          map: tex,
-          emissive: 0xffffff,
-          emissiveMap: tex,
-          emissiveIntensity: 0.35,
-          roughness: 0.6,
-        }),
-      );
-      screen.position.set(0, 4.6, 0.17);
-      grp.add(screen);
+      if (typeof document !== "undefined") {
+        const cv = document.createElement("canvas");
+        cv.width = 256;
+        cv.height = 160;
+        const ctx = cv.getContext("2d");
+        if (ctx)
+          paintPoster(ctx, posterModel(shop?.business), cv.width, cv.height);
+        const tex = new THREE.CanvasTexture(cv);
+        const screen = new THREE.Mesh(
+          new THREE.PlaneGeometry(4.8, 2.85),
+          new THREE.MeshStandardMaterial({
+            map: tex,
+            emissive: 0xffffff,
+            emissiveMap: tex,
+            emissiveIntensity: 0.35,
+            roughness: 0.6,
+          }),
+        );
+        screen.position.set(0, 4.6, 0.17);
+        grp.add(screen);
+      }
       C.group.add(grp);
     }
   }
@@ -1290,9 +1928,13 @@ function buildShopVenue(
   g.rotation.y = place.facing;
   C.group.add(g);
 
-  // Neon night floor — the glowing plot pad. An unbuildable parcel (swallowed by a
-  // junction pad's bound) stays an open glowing forecourt with market crates: land the
-  // economy can still sell, with nothing standing inside the junction's clearance.
+  if (!place.buildable) {
+    // When a junction pad or road ribbon sweeps the parcel, do not spawn a protruding forecourt slab
+    // or crates that intrude into the carriageway or junction clearance envelope.
+    return;
+  }
+
+  // Neon night floor — the glowing plot pad.
   const floorMat = new THREE.MeshStandardMaterial({
     color: neon,
     emissive: neon,
@@ -1303,31 +1945,12 @@ function buildShopVenue(
   });
   C.floorMats.push(floorMat);
   const floor = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      place.buildable ? bodyW * 1.06 : 8,
-      0.035,
-      place.buildable ? bodyD * 1.06 : 8,
-    ),
+    new THREE.BoxGeometry(bodyW * 1.06, 0.035, bodyD * 1.06),
     floorMat,
   );
   floor.name = "commercialShopNightFloor";
   floor.position.y = 0.04;
   g.add(floor);
-
-  const crateMat = new THREE.MeshStandardMaterial({
-    color: 0x7a5a36,
-    roughness: 0.9,
-  });
-  if (!place.buildable) {
-    for (let k = 0; k < 3; k++) {
-      const cs = 0.7 + k * 0.15;
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(cs, cs, cs), crateMat);
-      crate.position.set(-2.2 + k * 1.6, cs / 2, k === 1 ? 1.2 : -0.8);
-      crate.castShadow = true;
-      g.add(crate);
-    }
-    return;
-  }
 
   // Foundation plinth — fills the gap between the seat and the natural ground below the
   // footprint on slopes; coastal dry seats keep it thin (the blended terrain grounds
@@ -1470,6 +2093,10 @@ function buildShopVenue(
       post.castShadow = true;
       g.add(post);
     }
+    const crateMat = new THREE.MeshStandardMaterial({
+      color: 0x7a5a36,
+      roughness: 0.9,
+    });
     for (let k = 0; k < 2; k++) {
       const cs = 0.8 + k * 0.18;
       const crate = new THREE.Mesh(new THREE.BoxGeometry(cs, cs, cs), crateMat);
@@ -1696,11 +2323,11 @@ function makeCommercialBusinessLabel(
     transparent: true,
     opacity: label.nightEmissiveFloor * 0.28,
     depthWrite: false,
-    depthTest: false,
+    depthTest: true,
     side: THREE.DoubleSide,
     toneMapped: false,
   });
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(3.2, 24), floorMat);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(1.8, 24), floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -(label.height - 0.1); // the glow ring lies on the pad below
   floor.renderOrder = 29;

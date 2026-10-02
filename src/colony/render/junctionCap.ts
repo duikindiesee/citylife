@@ -499,9 +499,7 @@ export function paintApproaches(zone: JunctionZone): JunctionArm[] {
   });
 }
 
-/** Zebra band constants — one place, so the plan-view evidence renderer
- *  (scripts/junctionPaintPlan.ts) can never drift from what actually gets drawn. */
-export const ZEBRA = { K: 5, depth: 1.3, stripeHalf: 0.16 } as const;
+export const ZEBRA = { K: 5, depth: 0.75, stripeHalf: 0.08 } as const;
 
 /** Where one approach's zebra band sits: centre, the along/across unit axes, and the
  *  band's outer footprint (used for the non-overlap guard and for plan-view evidence). */
@@ -621,7 +619,7 @@ export function capStopBars(
     // left(t) = (t.y, -t.x) = (-a.uy, a.ux)
     const Lx = -a.uy,
       Ly = a.ux;
-    const off = a.mouthD + 0.2 + 1.3 + 0.4; // beyond the zebra band
+    const off = a.mouthD + 0.2 + ZEBRA.depth + 0.3; // beyond the zebra band
     const bx = zone.cx + a.ux * off + Lx * (a.half / 2);
     const by = zone.cy + a.uy * off + Ly * (a.half / 2);
     if (!cellOk(opts.terrain, bx, by)) continue;
@@ -713,6 +711,10 @@ export function capKerbPaintSegments(zone: JunctionZone): CapKerbSegment[] {
   for (let i = 0; i < poly.length; i++) {
     const a = poly[i]!,
       b = poly[(i + 1) % poly.length]!;
+    const ex = b.x - a.x,
+      ey = b.y - a.y;
+    const len = Math.hypot(ex, ey);
+    if (len < 1e-4) continue;
     const mx = (a.x + b.x) / 2,
       my = (a.y + b.y) / 2;
     if (nearMouth(mx, my)) continue;
@@ -723,6 +725,9 @@ export function capKerbPaintSegments(zone: JunctionZone): CapKerbSegment[] {
       bestErr = Infinity;
     for (let k = 0; k < zone.arms.length; k++) {
       const q = zone.arms[k]!;
+      // A kerb run MUST run parallel to the arm's axis (dot product with arm heading close to ±1)
+      const dot = Math.abs((ex * q.ux + ey * q.uy) / len);
+      if (dot < 0.95) continue;
       const rx = mx - zone.cx,
         ry = my - zone.cy;
       const err = Math.abs(Math.abs(rx * -q.uy + ry * q.ux) - q.half);
@@ -731,7 +736,7 @@ export function capKerbPaintSegments(zone: JunctionZone): CapKerbSegment[] {
         arm = k;
       }
     }
-    if (arm < 0 || bestErr > 1e-6) continue; // not a kerb run — never invent paint
+    if (arm < 0 || bestErr > 1e-4) continue; // not a kerb run — never invent paint
     const half = zone.arms[arm]!.half;
     segs.push({ a, b, arm, inset: half - edgeLineOffset(half) });
   }

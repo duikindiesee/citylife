@@ -437,14 +437,47 @@ export function junctionFurniture(
     return { x: mx + lx * 6, y: my + ly * 6 }; // best effort (unreached in boot towns)
   };
 
-  for (const a of zone.arms) {
+  // Each approach gets at most one signal/sign (never duplicates for parallel arm bundles)
+  const merge = (28 * Math.PI) / 180;
+  const order = zone.arms
+    .map((a, i) => ({ a, i, th: Math.atan2(a.uy, a.ux) }))
+    .sort((p, q) => p.th - q.th || p.i - q.i);
+  const groups: (typeof order)[] = [];
+  for (const item of order) {
+    const last = groups[groups.length - 1];
+    if (last && item.th - last[last.length - 1]!.th <= merge) last.push(item);
+    else groups.push([item]);
+  }
+  if (groups.length > 1) {
+    const first = groups[0]!,
+      last = groups[groups.length - 1]!;
+    if (first[0]!.th + 2 * Math.PI - last[last.length - 1]!.th <= merge) {
+      first.unshift(...last);
+      groups.pop();
+    }
+  }
+  const approaches = groups.map((g) => {
+    const rep = g.reduce((best, cur) =>
+      cur.a.half !== best.a.half
+        ? cur.a.half > best.a.half
+          ? cur
+          : best
+        : cur.a.mouthD > best.a.mouthD
+          ? cur
+          : best,
+    ).a;
+    const terminating = g.some((x) => x.a.terminating);
+    return terminating === rep.terminating ? rep : { ...rep, terminating };
+  });
+
+  for (const a of approaches) {
     const L = { x: -a.uy, y: a.ux }; // left verge of this approach
     const mx = zone.cx + a.ux * a.mouthD,
       my = zone.cy + a.uy * a.mouthD;
     if (zone.kind === "cross") {
       const p = placeClear(
-        mx + a.ux * 0.6 + L.x * (a.half + 0.4),
-        my + a.uy * 0.6 + L.y * (a.half + 0.4),
+        mx + a.ux * 0.6 + L.x * (a.half + 0.5),
+        my + a.uy * 0.6 + L.y * (a.half + 0.5),
         L.x,
         L.y,
       );
