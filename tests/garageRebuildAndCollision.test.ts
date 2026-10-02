@@ -183,6 +183,31 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     const pylon = model.obstacles.find((o) => o.id === "corner_pylon")!;
     const pylonGrid = gridFromLocalCoordinates(garagePad, pylon.x, pylon.z);
     expect(rt.isGaragePadDrivable(pylonGrid.x, pylonGrid.y, garagePad)).toBe(false);
+
+    // 8. West interior partition wall (service_bay_partition_1_2)
+    const part12 = model.obstacles.find((o) => o.id === "service_bay_partition_1_2")!;
+    expect(part12).toBeDefined();
+    const part12Grid = gridFromLocalCoordinates(garagePad, part12.x, part12.z);
+    expect(rt.isGaragePadDrivable(part12Grid.x, part12Grid.y, garagePad)).toBe(false);
+
+    // 9. East interior partition wall (service_bay_partition_2_3)
+    const part23 = model.obstacles.find((o) => o.id === "service_bay_partition_2_3")!;
+    expect(part23).toBeDefined();
+    const part23Grid = gridFromLocalCoordinates(garagePad, part23.x, part23.z);
+    expect(rt.isGaragePadDrivable(part23Grid.x, part23Grid.y, garagePad)).toBe(false);
+
+    // 10. Front facade structural piers
+    for (const pierId of [
+      "service_bay_pier_west",
+      "service_bay_pier_1_2",
+      "service_bay_pier_2_3",
+      "service_bay_pier_east",
+    ]) {
+      const pier = model.obstacles.find((o) => o.id === pierId)!;
+      expect(pier).toBeDefined();
+      const pierGrid = gridFromLocalCoordinates(garagePad, pier.x, pier.z);
+      expect(rt.isGaragePadDrivable(pierGrid.x, pierGrid.y, garagePad)).toBe(false);
+    }
   });
 
   it("verifies car swept footprint collision across the full oriented vehicle body", () => {
@@ -505,5 +530,96 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     // Car moved backwards and successfully escaped to a completely clear pose
     expect(overlappingPose.x).toBeLessThan(0.04);
     expect(isFootprintValid(overlappingPose.x, overlappingPose.y, overlappingPose.heading)).toBe(true);
+  });
+
+  it("resolves MoJoJo Review 5392115777: proves west and east partitions block vehicle footprint and point probes without obstructing Bay 2", () => {
+    // Exact runtime probe at west partition center: local X = 2.69, Z = -0.55
+    const westPartX = 2.69;
+    const westPartZ = -0.55;
+    const westPartGrid = gridFromLocalCoordinates(garagePad, westPartX, westPartZ);
+
+    // 1. Point is NOT inside drivable surface
+    expect(isPointInDrivableSurface(westPartX, westPartZ, model.surfaces)).toBe(false);
+
+    // 2. Point IS inside garage obstacle
+    expect(isPointInsideGarageObstacle(westPartX, westPartZ, model.obstacles)).toBe(true);
+
+    // 3. Vehicle centered in west partition is NOT clear of obstacles (collision detected)
+    const bayHeading = garagePad.facingAngle + Math.PI;
+    expect(
+      isCarFootprintClearOfGarageObstacles(
+        westPartGrid.x,
+        westPartGrid.y,
+        bayHeading,
+        garagePad,
+        model.obstacles,
+      ),
+    ).toBe(false);
+
+    // 4. Runtime isGaragePadDrivable strictly rejects the partition
+    expect(rt.isGaragePadDrivable(westPartGrid.x, westPartGrid.y, garagePad)).toBe(false);
+
+    // Same checks for east partition at local X = 4.99, Z = -0.55
+    const eastPartX = 4.99;
+    const eastPartZ = -0.55;
+    const eastPartGrid = gridFromLocalCoordinates(garagePad, eastPartX, eastPartZ);
+    expect(isPointInDrivableSurface(eastPartX, eastPartZ, model.surfaces)).toBe(false);
+    expect(isPointInsideGarageObstacle(eastPartX, eastPartZ, model.obstacles)).toBe(true);
+    expect(
+      isCarFootprintClearOfGarageObstacles(
+        eastPartGrid.x,
+        eastPartGrid.y,
+        bayHeading,
+        garagePad,
+        model.obstacles,
+      ),
+    ).toBe(false);
+    expect(rt.isGaragePadDrivable(eastPartGrid.x, eastPartGrid.y, garagePad)).toBe(false);
+
+    // In contrast: Bay 2 drive-in path along X = 3.84 is 100% open and unobstructed
+    const bay2CenterX = model.serviceBay.x;
+    for (let lz = 2.5; lz >= -2.0; lz -= 0.5) {
+      const pathGrid = gridFromLocalCoordinates(garagePad, bay2CenterX, lz);
+      expect(isPointInsideGarageObstacle(bay2CenterX, lz, model.obstacles)).toBe(false);
+      expect(
+        isCarFootprintClearOfGarageObstacles(
+          pathGrid.x,
+          pathGrid.y,
+          bayHeading,
+          garagePad,
+          model.obstacles,
+        ),
+      ).toBe(true);
+      expect(rt.isGaragePadDrivable(pathGrid.x, pathGrid.y, garagePad)).toBe(true);
+    }
+  });
+
+  it("executes production movement-path regression: vehicle driving into partition or pier is stopped before penetration", () => {
+    const headingIntoGarage = Math.PI / 2;
+
+    // 1. Negative collision: car driving toward west pier / partition (local X = 2.69) from forecourt (Z = 4.3)
+    const pierStart = gridFromLocalCoordinates(garagePad, 2.69, 4.3);
+    rt.teleportCar(pierStart.x, pierStart.y, headingIntoGarage);
+    (rt as any).ownedDriveSeated = true;
+    rt.setOwnedDriveInput({ throttle: true });
+    for (let i = 0; i < 35; i++) rt.tickOwnedDrive(0.05);
+
+    const pierPose = rt.getOwnedDrivePose()!;
+    const pierLocal = localFromGridCoordinates(garagePad, pierPose.x, pierPose.y);
+    const pierObstacle = model.obstacles.find((o) => o.id === "service_bay_pier_1_2")!;
+    // Vehicle MUST be stopped before penetrating the pier
+    expect(pierLocal.z).toBeGreaterThan(pierObstacle.z + pierObstacle.d / 2);
+
+    // 2. Positive drivability: car driving into open Bay 2 (local X = 3.84) enters cleanly
+    const bay2Start = gridFromLocalCoordinates(garagePad, model.serviceBay.x, 4.3);
+    rt.teleportCar(bay2Start.x, bay2Start.y, headingIntoGarage);
+    (rt as any).ownedDriveSeated = true;
+    rt.setOwnedDriveInput({ throttle: true });
+    for (let i = 0; i < 35; i++) rt.tickOwnedDrive(0.05);
+
+    const bay2Pose = rt.getOwnedDrivePose()!;
+    const bay2Local = localFromGridCoordinates(garagePad, bay2Pose.x, bay2Pose.y);
+    const bayThresholdZ = model.serviceBay.z + model.serviceBay.d / 2;
+    expect(bay2Local.z).toBeLessThan(bayThresholdZ);
   });
 });

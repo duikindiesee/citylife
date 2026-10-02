@@ -78,6 +78,9 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
    - `dividing_wall`: Solid wall separating showroom interior from service bay.
    - `service_bay_wall_back`: Service bay rear exterior wall.
    - `service_bay_wall_east`: Service bay outer side wall.
+   - `service_bay_partition_1_2`: Solid interior divider wall isolating Bay 1 from open Bay 2 ($X = 2.69$).
+   - `service_bay_partition_2_3`: Solid interior divider wall isolating open Bay 2 from Bay 3 ($X = 4.99$).
+   - `service_bay_pier_west`, `service_bay_pier_1_2`, `service_bay_pier_2_3`, `service_bay_pier_east`: Structural piers framing the 3 bay door openings along the front facade ($Z = 2.09$).
    - `rollup_door_1`: Closed rollup door for Bay 1.
    - `rollup_door_3`: Closed rollup door for Bay 3.
    - **Rollup Door 2 (Middle Bay)**: 100% OPEN. Zero door collider.

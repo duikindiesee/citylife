@@ -789,7 +789,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   }
 
   // 6. Interior Partitions enclosing closed bays 1 and 3 while leaving Bay 2 completely open
-  const partitionThickness = 0.16;
+  const partitionThickness = 0.22;
   const partitionD = model.serviceBay.d - wallThickness * 2;
   for (const [px, partName] of [
     [(bay1X + hdw + bay2X - hdw) / 2, "garageAnchorWorkshopPartition.1_2"],

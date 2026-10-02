@@ -259,6 +259,14 @@ export function buildGarageAnchorShellModel(
 
   const bayFaceZ = serviceBay.z + serviceBay.d / 2 + 0.045;
   const bayDoorSpacing = serviceBay.bayDoorW * 1.25;
+  const bay1X = serviceBay.x - bayDoorSpacing;
+  const bay2X = serviceBay.x;
+  const bay3X = serviceBay.x + bayDoorSpacing;
+  const hdw = serviceBay.bayDoorW / 2;
+  const westX = serviceBay.x - serviceBay.w / 2;
+  const eastX = serviceBay.x + serviceBay.w / 2;
+  const pierZ = serviceBay.z + serviceBay.d / 2 - 0.11;
+  const pierH = serviceBay.h * 0.78;
 
   // Spec 177: Discrete Drivable & Walkable Surface Zones in asset-local coordinates
   const surfaces: GarageSurfaceZone[] = [
@@ -285,12 +293,13 @@ export function buildGarageAnchorShellModel(
       walkable: true,
     },
     // 3. Open Service Bay 2 interior floor (drive in onto inspection lift)
+    // Sized to fit cleanly within the open bay corridor between partition inner faces
     {
       id: "open_service_bay_floor",
       kind: "bay_floor",
       x: serviceBay.x,
       z: bayFaceZ - serviceBay.d * 0.45,
-      w: serviceBay.bayDoorW * 1.35,
+      w: serviceBay.bayDoorW * 1.05,
       d: serviceBay.d * 0.95,
       drivable: true,
       walkable: true,
@@ -380,6 +389,76 @@ export function buildGarageAnchorShellModel(
       w: 0.22,
       d: serviceBay.d,
       h: serviceBay.h,
+    },
+    // --- Service Bay Interior Partition Walls (Spec 177) ---
+    // Solid divider walls enclosing closed Bays 1 and 3 while leaving Bay 2 completely open
+    {
+      id: "service_bay_partition_1_2",
+      kind: "wall",
+      shape: "box",
+      x: (bay1X + hdw + bay2X - hdw) / 2,
+      z: serviceBay.z,
+      y: serviceBay.y,
+      w: 0.22,
+      d: serviceBay.d - 0.44,
+      h: serviceBay.h,
+    },
+    {
+      id: "service_bay_partition_2_3",
+      kind: "wall",
+      shape: "box",
+      x: (bay2X + hdw + bay3X - hdw) / 2,
+      z: serviceBay.z,
+      y: serviceBay.y,
+      w: 0.22,
+      d: serviceBay.d - 0.44,
+      h: serviceBay.h,
+    },
+    // --- Service Bay Front Structural Piers (Spec 177) ---
+    // Structural piers framing the 3 bay door openings along the front facade
+    {
+      id: "service_bay_pier_west",
+      kind: "wall",
+      shape: "box",
+      x: (westX + bay1X - hdw) / 2,
+      z: pierZ,
+      y: pierH / 2,
+      w: (bay1X - hdw) - westX,
+      d: 0.22,
+      h: pierH,
+    },
+    {
+      id: "service_bay_pier_1_2",
+      kind: "wall",
+      shape: "box",
+      x: (bay1X + hdw + bay2X - hdw) / 2,
+      z: pierZ,
+      y: pierH / 2,
+      w: (bay2X - hdw) - (bay1X + hdw),
+      d: 0.22,
+      h: pierH,
+    },
+    {
+      id: "service_bay_pier_2_3",
+      kind: "wall",
+      shape: "box",
+      x: (bay2X + hdw + bay3X - hdw) / 2,
+      z: pierZ,
+      y: pierH / 2,
+      w: (bay3X - hdw) - (bay2X + hdw),
+      d: 0.22,
+      h: pierH,
+    },
+    {
+      id: "service_bay_pier_east",
+      kind: "wall",
+      shape: "box",
+      x: (bay3X + hdw + eastX) / 2,
+      z: pierZ,
+      y: pierH / 2,
+      w: eastX - (bay3X + hdw),
+      d: 0.22,
+      h: pierH,
     },
     // --- Closed Service Bay Rollup Doors (Bay 1 and Bay 3) ---
     {

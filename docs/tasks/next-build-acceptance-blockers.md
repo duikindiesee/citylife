@@ -205,7 +205,19 @@ This task record documents the investigation, root causes, implementation fixes,
 - **Evidence:**
   - `tests/garageRebuildAndCollision.test.ts` (12/12 PASS, including SAT hard gate and reverse escape).
   - `tests/citylifeQaExpandedFindings.test.ts` (4/4 PASS).
-  - `tests/kookerHqGarageSetback.test.ts` (3/3 PASS).
+### Blocker 10: Service Bay Interior Partition and Structural Pier Colliders (Joekookerbot Review #553 / 5392115777)
+
+- **Root Causes & Findings:**
+  1. _Mesh / Collider Disconnect:_ In `commercialDistrictLayer.ts`, the solid workshop block was partitioned into discrete walls, including full-depth solid interior partition walls (`garageAnchorWorkshopPartition.1_2` / `2_3`) and front facade piers. However, `garageAnchorShell.ts` `obstacles` did not contain matching obstacle colliders for the partitions or piers.
+  2. _Drivable Floor Boundary Spill:_ `open_service_bay_floor` surface width was $1.35 \times \text{bayDoorW}$ ($2.484$ cells), which crossed laterally into the west partition center at $X = 2.69$. A probe at $X = 2.69, Z = -0.55$ returned `isPointInDrivableSurface = true` and `isPointInsideGarageObstacle = false`.
+- **Resolutions:**
+  1. _Discrete Partition & Pier Obstacles:_ Added `service_bay_partition_1_2` ($X = 2.69$), `service_bay_partition_2_3` ($X = 4.99$), and front piers (`west`, `1_2`, `2_3`, `east`) to `model.obstacles` in `garageAnchorShell.ts`.
+  2. _Constrained Bay Floor Width:_ Resized `open_service_bay_floor` to $1.05 \times \text{bayDoorW}$ ($1.932$ cells), fitting cleanly within the $2.14$-cell corridor between partition inner faces.
+  3. _Standardized Mesh Thickness:_ Aligned visual partition thickness in `commercialDistrictLayer.ts` to $0.22$ cells to match collider thickness.
+  4. _Regression Testing:_ Added exact runtime-model probe assertions and production movement-path regression in `tests/garageRebuildAndCollision.test.ts`. Updated Spec 177.
+- **Evidence:**
+  - `tests/garageRebuildAndCollision.test.ts` (15/15 PASS, including exact partition/pier probes and movement regression).
+  - `tests/garageBayCavityAndSightline.test.ts` (6/6 PASS).
 
 ---
 
