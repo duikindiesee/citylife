@@ -19,7 +19,9 @@ describe("Spec 177 / Kooker HQ Landmark behind Commercial Garage", () => {
 
   it("builds the Kooker HQ landmark group behind the commercial garage", () => {
     expect(s.commercialDistrict?.garagePad).toBeDefined();
-    const hqGroup = layer.group.getObjectByName("commercialDistrict.kookerHq") as THREE.Group;
+    const hqGroup = layer.group.getObjectByName(
+      "commercialDistrict.kookerHq",
+    ) as THREE.Group;
     expect(hqGroup).toBeDefined();
     expect(hqGroup.userData.kind).toBe("kooker_hq_landmark");
     expect(hqGroup.userData.publicName).toBe("Kooker HQ");
@@ -35,7 +37,9 @@ describe("Spec 177 / Kooker HQ Landmark behind Commercial Garage", () => {
 
   it("positions Kooker HQ on the rear setback behind the garage pad", () => {
     const garage = s.commercialDistrict!.garagePad!;
-    const hqGroup = layer.group.getObjectByName("commercialDistrict.kookerHq") as THREE.Group;
+    const hqGroup = layer.group.getObjectByName(
+      "commercialDistrict.kookerHq",
+    ) as THREE.Group;
     expect(hqGroup).toBeDefined();
 
     const garageWorldX = (garage.x + (garage.w - 1) / 2 - N / 2) * 4;
@@ -56,8 +60,12 @@ describe("Spec 177 / Kooker HQ Landmark behind Commercial Garage", () => {
     const facing = garage.facingAngle ?? 0;
     const backDirX = -Math.sin(facing);
     const backDirY = -Math.cos(facing);
-    const expectedHqX = Math.round(garage.x + (garage.w - 1) / 2 + backDirX * 10.5);
-    const expectedHqY = Math.round(garage.y + (garage.h - 1) / 2 + backDirY * 10.5);
+    const expectedHqX = Math.round(
+      garage.x + (garage.w - 1) / 2 + backDirX * 10.5,
+    );
+    const expectedHqY = Math.round(
+      garage.y + (garage.h - 1) / 2 + backDirY * 10.5,
+    );
 
     const cleared = rects.some(
       (r) =>

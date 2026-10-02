@@ -31,11 +31,21 @@ describe("TrafficLight dual-aspect lamp illumination and ref lifecycle", () => {
   });
 
   it("updateTrafficLightLamps illuminates both primary and secondary heads across all phases", () => {
-    const primaryRed = new THREE.MeshStandardMaterial({ color: TRAFFIC_LIGHT_OFF });
-    const primaryAmber = new THREE.MeshStandardMaterial({ color: TRAFFIC_LIGHT_OFF });
-    const primaryGreen = new THREE.MeshStandardMaterial({ color: TRAFFIC_LIGHT_OFF });
-    const secondaryRed = new THREE.MeshStandardMaterial({ color: TRAFFIC_LIGHT_OFF });
-    const secondaryGreen = new THREE.MeshStandardMaterial({ color: TRAFFIC_LIGHT_OFF });
+    const primaryRed = new THREE.MeshStandardMaterial({
+      color: TRAFFIC_LIGHT_OFF,
+    });
+    const primaryAmber = new THREE.MeshStandardMaterial({
+      color: TRAFFIC_LIGHT_OFF,
+    });
+    const primaryGreen = new THREE.MeshStandardMaterial({
+      color: TRAFFIC_LIGHT_OFF,
+    });
+    const secondaryRed = new THREE.MeshStandardMaterial({
+      color: TRAFFIC_LIGHT_OFF,
+    });
+    const secondaryGreen = new THREE.MeshStandardMaterial({
+      color: TRAFFIC_LIGHT_OFF,
+    });
 
     const mats = {
       primaryRed,
@@ -49,21 +59,31 @@ describe("TrafficLight dual-aspect lamp illumination and ref lifecycle", () => {
     const stateGreenA = updateTrafficLightLamps(mats, 2.0, "A");
     expect(stateGreenA).toBe("green");
     expect(primaryGreen.emissiveIntensity).toBe(1.8);
-    expect(primaryGreen.color.getHexString()).toBe(TRAFFIC_LIGHT_GREEN.getHexString());
+    expect(primaryGreen.color.getHexString()).toBe(
+      TRAFFIC_LIGHT_GREEN.getHexString(),
+    );
     expect(secondaryGreen.emissiveIntensity).toBe(1.8);
-    expect(secondaryGreen.color.getHexString()).toBe(TRAFFIC_LIGHT_GREEN.getHexString());
+    expect(secondaryGreen.color.getHexString()).toBe(
+      TRAFFIC_LIGHT_GREEN.getHexString(),
+    );
 
     expect(primaryRed.emissiveIntensity).toBe(0);
-    expect(primaryRed.color.getHexString()).toBe(TRAFFIC_LIGHT_OFF.getHexString());
+    expect(primaryRed.color.getHexString()).toBe(
+      TRAFFIC_LIGHT_OFF.getHexString(),
+    );
     expect(secondaryRed.emissiveIntensity).toBe(0);
-    expect(secondaryRed.color.getHexString()).toBe(TRAFFIC_LIGHT_OFF.getHexString());
+    expect(secondaryRed.color.getHexString()).toBe(
+      TRAFFIC_LIGHT_OFF.getHexString(),
+    );
     expect(primaryAmber.emissiveIntensity).toBe(0);
 
     // 2. Group A Amber Phase (t = 7.0s): primary amber illuminated, red and green off
     const stateAmberA = updateTrafficLightLamps(mats, 7.0, "A");
     expect(stateAmberA).toBe("amber");
     expect(primaryAmber.emissiveIntensity).toBe(1.8);
-    expect(primaryAmber.color.getHexString()).toBe(TRAFFIC_LIGHT_AMBER.getHexString());
+    expect(primaryAmber.color.getHexString()).toBe(
+      TRAFFIC_LIGHT_AMBER.getHexString(),
+    );
 
     expect(primaryGreen.emissiveIntensity).toBe(0);
     expect(secondaryGreen.emissiveIntensity).toBe(0);
@@ -74,9 +94,13 @@ describe("TrafficLight dual-aspect lamp illumination and ref lifecycle", () => {
     const stateRedA = updateTrafficLightLamps(mats, 10.0, "A");
     expect(stateRedA).toBe("red");
     expect(primaryRed.emissiveIntensity).toBe(1.8);
-    expect(primaryRed.color.getHexString()).toBe(TRAFFIC_LIGHT_RED.getHexString());
+    expect(primaryRed.color.getHexString()).toBe(
+      TRAFFIC_LIGHT_RED.getHexString(),
+    );
     expect(secondaryRed.emissiveIntensity).toBe(1.8);
-    expect(secondaryRed.color.getHexString()).toBe(TRAFFIC_LIGHT_RED.getHexString());
+    expect(secondaryRed.color.getHexString()).toBe(
+      TRAFFIC_LIGHT_RED.getHexString(),
+    );
 
     expect(primaryAmber.emissiveIntensity).toBe(0);
     expect(primaryGreen.emissiveIntensity).toBe(0);
@@ -100,11 +124,21 @@ describe("TrafficLight dual-aspect lamp illumination and ref lifecycle", () => {
   });
 
   it("mounted useFrame drives both primary and secondary signal aspects via separate refs", () => {
-    const primaryRed = new THREE.MeshStandardMaterial({ color: TRAFFIC_LIGHT_OFF });
-    const secondaryRed = new THREE.MeshStandardMaterial({ color: TRAFFIC_LIGHT_OFF });
-    const primaryAmber = new THREE.MeshStandardMaterial({ color: TRAFFIC_LIGHT_OFF });
-    const primaryGreen = new THREE.MeshStandardMaterial({ color: TRAFFIC_LIGHT_OFF });
-    const secondaryGreen = new THREE.MeshStandardMaterial({ color: TRAFFIC_LIGHT_OFF });
+    const primaryRed = new THREE.MeshStandardMaterial({
+      color: TRAFFIC_LIGHT_OFF,
+    });
+    const secondaryRed = new THREE.MeshStandardMaterial({
+      color: TRAFFIC_LIGHT_OFF,
+    });
+    const primaryAmber = new THREE.MeshStandardMaterial({
+      color: TRAFFIC_LIGHT_OFF,
+    });
+    const primaryGreen = new THREE.MeshStandardMaterial({
+      color: TRAFFIC_LIGHT_OFF,
+    });
+    const secondaryGreen = new THREE.MeshStandardMaterial({
+      color: TRAFFIC_LIGHT_OFF,
+    });
 
     const testRefs = {
       primaryRed: { current: primaryRed },
@@ -182,7 +216,9 @@ describe("TrafficLight dual-aspect lamp illumination and ref lifecycle", () => {
     walk(capturedElement);
 
     // Find the materials attached to our signal lens refs
-    const attachedRefs = materials.map((m) => m.props?.ref ?? m.ref).filter(Boolean);
+    const attachedRefs = materials
+      .map((m) => m.props?.ref ?? m.ref)
+      .filter(Boolean);
 
     // There are 5 lens refs: overhead red, amber, green, and eye-level red, green
     expect(attachedRefs.length).toBe(5);
