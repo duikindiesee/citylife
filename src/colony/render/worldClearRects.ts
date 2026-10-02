@@ -136,9 +136,9 @@ export function worldClearRects(state: ClearRectState): ClearRect[] {
     const hqY = Math.round(garage.y + (garage.h - 1) / 2 + backDirY * 10.5);
     rects.push({
       x0: hqX - 6,
-      y0: hqY - 5,
+      y0: hqY - 6,
       x1: hqX + 6,
-      y1: hqY + 5,
+      y1: hqY + 6,
     });
   }
 

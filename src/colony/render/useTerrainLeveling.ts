@@ -137,9 +137,9 @@ export function computeTerrainLeveling(
               const hqY = Math.round(g.y + (g.h - 1) / 2 + backDirY * 10.5);
               return {
                 x: hqX - 5,
-                y: hqY - 4,
+                y: hqY - 5,
                 w: 11,
-                h: 9,
+                h: 11,
               };
             })(),
           ]

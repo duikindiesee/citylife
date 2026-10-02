@@ -1033,9 +1033,9 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
   const baseY = padSeatY(
     t,
     Math.round(hqCenterGX - 5),
-    Math.round(hqCenterGY - 4),
+    Math.round(hqCenterGY - 5),
     11,
-    9,
+    11,
   );
 
   const g = new THREE.Group();
@@ -1044,10 +1044,10 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
     kind: "kooker_hq_landmark",
     publicName: "Kooker HQ",
     isPublicSafe: true,
-    facingAngle: facing,
+    facingAngle: facing + Math.PI / 2,
   };
   g.position.set(C.wx(hqCenterGX), baseY, C.wz(hqCenterGY));
-  g.rotation.y = facing;
+  g.rotation.y = facing + Math.PI / 2;
 
   // 1. Foundation Plaza Slab
   const plazaMat = new THREE.MeshStandardMaterial({
