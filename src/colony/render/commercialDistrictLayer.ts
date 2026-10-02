@@ -27,7 +27,9 @@ import {
 import {
   buildGarageAnchorShellModel,
   garageAnchorNightFloorEmissive,
+  isPointInGarageVicinity,
 } from "./garageAnchorShell";
+import { ribbonSurfaceCells, type RoadWay } from "./roadRibbon";
 import {
   commercialShopMassing,
   commercialShopNightFloorEmissive,
@@ -616,10 +618,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
 
   // 4. HERO CAR ON THE PLINTH (Karoo X19 Targa - Yellow Fiat X1/9 GLB)
   // Centered on the turntable plinth and illuminated by ceiling spotlights.
+  // Model group is scaled by model.renderScale (4x); scale real-metre car by 1 / renderScale
   const heroSpec = SHOWROOM_VEHICLES[2]!.spec;
   const heroCar = buildCarMesh(heroSpec);
   heroCar.name = "garageAnchorShowroomHeroCar";
-  heroCar.scale.setScalar(1.0);
+  heroCar.scale.setScalar(1.0 / model.renderScale);
   heroCar.position.set(
     model.showroom.x - model.showroom.w * 0.1,
     0.17,
@@ -962,6 +965,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     cg.scale.setScalar(car.scale);
     const displaySpec = SHOWROOM_VEHICLES[i % SHOWROOM_VEHICLES.length]!.spec;
     const realCar = buildCarMesh(displaySpec);
+    realCar.scale.setScalar(1.0 / model.renderScale);
     const underGlow = new THREE.Mesh(
       new THREE.BoxGeometry(1.26, 0.025, 0.62),
       new THREE.MeshStandardMaterial({
@@ -1420,35 +1424,90 @@ function buildCommercialDistrict(C: CommercialCtx): void {
       emissiveIntensity: 0.82,
       roughness: 0.4,
     }); // warm, but under the 0.9 bloom threshold
+    const ways = (C.state.roadWays ?? []) as RoadWay[];
+    const ribbonCells = ribbonSurfaceCells(ways, t);
+    const junctionPads = junctionZonesToPads(attachCapPolys(findJunctionZones(ways)));
+
+    // Spatial tracker to prevent any overlap between furniture, ensure clear pedestrian routes,
+    // and keep all elements out of carriageways and pads.
+    const placedFurniture: { wx: number; wz: number }[] = [];
+    const isFurniturePosClear = (wx: number, wz: number, minDistance = 3.0): boolean => {
+      for (const p of placedFurniture) {
+        if (Math.hypot(p.wx - wx, p.wz - wz) < minDistance) return false;
+      }
+      return true;
+    };
+
+    const isCellInForbiddenZone = (gx: number, gy: number): boolean => {
+      // 1. Never on road asphalt or within its buffer
+      const rx = Math.round(gx);
+      const ry = Math.round(gy);
+      if (ribbonCells.has(`${rx},${ry}`)) return true;
+      if (C.state.roadSet.has(`${rx},${ry}`)) return true;
+
+      // 2. Never inside any junction pad (clear vehicle turning and crossing paths)
+      for (const pad of junctionPads) {
+        if (Math.hypot(pad.cx - gx, pad.cy - gy) <= pad.r + 0.8) return true;
+      }
+
+      // 3. Never inside garage pad or apron
+      if (d.garagePad && isPointInGarageVicinity(gx, gy, d.garagePad)) return true;
+
+      // 4. Never inside mall pad
+      if (
+        gx >= d.mallPad.x - 1 &&
+        gx <= d.mallPad.x + d.mallPad.w + 1 &&
+        gy >= d.mallPad.y - 1 &&
+        gy <= d.mallPad.y + d.mallPad.h + 1
+      ) {
+        return true;
+      }
+
+      return false;
+    };
+
     for (let i = 0; i < street.length; i += 5) {
       const c = street[i]!;
-      const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)));
       const side = Math.floor(i / 5) % 2 === 0 ? 1 : -1; // alternate verges down the strip
+      // Verge offset: 2.55 cells (10.2m from street centreline; the 4-cell way carriageway edge is at 8m).
+      // This places the pole 2.2m clear of the white road stripe into the safe pedestrian verge.
+      const lampGy = c.y + side * 2.55;
+      if (isCellInForbiddenZone(c.x, lampGy)) continue;
+
+      const wx = C.wx(c.x);
+      const wz = C.wz(lampGy);
+      if (!isFurniturePosClear(wx, wz, 3.2)) continue;
+
+      const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(lampGy)));
       const lamp = new THREE.Group();
-      // Spec 143 — the verge starts past the RIBBON edge (the 4-cell way is 8 m half-
-      // width); the old 1.4-cell offset planted every pole on the carriageway.
-      lamp.position.set(C.wx(c.x), by, C.wz(c.y + side * 2.35));
+      lamp.position.set(wx, by, wz);
+
       const pole = new THREE.Mesh(
         new THREE.CylinderGeometry(0.07, 0.09, 3.2, 6),
         poleMat,
       );
       pole.position.y = 1.6;
       pole.castShadow = true;
+
+      // Arm points TOWARD the carriageway (-side), illuminating the walkway and curb
       const arm = new THREE.Mesh(
         new THREE.BoxGeometry(0.09, 0.09, 0.7),
         poleMat,
       );
-      arm.position.set(0, 3.2, side * 0.3);
+      arm.position.set(0, 3.2, -side * 0.35);
+
       const head = new THREE.Mesh(
         new THREE.SphereGeometry(0.24, 8, 6),
         headMat,
       );
-      head.position.set(0, 3.15, side * 0.62);
+      head.position.set(0, 3.15, -side * 0.7);
+
       lamp.add(pole, arm, head);
       C.group.add(lamp);
+      placedFurniture.push({ wx, wz });
     }
-    // promenade FURNITURE between the lamps — a few benches + leafy planters on the verges so the
-    // strip feels strolled, not just lit. Placed on a different phase/offset from the lamps.
+
+    // promenade FURNITURE between the lamps — benches + leafy planters on the verges
     const woodMat = new THREE.MeshStandardMaterial({
       color: 0x6b4a2f,
       roughness: 0.85,
@@ -1465,14 +1524,22 @@ function buildCommercialDistrict(C: CommercialCtx): void {
       color: 0x3fae5a,
       roughness: 0.8,
     });
-    for (let i = 3; i < street.length; i += 8) {
+
+    for (let i = 2; i < street.length; i += 7) {
       const c = street[i]!;
-      const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(c.y)));
-      const side = Math.floor(i / 8) % 2 === 0 ? -1 : 1; // opposite phase to the lamps
-      const fz = C.wz(c.y + side * 2.35); // spec 143 — past the ribbon edge, like the lamps
-      // a bench facing the street (backrest on the verge side), sized for the 1.8 m citizen
+      const side = Math.floor(i / 7) % 2 === 0 ? -1 : 1;
+      // Offset 2.85 cells (11.4m from centreline; 3.4m clear of road edge, set back against parcel frontages)
+      const benchGy = c.y + side * 2.85;
+      if (isCellInForbiddenZone(c.x, benchGy)) continue;
+
+      const wx = C.wx(c.x);
+      const fz = C.wz(benchGy);
+      if (!isFurniturePosClear(wx, fz, 3.0)) continue;
+
+      const by = Math.max(0, t.worldY(Math.round(c.x), Math.round(benchGy)));
+      // a bench facing the street (backrest on the verge side, seat facing the street)
       const bench = new THREE.Group();
-      bench.position.set(C.wx(c.x), by, fz);
+      bench.position.set(wx, by, fz);
       const seat = new THREE.Mesh(
         new THREE.BoxGeometry(1.8, 0.12, 0.55),
         woodMat,
@@ -1494,22 +1561,29 @@ function buildCommercialDistrict(C: CommercialCtx): void {
       }
       bench.add(seat, back);
       C.group.add(bench);
-      // a leafy planter just along from the bench
-      const planter = new THREE.Group();
-      planter.position.set(C.wx(c.x + 1.1), by, fz);
-      const tub = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.4, 0.32, 0.5, 10),
-        planterMat,
-      );
-      tub.position.y = 0.25;
-      tub.castShadow = true;
-      const bush = new THREE.Mesh(
-        new THREE.SphereGeometry(0.42, 8, 7),
-        leafMat,
-      );
-      bush.position.y = 0.85;
-      planter.add(tub, bush);
-      C.group.add(planter);
+      placedFurniture.push({ wx, wz: fz });
+
+      // leafy planter safely beside the bench (1.4m along the street, same safe setback)
+      const planterGx = c.x + 0.35;
+      const planterWx = C.wx(planterGx);
+      if (!isCellInForbiddenZone(planterGx, benchGy) && isFurniturePosClear(planterWx, fz, 1.2)) {
+        const planter = new THREE.Group();
+        planter.position.set(planterWx, by, fz);
+        const tub = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.4, 0.32, 0.5, 10),
+          planterMat,
+        );
+        tub.position.y = 0.25;
+        tub.castShadow = true;
+        const bush = new THREE.Mesh(
+          new THREE.SphereGeometry(0.42, 8, 7),
+          leafMat,
+        );
+        bush.position.y = 0.85;
+        planter.add(tub, bush);
+        C.group.add(planter);
+        placedFurniture.push({ wx: planterWx, wz: fz });
+      }
     }
     // Spec 081 P0 — AD BOARDS at the strip approaches. Each board is a post pair + frame + a screen
     // plane carrying a CanvasTexture painted by adCanvas (a deterministic poster for one real shop, or
@@ -1517,10 +1591,35 @@ function buildCommercialDistrict(C: CommercialCtx): void {
     // roads + shop footprints); the screen faces inward down the strip and glows softly after dark
     // (emissive under the bloom threshold). Disposed with the group — texture too (see the teardown).
     const boardBlocked = new Set<string>(C.state.roadSet);
+    for (const k of ribbonCells) boardBlocked.add(k);
     for (const p of d.parcels)
       for (let yy = p.y; yy < p.y + p.h; yy++)
         for (let xx = p.x; xx < p.x + p.w; xx++)
           boardBlocked.add(`${xx},${yy}`);
+    if (d.garagePad) {
+      for (let yy = d.garagePad.y - 1; yy <= d.garagePad.y + d.garagePad.h + 1; yy++) {
+        for (let xx = d.garagePad.x - 1; xx <= d.garagePad.x + d.garagePad.w + 1; xx++) {
+          boardBlocked.add(`${xx},${yy}`);
+        }
+      }
+    }
+    if (d.mallPad) {
+      for (let yy = d.mallPad.y - 1; yy <= d.mallPad.y + d.mallPad.h + 1; yy++) {
+        for (let xx = d.mallPad.x - 1; xx <= d.mallPad.x + d.mallPad.w + 1; xx++) {
+          boardBlocked.add(`${xx},${yy}`);
+        }
+      }
+    }
+    for (const pad of junctionPads) {
+      const pr = Math.ceil(pad.r) + 1;
+      for (let dy = -pr; dy <= pr; dy++) {
+        for (let dx = -pr; dx <= pr; dx++) {
+          if (Math.hypot(dx, dy) <= pad.r + 1) {
+            boardBlocked.add(`${Math.round(pad.cx + dx)},${Math.round(pad.cy + dy)}`);
+          }
+        }
+      }
+    }
     const shopById = new Map(d.parcels.map((p) => [p.id, p]));
     const postMat = new THREE.MeshStandardMaterial({
       color: 0x3a3f4a,
@@ -1529,6 +1628,7 @@ function buildCommercialDistrict(C: CommercialCtx): void {
     for (const site of surveyBillboards(d, t, boardBlocked)) {
       const by = Math.max(0, t.worldY(Math.round(site.x), Math.round(site.y)));
       const grp = new THREE.Group();
+      grp.name = `commercialBillboard.${site.id}`;
       grp.position.set(C.wx(site.x), by, C.wz(site.y));
       grp.rotation.y = site.faceX === 1 ? Math.PI / 2 : -Math.PI / 2; // a +z plane turned to face along the street
       for (const px of [-2.0, 2.0]) {
@@ -1548,26 +1648,27 @@ function buildCommercialDistrict(C: CommercialCtx): void {
       frame.castShadow = true;
       grp.add(frame);
       const shop = site.shopId ? shopById.get(site.shopId) : undefined;
-      if (typeof document === "undefined") continue; // headless: frame without poster
-      const cv = document.createElement("canvas");
-      cv.width = 256;
-      cv.height = 160;
-      const ctx = cv.getContext("2d");
-      if (ctx)
-        paintPoster(ctx, posterModel(shop?.business), cv.width, cv.height);
-      const tex = new THREE.CanvasTexture(cv);
-      const screen = new THREE.Mesh(
-        new THREE.PlaneGeometry(4.8, 2.85),
-        new THREE.MeshStandardMaterial({
-          map: tex,
-          emissive: 0xffffff,
-          emissiveMap: tex,
-          emissiveIntensity: 0.35,
-          roughness: 0.6,
-        }),
-      );
-      screen.position.set(0, 4.6, 0.17);
-      grp.add(screen);
+      if (typeof document !== "undefined") {
+        const cv = document.createElement("canvas");
+        cv.width = 256;
+        cv.height = 160;
+        const ctx = cv.getContext("2d");
+        if (ctx)
+          paintPoster(ctx, posterModel(shop?.business), cv.width, cv.height);
+        const tex = new THREE.CanvasTexture(cv);
+        const screen = new THREE.Mesh(
+          new THREE.PlaneGeometry(4.8, 2.85),
+          new THREE.MeshStandardMaterial({
+            map: tex,
+            emissive: 0xffffff,
+            emissiveMap: tex,
+            emissiveIntensity: 0.35,
+            roughness: 0.6,
+          }),
+        );
+        screen.position.set(0, 4.6, 0.17);
+        grp.add(screen);
+      }
       C.group.add(grp);
     }
   }
@@ -1633,9 +1734,13 @@ function buildShopVenue(
   g.rotation.y = place.facing;
   C.group.add(g);
 
-  // Neon night floor — the glowing plot pad. An unbuildable parcel (swallowed by a
-  // junction pad's bound) stays an open glowing forecourt with market crates: land the
-  // economy can still sell, with nothing standing inside the junction's clearance.
+  if (!place.buildable) {
+    // When a junction pad or road ribbon sweeps the parcel, do not spawn a protruding forecourt slab
+    // or crates that intrude into the carriageway or junction clearance envelope.
+    return;
+  }
+
+  // Neon night floor — the glowing plot pad.
   const floorMat = new THREE.MeshStandardMaterial({
     color: neon,
     emissive: neon,
@@ -1646,31 +1751,12 @@ function buildShopVenue(
   });
   C.floorMats.push(floorMat);
   const floor = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      place.buildable ? bodyW * 1.06 : 8,
-      0.035,
-      place.buildable ? bodyD * 1.06 : 8,
-    ),
+    new THREE.BoxGeometry(bodyW * 1.06, 0.035, bodyD * 1.06),
     floorMat,
   );
   floor.name = "commercialShopNightFloor";
   floor.position.y = 0.04;
   g.add(floor);
-
-  const crateMat = new THREE.MeshStandardMaterial({
-    color: 0x7a5a36,
-    roughness: 0.9,
-  });
-  if (!place.buildable) {
-    for (let k = 0; k < 3; k++) {
-      const cs = 0.7 + k * 0.15;
-      const crate = new THREE.Mesh(new THREE.BoxGeometry(cs, cs, cs), crateMat);
-      crate.position.set(-2.2 + k * 1.6, cs / 2, k === 1 ? 1.2 : -0.8);
-      crate.castShadow = true;
-      g.add(crate);
-    }
-    return;
-  }
 
   // Foundation plinth — fills the gap between the seat and the natural ground below the
   // footprint on slopes; coastal dry seats keep it thin (the blended terrain grounds
@@ -1813,6 +1899,10 @@ function buildShopVenue(
       post.castShadow = true;
       g.add(post);
     }
+    const crateMat = new THREE.MeshStandardMaterial({
+      color: 0x7a5a36,
+      roughness: 0.9,
+    });
     for (let k = 0; k < 2; k++) {
       const cs = 0.8 + k * 0.18;
       const crate = new THREE.Mesh(new THREE.BoxGeometry(cs, cs, cs), crateMat);
@@ -2039,11 +2129,11 @@ function makeCommercialBusinessLabel(
     transparent: true,
     opacity: label.nightEmissiveFloor * 0.28,
     depthWrite: false,
-    depthTest: false,
+    depthTest: true,
     side: THREE.DoubleSide,
     toneMapped: false,
   });
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(3.2, 24), floorMat);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(1.8, 24), floorMat);
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = -(label.height - 0.1); // the glow ring lies on the pad below
   floor.renderOrder = 29;
