@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-02T12:30:11.578Z",
+  "updatedAt": "2026-10-02T12:53:07.343Z",
   "runs": [
     {
       "runId": 37006915869,
@@ -77,6 +77,49 @@
           "startedAt": "2026-10-02T12:28:52Z",
           "completedAt": "2026-10-02T12:30:00Z",
           "durationSeconds": 68
+        }
+      ]
+    },
+    {
+      "runId": 37006915656,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37006915656",
+      "event": "pull_request",
+      "branch": "feat/spec-177-garage-rebuild-discrete-surfaces",
+      "sha": "f340e8e44c4e0c33a86514155fcaf413fd99af80",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/f340e8e44c4e0c33a86514155fcaf413fd99af80",
+      "pullRequestNumbers": "#553",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/553",
+      "pullRequests": [
+        {
+          "number": 553,
+          "url": "https://github.com/duikindiesee/citylife/pull/553"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-02T12:28:47Z",
+      "completedAt": "2026-10-02T12:51:48Z",
+      "durationSeconds": 1381,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 110837244964,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-02T12:28:51Z",
+          "completedAt": "2026-10-02T12:51:47Z",
+          "durationSeconds": 1376
         }
       ]
     },
