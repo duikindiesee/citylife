@@ -3051,12 +3051,32 @@ export class ColonyRuntime {
     this.emit();
   }
 
-  private tickOwnedDrive(dt: number): void {
+  tickOwnedDrive(dt: number): void {
     const ownedCar = this.currentPlayerOwnedCarSpec();
     if (!this.getOwnedDrivePose() || !this.ownedDrivePose || !ownedCar) return;
     const terrain = this.sim.state.terrain;
     const size = terrain.size;
     const activeBuses = this.busPoses();
+
+    const isFootprintValid = (
+      fx: number,
+      fy: number,
+      fheading: number,
+    ): boolean => {
+      const garagePad = this.commercialDistrict?.garagePad;
+      if (!garagePad) return true;
+      if (!isPointInGarageVicinity(fx, fy, garagePad)) return true;
+      const model = this.getGarageModel();
+      if (!model) return true;
+      return isCarFootprintClearOfGarageObstacles(
+        fx,
+        fy,
+        fheading,
+        garagePad,
+        model.obstacles,
+      );
+    };
+
     this.ownedDrivePose = stepOwnedDrive(
       this.ownedDrivePose,
       this.ownedDriveInput,
@@ -3082,6 +3102,32 @@ export class ColonyRuntime {
           }
         }
 
+        // Spec 175 / 177: Commercial garage pad and driveway apron
+        // Discrete obstacle blocking must take precedence over underlying road surfaces.
+        const garagePad = this.commercialDistrict?.garagePad;
+        if (garagePad && isPointInGarageVicinity(x, y, garagePad)) {
+          if (!this.isGaragePadDrivable(x, y, garagePad)) {
+            // Inside garage pad bounds, non-drivable surfaces (showroom floor, exterior walls) block
+            const local = localFromGridCoordinates(garagePad, x, y);
+            if (
+              Math.abs(local.x) <= garagePad.w / 2 + 0.8 &&
+              Math.abs(local.z) <= garagePad.h / 2 + 0.5
+            ) {
+              return false;
+            }
+            // In the apron throat extension, check if it hits an obstacle
+            const model = this.getGarageModel();
+            if (
+              model &&
+              isPointInsideGarageObstacle(local.x, local.z, model.obstacles, 0.08)
+            ) {
+              return false;
+            }
+          } else {
+            return true;
+          }
+        }
+
         // Public road ribbons are elevated, paved surfaces (bridges, causeways, coastal avenues)
         // and are always drivable regardless of water or terrain elevation underneath.
         if (this.isRoadSurface(x, y)) return true;
@@ -3089,15 +3135,6 @@ export class ColonyRuntime {
         // Keep car on drivable land when off-road; deep ocean water blocks
         if (terrain.isWater(ix, iy) || terrain.worldY(ix, iy) <= 0.05)
           return false;
-
-        // Spec 175 / 177: Commercial garage pad and driveway apron
-        const garagePad = this.commercialDistrict?.garagePad;
-        if (garagePad && isPointInGarageVicinity(x, y, garagePad)) {
-          if (this.isGaragePadDrivable(x, y, garagePad)) {
-            return true;
-          }
-          return false;
-        }
 
         // Spec 175: Homestead driveway and front yard access for owned home is drivable
         if (this.isHomesteadDriveway(ix, iy)) {
@@ -3122,6 +3159,7 @@ export class ColonyRuntime {
         return true;
       },
       (x, y) => this.isRoadSurface(x, y),
+      isFootprintValid,
     );
     const car = this.sim.state.operatorCar;
     if (car) {

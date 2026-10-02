@@ -108,13 +108,13 @@ function R3FGarageCars({ layerGroup }: { layerGroup?: THREE.Group | null }) {
     };
 
     // Hero Car on showroom plinth: Karoo X19 Targa (Yellow Fiat X1/9 GLB)
-    // Sized to heroic presentation scale (0.38 in parent 4x scaled group) to match exterior car presence.
+    // Sized to authentic real-world proportion (0.262 in parent 4x scaled group equals ~1.05m net scale).
     replaceCar(
       "garageAnchorShowroomHeroCar",
       x19.scene,
       SHOWROOM_VEHICLES[2]?.spec.paint,
       SHOWROOM_VEHICLES[2]?.rotationOffset,
-      0.38,
+      0.262,
     );
 
     // Forecourt Display Car 1: Karoo Vonk 1.1

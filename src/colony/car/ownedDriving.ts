@@ -15,6 +15,38 @@ export interface OwnedDriveInput {
   brake?: boolean;
 }
 
+function getDenseFootprintSamples(
+  halfLength: number,
+  halfWidth: number,
+): readonly [number, number][] {
+  return [
+    // 5 front bumper points
+    [halfLength, -halfWidth],
+    [halfLength, -halfWidth * 0.5],
+    [halfLength, 0],
+    [halfLength, halfWidth * 0.5],
+    [halfLength, halfWidth],
+    // 3 front-quarter points
+    [halfLength * 0.5, -halfWidth],
+    [halfLength * 0.5, 0],
+    [halfLength * 0.5, halfWidth],
+    // 3 center/mid points
+    [0, -halfWidth],
+    [0, 0],
+    [0, halfWidth],
+    // 3 rear-quarter points
+    [-halfLength * 0.5, -halfWidth],
+    [-halfLength * 0.5, 0],
+    [-halfLength * 0.5, halfWidth],
+    // 5 rear bumper points
+    [-halfLength, -halfWidth],
+    [-halfLength, -halfWidth * 0.5],
+    [-halfLength, 0],
+    [-halfLength, halfWidth * 0.5],
+    [-halfLength, halfWidth],
+  ];
+}
+
 function isFootprintClear(
   x: number,
   y: number,
@@ -23,19 +55,12 @@ function isFootprintClear(
   halfLength: number,
   halfWidth: number,
   cellMetres: number,
+  isFootprintValid?: (x: number, y: number, heading: number) => boolean,
 ): boolean {
+  if (isFootprintValid && !isFootprintValid(x, y, heading)) return false;
   const cos = Math.cos(heading);
   const sin = Math.sin(heading);
-  const samples: [number, number][] = [
-    [halfLength, -halfWidth],
-    [halfLength, 0],
-    [halfLength, halfWidth],
-    [0, -halfWidth],
-    [0, halfWidth],
-    [-halfLength, -halfWidth],
-    [-halfLength, 0],
-    [-halfLength, halfWidth],
-  ];
+  const samples = getDenseFootprintSamples(halfLength, halfWidth);
   for (const [along, across] of samples) {
     const px = x + (cos * along - sin * across) / cellMetres;
     const py = y + (sin * along + cos * across) / cellMetres;
@@ -59,22 +84,14 @@ function inspectFootprint(
   halfLength: number,
   halfWidth: number,
   cellMetres: number,
+  isFootprintValid?: (x: number, y: number, heading: number) => boolean,
 ): FootprintInspection {
   const cos = Math.cos(heading);
   const sin = Math.sin(heading);
   let front = 0;
   let center = 0;
   let rear = 0;
-  const samples: [number, number][] = [
-    [halfLength, -halfWidth],
-    [halfLength, 0],
-    [halfLength, halfWidth],
-    [0, -halfWidth],
-    [0, halfWidth],
-    [-halfLength, -halfWidth],
-    [-halfLength, 0],
-    [-halfLength, halfWidth],
-  ];
+  const samples = getDenseFootprintSamples(halfLength, halfWidth);
   for (const [along, across] of samples) {
     const px = x + (cos * along - sin * across) / cellMetres;
     const py = y + (sin * along + cos * across) / cellMetres;
@@ -83,6 +100,10 @@ function inspectFootprint(
       else if (along < 0) rear++;
       else center++;
     }
+  }
+  if (isFootprintValid && !isFootprintValid(x, y, heading)) {
+    // If continuous OBB SAT detects collision, reflect in obstacle penetration
+    center++;
   }
   return { front, center, rear, total: front + center + rear };
 }
@@ -96,6 +117,7 @@ function isStepAllowed(
   halfLength: number,
   halfWidth: number,
   cellMetres: number,
+  isFootprintValid?: (x: number, y: number, heading: number) => boolean,
 ): boolean {
   if (!canOccupy(targetX, targetY)) return false;
 
@@ -107,6 +129,7 @@ function isStepAllowed(
     halfLength,
     halfWidth,
     cellMetres,
+    isFootprintValid,
   );
 
   // If 100% clear of all obstacles: step is valid
@@ -136,6 +159,7 @@ export function stepOwnedDrive(
   delta: number,
   canOccupy: (x: number, y: number) => boolean,
   isRoad?: (x: number, y: number) => boolean,
+  isFootprintValid?: (x: number, y: number, heading: number) => boolean,
 ): OwnedDrivePose {
   const cfg = COLONY.ownedDriving;
   const next = { ...pose };
@@ -187,9 +211,18 @@ export function stepOwnedDrive(
       next.heading +
       steer * cfg.steerRadiansPerSecond * steerAuthority * steerDir * dt;
 
-    // Heading always updates if the car can turn at its current position
-    if (
-      isFootprintClear(
+    if (steer !== 0) {
+      const currentInspection = inspectFootprint(
+        next.x,
+        next.y,
+        next.heading,
+        canOccupy,
+        cfg.halfLengthMetres,
+        cfg.halfWidthMetres,
+        cfg.cellMetres,
+        isFootprintValid,
+      );
+      const targetInspection = inspectFootprint(
         next.x,
         next.y,
         heading,
@@ -197,10 +230,15 @@ export function stepOwnedDrive(
         cfg.halfLengthMetres,
         cfg.halfWidthMetres,
         cfg.cellMetres,
-      ) ||
-      canOccupy(next.x, next.y)
-    ) {
-      next.heading = heading;
+        isFootprintValid,
+      );
+      // Turn allowed if target heading is completely clear, or improves/preserves unsticking recovery
+      if (
+        targetInspection.total === 0 ||
+        targetInspection.total <= currentInspection.total
+      ) {
+        next.heading = heading;
+      }
     }
 
     const stepX = (Math.cos(next.heading) * next.speed * dt) / cfg.cellMetres;
@@ -219,6 +257,7 @@ export function stepOwnedDrive(
         cfg.halfLengthMetres,
         cfg.halfWidthMetres,
         cfg.cellMetres,
+        isFootprintValid,
       )
     ) {
       next.x = targetX;
@@ -235,6 +274,7 @@ export function stepOwnedDrive(
         cfg.halfLengthMetres,
         cfg.halfWidthMetres,
         cfg.cellMetres,
+        isFootprintValid,
       )
     ) {
       next.x = targetX;
@@ -251,6 +291,7 @@ export function stepOwnedDrive(
         cfg.halfLengthMetres,
         cfg.halfWidthMetres,
         cfg.cellMetres,
+        isFootprintValid,
       )
     ) {
       next.y = targetY;
