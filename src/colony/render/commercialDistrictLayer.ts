@@ -675,28 +675,140 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   const showroomCarGlow = new THREE.Group();
   showroomCarGlow.name = "garageAnchorShowroomCarGlow";
 
-  const service = new THREE.Mesh(
-    new THREE.BoxGeometry(
-      model.serviceBay.w,
-      model.serviceBay.h,
-      model.serviceBay.d,
-    ),
-    new THREE.MeshStandardMaterial({
-      color: 0x3e4754,
-      roughness: 0.78,
-      metalness: 0.12,
-      emissive: 0x121a24,
-      emissiveIntensity: 0.08,
-    }),
-  );
+  // Spec 177: Discrete Workshop Building Shell (garageAnchorServiceBayBlock)
+  // Partitioned into solid exterior walls, roof lintel, and front piers around the bay openings.
+  // Bay 2 is an authentic hollow drive-through cavity with zero geometry occluding the drive-in path.
+  const service = new THREE.Group();
   service.name = "garageAnchorServiceBayBlock";
-  service.position.set(
+
+  const workshopWallMat = new THREE.MeshStandardMaterial({
+    color: 0x3e4754,
+    roughness: 0.78,
+    metalness: 0.12,
+    emissive: 0x121a24,
+    emissiveIntensity: 0.08,
+  });
+
+  const wallThickness = 0.22;
+  const doorH = model.serviceBay.h * 0.78;
+  const lintelH = model.serviceBay.h - doorH;
+  const hdw = model.serviceBay.bayDoorW / 2;
+  const bayFrontZ = model.serviceBay.z + model.serviceBay.d / 2;
+  const bayBackZ = model.serviceBay.z - model.serviceBay.d / 2;
+
+  // 1. Back Wall spanning full workshop width
+  const workshopBackWall = new THREE.Mesh(
+    new THREE.BoxGeometry(model.serviceBay.w, model.serviceBay.h, wallThickness),
+    workshopWallMat,
+  );
+  workshopBackWall.name = "garageAnchorWorkshopBackWall";
+  workshopBackWall.position.set(
     model.serviceBay.x,
-    model.serviceBay.y,
+    model.serviceBay.h / 2,
+    bayBackZ + wallThickness / 2,
+  );
+  workshopBackWall.castShadow = true;
+  workshopBackWall.receiveShadow = true;
+  service.add(workshopBackWall);
+
+  // 2. East Side Wall spanning full workshop depth
+  const eastWall = new THREE.Mesh(
+    new THREE.BoxGeometry(wallThickness, model.serviceBay.h, model.serviceBay.d),
+    workshopWallMat,
+  );
+  eastWall.name = "garageAnchorWorkshopEastWall";
+  eastWall.position.set(
+    model.serviceBay.x + model.serviceBay.w / 2 - wallThickness / 2,
+    model.serviceBay.h / 2,
     model.serviceBay.z,
   );
-  service.castShadow = true;
-  service.receiveShadow = true;
+  eastWall.castShadow = true;
+  eastWall.receiveShadow = true;
+  service.add(eastWall);
+
+  // 3. Workshop Floor Slab
+  const workshopFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(model.serviceBay.w, 0.04, model.serviceBay.d),
+    workshopWallMat,
+  );
+  workshopFloor.name = "garageAnchorWorkshopFloor";
+  workshopFloor.position.set(
+    model.serviceBay.x,
+    0.02,
+    model.serviceBay.z,
+  );
+  workshopFloor.receiveShadow = true;
+  service.add(workshopFloor);
+
+  // 4. Upper Spandrel Lintel above all door openings
+  const lintel = new THREE.Mesh(
+    new THREE.BoxGeometry(model.serviceBay.w, lintelH, wallThickness),
+    workshopWallMat,
+  );
+  lintel.name = "garageAnchorWorkshopLintel";
+  lintel.position.set(
+    model.serviceBay.x,
+    doorH + lintelH / 2,
+    bayFrontZ - wallThickness / 2,
+  );
+  lintel.castShadow = true;
+  lintel.receiveShadow = true;
+  service.add(lintel);
+
+  // 5. Front Piers partitioned cleanly around the three bay openings:
+  const bayDoorSpacing = model.serviceBay.bayDoorW * 1.25;
+  const bay1X = model.serviceBay.x - bayDoorSpacing;
+  const bay2X = model.serviceBay.x;
+  const bay3X = model.serviceBay.x + bayDoorSpacing;
+  const westX = model.serviceBay.x - model.serviceBay.w / 2;
+  const eastX = model.serviceBay.x + model.serviceBay.w / 2;
+
+  const piers: [number, number, string][] = [
+    [westX, bay1X - hdw, "garageAnchorWorkshopPier.west"],
+    [bay1X + hdw, bay2X - hdw, "garageAnchorWorkshopPier.1_2"],
+    [bay2X + hdw, bay3X - hdw, "garageAnchorWorkshopPier.2_3"],
+    [bay3X + hdw, eastX, "garageAnchorWorkshopPier.east"],
+  ];
+  for (const [xLeft, xRight, pierName] of piers) {
+    const pw = xRight - xLeft;
+    if (pw > 0.02) {
+      const pier = new THREE.Mesh(
+        new THREE.BoxGeometry(pw, doorH, wallThickness),
+        workshopWallMat,
+      );
+      pier.name = pierName;
+      pier.position.set(
+        (xLeft + xRight) / 2,
+        doorH / 2,
+        bayFrontZ - wallThickness / 2,
+      );
+      pier.castShadow = true;
+      pier.receiveShadow = true;
+      service.add(pier);
+    }
+  }
+
+  // 6. Interior Partitions enclosing closed bays 1 and 3 while leaving Bay 2 completely open
+  const partitionThickness = 0.16;
+  const partitionD = model.serviceBay.d - wallThickness * 2;
+  for (const [px, partName] of [
+    [(bay1X + hdw + bay2X - hdw) / 2, "garageAnchorWorkshopPartition.1_2"],
+    [(bay2X + hdw + bay3X - hdw) / 2, "garageAnchorWorkshopPartition.2_3"],
+  ] as [number, string][]) {
+    const partition = new THREE.Mesh(
+      new THREE.BoxGeometry(partitionThickness, model.serviceBay.h, partitionD),
+      workshopWallMat,
+    );
+    partition.name = partName;
+    partition.position.set(
+      px,
+      model.serviceBay.h / 2,
+      model.serviceBay.z,
+    );
+    partition.castShadow = true;
+    partition.receiveShadow = true;
+    service.add(partition);
+  }
 
   // Spec 177: Solid architectural dividing core between showroom and service workshop
   const dividingCore = new THREE.Mesh(
@@ -849,20 +961,22 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
         emissiveIntensity: 0.45,
       });
       C.garageFloorMats.push(cavityMat);
+      // Spec 177: Authentic hollow service bay interior floor lining (not a solid obstructive volume)
       const cavity = new THREE.Mesh(
         new THREE.BoxGeometry(
           model.serviceBay.bayDoorW * 1.05,
-          model.serviceBay.h * 0.72,
-          model.serviceBay.d * 0.52,
+          0.02,
+          model.serviceBay.d * 0.88,
         ),
         cavityMat,
       );
       cavity.name = "garageAnchorOpenBayInterior";
       cavity.position.set(
         sx,
-        model.serviceBay.h * 0.36,
-        bayFaceZ - model.serviceBay.d * 0.27,
+        0.03,
+        bayFaceZ - model.serviceBay.d * 0.46,
       );
+      cavity.receiveShadow = true;
       g.add(cavity);
 
       // Spec 176: High-output service bay inspection PointLight

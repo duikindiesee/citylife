@@ -50,6 +50,7 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
      - Door 1 opening begins at $X = +0.62$, giving $> 2.5$m clearance from the showroom corner and a 100% unobstructed approach corridor from the municipal road.
      - Hollow architectural door frames (jambs and lintels) ensuring the middle bay is fully open and visible.
      - Dedicated floating canopy roof over the showroom and industrial parapet roof over the service bays.
+     - Discrete partitioned workshop shell (`garageAnchorServiceBayBlock`): replaced the monolithic solid workshop block with discrete solid perimeter elements (rear wall, east side wall, concrete floor slab, upper spandrel lintel, front door piers, and interior bay partitions). Bay 2 is an authentic hollow architectural cavity with flat floor lining (`garageAnchorOpenBayInterior`), overhead inspection illumination, and twin-post hydraulic car lift, providing completely unobstructed frontal sightlines and vehicle drive-through access.
 
 ## Mechanic
 
