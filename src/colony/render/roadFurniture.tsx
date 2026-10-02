@@ -88,7 +88,8 @@ export function TrafficLight({
   group,
   phase,
 }: TrafficLightProps) {
-  const mast = Math.min(6, laneHalfM / 2 + 1.6);
+  // Balanced mast arm reaching over the curb lane (3.2 m max instead of 5.6 m)
+  const mast = Math.min(3.2, laneHalfM / 2 + 0.4);
   const redRef = React.useRef<THREE.MeshStandardMaterial>(null);
   const amberRef = React.useRef<THREE.MeshStandardMaterial>(null);
   const greenRef = React.useRef<THREE.MeshStandardMaterial>(null);
@@ -114,36 +115,75 @@ export function TrafficLight({
 
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
-      {/* Pole — 5.8 m, believable beside a 16 m carriageway */}
-      <mesh position={[0, 2.9, 0]}>
-        <cylinderGeometry args={[0.09, 0.11, 5.8, 8]} />
+      {/* Stanchion pole — 4.8 m, realistic street scale */}
+      <mesh position={[0, 2.4, 0]}>
+        <cylinderGeometry args={[0.08, 0.1, 4.8, 8]} />
         <meshStandardMaterial color="#2d3436" roughness={0.7} />
       </mesh>
-      {/* Mast arm reaching over the approach lane (local +X = toward the carriageway) */}
-      <mesh position={[mast / 2, 5.4, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.06, 0.06, mast, 8]} />
+      {/* Mast arm reaching over the approach lane */}
+      <mesh position={[mast / 2, 4.4, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.05, 0.05, mast, 8]} />
         <meshStandardMaterial color="#2d3436" roughness={0.7} />
       </mesh>
-      {/* Head over the lane, lenses facing the approaching driver (local +Z) */}
-      <group position={[mast, 4.8, 0]}>
+      {/* Signal head over the lane */}
+      <group position={[mast, 3.8, 0]}>
+        {/* Main 3-aspect housing */}
         <mesh>
-          <boxGeometry args={[0.5, 1.3, 0.35]} />
+          <boxGeometry args={[0.42, 1.15, 0.3]} />
           <meshStandardMaterial
             color="#232a2e"
             roughness={0.6}
             metalness={0.15}
           />
         </mesh>
-        <mesh position={[0, 0.42, 0.19]}>
-          <sphereGeometry args={[0.16, 10, 10]} />
+        {/* Mounting bracket connecting head to mast arm */}
+        <mesh position={[0, 0.45, -0.1]}>
+          <cylinderGeometry args={[0.035, 0.035, 0.3, 8]} />
+          <meshStandardMaterial color="#2d3436" roughness={0.7} />
+        </mesh>
+        {/* Three lenses with sun visors */}
+        <mesh position={[0, 0.36, 0.16]}>
+          <sphereGeometry args={[0.13, 10, 10]} />
           <meshStandardMaterial ref={redRef} color="#2d3436" />
         </mesh>
-        <mesh position={[0, 0, 0.19]}>
-          <sphereGeometry args={[0.16, 10, 10]} />
+        <mesh position={[0, 0, 0.16]}>
+          <sphereGeometry args={[0.13, 10, 10]} />
           <meshStandardMaterial ref={amberRef} color="#2d3436" />
         </mesh>
-        <mesh position={[0, -0.42, 0.19]}>
-          <sphereGeometry args={[0.16, 10, 10]} />
+        <mesh position={[0, -0.36, 0.16]}>
+          <sphereGeometry args={[0.13, 10, 10]} />
+          <meshStandardMaterial ref={greenRef} color="#2d3436" />
+        </mesh>
+        {/* Arched visors over each lens */}
+        {[0.36, 0, -0.36].map((yOff, vi) => (
+          <mesh
+            key={vi}
+            position={[0, yOff + 0.07, 0.2]}
+            rotation={[Math.PI / 4, 0, 0]}
+          >
+            <cylinderGeometry
+              args={[0.14, 0.14, 0.08, 8, 1, true, -Math.PI / 2, Math.PI]}
+            />
+            <meshStandardMaterial
+              color="#1a1e20"
+              roughness={0.8}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        ))}
+      </group>
+      {/* Eye-level secondary aspect on vertical stanchion */}
+      <group position={[0.12, 2.2, 0.08]}>
+        <mesh>
+          <boxGeometry args={[0.2, 0.5, 0.16]} />
+          <meshStandardMaterial color="#232a2e" roughness={0.7} />
+        </mesh>
+        <mesh position={[0, 0.14, 0.09]}>
+          <sphereGeometry args={[0.065, 8, 8]} />
+          <meshStandardMaterial ref={redRef} color="#2d3436" />
+        </mesh>
+        <mesh position={[0, -0.14, 0.09]}>
+          <sphereGeometry args={[0.065, 8, 8]} />
           <meshStandardMaterial ref={greenRef} color="#2d3436" />
         </mesh>
       </group>
