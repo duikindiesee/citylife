@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-02T15:26:21.971Z",
+  "updatedAt": "2026-10-02T15:34:02.712Z",
   "runs": [
+    {
+      "runId": 37027837555,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37027837555",
+      "event": "push",
+      "branch": "main",
+      "sha": "8ba9f46a57fb2229e6869df47a5d58bf46b2f47d",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/8ba9f46a57fb2229e6869df47a5d58bf46b2f47d",
+      "pullRequestNumbers": "#553",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/553",
+      "pullRequests": [
+        {
+          "number": 553,
+          "url": "https://github.com/duikindiesee/citylife/pull/553"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-02T15:33:40Z",
+      "completedAt": "2026-10-02T15:33:51Z",
+      "durationSeconds": 11,
+      "runnerSummary": "GitHub Actions 1000010645",
+      "jobs": [
+        {
+          "id": 110906900654,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010645",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-10-02T15:33:44Z",
+          "completedAt": "2026-10-02T15:33:50Z",
+          "durationSeconds": 6
+        }
+      ]
+    },
     {
       "runId": 37024047505,
       "workflowName": "Build CityLife Debug APK",
