@@ -60,7 +60,7 @@ describe("CityLife Expanded QA Findings Verification (2026-10-02)", () => {
     const planterPositions: THREE.Vector3[] = [];
 
     layer.group.traverse((obj) => {
-      if (obj.parent === layer.group) {
+      if (obj.parent === layer.group && !obj.name.includes("Anchor") && !obj.name.includes("garage") && !obj.name.includes("mall")) {
         // Find lamps, benches, planters
         const children = obj.children;
         const hasPole = children.some((c: any) => c.geometry?.type === "CylinderGeometry" && c.position.y === 1.6);

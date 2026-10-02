@@ -976,11 +976,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       );
       rib.name = `garageAnchorDoorSlat.${i + 1}.${slat}`;
       rib.position.set(
-        door.position.x,
-        door.position.y + (slat - 3) * 0.25,
-        door.position.z + 0.02,
+        0,
+        (slat - 3) * 0.25,
+        0.02,
       );
-      g.add(rib);
+      door.add(rib);
     }
   }
 
