@@ -794,9 +794,10 @@ function R3FWorld({
             <R3FRoadBuilder sim={sim} runtime={runtime} />
             <R3FRoadRibbons sim={sim} runtime={runtime} />
             <R3FRoadNetwork sim={sim} runtime={runtime} />
-            {/* Dynamic World Elements — Spec 173 / Spec 176: authentic Aloe dichotoma (quiver trees / kokerbome)
-                are the exclusive flora of this desert island; legacy cone foliage is retired */}
-            <group name="foliage" />
+            {/* Dynamic World Elements */}
+            {perfExperiment().foliage && (
+              <R3FFoliage sim={sim} runtime={runtime} />
+            )}
             <R3FQuiverTrees runtime={runtime} />
             <ZoneManager sim={sim} runtime={runtime} />
             <R3FPlayerCar sim={sim} />
