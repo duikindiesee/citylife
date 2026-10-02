@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-02T08:33:23.180Z",
+  "updatedAt": "2026-10-02T08:34:40.163Z",
   "runs": [
+    {
+      "runId": 36984661135,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36984661135",
+      "event": "pull_request",
+      "branch": "feat/spec-177-garage-rebuild-discrete-surfaces",
+      "sha": "2fe9e1b3a176bc3a3eb6ca3a8dff0072c898c529",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/2fe9e1b3a176bc3a3eb6ca3a8dff0072c898c529",
+      "pullRequestNumbers": "#553",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/553",
+      "pullRequests": [
+        {
+          "number": 553,
+          "url": "https://github.com/duikindiesee/citylife/pull/553"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-02T08:33:01Z",
+      "completedAt": "2026-10-02T08:34:26Z",
+      "durationSeconds": 85,
+      "runnerSummary": "GitHub Actions 1000010610",
+      "jobs": [
+        {
+          "id": 110766825303,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010610",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-02T08:33:05Z",
+          "completedAt": "2026-10-02T08:34:25Z",
+          "durationSeconds": 80
+        }
+      ]
+    },
     {
       "runId": 36984661054,
       "workflowName": "Secret scan",
