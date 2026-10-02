@@ -62,9 +62,11 @@
    - Grouped junction approach arms within a 28° angular threshold, selecting a single representative arm for furniture placement.
    - Expanded verge offset buffer to `(a.half + 0.5)`.
 
-3. **Traffic Light Mesh Scaling (`src/colony/render/roadFurniture.tsx`):**
+3. **Traffic Light Mesh Scaling & Dual-Aspect Ref Lifecycle (`src/colony/render/roadFurniture.tsx`):**
    - Lowered stanchion to 4.8m, mast arm to 3.2m max, and head to 3.8m.
    - Modeled arched visors over lenses, mast mounting collar, and secondary driver/pedestrian head.
+   - Assigned separate distinct material refs (`redRef`, `secRedRef`, `greenRef`, `secGreenRef`) so React does not overwrite overhead signal refs with secondary stanchion materials.
+   - Exported `updateTrafficLightLamps` imperative updater driving both overhead and eye-level aspects synchronously across all signal phases.
 
 4. **Test Proofs:**
-   - Vitest test suites passed: `roadJunctions.test.ts`, `junctionCap.test.ts`, `junctionCapEdgeProof.test.ts`, `junctionPaintLayoutProof.test.ts`, `roadFurnitureClearance.test.ts`, `busFleetAnchorOrder.test.ts`, and full repository suite (278 test files, 2424 tests).
+   - Vitest test suites passed: `trafficLightDualAspects.test.ts` (dual-head illumination and distinct ref mounting), `roadJunctions.test.ts`, `junctionCap.test.ts`, `junctionCapEdgeProof.test.ts`, `junctionPaintLayoutProof.test.ts`, `roadFurnitureClearance.test.ts`, `busFleetAnchorOrder.test.ts`, and full repository suite.

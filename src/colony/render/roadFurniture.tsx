@@ -53,20 +53,36 @@ export function StopSign({ position, rotationY }: FurnitureProps) {
   );
 }
 
-interface TrafficLightProps extends FurnitureProps {
+export interface TrafficLightTestRefs {
+  primaryRed?: React.RefObject<THREE.MeshStandardMaterial | null>;
+  primaryAmber?: React.RefObject<THREE.MeshStandardMaterial | null>;
+  primaryGreen?: React.RefObject<THREE.MeshStandardMaterial | null>;
+  secondaryRed?: React.RefObject<THREE.MeshStandardMaterial | null>;
+  secondaryGreen?: React.RefObject<THREE.MeshStandardMaterial | null>;
+}
+
+export interface TrafficLightProps extends FurnitureProps {
   /** The served approach's half-width in metres — the mast reaches over its lane. */
   laneHalfM: number;
   /** Phase group: A-axis arms are green while B-axis arms are red, and vice versa. */
   group: "A" | "B";
   /** Per-junction cycle offset in seconds (0..CYCLE). */
   phase: number;
+  /** Optional external refs for lifecycle/illumination unit and mounted regressions. */
+  testRefs?: TrafficLightTestRefs;
 }
 
-const CYCLE = 16;
-const OFF = new THREE.Color("#2d3436");
-const RED = new THREE.Color("#ff7675");
-const AMBER = new THREE.Color("#ffeaa7");
-const GREEN = new THREE.Color("#55efc4");
+export const TRAFFIC_LIGHT_CYCLE = 16;
+export const TRAFFIC_LIGHT_OFF = new THREE.Color("#2d3436");
+export const TRAFFIC_LIGHT_RED = new THREE.Color("#ff7675");
+export const TRAFFIC_LIGHT_AMBER = new THREE.Color("#ffeaa7");
+export const TRAFFIC_LIGHT_GREEN = new THREE.Color("#55efc4");
+
+const CYCLE = TRAFFIC_LIGHT_CYCLE;
+const OFF = TRAFFIC_LIGHT_OFF;
+const RED = TRAFFIC_LIGHT_RED;
+const AMBER = TRAFFIC_LIGHT_AMBER;
+const GREEN = TRAFFIC_LIGHT_GREEN;
 
 /** Signal state for one group at cycle time t: green [0,6.5) amber [6.5,8) red [8,16),
  *  group B shifted half a cycle — an all-red inter-green in both changeovers. Exported
@@ -81,36 +97,72 @@ export function signalState(
   return "red";
 }
 
+/** Imperative lamp driver updating both primary overhead and secondary eye-level signal aspects. */
+export function updateTrafficLightLamps(
+  materials: {
+    primaryRed?: THREE.MeshStandardMaterial | null;
+    primaryAmber?: THREE.MeshStandardMaterial | null;
+    primaryGreen?: THREE.MeshStandardMaterial | null;
+    secondaryRed?: THREE.MeshStandardMaterial | null;
+    secondaryGreen?: THREE.MeshStandardMaterial | null;
+  },
+  cycleTime: number,
+  group: "A" | "B",
+): "red" | "amber" | "green" {
+  const state = signalState(cycleTime % CYCLE, group);
+  const setMat = (
+    m: THREE.MeshStandardMaterial | null | undefined,
+    lit: boolean,
+    color: THREE.Color,
+  ) => {
+    if (!m) return;
+    m.color.copy(lit ? color : OFF);
+    m.emissive.copy(lit ? color : OFF);
+    m.emissiveIntensity = lit ? 1.8 : 0;
+  };
+  setMat(materials.primaryRed, state === "red", RED);
+  setMat(materials.secondaryRed, state === "red", RED);
+  setMat(materials.primaryAmber, state === "amber", AMBER);
+  setMat(materials.primaryGreen, state === "green", GREEN);
+  setMat(materials.secondaryGreen, state === "green", GREEN);
+  return state;
+}
+
 export function TrafficLight({
   position,
   rotationY,
   laneHalfM,
   group,
   phase,
+  testRefs,
 }: TrafficLightProps) {
   // Balanced mast arm reaching over the curb lane (3.2 m max instead of 5.6 m)
   const mast = Math.min(3.2, laneHalfM / 2 + 0.4);
-  const redRef = React.useRef<THREE.MeshStandardMaterial>(null);
-  const amberRef = React.useRef<THREE.MeshStandardMaterial>(null);
-  const greenRef = React.useRef<THREE.MeshStandardMaterial>(null);
+  const internalRedRef = React.useRef<THREE.MeshStandardMaterial>(null);
+  const internalSecRedRef = React.useRef<THREE.MeshStandardMaterial>(null);
+  const internalAmberRef = React.useRef<THREE.MeshStandardMaterial>(null);
+  const internalGreenRef = React.useRef<THREE.MeshStandardMaterial>(null);
+  const internalSecGreenRef = React.useRef<THREE.MeshStandardMaterial>(null);
+
+  const redRef = testRefs?.primaryRed ?? internalRedRef;
+  const secRedRef = testRefs?.secondaryRed ?? internalSecRedRef;
+  const amberRef = testRefs?.primaryAmber ?? internalAmberRef;
+  const greenRef = testRefs?.primaryGreen ?? internalGreenRef;
+  const secGreenRef = testRefs?.secondaryGreen ?? internalSecGreenRef;
 
   // Imperative lamp driving off the shared clock — no per-light timers, no state churn.
   useFrame(({ clock }) => {
-    const state = signalState((clock.elapsedTime + phase) % CYCLE, group);
-    const set = (
-      ref: React.RefObject<THREE.MeshStandardMaterial | null>,
-      lit: boolean,
-      color: THREE.Color,
-    ) => {
-      const m = ref.current;
-      if (!m) return;
-      m.color.copy(lit ? color : OFF);
-      m.emissive.copy(lit ? color : OFF);
-      m.emissiveIntensity = lit ? 1.8 : 0;
-    };
-    set(redRef, state === "red", RED);
-    set(amberRef, state === "amber", AMBER);
-    set(greenRef, state === "green", GREEN);
+    updateTrafficLightLamps(
+      {
+        primaryRed: redRef.current,
+        primaryAmber: amberRef.current,
+        primaryGreen: greenRef.current,
+        secondaryRed: secRedRef.current,
+        secondaryGreen: secGreenRef.current,
+      },
+      clock.elapsedTime + phase,
+      group,
+    );
   });
 
   return (
@@ -180,11 +232,11 @@ export function TrafficLight({
         </mesh>
         <mesh position={[0, 0.14, 0.09]}>
           <sphereGeometry args={[0.065, 8, 8]} />
-          <meshStandardMaterial ref={redRef} color="#2d3436" />
+          <meshStandardMaterial ref={secRedRef} color="#2d3436" />
         </mesh>
         <mesh position={[0, -0.14, 0.09]}>
           <sphereGeometry args={[0.065, 8, 8]} />
-          <meshStandardMaterial ref={greenRef} color="#2d3436" />
+          <meshStandardMaterial ref={secGreenRef} color="#2d3436" />
         </mesh>
       </group>
     </group>
