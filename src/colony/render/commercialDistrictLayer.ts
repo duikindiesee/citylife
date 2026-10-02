@@ -682,9 +682,9 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       model.serviceBay.d,
     ),
     new THREE.MeshStandardMaterial({
-      color: 0x46505d,
+      color: 0x3e4754,
       roughness: 0.78,
-      metalness: 0.08,
+      metalness: 0.12,
       emissive: 0x121a24,
       emissiveIntensity: 0.08,
     }),
@@ -698,33 +698,95 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   service.castShadow = true;
   service.receiveShadow = true;
 
+  // Spec 177: Solid architectural dividing core between showroom and service workshop
+  const dividingCore = new THREE.Mesh(
+    new THREE.BoxGeometry(0.32, model.showroom.h, model.showroom.d),
+    new THREE.MeshStandardMaterial({
+      color: 0x1e2733,
+      roughness: 0.65,
+      metalness: 0.35,
+    }),
+  );
+  dividingCore.name = "garageAnchorCentralDividingCore";
+  dividingCore.position.set(0.0, model.showroom.h / 2, model.showroom.z);
+  dividingCore.castShadow = true;
+  dividingCore.receiveShadow = true;
+  g.add(dividingCore);
+
+  // Spec 177: Dedicated floating architectural roof canopy over the showroom pavilion
+  const showroomRoof = new THREE.Mesh(
+    new THREE.BoxGeometry(model.showroom.w + 0.35, 0.16, model.showroom.d + 0.4),
+    new THREE.MeshStandardMaterial({
+      color: 0x222a36,
+      roughness: 0.7,
+      metalness: 0.25,
+    }),
+  );
+  showroomRoof.name = "garageAnchorShowroomCanopyRoof";
+  showroomRoof.position.set(
+    model.showroom.x,
+    model.showroom.h + 0.08,
+    model.showroom.z,
+  );
+  showroomRoof.castShadow = true;
+
+  const showroomRoofGlow = new THREE.Mesh(
+    new THREE.BoxGeometry(model.showroom.w + 0.38, 0.04, model.showroom.d + 0.42),
+    mullionNeonMat,
+  );
+  showroomRoofGlow.position.set(
+    model.showroom.x,
+    model.showroom.h + 0.02,
+    model.showroom.z,
+  );
+  g.add(showroomRoof, showroomRoofGlow);
+
+  // Spec 177: Modern parapet roof over the service bays (garageAnchorGraphiteFlatRoofCanopy)
   const roof = new THREE.Mesh(
     new THREE.BoxGeometry(
-      model.footprint.w * 0.86,
+      model.serviceBay.w + 0.25,
       0.16,
-      // overhang the road frontage so the canted roof reads as a canopy, not a lid
-      model.footprint.d * 0.78,
+      model.serviceBay.d + 0.35,
     ),
     new THREE.MeshStandardMaterial({
       color: 0x303845,
       roughness: 0.82,
-      metalness: 0.06,
+      metalness: 0.12,
     }),
   );
   roof.name = "garageAnchorGraphiteFlatRoofCanopy";
-  roof.position.set(0.12, model.serviceBay.h + 0.16, 0.02);
-  // Spec 110 — MONO-SLOPE the roof (tilt toward the road) so the garage silhouette is no longer a flat
-  // box lid; the canted plane + the cool glass below are the two non-orthogonal moves that break the
-  // "detailed box" read the design critique flagged.
-  roof.rotation.x = -0.19;
+  roof.position.set(model.serviceBay.x, model.serviceBay.h + 0.08, model.serviceBay.z);
   roof.castShadow = true;
+
+  // Spec 177: Wide continuous driveway apron connecting municipal street to forecourt and all service bays
+  const fullApronMat = new THREE.MeshStandardMaterial({
+    color: 0x3d4450,
+    roughness: 0.68,
+    metalness: 0.05,
+    emissive: 0xff9f2f,
+    emissiveIntensity:
+      garageAnchorNightFloorEmissive(C.state.clock.daylight) * 0.52,
+  });
+  C.garageFloorMats.push(fullApronMat);
+  const fullApron = new THREE.Mesh(
+    new THREE.BoxGeometry(model.drivewayApron.w, 0.036, model.drivewayApron.d),
+    fullApronMat,
+  );
+  fullApron.name = "garageAnchorDrivewayApron";
+  fullApron.position.set(
+    model.drivewayApron.x,
+    model.drivewayApron.y,
+    model.drivewayApron.z,
+  );
+  fullApron.receiveShadow = true;
+  g.add(fullApron);
 
   const wrenchGroup = new THREE.Group();
   wrenchGroup.name = "garageAnchorRooftopWrenchEmblem";
   wrenchGroup.position.set(
-    model.serviceBay.x + model.serviceBay.w * 0.04,
-    model.serviceBay.h + 0.27,
-    model.serviceBay.z - model.serviceBay.d * 0.04,
+    model.serviceBay.x,
+    model.serviceBay.h + 0.28,
+    model.serviceBay.z,
   );
   wrenchGroup.rotation.y = -0.28;
   const wrenchMat = new THREE.MeshStandardMaterial({
@@ -874,24 +936,37 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       );
       g.add(apron);
     }
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(
-        model.serviceBay.bayDoorW * 1.14,
-        model.serviceBay.h * 0.77,
-        0.04,
-      ),
-      new THREE.MeshStandardMaterial({
-        color: 0xffb24a,
-        emissive: 0xff8f2f,
-        emissiveIntensity: 0.38,
-        roughness: 0.36,
-      }),
-    );
+    const doorFrameMat = new THREE.MeshStandardMaterial({
+      color: 0xffb24a,
+      emissive: 0xff8f2f,
+      emissiveIntensity: 0.38,
+      roughness: 0.36,
+    });
+    const frame = new THREE.Group();
     frame.name = `garageAnchorRollupDoorFrame.${i + 1}`;
+    const jambW = 0.12;
+    const jambH = model.serviceBay.h * 0.78;
+    const jambD = 0.08;
+    const leftJamb = new THREE.Mesh(
+      new THREE.BoxGeometry(jambW, jambH, jambD),
+      doorFrameMat,
+    );
+    leftJamb.position.set(-model.serviceBay.bayDoorW * 0.52, jambH / 2, 0);
+    const rightJamb = new THREE.Mesh(
+      new THREE.BoxGeometry(jambW, jambH, jambD),
+      doorFrameMat,
+    );
+    rightJamb.position.set(model.serviceBay.bayDoorW * 0.52, jambH / 2, 0);
+    const lintel = new THREE.Mesh(
+      new THREE.BoxGeometry(model.serviceBay.bayDoorW * 1.14, 0.18, jambD),
+      doorFrameMat,
+    );
+    lintel.position.set(0, jambH + 0.09, 0);
+    frame.add(leftJamb, rightJamb, lintel);
     frame.position.set(
       door.position.x,
-      door.position.y,
-      door.position.z - 0.018,
+      0,
+      bayFaceZ + 0.01,
     );
     g.add(frame);
     for (let slat = 1; slat <= 5 && !open; slat++) {

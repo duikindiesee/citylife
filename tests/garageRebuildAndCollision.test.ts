@@ -100,6 +100,28 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     }
   });
 
+  it("guarantees showroom structural columns and walls never obstruct service bay doors or approach throat", () => {
+    // Showroom eastern boundary is strictly west of the central dividing line (x <= 0)
+    const showroomEast = model.showroom.x + model.showroom.w / 2;
+    expect(showroomEast).toBeLessThanOrEqual(0.0);
+
+    // Service bay western boundary starts to the east of the dividing line (x > 0)
+    const serviceBayWest = model.serviceBay.x - model.serviceBay.w / 2;
+    expect(serviceBayWest).toBeGreaterThan(0.0);
+
+    // Leftmost bay door (Bay 1) opening has at least 2.5m clearance from any showroom column or wall
+    const bay1DoorCenter = model.serviceBay.x - model.serviceBay.bayDoorW * 1.25;
+    const bay1DoorLeftEdge = bay1DoorCenter - model.serviceBay.bayDoorW / 2;
+    const clearanceM = (bay1DoorLeftEdge - showroomEast) * 4;
+    expect(clearanceM).toBeGreaterThanOrEqual(2.5);
+
+    // Direct driving path from forecourt apron into Bay 1 closed door is completely clear of obstacles
+    for (let z = model.drivewayApron.z; z > model.serviceBay.z + model.serviceBay.d / 2 + 0.2; z -= 0.5) {
+      const approachGrid = gridFromLocalCoordinates(garagePad, bay1DoorCenter, z);
+      expect(rt.isGaragePadDrivable(approachGrid.x, approachGrid.y, garagePad)).toBe(true);
+    }
+  });
+
   it("provides continuous drivability from the municipal road through the apron to the forecourt and open bay", () => {
     // 1. Point on the driveway apron (setback transition from road toward forecourt)
     const apronGrid = gridFromLocalCoordinates(garagePad, model.drivewayApron.x, model.drivewayApron.z);

@@ -168,23 +168,28 @@ export function buildGarageAnchorShellModel(
     for (const y of [garagePad.y, garagePad.y + garagePad.h - 1])
       baseY = Math.min(baseY, surfaceY(x, y));
   const footprint = { w: garagePad.w, d: garagePad.h };
+  // Spec 177: Comprehensive architectural redesign of Gearbox Auto Hub
+  // West Wing: Grand double-height glass showroom pavilion (X in [-7.76, -0.08], Z in [-3.30, +2.20])
+  // East Wing: High-tech motorsport service workshop (X in [+0.16, +7.52], Z in [-3.30, +2.20])
+  // Dividing Core: Solid architectural pier/dividing wall at X = 0.0 with ZERO showroom columns in front of bay doors!
+  // Symmetrical facade alignment at front Z = +2.20, leaving unobstructed apron approach to all rollup doors.
   const showroom = {
-    w: footprint.w * 0.52,
-    h: 2.85,
-    d: footprint.d * 0.5,
-    x: -footprint.w * 0.22,
-    z: footprint.d * 0.06,
-    y: 1.425,
+    w: footprint.w * 0.48, // 7.68 cells wide (~30.7m)
+    h: 3.15,
+    d: footprint.d * 0.5, // 5.50 cells deep (~22.0m)
+    x: -footprint.w * 0.245, // -3.92 cells (spans [-7.76, -0.08])
+    z: -footprint.d * 0.05, // -0.55 cells (spans [-3.30, +2.20])
+    y: 1.575,
   };
   const serviceBay = {
-    w: footprint.w * 0.58,
-    h: 2.15,
-    d: footprint.d * 0.56,
-    x: footprint.w * 0.21,
-    z: -footprint.d * 0.06,
-    y: 1.075,
+    w: footprint.w * 0.46, // 7.36 cells wide (~29.4m)
+    h: 2.35,
+    d: footprint.d * 0.5, // 5.50 cells deep (~22.0m)
+    x: footprint.w * 0.24, // +3.84 cells (spans [+0.16, +7.52])
+    z: -footprint.d * 0.05, // -0.55 cells (spans [-3.30, +2.20])
+    y: 1.175,
     doorCount: 3 as const,
-    bayDoorW: footprint.w * 0.135,
+    bayDoorW: footprint.w * 0.115, // 1.84 cells wide (~7.4m per bay)
   };
   // Dimensions are authored in GRID CELLS (footprint = pad cells).
   const localFromGrid = (grid: { x: number; y: number }) => {
@@ -210,9 +215,9 @@ export function buildGarageAnchorShellModel(
 
   // Spec 177: Driveway Apron connecting forecourt forward to the municipal road edge
   const drivewayApron = {
-    w: footprint.w * 0.54, // ~8.6 cells wide
+    w: footprint.w * 0.72, // ~11.5 cells wide, spanning full approach to bays and stalls
     d: 4.8, // spans from forecourt forward into the road connection zone
-    x: footprint.w * 0.1, // aligned between forecourt center and bay approach
+    x: footprint.w * 0.08, // aligned across bay approach and forecourt
     z: footprint.d / 2 + 2.0, // centered across the setback transition zone
     y: 0.04,
   };
@@ -220,14 +225,14 @@ export function buildGarageAnchorShellModel(
   // Spec 176 / 177: Customer parking bays on the forecourt in front of showroom.
   // Oriented lengthwise into/out of the stall with rot: Math.PI / 2.
   // Stall depth (bayD = 1.25 cells = 5.0m) along Z; stall width (bayW = 0.68 cells = 2.72m) along X.
-  // Positioned at bayZ = 4.28 on forecourt, providing 1.48m clearance from showroom glass wall (z = 3.41).
+  // Positioned at bayZ = 4.28 on forecourt, providing wide clearance to showroom glass wall.
   const bayW = 0.68;
   const bayD = 1.25;
   const bayZ = 4.28;
   const stallRotation = Math.PI / 2; // Aligned with stall lines (not sideways across lines)
   const parkingBays = [
     {
-      x: -footprint.w * 0.28,
+      x: -footprint.w * 0.32,
       z: bayZ,
       w: bayW,
       d: bayD,
@@ -235,7 +240,7 @@ export function buildGarageAnchorShellModel(
       label: "BAY 01",
     },
     {
-      x: -footprint.w * 0.16,
+      x: -footprint.w * 0.21,
       z: bayZ,
       w: bayW,
       d: bayD,
@@ -243,7 +248,7 @@ export function buildGarageAnchorShellModel(
       label: "BAY 02",
     },
     {
-      x: -footprint.w * 0.04,
+      x: -footprint.w * 0.1,
       z: bayZ,
       w: bayW,
       d: bayD,
@@ -285,8 +290,8 @@ export function buildGarageAnchorShellModel(
       kind: "bay_floor",
       x: serviceBay.x,
       z: bayFaceZ - serviceBay.d * 0.45,
-      w: serviceBay.bayDoorW * 1.25,
-      d: serviceBay.d * 0.82,
+      w: serviceBay.bayDoorW * 1.35,
+      d: serviceBay.d * 0.95,
       drivable: true,
       walkable: true,
     },
@@ -346,11 +351,11 @@ export function buildGarageAnchorShellModel(
       id: "dividing_wall",
       kind: "wall",
       shape: "box",
-      x: serviceBay.x - serviceBay.w / 2,
-      z: 0.1,
+      x: (showroom.x + showroom.w / 2 + serviceBay.x - serviceBay.w / 2) / 2,
+      z: showroom.z,
       y: showroom.y,
-      w: 0.26,
-      d: footprint.d * 0.58,
+      w: 0.28,
+      d: showroom.d,
       h: showroom.h,
     },
     // --- Service Bay Exterior Walls ---

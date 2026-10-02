@@ -40,6 +40,17 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
    - Preserve pedestrian walkability across the apron, forecourt, service bay, and glass showroom interior.
    - Preserve bounded, path-connected, sealed-corner-safe car exits (`exitOwnedCar`) so drivers never step out into walls or water.
 
+7. **Showroom Side Pillar Elimination & Architectural Massing Redesign**:
+   - The showroom pavilion previously overlapped the service bay along the frontage, placing the showroom's front-right structural corner mullion ($X \approx +0.59, Z \approx +3.36$) directly in front of the workshop's leftmost rollup door ($X \approx +0.66, Z \approx +2.46$).
+   - A single monolithic canted roof canopy tilted diagonally across both masses, causing geometric clipping.
+   - Rollup door frames were modeled as solid box volumes, occluding the open drive-in bay cavity.
+   - **Resolution**: Complete architectural massing redesign of Gearbox Auto Hub:
+     - Symmetrical zoning: Glazed Showroom Pavilion on the West wing ($X \in [-7.76, -0.08]$), Motorsport Service Workshop on the East wing ($X \in [+0.16, +7.52]$).
+     - Central dividing core at $X = 0.0$ with zero structural columns in front of any bay door.
+     - Door 1 opening begins at $X = +0.62$, giving $> 2.5$m clearance from the showroom corner and a 100% unobstructed approach corridor from the municipal road.
+     - Hollow architectural door frames (jambs and lintels) ensuring the middle bay is fully open and visible.
+     - Dedicated floating canopy roof over the showroom and industrial parapet roof over the service bays.
+
 ## Mechanic
 
 1. **Shared Asset-Local Coordinate System**:
