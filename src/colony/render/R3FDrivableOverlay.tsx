@@ -98,8 +98,16 @@ export function R3FDrivableOverlay({ sim, runtime }: R3FDrivableOverlayProps) {
     // 3. Spec 177: Check commercial garage vicinity (drivable apron, parking stalls, service bay, and obstacles)
     const garagePad = sim.state.commercialDistrict?.garagePad;
     if (garagePad && runtime) {
-      for (let gx = garagePad.x - 2; gx <= garagePad.x + garagePad.w + 5; gx++) {
-        for (let gy = garagePad.y - 2; gy <= garagePad.y + garagePad.h + 5; gy++) {
+      for (
+        let gx = garagePad.x - 2;
+        gx <= garagePad.x + garagePad.w + 5;
+        gx++
+      ) {
+        for (
+          let gy = garagePad.y - 2;
+          gy <= garagePad.y + garagePad.h + 5;
+          gy++
+        ) {
           if (gx < 2 || gx >= size - 2 || gy < 2 || gy >= size - 2) continue;
           if (isPointInGarageVicinity(gx, gy, garagePad)) {
             const key = `${gx},${gy}`;

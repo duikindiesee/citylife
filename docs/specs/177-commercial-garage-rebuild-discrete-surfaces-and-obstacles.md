@@ -10,21 +10,25 @@
 During live drive testing of the commercial district and Gearbox Auto Hub showroom, several significant navigation, collision, and layout defects were identified:
 
 1. **"wow, those cars are wrong way" / Sideways Parking Stall Display Cars**:
+
    - Customer parking stalls (`BAY 01`, `BAY 02`, `BAY 03`) on the forecourt were authored with width along X (0.65 cells = 2.6m) and depth along Z (1.25 cells = 5.0m).
    - Display cars (`buildCarMesh`) have vehicle length along X (0.95 model units = ~4.2m) and width along Z (~1.9m).
    - Authored rotation `rot: 0` placed the car's length perpendicular to the stall depth, causing vehicles to park sideways across the stall boundary lines and concrete wheel stops.
    - **Resolution**: Stalls and parked display cars must be rotated by $\pm \pi/2$ radians so the vehicles align lengthwise along the stall depth, facing naturally into or out of the parking bays.
 
 2. **"what is this pole infront of garage" / Service Bay Approach Obstruction**:
+
    - A 4.2m high architectural floodlight stanchion was placed at local coordinates $X \approx +6.64, Z \approx +5.15$, dropping a solid physical column directly into the driving approach path of the service bay rollup doors.
    - **Resolution**: Eliminate the obstructing floodlight stanchion from the service bay approach. Recenter exterior lighting onto the building canopy soffit and safe perimeter curb corners ($X \le -7.0$), keeping all vehicle driveways completely clear.
 
 3. **"and this is as far as I can drive ontop of this land. feels weird" / Forecourt Drivability Lock**:
+
    - A naive heuristic `localZ > -0.6` in `isGaragePadDrivable` permitted driving only 0.6 cells (2.4 metres) onto the pad before triggering vehicle collisions.
    - The setback gap between the municipal road ribbon and the surveyed commercial pad lacked an authoritative paved driveway apron, causing the vehicle to strike an invisible `"parcel"` boundary or rough off-road terrain.
    - **Resolution**: Decouple the legal ownership plot boundary from vehicle surface traversability (GTA V open-world architecture). Construct a dedicated `drivewayApron` connecting the municipal road directly to the forecourt at road surface height, and designate the entire paved forecourt and open service bay as continuous drivable ground.
 
 4. **Monolithic Bounding Box vs. Discrete Obstacle Colliders**:
+
    - Previously, buildings were tested either as whole-cell occupied squares or single bounding hulls, failing to distinguish between open bays, exterior glass, structural columns, and rollup doors.
    - **Resolution**: Separate the garage asset into 4 distinct layers defined in shared asset-local coordinates:
      - **Visible Mesh**: Visual geometry, high-reflectivity materials, and warm lighting.
@@ -33,10 +37,12 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
      - **Physical Obstacles**: Discrete axis-aligned collision shapes (cuboids and cylinders) for exterior glass walls, solid dividing walls, closed bay rollup doors, structural lift posts, and sign pylons.
 
 5. **Car Swept Footprint Collision**:
+
    - Testing only single center points or 6-point sparse samples allowed thin poles to slip between wheels or allowed corners to clip when turning into stalls.
    - **Resolution**: Upgrade vehicle footprint inspection to an 8-point perimeter inspection (4 corners, front-center, rear-center, lateral edges) and swept collision verification across movement substeps.
 
 6. **Exit Safety & Pedestrian Access**:
+
    - Preserve pedestrian walkability across the apron, forecourt, service bay, and glass showroom interior.
    - Preserve bounded, path-connected, sealed-corner-safe car exits (`exitOwnedCar`) so drivers never step out into walls or water.
 
@@ -55,6 +61,7 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
 ## Mechanic
 
 1. **Shared Asset-Local Coordinate System**:
+
    - Garage asset model is defined in local grid cell coordinates centered at pad center $(cx, cy)$:
      - Local $X$: tangent to frontage (width). Negative $X$ = Showroom, Positive $X$ = Service Bay.
      - Local $Z$: normal to frontage (depth). Positive $Z$ = Road-facing forecourt and apron, Negative $Z$ = Rear exterior walls.
@@ -66,12 +73,14 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
      $$gy = cy - lx \sin(\theta) + lz \cos(\theta)$$
 
 2. **Drivable Surfaces & Road Apron Connection**:
+
    - `drivewayApron`: Paved throat spanning between the municipal street and the forecourt ($Z \in [3.5, 9.5]$, $W \approx 8.5$ cells).
    - `forecourtParking`: Paved customer parking apron ($Z \in [1.9, 5.5]$, $W \approx 15.0$ cells).
    - `serviceBayFloor`: Paved floor of open Bay 2 ($X \in [1.8, 4.9]$, $Z \in [-3.5, 2.5]$).
    - Height grading connects seamlessly from municipal road height `getSmoothRoadY` into pad seating height `padSeatY` without vertical collision steps.
 
 3. **Discrete Physical Obstacles**:
+
    - `showroom_glass_front`: Front road-facing showroom glass wall.
    - `showroom_wall_west`: Showroom outer side wall.
    - `showroom_wall_back`: Showroom rear wall.
@@ -89,6 +98,7 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
    - `forecourt_pole_west`: Perimeter light pole situated on the western curb, away from traffic. Zero poles on the bay approach.
 
 4. **Vehicle Swept Footprint Collision**:
+
    - In `ownedDriving.ts`, `inspectFootprint` checks 8 perimeter points:
      - Front: front-left, front-center, front-right.
      - Sides: left-center, right-center.
@@ -97,6 +107,7 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
    - Recovery mechanics allow reversing away when front touches an obstacle, or driving forward when rear touches an obstacle.
 
 5. **Metadata and Debug Overlays**:
+
    - `GARAGE_ASSET_VERSION = "2.0.0"` exported from `garageAnchorShell.ts`.
    - `R3FDrivableOverlay.tsx` displays:
      - Drivable surface zones in luminous amber/emerald.

@@ -322,7 +322,6 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     g.add(stallGroup);
   }
 
-
   // Spec 177: Forecourt perimeter architectural light stanchion
   // Placed strictly on the far western perimeter curb corner, completely clear of all vehicle driving paths.
   // The old stanchion on the east side (which blocked the service bay entrance) is eliminated!
@@ -698,7 +697,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
 
   // 1. Back Wall spanning full workshop width
   const workshopBackWall = new THREE.Mesh(
-    new THREE.BoxGeometry(model.serviceBay.w, model.serviceBay.h, wallThickness),
+    new THREE.BoxGeometry(
+      model.serviceBay.w,
+      model.serviceBay.h,
+      wallThickness,
+    ),
     workshopWallMat,
   );
   workshopBackWall.name = "garageAnchorWorkshopBackWall";
@@ -713,7 +716,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
 
   // 2. East Side Wall spanning full workshop depth
   const eastWall = new THREE.Mesh(
-    new THREE.BoxGeometry(wallThickness, model.serviceBay.h, model.serviceBay.d),
+    new THREE.BoxGeometry(
+      wallThickness,
+      model.serviceBay.h,
+      model.serviceBay.d,
+    ),
     workshopWallMat,
   );
   eastWall.name = "garageAnchorWorkshopEastWall";
@@ -732,11 +739,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     workshopWallMat,
   );
   workshopFloor.name = "garageAnchorWorkshopFloor";
-  workshopFloor.position.set(
-    model.serviceBay.x,
-    0.02,
-    model.serviceBay.z,
-  );
+  workshopFloor.position.set(model.serviceBay.x, 0.02, model.serviceBay.z);
   workshopFloor.receiveShadow = true;
   service.add(workshopFloor);
 
@@ -800,11 +803,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       workshopWallMat,
     );
     partition.name = partName;
-    partition.position.set(
-      px,
-      model.serviceBay.h / 2,
-      model.serviceBay.z,
-    );
+    partition.position.set(px, model.serviceBay.h / 2, model.serviceBay.z);
     partition.castShadow = true;
     partition.receiveShadow = true;
     service.add(partition);
@@ -827,7 +826,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
 
   // Spec 177: Dedicated floating architectural roof canopy over the showroom pavilion
   const showroomRoof = new THREE.Mesh(
-    new THREE.BoxGeometry(model.showroom.w + 0.35, 0.16, model.showroom.d + 0.4),
+    new THREE.BoxGeometry(
+      model.showroom.w + 0.35,
+      0.16,
+      model.showroom.d + 0.4,
+    ),
     new THREE.MeshStandardMaterial({
       color: 0x222a36,
       roughness: 0.7,
@@ -843,7 +846,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   showroomRoof.castShadow = true;
 
   const showroomRoofGlow = new THREE.Mesh(
-    new THREE.BoxGeometry(model.showroom.w + 0.38, 0.04, model.showroom.d + 0.42),
+    new THREE.BoxGeometry(
+      model.showroom.w + 0.38,
+      0.04,
+      model.showroom.d + 0.42,
+    ),
     mullionNeonMat,
   );
   showroomRoofGlow.position.set(
@@ -867,7 +874,11 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     }),
   );
   roof.name = "garageAnchorGraphiteFlatRoofCanopy";
-  roof.position.set(model.serviceBay.x, model.serviceBay.h + 0.08, model.serviceBay.z);
+  roof.position.set(
+    model.serviceBay.x,
+    model.serviceBay.h + 0.08,
+    model.serviceBay.z,
+  );
   roof.castShadow = true;
 
   // Spec 177: Wide continuous driveway apron connecting municipal street to forecourt and all service bays
@@ -971,11 +982,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
         cavityMat,
       );
       cavity.name = "garageAnchorOpenBayInterior";
-      cavity.position.set(
-        sx,
-        0.03,
-        bayFaceZ - model.serviceBay.d * 0.46,
-      );
+      cavity.position.set(sx, 0.03, bayFaceZ - model.serviceBay.d * 0.46);
       cavity.receiveShadow = true;
       g.add(cavity);
 
@@ -1077,11 +1084,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     );
     lintel.position.set(0, jambH + 0.09, 0);
     frame.add(leftJamb, rightJamb, lintel);
-    frame.position.set(
-      door.position.x,
-      0,
-      bayFaceZ + 0.01,
-    );
+    frame.position.set(door.position.x, 0, bayFaceZ + 0.01);
     g.add(frame);
     for (let slat = 1; slat <= 5 && !open; slat++) {
       const rib = new THREE.Mesh(
@@ -1089,11 +1092,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
         new THREE.MeshStandardMaterial({ color: 0x8fa1ad, roughness: 0.45 }),
       );
       rib.name = `garageAnchorDoorSlat.${i + 1}.${slat}`;
-      rib.position.set(
-        0,
-        (slat - 3) * 0.25,
-        0.02,
-      );
+      rib.position.set(0, (slat - 3) * 0.25, 0.02);
       door.add(rib);
     }
   }
@@ -1276,9 +1275,15 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
   });
   C.garageFloorMats.push(bollardLightMat);
   for (const bx of [-7, -3.5, 3.5, 7]) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.9, 12), bollardMat);
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.14, 0.9, 12),
+      bollardMat,
+    );
     post.position.set(bx, 0.45, 14.5);
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.15, 12), bollardLightMat);
+    const cap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.16, 0.16, 0.15, 12),
+      bollardLightMat,
+    );
     cap.position.set(bx, 0.92, 14.5);
     g.add(post, cap);
   }
@@ -1308,11 +1313,20 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
   });
   C.garageFloorMats.push(windowMat);
 
-  const ribbon1 = new THREE.Mesh(new THREE.BoxGeometry(22.3, 2.4, 16.3), windowMat);
+  const ribbon1 = new THREE.Mesh(
+    new THREE.BoxGeometry(22.3, 2.4, 16.3),
+    windowMat,
+  );
   ribbon1.position.set(0, 2.4, -2);
-  const ribbon2 = new THREE.Mesh(new THREE.BoxGeometry(22.3, 2.2, 16.3), windowMat);
+  const ribbon2 = new THREE.Mesh(
+    new THREE.BoxGeometry(22.3, 2.2, 16.3),
+    windowMat,
+  );
   ribbon2.position.set(0, 6.8, -2);
-  const ribbon3 = new THREE.Mesh(new THREE.BoxGeometry(22.3, 2.2, 16.3), windowMat);
+  const ribbon3 = new THREE.Mesh(
+    new THREE.BoxGeometry(22.3, 2.2, 16.3),
+    windowMat,
+  );
   ribbon3.position.set(0, 11.2, -2);
   g.add(ribbon1, ribbon2, ribbon3);
 
@@ -1322,7 +1336,10 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
     roughness: 0.4,
     metalness: 0.35,
   });
-  const towerParapet = new THREE.Mesh(new THREE.BoxGeometry(23.5, 0.6, 17.5), parapetMat);
+  const towerParapet = new THREE.Mesh(
+    new THREE.BoxGeometry(23.5, 0.6, 17.5),
+    parapetMat,
+  );
   towerParapet.position.set(0, 15.2, -2);
   g.add(towerParapet);
 
@@ -1337,11 +1354,20 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
   westWing.name = "kookerHqWestWing";
   westWing.position.set(-16, 4.75, -2);
   westWing.castShadow = true;
-  const westRibbon1 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  const westRibbon1 = new THREE.Mesh(
+    new THREE.BoxGeometry(11.2, 2.0, 13.2),
+    windowMat,
+  );
   westRibbon1.position.set(-16, 2.4, -2);
-  const westRibbon2 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  const westRibbon2 = new THREE.Mesh(
+    new THREE.BoxGeometry(11.2, 2.0, 13.2),
+    windowMat,
+  );
   westRibbon2.position.set(-16, 6.8, -2);
-  const westParapet = new THREE.Mesh(new THREE.BoxGeometry(12, 0.45, 14), parapetMat);
+  const westParapet = new THREE.Mesh(
+    new THREE.BoxGeometry(12, 0.45, 14),
+    parapetMat,
+  );
   westParapet.position.set(-16, 9.65, -2);
   g.add(westWing, westRibbon1, westRibbon2, westParapet);
 
@@ -1350,11 +1376,20 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
   eastWing.name = "kookerHqEastWing";
   eastWing.position.set(16, 4.75, -2);
   eastWing.castShadow = true;
-  const eastRibbon1 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  const eastRibbon1 = new THREE.Mesh(
+    new THREE.BoxGeometry(11.2, 2.0, 13.2),
+    windowMat,
+  );
   eastRibbon1.position.set(16, 2.4, -2);
-  const eastRibbon2 = new THREE.Mesh(new THREE.BoxGeometry(11.2, 2.0, 13.2), windowMat);
+  const eastRibbon2 = new THREE.Mesh(
+    new THREE.BoxGeometry(11.2, 2.0, 13.2),
+    windowMat,
+  );
   eastRibbon2.position.set(16, 6.8, -2);
-  const eastParapet = new THREE.Mesh(new THREE.BoxGeometry(12, 0.45, 14), parapetMat);
+  const eastParapet = new THREE.Mesh(
+    new THREE.BoxGeometry(12, 0.45, 14),
+    parapetMat,
+  );
   eastParapet.position.set(16, 9.65, -2);
   g.add(eastWing, eastRibbon1, eastRibbon2, eastParapet);
 
@@ -1374,12 +1409,18 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
   });
   C.garageFloorMats.push(lobbyGlassMat);
 
-  const lobbyBody = new THREE.Mesh(new THREE.BoxGeometry(14, 5.4, 8), facadeMat);
+  const lobbyBody = new THREE.Mesh(
+    new THREE.BoxGeometry(14, 5.4, 8),
+    facadeMat,
+  );
   lobbyBody.position.set(0, 2.7, 0);
   lobbyGroup.add(lobbyBody);
 
   // Front Glass Curtain Wall
-  const lobbyGlass = new THREE.Mesh(new THREE.PlaneGeometry(13.6, 5.1), lobbyGlassMat);
+  const lobbyGlass = new THREE.Mesh(
+    new THREE.PlaneGeometry(13.6, 5.1),
+    lobbyGlassMat,
+  );
   lobbyGlass.position.set(0, 2.7, 4.02);
   lobbyGroup.add(lobbyGlass);
 
@@ -1398,23 +1439,40 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
   }
 
   // Brass Door Frame (2.4m wide x 3.0m high)
-  const leftDoorPost = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.0, 0.2), brassMat);
+  const leftDoorPost = new THREE.Mesh(
+    new THREE.BoxGeometry(0.12, 3.0, 0.2),
+    brassMat,
+  );
   leftDoorPost.position.set(-1.2, 1.5, 4.08);
-  const rightDoorPost = new THREE.Mesh(new THREE.BoxGeometry(0.12, 3.0, 0.2), brassMat);
+  const rightDoorPost = new THREE.Mesh(
+    new THREE.BoxGeometry(0.12, 3.0, 0.2),
+    brassMat,
+  );
   rightDoorPost.position.set(1.2, 1.5, 4.08);
-  const doorLintel = new THREE.Mesh(new THREE.BoxGeometry(2.55, 0.15, 0.2), brassMat);
+  const doorLintel = new THREE.Mesh(
+    new THREE.BoxGeometry(2.55, 0.15, 0.2),
+    brassMat,
+  );
   doorLintel.position.set(0, 3.05, 4.08);
   lobbyGroup.add(leftDoorPost, rightDoorPost, doorLintel);
 
   // Interior Reception Desk
   const desk = new THREE.Mesh(
     new THREE.BoxGeometry(3.6, 1.1, 1.2),
-    new THREE.MeshStandardMaterial({ color: 0x222b37, roughness: 0.6, metalness: 0.2 }),
+    new THREE.MeshStandardMaterial({
+      color: 0x222b37,
+      roughness: 0.6,
+      metalness: 0.2,
+    }),
   );
   desk.position.set(0, 0.55, -1.0);
   const deskNeon = new THREE.Mesh(
     new THREE.BoxGeometry(3.65, 0.08, 1.22),
-    new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 1.8 }),
+    new THREE.MeshStandardMaterial({
+      color: 0x00f0ff,
+      emissive: 0x00f0ff,
+      emissiveIntensity: 1.8,
+    }),
   );
   deskNeon.position.set(0, 0.95, -1.0);
   lobbyGroup.add(desk, deskNeon);
@@ -1425,11 +1483,18 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
   lobbyGroup.add(lobbyLight);
 
   // Cantilevered Porch Canopy
-  const canopy = new THREE.Mesh(new THREE.BoxGeometry(16, 0.45, 4.5), parapetMat);
+  const canopy = new THREE.Mesh(
+    new THREE.BoxGeometry(16, 0.45, 4.5),
+    parapetMat,
+  );
   canopy.position.set(0, 5.5, 2.2);
   const canopyTrim = new THREE.Mesh(
     new THREE.BoxGeometry(16.2, 0.08, 0.08),
-    new THREE.MeshStandardMaterial({ color: 0x00f0ff, emissive: 0x00f0ff, emissiveIntensity: 1.5 }),
+    new THREE.MeshStandardMaterial({
+      color: 0x00f0ff,
+      emissive: 0x00f0ff,
+      emissiveIntensity: 1.5,
+    }),
   );
   canopyTrim.position.set(0, 5.3, 4.45);
   lobbyGroup.add(canopy, canopyTrim);
@@ -1438,7 +1503,11 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
   // 5. Grand Illuminated "KOOKER HQ" Signage
   const signBacking = new THREE.Mesh(
     new THREE.BoxGeometry(12.5, 2.4, 0.35),
-    new THREE.MeshStandardMaterial({ color: 0x141a24, roughness: 0.4, metalness: 0.4 }),
+    new THREE.MeshStandardMaterial({
+      color: 0x141a24,
+      roughness: 0.4,
+      metalness: 0.4,
+    }),
   );
   signBacking.position.set(0, 8.8, 6.2);
   g.add(signBacking);
@@ -1495,19 +1564,32 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
     metalness: 0.7,
     roughness: 0.3,
   });
-  const dish = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 0.4, 0.5, 24), dishMat);
+  const dish = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.0, 0.4, 0.5, 24),
+    dishMat,
+  );
   dish.rotation.x = 0.55;
   dish.rotation.y = 0.4;
   dish.position.set(-6, 17.0, -4.5);
-  const dishStem = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 1.8, 12), dishMat);
+  const dishStem = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.15, 0.18, 1.8, 12),
+    dishMat,
+  );
   dishStem.position.set(-6, 15.9, -4.5);
   g.add(dish, dishStem);
 
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.2, 6.5, 8), dishMat);
+  const mast = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.1, 0.2, 6.5, 8),
+    dishMat,
+  );
   mast.position.set(6.5, 18.5, -4.5);
   const beacon = new THREE.Mesh(
     new THREE.SphereGeometry(0.25, 12, 12),
-    new THREE.MeshStandardMaterial({ color: 0xff2a3e, emissive: 0xff2a3e, emissiveIntensity: 2.5 }),
+    new THREE.MeshStandardMaterial({
+      color: 0xff2a3e,
+      emissive: 0xff2a3e,
+      emissiveIntensity: 2.5,
+    }),
   );
   beacon.position.set(6.5, 21.8, -4.5);
   const beaconLight = new THREE.PointLight(0xff2a3e, 14, 25);
@@ -1522,7 +1604,10 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
   });
   for (const side of [-1, 1]) {
     for (const offset of [-3.5, 0, 3.5]) {
-      const panel = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 3.2), solarMat);
+      const panel = new THREE.Mesh(
+        new THREE.BoxGeometry(2.4, 0.08, 3.2),
+        solarMat,
+      );
       panel.rotation.x = 0.25;
       panel.position.set(side * 16 + offset * 0.4, 9.9, -2 + offset);
       g.add(panel);
@@ -1535,7 +1620,10 @@ function buildKookerHqLandmark(C: CommercialCtx, d: CommercialDistrict): void {
     uplight.position.set(side * 7, 0.4, 10);
     g.add(uplight);
 
-    const planter = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.75, 2.8), stepMat);
+    const planter = new THREE.Mesh(
+      new THREE.BoxGeometry(2.8, 0.75, 2.8),
+      stepMat,
+    );
     planter.position.set(side * 8.5, 0.45, 11);
     const planterSoil = new THREE.Mesh(
       new THREE.BoxGeometry(2.5, 0.1, 2.5),
@@ -1620,12 +1708,18 @@ function buildCommercialDistrict(C: CommercialCtx): void {
     }); // warm, but under the 0.9 bloom threshold
     const ways = (C.state.roadWays ?? []) as RoadWay[];
     const ribbonCells = ribbonSurfaceCells(ways, t);
-    const junctionPads = junctionZonesToPads(attachCapPolys(findJunctionZones(ways)));
+    const junctionPads = junctionZonesToPads(
+      attachCapPolys(findJunctionZones(ways)),
+    );
 
     // Spatial tracker to prevent any overlap between furniture, ensure clear pedestrian routes,
     // and keep all elements out of carriageways and pads.
     const placedFurniture: { wx: number; wz: number }[] = [];
-    const isFurniturePosClear = (wx: number, wz: number, minDistance = 3.0): boolean => {
+    const isFurniturePosClear = (
+      wx: number,
+      wz: number,
+      minDistance = 3.0,
+    ): boolean => {
       for (const p of placedFurniture) {
         if (Math.hypot(p.wx - wx, p.wz - wz) < minDistance) return false;
       }
@@ -1645,7 +1739,8 @@ function buildCommercialDistrict(C: CommercialCtx): void {
       }
 
       // 3. Never inside garage pad or apron
-      if (d.garagePad && isPointInGarageVicinity(gx, gy, d.garagePad)) return true;
+      if (d.garagePad && isPointInGarageVicinity(gx, gy, d.garagePad))
+        return true;
 
       // 4. Never inside mall pad
       if (
@@ -1760,7 +1855,10 @@ function buildCommercialDistrict(C: CommercialCtx): void {
       // leafy planter safely beside the bench (1.4m along the street, same safe setback)
       const planterGx = c.x + 0.35;
       const planterWx = C.wx(planterGx);
-      if (!isCellInForbiddenZone(planterGx, benchGy) && isFurniturePosClear(planterWx, fz, 1.2)) {
+      if (
+        !isCellInForbiddenZone(planterGx, benchGy) &&
+        isFurniturePosClear(planterWx, fz, 1.2)
+      ) {
         const planter = new THREE.Group();
         planter.position.set(planterWx, by, fz);
         const tub = new THREE.Mesh(
@@ -1791,15 +1889,31 @@ function buildCommercialDistrict(C: CommercialCtx): void {
         for (let xx = p.x; xx < p.x + p.w; xx++)
           boardBlocked.add(`${xx},${yy}`);
     if (d.garagePad) {
-      for (let yy = d.garagePad.y - 1; yy <= d.garagePad.y + d.garagePad.h + 1; yy++) {
-        for (let xx = d.garagePad.x - 1; xx <= d.garagePad.x + d.garagePad.w + 1; xx++) {
+      for (
+        let yy = d.garagePad.y - 1;
+        yy <= d.garagePad.y + d.garagePad.h + 1;
+        yy++
+      ) {
+        for (
+          let xx = d.garagePad.x - 1;
+          xx <= d.garagePad.x + d.garagePad.w + 1;
+          xx++
+        ) {
           boardBlocked.add(`${xx},${yy}`);
         }
       }
     }
     if (d.mallPad) {
-      for (let yy = d.mallPad.y - 1; yy <= d.mallPad.y + d.mallPad.h + 1; yy++) {
-        for (let xx = d.mallPad.x - 1; xx <= d.mallPad.x + d.mallPad.w + 1; xx++) {
+      for (
+        let yy = d.mallPad.y - 1;
+        yy <= d.mallPad.y + d.mallPad.h + 1;
+        yy++
+      ) {
+        for (
+          let xx = d.mallPad.x - 1;
+          xx <= d.mallPad.x + d.mallPad.w + 1;
+          xx++
+        ) {
           boardBlocked.add(`${xx},${yy}`);
         }
       }
@@ -1809,7 +1923,9 @@ function buildCommercialDistrict(C: CommercialCtx): void {
       for (let dy = -pr; dy <= pr; dy++) {
         for (let dx = -pr; dx <= pr; dx++) {
           if (Math.hypot(dx, dy) <= pad.r + 1) {
-            boardBlocked.add(`${Math.round(pad.cx + dx)},${Math.round(pad.cy + dy)}`);
+            boardBlocked.add(
+              `${Math.round(pad.cx + dx)},${Math.round(pad.cy + dy)}`,
+            );
           }
         }
       }

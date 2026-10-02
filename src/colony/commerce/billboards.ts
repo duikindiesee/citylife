@@ -70,7 +70,10 @@ export function surveyBillboards(
         let clear = true;
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
-            if (!cellOk(t, bx + dx, by + dy) || blocked.has(`${bx + dx},${by + dy}`)) {
+            if (
+              !cellOk(t, bx + dx, by + dy) ||
+              blocked.has(`${bx + dx},${by + dy}`)
+            ) {
               clear = false;
               break;
             }

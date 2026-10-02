@@ -129,7 +129,10 @@ export function BuildStamp({ variant = "hud", runtime }: BuildStampProps) {
     >
       <span style={{ fontWeight: 600, color: "#6fe3ff" }}>{text}</span>
       {parts.builtAt && (
-        <span style={{ opacity: 0.65, fontSize: "10px" }} title="Build timestamp">
+        <span
+          style={{ opacity: 0.65, fontSize: "10px" }}
+          title="Build timestamp"
+        >
           {parts.builtAt}
         </span>
       )}
@@ -146,11 +149,21 @@ export function BuildStamp({ variant = "hud", runtime }: BuildStampProps) {
           }}
         >
           <span style={{ opacity: 0.35 }}>|</span>
-          <span>X: <b>{diag.x}m</b></span>
-          <span>Elev: <b>{diag.elev}m</b></span>
-          <span>Z: <b>{diag.z}m</b></span>
-          <span>Hdg: <b>{diag.headingDeg}°</b></span>
-          <span>Seed: <b>{diag.seed}</b></span>
+          <span>
+            X: <b>{diag.x}m</b>
+          </span>
+          <span>
+            Elev: <b>{diag.elev}m</b>
+          </span>
+          <span>
+            Z: <b>{diag.z}m</b>
+          </span>
+          <span>
+            Hdg: <b>{diag.headingDeg}°</b>
+          </span>
+          <span>
+            Seed: <b>{diag.seed}</b>
+          </span>
         </span>
       )}
     </div>

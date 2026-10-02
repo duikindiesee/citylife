@@ -27,7 +27,13 @@ export interface ClearRectState {
   } | null;
   commercialDistrict?: {
     parcels?: readonly { x: number; y: number; w: number; h: number }[];
-    garagePad?: { x: number; y: number; w: number; h: number; facingAngle?: number } | null;
+    garagePad?: {
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      facingAngle?: number;
+    } | null;
   } | null;
   busDepotPad?: { x: number; y: number; w: number; h: number } | null;
   roads?: readonly { x: number; y: number }[] | null;

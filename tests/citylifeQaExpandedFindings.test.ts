@@ -3,7 +3,10 @@ import * as THREE from "three";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { buildCommercialDistrictLayer } from "../src/colony/render/commercialDistrictLayer";
 import { surveyBillboards } from "../src/colony/commerce/billboards";
-import { ribbonSurfaceCells, type RoadWay } from "../src/colony/render/roadRibbon";
+import {
+  ribbonSurfaceCells,
+  type RoadWay,
+} from "../src/colony/render/roadRibbon";
 import { findJunctionZones } from "../src/colony/render/roadJunctions";
 import { attachCapPolys } from "../src/colony/render/junctionCap";
 import { junctionZonesToPads } from "../src/colony/render/venuePlacement";
@@ -19,7 +22,9 @@ describe("CityLife Expanded QA Findings Verification (2026-10-02)", () => {
   const wz = (y: number) => (y - N / 2) * 4;
   const ways = (s.roadWays ?? []) as RoadWay[];
   const ribbonCells = ribbonSurfaceCells(ways, t);
-  const junctionPads = junctionZonesToPads(attachCapPolys(findJunctionZones(ways)));
+  const junctionPads = junctionZonesToPads(
+    attachCapPolys(findJunctionZones(ways)),
+  );
 
   const layer = buildCommercialDistrictLayer({
     state: s,
@@ -60,12 +65,28 @@ describe("CityLife Expanded QA Findings Verification (2026-10-02)", () => {
     const planterPositions: THREE.Vector3[] = [];
 
     layer.group.traverse((obj) => {
-      if (obj.parent === layer.group && !obj.name.includes("Anchor") && !obj.name.includes("garage") && !obj.name.includes("mall")) {
+      if (
+        obj.parent === layer.group &&
+        !obj.name.includes("Anchor") &&
+        !obj.name.includes("garage") &&
+        !obj.name.includes("mall")
+      ) {
         // Find lamps, benches, planters
         const children = obj.children;
-        const hasPole = children.some((c: any) => c.geometry?.type === "CylinderGeometry" && c.position.y === 1.6);
-        const hasSeat = children.some((c: any) => c.geometry?.type === "BoxGeometry" && Math.abs(c.position.y - 0.45) < 0.05);
-        const hasTub = children.some((c: any) => c.geometry?.type === "CylinderGeometry" && Math.abs(c.position.y - 0.25) < 0.05);
+        const hasPole = children.some(
+          (c: any) =>
+            c.geometry?.type === "CylinderGeometry" && c.position.y === 1.6,
+        );
+        const hasSeat = children.some(
+          (c: any) =>
+            c.geometry?.type === "BoxGeometry" &&
+            Math.abs(c.position.y - 0.45) < 0.05,
+        );
+        const hasTub = children.some(
+          (c: any) =>
+            c.geometry?.type === "CylinderGeometry" &&
+            Math.abs(c.position.y - 0.25) < 0.05,
+        );
 
         if (hasPole) lampPositions.push(obj.position.clone());
         if (hasSeat) benchPositions.push(obj.position.clone());
@@ -86,7 +107,11 @@ describe("CityLife Expanded QA Findings Verification (2026-10-02)", () => {
     }
 
     // Verify all furniture positions are strictly outside the garage vicinity, mall pad, and junction pads
-    const allFurniture = [...lampPositions, ...benchPositions, ...planterPositions];
+    const allFurniture = [
+      ...lampPositions,
+      ...benchPositions,
+      ...planterPositions,
+    ];
     for (const pos of allFurniture) {
       const gx = pos.x / 4 + N / 2;
       const gy = pos.z / 4 + N / 2;
@@ -103,7 +128,9 @@ describe("CityLife Expanded QA Findings Verification (2026-10-02)", () => {
       }
 
       // Never on road asphalt
-      expect(ribbonCells.has(`${Math.round(gx)},${Math.round(gy)}`)).toBe(false);
+      expect(ribbonCells.has(`${Math.round(gx)},${Math.round(gy)}`)).toBe(
+        false,
+      );
     }
   });
 
@@ -116,7 +143,10 @@ describe("CityLife Expanded QA Findings Verification (2026-10-02)", () => {
         if (userData?.venue && userData.venue.buildable === false) {
           // Unbuildable venue: must NOT contain crates or protruding mesh
           for (const child of obj.children) {
-            if (child.name === "commercialShopNightFloor" || (child as any).isMesh) {
+            if (
+              child.name === "commercialShopNightFloor" ||
+              (child as any).isMesh
+            ) {
               looseCratesFound++;
             }
           }

@@ -3119,7 +3119,12 @@ export class ColonyRuntime {
             const model = this.getGarageModel();
             if (
               model &&
-              isPointInsideGarageObstacle(local.x, local.z, model.obstacles, 0.08)
+              isPointInsideGarageObstacle(
+                local.x,
+                local.z,
+                model.obstacles,
+                0.08,
+              )
             ) {
               return false;
             }

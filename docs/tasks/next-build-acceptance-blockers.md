@@ -205,6 +205,7 @@ This task record documents the investigation, root causes, implementation fixes,
 - **Evidence:**
   - `tests/garageRebuildAndCollision.test.ts` (12/12 PASS, including SAT hard gate and reverse escape).
   - `tests/citylifeQaExpandedFindings.test.ts` (4/4 PASS).
+
 ### Blocker 10: Service Bay Interior Partition and Structural Pier Colliders (Joekookerbot Review #553 / 5392115777)
 
 - **Root Causes & Findings:**
