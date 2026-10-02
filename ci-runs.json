@@ -1,7 +1,50 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-02T07:43:58.393Z",
+  "updatedAt": "2026-10-02T08:02:00.576Z",
   "runs": [
+    {
+      "runId": 36979994015,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36979994015",
+      "event": "pull_request",
+      "branch": "feat/spec-177-garage-rebuild-discrete-surfaces",
+      "sha": "05f3ef4f333daa1bb49fb6156c0c8f504615a753",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/05f3ef4f333daa1bb49fb6156c0c8f504615a753",
+      "pullRequestNumbers": "#553",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/553",
+      "pullRequests": [
+        {
+          "number": 553,
+          "url": "https://github.com/duikindiesee/citylife/pull/553"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "failure",
+      "startedAt": "2026-10-02T07:42:32Z",
+      "completedAt": "2026-10-02T08:01:50Z",
+      "durationSeconds": 1158,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 110752105093,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "failure",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-02T07:42:36Z",
+          "completedAt": "2026-10-02T08:01:49Z",
+          "durationSeconds": 1153
+        }
+      ]
+    },
     {
       "runId": 36979993972,
       "workflowName": "Secret scan",
