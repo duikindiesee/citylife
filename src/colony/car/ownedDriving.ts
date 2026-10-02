@@ -102,13 +102,35 @@ function inspectFootprint(
     }
   }
   if (isFootprintValid && !isFootprintValid(x, y, heading)) {
-    // If continuous OBB SAT detects collision, reflect in obstacle penetration
-    center++;
+    // If continuous OBB SAT detects collision, probe front vs rear half to identify
+    // whether the obstacle impinges on the front, rear, or spans the chassis.
+    const probeDist = halfLength / cellMetres;
+    const frontClear = isFootprintValid(
+      x + cos * probeDist,
+      y + sin * probeDist,
+      heading,
+    );
+    const rearClear = isFootprintValid(
+      x - cos * probeDist,
+      y - sin * probeDist,
+      heading,
+    );
+    if (!frontClear && rearClear) {
+      front++;
+    } else if (frontClear && !rearClear) {
+      rear++;
+    } else {
+      front++;
+      rear++;
+      center++;
+    }
   }
   return { front, center, rear, total: front + center + rear };
 }
 
 function isStepAllowed(
+  currentX: number,
+  currentY: number,
   targetX: number,
   targetY: number,
   heading: number,
@@ -120,6 +142,26 @@ function isStepAllowed(
   isFootprintValid?: (x: number, y: number, heading: number) => boolean,
 ): boolean {
   if (!canOccupy(targetX, targetY)) return false;
+
+  // Hard gate: SAT clear-to-overlap transition is strictly blocked.
+  if (
+    isFootprintValid &&
+    isFootprintValid(currentX, currentY, heading) &&
+    !isFootprintValid(targetX, targetY, heading)
+  ) {
+    return false;
+  }
+
+  const current = inspectFootprint(
+    currentX,
+    currentY,
+    heading,
+    canOccupy,
+    halfLength,
+    halfWidth,
+    cellMetres,
+    isFootprintValid,
+  );
 
   const target = inspectFootprint(
     targetX,
@@ -135,18 +177,21 @@ function isStepAllowed(
   // If 100% clear of all obstacles: step is valid
   if (target.total === 0) return true;
 
+  // Hard gate: Any clear-to-overlap transition is strictly blocked.
+  if (current.total === 0 && target.total > 0) return false;
+
   // If moving forward (speed > 0), front cannot penetrate obstacles
   if (speed > 0 && target.front > 0) return false;
 
   // If moving backward (speed < 0), rear cannot penetrate obstacles
   if (speed < 0 && target.rear > 0) return false;
 
-  // Recovery / unsticking:
-  // If moving backward while front is touching obstacle, allowed!
-  if (speed < 0 && target.rear === 0) return true;
+  // Directional unsticking / recovery from an already overlapping pose:
+  // If moving backward away from an obstacle in front: allowed if rear remains clear
+  if (speed < 0 && target.rear === 0 && current.rear === 0) return true;
 
-  // If moving forward while rear is touching obstacle, allowed!
-  if (speed > 0 && target.front === 0) return true;
+  // If moving forward away from an obstacle in rear: allowed if front remains clear
+  if (speed > 0 && target.front === 0 && current.front === 0) return true;
 
   return false;
 }
@@ -232,10 +277,12 @@ export function stepOwnedDrive(
         cfg.cellMetres,
         isFootprintValid,
       );
-      // Turn allowed if target heading is completely clear, or improves/preserves unsticking recovery
+      // Hard gate: clear-to-overlap transition is strictly blocked.
+      // Turn allowed if target heading is completely clear, or preserves/improves unsticking recovery
       if (
         targetInspection.total === 0 ||
-        targetInspection.total <= currentInspection.total
+        (currentInspection.total > 0 &&
+          targetInspection.total <= currentInspection.total)
       ) {
         next.heading = heading;
       }
@@ -249,6 +296,8 @@ export function stepOwnedDrive(
     // 1. Full translation clear or recovery
     if (
       isStepAllowed(
+        next.x,
+        next.y,
         targetX,
         targetY,
         next.heading,
@@ -266,6 +315,8 @@ export function stepOwnedDrive(
       // 2. Glancing collision response: slide along X axis if free or recovering
       stepX !== 0 &&
       isStepAllowed(
+        next.x,
+        next.y,
         targetX,
         next.y,
         next.heading,
@@ -283,6 +334,8 @@ export function stepOwnedDrive(
       // 3. Glancing collision response: slide along Y axis if free or recovering
       stepY !== 0 &&
       isStepAllowed(
+        next.x,
+        next.y,
         next.x,
         targetY,
         next.heading,

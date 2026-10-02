@@ -14,9 +14,11 @@ import {
   isPointInDrivableSurface,
   isPointInWalkableSurface,
   isCarFootprintClearOfGarageObstacles,
+  type GarageObstacle,
 } from "../src/colony/render/garageAnchorShell";
 import type { GaragePad } from "../src/colony/commerce/district";
 import { SHOWROOM_VEHICLES } from "../src/colony/showroom/showroomCatalog";
+import { stepOwnedDrive } from "../src/colony/car/ownedDriving";
 
 describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles & Swept Collision", () => {
   const rt = new ColonyRuntime(4242);
@@ -378,5 +380,108 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     expect(minDividingClearance).toBeGreaterThan(2.5);
     expect(minGlassClearance).toBeGreaterThan(2.5);
     expect(minBackClearance).toBeGreaterThan(2.5);
+  });
+
+  it("enforces SAT hard gate for thin obstacle between sample points and allows reverse escape from overlapping pose", () => {
+    // 1. Garage pad centered at origin with 0 facing angle
+    const testPad = { x: 0, y: 0, w: 1, h: 1, facingAngle: 0 };
+    // A 0.035-cell-wide narrow box/pole at local (0.51, 0.08)
+    const thinPole: GarageObstacle = {
+      id: "test_thin_pole",
+      kind: "pole",
+      shape: "box",
+      x: 0.51,
+      y: 0,
+      z: 0.08,
+      w: 0.035,
+      d: 0.035,
+      h: 1,
+    };
+    const obstacles = [thinPole];
+
+    // canOccupy rejects the thin pole bounding box
+    const canOccupy = (gx: number, gy: number): boolean => {
+      const halfW = thinPole.w / 2;
+      const halfD = thinPole.d / 2;
+      if (
+        gx >= thinPole.x - halfW &&
+        gx <= thinPole.x + halfW &&
+        gy >= thinPole.z - halfD &&
+        gy <= thinPole.z + halfD
+      ) {
+        return false;
+      }
+      return true;
+    };
+
+    const isFootprintValid = (gx: number, gy: number, heading: number): boolean => {
+      return isCarFootprintClearOfGarageObstacles(
+        gx,
+        gy,
+        heading,
+        testPad,
+        obstacles,
+      );
+    };
+
+    const stats = { acceleration: 0.5, topSpeed: 0.5, braking: 0.5, handling: 0.5, grip: 0.5 };
+
+    // 1. Synthetic production movement fixture (negative proof scenario):
+    // Car starts at (0, 0) heading +X (heading 0) with speed 6
+    expect(isFootprintValid(0, 0, 0)).toBe(true);
+
+    let pose = { x: 0, y: 0, heading: 0, speed: 6 };
+    const input = { throttle: true };
+
+    for (let i = 0; i < 10; i++) {
+      pose = stepOwnedDrive(
+        pose,
+        input,
+        stats,
+        0.05,
+        canOccupy,
+        undefined,
+        isFootprintValid,
+      );
+    }
+
+    // SAT hard gate: final SAT MUST be clear (vehicle blocked before entering obstacle)
+    expect(isFootprintValid(pose.x, pose.y, pose.heading)).toBe(true);
+    expect(pose.x).toBeLessThan(thinPole.x - 0.4);
+
+    // 2. Reverse escape from an already overlapping pose:
+    // Place car at an overlapping pose (x = 0.4, pole at 0.51 is inside front bumper)
+    let overlappingPose = { x: 0.4, y: 0, heading: 0, speed: 0 };
+    expect(isFootprintValid(overlappingPose.x, overlappingPose.y, overlappingPose.heading)).toBe(false);
+
+    // Driving forward into the obstacle is blocked
+    const forwardAttempt = stepOwnedDrive(
+      overlappingPose,
+      { throttle: true },
+      stats,
+      0.05,
+      canOccupy,
+      undefined,
+      isFootprintValid,
+    );
+    expect(forwardAttempt.x).toBe(overlappingPose.x);
+
+    // Reversing away from the obstacle is allowed and escapes to a clear pose
+    const reverseInput = { reverse: true };
+    for (let i = 0; i < 35; i++) {
+      overlappingPose = stepOwnedDrive(
+        overlappingPose,
+        reverseInput,
+        stats,
+        0.05,
+        canOccupy,
+        undefined,
+        isFootprintValid,
+      );
+    }
+
+    // Car moved backwards and successfully escaped to a completely clear pose
+    expect(overlappingPose.x).toBeLessThan(0.04);
+    expect(isFootprintValid(overlappingPose.x, overlappingPose.y, overlappingPose.heading)).toBe(true);
   });
 });

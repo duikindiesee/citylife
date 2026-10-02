@@ -3,6 +3,7 @@
 - **Status:** recorded / backlog
 - **Origin:** Operator feedback and live session captures
 - **Context:** Player observed and captured transit buses driving off-road, cutting across dirt curves, zigzagging through intersections, and bus stop signs positioned excessively far into the terrain. Additionally requested an automated next-stop onboarding and offboarding passenger ride flow.
+  - **Live Observation (2026-10-02 11:11 CEST / Sol 501 18:27):** Player driving Karoo X19 on elevated Highway (speed 16 km/h) captured orange municipal transit bus running completely off-road on the dirt shoulder parallel to the road verge (evidence: `media_1790930235802.png`). Shows the bus path offset from the road ribbon on curved highway segments.
 
 ---
 
