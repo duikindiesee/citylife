@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-04T16:32:18.444Z",
+  "updatedAt": "2026-10-04T16:38:38.367Z",
   "runs": [
+    {
+      "runId": 37217497689,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37217497689",
+      "event": "pull_request",
+      "branch": "antigravity/619394b8-garage-junction-p0",
+      "sha": "ab9727dce79eecee233c9d5d7d50b3c823f6d588",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/ab9727dce79eecee233c9d5d7d50b3c823f6d588",
+      "pullRequestNumbers": "#555",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/555",
+      "pullRequests": [
+        {
+          "number": 555,
+          "url": "https://github.com/duikindiesee/citylife/pull/555"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-04T16:38:14Z",
+      "completedAt": "2026-10-04T16:38:27Z",
+      "durationSeconds": 13,
+      "runnerSummary": "GitHub Actions 1000010664",
+      "jobs": [
+        {
+          "id": 111480895312,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010664",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-10-04T16:38:18Z",
+          "completedAt": "2026-10-04T16:38:26Z",
+          "durationSeconds": 8
+        }
+      ]
+    },
     {
       "runId": 37216815782,
       "workflowName": "Secret scan",
