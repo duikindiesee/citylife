@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-04T16:28:30.917Z",
+  "updatedAt": "2026-10-04T16:32:18.444Z",
   "runs": [
     {
       "runId": 37216815782,
@@ -77,6 +77,49 @@
           "startedAt": "2026-10-04T16:27:17Z",
           "completedAt": "2026-10-04T16:28:19Z",
           "durationSeconds": 62
+        }
+      ]
+    },
+    {
+      "runId": 37216815755,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37216815755",
+      "event": "pull_request",
+      "branch": "antigravity/619394b8-garage-junction-p0",
+      "sha": "f3d05a38399f9ce3689e71b907ec4f617b6883f9",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/f3d05a38399f9ce3689e71b907ec4f617b6883f9",
+      "pullRequestNumbers": "#555",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/555",
+      "pullRequests": [
+        {
+          "number": 555,
+          "url": "https://github.com/duikindiesee/citylife/pull/555"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "failure",
+      "startedAt": "2026-10-04T16:27:13Z",
+      "completedAt": "2026-10-04T16:32:09Z",
+      "durationSeconds": 296,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 111478890765,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "failure",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-04T16:27:17Z",
+          "completedAt": "2026-10-04T16:32:08Z",
+          "durationSeconds": 291
         }
       ]
     },
