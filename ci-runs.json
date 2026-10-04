@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-04T16:27:37.045Z",
+  "updatedAt": "2026-10-04T16:28:30.917Z",
   "runs": [
     {
       "runId": 37216815782,
@@ -38,6 +38,45 @@
           "startedAt": "2026-10-04T16:27:16Z",
           "completedAt": "2026-10-04T16:27:25Z",
           "durationSeconds": 9
+        }
+      ]
+    },
+    {
+      "runId": 37216815763,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37216815763",
+      "event": "pull_request",
+      "branch": "antigravity/619394b8-garage-junction-p0",
+      "sha": "f3d05a38399f9ce3689e71b907ec4f617b6883f9",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/f3d05a38399f9ce3689e71b907ec4f617b6883f9",
+      "pullRequestNumbers": "#555",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/555",
+      "pullRequests": [
+        {
+          "number": 555,
+          "url": "https://github.com/duikindiesee/citylife/pull/555"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-04T16:27:13Z",
+      "completedAt": "2026-10-04T16:28:19Z",
+      "durationSeconds": 66,
+      "runnerSummary": "GitHub Actions 1000010660",
+      "jobs": [
+        {
+          "id": 111478890887,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010660",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-04T16:27:17Z",
+          "completedAt": "2026-10-04T16:28:19Z",
+          "durationSeconds": 62
         }
       ]
     },
