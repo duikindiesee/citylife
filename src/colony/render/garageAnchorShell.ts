@@ -195,20 +195,21 @@ export function buildGarageAnchorShellModel(
   const localFromGrid = (grid: { x: number; y: number }) => {
     return localFromGridCoordinates(garagePad, grid.x, grid.y);
   };
+  const pylonLocal = localFromGrid(garagePad.islandCell);
   const pylon = {
     w: 0.6,
     h: 6.2,
     d: 0.6,
-    x: -footprint.w * 0.44, // -7.04 (street-facing corner outside driving & walking paths)
-    z: 6.2,
+    x: pylonLocal.x,
+    z: pylonLocal.z,
     y: 3.1,
   };
-  const forecourtDepth = 3.2;
+  const forecourtDepth = 1.1;
   const forecourt = {
     w: footprint.w * 0.88,
     d: forecourtDepth,
     // Forecourt slab sits strictly within the surveyed pad boundaries, in front of the workshop & showroom.
-    frontOffset: 5.8,
+    frontOffset: 4.8,
     y: 0.045,
   };
 
@@ -224,10 +225,10 @@ export function buildGarageAnchorShellModel(
   // Spec 176 / 177: Customer parking bays on the forecourt in front of showroom.
   // Oriented lengthwise into/out of the stall with rot: Math.PI / 2.
   // Stall depth (bayD = 1.25 cells = 5.0m) along Z; stall width (bayW = 0.68 cells = 2.72m) along X.
-  // Positioned at bayZ = 5.60 on forecourt, providing wide clearance to showroom glass wall.
+  // Positioned at bayZ = 4.80 on forecourt, providing wide clearance to showroom glass wall.
   const bayW = 0.68;
   const bayD = 1.25;
-  const bayZ = 5.6;
+  const bayZ = 4.8;
   const stallRotation = Math.PI / 2; // Aligned with stall lines (not sideways across lines)
   const parkingBays = [
     {
@@ -555,8 +556,8 @@ export function buildGarageAnchorShellModel(
     drivewayApron,
     parkingBays,
     nightFloor: {
-      w: footprint.w * 0.96,
-      d: footprint.d * 0.52,
+      w: footprint.w * 0.98,
+      d: footprint.d * 0.92,
       y: 0.035,
       emissiveIntensity: { day: 0.0, night: 0.0 },
     },

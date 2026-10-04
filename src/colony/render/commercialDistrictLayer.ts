@@ -256,7 +256,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     floorMat,
   );
   floor.name = "garageAnchorNightFloor";
-  floor.position.set(0, model.nightFloor.y, model.showroom.z);
+  floor.position.set(0, model.nightFloor.y, 0);
 
   const asphaltMat = new THREE.MeshStandardMaterial({
     color: 0x595f6a,
