@@ -413,7 +413,7 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     const glassStart = gridFromLocalCoordinates(
       garagePad,
       model.showroom.x,
-      4.3,
+      5.8,
     );
     rt.teleportCar(glassStart.x, glassStart.y, headingIntoGarage);
     (rt as any).ownedDriveSeated = true;
@@ -456,7 +456,7 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     const door1Start = gridFromLocalCoordinates(
       garagePad,
       door1Obstacle.x,
-      4.3,
+      5.8,
     );
     rt.teleportCar(door1Start.x, door1Start.y, headingIntoGarage);
     (rt as any).ownedDriveSeated = true;
@@ -475,7 +475,7 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     const bay2Start = gridFromLocalCoordinates(
       garagePad,
       model.serviceBay.x,
-      4.3,
+      5.8,
     );
     rt.teleportCar(bay2Start.x, bay2Start.y, headingIntoGarage);
     (rt as any).ownedDriveSeated = true;
@@ -775,7 +775,7 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
 
     // In contrast: Bay 2 drive-in path along X = 3.84 is 100% open and unobstructed
     const bay2CenterX = model.serviceBay.x;
-    for (let lz = 2.5; lz >= -2.0; lz -= 0.5) {
+    for (let lz = 4.5; lz >= 0.0; lz -= 0.5) {
       const pathGrid = gridFromLocalCoordinates(garagePad, bay2CenterX, lz);
       expect(
         isPointInsideGarageObstacle(bay2CenterX, lz, model.obstacles),
@@ -798,8 +798,8 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
   it("executes production movement-path regression: vehicle driving into partition or pier is stopped before penetration", () => {
     const headingIntoGarage = Math.PI / 2;
 
-    // 1. Negative collision: car driving toward west pier / partition (local X = 2.69) from forecourt (Z = 4.3)
-    const pierStart = gridFromLocalCoordinates(garagePad, 2.69, 4.3);
+    // 1. Negative collision: car driving toward west pier / partition (local X = 2.69) from forecourt (Z = 5.8)
+    const pierStart = gridFromLocalCoordinates(garagePad, 2.69, 5.8);
     rt.teleportCar(pierStart.x, pierStart.y, headingIntoGarage);
     (rt as any).ownedDriveSeated = true;
     rt.setOwnedDriveInput({ throttle: true });
@@ -821,7 +821,7 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     const bay2Start = gridFromLocalCoordinates(
       garagePad,
       model.serviceBay.x,
-      4.3,
+      5.8,
     );
     rt.teleportCar(bay2Start.x, bay2Start.y, headingIntoGarage);
     (rt as any).ownedDriveSeated = true;

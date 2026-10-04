@@ -395,11 +395,12 @@ export function junctionFurniture(
       )
     : null;
   const onAnyRoad = (px: number, py: number): boolean => {
-    if (!smoothed || !ways) return false;
-    for (let wi = 0; wi < smoothed.length; wi++) {
-      const cp = smoothed[wi];
-      if (!cp) continue;
-      if (distToPolyline(px, py, cp) < ways[wi]!.width / 2 + 0.25) return true;
+    if (!ways) return false;
+    for (let wi = 0; wi < ways.length; wi++) {
+      const w = ways[wi]!;
+      const halfW = w.width / 2 + 0.25;
+      if (w.path.length >= 2 && distToPolyline(px, py, w.path) < halfW) return true;
+      if (smoothed && smoothed[wi] && distToPolyline(px, py, smoothed[wi]!) < halfW) return true;
     }
     return false;
   };
@@ -421,12 +422,13 @@ export function junctionFurniture(
     const rl = Math.hypot(rx, ry) || 1;
     const ox = rx / rl,
       oy = ry / rl; // radial outward from the junction centre
-    for (let r = 0.6; r <= 7; r += 0.6) {
+    for (let r = 0.6; r <= 9.0; r += 0.5) {
       for (const [dx, dy] of [
         [lx, ly], // left verge
         [ox, oy], // radial out
         [lx + ox, ly + oy], // verge + out
         [-lx, -ly], // right verge (last resort)
+        [-lx + ox, -ly + oy],
       ] as const) {
         const dl = Math.hypot(dx, dy) || 1;
         const x = mx + (dx / dl) * r,
@@ -434,7 +436,13 @@ export function junctionFurniture(
         if (!blocked(x, y)) return { x, y };
       }
     }
-    return { x: mx + lx * 6, y: my + ly * 6 }; // best effort (unreached in boot towns)
+    // Deep fallback: march along outward radial direction until clear of all carriageways
+    for (let extra = 1.0; extra <= 15.0; extra += 1.0) {
+      const x = mx + ox * (9.0 + extra) + lx * 2,
+        y = my + oy * (9.0 + extra) + ly * 2;
+      if (!blocked(x, y)) return { x, y };
+    }
+    return { x: mx + ox * 18, y: my + oy * 18 };
   };
 
   // Each approach gets at most one signal/sign (never duplicates for parallel arm bundles)

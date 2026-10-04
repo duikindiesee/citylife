@@ -247,33 +247,25 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   g.scale.setScalar(model.renderScale);
 
   const floorMat = new THREE.MeshStandardMaterial({
-    color: 0xffb24a,
-    emissive: 0xff9f2f,
-    emissiveIntensity: garageAnchorNightFloorEmissive(C.state.clock.daylight),
-    roughness: 0.52,
-    transparent: true,
-    opacity: 0.54,
+    color: 0x222832,
+    roughness: 0.85,
+    metalness: 0.1,
   });
-  C.garageFloorMats.push(floorMat);
   const floor = new THREE.Mesh(
     new THREE.BoxGeometry(model.nightFloor.w, 0.04, model.nightFloor.d),
     floorMat,
   );
   floor.name = "garageAnchorNightFloor";
-  floor.position.y = model.nightFloor.y;
+  floor.position.set(0, model.nightFloor.y, model.showroom.z);
 
-  const forecourtMat = new THREE.MeshStandardMaterial({
-    color: 0x3d4450,
-    roughness: 0.65,
-    metalness: 0.04,
-    emissive: 0xff9f2f,
-    emissiveIntensity:
-      garageAnchorNightFloorEmissive(C.state.clock.daylight) * 0.58,
+  const asphaltMat = new THREE.MeshStandardMaterial({
+    color: 0x595f6a,
+    roughness: 0.92,
+    metalness: 0.05,
   });
-  C.garageFloorMats.push(forecourtMat);
   const forecourt = new THREE.Mesh(
     new THREE.BoxGeometry(model.forecourt.w, 0.035, model.forecourt.d),
-    forecourtMat,
+    asphaltMat,
   );
   forecourt.name = "garageAnchorRoadFacingForecourt";
   forecourt.position.set(0, model.forecourt.y, model.forecourt.frontOffset);
@@ -635,23 +627,6 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   heroGroup.add(heroFallbackMesh);
   showroomInterior.add(heroGroup);
 
-  // 6. Header sign and branding
-  const showroomHeader = new THREE.Mesh(
-    new THREE.BoxGeometry(model.showroom.w * 0.9, 0.32, 0.14),
-    new THREE.MeshStandardMaterial({
-      color: 0xffb24a,
-      emissive: 0xff8f2f,
-      emissiveIntensity: 0.65,
-      roughness: 0.36,
-    }),
-  );
-  showroomHeader.name = "garageAnchorShowroomHeaderSign";
-  showroomHeader.position.set(
-    model.showroom.x,
-    model.showroom.h + 0.12,
-    model.showroom.z + model.showroom.d / 2 + 0.08,
-  );
-
   // Subtle lower glass kickplate / front accent
   const showroomFront = new THREE.Mesh(
     new THREE.BoxGeometry(model.showroom.w * 0.84, 0.16, 0.08),
@@ -667,12 +642,6 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     0.12,
     model.showroom.z + model.showroom.d / 2 + 0.05,
   );
-
-  const showroomCarSilhouette = new THREE.Group();
-  showroomCarSilhouette.name = "garageAnchorShowroomFrontCarSilhouette";
-
-  const showroomCarGlow = new THREE.Group();
-  showroomCarGlow.name = "garageAnchorShowroomCarGlow";
 
   // Spec 177: Discrete Workshop Building Shell (garageAnchorServiceBayBlock)
   // Partitioned into solid exterior walls, roof lintel, and front piers around the bay openings.
@@ -882,18 +851,9 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   roof.castShadow = true;
 
   // Spec 177: Wide continuous driveway apron connecting municipal street to forecourt and all service bays
-  const fullApronMat = new THREE.MeshStandardMaterial({
-    color: 0x3d4450,
-    roughness: 0.68,
-    metalness: 0.05,
-    emissive: 0xff9f2f,
-    emissiveIntensity:
-      garageAnchorNightFloorEmissive(C.state.clock.daylight) * 0.52,
-  });
-  C.garageFloorMats.push(fullApronMat);
   const fullApron = new THREE.Mesh(
     new THREE.BoxGeometry(model.drivewayApron.w, 0.036, model.drivewayApron.d),
-    fullApronMat,
+    asphaltMat,
   );
   fullApron.name = "garageAnchorDrivewayApron";
   fullApron.position.set(
@@ -903,33 +863,6 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   );
   fullApron.receiveShadow = true;
   g.add(fullApron);
-
-  const wrenchGroup = new THREE.Group();
-  wrenchGroup.name = "garageAnchorRooftopWrenchEmblem";
-  wrenchGroup.position.set(
-    model.serviceBay.x,
-    model.serviceBay.h + 0.28,
-    model.serviceBay.z,
-  );
-  wrenchGroup.rotation.y = -0.28;
-  const wrenchMat = new THREE.MeshStandardMaterial({
-    color: 0x6fe7ff,
-    emissive: 0x26c6ff,
-    emissiveIntensity: 0.48,
-    roughness: 0.28,
-  });
-  const wrenchHandle = new THREE.Mesh(
-    new THREE.BoxGeometry(1.25, 0.08, 0.16),
-    wrenchMat,
-  );
-  wrenchHandle.name = "garageAnchorRooftopWrenchHandle";
-  const wrenchJaw = new THREE.Mesh(
-    new THREE.BoxGeometry(0.32, 0.08, 0.48),
-    wrenchMat,
-  );
-  wrenchJaw.name = "garageAnchorRooftopWrenchJaw";
-  wrenchJaw.position.x = 0.63;
-  wrenchGroup.add(wrenchHandle, wrenchJaw);
 
   const doorMat = new THREE.MeshStandardMaterial({
     color: 0xd8e4ee,
@@ -1033,21 +966,13 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       // apron/ramp continuing out of the bay toward the road — reads as drive-into-able and is the
       // corner-aligned approach the free-roam car will use (true drive-through gated on the Codex
       // carSpec hook; this lays the road-facing path + visual now).
-      const apronMat = new THREE.MeshStandardMaterial({
-        color: 0x3a3f4a,
-        roughness: 0.7,
-        emissive: 0xff9f2f,
-        emissiveIntensity:
-          garageAnchorNightFloorEmissive(C.state.clock.daylight) * 0.5,
-      });
-      C.garageFloorMats.push(apronMat);
       const apron = new THREE.Mesh(
         new THREE.BoxGeometry(
           model.serviceBay.bayDoorW * 1.35,
           0.04,
           model.serviceBay.d * 0.85,
         ),
-        apronMat,
+        asphaltMat,
       );
       apron.name = "garageAnchorDriveInApronRamp";
       apron.position.set(
@@ -1098,57 +1023,80 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   }
 
   const pylonMat = new THREE.MeshStandardMaterial({
-    color: 0xffb24a,
-    emissive: 0xff8f2f,
-    emissiveIntensity: 0.85,
-    roughness: 0.32,
+    color: 0x181e26,
+    roughness: 0.35,
+    metalness: 0.85,
   });
   const pylon = new THREE.Mesh(
-    new THREE.BoxGeometry(model.pylon.w, model.pylon.h, model.pylon.d),
+    new THREE.CylinderGeometry(0.14, 0.18, model.pylon.h, 16),
     pylonMat,
   );
   pylon.name = "garageAnchorCornerPylonSign";
-  pylon.position.set(model.pylon.x, model.pylon.y, model.pylon.z);
+  pylon.position.set(model.pylon.x, model.pylon.h / 2, model.pylon.z);
   pylon.castShadow = true;
 
-  const pylonCap = new THREE.Mesh(
-    new THREE.BoxGeometry(model.pylon.w * 2.35, 0.9, model.pylon.d * 1.35),
-    pylonMat,
-  );
-  pylonCap.name = "garageAnchorPylonLightBox";
-  pylonCap.position.set(model.pylon.x, model.pylon.h + 0.28, model.pylon.z);
-
-  const pylonCyanPanel = new THREE.Mesh(
-    new THREE.BoxGeometry(model.pylon.w * 1.45, 0.12, model.pylon.d * 1.52),
+  // Petrol-station style black sign panel atop the tall pole
+  const panelW = 1.8;
+  const panelH = 1.1;
+  const panelD = 0.22;
+  const panelY = model.pylon.h - panelH / 2;
+  const pylonPanel = new THREE.Mesh(
+    new THREE.BoxGeometry(panelW, panelH, panelD),
     new THREE.MeshStandardMaterial({
-      color: 0x79edff,
-      emissive: 0x35d8ff,
-      emissiveIntensity: 0.74,
-      roughness: 0.24,
+      color: 0x111317,
+      roughness: 0.3,
+      metalness: 0.6,
     }),
   );
-  pylonCyanPanel.name = "garageAnchorPylonCyanEdgePanel";
-  pylonCyanPanel.position.set(
-    model.pylon.x,
-    model.pylon.h + 0.78,
-    model.pylon.z,
-  );
+  pylonPanel.name = "garageAnchorPylonPanel";
+  pylonPanel.position.set(model.pylon.x, panelY, model.pylon.z);
 
-  const pylonRoadFace = new THREE.Mesh(
-    new THREE.BoxGeometry(model.pylon.w * 1.9, model.pylon.h * 0.34, 0.08),
-    new THREE.MeshStandardMaterial({
-      color: 0xffcf74,
-      emissive: 0xff9f2f,
-      emissiveIntensity: 0.9,
-      roughness: 0.26,
-    }),
-  );
-  pylonRoadFace.name = "garageAnchorRoadFacingPylonSignFace";
-  pylonRoadFace.position.set(
-    model.pylon.x,
-    model.pylon.h * 0.74,
-    model.pylon.z + model.pylon.d * 0.78,
-  );
+  // 3D embossed hammer logo on the black panel (front and back faces)
+  const hammerLogoGroup = new THREE.Group();
+  hammerLogoGroup.name = "garageAnchorPylonHammerLogo";
+  hammerLogoGroup.position.set(model.pylon.x, panelY, model.pylon.z);
+
+  const hammerHandleMat = new THREE.MeshStandardMaterial({
+    color: 0xd8e4ee,
+    metalness: 0.85,
+    roughness: 0.25,
+  });
+  const hammerHeadMat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    metalness: 0.9,
+    roughness: 0.15,
+    emissive: 0x4a9eff,
+    emissiveIntensity: 0.35,
+  });
+
+  for (const side of [-1, 1]) {
+    const faceZ = (panelD / 2 + 0.02) * side;
+    // Angled handle (tilted ~36 degrees)
+    const handle = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, 0.65, 0.04),
+      hammerHandleMat,
+    );
+    handle.rotation.z = Math.PI / 5;
+    handle.position.set(-0.06, -0.04, faceZ);
+
+    // Cross-piece hammer head
+    const head = new THREE.Mesh(
+      new THREE.BoxGeometry(0.42, 0.14, 0.045),
+      hammerHeadMat,
+    );
+    head.rotation.z = Math.PI / 5;
+    head.position.set(0.12, 0.18, faceZ);
+
+    // Hammer claw / strike back
+    const claw = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14, 0.08, 0.045),
+      hammerHeadMat,
+    );
+    claw.rotation.z = Math.PI / 5 + 0.4;
+    claw.position.set(0.24, 0.26, faceZ);
+
+    hammerLogoGroup.add(handle, head, claw);
+  }
 
   for (const [i, car] of model.displayCars.entries()) {
     const cg = new THREE.Group();
@@ -1160,13 +1108,13 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     const realCar = buildCarMesh(displaySpec);
     realCar.scale.setScalar(1.0);
     const underGlow = new THREE.Mesh(
-      new THREE.BoxGeometry(1.26, 0.025, 0.62),
+      new THREE.BoxGeometry(0.95, 0.02, 0.45),
       new THREE.MeshStandardMaterial({
-        color: 0xffb24a,
-        emissive: 0xff8f2f,
-        emissiveIntensity: 0.62,
+        color: 0x4a9eff,
+        emissive: 0x26c6ff,
+        emissiveIntensity: 0.35,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.5,
       }),
     );
     underGlow.name = `garageAnchorDisplayCarUnderGlow.${i + 1}`;
@@ -1178,21 +1126,15 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   g.add(
     floor,
     forecourt,
-    forecourtLane,
     showroomGroup,
     showroomInterior,
     showroom,
     showroomFront,
-    showroomHeader,
-    showroomCarSilhouette,
-    showroomCarGlow,
     service,
     roof,
-    wrenchGroup,
     pylon,
-    pylonCap,
-    pylonCyanPanel,
-    pylonRoadFace,
+    pylonPanel,
+    hammerLogoGroup,
   );
   C.group.add(g);
 }

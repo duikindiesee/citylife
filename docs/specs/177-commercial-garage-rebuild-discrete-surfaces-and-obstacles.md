@@ -121,13 +121,22 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
    - Foliage clearing: footprint registered in `worldClearRects.ts`.
    - Desert flora alignment: legacy cone foliage (`R3FFoliage`) is completely retired so that only authentic _Aloe dichotoma_ (`R3FQuiverTrees` / kokerboom) remain across dunes and rocky ground.
 
+7. **P0 Player Acceptance Corrections (2026-10-04)**:
+   - **Road Carriageway Clearance**: The overgrown apron and glowing yellow/brown floor slab previously reached world $Y = 265.10$, intruding into the road carriageway ($Y \in [263.0, 267.0]$) up to the yellow centerline. The driveway apron is bounded strictly at local $Z \le 7.80$ (world $Y \ge 267.20$), kissing the road edge while keeping the carriageway completely clear.
+   - **Frontage Alignment with Blue Shop**: The building facade previously sat 5 cells ($20$m) back from the road. The showroom and service bay centers were moved forward to $Z = 1.45$ (front facade at $Z = 4.20$, world $Y = 270.80$), aligning with the adjacent blue shop (`shop_21` / Tool Library).
+   - **Road-Compatible Asphalt Forecourt**: Replaced the yellow-tinted floor slab and glowing lane strips with neutral foundation underneath the building and road-compatible asphalt (`0x595f6a, roughness: 0.92`) across forecourt and driveway apron, eliminating any gravel gap or step.
+   - **Display Vehicle Models & Scale**: Exterior sale cars use the identical models and scale as actual drivable vehicles (`buildCarMesh`, world length ~3.8m), parked in Bay 01 and Bay 02, leaving Bay 03 open as a usable visitor stall.
+   - **Petrol-Station Corner Pylon Signage**: Placed a tall corner pole ($X = -7.04, Z = 6.20$, height $6.2$m) at the street corner clear of vehicle and pedestrian paths, topped with a black panel and 3D embossed metallic hammer logo (`garageAnchorPylonHammerLogo`). The misplaced rooftop wrench and yellow placeholder bars are eliminated.
+   - **Junction Furniture & Paint Alignment**: `onAnyRoad` in `roadJunctions.ts` checks both raw way polylines and smoothed polylines; `placeClear` spirals up to 9 cells and uses outward radial marching up to 18 cells, guaranteeing traffic signals and stop signs never plant inside carriageways across any seed (4242, 7, 99, 1234). `roadRibbon.ts` tests edge line station points, eliminating diagonal cut lines across junction caps.
+
 ## Verification & Acceptance
 
+- `tests/garageAlignmentAndJunctionAcceptance.test.ts`: Discriminating regression suite covering road carriageway clearance, frontage alignment with the blue shop, display car dimensions (3.8m), tall corner pole with hammer logo, and road furniture carriageway clearance across seeds 4242, 7, 99.
 - `tests/garageRebuildAndCollision.test.ts`: Unit test suite verifying asset version metadata, parking stall car rotation ($\pi/2$), open bay clearance, closed door blocking, wall collision, lift post clearance, swept footprint obstacle detection, drive-in/drive-out trajectories, pedestrian walkability, and car exit safety.
+- `tests/garageBayCavityAndSightline.test.ts`: Verifies Bay 2 drive-in corridor cavity, height clearance, and frontal sightline.
+- `tests/junctionPaintLayoutProof.test.ts`: Proves no overlapping quads, one crosswalk per approach, and arm-axis aligned stripes across seeds 4242, 7, 99, 1234.
+- `tests/roadFurnitureClearance.test.ts`: Proves furniture stands clear of carriageway across seeds.
 - `tests/kookerHqGarageSetback.test.ts`: Kooker HQ landmark placement behind garage, architectural components, and footprint foliage clearance.
-- `tests/garageAnchorShellScale.test.ts`: Pad scaling verification.
-- `tests/parkingLotAndWallClearance.test.ts`: Display car stall alignment and wall clearance.
-- `tests/placementSetback.test.ts`: Setback invariant verification.
-- `tests/showroomGeometryClearance.test.ts`: 360° showroom car rotation clearance.
-- `tests/onboardingAndGarageDriveIn.test.ts`: Homestead claim and drive-in verification.
+- `tests/roadJunctions.test.ts`, `tests/junctionCap.test.ts`, `tests/junctionCapEdgeProof.test.ts`, `tests/junctionContinuityProof.test.ts`: All passing.
 - `npm run typecheck`: 0 errors.
+- `npm test`: 87 test files, 635 tests passed.

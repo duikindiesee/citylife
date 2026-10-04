@@ -85,7 +85,7 @@ export interface GarageAnchorShellModel {
     w: number;
     d: number;
     y: number;
-    emissiveIntensity: { day: 0.12; night: 1.05 };
+    emissiveIntensity: { day: number; night: number };
   };
   displayCars: { x: number; z: number; rot: number; scale: number }[];
   surfaces: GarageSurfaceZone[];
@@ -178,7 +178,7 @@ export function buildGarageAnchorShellModel(
     h: 3.15,
     d: footprint.d * 0.5, // 5.50 cells deep (~22.0m)
     x: -footprint.w * 0.245, // -3.92 cells (spans [-7.76, -0.08])
-    z: -footprint.d * 0.05, // -0.55 cells (spans [-3.30, +2.20])
+    z: 1.45, // spans [-1.30, +4.20], aligning front facade with commercial district line
     y: 1.575,
   };
   const serviceBay = {
@@ -186,7 +186,7 @@ export function buildGarageAnchorShellModel(
     h: 2.35,
     d: footprint.d * 0.5, // 5.50 cells deep (~22.0m)
     x: footprint.w * 0.24, // +3.84 cells (spans [+0.16, +7.52])
-    z: -footprint.d * 0.05, // -0.55 cells (spans [-3.30, +2.20])
+    z: 1.45, // spans [-1.30, +4.20], aligning front facade with showroom
     y: 1.175,
     doorCount: 3 as const,
     bayDoorW: footprint.w * 0.115, // 1.84 cells wide (~7.4m per bay)
@@ -195,40 +195,39 @@ export function buildGarageAnchorShellModel(
   const localFromGrid = (grid: { x: number; y: number }) => {
     return localFromGridCoordinates(garagePad, grid.x, grid.y);
   };
-  const pylonLocal = localFromGrid(garagePad.islandCell);
   const pylon = {
-    w: 0.7,
-    h: 5.4,
-    d: 0.42,
-    x: pylonLocal.x,
-    z: pylonLocal.z,
-    y: 2.7,
+    w: 0.6,
+    h: 6.2,
+    d: 0.6,
+    x: -footprint.w * 0.44, // -7.04 (street-facing corner outside driving & walking paths)
+    z: 6.2,
+    y: 3.1,
   };
-  const forecourtDepth = footprint.d * 0.32;
+  const forecourtDepth = 3.2;
   const forecourt = {
     w: footprint.w * 0.88,
     d: forecourtDepth,
     // Forecourt slab sits strictly within the surveyed pad boundaries, in front of the workshop & showroom.
-    frontOffset: Math.max(0, footprint.d / 2 - forecourtDepth / 2 - 0.05),
+    frontOffset: 5.8,
     y: 0.045,
   };
 
-  // Spec 177: Driveway Apron connecting forecourt forward to the municipal road edge
+  // Spec 177: Driveway Apron connecting forecourt forward to the municipal road edge without penetrating carriageway
   const drivewayApron = {
     w: footprint.w * 0.72, // ~11.5 cells wide, spanning full approach to bays and stalls
-    d: 4.8, // spans from forecourt forward into the road connection zone
+    d: 3.6, // spans from Z=4.20 to Z=7.80, stopping at road edge (world Y=267.20 >= 267.0)
     x: footprint.w * 0.08, // aligned across bay approach and forecourt
-    z: footprint.d / 2 + 2.0, // centered across the setback transition zone
+    z: 6.0, // centered across the setback transition zone
     y: 0.04,
   };
 
   // Spec 176 / 177: Customer parking bays on the forecourt in front of showroom.
   // Oriented lengthwise into/out of the stall with rot: Math.PI / 2.
   // Stall depth (bayD = 1.25 cells = 5.0m) along Z; stall width (bayW = 0.68 cells = 2.72m) along X.
-  // Positioned at bayZ = 4.28 on forecourt, providing wide clearance to showroom glass wall.
+  // Positioned at bayZ = 5.60 on forecourt, providing wide clearance to showroom glass wall.
   const bayW = 0.68;
   const bayD = 1.25;
-  const bayZ = 4.28;
+  const bayZ = 5.6;
   const stallRotation = Math.PI / 2; // Aligned with stall lines (not sideways across lines)
   const parkingBays = [
     {
@@ -556,10 +555,10 @@ export function buildGarageAnchorShellModel(
     drivewayApron,
     parkingBays,
     nightFloor: {
-      w: footprint.w * 0.98,
-      d: footprint.d * 0.92,
+      w: footprint.w * 0.96,
+      d: footprint.d * 0.52,
       y: 0.035,
-      emissiveIntensity: { day: 0.12, night: 1.05 },
+      emissiveIntensity: { day: 0.0, night: 0.0 },
     },
     displayCars: [
       {
