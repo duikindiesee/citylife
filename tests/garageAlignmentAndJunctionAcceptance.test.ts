@@ -462,6 +462,13 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
       ) as THREE.Mesh;
       expect(fullApron, "driveway apron mesh exists").toBeDefined();
 
+      // Obsolete Spec 110 apron ramp must be removed to prevent carriageway penetration
+      const legacyApron = shell.getObjectByName("garageAnchorDriveInApronRamp");
+      expect(
+        legacyApron,
+        `Seed ${seed}: legacy apron ramp penetrating road must not exist`,
+      ).toBeUndefined();
+
       const apronBox = new THREE.Box3().setFromObject(fullApron);
       let maxSurfaceH = -Infinity;
       for (let lx = -g.w * 0.45; lx <= g.w * 0.45; lx += 1.0) {
