@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-05T06:43:00.741Z",
+  "updatedAt": "2026-10-05T06:52:33.961Z",
   "runs": [
     {
       "runId": 37273718110,
@@ -77,6 +77,99 @@
           "startedAt": "2026-10-05T06:41:47Z",
           "completedAt": "2026-10-05T06:42:48Z",
           "durationSeconds": 61
+        }
+      ]
+    },
+    {
+      "runId": 37273662602,
+      "workflowName": "Docker",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37273662602",
+      "event": "push",
+      "branch": "main",
+      "sha": "b17cc30503646ba127ad8c3e14a745cc61f2a306",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/b17cc30503646ba127ad8c3e14a745cc61f2a306",
+      "pullRequestNumbers": "#555",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/555",
+      "pullRequests": [
+        {
+          "number": 555,
+          "url": "https://github.com/duikindiesee/citylife/pull/555"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-05T06:41:04Z",
+      "completedAt": "2026-10-05T06:52:22Z",
+      "durationSeconds": 678,
+      "runnerSummary": "kooker1-org-docker-2, GitHub Actions 1000010680, kooker1-org-docker-1",
+      "jobs": [
+        {
+          "id": 111645858630,
+          "name": "version-bump / bump",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-org-docker-2",
+          "runnerGroup": "trusted-kooker1",
+          "runnerLabels": [
+            "self-hosted",
+            "Linux",
+            "X64",
+            "kooker1-org",
+            "docker"
+          ],
+          "startedAt": "2026-10-05T06:41:08Z",
+          "completedAt": "2026-10-05T06:41:55Z",
+          "durationSeconds": 47
+        },
+        {
+          "id": 111646076035,
+          "name": "build-and-push",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010680",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-05T06:41:59Z",
+          "completedAt": "2026-10-05T06:51:35Z",
+          "durationSeconds": 576
+        },
+        {
+          "id": 111648636716,
+          "name": "deploy / sync",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-org-docker-2",
+          "runnerGroup": "trusted-kooker1",
+          "runnerLabels": [
+            "self-hosted",
+            "Linux",
+            "X64",
+            "kooker1-org",
+            "docker"
+          ],
+          "startedAt": "2026-10-05T06:51:39Z",
+          "completedAt": "2026-10-05T06:52:21Z",
+          "durationSeconds": 42
+        },
+        {
+          "id": 111648636818,
+          "name": "retention / prune-ghcr",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-org-docker-1",
+          "runnerGroup": "trusted-kooker1",
+          "runnerLabels": [
+            "self-hosted",
+            "Linux",
+            "X64",
+            "kooker1-org",
+            "docker"
+          ],
+          "startedAt": "2026-10-05T06:51:39Z",
+          "completedAt": "2026-10-05T06:51:49Z",
+          "durationSeconds": 10
         }
       ]
     },
