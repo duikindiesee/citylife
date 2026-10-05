@@ -280,7 +280,8 @@ export function R3FOperatorCar({
           gSeat,
         );
         if (isR) {
-          const roadH = Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT;
+          const roadH =
+            Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT;
           return Math.max(roadH, apronH);
         }
         return apronH;

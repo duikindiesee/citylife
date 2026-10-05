@@ -217,7 +217,10 @@ function buildMallAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
 }
 
 function buildApronGeometries(
-  garagePad: Pick<CommercialDistrict["garagePad"] & object, "x" | "y" | "w" | "h" | "facingAngle">,
+  garagePad: Pick<
+    CommercialDistrict["garagePad"] & object,
+    "x" | "y" | "w" | "h" | "facingAngle"
+  >,
   terrain: Pick<ColonyState["terrain"], "worldYAt">,
   apron: { x: number; z: number; w: number; d: number },
   foundDepth: number,
@@ -264,13 +267,25 @@ function buildApronGeometries(
 
       // Top quad
       slabPos.push(
-        x0, y00, z0,
-        x0, y01, z1,
-        x1, y11, z1,
+        x0,
+        y00,
+        z0,
+        x0,
+        y01,
+        z1,
+        x1,
+        y11,
+        z1,
 
-        x0, y00, z0,
-        x1, y11, z1,
-        x1, y10, z0,
+        x0,
+        y00,
+        z0,
+        x1,
+        y11,
+        z1,
+        x1,
+        y10,
+        z0,
       );
 
       // Bottom quad
@@ -280,13 +295,25 @@ function buildApronGeometries(
       const b11 = y11 - slabThick;
 
       slabPos.push(
-        x0, b00, z0,
-        x1, b11, z1,
-        x0, b01, z1,
+        x0,
+        b00,
+        z0,
+        x1,
+        b11,
+        z1,
+        x0,
+        b01,
+        z1,
 
-        x0, b00, z0,
-        x1, b10, z0,
-        x1, b11, z1,
+        x0,
+        b00,
+        z0,
+        x1,
+        b10,
+        z0,
+        x1,
+        b11,
+        z1,
       );
     }
   }
@@ -300,13 +327,25 @@ function buildApronGeometries(
     const b0 = y0 - slabThick;
     const b1 = y1 - slabThick;
     slabPos.push(
-      x0, y0, zEnd,
-      x0, b0, zEnd,
-      x1, b1, zEnd,
+      x0,
+      y0,
+      zEnd,
+      x0,
+      b0,
+      zEnd,
+      x1,
+      b1,
+      zEnd,
 
-      x0, y0, zEnd,
-      x1, b1, zEnd,
-      x1, y1, zEnd,
+      x0,
+      y0,
+      zEnd,
+      x1,
+      b1,
+      zEnd,
+      x1,
+      y1,
+      zEnd,
     );
   }
 
@@ -319,13 +358,25 @@ function buildApronGeometries(
     const b0 = y0 - slabThick;
     const b1 = y1 - slabThick;
     slabPos.push(
-      x0, y0, zStart,
-      x1, b1, zStart,
-      x0, b0, zStart,
+      x0,
+      y0,
+      zStart,
+      x1,
+      b1,
+      zStart,
+      x0,
+      b0,
+      zStart,
 
-      x0, y0, zStart,
-      x1, y1, zStart,
-      x1, b1, zStart,
+      x0,
+      y0,
+      zStart,
+      x1,
+      y1,
+      zStart,
+      x1,
+      b1,
+      zStart,
     );
   }
 
@@ -338,13 +389,25 @@ function buildApronGeometries(
     const b0 = y0 - slabThick;
     const b1 = y1 - slabThick;
     slabPos.push(
-      xMin, y0, z0,
-      xMin, b0, z0,
-      xMin, b1, z1,
+      xMin,
+      y0,
+      z0,
+      xMin,
+      b0,
+      z0,
+      xMin,
+      b1,
+      z1,
 
-      xMin, y0, z0,
-      xMin, b1, z1,
-      xMin, y1, z1,
+      xMin,
+      y0,
+      z0,
+      xMin,
+      b1,
+      z1,
+      xMin,
+      y1,
+      z1,
     );
   }
 
@@ -357,13 +420,25 @@ function buildApronGeometries(
     const b0 = y0 - slabThick;
     const b1 = y1 - slabThick;
     slabPos.push(
-      xMax, y0, z0,
-      xMax, b1, z1,
-      xMax, b0, z0,
+      xMax,
+      y0,
+      z0,
+      xMax,
+      b1,
+      z1,
+      xMax,
+      b0,
+      z0,
 
-      xMax, y0, z0,
-      xMax, y1, z1,
-      xMax, b1, z1,
+      xMax,
+      y0,
+      z0,
+      xMax,
+      y1,
+      z1,
+      xMax,
+      b1,
+      z1,
     );
   }
 
@@ -385,13 +460,25 @@ function buildApronGeometries(
     const y0 = topLocalY(x0, zEnd) - slabThick;
     const y1 = topLocalY(x1, zEnd) - slabThick;
     foundPos.push(
-      x0, y0, zEnd,
-      x0, baseH, zEnd,
-      x1, baseH, zEnd,
+      x0,
+      y0,
+      zEnd,
+      x0,
+      baseH,
+      zEnd,
+      x1,
+      baseH,
+      zEnd,
 
-      x0, y0, zEnd,
-      x1, baseH, zEnd,
-      x1, y1, zEnd,
+      x0,
+      y0,
+      zEnd,
+      x1,
+      baseH,
+      zEnd,
+      x1,
+      y1,
+      zEnd,
     );
   }
 
@@ -402,13 +489,25 @@ function buildApronGeometries(
     const y0 = topLocalY(x0, zStart) - slabThick;
     const y1 = topLocalY(x1, zStart) - slabThick;
     foundPos.push(
-      x0, y0, zStart,
-      x1, baseH, zStart,
-      x0, baseH, zStart,
+      x0,
+      y0,
+      zStart,
+      x1,
+      baseH,
+      zStart,
+      x0,
+      baseH,
+      zStart,
 
-      x0, y0, zStart,
-      x1, y1, zStart,
-      x1, baseH, zStart,
+      x0,
+      y0,
+      zStart,
+      x1,
+      y1,
+      zStart,
+      x1,
+      baseH,
+      zStart,
     );
   }
 
@@ -419,13 +518,25 @@ function buildApronGeometries(
     const y0 = topLocalY(xMin, z0) - slabThick;
     const y1 = topLocalY(xMin, z1) - slabThick;
     foundPos.push(
-      xMin, y0, z0,
-      xMin, baseH, z0,
-      xMin, baseH, z1,
+      xMin,
+      y0,
+      z0,
+      xMin,
+      baseH,
+      z0,
+      xMin,
+      baseH,
+      z1,
 
-      xMin, y0, z0,
-      xMin, baseH, z1,
-      xMin, y1, z1,
+      xMin,
+      y0,
+      z0,
+      xMin,
+      baseH,
+      z1,
+      xMin,
+      y1,
+      z1,
     );
   }
 
@@ -436,25 +547,49 @@ function buildApronGeometries(
     const y0 = topLocalY(xMax, z0) - slabThick;
     const y1 = topLocalY(xMax, z1) - slabThick;
     foundPos.push(
-      xMax, y0, z0,
-      xMax, baseH, z1,
-      xMax, baseH, z0,
+      xMax,
+      y0,
+      z0,
+      xMax,
+      baseH,
+      z1,
+      xMax,
+      baseH,
+      z0,
 
-      xMax, y0, z0,
-      xMax, y1, z1,
-      xMax, baseH, z1,
+      xMax,
+      y0,
+      z0,
+      xMax,
+      y1,
+      z1,
+      xMax,
+      baseH,
+      z1,
     );
   }
 
   // Bottom foundation slab
   foundPos.push(
-    xMin, baseH, zStart,
-    xMax, baseH, zEnd,
-    xMin, baseH, zEnd,
+    xMin,
+    baseH,
+    zStart,
+    xMax,
+    baseH,
+    zEnd,
+    xMin,
+    baseH,
+    zEnd,
 
-    xMin, baseH, zStart,
-    xMax, baseH, zStart,
-    xMax, baseH, zEnd,
+    xMin,
+    baseH,
+    zStart,
+    xMax,
+    baseH,
+    zStart,
+    xMax,
+    baseH,
+    zEnd,
   );
 
   const apronFoundGeom = new THREE.BufferGeometry();
@@ -488,11 +623,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     facingAngle: model.facingAngle,
     roadTarget: d.garagePad.roadTarget,
   };
-  g.position.set(
-    C.wx(model.center.x),
-    padSeat,
-    C.wz(model.center.y),
-  );
+  g.position.set(C.wx(model.center.x), padSeat, C.wz(model.center.y));
   g.rotation.y = model.facingAngle;
   // PLAYER.GARAGE.1 — the model's dimensions are grid cells; the group sits in world metres.
   // Without this uniform cells→metres scale the whole landmark rendered at quarter size on its
