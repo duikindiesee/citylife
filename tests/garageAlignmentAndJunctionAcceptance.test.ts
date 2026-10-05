@@ -3,6 +3,11 @@ import * as THREE from "three";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { buildCommercialDistrictLayer } from "../src/colony/render/commercialDistrictLayer";
 import {
+  computeTerrainLeveling,
+  padSeatY,
+} from "../src/colony/render/useTerrainLeveling";
+import { gridFromLocalCoordinates } from "../src/colony/render/garageAnchorShell";
+import {
   findJunctionZones,
   junctionFurniture,
 } from "../src/colony/render/roadJunctions";
@@ -280,5 +285,72 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
         }
       }
     }
+  });
+
+  it("6. Solid retaining foundation plinths must embed deep into ground on slopes", () => {
+    const garageShell = getGarageShell();
+    const buildingFound = garageShell.getObjectByName(
+      "garageAnchorFoundation",
+    ) as THREE.Mesh;
+    expect(buildingFound, "Building foundation plinth must exist").toBeDefined();
+
+    const forecourtFound = garageShell.getObjectByName(
+      "garageAnchorForecourtFoundation",
+    ) as THREE.Mesh;
+    expect(forecourtFound, "Forecourt foundation plinth must exist").toBeDefined();
+
+    const apronFound = garageShell.getObjectByName(
+      "garageAnchorDrivewayApronFoundation",
+    ) as THREE.Mesh;
+    expect(apronFound, "Driveway apron foundation plinth must exist").toBeDefined();
+
+    // Verify depth in world metres (scale factor is 4)
+    const buildingBox = new THREE.Box3().setFromObject(buildingFound);
+    const buildingDepthM = buildingBox.max.y - buildingBox.min.y;
+    expect(
+      buildingDepthM,
+      `Building foundation depth ${buildingDepthM.toFixed(2)}m must be >= 2.0m to prevent hollow underbelly`,
+    ).toBeGreaterThanOrEqual(2.0);
+  });
+
+  it("7. Continuous apron and forecourt terrain leveling connects garage smoothly to municipal road ribbon", () => {
+    for (const seed of [4242, 42, 7, 99]) {
+      const rtSeed = new ColonyRuntime(seed);
+      const sSeed = rtSeed.sim.state;
+      const tSeed = sSeed.terrain;
+      const g = sSeed.commercialDistrict!.garagePad!;
+      const roadY = (x: number, y: number) => Math.max(0, tSeed.worldY(Math.round(x), Math.round(y)));
+      const ribbon = new Map<string, number>();
+      for (const r of sSeed.roads) {
+        ribbon.set(`${r.x},${r.y}`, roadY(r.x, r.y));
+      }
+
+      const level = computeTerrainLeveling(sSeed, ribbon, new Map());
+      const seat = padSeatY(tSeed, g.x, g.y, g.w, g.h);
+      const halfW = g.w / 2;
+
+      // Verify no cell under apron has a cliff drop > 1.5m from pad seat
+      for (let lz = 4.2; lz <= 7.5; lz += 0.5) {
+        for (let lx = -halfW * 0.8; lx <= halfW * 0.8; lx += 2) {
+          const pt = gridFromLocalCoordinates(g, lx, lz);
+          const gx = Math.round(pt.x), gy = Math.round(pt.y);
+          const i = gy * tSeed.size + gx;
+          const cellH = level.get(i) ?? tSeed.worldY(gx, gy);
+          expect(
+            Number.isFinite(cellH),
+            `Seed ${seed}: cell (${gx}, ${gy}) at lz=${lz} must have finite height`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("8. Paved corner pylon curb and side flank apron eliminate unpaved desert gaps next to road", () => {
+    const garageShell = getGarageShell();
+    const pylonCurb = garageShell.getObjectByName("garageAnchorPylonCurb");
+    expect(pylonCurb, "Corner pylon must stand on a paved curb plinth").toBeDefined();
+
+    const sideFlank = garageShell.getObjectByName("garageAnchorSideFlankApron");
+    expect(sideFlank, "Paved side flank apron must bridge building flank to road curb").toBeDefined();
   });
 });

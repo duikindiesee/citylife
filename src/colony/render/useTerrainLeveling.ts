@@ -5,6 +5,7 @@ import { applyCoastalCommercialDryBlend } from "./terrainLeveling";
 import { useSimSignal, type SimBridge } from "./useSimSignal";
 import { levelingSignature } from "./simSignals";
 import { depotCutFillSeatY } from "../transit/busDepot";
+import { gridFromLocalCoordinates } from "./garageAnchorShell";
 
 // Match PlanetRenderer.ts behavior
 export const RENDER_DRY_FLOOR = 0.65;
@@ -176,6 +177,46 @@ export function computeTerrainLeveling(
           if (x < 0 || y < 0 || x >= N || y >= N) continue;
           if (roadRibbonCells?.has(`${x},${y}`)) continue;
           put(x, y, py);
+        }
+      }
+    }
+
+    // Spec 177: Grade garage apron and setback transition throat seamlessly into municipal road ribbon
+    if (cd.garagePad) {
+      const g = cd.garagePad;
+      const py = padSeatY(t, g.x, g.y, g.w, g.h);
+      const halfW = g.w / 2 + 1.5;
+      for (let lx = -halfW; lx <= halfW; lx += 0.5) {
+        let roadLz = 8.5;
+        let roadHeight = py;
+        for (let lz = 4.2; lz <= 10.0; lz += 0.25) {
+          const pt = gridFromLocalCoordinates(g, lx, lz);
+          const gx = Math.round(pt.x),
+            gy = Math.round(pt.y);
+          const k = `${gx},${gy}`;
+          if (roadRibbonCells?.has(k)) {
+            roadLz = lz;
+            roadHeight = roadRibbonCells.get(k)!;
+            break;
+          }
+        }
+        for (let lz = 4.0; lz <= roadLz; lz += 0.25) {
+          const pt = gridFromLocalCoordinates(g, lx, lz);
+          const gx = Math.round(pt.x),
+            gy = Math.round(pt.y);
+          const k = `${gx},${gy}`;
+          if (roadRibbonCells?.has(k)) continue;
+          const factor =
+            roadLz > 4.2
+              ? Math.max(0, Math.min(1, (lz - 4.2) / (roadLz - 4.2)))
+              : 0;
+          const sm = factor * factor * (3 - 2 * factor);
+          const nat = Math.max(t.worldY(gx, gy), DRY);
+          const targetH = Number.isFinite(roadHeight) ? roadHeight : nat;
+          const h = py + (targetH - py) * sm;
+          if (Number.isFinite(h)) {
+            put(gx, gy, h);
+          }
         }
       }
     }

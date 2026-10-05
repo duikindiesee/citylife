@@ -259,6 +259,20 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   floor.name = "garageAnchorNightFloor";
   floor.position.set(0, model.nightFloor.y, 0);
 
+  // Spec 177: Solid retaining foundation plinths embedding into ground on slopes
+  const foundDepth = 0.65; // ~2.6m foundation depth
+  const foundationMat = new THREE.MeshStandardMaterial({
+    color: 0x242830,
+    roughness: 0.95,
+  });
+  const buildingFound = new THREE.Mesh(
+    new THREE.BoxGeometry(model.nightFloor.w, foundDepth, model.nightFloor.d),
+    foundationMat,
+  );
+  buildingFound.name = "garageAnchorFoundation";
+  buildingFound.position.set(0, -foundDepth / 2 + 0.02, 0);
+  buildingFound.receiveShadow = true;
+
   const asphaltMat = new THREE.MeshStandardMaterial({
     color: 0x595f6a,
     roughness: 0.92,
@@ -271,6 +285,40 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   forecourt.name = "garageAnchorRoadFacingForecourt";
   forecourt.position.set(0, model.forecourt.y, model.forecourt.frontOffset);
   forecourt.receiveShadow = true;
+
+  const forecourtFound = new THREE.Mesh(
+    new THREE.BoxGeometry(model.forecourt.w, foundDepth, model.forecourt.d),
+    foundationMat,
+  );
+  forecourtFound.name = "garageAnchorForecourtFoundation";
+  forecourtFound.position.set(
+    0,
+    -foundDepth / 2 + 0.02,
+    model.forecourt.frontOffset,
+  );
+  forecourtFound.receiveShadow = true;
+
+  // Spec 177: Paved side flank apron connecting the building flank to the side street curb
+  const streetFrontSign = Math.sign(model.pylon.x || 1);
+  const flankW = 2.0; // ~8m wide flank strip
+  const flankX = streetFrontSign * (model.footprint.w / 2 + flankW / 2 - 0.2);
+  const sideFlank = new THREE.Mesh(
+    new THREE.BoxGeometry(flankW, 0.035, model.footprint.d * 0.95),
+    asphaltMat,
+  );
+  sideFlank.name = "garageAnchorSideFlankApron";
+  sideFlank.position.set(flankX, 0.04, 0.5);
+  sideFlank.receiveShadow = true;
+
+  const sideFlankFound = new THREE.Mesh(
+    new THREE.BoxGeometry(flankW, foundDepth, model.footprint.d * 0.95),
+    foundationMat,
+  );
+  sideFlankFound.name = "garageAnchorSideFlankFoundation";
+  sideFlankFound.position.set(flankX, -foundDepth / 2 + 0.02, 0.5);
+  sideFlankFound.receiveShadow = true;
+
+  g.add(buildingFound, forecourtFound, sideFlank, sideFlankFound);
 
   // Spec 176 / 177: Dedicated customer parking bays painted on the forecourt
   // Aligned with stall depth along world Z and vehicle orientation (rot: Math.PI / 2)
@@ -863,7 +911,24 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     model.drivewayApron.z,
   );
   fullApron.receiveShadow = true;
-  g.add(fullApron);
+
+  const apronFound = new THREE.Mesh(
+    new THREE.BoxGeometry(
+      model.drivewayApron.w,
+      foundDepth,
+      model.drivewayApron.d,
+    ),
+    foundationMat,
+  );
+  apronFound.name = "garageAnchorDrivewayApronFoundation";
+  apronFound.position.set(
+    model.drivewayApron.x,
+    -foundDepth / 2 + 0.02,
+    model.drivewayApron.z,
+  );
+  apronFound.receiveShadow = true;
+
+  g.add(fullApron, apronFound);
 
   const doorMat = new THREE.MeshStandardMaterial({
     color: 0xd8e4ee,
@@ -1049,6 +1114,24 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   pylon.name = "garageAnchorCornerPylonSign";
   pylon.position.set(0, P.poleHeight / 2, 0);
   pylon.castShadow = true;
+
+  // Spec 177: Paved concrete curb plinth grounding the corner sign pole
+  const pylonCurb = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.75, 0.85, 0.45, 16),
+    new THREE.MeshStandardMaterial({ color: 0x484f5a, roughness: 0.9 }),
+  );
+  pylonCurb.name = "garageAnchorPylonCurb";
+  pylonCurb.position.set(0, 0.22, 0);
+  pylonCurb.receiveShadow = true;
+
+  const pylonCurbFound = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.85, 0.9, foundDepth * model.renderScale, 16),
+    foundationMat,
+  );
+  pylonCurbFound.name = "garageAnchorPylonCurbFoundation";
+  pylonCurbFound.position.set(0, -(foundDepth * model.renderScale) / 2, 0);
+  pylonCurbFound.receiveShadow = true;
+  pylonSign.add(pylonCurb, pylonCurbFound);
 
   // Petrol-station style black sign panel atop the tall pole
   const panelW = P.panelW;
