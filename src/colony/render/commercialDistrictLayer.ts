@@ -1268,24 +1268,6 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       hazardStrip.position.set(sx, model.nightFloor.y + 0.04, bayFaceZ);
       g.add(hazardStrip);
 
-      // apron/ramp continuing out of the bay toward the road — reads as drive-into-able and is the
-      // corner-aligned approach the free-roam car will use (true drive-through gated on the Codex
-      // carSpec hook; this lays the road-facing path + visual now).
-      const apron = new THREE.Mesh(
-        new THREE.BoxGeometry(
-          model.serviceBay.bayDoorW * 1.35,
-          0.04,
-          model.serviceBay.d * 0.85,
-        ),
-        asphaltMat,
-      );
-      apron.name = "garageAnchorDriveInApronRamp";
-      apron.position.set(
-        sx,
-        model.nightFloor.y + 0.02,
-        bayFaceZ + model.serviceBay.d * 0.42,
-      );
-      g.add(apron);
     }
     const doorFrameMat = new THREE.MeshStandardMaterial({
       color: 0xffb24a,
