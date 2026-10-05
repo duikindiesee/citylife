@@ -395,11 +395,12 @@ export function junctionFurniture(
       )
     : null;
   const onAnyRoad = (px: number, py: number): boolean => {
-    if (!smoothed || !ways) return false;
-    for (let wi = 0; wi < smoothed.length; wi++) {
-      const cp = smoothed[wi];
-      if (!cp) continue;
-      if (distToPolyline(px, py, cp) < ways[wi]!.width / 2 + 0.25) return true;
+    if (!ways) return false;
+    for (let wi = 0; wi < ways.length; wi++) {
+      const w = ways[wi]!;
+      const halfW = w.width / 2 + 0.25;
+      if (w.path.length >= 2 && distToPolyline(px, py, w.path) < halfW) return true;
+      if (smoothed && smoothed[wi] && distToPolyline(px, py, smoothed[wi]!) < halfW) return true;
     }
     return false;
   };
@@ -414,19 +415,20 @@ export function junctionFurniture(
     my: number,
     lx: number,
     ly: number,
-  ): { x: number; y: number } => {
+  ): { x: number; y: number } | null => {
     if (!blocked(mx, my)) return { x: mx, y: my };
     const rx = mx - zone.cx,
       ry = my - zone.cy;
     const rl = Math.hypot(rx, ry) || 1;
     const ox = rx / rl,
       oy = ry / rl; // radial outward from the junction centre
-    for (let r = 0.6; r <= 7; r += 0.6) {
+    for (let r = 0.6; r <= 9.0; r += 0.5) {
       for (const [dx, dy] of [
         [lx, ly], // left verge
         [ox, oy], // radial out
         [lx + ox, ly + oy], // verge + out
         [-lx, -ly], // right verge (last resort)
+        [-lx + ox, -ly + oy],
       ] as const) {
         const dl = Math.hypot(dx, dy) || 1;
         const x = mx + (dx / dl) * r,
@@ -434,7 +436,9 @@ export function junctionFurniture(
         if (!blocked(x, y)) return { x, y };
       }
     }
-    return { x: mx + lx * 6, y: my + ly * 6 }; // best effort (unreached in boot towns)
+    // Fail closed: every candidate is on asphalt. Omit the pole rather than plant it at an
+    // unvalidated fallback inside a carriageway (MoJoJo review 5410400845, finding 2).
+    return null;
   };
 
   // Each approach gets at most one signal/sign (never duplicates for parallel arm bundles)
@@ -481,14 +485,15 @@ export function junctionFurniture(
         L.x,
         L.y,
       );
-      items.push({
-        kind: "light",
-        x: p.x,
-        y: p.y,
-        rotY: Math.atan2(a.ux, a.uy),
-        laneHalfM: a.half * 4,
-        group: groupOf(a),
-      });
+      if (p)
+        items.push({
+          kind: "light",
+          x: p.x,
+          y: p.y,
+          rotY: Math.atan2(a.ux, a.uy),
+          laneHalfM: a.half * 4,
+          group: groupOf(a),
+        });
     }
     if (zone.kind === "tee" && a.terminating) {
       const p = placeClear(
@@ -497,13 +502,14 @@ export function junctionFurniture(
         L.x,
         L.y,
       );
-      items.push({
-        kind: "stopsign",
-        x: p.x,
-        y: p.y,
-        rotY: Math.atan2(a.ux, a.uy),
-        laneHalfM: a.half * 4,
-      });
+      if (p)
+        items.push({
+          kind: "stopsign",
+          x: p.x,
+          y: p.y,
+          rotY: Math.atan2(a.ux, a.uy),
+          laneHalfM: a.half * 4,
+        });
     }
   }
   return items;

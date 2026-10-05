@@ -752,7 +752,26 @@ function edgeLines(
   for (const sign of [-1, 1]) {
     const c = sign * off;
     for (let i = 0; i < pts.length - 1; i++) {
-      if (skip(pts[i]!.x, pts[i]!.y) || skip(pts[i + 1]!.x, pts[i + 1]!.y))
+      const pA = pts[i]!,
+        pB = pts[i + 1]!;
+      const prevA = pts[Math.max(0, i - 1)]!,
+        nextA = pts[Math.min(pts.length - 1, i + 1)]!;
+      const lenA = Math.hypot(nextA.x - prevA.x, nextA.y - prevA.y) || 1;
+      const lxA = pA.x + (-(nextA.y - prevA.y) / lenA) * c;
+      const lyA = pA.y + ((nextA.x - prevA.x) / lenA) * c;
+
+      const prevB = pts[Math.max(0, i)]!,
+        nextB = pts[Math.min(pts.length - 1, i + 2)]!;
+      const lenB = Math.hypot(nextB.x - prevB.x, nextB.y - prevB.y) || 1;
+      const lxB = pB.x + (-(nextB.y - prevB.y) / lenB) * c;
+      const lyB = pB.y + ((nextB.x - prevB.x) / lenB) * c;
+
+      if (
+        skip(pA.x, pA.y) ||
+        skip(pB.x, pB.y) ||
+        skip(lxA, lyA) ||
+        skip(lxB, lyB)
+      )
         continue; // break the edge line at junctions
       const [aIn, aOut] = at(i, c),
         [bIn, bOut] = at(i + 1, c);

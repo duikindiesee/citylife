@@ -3,6 +3,21 @@ import { CELL_SIZE } from "../scale";
 
 export const GARAGE_ASSET_VERSION = "2.0.0";
 
+/**
+ * Corner sign pylon in REAL WORLD METRES. The garage group is scaled by
+ * renderScale = CELL_SIZE, so the model stores these divided by CELL_SIZE.
+ * Petrol-station style: 6.2 m pole, 1.8 m x 1.1 m black hammer-logo panel.
+ */
+export const GARAGE_PYLON_METRES = {
+  poleHeight: 6.2,
+  poleRadius: 0.16,
+  panelW: 1.8,
+  panelH: 1.1,
+  panelD: 0.22,
+  /** Collider footprint of the pole base (square side). */
+  baseSide: 0.45,
+} as const;
+
 export interface GarageObstacle {
   readonly id: string;
   readonly kind:
@@ -64,7 +79,16 @@ export interface GarageAnchorShellModel {
     doorCount: 3;
     bayDoorW: number;
   };
-  pylon: { w: number; h: number; d: number; x: number; z: number; y: number };
+  pylon: {
+    w: number;
+    h: number;
+    d: number;
+    x: number;
+    z: number;
+    y: number;
+    /** Black hammer-logo sign panel atop the pole (asset-local cells). */
+    panel: { w: number; h: number; d: number };
+  };
   forecourt: { w: number; d: number; frontOffset: number; y: number };
   drivewayApron: {
     w: number;
@@ -85,7 +109,7 @@ export interface GarageAnchorShellModel {
     w: number;
     d: number;
     y: number;
-    emissiveIntensity: { day: 0.12; night: 1.05 };
+    emissiveIntensity: { day: number; night: number };
   };
   displayCars: { x: number; z: number; rot: number; scale: number }[];
   surfaces: GarageSurfaceZone[];
@@ -178,7 +202,7 @@ export function buildGarageAnchorShellModel(
     h: 3.15,
     d: footprint.d * 0.5, // 5.50 cells deep (~22.0m)
     x: -footprint.w * 0.245, // -3.92 cells (spans [-7.76, -0.08])
-    z: -footprint.d * 0.05, // -0.55 cells (spans [-3.30, +2.20])
+    z: 1.45, // spans [-1.30, +4.20], aligning front facade with commercial district line
     y: 1.575,
   };
   const serviceBay = {
@@ -186,7 +210,7 @@ export function buildGarageAnchorShellModel(
     h: 2.35,
     d: footprint.d * 0.5, // 5.50 cells deep (~22.0m)
     x: footprint.w * 0.24, // +3.84 cells (spans [+0.16, +7.52])
-    z: -footprint.d * 0.05, // -0.55 cells (spans [-3.30, +2.20])
+    z: 1.45, // spans [-1.30, +4.20], aligning front facade with showroom
     y: 1.175,
     doorCount: 3 as const,
     bayDoorW: footprint.w * 0.115, // 1.84 cells wide (~7.4m per bay)
@@ -195,40 +219,52 @@ export function buildGarageAnchorShellModel(
   const localFromGrid = (grid: { x: number; y: number }) => {
     return localFromGridCoordinates(garagePad, grid.x, grid.y);
   };
-  const pylonLocal = localFromGrid(garagePad.islandCell);
+  // Spec 177 (PR 555 re-review): the pylon stands at the street-facing PLOT CORNER on the
+  // side of the surveyed islandCell. With the facade moved forward to z = +4.2 the raw
+  // islandCell (z = +4.0) now falls inside the workshop footprint, so the pole is pushed
+  // to the pad's front corner, 0.4 cells in from both pad edges: outside the building
+  // line, outside the driveway apron/forecourt, and still on the owned pad.
+  const islandLocal = localFromGrid(garagePad.islandCell);
+  const cornerInset = 0.4;
+  const toCells = (m: number) => m / CELL_SIZE;
   const pylon = {
-    w: 0.7,
-    h: 5.4,
-    d: 0.42,
-    x: pylonLocal.x,
-    z: pylonLocal.z,
-    y: 2.7,
+    w: toCells(GARAGE_PYLON_METRES.baseSide),
+    h: toCells(GARAGE_PYLON_METRES.poleHeight),
+    d: toCells(GARAGE_PYLON_METRES.baseSide),
+    x: Math.sign(islandLocal.x || 1) * (footprint.w / 2 - cornerInset),
+    z: Math.sign(islandLocal.z || 1) * (footprint.d / 2 - cornerInset),
+    y: toCells(GARAGE_PYLON_METRES.poleHeight) / 2,
+    panel: {
+      w: toCells(GARAGE_PYLON_METRES.panelW),
+      h: toCells(GARAGE_PYLON_METRES.panelH),
+      d: toCells(GARAGE_PYLON_METRES.panelD),
+    },
   };
-  const forecourtDepth = footprint.d * 0.32;
+  const forecourtDepth = 1.1;
   const forecourt = {
     w: footprint.w * 0.88,
     d: forecourtDepth,
     // Forecourt slab sits strictly within the surveyed pad boundaries, in front of the workshop & showroom.
-    frontOffset: Math.max(0, footprint.d / 2 - forecourtDepth / 2 - 0.05),
+    frontOffset: 4.8,
     y: 0.045,
   };
 
-  // Spec 177: Driveway Apron connecting forecourt forward to the municipal road edge
+  // Spec 177: Driveway Apron connecting forecourt forward to the municipal road edge without penetrating carriageway
   const drivewayApron = {
     w: footprint.w * 0.72, // ~11.5 cells wide, spanning full approach to bays and stalls
-    d: 4.8, // spans from forecourt forward into the road connection zone
+    d: 3.6, // spans from Z=4.20 to Z=7.80, stopping at road edge (world Y=267.20 >= 267.0)
     x: footprint.w * 0.08, // aligned across bay approach and forecourt
-    z: footprint.d / 2 + 2.0, // centered across the setback transition zone
+    z: 6.0, // centered across the setback transition zone
     y: 0.04,
   };
 
   // Spec 176 / 177: Customer parking bays on the forecourt in front of showroom.
   // Oriented lengthwise into/out of the stall with rot: Math.PI / 2.
   // Stall depth (bayD = 1.25 cells = 5.0m) along Z; stall width (bayW = 0.68 cells = 2.72m) along X.
-  // Positioned at bayZ = 4.28 on forecourt, providing wide clearance to showroom glass wall.
+  // Positioned at bayZ = 4.80 on forecourt, providing wide clearance to showroom glass wall.
   const bayW = 0.68;
   const bayD = 1.25;
-  const bayZ = 4.28;
+  const bayZ = 4.8;
   const stallRotation = Math.PI / 2; // Aligned with stall lines (not sideways across lines)
   const parkingBays = [
     {
@@ -559,7 +595,7 @@ export function buildGarageAnchorShellModel(
       w: footprint.w * 0.98,
       d: footprint.d * 0.92,
       y: 0.035,
-      emissiveIntensity: { day: 0.12, night: 1.05 },
+      emissiveIntensity: { day: 0.0, night: 0.0 },
     },
     displayCars: [
       {

@@ -200,6 +200,19 @@ describe("spec 137 — junction furniture from real headings", () => {
     const zones = findJunctionZones([elbow, elbow2]);
     for (const z of zones) expect(junctionFurniture(z)).toEqual([]);
   });
+
+  it("fails closed when every candidate spot is asphalt (no unvalidated fallback pole)", () => {
+    // MoJoJo review 5410400845 finding 2: a real crossing whose surroundings are entirely
+    // paved by a giant apron way. The old placeClear returned an unchecked 18-cell fallback;
+    // it must now omit the furniture instead of planting it inside a carriageway.
+    const ways = [straight(0, 50, 100, 50), straight(50, 0, 50, 100)];
+    const zone = findJunctionZones(ways)[0]!;
+    const apron = straight(0, 50, 100, 50, 80); // 80-cell-wide slab covers the whole search
+    const items = junctionFurniture(zone, [...ways, apron]);
+    expect(items).toEqual([]);
+    // sanity: without the slab the same crossing still gets its four lights
+    expect(junctionFurniture(zone, ways).filter((i) => i.kind === "light").length).toBe(4);
+  });
 });
 
 describe("spec 137 — axisAngle", () => {
