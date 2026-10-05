@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-05T16:13:26.971Z",
+  "updatedAt": "2026-10-05T16:51:17.359Z",
   "runs": [
+    {
+      "runId": 37343951571,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37343951571",
+      "event": "pull_request",
+      "branch": "fix/spec-177-remove-legacy-apron-road-penetration",
+      "sha": "0408123a73fe807e54a82e9b6321c9a37842e98a",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/0408123a73fe807e54a82e9b6321c9a37842e98a",
+      "pullRequestNumbers": "#559",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/559",
+      "pullRequests": [
+        {
+          "number": 559,
+          "url": "https://github.com/duikindiesee/citylife/pull/559"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-05T16:50:53Z",
+      "completedAt": "2026-10-05T16:51:06Z",
+      "durationSeconds": 13,
+      "runnerSummary": "GitHub Actions 1000010733",
+      "jobs": [
+        {
+          "id": 111877719615,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010733",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-10-05T16:50:57Z",
+          "completedAt": "2026-10-05T16:51:05Z",
+          "durationSeconds": 8
+        }
+      ]
+    },
     {
       "runId": 37334019066,
       "workflowName": "Secret scan",
