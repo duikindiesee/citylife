@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-05T15:33:10.821Z",
+  "updatedAt": "2026-10-05T15:34:28.286Z",
   "runs": [
     {
       "runId": 37333682573,
@@ -38,6 +38,45 @@
           "startedAt": "2026-10-05T15:32:45Z",
           "completedAt": "2026-10-05T15:32:52Z",
           "durationSeconds": 7
+        }
+      ]
+    },
+    {
+      "runId": 37333682500,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37333682500",
+      "event": "push",
+      "branch": "main",
+      "sha": "80f2d206442bef22ecb014959643857260c836ea",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/80f2d206442bef22ecb014959643857260c836ea",
+      "pullRequestNumbers": "#557",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/557",
+      "pullRequests": [
+        {
+          "number": 557,
+          "url": "https://github.com/duikindiesee/citylife/pull/557"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-05T15:32:41Z",
+      "completedAt": "2026-10-05T15:34:15Z",
+      "durationSeconds": 94,
+      "runnerSummary": "GitHub Actions 1000010716",
+      "jobs": [
+        {
+          "id": 111842911814,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010716",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-05T15:32:45Z",
+          "completedAt": "2026-10-05T15:34:10Z",
+          "durationSeconds": 85
         }
       ]
     },
