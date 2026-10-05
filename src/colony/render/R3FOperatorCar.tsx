@@ -272,14 +272,9 @@ export function R3FOperatorCar({
       if (isR) {
         return Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT;
       }
-      const rawG =
-        Math.max(
-          0,
-          leveledWorldY(t, terrainLevel, Math.round(cx), Math.round(cy)),
-        ) + 0.02;
       if (gPad && isPointInGarageVicinity(cx, cy, gPad)) {
         const local = localFromGridCoordinates(gPad, cx, cy);
-        const apronH = garageApronSurfaceY(
+        return garageApronSurfaceY(
           gPad,
           t,
           null,
@@ -287,9 +282,13 @@ export function R3FOperatorCar({
           local.z,
           gSeat,
         );
-        return Math.max(rawG, apronH);
       }
-      return rawG;
+      return (
+        Math.max(
+          0,
+          leveledWorldY(t, terrainLevel, Math.round(cx), Math.round(cy)),
+        ) + 0.02
+      );
     };
 
     const roadElevation =

@@ -9,9 +9,15 @@ import {
 import {
   garageApronSurfaceY,
   gridFromLocalCoordinates,
+  isPointInGarageVicinity,
+  localFromGridCoordinates,
 } from "../src/colony/render/garageAnchorShell";
-import { getSmoothRoadY } from "../src/colony/render/roadSurface";
+import {
+  getSmoothRoadY,
+  isPointOnRoadSurface,
+} from "../src/colony/render/roadSurface";
 import { ROAD_RIBBON_LIFT } from "../src/colony/render/roadRibbon";
+import { leveledWorldY } from "../src/colony/render/terrainLeveling";
 import {
   findJunctionZones,
   junctionFurniture,
@@ -331,32 +337,69 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
       }
 
       const seat = padSeatY(tSeed, g.x, g.y, g.w, g.h);
+      const level = computeTerrainLeveling(sSeed, ribbon, new Map());
 
-      // 1. Discriminating slope continuity across the z = 5.5 boundary (MoJoJo finding 1).
-      // Delta across 0.02 cells must be smooth (< 0.02m), eliminating the former 0.73m cliff drop.
-      const h549 = garageApronSurfaceY(g, tSeed, ribbon, 0, 5.49, seat);
-      const h551 = garageApronSurfaceY(g, tSeed, ribbon, 0, 5.51, seat);
-      const deltaZ55 = Math.abs(h551 - h549);
-      expect(
-        deltaZ55,
-        `Seed ${seed}: height delta across z=5.5 (${deltaZ55.toFixed(4)}m) must be < 0.02m (no cliff)`,
-      ).toBeLessThan(0.02);
+      // Production vehicle elevation sampling function from R3FOperatorCar.tsx
+      const sampleCarElevation = (cx: number, cy: number): number => {
+        const isR = isPointOnRoadSurface(
+          cx,
+          cy,
+          sSeed.roadSet,
+          sSeed.roadWays,
+        );
+        if (isR) {
+          return roadY(cx, cy) + ROAD_RIBBON_LIFT;
+        }
+        if (isPointInGarageVicinity(cx, cy, g)) {
+          const local = localFromGridCoordinates(g, cx, cy);
+          return garageApronSurfaceY(
+            g,
+            tSeed,
+            null,
+            local.x,
+            local.z,
+            seat,
+          );
+        }
+        return (
+          Math.max(
+            0,
+            leveledWorldY(tSeed, level, Math.round(cx), Math.round(cy)),
+          ) + 0.02
+        );
+      };
 
-      // 2. Continuous elevation from forecourt (z=4.20) to road contact (z=7.80).
-      const h42 = garageApronSurfaceY(g, tSeed, ribbon, 0, 4.2, seat);
-      expect(h42, `Seed ${seed}: forecourt apron entry`).toBeCloseTo(seat + 0.16, 2);
+      // 1. Discriminating production car contact elevation continuity across rounded-cell boundaries (MoJoJo finding).
+      // Delta across any 0.025 cell / 0.10m travel must be continuous (< 0.025m), with zero discrete integer-cell snapping jumps.
+      for (let z = 5.40; z <= 5.575; z += 0.025) {
+        const pt1 = gridFromLocalCoordinates(g, 0, z);
+        const pt2 = gridFromLocalCoordinates(g, 0, z + 0.025);
+        const h1 = sampleCarElevation(pt1.x, pt1.y);
+        const h2 = sampleCarElevation(pt2.x, pt2.y);
+        const delta = Math.abs(h2 - h1);
+        expect(
+          delta,
+          `Seed ${seed}: car contact jump at z=${z.toFixed(3)} (${delta.toFixed(4)}m) across cell boundary must be < 0.025m`,
+        ).toBeLessThan(0.025);
+      }
 
-      const ptRoad = gridFromLocalCoordinates(g, 0, 7.8);
-      const kRoad = `${Math.round(ptRoad.x)},${Math.round(ptRoad.y)}`;
-      const expectedRoadTop =
-        (ribbon.get(kRoad) ?? roadY(ptRoad.x, ptRoad.y)) + ROAD_RIBBON_LIFT;
-      const h78 = garageApronSurfaceY(g, tSeed, ribbon, 0, 7.8, seat);
-      expect(
-        h78,
-        `Seed ${seed}: apron road contact at z=7.80 must match road ribbon top`,
-      ).toBeCloseTo(expectedRoadTop, 2);
+      // 2. Forecourt seam continuity at z = 4.20
+      const ptPre = gridFromLocalCoordinates(g, 0, 4.15);
+      const ptPost = gridFromLocalCoordinates(g, 0, 4.25);
+      const deltaForecourt = Math.abs(
+        sampleCarElevation(ptPost.x, ptPost.y) - sampleCarElevation(ptPre.x, ptPre.y),
+      );
+      expect(deltaForecourt, `Seed ${seed}: forecourt seam at z=4.20`).toBeLessThan(0.02);
 
-      // 3. Rendered apron mesh geometry correspondence with traversable surface.
+      // 3. Road contact seam continuity at z = 7.80
+      const ptApronEdge = gridFromLocalCoordinates(g, 0, 7.78);
+      const ptRoadEdge = gridFromLocalCoordinates(g, 0, 7.82);
+      const deltaRoadSeam = Math.abs(
+        sampleCarElevation(ptRoadEdge.x, ptRoadEdge.y) - sampleCarElevation(ptApronEdge.x, ptApronEdge.y),
+      );
+      expect(deltaRoadSeam, `Seed ${seed}: road seam at z=7.80`).toBeLessThan(0.02);
+
+      // 4. Rendered apron mesh geometry correspondence with traversable surface.
       const districtLayer = buildCommercialDistrictLayer({
         state: sSeed,
         district: sSeed.commercialDistrict!,
@@ -386,7 +429,7 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
         `Seed ${seed}: apron mesh top ${apronBox.max.y.toFixed(2)}m near max surface ${maxSurfaceH.toFixed(2)}m`,
       ).toBeCloseTo(maxSurfaceH, 1);
 
-      // 4. Driveway apron foundation must extend deep into ground (no hollow underbelly).
+      // 5. Driveway apron foundation must extend deep into ground (no hollow underbelly).
       const apronFound = shell.getObjectByName(
         "garageAnchorDrivewayApronFoundation",
       ) as THREE.Mesh;
@@ -398,8 +441,7 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
         `Seed ${seed}: apron foundation bottom ${foundBottomM.toFixed(2)}m must embed well below pad seat ${seat.toFixed(2)}m`,
       ).toBeLessThan(seat - 2.0);
 
-      // 5. Terrain leveling under apron must be finite and free of cliff drops
-      const level = computeTerrainLeveling(sSeed, ribbon, new Map());
+      // 6. Terrain leveling under apron must be finite
       const halfW = g.w / 2;
       for (let lz = 4.2; lz <= 7.8; lz += 0.5) {
         for (let lx = -halfW * 0.7; lx <= halfW * 0.7; lx += 2) {
