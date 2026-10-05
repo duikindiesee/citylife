@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-05T10:52:23.641Z",
+  "updatedAt": "2026-10-05T10:53:13.871Z",
   "runs": [
     {
       "runId": 37299282910,
@@ -38,6 +38,45 @@
           "startedAt": "2026-10-05T10:52:05Z",
           "completedAt": "2026-10-05T10:52:13Z",
           "durationSeconds": 8
+        }
+      ]
+    },
+    {
+      "runId": 37299282882,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37299282882",
+      "event": "pull_request",
+      "branch": "fix/spec-177-garage-apron-plinth-leveling",
+      "sha": "a4129a6807d00e3d2b6a25624ba54bf8ae4eab96",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/a4129a6807d00e3d2b6a25624ba54bf8ae4eab96",
+      "pullRequestNumbers": "#557",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/557",
+      "pullRequests": [
+        {
+          "number": 557,
+          "url": "https://github.com/duikindiesee/citylife/pull/557"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-05T10:52:01Z",
+      "completedAt": "2026-10-05T10:53:04Z",
+      "durationSeconds": 63,
+      "runnerSummary": "GitHub Actions 1000010690",
+      "jobs": [
+        {
+          "id": 111727886945,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010690",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-05T10:52:05Z",
+          "completedAt": "2026-10-05T10:53:03Z",
+          "durationSeconds": 58
         }
       ]
     },
