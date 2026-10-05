@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-05T06:09:26.338Z",
+  "updatedAt": "2026-10-05T06:10:20.678Z",
   "runs": [
+    {
+      "runId": 37270967997,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37270967997",
+      "event": "pull_request",
+      "branch": "antigravity/619394b8-garage-junction-p0",
+      "sha": "9794e13a7300dd4ef3c2cda8b229487081ceea4b",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/9794e13a7300dd4ef3c2cda8b229487081ceea4b",
+      "pullRequestNumbers": "#555",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/555",
+      "pullRequests": [
+        {
+          "number": 555,
+          "url": "https://github.com/duikindiesee/citylife/pull/555"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-05T06:09:04Z",
+      "completedAt": "2026-10-05T06:10:10Z",
+      "durationSeconds": 66,
+      "runnerSummary": "GitHub Actions 1000010669",
+      "jobs": [
+        {
+          "id": 111637670823,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010669",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-05T06:09:07Z",
+          "completedAt": "2026-10-05T06:10:10Z",
+          "durationSeconds": 63
+        }
+      ]
+    },
     {
       "runId": 37270967908,
       "workflowName": "Secret scan",
