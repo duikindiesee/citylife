@@ -131,8 +131,12 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
         y: g.y + (g.h - 1) / 2,
       };
       const pylonGrid = localToGrid(model.facingAngle, model.pylon);
-      expect(Math.abs(center.x + pylonGrid.x - g.islandCell.x)).toBeLessThanOrEqual(1.5);
-      expect(Math.abs(center.y + pylonGrid.y - g.islandCell.y)).toBeLessThanOrEqual(1.5);
+      expect(
+        Math.abs(center.x + pylonGrid.x - g.islandCell.x),
+      ).toBeLessThanOrEqual(1.5);
+      expect(
+        Math.abs(center.y + pylonGrid.y - g.islandCell.y),
+      ).toBeLessThanOrEqual(1.5);
       // still on the owned pad
       expect(Math.abs(model.pylon.x)).toBeLessThan(g.w / 2);
       expect(Math.abs(model.pylon.z)).toBeLessThan(g.h / 2);

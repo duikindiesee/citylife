@@ -115,6 +115,7 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
      - Visual proof of clear open bay and rotated stall lines.
 
 6. **Kooker HQ Landmark & World Foliage Alignment**:
+
    - Sited on the parcel setback directly behind the Gearbox Auto Hub commercial garage (approx. 42m behind garage center, separated by an authentic 16m courtyard plaza).
    - Architecture: 3-storey central command tower with ribbon windows, East ("Forge") and West ("Flow") operations wings, double-height glazed entrance reception lobby with brass pilasters, illuminated "KOOKER HQ" fascia sign, and rooftop telemetry array with satellite dish and aviation warning beacon.
    - Terrain leveling: footprint pad leveled in `useTerrainLeveling.ts`.

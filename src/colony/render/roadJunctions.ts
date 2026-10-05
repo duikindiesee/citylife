@@ -399,8 +399,14 @@ export function junctionFurniture(
     for (let wi = 0; wi < ways.length; wi++) {
       const w = ways[wi]!;
       const halfW = w.width / 2 + 0.25;
-      if (w.path.length >= 2 && distToPolyline(px, py, w.path) < halfW) return true;
-      if (smoothed && smoothed[wi] && distToPolyline(px, py, smoothed[wi]!) < halfW) return true;
+      if (w.path.length >= 2 && distToPolyline(px, py, w.path) < halfW)
+        return true;
+      if (
+        smoothed &&
+        smoothed[wi] &&
+        distToPolyline(px, py, smoothed[wi]!) < halfW
+      )
+        return true;
     }
     return false;
   };

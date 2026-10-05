@@ -14,7 +14,10 @@ import {
   zebraBand,
   CapBuildOptions,
 } from "../src/colony/render/junctionCap";
-import { surveyVenuePlacements, junctionZonesToPads } from "../src/colony/render/venuePlacement";
+import {
+  surveyVenuePlacements,
+  junctionZonesToPads,
+} from "../src/colony/render/venuePlacement";
 
 function distToPolyline(
   px: number,
@@ -46,7 +49,8 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
     district: d,
     wx,
     wz,
-    surfaceY: (x, y) => Math.max(0, s.terrain.worldY(Math.round(x), Math.round(y))),
+    surfaceY: (x, y) =>
+      Math.max(0, s.terrain.worldY(Math.round(x), Math.round(y))),
   });
   const getGarageShell = () => {
     layer.group.updateMatrixWorld(true);
@@ -82,12 +86,18 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
     ).toBeGreaterThanOrEqual(267.0);
 
     // Check that no projecting yellow/brown floor slab exists
-    const yellowNightFloor = garageShell.getObjectByName("garageAnchorNightFloor") as THREE.Mesh;
+    const yellowNightFloor = garageShell.getObjectByName(
+      "garageAnchorNightFloor",
+    ) as THREE.Mesh;
     if (yellowNightFloor) {
       // If a floor slab exists, it must not use the yellow/brown emissive material (0xffb24a / 0xff9f2f)
       const mat = yellowNightFloor.material as THREE.MeshStandardMaterial;
-      const isYellowOrBrown = mat.color.getHex() === 0xffb24a || mat.emissive.getHex() === 0xff9f2f;
-      expect(isYellowOrBrown, "Garage still has projecting yellow/brown night floor slab!").toBe(false);
+      const isYellowOrBrown =
+        mat.color.getHex() === 0xffb24a || mat.emissive.getHex() === 0xff9f2f;
+      expect(
+        isYellowOrBrown,
+        "Garage still has projecting yellow/brown night floor slab!",
+      ).toBe(false);
     }
   });
 
@@ -108,7 +118,9 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
   it("3. Display vehicles must match the scale of the actual drivable car, not 15m monster cars", () => {
     const garageShell = getGarageShell();
     // Check display cars in garageShell
-    const displayCar1 = garageShell.getObjectByName("garageAnchorDisplayCar.1") as THREE.Group;
+    const displayCar1 = garageShell.getObjectByName(
+      "garageAnchorDisplayCar.1",
+    ) as THREE.Group;
     expect(displayCar1).toBeDefined();
 
     // Compute bounding box in WORLD coordinates
@@ -132,33 +144,64 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
   it("4. Signage must feature tall corner pole with black hammer logo panel; remove rooftop hammer and yellow bars", () => {
     const garageShell = getGarageShell();
     // 1. Misplaced rooftop hammer/wrench must be removed
-    const rooftopWrench = garageShell.getObjectByName("garageAnchorRooftopWrenchEmblem");
-    expect(rooftopWrench, "Misplaced rooftop hammer/wrench must be removed").toBeUndefined();
+    const rooftopWrench = garageShell.getObjectByName(
+      "garageAnchorRooftopWrenchEmblem",
+    );
+    expect(
+      rooftopWrench,
+      "Misplaced rooftop hammer/wrench must be removed",
+    ).toBeUndefined();
 
     // 2. Yellow showroom header bar must be removed
-    const yellowHeader = garageShell.getObjectByName("garageAnchorShowroomHeaderSign");
-    expect(yellowHeader, "Yellow placeholder header bar must be removed").toBeUndefined();
+    const yellowHeader = garageShell.getObjectByName(
+      "garageAnchorShowroomHeaderSign",
+    );
+    expect(
+      yellowHeader,
+      "Yellow placeholder header bar must be removed",
+    ).toBeUndefined();
 
     // 3. Tall corner pole with black panel and hammer logo
-    const pylon = garageShell.getObjectByName("garageAnchorCornerPylonSign") as THREE.Mesh;
+    const pylon = garageShell.getObjectByName(
+      "garageAnchorCornerPylonSign",
+    ) as THREE.Mesh;
     expect(pylon).toBeDefined();
 
-    const hammerLogo = garageShell.getObjectByName("garageAnchorPylonHammerLogo");
-    expect(hammerLogo, "Tall corner pole must feature black panel with hammer logo").toBeDefined();
+    const hammerLogo = garageShell.getObjectByName(
+      "garageAnchorPylonHammerLogo",
+    );
+    expect(
+      hammerLogo,
+      "Tall corner pole must feature black panel with hammer logo",
+    ).toBeDefined();
 
     // 4. REAL world-space scale (MoJoJo review 5410400845 finding 1): the garage group is
     //    scaled by renderScale = 4, so the sign must be measured in world metres.
-    const poleSize = new THREE.Box3().setFromObject(pylon).getSize(new THREE.Vector3());
-    expect(poleSize.y, `pole world height ${poleSize.y.toFixed(2)} m`).toBeCloseTo(6.2, 1);
+    const poleSize = new THREE.Box3()
+      .setFromObject(pylon)
+      .getSize(new THREE.Vector3());
+    expect(
+      poleSize.y,
+      `pole world height ${poleSize.y.toFixed(2)} m`,
+    ).toBeCloseTo(6.2, 1);
     expect(Math.max(poleSize.x, poleSize.z)).toBeLessThan(0.5);
-    const panel = garageShell.getObjectByName("garageAnchorPylonPanel") as THREE.Mesh;
-    const panelSize = new THREE.Box3().setFromObject(panel).getSize(new THREE.Vector3());
-    expect(panelSize.y, `panel world height ${panelSize.y.toFixed(2)} m`).toBeCloseTo(1.1, 1);
+    const panel = garageShell.getObjectByName(
+      "garageAnchorPylonPanel",
+    ) as THREE.Mesh;
+    const panelSize = new THREE.Box3()
+      .setFromObject(panel)
+      .getSize(new THREE.Vector3());
+    expect(
+      panelSize.y,
+      `panel world height ${panelSize.y.toFixed(2)} m`,
+    ).toBeCloseTo(1.1, 1);
     expect(
       Math.max(panelSize.x, panelSize.z),
       `panel world width ${Math.max(panelSize.x, panelSize.z).toFixed(2)} m`,
     ).toBeCloseTo(1.8, 1);
-    const logoSize = new THREE.Box3().setFromObject(hammerLogo!).getSize(new THREE.Vector3());
+    const logoSize = new THREE.Box3()
+      .setFromObject(hammerLogo!)
+      .getSize(new THREE.Vector3());
     expect(Math.max(logoSize.x, logoSize.y, logoSize.z)).toBeLessThan(1.8);
   });
 
@@ -168,21 +211,43 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
       const p = m.pylon;
       const halfW = p.w / 2,
         halfD = p.d / 2;
-      const overlaps = (r: { x: number; z: number; w: number; d: number }, pad = 0) =>
+      const overlaps = (
+        r: { x: number; z: number; w: number; d: number },
+        pad = 0,
+      ) =>
         Math.abs(p.x - r.x) < halfW + r.w / 2 + pad &&
         Math.abs(p.z - r.z) < halfD + r.d / 2 + pad;
       // not inside any drivable/walkable surface (driveway apron, forecourt, bay floor)
       for (const s of m.surfaces)
-        if (s.drivable) expect(overlaps(s, 0.1), `seed ${seed}: pylon in ${s.id}`).toBe(false);
+        if (s.drivable)
+          expect(overlaps(s, 0.1), `seed ${seed}: pylon in ${s.id}`).toBe(
+            false,
+          );
       // not inside the building masses
-      expect(overlaps({ x: m.showroom.x, z: m.showroom.z, w: m.showroom.w, d: m.showroom.d }),
-        `seed ${seed}: pylon inside showroom`).toBe(false);
-      expect(overlaps({ x: m.serviceBay.x, z: m.serviceBay.z, w: m.serviceBay.w, d: m.serviceBay.d }),
-        `seed ${seed}: pylon inside workshop`).toBe(false);
+      expect(
+        overlaps({
+          x: m.showroom.x,
+          z: m.showroom.z,
+          w: m.showroom.w,
+          d: m.showroom.d,
+        }),
+        `seed ${seed}: pylon inside showroom`,
+      ).toBe(false);
+      expect(
+        overlaps({
+          x: m.serviceBay.x,
+          z: m.serviceBay.z,
+          w: m.serviceBay.w,
+          d: m.serviceBay.d,
+        }),
+        `seed ${seed}: pylon inside workshop`,
+      ).toBe(false);
       // not in a parking stall (stalls rotated PI/2: depth along z, width along x)
       for (const b of m.parkingBays)
-        expect(overlaps({ x: b.x, z: b.z, w: b.w, d: b.d }, 0.1),
-          `seed ${seed}: pylon in ${b.label}`).toBe(false);
+        expect(
+          overlaps({ x: b.x, z: b.z, w: b.w, d: b.d }, 0.1),
+          `seed ${seed}: pylon in ${b.label}`,
+        ).toBe(false);
       // on the owned pad, never on the verge/road side of the pad edge
       expect(Math.abs(p.x) + halfW).toBeLessThanOrEqual(m.footprint.w / 2);
       expect(Math.abs(p.z) + halfD).toBeLessThanOrEqual(m.footprint.d / 2);
@@ -195,7 +260,9 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
     const SEEDS = [4242, 7, 99];
     for (const seed of SEEDS) {
       const rtSeed = new ColonyRuntime(seed);
-      const ways = (rtSeed.sim.state.roadWays ?? []).filter((w) => w.source !== "depot-spur");
+      const ways = (rtSeed.sim.state.roadWays ?? []).filter(
+        (w) => w.source !== "depot-spur",
+      );
       const zones = attachCapPolys(findJunctionZones(ways));
 
       for (const zone of zones) {

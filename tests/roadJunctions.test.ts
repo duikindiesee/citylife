@@ -211,7 +211,9 @@ describe("spec 137 — junction furniture from real headings", () => {
     const items = junctionFurniture(zone, [...ways, apron]);
     expect(items).toEqual([]);
     // sanity: without the slab the same crossing still gets its four lights
-    expect(junctionFurniture(zone, ways).filter((i) => i.kind === "light").length).toBe(4);
+    expect(
+      junctionFurniture(zone, ways).filter((i) => i.kind === "light").length,
+    ).toBe(4);
   });
 });
 
