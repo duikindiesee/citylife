@@ -15,6 +15,12 @@ import { ROAD_RIBBON_LIFT } from "./roadRibbon";
 import { disposeDeep } from "./disposeDeep";
 import { useSimSignal, type SimBridge } from "./useSimSignal";
 import { operatorCarSignature } from "./simSignals";
+import { padSeatY } from "./useTerrainLeveling";
+import {
+  garageApronSurfaceY,
+  isPointInGarageVicinity,
+  localFromGridCoordinates,
+} from "./garageAnchorShell";
 
 /** Cached GLB resources belong to the loader, not this instance or the showroom. */
 function OwnedVehicleModel({
@@ -253,22 +259,50 @@ export function R3FOperatorCar({
       sim.state.roadWays,
     );
 
+    const gPad = sim.state.commercialDistrict?.garagePad;
+    const gSeat = gPad ? padSeatY(t, gPad.x, gPad.y, gPad.w, gPad.h) : 0;
+
+    const sampleElevation = (cx: number, cy: number) => {
+      const isR = isPointOnRoadSurface(
+        cx,
+        cy,
+        sim.state.roadSet,
+        sim.state.roadWays,
+      );
+      if (gPad && isPointInGarageVicinity(cx, cy, gPad)) {
+        const local = localFromGridCoordinates(gPad, cx, cy);
+        const apronH = garageApronSurfaceY(
+          gPad,
+          t,
+          null,
+          local.x,
+          local.z,
+          gSeat,
+        );
+        if (isR) {
+          const roadH = Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT;
+          return Math.max(roadH, apronH);
+        }
+        return apronH;
+      }
+      if (isR) {
+        return Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT;
+      }
+      return (
+        Math.max(
+          0,
+          leveledWorldY(t, terrainLevel, Math.round(cx), Math.round(cy)),
+        ) + 0.02
+      );
+    };
+
     const roadElevation =
       Math.max(0, getSmoothRoadY(t, car.cell.x, car.cell.y)) + ROAD_RIBBON_LIFT;
-    const groundElevation =
-      Math.max(
-        0,
-        leveledWorldY(
-          t,
-          terrainLevel,
-          Math.round(car.cell.x),
-          Math.round(car.cell.y),
-        ),
-      ) + 0.02;
+    const groundElevation = sampleElevation(car.cell.x, car.cell.y);
 
     // Grounding: on road sits on road ribbon. If near road edge, prevent wheels from sinking below the road deck.
     const centerY = onRoad
-      ? roadElevation
+      ? Math.max(roadElevation, groundElevation)
       : Math.max(
           groundElevation,
           isPointOnRoadSurface(
@@ -287,21 +321,6 @@ export function R3FOperatorCar({
     const sinH = Math.sin(heading);
     const halfLenCells = 2.1 / 4.0;
     const halfWidCells = 0.95 / 4.0;
-
-    const sampleElevation = (cx: number, cy: number) => {
-      const isR = isPointOnRoadSurface(
-        cx,
-        cy,
-        sim.state.roadSet,
-        sim.state.roadWays,
-      );
-      return isR
-        ? Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT
-        : Math.max(
-            0,
-            leveledWorldY(t, terrainLevel, Math.round(cx), Math.round(cy)),
-          ) + 0.02;
-    };
 
     const yFront = sampleElevation(
       car.cell.x + cosH * halfLenCells,

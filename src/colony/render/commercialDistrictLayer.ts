@@ -28,6 +28,7 @@ import {
   buildGarageAnchorShellModel,
   GARAGE_PYLON_METRES,
   garageAnchorNightFloorEmissive,
+  garageApronSurfaceY,
   isPointInGarageVicinity,
 } from "./garageAnchorShell";
 import { ribbonSurfaceCells, type RoadWay } from "./roadRibbon";
@@ -215,10 +216,268 @@ function buildMallAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   C.group.add(g);
 }
 
+function buildApronGeometries(
+  garagePad: Pick<CommercialDistrict["garagePad"] & object, "x" | "y" | "w" | "h" | "facingAngle">,
+  terrain: Pick<ColonyState["terrain"], "worldYAt">,
+  apron: { x: number; z: number; w: number; d: number },
+  foundDepth: number,
+  padSeat: number,
+): { apronGeom: THREE.BufferGeometry; apronFoundGeom: THREE.BufferGeometry } {
+  const zStart = apron.z - apron.d / 2;
+  const zEnd = apron.z + apron.d / 2;
+  const xMin = apron.x - apron.w / 2;
+  const xMax = apron.x + apron.w / 2;
+
+  const topLocalY = (lx: number, lz: number): number => {
+    const worldY = garageApronSurfaceY(
+      garagePad,
+      terrain,
+      null,
+      lx,
+      lz,
+      padSeat,
+    );
+    return (worldY - padSeat) / 4;
+  };
+
+  const nx = 8;
+  const nz = 8;
+  const slabThick = 0.035;
+
+  const slabPos: number[] = [];
+
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      const u0 = i / nx,
+        u1 = (i + 1) / nx;
+      const v0 = j / nz,
+        v1 = (j + 1) / nz;
+      const x0 = xMin + u0 * apron.w;
+      const x1 = xMin + u1 * apron.w;
+      const z0 = zStart + v0 * apron.d;
+      const z1 = zStart + v1 * apron.d;
+
+      const y00 = topLocalY(x0, z0);
+      const y10 = topLocalY(x1, z0);
+      const y01 = topLocalY(x0, z1);
+      const y11 = topLocalY(x1, z1);
+
+      // Top quad
+      slabPos.push(
+        x0, y00, z0,
+        x0, y01, z1,
+        x1, y11, z1,
+
+        x0, y00, z0,
+        x1, y11, z1,
+        x1, y10, z0,
+      );
+
+      // Bottom quad
+      const b00 = y00 - slabThick;
+      const b10 = y10 - slabThick;
+      const b01 = y01 - slabThick;
+      const b11 = y11 - slabThick;
+
+      slabPos.push(
+        x0, b00, z0,
+        x1, b11, z1,
+        x0, b01, z1,
+
+        x0, b00, z0,
+        x1, b10, z0,
+        x1, b11, z1,
+      );
+    }
+  }
+
+  // Front skirt (z = zEnd)
+  for (let i = 0; i < nx; i++) {
+    const x0 = xMin + (i / nx) * apron.w;
+    const x1 = xMin + ((i + 1) / nx) * apron.w;
+    const y0 = topLocalY(x0, zEnd);
+    const y1 = topLocalY(x1, zEnd);
+    const b0 = y0 - slabThick;
+    const b1 = y1 - slabThick;
+    slabPos.push(
+      x0, y0, zEnd,
+      x0, b0, zEnd,
+      x1, b1, zEnd,
+
+      x0, y0, zEnd,
+      x1, b1, zEnd,
+      x1, y1, zEnd,
+    );
+  }
+
+  // Back skirt (z = zStart)
+  for (let i = 0; i < nx; i++) {
+    const x0 = xMin + (i / nx) * apron.w;
+    const x1 = xMin + ((i + 1) / nx) * apron.w;
+    const y0 = topLocalY(x0, zStart);
+    const y1 = topLocalY(x1, zStart);
+    const b0 = y0 - slabThick;
+    const b1 = y1 - slabThick;
+    slabPos.push(
+      x0, y0, zStart,
+      x1, b1, zStart,
+      x0, b0, zStart,
+
+      x0, y0, zStart,
+      x1, y1, zStart,
+      x1, b1, zStart,
+    );
+  }
+
+  // Left skirt (x = xMin)
+  for (let j = 0; j < nz; j++) {
+    const z0 = zStart + (j / nz) * apron.d;
+    const z1 = zStart + ((j + 1) / nz) * apron.d;
+    const y0 = topLocalY(xMin, z0);
+    const y1 = topLocalY(xMin, z1);
+    const b0 = y0 - slabThick;
+    const b1 = y1 - slabThick;
+    slabPos.push(
+      xMin, y0, z0,
+      xMin, b0, z0,
+      xMin, b1, z1,
+
+      xMin, y0, z0,
+      xMin, b1, z1,
+      xMin, y1, z1,
+    );
+  }
+
+  // Right skirt (x = xMax)
+  for (let j = 0; j < nz; j++) {
+    const z0 = zStart + (j / nz) * apron.d;
+    const z1 = zStart + ((j + 1) / nz) * apron.d;
+    const y0 = topLocalY(xMax, z0);
+    const y1 = topLocalY(xMax, z1);
+    const b0 = y0 - slabThick;
+    const b1 = y1 - slabThick;
+    slabPos.push(
+      xMax, y0, z0,
+      xMax, b1, z1,
+      xMax, b0, z0,
+
+      xMax, y0, z0,
+      xMax, y1, z1,
+      xMax, b1, z1,
+    );
+  }
+
+  const apronGeom = new THREE.BufferGeometry();
+  apronGeom.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(slabPos, 3),
+  );
+  apronGeom.computeVertexNormals();
+
+  // Foundation plinth geometry reaching down to -foundDepth
+  const foundPos: number[] = [];
+  const baseH = -foundDepth;
+
+  // Front foundation wall (z = zEnd)
+  for (let i = 0; i < nx; i++) {
+    const x0 = xMin + (i / nx) * apron.w;
+    const x1 = xMin + ((i + 1) / nx) * apron.w;
+    const y0 = topLocalY(x0, zEnd) - slabThick;
+    const y1 = topLocalY(x1, zEnd) - slabThick;
+    foundPos.push(
+      x0, y0, zEnd,
+      x0, baseH, zEnd,
+      x1, baseH, zEnd,
+
+      x0, y0, zEnd,
+      x1, baseH, zEnd,
+      x1, y1, zEnd,
+    );
+  }
+
+  // Back foundation wall (z = zStart)
+  for (let i = 0; i < nx; i++) {
+    const x0 = xMin + (i / nx) * apron.w;
+    const x1 = xMin + ((i + 1) / nx) * apron.w;
+    const y0 = topLocalY(x0, zStart) - slabThick;
+    const y1 = topLocalY(x1, zStart) - slabThick;
+    foundPos.push(
+      x0, y0, zStart,
+      x1, baseH, zStart,
+      x0, baseH, zStart,
+
+      x0, y0, zStart,
+      x1, y1, zStart,
+      x1, baseH, zStart,
+    );
+  }
+
+  // Left foundation wall (x = xMin)
+  for (let j = 0; j < nz; j++) {
+    const z0 = zStart + (j / nz) * apron.d;
+    const z1 = zStart + ((j + 1) / nz) * apron.d;
+    const y0 = topLocalY(xMin, z0) - slabThick;
+    const y1 = topLocalY(xMin, z1) - slabThick;
+    foundPos.push(
+      xMin, y0, z0,
+      xMin, baseH, z0,
+      xMin, baseH, z1,
+
+      xMin, y0, z0,
+      xMin, baseH, z1,
+      xMin, y1, z1,
+    );
+  }
+
+  // Right foundation wall (x = xMax)
+  for (let j = 0; j < nz; j++) {
+    const z0 = zStart + (j / nz) * apron.d;
+    const z1 = zStart + ((j + 1) / nz) * apron.d;
+    const y0 = topLocalY(xMax, z0) - slabThick;
+    const y1 = topLocalY(xMax, z1) - slabThick;
+    foundPos.push(
+      xMax, y0, z0,
+      xMax, baseH, z1,
+      xMax, baseH, z0,
+
+      xMax, y0, z0,
+      xMax, y1, z1,
+      xMax, baseH, z1,
+    );
+  }
+
+  // Bottom foundation slab
+  foundPos.push(
+    xMin, baseH, zStart,
+    xMax, baseH, zEnd,
+    xMin, baseH, zEnd,
+
+    xMin, baseH, zStart,
+    xMax, baseH, zStart,
+    xMax, baseH, zEnd,
+  );
+
+  const apronFoundGeom = new THREE.BufferGeometry();
+  apronFoundGeom.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(foundPos, 3),
+  );
+  apronFoundGeom.computeVertexNormals();
+
+  return { apronGeom, apronFoundGeom };
+}
+
 function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   if (!d.garagePad) return;
   const model = buildGarageAnchorShellModel(d.garagePad, (x, y) =>
     C.surfaceY(x, y),
+  );
+  const padSeat = padSeatY(
+    C.state.terrain,
+    d.garagePad.x,
+    d.garagePad.y,
+    d.garagePad.w,
+    d.garagePad.h,
   );
   const g = new THREE.Group();
   g.name = "commercialDistrict.garagePad.garageAnchorShell";
@@ -231,14 +490,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   };
   g.position.set(
     C.wx(model.center.x),
-    // Spec 143 — the ONE pad-seat formula (spec 128), same as the mall anchor above.
-    padSeatY(
-      C.state.terrain,
-      d.garagePad.x,
-      d.garagePad.y,
-      d.garagePad.w,
-      d.garagePad.h,
-    ),
+    padSeat,
     C.wz(model.center.y),
   );
   g.rotation.y = model.facingAngle;
@@ -259,6 +511,20 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   floor.name = "garageAnchorNightFloor";
   floor.position.set(0, model.nightFloor.y, 0);
 
+  // Spec 177: Solid retaining foundation plinths embedding into ground on slopes
+  const foundDepth = 0.65; // ~2.6m foundation depth
+  const foundationMat = new THREE.MeshStandardMaterial({
+    color: 0x242830,
+    roughness: 0.95,
+  });
+  const buildingFound = new THREE.Mesh(
+    new THREE.BoxGeometry(model.nightFloor.w, foundDepth, model.nightFloor.d),
+    foundationMat,
+  );
+  buildingFound.name = "garageAnchorFoundation";
+  buildingFound.position.set(0, -foundDepth / 2 + 0.02, 0);
+  buildingFound.receiveShadow = true;
+
   const asphaltMat = new THREE.MeshStandardMaterial({
     color: 0x595f6a,
     roughness: 0.92,
@@ -271,6 +537,40 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   forecourt.name = "garageAnchorRoadFacingForecourt";
   forecourt.position.set(0, model.forecourt.y, model.forecourt.frontOffset);
   forecourt.receiveShadow = true;
+
+  const forecourtFound = new THREE.Mesh(
+    new THREE.BoxGeometry(model.forecourt.w, foundDepth, model.forecourt.d),
+    foundationMat,
+  );
+  forecourtFound.name = "garageAnchorForecourtFoundation";
+  forecourtFound.position.set(
+    0,
+    -foundDepth / 2 + 0.02,
+    model.forecourt.frontOffset,
+  );
+  forecourtFound.receiveShadow = true;
+
+  // Spec 177: Paved side flank apron connecting the building flank to the side street curb
+  const streetFrontSign = Math.sign(model.pylon.x || 1);
+  const flankW = 2.0; // ~8m wide flank strip
+  const flankX = streetFrontSign * (model.footprint.w / 2 + flankW / 2 - 0.2);
+  const sideFlank = new THREE.Mesh(
+    new THREE.BoxGeometry(flankW, 0.035, model.footprint.d * 0.95),
+    asphaltMat,
+  );
+  sideFlank.name = "garageAnchorSideFlankApron";
+  sideFlank.position.set(flankX, 0.04, 0.5);
+  sideFlank.receiveShadow = true;
+
+  const sideFlankFound = new THREE.Mesh(
+    new THREE.BoxGeometry(flankW, foundDepth, model.footprint.d * 0.95),
+    foundationMat,
+  );
+  sideFlankFound.name = "garageAnchorSideFlankFoundation";
+  sideFlankFound.position.set(flankX, -foundDepth / 2 + 0.02, 0.5);
+  sideFlankFound.receiveShadow = true;
+
+  g.add(buildingFound, forecourtFound, sideFlank, sideFlankFound);
 
   // Spec 176 / 177: Dedicated customer parking bays painted on the forecourt
   // Aligned with stall depth along world Z and vehicle orientation (rot: Math.PI / 2)
@@ -851,19 +1151,23 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   );
   roof.castShadow = true;
 
-  // Spec 177: Wide continuous driveway apron connecting municipal street to forecourt and all service bays
-  const fullApron = new THREE.Mesh(
-    new THREE.BoxGeometry(model.drivewayApron.w, 0.036, model.drivewayApron.d),
-    asphaltMat,
+  // Spec 177: Wide continuous 3D inclined driveway apron connecting municipal street to forecourt and all service bays
+  const { apronGeom, apronFoundGeom } = buildApronGeometries(
+    d.garagePad,
+    C.state.terrain,
+    model.drivewayApron,
+    foundDepth,
+    padSeat,
   );
+  const fullApron = new THREE.Mesh(apronGeom, asphaltMat);
   fullApron.name = "garageAnchorDrivewayApron";
-  fullApron.position.set(
-    model.drivewayApron.x,
-    model.drivewayApron.y,
-    model.drivewayApron.z,
-  );
   fullApron.receiveShadow = true;
-  g.add(fullApron);
+
+  const apronFound = new THREE.Mesh(apronFoundGeom, foundationMat);
+  apronFound.name = "garageAnchorDrivewayApronFoundation";
+  apronFound.receiveShadow = true;
+
+  g.add(fullApron, apronFound);
 
   const doorMat = new THREE.MeshStandardMaterial({
     color: 0xd8e4ee,
@@ -1049,6 +1353,24 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
   pylon.name = "garageAnchorCornerPylonSign";
   pylon.position.set(0, P.poleHeight / 2, 0);
   pylon.castShadow = true;
+
+  // Spec 177: Paved concrete curb plinth grounding the corner sign pole
+  const pylonCurb = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.75, 0.85, 0.45, 16),
+    new THREE.MeshStandardMaterial({ color: 0x484f5a, roughness: 0.9 }),
+  );
+  pylonCurb.name = "garageAnchorPylonCurb";
+  pylonCurb.position.set(0, 0.22, 0);
+  pylonCurb.receiveShadow = true;
+
+  const pylonCurbFound = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.85, 0.9, foundDepth * model.renderScale, 16),
+    foundationMat,
+  );
+  pylonCurbFound.name = "garageAnchorPylonCurbFoundation";
+  pylonCurbFound.position.set(0, -(foundDepth * model.renderScale) / 2, 0);
+  pylonCurbFound.receiveShadow = true;
+  pylonSign.add(pylonCurb, pylonCurbFound);
 
   // Petrol-station style black sign panel atop the tall pole
   const panelW = P.panelW;

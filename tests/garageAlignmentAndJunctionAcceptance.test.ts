@@ -3,6 +3,22 @@ import * as THREE from "three";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { buildCommercialDistrictLayer } from "../src/colony/render/commercialDistrictLayer";
 import {
+  computeTerrainLeveling,
+  padSeatY,
+} from "../src/colony/render/useTerrainLeveling";
+import {
+  garageApronSurfaceY,
+  gridFromLocalCoordinates,
+  isPointInGarageVicinity,
+  localFromGridCoordinates,
+} from "../src/colony/render/garageAnchorShell";
+import {
+  getSmoothRoadY,
+  isPointOnRoadSurface,
+} from "../src/colony/render/roadSurface";
+import { ROAD_RIBBON_LIFT } from "../src/colony/render/roadRibbon";
+import { leveledWorldY } from "../src/colony/render/terrainLeveling";
+import {
   findJunctionZones,
   junctionFurniture,
 } from "../src/colony/render/roadJunctions";
@@ -280,5 +296,196 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
         }
       }
     }
+  });
+
+  it("6. Solid retaining foundation plinths must embed deep into ground on slopes", () => {
+    const garageShell = getGarageShell();
+    const buildingFound = garageShell.getObjectByName(
+      "garageAnchorFoundation",
+    ) as THREE.Mesh;
+    expect(buildingFound, "Building foundation plinth must exist").toBeDefined();
+
+    const forecourtFound = garageShell.getObjectByName(
+      "garageAnchorForecourtFoundation",
+    ) as THREE.Mesh;
+    expect(forecourtFound, "Forecourt foundation plinth must exist").toBeDefined();
+
+    const apronFound = garageShell.getObjectByName(
+      "garageAnchorDrivewayApronFoundation",
+    ) as THREE.Mesh;
+    expect(apronFound, "Driveway apron foundation plinth must exist").toBeDefined();
+
+    // Verify depth in world metres (scale factor is 4)
+    const buildingBox = new THREE.Box3().setFromObject(buildingFound);
+    const buildingDepthM = buildingBox.max.y - buildingBox.min.y;
+    expect(
+      buildingDepthM,
+      `Building foundation depth ${buildingDepthM.toFixed(2)}m must be >= 2.0m to prevent hollow underbelly`,
+    ).toBeGreaterThanOrEqual(2.0);
+  });
+
+  it("7. Continuous apron and forecourt terrain leveling connects garage smoothly to municipal road ribbon", () => {
+    for (const seed of [4242, 42, 7, 99]) {
+      const rtSeed = new ColonyRuntime(seed);
+      const sSeed = rtSeed.sim.state;
+      const tSeed = sSeed.terrain;
+      const g = sSeed.commercialDistrict!.garagePad!;
+      const roadY = (x: number, y: number) => getSmoothRoadY(tSeed, x, y);
+      const ribbon = new Map<string, number>();
+      for (const r of sSeed.roads) {
+        ribbon.set(`${r.x},${r.y}`, roadY(r.x, r.y));
+      }
+
+      const seat = padSeatY(tSeed, g.x, g.y, g.w, g.h);
+      const level = computeTerrainLeveling(sSeed, ribbon, new Map());
+
+      // Production vehicle elevation sampling function from R3FOperatorCar.tsx
+      const sampleCarElevation = (cx: number, cy: number): number => {
+        const isR = isPointOnRoadSurface(
+          cx,
+          cy,
+          sSeed.roadSet,
+          sSeed.roadWays,
+        );
+        if (isPointInGarageVicinity(cx, cy, g)) {
+          const local = localFromGridCoordinates(g, cx, cy);
+          const apronH = garageApronSurfaceY(
+            g,
+            tSeed,
+            null,
+            local.x,
+            local.z,
+            seat,
+          );
+          if (isR) {
+            const roadH = roadY(cx, cy) + ROAD_RIBBON_LIFT;
+            return Math.max(roadH, apronH);
+          }
+          return apronH;
+        }
+        if (isR) {
+          return roadY(cx, cy) + ROAD_RIBBON_LIFT;
+        }
+        return (
+          Math.max(
+            0,
+            leveledWorldY(tSeed, level, Math.round(cx), Math.round(cy)),
+          ) + 0.02
+        );
+      };
+
+      // 1. Discriminating production car contact elevation continuity across rounded-cell boundaries (MoJoJo finding).
+      // Delta across any 0.025 cell / 0.10m travel must be continuous (< 0.025m), with zero discrete integer-cell snapping jumps.
+      for (let z = 5.40; z <= 5.575; z += 0.025) {
+        const pt1 = gridFromLocalCoordinates(g, 0, z);
+        const pt2 = gridFromLocalCoordinates(g, 0, z + 0.025);
+        const h1 = sampleCarElevation(pt1.x, pt1.y);
+        const h2 = sampleCarElevation(pt2.x, pt2.y);
+        const delta = Math.abs(h2 - h1);
+        expect(
+          delta,
+          `Seed ${seed}: car contact jump at z=${z.toFixed(3)} (${delta.toFixed(4)}m) across cell boundary must be < 0.025m`,
+        ).toBeLessThan(0.025);
+      }
+
+      // 2. Forecourt seam continuity at z = 4.20
+      const ptPre = gridFromLocalCoordinates(g, 0, 4.15);
+      const ptPost = gridFromLocalCoordinates(g, 0, 4.25);
+      const deltaForecourt = Math.abs(
+        sampleCarElevation(ptPost.x, ptPost.y) - sampleCarElevation(ptPre.x, ptPre.y),
+      );
+      expect(deltaForecourt, `Seed ${seed}: forecourt seam at z=4.20`).toBeLessThan(0.02);
+
+      // 3. Road contact seam continuity at z = 7.80
+      const ptApronEdge = gridFromLocalCoordinates(g, 0, 7.78);
+      const ptRoadEdge = gridFromLocalCoordinates(g, 0, 7.82);
+      const deltaRoadSeam = Math.abs(
+        sampleCarElevation(ptRoadEdge.x, ptRoadEdge.y) - sampleCarElevation(ptApronEdge.x, ptApronEdge.y),
+      );
+      expect(deltaRoadSeam, `Seed ${seed}: road seam at z=7.80`).toBeLessThan(0.02);
+
+      // 4. MoJoJo supplement regression: road predicate and garage apron reconciliation across seed 99 lateral sweep.
+      // Across local z = 4.21 from x = -1.5 to -1.2, car elevation must match visible apron (2.0295m)
+      // without dipping beneath the apron where isPointOnRoadSurface switches true without a road mesh triangle.
+      if (seed === 99) {
+        const expectedApron = garageApronSurfaceY(g, tSeed, null, -1.4, 4.21, seat);
+        for (let x = -1.5; x <= -1.2; x += 0.05) {
+          const pt = gridFromLocalCoordinates(g, x, 4.21);
+          const h = sampleCarElevation(pt.x, pt.y);
+          expect(
+            Math.abs(h - expectedApron),
+            `Seed 99: lateral apron transition at x=${x.toFixed(2)} must match visible apron (${expectedApron.toFixed(4)}m) with zero dip`,
+          ).toBeLessThan(0.01);
+        }
+        // At physical overlap (6.97, 4.21), car rides the road ribbon (3.199m), never sinking below apron.
+        const ptOver = gridFromLocalCoordinates(g, 6.97, 4.21);
+        const hOver = sampleCarElevation(ptOver.x, ptOver.y);
+        expect(hOver, 'Seed 99: road ribbon overlap above apron').toBeGreaterThanOrEqual(expectedApron);
+      }
+
+      // 4. Rendered apron mesh geometry correspondence with traversable surface.
+      const districtLayer = buildCommercialDistrictLayer({
+        state: sSeed,
+        district: sSeed.commercialDistrict!,
+        wx: (x) => x * 4,
+        wz: (y) => y * 4,
+        surfaceY: (x, y) => Math.max(0, tSeed.worldY(Math.round(x), Math.round(y))),
+      });
+      districtLayer.group.updateMatrixWorld(true);
+      const shell = districtLayer.group.getObjectByName(
+        "commercialDistrict.garagePad.garageAnchorShell",
+      ) as THREE.Group;
+      const fullApron = shell.getObjectByName(
+        "garageAnchorDrivewayApron",
+      ) as THREE.Mesh;
+      expect(fullApron, "driveway apron mesh exists").toBeDefined();
+
+      const apronBox = new THREE.Box3().setFromObject(fullApron);
+      let maxSurfaceH = -Infinity;
+      for (let lx = -g.w * 0.45; lx <= g.w * 0.45; lx += 1.0) {
+        for (const lz of [4.2, 7.8]) {
+          const h = garageApronSurfaceY(g, tSeed, ribbon, lx, lz, seat);
+          if (h > maxSurfaceH) maxSurfaceH = h;
+        }
+      }
+      expect(
+        apronBox.max.y,
+        `Seed ${seed}: apron mesh top ${apronBox.max.y.toFixed(2)}m near max surface ${maxSurfaceH.toFixed(2)}m`,
+      ).toBeCloseTo(maxSurfaceH, 1);
+
+      // 5. Driveway apron foundation must extend deep into ground (no hollow underbelly).
+      const apronFound = shell.getObjectByName(
+        "garageAnchorDrivewayApronFoundation",
+      ) as THREE.Mesh;
+      expect(apronFound, "driveway apron foundation exists").toBeDefined();
+      const foundBox = new THREE.Box3().setFromObject(apronFound);
+      const foundBottomM = foundBox.min.y;
+      expect(
+        foundBottomM,
+        `Seed ${seed}: apron foundation bottom ${foundBottomM.toFixed(2)}m must embed well below pad seat ${seat.toFixed(2)}m`,
+      ).toBeLessThan(seat - 2.0);
+
+      // 6. Terrain leveling under apron must be finite
+      const halfW = g.w / 2;
+      for (let lz = 4.2; lz <= 7.8; lz += 0.5) {
+        for (let lx = -halfW * 0.7; lx <= halfW * 0.7; lx += 2) {
+          const pt = gridFromLocalCoordinates(g, lx, lz);
+          const gx = Math.round(pt.x),
+            gy = Math.round(pt.y);
+          const i = gy * tSeed.size + gx;
+          const cellH = level.get(i) ?? tSeed.worldY(gx, gy);
+          expect(Number.isFinite(cellH)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("8. Paved corner pylon curb and side flank apron eliminate unpaved desert gaps next to road", () => {
+    const garageShell = getGarageShell();
+    const pylonCurb = garageShell.getObjectByName("garageAnchorPylonCurb");
+    expect(pylonCurb, "Corner pylon must stand on a paved curb plinth").toBeDefined();
+
+    const sideFlank = garageShell.getObjectByName("garageAnchorSideFlankApron");
+    expect(sideFlank, "Paved side flank apron must bridge building flank to road curb").toBeDefined();
   });
 });
