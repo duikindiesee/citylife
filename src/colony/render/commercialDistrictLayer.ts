@@ -1038,7 +1038,12 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     metalness: 0.85,
   });
   const pylon = new THREE.Mesh(
-    new THREE.CylinderGeometry(P.poleRadius * 0.8, P.poleRadius, P.poleHeight, 16),
+    new THREE.CylinderGeometry(
+      P.poleRadius * 0.8,
+      P.poleRadius,
+      P.poleHeight,
+      16,
+    ),
     pylonMat,
   );
   pylon.name = "garageAnchorCornerPylonSign";
