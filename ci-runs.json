@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-05T10:53:13.871Z",
+  "updatedAt": "2026-10-05T11:11:57.199Z",
   "runs": [
     {
       "runId": 37299282910,
@@ -77,6 +77,49 @@
           "startedAt": "2026-10-05T10:52:05Z",
           "completedAt": "2026-10-05T10:53:03Z",
           "durationSeconds": 58
+        }
+      ]
+    },
+    {
+      "runId": 37299282878,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37299282878",
+      "event": "pull_request",
+      "branch": "fix/spec-177-garage-apron-plinth-leveling",
+      "sha": "a4129a6807d00e3d2b6a25624ba54bf8ae4eab96",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/a4129a6807d00e3d2b6a25624ba54bf8ae4eab96",
+      "pullRequestNumbers": "#557",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/557",
+      "pullRequests": [
+        {
+          "number": 557,
+          "url": "https://github.com/duikindiesee/citylife/pull/557"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-05T10:52:01Z",
+      "completedAt": "2026-10-05T11:11:46Z",
+      "durationSeconds": 1185,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 111727887751,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-05T10:52:05Z",
+          "completedAt": "2026-10-05T11:11:45Z",
+          "durationSeconds": 1180
         }
       ]
     },
