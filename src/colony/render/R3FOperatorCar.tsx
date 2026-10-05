@@ -17,6 +17,7 @@ import { useSimSignal, type SimBridge } from "./useSimSignal";
 import { operatorCarSignature } from "./simSignals";
 import { padSeatY } from "./useTerrainLeveling";
 import {
+  garageApronSurfaceY,
   isPointInGarageVicinity,
   localFromGridCoordinates,
 } from "./garageAnchorShell";
@@ -278,9 +279,15 @@ export function R3FOperatorCar({
         ) + 0.02;
       if (gPad && isPointInGarageVicinity(cx, cy, gPad)) {
         const local = localFromGridCoordinates(gPad, cx, cy);
-        if (local.z <= 5.5) {
-          return Math.max(rawG, gSeat + 0.02);
-        }
+        const apronH = garageApronSurfaceY(
+          gPad,
+          t,
+          null,
+          local.x,
+          local.z,
+          gSeat,
+        );
+        return Math.max(rawG, apronH);
       }
       return rawG;
     };

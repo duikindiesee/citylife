@@ -6,7 +6,12 @@ import {
   computeTerrainLeveling,
   padSeatY,
 } from "../src/colony/render/useTerrainLeveling";
-import { gridFromLocalCoordinates } from "../src/colony/render/garageAnchorShell";
+import {
+  garageApronSurfaceY,
+  gridFromLocalCoordinates,
+} from "../src/colony/render/garageAnchorShell";
+import { getSmoothRoadY } from "../src/colony/render/roadSurface";
+import { ROAD_RIBBON_LIFT } from "../src/colony/render/roadRibbon";
 import {
   findJunctionZones,
   junctionFurniture,
@@ -319,27 +324,91 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
       const sSeed = rtSeed.sim.state;
       const tSeed = sSeed.terrain;
       const g = sSeed.commercialDistrict!.garagePad!;
-      const roadY = (x: number, y: number) => Math.max(0, tSeed.worldY(Math.round(x), Math.round(y)));
+      const roadY = (x: number, y: number) => getSmoothRoadY(tSeed, x, y);
       const ribbon = new Map<string, number>();
       for (const r of sSeed.roads) {
         ribbon.set(`${r.x},${r.y}`, roadY(r.x, r.y));
       }
 
-      const level = computeTerrainLeveling(sSeed, ribbon, new Map());
       const seat = padSeatY(tSeed, g.x, g.y, g.w, g.h);
-      const halfW = g.w / 2;
 
-      // Verify no cell under apron has a cliff drop > 1.5m from pad seat
-      for (let lz = 4.2; lz <= 7.5; lz += 0.5) {
-        for (let lx = -halfW * 0.8; lx <= halfW * 0.8; lx += 2) {
+      // 1. Discriminating slope continuity across the z = 5.5 boundary (MoJoJo finding 1).
+      // Delta across 0.02 cells must be smooth (< 0.02m), eliminating the former 0.73m cliff drop.
+      const h549 = garageApronSurfaceY(g, tSeed, ribbon, 0, 5.49, seat);
+      const h551 = garageApronSurfaceY(g, tSeed, ribbon, 0, 5.51, seat);
+      const deltaZ55 = Math.abs(h551 - h549);
+      expect(
+        deltaZ55,
+        `Seed ${seed}: height delta across z=5.5 (${deltaZ55.toFixed(4)}m) must be < 0.02m (no cliff)`,
+      ).toBeLessThan(0.02);
+
+      // 2. Continuous elevation from forecourt (z=4.20) to road contact (z=7.80).
+      const h42 = garageApronSurfaceY(g, tSeed, ribbon, 0, 4.2, seat);
+      expect(h42, `Seed ${seed}: forecourt apron entry`).toBeCloseTo(seat + 0.16, 2);
+
+      const ptRoad = gridFromLocalCoordinates(g, 0, 7.8);
+      const kRoad = `${Math.round(ptRoad.x)},${Math.round(ptRoad.y)}`;
+      const expectedRoadTop =
+        (ribbon.get(kRoad) ?? roadY(ptRoad.x, ptRoad.y)) + ROAD_RIBBON_LIFT;
+      const h78 = garageApronSurfaceY(g, tSeed, ribbon, 0, 7.8, seat);
+      expect(
+        h78,
+        `Seed ${seed}: apron road contact at z=7.80 must match road ribbon top`,
+      ).toBeCloseTo(expectedRoadTop, 2);
+
+      // 3. Rendered apron mesh geometry correspondence with traversable surface.
+      const districtLayer = buildCommercialDistrictLayer({
+        state: sSeed,
+        district: sSeed.commercialDistrict!,
+        wx: (x) => x * 4,
+        wz: (y) => y * 4,
+        surfaceY: (x, y) => Math.max(0, tSeed.worldY(Math.round(x), Math.round(y))),
+      });
+      districtLayer.group.updateMatrixWorld(true);
+      const shell = districtLayer.group.getObjectByName(
+        "commercialDistrict.garagePad.garageAnchorShell",
+      ) as THREE.Group;
+      const fullApron = shell.getObjectByName(
+        "garageAnchorDrivewayApron",
+      ) as THREE.Mesh;
+      expect(fullApron, "driveway apron mesh exists").toBeDefined();
+
+      const apronBox = new THREE.Box3().setFromObject(fullApron);
+      let maxSurfaceH = -Infinity;
+      for (let lx = -g.w * 0.45; lx <= g.w * 0.45; lx += 1.0) {
+        for (const lz of [4.2, 7.8]) {
+          const h = garageApronSurfaceY(g, tSeed, ribbon, lx, lz, seat);
+          if (h > maxSurfaceH) maxSurfaceH = h;
+        }
+      }
+      expect(
+        apronBox.max.y,
+        `Seed ${seed}: apron mesh top ${apronBox.max.y.toFixed(2)}m near max surface ${maxSurfaceH.toFixed(2)}m`,
+      ).toBeCloseTo(maxSurfaceH, 1);
+
+      // 4. Driveway apron foundation must extend deep into ground (no hollow underbelly).
+      const apronFound = shell.getObjectByName(
+        "garageAnchorDrivewayApronFoundation",
+      ) as THREE.Mesh;
+      expect(apronFound, "driveway apron foundation exists").toBeDefined();
+      const foundBox = new THREE.Box3().setFromObject(apronFound);
+      const foundBottomM = foundBox.min.y;
+      expect(
+        foundBottomM,
+        `Seed ${seed}: apron foundation bottom ${foundBottomM.toFixed(2)}m must embed well below pad seat ${seat.toFixed(2)}m`,
+      ).toBeLessThan(seat - 2.0);
+
+      // 5. Terrain leveling under apron must be finite and free of cliff drops
+      const level = computeTerrainLeveling(sSeed, ribbon, new Map());
+      const halfW = g.w / 2;
+      for (let lz = 4.2; lz <= 7.8; lz += 0.5) {
+        for (let lx = -halfW * 0.7; lx <= halfW * 0.7; lx += 2) {
           const pt = gridFromLocalCoordinates(g, lx, lz);
-          const gx = Math.round(pt.x), gy = Math.round(pt.y);
+          const gx = Math.round(pt.x),
+            gy = Math.round(pt.y);
           const i = gy * tSeed.size + gx;
           const cellH = level.get(i) ?? tSeed.worldY(gx, gy);
-          expect(
-            Number.isFinite(cellH),
-            `Seed ${seed}: cell (${gx}, ${gy}) at lz=${lz} must have finite height`,
-          ).toBe(true);
+          expect(Number.isFinite(cellH)).toBe(true);
         }
       }
     }

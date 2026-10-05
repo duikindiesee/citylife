@@ -1,5 +1,8 @@
 import type { GaragePad } from "../commerce/district";
+import type { Terrain } from "../terrain";
 import { CELL_SIZE } from "../scale";
+import { getSmoothRoadY } from "./roadSurface";
+import { ROAD_RIBBON_LIFT } from "./roadRibbon";
 
 export const GARAGE_ASSET_VERSION = "2.0.0";
 
@@ -177,6 +180,100 @@ export function isPointInGarageVicinity(
     return true;
   }
   return false;
+}
+
+/**
+ * Spec 177: Continuous traversable and rendered surface height across the garage parcel,
+ * apron ramp transition zone, and municipal road ribbon contact.
+ *
+ * For lz <= 4.2: flat forecourt / workshop pad at padSeatY + 0.16m.
+ * For lz >= 7.8: municipal road ribbon at roadHeight + ROAD_RIBBON_LIFT (0.18m).
+ * For lz in (4.2, 7.8): smoothstep interpolation ensuring C1 slope continuity with
+ * zero cliff drops and zero discontinuity across the parcel-to-road transition.
+ */
+export function garageApronSurfaceY(
+  garagePad: Pick<GaragePad, "x" | "y" | "w" | "h" | "facingAngle">,
+  terrain: Pick<Terrain, "worldYAt">,
+  roadRibbonCells: ReadonlyMap<string, number> | null | undefined,
+  lx: number,
+  lz: number,
+  seatY?: number,
+): number {
+  const padSeat =
+    seatY ??
+    (() => {
+      const s = terrain.worldYAt(
+        garagePad.x + (garagePad.w - 1) / 2,
+        garagePad.y + (garagePad.h - 1) / 2,
+      );
+      return Number.isFinite(s) ? Math.max(s, 0.65) : 0.65;
+    })();
+
+  const padTopWorldY = padSeat + 0.16;
+
+  if (lz <= 4.2) {
+    return padTopWorldY;
+  }
+
+  const ptRoad = gridFromLocalCoordinates(garagePad, lx, 7.8);
+  const gx = Math.round(ptRoad.x);
+  const gy = Math.round(ptRoad.y);
+  const k = `${gx},${gy}`;
+  const roadBase =
+    roadRibbonCells?.get(k) ??
+    Math.max(0, getSmoothRoadY(terrain, ptRoad.x, ptRoad.y));
+  const roadTopWorldY = roadBase + ROAD_RIBBON_LIFT;
+
+  if (lz >= 7.8) {
+    return roadTopWorldY;
+  }
+
+  const u = (lz - 4.2) / (7.8 - 4.2);
+  const sm = u * u * (3 - 2 * u);
+  return padTopWorldY + (roadTopWorldY - padTopWorldY) * sm;
+}
+
+/**
+ * Spec 177: Continuous ground elevation beneath the garage apron ramp for terrain leveling.
+ * Grades the bare ground to support the asphalt apron mesh with zero hollow underbelly.
+ */
+export function garageApronGroundY(
+  garagePad: Pick<GaragePad, "x" | "y" | "w" | "h" | "facingAngle">,
+  terrain: Pick<Terrain, "worldYAt">,
+  roadRibbonCells: ReadonlyMap<string, number> | null | undefined,
+  lx: number,
+  lz: number,
+  seatY?: number,
+): number {
+  const padSeat =
+    seatY ??
+    (() => {
+      const s = terrain.worldYAt(
+        garagePad.x + (garagePad.w - 1) / 2,
+        garagePad.y + (garagePad.h - 1) / 2,
+      );
+      return Number.isFinite(s) ? Math.max(s, 0.65) : 0.65;
+    })();
+
+  if (lz <= 4.2) {
+    return padSeat;
+  }
+
+  const ptRoad = gridFromLocalCoordinates(garagePad, lx, 7.8);
+  const gx = Math.round(ptRoad.x);
+  const gy = Math.round(ptRoad.y);
+  const k = `${gx},${gy}`;
+  const roadBase =
+    roadRibbonCells?.get(k) ??
+    Math.max(0, getSmoothRoadY(terrain, ptRoad.x, ptRoad.y));
+
+  if (lz >= 7.8) {
+    return roadBase;
+  }
+
+  const u = (lz - 4.2) / (7.8 - 4.2);
+  const sm = u * u * (3 - 2 * u);
+  return padSeat + (roadBase - padSeat) * sm;
 }
 
 export function buildGarageAnchorShellModel(
