@@ -269,12 +269,9 @@ export function R3FOperatorCar({
         sim.state.roadSet,
         sim.state.roadWays,
       );
-      if (isR) {
-        return Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT;
-      }
       if (gPad && isPointInGarageVicinity(cx, cy, gPad)) {
         const local = localFromGridCoordinates(gPad, cx, cy);
-        return garageApronSurfaceY(
+        const apronH = garageApronSurfaceY(
           gPad,
           t,
           null,
@@ -282,6 +279,14 @@ export function R3FOperatorCar({
           local.z,
           gSeat,
         );
+        if (isR) {
+          const roadH = Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT;
+          return Math.max(roadH, apronH);
+        }
+        return apronH;
+      }
+      if (isR) {
+        return Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT;
       }
       return (
         Math.max(
@@ -297,7 +302,7 @@ export function R3FOperatorCar({
 
     // Grounding: on road sits on road ribbon. If near road edge, prevent wheels from sinking below the road deck.
     const centerY = onRoad
-      ? roadElevation
+      ? Math.max(roadElevation, groundElevation)
       : Math.max(
           groundElevation,
           isPointOnRoadSurface(

@@ -347,12 +347,9 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
           sSeed.roadSet,
           sSeed.roadWays,
         );
-        if (isR) {
-          return roadY(cx, cy) + ROAD_RIBBON_LIFT;
-        }
         if (isPointInGarageVicinity(cx, cy, g)) {
           const local = localFromGridCoordinates(g, cx, cy);
-          return garageApronSurfaceY(
+          const apronH = garageApronSurfaceY(
             g,
             tSeed,
             null,
@@ -360,6 +357,14 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
             local.z,
             seat,
           );
+          if (isR) {
+            const roadH = roadY(cx, cy) + ROAD_RIBBON_LIFT;
+            return Math.max(roadH, apronH);
+          }
+          return apronH;
+        }
+        if (isR) {
+          return roadY(cx, cy) + ROAD_RIBBON_LIFT;
         }
         return (
           Math.max(
@@ -398,6 +403,25 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
         sampleCarElevation(ptRoadEdge.x, ptRoadEdge.y) - sampleCarElevation(ptApronEdge.x, ptApronEdge.y),
       );
       expect(deltaRoadSeam, `Seed ${seed}: road seam at z=7.80`).toBeLessThan(0.02);
+
+      // 4. MoJoJo supplement regression: road predicate and garage apron reconciliation across seed 99 lateral sweep.
+      // Across local z = 4.21 from x = -1.5 to -1.2, car elevation must match visible apron (2.0295m)
+      // without dipping beneath the apron where isPointOnRoadSurface switches true without a road mesh triangle.
+      if (seed === 99) {
+        const expectedApron = garageApronSurfaceY(g, tSeed, null, -1.4, 4.21, seat);
+        for (let x = -1.5; x <= -1.2; x += 0.05) {
+          const pt = gridFromLocalCoordinates(g, x, 4.21);
+          const h = sampleCarElevation(pt.x, pt.y);
+          expect(
+            Math.abs(h - expectedApron),
+            `Seed 99: lateral apron transition at x=${x.toFixed(2)} must match visible apron (${expectedApron.toFixed(4)}m) with zero dip`,
+          ).toBeLessThan(0.01);
+        }
+        // At physical overlap (6.97, 4.21), car rides the road ribbon (3.199m), never sinking below apron.
+        const ptOver = gridFromLocalCoordinates(g, 6.97, 4.21);
+        const hOver = sampleCarElevation(ptOver.x, ptOver.y);
+        expect(hOver, 'Seed 99: road ribbon overlap above apron').toBeGreaterThanOrEqual(expectedApron);
+      }
 
       // 4. Rendered apron mesh geometry correspondence with traversable surface.
       const districtLayer = buildCommercialDistrictLayer({
