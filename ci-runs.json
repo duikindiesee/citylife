@@ -1,7 +1,50 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-05T06:10:20.678Z",
+  "updatedAt": "2026-10-05T06:29:15.965Z",
   "runs": [
+    {
+      "runId": 37270968820,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37270968820",
+      "event": "pull_request",
+      "branch": "antigravity/619394b8-garage-junction-p0",
+      "sha": "9794e13a7300dd4ef3c2cda8b229487081ceea4b",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/9794e13a7300dd4ef3c2cda8b229487081ceea4b",
+      "pullRequestNumbers": "#555",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/555",
+      "pullRequests": [
+        {
+          "number": 555,
+          "url": "https://github.com/duikindiesee/citylife/pull/555"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-05T06:09:04Z",
+      "completedAt": "2026-10-05T06:29:01Z",
+      "durationSeconds": 1197,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 111637673709,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-05T06:09:08Z",
+          "completedAt": "2026-10-05T06:29:00Z",
+          "durationSeconds": 1192
+        }
+      ]
+    },
     {
       "runId": 37270967997,
       "workflowName": "Build CityLife Debug APK",
