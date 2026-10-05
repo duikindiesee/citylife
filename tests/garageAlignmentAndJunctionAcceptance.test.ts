@@ -145,7 +145,51 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
 
     const hammerLogo = garageShell.getObjectByName("garageAnchorPylonHammerLogo");
     expect(hammerLogo, "Tall corner pole must feature black panel with hammer logo").toBeDefined();
+
+    // 4. REAL world-space scale (MoJoJo review 5410400845 finding 1): the garage group is
+    //    scaled by renderScale = 4, so the sign must be measured in world metres.
+    const poleSize = new THREE.Box3().setFromObject(pylon).getSize(new THREE.Vector3());
+    expect(poleSize.y, `pole world height ${poleSize.y.toFixed(2)} m`).toBeCloseTo(6.2, 1);
+    expect(Math.max(poleSize.x, poleSize.z)).toBeLessThan(0.5);
+    const panel = garageShell.getObjectByName("garageAnchorPylonPanel") as THREE.Mesh;
+    const panelSize = new THREE.Box3().setFromObject(panel).getSize(new THREE.Vector3());
+    expect(panelSize.y, `panel world height ${panelSize.y.toFixed(2)} m`).toBeCloseTo(1.1, 1);
+    expect(
+      Math.max(panelSize.x, panelSize.z),
+      `panel world width ${Math.max(panelSize.x, panelSize.z).toFixed(2)} m`,
+    ).toBeCloseTo(1.8, 1);
+    const logoSize = new THREE.Box3().setFromObject(hammerLogo!).getSize(new THREE.Vector3());
+    expect(Math.max(logoSize.x, logoSize.y, logoSize.z)).toBeLessThan(1.8);
   });
+
+  it("4b. Corner pylon stays clear of building, driveway, forecourt and parking across seeds", () => {
+    for (const seed of [4242, 42, 7, 99]) {
+      const m = new ColonyRuntime(seed).getGarageModel()!;
+      const p = m.pylon;
+      const halfW = p.w / 2,
+        halfD = p.d / 2;
+      const overlaps = (r: { x: number; z: number; w: number; d: number }, pad = 0) =>
+        Math.abs(p.x - r.x) < halfW + r.w / 2 + pad &&
+        Math.abs(p.z - r.z) < halfD + r.d / 2 + pad;
+      // not inside any drivable/walkable surface (driveway apron, forecourt, bay floor)
+      for (const s of m.surfaces)
+        if (s.drivable) expect(overlaps(s, 0.1), `seed ${seed}: pylon in ${s.id}`).toBe(false);
+      // not inside the building masses
+      expect(overlaps({ x: m.showroom.x, z: m.showroom.z, w: m.showroom.w, d: m.showroom.d }),
+        `seed ${seed}: pylon inside showroom`).toBe(false);
+      expect(overlaps({ x: m.serviceBay.x, z: m.serviceBay.z, w: m.serviceBay.w, d: m.serviceBay.d }),
+        `seed ${seed}: pylon inside workshop`).toBe(false);
+      // not in a parking stall (stalls rotated PI/2: depth along z, width along x)
+      for (const b of m.parkingBays)
+        expect(overlaps({ x: b.x, z: b.z, w: b.w, d: b.d }, 0.1),
+          `seed ${seed}: pylon in ${b.label}`).toBe(false);
+      // on the owned pad, never on the verge/road side of the pad edge
+      expect(Math.abs(p.x) + halfW).toBeLessThanOrEqual(m.footprint.w / 2);
+      expect(Math.abs(p.z) + halfD).toBeLessThanOrEqual(m.footprint.d / 2);
+      // not above the garage doors: horizontally outside the workshop door run
+      expect(p.z).toBeGreaterThan(m.serviceBay.z + m.serviceBay.d / 2);
+    }
+  }, 30000);
 
   it("5. Junction furniture must never be planted inside road carriageways across seeds", () => {
     const SEEDS = [4242, 7, 99];

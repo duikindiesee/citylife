@@ -94,7 +94,7 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
    - `rollup_door_3`: Closed rollup door for Bay 3.
    - **Rollup Door 2 (Middle Bay)**: 100% OPEN. Zero door collider.
    - `lift_post_left` & `lift_post_right`: Discrete posts flanking the vehicle lift, leaving a 6.5m clear corridor for driving onto the lift.
-   - `pylon`: Discrete corner sign pylon at `islandCell`.
+   - `corner_pylon`: Discrete 0.45 m corner sign pole collider at the pad's street-facing corner on the `islandCell` side (see section 7).
    - `forecourt_pole_west`: Perimeter light pole situated on the western curb, away from traffic. Zero poles on the bay approach.
 
 4. **Vehicle Swept Footprint Collision**:
@@ -126,8 +126,8 @@ During live drive testing of the commercial district and Gearbox Auto Hub showro
    - **Frontage Alignment with Blue Shop**: The building facade previously sat 5 cells ($20$m) back from the road. The showroom and service bay centers were moved forward to $Z = 1.45$ (front facade at $Z = 4.20$, world $Y = 270.80$), aligning with the adjacent blue shop (`shop_21` / Tool Library).
    - **Road-Compatible Asphalt Forecourt**: Replaced the yellow-tinted floor slab and glowing lane strips with neutral foundation underneath the building and road-compatible asphalt (`0x595f6a, roughness: 0.92`) across forecourt and driveway apron, eliminating any gravel gap or step.
    - **Display Vehicle Models & Scale**: Exterior sale cars use the identical models and scale as actual drivable vehicles (`buildCarMesh`, world length ~3.8m), parked in Bay 01 and Bay 02, leaving Bay 03 open as a usable visitor stall.
-   - **Petrol-Station Corner Pylon Signage**: Placed a tall corner pole ($X = -7.04, Z = 6.20$, height $6.2$m) at the street corner clear of vehicle and pedestrian paths, topped with a black panel and 3D embossed metallic hammer logo (`garageAnchorPylonHammerLogo`). The misplaced rooftop wrench and yellow placeholder bars are eliminated.
-   - **Junction Furniture & Paint Alignment**: `onAnyRoad` in `roadJunctions.ts` checks both raw way polylines and smoothed polylines; `placeClear` spirals up to 9 cells and uses outward radial marching up to 18 cells, guaranteeing traffic signals and stop signs never plant inside carriageways across any seed (4242, 7, 99, 1234). `roadRibbon.ts` tests edge line station points, eliminating diagonal cut lines across junction caps.
+   - **Petrol-Station Corner Pylon Signage** (corrected after MoJoJo review 5410400845): sign dimensions are authored in REAL METRES (`GARAGE_PYLON_METRES`: 6.2 m pole, 1.8 m x 1.1 m x 0.22 m black panel, 0.45 m base collider) and rendered inside a sub-group scaled by `1/renderScale`, because the garage group is scaled cells to metres by `CELL_SIZE = 4` (the earlier head drew a 24.8 m pole and 7.2 m x 4.4 m panel). The model stores the same values in cells. The pole stands at the pad's street-facing corner on the `islandCell` side, inset 0.4 cells from both pad edges: with the facade moved to local $Z = 4.20$ the exact `islandCell` ($Z = 4.0$) lies inside the workshop, so the contract is now "within 1.5 cells of `islandCell` per axis, on the pad, outside building, driveway, forecourt and stalls, and in front of the door line". The misplaced rooftop wrench and yellow placeholder bars are eliminated.
+   - **Junction Furniture & Paint Alignment**: `onAnyRoad` in `roadJunctions.ts` checks both raw way polylines and smoothed polylines; `placeClear` spirals up to 9 cells and **fails closed**: if no validated clear spot exists it returns `null` and the light or stop sign is omitted, never planted at an unvalidated fallback (MoJoJo review 5410400845 finding 2; synthetic exhaustion regression in `tests/roadJunctions.test.ts`). `roadRibbon.ts` tests edge line station points, eliminating diagonal cut lines across junction caps.
 
 ## Verification & Acceptance
 

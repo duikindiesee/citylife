@@ -3,6 +3,21 @@ import { CELL_SIZE } from "../scale";
 
 export const GARAGE_ASSET_VERSION = "2.0.0";
 
+/**
+ * Corner sign pylon in REAL WORLD METRES. The garage group is scaled by
+ * renderScale = CELL_SIZE, so the model stores these divided by CELL_SIZE.
+ * Petrol-station style: 6.2 m pole, 1.8 m x 1.1 m black hammer-logo panel.
+ */
+export const GARAGE_PYLON_METRES = {
+  poleHeight: 6.2,
+  poleRadius: 0.16,
+  panelW: 1.8,
+  panelH: 1.1,
+  panelD: 0.22,
+  /** Collider footprint of the pole base (square side). */
+  baseSide: 0.45,
+} as const;
+
 export interface GarageObstacle {
   readonly id: string;
   readonly kind:
@@ -64,7 +79,16 @@ export interface GarageAnchorShellModel {
     doorCount: 3;
     bayDoorW: number;
   };
-  pylon: { w: number; h: number; d: number; x: number; z: number; y: number };
+  pylon: {
+    w: number;
+    h: number;
+    d: number;
+    x: number;
+    z: number;
+    y: number;
+    /** Black hammer-logo sign panel atop the pole (asset-local cells). */
+    panel: { w: number; h: number; d: number };
+  };
   forecourt: { w: number; d: number; frontOffset: number; y: number };
   drivewayApron: {
     w: number;
@@ -195,14 +219,26 @@ export function buildGarageAnchorShellModel(
   const localFromGrid = (grid: { x: number; y: number }) => {
     return localFromGridCoordinates(garagePad, grid.x, grid.y);
   };
-  const pylonLocal = localFromGrid(garagePad.islandCell);
+  // Spec 177 (PR 555 re-review): the pylon stands at the street-facing PLOT CORNER on the
+  // side of the surveyed islandCell. With the facade moved forward to z = +4.2 the raw
+  // islandCell (z = +4.0) now falls inside the workshop footprint, so the pole is pushed
+  // to the pad's front corner, 0.4 cells in from both pad edges: outside the building
+  // line, outside the driveway apron/forecourt, and still on the owned pad.
+  const islandLocal = localFromGrid(garagePad.islandCell);
+  const cornerInset = 0.4;
+  const toCells = (m: number) => m / CELL_SIZE;
   const pylon = {
-    w: 0.6,
-    h: 6.2,
-    d: 0.6,
-    x: pylonLocal.x,
-    z: pylonLocal.z,
-    y: 3.1,
+    w: toCells(GARAGE_PYLON_METRES.baseSide),
+    h: toCells(GARAGE_PYLON_METRES.poleHeight),
+    d: toCells(GARAGE_PYLON_METRES.baseSide),
+    x: Math.sign(islandLocal.x || 1) * (footprint.w / 2 - cornerInset),
+    z: Math.sign(islandLocal.z || 1) * (footprint.d / 2 - cornerInset),
+    y: toCells(GARAGE_PYLON_METRES.poleHeight) / 2,
+    panel: {
+      w: toCells(GARAGE_PYLON_METRES.panelW),
+      h: toCells(GARAGE_PYLON_METRES.panelH),
+      d: toCells(GARAGE_PYLON_METRES.panelD),
+    },
   };
   const forecourtDepth = 1.1;
   const forecourt = {

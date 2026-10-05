@@ -26,6 +26,7 @@ import {
 } from "./mallAnchorShell";
 import {
   buildGarageAnchorShellModel,
+  GARAGE_PYLON_METRES,
   garageAnchorNightFloorEmissive,
   isPointInGarageVicinity,
 } from "./garageAnchorShell";
@@ -1022,24 +1023,33 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     }
   }
 
+  // Spec 177 (PR 555 re-review): the garage group is scaled cells→metres, so the corner
+  // sign is authored in REAL METRES inside a sub-group scaled by 1/renderScale. World size
+  // is therefore exactly GARAGE_PYLON_METRES (6.2 m pole, 1.8 m x 1.1 m panel).
+  const P = GARAGE_PYLON_METRES;
+  const pylonSign = new THREE.Group();
+  pylonSign.name = "garageAnchorCornerPylonSignGroup";
+  pylonSign.position.set(model.pylon.x, 0, model.pylon.z);
+  pylonSign.scale.setScalar(1 / model.renderScale);
+
   const pylonMat = new THREE.MeshStandardMaterial({
     color: 0x181e26,
     roughness: 0.35,
     metalness: 0.85,
   });
   const pylon = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.14, 0.18, model.pylon.h, 16),
+    new THREE.CylinderGeometry(P.poleRadius * 0.8, P.poleRadius, P.poleHeight, 16),
     pylonMat,
   );
   pylon.name = "garageAnchorCornerPylonSign";
-  pylon.position.set(model.pylon.x, model.pylon.h / 2, model.pylon.z);
+  pylon.position.set(0, P.poleHeight / 2, 0);
   pylon.castShadow = true;
 
   // Petrol-station style black sign panel atop the tall pole
-  const panelW = 1.8;
-  const panelH = 1.1;
-  const panelD = 0.22;
-  const panelY = model.pylon.h - panelH / 2;
+  const panelW = P.panelW;
+  const panelH = P.panelH;
+  const panelD = P.panelD;
+  const panelY = P.poleHeight - panelH / 2;
   const pylonPanel = new THREE.Mesh(
     new THREE.BoxGeometry(panelW, panelH, panelD),
     new THREE.MeshStandardMaterial({
@@ -1049,12 +1059,12 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     }),
   );
   pylonPanel.name = "garageAnchorPylonPanel";
-  pylonPanel.position.set(model.pylon.x, panelY, model.pylon.z);
+  pylonPanel.position.set(0, panelY, 0);
 
   // 3D embossed hammer logo on the black panel (front and back faces)
   const hammerLogoGroup = new THREE.Group();
   hammerLogoGroup.name = "garageAnchorPylonHammerLogo";
-  hammerLogoGroup.position.set(model.pylon.x, panelY, model.pylon.z);
+  hammerLogoGroup.position.set(0, panelY, 0);
 
   const hammerHandleMat = new THREE.MeshStandardMaterial({
     color: 0xd8e4ee,
@@ -1123,6 +1133,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     g.add(cg);
   }
 
+  pylonSign.add(pylon, pylonPanel, hammerLogoGroup);
   g.add(
     floor,
     forecourt,
@@ -1132,9 +1143,7 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
     showroomFront,
     service,
     roof,
-    pylon,
-    pylonPanel,
-    hammerLogoGroup,
+    pylonSign,
   );
   C.group.add(g);
 }

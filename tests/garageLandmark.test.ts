@@ -118,7 +118,10 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
     }
   }, 30000);
 
-  it("places the pylon model on the surveyed corner island cell", () => {
+  it("places the pylon model at the street corner of the surveyed island cell", () => {
+    // Spec 177 / PR 555 re-review: the facade moved forward to local z = +4.2, so the exact
+    // islandCell (z = +4.0) is now inside the workshop. The pole stands at the pad's
+    // street-facing corner on the islandCell side, within 1.5 cells on each axis.
     for (const seed of SEEDS) {
       const d = rtFor(seed).commercialDistrict!;
       const g = d.garagePad!;
@@ -128,8 +131,11 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
         y: g.y + (g.h - 1) / 2,
       };
       const pylonGrid = localToGrid(model.facingAngle, model.pylon);
-      expect(Math.round(center.x + pylonGrid.x)).toBe(g.islandCell.x);
-      expect(Math.round(center.y + pylonGrid.y)).toBe(g.islandCell.y);
+      expect(Math.abs(center.x + pylonGrid.x - g.islandCell.x)).toBeLessThanOrEqual(1.5);
+      expect(Math.abs(center.y + pylonGrid.y - g.islandCell.y)).toBeLessThanOrEqual(1.5);
+      // still on the owned pad
+      expect(Math.abs(model.pylon.x)).toBeLessThan(g.w / 2);
+      expect(Math.abs(model.pylon.z)).toBeLessThan(g.h / 2);
     }
   }, 30000);
 
@@ -140,7 +146,10 @@ describe("garage landmark site and render model (spec 109 P1/P2)", () => {
     expect(model.isPublicSafe).toBe(true);
     expect(model.showroom.w).toBeGreaterThan(model.serviceBay.bayDoorW);
     expect(model.serviceBay.doorCount).toBe(3);
-    expect(model.pylon.h).toBeGreaterThan(model.showroom.h);
+    // real-world petrol-station pole: 5-10 m once the cells→metres render scale is applied
+    const poleWorldM = model.pylon.h * model.renderScale;
+    expect(poleWorldM).toBeGreaterThanOrEqual(5);
+    expect(poleWorldM).toBeLessThanOrEqual(10);
     expect(model.forecourt.w).toBeGreaterThan(model.serviceBay.w * 0.9);
     expect(garageAnchorNightFloorEmissive(1)).toBeCloseTo(0.12);
     expect(garageAnchorNightFloorEmissive(0)).toBeCloseTo(1.05);

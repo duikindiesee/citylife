@@ -415,7 +415,7 @@ export function junctionFurniture(
     my: number,
     lx: number,
     ly: number,
-  ): { x: number; y: number } => {
+  ): { x: number; y: number } | null => {
     if (!blocked(mx, my)) return { x: mx, y: my };
     const rx = mx - zone.cx,
       ry = my - zone.cy;
@@ -436,13 +436,9 @@ export function junctionFurniture(
         if (!blocked(x, y)) return { x, y };
       }
     }
-    // Deep fallback: march along outward radial direction until clear of all carriageways
-    for (let extra = 1.0; extra <= 15.0; extra += 1.0) {
-      const x = mx + ox * (9.0 + extra) + lx * 2,
-        y = my + oy * (9.0 + extra) + ly * 2;
-      if (!blocked(x, y)) return { x, y };
-    }
-    return { x: mx + ox * 18, y: my + oy * 18 };
+    // Fail closed: every candidate is on asphalt. Omit the pole rather than plant it at an
+    // unvalidated fallback inside a carriageway (MoJoJo review 5410400845, finding 2).
+    return null;
   };
 
   // Each approach gets at most one signal/sign (never duplicates for parallel arm bundles)
@@ -489,14 +485,15 @@ export function junctionFurniture(
         L.x,
         L.y,
       );
-      items.push({
-        kind: "light",
-        x: p.x,
-        y: p.y,
-        rotY: Math.atan2(a.ux, a.uy),
-        laneHalfM: a.half * 4,
-        group: groupOf(a),
-      });
+      if (p)
+        items.push({
+          kind: "light",
+          x: p.x,
+          y: p.y,
+          rotY: Math.atan2(a.ux, a.uy),
+          laneHalfM: a.half * 4,
+          group: groupOf(a),
+        });
     }
     if (zone.kind === "tee" && a.terminating) {
       const p = placeClear(
@@ -505,13 +502,14 @@ export function junctionFurniture(
         L.x,
         L.y,
       );
-      items.push({
-        kind: "stopsign",
-        x: p.x,
-        y: p.y,
-        rotY: Math.atan2(a.ux, a.uy),
-        laneHalfM: a.half * 4,
-      });
+      if (p)
+        items.push({
+          kind: "stopsign",
+          x: p.x,
+          y: p.y,
+          rotY: Math.atan2(a.ux, a.uy),
+          laneHalfM: a.half * 4,
+        });
     }
   }
   return items;
