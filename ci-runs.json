@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-05T16:51:17.359Z",
+  "updatedAt": "2026-10-05T16:52:18.564Z",
   "runs": [
+    {
+      "runId": 37343951576,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37343951576",
+      "event": "pull_request",
+      "branch": "fix/spec-177-remove-legacy-apron-road-penetration",
+      "sha": "0408123a73fe807e54a82e9b6321c9a37842e98a",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/0408123a73fe807e54a82e9b6321c9a37842e98a",
+      "pullRequestNumbers": "#559",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/559",
+      "pullRequests": [
+        {
+          "number": 559,
+          "url": "https://github.com/duikindiesee/citylife/pull/559"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-05T16:50:53Z",
+      "completedAt": "2026-10-05T16:52:07Z",
+      "durationSeconds": 74,
+      "runnerSummary": "GitHub Actions 1000010734",
+      "jobs": [
+        {
+          "id": 111877719025,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010734",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-05T16:50:57Z",
+          "completedAt": "2026-10-05T16:52:06Z",
+          "durationSeconds": 69
+        }
+      ]
+    },
     {
       "runId": 37343951571,
       "workflowName": "Secret scan",
