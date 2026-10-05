@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-05T10:24:38.125Z",
+  "updatedAt": "2026-10-05T10:52:23.641Z",
   "runs": [
+    {
+      "runId": 37299282910,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37299282910",
+      "event": "pull_request",
+      "branch": "fix/spec-177-garage-apron-plinth-leveling",
+      "sha": "a4129a6807d00e3d2b6a25624ba54bf8ae4eab96",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/a4129a6807d00e3d2b6a25624ba54bf8ae4eab96",
+      "pullRequestNumbers": "#557",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/557",
+      "pullRequests": [
+        {
+          "number": 557,
+          "url": "https://github.com/duikindiesee/citylife/pull/557"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-05T10:52:01Z",
+      "completedAt": "2026-10-05T10:52:14Z",
+      "durationSeconds": 13,
+      "runnerSummary": "GitHub Actions 1000010691",
+      "jobs": [
+        {
+          "id": 111727888278,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010691",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-10-05T10:52:05Z",
+          "completedAt": "2026-10-05T10:52:13Z",
+          "durationSeconds": 8
+        }
+      ]
+    },
     {
       "runId": 37296357311,
       "workflowName": "Secret scan",
