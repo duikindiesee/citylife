@@ -1,7 +1,50 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-05T15:12:11.901Z",
+  "updatedAt": "2026-10-05T15:30:45.405Z",
   "runs": [
+    {
+      "runId": 37330681867,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37330681867",
+      "event": "pull_request",
+      "branch": "fix/spec-177-garage-apron-plinth-leveling",
+      "sha": "995c8f358499f04eec6e784bde4a70cf6ab2490c",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/995c8f358499f04eec6e784bde4a70cf6ab2490c",
+      "pullRequestNumbers": "#557",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/557",
+      "pullRequests": [
+        {
+          "number": 557,
+          "url": "https://github.com/duikindiesee/citylife/pull/557"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-05T15:10:40Z",
+      "completedAt": "2026-10-05T15:30:33Z",
+      "durationSeconds": 1193,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 111832666822,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-05T15:10:45Z",
+          "completedAt": "2026-10-05T15:30:26Z",
+          "durationSeconds": 1181
+        }
+      ]
+    },
     {
       "runId": 37330681728,
       "workflowName": "Build CityLife Debug APK",
