@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-06T04:49:30.679Z",
+  "updatedAt": "2026-10-06T04:50:46.398Z",
   "runs": [
     {
       "runId": 37415499822,
@@ -38,6 +38,45 @@
           "startedAt": "2026-10-06T04:49:13Z",
           "completedAt": "2026-10-06T04:49:19Z",
           "durationSeconds": 6
+        }
+      ]
+    },
+    {
+      "runId": 37415499734,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37415499734",
+      "event": "pull_request",
+      "branch": "fix/spec-177-remove-legacy-apron-road-penetration",
+      "sha": "724b516701a94a6d59f7670ed983ce7aac942f2e",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/724b516701a94a6d59f7670ed983ce7aac942f2e",
+      "pullRequestNumbers": "#559",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/559",
+      "pullRequests": [
+        {
+          "number": 559,
+          "url": "https://github.com/duikindiesee/citylife/pull/559"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-06T04:49:09Z",
+      "completedAt": "2026-10-06T04:50:34Z",
+      "durationSeconds": 85,
+      "runnerSummary": "GitHub Actions 1000010739",
+      "jobs": [
+        {
+          "id": 112113099434,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010739",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-06T04:49:13Z",
+          "completedAt": "2026-10-06T04:50:33Z",
+          "durationSeconds": 80
         }
       ]
     },
