@@ -1398,7 +1398,6 @@ function buildGarageAnchorShell(C: CommercialCtx, d: CommercialDistrict): void {
       );
       hazardStrip.position.set(sx, model.nightFloor.y + 0.04, bayFaceZ);
       g.add(hazardStrip);
-
     }
     const doorFrameMat = new THREE.MeshStandardMaterial({
       color: 0xffb24a,
