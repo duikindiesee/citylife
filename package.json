@@ -30,6 +30,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@playwright/test": "^1.61.1",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.15",

@@ -53,6 +53,7 @@ import { HqReceptionView } from "../render/HqReceptionView";
 import { planTopbar } from "./topbarPlan";
 import { TopbarMenu } from "./TopbarMenu";
 import { BuildStamp } from "./BuildStamp";
+import { MultiplayerStatusHUD } from "./MultiplayerStatusHUD";
 import { GamehouseOverlay } from "./GamehouseOverlay";
 import { resolveGamehousePortalSite } from "../spatial/gamehousePortal";
 import { PasswordChangePanel } from "./PasswordChangePanel";
@@ -568,6 +569,13 @@ function useRuntime(): ColonyRuntime {
           Math.sin(((t - 6) / 13) * Math.PI),
         );
         ref.current.setSpeed(0);
+      }
+      const room = query.get("room");
+      const mp = query.get("multiplayer");
+      if (room || mp === "1") {
+        setTimeout(() => {
+          ref.current?.enableMultiplayer(room || "racing-cup");
+        }, 300);
       }
     }
     (window as unknown as { __colony: ColonyRuntime }).__colony = ref.current;
@@ -1995,6 +2003,7 @@ export function ColonyApp() {
             matters most. First person is covered instead by FirstPersonPanel's edge-HUD grid,
             which is that view's real layout owner. */}
         {!ui.firstPerson.active && <BuildStamp runtime={runtime} />}
+        <MultiplayerStatusHUD runtime={runtime} />
       </div>
       {/* Keep only the transient controls for a drive session already in progress. The legacy
           Road Rally / Join Race entry points and rally branding stay retired; this shell exists
