@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
+import {
+  buildBusNetworkMiniMapModel,
+  canShowPlayerLocationForAccount,
+  resolveLocalPlayerMapPosition,
+} from "../src/colony/ui/busNetworkMiniMapModel";
 import type { RoadWay } from "../src/colony/render/roadRibbon";
 
 const ways: RoadWay[] = [
@@ -22,6 +26,153 @@ const ways: RoadWay[] = [
     ],
   },
 ];
+
+describe("local player map position", () => {
+  it("fails closed for every render until runtime identity matches the current account", () => {
+    const canShow = (
+      isCityLifePlayer: boolean,
+      authenticatedAccountKey: string | null,
+      runtimeAccountKey: string | null,
+    ) =>
+      canShowPlayerLocationForAccount({
+        isCityLifePlayer,
+        authenticatedAccountKey,
+        runtimeAccountKey,
+      });
+
+    expect(canShow(true, "player-a", "player-a")).toBe(true);
+    // The account changed in place, but the passive runtime-binding effect has not run yet.
+    expect(canShow(true, "player-b", "player-a")).toBe(false);
+    expect(canShow(true, "player-b", null)).toBe(false);
+    expect(canShow(true, null, "player-a")).toBe(false);
+    // An operator account does not receive player-private map data just because it has an ID.
+    expect(canShow(false, "player-a", "player-a")).toBe(false);
+    // The map may reveal the new account's location after the runtime has rebound.
+    expect(canShow(true, "player-b", "player-b")).toBe(true);
+  });
+
+  it("allows an exact runtime-owned car pose without a mapped citizen", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
+        operatorCitizenId: null,
+        activeCitizenId: null,
+        drivePose: { x: 24, y: 31 },
+        cameraCell: { x: 23, y: 30 },
+        exactOwnPresence: null,
+      }),
+    ).toEqual({ x: 24, y: 31 });
+  });
+
+  it("does not use camera or presence when no citizen is mapped", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
+        operatorCitizenId: null,
+        activeCitizenId: null,
+        drivePose: null,
+        cameraCell: { x: 23, y: 30 },
+        exactOwnPresence: {
+          subjectId: "unmapped-player",
+          cell: { x: 22, y: 29 },
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("uses the live owned-car pose before the first-person camera or roster pose", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
+        operatorCitizenId: "player-1",
+        activeCitizenId: "player-1",
+        drivePose: { x: 24, y: 31 },
+        cameraCell: { x: 23, y: 30 },
+        exactOwnPresence: {
+          subjectId: "player-1",
+          cell: { x: 22, y: 29 },
+        },
+      }),
+    ).toEqual({ x: 24, y: 31 });
+  });
+
+  it("uses the live camera capsule for an on-foot player without a citizen-roster match", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
+        operatorCitizenId: "player-1",
+        activeCitizenId: "player-1",
+        cameraCell: { x: 14.25, y: 18.5 },
+        exactOwnPresence: null,
+      }),
+    ).toEqual({ x: 14.25, y: 18.5 });
+  });
+
+  it("never uses an inspected citizen's camera or marker as the signed-in player's position", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
+        operatorCitizenId: "player-1",
+        activeCitizenId: "citizen-under-inspection",
+        cameraCell: { x: 50, y: 60 },
+        exactOwnPresence: {
+          subjectId: "citizen-under-inspection",
+          cell: { x: 50, y: 60 },
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("uses an exact presence fix only when it belongs to the account's citizen", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
+        operatorCitizenId: "player-1",
+        activeCitizenId: null,
+        exactOwnPresence: {
+          subjectId: "player-1",
+          cell: { x: 22, y: 29 },
+        },
+      }),
+    ).toEqual({ x: 22, y: 29 });
+  });
+
+  it("does not fabricate a location from absent, malformed, or non-local pose data", () => {
+    expect(resolveLocalPlayerMapPosition({})).toBeNull();
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: false,
+        cameraCell: { x: 14.25, y: 18.5 },
+      }),
+    ).toBeNull();
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: true,
+        drivePose: { x: Number.NaN, y: 4 },
+        operatorCitizenId: "player-1",
+        activeCitizenId: null,
+        cameraCell: null,
+        exactOwnPresence: null,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not show personal location in builder or aerial view", () => {
+    expect(
+      resolveLocalPlayerMapPosition({
+        playerLocationAuthorized: false,
+        operatorCitizenId: "player-1",
+        activeCitizenId: "player-1",
+        drivePose: { x: 24, y: 31 },
+        cameraCell: { x: 23, y: 30 },
+        exactOwnPresence: {
+          subjectId: "player-1",
+          cell: { x: 22, y: 29 },
+        },
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("always-visible bus network minimap model", () => {
   it("projects every road way, route stop, depot and live coach into the fixed viewport", () => {

@@ -1,7 +1,10 @@
 import type { ColonyRuntime } from "../runtime";
 import type { PresenceReadout } from "../spatial/presenceReadout";
 import { useSimSignal } from "../render/useSimSignal";
-import { buildBusNetworkMiniMapModel } from "./busNetworkMiniMapModel";
+import {
+  buildBusNetworkMiniMapModel,
+  resolveLocalPlayerMapPosition,
+} from "./busNetworkMiniMapModel";
 
 const WIDTH = 200;
 const HEIGHT = 132;
@@ -11,6 +14,8 @@ type BusNetworkMiniMapProps = {
   /** Server-authenticated wallet state, or City view for an operator. */
   walletLabel: string;
   presenceReadout: PresenceReadout | null;
+  /** True only for an authenticated player in the interactive view; hides personal position on logout/preview. */
+  playerLocationAuthorized: boolean;
   /** The map is summoned on demand so it does not cover the driving view. */
   open: boolean;
   onClose: () => void;
@@ -27,32 +32,63 @@ function OpenBusNetworkMiniMap({
   runtime,
   walletLabel,
   presenceReadout,
+  playerLocationAuthorized,
   onClose,
 }: Omit<BusNetworkMiniMapProps, "open">) {
   // The HUD can be memoized independently of the scene. Subscribe to the runtime's 200ms
   // heartbeat while seated so the player marker follows the live car pose on the map.
-  const drivePosition = useSimSignal(runtime, () => {
+  const playerPosition = useSimSignal(runtime, () => {
     const pose = runtime.getOwnedDrivePose();
+    const firstPerson = runtime.getUiState().firstPerson;
+    const camera =
+      firstPerson.operatorCitizenId !== null &&
+      firstPerson.citizenId === firstPerson.operatorCitizenId
+        ? runtime.fpCameraCell
+        : null;
     return pose
-      ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}`
-      : "drive:parked";
+      ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}:${camera?.x.toFixed(2) ?? "?"}:${camera?.y.toFixed(2) ?? "?"}`
+      : camera
+        ? `camera:${camera.x.toFixed(2)}:${camera.y.toFixed(2)}`
+        : "camera:unknown";
   });
-  void drivePosition;
+  void playerPosition;
   const state = runtime.sim.state;
   const depot = runtime.busDepot?.site ?? null;
-  const local = presenceReadout?.entries.find((entry) => entry.isLocal) ?? null;
-  // While seated, the car pose is the player's actual location. On foot, use the already-authorized
-  // exact presence projection; never guess from a spawn/home or draw a coarse position as exact.
-  const driving = (
-    runtime as ColonyRuntime & {
-      getOwnedDrivePose?: () => { x: number; y: number } | null;
-    }
-  ).getOwnedDrivePose?.();
-  const player = driving
-    ? { x: driving.x, y: driving.y }
-    : local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
-      ? { x: local.fix.cell.x, y: local.fix.cell.y }
+  const firstPerson = runtime.getUiState().firstPerson;
+  const operatorCitizenId = firstPerson.operatorCitizenId;
+  const ownPresence = operatorCitizenId
+    ? presenceReadout?.entries.find(
+        (entry) => entry.subjectId === operatorCitizenId,
+      ) ?? null
+    : null;
+  const ownCamera =
+    operatorCitizenId !== null &&
+    firstPerson.citizenId === operatorCitizenId
+      ? runtime.fpCameraCell
       : null;
+  // The capsule/camera is the live local position while walking, and the owned drive pose is the
+  // live car position while seated. Camera and presence fallbacks are bound to the authenticated
+  // account's citizen id, not `isLocal`, which can mean an inspected citizen in operator view.
+  // Never infer a current position from a spawn/home anchor or another citizen's marker.
+  const player = resolveLocalPlayerMapPosition({
+    playerLocationAuthorized,
+    operatorCitizenId,
+    activeCitizenId: firstPerson.citizenId,
+    drivePose: runtime.getOwnedDrivePose(),
+    cameraCell: ownCamera,
+    exactOwnPresence:
+      ownPresence?.resolution === "exact" &&
+      ownPresence.fix?.withinExtent &&
+      ownPresence.fix.cell
+        ? {
+            subjectId: ownPresence.subjectId,
+            cell: {
+              x: ownPresence.fix.cell.x,
+              y: ownPresence.fix.cell.y,
+            },
+          }
+        : null,
+  });
   const model = buildBusNetworkMiniMapModel({
     ways: state.roadWays ?? [],
     routeStops: runtime.busRoute?.stops ?? [],

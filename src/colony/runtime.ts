@@ -2463,6 +2463,11 @@ export class ColonyRuntime {
     );
   }
 
+  /** Authenticated account currently bound to this runtime, for fail-closed UI identity checks. */
+  getBoundOperatorUserId(): string | null {
+    return this.operatorUserId;
+  }
+
   /** Spec 096 / PLAYER.CAR.1.S5 — persist an acquired car for the operator citizen and refresh
    *  the in-world parked car mesh immediately. Guards against identity mismatch if expectedCitizenId
    *  is provided. Returns true if persisted and refreshed. */

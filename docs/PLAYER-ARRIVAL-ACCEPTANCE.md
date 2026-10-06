@@ -62,6 +62,58 @@ This is a prerequisite, not seated gameplay acceptance. Runtime vehicle controls
 authoritative purchased parcels, completed house persistence and road-connected driveway
 spawn remain required. The legacy drive-home overlay cursor is not evidence of driving.
 
+## Local map position slice (2026-09-26, source validation only)
+
+Task `9298ced6-7e43-41d7-8eba-b2bdf4c846e6` (child of HUD/map acceptance
+`608c29b4-bbfd-414b-a931-31d85037a199`). The expanded bus map now resolves the viewer's
+marker from the live owned-car pose first, then the live first-person camera capsule grid
+cell only when first person is controlling the citizen bound to the signed-in account, then
+the viewer's own exact citizen presence fix matched by subject ID. It does not use the
+runtime's generic `isLocal` bit because operator inspection can make another citizen local.
+It suppresses the marker
+unless the session has an authenticated player identity and is in the interactive player
+view; signed-out/skip-auth preview, builder and aerial view fail closed. It ignores coarse
+and other-account presence records and does not turn the server's garage/plot spawn destination
+into a claim about the player's current location.
+The camera/citizen pose is local runtime evidence; it does not establish server-authoritative
+shared movement or multiplayer presence. Those remain separate acceptance gates.
+
+The server `GET /api/v1/citylife/players/me/spawn` contract supplies a token-bound decision
+and garage/plot/neighbourhood anchor without coordinates. Until the client has a verified
+world mapping for a given anchor, it must not render that destination as the current-position
+marker. After review exposed that a signed-out local preview could show its camera as a personal
+marker, the resolver was changed to require explicit authenticated-player authorization and to
+bind camera/presence fixes to the account's own citizen identity. The mounted regression verifies
+signed-out suppression, an opaque mocked player session tied to a deterministic seeded citizen,
+map movement, and suppression again after the session is removed. After this identity correction,
+commit `d29d08bd0cc681c571fdc107317f0d99e1351f46` passed 10 minimap unit tests, `npm run typecheck`,
+`npm run build`, and the mounted Chromium map test (1/1). Inspectable day/night screenshots are in
+`test-results/busNetworkMiniMap-player-c-d5ade-tracks-the-player-and-buses-chromium/`.
+All browser credentials and API state are local fixtures; this is not deployed evidence. Real
+account-switch/logout behavior and live deployed map verification remain outstanding.
+
+### 2026-09-27 mocked account-switch regression
+
+The mounted Chromium map test now changes from the authenticated fixture player to a different
+opaque account with no matching seeded citizen, reloads, opens the map, and requires `Position
+unavailable` with no player marker before separately checking logout suppression. The focused
+Playwright run passed (1/1) after this addition. This proves fixture-level stale-marker suppression
+across an account boundary; real account switching and deployed player-position verification remain
+outstanding.
+
+### 2026-09-26 revalidation
+
+The deployed CityLife `v0.58.0` at merge `f6432ca` shows the wallet control and five-bus
+map, but the expanded map still says `Position unavailable` and renders no self marker.
+This is a live acceptance failure, not evidence that the local resolver is deployed. On the
+isolated map branch, `npm run typecheck`, the focused minimap suite (10/10), the mounted map
+test (1/1), and the returning-owner map-open driving test (1/1) passed. That last browser test
+uses mocked account/service state; it verifies the throttle hit target, keyboard movement,
+marker following, braking, touch throttle with the map open, and exact owned-car hydration
+after reload. Its final reload now waits for `domcontentloaded` instead of optional network
+requests completing the full `load` event; the exact-car post-reload assertion remains.
+None of these fixture results proves real-account identity mapping or deployed position.
+
 The world renderer now uses the owned catalog vehicle's actual showroom GLB instead of
 giving every model the same procedural block body. It retains loader ownership of cached
 geometry/materials, centres the asset on the runtime anchor and seats its bounds on the
