@@ -462,6 +462,36 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
       ) as THREE.Mesh;
       expect(fullApron, "driveway apron mesh exists").toBeDefined();
 
+      // Obsolete Spec 110 apron ramp must be removed to prevent carriageway penetration
+      const legacyApron = shell.getObjectByName("garageAnchorDriveInApronRamp");
+      expect(
+        legacyApron,
+        `Seed ${seed}: legacy apron ramp penetrating road must not exist`,
+      ).toBeUndefined();
+
+      // Exhaustive mesh/carriageway-intersection invariant across all garage meshes:
+      // In the garage coordinate frame where +Z points toward the municipal road carriageway,
+      // every vertex of every mesh in the garage shell must remain strictly behind the road edge (local z <= 7.801).
+      // The retired legacy ramp (garageAnchorDriveInApronRamp) protruded to local z = 8.85 (penetrating 4.4m into the carriageway).
+      const invShell = shell.matrixWorld.clone().invert();
+      const tempV = new THREE.Vector3();
+      shell.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh) {
+          const mesh = obj as THREE.Mesh;
+          const geom = mesh.geometry;
+          const posAttr = geom.getAttribute("position");
+          if (!posAttr) return;
+          for (let vi = 0; vi < posAttr.count; vi++) {
+            tempV.fromBufferAttribute(posAttr, vi);
+            tempV.applyMatrix4(mesh.matrixWorld).applyMatrix4(invShell);
+            expect(
+              tempV.z,
+              `Seed ${seed}: mesh ${mesh.name} vertex at local z=${tempV.z.toFixed(3)} exceeds road boundary z=7.80 (penetrates carriageway)`,
+            ).toBeLessThanOrEqual(7.801);
+          }
+        }
+      });
+
       const apronBox = new THREE.Box3().setFromObject(fullApron);
       let maxSurfaceH = -Infinity;
       for (let lx = -g.w * 0.45; lx <= g.w * 0.45; lx += 1.0) {

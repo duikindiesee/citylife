@@ -46,13 +46,13 @@ Replace "nearest non-street rectangle" with "best CORNER quadrant":
 Keep all existing named children (additive contract), but re-place them onto the two wings + island:
 
 - **Showroom wing (high-street face):** the `garageAnchorGlassShowroom` becomes a LONG glass curtain along the street frontage (cool glazing + dark lit interior already in the visual upgrade), with `garageAnchorDisplayCar.*` INSIDE the glass (cars on display in the gallery), a slim `garageAnchorShowroomHeaderSign` fascia, and a cantilevered canopy.
-- **Workshop wing (cross-street face):** the `garageAnchorServiceBayBlock` + the 3 `garageAnchorRollupDoor.*` move to the cross-street frontage; the middle bay is the OPEN drive-in (recessed `garageAnchorOpenBayInterior` + `garageAnchorDriveInApronRamp`) facing the cross street so a car cruises in off the secondary road. Mono-slope industrial roof.
+- **Workshop wing (cross-street face):** the `garageAnchorServiceBayBlock` + the 3 `garageAnchorRollupDoor.*` move to the cross-street frontage; the middle bay is the OPEN drive-in (recessed `garageAnchorOpenBayInterior`; the earlier flat box `garageAnchorDriveInApronRamp` is retired and superseded by Spec 177's continuous `garageAnchorDrivewayApron` to prevent carriageway penetration) facing the cross street so a car cruises in off the secondary road. Mono-slope industrial roof.
 - **Corner island + pylon:** a small raised `garageAnchorCornerIsland` (planter/kerb) at `islandCell`; the `garageAnchorCornerPylonSign` stands on it, taller (sky-high), illuminated, with a `garageAnchorPylonWordmark` readable from both streets. Fuel/charge island optional beside it.
 - **NFS aesthetic / day-calm-night-neon:** dark industrial workshop + bright cool glass showroom + warm neon pylon + polished emissive forecourt; night emissive ramps via `garageAnchorNightFloorEmissive` (locked helper). Accent guide-chevrons on the drive-in apron.
 
 ## Drive-in (corner-aligned)
 
-The open bay faces the CROSS street (the secondary intake), apron + guide chevrons run from the bay mouth to the cross-street carriageway, aligned to `crossFrontDir`. Visually drive-into-able now; the actual car drive-through is gated on the free-roam `carSpec` hook (Codex lane) — this lays the corner geometry + approach.
+The open bay faces the CROSS street (the secondary intake), apron + guide chevrons run from the bay mouth to the cross-street carriageway, aligned to `crossFrontDir` (rendered via Spec 177 unified `garageAnchorDrivewayApron`, terminating cleanly at road edge). Visually drive-into-able now; the actual car drive-through is gated on the free-roam `carSpec` hook (Codex lane) — this lays the corner geometry + approach.
 
 ## Determinism + scope
 
