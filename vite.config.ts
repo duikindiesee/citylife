@@ -50,78 +50,6 @@ function resolveBuildStamp(env: Record<string, string>) {
 // gateway as its default (Dockerfile). The gateway is the same public endpoint the kooker web app
 // calls from browsers — never put credentials or internal cluster hostnames in this repo.
 // Browser -> Vite proxy -> kooker APISIX gateway (avoids CORS).
-function devMultiplayerAuthPlugin(kookerGateway: string, ipv4Agent: any) {
-  return {
-    name: "dev-multiplayer-auth",
-    configureServer(server: any) {
-      server.middlewares.use((req: any, res: any, next: any) => {
-        if (req.url === "/kooker/api/auth/basic" && req.method === "POST") {
-          const auth = req.headers["authorization"] || "";
-          if (auth.startsWith("Basic ")) {
-            const creds = Buffer.from(auth.slice(6), "base64").toString("utf8");
-            const [username, password] = creds.split(":");
-            if (username === "jamtin2@citylife.local" && password === "JamJamJam") {
-              try {
-                const u = new URL(kookerGateway.replace(/\/+$/, "") + "/api/auth/basic");
-                const upstreamReq = (u.protocol === "https:" ? https : http).request(
-                  u,
-                  {
-                    method: "POST",
-                    agent: ipv4Agent,
-                    headers: {
-                      authorization: auth,
-                      "content-type": "application/json",
-                      "ngrok-skip-browser-warning": "true",
-                    },
-                  },
-                  (upstreamRes: any) => {
-                    let body = "";
-                    upstreamRes.on("data", (chunk: any) => (body += chunk));
-                    upstreamRes.on("end", () => {
-                      try {
-                        const json = JSON.parse(body);
-                        if (upstreamRes.statusCode === 200 && json.accessToken) {
-                          const parts = json.accessToken.split(".");
-                          if (parts.length === 3) {
-                            const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
-                            payload.app = "citylife";
-                            payload.role = "CITYLIFE_PLAYER";
-                            payload.roles = "CITYLIFE_VISITOR,CITYLIFE_PLAYER";
-                            const newPayloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
-                            json.accessToken = `${parts[0]}.${newPayloadB64}.${parts[2]}`;
-                          }
-                          if (json.user) {
-                            json.user.role = "CITYLIFE_PLAYER";
-                            json.user.roles = "CITYLIFE_VISITOR,CITYLIFE_PLAYER";
-                          }
-                          res.writeHead(200, { "Content-Type": "application/json" });
-                          res.end(JSON.stringify(json));
-                          return;
-                        }
-                      } catch {}
-                      res.writeHead(upstreamRes.statusCode || 500, upstreamRes.headers);
-                      res.end(body);
-                    });
-                  }
-                );
-                upstreamReq.on("error", (e: any) => {
-                  res.writeHead(502, { "Content-Type": "application/json" });
-                  res.end(JSON.stringify({ error: e.message }));
-                });
-                upstreamReq.write(JSON.stringify({}));
-                upstreamReq.end();
-                return;
-              } catch {
-                // fall through to next
-              }
-            }
-          }
-        }
-        next();
-      });
-    },
-  };
-}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
@@ -131,7 +59,7 @@ export default defineConfig(({ mode }) => {
     : new http.Agent({ family: 4 });
   const buildStamp = resolveBuildStamp(env);
   return {
-    plugins: [react(), devMultiplayerAuthPlugin(kookerGateway, ipv4Agent)],
+    plugins: [react()],
     define: {
       __BUILD_VERSION__: JSON.stringify(buildStamp.version),
       __BUILD_SHA__: JSON.stringify(buildStamp.sha),

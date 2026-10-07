@@ -53,7 +53,10 @@ export class HttpRemoteWorldLayoutLoader implements RemoteWorldLayoutLoader {
   private readonly timeoutMs: number;
 
   constructor(options?: HttpRemoteWorldLayoutLoaderOptions) {
-    this.baseUrl = (options?.baseUrl ?? "").replace(/\/+$/, "");
+    this.baseUrl = (options?.baseUrl !== undefined && options.baseUrl !== ""
+      ? options.baseUrl
+      : "/kooker"
+    ).replace(/\/+$/, "");
     this.getToken = options?.getToken;
     this.timeoutMs = options?.timeoutMs ?? 5000;
   }
@@ -194,6 +197,15 @@ function waitForAttempt<T>(
   });
 }
 
+interface RuntimeCoordinatorOwner {
+  activeCoordinator: WorldLayoutBootCoordinator;
+  worldId: string;
+  generation: number;
+}
+
+const runtimeOwnerRegistry = new WeakMap<object, RuntimeCoordinatorOwner>();
+let nextBootGeneration = 1;
+
 /**
  * One-shot barrier between deterministic runtime construction and `runtime.start()`.
  *
@@ -213,6 +225,7 @@ export class WorldLayoutBootCoordinator {
   private readonly requireRemoteAuthority?: boolean;
   private attempt?: Promise<WorldLayoutBootResult>;
   private attemptSettled = true;
+  private generation = 0;
 
   constructor(options: WorldLayoutBootOptions) {
     this.worldId = requiredWorldId(options.worldId);
@@ -220,6 +233,29 @@ export class WorldLayoutBootCoordinator {
     this.runtime = options.runtime;
     this.remoteLoader = options.remoteLoader;
     this.requireRemoteAuthority = options.requireRemoteAuthority;
+    if (typeof this.runtime === "object" && this.runtime !== null) {
+      this.generation = nextBootGeneration++;
+      runtimeOwnerRegistry.set(this.runtime, {
+        activeCoordinator: this,
+        worldId: this.worldId,
+        generation: this.generation,
+      });
+    }
+  }
+
+  private isSuperseded(): boolean {
+    if (typeof this.runtime === "object" && this.runtime !== null) {
+      const current = runtimeOwnerRegistry.get(this.runtime);
+      if (
+        current &&
+        (current.activeCoordinator !== this ||
+          current.worldId !== this.worldId ||
+          current.generation !== this.generation)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   boot(signal?: AbortSignal): Promise<WorldLayoutBootResult> {
@@ -254,6 +290,14 @@ export class WorldLayoutBootCoordinator {
       throw new Error("Cannot invalidate an active world layout boot attempt");
     this.attempt = undefined;
     this.attemptSettled = true;
+    if (typeof this.runtime === "object" && this.runtime !== null) {
+      this.generation = nextBootGeneration++;
+      runtimeOwnerRegistry.set(this.runtime, {
+        activeCoordinator: this,
+        worldId: this.worldId,
+        generation: this.generation,
+      });
+    }
   }
 
   private async run(): Promise<WorldLayoutBootResult> {
@@ -303,8 +347,33 @@ export class WorldLayoutBootCoordinator {
           }
           applyWorldLayoutDocument(document);
 
+          if (this.isSuperseded()) {
+            return {
+              ready: true,
+              worldId: this.worldId,
+              revision,
+              source: "canonical_remote",
+            };
+          }
+
           const head = await this.store.load(this.worldId);
+          if (this.isSuperseded()) {
+            return {
+              ready: true,
+              worldId: this.worldId,
+              revision,
+              source: "canonical_remote",
+            };
+          }
           await this.store.save(saveInput(document), head?.layoutRevision ?? null);
+          if (this.isSuperseded()) {
+            return {
+              ready: true,
+              worldId: this.worldId,
+              revision,
+              source: "canonical_remote",
+            };
+          }
           await this.runtime.hydrateWorldLayout(document);
           return {
             ready: true,
@@ -352,6 +421,15 @@ export class WorldLayoutBootCoordinator {
     // the runtime nor strand an unusable first head in IndexedDB.
     applyWorldLayoutDocument(captured);
 
+    if (this.isSuperseded()) {
+      return {
+        ready: true,
+        worldId: this.worldId,
+        revision: worldLayoutRevisionId(captured.revision),
+        source: "initialized",
+      };
+    }
+
     const result = await this.store.save(saveInput(captured), null);
     if (result.status === "saved")
       return this.hydrate(result.revision, "initialized");
@@ -380,7 +458,9 @@ export class WorldLayoutBootCoordinator {
     source: WorldLayoutBootResult["source"],
   ): Promise<WorldLayoutBootResult> {
     const validated = validateRevision(this.worldId, stored);
-    await this.runtime.hydrateWorldLayout(validated.document);
+    if (!this.isSuperseded()) {
+      await this.runtime.hydrateWorldLayout(validated.document);
+    }
     return {
       ready: true,
       worldId: this.worldId,

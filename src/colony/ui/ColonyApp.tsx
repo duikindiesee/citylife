@@ -708,30 +708,54 @@ export function ColonyApp() {
     [auth],
   );
 
+  const worldKey = useMemo(() => {
+    if (typeof window !== "undefined") {
+      const q = new URLSearchParams(window.location.search);
+      const queryKey = q.get("world") || q.get("worldId") || q.get("worldKey");
+      if (queryKey) return queryKey;
+    }
+    return runtime.captureWorldLayout().worldId;
+  }, [runtime]);
+
+  const bootGenerationRef = useRef(0);
   const worldLayoutPersistence = useMemo(() => {
+    const generation = ++bootGenerationRef.current;
     try {
       const store = new WorldLayoutStore();
-      const worldId = runtime.captureWorldLayout().worldId;
+      const worldId = worldKey;
       return {
+        generation,
+        worldId,
         store,
         coordinator: new WorldLayoutBootCoordinator({
           worldId,
           store,
+          remoteLoader: remoteLoader,
+          requireRemoteAuthority: isMultiplayer,
           runtime: {
             captureWorldLayout: () => runtime.captureWorldLayout(),
             hydrateWorldLayout: (document) => {
+              if (generation !== bootGenerationRef.current) {
+                console.warn(
+                  "[ColonyApp] Suppressing hydration from superseded boot generation",
+                  {
+                    generation,
+                    activeGeneration: bootGenerationRef.current,
+                    documentWorldId: document.worldId,
+                  },
+                );
+                return;
+              }
               runtime.hydrateWorldLayout(document);
             },
           },
-          remoteLoader: remoteLoader,
-          requireRemoteAuthority: isMultiplayer,
         }),
         error: null,
       };
     } catch (error: unknown) {
-      return { store: null, coordinator: null, error };
+      return { generation, worldId: worldKey, store: null, coordinator: null, error };
     }
-  }, [runtime, remoteLoader, isMultiplayer, operatorUserId]);
+  }, [runtime, remoteLoader, isMultiplayer, operatorUserId, worldKey]);
   const [worldLayoutBoot, setWorldLayoutBoot] = useState<
     | { status: "loading" }
     | { status: "ready"; result: WorldLayoutBootResult }
@@ -987,18 +1011,17 @@ export function ColonyApp() {
   // so the new identity revalidates canonical authority.
   const prevIdentityRef = useRef({
     userId: operatorUserId,
-    worldId: runtime.captureWorldLayout().worldId,
+    worldId: worldKey,
   });
 
   useEffect(() => {
-    const currentWorldId = runtime.captureWorldLayout().worldId;
     if (
       prevIdentityRef.current.userId !== operatorUserId ||
-      prevIdentityRef.current.worldId !== currentWorldId
+      prevIdentityRef.current.worldId !== worldKey
     ) {
       prevIdentityRef.current = {
         userId: operatorUserId,
-        worldId: currentWorldId,
+        worldId: worldKey,
       };
       runtime.disableMultiplayer();
       runtime.sim?.state?.remoteRacers?.clear();
@@ -1009,7 +1032,7 @@ export function ColonyApp() {
       }
       retryWorldLayoutBoot();
     }
-  }, [operatorUserId, runtime, worldLayoutPersistence]);
+  }, [operatorUserId, worldKey, runtime, worldLayoutPersistence]);
 
   // Spec 178 — Lifecycle-driven multiplayer connection:
   // Requires all 3: authentic player identity (auth.isAuthenticated && operatorUserId !== null),
@@ -1371,6 +1394,7 @@ export function ColonyApp() {
           abort.signal,
         );
         if (abort.signal.aborted) return;
+        if (worldLayoutPersistence.generation !== bootGenerationRef.current) return;
         const document = runtime.worldLayoutDocument();
         if (!document)
           throw new Error(
