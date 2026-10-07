@@ -3183,7 +3183,7 @@ export class ColonyRuntime {
       autoCreate: true,
       getToken: async () => this.authClient?.getValidToken() ?? null,
       onStatusChange: (status) => {
-        if (status === "disconnected" || status === "error") {
+        if (status === "connecting" || status === "disconnected" || status === "error") {
           this.sim.state.remoteRacers?.clear();
         }
         this.emit();

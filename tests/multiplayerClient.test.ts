@@ -343,6 +343,65 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(sessionInfo.worldId).toBeNull();
     expect(sessionInfo.layoutRevision).toBeNull();
   });
+
+  it("handles LAYOUT_REVISION_MISMATCH error frame as terminal admission denial", async () => {
+    const errorSpy = vi.fn();
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+      onError: errorSpy,
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "error",
+        error: "LAYOUT_REVISION_MISMATCH",
+        message: "Session belongs to layout revision wl:v1:0:different",
+      }),
+    });
+
+    expect(client.getStatus()).toBe("disconnected");
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "LAYOUT_REVISION_MISMATCH" }),
+    );
+  });
+
+  it("enters connecting on abrupt socket close to attempt retry", async () => {
+    const statusChanges: string[] = [];
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+      onStatusChange: (status) => statusChanges.push(status),
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_created",
+        sessionId: "sess-1",
+        inviteCode: "ROOM1",
+        participantId: "part-1",
+        participants: [],
+      }),
+    });
+    expect(client.getStatus()).toBe("connected");
+
+    // Abrupt close (not explicit disconnect)
+    socket.close();
+
+    expect(client.getStatus()).toBe("connecting");
+    expect(statusChanges).toContain("connecting");
+    client.disconnect();
+  });
 });
 
 describe("BusNetworkMiniMapModel peer integration", () => {
