@@ -1,3 +1,9 @@
+# Historical false positive: an old HANDOVER sentence lists an API host followed by
+# an operation name. The narrow fingerprint keeps every other generic-api-key finding active.
+2566d497928fe669fe14750aefc45c444d2c1dc8:docs/HANDOVER.md:generic-api-key:84
+a8c36c7c1126bd5ec7db8cebfa5f47b33d77e94e:docs/evidence/home-driveway-surface-20260927/README.md:generic-api-key:3
+5dc50c240667672216c3d9bb917428bd4d22e1e7:docs/evidence/owned-car-chase-camera-20260927/README.md:generic-api-key:3
+
 # Narrowly justified false-positive exception (tests/multiplayerClient.test.ts:549):
 # The generic-api-key rule flagged a procedural unowned vehicle key mock fixture ("unowned-hypercar-99")
 # in historic commit 4cb9ee493a8486c1bb9290dd4b3cccad0feb5561.
