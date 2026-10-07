@@ -1,7 +1,50 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-07T22:13:44.568Z",
+  "updatedAt": "2026-10-07T22:34:14.510Z",
   "runs": [
+    {
+      "runId": 37694655168,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37694655168",
+      "event": "pull_request",
+      "branch": "feat/multiplayer-racing",
+      "sha": "649d09f8720360e1ab5cfb9d43867b41c53dbeb1",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/649d09f8720360e1ab5cfb9d43867b41c53dbeb1",
+      "pullRequestNumbers": "#561",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/561",
+      "pullRequests": [
+        {
+          "number": 561,
+          "url": "https://github.com/duikindiesee/citylife/pull/561"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "failure",
+      "startedAt": "2026-10-07T22:12:24Z",
+      "completedAt": "2026-10-07T22:34:05Z",
+      "durationSeconds": 1301,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 113043656035,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "failure",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-07T22:13:26Z",
+          "completedAt": "2026-10-07T22:34:04Z",
+          "durationSeconds": 1238
+        }
+      ]
+    },
     {
       "runId": 37694655063,
       "workflowName": "Secret scan",
@@ -10478,45 +10521,6 @@
           "startedAt": "2026-09-25T09:54:51Z",
           "completedAt": "2026-09-25T09:54:57Z",
           "durationSeconds": 6
-        }
-      ]
-    },
-    {
-      "runId": 36121076678,
-      "workflowName": "Build CityLife Debug APK",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36121076678",
-      "event": "pull_request",
-      "branch": "codex/showroom-wallet-balance",
-      "sha": "376061f7b83e36a3f91a5bfa8def513e65182ccc",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/376061f7b83e36a3f91a5bfa8def513e65182ccc",
-      "pullRequestNumbers": "#540",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/540",
-      "pullRequests": [
-        {
-          "number": 540,
-          "url": "https://github.com/duikindiesee/citylife/pull/540"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-09-25T09:54:48Z",
-      "completedAt": "2026-09-25T09:55:47Z",
-      "durationSeconds": 59,
-      "runnerSummary": "GitHub Actions 1000010337",
-      "jobs": [
-        {
-          "id": 108026453938,
-          "name": "build",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010337",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-09-25T09:54:52Z",
-          "completedAt": "2026-09-25T09:55:46Z",
-          "durationSeconds": 54
         }
       ]
     }
