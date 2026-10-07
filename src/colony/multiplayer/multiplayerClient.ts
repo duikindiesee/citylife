@@ -22,6 +22,7 @@ export interface MultiplayerClientOptions {
   username: string;
   vehicleKey?: string | null;
   worldId?: string;
+  layoutRevision?: string;
   neighbourhoodKey?: string;
   roomCode?: string;
   autoCreate?: boolean;
@@ -195,6 +196,7 @@ export class MultiplayerClient {
   private inviteCode: string | null = null;
   private participantId: string | null = null;
   private worldId: string | null = null;
+  private layoutRevision: string | null = null;
   private neighbourhoodKey: string | null = null;
   private lastPoseSentAt = 0;
   private pingInterval: any = null;
@@ -207,6 +209,9 @@ export class MultiplayerClient {
 
   constructor(options: MultiplayerClientOptions) {
     this.options = options;
+    this.worldId = options.worldId ?? null;
+    this.layoutRevision = options.layoutRevision ?? null;
+    this.neighbourhoodKey = options.neighbourhoodKey ?? null;
   }
 
   public getStatus(): MultiplayerStatus {
@@ -218,6 +223,7 @@ export class MultiplayerClient {
     inviteCode: string | null;
     participantId: string | null;
     worldId: string | null;
+    layoutRevision: string | null;
     neighbourhoodKey: string | null;
   } {
     return {
@@ -225,6 +231,7 @@ export class MultiplayerClient {
       inviteCode: this.inviteCode,
       participantId: this.participantId,
       worldId: this.worldId,
+      layoutRevision: this.layoutRevision,
       neighbourhoodKey: this.neighbourhoodKey,
     };
   }

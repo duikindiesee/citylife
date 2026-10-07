@@ -993,7 +993,7 @@ export function ColonyApp() {
     return () => {
       runtime.disableMultiplayer();
     };
-  }, [auth.isAuthenticated, operatorUserId, worldLayoutBoot.status, runtime]);
+  }, [auth.isAuthenticated, operatorUserId, worldLayoutBoot.status, worldLayoutHead?.revisionId, runtime]);
   const walletAccountKey =
     auth.isAuthenticated && operatorUserId !== null
       ? String(operatorUserId)

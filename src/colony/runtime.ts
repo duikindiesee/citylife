@@ -3128,11 +3128,17 @@ export class ColonyRuntime {
   getMultiplayerClient(): MultiplayerClient | null {
     return this.multiplayerClient;
   }
+  private activeMultiplayerLayoutRevision?: string;
+  private activeMultiplayerRoomCode?: string;
 
   enableMultiplayer(roomCode = "racing-cup", wsUrl?: string): void {
     const doc = typeof this.worldLayoutDocument === "function" ? this.worldLayoutDocument() : null;
     const worldId = doc?.worldId ?? this.activeWorldLayout?.worldId ?? (this.sim?.state?.seed ? String(this.sim.state.seed) : undefined);
-    const neighbourhoodKey = (this as any).currentNeighbourhoodKey ?? (doc as any)?.neighbourhoodKey ?? "homestead";
+    const revisionObj = doc?.revision ?? this.activeWorldLayout?.revision;
+    const layoutRevision = revisionObj
+      ? `wl:v1:${revisionObj.number}:${revisionObj.contentHash}`
+      : undefined;
+    const neighbourhoodKey = "citylife-central";
 
     if (
       this.multiplayerClient &&
@@ -3140,7 +3146,13 @@ export class ColonyRuntime {
         this.multiplayerClient.getStatus() === "connecting")
     ) {
       const activeSession = this.multiplayerClient.getSessionInfo();
-      if (activeSession.worldId === worldId && activeSession.neighbourhoodKey === neighbourhoodKey) {
+      const currentRoom = activeSession.inviteCode ?? (this as any).activeMultiplayerRoomCode;
+      const sameRoom = currentRoom === roomCode;
+      const sameWorld = activeSession.worldId === worldId;
+      const sameRevision = (this as any).activeMultiplayerLayoutRevision === layoutRevision;
+      const sameHood = activeSession.neighbourhoodKey === neighbourhoodKey;
+
+      if (sameRoom && sameWorld && sameRevision && sameHood) {
         return;
       }
       this.multiplayerClient.disconnect();
@@ -3152,6 +3164,9 @@ export class ColonyRuntime {
       );
       return;
     }
+    (this as any).activeMultiplayerLayoutRevision = layoutRevision;
+    (this as any).activeMultiplayerRoomCode = roomCode;
+
     const userId = this.operatorUserId;
     const username = this.operatorName || (userId.includes("@") ? userId.split("@")[0] : userId);
     const vehicleKey = this.authoritativeCar?.id ?? null;
@@ -3163,6 +3178,7 @@ export class ColonyRuntime {
       vehicleKey,
       roomCode,
       worldId,
+      layoutRevision,
       neighbourhoodKey,
       autoCreate: true,
       getToken: async () => this.authClient?.getValidToken() ?? null,
