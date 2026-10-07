@@ -3192,6 +3192,29 @@ export class ColonyRuntime {
     const username = this.operatorName || (userId.includes("@") ? userId.split("@")[0] : userId);
     const vehicleKey = this.authoritativeCar?.id ?? null;
 
+    const initialPose = this.getOwnedDrivePose() ?? this.ownedDrivePose;
+    const terrain = this.sim.state.terrain;
+    let initialWorld:
+      | { x: number; y: number; z: number; heading: number; speed: number }
+      | undefined;
+    if (initialPose && terrain) {
+      const terrainSize = terrain.size;
+      if (
+        initialPose.x >= 2 &&
+        initialPose.x <= terrainSize - 2 &&
+        initialPose.y >= 2 &&
+        initialPose.y <= terrainSize - 2
+      ) {
+        initialWorld = {
+          x: (initialPose.x - terrainSize / 2) * 4,
+          y: terrain.worldY ? terrain.worldY(Math.round(initialPose.x), Math.round(initialPose.y)) : 0,
+          z: (initialPose.y - terrainSize / 2) * 4,
+          heading: initialPose.heading,
+          speed: initialPose.speed ?? 0,
+        };
+      }
+    }
+
     this.multiplayerClient = new MultiplayerClient({
       url: wsUrl,
       userId,
@@ -3202,6 +3225,11 @@ export class ColonyRuntime {
       layoutRevision,
       neighbourhoodKey,
       autoCreate: true,
+      x: initialWorld?.x,
+      y: initialWorld?.y,
+      z: initialWorld?.z,
+      heading: initialWorld?.heading,
+      speed: initialWorld?.speed,
       getToken: async () => this.authClient?.getValidToken() ?? null,
       onStatusChange: (status) => {
         if (status === "connecting" || status === "disconnected" || status === "error") {
@@ -3213,6 +3241,16 @@ export class ColonyRuntime {
         // Fresh or reconnected session cleans prior peer state to prevent stale peer carryover
         this.sim.state.remoteRacers?.clear();
         this.emit();
+      },
+      onSelfAdmitted: (self) => {
+        if (self.mode === "driving" && self.vehicleKey) {
+          const t = this.sim.state.terrain;
+          const cellX = self.x / 4 + t.size / 2;
+          const cellY = self.z / 4 + t.size / 2;
+          this.ownedDrivePose = { x: cellX, y: cellY, heading: self.heading, speed: self.speed };
+          this.ownedDriveSeated = true;
+          this.emit();
+        }
       },
       onPeerJoined: (peer) => {
         if (!this.sim.state.remoteRacers) this.sim.state.remoteRacers = new Map();

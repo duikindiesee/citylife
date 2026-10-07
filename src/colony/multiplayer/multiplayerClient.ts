@@ -50,6 +50,11 @@ export interface MultiplayerClientOptions {
   neighbourhoodKey?: string;
   roomCode?: string;
   autoCreate?: boolean;
+  x?: number;
+  y?: number;
+  z?: number;
+  heading?: number;
+  speed?: number;
   onStatusChange?: (status: MultiplayerStatus) => void;
   onPeerJoined?: (peer: RemoteRacer) => void;
   onPeerLeft?: (participantId: string) => void;
@@ -68,6 +73,16 @@ export interface MultiplayerClientOptions {
   ) => void;
   onSnapshot?: (snapshot: ServerSnapshot) => void;
   onSessionReady?: (sessionId: string, inviteCode: string, participantId: string, worldId?: string, neighbourhoodKey?: string) => void;
+  onSelfAdmitted?: (placement: {
+    participantId: string;
+    x: number;
+    y: number;
+    z: number;
+    heading: number;
+    speed: number;
+    mode: "driving" | "walking";
+    vehicleKey?: string | null;
+  }) => void;
   onError?: (error: { code: string; message: string }) => void;
 }
 
@@ -363,6 +378,21 @@ export class MultiplayerClient {
       if (this.options.neighbourhoodKey) {
         req.neighbourhoodKey = this.options.neighbourhoodKey;
       }
+      if (typeof this.options.x === "number") {
+        req.x = this.options.x;
+      }
+      if (typeof this.options.y === "number") {
+        req.y = this.options.y;
+      }
+      if (typeof this.options.z === "number") {
+        req.z = this.options.z;
+      }
+      if (typeof this.options.heading === "number") {
+        req.heading = this.options.heading;
+      }
+      if (typeof this.options.speed === "number") {
+        req.speed = this.options.speed;
+      }
 
       this.send(req);
     };
@@ -485,6 +515,19 @@ export class MultiplayerClient {
         }
 
         if (Array.isArray(msg.participants)) {
+          const selfPart = msg.participants.find((p: any) => p.participantId === this.participantId);
+          if (selfPart && this.options.onSelfAdmitted) {
+            this.options.onSelfAdmitted({
+              participantId: selfPart.participantId,
+              x: Number.isFinite(selfPart.x) ? selfPart.x : 0,
+              y: Number.isFinite(selfPart.y) ? selfPart.y : 0,
+              z: Number.isFinite(selfPart.z) ? selfPart.z : 0,
+              heading: Number.isFinite(selfPart.heading) ? selfPart.heading : 0,
+              speed: Number.isFinite(selfPart.speed) ? selfPart.speed : 0,
+              mode: selfPart.isPedestrian ? "walking" : "driving",
+              vehicleKey: selfPart.vehicleKey || null,
+            });
+          }
           for (const p of msg.participants) {
             if (p.participantId !== this.participantId && this.options.onPeerJoined) {
               this.options.onPeerJoined({
