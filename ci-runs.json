@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-07T15:54:21.502Z",
+  "updatedAt": "2026-10-07T15:57:52.725Z",
   "runs": [
+    {
+      "runId": 37648182563,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37648182563",
+      "event": "pull_request",
+      "branch": "feat/multiplayer-racing",
+      "sha": "83f5a21c4ac4dabb3029d9b6c65aff507442eb54",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/83f5a21c4ac4dabb3029d9b6c65aff507442eb54",
+      "pullRequestNumbers": "#561",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/561",
+      "pullRequests": [
+        {
+          "number": 561,
+          "url": "https://github.com/duikindiesee/citylife/pull/561"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-07T15:57:25Z",
+      "completedAt": "2026-10-07T15:57:40Z",
+      "durationSeconds": 15,
+      "runnerSummary": "GitHub Actions 1000010801",
+      "jobs": [
+        {
+          "id": 112884308456,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010801",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-10-07T15:57:29Z",
+          "completedAt": "2026-10-07T15:57:39Z",
+          "durationSeconds": 10
+        }
+      ]
+    },
     {
       "runId": 37644837718,
       "workflowName": "Secret scan",
