@@ -141,7 +141,7 @@ export function R3FRemoteRacers({ sim, terrainLevel }: R3FRemoteRacersProps) {
   const rootGroup = useRef<THREE.Group>(null);
   const racerGroups = useRef<Map<string, THREE.Group>>(new Map());
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     const racersMap = sim.state.remoteRacers;
     if (!racersMap || racersMap.size === 0) {
       if (rootGroup.current) rootGroup.current.visible = false;
@@ -176,14 +176,16 @@ export function R3FRemoteRacers({ sim, terrainLevel }: R3FRemoteRacersProps) {
 
       const heading = racer.heading ?? 0;
       const isPedestrian = Boolean(racer.isPedestrian || !racer.spec);
+      const targetWorldX = (racer.cell.x - t.size / 2) * 4;
+      const targetWorldZ = (racer.cell.y - t.size / 2) * 4;
 
       if (isPedestrian) {
         const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);
-        grp.position.set(
-          (racer.cell.x - t.size / 2) * 4,
-          groundElevation,
-          (racer.cell.y - t.size / 2) * 4
-        );
+        const dist = Math.hypot(grp.position.x - targetWorldX, grp.position.z - targetWorldZ);
+        const lerpFactor = dist > 20 || (grp.position.x === 0 && grp.position.z === 0) ? 1 : Math.min(1, delta * 12);
+        grp.position.x += (targetWorldX - grp.position.x) * lerpFactor;
+        grp.position.y += (groundElevation - grp.position.y) * lerpFactor;
+        grp.position.z += (targetWorldZ - grp.position.z) * lerpFactor;
         grp.rotation.set(0, -heading + Math.PI / 2, 0, "YXZ");
       } else {
         const onRoad = isPointOnRoadSurface(racer.cell.x, racer.cell.y, sim.state.roadSet, sim.state.roadWays);
@@ -204,11 +206,11 @@ export function R3FRemoteRacers({ sim, terrainLevel }: R3FRemoteRacersProps) {
         const yRight = sampleElevation(racer.cell.x + sinH * halfWidCells, racer.cell.y - sinH * halfWidCells);
         const roll = Math.atan2(yLeft - yRight, 1.9);
 
-        grp.position.set(
-          (racer.cell.x - t.size / 2) * 4,
-          centerY,
-          (racer.cell.y - t.size / 2) * 4
-        );
+        const dist = Math.hypot(grp.position.x - targetWorldX, grp.position.z - targetWorldZ);
+        const lerpFactor = dist > 30 || (grp.position.x === 0 && grp.position.z === 0) ? 1 : Math.min(1, delta * 12);
+        grp.position.x += (targetWorldX - grp.position.x) * lerpFactor;
+        grp.position.y += (centerY - grp.position.y) * lerpFactor;
+        grp.position.z += (targetWorldZ - grp.position.z) * lerpFactor;
         grp.rotation.set(-roll, -heading, pitch, "YXZ");
       }
     }

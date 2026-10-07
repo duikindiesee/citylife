@@ -402,6 +402,111 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(statusChanges).toContain("connecting");
     client.disconnect();
   });
+
+  it("handles snapshot frame and dispatches onSnapshot and onPeerPose", async () => {
+    let receivedSnapshot: any = null;
+    const peerPoses: Record<string, any> = {};
+
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "local-player",
+      token: "valid-token",
+      onSnapshot: (snap) => {
+        receivedSnapshot = snap;
+      },
+      onPeerPose: (id, pose) => {
+        peerPoses[id] = pose;
+      },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_created",
+        sessionId: "sess-snap",
+        inviteCode: "SNAP1",
+        participantId: "part-local",
+        participants: [],
+      }),
+    });
+
+    // Server emits 10Hz authoritative snapshot
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-snap",
+        seq: 42,
+        timestamp: 1791392000000,
+        participants: [
+          {
+            participantId: "part-local",
+            userId: "101",
+            alias: "local-player",
+            x: 10,
+            y: 0,
+            z: 20,
+            heading: 0,
+            speed: 5,
+            mode: "driving",
+          },
+          {
+            participantId: "part-remote",
+            userId: "102",
+            alias: "remote-player",
+            x: 50,
+            y: 0,
+            z: 80,
+            heading: 1.57,
+            speed: 15,
+            mode: "driving",
+            vehicleKey: "karoo-kaap-gt-v8",
+          },
+        ],
+      }),
+    });
+
+    expect(receivedSnapshot).not.toBeNull();
+    expect(receivedSnapshot.seq).toBe(42);
+    expect(receivedSnapshot.participants).toHaveLength(2);
+
+    expect(peerPoses["part-remote"]).toBeDefined();
+    expect(peerPoses["part-remote"].x).toBe(50);
+    expect(peerPoses["part-remote"].z).toBe(80);
+    expect(peerPoses["part-remote"].mode).toBe("driving");
+    expect(peerPoses["part-remote"].vehicleKey).toBe("karoo-kaap-gt-v8");
+
+    client.disconnect();
+  });
+
+  it("sends input frames with monotonic sequence, throttle, steer, and brake", async () => {
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "local-player",
+      token: "valid-token",
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+
+    client.sendInput({
+      seq: 1,
+      throttle: 0.75,
+      steer: -0.25,
+      brake: false,
+    });
+
+    const sentInput = socket.sent.find((f: any) => f.type === "input");
+    expect(sentInput).toBeDefined();
+    expect(sentInput.seq).toBe(1);
+    expect(sentInput.throttle).toBe(0.75);
+    expect(sentInput.steer).toBe(-0.25);
+    expect(sentInput.brake).toBe(false);
+
+    client.disconnect();
+  });
 });
 
 describe("BusNetworkMiniMapModel peer integration", () => {

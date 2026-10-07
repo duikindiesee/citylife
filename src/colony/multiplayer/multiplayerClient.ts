@@ -14,6 +14,30 @@ export interface RemoteRacer {
 
 export type MultiplayerStatus = "disconnected" | "connecting" | "connected" | "error";
 
+export interface ServerSnapshotParticipant {
+  participantId: string;
+  userId?: string;
+  alias?: string;
+  username?: string;
+  vehicleKey?: string | null;
+  mode?: "driving" | "walking";
+  isPedestrian?: boolean;
+  x: number;
+  y: number;
+  z: number;
+  heading: number;
+  speed: number;
+  lastInputSeq?: number;
+}
+
+export interface ServerSnapshot {
+  type: "snapshot";
+  sessionId: string;
+  seq: number;
+  timestamp: number;
+  participants: ServerSnapshotParticipant[];
+}
+
 export interface MultiplayerClientOptions {
   url?: string;
   token?: string | null;
@@ -42,6 +66,7 @@ export interface MultiplayerClientOptions {
       vehicleKey?: string | null;
     },
   ) => void;
+  onSnapshot?: (snapshot: ServerSnapshot) => void;
   onSessionReady?: (sessionId: string, inviteCode: string, participantId: string, worldId?: string, neighbourhoodKey?: string) => void;
   onError?: (error: { code: string; message: string }) => void;
 }
@@ -523,6 +548,55 @@ export class MultiplayerClient {
               isPedestrian: msg.isPedestrian !== undefined ? Boolean(msg.isPedestrian) : undefined,
               vehicleKey: msg.vehicleKey !== undefined ? (msg.vehicleKey ? String(msg.vehicleKey) : null) : undefined,
             });
+          }
+        }
+        break;
+      }
+
+      case "snapshot": {
+        const rawParts: any[] = Array.isArray(msg.participants)
+          ? msg.participants
+          : Array.isArray(msg.peers)
+            ? msg.peers
+            : [];
+        const snapshot: ServerSnapshot = {
+          type: "snapshot",
+          sessionId: msg.sessionId,
+          seq: Number(msg.seq ?? 0),
+          timestamp: Number(msg.timestamp ?? Date.now()),
+          participants: rawParts.map((p) => ({
+            participantId: p.participantId,
+            userId: p.userId,
+            alias: p.alias ?? p.username,
+            username: p.username ?? p.alias,
+            vehicleKey: p.vehicleKey || null,
+            mode: p.mode === "driving" ? "driving" : "walking",
+            isPedestrian: p.isPedestrian !== undefined ? Boolean(p.isPedestrian) : p.mode !== "driving",
+            x: Number(p.x ?? 0),
+            y: Number(p.y ?? 0),
+            z: Number(p.z ?? 0),
+            heading: Number(p.heading ?? 0),
+            speed: Number(p.speed ?? 0),
+            lastInputSeq: p.lastInputSeq,
+          })),
+        };
+        if (this.options.onSnapshot) {
+          this.options.onSnapshot(snapshot);
+        }
+        for (const p of snapshot.participants) {
+          if (p.participantId && p.participantId !== this.participantId) {
+            if (this.options.onPeerPose) {
+              this.options.onPeerPose(p.participantId, {
+                x: p.x,
+                y: p.y,
+                z: p.z,
+                heading: p.heading,
+                speed: p.speed,
+                mode: p.mode,
+                isPedestrian: p.isPedestrian,
+                vehicleKey: p.vehicleKey,
+              });
+            }
           }
         }
         break;
