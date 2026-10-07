@@ -106,6 +106,7 @@ import {
 import { plotPriceKook, kookToZar, starterDeposit } from "./land";
 import { hasStoredCar, loadCar, saveCar } from "./car/garageStore";
 import { resolveOwnedCar } from "./car/ownedCar";
+import { serverVehicleKeyOf } from "./car/carAcquisition";
 import {
   stepOwnedDrive,
   type OwnedDrivePose,
@@ -3190,7 +3191,8 @@ export class ColonyRuntime {
 
     const userId = this.operatorUserId;
     const username = this.operatorName || (userId.includes("@") ? userId.split("@")[0] : userId);
-    const vehicleKey = this.authoritativeCar?.id ?? null;
+    const rawVehicleKey = this.authoritativeCar?.id ?? null;
+    const vehicleKey = rawVehicleKey ? serverVehicleKeyOf(rawVehicleKey) : null;
 
     const initialPose = this.getOwnedDrivePose() ?? this.ownedDrivePose;
     const terrain = this.sim.state.terrain;

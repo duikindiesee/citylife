@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MultiplayerClient, redactUrl } from "../src/colony/multiplayer/multiplayerClient";
+import { resolveOwnedCar } from "../src/colony/car/ownedCar";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 
 class MockWebSocket {
@@ -505,6 +506,71 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(sentInput.steer).toBe(-0.25);
     expect(sentInput.brake).toBe(false);
 
+    client.disconnect();
+  });
+
+  it("normalizes procedural showroom car spec id to canonical server vehicleKey on join_session (resolver-to-wire positive regression)", async () => {
+    // 1. Resolver and catalog return procedural spec id: "showroom:karoo-vonk-11"
+    const spec = resolveOwnedCar(["karoo-vonk-11"]);
+    expect(spec).not.toBeNull();
+    expect(spec!.id).toBe("showroom:karoo-vonk-11");
+
+    // 2. Client configured with procedural model id from authoritative car
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+      vehicleKey: spec!.id,
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    const joinFrame = socket.sent.find((f: any) => f.type === "join_session");
+    expect(joinFrame).toBeDefined();
+    // Invariant: Server wire key MUST be normalized to "karoo-vonk-11", NOT "showroom:karoo-vonk-11"
+    expect(joinFrame.vehicleKey).toBe("karoo-vonk-11");
+    client.disconnect();
+  });
+
+  it("handles unowned vehicle admission denial as terminal error (genuinely unowned-car negative case)", async () => {
+    // 1. Resolver returns null for genuinely unowned / unknown vehicle keys
+    const unknownSpec = resolveOwnedCar(["unowned-hypercar-99"]);
+    expect(unknownSpec).toBeNull();
+
+    // 2. If client attempts to request an unowned vehicle key and server rejects with VEHICLE_NOT_OWNED
+    const errorSpy = vi.fn();
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+      vehicleKey: "unowned-hypercar-99",
+      onError: errorSpy,
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "error",
+        error: "VEHICLE_NOT_OWNED",
+        message: "Requested vehicle 'unowned-hypercar-99' does not match authoritative owned vehicle 'karoo-vonk-11'",
+      }),
+    });
+
+    expect(client.getStatus()).toBe("disconnected");
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        code: "VEHICLE_NOT_OWNED",
+        message: expect.stringContaining("Requested vehicle 'unowned-hypercar-99'"),
+      }),
+    );
     client.disconnect();
   });
 });

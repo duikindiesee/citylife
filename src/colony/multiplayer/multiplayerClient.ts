@@ -1,3 +1,5 @@
+import { serverVehicleKeyOf } from "../car/carAcquisition";
+
 export interface RemoteRacer {
   participantId: string;
   userId: string;
@@ -367,7 +369,7 @@ export class MultiplayerClient {
       };
 
       if (this.options.vehicleKey) {
-        req.vehicleKey = this.options.vehicleKey;
+        req.vehicleKey = serverVehicleKeyOf(this.options.vehicleKey);
       }
       if (this.options.worldId) {
         req.worldId = this.options.worldId;
@@ -656,7 +658,9 @@ export class MultiplayerClient {
           msg.error === "IMPERSONATION_REJECTED" ||
           msg.error === "WORLD_MISMATCH" ||
           msg.error === "LAYOUT_REVISION_MISMATCH" ||
-          msg.error === "NEIGHBOURHOOD_MISMATCH"
+          msg.error === "NEIGHBOURHOOD_MISMATCH" ||
+          msg.error === "VEHICLE_NOT_OWNED" ||
+          msg.error === "COORDINATES_OUT_OF_BOUNDS"
         ) {
           this.closedExplicitly = true;
           this.setStatus("error");
