@@ -209,9 +209,6 @@ export class MultiplayerClient {
 
   constructor(options: MultiplayerClientOptions) {
     this.options = options;
-    this.worldId = options.worldId ?? null;
-    this.layoutRevision = options.layoutRevision ?? null;
-    this.neighbourhoodKey = options.neighbourhoodKey ?? null;
   }
 
   public getStatus(): MultiplayerStatus {
@@ -335,6 +332,9 @@ export class MultiplayerClient {
       if (this.options.worldId) {
         req.worldId = this.options.worldId;
       }
+      if (this.options.layoutRevision) {
+        req.layoutRevision = this.options.layoutRevision;
+      }
       if (this.options.neighbourhoodKey) {
         req.neighbourhoodKey = this.options.neighbourhoodKey;
       }
@@ -386,16 +386,65 @@ export class MultiplayerClient {
     };
   }
 
+  private rejectAdmission(code: string, message: string): void {
+    this.connectionGeneration++;
+    this.closedExplicitly = true;
+    this.pendingConnectPromise = null;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.stopHeartbeat();
+    if (this.ws) {
+      const ws = this.ws;
+      this.ws = null;
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      try {
+        ws.close(4400, message);
+      } catch {}
+    }
+    this.sessionId = null;
+    this.inviteCode = null;
+    this.participantId = null;
+    this.worldId = null;
+    this.layoutRevision = null;
+    this.neighbourhoodKey = null;
+    this.setStatus("error");
+    if (this.options.onError) {
+      this.options.onError({ code, message });
+    }
+  }
+
   private handleMessage(msg: any): void {
     const type = msg.type;
     switch (type) {
       case "session_created":
       case "session_joined":
       case "session_reconnected": {
+        if (this.options.worldId && msg.worldId !== this.options.worldId) {
+          this.rejectAdmission(
+            "WORLD_MISMATCH",
+            `Server replied with world ${msg.worldId} (expected ${this.options.worldId})`
+          );
+          return;
+        }
+
+        if (this.options.layoutRevision && msg.layoutRevision !== this.options.layoutRevision) {
+          this.rejectAdmission(
+            "LAYOUT_REVISION_MISMATCH",
+            `Server replied with layoutRevision ${msg.layoutRevision} (expected ${this.options.layoutRevision})`
+          );
+          return;
+        }
+
         this.sessionId = msg.sessionId;
         this.inviteCode = msg.inviteCode;
         this.participantId = msg.participantId;
         this.worldId = msg.worldId ?? null;
+        this.layoutRevision = msg.layoutRevision ?? null;
         this.neighbourhoodKey = msg.neighbourhoodKey ?? null;
         this.reconnectAttempts = 0; // successfully admitted
         this.setStatus("connected");
@@ -590,6 +639,7 @@ export class MultiplayerClient {
     this.inviteCode = null;
     this.participantId = null;
     this.worldId = null;
+    this.layoutRevision = null;
     this.neighbourhoodKey = null;
     this.setStatus("disconnected");
   }

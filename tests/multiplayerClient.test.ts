@@ -267,6 +267,82 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(posesReceived[1].isPedestrian).toBe(false);
     expect(posesReceived[1].vehicleKey).toBe("karoo-vonk-11");
   });
+
+  it("emits layoutRevision in join_session frame and binds confirmed context on session_joined", async () => {
+    const revision = "wl:v1:0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "Player101",
+      roomCode: "TEST-ROOM",
+      token: "test-token",
+      worldId: "seed-4242",
+      layoutRevision: revision,
+      neighbourhoodKey: "citylife-central",
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    const joinFrame = socket.sent.find((f: any) => f.type === "join_session");
+    expect(joinFrame).toBeDefined();
+    expect(joinFrame.worldId).toBe("seed-4242");
+    expect(joinFrame.layoutRevision).toBe(revision);
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-123",
+        inviteCode: "TEST-ROOM",
+        participantId: "part-1",
+        worldId: "seed-4242",
+        layoutRevision: revision,
+        neighbourhoodKey: "citylife-central",
+        participants: [],
+      }),
+    });
+
+    expect(client.getStatus()).toBe("connected");
+    const sessionInfo = client.getSessionInfo();
+    expect(sessionInfo.worldId).toBe("seed-4242");
+    expect(sessionInfo.layoutRevision).toBe(revision);
+    client.disconnect();
+  });
+
+  it("rejects admission and transitions to error status when server returns mismatched or missing layoutRevision", async () => {
+    const revision = "wl:v1:0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const client = new MultiplayerClient({
+      userId: "102",
+      username: "Player102",
+      roomCode: "TEST-ROOM",
+      token: "test-token",
+      worldId: "seed-4242",
+      layoutRevision: revision,
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-123",
+        inviteCode: "TEST-ROOM",
+        participantId: "part-2",
+        worldId: "seed-4242",
+        layoutRevision: "wl:v1:1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        participants: [],
+      }),
+    });
+
+    expect(client.getStatus()).toBe("error");
+    const sessionInfo = client.getSessionInfo();
+    expect(sessionInfo.worldId).toBeNull();
+    expect(sessionInfo.layoutRevision).toBeNull();
+  });
 });
 
 describe("BusNetworkMiniMapModel peer integration", () => {
