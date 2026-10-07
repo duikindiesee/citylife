@@ -787,8 +787,54 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       recordStage("Numeric mini-map peer marker projections verified on both clients");
 
       // Next bounded slice: prove the SAME mounted participant changes driving -> walking -> driving
-      // through actual game controls, with peer car/pedestrian model and membership updates in both views.
+      // through actual game controls, with exact participantId pinning, peer car/pedestrian mesh inspection,
+      // and peer membership and parked-vehicle pose checks in both views.
       recordStage("Starting driving -> walking -> driving transition via actual game controls");
+
+      // Capture authoritative participant IDs and parked car pose baseline before transition
+      const preTransitionP1 = await page1.evaluate(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        const p2 = last?.participants?.find((p: any) => p.username === "jamtin2");
+        return {
+          participantCount: last?.participants?.length ?? 0,
+          p1: p1 ? { participantId: p1.participantId, x: p1.x, y: p1.y, z: p1.z, heading: p1.heading, isPedestrian: p1.isPedestrian } : null,
+          p2: p2 ? { participantId: p2.participantId, x: p2.x, y: p2.y, z: p2.z, heading: p2.heading, isPedestrian: p2.isPedestrian } : null,
+        };
+      });
+
+      const preTransitionP2 = await page2.evaluate(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        const p2 = last?.participants?.find((p: any) => p.username === "jamtin2");
+        return {
+          participantCount: last?.participants?.length ?? 0,
+          p1: p1 ? { participantId: p1.participantId, x: p1.x, y: p1.y, z: p1.z, heading: p1.heading, isPedestrian: p1.isPedestrian } : null,
+          p2: p2 ? { participantId: p2.participantId, x: p2.x, y: p2.y, z: p2.z, heading: p2.heading, isPedestrian: p2.isPedestrian } : null,
+        };
+      });
+
+      expect(preTransitionP1.participantCount).toBe(2);
+      expect(preTransitionP2.participantCount).toBe(2);
+      expect(preTransitionP1.p1?.participantId).toBeDefined();
+      expect(preTransitionP1.p2?.participantId).toBeDefined();
+      expect(preTransitionP1.p1?.participantId).toBe(preTransitionP2.p1?.participantId);
+      expect(preTransitionP1.p2?.participantId).toBe(preTransitionP2.p2?.participantId);
+      expect(preTransitionP1.p1?.isPedestrian).toBe(false);
+      expect(preTransitionP1.p2?.isPedestrian).toBe(false);
+
+      const pinnedParticipantId1 = preTransitionP1.p1!.participantId;
+      const pinnedParticipantId2 = preTransitionP1.p2!.participantId;
+      const parkedCarPose1 = {
+        x: preTransitionP1.p1!.x,
+        y: preTransitionP1.p1!.y,
+        z: preTransitionP1.p1!.z,
+      };
+
+      console.log(`Pre-transition pinned participant IDs: P1=${pinnedParticipantId1}, P2=${pinnedParticipantId2}`);
+      console.log(`Pre-transition parked car pose: x=${parkedCarPose1.x.toFixed(2)}, z=${parkedCarPose1.z.toFixed(2)}`);
 
       // 1. Player 1 exits vehicle via genuine pointer click on "Park & Exit"
       const exitBtn1 = page1.locator('[data-testid="exit-owned-car"]');
@@ -797,34 +843,81 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       recordStage("Player 1 clicked Park & Exit");
 
       // 2. Verify authoritative server snapshot reflects Player 1 walking / pedestrian mode
+      // while strictly pinning participantId, retaining 2-peer membership, and checking walking proximity to parked car
       await Promise.all([
-        page1.waitForFunction(() => {
+        page1.waitForFunction((expected) => {
           const history = (window as any).__snapshotHistory || [];
           const last = history[history.length - 1];
-          const self = last?.participants?.find((p: any) => p.username === "jamtin");
-          return Boolean(self?.isPedestrian);
-        }, undefined, { timeout: 15_000 }),
-        page2.waitForFunction(() => {
+          if (!last || last.participants?.length !== 2) return false;
+          const p1 = last.participants.find((p: any) => p.username === "jamtin");
+          const p2 = last.participants.find((p: any) => p.username === "jamtin2");
+          return (
+            p1?.participantId === expected.p1Id &&
+            p2?.participantId === expected.p2Id &&
+            p1.isPedestrian === true &&
+            p2.isPedestrian === false
+          );
+        }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
+        page2.waitForFunction((expected) => {
           const history = (window as any).__snapshotHistory || [];
           const last = history[history.length - 1];
-          const peer = last?.participants?.find((p: any) => p.username === "jamtin");
-          return Boolean(peer?.isPedestrian);
-        }, undefined, { timeout: 15_000 }),
+          if (!last || last.participants?.length !== 2) return false;
+          const p1 = last.participants.find((p: any) => p.username === "jamtin");
+          const p2 = last.participants.find((p: any) => p.username === "jamtin2");
+          return (
+            p1?.participantId === expected.p1Id &&
+            p2?.participantId === expected.p2Id &&
+            p1.isPedestrian === true &&
+            p2.isPedestrian === false
+          );
+        }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
       ]);
-      recordStage("Authoritative server snapshot verified Player 1 in walking/pedestrian mode");
+      recordStage("Authoritative server snapshot verified Player 1 in walking/pedestrian mode with pinned participantId and retained peer membership");
 
-      // 3. Verify Player 2's 3D scene renders Player 1 with pedestrian avatar visual
-      await page2.waitForFunction(() => {
+      // Also verify walking position on server is in legitimate proximity to parked car (< 16m)
+      const walkingPosP1 = await page1.evaluate(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        return p1 ? { x: p1.x, z: p1.z } : null;
+      });
+      expect(walkingPosP1).toBeDefined();
+      const exitDistFromParked = Math.hypot(walkingPosP1!.x - parkedCarPose1.x, walkingPosP1!.z - parkedCarPose1.z);
+      console.log(`Player 1 exit walking position distance from parked car: ${exitDistFromParked.toFixed(2)}m`);
+      expect(exitDistFromParked).toBeLessThan(16); // Legitimate exit distance (< 16m)
+
+      // 3. Observe mounted child geometry/model identity independently on Player 2 for Player 1:
+      // Must find CapsuleGeometry (body) and SphereGeometry (head), and NO car geometries (BoxGeometry / CylinderGeometry).
+      await page2.waitForFunction((expectedId) => {
         const scene = (window as any).__r3fScene;
-        let isPed = false;
+        let targetGroup: any = null;
         scene?.traverse((o: any) => {
-          if (o.name && o.name.includes("remote-racer-jamtin") && o.userData?.isPedestrian === true) {
-            isPed = true;
+          if (o.userData?.participantId === expectedId) {
+            targetGroup = o;
           }
         });
-        return isPed;
-      }, undefined, { timeout: 15_000 });
-      recordStage("Player 2 3D scene verified rendering Player 1 as pedestrian avatar");
+        if (!targetGroup) return false;
+
+        const geoTypes: string[] = [];
+        targetGroup.traverse((child: any) => {
+          if (child.isMesh && child.geometry?.type) {
+            geoTypes.push(child.geometry.type);
+          }
+        });
+
+        const hasCapsule = geoTypes.includes("CapsuleGeometry");
+        const hasSphere = geoTypes.includes("SphereGeometry");
+        const hasBox = geoTypes.includes("BoxGeometry");
+        const hasCylinder = geoTypes.includes("CylinderGeometry");
+
+        return hasCapsule && hasSphere && !hasBox && !hasCylinder;
+      }, pinnedParticipantId1, { timeout: 15_000 });
+
+      // Retain screenshot of visible pedestrian avatar
+      const pedScreenshotPath = path.resolve("test-results/actual-pair-screenshots/page2-peer-as-pedestrian.png");
+      await page2.screenshot({ path: pedScreenshotPath });
+      console.log(`Player 2 view of Player 1 as pedestrian saved to: ${pedScreenshotPath}`);
+      recordStage("Player 2 3D scene independently verified rendering Player 1 as pedestrian avatar (Capsule/Sphere geometry) and captured screenshot");
 
       // 4. Player 1 re-enters vehicle via genuine pointer click on "Enter your car"
       const enterBtn1 = page1.locator('[data-testid="enter-owned-car"]');
@@ -833,34 +926,81 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       recordStage("Player 1 clicked Enter your car");
 
       // 5. Verify authoritative server snapshot reflects Player 1 restored to driving mode
+      // with exact pinned participantId, retained peer membership, and parked vehicle pose restored
       await Promise.all([
-        page1.waitForFunction(() => {
+        page1.waitForFunction((expected) => {
           const history = (window as any).__snapshotHistory || [];
           const last = history[history.length - 1];
-          const self = last?.participants?.find((p: any) => p.username === "jamtin");
-          return self && self.isPedestrian === false;
-        }, undefined, { timeout: 15_000 }),
-        page2.waitForFunction(() => {
+          if (!last || last.participants?.length !== 2) return false;
+          const p1 = last.participants.find((p: any) => p.username === "jamtin");
+          const p2 = last.participants.find((p: any) => p.username === "jamtin2");
+          return (
+            p1?.participantId === expected.p1Id &&
+            p2?.participantId === expected.p2Id &&
+            p1.isPedestrian === false &&
+            p2.isPedestrian === false
+          );
+        }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
+        page2.waitForFunction((expected) => {
           const history = (window as any).__snapshotHistory || [];
           const last = history[history.length - 1];
-          const peer = last?.participants?.find((p: any) => p.username === "jamtin");
-          return peer && peer.isPedestrian === false;
-        }, undefined, { timeout: 15_000 }),
+          if (!last || last.participants?.length !== 2) return false;
+          const p1 = last.participants.find((p: any) => p.username === "jamtin");
+          const p2 = last.participants.find((p: any) => p.username === "jamtin2");
+          return (
+            p1?.participantId === expected.p1Id &&
+            p2?.participantId === expected.p2Id &&
+            p1.isPedestrian === false &&
+            p2.isPedestrian === false
+          );
+        }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
       ]);
-      recordStage("Authoritative server snapshot verified Player 1 restored to driving mode");
+      recordStage("Authoritative server snapshot verified Player 1 restored to driving mode with pinned participantId and retained peer membership");
 
-      // 6. Verify Player 2's 3D scene renders Player 1 with car mesh visual
-      await page2.waitForFunction(() => {
+      // Verify parked vehicle pose authority: Player 1 returned exactly to parked position
+      const reenteredPosP1 = await page1.evaluate(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        return p1 ? { x: p1.x, z: p1.z } : null;
+      });
+      expect(reenteredPosP1).toBeDefined();
+      const reenterDistFromParked = Math.hypot(reenteredPosP1!.x - parkedCarPose1.x, reenteredPosP1!.z - parkedCarPose1.z);
+      console.log(`Player 1 re-entered driving position delta from parked pose: ${reenterDistFromParked.toFixed(3)}m`);
+      expect(reenterDistFromParked).toBeLessThan(0.5); // Exact parked position restored (< 0.5m)
+
+      // 6. Observe mounted child geometry/model identity independently on Player 2 for Player 1:
+      // Must find BoxGeometry (body/cabin/stripe) and CylinderGeometry (wheels), and NO pedestrian geometries (Capsule/Sphere).
+      await page2.waitForFunction((expectedId) => {
         const scene = (window as any).__r3fScene;
-        let isCar = false;
+        let targetGroup: any = null;
         scene?.traverse((o: any) => {
-          if (o.name && o.name.includes("remote-racer-jamtin") && o.userData?.isPedestrian === false) {
-            isCar = true;
+          if (o.userData?.participantId === expectedId) {
+            targetGroup = o;
           }
         });
-        return isCar;
-      }, undefined, { timeout: 15_000 });
-      recordStage("Player 2 3D scene verified rendering Player 1 as car model");
+        if (!targetGroup) return false;
+
+        const geoTypes: string[] = [];
+        targetGroup.traverse((child: any) => {
+          if (child.isMesh && child.geometry?.type) {
+            geoTypes.push(child.geometry.type);
+          }
+        });
+
+        const hasCapsule = geoTypes.includes("CapsuleGeometry");
+        const hasSphere = geoTypes.includes("SphereGeometry");
+        const hasBox = geoTypes.includes("BoxGeometry");
+        const hasCylinder = geoTypes.includes("CylinderGeometry");
+
+        return hasBox && hasCylinder && !hasCapsule && !hasSphere;
+      }, pinnedParticipantId1, { timeout: 15_000 });
+
+      // Retain screenshot of visible car model
+      const carScreenshotPath = path.resolve("test-results/actual-pair-screenshots/page2-peer-as-car.png");
+      await page2.screenshot({ path: carScreenshotPath });
+      console.log(`Player 2 view of Player 1 restored as car saved to: ${carScreenshotPath}`);
+      recordStage("Player 2 3D scene independently verified rendering Player 1 as car model (Box/Cylinder geometry) and captured screenshot");
 
       // 7. Re-engage throttle to prove controls and simulation loop continuation after re-entry
       const throttleReentry1 = page1.locator('button[data-drive-action="throttle"]');
