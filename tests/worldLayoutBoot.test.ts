@@ -368,4 +368,145 @@ describe("WorldLayoutBootCoordinator", () => {
     expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledTimes(1);
     expect(bootRuntime.start).not.toHaveBeenCalled();
   });
+
+  describe("Canonical Remote Authority (Starter-Catalogue)", () => {
+    it("boots and hydrates canonical remote starter catalogue document when published", async () => {
+      const doc = document("primary");
+      const bootRuntime = runtime();
+      const mockSave = vi.fn(async () => ({ status: "saved", revision: stored(doc) } as const));
+      const mockLoad = vi.fn(async () => null);
+
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: vi.fn(async () => ({
+          published: true,
+          manifest: {
+            worldId: "primary",
+            layoutRevision: doc.revision.contentHash,
+            layout: doc,
+          },
+        })),
+      };
+
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store({ load: mockLoad, save: mockSave }),
+        runtime: bootRuntime,
+        remoteLoader,
+        requireRemoteAuthority: true,
+      });
+
+      const result = await coordinator.boot();
+      expect(result).toMatchObject({
+        ready: true,
+        worldId: "primary",
+        revision: worldLayoutRevisionId(doc.revision),
+        source: "canonical_remote",
+      });
+      expect(remoteLoader.loadRemoteStarterCatalogue).toHaveBeenCalledWith("primary");
+      expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(doc);
+      expect(mockSave).toHaveBeenCalled();
+    });
+
+    it("fails closed with WORLD_UNPUBLISHED when remote authority returns unpublished and requireRemoteAuthority is true", async () => {
+      const bootRuntime = runtime();
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: vi.fn(async () => null),
+      };
+
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store(),
+        runtime: bootRuntime,
+        remoteLoader,
+        requireRemoteAuthority: true,
+      });
+
+      await expect(coordinator.boot()).rejects.toThrowError(WorldLayoutBootError);
+      await expect(coordinator.boot()).rejects.toMatchObject({
+        code: "WORLD_UNPUBLISHED",
+      });
+      expect(bootRuntime.hydrateWorldLayout).not.toHaveBeenCalled();
+    });
+
+    it("fails closed with WORLD_ID_MISMATCH when remote starter catalogue worldId contradicts coordinator", async () => {
+      const doc = document("different-world");
+      const bootRuntime = runtime();
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: vi.fn(async () => ({
+          published: true,
+          manifest: {
+            worldId: "different-world",
+            layoutRevision: doc.revision.contentHash,
+            layout: doc,
+          },
+        })),
+      };
+
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store(),
+        runtime: bootRuntime,
+        remoteLoader,
+      });
+
+      await expect(coordinator.boot()).rejects.toMatchObject({
+        code: "WORLD_ID_MISMATCH",
+      });
+      expect(bootRuntime.hydrateWorldLayout).not.toHaveBeenCalled();
+    });
+
+    it("fails closed with REVISION_MISMATCH when remote manifest layoutRevision contradicts document contentHash", async () => {
+      const doc = document("primary");
+      const bootRuntime = runtime();
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: vi.fn(async () => ({
+          published: true,
+          manifest: {
+            worldId: "primary",
+            layoutRevision: "0".repeat(64), // Incorrect hash!
+            layout: doc,
+          },
+        })),
+      };
+
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store(),
+        runtime: bootRuntime,
+        remoteLoader,
+      });
+
+      await expect(coordinator.boot()).rejects.toMatchObject({
+        code: "REVISION_MISMATCH",
+      });
+      expect(bootRuntime.hydrateWorldLayout).not.toHaveBeenCalled();
+    });
+
+    it("preserves local stored head when remote authority is unavailable and requireRemoteAuthority is false", async () => {
+      const existingHead = stored(document("primary", 42));
+      const bootRuntime = runtime();
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: vi.fn(async () => {
+          throw new Error("Network timeout");
+        }),
+      };
+
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store({ load: vi.fn(async () => existingHead) }),
+        runtime: bootRuntime,
+        remoteLoader,
+        requireRemoteAuthority: false,
+      });
+
+      const result = await coordinator.boot();
+      expect(result).toMatchObject({
+        ready: true,
+        worldId: "primary",
+        revision: existingHead.layoutRevision,
+        source: "stored",
+      });
+      expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(existingHead.document);
+    });
+  });
 });
