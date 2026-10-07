@@ -3130,12 +3130,21 @@ export class ColonyRuntime {
   }
 
   enableMultiplayer(roomCode = "racing-cup", wsUrl?: string): void {
+    const doc = typeof this.worldLayoutDocument === "function" ? this.worldLayoutDocument() : null;
+    const worldId = doc?.worldId ?? this.activeWorldLayout?.worldId ?? (this.sim?.state?.seed ? String(this.sim.state.seed) : undefined);
+    const neighbourhoodKey = (this as any).currentNeighbourhoodKey ?? (doc as any)?.neighbourhoodKey ?? "homestead";
+
     if (
       this.multiplayerClient &&
       (this.multiplayerClient.getStatus() === "connected" ||
         this.multiplayerClient.getStatus() === "connecting")
     ) {
-      return;
+      const activeSession = this.multiplayerClient.getSessionInfo();
+      if (activeSession.worldId === worldId && activeSession.neighbourhoodKey === neighbourhoodKey) {
+        return;
+      }
+      this.multiplayerClient.disconnect();
+      this.sim.state.remoteRacers?.clear();
     }
     if (!this.operatorUserId) {
       console.warn(
@@ -3146,9 +3155,6 @@ export class ColonyRuntime {
     const userId = this.operatorUserId;
     const username = this.operatorName || (userId.includes("@") ? userId.split("@")[0] : userId);
     const vehicleKey = this.authoritativeCar?.id ?? null;
-
-    const worldId = this.sim.state.seed ? String(this.sim.state.seed) : undefined;
-    const neighbourhoodKey = "homestead";
 
     this.multiplayerClient = new MultiplayerClient({
       url: wsUrl,
@@ -5184,6 +5190,16 @@ export class ColonyRuntime {
     this.layoutZonesByCell = authority.zonesByCell;
     this.layoutReservationIdsByCell = authority.reservationIdsByCell;
     this.layoutNetworkGraphs = authority.networkGraphs;
+    if (
+      this.multiplayerClient &&
+      (this.multiplayerClient.getStatus() === "connected" ||
+        this.multiplayerClient.getStatus() === "connecting")
+    ) {
+      const room = this.multiplayerClient.getSessionInfo().inviteCode || "racing-cup";
+      this.multiplayerClient.disconnect();
+      this.sim.state.remoteRacers?.clear();
+      this.enableMultiplayer(room);
+    }
     return parseWorldLayoutDocument(serializeWorldLayoutDocument(canonical));
   }
 
