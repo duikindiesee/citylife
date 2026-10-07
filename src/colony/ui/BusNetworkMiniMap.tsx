@@ -30,14 +30,23 @@ function OpenBusNetworkMiniMap({
   onClose,
 }: Omit<BusNetworkMiniMapProps, "open">) {
   // The HUD can be memoized independently of the scene. Subscribe to the runtime's 200ms
-  // heartbeat while seated so the player marker follows the live car pose on the map.
-  const drivePosition = useSimSignal(runtime, () => {
+  // heartbeat while seated so the player marker and peer markers follow live poses on the map.
+  const mapSignal = useSimSignal(runtime, () => {
     const pose = runtime.getOwnedDrivePose();
-    return pose
+    const selfPart = pose
       ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}`
       : "drive:parked";
+    const peers = Array.from(runtime.sim.state.remoteRacers?.values() ?? []);
+    const peerPart = peers
+      .map(
+        (p) =>
+          `${p.participantId}:${p.cell.x.toFixed(2)}:${p.cell.y.toFixed(2)}`,
+      )
+      .sort()
+      .join(";");
+    return `${selfPart}|${peerPart}`;
   });
-  void drivePosition;
+  void mapSignal;
   const state = runtime.sim.state;
   const depot = runtime.busDepot?.site ?? null;
   const local = presenceReadout?.entries.find((entry) => entry.isLocal) ?? null;

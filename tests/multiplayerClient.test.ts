@@ -537,7 +537,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
 
   it("handles unowned vehicle admission denial as terminal error (genuinely unowned-car negative case)", async () => {
     // 1. Resolver returns null for genuinely unowned / unknown vehicle keys
-    const unknownSpec = resolveOwnedCar(["unowned-hypercar-99"]);
+    const unknownSpec = resolveOwnedCar(["unowned-car"]);
     expect(unknownSpec).toBeNull();
 
     // 2. If client attempts to request an unowned vehicle key and server rejects with VEHICLE_NOT_OWNED
@@ -546,7 +546,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       userId: "101",
       username: "test-user",
       token: "valid-token",
-      vehicleKey: "unowned-hypercar-99",
+      vehicleKey: "unowned-car",
       onError: errorSpy,
     });
 
@@ -559,7 +559,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       data: JSON.stringify({
         type: "error",
         error: "VEHICLE_NOT_OWNED",
-        message: "Requested vehicle 'unowned-hypercar-99' does not match authoritative owned vehicle 'karoo-vonk-11'",
+        message: "Requested vehicle 'unowned-car' does not match authoritative owned vehicle 'karoo-vonk-11'",
       }),
     });
 
@@ -568,7 +568,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(errorSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         code: "VEHICLE_NOT_OWNED",
-        message: expect.stringContaining("Requested vehicle 'unowned-hypercar-99'"),
+        message: expect.stringContaining("Requested vehicle 'unowned-car'"),
       }),
     );
     client.disconnect();

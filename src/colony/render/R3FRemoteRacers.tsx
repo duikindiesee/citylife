@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import type { ColonySim } from "../sim";
-import type { SimBridge } from "./useSimSignal";
+import { useSimSignal, type SimBridge } from "./useSimSignal";
+import { remoteRacersSignature } from "./simSignals";
 import { leveledWorldY } from "./terrainLeveling";
 import { SHOWROOM_VEHICLES } from "../showroom/showroomCatalog";
 import type { CarSpec } from "../car/carSpec";
@@ -137,7 +138,9 @@ function RemoteCarVisual({ racer }: { racer: { username: string; spec: CarSpec }
   );
 }
 
-export function R3FRemoteRacers({ sim, terrainLevel }: R3FRemoteRacersProps) {
+export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersProps) {
+  useSimSignal(runtime, () => remoteRacersSignature(sim.state));
+
   const rootGroup = useRef<THREE.Group>(null);
   const racerGroups = useRef<Map<string, THREE.Group>>(new Map());
 

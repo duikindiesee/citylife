@@ -1049,11 +1049,12 @@ export function ColonyApp() {
     const explicitRoom = query?.get("room");
     const explicitMp = explicitRoom !== null || query?.get("multiplayer") === "1";
     const room = explicitRoom || (explicitMp ? "racing-cup" : null);
+    const wsUrl = query?.get("ws") || (typeof window !== "undefined" ? (window as any).__customMultiplayerWsUrl : undefined);
 
     const shouldConnect = isReady && hasAuth && Boolean(room);
 
     if (shouldConnect && room) {
-      runtime.enableMultiplayer(room);
+      runtime.enableMultiplayer(room, wsUrl || undefined);
     } else {
       runtime.disableMultiplayer();
     }
