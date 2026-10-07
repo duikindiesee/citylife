@@ -111,7 +111,8 @@ export function BuildStamp({ variant = "hud", runtime }: BuildStampProps) {
         display: "inline-flex",
         flexDirection: "row",
         alignItems: "center",
-        flexWrap: "nowrap",
+        flexWrap: "wrap",
+        maxWidth: "min(560px, calc(100vw - 32px))",
         gap: "6px",
         fontFamily: "monospace",
         fontSize: "10.5px",
@@ -124,13 +125,47 @@ export function BuildStamp({ variant = "hud", runtime }: BuildStampProps) {
         border: "1px solid rgba(255, 255, 255, 0.12)",
         pointerEvents: "auto",
         userSelect: "text",
-        whiteSpace: "nowrap",
       }}
     >
-      <span style={{ fontWeight: 600, color: "#6fe3ff" }}>{text}</span>
+      <style>{`
+        @media (max-width: 1024px) {
+          .build-stamp__preview-full { display: none !important; }
+          .build-stamp__preview-short { display: inline !important; }
+        }
+        @media (min-width: 1025px) {
+          .build-stamp__preview-full { display: inline !important; }
+          .build-stamp__preview-short { display: none !important; }
+        }
+      `}</style>
+      <span
+        data-testid="dev-preview-label"
+        title="Development Preview — CityLife is still in development. Features and gameplay may change."
+        style={{
+          background: "rgba(255, 170, 0, 0.18)",
+          color: "#ffca40",
+          border: "1px solid rgba(255, 170, 0, 0.4)",
+          borderRadius: "3px",
+          padding: "1px 5px",
+          fontSize: "10px",
+          fontWeight: 600,
+          whiteSpace: "nowrap",
+          maxWidth: "360px",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          flexShrink: 0,
+        }}
+      >
+        <span className="build-stamp__preview-full">
+          Development Preview — CityLife is still in development. Features and gameplay may change.
+        </span>
+        <span className="build-stamp__preview-short">
+          Dev Preview
+        </span>
+      </span>
+      <span style={{ fontWeight: 600, color: "#6fe3ff", whiteSpace: "nowrap" }}>{text}</span>
       {parts.builtAt && (
         <span
-          style={{ opacity: 0.65, fontSize: "10px" }}
+          style={{ opacity: 0.65, fontSize: "10px", whiteSpace: "nowrap" }}
           title="Build timestamp"
         >
           {parts.builtAt}

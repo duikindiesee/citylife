@@ -53,6 +53,12 @@ function OpenBusNetworkMiniMap({
     : local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
       ? { x: local.fix.cell.x, y: local.fix.cell.y }
       : null;
+  const peers = Array.from(state.remoteRacers?.values() ?? []).map((r) => ({
+    participantId: r.participantId,
+    username: r.username,
+    x: r.cell.x,
+    y: r.cell.y,
+  }));
   const model = buildBusNetworkMiniMapModel({
     ways: state.roadWays ?? [],
     routeStops: runtime.busRoute?.stops ?? [],
@@ -60,11 +66,14 @@ function OpenBusNetworkMiniMap({
       ? { x: depot.x + (depot.w - 1) / 2, y: depot.y + (depot.h - 1) / 2 }
       : null,
     buses: runtime.busPoses().map((p, id) => ({ id, x: p.x, y: p.y })),
+    peers,
     player,
     width: WIDTH,
     height: HEIGHT,
     padding: 8,
   });
+  const mpClient = runtime.getMultiplayerClient();
+  const isOnline = mpClient?.getStatus() === "connected";
   return (
     <aside
       className="bus-network-minimap bus-network-minimap--expanded"
@@ -94,7 +103,11 @@ function OpenBusNetworkMiniMap({
         <span>{walletLabel}</span>
         <span>{model.player ? "You are here" : "Position unavailable"}</span>
       </div>
-      <div className="bus-network-minimap__mode">LOCAL SESSION</div>
+      <div className="bus-network-minimap__mode">
+        {isOnline
+          ? `ONLINE MULTIPLAYER (${mpClient?.getSessionInfo().inviteCode ?? "ACTIVE"})`
+          : "LOCAL SESSION"}
+      </div>
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
         role="img"
@@ -165,6 +178,32 @@ function OpenBusNetworkMiniMap({
             />
           </g>
         )}
+        {model.peers.map((peer) => (
+          <g
+            key={`peer-${peer.participantId}`}
+            aria-label={`Peer ${peer.username}`}
+            data-testid="city-map-peer-marker"
+            data-participant-id={peer.participantId}
+            data-off-map={peer.outOfBounds ? "true" : "false"}
+          >
+            <circle
+              cx={peer.x}
+              cy={peer.y}
+              r="4.8"
+              fill="none"
+              stroke="#00ffcc"
+              strokeWidth="1.2"
+              strokeDasharray="2,2"
+              opacity="0.85"
+            />
+            <circle
+              cx={peer.x}
+              cy={peer.y}
+              r="2.6"
+              fill="#00ffcc"
+            />
+          </g>
+        ))}
         {model.busClusters.map((cluster) => {
           const label =
             cluster.ids.length === 1

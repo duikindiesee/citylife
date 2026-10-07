@@ -170,6 +170,7 @@ import {
   solsSinceEpoch,
 } from "./sol";
 import { MultiplayerClient, type RemoteRacer } from "./multiplayer/multiplayerClient";
+import type { AuthClient } from "./authClient";
 import { setSolDebugOffsetMs, solNowMs } from "./solRuntimeClock";
 import {
   aimBugCaptureDraft,
@@ -1011,6 +1012,7 @@ export class ColonyRuntime {
   private authoritativeCar: CarSpec | null = null;
   /** Spec 178: Multiplayer WebSocket client */
   private multiplayerClient: MultiplayerClient | null = null;
+  private authClient: AuthClient | null = null;
   // Player data isolation: false = the privileged operator/admin view (sees every citizen + wallet,
   // the default). true = a CITYLIFE_PLAYER view — the HUD then shows only the player's own data plus
   // other citizens' public presence (stubs), never their private wallet/usage. Set by the player login
@@ -2387,6 +2389,11 @@ export class ColonyRuntime {
       this.ownedDrivePose = null;
       this.ownedDriveInput = {};
       this.ownedDriveSeated = false;
+      this.sim.state.remoteRacers?.clear();
+      if (this.multiplayerClient) {
+        this.multiplayerClient.disconnect();
+        this.multiplayerClient = null;
+      }
     }
     this.operatorUserId = nextUserId;
     this.claimOwnCitizen();
@@ -3053,9 +3060,21 @@ export class ColonyRuntime {
     }
     this.debugPlaceFirstPerson(x, y);
     if (this.multiplayerClient && this.multiplayerClient.getStatus() === "connected") {
-      this.multiplayerClient.sendPose({ x, y, heading, speed: 0 });
+      const terrain = this.sim.state.terrain;
+      const worldX = (x - terrain.size / 2) * 4;
+      const worldZ = (y - terrain.size / 2) * 4;
+      const worldY = terrain.worldY(Math.round(x), Math.round(y));
+      this.multiplayerClient.sendPose({ x: worldX, y: worldY, z: worldZ, heading, speed: 0 });
     }
     this.emit();
+  }
+
+  setAuthClient(auth: AuthClient | null): void {
+    this.authClient = auth;
+  }
+
+  getAuthClient(): AuthClient | null {
+    return this.authClient;
   }
 
   getMultiplayerClient(): MultiplayerClient | null {
@@ -3063,12 +3082,23 @@ export class ColonyRuntime {
   }
 
   enableMultiplayer(roomCode = "racing-cup", wsUrl?: string): void {
-    if (this.multiplayerClient && this.multiplayerClient.getStatus() === "connected") {
+    if (
+      this.multiplayerClient &&
+      (this.multiplayerClient.getStatus() === "connected" ||
+        this.multiplayerClient.getStatus() === "connecting")
+    ) {
       return;
     }
-    const userId = this.operatorUserId || "player-" + Math.random().toString(36).substring(2, 6);
+    if (!this.operatorUserId) {
+      console.warn("[Multiplayer] Cannot enable multiplayer without authenticated operatorUserId");
+      return;
+    }
+    const userId = this.operatorUserId;
     const username = this.operatorName || (userId.includes("@") ? userId.split("@")[0] : userId);
-    const vehicleKey = this.authoritativeCar?.id || "karoo-vonk-11";
+    const vehicleKey = this.authoritativeCar?.id ?? null;
+
+    const worldId = this.sim.state.seed ? String(this.sim.state.seed) : undefined;
+    const neighbourhoodKey = "homestead";
 
     this.multiplayerClient = new MultiplayerClient({
       url: wsUrl,
@@ -3076,21 +3106,36 @@ export class ColonyRuntime {
       username,
       vehicleKey,
       roomCode,
+      worldId,
+      neighbourhoodKey,
+      autoCreate: true,
+      getToken: async () => this.authClient?.getValidToken() ?? null,
       onStatusChange: () => {
+        this.emit();
+      },
+      onSessionReady: () => {
+        // Fresh or reconnected session cleans prior peer state to prevent stale peer carryover
+        this.sim.state.remoteRacers?.clear();
         this.emit();
       },
       onPeerJoined: (peer) => {
         if (!this.sim.state.remoteRacers) this.sim.state.remoteRacers = new Map();
+        const terrain = this.sim.state.terrain;
+        const cellX = peer.x != null && !isNaN(peer.x) ? peer.x / 4 + terrain.size / 2 : 50;
+        const cellY = peer.z != null && !isNaN(peer.z) ? peer.z / 4 + terrain.size / 2 : 50;
+        const spec = peer.vehicleKey ? (resolveOwnedCar([peer.vehicleKey]) ?? null) : null;
         this.sim.state.remoteRacers.set(peer.participantId, {
           participantId: peer.participantId,
           userId: peer.userId,
           username: peer.username,
           vehicleKey: peer.vehicleKey,
-          cell: { x: peer.x || 50, y: peer.y || 50 },
+          isPedestrian: peer.isPedestrian ?? !spec,
+          cell: { x: cellX, y: cellY },
+          worldY: peer.y,
           heading: peer.heading || 0,
           speed: peer.speed || 0,
           lastSeen: Date.now(),
-          spec: defaultCarSpec(peer.username),
+          spec,
         });
         this.emit();
       },
@@ -3101,30 +3146,32 @@ export class ColonyRuntime {
       onPeerPose: (participantId, pose) => {
         if (!this.sim.state.remoteRacers) this.sim.state.remoteRacers = new Map();
         const racer = this.sim.state.remoteRacers.get(participantId);
+        const terrain = this.sim.state.terrain;
+        const cellX = pose.x / 4 + terrain.size / 2;
+        const cellY = pose.z / 4 + terrain.size / 2;
         if (racer) {
-          racer.cell.x = pose.x;
-          racer.cell.y = pose.y;
+          racer.cell.x = cellX;
+          racer.cell.y = cellY;
+          racer.worldY = pose.y;
           racer.heading = pose.heading;
           racer.speed = pose.speed;
           racer.lastSeen = Date.now();
-        } else {
-          this.sim.state.remoteRacers.set(participantId, {
-            participantId,
-            userId: "peer-" + participantId,
-            username: "Racer-" + participantId.slice(-4),
-            vehicleKey: "karoo-vonk-11",
-            cell: { x: pose.x, y: pose.y },
-            heading: pose.heading,
-            speed: pose.speed,
-            lastSeen: Date.now(),
-            spec: defaultCarSpec("Racer"),
-          });
+          this.emit();
         }
-        this.emit();
+        // Unknown peer poses are dropped without inventing a fabricated Racer identity or default car
       },
     });
 
     this.multiplayerClient.connect();
+  }
+
+  disableMultiplayer(): void {
+    if (this.multiplayerClient) {
+      this.multiplayerClient.disconnect();
+      this.multiplayerClient = null;
+    }
+    this.sim.state.remoteRacers?.clear();
+    this.emit();
   }
 
   tickOwnedDrive(dt: number): void {
@@ -3247,9 +3294,13 @@ export class ColonyRuntime {
       car.cell = { x: this.ownedDrivePose.x, y: this.ownedDrivePose.y };
       car.heading = this.ownedDrivePose.heading;
       if (this.multiplayerClient && this.multiplayerClient.getStatus() === "connected") {
+        const worldX = (this.ownedDrivePose.x - size / 2) * 4;
+        const worldZ = (this.ownedDrivePose.y - size / 2) * 4;
+        const worldY = terrain.worldY(Math.round(this.ownedDrivePose.x), Math.round(this.ownedDrivePose.y));
         this.multiplayerClient.sendPose({
-          x: this.ownedDrivePose.x,
-          y: this.ownedDrivePose.y,
+          x: worldX,
+          y: worldY,
+          z: worldZ,
           heading: this.ownedDrivePose.heading,
           speed: this.ownedDrivePose.speed,
         });

@@ -1,143 +1,230 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MultiplayerClient } from "../src/colony/multiplayer/multiplayerClient";
+import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 
-// Mock WebSocket
 class MockWebSocket {
   static OPEN = 1;
   static CONNECTING = 0;
-  static CLOSING = 2;
   static CLOSED = 3;
+  static instances: MockWebSocket[] = [];
 
-  readyState = MockWebSocket.CONNECTING;
-  sentData: string[] = [];
+  url: string;
+  readyState = 0;
+  sent: any[] = [];
   onopen: (() => void) | null = null;
-  onclose: (() => void) | null = null;
-  onmessage: ((ev: { data: string }) => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onclose: ((event: { code: number }) => void) | null = null;
   onerror: ((err: any) => void) | null = null;
 
-  constructor(public url: string) {
-    setTimeout(() => {
-      this.readyState = MockWebSocket.OPEN;
-      if (this.onopen) this.onopen();
-    }, 10);
+  constructor(url: string) {
+    this.url = url;
+    MockWebSocket.instances.push(this);
   }
 
   send(data: string) {
-    this.sentData.push(data);
+    this.sent.push(JSON.parse(data));
   }
 
   close() {
-    this.readyState = MockWebSocket.CLOSED;
-    if (this.onclose) this.onclose();
+    this.readyState = 3;
+    if (this.onclose) {
+      this.onclose({ code: 1000 });
+    }
   }
 }
 
-describe("MultiplayerClient", () => {
+describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
+  const originalWebSocket = (globalThis as any).WebSocket;
+  const originalWindow = (globalThis as any).window;
+
   beforeEach(() => {
+    MockWebSocket.instances = [];
     (globalThis as any).WebSocket = MockWebSocket;
+    (globalThis as any).window = {
+      location: {
+        protocol: "https:",
+        host: "synthetic.citylife.invalid",
+        hostname: "synthetic.citylife.invalid",
+      },
+    };
   });
 
-  it("connects and sends join_session with roomCode and user details", async () => {
-    let sessionReady = false;
+  afterEach(() => {
+    (globalThis as any).WebSocket = originalWebSocket;
+    (globalThis as any).window = originalWindow;
+  });
+
+  it("does not create a socket if disconnected while getToken is awaiting", async () => {
+    let resolveToken: (token: string) => void = () => {};
+    const tokenPromise = new Promise<string>((r) => {
+      resolveToken = r;
+    });
+
     const client = new MultiplayerClient({
-      url: "ws://127.0.0.1:9010/ws",
-      userId: "192",
-      username: "jamtin",
-      vehicleKey: "karoo-vonk-11",
-      roomCode: "RACE1",
-      onSessionReady: (sessionId, inviteCode) => {
-        sessionReady = true;
-        expect(inviteCode).toBe("RACE1");
+      userId: "101",
+      username: "test-user",
+      getToken: () => tokenPromise,
+    });
+
+    const connectPromise = client.connect();
+    client.disconnect();
+    resolveToken("test-bearer-token");
+    await connectPromise;
+
+    expect(MockWebSocket.instances.length).toBe(0);
+    expect(client.getStatus()).toBe("disconnected");
+  });
+
+  it("deduplicates overlapping connects while awaiting token", async () => {
+    let resolveToken: (token: string) => void = () => {};
+    const tokenPromise = new Promise<string>((r) => {
+      resolveToken = r;
+    });
+
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      getToken: () => tokenPromise,
+    });
+
+    const p1 = client.connect();
+    const p2 = client.connect();
+    resolveToken("test-bearer-token");
+    await Promise.all([p1, p2]);
+
+    expect(MockWebSocket.instances.length).toBe(1);
+  });
+
+  it("ignores late acceptance message from old socket after account teardown", async () => {
+    let peerCallbacks = 0;
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+      onPeerJoined: () => {
+        peerCallbacks++;
       },
     });
 
-    client.connect();
-    expect(client.getStatus()).toBe("connecting");
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    client.disconnect();
 
-    await new Promise((r) => setTimeout(r, 20));
-    expect(client.getStatus()).toBe("connected");
-
-    const ws = (client as any).ws as MockWebSocket;
-    expect(ws.sentData.length).toBe(1);
-    const joinMsg = JSON.parse(ws.sentData[0]!);
-    expect(joinMsg.type).toBe("join_session");
-    expect(joinMsg.inviteCode).toBe("RACE1");
-    expect(joinMsg.userId).toBe("192");
-    expect(joinMsg.username).toBe("jamtin");
-
-    // Simulate session_joined
-    ws.onmessage?.({
+    socket.onmessage?.({
       data: JSON.stringify({
         type: "session_joined",
-        sessionId: "sess-123",
-        inviteCode: "RACE1",
-        participantId: "part-1",
+        sessionId: "room-abc",
+        inviteCode: "ABC",
+        participantId: "self",
         participants: [
-          { participantId: "part-1", userId: "192", username: "jamtin" },
+          {
+            participantId: "peer-1",
+            userId: "102",
+            username: "peer-user",
+            vehicleKey: "karoo-vonk-11",
+            x: 10,
+            y: 0,
+            z: 10,
+            heading: 0,
+            speed: 0,
+          },
         ],
       }),
     });
 
-    expect(sessionReady).toBe(true);
-    client.disconnect();
     expect(client.getStatus()).toBe("disconnected");
+    expect(peerCallbacks).toBe(0);
   });
 
-  it("handles peer_joined and peer_pose events", async () => {
-    let peerJoinedRacer: any = null;
-    let peerPoseRacer: any = null;
-
+  it("rejects cross-origin endpoint before appending account token", async () => {
+    const errorSpy = vi.fn();
     const client = new MultiplayerClient({
-      userId: "192",
-      username: "jamtin",
-      roomCode: "RACE1",
-      onPeerJoined: (peer) => {
-        peerJoinedRacer = peer;
-      },
-      onPeerPose: (partId, pose) => {
-        peerPoseRacer = { partId, ...pose };
-      },
+      userId: "101",
+      username: "test-user",
+      token: "secret-account-token",
+      url: "wss://foreign-domain.invalid/ws",
+      onError: errorSpy,
     });
 
-    client.connect();
-    await new Promise((r) => setTimeout(r, 20));
+    await client.connect();
 
-    const ws = (client as any).ws as MockWebSocket;
+    expect(MockWebSocket.instances.length).toBe(0);
+    expect(client.getStatus()).toBe("error");
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "UNAPPROVED_ENDPOINT" }),
+    );
+  });
 
-    // Simulate peer joining
-    ws.onmessage?.({
-      data: JSON.stringify({
-        type: "peer_joined",
-        participant: {
-          participantId: "part-2",
-          userId: "193",
-          username: "jamtin2",
-          vehicleKey: "karoo-vonk-11",
-        },
-      }),
+  it("rejects protocol-relative third-party endpoint", async () => {
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "secret-token",
+      url: "//another-origin.invalid/ws",
     });
 
-    expect(peerJoinedRacer).not.toBeNull();
-    expect(peerJoinedRacer.username).toBe("jamtin2");
+    await client.connect();
+    expect(MockWebSocket.instances.length).toBe(0);
+    expect(client.getStatus()).toBe("error");
+  });
 
-    // Simulate peer pose
-    ws.onmessage?.({
-      data: JSON.stringify({
-        type: "peer_pose",
-        participantId: "part-2",
-        x: 55.4,
-        y: 12.3,
-        z: 60.1,
-        heading: 1.57,
-        speed: 14.2,
-      }),
+  it("rejects production HTTPS origin sending tokens to arbitrary loopback port", async () => {
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "secret-token",
+      url: "ws://127.0.0.1:9876/ws",
     });
 
-    expect(peerPoseRacer).not.toBeNull();
-    expect(peerPoseRacer.partId).toBe("part-2");
-    expect(peerPoseRacer.x).toBe(55.4);
-    expect(peerPoseRacer.speed).toBe(14.2);
+    await client.connect();
+    expect(MockWebSocket.instances.length).toBe(0);
+    expect(client.getStatus()).toBe("error");
+  });
 
-    client.disconnect();
+  it("allows same-origin relative path /api/v1/citylife/ws", async () => {
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+      url: "/api/v1/citylife/ws",
+    });
+
+    await client.connect();
+    expect(MockWebSocket.instances.length).toBe(1);
+    expect(MockWebSocket.instances[0]!.url).toContain("/api/v1/citylife/ws?jwt=valid-token&token=valid-token");
+  });
+});
+
+describe("BusNetworkMiniMapModel peer integration", () => {
+  it("projects peer positions within the minimap model bounds", () => {
+    const model = buildBusNetworkMiniMapModel({
+      ways: [
+        {
+          source: "avenue",
+          path: [
+            { x: 0, y: 0 },
+            { x: 100, y: 100 },
+          ],
+        } as any,
+      ],
+      routeStops: [],
+      depot: null,
+      buses: [],
+      peers: [
+        { participantId: "p1", username: "Racer1", x: 25, y: 50 },
+        { participantId: "p2", username: "Racer2", x: 75, y: 80 },
+      ],
+      player: { x: 50, y: 50 },
+      width: 200,
+      height: 132,
+      padding: 8,
+    });
+
+    expect(model.peers).toHaveLength(2);
+    expect(model.peers[0]!.participantId).toBe("p1");
+    expect(model.peers[0]!.username).toBe("Racer1");
+    expect(model.peers[0]!.outOfBounds).toBe(false);
+    expect(model.peers[0]!.x).toBeGreaterThan(0);
+    expect(model.peers[0]!.y).toBeGreaterThan(0);
   });
 });

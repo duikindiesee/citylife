@@ -957,6 +957,7 @@ export function ColonyApp() {
   // it from the self-scoped ledger endpoint, never infer it from the local simulation wallet. Display
   // only — purchase requests never submit this value.
   useEffect(() => {
+    runtime.setAuthClient(auth);
     runtime.setOperatorName(auth.operator?.id ?? null);
     // Identity key: bind the player view to the authenticated kooker userId (from the JWT), so own-data
     // and step-into resolve by user id, not a spoofable / collision-prone display name.
@@ -1868,6 +1869,22 @@ export function ColonyApp() {
               ? "City map could not be opened"
               : "Opening the authoritative city map…"}
           </strong>
+          <div
+            data-testid="development-preview-banner"
+            style={{
+              padding: "6px 14px",
+              borderRadius: "4px",
+              background: "rgba(255, 170, 0, 0.15)",
+              border: "1px solid rgba(255, 170, 0, 0.35)",
+              color: "#ffca40",
+              fontSize: "12px",
+              fontWeight: 500,
+              maxWidth: 480,
+              margin: "0 auto",
+            }}
+          >
+            Development Preview — CityLife is still in development. Features and gameplay may change.
+          </div>
           {worldLayoutBoot.status === "error" && (
             <>
               <span>{worldLayoutBoot.message}</span>

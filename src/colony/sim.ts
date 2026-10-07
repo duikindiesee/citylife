@@ -653,12 +653,14 @@ export interface ColonyState {
       participantId: string;
       userId: string;
       username: string;
-      vehicleKey: string;
+      vehicleKey?: string | null;
+      isPedestrian?: boolean;
       cell: { x: number; y: number };
+      worldY?: number;
       heading: number;
       speed: number;
       lastSeen: number;
-      spec: CarSpec;
+      spec?: CarSpec | null;
     }
   >;
   /** Render toggle for the zoning overlays (spec 131) — set through setZonesVisible(). */
