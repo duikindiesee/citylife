@@ -41,6 +41,65 @@ export interface RemoteWorldLayoutLoader {
   } | null>;
 }
 
+export interface HttpRemoteWorldLayoutLoaderOptions {
+  baseUrl?: string;
+  getToken?: () => Promise<string | null> | string | null;
+  timeoutMs?: number;
+}
+
+export class HttpRemoteWorldLayoutLoader implements RemoteWorldLayoutLoader {
+  private readonly baseUrl: string;
+  private readonly getToken?: () => Promise<string | null> | string | null;
+  private readonly timeoutMs: number;
+
+  constructor(options?: HttpRemoteWorldLayoutLoaderOptions) {
+    this.baseUrl = (options?.baseUrl ?? "").replace(/\/+$/, "");
+    this.getToken = options?.getToken;
+    this.timeoutMs = options?.timeoutMs ?? 5000;
+  }
+
+  async loadRemoteStarterCatalogue(worldId: string): Promise<{
+    published: boolean;
+    manifest: RemoteStarterCatalogueManifest;
+  } | null> {
+    const token = this.getToken ? await this.getToken() : null;
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      "Cache-Control": "no-store",
+    };
+    if (token) {
+      headers["Authorization"] = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const url = `${this.baseUrl}/api/v1/citylife/worlds/${encodeURIComponent(worldId)}/starter-catalogue`;
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers,
+        signal: controller.signal,
+      });
+
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error(`Remote starter catalogue fetch failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data || typeof data !== "object") {
+        throw new Error("Invalid remote starter catalogue response");
+      }
+      return data;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+
 export interface WorldLayoutBootOptions {
   readonly worldId: string;
   readonly store: WorldLayoutBootStore;
@@ -198,6 +257,13 @@ export class WorldLayoutBootCoordinator {
   }
 
   private async run(): Promise<WorldLayoutBootResult> {
+    if (this.requireRemoteAuthority && !this.remoteLoader) {
+      throw new WorldLayoutBootError(
+        "WORLD_UNPUBLISHED",
+        `World ${this.worldId} requires remote authority, but no remoteLoader was configured`,
+      );
+    }
+
     if (this.remoteLoader) {
       try {
         const remote = await this.remoteLoader.loadRemoteStarterCatalogue(this.worldId);

@@ -116,6 +116,7 @@ import "./colony.css";
 import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
 import {
   WorldLayoutBootCoordinator,
+  HttpRemoteWorldLayoutLoader,
   type WorldLayoutBootResult,
 } from "../worldLayoutBoot";
 import {
@@ -689,6 +690,24 @@ export function ColonyApp() {
   const { builderActive, worldViewActive } = useRoadNetwork();
   const runtime = useRuntime();
   const [, forceRuntimeRender] = useReducer((x) => x + 1, 0);
+  const auth = useMemo(() => new AuthClient(), []);
+  const operatorUserId = auth.operator?.userId ?? null;
+
+  const isMultiplayer = useMemo(() => {
+    if (!auth.isAuthenticated || !operatorUserId) return false;
+    if (typeof window === "undefined") return false;
+    const q = new URLSearchParams(window.location.search);
+    return Boolean(q.get("room") || q.get("multiplayer") === "1");
+  }, [auth.isAuthenticated, operatorUserId]);
+
+  const remoteLoader = useMemo(
+    () =>
+      new HttpRemoteWorldLayoutLoader({
+        getToken: () => auth.getValidToken(),
+      }),
+    [auth],
+  );
+
   const worldLayoutPersistence = useMemo(() => {
     try {
       const store = new WorldLayoutStore();
@@ -704,13 +723,15 @@ export function ColonyApp() {
               runtime.hydrateWorldLayout(document);
             },
           },
+          remoteLoader: remoteLoader,
+          requireRemoteAuthority: isMultiplayer,
         }),
         error: null,
       };
     } catch (error: unknown) {
       return { store: null, coordinator: null, error };
     }
-  }, [runtime]);
+  }, [runtime, remoteLoader, isMultiplayer, operatorUserId]);
   const [worldLayoutBoot, setWorldLayoutBoot] = useState<
     | { status: "loading" }
     | { status: "ready"; result: WorldLayoutBootResult }
@@ -862,7 +883,6 @@ export function ColonyApp() {
     void runtime.decideNewcomer(id, d);
   };
   // P1 — tell the runtime who is logged in, so it can mark the operator's own avatar + gate the step-into.
-  const auth = useMemo(() => new AuthClient(), []);
   // City Builder authorization (see authClient.canEnterCityBuilder for the fail-closed rule and why
   // a null operator is safe here — it can only be AuthGate's own local DEV/E2E skip-auth bypass).
   const canBuildCity = canEnterCityBuilder(auth);
@@ -963,8 +983,33 @@ export function ColonyApp() {
   // whenever the identity changes. It resets to `null` (fail-closed OFF) the instant the identity
   // changes — logout does a full reload, but keying on the userId means an in-place account switch
   // can never carry a prior user's positive entitlement forward. A stale in-flight response is
-  // ignored (`cancelled`) so it can never overwrite the current identity's decision.
-  const operatorUserId = auth.operator?.userId ?? null;
+  // Identity & world switch: clear multiplayer runtime state and invalidate completed boot attempts
+  // so the new identity revalidates canonical authority.
+  const prevIdentityRef = useRef({
+    userId: operatorUserId,
+    worldId: runtime.captureWorldLayout().worldId,
+  });
+
+  useEffect(() => {
+    const currentWorldId = runtime.captureWorldLayout().worldId;
+    if (
+      prevIdentityRef.current.userId !== operatorUserId ||
+      prevIdentityRef.current.worldId !== currentWorldId
+    ) {
+      prevIdentityRef.current = {
+        userId: operatorUserId,
+        worldId: currentWorldId,
+      };
+      runtime.disableMultiplayer();
+      runtime.sim?.state?.remoteRacers?.clear();
+      try {
+        worldLayoutPersistence.coordinator?.invalidateCompletedAttempt();
+      } catch {
+        // no-op if boot attempt is already unsettled
+      }
+      retryWorldLayoutBoot();
+    }
+  }, [operatorUserId, runtime, worldLayoutPersistence]);
 
   // Spec 178 — Lifecycle-driven multiplayer connection:
   // Requires all 3: authentic player identity (auth.isAuthenticated && operatorUserId !== null),
