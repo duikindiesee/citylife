@@ -3033,6 +3033,7 @@ export class ColonyRuntime {
       yaw: -car.heading - Math.PI / 2,
       seq: (this.fpTeleportRequest?.seq ?? 0) + 1,
     };
+    this.fpCameraCell = { x: exitCell.x, y: exitCell.y };
     if (
       this.multiplayerClient &&
       this.multiplayerClient.getStatus() === "connected"

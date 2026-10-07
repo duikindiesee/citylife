@@ -231,6 +231,9 @@ export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersP
             username: racer.username,
             userId: racer.userId,
             participantId: racer.participantId,
+            isPedestrian: Boolean(racer.isPedestrian || !racer.spec),
+            mode: racer.isPedestrian || !racer.spec ? "walking" : "driving",
+            vehicleKey: racer.vehicleKey ?? null,
           }}
           ref={(el) => {
             if (el) racerGroups.current.set(racer.participantId, el);

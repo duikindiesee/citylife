@@ -786,6 +786,99 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       console.log("Numeric mini-map peer marker projection verified on BOTH clients within justified subpixel tolerance (<0.5px).");
       recordStage("Numeric mini-map peer marker projections verified on both clients");
 
+      // Next bounded slice: prove the SAME mounted participant changes driving -> walking -> driving
+      // through actual game controls, with peer car/pedestrian model and membership updates in both views.
+      recordStage("Starting driving -> walking -> driving transition via actual game controls");
+
+      // 1. Player 1 exits vehicle via genuine pointer click on "Park & Exit"
+      const exitBtn1 = page1.locator('[data-testid="exit-owned-car"]');
+      await expect(exitBtn1).toBeVisible({ timeout: 10_000 });
+      await exitBtn1.click();
+      recordStage("Player 1 clicked Park & Exit");
+
+      // 2. Verify authoritative server snapshot reflects Player 1 walking / pedestrian mode
+      await Promise.all([
+        page1.waitForFunction(() => {
+          const history = (window as any).__snapshotHistory || [];
+          const last = history[history.length - 1];
+          const self = last?.participants?.find((p: any) => p.username === "jamtin");
+          return Boolean(self?.isPedestrian);
+        }, undefined, { timeout: 15_000 }),
+        page2.waitForFunction(() => {
+          const history = (window as any).__snapshotHistory || [];
+          const last = history[history.length - 1];
+          const peer = last?.participants?.find((p: any) => p.username === "jamtin");
+          return Boolean(peer?.isPedestrian);
+        }, undefined, { timeout: 15_000 }),
+      ]);
+      recordStage("Authoritative server snapshot verified Player 1 in walking/pedestrian mode");
+
+      // 3. Verify Player 2's 3D scene renders Player 1 with pedestrian avatar visual
+      await page2.waitForFunction(() => {
+        const scene = (window as any).__r3fScene;
+        let isPed = false;
+        scene?.traverse((o: any) => {
+          if (o.name && o.name.includes("remote-racer-jamtin") && o.userData?.isPedestrian === true) {
+            isPed = true;
+          }
+        });
+        return isPed;
+      }, undefined, { timeout: 15_000 });
+      recordStage("Player 2 3D scene verified rendering Player 1 as pedestrian avatar");
+
+      // 4. Player 1 re-enters vehicle via genuine pointer click on "Enter your car"
+      const enterBtn1 = page1.locator('[data-testid="enter-owned-car"]');
+      await expect(enterBtn1).toBeVisible({ timeout: 10_000 });
+      await enterBtn1.click();
+      recordStage("Player 1 clicked Enter your car");
+
+      // 5. Verify authoritative server snapshot reflects Player 1 restored to driving mode
+      await Promise.all([
+        page1.waitForFunction(() => {
+          const history = (window as any).__snapshotHistory || [];
+          const last = history[history.length - 1];
+          const self = last?.participants?.find((p: any) => p.username === "jamtin");
+          return self && self.isPedestrian === false;
+        }, undefined, { timeout: 15_000 }),
+        page2.waitForFunction(() => {
+          const history = (window as any).__snapshotHistory || [];
+          const last = history[history.length - 1];
+          const peer = last?.participants?.find((p: any) => p.username === "jamtin");
+          return peer && peer.isPedestrian === false;
+        }, undefined, { timeout: 15_000 }),
+      ]);
+      recordStage("Authoritative server snapshot verified Player 1 restored to driving mode");
+
+      // 6. Verify Player 2's 3D scene renders Player 1 with car mesh visual
+      await page2.waitForFunction(() => {
+        const scene = (window as any).__r3fScene;
+        let isCar = false;
+        scene?.traverse((o: any) => {
+          if (o.name && o.name.includes("remote-racer-jamtin") && o.userData?.isPedestrian === false) {
+            isCar = true;
+          }
+        });
+        return isCar;
+      }, undefined, { timeout: 15_000 });
+      recordStage("Player 2 3D scene verified rendering Player 1 as car model");
+
+      // 7. Re-engage throttle to prove controls and simulation loop continuation after re-entry
+      const throttleReentry1 = page1.locator('button[data-drive-action="throttle"]');
+      await expect(throttleReentry1).toBeVisible({ timeout: 10_000 });
+      const tbReentryBox = await throttleReentry1.boundingBox();
+      if (tbReentryBox) {
+        await page1.mouse.move(tbReentryBox.x + tbReentryBox.width / 2, tbReentryBox.y + tbReentryBox.height / 2);
+        await page1.mouse.down();
+      }
+      await page1.waitForFunction(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const self = last?.participants?.find((p: any) => p.username === "jamtin");
+        return self && self.speed > 0.05;
+      }, undefined, { timeout: 15_000 });
+      await page1.mouse.up();
+      recordStage("Driving controls & server simulation loop re-verified after car re-entry");
+
       // Flush video by closing pages and contexts
       const videoObj = page1.video();
       expect(videoObj).toBeDefined();
