@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-07T15:33:47.515Z",
+  "updatedAt": "2026-10-07T15:34:42.306Z",
   "runs": [
     {
       "runId": 37644837718,
@@ -38,6 +38,45 @@
           "startedAt": "2026-10-07T15:33:21Z",
           "completedAt": "2026-10-07T15:33:30Z",
           "durationSeconds": 9
+        }
+      ]
+    },
+    {
+      "runId": 37644837688,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37644837688",
+      "event": "pull_request",
+      "branch": "feat/multiplayer-racing",
+      "sha": "db083a0ad803a4444d8e31c53afcb2359b70e4e9",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/db083a0ad803a4444d8e31c53afcb2359b70e4e9",
+      "pullRequestNumbers": "#561",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/561",
+      "pullRequests": [
+        {
+          "number": 561,
+          "url": "https://github.com/duikindiesee/citylife/pull/561"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-07T15:33:17Z",
+      "completedAt": "2026-10-07T15:34:31Z",
+      "durationSeconds": 74,
+      "runnerSummary": "GitHub Actions 1000010793",
+      "jobs": [
+        {
+          "id": 112872797074,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000010793",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-07T15:33:21Z",
+          "completedAt": "2026-10-07T15:34:30Z",
+          "durationSeconds": 69
         }
       ]
     },
