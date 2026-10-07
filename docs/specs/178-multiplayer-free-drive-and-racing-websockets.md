@@ -87,5 +87,5 @@ Mounted in `ColonyApp.tsx`:
   - Both join room `racing-cup`.
   - Asserts `[data-testid="multiplayer-hud"]` reports 2 racers online in both sessions.
   - Asserts `window.__r3fScene` contains `remote-racer-jamtin2` in Player 1's view and `remote-racer-jamtin` in Player 2's view.
-  - Drives both cars forward down the road.
+  - Drives both cars forward down the road using player driving controls (`setOwnedDriveInput({ throttle: true })`) with server-authoritative progress, asserts peer movement, and neutralizes inputs on stop.
   - Transcodes recorded WebM video into `videos/multiplayer-racing.mp4` via ffmpeg.

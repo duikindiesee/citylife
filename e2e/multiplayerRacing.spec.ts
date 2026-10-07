@@ -199,37 +199,67 @@ test.describe("Multiplayer Racing Acceptance (Spec 178)", () => {
 
     console.log("Verified: Player 1 sees Player 2 in car, Player 2 sees Player 1 in car.");
 
-    // 11. Drive both racers down the road for several seconds in the browser
-    console.log("Starting in-browser racing simulation down the road...");
+    // 11. Drive both racers down the road using player driving controls with authoritative progress
+    console.log("Starting player driving controls down the road with authoritative progress...");
 
-    await page1.evaluate(({ x0, y0, heading }) => {
+    const startP1 = { x: roadStart.x + perpX * 0.4, y: roadStart.y + perpY * 0.4 };
+    const startP2 = { x: roadStart.x + cosH * 2.5 - perpX * 0.4, y: roadStart.y + sinH * 2.5 - perpY * 0.4 };
+
+    // Apply player forward throttle control to both cars
+    await page1.evaluate(() => {
       const colony = (window as any).__colony;
-      let step = 0;
-      const cos = Math.cos(heading);
-      const sin = Math.sin(heading);
-      const interval = setInterval(() => {
-        step++;
-        colony.teleportCar(x0 + cos * step * 0.4, y0 + sin * step * 0.4, heading);
-        if (step >= 20) clearInterval(interval);
-      }, 100);
-    }, { x0: roadStart.x + perpX * 0.4, y0: roadStart.y + perpY * 0.4, heading: roadStart.heading });
+      colony.setOwnedDriveInput({ throttle: true });
+    });
 
-    await page2.evaluate(({ x0, y0, heading }) => {
+    await page2.evaluate(() => {
       const colony = (window as any).__colony;
-      let step = 0;
-      const cos = Math.cos(heading);
-      const sin = Math.sin(heading);
-      const interval = setInterval(() => {
-        step++;
-        colony.teleportCar(x0 + cos * step * 0.45, y0 + sin * step * 0.45, heading);
-        if (step >= 20) clearInterval(interval);
-      }, 100);
-    }, { x0: roadStart.x + cosH * 2.5 - perpX * 0.4, y0: roadStart.y + sinH * 2.5 - perpY * 0.4, heading: roadStart.heading });
+      colony.setOwnedDriveInput({ throttle: true });
+    });
 
-    // Wait for the racing animation to complete smoothly across 3 seconds
-    await new Promise((resolve) => setTimeout(resolve, 3500));
+    // Assert authoritative driving movement progress for Player 1 and Player 2
+    await page1.waitForFunction((start) => {
+      const colony = (window as any).__colony;
+      const pose = colony.sim?.state?.operatorCar?.cell || colony.getOwnedDrivePose();
+      if (!pose) return false;
+      return Math.hypot(pose.x - start.x, pose.y - start.y) > 1.0;
+    }, startP1, { timeout: 25_000 });
 
-    console.log("Racing drive simulation complete.");
+    await page2.waitForFunction((start) => {
+      const colony = (window as any).__colony;
+      const pose = colony.sim?.state?.operatorCar?.cell || colony.getOwnedDrivePose();
+      if (!pose) return false;
+      return Math.hypot(pose.x - start.x, pose.y - start.y) > 1.0;
+    }, startP2, { timeout: 25_000 });
+
+    // Assert peer world/map movement: Player 1 observes Player 2 moving, Player 2 observes Player 1 moving
+    await page1.waitForFunction((start) => {
+      const colony = (window as any).__colony;
+      const racers = Array.from(colony.sim?.state?.remoteRacers?.values() || []) as any[];
+      const p2 = racers.find((r) => r.username === "jamtin2" || (r.cell && Math.hypot(r.cell.x - start.x, r.cell.y - start.y) > 0.5));
+      return !!p2 && !!p2.cell && Math.hypot(p2.cell.x - start.x, p2.cell.y - start.y) > 0.8;
+    }, startP2, { timeout: 25_000 });
+
+    await page2.waitForFunction((start) => {
+      const colony = (window as any).__colony;
+      const racers = Array.from(colony.sim?.state?.remoteRacers?.values() || []) as any[];
+      const p1 = racers.find((r) => r.username === "jamtin" || (r.cell && Math.hypot(r.cell.x - start.x, r.cell.y - start.y) > 0.5));
+      return !!p1 && !!p1.cell && Math.hypot(p1.cell.x - start.x, p1.cell.y - start.y) > 0.8;
+    }, startP1, { timeout: 25_000 });
+
+    // Allow vehicles to continue driving smoothly for 2.5 seconds to capture a clear racing run on video
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+
+    // Neutralize player inputs on stop
+    await page1.evaluate(() => {
+      const colony = (window as any).__colony;
+      colony.setOwnedDriveInput({ throttle: false, brake: true });
+    });
+    await page2.evaluate(() => {
+      const colony = (window as any).__colony;
+      colony.setOwnedDriveInput({ throttle: false, brake: true });
+    });
+
+    console.log("Player driving controls complete and inputs neutralized.");
 
     // 12. Confirm both vehicles advanced down the road
     const finalP1 = await page1.evaluate(() => {
