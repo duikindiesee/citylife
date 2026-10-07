@@ -538,6 +538,7 @@ export class MultiplayerClient {
           msg.error === "TOKEN_EXPIRED" ||
           msg.error === "IMPERSONATION_REJECTED" ||
           msg.error === "WORLD_MISMATCH" ||
+          msg.error === "LAYOUT_REVISION_MISMATCH" ||
           msg.error === "NEIGHBOURHOOD_MISMATCH"
         ) {
           this.closedExplicitly = true;

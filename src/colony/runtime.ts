@@ -3182,7 +3182,10 @@ export class ColonyRuntime {
       neighbourhoodKey,
       autoCreate: true,
       getToken: async () => this.authClient?.getValidToken() ?? null,
-      onStatusChange: () => {
+      onStatusChange: (status) => {
+        if (status === "disconnected" || status === "error") {
+          this.sim.state.remoteRacers?.clear();
+        }
         this.emit();
       },
       onSessionReady: () => {
