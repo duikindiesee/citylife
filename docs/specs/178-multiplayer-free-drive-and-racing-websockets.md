@@ -36,13 +36,16 @@ The server exposes a low-latency WebSocket gateway registered at `/api/v1/cityli
     speed: number;   // Linear velocity in cells/second
   }
   ```
+- **`input`**: Streams driver control inputs (`throttle`, `steer`, `brake`) with monotonic sequence numbers (`seq`). On vehicle exit (`exitOwnedCar`), sends neutralized inputs (`throttle: 0, steer: 0, brake: false, seq: seq + 1`).
+- **`snapshot`**: Server multicasts 10Hz authoritative physical simulation snapshots (`peers`, `x/y/z`, `heading`, `speed`, `lastInputSeq`) reconciling client-side prediction.
 - **`peer_joined` & `peer_left`**: Broadcasts participant connection and disconnection lifecycle events to all peers in the room.
 
 ### 2. Client Networking Layer (`MultiplayerClient`)
 
 Implemented in `src/colony/multiplayer/multiplayerClient.ts`:
-- Manages WebSocket lifecycle, ping/pong heartbeats, and auto-reconnection.
-- Throttles outgoing pose broadcasts to 20 Hz (50ms interval) to minimize network overhead while preserving smooth visual continuity.
+- Manages WebSocket lifecycle, approved endpoint boundaries, ping/pong heartbeats, and auto-reconnection.
+- Streams driving inputs via `sendInput` with monotonic sequence tracking and reconciles authoritative snapshots (`onSnapshot`).
+- Dispatches walking poses via `sendPose` and receives peer updates via `onPeerPose`.
 - Emits reactive callbacks (`onPeerJoined`, `onPeerLeft`, `onPeerPose`, `onStatusChange`) wired directly into `ColonyRuntime` and `sim.state.remoteRacers`.
 
 ### 3. Sim State & Runtime Integration
