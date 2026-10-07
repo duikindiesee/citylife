@@ -16,6 +16,7 @@ import {
   isPointInGarageVicinity,
   localFromGridCoordinates,
 } from "./garageAnchorShell";
+import { AVATAR_BODY, AVATAR_HEAD } from "./avatarLayer";
 
 interface R3FRemoteRacersProps {
   sim: ColonySim;
@@ -23,16 +24,16 @@ interface R3FRemoteRacersProps {
   terrainLevel?: ReadonlyMap<number, number> | null;
 }
 
-/** Create a floating 3D text nameplate above the racer's vehicle */
-function makeRacerPlate(username: string): THREE.Sprite {
+/** Create a floating 3D text nameplate above the racer's vehicle or walking avatar */
+function makeRacerPlate(username: string, isPedestrian = false): THREE.Sprite {
   const canvas = document.createElement("canvas");
   canvas.width = 256;
   canvas.height = 64;
   const ctx = canvas.getContext("2d");
   if (ctx) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(10, 20, 35, 0.85)";
-    ctx.strokeStyle = "rgba(80, 200, 255, 0.95)";
+    ctx.fillStyle = isPedestrian ? "rgba(10, 25, 45, 0.88)" : "rgba(10, 20, 35, 0.85)";
+    ctx.strokeStyle = isPedestrian ? "rgba(100, 220, 255, 0.95)" : "rgba(80, 200, 255, 0.95)";
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.roundRect(8, 8, 240, 48, 14);
@@ -42,7 +43,7 @@ function makeRacerPlate(username: string): THREE.Sprite {
     ctx.font = "bold 26px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.shadowColor = "rgba(80, 200, 255, 0.9)";
+    ctx.shadowColor = isPedestrian ? "rgba(100, 220, 255, 0.9)" : "rgba(80, 200, 255, 0.9)";
     ctx.shadowBlur = 8;
     ctx.fillStyle = "#ffffff";
     ctx.fillText(username, 128, 32, 220);
@@ -59,58 +60,66 @@ function makeRacerPlate(username: string): THREE.Sprite {
 
   const sprite = new THREE.Sprite(material);
   sprite.scale.set(3.2, 0.8, 1);
-  sprite.position.set(0, 1.65, 0);
+  sprite.position.set(0, isPedestrian ? 2.15 : 1.65, 0);
   return sprite;
 }
 
-function RemoteCarVisual({ racer }: { racer: { username: string; spec?: any } }) {
+function RemotePedestrianVisual({ racer }: { racer: { username: string } }) {
   const model = useMemo(() => {
-    try {
-      if (racer.spec) {
-        return buildCarMesh(racer.spec);
-      }
-    } catch {}
-
-    // Fallback crisp procedural racing car
     const group = new THREE.Group();
     const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x3388ff,
-      roughness: 0.35,
-      metalness: 0.2,
-      emissive: 0x002255,
-      emissiveIntensity: 0.3,
+      color: 0x66e0ff,
+      roughness: 0.6,
+      metalness: 0.1,
     });
-    const cabinMat = new THREE.MeshStandardMaterial({
-      color: 0x111122,
-      roughness: 0.1,
-      metalness: 0.8,
-    });
-    const wheelMat = new THREE.MeshStandardMaterial({
-      color: 0x222222,
+    const headMat = new THREE.MeshStandardMaterial({
+      color: 0xe0d0b0,
       roughness: 0.8,
+      metalness: 0.0,
     });
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.45, 0.95), bodyMat);
-    body.position.y = 0.28;
+    const bodyGeo = new THREE.CapsuleGeometry(
+      AVATAR_BODY.radius,
+      AVATAR_BODY.length,
+      4,
+      8,
+    );
+    bodyGeo.translate(0, AVATAR_BODY.lift, 0);
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
     group.add(body);
 
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.38, 0.75), cabinMat);
-    cabin.position.set(-0.15, 0.65, 0);
-    group.add(cabin);
-
-    for (const x of [-0.65, 0.65]) {
-      for (const z of [-0.5, 0.5]) {
-        const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.15, 12), wheelMat);
-        wheel.rotation.x = Math.PI / 2;
-        wheel.position.set(x, 0.24, z);
-        group.add(wheel);
-      }
-    }
+    const headGeo = new THREE.SphereGeometry(AVATAR_HEAD.radius, 10, 8);
+    headGeo.translate(0, AVATAR_HEAD.lift, 0);
+    const head = new THREE.Mesh(headGeo, headMat);
+    group.add(head);
 
     return group;
+  }, []);
+
+  const plate = useMemo(() => makeRacerPlate(racer.username, true), [racer.username]);
+
+  useEffect(() => {
+    return () => {
+      disposeDeep(model);
+      plate.material.map?.dispose();
+      plate.material.dispose();
+    };
+  }, [model, plate]);
+
+  return (
+    <group>
+      <primitive object={model} />
+      <primitive object={plate} />
+    </group>
+  );
+}
+
+function RemoteCarVisual({ racer }: { racer: { username: string; spec: CarSpec } }) {
+  const model = useMemo(() => {
+    return buildCarMesh(racer.spec);
   }, [racer.spec]);
 
-  const plate = useMemo(() => makeRacerPlate(racer.username), [racer.username]);
+  const plate = useMemo(() => makeRacerPlate(racer.username, false), [racer.username]);
 
   useEffect(() => {
     return () => {
@@ -165,31 +174,43 @@ export function R3FRemoteRacers({ sim, terrainLevel }: R3FRemoteRacersProps) {
       const grp = racerGroups.current.get(id);
       if (!grp) continue;
 
-      const onRoad = isPointOnRoadSurface(racer.cell.x, racer.cell.y, sim.state.roadSet, sim.state.roadWays);
-      const roadElevation = Math.max(0, getSmoothRoadY(t, racer.cell.x, racer.cell.y)) + ROAD_RIBBON_LIFT;
-      const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);
-      const centerY = onRoad ? Math.max(roadElevation, groundElevation) : groundElevation;
-
       const heading = racer.heading ?? 0;
-      const cosH = Math.cos(heading);
-      const sinH = Math.sin(heading);
-      const halfLenCells = 2.1 / 4.0;
-      const halfWidCells = 0.95 / 4.0;
+      const isPedestrian = Boolean(racer.isPedestrian || !racer.spec);
 
-      const yFront = sampleElevation(racer.cell.x + cosH * halfLenCells, racer.cell.y + sinH * halfLenCells);
-      const yRear = sampleElevation(racer.cell.x - cosH * halfLenCells, racer.cell.y - sinH * halfLenCells);
-      const pitch = Math.atan2(yFront - yRear, 4.2);
+      if (isPedestrian) {
+        const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);
+        grp.position.set(
+          (racer.cell.x - t.size / 2) * 4,
+          groundElevation,
+          (racer.cell.y - t.size / 2) * 4
+        );
+        grp.rotation.set(0, -heading + Math.PI / 2, 0, "YXZ");
+      } else {
+        const onRoad = isPointOnRoadSurface(racer.cell.x, racer.cell.y, sim.state.roadSet, sim.state.roadWays);
+        const roadElevation = Math.max(0, getSmoothRoadY(t, racer.cell.x, racer.cell.y)) + ROAD_RIBBON_LIFT;
+        const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);
+        const centerY = onRoad ? Math.max(roadElevation, groundElevation) : groundElevation;
 
-      const yLeft = sampleElevation(racer.cell.x - sinH * halfWidCells, racer.cell.y + cosH * halfWidCells);
-      const yRight = sampleElevation(racer.cell.x + sinH * halfWidCells, racer.cell.y - sinH * halfWidCells);
-      const roll = Math.atan2(yLeft - yRight, 1.9);
+        const cosH = Math.cos(heading);
+        const sinH = Math.sin(heading);
+        const halfLenCells = 2.1 / 4.0;
+        const halfWidCells = 0.95 / 4.0;
 
-      grp.position.set(
-        (racer.cell.x - t.size / 2) * 4,
-        centerY,
-        (racer.cell.y - t.size / 2) * 4
-      );
-      grp.rotation.set(-roll, -heading, pitch, "YXZ");
+        const yFront = sampleElevation(racer.cell.x + cosH * halfLenCells, racer.cell.y + sinH * halfLenCells);
+        const yRear = sampleElevation(racer.cell.x - cosH * halfLenCells, racer.cell.y - sinH * halfLenCells);
+        const pitch = Math.atan2(yFront - yRear, 4.2);
+
+        const yLeft = sampleElevation(racer.cell.x - sinH * halfWidCells, racer.cell.y + cosH * halfWidCells);
+        const yRight = sampleElevation(racer.cell.x + sinH * halfWidCells, racer.cell.y - sinH * halfWidCells);
+        const roll = Math.atan2(yLeft - yRight, 1.9);
+
+        grp.position.set(
+          (racer.cell.x - t.size / 2) * 4,
+          centerY,
+          (racer.cell.y - t.size / 2) * 4
+        );
+        grp.rotation.set(-roll, -heading, pitch, "YXZ");
+      }
     }
   });
 
@@ -211,7 +232,11 @@ export function R3FRemoteRacers({ sim, terrainLevel }: R3FRemoteRacersProps) {
             else racerGroups.current.delete(racer.participantId);
           }}
         >
-          <RemoteCarVisual racer={racer} />
+          {racer.isPedestrian || !racer.spec ? (
+            <RemotePedestrianVisual racer={racer} />
+          ) : (
+            <RemoteCarVisual racer={racer as { username: string; spec: CarSpec }} />
+          )}
         </group>
       ))}
     </group>

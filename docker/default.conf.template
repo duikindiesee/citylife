@@ -3,6 +3,9 @@
 # $-prefixed nginx runtime variables are left intact). Serves the static SPA AND proxies /kooker
 # to the gateway like the vite dev proxy, so a production build reaches kooker the same way.
 
+log_format sanitized_wss '$remote_addr - [$time_local] "$request_method $uri" '
+                         '$status $upstream_status $request_time';
+
 server {
     listen 80;
     server_name localhost;
@@ -73,6 +76,7 @@ server {
 
     # CityLife multiplayer WebSocket proxy with connection upgrade.
     location = /kooker/api/v1/citylife/ws {
+        access_log /var/log/nginx/access.log sanitized_wss;
         proxy_pass ${KOOKER_GATEWAY}/api/v1/citylife/ws;
         proxy_http_version 1.1;
         proxy_ssl_server_name on;
@@ -87,6 +91,7 @@ server {
 
     # Compatibility for direct /api/v1/citylife/ws WebSocket route
     location = /api/v1/citylife/ws {
+        access_log /var/log/nginx/access.log sanitized_wss;
         proxy_pass ${KOOKER_GATEWAY}/api/v1/citylife/ws;
         proxy_http_version 1.1;
         proxy_ssl_server_name on;

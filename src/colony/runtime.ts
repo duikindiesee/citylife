@@ -2813,6 +2813,27 @@ export class ColonyRuntime {
     this.ownedDriveInputGeneration++;
     this.ownedDriveSeated = true;
     this.ownedDriveInput = {};
+    if (
+      this.multiplayerClient &&
+      this.multiplayerClient.getStatus() === "connected" &&
+      this.ownedDrivePose
+    ) {
+      const terrain = this.sim.state.terrain;
+      const worldX = (this.ownedDrivePose.x - terrain.size / 2) * 4;
+      const worldZ = (this.ownedDrivePose.y - terrain.size / 2) * 4;
+      const worldY = terrain.worldY(
+        Math.round(this.ownedDrivePose.x),
+        Math.round(this.ownedDrivePose.y),
+      );
+      this.multiplayerClient.sendPose({
+        x: worldX,
+        y: worldY,
+        z: worldZ,
+        heading: this.ownedDrivePose.heading,
+        speed: 0,
+        mode: "driving",
+      });
+    }
     this.emit();
     return true;
   }
@@ -3009,6 +3030,26 @@ export class ColonyRuntime {
       yaw: -car.heading - Math.PI / 2,
       seq: (this.fpTeleportRequest?.seq ?? 0) + 1,
     };
+    if (
+      this.multiplayerClient &&
+      this.multiplayerClient.getStatus() === "connected"
+    ) {
+      const terrain = this.sim.state.terrain;
+      const worldX = (exitCell.x - terrain.size / 2) * 4;
+      const worldZ = (exitCell.y - terrain.size / 2) * 4;
+      const worldY = terrain.worldY(
+        Math.round(exitCell.x),
+        Math.round(exitCell.y),
+      );
+      this.multiplayerClient.sendPose({
+        x: worldX,
+        y: worldY,
+        z: worldZ,
+        heading: -car.heading - Math.PI / 2,
+        speed: 0,
+        mode: "walking",
+      });
+    }
     this.emit();
     return true;
   }
@@ -3064,7 +3105,14 @@ export class ColonyRuntime {
       const worldX = (x - terrain.size / 2) * 4;
       const worldZ = (y - terrain.size / 2) * 4;
       const worldY = terrain.worldY(Math.round(x), Math.round(y));
-      this.multiplayerClient.sendPose({ x: worldX, y: worldY, z: worldZ, heading, speed: 0 });
+      this.multiplayerClient.sendPose({
+        x: worldX,
+        y: worldY,
+        z: worldZ,
+        heading,
+        speed: 0,
+        mode: "driving",
+      });
     }
     this.emit();
   }
@@ -3090,7 +3138,9 @@ export class ColonyRuntime {
       return;
     }
     if (!this.operatorUserId) {
-      console.warn("[Multiplayer] Cannot enable multiplayer without authenticated operatorUserId");
+      console.warn(
+        "[Multiplayer] Cannot enable multiplayer without authenticated operatorUserId",
+      );
       return;
     }
     const userId = this.operatorUserId;
@@ -3156,6 +3206,20 @@ export class ColonyRuntime {
           racer.heading = pose.heading;
           racer.speed = pose.speed;
           racer.lastSeen = Date.now();
+          if (pose.vehicleKey !== undefined && pose.vehicleKey !== racer.vehicleKey) {
+            racer.vehicleKey = pose.vehicleKey;
+            racer.spec = pose.vehicleKey
+              ? (resolveOwnedCar([pose.vehicleKey]) ?? null)
+              : null;
+          }
+          if (pose.mode !== undefined) {
+            racer.isPedestrian =
+              pose.mode === "walking" ||
+              Boolean(pose.isPedestrian) ||
+              !racer.spec;
+          } else if (pose.isPedestrian !== undefined) {
+            racer.isPedestrian = Boolean(pose.isPedestrian) || !racer.spec;
+          }
           this.emit();
         }
         // Unknown peer poses are dropped without inventing a fabricated Racer identity or default car
@@ -3303,9 +3367,43 @@ export class ColonyRuntime {
           z: worldZ,
           heading: this.ownedDrivePose.heading,
           speed: this.ownedDrivePose.speed,
+          mode: "driving",
         });
       }
     }
+  }
+
+  tickWalkingMultiplayer(): void {
+    if (
+      !this.multiplayerClient ||
+      this.multiplayerClient.getStatus() !== "connected" ||
+      this.ownedDriveSeated
+    ) {
+      return;
+    }
+
+    const at =
+      this.fpCameraCell ??
+      (this.fpCitizenId ? this.citizens.byId(this.fpCitizenId)?.pos : null);
+    if (!at) return;
+
+    const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
+    const heading = c?.heading ?? 0;
+    const speed = this.fpWalkSpeed ?? 0;
+    const terrain = this.sim.state.terrain;
+    const size = terrain.size;
+    const worldX = (at.x - size / 2) * 4;
+    const worldZ = (at.y - size / 2) * 4;
+    const worldY = terrain.worldY(Math.round(at.x), Math.round(at.y));
+
+    this.multiplayerClient.sendPose({
+      x: worldX,
+      y: worldY,
+      z: worldZ,
+      heading,
+      speed,
+      mode: "walking",
+    });
   }
 
   private garageModelCache: GarageAnchorShellModel | null = null;
@@ -7714,6 +7812,7 @@ export class ColonyRuntime {
     this.tickAutoZoningSettlers(dtReal);
     this.raceTick(dtReal);
     this.tickOwnedDrive(dtReal);
+    this.tickWalkingMultiplayer();
     this.transitTick(); // spec 150 PR2 — the bus fleet rides canonical sol time, not the sim clock
     this.renderer?.frame(dtReal);
     if (now - this.lastUi > 200) {

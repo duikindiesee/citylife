@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { MultiplayerClient } from "../src/colony/multiplayer/multiplayerClient";
+import { MultiplayerClient, redactUrl } from "../src/colony/multiplayer/multiplayerClient";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 
 class MockWebSocket {
@@ -191,7 +191,81 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
 
     await client.connect();
     expect(MockWebSocket.instances.length).toBe(1);
-    expect(MockWebSocket.instances[0]!.url).toContain("/api/v1/citylife/ws?jwt=valid-token&token=valid-token");
+    expect(MockWebSocket.instances[0]!.url).toContain("/api/v1/citylife/ws?jwt=valid-token");
+    expect(MockWebSocket.instances[0]!.url).not.toContain("token=");
+  });
+
+  it("packages mode: driving and mode: walking correctly in sendPose", async () => {
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+
+    client.sendPose({ x: 10, y: 0, z: 20, heading: 1.5, speed: 25, mode: "driving" });
+    const sentPose1 = socket.sent.find((m: any) => m.type === "pose");
+    expect(sentPose1).toBeDefined();
+    expect(sentPose1.mode).toBe("driving");
+    expect(sentPose1.speed).toBe(25);
+  });
+
+  it("handles peer_pose mode transitions with vehicleKey and pedestrian flag", async () => {
+    const posesReceived: any[] = [];
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+      onPeerPose: (participantId, pose) => {
+        posesReceived.push({ participantId, ...pose });
+      },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "peer_pose",
+        participantId: "peer-99",
+        mode: "walking",
+        isPedestrian: true,
+        vehicleKey: null,
+        x: 15,
+        y: 0,
+        z: 30,
+        heading: 0.2,
+        speed: 2,
+      }),
+    });
+
+    expect(posesReceived).toHaveLength(1);
+    expect(posesReceived[0].mode).toBe("walking");
+    expect(posesReceived[0].isPedestrian).toBe(true);
+    expect(posesReceived[0].vehicleKey).toBeNull();
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "peer_pose",
+        participantId: "peer-99",
+        mode: "driving",
+        isPedestrian: false,
+        vehicleKey: "karoo-vonk-11",
+        x: 40,
+        y: 0,
+        z: 80,
+        heading: 1.1,
+        speed: 35,
+      }),
+    });
+
+    expect(posesReceived).toHaveLength(2);
+    expect(posesReceived[1].mode).toBe("driving");
+    expect(posesReceived[1].isPedestrian).toBe(false);
+    expect(posesReceived[1].vehicleKey).toBe("karoo-vonk-11");
   });
 });
 
@@ -226,5 +300,13 @@ describe("BusNetworkMiniMapModel peer integration", () => {
     expect(model.peers[0]!.outOfBounds).toBe(false);
     expect(model.peers[0]!.x).toBeGreaterThan(0);
     expect(model.peers[0]!.y).toBeGreaterThan(0);
+  });
+
+  it("redacts plain, percent-encoded token and jwt parameters, and userinfo in URLs", () => {
+    const canary = "SYNTHETIC_LOG_CANARY";
+    expect(redactUrl(`wss://example.invalid/ws?jwt=${canary}`)).toBe("wss://example.invalid/ws?jwt=[REDACTED]");
+    expect(redactUrl(`wss://example.invalid/ws?%6a%77%74=${canary}`)).toBe("wss://example.invalid/ws?%6a%77%74=[REDACTED]");
+    expect(redactUrl(`wss://example.invalid/ws?%74%6f%6b%65%6e=${canary}`)).toBe("wss://example.invalid/ws?%74%6f%6b%65%6e=[REDACTED]");
+    expect(redactUrl(`https://user:pass@example.invalid/ws`)).toBe("https://[REDACTED]:[REDACTED]@example.invalid/ws");
   });
 });

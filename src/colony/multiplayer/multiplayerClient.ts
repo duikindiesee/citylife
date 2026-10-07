@@ -28,62 +28,163 @@ export interface MultiplayerClientOptions {
   onStatusChange?: (status: MultiplayerStatus) => void;
   onPeerJoined?: (peer: RemoteRacer) => void;
   onPeerLeft?: (participantId: string) => void;
-  onPeerPose?: (participantId: string, pose: { x: number; y: number; z: number; heading: number; speed: number }) => void;
+  onPeerPose?: (
+    participantId: string,
+    pose: {
+      x: number;
+      y: number;
+      z: number;
+      heading: number;
+      speed: number;
+      mode?: "driving" | "walking";
+      isPedestrian?: boolean;
+      vehicleKey?: string | null;
+    },
+  ) => void;
   onSessionReady?: (sessionId: string, inviteCode: string, participantId: string, worldId?: string, neighbourhoodKey?: string) => void;
   onError?: (error: { code: string; message: string }) => void;
 }
 
-function redactUrl(url: string): string {
-  return url.replace(/([?&](?:token|jwt)=)[^&]+/gi, "$1[REDACTED]");
+const APPROVED_WS_PATHS = new Set([
+  "/api/v1/citylife/ws",
+  "/kooker/api/v1/citylife/ws",
+]);
+
+export function redactUrl(url: string): string {
+  try {
+    let sanitized = url.replace(/:\/\/([^:@]+):([^@]+)@/, "://[REDACTED]:[REDACTED]@");
+    sanitized = sanitized.replace(/([?&])([^=&#]+)=([^&#]*)/g, (match, prefix, rawKey) => {
+      let decodedKey = rawKey;
+      try {
+        decodedKey = decodeURIComponent(rawKey).toLowerCase();
+      } catch {
+        decodedKey = rawKey.toLowerCase();
+      }
+      if (decodedKey === "jwt" || decodedKey === "token") {
+        return `${prefix}${rawKey}=[REDACTED]`;
+      }
+      return match;
+    });
+    return sanitized;
+  } catch {
+    return "[REDACTED]";
+  }
 }
 
-function isApprovedEndpoint(urlStr: string): boolean {
+interface EndpointValidationSuccess {
+  ok: true;
+  url: string;
+}
+
+interface EndpointValidationFailure {
+  ok: false;
+  reason: string;
+}
+
+type EndpointValidationResult = EndpointValidationSuccess | EndpointValidationFailure;
+
+export function resolveAndValidateEndpoint(rawUrl: string | undefined, token: string): EndpointValidationResult {
   try {
-    // Only single-slash path is relative to same origin (e.g. /api/v1/citylife/ws)
-    if (urlStr.startsWith("/") && !urlStr.startsWith("//")) return true;
+    let parsed: URL;
+    const hasWindow = typeof window !== "undefined" && Boolean(window.location);
+    const windowProto = hasWindow ? window.location.protocol : "http:";
+    const windowHost = hasWindow ? window.location.host.toLowerCase() : "127.0.0.1:8080";
+    const windowHostname = hasWindow ? (window.location.hostname || "").toLowerCase() : "127.0.0.1";
 
-    if (typeof window !== "undefined" && window.location) {
-      const currentProto = window.location.protocol;
-      const currentHost = window.location.host.toLowerCase();
-      const currentHostname = (window.location.hostname || "").toLowerCase();
+    if (!rawUrl) {
+      const defaultWsProto = windowProto === "https:" ? "wss:" : "ws:";
+      parsed = new URL(`${defaultWsProto}//${windowHost}/api/v1/citylife/ws`);
+    } else {
+      const normalized = rawUrl.replace(/\\/g, "/");
 
-      let parsed: URL;
-      if (urlStr.startsWith("//")) {
-        parsed = new URL(`${currentProto}${urlStr}`);
-      } else if (urlStr.startsWith("ws://") || urlStr.startsWith("wss://")) {
-        const httpProto = urlStr.startsWith("wss://") ? "https:" : "http:";
-        parsed = new URL(urlStr.replace(/^wss?:/, httpProto));
+      if (normalized.startsWith("//")) {
+        const defaultWsProto = windowProto === "https:" ? "wss:" : "ws:";
+        parsed = new URL(`${defaultWsProto}${normalized}`);
+      } else if (/^wss?:\/\//i.test(normalized)) {
+        parsed = new URL(normalized);
       } else {
-        parsed = new URL(urlStr, `${currentProto}//${window.location.host}`);
+        const base = hasWindow ? (window.location.href || `${windowProto}//${windowHost}/`) : "http://127.0.0.1:8080/";
+        parsed = new URL(normalized, base);
       }
-
-      if (parsed.host.toLowerCase() === currentHost) {
-        return true;
-      }
-
-      // Production HTTPS or non-loopback origin must NOT route credentials to arbitrary loopback services
-      const isLocalHost =
-        currentHostname === "localhost" ||
-        currentHostname === "127.0.0.1" ||
-        currentHostname === "[::1]";
-
-      if (isLocalHost) {
-        const targetHost = parsed.hostname.toLowerCase();
-        if (targetHost === "localhost" || targetHost === "127.0.0.1" || targetHost === "[::1]") {
-          return true;
-        }
-      }
-
-      return false;
     }
 
-    // Node / test environment without window.location: loopback is allowed
-    const parsed = new URL(urlStr.replace(/^wss?:/, "http:"), "http://127.0.0.1:8080");
-    const h = parsed.hostname.toLowerCase();
-    return h === "localhost" || h === "127.0.0.1" || h === "[::1]";
-  } catch {
-    return false;
+    let wsProto = parsed.protocol.toLowerCase();
+    if (wsProto === "http:") {
+      wsProto = "ws:";
+    } else if (wsProto === "https:") {
+      wsProto = "wss:";
+    }
+
+    if (wsProto !== "ws:" && wsProto !== "wss:") {
+      return { ok: false, reason: `Invalid WebSocket protocol: ${parsed.protocol}` };
+    }
+
+    if (hasWindow && windowProto === "https:" && wsProto === "ws:") {
+      return { ok: false, reason: "Insecure WebSocket protocol (ws:) disallowed on HTTPS origin" };
+    }
+
+    if (parsed.username || parsed.password) {
+      return { ok: false, reason: "Credential-bearing userinfo in URL is forbidden" };
+    }
+
+    if (!APPROVED_WS_PATHS.has(parsed.pathname)) {
+      return { ok: false, reason: `Unapproved WebSocket path: ${parsed.pathname}` };
+    }
+
+    if (hasWindow) {
+      const targetHost = parsed.host.toLowerCase();
+      const targetHostname = parsed.hostname.toLowerCase();
+
+      if (targetHost !== windowHost) {
+        const isCurrentLoopback =
+          windowHostname === "localhost" ||
+          windowHostname === "127.0.0.1" ||
+          windowHostname === "[::1]";
+
+        const isTargetLoopback =
+          targetHostname === "localhost" ||
+          targetHostname === "127.0.0.1" ||
+          targetHostname === "[::1]";
+
+        if (!isCurrentLoopback || !isTargetLoopback) {
+          return { ok: false, reason: `Cross-origin target host forbidden: ${parsed.host}` };
+        }
+      }
+    } else {
+      const targetHostname = parsed.hostname.toLowerCase();
+      const isTargetLoopback =
+        targetHostname === "localhost" ||
+        targetHostname === "127.0.0.1" ||
+        targetHostname === "[::1]";
+
+      if (!isTargetLoopback) {
+        return { ok: false, reason: `Non-loopback host forbidden in test environment: ${parsed.host}` };
+      }
+    }
+
+    const finalUrl = new URL(parsed.toString());
+    finalUrl.protocol = wsProto;
+
+    const keysToRemove: string[] = [];
+    for (const key of finalUrl.searchParams.keys()) {
+      if (/^(jwt|token)$/i.test(key)) {
+        keysToRemove.push(key);
+      }
+    }
+    for (const key of keysToRemove) {
+      finalUrl.searchParams.delete(key);
+    }
+
+    finalUrl.searchParams.set("jwt", token);
+
+    return { ok: true, url: finalUrl.toString() };
+  } catch (err: any) {
+    return { ok: false, reason: err?.message || "URL parsing failure" };
   }
+}
+
+export function isApprovedEndpoint(urlStr: string): boolean {
+  return resolveAndValidateEndpoint(urlStr, "probe-token").ok;
 }
 
 export class MultiplayerClient {
@@ -177,31 +278,24 @@ export class MultiplayerClient {
       return;
     }
 
-    const defaultUrl = (() => {
-      if (typeof window !== "undefined" && window.location) {
-        const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-        return `${proto}//${window.location.host}/api/v1/citylife/ws`;
-      }
-      return "ws://127.0.0.1:8080/api/v1/citylife/ws";
-    })();
-
-    const baseUrl = this.options.url || defaultUrl;
-
-    if (!isApprovedEndpoint(baseUrl)) {
-      console.error("[Multiplayer] Rejected unapproved cross-origin endpoint for authenticated WebSocket:", baseUrl);
+    const endpointResult = resolveAndValidateEndpoint(this.options.url, token);
+    if (!endpointResult.ok) {
+      const rawLogged = this.options.url ? redactUrl(this.options.url) : "[default]";
+      console.error(
+        `[Multiplayer] Rejected unapproved endpoint for authenticated WebSocket (${endpointResult.reason}):`,
+        rawLogged,
+      );
       this.setStatus("error");
       if (this.options.onError) {
         this.options.onError({
           code: "UNAPPROVED_ENDPOINT",
-          message: "WebSocket URL must be same-origin or an approved loopback gateway",
+          message: endpointResult.reason,
         });
       }
       return;
     }
 
-    let targetUrl = baseUrl;
-    const sep = targetUrl.includes("?") ? "&" : "?";
-    targetUrl = `${targetUrl}${sep}jwt=${encodeURIComponent(token)}&token=${encodeURIComponent(token)}`;
+    const targetUrl = endpointResult.url;
 
     let ws: WebSocket;
     try {
@@ -369,6 +463,9 @@ export class MultiplayerClient {
               z: Number(msg.z ?? 0),
               heading: Number(msg.heading ?? 0),
               speed: Number(msg.speed ?? 0),
+              mode: msg.mode === "driving" ? "driving" : "walking",
+              isPedestrian: msg.isPedestrian !== undefined ? Boolean(msg.isPedestrian) : undefined,
+              vehicleKey: msg.vehicleKey !== undefined ? (msg.vehicleKey ? String(msg.vehicleKey) : null) : undefined,
             });
           }
         }
@@ -398,7 +495,14 @@ export class MultiplayerClient {
     }
   }
 
-  public sendPose(pose: { x: number; y: number; z?: number; heading: number; speed: number }): void {
+  public sendPose(pose: {
+    x: number;
+    y: number;
+    z?: number;
+    heading: number;
+    speed: number;
+    mode?: "driving" | "walking";
+  }): void {
     const now = Date.now();
     // Throttle to max 20Hz (50ms interval) to conserve bandwidth while maintaining smooth client extrapolation
     if (now - this.lastPoseSentAt < 45) return;
@@ -406,6 +510,7 @@ export class MultiplayerClient {
 
     this.send({
       type: "pose",
+      mode: pose.mode ?? "walking",
       x: pose.x,
       y: pose.y,
       z: pose.z ?? 0,

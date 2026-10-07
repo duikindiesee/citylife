@@ -570,13 +570,6 @@ function useRuntime(): ColonyRuntime {
         );
         ref.current.setSpeed(0);
       }
-      const room = query.get("room");
-      const mp = query.get("multiplayer");
-      if (room || mp === "1") {
-        setTimeout(() => {
-          ref.current?.enableMultiplayer(room || "racing-cup");
-        }, 300);
-      }
     }
     (window as unknown as { __colony: ColonyRuntime }).__colony = ref.current;
   }
@@ -972,6 +965,35 @@ export function ColonyApp() {
   // can never carry a prior user's positive entitlement forward. A stale in-flight response is
   // ignored (`cancelled`) so it can never overwrite the current identity's decision.
   const operatorUserId = auth.operator?.userId ?? null;
+
+  // Spec 178 — Lifecycle-driven multiplayer connection:
+  // Requires all 3: authentic player identity (auth.isAuthenticated && operatorUserId !== null),
+  // explicit room intent (query room or multiplayer=1), and world layout boot ready.
+  // Cleans up connection on logout, account switch, room exit, or unmount.
+  useEffect(() => {
+    const isReady = worldLayoutBoot.status === "ready";
+    const hasAuth = auth.isAuthenticated && operatorUserId !== null;
+
+    const query =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : null;
+    const explicitRoom = query?.get("room");
+    const explicitMp = explicitRoom !== null || query?.get("multiplayer") === "1";
+    const room = explicitRoom || (explicitMp ? "racing-cup" : null);
+
+    const shouldConnect = isReady && hasAuth && Boolean(room);
+
+    if (shouldConnect && room) {
+      runtime.enableMultiplayer(room);
+    } else {
+      runtime.disableMultiplayer();
+    }
+
+    return () => {
+      runtime.disableMultiplayer();
+    };
+  }, [auth.isAuthenticated, operatorUserId, worldLayoutBoot.status, runtime]);
   const walletAccountKey =
     auth.isAuthenticated && operatorUserId !== null
       ? String(operatorUserId)
