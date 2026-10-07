@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:ci-report-publisher": "node --test .github/scripts/ci-report-publisher.test.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:actual-pair": "playwright test --config playwright.actual-pair.config.ts",
     "test:e2e:mobile-harness": "node scripts/run-bounded-e2e.mjs",
     "test:e2e:mobile-harness:hang-canary": "node scripts/run-bounded-e2e.mjs --hang-canary"
   },

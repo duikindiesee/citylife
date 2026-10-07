@@ -8,14 +8,58 @@ import { createWorldLayoutDocument } from "../src/colony/spatial/worldLayoutDocu
 import { ColonyRuntime } from "../src/colony/runtime";
 
 import { createRequire } from "module";
+import { fileURLToPath } from "url";
 const require = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Import proposed Fastify application and authority components from citylife-server
-const jwt = require("../../citylife-server/node_modules/jsonwebtoken");
-const { buildApp } = require("../../citylife-server/dist/app.js");
-const { GameStateManager } = require("../../citylife-server/dist/gameState.js");
-const { LocalWorldAuthorityClient } = require("../../citylife-server/dist/worldAuthorityClient.js");
-const { RealtimeManager } = require("../../citylife-server/dist/realtime.js");
+function loadServerComponents() {
+  function findServerDir(): string {
+    if (process.env.CITYLIFE_SERVER_DIR) {
+      const custom = path.resolve(process.env.CITYLIFE_SERVER_DIR);
+      if (fs.existsSync(custom)) return custom;
+    }
+    const candidates = [
+      path.resolve(process.cwd(), "citylife-server"),
+      path.resolve(process.cwd(), "../citylife-server"),
+      path.resolve(__dirname, "../../citylife-server"),
+      path.resolve(__dirname, "../citylife-server"),
+    ];
+    for (const cand of candidates) {
+      if (fs.existsSync(cand) && fs.existsSync(path.join(cand, "dist/app.js"))) {
+        return cand;
+      }
+    }
+    for (const cand of candidates) {
+      if (fs.existsSync(cand)) return cand;
+    }
+    throw new Error(
+      `citylife-server checkout not found. Searched: ${candidates.join(", ")}. ` +
+      `Set CITYLIFE_SERVER_DIR or check out citylife-server as sibling.`
+    );
+  }
+
+  const serverDir = findServerDir();
+  const jwtPath = path.join(serverDir, "node_modules/jsonwebtoken");
+  const appPath = path.join(serverDir, "dist/app.js");
+  const gameStatePath = path.join(serverDir, "dist/gameState.js");
+  const worldAuthPath = path.join(serverDir, "dist/worldAuthorityClient.js");
+  const realtimePath = path.join(serverDir, "dist/realtime.js");
+
+  if (!fs.existsSync(appPath) || !fs.existsSync(jwtPath)) {
+    throw new Error(
+      `citylife-server at ${serverDir} is missing dependencies or build artifacts (run 'npm ci && npm run build' in ${serverDir}).`
+    );
+  }
+
+  const jwt = require(jwtPath);
+  const { buildApp } = require(appPath);
+  const { GameStateManager } = require(gameStatePath);
+  const { LocalWorldAuthorityClient } = require(worldAuthPath);
+  const { RealtimeManager } = require(realtimePath);
+
+  return { jwt, buildApp, GameStateManager, LocalWorldAuthorityClient, RealtimeManager };
+}
 
 const SESSION_STORAGE_KEY = "citylife.session.v5";
 const JWT_SECRET = "synthetic-actual-pair-secret-999";
@@ -68,6 +112,14 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     if (!fs.existsSync(rawVideoDir)) {
       fs.mkdirSync(rawVideoDir, { recursive: true });
     }
+
+    const {
+      jwt,
+      buildApp,
+      GameStateManager,
+      LocalWorldAuthorityClient,
+      RealtimeManager,
+    } = loadServerComponents();
 
     recordStage("Initialization & World Layout Document creation");
 
@@ -785,6 +837,18 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
       console.log("Numeric mini-map peer marker projection verified on BOTH clients within justified subpixel tolerance (<0.5px).");
       recordStage("Numeric mini-map peer marker projections verified on both clients");
+
+      // Close mini-map modals on both players via genuine pointer click so that the 3D scene
+      // is not obscured by the map overlay during peer avatar / car mode transition visual inspection
+      const closeMapP1 = page1.locator('[data-testid="city-map-toggle"]');
+      if (await closeMapP1.isVisible()) {
+        await closeMapP1.click();
+      }
+      const closeMapP2 = page2.locator('[data-testid="city-map-toggle"]');
+      if (await closeMapP2.isVisible()) {
+        await closeMapP2.click();
+      }
+      recordStage("Mini-maps closed to enable unobstructed 3D scene visual capture");
 
       // Next bounded slice: prove the SAME mounted participant changes driving -> walking -> driving
       // through actual game controls, with exact participantId pinning, peer car/pedestrian mesh inspection,
