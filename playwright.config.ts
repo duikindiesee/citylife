@@ -7,11 +7,11 @@ const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: "./e2e",
-  // The mobile/touch UAT harness (PLAYER.MOBILE.E2E.1) has its own isolated config, port and
-  // process-tree-kill wrapper (playwright.mobile-harness.config.ts, npm run
-  // test:e2e:mobile-harness) — it must never be swept into this suite's default testMatch, or
-  // its opt-in hang canary would run here unprotected by that wrapper.
-  testIgnore: "**/mobile-harness/**",
+  // The mobile/touch UAT harness (PLAYER.MOBILE.E2E.1) and the multiplayer actual-pair integration
+  // acceptance suite have their own isolated configs, ports and runner dependencies.
+  // Neither is swept into this suite's default discovery pass, ensuring ordinary client E2E runs
+  // without requiring sibling server checkouts or diluting timeout/process bounds.
+  testIgnore: ["**/mobile-harness/**", "**/multiplayerActualPair.spec.ts"],
   timeout: 60_000,
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),

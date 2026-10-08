@@ -27,17 +27,95 @@ export interface WorldLayoutBootRuntime {
   hydrateWorldLayout(document: WorldLayoutDocument): void | Promise<void>;
 }
 
+export interface RemoteStarterCatalogueManifest {
+  worldId: string;
+  layoutRevision: string;
+  layout: WorldLayoutDocument;
+  [key: string]: any;
+}
+
+export interface RemoteWorldLayoutLoader {
+  loadRemoteStarterCatalogue(worldId: string): Promise<{
+    published: boolean;
+    manifest: RemoteStarterCatalogueManifest;
+  } | null>;
+}
+
+export interface HttpRemoteWorldLayoutLoaderOptions {
+  baseUrl?: string;
+  getToken?: () => Promise<string | null> | string | null;
+  timeoutMs?: number;
+}
+
+export class HttpRemoteWorldLayoutLoader implements RemoteWorldLayoutLoader {
+  private readonly baseUrl: string;
+  private readonly getToken?: () => Promise<string | null> | string | null;
+  private readonly timeoutMs: number;
+
+  constructor(options?: HttpRemoteWorldLayoutLoaderOptions) {
+    this.baseUrl = (options?.baseUrl !== undefined && options.baseUrl !== ""
+      ? options.baseUrl
+      : "/kooker"
+    ).replace(/\/+$/, "");
+    this.getToken = options?.getToken;
+    this.timeoutMs = options?.timeoutMs ?? 5000;
+  }
+
+  async loadRemoteStarterCatalogue(worldId: string): Promise<{
+    published: boolean;
+    manifest: RemoteStarterCatalogueManifest;
+  } | null> {
+    const token = this.getToken ? await this.getToken() : null;
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      "Cache-Control": "no-store",
+    };
+    if (token) {
+      headers["Authorization"] = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const url = `${this.baseUrl}/api/v1/citylife/worlds/${encodeURIComponent(worldId)}/starter-catalogue`;
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers,
+        signal: controller.signal,
+      });
+
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error(`Remote starter catalogue fetch failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data || typeof data !== "object") {
+        throw new Error("Invalid remote starter catalogue response");
+      }
+      return data;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+}
+
 export interface WorldLayoutBootOptions {
   readonly worldId: string;
   readonly store: WorldLayoutBootStore;
   readonly runtime: WorldLayoutBootRuntime;
+  readonly remoteLoader?: RemoteWorldLayoutLoader;
+  readonly requireRemoteAuthority?: boolean;
 }
 
 export interface WorldLayoutBootResult {
   readonly ready: true;
   readonly worldId: string;
   readonly revision: string;
-  readonly source: "stored" | "initialized";
+  readonly source: "stored" | "initialized" | "canonical_remote";
 }
 
 export class WorldLayoutBootError extends Error {
@@ -45,7 +123,9 @@ export class WorldLayoutBootError extends Error {
     readonly code:
       | "WORLD_ID_MISMATCH"
       | "REVISION_MISMATCH"
-      | "CONFLICT_WITHOUT_HEAD",
+      | "CONFLICT_WITHOUT_HEAD"
+      | "WORLD_UNPUBLISHED"
+      | "CANONICAL_REMOTE_UNAVAILABLE",
     message: string,
   ) {
     super(message);
@@ -117,6 +197,15 @@ function waitForAttempt<T>(
   });
 }
 
+interface RuntimeCoordinatorOwner {
+  activeCoordinator: WorldLayoutBootCoordinator;
+  worldId: string;
+  generation: number;
+}
+
+const runtimeOwnerRegistry = new WeakMap<object, RuntimeCoordinatorOwner>();
+let nextBootGeneration = 1;
+
 /**
  * One-shot barrier between deterministic runtime construction and `runtime.start()`.
  *
@@ -132,13 +221,41 @@ export class WorldLayoutBootCoordinator {
   private readonly worldId: string;
   private readonly store: WorldLayoutBootStore;
   private readonly runtime: WorldLayoutBootRuntime;
+  private readonly remoteLoader?: RemoteWorldLayoutLoader;
+  private readonly requireRemoteAuthority?: boolean;
   private attempt?: Promise<WorldLayoutBootResult>;
   private attemptSettled = true;
+  private generation = 0;
 
   constructor(options: WorldLayoutBootOptions) {
     this.worldId = requiredWorldId(options.worldId);
     this.store = options.store;
     this.runtime = options.runtime;
+    this.remoteLoader = options.remoteLoader;
+    this.requireRemoteAuthority = options.requireRemoteAuthority;
+    if (typeof this.runtime === "object" && this.runtime !== null) {
+      this.generation = nextBootGeneration++;
+      runtimeOwnerRegistry.set(this.runtime, {
+        activeCoordinator: this,
+        worldId: this.worldId,
+        generation: this.generation,
+      });
+    }
+  }
+
+  private isSuperseded(): boolean {
+    if (typeof this.runtime === "object" && this.runtime !== null) {
+      const current = runtimeOwnerRegistry.get(this.runtime);
+      if (
+        current &&
+        (current.activeCoordinator !== this ||
+          current.worldId !== this.worldId ||
+          current.generation !== this.generation)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   boot(signal?: AbortSignal): Promise<WorldLayoutBootResult> {
@@ -173,9 +290,120 @@ export class WorldLayoutBootCoordinator {
       throw new Error("Cannot invalidate an active world layout boot attempt");
     this.attempt = undefined;
     this.attemptSettled = true;
+    if (typeof this.runtime === "object" && this.runtime !== null) {
+      this.generation = nextBootGeneration++;
+      runtimeOwnerRegistry.set(this.runtime, {
+        activeCoordinator: this,
+        worldId: this.worldId,
+        generation: this.generation,
+      });
+    }
   }
 
   private async run(): Promise<WorldLayoutBootResult> {
+    if (this.requireRemoteAuthority && !this.remoteLoader) {
+      throw new WorldLayoutBootError(
+        "WORLD_UNPUBLISHED",
+        `World ${this.worldId} requires remote authority, but no remoteLoader was configured`,
+      );
+    }
+
+    if (this.remoteLoader) {
+      try {
+        const remote = await this.remoteLoader.loadRemoteStarterCatalogue(this.worldId);
+        if (remote) {
+          if (!remote.published) {
+            throw new WorldLayoutBootError(
+              "WORLD_UNPUBLISHED",
+              `World ${this.worldId} starter catalogue returned published=false`,
+            );
+          }
+          const manifest = remote.manifest;
+          if (!manifest || typeof manifest !== "object") {
+            throw new WorldLayoutBootError(
+              "WORLD_UNPUBLISHED",
+              `World ${this.worldId} starter catalogue manifest is missing or malformed`,
+            );
+          }
+          if (manifest.worldId !== this.worldId) {
+            throw new WorldLayoutBootError(
+              "WORLD_ID_MISMATCH",
+              `Remote starter catalogue ${manifest.worldId} does not match world ${this.worldId}`,
+            );
+          }
+          const document = parseWorldLayoutDocument(JSON.stringify(manifest.layout));
+          if (document.worldId !== this.worldId) {
+            throw new WorldLayoutBootError(
+              "WORLD_ID_MISMATCH",
+              `Remote layout document ${document.worldId} does not match world ${this.worldId}`,
+            );
+          }
+          const revision = worldLayoutRevisionId(document.revision);
+          if (manifest.layoutRevision !== document.revision.contentHash) {
+            throw new WorldLayoutBootError(
+              "REVISION_MISMATCH",
+              `Manifest layoutRevision ${manifest.layoutRevision} does not match document contentHash ${document.revision.contentHash}`,
+            );
+          }
+          applyWorldLayoutDocument(document);
+
+          if (this.isSuperseded()) {
+            return {
+              ready: true,
+              worldId: this.worldId,
+              revision,
+              source: "canonical_remote",
+            };
+          }
+
+          const head = await this.store.load(this.worldId);
+          if (this.isSuperseded()) {
+            return {
+              ready: true,
+              worldId: this.worldId,
+              revision,
+              source: "canonical_remote",
+            };
+          }
+          await this.store.save(saveInput(document), head?.layoutRevision ?? null);
+          if (this.isSuperseded()) {
+            return {
+              ready: true,
+              worldId: this.worldId,
+              revision,
+              source: "canonical_remote",
+            };
+          }
+          await this.runtime.hydrateWorldLayout(document);
+          return {
+            ready: true,
+            worldId: this.worldId,
+            revision,
+            source: "canonical_remote",
+          };
+        } else if (this.requireRemoteAuthority) {
+          throw new WorldLayoutBootError(
+            "WORLD_UNPUBLISHED",
+            `World ${this.worldId} starter catalogue is unpublished (404)`,
+          );
+        }
+      } catch (err: unknown) {
+        if (
+          this.requireRemoteAuthority ||
+          (err instanceof WorldLayoutBootError &&
+            (err.code === "WORLD_UNPUBLISHED" ||
+              err.code === "WORLD_ID_MISMATCH" ||
+              err.code === "REVISION_MISMATCH"))
+        ) {
+          throw err;
+        }
+        console.warn(
+          `[WorldLayoutBoot] Remote authority unavailable, preserving local stored head:`,
+          err,
+        );
+      }
+    }
+
     const head = await this.store.load(this.worldId);
     if (head !== null) return this.hydrate(head, "stored");
 
@@ -192,6 +420,15 @@ export class WorldLayoutBootCoordinator {
     // transaction. A malformed legacy way/road/reference candidate can therefore neither mutate
     // the runtime nor strand an unusable first head in IndexedDB.
     applyWorldLayoutDocument(captured);
+
+    if (this.isSuperseded()) {
+      return {
+        ready: true,
+        worldId: this.worldId,
+        revision: worldLayoutRevisionId(captured.revision),
+        source: "initialized",
+      };
+    }
 
     const result = await this.store.save(saveInput(captured), null);
     if (result.status === "saved")
@@ -221,7 +458,9 @@ export class WorldLayoutBootCoordinator {
     source: WorldLayoutBootResult["source"],
   ): Promise<WorldLayoutBootResult> {
     const validated = validateRevision(this.worldId, stored);
-    await this.runtime.hydrateWorldLayout(validated.document);
+    if (!this.isSuperseded()) {
+      await this.runtime.hydrateWorldLayout(validated.document);
+    }
     return {
       ready: true,
       worldId: this.worldId,

@@ -53,6 +53,7 @@ import { HqReceptionView } from "../render/HqReceptionView";
 import { planTopbar } from "./topbarPlan";
 import { TopbarMenu } from "./TopbarMenu";
 import { BuildStamp } from "./BuildStamp";
+import { MultiplayerStatusHUD } from "./MultiplayerStatusHUD";
 import { GamehouseOverlay } from "./GamehouseOverlay";
 import { resolveGamehousePortalSite } from "../spatial/gamehousePortal";
 import { PasswordChangePanel } from "./PasswordChangePanel";
@@ -115,6 +116,7 @@ import "./colony.css";
 import { useRoadNetwork, RoadMask } from "../stores/useRoadNetwork";
 import {
   WorldLayoutBootCoordinator,
+  HttpRemoteWorldLayoutLoader,
   type WorldLayoutBootResult,
 } from "../worldLayoutBoot";
 import {
@@ -688,18 +690,62 @@ export function ColonyApp() {
   const { builderActive, worldViewActive } = useRoadNetwork();
   const runtime = useRuntime();
   const [, forceRuntimeRender] = useReducer((x) => x + 1, 0);
+  const auth = useMemo(() => new AuthClient(), []);
+  const operatorUserId = auth.operator?.userId ?? null;
+
+  const isMultiplayer = useMemo(() => {
+    if (!auth.isAuthenticated || !operatorUserId) return false;
+    if (typeof window === "undefined") return false;
+    const q = new URLSearchParams(window.location.search);
+    return Boolean(q.get("room") || q.get("multiplayer") === "1");
+  }, [auth.isAuthenticated, operatorUserId]);
+
+  const remoteLoader = useMemo(
+    () =>
+      new HttpRemoteWorldLayoutLoader({
+        getToken: () => auth.getValidToken(),
+      }),
+    [auth],
+  );
+
+  const worldKey = useMemo(() => {
+    if (typeof window !== "undefined") {
+      const q = new URLSearchParams(window.location.search);
+      const queryKey = q.get("world") || q.get("worldId") || q.get("worldKey");
+      if (queryKey) return queryKey;
+    }
+    return runtime.captureWorldLayout().worldId;
+  }, [runtime]);
+
+  const bootGenerationRef = useRef(0);
   const worldLayoutPersistence = useMemo(() => {
+    const generation = ++bootGenerationRef.current;
     try {
       const store = new WorldLayoutStore();
-      const worldId = runtime.captureWorldLayout().worldId;
+      const worldId = worldKey;
       return {
+        generation,
+        worldId,
         store,
         coordinator: new WorldLayoutBootCoordinator({
           worldId,
           store,
+          remoteLoader: remoteLoader,
+          requireRemoteAuthority: isMultiplayer,
           runtime: {
             captureWorldLayout: () => runtime.captureWorldLayout(),
             hydrateWorldLayout: (document) => {
+              if (generation !== bootGenerationRef.current) {
+                console.warn(
+                  "[ColonyApp] Suppressing hydration from superseded boot generation",
+                  {
+                    generation,
+                    activeGeneration: bootGenerationRef.current,
+                    documentWorldId: document.worldId,
+                  },
+                );
+                return;
+              }
               runtime.hydrateWorldLayout(document);
             },
           },
@@ -707,9 +753,9 @@ export function ColonyApp() {
         error: null,
       };
     } catch (error: unknown) {
-      return { store: null, coordinator: null, error };
+      return { generation, worldId: worldKey, store: null, coordinator: null, error };
     }
-  }, [runtime]);
+  }, [runtime, remoteLoader, isMultiplayer, operatorUserId, worldKey]);
   const [worldLayoutBoot, setWorldLayoutBoot] = useState<
     | { status: "loading" }
     | { status: "ready"; result: WorldLayoutBootResult }
@@ -861,7 +907,6 @@ export function ColonyApp() {
     void runtime.decideNewcomer(id, d);
   };
   // P1 — tell the runtime who is logged in, so it can mark the operator's own avatar + gate the step-into.
-  const auth = useMemo(() => new AuthClient(), []);
   // City Builder authorization (see authClient.canEnterCityBuilder for the fail-closed rule and why
   // a null operator is safe here — it can only be AuthGate's own local DEV/E2E skip-auth bypass).
   const canBuildCity = canEnterCityBuilder(auth);
@@ -949,6 +994,7 @@ export function ColonyApp() {
   // it from the self-scoped ledger endpoint, never infer it from the local simulation wallet. Display
   // only — purchase requests never submit this value.
   useEffect(() => {
+    runtime.setAuthClient(auth);
     runtime.setOperatorName(auth.operator?.id ?? null);
     // Identity key: bind the player view to the authenticated kooker userId (from the JWT), so own-data
     // and step-into resolve by user id, not a spoofable / collision-prone display name.
@@ -961,8 +1007,62 @@ export function ColonyApp() {
   // whenever the identity changes. It resets to `null` (fail-closed OFF) the instant the identity
   // changes — logout does a full reload, but keying on the userId means an in-place account switch
   // can never carry a prior user's positive entitlement forward. A stale in-flight response is
-  // ignored (`cancelled`) so it can never overwrite the current identity's decision.
-  const operatorUserId = auth.operator?.userId ?? null;
+  // Identity & world switch: clear multiplayer runtime state and invalidate completed boot attempts
+  // so the new identity revalidates canonical authority.
+  const prevIdentityRef = useRef({
+    userId: operatorUserId,
+    worldId: worldKey,
+  });
+
+  useEffect(() => {
+    if (
+      prevIdentityRef.current.userId !== operatorUserId ||
+      prevIdentityRef.current.worldId !== worldKey
+    ) {
+      prevIdentityRef.current = {
+        userId: operatorUserId,
+        worldId: worldKey,
+      };
+      runtime.disableMultiplayer();
+      runtime.sim?.state?.remoteRacers?.clear();
+      try {
+        worldLayoutPersistence.coordinator?.invalidateCompletedAttempt();
+      } catch {
+        // no-op if boot attempt is already unsettled
+      }
+      retryWorldLayoutBoot();
+    }
+  }, [operatorUserId, worldKey, runtime, worldLayoutPersistence]);
+
+  // Spec 178 — Lifecycle-driven multiplayer connection:
+  // Requires all 3: authentic player identity (auth.isAuthenticated && operatorUserId !== null),
+  // explicit room intent (query room or multiplayer=1), and world layout boot ready.
+  // Cleans up connection on logout, account switch, room exit, or unmount.
+  useEffect(() => {
+    const isReady = worldLayoutBoot.status === "ready";
+    const hasAuth = auth.isAuthenticated && operatorUserId !== null;
+
+    const query =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search)
+        : null;
+    const explicitRoom = query?.get("room");
+    const explicitMp = explicitRoom !== null || query?.get("multiplayer") === "1";
+    const room = explicitRoom || (explicitMp ? "racing-cup" : null);
+    const wsUrl = query?.get("ws") || (typeof window !== "undefined" ? (window as any).__customMultiplayerWsUrl : undefined);
+
+    const shouldConnect = isReady && hasAuth && Boolean(room);
+
+    if (shouldConnect && room) {
+      runtime.enableMultiplayer(room, wsUrl || undefined);
+    } else {
+      runtime.disableMultiplayer();
+    }
+
+    return () => {
+      runtime.disableMultiplayer();
+    };
+  }, [auth.isAuthenticated, operatorUserId, worldLayoutBoot.status, worldLayoutHead?.revisionId, runtime]);
   const walletAccountKey =
     auth.isAuthenticated && operatorUserId !== null
       ? String(operatorUserId)
@@ -1295,6 +1395,7 @@ export function ColonyApp() {
           abort.signal,
         );
         if (abort.signal.aborted) return;
+        if (worldLayoutPersistence.generation !== bootGenerationRef.current) return;
         const document = runtime.worldLayoutDocument();
         if (!document)
           throw new Error(
@@ -1860,6 +1961,22 @@ export function ColonyApp() {
               ? "City map could not be opened"
               : "Opening the authoritative city map…"}
           </strong>
+          <div
+            data-testid="development-preview-banner"
+            style={{
+              padding: "6px 14px",
+              borderRadius: "4px",
+              background: "rgba(255, 170, 0, 0.15)",
+              border: "1px solid rgba(255, 170, 0, 0.35)",
+              color: "#ffca40",
+              fontSize: "12px",
+              fontWeight: 500,
+              maxWidth: 480,
+              margin: "0 auto",
+            }}
+          >
+            Development Preview — CityLife is still in development. Features and gameplay may change.
+          </div>
           {worldLayoutBoot.status === "error" && (
             <>
               <span>{worldLayoutBoot.message}</span>
@@ -1995,6 +2112,7 @@ export function ColonyApp() {
             matters most. First person is covered instead by FirstPersonPanel's edge-HUD grid,
             which is that view's real layout owner. */}
         {!ui.firstPerson.active && <BuildStamp runtime={runtime} />}
+        <MultiplayerStatusHUD runtime={runtime} />
       </div>
       {/* Keep only the transient controls for a drive session already in progress. The legacy
           Road Rally / Join Race entry points and rally branding stay retired; this shell exists

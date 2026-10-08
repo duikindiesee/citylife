@@ -41,4 +41,22 @@ jobs:
       # consume the shared 60-minute job budget.
       - run: npm run test:e2e:mobile-harness
         timeout-minutes: 4
+      - name: Check out citylife-server at pinned authoritative revision
+        uses: actions/checkout@v7
+        with:
+          repository: duikindiesee/citylife-server
+          ref: d232f6ce503afb6bbb8dce3f1b67f4641845796a
+          token: ${{ secrets.CITYLIFE_SERVER_READ_TOKEN }}
+          persist-credentials: false
+          path: citylife-server
+      - name: Install and build citylife-server
+        working-directory: citylife-server
+        run: |
+          npm ci
+          npm run build
+      - name: Run multiplayer actual-pair acceptance
+        env:
+          CITYLIFE_SERVER_DIR: ${{ github.workspace }}/citylife-server
+        run: npm run test:e2e:actual-pair
+        timeout-minutes: 5
       - run: npm run build

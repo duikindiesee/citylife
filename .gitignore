@@ -31,3 +31,7 @@ provision-citizen.sh
 # Playwright runtime artifacts
 playwright-report/
 test-results/
+videos/
+
+# Checked-out sibling server in CI actual-pair integration runner
+citylife-server/

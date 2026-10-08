@@ -7,6 +7,7 @@ import {
 import {
   WorldLayoutBootCoordinator,
   WorldLayoutBootError,
+  HttpRemoteWorldLayoutLoader,
   type WorldLayoutBootRuntime,
   type WorldLayoutBootStore,
 } from "../src/colony/worldLayoutBoot";
@@ -367,5 +368,401 @@ describe("WorldLayoutBootCoordinator", () => {
     expect(load).toHaveBeenCalledTimes(1);
     expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledTimes(1);
     expect(bootRuntime.start).not.toHaveBeenCalled();
+  });
+
+  describe("Canonical Remote Authority (Starter-Catalogue)", () => {
+    it("boots and hydrates canonical remote starter catalogue document when published", async () => {
+      const doc = document("primary");
+      const bootRuntime = runtime();
+      const mockSave = vi.fn(async () => ({ status: "saved", revision: stored(doc) } as const));
+      const mockLoad = vi.fn(async () => null);
+
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: vi.fn(async () => ({
+          published: true,
+          manifest: {
+            worldId: "primary",
+            layoutRevision: doc.revision.contentHash,
+            layout: doc,
+          },
+        })),
+      };
+
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store({ load: mockLoad, save: mockSave }),
+        runtime: bootRuntime,
+        remoteLoader,
+        requireRemoteAuthority: true,
+      });
+
+      const result = await coordinator.boot();
+      expect(result).toMatchObject({
+        ready: true,
+        worldId: "primary",
+        revision: worldLayoutRevisionId(doc.revision),
+        source: "canonical_remote",
+      });
+      expect(remoteLoader.loadRemoteStarterCatalogue).toHaveBeenCalledWith("primary");
+      expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(doc);
+      expect(mockSave).toHaveBeenCalled();
+    });
+
+    it("fails closed with WORLD_UNPUBLISHED when remote authority returns unpublished and requireRemoteAuthority is true", async () => {
+      const bootRuntime = runtime();
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: vi.fn(async () => null),
+      };
+
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store(),
+        runtime: bootRuntime,
+        remoteLoader,
+        requireRemoteAuthority: true,
+      });
+
+      await expect(coordinator.boot()).rejects.toThrowError(WorldLayoutBootError);
+      await expect(coordinator.boot()).rejects.toMatchObject({
+        code: "WORLD_UNPUBLISHED",
+      });
+      expect(bootRuntime.hydrateWorldLayout).not.toHaveBeenCalled();
+    });
+
+    it("fails closed with WORLD_ID_MISMATCH when remote starter catalogue worldId contradicts coordinator", async () => {
+      const doc = document("different-world");
+      const bootRuntime = runtime();
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: vi.fn(async () => ({
+          published: true,
+          manifest: {
+            worldId: "different-world",
+            layoutRevision: doc.revision.contentHash,
+            layout: doc,
+          },
+        })),
+      };
+
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store(),
+        runtime: bootRuntime,
+        remoteLoader,
+      });
+
+      await expect(coordinator.boot()).rejects.toMatchObject({
+        code: "WORLD_ID_MISMATCH",
+      });
+      expect(bootRuntime.hydrateWorldLayout).not.toHaveBeenCalled();
+    });
+
+    it("fails closed with REVISION_MISMATCH when remote manifest layoutRevision contradicts document contentHash", async () => {
+      const doc = document("primary");
+      const bootRuntime = runtime();
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: vi.fn(async () => ({
+          published: true,
+          manifest: {
+            worldId: "primary",
+            layoutRevision: "0".repeat(64), // Incorrect hash!
+            layout: doc,
+          },
+        })),
+      };
+
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store(),
+        runtime: bootRuntime,
+        remoteLoader,
+      });
+
+      await expect(coordinator.boot()).rejects.toMatchObject({
+        code: "REVISION_MISMATCH",
+      });
+      expect(bootRuntime.hydrateWorldLayout).not.toHaveBeenCalled();
+    });
+
+    it("preserves local stored head when remote authority is unavailable and requireRemoteAuthority is false", async () => {
+      const existingHead = stored(document("primary", 42));
+      const bootRuntime = runtime();
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: vi.fn(async () => {
+          throw new Error("Network timeout");
+        }),
+      };
+
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store({ load: vi.fn(async () => existingHead) }),
+        runtime: bootRuntime,
+        remoteLoader,
+        requireRemoteAuthority: false,
+      });
+
+      const result = await coordinator.boot();
+      expect(result).toMatchObject({
+        ready: true,
+        worldId: "primary",
+        revision: existingHead.layoutRevision,
+        source: "stored",
+      });
+      expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(existingHead.document);
+    });
+
+    it("fails closed with WORLD_UNPUBLISHED when requireRemoteAuthority is true and remoteLoader is absent", async () => {
+      const existingHead = stored(document("primary", 42));
+      const bootRuntime = runtime();
+      const loadFn = vi.fn(async () => existingHead);
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store({ load: loadFn }),
+        runtime: bootRuntime,
+        requireRemoteAuthority: true,
+      });
+
+      await expect(coordinator.boot()).rejects.toMatchObject({
+        code: "WORLD_UNPUBLISHED",
+      });
+      expect(loadFn).not.toHaveBeenCalled();
+      expect(bootRuntime.hydrateWorldLayout).not.toHaveBeenCalled();
+      expect(bootRuntime.captureWorldLayout).not.toHaveBeenCalled();
+    });
+
+    it("fails closed with WORLD_UNPUBLISHED when requireRemoteAuthority is true and remote catalogue returns null", async () => {
+      const existingHead = stored(document("primary", 42));
+      const bootRuntime = runtime();
+      const loadFn = vi.fn(async () => existingHead);
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store({ load: loadFn }),
+        runtime: bootRuntime,
+        remoteLoader: {
+          loadRemoteStarterCatalogue: vi.fn(async () => null),
+        },
+        requireRemoteAuthority: true,
+      });
+
+      await expect(coordinator.boot()).rejects.toMatchObject({
+        code: "WORLD_UNPUBLISHED",
+      });
+      expect(loadFn).not.toHaveBeenCalled();
+      expect(bootRuntime.hydrateWorldLayout).not.toHaveBeenCalled();
+      expect(bootRuntime.captureWorldLayout).not.toHaveBeenCalled();
+    });
+
+    it("ensures world B stays active when an aborted world A boot completes after B", async () => {
+      const docA = document("world-a");
+      const docB = document("world-b");
+      const hydrations: string[] = [];
+      const saves: string[] = [];
+      let activeWorld = "initial";
+
+      const sharedRuntime = {
+        captureWorldLayout: vi.fn(() => docA),
+        hydrateWorldLayout: vi.fn((doc) => {
+          activeWorld = doc.worldId;
+          hydrations.push(doc.worldId);
+        }),
+      };
+      const sharedStore = {
+        load: vi.fn(async () => null),
+        save: vi.fn(async (input: { worldId: string }) => {
+          saves.push(input.worldId);
+          return { status: "saved" as const, revision: stored(docA) };
+        }),
+      };
+
+      let releaseOld: (value: any) => void = () => {};
+      const oldResponse = new Promise((resolve) => {
+        releaseOld = resolve;
+      });
+
+      const oldCoordinator = new WorldLayoutBootCoordinator({
+        worldId: "world-a",
+        store: sharedStore,
+        runtime: sharedRuntime,
+        requireRemoteAuthority: true,
+        remoteLoader: {
+          loadRemoteStarterCatalogue: () => oldResponse as any,
+        },
+      });
+
+      const aborted = new AbortController();
+      const oldWait = oldCoordinator.boot(aborted.signal).catch((err) => err.name);
+      aborted.abort();
+      expect(await oldWait).toBe("AbortError");
+
+      const currentCoordinator = new WorldLayoutBootCoordinator({
+        worldId: "world-b",
+        store: sharedStore,
+        runtime: sharedRuntime,
+        requireRemoteAuthority: true,
+        remoteLoader: {
+          loadRemoteStarterCatalogue: async () => ({
+            published: true,
+            manifest: {
+              worldId: "world-b",
+              layoutRevision: docB.revision.contentHash,
+              layout: docB,
+            },
+          }),
+        },
+      });
+
+      const currentResult = await currentCoordinator.boot();
+      expect(currentResult.worldId).toBe("world-b");
+      expect(activeWorld).toBe("world-b");
+
+      // Release late response for oldCoordinator
+      releaseOld({
+        published: true,
+        manifest: {
+          worldId: "world-a",
+          layoutRevision: docA.revision.contentHash,
+          layout: docA,
+        },
+      });
+
+      const supersededResult = await oldCoordinator.boot();
+      expect(supersededResult.source).toBe("canonical_remote");
+      // World B stays active; oldCoordinator does not hydrate or save over B
+      expect(activeWorld).toBe("world-b");
+      expect(hydrations).toEqual(["world-b"]);
+      expect(saves).toEqual(["world-b"]);
+    });
+
+    it("ensures same-owner aborted waits safely share the valid attempt in StrictMode", async () => {
+      const doc = document("primary");
+      const hydrations: string[] = [];
+      const bootRuntime = {
+        captureWorldLayout: vi.fn(() => doc),
+        hydrateWorldLayout: vi.fn((d) => {
+          hydrations.push(d.worldId);
+        }),
+      };
+      let releaseResponse: (value: any) => void = () => {};
+      const remotePromise = new Promise((resolve) => {
+        releaseResponse = resolve;
+      });
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: "primary",
+        store: store({
+          load: vi.fn(async () => null),
+          save: vi.fn(async () => ({ status: "saved" as const, revision: stored(doc) })),
+        }),
+        runtime: bootRuntime,
+        requireRemoteAuthority: true,
+        remoteLoader: {
+          loadRemoteStarterCatalogue: () => remotePromise as any,
+        },
+      });
+
+      // Invocation 1: aborted
+      const abort1 = new AbortController();
+      const wait1 = coordinator.boot(abort1.signal).catch((e) => e.name);
+      abort1.abort();
+      expect(await wait1).toBe("AbortError");
+
+      // Invocation 2: same coordinator, new signal (StrictMode replay)
+      const abort2 = new AbortController();
+      const wait2 = coordinator.boot(abort2.signal);
+
+      // Release remote response
+      releaseResponse({
+        published: true,
+        manifest: {
+          worldId: "primary",
+          layoutRevision: doc.revision.contentHash,
+          layout: doc,
+        },
+      });
+
+      const result = await wait2;
+      expect(result.worldId).toBe("primary");
+      expect(hydrations).toEqual(["primary"]);
+    });
+  });
+
+  describe("HttpRemoteWorldLayoutLoader", () => {
+    it("fetches starter-catalogue with Authorization bearer header and parses response", async () => {
+      const doc = document("primary");
+      const mockFetch = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          published: true,
+          manifest: {
+            worldId: "primary",
+            layoutRevision: doc.revision.contentHash,
+            layout: doc,
+          },
+        }),
+      }));
+      vi.stubGlobal("fetch", mockFetch);
+
+      try {
+        const loader = new HttpRemoteWorldLayoutLoader({
+          baseUrl: "http://test.local",
+          getToken: () => "mock-jwt-token",
+        });
+
+        const result = await loader.loadRemoteStarterCatalogue("primary");
+        expect(mockFetch).toHaveBeenCalledWith(
+          "http://test.local/api/v1/citylife/worlds/primary/starter-catalogue",
+          expect.objectContaining({
+            method: "GET",
+            headers: expect.objectContaining({
+              Authorization: "Bearer mock-jwt-token",
+              Accept: "application/json",
+            }),
+          }),
+        );
+        expect(result?.published).toBe(true);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("returns null when starter-catalogue responds with 404", async () => {
+      const mockFetch = vi.fn(async () => ({
+        ok: false,
+        status: 404,
+      }));
+      vi.stubGlobal("fetch", mockFetch);
+
+      try {
+        const loader = new HttpRemoteWorldLayoutLoader({
+          baseUrl: "http://test.local",
+        });
+        const result = await loader.loadRemoteStarterCatalogue("primary");
+        expect(result).toBeNull();
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it("defaults same-origin requests to /kooker/api/v1/citylife/worlds/... gateway boundary", async () => {
+      const mockFetch = vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          published: false,
+          manifest: null,
+        }),
+      }));
+      vi.stubGlobal("fetch", mockFetch);
+
+      try {
+        const loader = new HttpRemoteWorldLayoutLoader();
+        await loader.loadRemoteStarterCatalogue("colony-primary");
+        expect(mockFetch).toHaveBeenCalledWith(
+          "/kooker/api/v1/citylife/worlds/colony-primary/starter-catalogue",
+          expect.anything(),
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
   });
 });

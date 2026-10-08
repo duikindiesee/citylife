@@ -646,6 +646,23 @@ export interface ColonyState {
     cell: { x: number; y: number };
     heading?: number;
   } | null;
+  /** Spec 178 — Remote racers synchronized via WebSocket for multiplayer free-drive and racing. */
+  remoteRacers?: Map<
+    string,
+    {
+      participantId: string;
+      userId: string;
+      username: string;
+      vehicleKey?: string | null;
+      isPedestrian?: boolean;
+      cell: { x: number; y: number };
+      worldY?: number;
+      heading: number;
+      speed: number;
+      lastSeen: number;
+      spec?: CarSpec | null;
+    }
+  >;
   /** Render toggle for the zoning overlays (spec 131) — set through setZonesVisible(). */
   zonesVisible?: boolean;
   /** Citizens present at the hilltop Rally Point (spec 131) — public-safe filtered at the
@@ -800,6 +817,7 @@ export class ColonySim {
       developedBlocks: new Set(),
       pollution: 0,
       cars: [],
+      remoteRacers: new Map(),
       settlers: [],
       tarentaal: createTarentaalFlock(terrain, this.rng),
       artifacts: createVisualArtifacts(terrain),

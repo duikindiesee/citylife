@@ -14,12 +14,18 @@ export interface MiniMapBusPoint extends MiniMapMovingPoint {
 export interface MiniMapBusCluster extends MiniMapMovingPoint {
   ids: number[];
 }
+export interface MiniMapPeerPoint extends MiniMapMovingPoint {
+  participantId: string;
+  username: string;
+}
 export interface BusNetworkMiniMapModel {
   roads: { points: string; source: RoadWay["source"] }[];
   stops: MiniMapPoint[];
   depot: MiniMapPoint | null;
   buses: MiniMapBusPoint[];
   busClusters: MiniMapBusCluster[];
+  /** Remote peers in active multiplayer session. */
+  peers: MiniMapPeerPoint[];
   /** The local player's exact surface-grid fix, when the runtime has one. */
   player: MiniMapMovingPoint | null;
   bounds: { minX: number; minY: number; spanX: number; spanY: number };
@@ -30,6 +36,7 @@ interface Input {
   routeStops: { x: number; y: number }[];
   depot: { x: number; y: number } | null;
   buses: { id: number; x: number; y: number }[];
+  peers?: { participantId: string; username: string; x: number; y: number }[];
   player?: { x: number; y: number } | null;
   width: number;
   height: number;
@@ -82,6 +89,11 @@ export function buildBusNetworkMiniMapModel(
     };
   };
   const buses = input.buses.map((b) => ({ id: b.id, ...projectMoving(b) }));
+  const peers = (input.peers ?? []).map((p) => ({
+    participantId: p.participantId,
+    username: p.username,
+    ...projectMoving(p),
+  }));
   const busClusters: MiniMapBusCluster[] = [];
   for (const bus of buses) {
     const cluster = busClusters.find(
@@ -116,6 +128,7 @@ export function buildBusNetworkMiniMapModel(
     depot: input.depot ? project(input.depot) : null,
     buses,
     busClusters,
+    peers,
     player: input.player ? projectMoving(input.player) : null,
     bounds: { minX: rawMinX, minY: rawMinY, spanX, spanY },
   };

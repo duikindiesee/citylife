@@ -92,3 +92,19 @@ export function commercialSignature(state: ColonyState): string {
 export function pillarSignature(state: ColonyState): string {
   return `pillar${state.pillarStage}:${state.pillarBuilding ? 1 : 0}:${Math.round(state.pillarProgress * 1000)}:r${state.roadsVersion}`;
 }
+
+/** R3FRemoteRacers — remote visual groups rebuild when participants join/leave,
+ *  switch between pedestrian and driving mode, or change vehicle models.
+ *  Positions and headings are updated at 60fps in useFrame; only visual model
+ *  identities and modes trigger React re-renders. */
+export function remoteRacersSignature(state: ColonyState): string {
+  const racers = state.remoteRacers;
+  if (!racers || racers.size === 0) return "none";
+  return Array.from(racers.values())
+    .map(
+      (r) =>
+        `${r.participantId}:${r.isPedestrian ? "ped" : "car"}:${r.vehicleKey ?? "none"}`,
+    )
+    .sort()
+    .join(";");
+}

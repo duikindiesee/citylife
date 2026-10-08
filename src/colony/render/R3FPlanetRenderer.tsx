@@ -86,6 +86,7 @@ import { R3FTarentaal } from "./R3FTarentaal";
 import { R3FArtifacts } from "./R3FArtifacts";
 import { R3FPorters } from "./R3FPorters";
 import { R3FOperatorCar } from "./R3FOperatorCar";
+import { R3FRemoteRacers } from "./R3FRemoteRacers";
 import { R3FRallyNameplates } from "./R3FRallyNameplates";
 import { R3FCameraDirector } from "./R3FCameraDirector";
 import { R3FCommercialDistrict } from "./R3FCommercialDistrict";
@@ -813,6 +814,11 @@ function R3FWorld({
             <R3FArtifacts sim={sim} terrainLevel={debouncedTerrainLevel} />
             <R3FPorters sim={sim} terrainLevel={debouncedTerrainLevel} />
             <R3FOperatorCar
+              sim={sim}
+              runtime={runtime}
+              terrainLevel={debouncedTerrainLevel}
+            />
+            <R3FRemoteRacers
               sim={sim}
               runtime={runtime}
               terrainLevel={debouncedTerrainLevel}
