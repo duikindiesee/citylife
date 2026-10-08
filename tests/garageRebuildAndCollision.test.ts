@@ -847,19 +847,19 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
 
     expect(testRt.sim.state.roadSet.has(`${Math.round(cellX)},${Math.round(cellY)}`)).toBe(true);
 
-    testRt.ownedDrivePose = {
+    (testRt as any).ownedDrivePose = {
       x: cellX,
       y: cellY,
       heading: -Math.PI / 2,
       speed: 0,
     };
-    testRt.ownedDriveSeated = true;
+    (testRt as any).ownedDriveSeated = true;
     (testRt as any).operatorUserId = "test-operator";
     (testRt as any).authoritativeCar = { id: "karoo-vonk-11", name: "Karoo" } as any;
 
     const exited = testRt.exitOwnedCar();
     expect(exited).toBe(true);
-    expect(testRt.ownedDriveSeated).toBe(false);
+    expect((testRt as any).ownedDriveSeated).toBe(false);
     expect((testRt as any).fpCameraCell).not.toBeNull();
   });
 });

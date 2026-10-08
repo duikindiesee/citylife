@@ -87,6 +87,47 @@ function seedPlayerSession(page: Page, email: string, token: string, numericId: 
   );
 }
 
+async function dumpTransitionDiagnostics(page: Page, label: string) {
+  try {
+    const diag = await page.evaluate(() => {
+      const colony = (window as any).__colony;
+      const mp = colony?.getMultiplayerClient();
+      const history = (window as any).__snapshotHistory || [];
+      const recent = history.slice(-3).map((s: any) => ({
+        seq: s.seq,
+        count: s.participants?.length,
+        parts: s.participants?.map((p: any) => ({
+          id: p.participantId,
+          user: p.username,
+          isPedestrian: p.isPedestrian,
+          mode: p.mode,
+          x: typeof p.x === "number" ? Number(p.x.toFixed(2)) : undefined,
+          z: typeof p.z === "number" ? Number(p.z.toFixed(2)) : undefined,
+        })),
+      }));
+      return {
+        multiplayerStatus: mp?.getStatus(),
+        sessionInfo: mp?.getSessionInfo ? {
+          sessionId: mp.getSessionInfo().sessionId,
+          participantId: mp.getSessionInfo().participantId,
+        } : null,
+        seated: colony?.ownedDriveSeated,
+        fpCameraCell: colony?.fpCameraCell,
+        drivePose: colony?.ownedDrivePose ? {
+          x: Number(colony.ownedDrivePose.x.toFixed(2)),
+          y: Number(colony.ownedDrivePose.y.toFixed(2)),
+          speed: colony.ownedDrivePose.speed,
+        } : null,
+        snapshotCount: history.length,
+        recentSnapshots: recent,
+      };
+    });
+    console.error(`[Transition Diagnostic ${label}]`, JSON.stringify(diag));
+  } catch (err: any) {
+    console.error(`[Transition Diagnostic ${label} Failed]`, err?.message);
+  }
+}
+
 // Disable passive trace DOM snapshots/screencasts to diagnose tracing overhead vs software rendering
 test.use({ trace: "off" });
 
@@ -908,34 +949,40 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
       // 2. Verify authoritative server snapshot reflects Player 1 walking / pedestrian mode
       // while strictly pinning participantId, retaining 2-peer membership, and checking walking proximity to parked car
-      await Promise.all([
-        page1.waitForFunction((expected) => {
-          const history = (window as any).__snapshotHistory || [];
-          const last = history[history.length - 1];
-          if (!last || last.participants?.length !== 2) return false;
-          const p1 = last.participants.find((p: any) => p.username === "jamtin");
-          const p2 = last.participants.find((p: any) => p.username === "jamtin2");
-          return (
-            p1?.participantId === expected.p1Id &&
-            p2?.participantId === expected.p2Id &&
-            p1.isPedestrian === true &&
-            p2.isPedestrian === false
-          );
-        }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
-        page2.waitForFunction((expected) => {
-          const history = (window as any).__snapshotHistory || [];
-          const last = history[history.length - 1];
-          if (!last || last.participants?.length !== 2) return false;
-          const p1 = last.participants.find((p: any) => p.username === "jamtin");
-          const p2 = last.participants.find((p: any) => p.username === "jamtin2");
-          return (
-            p1?.participantId === expected.p1Id &&
-            p2?.participantId === expected.p2Id &&
-            p1.isPedestrian === true &&
-            p2.isPedestrian === false
-          );
-        }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
-      ]);
+      try {
+        await Promise.all([
+          page1.waitForFunction((expected) => {
+            const history = (window as any).__snapshotHistory || [];
+            const last = history[history.length - 1];
+            if (!last || last.participants?.length !== 2) return false;
+            const p1 = last.participants.find((p: any) => p.username === "jamtin");
+            const p2 = last.participants.find((p: any) => p.username === "jamtin2");
+            return (
+              p1?.participantId === expected.p1Id &&
+              p2?.participantId === expected.p2Id &&
+              p1.isPedestrian === true &&
+              p2.isPedestrian === false
+            );
+          }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
+          page2.waitForFunction((expected) => {
+            const history = (window as any).__snapshotHistory || [];
+            const last = history[history.length - 1];
+            if (!last || last.participants?.length !== 2) return false;
+            const p1 = last.participants.find((p: any) => p.username === "jamtin");
+            const p2 = last.participants.find((p: any) => p.username === "jamtin2");
+            return (
+              p1?.participantId === expected.p1Id &&
+              p2?.participantId === expected.p2Id &&
+              p1.isPedestrian === true &&
+              p2.isPedestrian === false
+            );
+          }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
+        ]);
+      } catch (err) {
+        await dumpTransitionDiagnostics(page1, "Page 1 Park & Exit");
+        await dumpTransitionDiagnostics(page2, "Page 2 Park & Exit");
+        throw err;
+      }
       recordStage("Authoritative server snapshot verified Player 1 in walking/pedestrian mode with pinned participantId and retained peer membership");
 
       // Also verify walking position on server is in legitimate proximity to parked car (< 16m)
@@ -991,34 +1038,40 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
       // 5. Verify authoritative server snapshot reflects Player 1 restored to driving mode
       // with exact pinned participantId, retained peer membership, and parked vehicle pose restored
-      await Promise.all([
-        page1.waitForFunction((expected) => {
-          const history = (window as any).__snapshotHistory || [];
-          const last = history[history.length - 1];
-          if (!last || last.participants?.length !== 2) return false;
-          const p1 = last.participants.find((p: any) => p.username === "jamtin");
-          const p2 = last.participants.find((p: any) => p.username === "jamtin2");
-          return (
-            p1?.participantId === expected.p1Id &&
-            p2?.participantId === expected.p2Id &&
-            p1.isPedestrian === false &&
-            p2.isPedestrian === false
-          );
-        }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
-        page2.waitForFunction((expected) => {
-          const history = (window as any).__snapshotHistory || [];
-          const last = history[history.length - 1];
-          if (!last || last.participants?.length !== 2) return false;
-          const p1 = last.participants.find((p: any) => p.username === "jamtin");
-          const p2 = last.participants.find((p: any) => p.username === "jamtin2");
-          return (
-            p1?.participantId === expected.p1Id &&
-            p2?.participantId === expected.p2Id &&
-            p1.isPedestrian === false &&
-            p2.isPedestrian === false
-          );
-        }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
-      ]);
+      try {
+        await Promise.all([
+          page1.waitForFunction((expected) => {
+            const history = (window as any).__snapshotHistory || [];
+            const last = history[history.length - 1];
+            if (!last || last.participants?.length !== 2) return false;
+            const p1 = last.participants.find((p: any) => p.username === "jamtin");
+            const p2 = last.participants.find((p: any) => p.username === "jamtin2");
+            return (
+              p1?.participantId === expected.p1Id &&
+              p2?.participantId === expected.p2Id &&
+              p1.isPedestrian === false &&
+              p2.isPedestrian === false
+            );
+          }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
+          page2.waitForFunction((expected) => {
+            const history = (window as any).__snapshotHistory || [];
+            const last = history[history.length - 1];
+            if (!last || last.participants?.length !== 2) return false;
+            const p1 = last.participants.find((p: any) => p.username === "jamtin");
+            const p2 = last.participants.find((p: any) => p.username === "jamtin2");
+            return (
+              p1?.participantId === expected.p1Id &&
+              p2?.participantId === expected.p2Id &&
+              p1.isPedestrian === false &&
+              p2.isPedestrian === false
+            );
+          }, { p1Id: pinnedParticipantId1, p2Id: pinnedParticipantId2 }, { timeout: 15_000 }),
+        ]);
+      } catch (err) {
+        await dumpTransitionDiagnostics(page1, "Page 1 Car Re-entry");
+        await dumpTransitionDiagnostics(page2, "Page 2 Car Re-entry");
+        throw err;
+      }
       recordStage("Authoritative server snapshot verified Player 1 restored to driving mode with pinned participantId and retained peer membership");
 
       // Verify parked vehicle pose authority: Player 1 returned exactly to parked position
