@@ -5903,17 +5903,19 @@ export class ColonyRuntime {
     ) {
       return "building";
     }
+    const key = `${ix},${iy}`;
     const fromKey = from ? `${Math.round(from.x)},${Math.round(from.y)}` : null;
+    const isRoad = this.sim.state.roadSet.has(key);
+
     // Spec 176 / 177: Allow pedestrian walking on public commercial garage plot and driveway apron
     const garagePad = this.commercialDistrict?.garagePad;
     if (garagePad && isPointInGarageVicinity(x, y, garagePad)) {
-      if (this.isGaragePadWalkable(x, y, garagePad)) {
+      if (this.isGaragePadWalkable(x, y, garagePad) || isRoad) {
         return null; // Walkable!
       }
       return "building";
     }
 
-    const key = `${ix},${iy}`;
     const fromInsideOccupied = fromKey
       ? this.sim.state.occupied.has(fromKey)
       : false;
@@ -5921,7 +5923,7 @@ export class ColonyRuntime {
       !fromInsideOccupied &&
       key !== fromKey &&
       this.sim.state.occupied.has(key) &&
-      !this.sim.state.roadSet.has(key)
+      !isRoad
     ) {
       return "parcel";
     }
