@@ -417,6 +417,8 @@ export class MultiplayerClient {
         return;
       }
       this.stopHeartbeat();
+      this.lastPoseSentAt = 0;
+      this.lastSentMode = null;
       if (this.closedExplicitly) {
         this.setStatus("disconnected");
         return;
@@ -448,6 +450,8 @@ export class MultiplayerClient {
     this.connectionGeneration++;
     this.closedExplicitly = true;
     this.pendingConnectPromise = null;
+    this.lastPoseSentAt = 0;
+    this.lastSentMode = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -689,10 +693,7 @@ export class MultiplayerClient {
     // Throttle to max 20Hz (50ms interval) to conserve bandwidth while maintaining smooth client extrapolation,
     // but never drop state-transition poses or explicitly forced updates.
     if (!pose.force && !modeChanged && now - this.lastPoseSentAt < 45) return;
-    this.lastPoseSentAt = now;
-    this.lastSentMode = mode;
-
-    this.send({
+    const sent = this.send({
       type: "pose",
       mode,
       x: pose.x,
@@ -701,6 +702,11 @@ export class MultiplayerClient {
       heading: pose.heading,
       speed: pose.speed,
     });
+
+    if (sent) {
+      this.lastPoseSentAt = now;
+      this.lastSentMode = mode;
+    }
   }
 
   public sendInput(input: { throttle?: number; steer?: number; brake?: boolean; seq?: number }): void {
@@ -713,10 +719,12 @@ export class MultiplayerClient {
     });
   }
 
-  private send(data: any): void {
+  private send(data: any): boolean {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(data));
+      return true;
     }
+    return false;
   }
 
   private setStatus(status: MultiplayerStatus): void {
@@ -744,6 +752,8 @@ export class MultiplayerClient {
     this.connectionGeneration++;
     this.closedExplicitly = true;
     this.pendingConnectPromise = null;
+    this.lastPoseSentAt = 0;
+    this.lastSentMode = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

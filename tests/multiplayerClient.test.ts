@@ -574,7 +574,10 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     client.disconnect();
   });
 
-  it("throttles same-mode poses within 45ms but never drops mode transitions or forced poses", async () => {
+  it("throttles same-mode poses within 45ms deterministically but never drops mode transitions or forced poses", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+
     const client = new MultiplayerClient({
       userId: "101",
       username: "test-user",
@@ -588,30 +591,160 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
 
     const getSentPoses = () => socket.sent.filter((m: any) => m.type === "pose");
 
-    // 1. Initial driving pose is sent
+    // 1. Initial driving pose at t=1000 is sent
     client.sendPose({ x: 10, y: 1, z: 20, heading: 0, speed: 10, mode: "driving" });
     expect(getSentPoses()).toHaveLength(1);
     expect(getSentPoses()[0]).toMatchObject({ type: "pose", mode: "driving", x: 10 });
 
-    // 2. Immediate second driving pose (<45ms) should be throttled
+    // 2. Advance by 20ms to t=1020: immediate second driving pose (<45ms) should be throttled
+    vi.advanceTimersByTime(20);
     client.sendPose({ x: 10.5, y: 1, z: 20.5, heading: 0, speed: 10, mode: "driving" });
     expect(getSentPoses()).toHaveLength(1);
 
-    // 3. Immediate mode transition to walking (<45ms) MUST NOT be throttled
+    // 3. Advance by 10ms to t=1030: immediate mode transition to walking (<45ms) MUST NOT be throttled
+    vi.advanceTimersByTime(10);
     client.sendPose({ x: 10.5, y: 1, z: 20.5, heading: 0, speed: 0, mode: "walking" });
     expect(getSentPoses()).toHaveLength(2);
     expect(getSentPoses()[1]).toMatchObject({ type: "pose", mode: "walking", x: 10.5 });
 
-    // 4. Immediate second walking pose (<45ms) should be throttled
+    // 4. Advance by 10ms to t=1040: immediate second walking pose (<45ms) should be throttled
+    vi.advanceTimersByTime(10);
     client.sendPose({ x: 11, y: 1, z: 21, heading: 0, speed: 1, mode: "walking" });
     expect(getSentPoses()).toHaveLength(2);
 
-    // 5. Forced walking pose (<45ms) MUST NOT be throttled
+    // 5. Same tick t=1040: forced walking pose (<45ms) MUST NOT be throttled
     client.sendPose({ x: 11, y: 1, z: 21, heading: 0, speed: 1, mode: "walking", force: true });
     expect(getSentPoses()).toHaveLength(3);
     expect(getSentPoses()[2]).toMatchObject({ type: "pose", mode: "walking", x: 11 });
 
+    // 6. Advance by 50ms to t=1090 (>45ms interval): normal walking pose is sent
+    vi.advanceTimersByTime(50);
+    client.sendPose({ x: 12, y: 1, z: 22, heading: 0, speed: 1.5, mode: "walking" });
+    expect(getSentPoses()).toHaveLength(4);
+    expect(getSentPoses()[3]).toMatchObject({ type: "pose", mode: "walking", x: 12 });
+
     client.disconnect();
+    vi.useRealTimers();
+  });
+
+  it("does not advance pose tracking when send drops on non-OPEN socket, avoiding ghost throttling upon connection", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(2000);
+
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "test-token",
+    });
+
+    const connectPromise = client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    // Socket is still CONNECTING (not yet OPEN)
+    expect(socket.readyState).toBe(MockWebSocket.CONNECTING);
+
+    // Attempt to send pose while socket is not open: should be dropped without advancing state
+    client.sendPose({ x: 5, y: 0, z: 5, heading: 0, speed: 0, mode: "driving" });
+    expect(socket.sent).toHaveLength(0);
+
+    // Advance by 10ms to t=2010 and open socket
+    vi.advanceTimersByTime(10);
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+    await connectPromise;
+
+    // Advance by 5ms to t=2015 (<45ms from the dropped call):
+    // First pose on OPEN socket MUST NOT be throttled by the dropped call's timestamp
+    vi.advanceTimersByTime(5);
+    client.sendPose({ x: 5, y: 0, z: 5, heading: 0, speed: 0, mode: "driving" });
+
+    const sentPoses = socket.sent.filter((m: any) => m.type === "pose");
+    expect(sentPoses).toHaveLength(1);
+    expect(sentPoses[0]).toMatchObject({ type: "pose", mode: "driving", x: 5 });
+
+    client.disconnect();
+    vi.useRealTimers();
+  });
+
+  it("resets pose tracking on disconnect and reconnect so fresh session is never throttled by prior session", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(5000);
+
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "test-token",
+    });
+
+    await client.connect();
+    const socket1 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket1.readyState = MockWebSocket.OPEN;
+    socket1.onopen!();
+
+    // Session 1 sends driving pose at t=5000
+    client.sendPose({ x: 10, y: 0, z: 10, heading: 0, speed: 5, mode: "driving" });
+    expect(socket1.sent.filter((m: any) => m.type === "pose")).toHaveLength(1);
+
+    // Disconnect session 1 at t=5010
+    vi.advanceTimersByTime(10);
+    client.disconnect();
+
+    // Reconnect session 2 at t=5015 (<45ms from session 1 pose)
+    vi.advanceTimersByTime(5);
+    const connectPromise = client.connect();
+    const socket2 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    expect(socket2).not.toBe(socket1);
+    socket2.readyState = MockWebSocket.OPEN;
+    socket2.onopen!();
+    await connectPromise;
+
+    // Send driving pose in session 2 at t=5020 (<45ms from session 1):
+    // Must NOT be throttled by session 1's lastPoseSentAt or lastSentMode
+    vi.advanceTimersByTime(5);
+    client.sendPose({ x: 10, y: 0, z: 10, heading: 0, speed: 5, mode: "driving" });
+    expect(socket2.sent.filter((m: any) => m.type === "pose")).toHaveLength(1);
+
+    client.disconnect();
+    vi.useRealTimers();
+  });
+
+  it("resets pose tracking on socket close so reconnection transmits fresh pose immediately", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(8000);
+
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "test-token",
+    });
+
+    await client.connect();
+    const socket1 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket1.readyState = MockWebSocket.OPEN;
+    socket1.onopen!();
+
+    client.sendPose({ x: 20, y: 0, z: 20, heading: 0, speed: 8, mode: "driving" });
+    expect(socket1.sent.filter((m: any) => m.type === "pose")).toHaveLength(1);
+
+    // Socket 1 abruptly closes at t=8010
+    vi.advanceTimersByTime(10);
+    socket1.close();
+
+    // Wait for the reconnect timer (500ms delay for 1st attempt) to fire
+    vi.advanceTimersByTime(500);
+    await Promise.resolve();
+
+    const socket2 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    expect(socket2).not.toBe(socket1);
+    socket2.readyState = MockWebSocket.OPEN;
+    socket2.onopen!();
+
+    // Pose sent on reconnected socket at t=8525 (<45ms from reconnection setup)
+    vi.advanceTimersByTime(5);
+    client.sendPose({ x: 20, y: 0, z: 20, heading: 0, speed: 8, mode: "driving" });
+    expect(socket2.sent.filter((m: any) => m.type === "pose")).toHaveLength(1);
+
+    client.disconnect();
+    vi.useRealTimers();
   });
 });
 
