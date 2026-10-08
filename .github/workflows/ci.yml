@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: duikindiesee/citylife-server
-          ref: 2b38861cb91fdc4e1f23fae52bd74fd07737c018
+          ref: b61233d40af3fa1d0fbf5154cf6885b68dfac8ae
           token: ${{ secrets.CITYLIFE_SERVER_READ_TOKEN }}
           persist-credentials: false
           path: citylife-server

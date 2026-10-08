@@ -108,4 +108,3 @@ export function remoteRacersSignature(state: ColonyState): string {
     .sort()
     .join(";");
 }
-
