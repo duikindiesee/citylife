@@ -21,6 +21,14 @@ held ~102k nodes (3,412 "junction" decoration groups); 7 FPS with roads visible,
   (width 1 = a 4m ribbon) so hand-drawn roads render; single-cell roads stay cul-de-sac
   bulbs. Known one-shot limitation (as legacy): bulldozing prunes cells but the ribbon
   polyline lingers until reload; deriving ways from the tile graph is follow-up work.
+- **Authority direction (ROAD.NET.CANON.1):** `state.roads` / `roadKind` are the
+  canonical drivable graph. `roadWays` and ribbon meshes are derived render surfaces and
+  never write cells back into the graph. This is deliberate: smoothed ribbons have
+  shoulders/kerbs and may graze beach-adjacent cells so the road looks continuous, while
+  routing, traffic, buses and rally approaches must still obey the authored graph's
+  water/beach/structure guards. Tests assert both sides: bus-route samples have authored
+  ribbon coverage, and renderer-only ribbon cells remain renderer-only instead of making
+  graph assertions tautological.
 - **`R3FRoadRibbons`:** builds the proven `buildRoadRibbons` group (~4 merged meshes:
   street/avenue surfaces, edge lines, centre dashes, crosswalks baked in), disposes the
   superseded group on every rebuild (spec 119).
