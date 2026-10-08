@@ -9,6 +9,8 @@
 //  - auto-login in dev reads VITE_OPERATOR_EMAIL + VITE_OPERATOR_PASSWORD from the gitignored
 //    .env.local and is a no-op in production builds
 
+import { setBugValidatorAuthority } from "./bug/bugBounty";
+
 export interface OperatorSession {
   token: string;
   refreshToken?: string; // kooker refresh token — used to mint a new access token before expiry
@@ -214,6 +216,14 @@ export function getAuthClient(): AuthClient {
   return sharedAuth;
 }
 
+function bugValidatorPrincipalFor(
+  operator: OperatorSession["operator"] | null,
+): string | null {
+  const id = operator?.userId?.trim();
+  if (!id) return null;
+  return id.startsWith("operator:") ? id : `operator:${id}`;
+}
+
 export class AuthClient {
   private session: OperatorSession | null = null;
   private readonly now: () => number;
@@ -222,6 +232,7 @@ export class AuthClient {
   constructor(opts?: { now?: () => number }) {
     this.now = opts?.now ?? (() => Date.now());
     this.restore();
+    this.installBugValidatorAuthority();
   }
 
   get isAuthenticated(): boolean {
@@ -306,6 +317,7 @@ export class AuthClient {
         },
       };
       this.persist();
+      this.installBugValidatorAuthority();
       return { ok: true };
     } catch (e) {
       return {
@@ -341,6 +353,7 @@ export class AuthClient {
     } catch {
       /* no storage */
     }
+    this.installBugValidatorAuthority();
   }
 
   /** Bearer header for backend calls — empty object when not authenticated (calls fail closed).
@@ -395,6 +408,7 @@ export class AuthClient {
           expiresAt: expFromJwt > 0 ? expFromJwt : this.now() + SESSION_MS,
         };
         this.persist();
+        this.installBugValidatorAuthority();
         return data.accessToken;
       } catch {
         return null;
@@ -411,6 +425,12 @@ export class AuthClient {
     } catch {
       /* no storage */
     }
+  }
+  private installBugValidatorAuthority(): void {
+    setBugValidatorAuthority((principalId) => {
+      if (!this.isCityLifeAdmin) return false;
+      return principalId === bugValidatorPrincipalFor(this.operator);
+    });
   }
   private restore(): void {
     try {

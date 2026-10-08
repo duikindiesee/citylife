@@ -5,6 +5,10 @@ import {
   canEnterCityBuilder,
   classifyLoginFailure,
 } from "../src/colony/authClient";
+import {
+  isAuthorizedBugValidator,
+  setBugValidatorAuthority,
+} from "../src/colony/bug/bugBounty";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -31,8 +35,14 @@ function fakeJwtWithRoles(roles: string[], email = "player@test.com"): string {
 }
 
 /** Build an unsigned JWT carrying an explicit kooker userId claim + a far-future exp. */
-function fakeJwtWithUserId(userId: string, email = "player@test.com"): string {
-  const payload = btoa(JSON.stringify({ sub: email, exp: 4070908800, userId }))
+function fakeJwtWithUserId(
+  userId: string,
+  email = "player@test.com",
+  roles: string[] = [],
+): string {
+  const payload = btoa(
+    JSON.stringify({ sub: email, exp: 4070908800, userId, roles }),
+  )
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=/g, "");
@@ -84,7 +94,10 @@ beforeEach(() => {
   }
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  setBugValidatorAuthority(null);
+  vi.unstubAllGlobals();
+});
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -187,6 +200,36 @@ describe("AuthClient (kooker login gate)", () => {
     const adminPlayer = new AuthClient();
     await adminPlayer.login("admin@test.com", "pw");
     expect(canEnterCityBuilder(adminPlayer)).toBe(true);
+  });
+
+  it("installs bug validator authority from the signed-in server-derived admin identity", async () => {
+    const signedOut = new AuthClient();
+    expect(signedOut.operator).toBeNull();
+    expect(isAuthorizedBugValidator("operator:kooker")).toBe(false);
+
+    mockFetchOk(
+      fakeJwtWithUserId("kooker", "player@test.com", ["CITYLIFE_PLAYER"]),
+    );
+    const player = new AuthClient();
+    await player.login("player@test.com", "pw");
+    expect(player.isCityLifeAdmin).toBe(false);
+    expect(isAuthorizedBugValidator("operator:kooker")).toBe(false);
+
+    mockFetchOk(fakeJwtWithUserId("someone-else", "admin@test.com", ["ADMIN"]));
+    const wrongAdmin = new AuthClient();
+    await wrongAdmin.login("admin@test.com", "pw");
+    expect(wrongAdmin.isCityLifeAdmin).toBe(true);
+    expect(isAuthorizedBugValidator("operator:kooker")).toBe(false);
+
+    mockFetchOk(fakeJwtWithUserId("kooker", "operator@test.com", ["ADMIN"]));
+    const operator = new AuthClient();
+    await operator.login("operator@test.com", "pw");
+    expect(operator.isCityLifeAdmin).toBe(true);
+    expect(isAuthorizedBugValidator("operator:kooker")).toBe(true);
+    expect(isAuthorizedBugValidator("bot:some-worker")).toBe(false);
+
+    operator.logout();
+    expect(isAuthorizedBugValidator("operator:kooker")).toBe(false);
   });
 
   it("allows City Builder for a signed-out session — the only way this occurs is AuthGate's own local DEV/E2E skip-auth bypass, which is provably impossible on a production build/host", () => {
