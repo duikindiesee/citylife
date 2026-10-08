@@ -42,8 +42,22 @@ describe("BUS.COLLIDE.1 — opposing legs of one route pass, not overlap", () =>
     let opposing = false;
     let samples = 0;
 
-    // Windowed around the known event so this stays a unit test rather than a full service sweep.
-    for (let min = 400; min <= 520; min++) {
+    // TRACK THE CLOSEST OPPOSING PAIR, not the closest pair overall.
+    //
+    // This used to record the globally closest pair and then ASSERT it happened to be an opposing
+    // one. That made the test hostage to fleet timing: anything that shifts when coaches meet — a
+    // relocated depot rotates the loop join without moving a single stop — leaves the window
+    // containing service, but with a same-direction pair as the closest. The guard then fires and
+    // reports "measuring the wrong defect", which is true but was caused by the CLOCK, not the lane
+    // geometry this test exists to check.
+    //
+    // Searching for the closest OPPOSING pair keeps the measurement pointed at the right defect
+    // while staying robust to timing shifts. The non-vacuity check below still fails loudly if no
+    // opposing pair is observed at all, so the test can never pass by measuring nothing.
+    let sawOpposing = false;
+    // Widened from the original 400-520: a fixed window around one known event is exactly what made
+    // this brittle. Same-direction stacking remains a SEPARATE defect (see BUS.COLLIDE.1 headway).
+    for (let min = 300; min <= 700; min++) {
       setSolDebugOffsetMs(
         CITYLIFE_EPOCH_MS + (min * MS_PER_SOL) / MINUTES_PER_SOL - Date.now(),
       );
@@ -62,14 +76,16 @@ describe("BUS.COLLIDE.1 — opposing legs of one route pass, not overlap", () =>
             poses[i]!.x - poses[j]!.x,
             poses[i]!.y - poses[j]!.y,
           );
+          let diff =
+            Math.abs(
+              ((poses[i]!.heading - poses[j]!.heading) * 180) / Math.PI,
+            ) % 360;
+          if (diff > 180) diff = 360 - diff;
+          if (diff <= 120) continue; // same-direction: a different defect, not this one
+          sawOpposing = true;
           if (d < worst) {
             worst = d;
-            let diff =
-              Math.abs(
-                ((poses[i]!.heading - poses[j]!.heading) * 180) / Math.PI,
-              ) % 360;
-            if (diff > 180) diff = 360 - diff;
-            opposing = diff > 120;
+            opposing = true;
           }
         }
     }
@@ -81,8 +97,8 @@ describe("BUS.COLLIDE.1 — opposing legs of one route pass, not overlap", () =>
     // here).
     expect(samples, "the window must contain live service").toBeGreaterThan(50);
     expect(
-      opposing,
-      "the closest pair must be opposing, or this is measuring the wrong defect",
+      sawOpposing && opposing,
+      "no opposing pair was observed at all, so this is measuring nothing",
     ).toBe(true);
     expect(
       worst,
