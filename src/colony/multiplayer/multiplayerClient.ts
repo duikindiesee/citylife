@@ -241,6 +241,7 @@ export class MultiplayerClient {
   private layoutRevision: string | null = null;
   private neighbourhoodKey: string | null = null;
   private lastPoseSentAt = 0;
+  private lastSentMode: "driving" | "walking" | null = null;
   private pingInterval: any = null;
   private closedExplicitly = false;
   private reconnectAttempts = 0;
@@ -680,15 +681,20 @@ export class MultiplayerClient {
     heading: number;
     speed: number;
     mode?: "driving" | "walking";
+    force?: boolean;
   }): void {
     const now = Date.now();
-    // Throttle to max 20Hz (50ms interval) to conserve bandwidth while maintaining smooth client extrapolation
-    if (now - this.lastPoseSentAt < 45) return;
+    const mode = pose.mode ?? "walking";
+    const modeChanged = this.lastSentMode !== null && this.lastSentMode !== mode;
+    // Throttle to max 20Hz (50ms interval) to conserve bandwidth while maintaining smooth client extrapolation,
+    // but never drop state-transition poses or explicitly forced updates.
+    if (!pose.force && !modeChanged && now - this.lastPoseSentAt < 45) return;
     this.lastPoseSentAt = now;
+    this.lastSentMode = mode;
 
     this.send({
       type: "pose",
-      mode: pose.mode ?? "walking",
+      mode,
       x: pose.x,
       y: pose.y,
       z: pose.z ?? 0,

@@ -2835,6 +2835,7 @@ export class ColonyRuntime {
         heading: this.ownedDrivePose.heading,
         speed: 0,
         mode: "driving",
+        force: true,
       });
     }
     this.emit();
@@ -3059,6 +3060,7 @@ export class ColonyRuntime {
         heading: -car.heading - Math.PI / 2,
         speed: 0,
         mode: "walking",
+        force: true,
       });
     }
     this.emit();
@@ -3135,6 +3137,7 @@ export class ColonyRuntime {
         heading,
         speed: 0,
         mode: "driving",
+        force: true,
       });
     }
     this.emit();

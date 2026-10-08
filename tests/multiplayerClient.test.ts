@@ -573,6 +573,46 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     );
     client.disconnect();
   });
+
+  it("throttles same-mode poses within 45ms but never drops mode transitions or forced poses", async () => {
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      getToken: async () => "test-token",
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    const getSentPoses = () => socket.sent.filter((m: any) => m.type === "pose");
+
+    // 1. Initial driving pose is sent
+    client.sendPose({ x: 10, y: 1, z: 20, heading: 0, speed: 10, mode: "driving" });
+    expect(getSentPoses()).toHaveLength(1);
+    expect(getSentPoses()[0]).toMatchObject({ type: "pose", mode: "driving", x: 10 });
+
+    // 2. Immediate second driving pose (<45ms) should be throttled
+    client.sendPose({ x: 10.5, y: 1, z: 20.5, heading: 0, speed: 10, mode: "driving" });
+    expect(getSentPoses()).toHaveLength(1);
+
+    // 3. Immediate mode transition to walking (<45ms) MUST NOT be throttled
+    client.sendPose({ x: 10.5, y: 1, z: 20.5, heading: 0, speed: 0, mode: "walking" });
+    expect(getSentPoses()).toHaveLength(2);
+    expect(getSentPoses()[1]).toMatchObject({ type: "pose", mode: "walking", x: 10.5 });
+
+    // 4. Immediate second walking pose (<45ms) should be throttled
+    client.sendPose({ x: 11, y: 1, z: 21, heading: 0, speed: 1, mode: "walking" });
+    expect(getSentPoses()).toHaveLength(2);
+
+    // 5. Forced walking pose (<45ms) MUST NOT be throttled
+    client.sendPose({ x: 11, y: 1, z: 21, heading: 0, speed: 1, mode: "walking", force: true });
+    expect(getSentPoses()).toHaveLength(3);
+    expect(getSentPoses()[2]).toMatchObject({ type: "pose", mode: "walking", x: 11 });
+
+    client.disconnect();
+  });
 });
 
 describe("BusNetworkMiniMapModel peer integration", () => {
