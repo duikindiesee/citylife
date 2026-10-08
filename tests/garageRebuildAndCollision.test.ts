@@ -863,4 +863,3 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     expect((testRt as any).fpCameraCell).not.toBeNull();
   });
 });
-
