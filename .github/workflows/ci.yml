@@ -46,6 +46,8 @@ jobs:
         with:
           repository: duikindiesee/citylife-server
           ref: 2b38861cb91fdc4e1f23fae52bd74fd07737c018
+          token: ${{ secrets.CITYLIFE_SERVER_READ_TOKEN }}
+          persist-credentials: false
           path: citylife-server
       - name: Install and build citylife-server
         working-directory: citylife-server
