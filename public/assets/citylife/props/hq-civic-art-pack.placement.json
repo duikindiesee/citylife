@@ -1,0 +1,38 @@
+{
+  "schema": "citylife-prop-placement/v1",
+  "asset": {
+    "id": "hq-civic-art-pack",
+    "url": "/assets/citylife/props/hq-civic-art-pack.glb",
+    "generator": "scripts/generate_hq_civic_art_pack.mjs",
+    "provenance": "public/assets/citylife/props/hq-civic-art-pack.PROVENANCE.md",
+    "units": "meters",
+    "upAxis": "Y",
+    "forwardAxis": "+Z",
+    "publicSafe": true
+  },
+  "frame": {
+    "reference": "Landmarks and Civic Art lane",
+    "coordinateSpace": "world meters (1 grid cell = 1 unit); example square is 12x12 m centred on origin",
+    "note": "These are example placements for a public square; the runtime integration slice chooses the real anchor(s)."
+  },
+  "nodes": {
+    "CivicArt_Fountain": { "dimensions": { "w": 2.6, "h": 2.57, "d": 2.6 }, "pivot": "floor-center", "role": "square centrepiece" },
+    "CivicArt_Statue": { "dimensions": { "w": 1.2, "h": 3.2, "d": 1.2 }, "pivot": "floor-center", "role": "landmark figure" },
+    "CivicArt_Obelisk": { "dimensions": { "w": 0.8, "h": 5.0, "d": 0.8 }, "pivot": "floor-center", "role": "tall waypoint marker" },
+    "CivicArt_BannerPole": { "dimensions": { "w": 1.04, "h": 3.9, "d": 0.4 }, "pivot": "floor-pole-base", "role": "event banner; pole at pivot, cloth faces +Z" },
+    "CivicArt_PlanterBench": { "dimensions": { "w": 1.95, "h": 1.18, "d": 0.6 }, "pivot": "floor-center", "role": "seating + greenery edge unit" }
+  },
+  "examplePlacements": [
+    { "node": "CivicArt_Fountain", "position": [0, 0, 0], "yawRadians": 0, "note": "square centre" },
+    { "node": "CivicArt_Statue", "position": [4, 0, 4], "yawRadians": 3.9269908169872414, "note": "corner, facing the fountain" },
+    { "node": "CivicArt_Obelisk", "position": [-4, 0, 4], "yawRadians": 0, "note": "opposite corner tall marker" },
+    { "node": "CivicArt_BannerPole", "position": [4, 0, -4], "yawRadians": 2.356194490192345, "note": "entry banner, cloth toward the square" },
+    { "node": "CivicArt_BannerPole", "position": [-4, 0, -4], "yawRadians": -2.356194490192345, "note": "matching entry banner" },
+    { "node": "CivicArt_PlanterBench", "position": [-5, 0, 0], "yawRadians": 1.5707963267948966, "note": "west edge seating" },
+    { "node": "CivicArt_PlanterBench", "position": [5, 0, 0], "yawRadians": -1.5707963267948966, "note": "east edge seating" }
+  ],
+  "integration": {
+    "owner": "opus",
+    "note": "Placements are example square dressing; runtime wiring and grounding are a later gated slice. Yaw rotates local +Z about +Y."
+  }
+}
