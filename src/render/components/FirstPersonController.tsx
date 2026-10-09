@@ -49,8 +49,10 @@ interface FpRuntimeBridge {
     preserveVelocity?: boolean;
   } | null;
   fpCameraCell?: { x: number; y: number } | null;
+  fpCameraYaw?: number;
   fpGamepadMoving?: boolean;
   setFirstPersonKey?: (key: string, down: boolean) => void;
+  setFirstPersonYaw?: (yaw: number) => void;
 }
 
 export function FirstPersonController({
@@ -89,12 +91,25 @@ export function FirstPersonController({
     backward: false,
     left: false,
     right: false,
+    turnLeft: false,
+    turnRight: false,
     sprint: false,
     mouseX: 0,
     mouseY: 0,
   });
 
-  const rotation = useRef(new Euler(0, 0, 0, "YXZ"));
+  const initialYaw =
+    runtime?.fpTeleportRequest?.yaw ??
+    runtime?.fpCameraYaw ??
+    0;
+  const rotation = useRef(new Euler(0, initialYaw, 0, "YXZ"));
+
+  useEffect(() => {
+    if (runtime) {
+      runtime.fpCameraYaw = rotation.current.y;
+      runtime.setFirstPersonYaw?.(rotation.current.y);
+    }
+  }, [runtime]);
 
   useEffect(() => {
     const isTyping = (e: KeyboardEvent) => {
@@ -113,6 +128,8 @@ export function FirstPersonController({
       if (e.code === "KeyS") input.current.backward = true;
       if (e.code === "KeyA") input.current.left = true;
       if (e.code === "KeyD") input.current.right = true;
+      if (e.code === "ArrowLeft") input.current.turnLeft = true;
+      if (e.code === "ArrowRight") input.current.turnRight = true;
       if (e.code === "ShiftLeft" || e.code === "ShiftRight")
         input.current.sprint = true;
       runtime?.setFirstPersonKey?.(e.code, true);
@@ -124,6 +141,8 @@ export function FirstPersonController({
       if (e.code === "KeyS") input.current.backward = false;
       if (e.code === "KeyA") input.current.left = false;
       if (e.code === "KeyD") input.current.right = false;
+      if (e.code === "ArrowLeft") input.current.turnLeft = false;
+      if (e.code === "ArrowRight") input.current.turnRight = false;
       if (e.code === "ShiftLeft" || e.code === "ShiftRight")
         input.current.sprint = false;
       runtime?.setFirstPersonKey?.(e.code, false);
@@ -134,11 +153,15 @@ export function FirstPersonController({
       input.current.backward = false;
       input.current.left = false;
       input.current.right = false;
+      input.current.turnLeft = false;
+      input.current.turnRight = false;
       input.current.sprint = false;
       runtime?.setFirstPersonKey?.("KeyW", false);
       runtime?.setFirstPersonKey?.("KeyS", false);
       runtime?.setFirstPersonKey?.("KeyA", false);
       runtime?.setFirstPersonKey?.("KeyD", false);
+      runtime?.setFirstPersonKey?.("ArrowLeft", false);
+      runtime?.setFirstPersonKey?.("ArrowRight", false);
       runtime?.setFirstPersonKey?.("ShiftLeft", false);
       runtime?.setFirstPersonKey?.("ShiftRight", false);
     };
@@ -156,21 +179,29 @@ export function FirstPersonController({
           -Math.PI / 2,
           Math.min(Math.PI / 2, rotation.current.x),
         );
+        if (runtime) {
+          runtime.fpCameraYaw = rotation.current.y;
+          runtime.setFirstPersonYaw?.(rotation.current.y);
+        }
       }
     };
 
     // Pointer lock for mouse look is managed explicitly via ColonyApp's FirstPersonMouseLookBar
     // to prevent unexpected cursor trapping or breaking UI button interactions while driving.
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("blur", handleBlur);
+    if (typeof window !== "undefined") {
+      window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("keyup", handleKeyUp);
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("blur", handleBlur);
+    }
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("blur", handleBlur);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("keyup", handleKeyUp);
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("blur", handleBlur);
+      }
       clearHeldKeys();
     };
   }, []);
@@ -277,6 +308,10 @@ export function FirstPersonController({
       if (tp.yaw !== undefined) {
         rotation.current.y = tp.yaw;
         rotation.current.x = 0;
+        if (runtime) {
+          runtime.fpCameraYaw = rotation.current.y;
+          runtime.setFirstPersonYaw?.(rotation.current.y);
+        }
       }
     }
 
@@ -300,7 +335,11 @@ export function FirstPersonController({
         rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
         camera.position.set(wx, roadTop + BUS_RIDER_EYE, wz);
         camera.quaternion.setFromEuler(rotation.current);
-        if (runtime) runtime.fpCameraCell = { x: pose.x, y: pose.y };
+        if (runtime) {
+          runtime.fpCameraCell = { x: pose.x, y: pose.y };
+          runtime.fpCameraYaw = rotation.current.y;
+          runtime.setFirstPersonYaw?.(rotation.current.y);
+        }
         return;
       }
     }
@@ -331,6 +370,14 @@ export function FirstPersonController({
         -Math.PI / 2,
         Math.min(Math.PI / 2, rotation.current.x),
       );
+    }
+
+    // Arrow keys for turning camera in place
+    if (input.current.turnLeft) {
+      rotation.current.y += COLONY.firstPerson.turnSpeed * delta;
+    }
+    if (input.current.turnRight) {
+      rotation.current.y -= COLONY.firstPerson.turnSpeed * delta;
     }
 
     // Combine keyboard input
@@ -454,6 +501,8 @@ export function FirstPersonController({
       if (terrainSizeForGrid > 0) {
         runtime.fpCameraCell = { x: toGridX(pos.x), y: toGridZ(pos.z) };
       }
+      runtime.fpCameraYaw = rotation.current.y;
+      runtime.setFirstPersonYaw?.(rotation.current.y);
       runtime.fpGamepadMoving = Boolean(
         gp && (Math.abs(gp.axes?.[0] ?? 0) > 0.1 || Math.abs(gp.axes?.[1] ?? 0) > 0.1),
       );

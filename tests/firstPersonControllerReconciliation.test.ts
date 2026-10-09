@@ -1555,4 +1555,267 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       cleanups.forEach((c) => c());
     }
   });
+
+  it("guarantees directional agreement between production FirstPersonController physical velocity, wire sender heading, and paired server displacement across camera yaw, mouse look, turning, and strafe", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    // Admit in walking mode
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-directional-test",
+        participantId: "part-1",
+        room: "room-1",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "walking",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: 0,
+            y: 0,
+            z: 0,
+            heading: -Math.PI / 2, // Facing -Z initially
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    let cleanups: Array<() => void> = [];
+    const origWindow = (globalThis as any).window;
+    const origDocument = (globalThis as any).document;
+
+    const listeners: Record<string, ((e: any) => void)[]> = {};
+    const mockWindow = {
+      addEventListener: (type: string, fn: any) => {
+        (listeners[type] = listeners[type] || []).push(fn);
+      },
+      removeEventListener: (type: string, fn: any) => {
+        listeners[type] = (listeners[type] || []).filter((f) => f !== fn);
+      },
+      dispatchEvent: (e: any) => {
+        const fns = [...(listeners[e.type] || [])];
+        for (const f of fns) f(e);
+      },
+    };
+    (globalThis as any).window = mockWindow;
+    (globalThis as any).document = { pointerLockElement: mockWindow };
+
+    effectRunner = (cb: () => void | (() => void)) => {
+      const res = cb();
+      if (typeof res === "function") cleanups.push(res);
+    };
+
+    try {
+      renderToStaticMarkup(
+        React.createElement(FirstPersonController, {
+          sim: runtime.sim,
+          runtime: runtime as any,
+          startPosition: [0, 2, 0],
+          terrainLevel: null,
+        })
+      );
+
+      // Step 1: Initial useFrame tick
+      capturedFrameCb!({}, 0.016);
+
+      // Helper simulating server stepPedestrian integration
+      const simulateServerDisplacement = (
+        fwd: number,
+        str: number,
+        heading: number,
+        dt: number,
+        sprint: boolean = false
+      ) => {
+        const mag = Math.hypot(fwd, str);
+        const normFwd = mag > 0 ? fwd / mag : 0;
+        const normStr = mag > 0 ? str / mag : 0;
+        const baseSpeed = sprint ? 8.0 : 4.5;
+        const speed = Math.min(1.0, mag) * baseSpeed;
+        const cos = Math.cos(heading);
+        const sin = Math.sin(heading);
+        const vx = (normFwd * cos - normStr * sin) * speed;
+        const vz = (normFwd * sin + normStr * cos) * speed;
+        return { vx, vz, dx: vx * dt, dz: vz * dt };
+      };
+
+      // CASE 1: KeyW at initial yaw = 0 (facing down -Z)
+      mockWindow.dispatchEvent({
+        type: "keydown",
+        code: "KeyW",
+        target: { tagName: "DIV", isContentEditable: false },
+      });
+
+      // Advance physics frames
+      for (let i = 0; i < 5; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+
+      const linvelYaw0 = currentRigidBody.linvel();
+      // Client local velocity moves down -Z
+      expect(linvelYaw0.x).toBeCloseTo(0, 3);
+      expect(linvelYaw0.z).toBeLessThan(-0.5);
+
+      // Wire walking packet emitted
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+
+      const msgYaw0 = socket.sent.find((m: any) => m.type === "input");
+      expect(msgYaw0).toBeDefined();
+      expect(msgYaw0.forward).toBe(1);
+      expect(msgYaw0.strafe).toBe(0);
+      expect(msgYaw0.heading).toBeCloseTo(-Math.PI / 2, 4);
+
+      // Server integrates heading -PI/2
+      const serverYaw0 = simulateServerDisplacement(
+        msgYaw0.forward,
+        msgYaw0.strafe,
+        msgYaw0.heading,
+        0.016
+      );
+      expect(serverYaw0.vx).toBeCloseTo(0, 4);
+      expect(serverYaw0.vz).toBeLessThan(0); // Moves down -Z!
+
+      // Directional dot product: client body velocity vs server displacement
+      const clientMag0 = Math.hypot(linvelYaw0.x, linvelYaw0.z);
+      const serverMag0 = Math.hypot(serverYaw0.dx, serverYaw0.dz);
+      const dot0 =
+        (linvelYaw0.x * serverYaw0.dx + linvelYaw0.z * serverYaw0.dz) /
+        (clientMag0 * serverMag0);
+      expect(dot0).toBeGreaterThan(0.999);
+
+      // Release KeyW
+      mockWindow.dispatchEvent({
+        type: "keyup",
+        code: "KeyW",
+        target: { tagName: "DIV", isContentEditable: false },
+      });
+
+      // CASE 2: Turn 90 degrees right via mouse look (movementX > 0)
+      // Turning right in FirstPersonController: rotation.current.y -= movementX * 0.002
+      // Rotate by -PI/2 radians (90 deg to face +X)
+      mockWindow.dispatchEvent({
+        type: "mousemove",
+        movementX: (Math.PI / 2) / 0.002,
+        movementY: 0,
+      });
+
+      // Press KeyW at yaw = -PI/2
+      mockWindow.dispatchEvent({
+        type: "keydown",
+        code: "KeyW",
+        target: { tagName: "DIV", isContentEditable: false },
+      });
+
+      for (let i = 0; i < 5; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+
+      const linvelTurnRight = currentRigidBody.linvel();
+      // Client local velocity now moves along +X
+      expect(linvelTurnRight.x).toBeGreaterThan(0.5);
+      expect(linvelTurnRight.z).toBeCloseTo(0, 3);
+
+      // Wire packet emitted
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+
+      const msgTurnRight = socket.sent.find((m: any) => m.type === "input");
+      expect(msgTurnRight).toBeDefined();
+      expect(msgTurnRight.forward).toBe(1);
+      expect(msgTurnRight.strafe).toBe(0);
+      expect(msgTurnRight.heading).toBeCloseTo(0, 4); // Wire heading 0 corresponds to +X!
+
+      const serverTurnRight = simulateServerDisplacement(
+        msgTurnRight.forward,
+        msgTurnRight.strafe,
+        msgTurnRight.heading,
+        0.016
+      );
+      expect(serverTurnRight.vx).toBeGreaterThan(0); // Moves along +X!
+      expect(serverTurnRight.vz).toBeCloseTo(0, 4);
+
+      const clientMagRight = Math.hypot(linvelTurnRight.x, linvelTurnRight.z);
+      const serverMagRight = Math.hypot(serverTurnRight.dx, serverTurnRight.dz);
+      const dotRight =
+        (linvelTurnRight.x * serverTurnRight.dx + linvelTurnRight.z * serverTurnRight.dz) /
+        (clientMagRight * serverMagRight);
+      expect(dotRight).toBeGreaterThan(0.999);
+
+      // Release KeyW
+      mockWindow.dispatchEvent({
+        type: "keyup",
+        code: "KeyW",
+        target: { tagName: "DIV", isContentEditable: false },
+      });
+
+      // CASE 3: Strafe Right (KeyD) while facing +X
+      mockWindow.dispatchEvent({
+        type: "keydown",
+        code: "KeyD",
+        target: { tagName: "DIV", isContentEditable: false },
+      });
+
+      for (let i = 0; i < 5; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+
+      const linvelStrafe = currentRigidBody.linvel();
+      // Facing +X, strafing right moves toward +Z
+      expect(linvelStrafe.x).toBeCloseTo(0, 3);
+      expect(linvelStrafe.z).toBeGreaterThan(0.5);
+
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+
+      const msgStrafe = socket.sent.find((m: any) => m.type === "input");
+      expect(msgStrafe).toBeDefined();
+      expect(msgStrafe.forward).toBe(0);
+      expect(msgStrafe.strafe).toBe(1);
+      expect(msgStrafe.heading).toBeCloseTo(0, 4);
+
+      const serverStrafe = simulateServerDisplacement(
+        msgStrafe.forward,
+        msgStrafe.strafe,
+        msgStrafe.heading,
+        0.016
+      );
+      expect(serverStrafe.vx).toBeCloseTo(0, 4);
+      expect(serverStrafe.vz).toBeGreaterThan(0); // Server also moves toward +Z!
+
+      const clientMagStrafe = Math.hypot(linvelStrafe.x, linvelStrafe.z);
+      const serverMagStrafe = Math.hypot(serverStrafe.dx, serverStrafe.dz);
+      const dotStrafe =
+        (linvelStrafe.x * serverStrafe.dx + linvelStrafe.z * serverStrafe.dz) /
+        (clientMagStrafe * serverMagStrafe);
+      expect(dotStrafe).toBeGreaterThan(0.999);
+    } finally {
+      effectRunner = null;
+      cleanups.forEach((c) => c());
+      cleanups = [];
+      if (origWindow !== undefined) (globalThis as any).window = origWindow;
+      else delete (globalThis as any).window;
+      if (origDocument !== undefined) (globalThis as any).document = origDocument;
+      else delete (globalThis as any).document;
+    }
+  });
 });

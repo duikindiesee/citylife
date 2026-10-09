@@ -7,6 +7,10 @@ import {
   isSprinting,
   rampedGroundSpeedCellsPerSec,
 } from "./playerSpeed";
+import {
+  cameraYawToWireHeading,
+  wireHeadingToCameraYaw,
+} from "./playerOrientation";
 import { ColonySim } from "./sim";
 import {
   PlanetRenderer,
@@ -1065,6 +1069,9 @@ export class ColonyRuntime {
    *  renderer every frame. The v3 walker camera is a physics capsule independent of the roster
    *  citizen, so bus interactions measure from HERE — the prompt matches what the player sees. */
   fpCameraCell: { x: number; y: number } | null = null;
+  /** Spec 149 / Spec 165 — Three.js first-person camera yaw (Euler Y in radians).
+   *  Synchronized from FirstPersonController and used to calculate authoritative wire heading. */
+  fpCameraYaw: number | undefined = undefined;
   /** Spec 149 — one-shot teleport order for the camera capsule (FirstPersonController consumes it;
    *  seq marks freshness). debugPlaceFirstPerson and alighting issue these. */
   fpTeleportRequest: {
@@ -3337,6 +3344,7 @@ export class ColonyRuntime {
             heading: self.heading,
           };
           this.fpCameraCell = { x: walkCellX, y: walkCellY };
+          this.fpCameraYaw = wireHeadingToCameraYaw(self.heading);
           this.fpTeleportRequest = {
             x: walkCellX,
             y: walkCellY,
@@ -3392,10 +3400,11 @@ export class ColonyRuntime {
             heading: ev.heading,
           };
           this.fpCameraCell = { x: walkCellX, y: walkCellY };
+          this.fpCameraYaw = wireHeadingToCameraYaw(ev.heading);
           this.fpTeleportRequest = {
             x: walkCellX,
             y: walkCellY,
-            yaw: -ev.heading - Math.PI / 2,
+            yaw: this.fpCameraYaw,
             seq: ++this.fpTeleportSeq,
           };
           if (this.fpCitizenId) {
@@ -3882,7 +3891,10 @@ export class ColonyRuntime {
     if (!at) return;
 
     const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
-    const heading = c?.heading ?? 0;
+    const heading = this.getFirstPersonWireHeading();
+    if (c) {
+      c.heading = heading;
+    }
 
     const k = this.fpKeys;
     const forwardHeld = k.has("fwd");
@@ -4234,9 +4246,17 @@ export class ColonyRuntime {
 
   /** P1 — step the operator INTO a citizen for a live first-person view through the bot's eyes. */
   enterFirstPerson(citizenId: string): boolean {
-    if (!this.citizens.byId(citizenId)) return false;
+    const c = this.citizens.byId(citizenId);
+    if (!c) return false;
     if (!this.canStepIntoCitizen(citizenId)) return false;
     this.fpCitizenId = citizenId;
+    this.fpCameraYaw = wireHeadingToCameraYaw(c.heading);
+    this.fpTeleportRequest = {
+      x: c.pos.x,
+      y: c.pos.y,
+      yaw: this.fpCameraYaw,
+      seq: ++this.fpTeleportSeq,
+    };
     this.fpKeys.clear();
     this.fpWalkSpeed = 0;
     this.fpLookPitch = 0;
@@ -4252,6 +4272,7 @@ export class ColonyRuntime {
     this.fpCitizenId = null;
     this.fpRidingBusId = null; // spec 149 — stepping out of the citizen also steps off the bus
     this.fpCameraCell = null;
+    this.fpCameraYaw = undefined;
     this.fpKeys.clear();
     this.fpWalkSpeed = 0;
     this.fpLookPitch = 0;
@@ -4291,6 +4312,24 @@ export class ColonyRuntime {
 
   setFirstPersonKey(key: string, down: boolean): void {
     this.setFpKey(key, down);
+  }
+
+  setFirstPersonYaw(yaw: number): void {
+    this.fpCameraYaw = yaw;
+    if (this.fpCitizenId) {
+      const c = this.citizens.byId(this.fpCitizenId);
+      if (c) {
+        c.heading = cameraYawToWireHeading(yaw);
+      }
+    }
+  }
+
+  getFirstPersonWireHeading(): number {
+    if (this.fpCameraYaw !== undefined && Number.isFinite(this.fpCameraYaw)) {
+      return cameraYawToWireHeading(this.fpCameraYaw);
+    }
+    const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
+    return c?.heading ?? 0;
   }
 
   /** Sample normalized, deadzoned gamepad axes for translational walking locomotion.
@@ -4345,6 +4384,7 @@ export class ColonyRuntime {
     const sensitivity =
       cfg.mouseSensitivity * cfg.mouseSensitivityScale[this.fpMouseSensitivity];
     c.heading += dx * sensitivity;
+    this.fpCameraYaw = wireHeadingToCameraYaw(c.heading);
     this.fpLookPitch = Math.max(
       -cfg.maxLookPitch,
       Math.min(cfg.maxLookPitch, this.fpLookPitch - dy * sensitivity),
@@ -6125,6 +6165,7 @@ export class ColonyRuntime {
     c.pos = { ...pos };
     c.target = { ...pos };
     c.heading = heading;
+    this.fpCameraYaw = wireHeadingToCameraYaw(heading);
     this.fpWalkSpeed = 0;
     this.fpLookPitch = 0;
     this.fpSprintCharge = 1;
@@ -6517,8 +6558,14 @@ export class ColonyRuntime {
     const k = this.fpKeys;
     const cfg = COLONY.firstPerson;
     const turn = cfg.turnSpeed * dt;
-    if (k.has("left")) c.heading -= turn;
-    if (k.has("right")) c.heading += turn;
+    if (k.has("left")) {
+      c.heading -= turn;
+      this.fpCameraYaw = wireHeadingToCameraYaw(c.heading);
+    }
+    if (k.has("right")) {
+      c.heading += turn;
+      this.fpCameraYaw = wireHeadingToCameraYaw(c.heading);
+    }
     const forwardHeld = k.has("fwd");
     const backHeld = k.has("back");
     const strafeLeftHeld = k.has("strafeLeft");
@@ -6583,13 +6630,15 @@ export class ColonyRuntime {
       const sp =
         rampedGroundSpeedCellsPerSec(this.fpWalkSpeed, { onRoad, sprinting }) *
         dt;
+      const heading = this.getFirstPersonWireHeading();
+      c.heading = heading;
       const nx =
         c.pos.x +
-        (Math.cos(c.heading) * dirForward - Math.sin(c.heading) * dirStrafe) *
+        (Math.cos(heading) * dirForward - Math.sin(heading) * dirStrafe) *
           sp;
       const ny =
         c.pos.y +
-        (Math.sin(c.heading) * dirForward + Math.cos(c.heading) * dirStrafe) *
+        (Math.sin(heading) * dirForward + Math.cos(heading) * dirStrafe) *
           sp;
       const blocked = this.blockedStepReason(nx, ny, c.pos);
       if (!blocked) {
