@@ -1530,26 +1530,140 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       await expect(localParkedMarker).toHaveAttribute("aria-label", "Your parked vehicle");
       await mapBtnP1.click(); // close map
 
-      // 3.4. Control-driven walking movement (no teleport): dispatch walking forward input via genuine controls
+      // 3.4. Control-driven walking movement (no teleport): dispatch walking forward & strafe via genuine controls
+      // across both nominal and rotated-camera orientations, asserting actual directional vectors against live server
       await page1.bringToFront();
       await page1.locator("canvas").click();
-      await page1.keyboard.down("KeyW");
 
-      // Verify emitted walking input frame plus server displacement
+      // Step 3.4.1: Forward walking at heading ~ 0 (facing +X)
+      const p0 = await page1.evaluate(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        return p1 ? { x: p1.x, z: p1.z } : null;
+      });
+      expect(p0).not.toBeNull();
+
+      await page1.keyboard.down("KeyW");
       await page1.waitForFunction(() => {
         const sent = (window as any).__sentInputs || [];
-        return sent.some((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 1);
+        return sent.some((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 1 && msg.strafe === 0);
       }, undefined, { timeout: 15_000 });
 
-      await page1.waitForFunction((initial) => {
+      await page1.waitForFunction((start) => {
         const history = (window as any).__snapshotHistory || [];
         if (!history.length) return false;
         const last = history[history.length - 1];
         const p1 = last.participants?.find((p: any) => p.username === "jamtin");
-        if (!p1 || !initial) return false;
-        return Math.hypot(p1.x - initial.x, p1.z - initial.z) > 0.2;
-      }, walkingPosP1, { timeout: 15_000 });
+        if (!p1 || !start) return false;
+        const dx = p1.x - start.x;
+        const dz = p1.z - start.z;
+        // Forward at heading 0 moves strictly along +X; lateral drift in Z is small
+        return dx > 0.25 && Math.abs(dz) < 0.15;
+      }, p0, { timeout: 15_000 });
       await page1.keyboard.up("KeyW");
+
+      // Step 3.4.2: Strafe right at heading ~ 0 (moving +Z)
+      const p1Snap = await page1.evaluate(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        return p1 ? { x: p1.x, z: p1.z } : null;
+      });
+      expect(p1Snap).not.toBeNull();
+
+      await page1.keyboard.down("KeyD");
+      await page1.waitForFunction(() => {
+        const sent = (window as any).__sentInputs || [];
+        return sent.some((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 0 && msg.strafe === 1);
+      }, undefined, { timeout: 15_000 });
+
+      await page1.waitForFunction((start) => {
+        const history = (window as any).__snapshotHistory || [];
+        if (!history.length) return false;
+        const last = history[history.length - 1];
+        const p1 = last.participants?.find((p: any) => p.username === "jamtin");
+        if (!p1 || !start) return false;
+        const dx = p1.x - start.x;
+        const dz = p1.z - start.z;
+        // Strafe right at heading 0 moves strictly along +Z; lateral drift in X is small
+        return dz > 0.25 && Math.abs(dx) < 0.15;
+      }, p1Snap, { timeout: 15_000 });
+      await page1.keyboard.up("KeyD");
+
+      // Step 3.4.3: Rotate camera via real controller controls (ArrowRight turning in place toward heading ~ pi/2)
+      await page1.keyboard.down("ArrowRight");
+      await page1.waitForFunction(() => {
+        const colony = (window as any).__colony;
+        const h = colony?.getFirstPersonWireHeading?.();
+        return typeof h === "number" && h >= 1.30;
+      }, undefined, { timeout: 15_000 });
+      await page1.keyboard.up("ArrowRight");
+
+      const rotHeading = await page1.evaluate(() => {
+        const colony = (window as any).__colony;
+        return colony?.getFirstPersonWireHeading?.() ?? 0;
+      });
+      console.log(`Rotated camera wire heading achieved: ${rotHeading.toFixed(4)} rad`);
+      expect(rotHeading).toBeGreaterThanOrEqual(1.20);
+      expect(rotHeading).toBeLessThanOrEqual(2.00);
+
+      // Step 3.4.4: Rotated-yaw forward walking (heading ~ pi/2 -> forward moves along +Z)
+      const p2Snap = await page1.evaluate(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        return p1 ? { x: p1.x, z: p1.z } : null;
+      });
+      expect(p2Snap).not.toBeNull();
+
+      await page1.keyboard.down("KeyW");
+      await page1.waitForFunction((h) => {
+        const sent = (window as any).__sentInputs || [];
+        return sent.some((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 1 && Math.abs(msg.heading - h) < 0.25);
+      }, rotHeading, { timeout: 15_000 });
+
+      await page1.waitForFunction((start) => {
+        const history = (window as any).__snapshotHistory || [];
+        if (!history.length) return false;
+        const last = history[history.length - 1];
+        const p1 = last.participants?.find((p: any) => p.username === "jamtin");
+        if (!p1 || !start) return false;
+        const dx = p1.x - start.x;
+        const dz = p1.z - start.z;
+        // Forward with heading in [1.2, 2.0] moves strongly in +Z (sin(h) > 0.9)
+        return dz > 0.25 && dz > Math.abs(dx);
+      }, p2Snap, { timeout: 15_000 });
+      await page1.keyboard.up("KeyW");
+
+      // Step 3.4.5: Rotated-yaw strafe walking (heading ~ pi/2 -> strafe right moves along -X)
+      const p3Snap = await page1.evaluate(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        return p1 ? { x: p1.x, z: p1.z } : null;
+      });
+      expect(p3Snap).not.toBeNull();
+
+      await page1.keyboard.down("KeyD");
+      await page1.waitForFunction((h) => {
+        const sent = (window as any).__sentInputs || [];
+        return sent.some((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 0 && msg.strafe === 1 && Math.abs(msg.heading - h) < 0.25);
+      }, rotHeading, { timeout: 15_000 });
+
+      await page1.waitForFunction((start) => {
+        const history = (window as any).__snapshotHistory || [];
+        if (!history.length) return false;
+        const last = history[history.length - 1];
+        const p1 = last.participants?.find((p: any) => p.username === "jamtin");
+        if (!p1 || !start) return false;
+        const dx = p1.x - start.x;
+        const dz = p1.z - start.z;
+        // Strafe right with heading in [1.2, 2.0] moves strongly in -X (vx = -sin(h)*speed < -0.9*speed)
+        return dx < -0.25 && -dx > Math.abs(dz);
+      }, p3Snap, { timeout: 15_000 });
+      await page1.keyboard.up("KeyD");
+      recordStage("Real-controller forward, strafe, rotated-yaw forward, and rotated-yaw strafe directional vectors verified on live server");
 
       // Verify parked car coordinates are mandatory and remained strictly stationary at parkedCarPose1 during walking
       const postWalkSnap = await page1.evaluate(() => {
