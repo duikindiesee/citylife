@@ -1818,4 +1818,280 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       else delete (globalThis as any).document;
     }
   });
+
+  it("enforces focus-transition keyup neutralization: releasing movement/turn/sprint keys on input/textarea targets clears controller held state and neutralizes capsule velocity and wire input", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+
+    runtime.enableMultiplayer("room-focus-test", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    // Walking admission at origin
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-focus-test",
+        participantId: "part-1",
+        room: "room-focus-test",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "walking",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: 0,
+            y: 0,
+            z: 0,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    let cleanups: Array<() => void> = [];
+    const origWindow = (globalThis as any).window;
+    const origDocument = (globalThis as any).document;
+
+    const listeners: Record<string, ((e: any) => void)[]> = {};
+    const mockWindow = {
+      addEventListener: (type: string, fn: any) => {
+        (listeners[type] = listeners[type] || []).push(fn);
+      },
+      removeEventListener: (type: string, fn: any) => {
+        listeners[type] = (listeners[type] || []).filter((f) => f !== fn);
+      },
+      dispatchEvent: (e: any) => {
+        const fns = [...(listeners[e.type] || [])];
+        for (const f of fns) f(e);
+      },
+    };
+    (globalThis as any).window = mockWindow;
+    (globalThis as any).document = { pointerLockElement: mockWindow };
+
+    effectRunner = (cb: () => void | (() => void)) => {
+      const res = cb();
+      if (typeof res === "function") cleanups.push(res);
+    };
+
+    try {
+      renderToStaticMarkup(
+        React.createElement(FirstPersonController, {
+          sim: runtime.sim,
+          runtime: runtime as any,
+          startPosition: [0, 2, 0],
+          terrainLevel: null,
+        })
+      );
+
+      capturedFrameCb!({}, 0.016);
+
+      // PART 1: Typing-keydown negative: typing in an input element does NOT engage controller or set fpKeys
+      mockWindow.dispatchEvent({
+        type: "keydown",
+        code: "KeyW",
+        target: { tagName: "INPUT", isContentEditable: false },
+      });
+
+      for (let i = 0; i < 10; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+
+      const typingLinvel = currentRigidBody.linvel();
+      expect(Math.hypot(typingLinvel.x, typingLinvel.z)).toBe(0);
+      expect((runtime as any).fpKeys.has("fwd")).toBe(false);
+
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+      const typingMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(typingMsg?.forward).toBe(0);
+
+      // PART 2: Press KeyW on canvas, ramp to speed, then release on INPUT: MUST neutralize controller held state, capsule velocity, and wire input
+      mockWindow.dispatchEvent({
+        type: "keydown",
+        code: "KeyW",
+        target: { tagName: "CANVAS", isContentEditable: false },
+      });
+
+      // 25 frames at 16ms = 0.4s: full acceleration ramp to maxWalkSpeed (3.2 m/s) at 10 m/s^2
+      for (let i = 0; i < 25; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+
+      const activeLinvel = currentRigidBody.linvel();
+      expect(Math.hypot(activeLinvel.x, activeLinvel.z)).toBeGreaterThan(1.0);
+      expect((runtime as any).fpKeys.has("fwd")).toBe(true);
+
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+      const activeMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(activeMsg?.forward).toBe(1);
+
+      // Release KeyW while focus is on an INPUT element
+      mockWindow.dispatchEvent({
+        type: "keyup",
+        code: "KeyW",
+        target: { tagName: "INPUT", isContentEditable: false },
+      });
+
+      // 30 frames at 16ms = 0.48s: full deceleration ramp to 0 at 8 m/s^2
+      for (let i = 0; i < 30; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+
+      const neutralLinvel = currentRigidBody.linvel();
+      // Capsule horizontal velocity must be completely neutralized (< 0.001 m/s)
+      expect(Math.hypot(neutralLinvel.x, neutralLinvel.z)).toBeLessThan(0.001);
+      expect((runtime as any).fpKeys.has("fwd")).toBe(false);
+
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+      const neutralMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(neutralMsg?.forward).toBe(0);
+
+      // PART 3: Turn and sprint held releases across focus transition (TEXTAREA and contenteditable)
+      // 3A: Turn release: camera heading actively turns while held, then stops dead when released on TEXTAREA
+      mockWindow.dispatchEvent({
+        type: "keydown",
+        code: "ArrowLeft",
+        target: { tagName: "CANVAS", isContentEditable: false },
+      });
+
+      const initialYaw = runtime.fpCameraYaw ?? 0;
+      for (let i = 0; i < 10; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+      const turningYaw = runtime.fpCameraYaw ?? 0;
+      // Heading must advance significantly while key is held
+      expect(turningYaw).toBeGreaterThan(initialYaw + 0.2);
+      expect((runtime as any).fpKeys.has("left")).toBe(true);
+
+      mockWindow.dispatchEvent({
+        type: "keyup",
+        code: "ArrowLeft",
+        target: { tagName: "TEXTAREA", isContentEditable: false },
+      });
+
+      const releasedYaw = runtime.fpCameraYaw ?? 0;
+      for (let i = 0; i < 15; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+      const settledYaw = runtime.fpCameraYaw ?? 0;
+      // Heading must strictly STOP changing after focus-transition release
+      expect(settledYaw).toBe(releasedYaw);
+      expect((runtime as any).fpKeys.has("left")).toBe(false);
+
+      // 3B: Sprint release: engage sprint while moving, verify higher speed, then release on contenteditable DIV and verify speed drops to normal walk
+      mockWindow.dispatchEvent({
+        type: "keydown",
+        code: "KeyW",
+        target: { tagName: "CANVAS", isContentEditable: false },
+      });
+      mockWindow.dispatchEvent({
+        type: "keydown",
+        code: "ShiftLeft",
+        target: { tagName: "CANVAS", isContentEditable: false },
+      });
+
+      for (let i = 0; i < 25; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+
+      const sprintLinvel = currentRigidBody.linvel();
+      const sprintSpeed = Math.hypot(sprintLinvel.x, sprintLinvel.z);
+      // Sprint multiplier (1.45 * 3.2 m/s = 4.64 m/s)
+      expect(sprintSpeed).toBeGreaterThan(4.0);
+      expect((runtime as any).fpKeys.has("sprint")).toBe(true);
+
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+      const sprintMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(sprintMsg?.sprint).toBe(true);
+
+      // Release ShiftLeft on contenteditable element
+      mockWindow.dispatchEvent({
+        type: "keyup",
+        code: "ShiftLeft",
+        target: { tagName: "DIV", isContentEditable: true },
+      });
+
+      for (let i = 0; i < 25; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+
+      const unsprintLinvel = currentRigidBody.linvel();
+      const unsprintSpeed = Math.hypot(unsprintLinvel.x, unsprintLinvel.z);
+      // Speed must drop back to standard walk speed (<= 3.5 m/s)
+      expect(unsprintSpeed).toBeLessThan(3.5);
+      expect(unsprintSpeed).toBeGreaterThan(2.5);
+      expect((runtime as any).fpKeys.has("sprint")).toBe(false);
+
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+      const unsprintMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(unsprintMsg?.sprint).toBe(false);
+
+      // Neutralize KeyW
+      mockWindow.dispatchEvent({
+        type: "keyup",
+        code: "KeyW",
+        target: { tagName: "CANVAS", isContentEditable: false },
+      });
+      for (let i = 0; i < 30; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+      expect(Math.hypot(currentRigidBody.linvel().x, currentRigidBody.linvel().z)).toBeLessThan(0.001);
+
+      // PART 4: Ordinary canvas release positive
+      mockWindow.dispatchEvent({
+        type: "keydown",
+        code: "KeyD",
+        target: { tagName: "CANVAS", isContentEditable: false },
+      });
+
+      // 25 frames to reach steady-state speed
+      for (let i = 0; i < 25; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+      expect(Math.hypot(currentRigidBody.linvel().x, currentRigidBody.linvel().z)).toBeGreaterThan(1.0);
+      expect((runtime as any).fpKeys.has("strafeRight")).toBe(true);
+
+      mockWindow.dispatchEvent({
+        type: "keyup",
+        code: "KeyD",
+        target: { tagName: "CANVAS", isContentEditable: false },
+      });
+
+      // 30 frames to decelerate to zero
+      for (let i = 0; i < 30; i++) {
+        capturedFrameCb!({}, 0.016);
+      }
+      expect(Math.hypot(currentRigidBody.linvel().x, currentRigidBody.linvel().z)).toBeLessThan(0.001);
+      expect((runtime as any).fpKeys.has("strafeRight")).toBe(false);
+    } finally {
+      effectRunner = null;
+      cleanups.forEach((c) => c());
+      cleanups = [];
+      if (origWindow !== undefined) (globalThis as any).window = origWindow;
+      else delete (globalThis as any).window;
+      if (origDocument !== undefined) (globalThis as any).document = origDocument;
+      else delete (globalThis as any).document;
+    }
+  });
 });

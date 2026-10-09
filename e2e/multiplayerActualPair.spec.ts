@@ -1535,61 +1535,179 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       await page1.bringToFront();
       await page1.locator("canvas").click();
 
-      // Step 3.4.1: Forward walking at heading ~ 0 (facing +X)
-      const p0 = await page1.evaluate(() => {
+      // Helper to release a walking key, capture release-time input baseline, match subsequent neutral packet seq,
+      // and require server snapshot acknowledgement of that neutral packet (lastInputSeq >= neutralSeq) with speed === 0
+      const releaseAndSettleWalkingKey = async (key: string) => {
+        const releaseBaseline = await page1.evaluate(() => {
+          const sent = (window as any).__sentInputs || [];
+          const history = (window as any).__snapshotHistory || [];
+          const last = history[history.length - 1];
+          return {
+            releaseInputCount: sent.length,
+            releaseSnapSeq: typeof last?.seq === "number" && Number.isFinite(last.seq) ? last.seq : 0,
+          };
+        });
+
+        await page1.keyboard.up(key);
+
+        const neutralSeqHandle = await page1.waitForFunction((b) => {
+          const sent = (window as any).__sentInputs || [];
+          const fresh = sent.slice(b.releaseInputCount);
+          const match = fresh.find(
+            (msg: any) =>
+              msg.type === "input" &&
+              msg.mode === "walking" &&
+              msg.forward === 0 &&
+              msg.strafe === 0 &&
+              typeof msg.seq === "number" &&
+              Number.isFinite(msg.seq),
+          );
+          return match ? match.seq : false;
+        }, releaseBaseline, { timeout: 15_000 });
+        const neutralSeq = await neutralSeqHandle.jsonValue();
+        expect(typeof neutralSeq).toBe("number");
+        expect(Number.isFinite(neutralSeq)).toBe(true);
+
+        await page1.waitForFunction((expected) => {
+          const history = (window as any).__snapshotHistory || [];
+          if (!history.length) return false;
+          const last = history[history.length - 1];
+          if (!last || typeof last.seq !== "number" || !Number.isFinite(last.seq) || last.seq <= expected.releaseSnapSeq) {
+            return false;
+          }
+          const p1 = last.participants?.find((p: any) => p.username === "jamtin");
+          if (!p1 || typeof p1.speed !== "number" || !Number.isFinite(p1.speed) || p1.speed !== 0) {
+            return false;
+          }
+          return typeof p1.lastInputSeq === "number" && Number.isFinite(p1.lastInputSeq) && p1.lastInputSeq >= expected.neutralSeq;
+        }, { releaseSnapSeq: releaseBaseline.releaseSnapSeq, neutralSeq }, { timeout: 15_000 });
+      };
+
+      // Step 3.4.1: Forward walking at heading ~ 0 (facing +X) with per-step fresh input and snapshot baseline
+      const b0 = await page1.evaluate(() => {
+        const sent = (window as any).__sentInputs || [];
         const history = (window as any).__snapshotHistory || [];
         const last = history[history.length - 1];
         const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
-        return p1 ? { x: p1.x, z: p1.z } : null;
+        if (
+          !last ||
+          typeof last.seq !== "number" ||
+          !Number.isFinite(last.seq) ||
+          !p1 ||
+          typeof p1.x !== "number" ||
+          !Number.isFinite(p1.x) ||
+          typeof p1.z !== "number" ||
+          !Number.isFinite(p1.z)
+        ) {
+          return null;
+        }
+        return {
+          inputCount: sent.length,
+          snapSeq: last.seq,
+          x: p1.x,
+          z: p1.z,
+          lastInputSeq: typeof p1.lastInputSeq === "number" && Number.isFinite(p1.lastInputSeq) ? p1.lastInputSeq : -1,
+        };
       });
-      expect(p0).not.toBeNull();
+      expect(b0, "Step 3.4.1 initial participant baseline authority must be present and finite").not.toBeNull();
+      expect(Number.isFinite(b0!.snapSeq)).toBe(true);
+      expect(Number.isFinite(b0!.x)).toBe(true);
+      expect(Number.isFinite(b0!.z)).toBe(true);
 
       await page1.keyboard.down("KeyW");
-      await page1.waitForFunction(() => {
+      // Assert fresh input frame emitted after keydown (cannot match historical packets)
+      await page1.waitForFunction((b) => {
         const sent = (window as any).__sentInputs || [];
-        return sent.some((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 1 && msg.strafe === 0);
-      }, undefined, { timeout: 15_000 });
+        const fresh = sent.slice(b.inputCount);
+        const match = fresh.find((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 1 && msg.strafe === 0);
+        if (match && typeof match.seq === "number") {
+          (window as any).__lastMatchedWalkingInputSeq = match.seq;
+          return true;
+        }
+        return false;
+      }, b0, { timeout: 15_000 });
 
-      await page1.waitForFunction((start) => {
+      // Assert newer server snapshot advancing sequence with correct directional vector (+X)
+      await page1.waitForFunction((b) => {
         const history = (window as any).__snapshotHistory || [];
         if (!history.length) return false;
         const last = history[history.length - 1];
+        if (!last || typeof last.seq !== "number" || !Number.isFinite(last.seq) || last.seq <= b.snapSeq) {
+          return false;
+        }
         const p1 = last.participants?.find((p: any) => p.username === "jamtin");
-        if (!p1 || !start) return false;
-        const dx = p1.x - start.x;
-        const dz = p1.z - start.z;
+        if (!p1 || typeof p1.x !== "number" || !Number.isFinite(p1.x) || typeof p1.z !== "number" || !Number.isFinite(p1.z)) {
+          return false;
+        }
+        const dx = p1.x - b.x;
+        const dz = p1.z - b.z;
         // Forward at heading 0 moves strictly along +X; lateral drift in Z is small
         return dx > 0.25 && Math.abs(dz) < 0.15;
-      }, p0, { timeout: 15_000 });
-      await page1.keyboard.up("KeyW");
+      }, b0, { timeout: 15_000 });
+      await releaseAndSettleWalkingKey("KeyW");
 
-      // Step 3.4.2: Strafe right at heading ~ 0 (moving +Z)
-      const p1Snap = await page1.evaluate(() => {
+      // Step 3.4.2: Strafe right at heading ~ 0 (moving +Z) with fresh baseline
+      const b1 = await page1.evaluate(() => {
+        const sent = (window as any).__sentInputs || [];
         const history = (window as any).__snapshotHistory || [];
         const last = history[history.length - 1];
         const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
-        return p1 ? { x: p1.x, z: p1.z } : null;
+        if (
+          !last ||
+          typeof last.seq !== "number" ||
+          !Number.isFinite(last.seq) ||
+          !p1 ||
+          typeof p1.x !== "number" ||
+          !Number.isFinite(p1.x) ||
+          typeof p1.z !== "number" ||
+          !Number.isFinite(p1.z)
+        ) {
+          return null;
+        }
+        return {
+          inputCount: sent.length,
+          snapSeq: last.seq,
+          x: p1.x,
+          z: p1.z,
+          lastInputSeq: typeof p1.lastInputSeq === "number" && Number.isFinite(p1.lastInputSeq) ? p1.lastInputSeq : -1,
+        };
       });
-      expect(p1Snap).not.toBeNull();
+      expect(b1, "Step 3.4.2 initial participant baseline authority must be present and finite").not.toBeNull();
+      expect(Number.isFinite(b1!.snapSeq)).toBe(true);
+      expect(Number.isFinite(b1!.x)).toBe(true);
+      expect(Number.isFinite(b1!.z)).toBe(true);
 
       await page1.keyboard.down("KeyD");
-      await page1.waitForFunction(() => {
+      // Assert fresh strafe input frame emitted after keydown
+      await page1.waitForFunction((b) => {
         const sent = (window as any).__sentInputs || [];
-        return sent.some((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 0 && msg.strafe === 1);
-      }, undefined, { timeout: 15_000 });
+        const fresh = sent.slice(b.inputCount);
+        const match = fresh.find((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 0 && msg.strafe === 1);
+        if (match && typeof match.seq === "number") {
+          (window as any).__lastMatchedWalkingInputSeq = match.seq;
+          return true;
+        }
+        return false;
+      }, b1, { timeout: 15_000 });
 
-      await page1.waitForFunction((start) => {
+      // Assert newer server snapshot advancing sequence with correct strafe vector (+Z)
+      await page1.waitForFunction((b) => {
         const history = (window as any).__snapshotHistory || [];
         if (!history.length) return false;
         const last = history[history.length - 1];
+        if (!last || typeof last.seq !== "number" || !Number.isFinite(last.seq) || last.seq <= b.snapSeq) {
+          return false;
+        }
         const p1 = last.participants?.find((p: any) => p.username === "jamtin");
-        if (!p1 || !start) return false;
-        const dx = p1.x - start.x;
-        const dz = p1.z - start.z;
+        if (!p1 || typeof p1.x !== "number" || !Number.isFinite(p1.x) || typeof p1.z !== "number" || !Number.isFinite(p1.z)) {
+          return false;
+        }
+        const dx = p1.x - b.x;
+        const dz = p1.z - b.z;
         // Strafe right at heading 0 moves strictly along +Z; lateral drift in X is small
         return dz > 0.25 && Math.abs(dx) < 0.15;
-      }, p1Snap, { timeout: 15_000 });
-      await page1.keyboard.up("KeyD");
+      }, b1, { timeout: 15_000 });
+      await releaseAndSettleWalkingKey("KeyD");
 
       // Step 3.4.3: Rotate camera via real controller controls (ArrowRight turning in place toward heading ~ pi/2)
       await page1.keyboard.down("ArrowRight");
@@ -1608,61 +1726,131 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       expect(rotHeading).toBeGreaterThanOrEqual(1.20);
       expect(rotHeading).toBeLessThanOrEqual(2.00);
 
-      // Step 3.4.4: Rotated-yaw forward walking (heading ~ pi/2 -> forward moves along +Z)
-      const p2Snap = await page1.evaluate(() => {
+      // Step 3.4.4: Rotated-yaw forward walking (heading ~ pi/2 -> forward moves along +Z) with fresh baseline
+      const b2 = await page1.evaluate(() => {
+        const sent = (window as any).__sentInputs || [];
         const history = (window as any).__snapshotHistory || [];
         const last = history[history.length - 1];
         const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
-        return p1 ? { x: p1.x, z: p1.z } : null;
+        if (
+          !last ||
+          typeof last.seq !== "number" ||
+          !Number.isFinite(last.seq) ||
+          !p1 ||
+          typeof p1.x !== "number" ||
+          !Number.isFinite(p1.x) ||
+          typeof p1.z !== "number" ||
+          !Number.isFinite(p1.z)
+        ) {
+          return null;
+        }
+        return {
+          inputCount: sent.length,
+          snapSeq: last.seq,
+          x: p1.x,
+          z: p1.z,
+          lastInputSeq: typeof p1.lastInputSeq === "number" && Number.isFinite(p1.lastInputSeq) ? p1.lastInputSeq : -1,
+        };
       });
-      expect(p2Snap).not.toBeNull();
+      expect(b2, "Step 3.4.4 initial participant baseline authority must be present and finite").not.toBeNull();
+      expect(Number.isFinite(b2!.snapSeq)).toBe(true);
+      expect(Number.isFinite(b2!.x)).toBe(true);
+      expect(Number.isFinite(b2!.z)).toBe(true);
 
       await page1.keyboard.down("KeyW");
-      await page1.waitForFunction((h) => {
+      // Assert fresh input frame with rotated heading emitted after keydown
+      await page1.waitForFunction((b) => {
         const sent = (window as any).__sentInputs || [];
-        return sent.some((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 1 && Math.abs(msg.heading - h) < 0.25);
-      }, rotHeading, { timeout: 15_000 });
+        const fresh = sent.slice(b.baseline.inputCount);
+        const match = fresh.find((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 1 && Math.abs(msg.heading - b.h) < 0.25);
+        if (match && typeof match.seq === "number") {
+          (window as any).__lastMatchedWalkingInputSeq = match.seq;
+          return true;
+        }
+        return false;
+      }, { baseline: b2, h: rotHeading }, { timeout: 15_000 });
 
-      await page1.waitForFunction((start) => {
+      // Assert newer server snapshot advancing sequence with correct rotated forward vector (+Z)
+      await page1.waitForFunction((b) => {
         const history = (window as any).__snapshotHistory || [];
         if (!history.length) return false;
         const last = history[history.length - 1];
+        if (!last || typeof last.seq !== "number" || !Number.isFinite(last.seq) || last.seq <= b.snapSeq) {
+          return false;
+        }
         const p1 = last.participants?.find((p: any) => p.username === "jamtin");
-        if (!p1 || !start) return false;
-        const dx = p1.x - start.x;
-        const dz = p1.z - start.z;
+        if (!p1 || typeof p1.x !== "number" || !Number.isFinite(p1.x) || typeof p1.z !== "number" || !Number.isFinite(p1.z)) {
+          return false;
+        }
+        const dx = p1.x - b.x;
+        const dz = p1.z - b.z;
         // Forward with heading in [1.2, 2.0] moves strongly in +Z (sin(h) > 0.9)
         return dz > 0.25 && dz > Math.abs(dx);
-      }, p2Snap, { timeout: 15_000 });
-      await page1.keyboard.up("KeyW");
+      }, b2, { timeout: 15_000 });
+      await releaseAndSettleWalkingKey("KeyW");
 
-      // Step 3.4.5: Rotated-yaw strafe walking (heading ~ pi/2 -> strafe right moves along -X)
-      const p3Snap = await page1.evaluate(() => {
+      // Step 3.4.5: Rotated-yaw strafe walking (heading ~ pi/2 -> strafe right moves along -X) with fresh baseline
+      const b3 = await page1.evaluate(() => {
+        const sent = (window as any).__sentInputs || [];
         const history = (window as any).__snapshotHistory || [];
         const last = history[history.length - 1];
         const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
-        return p1 ? { x: p1.x, z: p1.z } : null;
+        if (
+          !last ||
+          typeof last.seq !== "number" ||
+          !Number.isFinite(last.seq) ||
+          !p1 ||
+          typeof p1.x !== "number" ||
+          !Number.isFinite(p1.x) ||
+          typeof p1.z !== "number" ||
+          !Number.isFinite(p1.z)
+        ) {
+          return null;
+        }
+        return {
+          inputCount: sent.length,
+          snapSeq: last.seq,
+          x: p1.x,
+          z: p1.z,
+          lastInputSeq: typeof p1.lastInputSeq === "number" && Number.isFinite(p1.lastInputSeq) ? p1.lastInputSeq : -1,
+        };
       });
-      expect(p3Snap).not.toBeNull();
+      expect(b3, "Step 3.4.5 initial participant baseline authority must be present and finite").not.toBeNull();
+      expect(Number.isFinite(b3!.snapSeq)).toBe(true);
+      expect(Number.isFinite(b3!.x)).toBe(true);
+      expect(Number.isFinite(b3!.z)).toBe(true);
 
       await page1.keyboard.down("KeyD");
-      await page1.waitForFunction((h) => {
+      // Assert fresh input frame with rotated strafe emitted after keydown
+      await page1.waitForFunction((b) => {
         const sent = (window as any).__sentInputs || [];
-        return sent.some((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 0 && msg.strafe === 1 && Math.abs(msg.heading - h) < 0.25);
-      }, rotHeading, { timeout: 15_000 });
+        const fresh = sent.slice(b.baseline.inputCount);
+        const match = fresh.find((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 0 && msg.strafe === 1 && Math.abs(msg.heading - b.h) < 0.25);
+        if (match && typeof match.seq === "number") {
+          (window as any).__lastMatchedWalkingInputSeq = match.seq;
+          return true;
+        }
+        return false;
+      }, { baseline: b3, h: rotHeading }, { timeout: 15_000 });
 
-      await page1.waitForFunction((start) => {
+      // Assert newer server snapshot advancing sequence with correct rotated strafe vector (-X)
+      await page1.waitForFunction((b) => {
         const history = (window as any).__snapshotHistory || [];
         if (!history.length) return false;
         const last = history[history.length - 1];
+        if (!last || typeof last.seq !== "number" || !Number.isFinite(last.seq) || last.seq <= b.snapSeq) {
+          return false;
+        }
         const p1 = last.participants?.find((p: any) => p.username === "jamtin");
-        if (!p1 || !start) return false;
-        const dx = p1.x - start.x;
-        const dz = p1.z - start.z;
+        if (!p1 || typeof p1.x !== "number" || !Number.isFinite(p1.x) || typeof p1.z !== "number" || !Number.isFinite(p1.z)) {
+          return false;
+        }
+        const dx = p1.x - b.x;
+        const dz = p1.z - b.z;
         // Strafe right with heading in [1.2, 2.0] moves strongly in -X (vx = -sin(h)*speed < -0.9*speed)
         return dx < -0.25 && -dx > Math.abs(dz);
-      }, p3Snap, { timeout: 15_000 });
-      await page1.keyboard.up("KeyD");
+      }, b3, { timeout: 15_000 });
+      await releaseAndSettleWalkingKey("KeyD");
       recordStage("Real-controller forward, strafe, rotated-yaw forward, and rotated-yaw strafe directional vectors verified on live server");
 
       // Verify parked car coordinates are mandatory and remained strictly stationary at parkedCarPose1 during walking
@@ -1712,6 +1900,17 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       const pedDistP2 = Math.hypot(peer3dPedestrian!.x - postWalkSnap!.x, peer3dPedestrian!.z - postWalkSnap!.z);
       console.log(`Player 2 rendered peer pedestrian 3D avatar vs server snapshot delta: ${pedDistP2.toFixed(4)}m`);
       expect(pedDistP2).toBeLessThan(0.5);
+
+      // Verify local walking cell in world meters aligns with authoritative server snapshot (<0.5m)
+      await page1.waitForFunction((expected) => {
+        const colony = (window as any).__colony;
+        const walkCell = colony?.getWalkingCell?.();
+        if (!walkCell) return false;
+        const tSize = colony?.sim?.state?.terrain?.size ?? 128;
+        const walkWorld = { x: (walkCell.x - tSize / 2) * 4, z: (walkCell.y - tSize / 2) * 4 };
+        const dist = Math.hypot(walkWorld.x - expected.x, walkWorld.z - expected.z);
+        return dist < 0.5;
+      }, { x: postWalkSnap!.x, z: postWalkSnap!.z }, { timeout: 10_000 });
 
       const localWalkingProbe = await page1.evaluate(() => {
         const cam = (window as any).__r3fCamera;

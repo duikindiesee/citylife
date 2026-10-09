@@ -136,7 +136,6 @@ export function FirstPersonController({
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      if (isTyping(e)) return;
       if (e.code === "KeyW") input.current.forward = false;
       if (e.code === "KeyS") input.current.backward = false;
       if (e.code === "KeyA") input.current.left = false;
