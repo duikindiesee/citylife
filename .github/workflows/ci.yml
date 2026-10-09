@@ -43,11 +43,13 @@ jobs:
       # consume the shared 60-minute job budget.
       - run: npm run test:e2e:mobile-harness
         timeout-minutes: 4
+      # Pinned server revision: published corrective candidate 2f27c1260e46619d14ab7d4fe0a5a6a33b76f3b6
+      # (walking-spawn and reconnect fail-closed authority; pending MoJoJo SOURCE review queue bridge-live 731551be)
       - name: Check out citylife-server at pinned authoritative revision
         uses: actions/checkout@v7
         with:
           repository: duikindiesee/citylife-server
-          ref: 49099cbb54380d2c5dfd458c3d5392f363b5c7d5
+          ref: 2f27c1260e46619d14ab7d4fe0a5a6a33b76f3b6
           token: ${{ secrets.CITYLIFE_SERVER_READ_TOKEN }}
           persist-credentials: false
           path: citylife-server
