@@ -2874,22 +2874,24 @@ export class ColonyRuntime {
     ) {
       this.multiplayerInputSeq = 0;
       this.multiplayerClient.boardVehicle();
-      const terrain = this.sim.state.terrain;
-      const worldX = (this.ownedDrivePose.x - terrain.size / 2) * 4;
-      const worldZ = (this.ownedDrivePose.y - terrain.size / 2) * 4;
-      const worldY = terrain.worldY(
-        Math.round(this.ownedDrivePose.x),
-        Math.round(this.ownedDrivePose.y),
-      );
-      this.multiplayerClient.sendPose({
-        x: worldX,
-        y: worldY,
-        z: worldZ,
-        heading: this.ownedDrivePose.heading,
-        speed: 0,
-        mode: "driving",
-        force: true,
-      });
+      if (this.multiplayerClient.getProtocolVersion() === 1) {
+        const terrain = this.sim.state.terrain;
+        const worldX = (this.ownedDrivePose.x - terrain.size / 2) * 4;
+        const worldZ = (this.ownedDrivePose.y - terrain.size / 2) * 4;
+        const worldY = terrain.worldY(
+          Math.round(this.ownedDrivePose.x),
+          Math.round(this.ownedDrivePose.y),
+        );
+        this.multiplayerClient.sendPose({
+          x: worldX,
+          y: worldY,
+          z: worldZ,
+          heading: this.ownedDrivePose.heading,
+          speed: 0,
+          mode: "driving",
+          force: true,
+        });
+      }
     }
     this.emit();
     return true;
@@ -3159,7 +3161,11 @@ export class ColonyRuntime {
       };
     }
     this.debugPlaceFirstPerson(x, y);
-    if (this.multiplayerClient && this.multiplayerClient.getStatus() === "connected") {
+    if (
+      this.multiplayerClient &&
+      this.multiplayerClient.getStatus() === "connected" &&
+      this.multiplayerClient.getProtocolVersion() === 1
+    ) {
       const terrain = this.sim.state.terrain;
       const worldX = (x - terrain.size / 2) * 4;
       const worldZ = (y - terrain.size / 2) * 4;
@@ -3766,17 +3772,19 @@ export class ColonyRuntime {
             brake: Boolean(this.ownedDriveInput.brake),
           });
         }
-        const worldX = (this.ownedDrivePose.x - size / 2) * 4;
-        const worldZ = (this.ownedDrivePose.y - size / 2) * 4;
-        const worldY = terrain.worldY(Math.round(this.ownedDrivePose.x), Math.round(this.ownedDrivePose.y));
-        this.multiplayerClient.sendPose({
-          x: worldX,
-          y: worldY,
-          z: worldZ,
-          heading: this.ownedDrivePose.heading,
-          speed: this.ownedDrivePose.speed,
-          mode: "driving",
-        });
+        if (this.multiplayerClient.getProtocolVersion() === 1) {
+          const worldX = (this.ownedDrivePose.x - size / 2) * 4;
+          const worldZ = (this.ownedDrivePose.y - size / 2) * 4;
+          const worldY = terrain.worldY(Math.round(this.ownedDrivePose.x), Math.round(this.ownedDrivePose.y));
+          this.multiplayerClient.sendPose({
+            x: worldX,
+            y: worldY,
+            z: worldZ,
+            heading: this.ownedDrivePose.heading,
+            speed: this.ownedDrivePose.speed,
+            mode: "driving",
+          });
+        }
       }
     }
   }

@@ -1110,6 +1110,10 @@ export class MultiplayerClient {
     mode?: "driving" | "walking";
     force?: boolean;
   }): void {
+    // Protocol v2 strictly forbids client coordinate authority; server rejects with COORDINATE_AUTHORITY_DENIED.
+    if (this.protocolVersion >= 2) {
+      return;
+    }
     const now = Date.now();
     const mode = pose.mode ?? "walking";
     const modeChanged = this.lastSentMode !== null && this.lastSentMode !== mode;

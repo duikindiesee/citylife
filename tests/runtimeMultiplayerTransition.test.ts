@@ -104,6 +104,8 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       type: "board_vehicle",
       epoch: 1,
     });
+    // Negative wire assertion: v2 boarding must NOT send coordinate poses
+    expect(socket.sent.filter((m: any) => m.type === "pose")).toHaveLength(0);
 
     // Optimistically seated before server ack
     expect(runtime.isOwnedDriveSeated()).toBe(true);
@@ -261,6 +263,8 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
 
     const boardMsg = socket.sent.find((m) => m.type === "board_vehicle");
     expect(boardMsg).toEqual({ type: "board_vehicle", epoch: 1 });
+    // Negative wire assertion: v2 boarding must NOT send coordinate poses
+    expect(socket.sent.filter((m: any) => m.type === "pose")).toHaveLength(0);
 
     // Server returns valid vehicle_boarded ack with modeEpoch: 2
     socket.onmessage?.({
@@ -955,5 +959,215 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       }),
     });
     expect(runtime.getWalkingCell()?.x).toBe(61);
+  });
+
+  it("runtime tick sends driving input and zero coordinate pose frames during active driving in protocol v2", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+    const road = runtime.sim.state.roads[0]!;
+    runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
+    runtime.teleportCar(road.x, road.y, 0);
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const carX = (road.x - terrain.size / 2) * 4;
+    const carZ = (road.y - terrain.size / 2) * 4;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "driving",
+        sessionId: "sess-drive-tick-1",
+        participantId: "part-1",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            username: "User1",
+            mode: "driving",
+            isPedestrian: false,
+            modeEpoch: 1,
+            vehicleKey: "karoo-vonk-11",
+            x: carX,
+            y: 0,
+            z: carZ,
+            heading: 0,
+          },
+        ],
+      }),
+    });
+
+    expect(runtime.isOwnedDriveSeated()).toBe(true);
+    socket.sent.length = 0;
+
+    // Simulate user drive input and advance multiplayer driving tick
+    (runtime as any).lastMultiplayerInputSentAt = 0;
+    (runtime as any).ownedDriveInput = { throttle: true, right: true, brake: false };
+    runtime.tickOwnedDrive(0.05);
+
+    // Negative wire assertion: MUST NOT send coordinate pose in v2
+    const poseMessages = socket.sent.filter((m: any) => m.type === "pose");
+    expect(poseMessages).toHaveLength(0);
+
+    // Wire assertion: MUST send typed driving input with sequence, epoch, and controls
+    const inputMessages = socket.sent.filter((m: any) => m.type === "input" && m.mode === "driving");
+    expect(inputMessages.length).toBeGreaterThan(0);
+    const lastInput = inputMessages[inputMessages.length - 1];
+    expect(lastInput).toMatchObject({
+      type: "input",
+      mode: "driving",
+      throttle: 1,
+      steer: 1,
+      brake: false,
+      epoch: 1,
+      seq: 1,
+    });
+    expect(typeof lastInput.seq).toBe("number");
+  });
+
+  it("connected teleportCar in protocol v2 sets local transform without emitting coordinate pose frames on the wire", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+    const road = runtime.sim.state.roads[0]!;
+    runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
+    runtime.teleportCar(road.x, road.y, 0);
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const carX = (road.x - terrain.size / 2) * 4;
+    const carZ = (road.y - terrain.size / 2) * 4;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "driving",
+        sessionId: "sess-teleport-1",
+        participantId: "part-1",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            username: "User1",
+            mode: "driving",
+            isPedestrian: false,
+            modeEpoch: 1,
+            vehicleKey: "karoo-vonk-11",
+            x: carX,
+            y: 0,
+            z: carZ,
+            heading: 0,
+          },
+        ],
+      }),
+    });
+
+    socket.sent.length = 0;
+
+    // Teleport car to another road tile
+    const road2 = runtime.sim.state.roads[1] ?? { x: road.x + 2, y: road.y + 2 };
+    runtime.teleportCar(road2.x, road2.y, Math.PI / 2);
+
+    // Negative wire assertion: teleportCar must NOT emit coordinate pose frames in protocol v2 (even with force: true)
+    const poseMessages = socket.sent.filter((m: any) => m.type === "pose");
+    expect(poseMessages).toHaveLength(0);
+
+    // Transform updated locally
+    const drivePose = runtime.getOwnedDrivePose();
+    expect(drivePose).not.toBeNull();
+    expect(drivePose?.x).toBeCloseTo(road2.x);
+    expect(drivePose?.y).toBeCloseTo(road2.y);
+    expect(drivePose?.heading).toBeCloseTo(Math.PI / 2);
+  });
+
+  it("reverts optimistic transition and enters error state upon server COORDINATE_AUTHORITY_DENIED error", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+    const road = runtime.sim.state.roads[0]!;
+    runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
+    runtime.teleportCar(road.x, road.y, 0);
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const carX = (road.x - terrain.size / 2) * 4;
+    const carZ = (road.y - terrain.size / 2) * 4;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "walking",
+        sessionId: "sess-boundary-1",
+        participantId: "part-1",
+        carX,
+        carY: 0,
+        carZ,
+        carHeading: 0,
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            username: "User1",
+            mode: "walking",
+            isPedestrian: true,
+            modeEpoch: 1,
+            vehicleKey: "karoo-vonk-11",
+            x: carX,
+            y: 0,
+            z: carZ,
+            heading: 0,
+            carX,
+            carY: 0,
+            carZ,
+            carHeading: 0,
+          },
+        ],
+      }),
+    });
+
+    // Client attempts optimistic vehicle boarding
+    runtime.enterOwnedCar();
+    expect(runtime.isOwnedDriveSeated()).toBe(true);
+
+    // Server returns terminal COORDINATE_AUTHORITY_DENIED frame
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "error",
+        error: "COORDINATE_AUTHORITY_DENIED",
+        message: "Protocol v2 clients may not submit coordinate poses",
+      }),
+    });
+
+    // Optimistic seated state must be reverted to pre-transition state (false)
+    expect(runtime.isOwnedDriveSeated()).toBe(false);
+    expect(runtime.getMultiplayerClient()?.getStatus()).toBe("error");
   });
 });

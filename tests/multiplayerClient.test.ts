@@ -196,11 +196,12 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(MockWebSocket.instances[0]!.url).not.toContain("token=");
   });
 
-  it("packages mode: driving and mode: walking correctly in sendPose", async () => {
+  it("packages mode: driving and mode: walking correctly in sendPose (v1 only)", async () => {
     const client = new MultiplayerClient({
       userId: "101",
       username: "test-user",
       token: "valid-token",
+      protocolVersion: 1,
     });
 
     await client.connect();
@@ -212,6 +213,55 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(sentPose1).toBeDefined();
     expect(sentPose1.mode).toBe("driving");
     expect(sentPose1.speed).toBe(25);
+  });
+
+  it("guards sendPose in protocol v2, dropping coordinate poses from the wire", async () => {
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+      protocolVersion: 2,
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+
+    client.sendPose({ x: 10, y: 0, z: 20, heading: 1.5, speed: 25, mode: "driving", force: true });
+    client.sendPose({ x: 10, y: 0, z: 20, heading: 1.5, speed: 0, mode: "walking", force: true });
+    const poses = socket.sent.filter((m: any) => m.type === "pose");
+    expect(poses).toHaveLength(0);
+  });
+
+  it("handles COORDINATE_AUTHORITY_DENIED server error as terminal denial", async () => {
+    let errorReceived: any = null;
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+      onError: (err) => {
+        errorReceived = err;
+      },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "error",
+        error: "COORDINATE_AUTHORITY_DENIED",
+        message: "Client coordinate authority is denied; pedestrian movement is server-authoritative",
+      }),
+    });
+
+    expect(client.getStatus()).toBe("error");
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+    expect(errorReceived).toEqual({
+      code: "COORDINATE_AUTHORITY_DENIED",
+      message: "Client coordinate authority is denied; pedestrian movement is server-authoritative",
+    });
   });
 
   it("handles peer_pose mode transitions with vehicleKey and pedestrian flag", async () => {
@@ -610,6 +660,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       userId: "101",
       username: "test-user",
       getToken: async () => "test-token",
+      protocolVersion: 1,
     });
 
     await client.connect();
@@ -663,6 +714,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       userId: "101",
       username: "test-user",
       token: "test-token",
+      protocolVersion: 1,
     });
 
     const connectPromise = client.connect();
@@ -701,6 +753,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       userId: "101",
       username: "test-user",
       token: "test-token",
+      protocolVersion: 1,
     });
 
     await client.connect();
@@ -743,6 +796,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       userId: "101",
       username: "test-user",
       token: "test-token",
+      protocolVersion: 1,
     });
 
     await client.connect();
