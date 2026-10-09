@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
+import { computeBusNetworkMiniMapSignal } from "../src/colony/ui/BusNetworkMiniMap";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -1035,7 +1036,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     expect(typeof lastInput.seq).toBe("number");
   });
 
-  it("connected teleportCar in protocol v2 sets local transform without emitting coordinate pose frames on the wire", async () => {
+  it("prevents active protocol v2 debug teleportCar to enforce server coordinate authority and emits zero pose frames", async () => {
     const runtime = new ColonyRuntime(42);
     runtime.setAuthClient({
       getValidToken: async () => "valid-mock-token",
@@ -1083,19 +1084,107 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
 
     socket.sent.length = 0;
 
-    // Teleport car to another road tile
+    // Attempt to debug-teleport car to another road tile while active in protocol v2
     const road2 = runtime.sim.state.roads[1] ?? { x: road.x + 2, y: road.y + 2 };
     runtime.teleportCar(road2.x, road2.y, Math.PI / 2);
 
-    // Negative wire assertion: teleportCar must NOT emit coordinate pose frames in protocol v2 (even with force: true)
+    // Negative wire assertion: teleportCar must NOT emit coordinate pose frames in protocol v2
     const poseMessages = socket.sent.filter((m: any) => m.type === "pose");
     expect(poseMessages).toHaveLength(0);
 
-    // Transform updated locally
+    // Authority invariant: debug car teleport is disabled during active protocol v2 sessions
+    // Local transform and operator car must remain at server-authoritative position (both coordinates, heading)
     const drivePose = runtime.getOwnedDrivePose();
     expect(drivePose).not.toBeNull();
-    expect(drivePose?.x).toBeCloseTo(road2.x);
-    expect(drivePose?.y).toBeCloseTo(road2.y);
+    expect(drivePose?.x).toBeCloseTo(road.x);
+    expect(drivePose?.y).toBeCloseTo(road.y);
+    expect(drivePose?.heading).toBeCloseTo(0);
+    expect(runtime.sim.state.operatorCar?.cell.x).toBeCloseTo(road.x);
+    expect(runtime.sim.state.operatorCar?.cell.y).toBeCloseTo(road.y);
+    expect(runtime.sim.state.operatorCar?.heading).toBeCloseTo(0);
+  });
+
+  it("permits debug teleportCar when disconnected/offline and in protocol v1 with exact wire serialization", async () => {
+    const road = { x: 367, y: 412 };
+
+    // 1. Offline / disconnected local teleportation works normally
+    const offlineRuntime = new ColonyRuntime(42);
+    offlineRuntime.setOperatorUserId("user-1");
+    offlineRuntime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
+    offlineRuntime.teleportCar(road.x + 1, road.y + 3, Math.PI / 4);
+    expect(offlineRuntime.getOwnedDrivePose()?.x).toBe(road.x + 1);
+    expect(offlineRuntime.getOwnedDrivePose()?.y).toBe(road.y + 3);
+    expect(offlineRuntime.getOwnedDrivePose()?.heading).toBe(Math.PI / 4);
+
+    // 2. Connected protocol v1 permits teleport and transmits exact wire pose frame
+    const v1Runtime = new ColonyRuntime(42);
+    v1Runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    v1Runtime.setOperatorUserId("user-1");
+    v1Runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
+    v1Runtime.teleportCar(road.x, road.y, 0);
+
+    v1Runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    (v1Runtime.getMultiplayerClient() as any).options.protocolVersion = 1;
+    (v1Runtime.getMultiplayerClient() as any).protocolVersion = 1;
+    await v1Runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        protocolVersion: 1,
+        modeEpoch: 1,
+        mode: "driving",
+        sessionId: "sess-v1-teleport",
+        participantId: "part-1",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            username: "User1",
+            mode: "driving",
+            isPedestrian: false,
+            modeEpoch: 1,
+            vehicleKey: "karoo-vonk-11",
+            x: 0,
+            y: 0,
+            z: 0,
+            heading: 0,
+          },
+        ],
+      }),
+    });
+
+    socket.sent.length = 0;
+
+    // Teleport car in protocol v1
+    v1Runtime.teleportCar(road.x + 2, road.y + 4, Math.PI / 2);
+
+    // V1 wire assertion: sends exact wire pose frame without invented fields
+    const poseMessages = socket.sent.filter((m: any) => m.type === "pose");
+    expect(poseMessages).toHaveLength(1);
+    const terrain = v1Runtime.sim.state.terrain;
+    const expectedX = (road.x + 2 - terrain.size / 2) * 4;
+    const expectedZ = (road.y + 4 - terrain.size / 2) * 4;
+    const expectedY = terrain.worldY(Math.round(road.x + 2), Math.round(road.y + 4));
+    expect(poseMessages[0]).toEqual({
+      type: "pose",
+      mode: "driving",
+      x: expectedX,
+      y: expectedY,
+      z: expectedZ,
+      heading: Math.PI / 2,
+      speed: 0,
+    });
+
+    // Local transform updated in v1
+    const drivePose = v1Runtime.getOwnedDrivePose();
+    expect(drivePose?.x).toBeCloseTo(road.x + 2);
+    expect(drivePose?.y).toBeCloseTo(road.y + 4);
     expect(drivePose?.heading).toBeCloseTo(Math.PI / 2);
   });
 
@@ -1169,5 +1258,454 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     // Optimistic seated state must be reverted to pre-transition state (false)
     expect(runtime.isOwnedDriveSeated()).toBe(false);
     expect(runtime.getMultiplayerClient()?.getStatus()).toBe("error");
+  });
+
+  it("adopts authoritative self driving pose on valid server snapshots without subthreshold suppression, reconciling world and map state", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+    const road = runtime.sim.state.roads[0]!;
+    runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
+    runtime.teleportCar(road.x, road.y, 0);
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const carX = (road.x - terrain.size / 2) * 4;
+    const carZ = (road.y - terrain.size / 2) * 4;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "driving",
+        sessionId: "sess-subthreshold-1",
+        participantId: "part-1",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            username: "User1",
+            mode: "driving",
+            isPedestrian: false,
+            modeEpoch: 1,
+            vehicleKey: "karoo-vonk-11",
+            x: carX,
+            y: 0,
+            z: carZ,
+            heading: 0,
+          },
+        ],
+      }),
+    });
+
+    expect(runtime.getOwnedDrivePose()?.x).toBe(road.x);
+
+    // Locally perturb car by 1 cell (subthreshold: dx = 1 <= 4 cells)
+    (runtime as any).ownedDrivePose.x = road.x + 1;
+    expect(runtime.getOwnedDrivePose()?.x).toBe(road.x + 1);
+
+    // Server sends valid authoritative snapshot with subthreshold position, heading, and speed updates
+    const updatedSnapX = (road.x + 0.5 - terrain.size / 2) * 4;
+    const updatedSnapZ = (road.y + 0.25 - terrain.size / 2) * 4;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-subthreshold-1",
+        seq: 1,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            x: updatedSnapX,
+            y: 0,
+            z: updatedSnapZ,
+            heading: 1.25,
+            speed: 5.5,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    // Authoritative snapshot must reconcile car position, heading, speed, and operatorCar
+    const pose = runtime.getOwnedDrivePose();
+    expect(pose?.x).toBeCloseTo(road.x + 0.5);
+    expect(pose?.y).toBeCloseTo(road.y + 0.25);
+    expect(pose?.heading).toBeCloseTo(1.25);
+    expect(pose?.speed).toBeCloseTo(5.5);
+    expect(runtime.sim.state.operatorCar?.cell.x).toBeCloseTo(road.x + 0.5);
+    expect(runtime.sim.state.operatorCar?.cell.y).toBeCloseTo(road.y + 0.25);
+    expect(runtime.sim.state.operatorCar?.heading).toBeCloseTo(1.25);
+
+    // Repeated update 1: Heading-only change (same x/z position and speed)
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-subthreshold-1",
+        seq: 2,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            x: updatedSnapX,
+            y: 0,
+            z: updatedSnapZ,
+            heading: 2.1,
+            speed: 5.5,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getOwnedDrivePose()?.heading).toBeCloseTo(2.1);
+    expect(runtime.sim.state.operatorCar?.heading).toBeCloseTo(2.1);
+    expect(runtime.getOwnedDrivePose()?.x).toBeCloseTo(road.x + 0.5);
+    expect(runtime.getOwnedDrivePose()?.y).toBeCloseTo(road.y + 0.25);
+
+    // Repeated update 2: Speed-only change (same position and heading)
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-subthreshold-1",
+        seq: 3,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            x: updatedSnapX,
+            y: 0,
+            z: updatedSnapZ,
+            heading: 2.1,
+            speed: 0.0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getOwnedDrivePose()?.speed).toBeCloseTo(0.0);
+    expect(runtime.getOwnedDrivePose()?.heading).toBeCloseTo(2.1);
+    expect(runtime.getOwnedDrivePose()?.x).toBeCloseTo(road.x + 0.5);
+
+    // Repeated update 3: Subthreshold coordinate step (dx = 0.25, dy = 0.25)
+    const snap3X = (road.x + 0.75 - terrain.size / 2) * 4;
+    const snap3Z = (road.y + 0.5 - terrain.size / 2) * 4;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-subthreshold-1",
+        seq: 4,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            x: snap3X,
+            y: 0,
+            z: snap3Z,
+            heading: 2.1,
+            speed: 1.0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getOwnedDrivePose()?.x).toBeCloseTo(road.x + 0.75);
+    expect(runtime.getOwnedDrivePose()?.y).toBeCloseTo(road.y + 0.5);
+
+    // Mini-map signal verification: reflects active car driving position
+    const signal = computeBusNetworkMiniMapSignal(runtime);
+    expect(signal).toContain(`drive:${(road.x + 0.75).toFixed(2)}:${(road.y + 0.5).toFixed(2)}`);
+
+    // Mini-map SVG projection verification: exact projection derived from road geometry bounds
+    const mapModel = buildBusNetworkMiniMapModel({
+      ways: [
+        {
+          kind: "avenue",
+          width: 2,
+          path: [
+            { x: road.x - 10, y: road.y - 10 },
+            { x: road.x + 10, y: road.y + 10 },
+          ],
+        },
+      ],
+      routeStops: [],
+      depot: null,
+      buses: [],
+      player: runtime.getOwnedDrivePose() ?? runtime.getWalkingCell(),
+      parkedCar: null,
+      peers: [],
+      width: 200,
+      height: 132,
+      padding: 8,
+    });
+    expect(mapModel.player).not.toBeNull();
+    // Inner width = 184, inner height = 116. Scale = min(184/20, 116/20) = 5.8
+    // Bounding box: minX = road.x - 10, minY = road.y - 10, maxX = road.x + 10, maxY = road.y + 10
+    // ox = 8 + (184 - 116) / 2 = 42, oy = 8 + (116 - 116) / 2 = 8
+    // expectedX = 42 + (road.x + 0.75 - (road.x - 10)) * 5.8 = 42 + 10.75 * 5.8 = 42 + 62.35 = 104.35
+    // expectedY = 8 + (road.y + 0.5 - (road.y - 10)) * 5.8 = 8 + 10.5 * 5.8 = 8 + 60.9 = 68.9
+    expect(mapModel.player!.x).toBeCloseTo(104.35, 1);
+    expect(mapModel.player!.y).toBeCloseTo(68.9, 1);
+  });
+
+  it("rejects stale/duplicate sequences, mismatched sessions, and stale modeEpoch driving snapshots", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+    const road = runtime.sim.state.roads[0]!;
+    runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
+    runtime.teleportCar(road.x, road.y, 0);
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const carX = (road.x - terrain.size / 2) * 4;
+    const carZ = (road.y - terrain.size / 2) * 4;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        protocolVersion: 2,
+        modeEpoch: 2,
+        mode: "driving",
+        sessionId: "sess-driving-negatives",
+        participantId: "part-1",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            username: "User1",
+            mode: "driving",
+            isPedestrian: false,
+            modeEpoch: 2,
+            vehicleKey: "karoo-vonk-11",
+            x: carX,
+            y: 0,
+            z: carZ,
+            heading: 0,
+          },
+        ],
+      }),
+    });
+
+    expect(runtime.getOwnedDrivePose()?.x).toBe(road.x);
+
+    // Baseline snapshot seq: 5
+    const posSeq5X = (road.x + 1 - terrain.size / 2) * 4;
+    const posSeq5Z = (road.y + 1 - terrain.size / 2) * 4;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-driving-negatives",
+        seq: 5,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            x: posSeq5X,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0.5,
+            speed: 2,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getOwnedDrivePose()?.x).toBeCloseTo(road.x + 1);
+
+    // Negative 1: Stale sequence (seq 4 < active 5) must be ignored
+    const staleSeqX = (road.x + 10 - terrain.size / 2) * 4;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-driving-negatives",
+        seq: 4,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            x: staleSeqX,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getOwnedDrivePose()?.x).toBeCloseTo(road.x + 1);
+
+    // Negative 2: Duplicate sequence (seq 5 === active 5) must be ignored
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-driving-negatives",
+        seq: 5,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            x: staleSeqX,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getOwnedDrivePose()?.x).toBeCloseTo(road.x + 1);
+
+    // Negative 3: Mismatched sessionId must be ignored
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-different",
+        seq: 6,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            x: staleSeqX,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getOwnedDrivePose()?.x).toBeCloseTo(road.x + 1);
+
+    // Negative 4: Stale modeEpoch (modeEpoch 1 < active 2) must be ignored
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-driving-negatives",
+        seq: 6,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            x: staleSeqX,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    // Stale modeEpoch snapshot at seq 6 must not mutate self pose
+    expect(runtime.getOwnedDrivePose()?.x).toBeCloseTo(road.x + 1);
+
+    // Negative 5: Duplicate sequence 6 must also be dropped
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-driving-negatives",
+        seq: 6,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            x: staleSeqX,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getOwnedDrivePose()?.x).toBeCloseTo(road.x + 1);
+
+    // Positive: Fresh monotonic valid seq 7 with matching session and epoch must be accepted
+    const validSeq7X = (road.x + 2 - terrain.size / 2) * 4;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-driving-negatives",
+        seq: 7,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            x: validSeq7X,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0.8,
+            speed: 3,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getOwnedDrivePose()?.x).toBeCloseTo(road.x + 2);
+    expect(runtime.getOwnedDrivePose()?.heading).toBeCloseTo(0.8);
+    expect(runtime.getOwnedDrivePose()?.speed).toBeCloseTo(3);
   });
 });

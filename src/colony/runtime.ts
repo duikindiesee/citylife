@@ -3146,6 +3146,16 @@ export class ColonyRuntime {
   }
 
   teleportCar(x: number, y: number, heading = 0): void {
+    if (
+      this.multiplayerClient &&
+      this.multiplayerClient.getStatus() === "connected" &&
+      this.multiplayerClient.getProtocolVersion() >= 2
+    ) {
+      console.warn(
+        "[Multiplayer] Debug car teleport is disabled in active protocol v2 sessions (server-authoritative driving)",
+      );
+      return;
+    }
     this.ownedDrivePose = { x, y, heading, speed: 0 };
     this.ownedDriveSeated = true;
     if (this.sim.state.operatorCar) {
@@ -3548,14 +3558,13 @@ export class ColonyRuntime {
             if (this.ownedDriveSeated && !isPed && this.ownedDrivePose) {
               const sCellX = p.x / 4 + terrain.size / 2;
               const sCellY = p.z / 4 + terrain.size / 2;
-              const dx = this.ownedDrivePose.x - sCellX;
-              const dy = this.ownedDrivePose.y - sCellY;
-              const distSq = dx * dx + dy * dy;
-              if (distSq > 16) {
-                this.ownedDrivePose.x = sCellX;
-                this.ownedDrivePose.y = sCellY;
-                this.ownedDrivePose.speed = p.speed;
-                this.ownedDrivePose.heading = p.heading;
+              this.ownedDrivePose.x = sCellX;
+              this.ownedDrivePose.y = sCellY;
+              this.ownedDrivePose.speed = p.speed;
+              this.ownedDrivePose.heading = p.heading;
+              if (this.sim.state.operatorCar) {
+                this.sim.state.operatorCar.cell = { x: sCellX, y: sCellY };
+                this.sim.state.operatorCar.heading = p.heading;
               }
             } else if (!this.ownedDriveSeated && isPed) {
               const wCellX = p.x / 4 + terrain.size / 2;
