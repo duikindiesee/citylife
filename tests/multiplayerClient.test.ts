@@ -196,11 +196,12 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(MockWebSocket.instances[0]!.url).not.toContain("token=");
   });
 
-  it("packages mode: driving and mode: walking correctly in sendPose", async () => {
+  it("packages mode: driving and mode: walking correctly in sendPose (v1 only)", async () => {
     const client = new MultiplayerClient({
       userId: "101",
       username: "test-user",
       token: "valid-token",
+      protocolVersion: 1,
     });
 
     await client.connect();
@@ -212,6 +213,55 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(sentPose1).toBeDefined();
     expect(sentPose1.mode).toBe("driving");
     expect(sentPose1.speed).toBe(25);
+  });
+
+  it("guards sendPose in protocol v2, dropping coordinate poses from the wire", async () => {
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+      protocolVersion: 2,
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+
+    client.sendPose({ x: 10, y: 0, z: 20, heading: 1.5, speed: 25, mode: "driving", force: true });
+    client.sendPose({ x: 10, y: 0, z: 20, heading: 1.5, speed: 0, mode: "walking", force: true });
+    const poses = socket.sent.filter((m: any) => m.type === "pose");
+    expect(poses).toHaveLength(0);
+  });
+
+  it("handles COORDINATE_AUTHORITY_DENIED server error as terminal denial", async () => {
+    let errorReceived: any = null;
+    const client = new MultiplayerClient({
+      userId: "101",
+      username: "test-user",
+      token: "valid-token",
+      onError: (err) => {
+        errorReceived = err;
+      },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "error",
+        error: "COORDINATE_AUTHORITY_DENIED",
+        message: "Client coordinate authority is denied; pedestrian movement is server-authoritative",
+      }),
+    });
+
+    expect(client.getStatus()).toBe("error");
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+    expect(errorReceived).toEqual({
+      code: "COORDINATE_AUTHORITY_DENIED",
+      message: "Client coordinate authority is denied; pedestrian movement is server-authoritative",
+    });
   });
 
   it("handles peer_pose mode transitions with vehicleKey and pedestrian flag", async () => {
@@ -294,6 +344,9 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     socket.onmessage!({
       data: JSON.stringify({
         type: "session_joined",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "driving",
         sessionId: "sess-123",
         inviteCode: "TEST-ROOM",
         participantId: "part-1",
@@ -366,11 +419,14 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       }),
     });
 
-    expect(client.getStatus()).toBe("disconnected");
+    expect(client.getStatus()).toBe("error");
     expect(socket.readyState).toBe(MockWebSocket.CLOSED);
     expect(errorSpy).toHaveBeenCalledWith(
       expect.objectContaining({ code: "LAYOUT_REVISION_MISMATCH" }),
     );
+    expect(client.getSessionInfo().sessionId).toBeNull();
+    expect(client.sendDrivingInput({ throttle: 1 })).toBe(false);
+    expect(client.sendWalkingInput({ forward: 1 })).toBe(false);
   });
 
   it("enters connecting on abrupt socket close to attempt retry", async () => {
@@ -388,6 +444,9 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     socket.onmessage?.({
       data: JSON.stringify({
         type: "session_created",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "driving",
         sessionId: "sess-1",
         inviteCode: "ROOM1",
         participantId: "part-1",
@@ -426,6 +485,9 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     socket.onmessage?.({
       data: JSON.stringify({
         type: "session_created",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "driving",
         sessionId: "sess-snap",
         inviteCode: "SNAP1",
         participantId: "part-local",
@@ -491,6 +553,18 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     await client.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_created",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "driving",
+        sessionId: "sess-input",
+        inviteCode: "INPUT1",
+        participantId: "part-local",
+        participants: [],
+      }),
+    });
 
     client.sendInput({
       seq: 1,
@@ -563,7 +637,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       }),
     });
 
-    expect(client.getStatus()).toBe("disconnected");
+    expect(client.getStatus()).toBe("error");
     expect(socket.readyState).toBe(MockWebSocket.CLOSED);
     expect(errorSpy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -571,6 +645,10 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
         message: expect.stringContaining("Requested vehicle 'unowned-car'"),
       }),
     );
+    expect(client.getSessionInfo().sessionId).toBeNull();
+    expect(client.getParkedCar()).toBeUndefined();
+    expect(client.sendDrivingInput({ throttle: 1 })).toBe(false);
+    expect(client.sendWalkingInput({ forward: 1 })).toBe(false);
     client.disconnect();
   });
 
@@ -582,6 +660,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       userId: "101",
       username: "test-user",
       getToken: async () => "test-token",
+      protocolVersion: 1,
     });
 
     await client.connect();
@@ -635,6 +714,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       userId: "101",
       username: "test-user",
       token: "test-token",
+      protocolVersion: 1,
     });
 
     const connectPromise = client.connect();
@@ -673,6 +753,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       userId: "101",
       username: "test-user",
       token: "test-token",
+      protocolVersion: 1,
     });
 
     await client.connect();
@@ -715,6 +796,7 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       userId: "101",
       username: "test-user",
       token: "test-token",
+      protocolVersion: 1,
     });
 
     await client.connect();
@@ -787,5 +869,1366 @@ describe("BusNetworkMiniMapModel peer integration", () => {
     expect(redactUrl(`wss://example.invalid/ws?%6a%77%74=${canary}`)).toBe("wss://example.invalid/ws?%6a%77%74=[REDACTED]");
     expect(redactUrl(`wss://example.invalid/ws?%74%6f%6b%65%6e=${canary}`)).toBe("wss://example.invalid/ws?%74%6f%6b%65%6e=[REDACTED]");
     expect(redactUrl(`https://user:pass@example.invalid/ws`)).toBe("https://[REDACTED]:[REDACTED]@example.invalid/ws");
+  });
+});
+
+describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
+  const originalWebSocket = (globalThis as any).WebSocket;
+  const originalWindow = (globalThis as any).window;
+
+  beforeEach(() => {
+    MockWebSocket.instances = [];
+    (globalThis as any).WebSocket = MockWebSocket;
+    (globalThis as any).window = {
+      location: {
+        protocol: "http:",
+        host: "127.0.0.1:8080",
+        hostname: "127.0.0.1",
+      },
+    };
+  });
+
+  afterEach(() => {
+    (globalThis as any).WebSocket = originalWebSocket;
+    (globalThis as any).window = originalWindow;
+  });
+
+  it("negotiates protocolVersion 2 on join_session and adopts validated server modeEpoch and session context", async () => {
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-v2-1",
+      username: "Pilot1",
+      vehicleKey: "karoo-vonk-11",
+      roomCode: "v2-room",
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    const joinMsg = socket.sent.find((m: any) => m.type === "join_session");
+    expect(joinMsg).toBeDefined();
+    expect(joinMsg.protocolVersion).toBe(2);
+
+    // Simulate server admitting client with non-hardcoded epoch 7
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "session-v2-777",
+        participantId: "part-v2-1",
+        inviteCode: "v2-room",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 7,
+        participants: [],
+      }),
+    });
+
+    expect(client.getProtocolVersion()).toBe(2);
+    expect(client.getModeEpoch()).toBe(7);
+    expect(client.getMode()).toBe("driving");
+    expect(client.getSessionInfo().modeEpoch).toBe(7);
+
+    client.disconnect();
+  });
+
+  it("rejects unsupported or non-negotiated protocolVersion on admission", async () => {
+    const invalidVersions = [1, 3, "2", null, undefined, -1, 2.5];
+
+    for (const badVersion of invalidVersions) {
+      let capturedError: any = null;
+      const client = new MultiplayerClient({
+        url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+        token: "valid-jwt",
+        userId: "user-bad-proto",
+        username: "BadProtoTester",
+        onError: (err) => { capturedError = err; },
+      });
+
+      await client.connect();
+      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen!();
+
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "session_joined",
+          sessionId: "session-bad-proto",
+          participantId: "part-proto",
+          protocolVersion: badVersion,
+          mode: "driving",
+          modeEpoch: 1,
+          participants: [],
+        }),
+      });
+
+      expect(capturedError).toBeDefined();
+      expect(capturedError.code).toBe("INVALID_PROTOCOL_VERSION");
+      expect(client.getStatus()).toBe("error");
+
+      client.disconnect();
+    }
+  });
+
+  it("fails closed across separate missing, zero, negative, fractional, string, and unsafe-integer modeEpoch cases", async () => {
+    const testCases: { name: string; epoch: any }[] = [
+      { name: "missing epoch", epoch: undefined },
+      { name: "zero epoch", epoch: 0 },
+      { name: "negative epoch", epoch: -1 },
+      { name: "fractional epoch", epoch: 1.5 },
+      { name: "string epoch", epoch: "2" },
+      { name: "unsafe-integer epoch", epoch: Number.MAX_SAFE_INTEGER + 100 },
+      { name: "NaN epoch", epoch: NaN },
+      { name: "null epoch", epoch: null },
+    ];
+
+    for (const tc of testCases) {
+      let capturedError: any = null;
+      const client = new MultiplayerClient({
+        url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+        token: "valid-jwt",
+        userId: `user-epoch-${tc.name}`,
+        username: "EpochTester",
+        onError: (err) => { capturedError = err; },
+      });
+
+      await client.connect();
+      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen!();
+
+      const frame: any = {
+        type: "session_joined",
+        sessionId: "session-epoch",
+        participantId: "part-epoch",
+        protocolVersion: 2,
+        mode: "driving",
+        participants: [],
+      };
+      if (tc.epoch !== undefined) {
+        frame.modeEpoch = tc.epoch;
+      }
+
+      socket.onmessage!({
+        data: JSON.stringify(frame),
+      });
+
+      expect(capturedError, `Expected rejection for ${tc.name}`).toBeDefined();
+      expect(capturedError.code).toBe("INVALID_EPOCH");
+      expect(client.getStatus()).toBe("error");
+
+      client.disconnect();
+    }
+  });
+
+  it("initial join extracts parked car from self record within participants list", async () => {
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-join-parked",
+      username: "JoinParkedTester",
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    // Production initial admission: top-level carX is omitted, but self participant record has carX
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "session-join-records",
+        participantId: "part-join-me",
+        protocolVersion: 2,
+        mode: "walking",
+        modeEpoch: 2,
+        participants: [
+          {
+            participantId: "part-peer",
+            userId: "user-peer",
+            mode: "driving",
+            x: 10,
+            y: 0,
+            z: 10,
+          },
+          {
+            participantId: "part-join-me",
+            userId: "user-join-parked",
+            mode: "walking",
+            x: 55,
+            y: 0,
+            z: 75,
+            heading: 1.57,
+            carX: 50.0,
+            carY: 1.5,
+            carZ: 70.0,
+            carHeading: 0.0,
+          },
+        ],
+      }),
+    });
+
+    expect(client.getStatus()).toBe("connected");
+    expect(client.getMode()).toBe("walking");
+    expect(client.getModeEpoch()).toBe(2);
+    expect(client.getParkedCar()).toEqual({
+      x: 50.0,
+      y: 1.5,
+      z: 70.0,
+      heading: 0.0,
+      speed: 0,
+    });
+
+    client.disconnect();
+  });
+
+  it("fails closed when server replies with stale modeEpoch on session_reconnected", async () => {
+    let capturedError: any = null;
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-stale-reconnect",
+      username: "StaleReconnectTester",
+      onError: (err) => { capturedError = err; },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    // Admitted at epoch 5
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "session-epoch-5",
+        participantId: "part-reconnect",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 5,
+        participants: [],
+      }),
+    });
+
+    expect(client.getModeEpoch()).toBe(5);
+
+    // Reconnected message returns stale epoch 4
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_reconnected",
+        sessionId: "session-epoch-5",
+        participantId: "part-reconnect",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 4,
+        participants: [],
+      }),
+    });
+
+    expect(capturedError).toBeDefined();
+    expect(capturedError.code).toBe("EPOCH_MISMATCH");
+    expect(client.getStatus()).toBe("error");
+
+    client.disconnect();
+  });
+
+  it("rejects pre-admission inputs and enforces mode matching for driving and walking controls", async () => {
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-pre-admission",
+      username: "PreAdmissionTester",
+    });
+
+    // 1. Before connection/admission: sending input must return false and send nothing
+    const preDriveResult = client.sendDrivingInput({ throttle: 1 });
+    const preWalkResult = client.sendWalkingInput({ forward: 1 });
+    expect(preDriveResult).toBe(false);
+    expect(preWalkResult).toBe(false);
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    // Still not admitted
+    expect(client.sendDrivingInput({ throttle: 1 })).toBe(false);
+    expect(client.sendWalkingInput({ forward: 1 })).toBe(false);
+
+    // 2. Admitted in driving mode at epoch 3
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "session-admit",
+        participantId: "part-admit",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 3,
+        participants: [],
+      }),
+    });
+
+    // In driving mode: sendWalkingInput must return false
+    expect(client.sendWalkingInput({ forward: 1 })).toBe(false);
+
+    // In driving mode: sendDrivingInput succeeds
+    expect(client.sendDrivingInput({ throttle: 1, steer: 0, brake: false })).toBe(true);
+    const driveInputs = socket.sent.filter((m: any) => m.type === "input");
+    expect(driveInputs).toHaveLength(1);
+    expect(driveInputs[0].seq).toBe(1);
+    expect(driveInputs[0].epoch).toBe(3);
+    expect(driveInputs[0].mode).toBe("driving");
+
+    client.disconnect();
+  });
+
+  it("resets monotonic sequence counter to 0 upon admission and reconnection", async () => {
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-v2-seq",
+      username: "SeqTester",
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-seq",
+        participantId: "part-seq",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 3,
+        participants: [],
+      }),
+    });
+
+    // Send driving input: seq increments from 0 to 1
+    expect(client.sendDrivingInput({ throttle: 1, steer: 0, brake: false })).toBe(true);
+    const firstInput = socket.sent.find((m: any) => m.type === "input");
+    expect(firstInput).toBeDefined();
+    expect(firstInput.seq).toBe(1);
+    expect(firstInput.epoch).toBe(3);
+
+    expect(client.sendDrivingInput({ throttle: 0.5, steer: 0, brake: false })).toBe(true);
+    const inputs = socket.sent.filter((m: any) => m.type === "input");
+    expect(inputs).toHaveLength(2);
+    expect(inputs[1].seq).toBe(2);
+
+    // Now simulate reconnect with a new modeEpoch 4: sequence must reset to 0
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_reconnected",
+        sessionId: "sess-seq",
+        participantId: "part-seq",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 4,
+        participants: [],
+      }),
+    });
+
+    expect(client.getModeEpoch()).toBe(4);
+    expect(client.sendDrivingInput({ throttle: 0.8, steer: 0, brake: false })).toBe(true);
+    const reconnectedInput = socket.sent.filter((m: any) => m.type === "input")[2];
+    expect(reconnectedInput.seq).toBe(1); // sequence restarted monotonically from 1
+    expect(reconnectedInput.epoch).toBe(4);
+
+    client.disconnect();
+  });
+
+  it("fails closed when vehicle_exited receipt has invalid, missing, or stale modeEpoch", async () => {
+    let capturedError: any = null;
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-stale-exit",
+      username: "StaleExitTester",
+      onError: (err) => { capturedError = err; },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-exit-stale",
+        participantId: "part-exit-stale",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 2,
+        participants: [],
+      }),
+    });
+
+    // Server sends vehicle_exited with stale epoch 2 (must be strictly greater than active 2)
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "vehicle_exited",
+        participantId: "part-exit-stale",
+        modeEpoch: 2,
+        x: 45.0,
+        y: 1.0,
+        z: 60.0,
+        heading: 1.57,
+        carX: 42.0,
+        carY: 1.0,
+        carZ: 60.0,
+        carHeading: 0.0,
+      }),
+    });
+
+    expect(capturedError).toBeDefined();
+    expect(capturedError.code).toBe("INVALID_EPOCH");
+    expect(client.getStatus()).toBe("error");
+
+    client.disconnect();
+  });
+
+  it("fails closed when vehicle_exited receipt is missing parked car coordinates", async () => {
+    let capturedError: any = null;
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-malformed-exit",
+      username: "MalformedExitTester",
+      onError: (err) => { capturedError = err; },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-malformed",
+        participantId: "part-malformed",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 1,
+        participants: [],
+      }),
+    });
+
+    // Server sends vehicle_exited with valid epoch 2 but missing carX/carZ
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "vehicle_exited",
+        participantId: "part-malformed",
+        modeEpoch: 2,
+        x: 45.0,
+        y: 1.0,
+        z: 60.0,
+        heading: 1.57,
+        // carX and carZ intentionally missing
+      }),
+    });
+
+    expect(capturedError).toBeDefined();
+    expect(capturedError.code).toBe("MALFORMED_TRANSITION_RECEIPT");
+    expect(client.getStatus()).toBe("error");
+
+    client.disconnect();
+  });
+
+  it("dispatches exit_vehicle with active modeEpoch, resets sequence, adopts walking mode and parked car on receipt", async () => {
+    let modeChangedEvent: any = null;
+    let vehicleExitedEvent: any = null;
+
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-v2-exit",
+      username: "Walker1",
+      vehicleKey: "karoo-vonk-11",
+      onModeChanged: (ev) => { modeChangedEvent = ev; },
+      onVehicleExited: (ev) => { vehicleExitedEvent = ev; },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-exit",
+        participantId: "part-exit",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 1,
+        participants: [],
+      }),
+    });
+
+    // Advance sequence in driving mode
+    expect(client.sendDrivingInput({ throttle: 1 })).toBe(true);
+    expect(socket.sent.filter((m: any) => m.type === "input")[0].seq).toBe(1);
+
+    // Call exitVehicle()
+    expect(client.exitVehicle()).toBe(true);
+    const exitMsg = socket.sent.find((m: any) => m.type === "exit_vehicle");
+    expect(exitMsg).toBeDefined();
+    expect(exitMsg.epoch).toBe(1);
+
+    // Receive vehicle_exited confirmation from server with incremented epoch 2 and parked car pose
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "vehicle_exited",
+        participantId: "part-exit",
+        modeEpoch: 2,
+        x: 45.0,
+        y: 1.0,
+        z: 60.0,
+        heading: 1.57,
+        carX: 42.0,
+        carY: 1.0,
+        carZ: 60.0,
+        carHeading: 0.0,
+      }),
+    });
+
+    expect(client.getMode()).toBe("walking");
+    expect(client.getModeEpoch()).toBe(2);
+    expect(client.getParkedCar()).toEqual({
+      x: 42.0,
+      y: 1.0,
+      z: 60.0,
+      heading: 0.0,
+      speed: 0,
+    });
+    expect(vehicleExitedEvent).toBeDefined();
+    expect(vehicleExitedEvent.modeEpoch).toBe(2);
+    expect(modeChangedEvent).toBeDefined();
+    expect(modeChangedEvent.mode).toBe("walking");
+    expect(modeChangedEvent.carX).toBe(42.0);
+
+    // Driving input must now be rejected in walking mode
+    expect(client.sendDrivingInput({ throttle: 1 })).toBe(false);
+
+    // Next walking input must start at seq: 1 with epoch: 2
+    expect(client.sendWalkingInput({ forward: 1, strafe: 0, heading: 1.57, sprint: true })).toBe(true);
+    const walkInputs = socket.sent.filter((m: any) => m.type === "input" && m.mode === "walking");
+    expect(walkInputs).toHaveLength(1);
+    expect(walkInputs[0].seq).toBe(1);
+    expect(walkInputs[0].epoch).toBe(2);
+    expect(walkInputs[0].forward).toBe(1);
+    expect(walkInputs[0].sprint).toBe(true);
+
+    client.disconnect();
+  });
+
+  it("dispatches board_vehicle with active modeEpoch, resets sequence, adopts driving mode and clears parked car", async () => {
+    let modeChangedEvent: any = null;
+
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-v2-board",
+      username: "Boarder",
+      vehicleKey: "karoo-vonk-11",
+      onModeChanged: (ev) => { modeChangedEvent = ev; },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    // Admitted on foot with parked car
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-board",
+        participantId: "part-board",
+        protocolVersion: 2,
+        mode: "walking",
+        modeEpoch: 2,
+        carX: 50.0,
+        carY: 2.0,
+        carZ: 80.0,
+        carHeading: 3.14,
+        participants: [],
+      }),
+    });
+
+    expect(client.getMode()).toBe("walking");
+    expect(client.getParkedCar()).toBeDefined();
+
+    // Walking player cannot call exitVehicle()
+    expect(client.exitVehicle()).toBe(false);
+
+    // Call boardVehicle()
+    expect(client.boardVehicle()).toBe(true);
+    const boardMsg = socket.sent.find((m: any) => m.type === "board_vehicle");
+    expect(boardMsg).toBeDefined();
+    expect(boardMsg.epoch).toBe(2);
+
+    // Server acknowledges vehicle_boarded with incremented epoch 3
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "vehicle_boarded",
+        participantId: "part-board",
+        modeEpoch: 3,
+        vehicleKey: "karoo-vonk-11",
+        x: 50.0,
+        y: 2.0,
+        z: 80.0,
+        heading: 3.14,
+      }),
+    });
+
+    expect(client.getMode()).toBe("driving");
+    expect(client.getModeEpoch()).toBe(3);
+    expect(client.getParkedCar()).toBeUndefined();
+    expect(modeChangedEvent.mode).toBe("driving");
+
+    // Driving input starts at seq 1 with epoch 3
+    expect(client.sendDrivingInput({ throttle: 1, steer: 0, brake: false })).toBe(true);
+    const driveInputs = socket.sent.filter((m: any) => m.type === "input" && m.mode === "driving");
+    expect(driveInputs).toHaveLength(1);
+    expect(driveInputs[0].seq).toBe(1);
+    expect(driveInputs[0].epoch).toBe(3);
+
+    client.disconnect();
+  });
+
+  it("fails closed when vehicle_boarded receipt has stale modeEpoch", async () => {
+    let capturedError: any = null;
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-stale-board",
+      username: "StaleBoardTester",
+      onError: (err) => { capturedError = err; },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-board-stale",
+        participantId: "part-board-stale",
+        protocolVersion: 2,
+        mode: "walking",
+        modeEpoch: 3,
+        carX: 50.0,
+        carY: 2.0,
+        carZ: 80.0,
+        carHeading: 0.0,
+        participants: [],
+      }),
+    });
+
+    // Server sends vehicle_boarded with stale epoch 3 (must be strictly greater than active 3)
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "vehicle_boarded",
+        participantId: "part-board-stale",
+        modeEpoch: 3,
+        vehicleKey: "karoo-vonk-11",
+        x: 50.0,
+        y: 2.0,
+        z: 80.0,
+        heading: 0.0,
+      }),
+    });
+
+    expect(capturedError).toBeDefined();
+    expect(capturedError.code).toBe("INVALID_EPOCH");
+    expect(client.getStatus()).toBe("error");
+
+    client.disconnect();
+  });
+
+  it("handles peer_mode_changed and snapshot parked-car coordinates for remote participants", async () => {
+    let peerPoseReceived: any = null;
+
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-v2-peer",
+      username: "PeerObserver",
+      onPeerPose: (pid, pose) => { peerPoseReceived = { pid, pose }; },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[0]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-peers",
+        participantId: "my-part",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 1,
+        participants: [],
+      }),
+    });
+
+    // Receive peer mode change (production format omits car coordinates)
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "peer_mode_changed",
+        participantId: "remote-peer-1",
+        mode: "walking",
+        modeEpoch: 2,
+        isPedestrian: true,
+        vehicleKey: "karoo-vonk-11",
+        x: 100.0,
+        y: 2.0,
+        z: 200.0,
+        heading: 0.5,
+      }),
+    });
+
+    expect(peerPoseReceived).toBeDefined();
+    expect(peerPoseReceived.pid).toBe("remote-peer-1");
+    expect(peerPoseReceived.pose.isPedestrian).toBe(true);
+    expect(peerPoseReceived.pose.modeEpoch).toBe(2);
+    expect(peerPoseReceived.pose.carX).toBeUndefined();
+
+    // Receive snapshot with peer having parked car
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-peers",
+        seq: 10,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "remote-peer-1",
+            userId: "user-rem-1",
+            username: "RemoteGuy",
+            isPedestrian: true,
+            mode: "walking",
+            modeEpoch: 2,
+            x: 105.0,
+            y: 2.0,
+            z: 202.0,
+            heading: 0.6,
+            speed: 1.2,
+            carX: 98.0,
+            carY: 2.0,
+            carZ: 200.0,
+            carHeading: 0.0,
+          },
+        ],
+      }),
+    });
+
+    expect(peerPoseReceived.pose.x).toBe(105.0);
+    expect(peerPoseReceived.pose.carX).toBe(98.0);
+    expect(peerPoseReceived.pose.carHeading).toBe(0.0);
+
+    client.disconnect();
+  });
+
+  it("fails closed on OWNERSHIP_AUTHORITY_ABSENT error from server", async () => {
+    let capturedError: any = null;
+
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-v2-absent",
+      username: "AbsentClient",
+      onError: (err) => { capturedError = err; },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "error",
+        error: "OWNERSHIP_AUTHORITY_ABSENT",
+        message: "Authoritative User service ownership client is not configured",
+      }),
+    });
+
+    expect(capturedError).toBeDefined();
+    expect(capturedError.code).toBe("OWNERSHIP_AUTHORITY_ABSENT");
+    expect(client.getStatus()).toBe("error");
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+    expect(client.getSessionInfo().sessionId).toBeNull();
+    expect(client.getParkedCar()).toBeUndefined();
+    expect(client.sendDrivingInput({ throttle: 1 })).toBe(false);
+    expect(client.sendWalkingInput({ forward: 1 })).toBe(false);
+
+    client.disconnect();
+  });
+
+  it("handles post-admission ownership denial by closing socket, clearing state, and rejecting further input", async () => {
+    let capturedError: any = null;
+
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-post-admit",
+      username: "PostAdmitClient",
+      onError: (err) => { capturedError = err; },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    // 1. Successfully admit driving
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "driving",
+        sessionId: "sess-post-admit",
+        inviteCode: "POST1",
+        participantId: "part-post-admit",
+        participants: [],
+      }),
+    });
+
+    expect(client.getStatus()).toBe("connected");
+    expect(client.getSessionInfo().sessionId).toBe("sess-post-admit");
+    expect(client.sendDrivingInput({ throttle: 1, steer: 0, brake: false })).toBe(true);
+
+    // 2. Server subsequently emits OWNERSHIP_AUTHORITY_ABSENT post-admission
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "error",
+        error: "OWNERSHIP_AUTHORITY_ABSENT",
+        message: "Authoritative User service ownership revoked post-admission",
+      }),
+    });
+
+    expect(capturedError).toBeDefined();
+    expect(capturedError.code).toBe("OWNERSHIP_AUTHORITY_ABSENT");
+    expect(client.getStatus()).toBe("error");
+    expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+    expect(client.getSessionInfo().sessionId).toBeNull();
+    expect(client.getSessionInfo().participantId).toBeNull();
+    expect(client.getModeEpoch()).toBe(0);
+    expect(client.getParkedCar()).toBeUndefined();
+    expect(client.sendDrivingInput({ throttle: 1 })).toBe(false);
+    expect(client.sendWalkingInput({ forward: 1 })).toBe(false);
+
+    client.disconnect();
+  });
+
+  it("ignores late snapshot and pose frames after account change or session change", async () => {
+    let receivedSnapshots = 0;
+    let receivedPeerPoses = 0;
+
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "jwt-u1",
+      userId: "u1",
+      username: "User1",
+      onSnapshot: () => { receivedSnapshots++; },
+      onPeerPose: () => { receivedPeerPoses++; },
+    });
+
+    await client.connect();
+    const socket1 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket1.readyState = MockWebSocket.OPEN;
+    socket1.onopen!();
+
+    socket1.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "driving",
+        sessionId: "sess-1",
+        participantId: "part-1",
+        participants: [],
+      }),
+    });
+
+    const oldOnMessage = socket1.onmessage;
+
+    // Change account to u2
+    client.updateAccount({
+      userId: "u2",
+      username: "User2",
+      token: "jwt-u2",
+    });
+
+    expect(client.getStatus()).toBe("disconnected");
+    expect(socket1.readyState).toBe(MockWebSocket.CLOSED);
+    expect(socket1.onmessage).toBeNull();
+
+    // Late snapshot from old session arriving on old socket handler
+    oldOnMessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-1",
+        seq: 5,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-remote",
+            userId: "u3",
+            mode: "walking",
+            x: 10,
+            y: 0,
+            z: 20,
+            carX: 5,
+            carZ: 5,
+          },
+        ],
+      }),
+    });
+
+    // Late peer pose from old socket handler
+    oldOnMessage?.({
+      data: JSON.stringify({
+        type: "peer_pose",
+        participantId: "part-remote",
+        mode: "walking",
+        x: 12,
+        y: 0,
+        z: 22,
+      }),
+    });
+
+    // Neither callback should have fired after account change
+    expect(receivedSnapshots).toBe(0);
+    expect(receivedPeerPoses).toBe(0);
+    expect(client.getParkedCar()).toBeUndefined();
+    expect(client.getModeEpoch()).toBe(0);
+
+    client.disconnect();
+  });
+
+  it("clears obsolete parked-car, session, and control state on reconnect and account change", async () => {
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "jwt-user-1",
+      userId: "user-1",
+      username: "Player1",
+      roomCode: "ROOM-1",
+    });
+
+    await client.connect();
+    const socket1 = MockWebSocket.instances[0]!;
+    socket1.readyState = MockWebSocket.OPEN;
+    socket1.onopen!();
+
+    // Admitted walking with a parked car
+    socket1.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        protocolVersion: 2,
+        modeEpoch: 3,
+        mode: "walking",
+        sessionId: "sess-abc",
+        inviteCode: "ROOM-1",
+        participantId: "part-1",
+        carX: 100,
+        carY: 2,
+        carZ: 200,
+        carHeading: 1.57,
+        participants: [],
+      }),
+    });
+
+    expect(client.getStatus()).toBe("connected");
+    expect(client.getMode()).toBe("walking");
+    expect(client.getParkedCar()).toEqual({
+      x: 100,
+      y: 2,
+      z: 200,
+      heading: 1.57,
+      speed: 0,
+    });
+    expect(client.getModeEpoch()).toBe(3);
+
+    // Send some walking input to advance sequence
+    client.sendWalkingInput({ forward: 1 });
+
+    // Now reconnected with driving mode (e.g. fresh spawn or boarded elsewhere)
+    socket1.onmessage!({
+      data: JSON.stringify({
+        type: "session_reconnected",
+        protocolVersion: 2,
+        modeEpoch: 4,
+        mode: "driving",
+        sessionId: "sess-abc",
+        inviteCode: "ROOM-1",
+        participantId: "part-1",
+        participants: [],
+      }),
+    });
+
+    // Parked car must be cleared, mode updated to driving, sequence reset
+    expect(client.getMode()).toBe("driving");
+    expect(client.getParkedCar()).toBeUndefined();
+    expect(client.getModeEpoch()).toBe(4);
+
+    // Now account change: updateAccount should disconnect and clear all state
+    client.updateAccount({
+      userId: "user-2",
+      username: "Player2",
+      token: "jwt-user-2",
+    });
+
+    expect(client.getStatus()).toBe("disconnected");
+    expect(client.getModeEpoch()).toBe(0);
+    expect(client.getParkedCar()).toBeUndefined();
+    expect(client.getSessionInfo().sessionId).toBeNull();
+  });
+
+  it("enforces snapshot sessionId matching, monotonic sequence progression, and drops stale or mismatched snapshots", async () => {
+    let snapshotCount = 0;
+    let peerPoseCount = 0;
+    let lastReceivedSeq = 0;
+
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "snap-user",
+      username: "SnapUser",
+      onSnapshot: (snap) => {
+        snapshotCount++;
+        lastReceivedSeq = snap.seq;
+      },
+      onPeerPose: () => {
+        peerPoseCount++;
+      },
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    // 1. Negative: Snapshot sent before admission is dropped
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-snap",
+        seq: 1,
+        timestamp: Date.now(),
+        participants: [],
+      }),
+    });
+    expect(snapshotCount).toBe(0);
+    expect(client.getLastSnapshotSeq()).toBe(0);
+
+    // 2. Admit session
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-snap",
+        participantId: "part-snap",
+        protocolVersion: 2,
+        mode: "driving",
+        modeEpoch: 1,
+        participants: [],
+      }),
+    });
+    expect(client.getStatus()).toBe("connected");
+
+    // 3. Positive: Valid new snapshot with seq: 10
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-snap",
+        seq: 10,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "peer-snap",
+            userId: "peer-user",
+            mode: "walking",
+            x: 20,
+            y: 0,
+            z: 30,
+          },
+        ],
+      }),
+    });
+    expect(snapshotCount).toBe(1);
+    expect(peerPoseCount).toBe(1);
+    expect(lastReceivedSeq).toBe(10);
+    expect(client.getLastSnapshotSeq()).toBe(10);
+
+    // 4. Negatives: Invalid sessionId cases (missing, null, empty string, mismatched) are dropped
+    const invalidSessionIds = [undefined, null, "", "wrong-session-id"];
+    for (const sid of invalidSessionIds) {
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "snapshot",
+          sessionId: sid,
+          seq: 15,
+          timestamp: Date.now(),
+          participants: [{ participantId: "peer-snap", x: 50, z: 50 }],
+        }),
+      });
+      expect(snapshotCount).toBe(1);
+      expect(client.getLastSnapshotSeq()).toBe(10);
+    }
+
+    // 5. Negatives: Invalid seq cases (missing, null, string, zero, negative, fractional, unsafe integer) are dropped
+    const invalidSeqs = [
+      undefined,
+      null,
+      "12",
+      0,
+      -1,
+      12.5,
+      Number.MAX_SAFE_INTEGER + 100,
+      NaN,
+      Infinity,
+    ];
+    for (const badSeq of invalidSeqs) {
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "snapshot",
+          sessionId: "sess-snap",
+          seq: badSeq,
+          timestamp: Date.now(),
+          participants: [{ participantId: "peer-snap", x: 60, z: 60 }],
+        }),
+      });
+      expect(snapshotCount).toBe(1);
+      expect(client.getLastSnapshotSeq()).toBe(10);
+    }
+
+    // 6. Negatives: Stale/older sequence (seq: 8 <= 10) and duplicate sequence (seq: 10 <= 10) are dropped
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-snap",
+        seq: 8,
+        timestamp: Date.now(),
+        participants: [{ participantId: "peer-snap", x: 99, z: 99 }],
+      }),
+    });
+    expect(snapshotCount).toBe(1);
+    expect(client.getLastSnapshotSeq()).toBe(10);
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-snap",
+        seq: 10,
+        timestamp: Date.now(),
+        participants: [{ participantId: "peer-snap", x: 99, z: 99 }],
+      }),
+    });
+    expect(snapshotCount).toBe(1);
+    expect(client.getLastSnapshotSeq()).toBe(10);
+
+    // 7. Positive: Advance sequence to seq: 11
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-snap",
+        seq: 11,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "peer-snap",
+            userId: "peer-user",
+            mode: "walking",
+            x: 25,
+            y: 0,
+            z: 35,
+          },
+        ],
+      }),
+    });
+    expect(snapshotCount).toBe(2);
+    expect(peerPoseCount).toBe(2);
+    expect(lastReceivedSeq).toBe(11);
+    expect(client.getLastSnapshotSeq()).toBe(11);
+
+    // 8. Positive: Reconnect resets snapshot sequence and adopts fresh initial snapshot
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_reconnected",
+        protocolVersion: 2,
+        modeEpoch: 2,
+        mode: "driving",
+        sessionId: "sess-snap-reconnected",
+        inviteCode: "RECON1",
+        participantId: "part-snap",
+        participants: [],
+      }),
+    });
+    expect(client.getLastSnapshotSeq()).toBe(0);
+    expect(client.getSessionInfo().sessionId).toBe("sess-snap-reconnected");
+
+    // Now snapshot with seq: 1 on new session is adopted!
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-snap-reconnected",
+        seq: 1,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "peer-snap",
+            userId: "peer-user",
+            mode: "driving",
+            x: 30,
+            y: 0,
+            z: 40,
+          },
+        ],
+      }),
+    });
+    expect(snapshotCount).toBe(3);
+    expect(lastReceivedSeq).toBe(1);
+    expect(client.getLastSnapshotSeq()).toBe(1);
+
+    client.disconnect();
+  });
+
+  it("verifies request-sent positives: exitVehicle, boardVehicle, and typed inputs emit exact protocol-v2 frames", async () => {
+    const client = new MultiplayerClient({
+      url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+      token: "valid-jwt",
+      userId: "user-req-test",
+      username: "Requester",
+    });
+
+    await client.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen!();
+
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "session_joined",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "driving",
+        sessionId: "sess-req-1",
+        inviteCode: "REQ001",
+        participantId: "part-req-1",
+        participants: [],
+      }),
+    });
+
+    // 1. exitVehicle emits exact { type: "exit_vehicle", epoch: 1 }
+    const exitSent = client.exitVehicle();
+    expect(exitSent).toBe(true);
+    const exitMsg = socket.sent.find((m) => m.type === "exit_vehicle");
+    expect(exitMsg).toEqual({
+      type: "exit_vehicle",
+      epoch: 1,
+    });
+
+    // Simulate server acknowledging exit -> mode becomes walking, epoch becomes 2
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "vehicle_exited",
+        modeEpoch: 2,
+        participantId: "part-req-1",
+        x: 10,
+        y: 0,
+        z: 20,
+        heading: 0,
+        carX: 0,
+        carY: 0,
+        carZ: 0,
+        carHeading: 0,
+      }),
+    });
+    expect(client.getMode()).toBe("walking");
+    expect(client.getModeEpoch()).toBe(2);
+
+    // 2. sendWalkingInput emits exact { type: "input", mode: "walking", seq: 101, epoch: 2, ... }
+    const walkInputSent = client.sendWalkingInput({
+      seq: 101,
+      epoch: 2,
+      forward: 1,
+      strafe: 0,
+      heading: 1.57,
+      sprint: false,
+    });
+    expect(walkInputSent).toBe(true);
+    const walkMsg = socket.sent.find((m) => m.type === "input" && m.mode === "walking");
+    expect(walkMsg).toEqual({
+      type: "input",
+      mode: "walking",
+      seq: 101,
+      epoch: 2,
+      forward: 1,
+      strafe: 0,
+      heading: 1.57,
+      sprint: false,
+    });
+
+    // 3. boardVehicle emits exact { type: "board_vehicle", epoch: 2 }
+    const boardSent = client.boardVehicle();
+    expect(boardSent).toBe(true);
+    const boardMsg = socket.sent.find((m) => m.type === "board_vehicle");
+    expect(boardMsg).toEqual({
+      type: "board_vehicle",
+      epoch: 2,
+    });
+
+    // Simulate server acknowledging boarding -> mode becomes driving, epoch becomes 3
+    socket.onmessage!({
+      data: JSON.stringify({
+        type: "vehicle_boarded",
+        modeEpoch: 3,
+        participantId: "part-req-1",
+        x: 0,
+        y: 0,
+        z: 0,
+        heading: 0,
+      }),
+    });
+    expect(client.getMode()).toBe("driving");
+    expect(client.getModeEpoch()).toBe(3);
+
+    // 4. sendDrivingInput emits exact { type: "input", mode: "driving", seq: 201, epoch: 3, ... }
+    const driveInputSent = client.sendDrivingInput({
+      seq: 201,
+      epoch: 3,
+      throttle: 1,
+      steer: 0,
+      brake: false,
+    });
+    expect(driveInputSent).toBe(true);
+    const driveMsg = socket.sent.find((m) => m.type === "input" && m.mode === "driving");
+    expect(driveMsg).toEqual({
+      type: "input",
+      mode: "driving",
+      seq: 201,
+      epoch: 3,
+      throttle: 1,
+      steer: 0,
+      brake: false,
+    });
+
+    client.disconnect();
   });
 });

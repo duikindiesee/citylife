@@ -138,6 +138,49 @@ function RemoteCarVisual({ racer }: { racer: { username: string; spec: CarSpec }
   );
 }
 
+function RemoteParkedCarVisual({
+  racer,
+}: {
+  racer: {
+    username: string;
+    spec: CarSpec;
+    carX: number;
+    carY?: number;
+    carZ?: number;
+    carHeading?: number;
+  };
+}) {
+  const model = useMemo(() => {
+    return buildCarMesh(racer.spec);
+  }, [racer.spec]);
+
+  const plate = useMemo(() => makeRacerPlate(`${racer.username} (Parked)`, false), [racer.username]);
+
+  useEffect(() => {
+    return () => {
+      disposeDeep(model);
+      plate.material.map?.dispose();
+      plate.material.dispose();
+    };
+  }, [model, plate]);
+
+  return (
+    <group
+      name={`remote-parked-car-${racer.username}`}
+      userData={{
+        username: racer.username,
+        parked: true,
+        vehicleKey: racer.spec.id,
+      }}
+      position={[racer.carX, racer.carY ?? 0, racer.carZ ?? 0]}
+      rotation={[0, -(racer.carHeading ?? 0), 0, "YXZ"]}
+    >
+      <primitive object={model} />
+      <primitive object={plate} />
+    </group>
+  );
+}
+
 export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersProps) {
   useSimSignal(runtime, () => remoteRacersSignature(sim.state));
 
@@ -223,30 +266,53 @@ export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersP
 
   return (
     <group ref={rootGroup} name="remote-racers">
-      {racersList.map((racer) => (
-        <group
-          key={racer.participantId}
-          name={`remote-racer-${racer.username}`}
-          userData={{
-            username: racer.username,
-            userId: racer.userId,
-            participantId: racer.participantId,
-            isPedestrian: Boolean(racer.isPedestrian || !racer.spec),
-            mode: racer.isPedestrian || !racer.spec ? "walking" : "driving",
-            vehicleKey: racer.vehicleKey ?? null,
-          }}
-          ref={(el) => {
-            if (el) racerGroups.current.set(racer.participantId, el);
-            else racerGroups.current.delete(racer.participantId);
-          }}
-        >
-          {racer.isPedestrian || !racer.spec ? (
-            <RemotePedestrianVisual racer={racer} />
-          ) : (
-            <RemoteCarVisual racer={racer as { username: string; spec: CarSpec }} />
-          )}
-        </group>
-      ))}
+      {racersList.map((racer) => {
+        const hasParkedCar = Boolean(
+          racer.isPedestrian &&
+            racer.spec &&
+            racer.carX !== undefined &&
+            Number.isFinite(racer.carX),
+        );
+        return (
+          <React.Fragment key={racer.participantId}>
+            <group
+              name={`remote-racer-${racer.username}`}
+              userData={{
+                username: racer.username,
+                userId: racer.userId,
+                participantId: racer.participantId,
+                isPedestrian: Boolean(racer.isPedestrian || !racer.spec),
+                mode: racer.isPedestrian || !racer.spec ? "walking" : "driving",
+                vehicleKey: racer.vehicleKey ?? null,
+              }}
+              ref={(el) => {
+                if (el) racerGroups.current.set(racer.participantId, el);
+                else racerGroups.current.delete(racer.participantId);
+              }}
+            >
+              {racer.isPedestrian || !racer.spec ? (
+                <RemotePedestrianVisual racer={racer} />
+              ) : (
+                <RemoteCarVisual racer={racer as { username: string; spec: CarSpec }} />
+              )}
+            </group>
+            {hasParkedCar && (
+              <RemoteParkedCarVisual
+                racer={
+                  racer as {
+                    username: string;
+                    spec: CarSpec;
+                    carX: number;
+                    carY?: number;
+                    carZ?: number;
+                    carHeading?: number;
+                  }
+                }
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
     </group>
   );
 }

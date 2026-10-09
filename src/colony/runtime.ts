@@ -7,6 +7,10 @@ import {
   isSprinting,
   rampedGroundSpeedCellsPerSec,
 } from "./playerSpeed";
+import {
+  cameraYawToWireHeading,
+  wireHeadingToCameraYaw,
+} from "./playerOrientation";
 import { ColonySim } from "./sim";
 import {
   PlanetRenderer,
@@ -1065,6 +1069,9 @@ export class ColonyRuntime {
    *  renderer every frame. The v3 walker camera is a physics capsule independent of the roster
    *  citizen, so bus interactions measure from HERE — the prompt matches what the player sees. */
   fpCameraCell: { x: number; y: number } | null = null;
+  /** Spec 149 / Spec 165 — Three.js first-person camera yaw (Euler Y in radians).
+   *  Synchronized from FirstPersonController and used to calculate authoritative wire heading. */
+  fpCameraYaw: number | undefined = undefined;
   /** Spec 149 — one-shot teleport order for the camera capsule (FirstPersonController consumes it;
    *  seq marks freshness). debugPlaceFirstPerson and alighting issue these. */
   fpTeleportRequest: {
@@ -1072,8 +1079,11 @@ export class ColonyRuntime {
     y: number;
     yaw?: number;
     seq: number;
+    preserveVertical?: boolean;
+    preserveVelocity?: boolean;
   } | null = null;
   private fpTeleportSeq = 0;
+  fpGamepadMoving = false;
   /** Spec 088 — road centre-lines for the smooth ribbon render (rendering only; traffic uses the cells). */
   roadWays: RoadWay[] = [];
   // Spec 079 — the Nearest bar's seat cells + who's sitting there (a night crowd; cleared by day).
@@ -2390,9 +2400,14 @@ export class ColonyRuntime {
       this.ownedDriveInputGeneration++;
       this.authoritativeCar = null;
       this.ownedDrivePose = null;
+      this.authoritativeWalkingPose = null;
+      this.lastAppliedSnapshotSeq = 0;
       this.ownedDriveInput = {};
       this.ownedDriveSeated = false;
       this.sim.state.remoteRacers?.clear();
+      if (this.sim.state.operatorCar) {
+        this.sim.state.operatorCar = null as any;
+      }
       if (this.multiplayerClient) {
         this.multiplayerClient.disconnect();
         this.multiplayerClient = null;
@@ -2780,8 +2795,11 @@ export class ColonyRuntime {
   }
 
   private ownedDrivePose: OwnedDrivePose | null = null;
+  private authoritativeWalkingPose: { x: number; y: number; heading: number } | null = null;
+  private lastAppliedSnapshotSeq = 0;
   private ownedDriveInput: OwnedDriveInput = {};
   private ownedDriveSeated = false;
+  private preTransitionSeated = false;
   private ownedDriveInputGeneration = 0;
 
   /** Changes synchronously when input authority changes, even before React renders. */
@@ -2798,9 +2816,51 @@ export class ColonyRuntime {
       : null;
   }
 
+  isOwnedDriveSeated(): boolean {
+    return this.ownedDriveSeated;
+  }
+
+  getParkedCarPose(): { x: number; y: number; heading: number } | null {
+    if (!this.operatorUserId || this.ownedDriveSeated) return null;
+    if (this.ownedDrivePose) {
+      return { x: this.ownedDrivePose.x, y: this.ownedDrivePose.y, heading: this.ownedDrivePose.heading };
+    }
+    const mpParked = this.multiplayerClient?.getParkedCar();
+    if (mpParked) {
+      const terrain = this.sim.state.terrain;
+      const size = terrain?.size ?? 128;
+      return {
+        x: mpParked.x / 4 + size / 2,
+        y: mpParked.z / 4 + size / 2,
+        heading: mpParked.heading,
+      };
+    }
+    return null;
+  }
+
+  getAuthoritativeWalkingPose(): { x: number; y: number; heading: number } | null {
+    if (this.ownedDriveSeated) return null;
+    return this.authoritativeWalkingPose
+      ? { ...this.authoritativeWalkingPose }
+      : null;
+  }
+
+  getWalkingCell(): { x: number; y: number } | null {
+    if (this.ownedDriveSeated) return null;
+    if (this.authoritativeWalkingPose) {
+      return { x: this.authoritativeWalkingPose.x, y: this.authoritativeWalkingPose.y };
+    }
+    if (this.fpCameraCell) return { ...this.fpCameraCell };
+    if (this.fpCitizenId) {
+      const c = this.citizens.byId(this.fpCitizenId);
+      if (c?.pos) return { ...c.pos };
+    }
+    return null;
+  }
+
   canEnterOwnedCar(): boolean {
     const car = this.ownedDrivePose;
-    const at = this.fpCameraCell;
+    const at = this.getWalkingCell();
     return !!(
       this.operatorUserId &&
       this.authoritativeCar &&
@@ -2813,6 +2873,7 @@ export class ColonyRuntime {
 
   enterOwnedCar(): boolean {
     if (!this.canEnterOwnedCar()) return false;
+    this.preTransitionSeated = false;
     this.ownedDriveInputGeneration++;
     this.ownedDriveSeated = true;
     this.ownedDriveInput = {};
@@ -2821,22 +2882,26 @@ export class ColonyRuntime {
       this.multiplayerClient.getStatus() === "connected" &&
       this.ownedDrivePose
     ) {
-      const terrain = this.sim.state.terrain;
-      const worldX = (this.ownedDrivePose.x - terrain.size / 2) * 4;
-      const worldZ = (this.ownedDrivePose.y - terrain.size / 2) * 4;
-      const worldY = terrain.worldY(
-        Math.round(this.ownedDrivePose.x),
-        Math.round(this.ownedDrivePose.y),
-      );
-      this.multiplayerClient.sendPose({
-        x: worldX,
-        y: worldY,
-        z: worldZ,
-        heading: this.ownedDrivePose.heading,
-        speed: 0,
-        mode: "driving",
-        force: true,
-      });
+      this.multiplayerInputSeq = 0;
+      this.multiplayerClient.boardVehicle();
+      if (this.multiplayerClient.getProtocolVersion() === 1) {
+        const terrain = this.sim.state.terrain;
+        const worldX = (this.ownedDrivePose.x - terrain.size / 2) * 4;
+        const worldZ = (this.ownedDrivePose.y - terrain.size / 2) * 4;
+        const worldY = terrain.worldY(
+          Math.round(this.ownedDrivePose.x),
+          Math.round(this.ownedDrivePose.y),
+        );
+        this.multiplayerClient.sendPose({
+          x: worldX,
+          y: worldY,
+          z: worldZ,
+          heading: this.ownedDrivePose.heading,
+          speed: 0,
+          mode: "driving",
+          force: true,
+        });
+      }
     }
     this.emit();
     return true;
@@ -3025,6 +3090,7 @@ export class ColonyRuntime {
     }
 
     if (!exitCell) return false;
+    this.preTransitionSeated = true;
     this.ownedDriveInputGeneration++;
     car.speed = 0;
     this.ownedDriveSeated = false;
@@ -3032,36 +3098,15 @@ export class ColonyRuntime {
     this.fpTeleportRequest = {
       ...exitCell,
       yaw: -car.heading - Math.PI / 2,
-      seq: (this.fpTeleportRequest?.seq ?? 0) + 1,
+      seq: ++this.fpTeleportSeq,
     };
     this.fpCameraCell = { x: exitCell.x, y: exitCell.y };
     if (
       this.multiplayerClient &&
       this.multiplayerClient.getStatus() === "connected"
     ) {
-      const terrain = this.sim.state.terrain;
-      const worldX = (exitCell.x - terrain.size / 2) * 4;
-      const worldZ = (exitCell.y - terrain.size / 2) * 4;
-      const worldY = terrain.worldY(
-        Math.round(exitCell.x),
-        Math.round(exitCell.y),
-      );
-      this.multiplayerInputSeq++;
-      this.multiplayerClient.sendInput({
-        throttle: 0,
-        steer: 0,
-        brake: false,
-        seq: this.multiplayerInputSeq,
-      });
-      this.multiplayerClient.sendPose({
-        x: worldX,
-        y: worldY,
-        z: worldZ,
-        heading: -car.heading - Math.PI / 2,
-        speed: 0,
-        mode: "walking",
-        force: true,
-      });
+      this.multiplayerInputSeq = 0;
+      this.multiplayerClient.exitVehicle();
     }
     this.emit();
     return true;
@@ -3074,8 +3119,9 @@ export class ColonyRuntime {
       this.lastMultiplayerInputSentAt = Date.now();
       const throttleVal = input.throttle ? 1 : input.reverse ? -1 : 0;
       const steerVal = input.right ? 1 : input.left ? -1 : 0;
-      this.multiplayerClient.sendInput({
+      this.multiplayerClient.sendDrivingInput({
         seq: this.multiplayerInputSeq,
+        epoch: this.multiplayerClient.getModeEpoch(),
         throttle: throttleVal,
         steer: steerVal,
         brake: Boolean(input.brake),
@@ -3110,6 +3156,16 @@ export class ColonyRuntime {
   }
 
   teleportCar(x: number, y: number, heading = 0): void {
+    if (
+      this.multiplayerClient &&
+      this.multiplayerClient.getStatus() === "connected" &&
+      this.multiplayerClient.getProtocolVersion() >= 2
+    ) {
+      console.warn(
+        "[Multiplayer] Debug car teleport is disabled in active protocol v2 sessions (server-authoritative driving)",
+      );
+      return;
+    }
     this.ownedDrivePose = { x, y, heading, speed: 0 };
     this.ownedDriveSeated = true;
     if (this.sim.state.operatorCar) {
@@ -3125,7 +3181,11 @@ export class ColonyRuntime {
       };
     }
     this.debugPlaceFirstPerson(x, y);
-    if (this.multiplayerClient && this.multiplayerClient.getStatus() === "connected") {
+    if (
+      this.multiplayerClient &&
+      this.multiplayerClient.getStatus() === "connected" &&
+      this.multiplayerClient.getProtocolVersion() === 1
+    ) {
       const terrain = this.sim.state.terrain;
       const worldX = (x - terrain.size / 2) * 4;
       const worldZ = (y - terrain.size / 2) * 4;
@@ -3240,22 +3300,182 @@ export class ColonyRuntime {
       onStatusChange: (status) => {
         if (status === "connecting" || status === "disconnected" || status === "error") {
           this.sim.state.remoteRacers?.clear();
+          this.ownedDriveInput = {};
+          this.authoritativeWalkingPose = null;
+          this.lastAppliedSnapshotSeq = 0;
+          if (status === "error") {
+            this.ownedDriveSeated = this.preTransitionSeated;
+          }
         }
         this.emit();
       },
+      onError: () => {
+        this.ownedDriveSeated = this.preTransitionSeated;
+        this.ownedDriveInput = {};
+        this.emit();
+      },
       onSessionReady: () => {
-        // Fresh or reconnected session cleans prior peer state to prevent stale peer carryover
+        // Fresh or reconnected session cleans prior peer state and resets sequence
+        this.multiplayerInputSeq = 0;
+        this.lastAppliedSnapshotSeq = 0;
+        this.authoritativeWalkingPose = null;
         this.sim.state.remoteRacers?.clear();
         this.emit();
       },
       onSelfAdmitted: (self) => {
+        this.multiplayerInputSeq = 0;
+        const t = this.sim.state.terrain;
         if (self.mode === "driving" && self.vehicleKey) {
-          const t = this.sim.state.terrain;
+          this.authoritativeWalkingPose = null;
           const cellX = self.x / 4 + t.size / 2;
           const cellY = self.z / 4 + t.size / 2;
           this.ownedDrivePose = { x: cellX, y: cellY, heading: self.heading, speed: self.speed };
           this.ownedDriveSeated = true;
+          this.preTransitionSeated = true;
           this.emit();
+        } else if (self.mode === "walking") {
+          this.ownedDriveSeated = false;
+          this.preTransitionSeated = false;
+          const walkCellX = self.x / 4 + t.size / 2;
+          const walkCellY = self.z / 4 + t.size / 2;
+          this.authoritativeWalkingPose = {
+            x: walkCellX,
+            y: walkCellY,
+            heading: self.heading,
+          };
+          this.fpCameraCell = { x: walkCellX, y: walkCellY };
+          this.fpCameraYaw = wireHeadingToCameraYaw(self.heading);
+          this.fpTeleportRequest = {
+            x: walkCellX,
+            y: walkCellY,
+            seq: ++this.fpTeleportSeq,
+          };
+          if (this.fpCitizenId) {
+            const c = this.citizens.byId(this.fpCitizenId);
+            if (c) {
+              c.pos.x = walkCellX;
+              c.pos.y = walkCellY;
+              c.heading = self.heading;
+            }
+          }
+          if (self.carX !== undefined && Number.isFinite(self.carX)) {
+            const carCellX = self.carX / 4 + t.size / 2;
+            const carCellY = (self.carZ ?? 0) / 4 + t.size / 2;
+            this.ownedDrivePose = { x: carCellX, y: carCellY, heading: self.carHeading ?? 0, speed: 0 };
+            if (this.sim.state.operatorCar) {
+              this.sim.state.operatorCar.cell = { x: carCellX, y: carCellY };
+              this.sim.state.operatorCar.heading = self.carHeading ?? 0;
+            }
+          }
+          this.emit();
+        }
+      },
+      onVehicleExited: (ev) => {
+        const myParticipantId = this.multiplayerClient?.getSessionInfo().participantId;
+        const terrain = this.sim.state.terrain;
+        if (ev.participantId === myParticipantId) {
+          this.multiplayerInputSeq = 0;
+          this.ownedDriveSeated = false;
+          this.preTransitionSeated = false;
+          this.ownedDriveInput = {};
+          if (ev.carX !== undefined && Number.isFinite(ev.carX)) {
+            const carCellX = ev.carX / 4 + terrain.size / 2;
+            const carCellY = (ev.carZ ?? 0) / 4 + terrain.size / 2;
+            this.ownedDrivePose = {
+              x: carCellX,
+              y: carCellY,
+              heading: ev.carHeading ?? 0,
+              speed: 0,
+            };
+            if (this.sim.state.operatorCar) {
+              this.sim.state.operatorCar.cell = { x: carCellX, y: carCellY };
+              this.sim.state.operatorCar.heading = ev.carHeading ?? 0;
+            }
+          }
+          const walkCellX = ev.x / 4 + terrain.size / 2;
+          const walkCellY = ev.z / 4 + terrain.size / 2;
+          this.authoritativeWalkingPose = {
+            x: walkCellX,
+            y: walkCellY,
+            heading: ev.heading,
+          };
+          this.fpCameraCell = { x: walkCellX, y: walkCellY };
+          this.fpCameraYaw = wireHeadingToCameraYaw(ev.heading);
+          this.fpTeleportRequest = {
+            x: walkCellX,
+            y: walkCellY,
+            yaw: this.fpCameraYaw,
+            seq: ++this.fpTeleportSeq,
+          };
+          if (this.fpCitizenId) {
+            const c = this.citizens.byId(this.fpCitizenId);
+            if (c) {
+              c.pos.x = walkCellX;
+              c.pos.y = walkCellY;
+              c.heading = ev.heading;
+            }
+          }
+          this.emit();
+        } else {
+          if (!this.sim.state.remoteRacers) this.sim.state.remoteRacers = new Map();
+          const racer = this.sim.state.remoteRacers.get(ev.participantId);
+          if (racer) {
+            racer.isPedestrian = true;
+            racer.cell.x = ev.x / 4 + terrain.size / 2;
+            racer.cell.y = ev.z / 4 + terrain.size / 2;
+            racer.worldY = ev.y;
+            racer.heading = ev.heading;
+            racer.modeEpoch = ev.modeEpoch;
+            racer.carX = ev.carX;
+            racer.carY = ev.carY;
+            racer.carZ = ev.carZ;
+            racer.carHeading = ev.carHeading;
+            this.emit();
+          }
+        }
+      },
+      onVehicleBoarded: (ev) => {
+        const myParticipantId = this.multiplayerClient?.getSessionInfo().participantId;
+        const terrain = this.sim.state.terrain;
+        if (ev.participantId === myParticipantId) {
+          this.multiplayerInputSeq = 0;
+          this.authoritativeWalkingPose = null;
+          this.ownedDriveSeated = true;
+          this.preTransitionSeated = true;
+          this.ownedDriveInput = {};
+          const cellX = ev.x / 4 + terrain.size / 2;
+          const cellY = ev.z / 4 + terrain.size / 2;
+          this.ownedDrivePose = {
+            x: cellX,
+            y: cellY,
+            heading: ev.heading,
+            speed: 0,
+          };
+          if (this.sim.state.operatorCar) {
+            this.sim.state.operatorCar.cell = { x: cellX, y: cellY };
+            this.sim.state.operatorCar.heading = ev.heading;
+          }
+          this.emit();
+        } else {
+          if (!this.sim.state.remoteRacers) this.sim.state.remoteRacers = new Map();
+          const racer = this.sim.state.remoteRacers.get(ev.participantId);
+          if (racer) {
+            racer.isPedestrian = false;
+            racer.cell.x = ev.x / 4 + terrain.size / 2;
+            racer.cell.y = ev.z / 4 + terrain.size / 2;
+            racer.worldY = ev.y;
+            racer.heading = ev.heading;
+            racer.modeEpoch = ev.modeEpoch;
+            racer.carX = undefined;
+            racer.carY = undefined;
+            racer.carZ = undefined;
+            racer.carHeading = undefined;
+            if (ev.vehicleKey) {
+              racer.vehicleKey = ev.vehicleKey;
+              racer.spec = resolveOwnedCar([ev.vehicleKey]) ?? null;
+            }
+            this.emit();
+          }
         }
       },
       onPeerJoined: (peer) => {
@@ -3276,6 +3496,12 @@ export class ColonyRuntime {
           speed: peer.speed || 0,
           lastSeen: Date.now(),
           spec,
+          carX: peer.carX,
+          carY: peer.carY,
+          carZ: peer.carZ,
+          carHeading: peer.carHeading,
+          carSpeed: peer.carSpeed,
+          modeEpoch: peer.modeEpoch,
         });
         this.emit();
       },
@@ -3296,6 +3522,9 @@ export class ColonyRuntime {
           racer.heading = pose.heading;
           racer.speed = pose.speed;
           racer.lastSeen = Date.now();
+          if (pose.modeEpoch !== undefined) {
+            racer.modeEpoch = pose.modeEpoch;
+          }
           if (pose.vehicleKey !== undefined && pose.vehicleKey !== racer.vehicleKey) {
             racer.vehicleKey = pose.vehicleKey;
             racer.spec = pose.vehicleKey
@@ -3310,33 +3539,175 @@ export class ColonyRuntime {
           } else if (pose.isPedestrian !== undefined) {
             racer.isPedestrian = Boolean(pose.isPedestrian) || !racer.spec;
           }
+          if (pose.carX !== undefined) {
+            racer.carX = pose.carX;
+            racer.carY = pose.carY;
+            racer.carZ = pose.carZ;
+            racer.carHeading = pose.carHeading;
+            racer.carSpeed = pose.carSpeed;
+          } else if (!racer.isPedestrian) {
+            racer.carX = undefined;
+            racer.carY = undefined;
+            racer.carZ = undefined;
+            racer.carHeading = undefined;
+            racer.carSpeed = undefined;
+          }
           this.emit();
         }
-        // Unknown peer poses are dropped without inventing a fabricated Racer identity or default car
       },
       onSnapshot: (snapshot) => {
+        const session = this.multiplayerClient?.getSessionInfo();
+        if (!session || !session.sessionId || snapshot.sessionId !== session.sessionId) {
+          return;
+        }
+        if (typeof snapshot.seq === "number") {
+          if (snapshot.seq <= this.lastAppliedSnapshotSeq) {
+            return;
+          }
+          this.lastAppliedSnapshotSeq = snapshot.seq;
+        }
+        const currentModeEpoch = this.multiplayerClient?.getModeEpoch() ?? 0;
         const terrain = this.sim.state.terrain;
-        const myParticipantId = this.multiplayerClient?.getSessionInfo().participantId;
+        const myParticipantId = session.participantId;
         for (const p of snapshot.participants) {
           if (p.participantId === myParticipantId || p.userId === this.operatorUserId) {
+            if (typeof p.modeEpoch === "number" && p.modeEpoch < currentModeEpoch) {
+              continue;
+            }
             if (typeof p.lastInputSeq === "number" && p.lastInputSeq > this.multiplayerInputSeq) {
               this.multiplayerInputSeq = p.lastInputSeq;
             }
-            if (this.ownedDriveSeated && this.ownedDrivePose) {
+            const isPed = p.mode === "walking" || Boolean(p.isPedestrian);
+            if (this.ownedDriveSeated && !isPed && this.ownedDrivePose) {
               const sCellX = p.x / 4 + terrain.size / 2;
               const sCellY = p.z / 4 + terrain.size / 2;
-              const dx = this.ownedDrivePose.x - sCellX;
-              const dy = this.ownedDrivePose.y - sCellY;
-              const distSq = dx * dx + dy * dy;
-              if (distSq > 16) {
-                this.ownedDrivePose.x = sCellX;
-                this.ownedDrivePose.y = sCellY;
-                this.ownedDrivePose.speed = p.speed;
-                this.ownedDrivePose.heading = p.heading;
+              this.ownedDrivePose.x = sCellX;
+              this.ownedDrivePose.y = sCellY;
+              this.ownedDrivePose.speed = p.speed;
+              this.ownedDrivePose.heading = p.heading;
+              if (this.sim.state.operatorCar) {
+                this.sim.state.operatorCar.cell = { x: sCellX, y: sCellY };
+                this.sim.state.operatorCar.heading = p.heading;
+              }
+            } else if (!this.ownedDriveSeated && isPed) {
+              const wCellX = p.x / 4 + terrain.size / 2;
+              const wCellY = p.z / 4 + terrain.size / 2;
+              this.authoritativeWalkingPose = {
+                x: wCellX,
+                y: wCellY,
+                heading: p.heading,
+              };
+
+              // Capture the live physical predicted body/camera position BEFORE updating fpCameraCell
+              const livePhysicalCell = this.fpCameraCell ? { ...this.fpCameraCell } : null;
+
+              this.fpCameraCell = { x: wCellX, y: wCellY };
+              if (this.fpCitizenId) {
+                const c = this.citizens.byId(this.fpCitizenId);
+                if (c) {
+                  c.pos.x = wCellX;
+                  c.pos.y = wCellY;
+                  c.heading = p.heading;
+                }
+              }
+
+              const hasLocalInput = this.hasFpLocomotionInput();
+              const prevTp = this.fpTeleportRequest;
+
+              // Compare against the actual physical position reported by FirstPersonController before assignment.
+              // If livePhysicalCell is not available yet, fall back to prevTp.
+              const physicalX = livePhysicalCell?.x ?? prevTp?.x;
+              const physicalY = livePhysicalCell?.y ?? prevTp?.y;
+
+              const physicalDrifted =
+                physicalX === undefined ||
+                physicalY === undefined ||
+                Math.abs(physicalX - wCellX) > 1e-4 ||
+                Math.abs(physicalY - wCellY) > 1e-4;
+
+              const serverPosChangedFromPrevTp =
+                !prevTp ||
+                Math.abs(prevTp.x - wCellX) > 1e-4 ||
+                Math.abs(prevTp.y - wCellY) > 1e-4;
+
+              if (!hasLocalInput) {
+                // If the physical body drifted away from the authoritative snapshot (e.g. from local
+                // movement, collision, or inertia), OR if the server snapshot moved to a new position,
+                // emit a targeted correction. If already aligned, do not spam requests.
+                if (physicalDrifted || serverPosChangedFromPrevTp) {
+                  this.fpTeleportRequest = {
+                    x: wCellX,
+                    y: wCellY,
+                    seq: ++this.fpTeleportSeq,
+                    preserveVertical: true,
+                    preserveVelocity: true,
+                  };
+                }
+              } else {
+                // When actively moving with local prediction, compare against the LIVE
+                // physical predicted body/camera position captured BEFORE snapshot assignment.
+                // Preserve smooth local locomotion and only reconcile if prediction error > 4 cells (16m^2).
+                const liveCellX = livePhysicalCell?.x ?? prevTp?.x ?? wCellX;
+                const liveCellY = livePhysicalCell?.y ?? prevTp?.y ?? wCellY;
+                const dx = wCellX - liveCellX;
+                const dy = wCellY - liveCellY;
+                if (dx * dx + dy * dy > 4) {
+                  this.fpTeleportRequest = {
+                    x: wCellX,
+                    y: wCellY,
+                    seq: ++this.fpTeleportSeq,
+                    preserveVertical: true,
+                    preserveVelocity: true,
+                  };
+                }
+              }
+              if (p.carX !== undefined && Number.isFinite(p.carX)) {
+                const pCarCellX = p.carX / 4 + terrain.size / 2;
+                const pCarCellY = (p.carZ ?? 0) / 4 + terrain.size / 2;
+                if (this.ownedDrivePose) {
+                  this.ownedDrivePose.x = pCarCellX;
+                  this.ownedDrivePose.y = pCarCellY;
+                  this.ownedDrivePose.heading = p.carHeading ?? 0;
+                }
+                if (this.sim.state.operatorCar) {
+                  this.sim.state.operatorCar.cell = { x: pCarCellX, y: pCarCellY };
+                  this.sim.state.operatorCar.heading = p.carHeading ?? 0;
+                }
+              }
+            }
+          } else {
+            if (!this.sim.state.remoteRacers) this.sim.state.remoteRacers = new Map();
+            const racer = this.sim.state.remoteRacers.get(p.participantId);
+            const cellX = p.x / 4 + terrain.size / 2;
+            const cellY = p.z / 4 + terrain.size / 2;
+            const isPed = p.mode === "walking" || Boolean(p.isPedestrian);
+            if (racer) {
+              racer.cell.x = cellX;
+              racer.cell.y = cellY;
+              racer.worldY = p.y;
+              racer.heading = p.heading;
+              racer.speed = p.speed;
+              racer.isPedestrian = isPed;
+              racer.modeEpoch = p.modeEpoch;
+              if (p.carX !== undefined) {
+                racer.carX = p.carX;
+                racer.carY = p.carY;
+                racer.carZ = p.carZ;
+                racer.carHeading = p.carHeading;
+              } else if (!isPed) {
+                racer.carX = undefined;
+                racer.carY = undefined;
+                racer.carZ = undefined;
+                racer.carHeading = undefined;
+              }
+              if (p.vehicleKey && p.vehicleKey !== racer.vehicleKey) {
+                racer.vehicleKey = p.vehicleKey;
+                racer.spec = resolveOwnedCar([p.vehicleKey]) ?? null;
               }
             }
           }
         }
+        this.emit();
       },
     });
 
@@ -3348,6 +3719,8 @@ export class ColonyRuntime {
       this.multiplayerClient.disconnect();
       this.multiplayerClient = null;
     }
+    this.authoritativeWalkingPose = null;
+    this.lastAppliedSnapshotSeq = 0;
     this.sim.state.remoteRacers?.clear();
     this.emit();
   }
@@ -3478,24 +3851,27 @@ export class ColonyRuntime {
           this.multiplayerInputSeq++;
           const throttleVal = this.ownedDriveInput.throttle ? 1 : this.ownedDriveInput.reverse ? -1 : 0;
           const steerVal = this.ownedDriveInput.right ? 1 : this.ownedDriveInput.left ? -1 : 0;
-          this.multiplayerClient.sendInput({
+          this.multiplayerClient.sendDrivingInput({
             seq: this.multiplayerInputSeq,
+            epoch: this.multiplayerClient.getModeEpoch(),
             throttle: throttleVal,
             steer: steerVal,
             brake: Boolean(this.ownedDriveInput.brake),
           });
         }
-        const worldX = (this.ownedDrivePose.x - size / 2) * 4;
-        const worldZ = (this.ownedDrivePose.y - size / 2) * 4;
-        const worldY = terrain.worldY(Math.round(this.ownedDrivePose.x), Math.round(this.ownedDrivePose.y));
-        this.multiplayerClient.sendPose({
-          x: worldX,
-          y: worldY,
-          z: worldZ,
-          heading: this.ownedDrivePose.heading,
-          speed: this.ownedDrivePose.speed,
-          mode: "driving",
-        });
+        if (this.multiplayerClient.getProtocolVersion() === 1) {
+          const worldX = (this.ownedDrivePose.x - size / 2) * 4;
+          const worldZ = (this.ownedDrivePose.y - size / 2) * 4;
+          const worldY = terrain.worldY(Math.round(this.ownedDrivePose.x), Math.round(this.ownedDrivePose.y));
+          this.multiplayerClient.sendPose({
+            x: worldX,
+            y: worldY,
+            z: worldZ,
+            heading: this.ownedDrivePose.heading,
+            speed: this.ownedDrivePose.speed,
+            mode: "driving",
+          });
+        }
       }
     }
   }
@@ -3515,22 +3891,45 @@ export class ColonyRuntime {
     if (!at) return;
 
     const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
-    const heading = c?.heading ?? 0;
-    const speed = this.fpWalkSpeed ?? 0;
-    const terrain = this.sim.state.terrain;
-    const size = terrain.size;
-    const worldX = (at.x - size / 2) * 4;
-    const worldZ = (at.y - size / 2) * 4;
-    const worldY = terrain.worldY(Math.round(at.x), Math.round(at.y));
+    const heading = this.getFirstPersonWireHeading();
+    if (c) {
+      c.heading = heading;
+    }
 
-    this.multiplayerClient.sendPose({
-      x: worldX,
-      y: worldY,
-      z: worldZ,
-      heading,
-      speed,
-      mode: "walking",
-    });
+    const k = this.fpKeys;
+    const forwardHeld = k.has("fwd");
+    const backHeld = k.has("back");
+    const strafeLeftHeld = k.has("strafeLeft");
+    const strafeRightHeld = k.has("strafeRight");
+    const opposingWalkInput = forwardHeld && backHeld;
+    const opposingStrafeInput = strafeLeftHeld && strafeRightHeld;
+    let forward = 0;
+    let strafe = 0;
+    if (!opposingWalkInput && forwardHeld) forward += 1;
+    if (!opposingWalkInput && backHeld) forward -= 1;
+    if (!opposingStrafeInput && strafeRightHeld) strafe += 1;
+    if (!opposingStrafeInput && strafeLeftHeld) strafe -= 1;
+    const sprint = k.has("sprint");
+
+    const gp = this.sampleGamepadWalkingAxes();
+    if (gp.active) {
+      forward = Math.max(-1, Math.min(1, forward + gp.forward));
+      strafe = Math.max(-1, Math.min(1, strafe + gp.strafe));
+    }
+
+    const now = Date.now();
+    if (now - this.lastMultiplayerInputSentAt >= 50) {
+      this.lastMultiplayerInputSentAt = now;
+      this.multiplayerInputSeq++;
+      this.multiplayerClient.sendWalkingInput({
+        seq: this.multiplayerInputSeq,
+        epoch: this.multiplayerClient.getModeEpoch(),
+        forward,
+        strafe,
+        heading,
+        sprint,
+      });
+    }
   }
 
   private garageModelCache: GarageAnchorShellModel | null = null;
@@ -3847,9 +4246,17 @@ export class ColonyRuntime {
 
   /** P1 — step the operator INTO a citizen for a live first-person view through the bot's eyes. */
   enterFirstPerson(citizenId: string): boolean {
-    if (!this.citizens.byId(citizenId)) return false;
+    const c = this.citizens.byId(citizenId);
+    if (!c) return false;
     if (!this.canStepIntoCitizen(citizenId)) return false;
     this.fpCitizenId = citizenId;
+    this.fpCameraYaw = wireHeadingToCameraYaw(c.heading);
+    this.fpTeleportRequest = {
+      x: c.pos.x,
+      y: c.pos.y,
+      yaw: this.fpCameraYaw,
+      seq: ++this.fpTeleportSeq,
+    };
     this.fpKeys.clear();
     this.fpWalkSpeed = 0;
     this.fpLookPitch = 0;
@@ -3865,6 +4272,7 @@ export class ColonyRuntime {
     this.fpCitizenId = null;
     this.fpRidingBusId = null; // spec 149 — stepping out of the citizen also steps off the bus
     this.fpCameraCell = null;
+    this.fpCameraYaw = undefined;
     this.fpKeys.clear();
     this.fpWalkSpeed = 0;
     this.fpLookPitch = 0;
@@ -3902,6 +4310,72 @@ export class ColonyRuntime {
     else this.fpKeys.delete(m);
   }
 
+  setFirstPersonKey(key: string, down: boolean): void {
+    this.setFpKey(key, down);
+  }
+
+  setFirstPersonYaw(yaw: number): void {
+    this.fpCameraYaw = yaw;
+    if (this.fpCitizenId) {
+      const c = this.citizens.byId(this.fpCitizenId);
+      if (c) {
+        c.heading = cameraYawToWireHeading(yaw);
+      }
+    }
+  }
+
+  getFirstPersonWireHeading(): number {
+    if (this.fpCameraYaw !== undefined && Number.isFinite(this.fpCameraYaw)) {
+      return cameraYawToWireHeading(this.fpCameraYaw);
+    }
+    const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
+    return c?.heading ?? 0;
+  }
+
+  /** Sample normalized, deadzoned gamepad axes for translational walking locomotion.
+   *  Matches FirstPersonController: left stick axes[0] (strafe) and axes[1] (forward/back).
+   *  Deadzone 0.1 filters neutral stick noise. Look axes[2]/axes[3] are omitted. */
+  sampleGamepadWalkingAxes(): { forward: number; strafe: number; active: boolean } {
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.getGamepads === "function"
+    ) {
+      try {
+        const pads = navigator.getGamepads();
+        const gp = pads && pads[0];
+        if (gp && gp.axes) {
+          const rawX = gp.axes[0] ?? 0;
+          const rawY = gp.axes[1] ?? 0;
+          const strafe =
+            Math.abs(rawX) > 0.1 ? Math.max(-1, Math.min(1, rawX)) : 0;
+          const forward =
+            Math.abs(rawY) > 0.1 ? Math.max(-1, Math.min(1, -rawY)) : 0;
+          const active = strafe !== 0 || forward !== 0;
+          return { forward, strafe, active };
+        }
+      } catch {
+        // Defensive: ignore gamepad API access exceptions
+      }
+    }
+    return { forward: 0, strafe: 0, active: false };
+  }
+
+  /** Returns true if active translational locomotion input is held (fwd, back, strafeLeft, strafeRight,
+   *  or gamepad translational stick axes).
+   *  Turn-only keys / look axes (left/right rotation) do not produce translational movement and must
+   *  not suppress authoritative walking position corrections. */
+  hasFpLocomotionInput(): boolean {
+    const gp = this.sampleGamepadWalkingAxes();
+    return (
+      this.fpKeys.has("fwd") ||
+      this.fpKeys.has("back") ||
+      this.fpKeys.has("strafeLeft") ||
+      this.fpKeys.has("strafeRight") ||
+      this.fpGamepadMoving ||
+      gp.active
+    );
+  }
+
   /** Pointer-lock mouse-look math: positive dx yaws right; positive dy looks down. */
   applyFirstPersonMouseLook(dx: number, dy: number): boolean {
     const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
@@ -3910,6 +4384,7 @@ export class ColonyRuntime {
     const sensitivity =
       cfg.mouseSensitivity * cfg.mouseSensitivityScale[this.fpMouseSensitivity];
     c.heading += dx * sensitivity;
+    this.fpCameraYaw = wireHeadingToCameraYaw(c.heading);
     this.fpLookPitch = Math.max(
       -cfg.maxLookPitch,
       Math.min(cfg.maxLookPitch, this.fpLookPitch - dy * sensitivity),
@@ -5690,6 +6165,7 @@ export class ColonyRuntime {
     c.pos = { ...pos };
     c.target = { ...pos };
     c.heading = heading;
+    this.fpCameraYaw = wireHeadingToCameraYaw(heading);
     this.fpWalkSpeed = 0;
     this.fpLookPitch = 0;
     this.fpSprintCharge = 1;
@@ -6082,8 +6558,14 @@ export class ColonyRuntime {
     const k = this.fpKeys;
     const cfg = COLONY.firstPerson;
     const turn = cfg.turnSpeed * dt;
-    if (k.has("left")) c.heading -= turn;
-    if (k.has("right")) c.heading += turn;
+    if (k.has("left")) {
+      c.heading -= turn;
+      this.fpCameraYaw = wireHeadingToCameraYaw(c.heading);
+    }
+    if (k.has("right")) {
+      c.heading += turn;
+      this.fpCameraYaw = wireHeadingToCameraYaw(c.heading);
+    }
     const forwardHeld = k.has("fwd");
     const backHeld = k.has("back");
     const strafeLeftHeld = k.has("strafeLeft");
@@ -6096,6 +6578,11 @@ export class ColonyRuntime {
     if (!opposingWalkInput && backHeld) forward -= 1;
     if (!opposingStrafeInput && strafeRightHeld) strafe += 1;
     if (!opposingStrafeInput && strafeLeftHeld) strafe -= 1;
+    const gp = this.sampleGamepadWalkingAxes();
+    if (gp.active) {
+      forward = Math.max(-1, Math.min(1, forward + gp.forward));
+      strafe = Math.max(-1, Math.min(1, strafe + gp.strafe));
+    }
     const moving = forward !== 0 || strafe !== 0;
     const manualControl = moving || k.has("left") || k.has("right");
     if (manualControl && this.fpGuidedTarget) {
@@ -6143,13 +6630,15 @@ export class ColonyRuntime {
       const sp =
         rampedGroundSpeedCellsPerSec(this.fpWalkSpeed, { onRoad, sprinting }) *
         dt;
+      const heading = this.getFirstPersonWireHeading();
+      c.heading = heading;
       const nx =
         c.pos.x +
-        (Math.cos(c.heading) * dirForward - Math.sin(c.heading) * dirStrafe) *
+        (Math.cos(heading) * dirForward - Math.sin(heading) * dirStrafe) *
           sp;
       const ny =
         c.pos.y +
-        (Math.sin(c.heading) * dirForward + Math.cos(c.heading) * dirStrafe) *
+        (Math.sin(heading) * dirForward + Math.cos(heading) * dirStrafe) *
           sp;
       const blocked = this.blockedStepReason(nx, ny, c.pos);
       if (!blocked) {

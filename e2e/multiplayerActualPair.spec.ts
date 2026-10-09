@@ -56,9 +56,11 @@ function loadServerComponents() {
   const { buildApp } = require(appPath);
   const { GameStateManager } = require(gameStatePath);
   const { LocalWorldAuthorityClient } = require(worldAuthPath);
-  const { RealtimeManager } = require(realtimePath);
+  const { RealtimeManager, extractRoadGeometry, extractWalkabilityAuthority, isFootprintClear, OWNED_DRIVING_CONFIG } = require(realtimePath);
+  const wsPath = path.join(serverDir, "node_modules/ws");
+  const WebSocket = require(wsPath);
 
-  return { jwt, buildApp, GameStateManager, LocalWorldAuthorityClient, RealtimeManager };
+  return { jwt, buildApp, GameStateManager, LocalWorldAuthorityClient, RealtimeManager, extractRoadGeometry, extractWalkabilityAuthority, isFootprintClear, OWNED_DRIVING_CONFIG, WebSocket };
 }
 
 const SESSION_STORAGE_KEY = "citylife.session.v5";
@@ -82,6 +84,91 @@ function seedPlayerSession(page: Page, email: string, token: string, numericId: 
       };
       window.sessionStorage.setItem(key, JSON.stringify(session));
       (window as any).__customMultiplayerWsUrl = customWs;
+
+      // Intercept and record WebSocket lifecycle events for failure diagnosis (hygienic: no query params/tokens)
+      const OrigWs = window.WebSocket;
+      (window as any).__wsEvents = [];
+      (window as any).__exitWireHistory = [];
+      const WrappedWs = function (url: string | URL, protocols?: string | string[]) {
+        const ws = new OrigWs(url, protocols);
+        let sanitizedEndpoint = "";
+        try {
+          const parsed = new URL(String(url), window.location.href);
+          sanitizedEndpoint = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+        } catch {
+          sanitizedEndpoint = "[invalid-url]";
+        }
+        (window as any).__wsEvents.push({ type: "created", endpoint: sanitizedEndpoint, time: Date.now() });
+
+        const origSend = ws.send.bind(ws);
+        ws.send = (payload: any) => {
+          try {
+            const parsed = typeof payload === "string" ? JSON.parse(payload) : null;
+            if (parsed && (parsed.type === "exit_vehicle" || parsed.type === "board_vehicle")) {
+              (window as any).__exitWireHistory.push({
+                dir: "sent",
+                msgType: parsed.type,
+                epoch: typeof parsed.epoch === "number" ? parsed.epoch : undefined,
+                time: Date.now(),
+              });
+            }
+          } catch {}
+          return origSend(payload);
+        };
+
+        ws.addEventListener("open", () => {
+          (window as any).__wsEvents.push({ type: "open", time: Date.now() });
+        });
+        ws.addEventListener("close", (ev) => {
+          (window as any).__wsEvents.push({ type: "close", code: ev.code, reason: ev.reason, wasClean: ev.wasClean, time: Date.now() });
+        });
+        ws.addEventListener("error", () => {
+          (window as any).__wsEvents.push({ type: "error", time: Date.now() });
+        });
+        ws.addEventListener("message", (ev) => {
+          try {
+            const data = JSON.parse(ev.data);
+            if (
+              data.type === "error" ||
+              data.type === "peer_left" ||
+              data.type === "session_admitted" ||
+              data.type === "vehicle_exited" ||
+              data.type === "vehicle_boarded" ||
+              data.type === "peer_mode_changed"
+            ) {
+              const eventRecord = {
+                type: "msg",
+                msgType: data.type,
+                epoch: typeof data.epoch === "number" ? data.epoch : undefined,
+                operation: typeof data.operation === "string" ? data.operation : undefined,
+                mode: typeof data.mode === "string" ? data.mode : undefined,
+                participantId: typeof data.participantId === "string" ? data.participantId : undefined,
+                error: typeof data.error === "string" ? data.error : undefined,
+                message: typeof data.message === "string" ? data.message : undefined,
+                time: Date.now(),
+              };
+              (window as any).__wsEvents.push(eventRecord);
+              if (data.type === "vehicle_exited" || data.type === "vehicle_boarded" || data.type === "peer_mode_changed" || data.type === "error") {
+                (window as any).__exitWireHistory.push({
+                  dir: "recv",
+                  msgType: data.type,
+                  epoch: typeof data.epoch === "number" ? data.epoch : undefined,
+                  operation: typeof data.operation === "string" ? data.operation : undefined,
+                  error: typeof data.error === "string" ? data.error : undefined,
+                  time: Date.now(),
+                });
+              }
+            }
+          } catch {}
+        });
+        return ws;
+      } as any;
+      WrappedWs.prototype = OrigWs.prototype;
+      WrappedWs.CONNECTING = OrigWs.CONNECTING;
+      WrappedWs.OPEN = OrigWs.OPEN;
+      WrappedWs.CLOSING = OrigWs.CLOSING;
+      WrappedWs.CLOSED = OrigWs.CLOSED;
+      window.WebSocket = WrappedWs;
     },
     { key: SESSION_STORAGE_KEY, userEmail: email, userName: username, jwtToken: token, idNum: numericId, customWs: wsUrl }
   );
@@ -105,12 +192,16 @@ async function dumpTransitionDiagnostics(page: Page, label: string) {
           z: typeof p.z === "number" ? Number(p.z.toFixed(2)) : undefined,
         })),
       }));
+      const rawEvents = (window as any).__wsEvents || [];
+      const sentInputs = (window as any).__sentInputs || [];
+      const exitWire = (window as any).__exitWireHistory || [];
       return {
         multiplayerStatus: mp?.getStatus(),
         sessionInfo: mp?.getSessionInfo ? {
           sessionId: mp.getSessionInfo().sessionId,
           participantId: mp.getSessionInfo().participantId,
         } : null,
+        modeEpoch: mp?.getModeEpoch ? mp.getModeEpoch() : null,
         seated: colony?.ownedDriveSeated,
         fpCameraCell: colony?.fpCameraCell,
         drivePose: colony?.ownedDrivePose ? {
@@ -120,6 +211,17 @@ async function dumpTransitionDiagnostics(page: Page, label: string) {
         } : null,
         snapshotCount: history.length,
         recentSnapshots: recent,
+        sentMessages: sentInputs.slice(-5),
+        exitWireHistory: exitWire.slice(-10),
+        wsEvents: rawEvents.slice(-5).map((e: any) => ({
+          type: e.type,
+          endpoint: e.endpoint,
+          code: e.code,
+          reason: e.reason,
+          msgType: e.msgType,
+          error: e.error,
+          message: e.message,
+        })),
       };
     });
     console.error(`[Transition Diagnostic ${label}]`, JSON.stringify(diag));
@@ -132,6 +234,127 @@ async function dumpTransitionDiagnostics(page: Page, label: string) {
 test.use({ trace: "off" });
 
 test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManager & Scheduled Loop)", () => {
+  test("fails closed with CANONICAL_STAGING_UNAVAILABLE when world lacks reviewed staging metadata", async () => {
+    const {
+      jwt,
+      buildApp,
+      GameStateManager,
+      LocalWorldAuthorityClient,
+      RealtimeManager,
+      WebSocket,
+    } = loadServerComponents();
+
+    const baseSurveyRuntime = new ColonyRuntime(4242);
+    const baseSurveyDoc = baseSurveyRuntime.captureWorldLayout();
+    const defaultDoc = createWorldLayoutDocument({
+      ...baseSurveyDoc,
+      layoutId: "seed-4242",
+      seed: 4242,
+      revision: { number: 0, parentHash: null },
+    });
+
+    const worldAuth = new LocalWorldAuthorityClient();
+    // Register without hubSpawn or layout.garagePad.roadTarget to test fail-closed invariant
+    worldAuth.registerWorld({
+      schemaVersion: "citylife.starter-parcel-manifest/v1",
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      layout: defaultDoc,
+      plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+    });
+
+    const userClient = {
+      async getVehicleTruth(userId: string) {
+        return {
+          owned: true,
+          status: "OWNED",
+          vehicleKey: "karoo-vonk-11",
+          storage: "local-drive",
+          onboardingState: "COMPLETED",
+        };
+      },
+    };
+
+    const realtime = new RealtimeManager({
+      userClient,
+      worldAuthorityClient: worldAuth,
+      enableSimulationTimer: false,
+    });
+
+    const fastifyApp = buildApp({
+      gameState: new GameStateManager(null, null),
+      realtime,
+      userClient,
+      worldAuthorityClient: worldAuth,
+      jwtSecret: JWT_SECRET,
+      jwtAlgorithms: ["HS256"],
+    });
+
+    const serverAddr = await fastifyApp.listen({ port: 0, host: "127.0.0.1" });
+    const wsUrl = serverAddr.replace(/^http/, "ws") + "/api/v1/citylife/ws";
+    const token = jwt.sign(
+      { userId: 70001, id: 70001, sub: 70001, type: "access", roles: ["CITYLIFE_PLAYER"], username: "jamtin" },
+      JWT_SECRET,
+      { algorithm: "HS256", expiresIn: "1h" }
+    );
+
+    try {
+      const clientWs = new WebSocket(`${wsUrl}?token=${token}`);
+      const receivedMessages: any[] = [];
+      const receivedErrors: any[] = [];
+      let closeEvent: { code: number; reason: string } | null = null;
+
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          clientWs.close();
+          resolve();
+        }, 5000);
+        clientWs.on("message", (data: any) => {
+          try {
+            const msg = JSON.parse(data.toString());
+            receivedMessages.push(msg);
+            if (msg.type === "error") {
+              receivedErrors.push(msg);
+            }
+          } catch {}
+        });
+        clientWs.on("open", () => {
+          clientWs.send(
+            JSON.stringify({
+              type: "create_session",
+              protocolVersion: 2,
+              worldId: "seed-4242",
+              layoutRevision: `wl:v1:0:${defaultDoc.revision.contentHash}`,
+              neighbourhoodKey: "citylife-central",
+              mode: "driving",
+              vehicleKey: "karoo-vonk-11",
+            })
+          );
+        });
+        clientWs.on("close", (code: number, reason: Buffer) => {
+          closeEvent = { code, reason: reason?.toString("utf8") ?? "" };
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+
+      console.log(
+        "[Admission Negative Wire Proof] Sanitized received messages:",
+        JSON.stringify(receivedMessages.map((m) => ({ type: m.type, error: m.error, message: m.message })))
+      );
+      if (closeEvent) {
+        console.log(`[Admission Negative Wire Proof] WebSocket closed: code=${(closeEvent as any).code}, reason=${(closeEvent as any).reason}`);
+      }
+
+      const stagingErr = receivedErrors.find((e: any) => e.error === "CANONICAL_STAGING_UNAVAILABLE");
+      expect(stagingErr).toBeDefined();
+      expect(stagingErr.message).toContain("Canonical world catalogue lacks reviewed vehicle staging truth");
+      console.log("[Admission Negative Proof] Verified server fail-closed on missing staging metadata:", stagingErr);
+    } finally {
+      await fastifyApp.close();
+    }
+  });
+
   test("two racers driving down road against proposed Fastify server, verified in 3D and minimap, recording mp4", async ({
     browser,
   }) => {
@@ -160,6 +383,10 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       GameStateManager,
       LocalWorldAuthorityClient,
       RealtimeManager,
+      extractRoadGeometry,
+      extractWalkabilityAuthority,
+      isFootprintClear,
+      OWNED_DRIVING_CONFIG,
     } = loadServerComponents();
 
     recordStage("Initialization & World Layout Document creation");
@@ -167,21 +394,149 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     // 1. Build canonical world layout document
     const baseSurveyRuntime = new ColonyRuntime(4242);
     const baseSurveyDoc = baseSurveyRuntime.captureWorldLayout();
+    const sortedFrames = [...baseSurveyDoc.frames].sort((a: any, b: any) =>
+      a.layer === "surface" ? -1 : b.layer === "surface" ? 1 : 0
+    );
     const defaultDoc = createWorldLayoutDocument({
       ...baseSurveyDoc,
+      frames: sortedFrames,
       layoutId: "seed-4242",
       seed: 4242,
       revision: { number: 0, parentHash: null },
     });
 
-    // 2. Set up isolated World Authority and User truth fixtures
+    // 2. Set up isolated World Authority and User truth fixtures with explicit deterministic vehicle staging contract
     const worldAuth = new LocalWorldAuthorityClient();
+    const STAGING_CELL = { x: 139, y: 265, heading: 0 };
+
+    // Assert reviewed canonical road network membership in runtime for both staging lanes
+    expect(
+      baseSurveyRuntime.sim.state.roadSet.has(`${STAGING_CELL.x},${STAGING_CELL.y}`),
+      `Reviewed canonical vehicle staging cell (${STAGING_CELL.x}, ${STAGING_CELL.y}) must be on runtime road network`
+    ).toBe(true);
+    expect(
+      baseSurveyRuntime.sim.state.roadSet.has(`${STAGING_CELL.x},${STAGING_CELL.y + 1}`),
+      `Reviewed canonical vehicle staging cell for peer (${STAGING_CELL.x}, ${STAGING_CELL.y + 1}) must be on runtime road network`
+    ).toBe(true);
+
+    // Assert serialized road geometry extraction and full vehicle footprint clearance
+    const stagingGeom = extractRoadGeometry(defaultDoc);
+    expect(
+      stagingGeom.hasGeometry,
+      "Canonical world document must provide usable surface frame geometry"
+    ).toBe(true);
+    expect(
+      stagingGeom.roadSet.has(`${STAGING_CELL.x},${STAGING_CELL.y}`),
+      `Serialized canonical catalogue road geometry must contain staging cell (${STAGING_CELL.x}, ${STAGING_CELL.y})`
+    ).toBe(true);
+    expect(
+      stagingGeom.roadSet.has(`${STAGING_CELL.x},${STAGING_CELL.y + 1}`),
+      `Serialized canonical catalogue road geometry must contain peer staging cell (${STAGING_CELL.x}, ${STAGING_CELL.y + 1})`
+    ).toBe(true);
+
+    const footprintClear1 = isFootprintClear(
+      STAGING_CELL.x,
+      STAGING_CELL.y,
+      STAGING_CELL.heading,
+      stagingGeom.gridWidth,
+      stagingGeom.gridHeight,
+      stagingGeom.obstacleSet,
+      stagingGeom.obstacleBoxes,
+      OWNED_DRIVING_CONFIG.halfLengthMetres,
+      OWNED_DRIVING_CONFIG.halfWidthMetres,
+      stagingGeom.cellMetres
+    );
+    expect(
+      footprintClear1,
+      `Vehicle staging cell (${STAGING_CELL.x}, ${STAGING_CELL.y}) must have clear full vehicle footprint against obstacles`
+    ).toBe(true);
+
+    const footprintClear2 = isFootprintClear(
+      STAGING_CELL.x,
+      STAGING_CELL.y + 1,
+      STAGING_CELL.heading,
+      stagingGeom.gridWidth,
+      stagingGeom.gridHeight,
+      stagingGeom.obstacleSet,
+      stagingGeom.obstacleBoxes,
+      OWNED_DRIVING_CONFIG.halfLengthMetres,
+      OWNED_DRIVING_CONFIG.halfWidthMetres,
+      stagingGeom.cellMetres
+    );
+    expect(
+      footprintClear2,
+      `Peer vehicle staging cell (${STAGING_CELL.x}, ${STAGING_CELL.y + 1}) must have clear full vehicle footprint against obstacles`
+    ).toBe(true);
+
+    // Assert reviewed straight corridor along driving heading has clear road and footprint for both lanes (steps 0..8)
+    for (let step = 0; step <= 8; step++) {
+      const stepX = STAGING_CELL.x + step;
+      expect(
+        stagingGeom.roadSet.has(`${stepX},${STAGING_CELL.y}`),
+        `Corridor step ${step} lane 1 (${stepX}, ${STAGING_CELL.y}) must be on road network`
+      ).toBe(true);
+      expect(
+        stagingGeom.roadSet.has(`${stepX},${STAGING_CELL.y + 1}`),
+        `Corridor step ${step} lane 2 (${stepX}, ${STAGING_CELL.y + 1}) must be on road network`
+      ).toBe(true);
+      expect(
+        isFootprintClear(stepX, STAGING_CELL.y, STAGING_CELL.heading, stagingGeom.gridWidth, stagingGeom.gridHeight, stagingGeom.obstacleSet, stagingGeom.obstacleBoxes, OWNED_DRIVING_CONFIG.halfLengthMetres, OWNED_DRIVING_CONFIG.halfWidthMetres, stagingGeom.cellMetres),
+        `Corridor step ${step} lane 1 must have clear full vehicle footprint`
+      ).toBe(true);
+      expect(
+        isFootprintClear(stepX, STAGING_CELL.y + 1, STAGING_CELL.heading, stagingGeom.gridWidth, stagingGeom.gridHeight, stagingGeom.obstacleSet, stagingGeom.obstacleBoxes, OWNED_DRIVING_CONFIG.halfLengthMetres, OWNED_DRIVING_CONFIG.halfWidthMetres, stagingGeom.cellMetres),
+        `Corridor step ${step} lane 2 must have clear full vehicle footprint`
+      ).toBe(true);
+    }
+
+    const surfaceFrame = defaultDoc.frames.find((f: any) => f.layer === "surface") || defaultDoc.frames[0];
+    const walkableCells = new Set<string>();
+    const terrain = baseSurveyRuntime.sim.state.terrain;
+    for (let cx = 120; cx <= 180; cx++) {
+      for (let cy = 250; cy <= 280; cy++) {
+        const isWater = terrain && typeof terrain.isWater === "function" ? terrain.isWater(cx, cy) : false;
+        const isObstacle = stagingGeom.obstacleSet.has(`${cx},${cy}`);
+        if (!isWater && !isObstacle) {
+          walkableCells.add(`${cx},${cy}`);
+        }
+      }
+    }
+
+    // Explicitly assert that the intended exit and walking cells around vehicle staging lanes are verified walkable
+    expect(
+      walkableCells.has(`${STAGING_CELL.x},${STAGING_CELL.y}`),
+      `Intended exit cell for lane 1 (${STAGING_CELL.x}, ${STAGING_CELL.y}) must be verified walkable against terrain and obstacles`
+    ).toBe(true);
+    expect(
+      walkableCells.has(`${STAGING_CELL.x},${STAGING_CELL.y + 1}`),
+      `Intended exit cell for lane 2 (${STAGING_CELL.x}, ${STAGING_CELL.y + 1}) must be verified walkable against terrain and obstacles`
+    ).toBe(true);
+
+    const walkabilityAuthorityCheck = extractWalkabilityAuthority(
+      {
+        layout: defaultDoc,
+        walkability: {
+          schemaVersion: "citylife.walkability/v1",
+          frameId: surfaceFrame.id,
+          walkableCells,
+        },
+      },
+      defaultDoc
+    );
+    expect(walkabilityAuthorityCheck, "Walkability authority must extract cleanly from canonical layout").not.toBeNull();
+
     worldAuth.registerWorld({
       schemaVersion: "citylife.starter-parcel-manifest/v1",
       worldId: "seed-4242",
       layoutRevision: defaultDoc.revision.contentHash,
       layout: defaultDoc,
+      walkability: {
+        schemaVersion: "citylife.walkability/v1",
+        frameId: surfaceFrame.id,
+        walkableCells,
+      },
       plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+      hubSpawn: STAGING_CELL,
     });
 
     const userClient = {
@@ -271,6 +626,11 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
               worldId: "seed-4242",
               layoutRevision: defaultDoc.revision.contentHash,
               layout: defaultDoc,
+              walkability: {
+                schemaVersion: "citylife.walkability/v1",
+                frameId: surfaceFrame.id,
+                walkableCells: Array.from(walkableCells),
+              },
             },
           }),
         });
@@ -363,13 +723,13 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       console.log("Both players connected to proposed Fastify multiplayer server via direct browser WebSockets.");
       recordStage("Fastify direct WebSocket connections established");
 
-      // Place both players at safe road positions concurrently
-      const roadStart = await page1.evaluate(() => {
+      // Place both players at safe road positions concurrently derived from fixture staging contract
+      const roadStart = await page1.evaluate((staging) => {
         const colony = (window as any).__colony;
         const terrain = colony.sim?.state?.terrain;
         const size = terrain?.size ?? 608;
-        return { x: 124, y: 272, heading: -Math.PI / 2, terrainSize: size };
-      });
+        return { x: staging.x, y: staging.y, heading: staging.heading, terrainSize: size };
+      }, STAGING_CELL);
 
       await Promise.all([
         page1.evaluate(
@@ -384,7 +744,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         page2.evaluate(
           ({ x, y, heading }) => {
             const colony = (window as any).__colony;
-            colony.ownedDrivePose = { x: x + 2, y, heading, speed: 0 };
+            colony.ownedDrivePose = { x, y: y + 1, heading, speed: 0 };
             colony.ownedDriveSeated = true;
             colony.emit();
           },
@@ -427,24 +787,44 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
           const colony = (window as any).__colony;
           const mp = colony.getMultiplayerClient();
           (window as any).__snapshotHistory = [];
+          (window as any).__sentInputs = [];
           if (mp) {
             const orig = mp.options.onSnapshot;
             mp.options.onSnapshot = (s: any) => {
               (window as any).__snapshotHistory.push(s);
               orig?.(s);
             };
+            if (mp.ws) {
+              const origSend = mp.ws.send.bind(mp.ws);
+              mp.ws.send = (data: any) => {
+                try {
+                  (window as any).__sentInputs.push(JSON.parse(data));
+                } catch {}
+                return origSend(data);
+              };
+            }
           }
         }),
         page2.evaluate(() => {
           const colony = (window as any).__colony;
           const mp = colony.getMultiplayerClient();
           (window as any).__snapshotHistory = [];
+          (window as any).__sentInputs = [];
           if (mp) {
             const orig = mp.options.onSnapshot;
             mp.options.onSnapshot = (s: any) => {
               (window as any).__snapshotHistory.push(s);
               orig?.(s);
             };
+            if (mp.ws) {
+              const origSend = mp.ws.send.bind(mp.ws);
+              mp.ws.send = (data: any) => {
+                try {
+                  (window as any).__sentInputs.push(JSON.parse(data));
+                } catch {}
+                return origSend(data);
+              };
+            }
           }
         }),
       ]);
@@ -660,15 +1040,31 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       console.log("Rendered 3D scene displacement verified for BOTH remote racers (>0.5m).");
       recordStage("Rendered 3D scene displacement verified (>0.5m)");
 
+      // Assert mini-map peer marker displacement (>0.2px) achieved under active controls on BOTH clients BEFORE braking
+      await Promise.all([
+        page1.waitForFunction((initial) => {
+          const circle = document.querySelector('[data-testid="city-map-peer-marker"] circle');
+          if (!circle) return false;
+          const cx = parseFloat(circle.getAttribute("cx") || "0");
+          const cy = parseFloat(circle.getAttribute("cy") || "0");
+          return Math.hypot(cx - initial.cx, cy - initial.cy) > 0.2;
+        }, initialMapPeerPosP1, { timeout: 30_000 }),
+        page2.waitForFunction((initial) => {
+          const circle = document.querySelector('[data-testid="city-map-peer-marker"] circle');
+          if (!circle) return false;
+          const cx = parseFloat(circle.getAttribute("cx") || "0");
+          const cy = parseFloat(circle.getAttribute("cy") || "0");
+          return Math.hypot(cx - initial.cx, cy - initial.cy) > 0.2;
+        }, initialMapPeerPosP2, { timeout: 30_000 }),
+      ]);
+      recordStage("Mini-map peer marker displacement (>0.2px) verified under active throttle on both clients");
+
       // Capture explicit screenshots during active driving
       const ssDir = path.resolve("test-results/actual-pair-screenshots");
       if (!fs.existsSync(ssDir)) fs.mkdirSync(ssDir, { recursive: true });
       await page1.screenshot({ path: path.join(ssDir, "page1-driving.png") });
       await page2.screenshot({ path: path.join(ssDir, "page2-driving.png") });
       recordStage("Explicit driving screenshots saved");
-
-      // Allow vehicles to drive smoothly for 2.5s to capture the racing run on video
-      await new Promise((resolve) => setTimeout(resolve, 2500));
 
       // Neutralize throttle via genuine pointer up
       await page1.mouse.up();
@@ -846,23 +1242,96 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         }, { username: peerUsername, initial: initialPos });
       };
 
-      // Wait for mini-map marker to update and match projected snapshot on Player 1
-      await page1.waitForFunction((initial) => {
+      // Bounded diagnosis: Query live status, last seq, peer marker coordinates, expected projection, and ws events BEFORE wait
+      const diagP1 = await page1.evaluate((initial) => {
+        const colony = (window as any).__colony;
+        const mp = colony?.getMultiplayerClient();
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
         const circle = document.querySelector('[data-testid="city-map-peer-marker"] circle');
-        if (!circle) return false;
-        const cx = parseFloat(circle.getAttribute("cx") || "0");
-        const cy = parseFloat(circle.getAttribute("cy") || "0");
-        return Math.hypot(cx - initial.cx, cy - initial.cy) > 0.2;
-      }, initialMapPeerPosP1, { timeout: 30_000 });
+        const cx = circle ? parseFloat(circle.getAttribute("cx") || "0") : null;
+        const cy = circle ? parseFloat(circle.getAttribute("cy") || "0") : null;
+        const racers = Array.from(colony?.sim?.state?.remoteRacers?.entries() ?? []).map(([k, v]: [any, any]) => ({
+          id: k,
+          user: v.username,
+          cell: v.cell,
+          heading: v.heading,
+          speed: v.speed,
+        }));
+        const rawEvents = (window as any).__wsEvents || [];
+        const sInfo = mp?.getSessionInfo ? mp.getSessionInfo() : null;
+        return {
+          status: mp?.getStatus(),
+          sessionInfo: sInfo ? { sessionId: sInfo.sessionId, participantId: sInfo.participantId, inviteCode: sInfo.inviteCode } : null,
+          lastSeq: last?.seq,
+          snapshotParticipants: last?.participants?.map((p: any) => ({
+            id: p.participantId,
+            user: p.username,
+            x: p.x,
+            z: p.z,
+            speed: p.speed,
+          })),
+          remoteRacers: racers,
+          initialMapPos: initial,
+          currentMapPos: cx !== null ? { cx, cy } : null,
+          displacement: cx !== null && initial ? Math.hypot(cx - initial.cx, cy - initial.cy) : null,
+          wsEvents: rawEvents.map((e: any) => ({
+            type: e.type,
+            endpoint: e.endpoint,
+            code: e.code,
+            reason: e.reason,
+            msgType: e.msgType,
+            error: e.error,
+          })),
+        };
+      }, initialMapPeerPosP1);
+      console.log("[Diagnostic Map P1 before wait]:", JSON.stringify(diagP1));
 
-      // Wait for mini-map marker to update and match projected snapshot on Player 2
-      await page2.waitForFunction((initial) => {
+      const diagP2 = await page2.evaluate((initial) => {
+        const colony = (window as any).__colony;
+        const mp = colony?.getMultiplayerClient();
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
         const circle = document.querySelector('[data-testid="city-map-peer-marker"] circle');
-        if (!circle) return false;
-        const cx = parseFloat(circle.getAttribute("cx") || "0");
-        const cy = parseFloat(circle.getAttribute("cy") || "0");
-        return Math.hypot(cx - initial.cx, cy - initial.cy) > 0.2;
-      }, initialMapPeerPosP2, { timeout: 30_000 });
+        const cx = circle ? parseFloat(circle.getAttribute("cx") || "0") : null;
+        const cy = circle ? parseFloat(circle.getAttribute("cy") || "0") : null;
+        const racers = Array.from(colony?.sim?.state?.remoteRacers?.entries() ?? []).map(([k, v]: [any, any]) => ({
+          id: k,
+          user: v.username,
+          cell: v.cell,
+          heading: v.heading,
+          speed: v.speed,
+        }));
+        const rawEvents = (window as any).__wsEvents || [];
+        const sInfo = mp?.getSessionInfo ? mp.getSessionInfo() : null;
+        return {
+          status: mp?.getStatus(),
+          sessionInfo: sInfo ? { sessionId: sInfo.sessionId, participantId: sInfo.participantId, inviteCode: sInfo.inviteCode } : null,
+          lastSeq: last?.seq,
+          snapshotParticipants: last?.participants?.map((p: any) => ({
+            id: p.participantId,
+            user: p.username,
+            x: p.x,
+            z: p.z,
+            speed: p.speed,
+          })),
+          remoteRacers: racers,
+          initialMapPos: initial,
+          currentMapPos: cx !== null ? { cx, cy } : null,
+          displacement: cx !== null && initial ? Math.hypot(cx - initial.cx, cy - initial.cy) : null,
+          wsEvents: rawEvents.map((e: any) => ({
+            type: e.type,
+            endpoint: e.endpoint,
+            code: e.code,
+            reason: e.reason,
+            msgType: e.msgType,
+            error: e.error,
+          })),
+        };
+      }, initialMapPeerPosP2);
+      console.log("[Diagnostic Map P2 before wait]:", JSON.stringify(diagP2));
+
+      // Verify numeric mini-map marker projection matches authoritative snapshot on both clients (<0.5px subpixel tolerance, displacement >0.2px)
 
       const mapResultP1 = await checkMapProjection(page1, "jamtin2", initialMapPeerPosP1!);
       expect(mapResultP1.ok).toBe(true);
@@ -1030,6 +1499,542 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       console.log(`Player 2 view of Player 1 as pedestrian saved to: ${pedScreenshotPath}`);
       recordStage("Player 2 3D scene independently verified rendering Player 1 as pedestrian avatar (Capsule/Sphere geometry) and captured screenshot");
 
+      // 3.1. Observe that in Player 2's 3D scene, BOTH the walking pedestrian avatar AND the stationary parked car visual coexist
+      await page2.waitForFunction(() => {
+        const scene = (window as any).__r3fScene;
+        let foundParkedCar = false;
+        scene?.traverse((o: any) => {
+          if (o.name && o.name.includes("remote-parked-car-jamtin")) {
+            foundParkedCar = true;
+          }
+        });
+        return foundParkedCar;
+      }, undefined, { timeout: 15_000 });
+      console.log("Player 2 3D scene verified rendering both Player 1 pedestrian avatar AND Player 1 stationary parked car visual.");
+
+      // 3.2. Check mini-map on Player 2: peer parked car marker is owner-scoped (data-local="false") alongside walking peer marker
+      const mapBtnP2 = page2.locator('[data-testid="player-map-shortcut"]');
+      await mapBtnP2.click();
+      const peerParkedMarker = page2.locator('[data-testid="city-map-parked-car-marker"][data-local="false"]');
+      await expect(peerParkedMarker).toBeAttached({ timeout: 10_000 });
+      await expect(peerParkedMarker).toHaveAttribute("data-parked-car-id", `peer-parked-${pinnedParticipantId1}`);
+      await expect(peerParkedMarker).toHaveAttribute("aria-label", "Parked vehicle of jamtin");
+      await mapBtnP2.click(); // close map
+
+      // 3.3. Check mini-map on Player 1: local parked car marker is owner-scoped (data-local="true") alongside walking player
+      const mapBtnP1 = page1.locator('[data-testid="player-map-shortcut"]');
+      await mapBtnP1.click();
+      const localParkedMarker = page1.locator('[data-testid="city-map-parked-car-marker"][data-local="true"]');
+      await expect(localParkedMarker).toBeAttached({ timeout: 10_000 });
+      await expect(localParkedMarker).toHaveAttribute("data-parked-car-id", "local-parked-car");
+      await expect(localParkedMarker).toHaveAttribute("aria-label", "Your parked vehicle");
+      await mapBtnP1.click(); // close map
+
+      // 3.4. Control-driven walking movement (no teleport): dispatch walking forward & strafe via genuine controls
+      // across both nominal and rotated-camera orientations, asserting actual directional vectors against live server
+      await page1.bringToFront();
+      await page1.locator("canvas").click();
+
+      // Helper to release a walking key, capture release-time input baseline, match subsequent neutral packet seq,
+      // and require server snapshot acknowledgement of that neutral packet (lastInputSeq >= neutralSeq) with speed === 0
+      const releaseAndSettleWalkingKey = async (key: string) => {
+        const releaseBaseline = await page1.evaluate(() => {
+          const sent = (window as any).__sentInputs || [];
+          const history = (window as any).__snapshotHistory || [];
+          const last = history[history.length - 1];
+          return {
+            releaseInputCount: sent.length,
+            releaseSnapSeq: typeof last?.seq === "number" && Number.isFinite(last.seq) ? last.seq : 0,
+          };
+        });
+
+        await page1.keyboard.up(key);
+
+        const neutralSeqHandle = await page1.waitForFunction((b) => {
+          const sent = (window as any).__sentInputs || [];
+          const fresh = sent.slice(b.releaseInputCount);
+          const match = fresh.find(
+            (msg: any) =>
+              msg.type === "input" &&
+              msg.mode === "walking" &&
+              msg.forward === 0 &&
+              msg.strafe === 0 &&
+              typeof msg.seq === "number" &&
+              Number.isFinite(msg.seq),
+          );
+          return match ? match.seq : false;
+        }, releaseBaseline, { timeout: 15_000 });
+        const neutralSeq = await neutralSeqHandle.jsonValue();
+        expect(typeof neutralSeq).toBe("number");
+        expect(Number.isFinite(neutralSeq)).toBe(true);
+
+        await page1.waitForFunction((expected) => {
+          const history = (window as any).__snapshotHistory || [];
+          if (!history.length) return false;
+          const last = history[history.length - 1];
+          if (!last || typeof last.seq !== "number" || !Number.isFinite(last.seq) || last.seq <= expected.releaseSnapSeq) {
+            return false;
+          }
+          const p1 = last.participants?.find((p: any) => p.username === "jamtin");
+          if (!p1 || typeof p1.speed !== "number" || !Number.isFinite(p1.speed) || p1.speed !== 0) {
+            return false;
+          }
+          return typeof p1.lastInputSeq === "number" && Number.isFinite(p1.lastInputSeq) && p1.lastInputSeq >= expected.neutralSeq;
+        }, { releaseSnapSeq: releaseBaseline.releaseSnapSeq, neutralSeq }, { timeout: 15_000 });
+      };
+
+      // Step 3.4.1: Forward walking at heading ~ 0 (facing +X) with per-step fresh input and snapshot baseline
+      const b0 = await page1.evaluate(() => {
+        const sent = (window as any).__sentInputs || [];
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        if (
+          !last ||
+          typeof last.seq !== "number" ||
+          !Number.isFinite(last.seq) ||
+          !p1 ||
+          typeof p1.x !== "number" ||
+          !Number.isFinite(p1.x) ||
+          typeof p1.z !== "number" ||
+          !Number.isFinite(p1.z)
+        ) {
+          return null;
+        }
+        return {
+          inputCount: sent.length,
+          snapSeq: last.seq,
+          x: p1.x,
+          z: p1.z,
+          lastInputSeq: typeof p1.lastInputSeq === "number" && Number.isFinite(p1.lastInputSeq) ? p1.lastInputSeq : -1,
+        };
+      });
+      expect(b0, "Step 3.4.1 initial participant baseline authority must be present and finite").not.toBeNull();
+      expect(Number.isFinite(b0!.snapSeq)).toBe(true);
+      expect(Number.isFinite(b0!.x)).toBe(true);
+      expect(Number.isFinite(b0!.z)).toBe(true);
+
+      await page1.keyboard.down("KeyW");
+      // Assert fresh input frame emitted after keydown (cannot match historical packets)
+      await page1.waitForFunction((b) => {
+        const sent = (window as any).__sentInputs || [];
+        const fresh = sent.slice(b.inputCount);
+        const match = fresh.find((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 1 && msg.strafe === 0);
+        if (match && typeof match.seq === "number") {
+          (window as any).__lastMatchedWalkingInputSeq = match.seq;
+          return true;
+        }
+        return false;
+      }, b0, { timeout: 15_000 });
+
+      // Assert newer server snapshot advancing sequence with correct directional vector (+X)
+      await page1.waitForFunction((b) => {
+        const history = (window as any).__snapshotHistory || [];
+        if (!history.length) return false;
+        const last = history[history.length - 1];
+        if (!last || typeof last.seq !== "number" || !Number.isFinite(last.seq) || last.seq <= b.snapSeq) {
+          return false;
+        }
+        const p1 = last.participants?.find((p: any) => p.username === "jamtin");
+        if (!p1 || typeof p1.x !== "number" || !Number.isFinite(p1.x) || typeof p1.z !== "number" || !Number.isFinite(p1.z)) {
+          return false;
+        }
+        const dx = p1.x - b.x;
+        const dz = p1.z - b.z;
+        // Forward at heading 0 moves strictly along +X; lateral drift in Z is small
+        return dx > 0.25 && Math.abs(dz) < 0.15;
+      }, b0, { timeout: 15_000 });
+      await releaseAndSettleWalkingKey("KeyW");
+
+      // Step 3.4.2: Strafe right at heading ~ 0 (moving +Z) with fresh baseline
+      const b1 = await page1.evaluate(() => {
+        const sent = (window as any).__sentInputs || [];
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        if (
+          !last ||
+          typeof last.seq !== "number" ||
+          !Number.isFinite(last.seq) ||
+          !p1 ||
+          typeof p1.x !== "number" ||
+          !Number.isFinite(p1.x) ||
+          typeof p1.z !== "number" ||
+          !Number.isFinite(p1.z)
+        ) {
+          return null;
+        }
+        return {
+          inputCount: sent.length,
+          snapSeq: last.seq,
+          x: p1.x,
+          z: p1.z,
+          lastInputSeq: typeof p1.lastInputSeq === "number" && Number.isFinite(p1.lastInputSeq) ? p1.lastInputSeq : -1,
+        };
+      });
+      expect(b1, "Step 3.4.2 initial participant baseline authority must be present and finite").not.toBeNull();
+      expect(Number.isFinite(b1!.snapSeq)).toBe(true);
+      expect(Number.isFinite(b1!.x)).toBe(true);
+      expect(Number.isFinite(b1!.z)).toBe(true);
+
+      await page1.keyboard.down("KeyD");
+      // Assert fresh strafe input frame emitted after keydown
+      await page1.waitForFunction((b) => {
+        const sent = (window as any).__sentInputs || [];
+        const fresh = sent.slice(b.inputCount);
+        const match = fresh.find((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 0 && msg.strafe === 1);
+        if (match && typeof match.seq === "number") {
+          (window as any).__lastMatchedWalkingInputSeq = match.seq;
+          return true;
+        }
+        return false;
+      }, b1, { timeout: 15_000 });
+
+      // Assert newer server snapshot advancing sequence with correct strafe vector (+Z)
+      await page1.waitForFunction((b) => {
+        const history = (window as any).__snapshotHistory || [];
+        if (!history.length) return false;
+        const last = history[history.length - 1];
+        if (!last || typeof last.seq !== "number" || !Number.isFinite(last.seq) || last.seq <= b.snapSeq) {
+          return false;
+        }
+        const p1 = last.participants?.find((p: any) => p.username === "jamtin");
+        if (!p1 || typeof p1.x !== "number" || !Number.isFinite(p1.x) || typeof p1.z !== "number" || !Number.isFinite(p1.z)) {
+          return false;
+        }
+        const dx = p1.x - b.x;
+        const dz = p1.z - b.z;
+        // Strafe right at heading 0 moves strictly along +Z; lateral drift in X is small
+        return dz > 0.25 && Math.abs(dx) < 0.15;
+      }, b1, { timeout: 15_000 });
+      await releaseAndSettleWalkingKey("KeyD");
+
+      // Step 3.4.3: Rotate camera via real controller controls (ArrowRight turning in place toward heading ~ pi/2)
+      await page1.keyboard.down("ArrowRight");
+      await page1.waitForFunction(() => {
+        const colony = (window as any).__colony;
+        const h = colony?.getFirstPersonWireHeading?.();
+        return typeof h === "number" && h >= 1.30;
+      }, undefined, { timeout: 15_000 });
+      await page1.keyboard.up("ArrowRight");
+
+      const rotHeading = await page1.evaluate(() => {
+        const colony = (window as any).__colony;
+        return colony?.getFirstPersonWireHeading?.() ?? 0;
+      });
+      console.log(`Rotated camera wire heading achieved: ${rotHeading.toFixed(4)} rad`);
+      expect(rotHeading).toBeGreaterThanOrEqual(1.20);
+      expect(rotHeading).toBeLessThanOrEqual(2.00);
+
+      // Step 3.4.4: Rotated-yaw forward walking (heading ~ pi/2 -> forward moves along +Z) with fresh baseline
+      const b2 = await page1.evaluate(() => {
+        const sent = (window as any).__sentInputs || [];
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        if (
+          !last ||
+          typeof last.seq !== "number" ||
+          !Number.isFinite(last.seq) ||
+          !p1 ||
+          typeof p1.x !== "number" ||
+          !Number.isFinite(p1.x) ||
+          typeof p1.z !== "number" ||
+          !Number.isFinite(p1.z)
+        ) {
+          return null;
+        }
+        return {
+          inputCount: sent.length,
+          snapSeq: last.seq,
+          x: p1.x,
+          z: p1.z,
+          lastInputSeq: typeof p1.lastInputSeq === "number" && Number.isFinite(p1.lastInputSeq) ? p1.lastInputSeq : -1,
+        };
+      });
+      expect(b2, "Step 3.4.4 initial participant baseline authority must be present and finite").not.toBeNull();
+      expect(Number.isFinite(b2!.snapSeq)).toBe(true);
+      expect(Number.isFinite(b2!.x)).toBe(true);
+      expect(Number.isFinite(b2!.z)).toBe(true);
+
+      await page1.keyboard.down("KeyW");
+      // Assert fresh input frame with rotated heading emitted after keydown
+      await page1.waitForFunction((b) => {
+        const sent = (window as any).__sentInputs || [];
+        const fresh = sent.slice(b.baseline.inputCount);
+        const match = fresh.find((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 1 && Math.abs(msg.heading - b.h) < 0.25);
+        if (match && typeof match.seq === "number") {
+          (window as any).__lastMatchedWalkingInputSeq = match.seq;
+          return true;
+        }
+        return false;
+      }, { baseline: b2, h: rotHeading }, { timeout: 15_000 });
+
+      // Assert newer server snapshot advancing sequence with correct rotated forward vector (+Z)
+      await page1.waitForFunction((b) => {
+        const history = (window as any).__snapshotHistory || [];
+        if (!history.length) return false;
+        const last = history[history.length - 1];
+        if (!last || typeof last.seq !== "number" || !Number.isFinite(last.seq) || last.seq <= b.snapSeq) {
+          return false;
+        }
+        const p1 = last.participants?.find((p: any) => p.username === "jamtin");
+        if (!p1 || typeof p1.x !== "number" || !Number.isFinite(p1.x) || typeof p1.z !== "number" || !Number.isFinite(p1.z)) {
+          return false;
+        }
+        const dx = p1.x - b.x;
+        const dz = p1.z - b.z;
+        // Forward with heading in [1.2, 2.0] moves strongly in +Z (sin(h) > 0.9)
+        return dz > 0.25 && dz > Math.abs(dx);
+      }, b2, { timeout: 15_000 });
+      await releaseAndSettleWalkingKey("KeyW");
+
+      // Step 3.4.5: Rotated-yaw strafe walking (heading ~ pi/2 -> strafe right moves along -X) with fresh baseline
+      const b3 = await page1.evaluate(() => {
+        const sent = (window as any).__sentInputs || [];
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        if (
+          !last ||
+          typeof last.seq !== "number" ||
+          !Number.isFinite(last.seq) ||
+          !p1 ||
+          typeof p1.x !== "number" ||
+          !Number.isFinite(p1.x) ||
+          typeof p1.z !== "number" ||
+          !Number.isFinite(p1.z)
+        ) {
+          return null;
+        }
+        return {
+          inputCount: sent.length,
+          snapSeq: last.seq,
+          x: p1.x,
+          z: p1.z,
+          lastInputSeq: typeof p1.lastInputSeq === "number" && Number.isFinite(p1.lastInputSeq) ? p1.lastInputSeq : -1,
+        };
+      });
+      expect(b3, "Step 3.4.5 initial participant baseline authority must be present and finite").not.toBeNull();
+      expect(Number.isFinite(b3!.snapSeq)).toBe(true);
+      expect(Number.isFinite(b3!.x)).toBe(true);
+      expect(Number.isFinite(b3!.z)).toBe(true);
+
+      await page1.keyboard.down("KeyD");
+      // Assert fresh input frame with rotated strafe emitted after keydown
+      await page1.waitForFunction((b) => {
+        const sent = (window as any).__sentInputs || [];
+        const fresh = sent.slice(b.baseline.inputCount);
+        const match = fresh.find((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 0 && msg.strafe === 1 && Math.abs(msg.heading - b.h) < 0.25);
+        if (match && typeof match.seq === "number") {
+          (window as any).__lastMatchedWalkingInputSeq = match.seq;
+          return true;
+        }
+        return false;
+      }, { baseline: b3, h: rotHeading }, { timeout: 15_000 });
+
+      // Assert newer server snapshot advancing sequence with correct rotated strafe vector (-X)
+      await page1.waitForFunction((b) => {
+        const history = (window as any).__snapshotHistory || [];
+        if (!history.length) return false;
+        const last = history[history.length - 1];
+        if (!last || typeof last.seq !== "number" || !Number.isFinite(last.seq) || last.seq <= b.snapSeq) {
+          return false;
+        }
+        const p1 = last.participants?.find((p: any) => p.username === "jamtin");
+        if (!p1 || typeof p1.x !== "number" || !Number.isFinite(p1.x) || typeof p1.z !== "number" || !Number.isFinite(p1.z)) {
+          return false;
+        }
+        const dx = p1.x - b.x;
+        const dz = p1.z - b.z;
+        // Strafe right with heading in [1.2, 2.0] moves strongly in -X (vx = -sin(h)*speed < -0.9*speed)
+        return dx < -0.25 && -dx > Math.abs(dz);
+      }, b3, { timeout: 15_000 });
+      await releaseAndSettleWalkingKey("KeyD");
+      recordStage("Real-controller forward, strafe, rotated-yaw forward, and rotated-yaw strafe directional vectors verified on live server");
+
+      // Verify parked car coordinates are mandatory and remained strictly stationary at parkedCarPose1 during walking
+      const postWalkSnap = await page1.evaluate(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        return p1 ? { x: p1.x, z: p1.z, carX: p1.carX, carZ: p1.carZ } : null;
+      });
+      expect(postWalkSnap).not.toBeNull();
+      expect(typeof postWalkSnap!.x).toBe("number");
+      expect(typeof postWalkSnap!.z).toBe("number");
+      expect(typeof postWalkSnap!.carX).toBe("number");
+      expect(typeof postWalkSnap!.carZ).toBe("number");
+      expect(Number.isFinite(postWalkSnap!.x)).toBe(true);
+      expect(Number.isFinite(postWalkSnap!.z)).toBe(true);
+      expect(Number.isFinite(postWalkSnap!.carX)).toBe(true);
+      expect(Number.isFinite(postWalkSnap!.carZ)).toBe(true);
+      expect(Math.hypot(postWalkSnap!.carX! - parkedCarPose1.x, postWalkSnap!.carZ! - parkedCarPose1.z)).toBeLessThan(0.01);
+
+      // Verify 3D world parked car mesh position remains stationary on Player 2
+      const peer3dParkedCar = await page2.evaluate(() => {
+        const scene = (window as any).__r3fScene;
+        let pos: { x: number; y: number; z: number } | null = null;
+        scene?.traverse((o: any) => {
+          if (o.name && o.name.includes("remote-parked-car-jamtin")) {
+            pos = { x: o.position.x, y: o.position.y, z: o.position.z };
+          }
+        });
+        return pos;
+      });
+      expect(peer3dParkedCar).not.toBeNull();
+      expect(Math.hypot(peer3dParkedCar!.x - parkedCarPose1.x, peer3dParkedCar!.z - parkedCarPose1.z)).toBeLessThan(0.01);
+
+      // Assert actual walking 3D world object / camera coordinates against authoritative server snapshot pose with bounded render tolerance
+      const peer3dPedestrian = await page2.evaluate((expectedId) => {
+        const scene = (window as any).__r3fScene;
+        let pos: { x: number; y: number; z: number } | null = null;
+        scene?.traverse((o: any) => {
+          if (o.userData?.participantId === expectedId) {
+            pos = { x: o.position.x, y: o.position.y, z: o.position.z };
+          }
+        });
+        return pos;
+      }, pinnedParticipantId1);
+      expect(peer3dPedestrian).not.toBeNull();
+      const pedDistP2 = Math.hypot(peer3dPedestrian!.x - postWalkSnap!.x, peer3dPedestrian!.z - postWalkSnap!.z);
+      console.log(`Player 2 rendered peer pedestrian 3D avatar vs server snapshot delta: ${pedDistP2.toFixed(4)}m`);
+      expect(pedDistP2).toBeLessThan(0.5);
+
+      // Verify local walking cell in world meters aligns with authoritative server snapshot (<0.5m)
+      await page1.waitForFunction((expected) => {
+        const colony = (window as any).__colony;
+        const walkCell = colony?.getWalkingCell?.();
+        if (!walkCell) return false;
+        const tSize = colony?.sim?.state?.terrain?.size ?? 128;
+        const walkWorld = { x: (walkCell.x - tSize / 2) * 4, z: (walkCell.y - tSize / 2) * 4 };
+        const dist = Math.hypot(walkWorld.x - expected.x, walkWorld.z - expected.z);
+        return dist < 0.5;
+      }, { x: postWalkSnap!.x, z: postWalkSnap!.z }, { timeout: 10_000 });
+
+      const localWalkingProbe = await page1.evaluate(() => {
+        const cam = (window as any).__r3fCamera;
+        const colony = (window as any).__colony;
+        const camPos = cam ? { x: cam.position.x, y: cam.position.y, z: cam.position.z } : null;
+        const walkCell = colony?.getWalkingCell?.();
+        const tSize = colony?.sim?.state?.terrain?.size ?? 128;
+        const walkWorld = walkCell ? { x: (walkCell.x - tSize / 2) * 4, z: (walkCell.y - tSize / 2) * 4 } : null;
+        return { camPos, walkWorld };
+      });
+      expect(localWalkingProbe.walkWorld).not.toBeNull();
+      const localWorldDist = Math.hypot(localWalkingProbe.walkWorld!.x - postWalkSnap!.x, localWalkingProbe.walkWorld!.z - postWalkSnap!.z);
+      console.log(`Player 1 local walking cell in world meters vs server snapshot delta: ${localWorldDist.toFixed(4)}m`);
+      expect(localWorldDist).toBeLessThan(0.5);
+      if (localWalkingProbe.camPos) {
+        const localCamDist = Math.hypot(localWalkingProbe.camPos.x - postWalkSnap!.x, localWalkingProbe.camPos.z - postWalkSnap!.z);
+        console.log(`Player 1 local camera position vs server snapshot delta: ${localCamDist.toFixed(4)}m`);
+        expect(localCamDist).toBeLessThan(1.0);
+      }
+
+      // Compute mathematical SVG projection expectations from exact accepted server snapshot and map bounds
+      const mapProjection = await page1.evaluate(() => {
+        const colony = (window as any).__colony;
+        const state = colony?.sim?.state;
+        const ways = state?.roadWays ?? [];
+        const stops = colony?.busRoute?.stops ?? [];
+        const depot = colony?.busDepot?.site ?? null;
+        const network = [
+          ...ways.flatMap((w: any) => w.path),
+          ...stops,
+          ...(depot ? [{ x: depot.x + (depot.w - 1) / 2, y: depot.y + (depot.h - 1) / 2 }] : []),
+        ];
+        const xs = network.map((p: any) => p.x);
+        const ys = network.map((p: any) => p.y);
+        const rawMinX = xs.length ? Math.min(...xs) : 0;
+        const rawMaxX = xs.length ? Math.max(...xs) : 1;
+        const rawMinY = ys.length ? Math.min(...ys) : 0;
+        const rawMaxY = ys.length ? Math.max(...ys) : 1;
+        const spanX = Math.max(1, rawMaxX - rawMinX);
+        const spanY = Math.max(1, rawMaxY - rawMinY);
+        const width = 200;
+        const height = 132;
+        const padding = 8;
+        const drawableW = Math.max(1, width - padding * 2);
+        const drawableH = Math.max(1, height - padding * 2);
+        const scale = Math.min(drawableW / spanX, drawableH / spanY);
+        const usedW = spanX * scale;
+        const usedH = spanY * scale;
+        const ox = padding + (drawableW - usedW) / 2;
+        const oy = padding + (drawableH - usedH) / 2;
+        const tSize = state?.terrain?.size ?? 128;
+        return { rawMinX, rawMinY, spanX, spanY, scale, ox, oy, width, height, padding, tSize };
+      });
+      expect(mapProjection).not.toBeNull();
+      const tSize = mapProjection!.tSize;
+      const expectedParkedCell = {
+        x: postWalkSnap!.carX / 4 + tSize / 2,
+        y: postWalkSnap!.carZ / 4 + tSize / 2,
+      };
+      const expectedPedCell = {
+        x: postWalkSnap!.x / 4 + tSize / 2,
+        y: postWalkSnap!.z / 4 + tSize / 2,
+      };
+      const projectPoint = (cell: { x: number; y: number }) => {
+        const rawX = mapProjection!.ox + (cell.x - mapProjection!.rawMinX) * mapProjection!.scale;
+        const rawY = mapProjection!.oy + (cell.y - mapProjection!.rawMinY) * mapProjection!.scale;
+        return {
+          x: Math.min(mapProjection!.width - mapProjection!.padding, Math.max(mapProjection!.padding, rawX)),
+          y: Math.min(mapProjection!.height - mapProjection!.padding, Math.max(mapProjection!.padding, rawY)),
+        };
+      };
+      const expectedParkedSvg = projectPoint(expectedParkedCell);
+      const expectedPedSvg = projectPoint(expectedPedCell);
+
+      // Verify numerical local and peer marker SVG circle/rect positions against calculated map projection
+      await mapBtnP1.click();
+      const localMarker = page1.locator('[data-testid="city-map-parked-car-marker"][data-local="true"]');
+      await expect(localMarker).toBeAttached({ timeout: 5000 });
+      const localCircle = localMarker.locator("circle");
+      const localX = Number(await localCircle.getAttribute("cx"));
+      const localY = Number(await localCircle.getAttribute("cy"));
+      expect(Number.isFinite(localX)).toBe(true);
+      expect(Number.isFinite(localY)).toBe(true);
+      expect(localX).toBeGreaterThan(0);
+      expect(Math.hypot(localX - expectedParkedSvg.x, localY - expectedParkedSvg.y)).toBeLessThan(1.0);
+
+      const localPlayerMarker = page1.locator('[data-testid="city-map-player-marker"]');
+      await expect(localPlayerMarker).toBeAttached({ timeout: 5000 });
+      const localPlayerCircle = localPlayerMarker.locator("circle").first();
+      const localPlayerX = Number(await localPlayerCircle.getAttribute("cx"));
+      const localPlayerY = Number(await localPlayerCircle.getAttribute("cy"));
+      expect(Number.isFinite(localPlayerX)).toBe(true);
+      expect(Number.isFinite(localPlayerY)).toBe(true);
+      expect(localPlayerX).toBeGreaterThan(0);
+      expect(localPlayerY).toBeGreaterThan(0);
+      expect(Math.hypot(localPlayerX - expectedPedSvg.x, localPlayerY - expectedPedSvg.y)).toBeLessThan(1.0);
+      await mapBtnP1.click();
+
+      await mapBtnP2.click();
+      const peerMarker = page2.locator('[data-testid="city-map-parked-car-marker"][data-local="false"]');
+      await expect(peerMarker).toBeAttached({ timeout: 5000 });
+      const peerCircle = peerMarker.locator("circle");
+      const peerX = Number(await peerCircle.getAttribute("cx"));
+      const peerY = Number(await peerCircle.getAttribute("cy"));
+      expect(Number.isFinite(peerX)).toBe(true);
+      expect(Number.isFinite(peerY)).toBe(true);
+      // Assert peer parked car marker against mathematical projection of accepted server snapshot
+      expect(Math.hypot(peerX - expectedParkedSvg.x, peerY - expectedParkedSvg.y)).toBeLessThan(1.0);
+      // Both maps project the identical stationary parked car to the same SVG coordinates
+      expect(Math.hypot(peerX - localX, peerY - localY)).toBeLessThan(1.0);
+
+      const peerPlayerMarker = page2.locator(`[data-testid="city-map-peer-marker"][data-participant-id="${pinnedParticipantId1}"]`);
+      await expect(peerPlayerMarker).toBeAttached({ timeout: 5000 });
+      const peerPlayerCircle = peerPlayerMarker.locator("circle").first();
+      const peerPlayerX = Number(await peerPlayerCircle.getAttribute("cx"));
+      const peerPlayerY = Number(await peerPlayerCircle.getAttribute("cy"));
+      expect(Number.isFinite(peerPlayerX)).toBe(true);
+      expect(Number.isFinite(peerPlayerY)).toBe(true);
+      // Assert peer walking player marker against mathematical projection of accepted server snapshot
+      expect(Math.hypot(peerPlayerX - expectedPedSvg.x, peerPlayerY - expectedPedSvg.y)).toBeLessThan(1.0);
+      // Both maps project the identical walking pedestrian to the same SVG coordinates
+      expect(Math.hypot(peerPlayerX - localPlayerX, peerPlayerY - localPlayerY)).toBeLessThan(1.0);
+      await mapBtnP2.click();
+
       // 4. Player 1 re-enters vehicle via genuine pointer click on "Enter your car"
       const enterBtn1 = page1.locator('[data-testid="enter-owned-car"]');
       await expect(enterBtn1).toBeVisible({ timeout: 10_000 });
@@ -1118,6 +2123,30 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       await page2.screenshot({ path: carScreenshotPath });
       console.log(`Player 2 view of Player 1 restored as car saved to: ${carScreenshotPath}`);
       recordStage("Player 2 3D scene independently verified rendering Player 1 as car model (Box/Cylinder geometry) and captured screenshot");
+
+      // 6.1 Verify 3D parked car visual is cleared from Player 2's scene after Player 1 re-enters car
+      await page2.waitForFunction(() => {
+        const scene = (window as any).__r3fScene;
+        let foundParkedCar = false;
+        scene?.traverse((o: any) => {
+          if (o.name && o.name.includes("remote-parked-car-jamtin")) {
+            foundParkedCar = true;
+          }
+        });
+        return !foundParkedCar;
+      }, undefined, { timeout: 15_000 });
+
+      // 6.2 Verify mini-map parked car markers are cleared on both players after boarding
+      const mapBtnP2Post = page2.locator('[data-testid="player-map-shortcut"]');
+      await mapBtnP2Post.click();
+      await expect(page2.locator('[data-testid="city-map-parked-car-marker"]')).toHaveCount(0);
+      await mapBtnP2Post.click();
+
+      const mapBtnP1Post = page1.locator('[data-testid="player-map-shortcut"]');
+      await mapBtnP1Post.click();
+      await expect(page1.locator('[data-testid="city-map-parked-car-marker"]')).toHaveCount(0);
+      await mapBtnP1Post.click();
+      recordStage("Verified parked car cleared from 3D world and mini-map on both players after boarding");
 
       // 7. Re-engage throttle to prove controls and simulation loop continuation after re-entry
       const throttleReentry1 = page1.locator('button[data-drive-action="throttle"]');

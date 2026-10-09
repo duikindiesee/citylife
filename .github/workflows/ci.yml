@@ -4,7 +4,9 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches:
+      - main
+      - candidate/client-e8-protocol-v2
 
 permissions:
   contents: read
@@ -41,11 +43,13 @@ jobs:
       # consume the shared 60-minute job budget.
       - run: npm run test:e2e:mobile-harness
         timeout-minutes: 4
+      # Pinned server revision: published corrective candidate 84c0cfcad888e8197cac409c55c2cc23b877f28f
+      # (fresh walkability authority reconciliation on join and post-await vehicle ownership rechecks)
       - name: Check out citylife-server at pinned authoritative revision
         uses: actions/checkout@v7
         with:
           repository: duikindiesee/citylife-server
-          ref: d232f6ce503afb6bbb8dce3f1b67f4641845796a
+          ref: 84c0cfcad888e8197cac409c55c2cc23b877f28f
           token: ${{ secrets.CITYLIFE_SERVER_READ_TOKEN }}
           persist-credentials: false
           path: citylife-server

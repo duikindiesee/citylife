@@ -16,6 +16,25 @@ type BusNetworkMiniMapProps = {
   onClose: () => void;
 };
 
+export function computeBusNetworkMiniMapSignal(runtime: ColonyRuntime): string {
+  const isDriving = runtime.isOwnedDriveSeated?.() ?? (runtime as any).ownedDriveSeated;
+  const pose = runtime.getOwnedDrivePose?.();
+  const walk = runtime.getWalkingCell?.();
+  const parked = runtime.getParkedCarPose?.();
+  const selfPart = isDriving && pose
+    ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}`
+    : `foot:${walk ? `${walk.x.toFixed(2)}:${walk.y.toFixed(2)}` : "none"}:${parked ? `${parked.x.toFixed(2)}:${parked.y.toFixed(2)}` : "none"}`;
+  const peers = Array.from(runtime.sim.state.remoteRacers?.values() ?? []);
+  const peerPart = peers
+    .map(
+      (p) =>
+        `${p.participantId}:${p.cell.x.toFixed(2)}:${p.cell.y.toFixed(2)}:${p.carX !== undefined ? `parked:${p.carX.toFixed(2)}` : "none"}`,
+    )
+    .sort()
+    .join(";");
+  return `${selfPart}|${peerPart}`;
+}
+
 export function BusNetworkMiniMap(props: BusNetworkMiniMapProps) {
   // Keep the signal subscription out of the closed HUD. When open toggles, React
   // mounts/unmounts a separate hooked component instead of changing hook order.
@@ -30,44 +49,58 @@ function OpenBusNetworkMiniMap({
   onClose,
 }: Omit<BusNetworkMiniMapProps, "open">) {
   // The HUD can be memoized independently of the scene. Subscribe to the runtime's 200ms
-  // heartbeat while seated so the player marker and peer markers follow live poses on the map.
-  const mapSignal = useSimSignal(runtime, () => {
-    const pose = runtime.getOwnedDrivePose();
-    const selfPart = pose
-      ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}`
-      : "drive:parked";
-    const peers = Array.from(runtime.sim.state.remoteRacers?.values() ?? []);
-    const peerPart = peers
-      .map(
-        (p) =>
-          `${p.participantId}:${p.cell.x.toFixed(2)}:${p.cell.y.toFixed(2)}`,
-      )
-      .sort()
-      .join(";");
-    return `${selfPart}|${peerPart}`;
-  });
+  // heartbeat while seated or walking so the player marker and peer markers follow live poses on the map.
+  const mapSignal = useSimSignal(runtime, () => computeBusNetworkMiniMapSignal(runtime));
   void mapSignal;
   const state = runtime.sim.state;
+  const terrain = state.terrain;
+  const tSize = terrain?.size ?? 128;
   const depot = runtime.busDepot?.site ?? null;
   const local = presenceReadout?.entries.find((entry) => entry.isLocal) ?? null;
-  // While seated, the car pose is the player's actual location. On foot, use the already-authorized
-  // exact presence projection; never guess from a spawn/home or draw a coarse position as exact.
-  const driving = (
-    runtime as ColonyRuntime & {
-      getOwnedDrivePose?: () => { x: number; y: number } | null;
+  const isDriving = runtime.isOwnedDriveSeated?.() ?? (runtime as any).ownedDriveSeated;
+  const driving = runtime.getOwnedDrivePose?.();
+  const mpClient = runtime.getMultiplayerClient();
+  const isOnline = mpClient?.getStatus() === "connected";
+
+  let player: { x: number; y: number } | null = null;
+  let parkedCar: { x: number; y: number } | null = null;
+
+  if (isDriving && driving) {
+    player = { x: driving.x, y: driving.y };
+  } else {
+    const walkingCell = runtime.getWalkingCell?.() ??
+      (local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell ? local.fix.cell : null);
+    if (walkingCell) {
+      player = { x: walkingCell.x, y: walkingCell.y };
     }
-  ).getOwnedDrivePose?.();
-  const player = driving
-    ? { x: driving.x, y: driving.y }
-    : local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell
-      ? { x: local.fix.cell.x, y: local.fix.cell.y }
-      : null;
-  const peers = Array.from(state.remoteRacers?.values() ?? []).map((r) => ({
-    participantId: r.participantId,
-    username: r.username,
-    x: r.cell.x,
-    y: r.cell.y,
-  }));
+    const parkedPose = runtime.getParkedCarPose?.();
+    if (parkedPose) {
+      parkedCar = { x: parkedPose.x, y: parkedPose.y };
+    } else if (mpClient?.getParkedCar()) {
+      const pc = mpClient.getParkedCar()!;
+      parkedCar = {
+        x: pc.x / 4 + tSize / 2,
+        y: pc.z / 4 + tSize / 2,
+      };
+    }
+  }
+
+  const peers = Array.from(state.remoteRacers?.values() ?? []).map((r) => {
+    let peerParked: { x: number; y: number } | null = null;
+    if (r.isPedestrian && r.carX !== undefined && r.carZ !== undefined && Number.isFinite(r.carX) && Number.isFinite(r.carZ)) {
+      peerParked = {
+        x: r.carX / 4 + tSize / 2,
+        y: r.carZ / 4 + tSize / 2,
+      };
+    }
+    return {
+      participantId: r.participantId,
+      username: r.username,
+      x: r.cell.x,
+      y: r.cell.y,
+      parkedCar: peerParked,
+    };
+  });
   const model = buildBusNetworkMiniMapModel({
     ways: state.roadWays ?? [],
     routeStops: runtime.busRoute?.stops ?? [],
@@ -77,12 +110,11 @@ function OpenBusNetworkMiniMap({
     buses: runtime.busPoses().map((p, id) => ({ id, x: p.x, y: p.y })),
     peers,
     player,
+    parkedCar,
     width: WIDTH,
     height: HEIGHT,
     padding: 8,
   });
-  const mpClient = runtime.getMultiplayerClient();
-  const isOnline = mpClient?.getStatus() === "connected";
   return (
     <aside
       className="bus-network-minimap bus-network-minimap--expanded"
@@ -210,6 +242,33 @@ function OpenBusNetworkMiniMap({
               cy={peer.y}
               r="2.6"
               fill="#00ffcc"
+            />
+          </g>
+        ))}
+        {model.parkedCars.map((car) => (
+          <g
+            key={`parked-car-${car.id}`}
+            aria-label={car.isLocal ? "Your parked vehicle" : `Parked vehicle of ${car.ownerName}`}
+            data-testid="city-map-parked-car-marker"
+            data-parked-car-id={car.id}
+            data-local={car.isLocal ? "true" : "false"}
+            data-off-map={car.outOfBounds ? "true" : "false"}
+          >
+            <rect
+              x={car.x - 3.5}
+              y={car.y - 2.5}
+              width="7"
+              height="5"
+              rx="1.2"
+              fill={car.isLocal ? "#38bdf8" : "#fbbf24"}
+              stroke="#0f172a"
+              strokeWidth="0.8"
+            />
+            <circle
+              cx={car.x}
+              cy={car.y}
+              r="1"
+              fill="#ffffff"
             />
           </g>
         ))}

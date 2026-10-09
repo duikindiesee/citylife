@@ -101,10 +101,14 @@ export function remoteRacersSignature(state: ColonyState): string {
   const racers = state.remoteRacers;
   if (!racers || racers.size === 0) return "none";
   return Array.from(racers.values())
-    .map(
-      (r) =>
-        `${r.participantId}:${r.isPedestrian ? "ped" : "car"}:${r.vehicleKey ?? "none"}`,
-    )
+    .map((r) => {
+      const ped = r.isPedestrian ? "ped" : "car";
+      const parked =
+        r.isPedestrian && r.carX !== undefined && Number.isFinite(r.carX)
+          ? `:parked:${r.carX.toFixed(1)},${(r.carZ ?? 0).toFixed(1)}`
+          : "";
+      return `${r.participantId}:${ped}:${r.vehicleKey ?? "none"}${parked}`;
+    })
     .sort()
     .join(";");
 }
