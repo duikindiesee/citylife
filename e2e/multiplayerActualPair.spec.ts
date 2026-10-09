@@ -56,9 +56,11 @@ function loadServerComponents() {
   const { buildApp } = require(appPath);
   const { GameStateManager } = require(gameStatePath);
   const { LocalWorldAuthorityClient } = require(worldAuthPath);
-  const { RealtimeManager } = require(realtimePath);
+  const { RealtimeManager, extractRoadGeometry, extractWalkabilityAuthority, isFootprintClear, OWNED_DRIVING_CONFIG } = require(realtimePath);
+  const wsPath = path.join(serverDir, "node_modules/ws");
+  const WebSocket = require(wsPath);
 
-  return { jwt, buildApp, GameStateManager, LocalWorldAuthorityClient, RealtimeManager };
+  return { jwt, buildApp, GameStateManager, LocalWorldAuthorityClient, RealtimeManager, extractRoadGeometry, extractWalkabilityAuthority, isFootprintClear, OWNED_DRIVING_CONFIG, WebSocket };
 }
 
 const SESSION_STORAGE_KEY = "citylife.session.v5";
@@ -82,6 +84,91 @@ function seedPlayerSession(page: Page, email: string, token: string, numericId: 
       };
       window.sessionStorage.setItem(key, JSON.stringify(session));
       (window as any).__customMultiplayerWsUrl = customWs;
+
+      // Intercept and record WebSocket lifecycle events for failure diagnosis (hygienic: no query params/tokens)
+      const OrigWs = window.WebSocket;
+      (window as any).__wsEvents = [];
+      (window as any).__exitWireHistory = [];
+      const WrappedWs = function (url: string | URL, protocols?: string | string[]) {
+        const ws = new OrigWs(url, protocols);
+        let sanitizedEndpoint = "";
+        try {
+          const parsed = new URL(String(url), window.location.href);
+          sanitizedEndpoint = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
+        } catch {
+          sanitizedEndpoint = "[invalid-url]";
+        }
+        (window as any).__wsEvents.push({ type: "created", endpoint: sanitizedEndpoint, time: Date.now() });
+
+        const origSend = ws.send.bind(ws);
+        ws.send = (payload: any) => {
+          try {
+            const parsed = typeof payload === "string" ? JSON.parse(payload) : null;
+            if (parsed && (parsed.type === "exit_vehicle" || parsed.type === "board_vehicle")) {
+              (window as any).__exitWireHistory.push({
+                dir: "sent",
+                msgType: parsed.type,
+                epoch: typeof parsed.epoch === "number" ? parsed.epoch : undefined,
+                time: Date.now(),
+              });
+            }
+          } catch {}
+          return origSend(payload);
+        };
+
+        ws.addEventListener("open", () => {
+          (window as any).__wsEvents.push({ type: "open", time: Date.now() });
+        });
+        ws.addEventListener("close", (ev) => {
+          (window as any).__wsEvents.push({ type: "close", code: ev.code, reason: ev.reason, wasClean: ev.wasClean, time: Date.now() });
+        });
+        ws.addEventListener("error", () => {
+          (window as any).__wsEvents.push({ type: "error", time: Date.now() });
+        });
+        ws.addEventListener("message", (ev) => {
+          try {
+            const data = JSON.parse(ev.data);
+            if (
+              data.type === "error" ||
+              data.type === "peer_left" ||
+              data.type === "session_admitted" ||
+              data.type === "vehicle_exited" ||
+              data.type === "vehicle_boarded" ||
+              data.type === "peer_mode_changed"
+            ) {
+              const eventRecord = {
+                type: "msg",
+                msgType: data.type,
+                epoch: typeof data.epoch === "number" ? data.epoch : undefined,
+                operation: typeof data.operation === "string" ? data.operation : undefined,
+                mode: typeof data.mode === "string" ? data.mode : undefined,
+                participantId: typeof data.participantId === "string" ? data.participantId : undefined,
+                error: typeof data.error === "string" ? data.error : undefined,
+                message: typeof data.message === "string" ? data.message : undefined,
+                time: Date.now(),
+              };
+              (window as any).__wsEvents.push(eventRecord);
+              if (data.type === "vehicle_exited" || data.type === "vehicle_boarded" || data.type === "peer_mode_changed" || data.type === "error") {
+                (window as any).__exitWireHistory.push({
+                  dir: "recv",
+                  msgType: data.type,
+                  epoch: typeof data.epoch === "number" ? data.epoch : undefined,
+                  operation: typeof data.operation === "string" ? data.operation : undefined,
+                  error: typeof data.error === "string" ? data.error : undefined,
+                  time: Date.now(),
+                });
+              }
+            }
+          } catch {}
+        });
+        return ws;
+      } as any;
+      WrappedWs.prototype = OrigWs.prototype;
+      WrappedWs.CONNECTING = OrigWs.CONNECTING;
+      WrappedWs.OPEN = OrigWs.OPEN;
+      WrappedWs.CLOSING = OrigWs.CLOSING;
+      WrappedWs.CLOSED = OrigWs.CLOSED;
+      window.WebSocket = WrappedWs;
     },
     { key: SESSION_STORAGE_KEY, userEmail: email, userName: username, jwtToken: token, idNum: numericId, customWs: wsUrl }
   );
@@ -105,12 +192,16 @@ async function dumpTransitionDiagnostics(page: Page, label: string) {
           z: typeof p.z === "number" ? Number(p.z.toFixed(2)) : undefined,
         })),
       }));
+      const rawEvents = (window as any).__wsEvents || [];
+      const sentInputs = (window as any).__sentInputs || [];
+      const exitWire = (window as any).__exitWireHistory || [];
       return {
         multiplayerStatus: mp?.getStatus(),
         sessionInfo: mp?.getSessionInfo ? {
           sessionId: mp.getSessionInfo().sessionId,
           participantId: mp.getSessionInfo().participantId,
         } : null,
+        modeEpoch: mp?.getModeEpoch ? mp.getModeEpoch() : null,
         seated: colony?.ownedDriveSeated,
         fpCameraCell: colony?.fpCameraCell,
         drivePose: colony?.ownedDrivePose ? {
@@ -120,6 +211,17 @@ async function dumpTransitionDiagnostics(page: Page, label: string) {
         } : null,
         snapshotCount: history.length,
         recentSnapshots: recent,
+        sentMessages: sentInputs.slice(-5),
+        exitWireHistory: exitWire.slice(-10),
+        wsEvents: rawEvents.slice(-5).map((e: any) => ({
+          type: e.type,
+          endpoint: e.endpoint,
+          code: e.code,
+          reason: e.reason,
+          msgType: e.msgType,
+          error: e.error,
+          message: e.message,
+        })),
       };
     });
     console.error(`[Transition Diagnostic ${label}]`, JSON.stringify(diag));
@@ -132,6 +234,127 @@ async function dumpTransitionDiagnostics(page: Page, label: string) {
 test.use({ trace: "off" });
 
 test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManager & Scheduled Loop)", () => {
+  test("fails closed with CANONICAL_STAGING_UNAVAILABLE when world lacks reviewed staging metadata", async () => {
+    const {
+      jwt,
+      buildApp,
+      GameStateManager,
+      LocalWorldAuthorityClient,
+      RealtimeManager,
+      WebSocket,
+    } = loadServerComponents();
+
+    const baseSurveyRuntime = new ColonyRuntime(4242);
+    const baseSurveyDoc = baseSurveyRuntime.captureWorldLayout();
+    const defaultDoc = createWorldLayoutDocument({
+      ...baseSurveyDoc,
+      layoutId: "seed-4242",
+      seed: 4242,
+      revision: { number: 0, parentHash: null },
+    });
+
+    const worldAuth = new LocalWorldAuthorityClient();
+    // Register without hubSpawn or layout.garagePad.roadTarget to test fail-closed invariant
+    worldAuth.registerWorld({
+      schemaVersion: "citylife.starter-parcel-manifest/v1",
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      layout: defaultDoc,
+      plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+    });
+
+    const userClient = {
+      async getVehicleTruth(userId: string) {
+        return {
+          owned: true,
+          status: "OWNED",
+          vehicleKey: "karoo-vonk-11",
+          storage: "local-drive",
+          onboardingState: "COMPLETED",
+        };
+      },
+    };
+
+    const realtime = new RealtimeManager({
+      userClient,
+      worldAuthorityClient: worldAuth,
+      enableSimulationTimer: false,
+    });
+
+    const fastifyApp = buildApp({
+      gameState: new GameStateManager(null, null),
+      realtime,
+      userClient,
+      worldAuthorityClient: worldAuth,
+      jwtSecret: JWT_SECRET,
+      jwtAlgorithms: ["HS256"],
+    });
+
+    const serverAddr = await fastifyApp.listen({ port: 0, host: "127.0.0.1" });
+    const wsUrl = serverAddr.replace(/^http/, "ws") + "/api/v1/citylife/ws";
+    const token = jwt.sign(
+      { userId: 70001, id: 70001, sub: 70001, type: "access", roles: ["CITYLIFE_PLAYER"], username: "jamtin" },
+      JWT_SECRET,
+      { algorithm: "HS256", expiresIn: "1h" }
+    );
+
+    try {
+      const clientWs = new WebSocket(`${wsUrl}?token=${token}`);
+      const receivedMessages: any[] = [];
+      const receivedErrors: any[] = [];
+      let closeEvent: { code: number; reason: string } | null = null;
+
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          clientWs.close();
+          resolve();
+        }, 5000);
+        clientWs.on("message", (data: any) => {
+          try {
+            const msg = JSON.parse(data.toString());
+            receivedMessages.push(msg);
+            if (msg.type === "error") {
+              receivedErrors.push(msg);
+            }
+          } catch {}
+        });
+        clientWs.on("open", () => {
+          clientWs.send(
+            JSON.stringify({
+              type: "create_session",
+              protocolVersion: 2,
+              worldId: "seed-4242",
+              layoutRevision: `wl:v1:0:${defaultDoc.revision.contentHash}`,
+              neighbourhoodKey: "citylife-central",
+              mode: "driving",
+              vehicleKey: "karoo-vonk-11",
+            })
+          );
+        });
+        clientWs.on("close", (code: number, reason: Buffer) => {
+          closeEvent = { code, reason: reason?.toString("utf8") ?? "" };
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+
+      console.log(
+        "[Admission Negative Wire Proof] Sanitized received messages:",
+        JSON.stringify(receivedMessages.map((m) => ({ type: m.type, error: m.error, message: m.message })))
+      );
+      if (closeEvent) {
+        console.log(`[Admission Negative Wire Proof] WebSocket closed: code=${(closeEvent as any).code}, reason=${(closeEvent as any).reason}`);
+      }
+
+      const stagingErr = receivedErrors.find((e: any) => e.error === "CANONICAL_STAGING_UNAVAILABLE");
+      expect(stagingErr).toBeDefined();
+      expect(stagingErr.message).toContain("Canonical world catalogue lacks reviewed vehicle staging truth");
+      console.log("[Admission Negative Proof] Verified server fail-closed on missing staging metadata:", stagingErr);
+    } finally {
+      await fastifyApp.close();
+    }
+  });
+
   test("two racers driving down road against proposed Fastify server, verified in 3D and minimap, recording mp4", async ({
     browser,
   }) => {
@@ -160,6 +383,10 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       GameStateManager,
       LocalWorldAuthorityClient,
       RealtimeManager,
+      extractRoadGeometry,
+      extractWalkabilityAuthority,
+      isFootprintClear,
+      OWNED_DRIVING_CONFIG,
     } = loadServerComponents();
 
     recordStage("Initialization & World Layout Document creation");
@@ -167,21 +394,149 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     // 1. Build canonical world layout document
     const baseSurveyRuntime = new ColonyRuntime(4242);
     const baseSurveyDoc = baseSurveyRuntime.captureWorldLayout();
+    const sortedFrames = [...baseSurveyDoc.frames].sort((a: any, b: any) =>
+      a.layer === "surface" ? -1 : b.layer === "surface" ? 1 : 0
+    );
     const defaultDoc = createWorldLayoutDocument({
       ...baseSurveyDoc,
+      frames: sortedFrames,
       layoutId: "seed-4242",
       seed: 4242,
       revision: { number: 0, parentHash: null },
     });
 
-    // 2. Set up isolated World Authority and User truth fixtures
+    // 2. Set up isolated World Authority and User truth fixtures with explicit deterministic vehicle staging contract
     const worldAuth = new LocalWorldAuthorityClient();
+    const STAGING_CELL = { x: 139, y: 265, heading: 0 };
+
+    // Assert reviewed canonical road network membership in runtime for both staging lanes
+    expect(
+      baseSurveyRuntime.sim.state.roadSet.has(`${STAGING_CELL.x},${STAGING_CELL.y}`),
+      `Reviewed canonical vehicle staging cell (${STAGING_CELL.x}, ${STAGING_CELL.y}) must be on runtime road network`
+    ).toBe(true);
+    expect(
+      baseSurveyRuntime.sim.state.roadSet.has(`${STAGING_CELL.x},${STAGING_CELL.y + 1}`),
+      `Reviewed canonical vehicle staging cell for peer (${STAGING_CELL.x}, ${STAGING_CELL.y + 1}) must be on runtime road network`
+    ).toBe(true);
+
+    // Assert serialized road geometry extraction and full vehicle footprint clearance
+    const stagingGeom = extractRoadGeometry(defaultDoc);
+    expect(
+      stagingGeom.hasGeometry,
+      "Canonical world document must provide usable surface frame geometry"
+    ).toBe(true);
+    expect(
+      stagingGeom.roadSet.has(`${STAGING_CELL.x},${STAGING_CELL.y}`),
+      `Serialized canonical catalogue road geometry must contain staging cell (${STAGING_CELL.x}, ${STAGING_CELL.y})`
+    ).toBe(true);
+    expect(
+      stagingGeom.roadSet.has(`${STAGING_CELL.x},${STAGING_CELL.y + 1}`),
+      `Serialized canonical catalogue road geometry must contain peer staging cell (${STAGING_CELL.x}, ${STAGING_CELL.y + 1})`
+    ).toBe(true);
+
+    const footprintClear1 = isFootprintClear(
+      STAGING_CELL.x,
+      STAGING_CELL.y,
+      STAGING_CELL.heading,
+      stagingGeom.gridWidth,
+      stagingGeom.gridHeight,
+      stagingGeom.obstacleSet,
+      stagingGeom.obstacleBoxes,
+      OWNED_DRIVING_CONFIG.halfLengthMetres,
+      OWNED_DRIVING_CONFIG.halfWidthMetres,
+      stagingGeom.cellMetres
+    );
+    expect(
+      footprintClear1,
+      `Vehicle staging cell (${STAGING_CELL.x}, ${STAGING_CELL.y}) must have clear full vehicle footprint against obstacles`
+    ).toBe(true);
+
+    const footprintClear2 = isFootprintClear(
+      STAGING_CELL.x,
+      STAGING_CELL.y + 1,
+      STAGING_CELL.heading,
+      stagingGeom.gridWidth,
+      stagingGeom.gridHeight,
+      stagingGeom.obstacleSet,
+      stagingGeom.obstacleBoxes,
+      OWNED_DRIVING_CONFIG.halfLengthMetres,
+      OWNED_DRIVING_CONFIG.halfWidthMetres,
+      stagingGeom.cellMetres
+    );
+    expect(
+      footprintClear2,
+      `Peer vehicle staging cell (${STAGING_CELL.x}, ${STAGING_CELL.y + 1}) must have clear full vehicle footprint against obstacles`
+    ).toBe(true);
+
+    // Assert reviewed straight corridor along driving heading has clear road and footprint for both lanes (steps 0..8)
+    for (let step = 0; step <= 8; step++) {
+      const stepX = STAGING_CELL.x + step;
+      expect(
+        stagingGeom.roadSet.has(`${stepX},${STAGING_CELL.y}`),
+        `Corridor step ${step} lane 1 (${stepX}, ${STAGING_CELL.y}) must be on road network`
+      ).toBe(true);
+      expect(
+        stagingGeom.roadSet.has(`${stepX},${STAGING_CELL.y + 1}`),
+        `Corridor step ${step} lane 2 (${stepX}, ${STAGING_CELL.y + 1}) must be on road network`
+      ).toBe(true);
+      expect(
+        isFootprintClear(stepX, STAGING_CELL.y, STAGING_CELL.heading, stagingGeom.gridWidth, stagingGeom.gridHeight, stagingGeom.obstacleSet, stagingGeom.obstacleBoxes, OWNED_DRIVING_CONFIG.halfLengthMetres, OWNED_DRIVING_CONFIG.halfWidthMetres, stagingGeom.cellMetres),
+        `Corridor step ${step} lane 1 must have clear full vehicle footprint`
+      ).toBe(true);
+      expect(
+        isFootprintClear(stepX, STAGING_CELL.y + 1, STAGING_CELL.heading, stagingGeom.gridWidth, stagingGeom.gridHeight, stagingGeom.obstacleSet, stagingGeom.obstacleBoxes, OWNED_DRIVING_CONFIG.halfLengthMetres, OWNED_DRIVING_CONFIG.halfWidthMetres, stagingGeom.cellMetres),
+        `Corridor step ${step} lane 2 must have clear full vehicle footprint`
+      ).toBe(true);
+    }
+
+    const surfaceFrame = defaultDoc.frames.find((f: any) => f.layer === "surface") || defaultDoc.frames[0];
+    const walkableCells = new Set<string>();
+    const terrain = baseSurveyRuntime.sim.state.terrain;
+    for (let cx = 120; cx <= 180; cx++) {
+      for (let cy = 250; cy <= 280; cy++) {
+        const isWater = terrain && typeof terrain.isWater === "function" ? terrain.isWater(cx, cy) : false;
+        const isObstacle = stagingGeom.obstacleSet.has(`${cx},${cy}`);
+        if (!isWater && !isObstacle) {
+          walkableCells.add(`${cx},${cy}`);
+        }
+      }
+    }
+
+    // Explicitly assert that the intended exit and walking cells around vehicle staging lanes are verified walkable
+    expect(
+      walkableCells.has(`${STAGING_CELL.x},${STAGING_CELL.y}`),
+      `Intended exit cell for lane 1 (${STAGING_CELL.x}, ${STAGING_CELL.y}) must be verified walkable against terrain and obstacles`
+    ).toBe(true);
+    expect(
+      walkableCells.has(`${STAGING_CELL.x},${STAGING_CELL.y + 1}`),
+      `Intended exit cell for lane 2 (${STAGING_CELL.x}, ${STAGING_CELL.y + 1}) must be verified walkable against terrain and obstacles`
+    ).toBe(true);
+
+    const walkabilityAuthorityCheck = extractWalkabilityAuthority(
+      {
+        layout: defaultDoc,
+        walkability: {
+          schemaVersion: "citylife.walkability/v1",
+          frameId: surfaceFrame.id,
+          walkableCells,
+        },
+      },
+      defaultDoc
+    );
+    expect(walkabilityAuthorityCheck, "Walkability authority must extract cleanly from canonical layout").not.toBeNull();
+
     worldAuth.registerWorld({
       schemaVersion: "citylife.starter-parcel-manifest/v1",
       worldId: "seed-4242",
       layoutRevision: defaultDoc.revision.contentHash,
       layout: defaultDoc,
+      walkability: {
+        schemaVersion: "citylife.walkability/v1",
+        frameId: surfaceFrame.id,
+        walkableCells,
+      },
       plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+      hubSpawn: STAGING_CELL,
     });
 
     const userClient = {
@@ -271,6 +626,11 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
               worldId: "seed-4242",
               layoutRevision: defaultDoc.revision.contentHash,
               layout: defaultDoc,
+              walkability: {
+                schemaVersion: "citylife.walkability/v1",
+                frameId: surfaceFrame.id,
+                walkableCells: Array.from(walkableCells),
+              },
             },
           }),
         });
@@ -363,13 +723,13 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       console.log("Both players connected to proposed Fastify multiplayer server via direct browser WebSockets.");
       recordStage("Fastify direct WebSocket connections established");
 
-      // Place both players at safe road positions concurrently
-      const roadStart = await page1.evaluate(() => {
+      // Place both players at safe road positions concurrently derived from fixture staging contract
+      const roadStart = await page1.evaluate((staging) => {
         const colony = (window as any).__colony;
         const terrain = colony.sim?.state?.terrain;
         const size = terrain?.size ?? 608;
-        return { x: 124, y: 272, heading: -Math.PI / 2, terrainSize: size };
-      });
+        return { x: staging.x, y: staging.y, heading: staging.heading, terrainSize: size };
+      }, STAGING_CELL);
 
       await Promise.all([
         page1.evaluate(
@@ -384,7 +744,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         page2.evaluate(
           ({ x, y, heading }) => {
             const colony = (window as any).__colony;
-            colony.ownedDrivePose = { x: x + 2, y, heading, speed: 0 };
+            colony.ownedDrivePose = { x, y: y + 1, heading, speed: 0 };
             colony.ownedDriveSeated = true;
             colony.emit();
           },
@@ -680,15 +1040,31 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       console.log("Rendered 3D scene displacement verified for BOTH remote racers (>0.5m).");
       recordStage("Rendered 3D scene displacement verified (>0.5m)");
 
+      // Assert mini-map peer marker displacement (>0.2px) achieved under active controls on BOTH clients BEFORE braking
+      await Promise.all([
+        page1.waitForFunction((initial) => {
+          const circle = document.querySelector('[data-testid="city-map-peer-marker"] circle');
+          if (!circle) return false;
+          const cx = parseFloat(circle.getAttribute("cx") || "0");
+          const cy = parseFloat(circle.getAttribute("cy") || "0");
+          return Math.hypot(cx - initial.cx, cy - initial.cy) > 0.2;
+        }, initialMapPeerPosP1, { timeout: 30_000 }),
+        page2.waitForFunction((initial) => {
+          const circle = document.querySelector('[data-testid="city-map-peer-marker"] circle');
+          if (!circle) return false;
+          const cx = parseFloat(circle.getAttribute("cx") || "0");
+          const cy = parseFloat(circle.getAttribute("cy") || "0");
+          return Math.hypot(cx - initial.cx, cy - initial.cy) > 0.2;
+        }, initialMapPeerPosP2, { timeout: 30_000 }),
+      ]);
+      recordStage("Mini-map peer marker displacement (>0.2px) verified under active throttle on both clients");
+
       // Capture explicit screenshots during active driving
       const ssDir = path.resolve("test-results/actual-pair-screenshots");
       if (!fs.existsSync(ssDir)) fs.mkdirSync(ssDir, { recursive: true });
       await page1.screenshot({ path: path.join(ssDir, "page1-driving.png") });
       await page2.screenshot({ path: path.join(ssDir, "page2-driving.png") });
       recordStage("Explicit driving screenshots saved");
-
-      // Allow vehicles to drive smoothly for 2.5s to capture the racing run on video
-      await new Promise((resolve) => setTimeout(resolve, 2500));
 
       // Neutralize throttle via genuine pointer up
       await page1.mouse.up();
@@ -866,23 +1242,96 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         }, { username: peerUsername, initial: initialPos });
       };
 
-      // Wait for mini-map marker to update and match projected snapshot on Player 1
-      await page1.waitForFunction((initial) => {
+      // Bounded diagnosis: Query live status, last seq, peer marker coordinates, expected projection, and ws events BEFORE wait
+      const diagP1 = await page1.evaluate((initial) => {
+        const colony = (window as any).__colony;
+        const mp = colony?.getMultiplayerClient();
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
         const circle = document.querySelector('[data-testid="city-map-peer-marker"] circle');
-        if (!circle) return false;
-        const cx = parseFloat(circle.getAttribute("cx") || "0");
-        const cy = parseFloat(circle.getAttribute("cy") || "0");
-        return Math.hypot(cx - initial.cx, cy - initial.cy) > 0.2;
-      }, initialMapPeerPosP1, { timeout: 30_000 });
+        const cx = circle ? parseFloat(circle.getAttribute("cx") || "0") : null;
+        const cy = circle ? parseFloat(circle.getAttribute("cy") || "0") : null;
+        const racers = Array.from(colony?.sim?.state?.remoteRacers?.entries() ?? []).map(([k, v]: [any, any]) => ({
+          id: k,
+          user: v.username,
+          cell: v.cell,
+          heading: v.heading,
+          speed: v.speed,
+        }));
+        const rawEvents = (window as any).__wsEvents || [];
+        const sInfo = mp?.getSessionInfo ? mp.getSessionInfo() : null;
+        return {
+          status: mp?.getStatus(),
+          sessionInfo: sInfo ? { sessionId: sInfo.sessionId, participantId: sInfo.participantId, inviteCode: sInfo.inviteCode } : null,
+          lastSeq: last?.seq,
+          snapshotParticipants: last?.participants?.map((p: any) => ({
+            id: p.participantId,
+            user: p.username,
+            x: p.x,
+            z: p.z,
+            speed: p.speed,
+          })),
+          remoteRacers: racers,
+          initialMapPos: initial,
+          currentMapPos: cx !== null ? { cx, cy } : null,
+          displacement: cx !== null && initial ? Math.hypot(cx - initial.cx, cy - initial.cy) : null,
+          wsEvents: rawEvents.map((e: any) => ({
+            type: e.type,
+            endpoint: e.endpoint,
+            code: e.code,
+            reason: e.reason,
+            msgType: e.msgType,
+            error: e.error,
+          })),
+        };
+      }, initialMapPeerPosP1);
+      console.log("[Diagnostic Map P1 before wait]:", JSON.stringify(diagP1));
 
-      // Wait for mini-map marker to update and match projected snapshot on Player 2
-      await page2.waitForFunction((initial) => {
+      const diagP2 = await page2.evaluate((initial) => {
+        const colony = (window as any).__colony;
+        const mp = colony?.getMultiplayerClient();
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
         const circle = document.querySelector('[data-testid="city-map-peer-marker"] circle');
-        if (!circle) return false;
-        const cx = parseFloat(circle.getAttribute("cx") || "0");
-        const cy = parseFloat(circle.getAttribute("cy") || "0");
-        return Math.hypot(cx - initial.cx, cy - initial.cy) > 0.2;
-      }, initialMapPeerPosP2, { timeout: 30_000 });
+        const cx = circle ? parseFloat(circle.getAttribute("cx") || "0") : null;
+        const cy = circle ? parseFloat(circle.getAttribute("cy") || "0") : null;
+        const racers = Array.from(colony?.sim?.state?.remoteRacers?.entries() ?? []).map(([k, v]: [any, any]) => ({
+          id: k,
+          user: v.username,
+          cell: v.cell,
+          heading: v.heading,
+          speed: v.speed,
+        }));
+        const rawEvents = (window as any).__wsEvents || [];
+        const sInfo = mp?.getSessionInfo ? mp.getSessionInfo() : null;
+        return {
+          status: mp?.getStatus(),
+          sessionInfo: sInfo ? { sessionId: sInfo.sessionId, participantId: sInfo.participantId, inviteCode: sInfo.inviteCode } : null,
+          lastSeq: last?.seq,
+          snapshotParticipants: last?.participants?.map((p: any) => ({
+            id: p.participantId,
+            user: p.username,
+            x: p.x,
+            z: p.z,
+            speed: p.speed,
+          })),
+          remoteRacers: racers,
+          initialMapPos: initial,
+          currentMapPos: cx !== null ? { cx, cy } : null,
+          displacement: cx !== null && initial ? Math.hypot(cx - initial.cx, cy - initial.cy) : null,
+          wsEvents: rawEvents.map((e: any) => ({
+            type: e.type,
+            endpoint: e.endpoint,
+            code: e.code,
+            reason: e.reason,
+            msgType: e.msgType,
+            error: e.error,
+          })),
+        };
+      }, initialMapPeerPosP2);
+      console.log("[Diagnostic Map P2 before wait]:", JSON.stringify(diagP2));
+
+      // Verify numeric mini-map marker projection matches authoritative snapshot on both clients (<0.5px subpixel tolerance, displacement >0.2px)
 
       const mapResultP1 = await checkMapProjection(page1, "jamtin2", initialMapPeerPosP1!);
       expect(mapResultP1.ok).toBe(true);

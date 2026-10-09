@@ -18,6 +18,20 @@ const cameraMock = {
   lookAt: vi.fn(),
 };
 
+let effectRunner: ((cb: () => void | (() => void)) => void) | null = null;
+
+vi.mock("react", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react")>();
+  return {
+    ...actual,
+    useEffect: (cb: any, _deps: any) => {
+      if (effectRunner) {
+        effectRunner(cb);
+      }
+    },
+  };
+});
+
 vi.mock("@react-three/fiber", () => ({
   useFrame: (cb: any) => {
     capturedFrameCb = cb;
@@ -985,5 +999,560 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     expect(mapModel.player).not.toBeNull();
     expect(mapModel.player!.x).toBeCloseTo(111.6, 1);
     expect(mapModel.player!.y).toBeCloseTo(66.0, 1);
+  });
+
+  it("reproduces vehicle exit optimistic vs authoritative seq collision and controller deduplication", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const terrainSize = terrain.size;
+    const toWorldX = (gx: number) => (gx - terrainSize / 2) * 4;
+    const toWorldZ = (gy: number) => (gy - terrainSize / 2) * 4;
+
+    const road = runtime.sim.state.roads[0]!;
+    runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
+    runtime.teleportCar(road.x, road.y, 0);
+
+    const carX = toWorldX(road.x);
+    const carZ = toWorldZ(road.y);
+
+    // Join session in driving mode
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-exit-seq-test",
+        participantId: "part-1",
+        room: "room-1",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "driving",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            username: "User1",
+            isPedestrian: false,
+            mode: "driving",
+            vehicleKey: "karoo-vonk-11",
+            x: carX,
+            y: 0,
+            z: carZ,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    expect(runtime.isOwnedDriveSeated()).toBe(true);
+
+    // Now operator initiates vehicle exit:
+    const exitOk = runtime.exitOwnedCar();
+    expect(exitOk).toBe(true);
+
+    const optimisticReq = { ...runtime.fpTeleportRequest! };
+    const optimisticSeq = optimisticReq.seq;
+
+    // First production frame: FirstPersonController consumes the optimistic teleport request
+    renderToStaticMarkup(
+      React.createElement(FirstPersonController, {
+        sim: runtime.sim,
+        runtime: runtime as any,
+        startPosition: [toWorldX(optimisticReq.x), 2, toWorldZ(optimisticReq.y)],
+        terrainLevel: null,
+      })
+    );
+    capturedFrameCb!({}, 0.016);
+    expect(currentRigidBody.translation().x).toBe(toWorldX(optimisticReq.x));
+
+    // Server sends authoritative vehicle_exited with DIFFERENT coordinates (e.g. 42, 40)
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "vehicle_exited",
+        sessionId: "sess-exit-seq-test",
+        participantId: "part-1",
+        x: toWorldX(42),
+        y: 0,
+        z: toWorldZ(40),
+        carX: toWorldX(road.x),
+        carZ: toWorldZ(road.y),
+        carHeading: 0,
+        heading: 0,
+        modeEpoch: 2,
+        protocolVersion: 2,
+      }),
+    });
+
+    const authoritativeSeq = runtime.fpTeleportRequest?.seq;
+    // Strictly monotonic counter ensures authoritative seq > optimistic seq (no collision at 1)
+    expect(authoritativeSeq).toBeGreaterThan(optimisticSeq);
+    expect(authoritativeSeq).toBe(2);
+
+    // Second production frame: FirstPersonController consumes the authoritative server correction
+    capturedFrameCb!({}, 0.016);
+
+    // 1. RigidBody was physically translated to toWorldX(42)
+    expect(currentRigidBody.translation().x).toBe(toWorldX(42));
+    expect(currentRigidBody.translation().z).toBe(toWorldZ(40));
+    // 2. Camera position reflects toWorldX(42)
+    expect(cameraMock.position.x).toBe(toWorldX(42));
+    expect(cameraMock.position.z).toBe(toWorldZ(40));
+    // 3. runtime.fpCameraCell is updated to authoritative server exit position (42, 40)
+    expect(runtime.fpCameraCell).toEqual({ x: 42, y: 40 });
+    // 4. Getter reflects (42, 40)
+    expect(runtime.getWalkingCell()).toEqual({ x: 42, y: 40 });
+
+    // 5. Mini-map projection reflects (42, 40)
+    const mapModel = buildBusNetworkMiniMapModel({
+      ways: [
+        {
+          kind: "avenue",
+          width: 2,
+          path: [
+            { x: 30, y: 30 },
+            { x: 50, y: 50 },
+          ],
+        },
+      ],
+      routeStops: [],
+      depot: null,
+      buses: [],
+      player: runtime.getWalkingCell(),
+      parkedCar: null,
+      peers: [],
+      width: 200,
+      height: 132,
+      padding: 8,
+    });
+    expect(mapModel.player).not.toBeNull();
+    expect(mapModel.player!.x).toBeCloseTo(111.6, 1);
+    expect(mapModel.player!.y).toBeCloseTo(66.0, 1);
+  });
+
+  it("distinguishes gamepad translational stick movement from look/turn stick in locomotion classification and typed wire transmission", async () => {
+    let mockGamepads: any[] = [];
+    const origGetGamepads = (navigator as any).getGamepads;
+    (navigator as any).getGamepads = () => mockGamepads;
+
+    try {
+      const runtime = new ColonyRuntime(42);
+      runtime.setAuthClient({
+        getValidToken: async () => "valid-mock-token",
+      } as any);
+      runtime.setOperatorUserId("user-1");
+
+      runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+      await runtime.getMultiplayerClient()?.connect();
+      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen?.();
+
+      const terrain = runtime.sim.state.terrain;
+      const terrainSize = terrain.size;
+      const toWorldX = (gx: number) => (gx - terrainSize / 2) * 4;
+      const toWorldZ = (gy: number) => (gy - terrainSize / 2) * 4;
+
+      // Join session walking at (40, 40)
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "session_joined",
+          sessionId: "sess-gamepad-test",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(40),
+              y: 0,
+              z: toWorldZ(40),
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      });
+
+      renderToStaticMarkup(
+        React.createElement(FirstPersonController, {
+          sim: runtime.sim,
+          runtime: runtime as any,
+          startPosition: [toWorldX(40), 2, toWorldZ(40)],
+          terrainLevel: null,
+        })
+      );
+      capturedFrameCb!({}, 0.016);
+      expect(runtime.fpTeleportRequest?.seq).toBe(1);
+
+      // Case 1: Gamepad idle/centered -> hasFpLocomotionInput is false, typed walking input sends zeroes
+      mockGamepads = [];
+      expect(runtime.hasFpLocomotionInput()).toBe(false);
+
+      // Case 2: Gamepad right stick active (look/turn only: axes[2], axes[3]) -> hasFpLocomotionInput is false
+      mockGamepads = [
+        {
+          axes: [0, 0, 0.8, -0.4], // right stick active, left stick 0
+          buttons: [],
+        },
+      ];
+      expect(runtime.hasFpLocomotionInput()).toBe(false);
+
+      // Server snapshot at (41, 40) triggers targeted correction because rotation does not suppress corrections
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "snapshot",
+          sessionId: "sess-gamepad-test",
+          seq: 1,
+          timestamp: Date.now() + 50,
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(41),
+              y: 0,
+              z: toWorldZ(40),
+              heading: 0.5,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      });
+      expect(runtime.fpTeleportRequest?.seq).toBe(2);
+      expect(runtime.fpTeleportRequest?.x).toBe(41);
+
+      // Consume correction frame
+      capturedFrameCb!({}, 0.016);
+      expect(currentRigidBody.translation().x).toBe(toWorldX(41));
+
+      // Case 3: Gamepad left stick active (translational locomotion: axes[0]=0.6 strafe, axes[1]=-0.8 forward)
+      mockGamepads = [
+        {
+          axes: [0.6, -0.8, 0, 0], // left stick tilted forward-right
+          buttons: [],
+        },
+      ];
+      expect(runtime.hasFpLocomotionInput()).toBe(true);
+
+      // Typed walking input transmission over wire:
+      // Clear socket.sent, advance clock, and tick walking multiplayer
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+
+      const inputMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(inputMsg).toBeDefined();
+      expect(inputMsg.mode).toBe("walking");
+      expect(inputMsg.strafe).toBeCloseTo(0.6, 2);
+      expect(inputMsg.forward).toBeCloseTo(0.8, 2);
+
+      // Subthreshold server snapshot (distSq <= 4) preserves local gamepad prediction and does not snap back
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "snapshot",
+          sessionId: "sess-gamepad-test",
+          seq: 2,
+          timestamp: Date.now() + 100,
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(41.5),
+              y: 0,
+              z: toWorldZ(40),
+              heading: 0.5,
+              speed: 1,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      });
+      // Teleport seq is STILL 2 (prediction preserved, zero snap-back spam!)
+      expect(runtime.fpTeleportRequest?.seq).toBe(2);
+
+      // Case 4: Composition of Gamepad + Keyboard
+      // Operator also holds KeyW (forwardHeld += 1) while gamepad forward is 0.8 -> forward clamped to 1
+      runtime.setFirstPersonKey("KeyW", true);
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+
+      const composedMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(composedMsg).toBeDefined();
+      expect(composedMsg.forward).toBe(1); // clamped
+      expect(composedMsg.strafe).toBeCloseTo(0.6, 2);
+
+      // Case 5: Gamepad returned to neutral (deadzone <= 0.1) -> keyboard forward alone remains
+      mockGamepads = [
+        {
+          axes: [0.05, -0.05, 0, 0], // within deadzone 0.1
+          buttons: [],
+        },
+      ];
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+
+      const neutralMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(neutralMsg).toBeDefined();
+      expect(neutralMsg.forward).toBe(1); // from KeyW
+      expect(neutralMsg.strafe).toBe(0); // gamepad neutralized
+
+      // Release keyboard KeyW
+      runtime.setFirstPersonKey("KeyW", false);
+      expect(runtime.hasFpLocomotionInput()).toBe(false);
+
+      // Case 6: Explicit keyboard left-strafe (KeyA) wire transmission
+      runtime.setFirstPersonKey("KeyA", true);
+      expect(runtime.hasFpLocomotionInput()).toBe(true);
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+      const strafeLeftMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(strafeLeftMsg).toBeDefined();
+      expect(strafeLeftMsg.strafe).toBe(-1);
+      expect(strafeLeftMsg.forward).toBe(0);
+
+      // Compose with gamepad left stick tilted left (axes[0] = -0.4) -> remains -1 (clamped)
+      mockGamepads = [{ axes: [-0.4, 0, 0, 0], buttons: [] }];
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+      const composedStrafeMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(composedStrafeMsg).toBeDefined();
+      expect(composedStrafeMsg.strafe).toBe(-1);
+
+      // Gamepad disconnected while KeyA held -> keyboard alone remains -1
+      mockGamepads = [];
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+      const disconnectMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(disconnectMsg).toBeDefined();
+      expect(disconnectMsg.strafe).toBe(-1);
+
+      // Release KeyA
+      runtime.setFirstPersonKey("KeyA", false);
+      expect(runtime.hasFpLocomotionInput()).toBe(false);
+
+      // Case 7: Large misprediction (distSq > 4) under active gamepad stick DOES reconcile
+      mockGamepads = [
+        {
+          axes: [0.6, 0, 0, 0],
+          buttons: [],
+        },
+      ];
+      expect(runtime.hasFpLocomotionInput()).toBe(true);
+
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "snapshot",
+          sessionId: "sess-gamepad-test",
+          seq: 3,
+          timestamp: Date.now() + 150,
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(47),
+              y: 0,
+              z: toWorldZ(40),
+              heading: 0.5,
+              speed: 1,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      });
+      expect(runtime.fpTeleportRequest?.seq).toBe(3);
+      expect(runtime.fpTeleportRequest?.x).toBe(47);
+    } finally {
+      if (origGetGamepads !== undefined) {
+        (navigator as any).getGamepads = origGetGamepads;
+      } else {
+        delete (navigator as any).getGamepads;
+      }
+    }
+  });
+
+  it("bridges FirstPersonController keyboard events to wire walking input with typing suppression, keyup release, blur, and unmount neutralization", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    // 1. Admit session in walking mode
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-keyboard-test",
+        participantId: "part-1",
+        room: "room-1",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "walking",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: 0,
+            y: 0,
+            z: 0,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    let cleanups: Array<() => void> = [];
+    const origWindow = (globalThis as any).window;
+    const origDocument = (globalThis as any).document;
+
+    const listeners: Record<string, ((e: any) => void)[]> = {};
+    const mockWindow = {
+      addEventListener: (type: string, fn: any) => {
+        (listeners[type] = listeners[type] || []).push(fn);
+      },
+      removeEventListener: (type: string, fn: any) => {
+        listeners[type] = (listeners[type] || []).filter((f) => f !== fn);
+      },
+      dispatchEvent: (e: any) => {
+        const fns = [...(listeners[e.type] || [])];
+        for (const f of fns) f(e);
+      },
+    };
+    (globalThis as any).window = mockWindow;
+    (globalThis as any).document = { pointerLockElement: null };
+
+    effectRunner = (cb: () => void | (() => void)) => {
+      const res = cb();
+      if (typeof res === "function") {
+        cleanups.push(res);
+      }
+    };
+
+    try {
+      renderToStaticMarkup(
+        React.createElement(FirstPersonController, {
+          sim: runtime.sim,
+          runtime: runtime as any,
+          startPosition: [0, 2, 0],
+          terrainLevel: null,
+        })
+      );
+
+      // Verify hook interception actually registered keydown, keyup, and blur listeners
+      expect(listeners["keydown"]?.length).toBeGreaterThan(0);
+      expect(listeners["keyup"]?.length).toBeGreaterThan(0);
+      expect(listeners["blur"]?.length).toBeGreaterThan(0);
+
+      // Verify typing suppression negative: KeyW pressed while typing inside INPUT/TEXTAREA
+      const typingEvent = {
+        type: "keydown",
+        code: "KeyW",
+        target: { tagName: "INPUT", isContentEditable: false },
+      };
+      mockWindow.dispatchEvent(typingEvent);
+
+      expect(runtime.hasFpLocomotionInput()).toBe(false);
+      expect((runtime as any).fpKeys?.has("fwd")).toBe(false);
+
+      // Legitimate player walking input: KeyW on window (canvas/body)
+      const keyWDown = {
+        type: "keydown",
+        code: "KeyW",
+        target: { tagName: "DIV", isContentEditable: false },
+      };
+      mockWindow.dispatchEvent(keyWDown);
+
+      expect(runtime.hasFpLocomotionInput()).toBe(true);
+      expect((runtime as any).fpKeys?.has("fwd")).toBe(true);
+
+      // Verify wire walking packet emitted by runtime.tickWalkingMultiplayer()
+      socket.sent = [];
+      (runtime as any).lastMultiplayerInputSentAt = 0;
+      runtime.tickWalkingMultiplayer();
+
+      const inputMsg = socket.sent.find((m: any) => m.type === "input");
+      expect(inputMsg).toBeDefined();
+      expect(inputMsg.mode).toBe("walking");
+      expect(inputMsg.forward).toBe(1);
+      expect(inputMsg.strafe).toBe(0);
+
+      // KeyUp release: KeyW up restores neutral
+      const keyWUp = {
+        type: "keyup",
+        code: "KeyW",
+        target: { tagName: "DIV", isContentEditable: false },
+      };
+      mockWindow.dispatchEvent(keyWUp);
+
+      expect(runtime.hasFpLocomotionInput()).toBe(false);
+      expect((runtime as any).fpKeys?.has("fwd")).toBe(false);
+
+      // Re-press KeyW then trigger window blur -> neutralizes held keys
+      mockWindow.dispatchEvent(keyWDown);
+      expect(runtime.hasFpLocomotionInput()).toBe(true);
+
+      mockWindow.dispatchEvent({ type: "blur" });
+      expect(runtime.hasFpLocomotionInput()).toBe(false);
+      expect((runtime as any).fpKeys?.has("fwd")).toBe(false);
+
+      // Re-press KeyW then trigger unmount cleanup -> neutralizes held keys
+      mockWindow.dispatchEvent(keyWDown);
+      expect(runtime.hasFpLocomotionInput()).toBe(true);
+
+      cleanups.forEach((c) => c());
+      cleanups = [];
+      expect(runtime.hasFpLocomotionInput()).toBe(false);
+      expect((runtime as any).fpKeys?.has("fwd")).toBe(false);
+    } finally {
+      effectRunner = null;
+      if (origWindow !== undefined) (globalThis as any).window = origWindow;
+      else delete (globalThis as any).window;
+      if (origDocument !== undefined) (globalThis as any).document = origDocument;
+      else delete (globalThis as any).document;
+      cleanups.forEach((c) => c());
+    }
   });
 });

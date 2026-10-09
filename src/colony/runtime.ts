@@ -1076,6 +1076,7 @@ export class ColonyRuntime {
     preserveVelocity?: boolean;
   } | null = null;
   private fpTeleportSeq = 0;
+  fpGamepadMoving = false;
   /** Spec 088 — road centre-lines for the smooth ribbon render (rendering only; traffic uses the cells). */
   roadWays: RoadWay[] = [];
   // Spec 079 — the Nearest bar's seat cells + who's sitting there (a night crowd; cleared by day).
@@ -3090,7 +3091,7 @@ export class ColonyRuntime {
     this.fpTeleportRequest = {
       ...exitCell,
       yaw: -car.heading - Math.PI / 2,
-      seq: (this.fpTeleportRequest?.seq ?? 0) + 1,
+      seq: ++this.fpTeleportSeq,
     };
     this.fpCameraCell = { x: exitCell.x, y: exitCell.y };
     if (
@@ -3898,6 +3899,12 @@ export class ColonyRuntime {
     if (!opposingStrafeInput && strafeLeftHeld) strafe -= 1;
     const sprint = k.has("sprint");
 
+    const gp = this.sampleGamepadWalkingAxes();
+    if (gp.active) {
+      forward = Math.max(-1, Math.min(1, forward + gp.forward));
+      strafe = Math.max(-1, Math.min(1, strafe + gp.strafe));
+    }
+
     const now = Date.now();
     if (now - this.lastMultiplayerInputSentAt >= 50) {
       this.lastMultiplayerInputSentAt = now;
@@ -4286,15 +4293,47 @@ export class ColonyRuntime {
     this.setFpKey(key, down);
   }
 
-  /** Returns true if active translational locomotion input is held (fwd, back, strafeLeft, strafeRight).
-   *  Turn-only keys (left/right rotation) do not produce translational movement and must not suppress
-   *  authoritative walking position corrections. */
+  /** Sample normalized, deadzoned gamepad axes for translational walking locomotion.
+   *  Matches FirstPersonController: left stick axes[0] (strafe) and axes[1] (forward/back).
+   *  Deadzone 0.1 filters neutral stick noise. Look axes[2]/axes[3] are omitted. */
+  sampleGamepadWalkingAxes(): { forward: number; strafe: number; active: boolean } {
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.getGamepads === "function"
+    ) {
+      try {
+        const pads = navigator.getGamepads();
+        const gp = pads && pads[0];
+        if (gp && gp.axes) {
+          const rawX = gp.axes[0] ?? 0;
+          const rawY = gp.axes[1] ?? 0;
+          const strafe =
+            Math.abs(rawX) > 0.1 ? Math.max(-1, Math.min(1, rawX)) : 0;
+          const forward =
+            Math.abs(rawY) > 0.1 ? Math.max(-1, Math.min(1, -rawY)) : 0;
+          const active = strafe !== 0 || forward !== 0;
+          return { forward, strafe, active };
+        }
+      } catch {
+        // Defensive: ignore gamepad API access exceptions
+      }
+    }
+    return { forward: 0, strafe: 0, active: false };
+  }
+
+  /** Returns true if active translational locomotion input is held (fwd, back, strafeLeft, strafeRight,
+   *  or gamepad translational stick axes).
+   *  Turn-only keys / look axes (left/right rotation) do not produce translational movement and must
+   *  not suppress authoritative walking position corrections. */
   hasFpLocomotionInput(): boolean {
+    const gp = this.sampleGamepadWalkingAxes();
     return (
       this.fpKeys.has("fwd") ||
       this.fpKeys.has("back") ||
       this.fpKeys.has("strafeLeft") ||
-      this.fpKeys.has("strafeRight")
+      this.fpKeys.has("strafeRight") ||
+      this.fpGamepadMoving ||
+      gp.active
     );
   }
 
@@ -6492,6 +6531,11 @@ export class ColonyRuntime {
     if (!opposingWalkInput && backHeld) forward -= 1;
     if (!opposingStrafeInput && strafeRightHeld) strafe += 1;
     if (!opposingStrafeInput && strafeLeftHeld) strafe -= 1;
+    const gp = this.sampleGamepadWalkingAxes();
+    if (gp.active) {
+      forward = Math.max(-1, Math.min(1, forward + gp.forward));
+      strafe = Math.max(-1, Math.min(1, strafe + gp.strafe));
+    }
     const moving = forward !== 0 || strafe !== 0;
     const manualControl = moving || k.has("left") || k.has("right");
     if (manualControl && this.fpGuidedTarget) {

@@ -49,6 +49,8 @@ interface FpRuntimeBridge {
     preserveVelocity?: boolean;
   } | null;
   fpCameraCell?: { x: number; y: number } | null;
+  fpGamepadMoving?: boolean;
+  setFirstPersonKey?: (key: string, down: boolean) => void;
 }
 
 export function FirstPersonController({
@@ -95,22 +97,54 @@ export function FirstPersonController({
   const rotation = useRef(new Euler(0, 0, 0, "YXZ"));
 
   useEffect(() => {
+    const isTyping = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      return Boolean(
+        t &&
+          (t.tagName === "INPUT" ||
+            t.tagName === "TEXTAREA" ||
+            t.isContentEditable)
+      );
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTyping(e)) return;
       if (e.code === "KeyW") input.current.forward = true;
       if (e.code === "KeyS") input.current.backward = true;
       if (e.code === "KeyA") input.current.left = true;
       if (e.code === "KeyD") input.current.right = true;
       if (e.code === "ShiftLeft" || e.code === "ShiftRight")
         input.current.sprint = true;
+      runtime?.setFirstPersonKey?.(e.code, true);
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
+      if (isTyping(e)) return;
       if (e.code === "KeyW") input.current.forward = false;
       if (e.code === "KeyS") input.current.backward = false;
       if (e.code === "KeyA") input.current.left = false;
       if (e.code === "KeyD") input.current.right = false;
       if (e.code === "ShiftLeft" || e.code === "ShiftRight")
         input.current.sprint = false;
+      runtime?.setFirstPersonKey?.(e.code, false);
+    };
+
+    const clearHeldKeys = () => {
+      input.current.forward = false;
+      input.current.backward = false;
+      input.current.left = false;
+      input.current.right = false;
+      input.current.sprint = false;
+      runtime?.setFirstPersonKey?.("KeyW", false);
+      runtime?.setFirstPersonKey?.("KeyS", false);
+      runtime?.setFirstPersonKey?.("KeyA", false);
+      runtime?.setFirstPersonKey?.("KeyD", false);
+      runtime?.setFirstPersonKey?.("ShiftLeft", false);
+      runtime?.setFirstPersonKey?.("ShiftRight", false);
+    };
+
+    const handleBlur = () => {
+      clearHeldKeys();
     };
 
     // Pointer lock for mouse look
@@ -130,11 +164,14 @@ export function FirstPersonController({
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("blur", handleBlur);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("blur", handleBlur);
+      clearHeldKeys();
     };
   }, []);
 
@@ -413,8 +450,14 @@ export function FirstPersonController({
     camera.quaternion.setFromEuler(rotation.current);
     // Spec 149 — tell the runtime where the player's eyes are (grid coords) so bus boarding
     // prompts measure from the capsule, not the detached roster citizen.
-    if (runtime && terrainSizeForGrid > 0)
-      runtime.fpCameraCell = { x: toGridX(pos.x), y: toGridZ(pos.z) };
+    if (runtime) {
+      if (terrainSizeForGrid > 0) {
+        runtime.fpCameraCell = { x: toGridX(pos.x), y: toGridZ(pos.z) };
+      }
+      runtime.fpGamepadMoving = Boolean(
+        gp && (Math.abs(gp.axes?.[0] ?? 0) > 0.1 || Math.abs(gp.axes?.[1] ?? 0) > 0.1),
+      );
+    }
   });
 
   const safeSpawn = [

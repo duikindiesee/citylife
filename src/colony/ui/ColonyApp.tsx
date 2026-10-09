@@ -1520,7 +1520,11 @@ export function ColonyApp() {
         }
         return;
       }
-      if (runtime.getUiState().firstPerson.active) {
+      if (
+        runtime.getUiState().firstPerson.active ||
+        (!runtime.isOwnedDriveSeated() &&
+          runtime.getMultiplayerClient()?.getStatus() === "connected")
+      ) {
         // Continuous WASD / arrow-key locomotion — hold to walk the bot, release to stop (keyup handler).
         if (MOVE.has(e.code)) {
           e.preventDefault();
@@ -1572,11 +1576,18 @@ export function ColonyApp() {
       if (RACE_MOVE.has(e.code)) runtime.setRaceKey(e.code, false);
       if (MOVE.has(e.code)) runtime.setFpKey(norm(e.code), false);
     };
+    const onBlur = () => {
+      for (const k of ["fwd", "back", "strafeLeft", "strafeRight", "left", "right"]) {
+        runtime.setFpKey(k, false);
+      }
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
