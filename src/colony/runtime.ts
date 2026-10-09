@@ -4286,14 +4286,15 @@ export class ColonyRuntime {
     this.setFpKey(key, down);
   }
 
+  /** Returns true if active translational locomotion input is held (fwd, back, strafeLeft, strafeRight).
+   *  Turn-only keys (left/right rotation) do not produce translational movement and must not suppress
+   *  authoritative walking position corrections. */
   hasFpLocomotionInput(): boolean {
     return (
       this.fpKeys.has("fwd") ||
       this.fpKeys.has("back") ||
       this.fpKeys.has("strafeLeft") ||
-      this.fpKeys.has("strafeRight") ||
-      this.fpKeys.has("left") ||
-      this.fpKeys.has("right")
+      this.fpKeys.has("strafeRight")
     );
   }
 

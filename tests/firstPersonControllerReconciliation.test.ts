@@ -710,4 +710,280 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     // Still seq 2 - zero spam!
     expect(runtime.fpTeleportRequest?.seq).toBe(2);
   });
+
+  it("verifies holding turn-only ArrowLeft does not suppress authoritative walking correction and aligns body, camera, world, and mini-map", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const terrainSize = terrain.size;
+    const toWorldX = (gx: number) => (gx - terrainSize / 2) * 4;
+    const toWorldZ = (gy: number) => (gy - terrainSize / 2) * 4;
+
+    // Admission at (40, 40)
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-arrowleft-test",
+        participantId: "part-1",
+        room: "room-1",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "walking",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: toWorldX(40),
+            y: 0,
+            z: toWorldZ(40),
+            heading: 0,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    renderToStaticMarkup(
+      React.createElement(FirstPersonController, {
+        sim: runtime.sim,
+        runtime: runtime as any,
+        startPosition: [toWorldX(40), 2, toWorldZ(40)],
+        terrainLevel: null,
+      })
+    );
+
+    capturedFrameCb!({}, 0.016);
+    expect(currentRigidBody.translation().x).toBe(toWorldX(40));
+    expect(runtime.fpTeleportRequest?.seq).toBe(1);
+
+    // Operator holds ArrowLeft: pure rotation in place, NO translational movement!
+    runtime.setFirstPersonKey("ArrowLeft", true);
+    expect(runtime.hasFpLocomotionInput()).toBe(false);
+
+    // Server sends valid authoritative snapshot moving walker from (40, 40) -> (41, 40)
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-arrowleft-test",
+        seq: 1,
+        timestamp: Date.now() + 50,
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: toWorldX(41),
+            y: 0,
+            z: toWorldZ(40),
+            heading: -0.5,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    // Authoritative snapshot emitted correction to (41, 40) seq 2
+    expect(runtime.fpTeleportRequest).toEqual({
+      x: 41,
+      y: 40,
+      seq: 2,
+      preserveVertical: true,
+      preserveVelocity: true,
+    });
+
+    // Run production useFrame while ArrowLeft is still held
+    capturedFrameCb!({}, 0.016);
+
+    // 1. RigidBody was physically translated to toWorldX(41)
+    expect(currentRigidBody.translation().x).toBe(toWorldX(41));
+    expect(currentRigidBody.translation().z).toBe(toWorldZ(40));
+    // 2. Camera position reflects toWorldX(41)
+    expect(cameraMock.position.x).toBe(toWorldX(41));
+    expect(cameraMock.position.z).toBe(toWorldZ(40));
+    // 3. runtime.fpCameraCell is updated to authoritative position (41, 40)
+    expect(runtime.fpCameraCell).toEqual({ x: 41, y: 40 });
+    // 4. Getter reflects (41, 40)
+    expect(runtime.getWalkingCell()).toEqual({ x: 41, y: 40 });
+
+    // 5. Mini-map projection reflects (41, 40)
+    const mapModel = buildBusNetworkMiniMapModel({
+      ways: [
+        {
+          kind: "avenue",
+          width: 2,
+          path: [
+            { x: 30, y: 30 },
+            { x: 50, y: 50 },
+          ],
+        },
+      ],
+      routeStops: [],
+      depot: null,
+      buses: [],
+      player: runtime.getWalkingCell(),
+      parkedCar: null,
+      peers: [],
+      width: 200,
+      height: 132,
+      padding: 8,
+    });
+    expect(mapModel.player).not.toBeNull();
+    expect(mapModel.player!.x).toBeCloseTo(105.8, 1);
+    expect(mapModel.player!.y).toBeCloseTo(66.0, 1);
+  });
+
+  it("verifies holding turn-only ArrowRight does not suppress authoritative walking correction and aligns body, camera, world, and mini-map", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const terrainSize = terrain.size;
+    const toWorldX = (gx: number) => (gx - terrainSize / 2) * 4;
+    const toWorldZ = (gy: number) => (gy - terrainSize / 2) * 4;
+
+    // Admission at (40, 40)
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-arrowright-test",
+        participantId: "part-1",
+        room: "room-1",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "walking",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: toWorldX(40),
+            y: 0,
+            z: toWorldZ(40),
+            heading: 0,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    renderToStaticMarkup(
+      React.createElement(FirstPersonController, {
+        sim: runtime.sim,
+        runtime: runtime as any,
+        startPosition: [toWorldX(40), 2, toWorldZ(40)],
+        terrainLevel: null,
+      })
+    );
+
+    capturedFrameCb!({}, 0.016);
+    expect(currentRigidBody.translation().x).toBe(toWorldX(40));
+    expect(runtime.fpTeleportRequest?.seq).toBe(1);
+
+    // Operator holds ArrowRight: pure rotation in place, NO translational movement!
+    runtime.setFirstPersonKey("ArrowRight", true);
+    expect(runtime.hasFpLocomotionInput()).toBe(false);
+
+    // Server sends valid authoritative snapshot moving walker from (40, 40) -> (42, 40)
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-arrowright-test",
+        seq: 1,
+        timestamp: Date.now() + 50,
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: toWorldX(42),
+            y: 0,
+            z: toWorldZ(40),
+            heading: 0.8,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    // Authoritative snapshot emitted correction to (42, 40) seq 2
+    expect(runtime.fpTeleportRequest).toEqual({
+      x: 42,
+      y: 40,
+      seq: 2,
+      preserveVertical: true,
+      preserveVelocity: true,
+    });
+
+    // Run production useFrame while ArrowRight is still held
+    capturedFrameCb!({}, 0.016);
+
+    // 1. RigidBody was physically translated to toWorldX(42)
+    expect(currentRigidBody.translation().x).toBe(toWorldX(42));
+    expect(currentRigidBody.translation().z).toBe(toWorldZ(40));
+    // 2. Camera position reflects toWorldX(42)
+    expect(cameraMock.position.x).toBe(toWorldX(42));
+    expect(cameraMock.position.z).toBe(toWorldZ(40));
+    // 3. runtime.fpCameraCell is updated to authoritative position (42, 40)
+    expect(runtime.fpCameraCell).toEqual({ x: 42, y: 40 });
+    // 4. Getter reflects (42, 40)
+    expect(runtime.getWalkingCell()).toEqual({ x: 42, y: 40 });
+
+    // 5. Mini-map projection reflects (42, 40)
+    const mapModel = buildBusNetworkMiniMapModel({
+      ways: [
+        {
+          kind: "avenue",
+          width: 2,
+          path: [
+            { x: 30, y: 30 },
+            { x: 50, y: 50 },
+          ],
+        },
+      ],
+      routeStops: [],
+      depot: null,
+      buses: [],
+      player: runtime.getWalkingCell(),
+      parkedCar: null,
+      peers: [],
+      width: 200,
+      height: 132,
+      padding: 8,
+    });
+    expect(mapModel.player).not.toBeNull();
+    expect(mapModel.player!.x).toBeCloseTo(111.6, 1);
+    expect(mapModel.player!.y).toBeCloseTo(66.0, 1);
+  });
 });
