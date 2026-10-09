@@ -1072,6 +1072,8 @@ export class ColonyRuntime {
     y: number;
     yaw?: number;
     seq: number;
+    preserveVertical?: boolean;
+    preserveVelocity?: boolean;
   } | null = null;
   private fpTeleportSeq = 0;
   /** Spec 088 — road centre-lines for the smooth ribbon render (rendering only; traffic uses the cells). */
@@ -3334,6 +3336,11 @@ export class ColonyRuntime {
             heading: self.heading,
           };
           this.fpCameraCell = { x: walkCellX, y: walkCellY };
+          this.fpTeleportRequest = {
+            x: walkCellX,
+            y: walkCellY,
+            seq: ++this.fpTeleportSeq,
+          };
           if (this.fpCitizenId) {
             const c = this.citizens.byId(this.fpCitizenId);
             if (c) {
@@ -3384,6 +3391,12 @@ export class ColonyRuntime {
             heading: ev.heading,
           };
           this.fpCameraCell = { x: walkCellX, y: walkCellY };
+          this.fpTeleportRequest = {
+            x: walkCellX,
+            y: walkCellY,
+            yaw: -ev.heading - Math.PI / 2,
+            seq: ++this.fpTeleportSeq,
+          };
           if (this.fpCitizenId) {
             const c = this.citizens.byId(this.fpCitizenId);
             if (c) {
@@ -3574,6 +3587,10 @@ export class ColonyRuntime {
                 y: wCellY,
                 heading: p.heading,
               };
+
+              // Capture the live physical predicted body/camera position BEFORE updating fpCameraCell
+              const livePhysicalCell = this.fpCameraCell ? { ...this.fpCameraCell } : null;
+
               this.fpCameraCell = { x: wCellX, y: wCellY };
               if (this.fpCitizenId) {
                 const c = this.citizens.byId(this.fpCitizenId);
@@ -3581,6 +3598,57 @@ export class ColonyRuntime {
                   c.pos.x = wCellX;
                   c.pos.y = wCellY;
                   c.heading = p.heading;
+                }
+              }
+
+              const hasLocalInput = this.hasFpLocomotionInput();
+              const prevTp = this.fpTeleportRequest;
+
+              // Compare against the actual physical position reported by FirstPersonController before assignment.
+              // If livePhysicalCell is not available yet, fall back to prevTp.
+              const physicalX = livePhysicalCell?.x ?? prevTp?.x;
+              const physicalY = livePhysicalCell?.y ?? prevTp?.y;
+
+              const physicalDrifted =
+                physicalX === undefined ||
+                physicalY === undefined ||
+                Math.abs(physicalX - wCellX) > 1e-4 ||
+                Math.abs(physicalY - wCellY) > 1e-4;
+
+              const serverPosChangedFromPrevTp =
+                !prevTp ||
+                Math.abs(prevTp.x - wCellX) > 1e-4 ||
+                Math.abs(prevTp.y - wCellY) > 1e-4;
+
+              if (!hasLocalInput) {
+                // If the physical body drifted away from the authoritative snapshot (e.g. from local
+                // movement, collision, or inertia), OR if the server snapshot moved to a new position,
+                // emit a targeted correction. If already aligned, do not spam requests.
+                if (physicalDrifted || serverPosChangedFromPrevTp) {
+                  this.fpTeleportRequest = {
+                    x: wCellX,
+                    y: wCellY,
+                    seq: ++this.fpTeleportSeq,
+                    preserveVertical: true,
+                    preserveVelocity: true,
+                  };
+                }
+              } else {
+                // When actively moving with local prediction, compare against the LIVE
+                // physical predicted body/camera position captured BEFORE snapshot assignment.
+                // Preserve smooth local locomotion and only reconcile if prediction error > 4 cells (16m^2).
+                const liveCellX = livePhysicalCell?.x ?? prevTp?.x ?? wCellX;
+                const liveCellY = livePhysicalCell?.y ?? prevTp?.y ?? wCellY;
+                const dx = wCellX - liveCellX;
+                const dy = wCellY - liveCellY;
+                if (dx * dx + dy * dy > 4) {
+                  this.fpTeleportRequest = {
+                    x: wCellX,
+                    y: wCellY,
+                    seq: ++this.fpTeleportSeq,
+                    preserveVertical: true,
+                    preserveVelocity: true,
+                  };
                 }
               }
               if (p.carX !== undefined && Number.isFinite(p.carX)) {
@@ -4216,6 +4284,17 @@ export class ColonyRuntime {
 
   setFirstPersonKey(key: string, down: boolean): void {
     this.setFpKey(key, down);
+  }
+
+  hasFpLocomotionInput(): boolean {
+    return (
+      this.fpKeys.has("fwd") ||
+      this.fpKeys.has("back") ||
+      this.fpKeys.has("strafeLeft") ||
+      this.fpKeys.has("strafeRight") ||
+      this.fpKeys.has("left") ||
+      this.fpKeys.has("right")
+    );
   }
 
   /** Pointer-lock mouse-look math: positive dx yaws right; positive dy looks down. */

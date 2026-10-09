@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 import { computeBusNetworkMiniMapSignal } from "../src/colony/ui/BusNetworkMiniMap";
+import { leveledWorldY } from "../src/colony/render/terrainLeveling";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -500,6 +501,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
 
     expect(runtime.getWalkingCell()).toEqual({ x: 40, y: 40 });
     expect(runtime.getAuthoritativeWalkingPose()).toEqual({ x: 40, y: 40, heading: 0 });
+    expect(runtime.fpTeleportRequest).toEqual({ x: 40, y: 40, seq: 1 });
 
     // Snapshot seq 1: 1-cell movement to (41, 40) (dx=1, distSq=1 <= 4)
     const nextX1 = (41 - terrain.size / 2) * 4;
@@ -532,6 +534,13 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     expect(runtime.getWalkingCell()?.x).toBe(41);
     expect(runtime.getWalkingCell()?.y).toBe(40);
     expect(runtime.getAuthoritativeWalkingPose()).toEqual({ x: 41, y: 40, heading: 1.5 });
+    expect(runtime.fpTeleportRequest).toEqual({
+      x: 41,
+      y: 40,
+      seq: 2,
+      preserveVertical: true,
+      preserveVelocity: true,
+    });
 
     // Snapshot seq 2: repeated small subthreshold movement to (41.5, 40.2) (dx=0.5, dy=0.2, distSq=0.29 <= 4)
     const nextX2 = (41.5 - terrain.size / 2) * 4;
@@ -566,6 +575,9 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     expect(runtime.getAuthoritativeWalkingPose()?.x).toBeCloseTo(41.5, 4);
     expect(runtime.getAuthoritativeWalkingPose()?.y).toBeCloseTo(40.2, 4);
     expect(runtime.getAuthoritativeWalkingPose()?.heading).toBe(1.6);
+    expect(runtime.fpTeleportRequest?.x).toBeCloseTo(41.5, 4);
+    expect(runtime.fpTeleportRequest?.y).toBeCloseTo(40.2, 4);
+    expect(runtime.fpTeleportRequest?.seq).toBe(3);
 
     // Build mini-map model and verify exact mathematical projection of server pose
     const mapModel = buildBusNetworkMiniMapModel({
@@ -599,6 +611,330 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     // expectedY = oy + (40.2 - 30) * 5.8 = 8 + 59.16 = 67.16
     expect(mapModel.player!.x).toBeCloseTo(108.7, 1);
     expect(mapModel.player!.y).toBeCloseTo(67.16, 1);
+  });
+
+  it("reconciles physical FirstPersonController capsule, camera, and mini-map under authoritative server correction with no local input", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const terrainSize = terrain.size;
+    const toGridX = (wx: number) => wx / 4 + terrainSize / 2;
+    const toGridZ = (wz: number) => wz / 4 + terrainSize / 2;
+    const toWorldX = (gx: number) => (gx - terrainSize / 2) * 4;
+    const toWorldZ = (gy: number) => (gy - terrainSize / 2) * 4;
+
+    // Production controller simulation harness directly implementing FirstPersonController.tsx:210-233 & 355-403
+    let consumedTeleport = 0;
+    const rigidBody = {
+      pos: { x: toWorldX(40), y: 2, z: toWorldZ(40) },
+      linvel: { x: 0, y: 0, z: 0 },
+      translation() {
+        return { ...this.pos };
+      },
+      setTranslation(p: { x: number; y: number; z: number }, _wake: boolean) {
+        this.pos = { ...p };
+      },
+      setLinvel(v: { x: number; y: number; z: number }, _wake: boolean) {
+        this.linvel = { ...v };
+      },
+    };
+    const camera = {
+      position: {
+        x: toWorldX(40),
+        y: 3.6,
+        z: toWorldZ(40),
+        set(x: number, y: number, z: number) {
+          this.x = x;
+          this.y = y;
+          this.z = z;
+        },
+      },
+    };
+
+    const runControllerFrame = (localInput: { moveX: number; moveZ: number } = { moveX: 0, moveZ: 0 }) => {
+      // 1. One-shot teleports (Spec 149, FirstPersonController lines 212-233)
+      const tp = runtime.fpTeleportRequest;
+      if (tp && tp.seq !== consumedTeleport && terrainSize > 0) {
+        consumedTeleport = tp.seq;
+        const gx = Math.max(0, Math.min(terrainSize - 1, Math.round(tp.x)));
+        const gz = Math.max(0, Math.min(terrainSize - 1, Math.round(tp.y)));
+        const groundY = leveledWorldY(terrain, null, gx, gz);
+        rigidBody.setTranslation({ x: toWorldX(tp.x), y: groundY + 1.5, z: toWorldZ(tp.y) }, true);
+        rigidBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      }
+
+      // 2. Local input processing (FirstPersonController lines 285-353)
+      const moving = localInput.moveX !== 0 || localInput.moveZ !== 0;
+      if (moving) {
+        rigidBody.setLinvel({ x: localInput.moveX * 3.4, y: rigidBody.linvel.y, z: localInput.moveZ * 3.4 }, true);
+      } else {
+        rigidBody.setLinvel({ x: 0, y: rigidBody.linvel.y, z: 0 }, true);
+      }
+
+      // 3. Camera sync & fpCameraCell reporting (FirstPersonController lines 355-403)
+      const pos = rigidBody.translation();
+      const camY = pos.y + 1.6; // PLAYER_EYE_OFFSET
+      camera.position.set(pos.x, camY, pos.z);
+      runtime.fpCameraCell = { x: toGridX(pos.x), y: toGridZ(pos.z) };
+    };
+
+    // Admission at (40, 40)
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-controller-reconcile",
+        participantId: "part-1",
+        room: "room-1",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "walking",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: toWorldX(40),
+            y: 0,
+            z: toWorldZ(40),
+            heading: 0,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    expect(runtime.fpTeleportRequest).toEqual({ x: 40, y: 40, seq: 1 });
+    // Controller consumes initial placement
+    runControllerFrame({ moveX: 0, moveZ: 0 });
+    expect(consumedTeleport).toBe(1);
+    expect(rigidBody.translation().x).toBe(toWorldX(40));
+    expect(rigidBody.translation().z).toBe(toWorldZ(40));
+    expect(camera.position.x).toBe(toWorldX(40));
+    expect(runtime.fpCameraCell).toEqual({ x: 40, y: 40 });
+    expect(runtime.getWalkingCell()).toEqual({ x: 40, y: 40 });
+
+    // Server sends valid authoritative snapshot moving walker from (40, 40) -> (41, 40)
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-controller-reconcile",
+        seq: 1,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: toWorldX(41),
+            y: 0,
+            z: toWorldZ(40),
+            heading: 1.5,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    // Authoritative snapshot updates runtime authoritative pose and emits fresh fpTeleportRequest
+    expect(runtime.getAuthoritativeWalkingPose()).toEqual({ x: 41, y: 40, heading: 1.5 });
+    expect(runtime.fpTeleportRequest).toEqual({
+      x: 41,
+      y: 40,
+      seq: 2,
+      preserveVertical: true,
+      preserveVelocity: true,
+    });
+
+    // Now execute production controller frame with NO local input
+    runControllerFrame({ moveX: 0, moveZ: 0 });
+
+    // VERIFICATION OF DEFECT CORRECTION:
+    // 1. Controller consumed teleport seq 2
+    expect(consumedTeleport).toBe(2);
+    // 2. Physical capsule is translated to world coords of (41, 40)
+    expect(rigidBody.translation().x).toBe(toWorldX(41));
+    expect(rigidBody.translation().z).toBe(toWorldZ(40));
+    // 3. Camera position reflects world coords of (41, 40)
+    expect(camera.position.x).toBe(toWorldX(41));
+    expect(camera.position.z).toBe(toWorldZ(40));
+    // 4. runtime.fpCameraCell is NOT overwritten back to 40; it matches authoritative position 41!
+    expect(runtime.fpCameraCell).toEqual({ x: 41, y: 40 });
+    // 5. Getter returns 41
+    expect(runtime.getWalkingCell()).toEqual({ x: 41, y: 40 });
+
+    // Mini-map projection check for corrected location
+    const mapModel = buildBusNetworkMiniMapModel({
+      ways: [
+        {
+          kind: "avenue",
+          width: 2,
+          path: [
+            { x: 30, y: 30 },
+            { x: 50, y: 50 },
+          ],
+        },
+      ],
+      routeStops: [],
+      depot: null,
+      buses: [],
+      player: runtime.getWalkingCell(),
+      parkedCar: null,
+      peers: [],
+      width: 200,
+      height: 132,
+      padding: 8,
+    });
+    expect(mapModel.player).not.toBeNull();
+    // Bounding box [30..50, 30..50], scale = 5.8, ox = 42, oy = 8
+    // expectedX = 42 + (41 - 30) * 5.8 = 42 + 63.8 = 105.8
+    // expectedY = 8 + (40 - 30) * 5.8 = 8 + 58 = 66
+    expect(mapModel.player!.x).toBeCloseTo(105.8, 1);
+    expect(mapModel.player!.y).toBeCloseTo(66.0, 1);
+
+    // Subsequent frame with no new snapshot and no local input: stays locked at (41, 40)
+    runControllerFrame({ moveX: 0, moveZ: 0 });
+    expect(consumedTeleport).toBe(2);
+    expect(rigidBody.translation().x).toBe(toWorldX(41));
+    expect(camera.position.x).toBe(toWorldX(41));
+    expect(runtime.fpCameraCell).toEqual({ x: 41, y: 40 });
+    expect(runtime.getWalkingCell()).toEqual({ x: 41, y: 40 });
+
+    // Stationary snapshot seq 2 at (41, 40) must NOT spam new teleport requests
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-controller-reconcile",
+        seq: 2,
+        timestamp: Date.now() + 50,
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: toWorldX(41),
+            y: 0,
+            z: toWorldZ(40),
+            heading: 1.5,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.fpTeleportRequest?.seq).toBe(2); // Still seq 2, not incremented!
+
+    // Prediction preservation: when local input is active, small subthreshold snapshots must not spam teleports
+    runtime.setFirstPersonKey("KeyW", true);
+    expect(runtime.hasFpLocomotionInput()).toBe(true);
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-controller-reconcile",
+        seq: 3,
+        timestamp: Date.now() + 100,
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: toWorldX(41.2),
+            y: 0,
+            z: toWorldZ(40),
+            heading: 1.5,
+            speed: 1,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    // Prediction preserved: no teleport request during active local locomotion for small delta <= 4 cells
+    expect(runtime.fpTeleportRequest?.seq).toBe(2);
+
+    // Large misprediction (> 4 cells = 16m^2) while walking DOES reconcile
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-controller-reconcile",
+        seq: 4,
+        timestamp: Date.now() + 150,
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: toWorldX(47),
+            y: 0,
+            z: toWorldZ(40),
+            heading: 1.5,
+            speed: 1,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.fpTeleportRequest?.seq).toBe(3);
+    expect(runtime.fpTeleportRequest?.x).toBe(47);
+
+    // User stops walking: release keys
+    runtime.setFirstPersonKey("KeyW", false);
+    expect(runtime.hasFpLocomotionInput()).toBe(false);
+
+    // Resting snapshot reconciles cleanly
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-controller-reconcile",
+        seq: 5,
+        timestamp: Date.now() + 200,
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: toWorldX(47.5),
+            y: 0,
+            z: toWorldZ(40),
+            heading: 1.5,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.fpTeleportRequest?.seq).toBe(4);
+    expect(runtime.fpTeleportRequest?.x).toBe(47.5);
+
+    runControllerFrame({ moveX: 0, moveZ: 0 });
+    expect(consumedTeleport).toBe(4);
+    expect(rigidBody.translation().x).toBe(toWorldX(47.5));
+    expect(camera.position.x).toBe(toWorldX(47.5));
+    expect(runtime.fpCameraCell).toEqual({ x: 47.5, y: 40 });
+    expect(runtime.getWalkingCell()).toEqual({ x: 47.5, y: 40 });
   });
 
   it("rejects stale/duplicate sequences, mismatched sessions, and stale modeEpoch snapshots", async () => {
@@ -674,6 +1010,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       }),
     });
     expect(runtime.getWalkingCell()?.x).toBe(45);
+    expect(runtime.fpTeleportRequest?.x).toBe(45);
 
     // Rejection 1: Stale sequence (seq 4 < active 5) must be ignored
     const posStaleSeqX = (50 - terrain.size / 2) * 4;
@@ -701,6 +1038,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       }),
     });
     expect(runtime.getWalkingCell()?.x).toBe(45);
+    expect(runtime.fpTeleportRequest?.x).toBe(45);
 
     // Rejection 2: Duplicate sequence (seq 5 again) must be ignored
     socket.onmessage?.({
@@ -727,6 +1065,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       }),
     });
     expect(runtime.getWalkingCell()?.x).toBe(45);
+    expect(runtime.fpTeleportRequest?.x).toBe(45);
 
     // Rejection 3: Wrong session ID must be ignored
     socket.onmessage?.({
@@ -753,6 +1092,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       }),
     });
     expect(runtime.getWalkingCell()?.x).toBe(45);
+    expect(runtime.fpTeleportRequest?.x).toBe(45);
 
     // Rejection 4: Stale modeEpoch (epoch 1 < active 2) must be ignored
     socket.onmessage?.({
@@ -779,6 +1119,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       }),
     });
     expect(runtime.getWalkingCell()?.x).toBe(45);
+    expect(runtime.fpTeleportRequest?.x).toBe(45);
 
     // Rejection 5: Stale mode (driving participant while client is walking) must be ignored
     socket.onmessage?.({
@@ -806,6 +1147,35 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       }),
     });
     expect(runtime.getWalkingCell()?.x).toBe(45);
+    expect(runtime.fpTeleportRequest?.x).toBe(45);
+
+    // Positive: Fresh monotonic valid seq 9 with matching session and epoch must be accepted
+    const posValidSeq9X = (48 - terrain.size / 2) * 4;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-1",
+        seq: 9,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: posValidSeq9X,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 1,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getWalkingCell()?.x).toBe(48);
+    expect(runtime.fpTeleportRequest?.x).toBe(48);
   });
 
   it("clears authoritative walking pose on disconnect and disableMultiplayer, allowing legitimate local walking and reconnect sequence reset", async () => {

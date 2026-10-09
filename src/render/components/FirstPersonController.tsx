@@ -45,6 +45,8 @@ interface FpRuntimeBridge {
     y: number;
     yaw?: number;
     seq: number;
+    preserveVertical?: boolean;
+    preserveVelocity?: boolean;
   } | null;
   fpCameraCell?: { x: number; y: number } | null;
 }
@@ -221,11 +223,20 @@ export function FirstPersonController({
         Math.min(terrainSizeForGrid - 1, Math.round(tp.y)),
       );
       const groundY = leveledWorldY(sim.state.terrain, terrainLevel, gx, gz);
+      const curPos = rigidBody.current.translation();
+      const curVel = rigidBody.current.linvel();
+      const targetY = tp.preserveVertical
+        ? Math.max(groundY + 1.5, curPos.y)
+        : groundY + 1.5;
       rigidBody.current.setTranslation(
-        { x: toWorldX(tp.x), y: groundY + 1.5, z: toWorldZ(tp.y) },
+        { x: toWorldX(tp.x), y: targetY, z: toWorldZ(tp.y) },
         true,
       );
-      rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      if (tp.preserveVelocity) {
+        rigidBody.current.setLinvel({ x: 0, y: curVel.y, z: 0 }, true);
+      } else {
+        rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      }
       if (tp.yaw !== undefined) {
         rotation.current.y = tp.yaw;
         rotation.current.x = 0;
@@ -258,7 +269,10 @@ export function FirstPersonController({
     }
 
     // 1. Handle Gamepad Input
-    const gamepads = navigator.getGamepads();
+    const gamepads =
+      typeof navigator !== "undefined" && typeof navigator.getGamepads === "function"
+        ? navigator.getGamepads()
+        : [];
     const gp = gamepads[0]; // Assuming PS5 controller is index 0
     let moveX = 0;
     let moveZ = 0;
