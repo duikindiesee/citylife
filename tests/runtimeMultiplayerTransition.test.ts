@@ -448,4 +448,512 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     expect(postLogoutModel.parkedCars.length).toBe(0);
     expect(postLogoutModel.peers.length).toBe(0);
   });
+
+  it("adopts authoritative self walking pose on valid snapshots with repeated subthreshold updates and explicit map projections", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const initX = (40 - terrain.size / 2) * 4;
+    const initZ = (40 - terrain.size / 2) * 4;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-1",
+        participantId: "part-1",
+        room: "room-1",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "walking",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: initX,
+            y: 0,
+            z: initZ,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    expect(runtime.getWalkingCell()).toEqual({ x: 40, y: 40 });
+    expect(runtime.getAuthoritativeWalkingPose()).toEqual({ x: 40, y: 40, heading: 0 });
+
+    // Snapshot seq 1: 1-cell movement to (41, 40) (dx=1, distSq=1 <= 4)
+    const nextX1 = (41 - terrain.size / 2) * 4;
+    const nextZ1 = (40 - terrain.size / 2) * 4;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-1",
+        seq: 1,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: nextX1,
+            y: 0,
+            z: nextZ1,
+            heading: 1.5,
+            speed: 0.5,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    expect(runtime.getWalkingCell()?.x).toBe(41);
+    expect(runtime.getWalkingCell()?.y).toBe(40);
+    expect(runtime.getAuthoritativeWalkingPose()).toEqual({ x: 41, y: 40, heading: 1.5 });
+
+    // Snapshot seq 2: repeated small subthreshold movement to (41.5, 40.2) (dx=0.5, dy=0.2, distSq=0.29 <= 4)
+    const nextX2 = (41.5 - terrain.size / 2) * 4;
+    const nextZ2 = (40.2 - terrain.size / 2) * 4;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-1",
+        seq: 2,
+        timestamp: Date.now() + 50,
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: nextX2,
+            y: 0,
+            z: nextZ2,
+            heading: 1.6,
+            speed: 0.8,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    expect(runtime.getWalkingCell()?.x).toBeCloseTo(41.5, 4);
+    expect(runtime.getWalkingCell()?.y).toBeCloseTo(40.2, 4);
+    expect(runtime.getAuthoritativeWalkingPose()?.x).toBeCloseTo(41.5, 4);
+    expect(runtime.getAuthoritativeWalkingPose()?.y).toBeCloseTo(40.2, 4);
+    expect(runtime.getAuthoritativeWalkingPose()?.heading).toBe(1.6);
+
+    // Build mini-map model and verify exact mathematical projection of server pose
+    const mapModel = buildBusNetworkMiniMapModel({
+      ways: [
+        {
+          kind: "avenue",
+          width: 2,
+          path: [
+            { x: 30, y: 30 },
+            { x: 50, y: 50 },
+          ],
+        },
+      ],
+      routeStops: [],
+      depot: null,
+      buses: [],
+      player: runtime.getWalkingCell(),
+      parkedCar: null,
+      peers: [],
+      width: 200,
+      height: 132,
+      padding: 8,
+    });
+
+    expect(mapModel.player).not.toBeNull();
+    // Compute expected SVG projection for (41.5, 40.2) within bounding box [30..50, 30..50]
+    // Inner width = 200 - 16 = 184, inner height = 132 - 16 = 116. Scale = min(184/20, 116/20) = 5.8
+    // usedW = 20 * 5.8 = 116, usedH = 20 * 5.8 = 116
+    // Centering offsets: ox = 8 + (184 - 116) / 2 = 42, oy = 8 + (116 - 116) / 2 = 8
+    // expectedX = ox + (41.5 - 30) * 5.8 = 42 + 66.7 = 108.7
+    // expectedY = oy + (40.2 - 30) * 5.8 = 8 + 59.16 = 67.16
+    expect(mapModel.player!.x).toBeCloseTo(108.7, 1);
+    expect(mapModel.player!.y).toBeCloseTo(67.16, 1);
+  });
+
+  it("rejects stale/duplicate sequences, mismatched sessions, and stale modeEpoch snapshots", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const initX = (40 - terrain.size / 2) * 4;
+    const initZ = (40 - terrain.size / 2) * 4;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-1",
+        participantId: "part-1",
+        room: "room-1",
+        protocolVersion: 2,
+        modeEpoch: 2,
+        mode: "walking",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: initX,
+            y: 0,
+            z: initZ,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    expect(runtime.getWalkingCell()).toEqual({ x: 40, y: 40 });
+
+    // Valid seq 5
+    const posSeq5X = (45 - terrain.size / 2) * 4;
+    const posSeq5Z = (40 - terrain.size / 2) * 4;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-1",
+        seq: 5,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: posSeq5X,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 1,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getWalkingCell()?.x).toBe(45);
+
+    // Rejection 1: Stale sequence (seq 4 < active 5) must be ignored
+    const posStaleSeqX = (50 - terrain.size / 2) * 4;
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-1",
+        seq: 4,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: posStaleSeqX,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 1,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getWalkingCell()?.x).toBe(45);
+
+    // Rejection 2: Duplicate sequence (seq 5 again) must be ignored
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-1",
+        seq: 5,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: posStaleSeqX,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 1,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getWalkingCell()?.x).toBe(45);
+
+    // Rejection 3: Wrong session ID must be ignored
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "wrong-session",
+        seq: 6,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: posStaleSeqX,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 1,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getWalkingCell()?.x).toBe(45);
+
+    // Rejection 4: Stale modeEpoch (epoch 1 < active 2) must be ignored
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-1",
+        seq: 7,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: posStaleSeqX,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 1,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getWalkingCell()?.x).toBe(45);
+
+    // Rejection 5: Stale mode (driving participant while client is walking) must be ignored
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-1",
+        seq: 8,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: false,
+            mode: "driving",
+            vehicleKey: "karoo-vonk-11",
+            x: posStaleSeqX,
+            y: 0,
+            z: posSeq5Z,
+            heading: 0,
+            speed: 1,
+            modeEpoch: 2,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getWalkingCell()?.x).toBe(45);
+  });
+
+  it("clears authoritative walking pose on disconnect and disableMultiplayer, allowing legitimate local walking and reconnect sequence reset", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket1 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket1.readyState = MockWebSocket.OPEN;
+    socket1.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const initX = (40 - terrain.size / 2) * 4;
+    const initZ = (40 - terrain.size / 2) * 4;
+
+    socket1.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-1",
+        participantId: "part-1",
+        room: "room-1",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "walking",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: initX,
+            y: 0,
+            z: initZ,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    // Receive snapshot seq 5 at (45, 40)
+    const snapX = (45 - terrain.size / 2) * 4;
+    const snapZ = (40 - terrain.size / 2) * 4;
+    socket1.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-1",
+        seq: 5,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: snapX,
+            y: 0,
+            z: snapZ,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    expect(runtime.getWalkingCell()).toEqual({ x: 45, y: 40 });
+
+    // Disconnect: socket closes
+    socket1.close();
+    expect(runtime.getAuthoritativeWalkingPose()).toBeNull();
+
+    // Legitimate local walking after disconnect
+    runtime.fpCameraCell = { x: 50, y: 52 };
+    expect(runtime.getWalkingCell()).toEqual({ x: 50, y: 52 });
+
+    // Also verify disableMultiplayer cleans up
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.disableMultiplayer();
+    expect(runtime.getAuthoritativeWalkingPose()).toBeNull();
+    runtime.fpCameraCell = { x: 55, y: 57 };
+    expect(runtime.getWalkingCell()).toEqual({ x: 55, y: 57 });
+
+    // Reconnect to a new session (room-2, sess-2)
+    runtime.enableMultiplayer("room-2", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket2 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket2.readyState = MockWebSocket.OPEN;
+    socket2.onopen?.();
+
+    const newInitX = (60 - terrain.size / 2) * 4;
+    const newInitZ = (60 - terrain.size / 2) * 4;
+    socket2.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-2",
+        participantId: "part-2",
+        room: "room-2",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "walking",
+        participants: [
+          {
+            participantId: "part-2",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: newInitX,
+            y: 0,
+            z: newInitZ,
+            heading: 0,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getWalkingCell()).toEqual({ x: 60, y: 60 });
+
+    // Seq resets in new session: snapshot seq 1 (< prior session's seq 5) must be accepted!
+    const newSnapX = (61 - terrain.size / 2) * 4;
+    const newSnapZ = (60 - terrain.size / 2) * 4;
+    socket2.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-2",
+        seq: 1,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-2",
+            userId: "user-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: newSnapX,
+            y: 0,
+            z: newSnapZ,
+            heading: 0,
+            speed: 0.5,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getWalkingCell()?.x).toBe(61);
+  });
 });

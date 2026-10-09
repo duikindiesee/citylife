@@ -2390,6 +2390,8 @@ export class ColonyRuntime {
       this.ownedDriveInputGeneration++;
       this.authoritativeCar = null;
       this.ownedDrivePose = null;
+      this.authoritativeWalkingPose = null;
+      this.lastAppliedSnapshotSeq = 0;
       this.ownedDriveInput = {};
       this.ownedDriveSeated = false;
       this.sim.state.remoteRacers?.clear();
@@ -2783,6 +2785,8 @@ export class ColonyRuntime {
   }
 
   private ownedDrivePose: OwnedDrivePose | null = null;
+  private authoritativeWalkingPose: { x: number; y: number; heading: number } | null = null;
+  private lastAppliedSnapshotSeq = 0;
   private ownedDriveInput: OwnedDriveInput = {};
   private ownedDriveSeated = false;
   private preTransitionSeated = false;
@@ -2824,8 +2828,18 @@ export class ColonyRuntime {
     return null;
   }
 
+  getAuthoritativeWalkingPose(): { x: number; y: number; heading: number } | null {
+    if (this.ownedDriveSeated) return null;
+    return this.authoritativeWalkingPose
+      ? { ...this.authoritativeWalkingPose }
+      : null;
+  }
+
   getWalkingCell(): { x: number; y: number } | null {
     if (this.ownedDriveSeated) return null;
+    if (this.authoritativeWalkingPose) {
+      return { x: this.authoritativeWalkingPose.x, y: this.authoritativeWalkingPose.y };
+    }
     if (this.fpCameraCell) return { ...this.fpCameraCell };
     if (this.fpCitizenId) {
       const c = this.citizens.byId(this.fpCitizenId);
@@ -2836,7 +2850,7 @@ export class ColonyRuntime {
 
   canEnterOwnedCar(): boolean {
     const car = this.ownedDrivePose;
-    const at = this.fpCameraCell;
+    const at = this.getWalkingCell();
     return !!(
       this.operatorUserId &&
       this.authoritativeCar &&
@@ -3261,6 +3275,8 @@ export class ColonyRuntime {
         if (status === "connecting" || status === "disconnected" || status === "error") {
           this.sim.state.remoteRacers?.clear();
           this.ownedDriveInput = {};
+          this.authoritativeWalkingPose = null;
+          this.lastAppliedSnapshotSeq = 0;
           if (status === "error") {
             this.ownedDriveSeated = this.preTransitionSeated;
           }
@@ -3275,6 +3291,8 @@ export class ColonyRuntime {
       onSessionReady: () => {
         // Fresh or reconnected session cleans prior peer state and resets sequence
         this.multiplayerInputSeq = 0;
+        this.lastAppliedSnapshotSeq = 0;
+        this.authoritativeWalkingPose = null;
         this.sim.state.remoteRacers?.clear();
         this.emit();
       },
@@ -3282,6 +3300,7 @@ export class ColonyRuntime {
         this.multiplayerInputSeq = 0;
         const t = this.sim.state.terrain;
         if (self.mode === "driving" && self.vehicleKey) {
+          this.authoritativeWalkingPose = null;
           const cellX = self.x / 4 + t.size / 2;
           const cellY = self.z / 4 + t.size / 2;
           this.ownedDrivePose = { x: cellX, y: cellY, heading: self.heading, speed: self.speed };
@@ -3293,6 +3312,11 @@ export class ColonyRuntime {
           this.preTransitionSeated = false;
           const walkCellX = self.x / 4 + t.size / 2;
           const walkCellY = self.z / 4 + t.size / 2;
+          this.authoritativeWalkingPose = {
+            x: walkCellX,
+            y: walkCellY,
+            heading: self.heading,
+          };
           this.fpCameraCell = { x: walkCellX, y: walkCellY };
           if (this.fpCitizenId) {
             const c = this.citizens.byId(this.fpCitizenId);
@@ -3338,6 +3362,11 @@ export class ColonyRuntime {
           }
           const walkCellX = ev.x / 4 + terrain.size / 2;
           const walkCellY = ev.z / 4 + terrain.size / 2;
+          this.authoritativeWalkingPose = {
+            x: walkCellX,
+            y: walkCellY,
+            heading: ev.heading,
+          };
           this.fpCameraCell = { x: walkCellX, y: walkCellY };
           if (this.fpCitizenId) {
             const c = this.citizens.byId(this.fpCitizenId);
@@ -3371,6 +3400,7 @@ export class ColonyRuntime {
         const terrain = this.sim.state.terrain;
         if (ev.participantId === myParticipantId) {
           this.multiplayerInputSeq = 0;
+          this.authoritativeWalkingPose = null;
           this.ownedDriveSeated = true;
           this.preTransitionSeated = true;
           this.ownedDriveInput = {};
@@ -3487,14 +3517,29 @@ export class ColonyRuntime {
         }
       },
       onSnapshot: (snapshot) => {
+        const session = this.multiplayerClient?.getSessionInfo();
+        if (!session || !session.sessionId || snapshot.sessionId !== session.sessionId) {
+          return;
+        }
+        if (typeof snapshot.seq === "number") {
+          if (snapshot.seq <= this.lastAppliedSnapshotSeq) {
+            return;
+          }
+          this.lastAppliedSnapshotSeq = snapshot.seq;
+        }
+        const currentModeEpoch = this.multiplayerClient?.getModeEpoch() ?? 0;
         const terrain = this.sim.state.terrain;
-        const myParticipantId = this.multiplayerClient?.getSessionInfo().participantId;
+        const myParticipantId = session.participantId;
         for (const p of snapshot.participants) {
           if (p.participantId === myParticipantId || p.userId === this.operatorUserId) {
+            if (typeof p.modeEpoch === "number" && p.modeEpoch < currentModeEpoch) {
+              continue;
+            }
             if (typeof p.lastInputSeq === "number" && p.lastInputSeq > this.multiplayerInputSeq) {
               this.multiplayerInputSeq = p.lastInputSeq;
             }
-            if (this.ownedDriveSeated && this.ownedDrivePose) {
+            const isPed = p.mode === "walking" || Boolean(p.isPedestrian);
+            if (this.ownedDriveSeated && !isPed && this.ownedDrivePose) {
               const sCellX = p.x / 4 + terrain.size / 2;
               const sCellY = p.z / 4 + terrain.size / 2;
               const dx = this.ownedDrivePose.x - sCellX;
@@ -3506,27 +3551,21 @@ export class ColonyRuntime {
                 this.ownedDrivePose.speed = p.speed;
                 this.ownedDrivePose.heading = p.heading;
               }
-            } else if (!this.ownedDriveSeated) {
+            } else if (!this.ownedDriveSeated && isPed) {
               const wCellX = p.x / 4 + terrain.size / 2;
               const wCellY = p.z / 4 + terrain.size / 2;
-              if (this.fpCameraCell) {
-                const dx = this.fpCameraCell.x - wCellX;
-                const dy = this.fpCameraCell.y - wCellY;
-                if (dx * dx + dy * dy > 4) {
-                  this.fpCameraCell.x = wCellX;
-                  this.fpCameraCell.y = wCellY;
-                }
-              }
+              this.authoritativeWalkingPose = {
+                x: wCellX,
+                y: wCellY,
+                heading: p.heading,
+              };
+              this.fpCameraCell = { x: wCellX, y: wCellY };
               if (this.fpCitizenId) {
                 const c = this.citizens.byId(this.fpCitizenId);
                 if (c) {
-                  const dx = c.pos.x - wCellX;
-                  const dy = c.pos.y - wCellY;
-                  if (dx * dx + dy * dy > 4) {
-                    c.pos.x = wCellX;
-                    c.pos.y = wCellY;
-                    c.heading = p.heading;
-                  }
+                  c.pos.x = wCellX;
+                  c.pos.y = wCellY;
+                  c.heading = p.heading;
                 }
               }
               if (p.carX !== undefined && Number.isFinite(p.carX)) {
@@ -3575,6 +3614,7 @@ export class ColonyRuntime {
             }
           }
         }
+        this.emit();
       },
     });
 
@@ -3586,6 +3626,8 @@ export class ColonyRuntime {
       this.multiplayerClient.disconnect();
       this.multiplayerClient = null;
     }
+    this.authoritativeWalkingPose = null;
+    this.lastAppliedSnapshotSeq = 0;
     this.sim.state.remoteRacers?.clear();
     this.emit();
   }

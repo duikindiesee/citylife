@@ -1107,11 +1107,15 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         const history = (window as any).__snapshotHistory || [];
         const last = history[history.length - 1];
         const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
-        return p1 ? { carX: p1.carX, carZ: p1.carZ } : null;
+        return p1 ? { x: p1.x, z: p1.z, carX: p1.carX, carZ: p1.carZ } : null;
       });
       expect(postWalkSnap).not.toBeNull();
+      expect(typeof postWalkSnap!.x).toBe("number");
+      expect(typeof postWalkSnap!.z).toBe("number");
       expect(typeof postWalkSnap!.carX).toBe("number");
       expect(typeof postWalkSnap!.carZ).toBe("number");
+      expect(Number.isFinite(postWalkSnap!.x)).toBe(true);
+      expect(Number.isFinite(postWalkSnap!.z)).toBe(true);
       expect(Number.isFinite(postWalkSnap!.carX)).toBe(true);
       expect(Number.isFinite(postWalkSnap!.carZ)).toBe(true);
       expect(Math.hypot(postWalkSnap!.carX! - parkedCarPose1.x, postWalkSnap!.carZ! - parkedCarPose1.z)).toBeLessThan(0.01);
@@ -1130,7 +1134,96 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       expect(peer3dParkedCar).not.toBeNull();
       expect(Math.hypot(peer3dParkedCar!.x - parkedCarPose1.x, peer3dParkedCar!.z - parkedCarPose1.z)).toBeLessThan(0.01);
 
-      // Verify numerical local and peer marker SVG circle/rect positions against map projection
+      // Assert actual walking 3D world object / camera coordinates against authoritative server snapshot pose with bounded render tolerance
+      const peer3dPedestrian = await page2.evaluate((expectedId) => {
+        const scene = (window as any).__r3fScene;
+        let pos: { x: number; y: number; z: number } | null = null;
+        scene?.traverse((o: any) => {
+          if (o.userData?.participantId === expectedId) {
+            pos = { x: o.position.x, y: o.position.y, z: o.position.z };
+          }
+        });
+        return pos;
+      }, pinnedParticipantId1);
+      expect(peer3dPedestrian).not.toBeNull();
+      const pedDistP2 = Math.hypot(peer3dPedestrian!.x - postWalkSnap!.x, peer3dPedestrian!.z - postWalkSnap!.z);
+      console.log(`Player 2 rendered peer pedestrian 3D avatar vs server snapshot delta: ${pedDistP2.toFixed(4)}m`);
+      expect(pedDistP2).toBeLessThan(0.5);
+
+      const localWalkingProbe = await page1.evaluate(() => {
+        const cam = (window as any).__r3fCamera;
+        const colony = (window as any).__colony;
+        const camPos = cam ? { x: cam.position.x, y: cam.position.y, z: cam.position.z } : null;
+        const walkCell = colony?.getWalkingCell?.();
+        const tSize = colony?.sim?.state?.terrain?.size ?? 128;
+        const walkWorld = walkCell ? { x: (walkCell.x - tSize / 2) * 4, z: (walkCell.y - tSize / 2) * 4 } : null;
+        return { camPos, walkWorld };
+      });
+      expect(localWalkingProbe.walkWorld).not.toBeNull();
+      const localWorldDist = Math.hypot(localWalkingProbe.walkWorld!.x - postWalkSnap!.x, localWalkingProbe.walkWorld!.z - postWalkSnap!.z);
+      console.log(`Player 1 local walking cell in world meters vs server snapshot delta: ${localWorldDist.toFixed(4)}m`);
+      expect(localWorldDist).toBeLessThan(0.5);
+      if (localWalkingProbe.camPos) {
+        const localCamDist = Math.hypot(localWalkingProbe.camPos.x - postWalkSnap!.x, localWalkingProbe.camPos.z - postWalkSnap!.z);
+        console.log(`Player 1 local camera position vs server snapshot delta: ${localCamDist.toFixed(4)}m`);
+        expect(localCamDist).toBeLessThan(1.0);
+      }
+
+      // Compute mathematical SVG projection expectations from exact accepted server snapshot and map bounds
+      const mapProjection = await page1.evaluate(() => {
+        const colony = (window as any).__colony;
+        const state = colony?.sim?.state;
+        const ways = state?.roadWays ?? [];
+        const stops = colony?.busRoute?.stops ?? [];
+        const depot = colony?.busDepot?.site ?? null;
+        const network = [
+          ...ways.flatMap((w: any) => w.path),
+          ...stops,
+          ...(depot ? [{ x: depot.x + (depot.w - 1) / 2, y: depot.y + (depot.h - 1) / 2 }] : []),
+        ];
+        const xs = network.map((p: any) => p.x);
+        const ys = network.map((p: any) => p.y);
+        const rawMinX = xs.length ? Math.min(...xs) : 0;
+        const rawMaxX = xs.length ? Math.max(...xs) : 1;
+        const rawMinY = ys.length ? Math.min(...ys) : 0;
+        const rawMaxY = ys.length ? Math.max(...ys) : 1;
+        const spanX = Math.max(1, rawMaxX - rawMinX);
+        const spanY = Math.max(1, rawMaxY - rawMinY);
+        const width = 200;
+        const height = 132;
+        const padding = 8;
+        const drawableW = Math.max(1, width - padding * 2);
+        const drawableH = Math.max(1, height - padding * 2);
+        const scale = Math.min(drawableW / spanX, drawableH / spanY);
+        const usedW = spanX * scale;
+        const usedH = spanY * scale;
+        const ox = padding + (drawableW - usedW) / 2;
+        const oy = padding + (drawableH - usedH) / 2;
+        const tSize = state?.terrain?.size ?? 128;
+        return { rawMinX, rawMinY, spanX, spanY, scale, ox, oy, width, height, padding, tSize };
+      });
+      expect(mapProjection).not.toBeNull();
+      const tSize = mapProjection!.tSize;
+      const expectedParkedCell = {
+        x: postWalkSnap!.carX / 4 + tSize / 2,
+        y: postWalkSnap!.carZ / 4 + tSize / 2,
+      };
+      const expectedPedCell = {
+        x: postWalkSnap!.x / 4 + tSize / 2,
+        y: postWalkSnap!.z / 4 + tSize / 2,
+      };
+      const projectPoint = (cell: { x: number; y: number }) => {
+        const rawX = mapProjection!.ox + (cell.x - mapProjection!.rawMinX) * mapProjection!.scale;
+        const rawY = mapProjection!.oy + (cell.y - mapProjection!.rawMinY) * mapProjection!.scale;
+        return {
+          x: Math.min(mapProjection!.width - mapProjection!.padding, Math.max(mapProjection!.padding, rawX)),
+          y: Math.min(mapProjection!.height - mapProjection!.padding, Math.max(mapProjection!.padding, rawY)),
+        };
+      };
+      const expectedParkedSvg = projectPoint(expectedParkedCell);
+      const expectedPedSvg = projectPoint(expectedPedCell);
+
+      // Verify numerical local and peer marker SVG circle/rect positions against calculated map projection
       await mapBtnP1.click();
       const localMarker = page1.locator('[data-testid="city-map-parked-car-marker"][data-local="true"]');
       await expect(localMarker).toBeAttached({ timeout: 5000 });
@@ -1140,7 +1233,18 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       expect(Number.isFinite(localX)).toBe(true);
       expect(Number.isFinite(localY)).toBe(true);
       expect(localX).toBeGreaterThan(0);
-      expect(localY).toBeGreaterThan(0);
+      expect(Math.hypot(localX - expectedParkedSvg.x, localY - expectedParkedSvg.y)).toBeLessThan(1.0);
+
+      const localPlayerMarker = page1.locator('[data-testid="city-map-player-marker"]');
+      await expect(localPlayerMarker).toBeAttached({ timeout: 5000 });
+      const localPlayerCircle = localPlayerMarker.locator("circle").first();
+      const localPlayerX = Number(await localPlayerCircle.getAttribute("cx"));
+      const localPlayerY = Number(await localPlayerCircle.getAttribute("cy"));
+      expect(Number.isFinite(localPlayerX)).toBe(true);
+      expect(Number.isFinite(localPlayerY)).toBe(true);
+      expect(localPlayerX).toBeGreaterThan(0);
+      expect(localPlayerY).toBeGreaterThan(0);
+      expect(Math.hypot(localPlayerX - expectedPedSvg.x, localPlayerY - expectedPedSvg.y)).toBeLessThan(1.0);
       await mapBtnP1.click();
 
       await mapBtnP2.click();
@@ -1151,8 +1255,22 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       const peerY = Number(await peerCircle.getAttribute("cy"));
       expect(Number.isFinite(peerX)).toBe(true);
       expect(Number.isFinite(peerY)).toBe(true);
+      // Assert peer parked car marker against mathematical projection of accepted server snapshot
+      expect(Math.hypot(peerX - expectedParkedSvg.x, peerY - expectedParkedSvg.y)).toBeLessThan(1.0);
       // Both maps project the identical stationary parked car to the same SVG coordinates
       expect(Math.hypot(peerX - localX, peerY - localY)).toBeLessThan(1.0);
+
+      const peerPlayerMarker = page2.locator(`[data-testid="city-map-peer-marker"][data-participant-id="${pinnedParticipantId1}"]`);
+      await expect(peerPlayerMarker).toBeAttached({ timeout: 5000 });
+      const peerPlayerCircle = peerPlayerMarker.locator("circle").first();
+      const peerPlayerX = Number(await peerPlayerCircle.getAttribute("cx"));
+      const peerPlayerY = Number(await peerPlayerCircle.getAttribute("cy"));
+      expect(Number.isFinite(peerPlayerX)).toBe(true);
+      expect(Number.isFinite(peerPlayerY)).toBe(true);
+      // Assert peer walking player marker against mathematical projection of accepted server snapshot
+      expect(Math.hypot(peerPlayerX - expectedPedSvg.x, peerPlayerY - expectedPedSvg.y)).toBeLessThan(1.0);
+      // Both maps project the identical walking pedestrian to the same SVG coordinates
+      expect(Math.hypot(peerPlayerX - localPlayerX, peerPlayerY - localPlayerY)).toBeLessThan(1.0);
       await mapBtnP2.click();
 
       // 4. Player 1 re-enters vehicle via genuine pointer click on "Enter your car"
