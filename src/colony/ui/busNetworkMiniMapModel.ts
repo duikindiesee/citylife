@@ -18,6 +18,11 @@ export interface MiniMapPeerPoint extends MiniMapMovingPoint {
   participantId: string;
   username: string;
 }
+export interface MiniMapParkedCarPoint extends MiniMapMovingPoint {
+  id: string;
+  ownerName: string;
+  isLocal: boolean;
+}
 export interface BusNetworkMiniMapModel {
   roads: { points: string; source: RoadWay["source"] }[];
   stops: MiniMapPoint[];
@@ -26,6 +31,8 @@ export interface BusNetworkMiniMapModel {
   busClusters: MiniMapBusCluster[];
   /** Remote peers in active multiplayer session. */
   peers: MiniMapPeerPoint[];
+  /** Authoritative stationary parked cars (local on foot and remote peers). */
+  parkedCars: MiniMapParkedCarPoint[];
   /** The local player's exact surface-grid fix, when the runtime has one. */
   player: MiniMapMovingPoint | null;
   bounds: { minX: number; minY: number; spanX: number; spanY: number };
@@ -36,8 +43,22 @@ interface Input {
   routeStops: { x: number; y: number }[];
   depot: { x: number; y: number } | null;
   buses: { id: number; x: number; y: number }[];
-  peers?: { participantId: string; username: string; x: number; y: number }[];
+  peers?: {
+    participantId: string;
+    username: string;
+    x: number;
+    y: number;
+    parkedCar?: { x: number; y: number } | null;
+  }[];
+  parkedCars?: {
+    id: string;
+    ownerName: string;
+    isLocal: boolean;
+    x: number;
+    y: number;
+  }[];
   player?: { x: number; y: number } | null;
+  parkedCar?: { x: number; y: number } | null;
   width: number;
   height: number;
   padding: number;
@@ -114,6 +135,39 @@ export function buildBusNetworkMiniMapModel(
       cluster.ids.push(bus.id);
     }
   }
+
+  const parkedCars: MiniMapParkedCarPoint[] = [];
+  if (input.parkedCar) {
+    parkedCars.push({
+      id: "local-parked-car",
+      ownerName: "You",
+      isLocal: true,
+      ...projectMoving(input.parkedCar),
+    });
+  }
+  if (input.parkedCars) {
+    for (const pc of input.parkedCars) {
+      parkedCars.push({
+        id: pc.id,
+        ownerName: pc.ownerName,
+        isLocal: pc.isLocal,
+        ...projectMoving(pc),
+      });
+    }
+  }
+  if (input.peers) {
+    for (const peer of input.peers) {
+      if (peer.parkedCar) {
+        parkedCars.push({
+          id: `peer-parked-${peer.participantId}`,
+          ownerName: peer.username,
+          isLocal: false,
+          ...projectMoving(peer.parkedCar),
+        });
+      }
+    }
+  }
+
   return {
     roads: input.ways.map((way) => ({
       source: way.source,
@@ -129,6 +183,7 @@ export function buildBusNetworkMiniMapModel(
     buses,
     busClusters,
     peers,
+    parkedCars,
     player: input.player ? projectMoving(input.player) : null,
     bounds: { minX: rawMinX, minY: rawMinY, spanX, spanY },
   };

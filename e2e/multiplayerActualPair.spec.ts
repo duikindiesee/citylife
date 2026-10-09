@@ -427,24 +427,44 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
           const colony = (window as any).__colony;
           const mp = colony.getMultiplayerClient();
           (window as any).__snapshotHistory = [];
+          (window as any).__sentInputs = [];
           if (mp) {
             const orig = mp.options.onSnapshot;
             mp.options.onSnapshot = (s: any) => {
               (window as any).__snapshotHistory.push(s);
               orig?.(s);
             };
+            if (mp.ws) {
+              const origSend = mp.ws.send.bind(mp.ws);
+              mp.ws.send = (data: any) => {
+                try {
+                  (window as any).__sentInputs.push(JSON.parse(data));
+                } catch {}
+                return origSend(data);
+              };
+            }
           }
         }),
         page2.evaluate(() => {
           const colony = (window as any).__colony;
           const mp = colony.getMultiplayerClient();
           (window as any).__snapshotHistory = [];
+          (window as any).__sentInputs = [];
           if (mp) {
             const orig = mp.options.onSnapshot;
             mp.options.onSnapshot = (s: any) => {
               (window as any).__snapshotHistory.push(s);
               orig?.(s);
             };
+            if (mp.ws) {
+              const origSend = mp.ws.send.bind(mp.ws);
+              mp.ws.send = (data: any) => {
+                try {
+                  (window as any).__sentInputs.push(JSON.parse(data));
+                } catch {}
+                return origSend(data);
+              };
+            }
           }
         }),
       ]);
@@ -1030,6 +1050,111 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       console.log(`Player 2 view of Player 1 as pedestrian saved to: ${pedScreenshotPath}`);
       recordStage("Player 2 3D scene independently verified rendering Player 1 as pedestrian avatar (Capsule/Sphere geometry) and captured screenshot");
 
+      // 3.1. Observe that in Player 2's 3D scene, BOTH the walking pedestrian avatar AND the stationary parked car visual coexist
+      await page2.waitForFunction(() => {
+        const scene = (window as any).__r3fScene;
+        let foundParkedCar = false;
+        scene?.traverse((o: any) => {
+          if (o.name && o.name.includes("remote-parked-car-jamtin")) {
+            foundParkedCar = true;
+          }
+        });
+        return foundParkedCar;
+      }, undefined, { timeout: 15_000 });
+      console.log("Player 2 3D scene verified rendering both Player 1 pedestrian avatar AND Player 1 stationary parked car visual.");
+
+      // 3.2. Check mini-map on Player 2: peer parked car marker is owner-scoped (data-local="false") alongside walking peer marker
+      const mapBtnP2 = page2.locator('[data-testid="player-map-shortcut"]');
+      await mapBtnP2.click();
+      const peerParkedMarker = page2.locator('[data-testid="city-map-parked-car-marker"][data-local="false"]');
+      await expect(peerParkedMarker).toBeAttached({ timeout: 10_000 });
+      await expect(peerParkedMarker).toHaveAttribute("data-parked-car-id", `peer-parked-${pinnedParticipantId1}`);
+      await expect(peerParkedMarker).toHaveAttribute("aria-label", "Parked vehicle of jamtin");
+      await mapBtnP2.click(); // close map
+
+      // 3.3. Check mini-map on Player 1: local parked car marker is owner-scoped (data-local="true") alongside walking player
+      const mapBtnP1 = page1.locator('[data-testid="player-map-shortcut"]');
+      await mapBtnP1.click();
+      const localParkedMarker = page1.locator('[data-testid="city-map-parked-car-marker"][data-local="true"]');
+      await expect(localParkedMarker).toBeAttached({ timeout: 10_000 });
+      await expect(localParkedMarker).toHaveAttribute("data-parked-car-id", "local-parked-car");
+      await expect(localParkedMarker).toHaveAttribute("aria-label", "Your parked vehicle");
+      await mapBtnP1.click(); // close map
+
+      // 3.4. Control-driven walking movement (no teleport): dispatch walking forward input via genuine controls
+      await page1.bringToFront();
+      await page1.locator("canvas").click();
+      await page1.keyboard.down("KeyW");
+
+      // Verify emitted walking input frame plus server displacement
+      await page1.waitForFunction(() => {
+        const sent = (window as any).__sentInputs || [];
+        return sent.some((msg: any) => msg.type === "input" && msg.mode === "walking" && msg.forward === 1);
+      }, undefined, { timeout: 15_000 });
+
+      await page1.waitForFunction((initial) => {
+        const history = (window as any).__snapshotHistory || [];
+        if (!history.length) return false;
+        const last = history[history.length - 1];
+        const p1 = last.participants?.find((p: any) => p.username === "jamtin");
+        if (!p1 || !initial) return false;
+        return Math.hypot(p1.x - initial.x, p1.z - initial.z) > 0.2;
+      }, walkingPosP1, { timeout: 15_000 });
+      await page1.keyboard.up("KeyW");
+
+      // Verify parked car coordinates are mandatory and remained strictly stationary at parkedCarPose1 during walking
+      const postWalkSnap = await page1.evaluate(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const p1 = last?.participants?.find((p: any) => p.username === "jamtin");
+        return p1 ? { carX: p1.carX, carZ: p1.carZ } : null;
+      });
+      expect(postWalkSnap).not.toBeNull();
+      expect(typeof postWalkSnap!.carX).toBe("number");
+      expect(typeof postWalkSnap!.carZ).toBe("number");
+      expect(Number.isFinite(postWalkSnap!.carX)).toBe(true);
+      expect(Number.isFinite(postWalkSnap!.carZ)).toBe(true);
+      expect(Math.hypot(postWalkSnap!.carX! - parkedCarPose1.x, postWalkSnap!.carZ! - parkedCarPose1.z)).toBeLessThan(0.01);
+
+      // Verify 3D world parked car mesh position remains stationary on Player 2
+      const peer3dParkedCar = await page2.evaluate(() => {
+        const scene = (window as any).__r3fScene;
+        let pos: { x: number; y: number; z: number } | null = null;
+        scene?.traverse((o: any) => {
+          if (o.name && o.name.includes("remote-parked-car-jamtin")) {
+            pos = { x: o.position.x, y: o.position.y, z: o.position.z };
+          }
+        });
+        return pos;
+      });
+      expect(peer3dParkedCar).not.toBeNull();
+      expect(Math.hypot(peer3dParkedCar!.x - parkedCarPose1.x, peer3dParkedCar!.z - parkedCarPose1.z)).toBeLessThan(0.01);
+
+      // Verify numerical local and peer marker SVG circle/rect positions against map projection
+      await mapBtnP1.click();
+      const localMarker = page1.locator('[data-testid="city-map-parked-car-marker"][data-local="true"]');
+      await expect(localMarker).toBeAttached({ timeout: 5000 });
+      const localCircle = localMarker.locator("circle");
+      const localX = Number(await localCircle.getAttribute("cx"));
+      const localY = Number(await localCircle.getAttribute("cy"));
+      expect(Number.isFinite(localX)).toBe(true);
+      expect(Number.isFinite(localY)).toBe(true);
+      expect(localX).toBeGreaterThan(0);
+      expect(localY).toBeGreaterThan(0);
+      await mapBtnP1.click();
+
+      await mapBtnP2.click();
+      const peerMarker = page2.locator('[data-testid="city-map-parked-car-marker"][data-local="false"]');
+      await expect(peerMarker).toBeAttached({ timeout: 5000 });
+      const peerCircle = peerMarker.locator("circle");
+      const peerX = Number(await peerCircle.getAttribute("cx"));
+      const peerY = Number(await peerCircle.getAttribute("cy"));
+      expect(Number.isFinite(peerX)).toBe(true);
+      expect(Number.isFinite(peerY)).toBe(true);
+      // Both maps project the identical stationary parked car to the same SVG coordinates
+      expect(Math.hypot(peerX - localX, peerY - localY)).toBeLessThan(1.0);
+      await mapBtnP2.click();
+
       // 4. Player 1 re-enters vehicle via genuine pointer click on "Enter your car"
       const enterBtn1 = page1.locator('[data-testid="enter-owned-car"]');
       await expect(enterBtn1).toBeVisible({ timeout: 10_000 });
@@ -1118,6 +1243,30 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       await page2.screenshot({ path: carScreenshotPath });
       console.log(`Player 2 view of Player 1 restored as car saved to: ${carScreenshotPath}`);
       recordStage("Player 2 3D scene independently verified rendering Player 1 as car model (Box/Cylinder geometry) and captured screenshot");
+
+      // 6.1 Verify 3D parked car visual is cleared from Player 2's scene after Player 1 re-enters car
+      await page2.waitForFunction(() => {
+        const scene = (window as any).__r3fScene;
+        let foundParkedCar = false;
+        scene?.traverse((o: any) => {
+          if (o.name && o.name.includes("remote-parked-car-jamtin")) {
+            foundParkedCar = true;
+          }
+        });
+        return !foundParkedCar;
+      }, undefined, { timeout: 15_000 });
+
+      // 6.2 Verify mini-map parked car markers are cleared on both players after boarding
+      const mapBtnP2Post = page2.locator('[data-testid="player-map-shortcut"]');
+      await mapBtnP2Post.click();
+      await expect(page2.locator('[data-testid="city-map-parked-car-marker"]')).toHaveCount(0);
+      await mapBtnP2Post.click();
+
+      const mapBtnP1Post = page1.locator('[data-testid="player-map-shortcut"]');
+      await mapBtnP1Post.click();
+      await expect(page1.locator('[data-testid="city-map-parked-car-marker"]')).toHaveCount(0);
+      await mapBtnP1Post.click();
+      recordStage("Verified parked car cleared from 3D world and mini-map on both players after boarding");
 
       // 7. Re-engage throttle to prove controls and simulation loop continuation after re-entry
       const throttleReentry1 = page1.locator('button[data-drive-action="throttle"]');

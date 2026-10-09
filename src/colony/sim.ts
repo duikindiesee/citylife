@@ -661,6 +661,12 @@ export interface ColonyState {
       speed: number;
       lastSeen: number;
       spec?: CarSpec | null;
+      carX?: number;
+      carY?: number;
+      carZ?: number;
+      carHeading?: number;
+      carSpeed?: number;
+      modeEpoch?: number;
     }
   >;
   /** Render toggle for the zoning overlays (spec 131) — set through setZonesVisible(). */
