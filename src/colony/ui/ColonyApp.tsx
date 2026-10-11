@@ -786,6 +786,8 @@ export function ColonyApp() {
               }
               runtime.hydrateWorldLayout(document);
             },
+            exportCanonicalTransitAuthority: (document) =>
+              runtime.exportCanonicalTransitAuthority(document),
           },
         }),
         error: null,

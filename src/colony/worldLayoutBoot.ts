@@ -373,7 +373,13 @@ export class WorldLayoutBootCoordinator {
           applyWorldLayoutDocument(document);
 
           // Atomic validation: verify adopted transit semantics against incoming manifest before persistent save or mutating active world
-          if (manifest.transit && this.runtime.exportCanonicalTransitAuthority) {
+          if (manifest.transit) {
+            if (!this.runtime.exportCanonicalTransitAuthority) {
+              throw new WorldLayoutBootError(
+                "CANONICAL_TRANSIT_UNAVAILABLE",
+                `Remote starter catalogue transit authority requires semantic validation runtime support`,
+              );
+            }
             const adopted = this.runtime.exportCanonicalTransitAuthority(document);
             if (!adopted || !canonicalTransitMatches(adopted, manifest.transit)) {
               throw new WorldLayoutBootError(

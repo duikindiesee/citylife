@@ -304,7 +304,62 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
     // Assert active runtime was NEVER mutated
     expect(runtime.captureWorldLayout().revision.contentHash).toBe(beforeHash);
 
-    // 2. Unchanged input succeeds and saves atomically
+    // 2. Production ColonyApp wrapper shape forwards exportCanonicalTransitAuthority and rejects altered input
+    let wrapperHydrateCalls = 0;
+    const prodWrapper = {
+      captureWorldLayout: () => runtime.captureWorldLayout(),
+      hydrateWorldLayout: (d: any) => {
+        wrapperHydrateCalls++;
+        runtime.hydrateWorldLayout(d);
+      },
+      exportCanonicalTransitAuthority: (d?: any) =>
+        runtime.exportCanonicalTransitAuthority(d),
+    };
+    const wrapperBoot = new WorldLayoutBootCoordinator({
+      worldId: doc.layoutId,
+      store: store as any,
+      runtime: prodWrapper as any,
+      remoteLoader: remoteLoader as any,
+      requireRemoteAuthority: true,
+    });
+    let wrapperError: any = null;
+    try {
+      await wrapperBoot.boot();
+    } catch (e: any) {
+      wrapperError = e;
+    }
+    expect(wrapperError).not.toBeNull();
+    expect(wrapperError.code).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
+    expect(saves).toBe(0);
+    expect(wrapperHydrateCalls).toBe(0);
+
+    // 3. Fail-closed: missing exportCanonicalTransitAuthority when remote transit companion is present
+    const missingExporterWrapper = {
+      captureWorldLayout: () => runtime.captureWorldLayout(),
+      hydrateWorldLayout: (d: any) => {
+        wrapperHydrateCalls++;
+      },
+    };
+    const missingExporterBoot = new WorldLayoutBootCoordinator({
+      worldId: doc.layoutId,
+      store: store as any,
+      runtime: missingExporterWrapper as any,
+      remoteLoader: remoteLoader as any,
+      requireRemoteAuthority: true,
+    });
+    let missingError: any = null;
+    try {
+      await missingExporterBoot.boot();
+    } catch (e: any) {
+      missingError = e;
+    }
+    expect(missingError).not.toBeNull();
+    expect(missingError.code).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
+    expect(missingError.message).toContain("requires semantic validation runtime support");
+    expect(saves).toBe(0);
+    expect(wrapperHydrateCalls).toBe(0);
+
+    // 4. Unchanged input succeeds through production wrapper and saves atomically
     const validLoader = {
       loadRemoteStarterCatalogue: async () => ({
         published: true,
@@ -317,16 +372,17 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
         },
       }),
     };
-    const validBoot = new WorldLayoutBootCoordinator({
+    const validWrapperBoot = new WorldLayoutBootCoordinator({
       worldId: doc.layoutId,
       store: store as any,
-      runtime: runtime as any,
+      runtime: prodWrapper as any,
       remoteLoader: validLoader as any,
       requireRemoteAuthority: true,
     });
-    const result = await validBoot.boot();
+    const result = await validWrapperBoot.boot();
     expect(result.ready).toBe(true);
     expect(saves).toBe(1);
+    expect(wrapperHydrateCalls).toBe(1);
     expect(runtime.captureWorldLayout().revision.contentHash).toBe(doc.revision.contentHash);
   });
 });
