@@ -3,12 +3,47 @@
 # $-prefixed nginx runtime variables are left intact). Serves the static SPA AND proxies /kooker
 # to the gateway like the vite dev proxy, so a production build reaches kooker the same way.
 
+# Shared declarations: effective only when referenced by the chosen access log format.
+# $uri is normalized; raw $request_uri catches later internal rewrites and denials.
+map $uri $citylife_ws_normalized {
+    default 0;
+    ~^/(?:kooker/)?api/v1/citylife/ws(?:/|$) 1;
+}
+map $request_uri $citylife_ws_original {
+    default 0;
+    ~^/(?:kooker/)?api/v1/citylife/ws(?:[/?]|$) 1;
+}
+map "$citylife_ws_normalized$citylife_ws_original" $citylife_ws_log_safe {
+    default 0;
+    ~1 1;
+}
+map $citylife_ws_log_safe $citylife_log_request {
+    default $request;
+    1 "$request_method $uri $server_protocol";
+}
+# Any query-like Referer on any route is a deliberate narrow exception to
+# otherwise byte-identical unrelated-route access diagnostics.
+map $http_referer $citylife_log_referer {
+    default $http_referer;
+    "" "-";
+    ~*(?:\?|%3f) "-";
+}
+
 log_format sanitized_wss '$remote_addr - [$time_local] "$request_method $uri" '
                          '$status $upstream_status $request_time';
+
+# Server-default safe combined format: reproduces standard nginx combined format bytes for ordinary requests,
+# while stripping query strings on sensitive socket paths (including trailing slashes and fallbacks)
+# and sanitizing query-bearing Referers across all routes.
+log_format safe_combined '$remote_addr - $remote_user [$time_local] '
+                         '"$citylife_log_request" $status $body_bytes_sent '
+                         '"$citylife_log_referer" "$http_user_agent"';
 
 server {
     listen 80;
     server_name localhost;
+
+    access_log /var/log/nginx/access.log safe_combined;
 
     root /usr/share/nginx/html;
     index index.html index.htm;
