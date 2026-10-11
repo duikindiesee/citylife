@@ -9,6 +9,11 @@ import type {
   WorldLayoutSaveInput,
   WorldLayoutSaveResult,
 } from "./worldLayoutStore";
+import {
+  type CanonicalTransitAuthority,
+  canonicalTransitMatches,
+  validateCanonicalTransitAuthority,
+} from "./transit/canonicalTransit";
 
 export interface WorldLayoutBootStore {
   load(worldId: string): Promise<StoredWorldLayoutRevision | null>;
@@ -24,13 +29,17 @@ export interface WorldLayoutBootStore {
  */
 export interface WorldLayoutBootRuntime {
   captureWorldLayout(): WorldLayoutDocument | Promise<WorldLayoutDocument>;
-  hydrateWorldLayout(document: WorldLayoutDocument): void | Promise<void>;
+  hydrateWorldLayout(document: WorldLayoutDocument): unknown | Promise<unknown>;
+  exportCanonicalTransitAuthority?(): CanonicalTransitAuthority | null;
 }
 
 export interface RemoteStarterCatalogueManifest {
   worldId: string;
   layoutRevision: string;
   layout: WorldLayoutDocument;
+  transit?: CanonicalTransitAuthority | null;
+  walkability?: unknown;
+  physicalColliders?: unknown;
   [key: string]: any;
 }
 
@@ -125,7 +134,8 @@ export class WorldLayoutBootError extends Error {
       | "REVISION_MISMATCH"
       | "CONFLICT_WITHOUT_HEAD"
       | "WORLD_UNPUBLISHED"
-      | "CANONICAL_REMOTE_UNAVAILABLE",
+      | "CANONICAL_REMOTE_UNAVAILABLE"
+      | "CANONICAL_TRANSIT_UNAVAILABLE",
     message: string,
   ) {
     super(message);
@@ -345,6 +355,21 @@ export class WorldLayoutBootCoordinator {
               `Manifest layoutRevision ${manifest.layoutRevision} does not match document contentHash ${document.revision.contentHash}`,
             );
           }
+
+          if (manifest.transit) {
+            const transitValidation = validateCanonicalTransitAuthority(
+              manifest.transit,
+              this.worldId,
+              document.revision.contentHash,
+            );
+            if (!transitValidation.valid) {
+              throw new WorldLayoutBootError(
+                "CANONICAL_TRANSIT_UNAVAILABLE",
+                `Remote starter catalogue transit authority validation failed: ${transitValidation.message ?? transitValidation.error}`,
+              );
+            }
+          }
+
           applyWorldLayoutDocument(document);
 
           if (this.isSuperseded()) {
@@ -375,6 +400,17 @@ export class WorldLayoutBootCoordinator {
             };
           }
           await this.runtime.hydrateWorldLayout(document);
+
+          if (manifest.transit && this.runtime.exportCanonicalTransitAuthority) {
+            const adopted = this.runtime.exportCanonicalTransitAuthority();
+            if (!adopted || !canonicalTransitMatches(adopted, manifest.transit)) {
+              throw new WorldLayoutBootError(
+                "CANONICAL_TRANSIT_UNAVAILABLE",
+                `Remote starter catalogue transit authority does not match physically validated runtime transit`,
+              );
+            }
+          }
+
           return {
             ready: true,
             worldId: this.worldId,
@@ -393,7 +429,8 @@ export class WorldLayoutBootCoordinator {
           (err instanceof WorldLayoutBootError &&
             (err.code === "WORLD_UNPUBLISHED" ||
               err.code === "WORLD_ID_MISMATCH" ||
-              err.code === "REVISION_MISMATCH"))
+              err.code === "REVISION_MISMATCH" ||
+              err.code === "CANONICAL_TRANSIT_UNAVAILABLE"))
         ) {
           throw err;
         }

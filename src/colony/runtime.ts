@@ -294,6 +294,14 @@ import {
   type DepotLayout,
 } from "./transit/busDepot";
 import {
+  deriveTransitMaterialization,
+  createDepotTerrainFacade,
+} from "./transit/deriveTransitMaterialization";
+import {
+  CANONICAL_TRANSIT_SCHEMA_VERSION,
+  type CanonicalTransitAuthority,
+} from "./transit/canonicalTransit";
+import {
   makeFleet,
   stepFleet,
   makeFleetGeometry,
@@ -1060,6 +1068,8 @@ export class ColonyRuntime {
    *  driven loop and where the stop furniture stands beside it. Built at boot with the fleet
    *  geometry so the render, the fleet and the Board prompt all agree on where "the stop" is. */
   private stopAnchors: BusStopAnchor[] = [];
+  private initialBusAnchors: Cell[] = [];
+  private initialDepotSite: DepotSite | null = null;
   /** Spec 150 PR2 — the absolute sol minute the fleet has been replayed up to; null before the
    *  first tick anchors it at the current sol day's tod=0. */
   private transitLastMin: number | null = null;
@@ -1745,6 +1755,7 @@ export class ColonyRuntime {
         ...(commercialStop ? [commercialStop] : []),
       ];
     })();
+    this.initialBusAnchors = busAnchors;
     // TRANSIT.COMPLETE.1 — the route build MOVED from here to after the spec 148 connectivity
     // repair below. Measured: 12 of 24 seeds routed NO bus loop at all, and 11 of those failed
     // because makeBusRoute ran while the road network was still FRAGMENTED. Spec 148's own comment
@@ -2024,6 +2035,7 @@ export class ColonyRuntime {
         ribbonCells,
       );
       if (site) {
+        this.initialDepotSite = site;
         const padCells: Cell[] = [];
         for (let y = site.y; y < site.y + site.h; y++)
           for (let x = site.x; x < site.x + site.w; x++)
@@ -5693,6 +5705,24 @@ export class ColonyRuntime {
       serializeWorldLayoutDocument(document),
     );
 
+    const terrainFacade = createDepotTerrainFacade(
+      terrainAuthority,
+      this.sim.state.terrain.size,
+    );
+    const transitPlan = deriveTransitMaterialization({
+      candidateRoads: candidate.roads,
+      candidateRoadWays: candidate.roadWays,
+      terrain: terrainFacade,
+      busAnchors: this.initialBusAnchors,
+      worldSeed: this.worldSeed,
+      candidateSite: this.initialDepotSite,
+      structures: this.sim.state.structures,
+      placements: candidate.zonedPlacements,
+      reservations: candidate.reservations,
+      frames: candidate.frames,
+      surfaceFrameId: seedRegistry.surfaceFrameId,
+    });
+
     // One synchronous publish boundary. Everything above is isolated and may throw without changing
     // the currently observable runtime or builder store.
     this.sim.state.terrain.elev.set(terrainAuthority.elevation);
@@ -5727,7 +5757,101 @@ export class ColonyRuntime {
     // double the edit; future builder offsets start from this hydrated base and capture back to an
     // absolute elevation on save.
     useRoadNetwork.setState({ tiles, landscapeEdits: new Map() });
+    if (transitPlan.valid) {
+      this.busRoute = transitPlan.busRoute;
+      this.busDepot = transitPlan.busDepot;
+      this.fleetPaths = transitPlan.fleetPaths;
+      this.fleetGeom = transitPlan.fleetGeom;
+      this.stopAnchors = [...transitPlan.stopAnchors];
+      this.busFleet = transitPlan.busFleet;
+      this.sim.state.busDepotPad = transitPlan.busDepotPad;
+      this.sim.state.busDepotSpurCells = new Set(transitPlan.busDepotSpurCells);
+      this.transitLastMin = null;
+      this.renderer?.setBusRoute(this.busRoute);
+    } else {
+      this.busRoute = null;
+      this.busDepot = null;
+      this.fleetPaths = null;
+      this.fleetGeom = null;
+      this.stopAnchors = [];
+      this.busFleet = null;
+      this.sim.state.busDepotPad = null;
+      this.sim.state.busDepotSpurCells = new Set();
+      this.transitLastMin = null;
+      this.renderer?.setBusRoute(null);
+    }
     return candidate;
+  }
+
+  /** Spec 149 / Task e81ea9de — Export standalone canonical transit authority v1. */
+  exportCanonicalTransitAuthority(document?: WorldLayoutDocument): CanonicalTransitAuthority | null {
+    const doc = document ?? this.captureWorldLayout();
+    const isCleanActive =
+      !!this.activeWorldLayout &&
+      this.activeWorldLayout.revision.contentHash === doc.revision.contentHash;
+
+    let route = this.busRoute;
+    let depot = this.busDepot;
+    let fleetPaths = this.fleetPaths;
+
+    if (!isCleanActive || !route || !depot || !fleetPaths) {
+      try {
+        const candidate = this.preflightWorldLayout(doc);
+        const seedRegistry = this.seededWorldSurvey();
+        const terrainAuthority = this.materializeTerrainAuthority(
+          candidate.terrainEdits,
+          seedRegistry.surfaceFrameId,
+        );
+        const terrainFacade = createDepotTerrainFacade(
+          terrainAuthority,
+          this.sim.state.terrain.size,
+        );
+        const plan = deriveTransitMaterialization({
+          candidateRoads: candidate.roads,
+          candidateRoadWays: candidate.roadWays,
+          terrain: terrainFacade,
+          busAnchors: this.initialBusAnchors,
+          worldSeed: this.worldSeed,
+          candidateSite: this.initialDepotSite,
+          structures: this.sim.state.structures,
+          placements: candidate.zonedPlacements,
+          reservations: candidate.reservations,
+          frames: candidate.frames,
+          surfaceFrameId: seedRegistry.surfaceFrameId,
+        });
+
+        if (!plan.valid || !plan.busRoute || !plan.busDepot || !plan.fleetPaths) {
+          return null;
+        }
+        route = plan.busRoute;
+        depot = plan.busDepot;
+        fleetPaths = plan.fleetPaths;
+      } catch {
+        return null;
+      }
+    }
+
+    return {
+      schemaVersion: CANONICAL_TRANSIT_SCHEMA_VERSION,
+      worldId: doc.layoutId,
+      layoutRevision: doc.revision.contentHash,
+      route: {
+        loop: route.loop.map((p) => ({ x: p.x, y: p.y })),
+        stops: route.stops.map((p) => ({ x: p.x, y: p.y })),
+      },
+      depot: {
+        gate: {
+          x: depot.layout.gate.x,
+          y: depot.layout.gate.y,
+        },
+        roadCell: {
+          x: depot.site.roadCell.x,
+          y: depot.site.roadCell.y,
+        },
+        gateHeading: depot.layout.gate.headingOut,
+        baysTotal: fleetPaths.bays.length,
+      },
+    };
   }
 
   /** Adopt a store-confirmed revision for the already-published live spatial payload. Unlike boot

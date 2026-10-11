@@ -128,6 +128,7 @@ import {
   serializeWorldLayoutDocument,
   type WorldLayoutDocument,
 } from "../spatial/worldLayoutDocument";
+import { validateCanonicalTransitAuthority } from "../transit/canonicalTransit";
 import { formatAmount } from "./currencyFormat";
 import {
   emptyPlayerWallet,
@@ -493,7 +494,44 @@ export function validatedWorldLayoutImportSaveInput(
     WORLD_LAYOUT_IMPORT_MAX_BYTES
   )
     throw new Error("World layout import exceeds the 5 MiB safety limit");
-  const imported = parseWorldLayoutDocument(serialized);
+
+  let parsed: unknown = null;
+  try {
+    parsed = JSON.parse(serialized);
+  } catch {
+    // Non-JSON or malformed inputs will be caught by parseWorldLayoutDocument below
+  }
+
+  let layoutSerialized = serialized;
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    "layout" in parsed &&
+    (parsed as { layout: unknown }).layout &&
+    typeof (parsed as { layout: unknown }).layout === "object" &&
+    (parsed as { layout: { schemaVersion?: unknown } }).layout.schemaVersion ===
+      "citylife.world-layout/v1"
+  ) {
+    const envelope = parsed as {
+      layout: WorldLayoutDocument;
+      transit?: any;
+    };
+    if (envelope.transit) {
+      const transitValidation = validateCanonicalTransitAuthority(
+        envelope.transit,
+        envelope.layout.layoutId,
+        envelope.layout.revision?.contentHash,
+      );
+      if (!transitValidation.valid) {
+        throw new Error(
+          `Imported manifest transit companion validation failed: ${transitValidation.message ?? transitValidation.error}`,
+        );
+      }
+    }
+    layoutSerialized = JSON.stringify(envelope.layout);
+  }
+
+  const imported = parseWorldLayoutDocument(layoutSerialized);
   if (imported.worldId !== current.worldId)
     throw new Error(
       `World layout import belongs to ${imported.worldId}, not ${current.worldId}`,
@@ -1894,9 +1932,26 @@ export function ColonyApp() {
       link.download = `${document.worldId}-layout-r${document.revision.number}.json`;
       link.click();
       URL.revokeObjectURL(blobUrl);
+
+      const transitAuth = runtime.exportCanonicalTransitAuthority(document);
+      if (transitAuth) {
+        const transitBlobUrl = URL.createObjectURL(
+          new Blob([JSON.stringify(transitAuth, null, 2)], {
+            type: "application/json",
+          }),
+        );
+        const transitLink = window.document.createElement("a");
+        transitLink.href = transitBlobUrl;
+        transitLink.download = `${document.worldId}-transit-r${document.revision.number}.json`;
+        transitLink.click();
+        URL.revokeObjectURL(transitBlobUrl);
+      }
+
       setWorldLayoutOperatorFeedback({
         status: null,
-        message: `Exported canonical revision R${document.revision.number}; durable storage was not changed.`,
+        message: transitAuth
+          ? `Exported canonical revision R${document.revision.number} and standalone transit companion; durable storage was not changed.`
+          : `Exported canonical revision R${document.revision.number}; durable storage was not changed.`,
       });
     } catch (error: unknown) {
       setWorldLayoutOperatorFeedback({
