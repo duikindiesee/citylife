@@ -77,15 +77,31 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     const exportAuth = rt.exportCanonicalTransitAuthority();
     expect(exportAuth).not.toBeNull();
     expect(exportAuth!.schemaVersion).toBe("citylife.transit/v1");
+    expect(exportAuth!.geometryCapability).toBe("explicit-paths-v1");
     expect(exportAuth!.worldId).toBe(r0Doc.layoutId);
     expect(exportAuth!.layoutRevision).toBe(r0Doc.revision.contentHash);
     expect(exportAuth!.route.stops.length).toBe(5);
     expect(exportAuth!.route.loop.length).toBe(2158);
+    expect(exportAuth!.route.stopAnchors).toBeDefined();
+    expect(exportAuth!.route.stopAnchors!.length).toBe(5);
+    expect(exportAuth!.depot.site).toBeDefined();
+    expect(exportAuth!.depot.site!.w).toBe(12);
+    expect(exportAuth!.depot.site!.h).toBe(7);
+    expect(exportAuth!.depot.spur).toBeDefined();
+    expect(exportAuth!.depot.spur!.length).toBeGreaterThanOrEqual(2);
+    expect(exportAuth!.depot.bays).toBeDefined();
+    expect(exportAuth!.depot.bays!.length).toBe(5);
+
+    // Stop 0 loop wrap invariant
+    const stop0Anchor = exportAuth!.route.stopAnchors![0]!;
+    expect(stop0Anchor.arc).toBeGreaterThan(1817);
 
     const validation = validateCanonicalTransitAuthority(
       exportAuth,
       exportAuth!.worldId,
       exportAuth!.layoutRevision,
+      5,
+      true,
     );
     expect(validation.valid).toBe(true);
   });
@@ -113,12 +129,27 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
 
     const exportAuth = rt.exportCanonicalTransitAuthority();
     expect(exportAuth).not.toBeNull();
+    expect(exportAuth!.geometryCapability).toBe("explicit-paths-v1");
     expect(exportAuth!.layoutRevision).toBe(r1Doc.revision.contentHash);
+    expect(exportAuth!.route.stops.length).toBe(5);
+    expect(exportAuth!.route.stopAnchors).toBeDefined();
+    expect(exportAuth!.route.stopAnchors!.length).toBe(5);
+    expect(exportAuth!.depot.site).toBeDefined();
+    expect(exportAuth!.depot.site!.w).toBe(12);
+    expect(exportAuth!.depot.site!.h).toBe(7);
+    expect(exportAuth!.depot.bays).toBeDefined();
+    expect(exportAuth!.depot.bays!.length).toBe(5);
+
+    // Stop 0 loop wrap invariant
+    const stop0Anchor = exportAuth!.route.stopAnchors![0]!;
+    expect(stop0Anchor.arc).toBeGreaterThan(1817);
 
     const validation = validateCanonicalTransitAuthority(
       exportAuth,
       exportAuth!.worldId,
       exportAuth!.layoutRevision,
+      5,
+      true,
     );
     expect(validation.valid).toBe(true);
   });

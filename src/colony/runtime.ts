@@ -299,6 +299,7 @@ import {
 } from "./transit/deriveTransitMaterialization";
 import {
   CANONICAL_TRANSIT_SCHEMA_VERSION,
+  CANONICAL_TRANSIT_GEOMETRY_CAPABILITY,
   type CanonicalTransitAuthority,
 } from "./transit/canonicalTransit";
 import {
@@ -5793,6 +5794,7 @@ export class ColonyRuntime {
     let route = this.busRoute;
     let depot = this.busDepot;
     let fleetPaths = this.fleetPaths;
+    let stopAnchors = this.stopAnchors;
 
     if (!isCleanActive || !route || !depot || !fleetPaths) {
       try {
@@ -5826,6 +5828,7 @@ export class ColonyRuntime {
         route = plan.busRoute;
         depot = plan.busDepot;
         fleetPaths = plan.fleetPaths;
+        stopAnchors = [...plan.stopAnchors];
       } catch {
         return null;
       }
@@ -5833,11 +5836,20 @@ export class ColonyRuntime {
 
     return {
       schemaVersion: CANONICAL_TRANSIT_SCHEMA_VERSION,
+      geometryCapability: CANONICAL_TRANSIT_GEOMETRY_CAPABILITY,
       worldId: doc.layoutId,
       layoutRevision: doc.revision.contentHash,
       route: {
         loop: route.loop.map((p) => ({ x: p.x, y: p.y })),
         stops: route.stops.map((p) => ({ x: p.x, y: p.y })),
+        stopAnchors: stopAnchors.map((a) => ({
+          cell: { x: a.cell.x, y: a.cell.y },
+          arc: a.arc,
+          at: { x: a.at.x, y: a.at.y },
+          heading: a.heading,
+          verge: { x: a.verge.x, y: a.verge.y },
+          furniture: { x: a.furniture.x, y: a.furniture.y },
+        })),
       },
       depot: {
         gate: {
@@ -5850,6 +5862,20 @@ export class ColonyRuntime {
         },
         gateHeading: depot.layout.gate.headingOut,
         baysTotal: fleetPaths.bays.length,
+        site: {
+          x: depot.site.x,
+          y: depot.site.y,
+          w: depot.site.w,
+          h: depot.site.h,
+          inward: { x: depot.site.inward.x, y: depot.site.inward.y },
+        },
+        spur: fleetPaths.spur.pts.map((p) => ({ x: p.x, y: p.y })),
+        bays: fleetPaths.bays.map((b, idx) => ({
+          bayIndex: idx,
+          park: { x: depot.layout.bays[idx].park.x, y: depot.layout.bays[idx].park.y },
+          heading: depot.layout.bays[idx].heading,
+          path: b.pts.map((p) => ({ x: p.x, y: p.y })),
+        })),
       },
     };
   }
