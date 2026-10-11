@@ -30,7 +30,7 @@ export interface WorldLayoutBootStore {
 export interface WorldLayoutBootRuntime {
   captureWorldLayout(): WorldLayoutDocument | Promise<WorldLayoutDocument>;
   hydrateWorldLayout(document: WorldLayoutDocument): unknown | Promise<unknown>;
-  exportCanonicalTransitAuthority?(): CanonicalTransitAuthority | null;
+  exportCanonicalTransitAuthority?(document?: WorldLayoutDocument): CanonicalTransitAuthority | null;
 }
 
 export interface RemoteStarterCatalogueManifest {
@@ -372,6 +372,17 @@ export class WorldLayoutBootCoordinator {
 
           applyWorldLayoutDocument(document);
 
+          // Atomic validation: verify adopted transit semantics against incoming manifest before persistent save or mutating active world
+          if (manifest.transit && this.runtime.exportCanonicalTransitAuthority) {
+            const adopted = this.runtime.exportCanonicalTransitAuthority(document);
+            if (!adopted || !canonicalTransitMatches(adopted, manifest.transit)) {
+              throw new WorldLayoutBootError(
+                "CANONICAL_TRANSIT_UNAVAILABLE",
+                `Remote starter catalogue transit authority does not match physically validated runtime transit`,
+              );
+            }
+          }
+
           if (this.isSuperseded()) {
             return {
               ready: true,
@@ -400,16 +411,6 @@ export class WorldLayoutBootCoordinator {
             };
           }
           await this.runtime.hydrateWorldLayout(document);
-
-          if (manifest.transit && this.runtime.exportCanonicalTransitAuthority) {
-            const adopted = this.runtime.exportCanonicalTransitAuthority();
-            if (!adopted || !canonicalTransitMatches(adopted, manifest.transit)) {
-              throw new WorldLayoutBootError(
-                "CANONICAL_TRANSIT_UNAVAILABLE",
-                `Remote starter catalogue transit authority does not match physically validated runtime transit`,
-              );
-            }
-          }
 
           return {
             ready: true,

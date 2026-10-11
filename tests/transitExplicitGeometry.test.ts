@@ -11,6 +11,7 @@ import {
   canonicalTransitMatches,
   type CanonicalTransitAuthority,
 } from "../src/colony/transit/canonicalTransit";
+import { WorldLayoutBootCoordinator } from "../src/colony/worldLayoutBoot";
 
 const r0Url = new URL(
   "../fixtures/canonical-world/seed-4242-layout-r0.json",
@@ -99,8 +100,14 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
     );
     expect(validation.valid).toBe(true);
 
-    // Round-trip semantic match
-    expect(canonicalTransitMatches(auth, auth)).toBe(true);
+    // Round-trip semantic match against independently serialized copy
+    const serialized = JSON.parse(JSON.stringify(auth));
+    expect(canonicalTransitMatches(auth, serialized)).toBe(true);
+
+    // Negative control: altered input rejected
+    const altered = JSON.parse(JSON.stringify(auth));
+    altered.depot.bays[0].path[1].x += 0.5;
+    expect(canonicalTransitMatches(auth, altered)).toBe(false);
   });
 
   it("fails closed on missing explicit geometry when requireExplicitGeometry is true", () => {
@@ -231,5 +238,95 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
       },
     };
     expect(validateCanonicalTransitAuthority(nonFiniteBay, "seed-4242", "abc123", 5, true).valid).toBe(false);
+  });
+
+  it("atomic boot: rejects altered transit authority before saving to store or mutating active runtime", async () => {
+    const raw = readFileSync(r1Url, "utf8");
+    const manifest = JSON.parse(raw);
+    const doc = manifest.layout;
+    const producer = new ColonyRuntime(4242);
+    producer.hydrateWorldLayout(doc);
+    const validAuth = producer.exportCanonicalTransitAuthority();
+    expect(validAuth).not.toBeNull();
+
+    // 1. Altered transit authority: bay point moved
+    const alteredAuth = JSON.parse(JSON.stringify(validAuth));
+    alteredAuth.depot.bays[0].path[1].x += 1;
+
+    const runtime = new ColonyRuntime(4242);
+    const beforeHash = runtime.captureWorldLayout().revision.contentHash;
+    let saves = 0;
+    let savedDoc: any = null;
+    const store = {
+      load: async () => null,
+      save: async (input: any) => {
+        saves++;
+        savedDoc = input;
+        return {
+          status: "saved",
+          revision: { worldId: doc.layoutId, layoutRevision: doc.revision.contentHash, sequence: 0, document: doc },
+        };
+      },
+    };
+    const remoteLoader = {
+      loadRemoteStarterCatalogue: async () => ({
+        published: true,
+        manifest: {
+          ...manifest,
+          worldId: doc.layoutId,
+          layoutRevision: doc.revision.contentHash,
+          layout: doc,
+          transit: alteredAuth,
+        },
+      }),
+    };
+
+    const boot = new WorldLayoutBootCoordinator({
+      worldId: doc.layoutId,
+      store: store as any,
+      runtime: runtime as any,
+      remoteLoader: remoteLoader as any,
+      requireRemoteAuthority: true,
+    });
+
+    let error: any = null;
+    try {
+      await boot.boot();
+    } catch (e: any) {
+      error = e;
+    }
+
+    expect(error).not.toBeNull();
+    expect(error.code).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
+    // Assert persistent store was NEVER saved to
+    expect(saves).toBe(0);
+    expect(savedDoc).toBeNull();
+    // Assert active runtime was NEVER mutated
+    expect(runtime.captureWorldLayout().revision.contentHash).toBe(beforeHash);
+
+    // 2. Unchanged input succeeds and saves atomically
+    const validLoader = {
+      loadRemoteStarterCatalogue: async () => ({
+        published: true,
+        manifest: {
+          ...manifest,
+          worldId: doc.layoutId,
+          layoutRevision: doc.revision.contentHash,
+          layout: doc,
+          transit: validAuth,
+        },
+      }),
+    };
+    const validBoot = new WorldLayoutBootCoordinator({
+      worldId: doc.layoutId,
+      store: store as any,
+      runtime: runtime as any,
+      remoteLoader: validLoader as any,
+      requireRemoteAuthority: true,
+    });
+    const result = await validBoot.boot();
+    expect(result.ready).toBe(true);
+    expect(saves).toBe(1);
+    expect(runtime.captureWorldLayout().revision.contentHash).toBe(doc.revision.contentHash);
   });
 });
