@@ -50,8 +50,9 @@ describe("production gateway proxy contract", () => {
   });
 
   describe("Server default access logging & safe format", () => {
-    it("configures server-level safe_combined access log", () => {
+    it("configures server-level safe_combined access log matching official main format with x-forwarded-for", () => {
       expect(nginxTemplate).toContain("log_format safe_combined");
+      expect(nginxTemplate).toContain('"$citylife_log_referer" "$http_user_agent" "$http_x_forwarded_for"');
       expect(nginxTemplate).toContain("access_log /var/log/nginx/access.log safe_combined;");
     });
 
