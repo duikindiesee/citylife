@@ -1999,6 +1999,18 @@ export class ColonyRuntime {
       this.worldSeed === 4242 ? { preserveOrder: true } : undefined,
     );
     if (this.busRoute) {
+      // ROAD.NET.CANON.1 — the bus route is planned over the authoritative drivable road graph, so
+      // publish that same graph path as an authored surface way before any downstream minimap,
+      // depot-siting, terrain-grading or renderer consumer reads `state.roadWays`. The authority flows
+      // one way: `roadKind`/`state.roads` define the logical road graph; ribbons are derived surfaces
+      // and must never be merged back into the drivable graph (their smoothed shoulders may legally
+      // graze beach/kerb cells that cars and route planning must not drive).
+      this.roadWays.push({
+        path: [...this.busRoute.loop, this.busRoute.loop[0]!],
+        kind: "avenue",
+        width: 4,
+        source: "transit-loop",
+      });
       const tr = COLONY.transit;
       const roadKeys = new Set(this.sim.state.roadKind.keys());
       const depotBlocked = new Set<string>([
