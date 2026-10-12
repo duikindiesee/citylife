@@ -3,6 +3,9 @@ import { makeBusRoute } from "./busRoute";
 import {
   createTransitCorridorPathfinder,
   extractPlacementsConstraints,
+  projectFootprintVerticesToSurface,
+  convexPolygonIntersectsBox,
+  type Pt2D,
 } from "./transitCorridor";
 import type { DepotLayout, DepotSite, DepotTerrain } from "./busDepot";
 import { depotLayout, depotPadHeightRange } from "./busDepot";
@@ -81,129 +84,6 @@ export interface TransitDerivationInputs {
   }[];
   readonly frames?: readonly SpatialFrame[];
   readonly surfaceFrameId?: string;
-}
-
-interface Pt2D {
-  readonly x: number;
-  readonly y: number;
-}
-
-function projectFootprintVerticesToSurface(
-  localMinX: number,
-  localMinY: number,
-  localMaxX: number,
-  localMaxY: number,
-  frameId: string | undefined,
-  surfaceFrameId: string | undefined,
-  framesMap: ReadonlyMap<string, SpatialFrame> | undefined,
-): readonly Pt2D[] | null {
-  if (!frameId || !surfaceFrameId || frameId === surfaceFrameId || !framesMap) {
-    return [
-      { x: localMinX, y: localMinY },
-      { x: localMaxX, y: localMinY },
-      { x: localMaxX, y: localMaxY },
-      { x: localMinX, y: localMaxY },
-    ];
-  }
-  const surfaceFrame = framesMap.get(surfaceFrameId);
-  const sourceFrame = framesMap.get(frameId);
-  if (!surfaceFrame || !sourceFrame || !surfaceFrame.grid) {
-    return [
-      { x: localMinX, y: localMinY },
-      { x: localMaxX, y: localMinY },
-      { x: localMaxX, y: localMaxY },
-      { x: localMinX, y: localMaxY },
-    ];
-  }
-  const sourceGrid = sourceFrame.grid;
-  const cellSize = sourceGrid?.cellSize ?? surfaceFrame.grid.cellSize;
-  const sourceOrigin = sourceGrid?.origin ?? { x: 0, y: 0, z: 0 };
-
-  const corners = [
-    { x: localMinX, y: localMinY },
-    { x: localMaxX, y: localMinY },
-    { x: localMaxX, y: localMaxY },
-    { x: localMinX, y: localMaxY },
-  ];
-
-  const result: Pt2D[] = [];
-  for (const corner of corners) {
-    const localPoint = {
-      x: sourceOrigin.x + corner.x * cellSize,
-      y: sourceOrigin.y ?? 0,
-      z: sourceOrigin.z + corner.y * cellSize,
-    };
-    try {
-      const surfacePoint = resolvePointBetweenFrames(
-        localPoint,
-        frameId,
-        surfaceFrameId,
-        framesMap,
-      );
-      const surfaceGrid = surfaceFrame.grid;
-      result.push({
-        x: (surfacePoint.x - surfaceGrid.origin.x) / surfaceGrid.cellSize,
-        y: (surfacePoint.z - surfaceGrid.origin.z) / surfaceGrid.cellSize,
-      });
-    } catch {
-      return null;
-    }
-  }
-
-  return result.length === 4 ? result : null;
-}
-
-function convexPolygonIntersectsBox(
-  poly: readonly Pt2D[],
-  box: { x: number; y: number; w: number; h: number },
-): boolean {
-  if (poly.length < 3) return false;
-
-  const boxVerts: readonly Pt2D[] = [
-    { x: box.x, y: box.y },
-    { x: box.x + box.w, y: box.y },
-    { x: box.x + box.w, y: box.y + box.h },
-    { x: box.x, y: box.y + box.h },
-  ];
-
-  const axes: Pt2D[] = [
-    { x: 1, y: 0 },
-    { x: 0, y: 1 },
-  ];
-
-  for (let i = 0; i < poly.length; i++) {
-    const p1 = poly[i]!;
-    const p2 = poly[(i + 1) % poly.length]!;
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    axes.push({ x: -dy, y: dx });
-  }
-
-  for (const axis of axes) {
-    if (axis.x === 0 && axis.y === 0) continue;
-
-    let minBox = Infinity,
-      maxBox = -Infinity;
-    for (const v of boxVerts) {
-      const dot = v.x * axis.x + v.y * axis.y;
-      if (dot < minBox) minBox = dot;
-      if (dot > maxBox) maxBox = dot;
-    }
-
-    let minPoly = Infinity,
-      maxPoly = -Infinity;
-    for (const v of poly) {
-      const dot = v.x * axis.x + v.y * axis.y;
-      if (dot < minPoly) minPoly = dot;
-      if (dot > maxPoly) maxPoly = dot;
-    }
-
-    if (maxPoly <= minBox + 1e-9 || maxBox <= minPoly + 1e-9) {
-      return false;
-    }
-  }
-
-  return true;
 }
 
 export interface DepotTerrainFacade extends DepotTerrain {
@@ -317,7 +197,16 @@ export function deriveTransitMaterialization(
   );
 
   // 2. Derive route over candidate roads
-  const constraints = placements ? extractPlacementsConstraints(placements) : null;
+  const constraints = placements
+    ? extractPlacementsConstraints(placements, {
+        frames: inputs.frames,
+        surfaceFrameId: inputs.surfaceFrameId,
+      })
+    : null;
+
+  if (constraints?.hasUnknownFrame) {
+    return createNullTransitPlan("unknown_frame_in_placement_constraints");
+  }
   const corridorRouter =
     worldSeed === 4242 && constraints
       ? createTransitCorridorPathfinder({
@@ -434,6 +323,11 @@ export function deriveTransitMaterialization(
     }
   }
   for (const p of placements) {
+    const isChildFrame =
+      Boolean(p.frameId) &&
+      Boolean(inputs.surfaceFrameId) &&
+      p.frameId !== inputs.surfaceFrameId;
+
     if (Array.isArray(p.cells) && p.cells.length > 0) {
       for (const c of p.cells) {
         const poly = projectFootprintVerticesToSurface(
@@ -445,6 +339,11 @@ export function deriveTransitMaterialization(
           inputs.surfaceFrameId,
           framesMap,
         );
+        if (isChildFrame && !poly) {
+          return createNullTransitPlan(
+            `unresolved_placement_frame_${p.frameId}`,
+          );
+        }
         if (poly && convexPolygonIntersectsBox(poly, site)) {
           return createNullTransitPlan(
             `pad_collides_with_placement_cell_${Math.round(poly[0]!.x)},${Math.round(poly[0]!.y)}`,
@@ -461,6 +360,11 @@ export function deriveTransitMaterialization(
         inputs.surfaceFrameId,
         framesMap,
       );
+      if (isChildFrame && !poly) {
+        return createNullTransitPlan(
+          `unresolved_placement_frame_${p.frameId}`,
+        );
+      }
       if (poly && convexPolygonIntersectsBox(poly, site)) {
         return createNullTransitPlan(`pad_collides_with_placement_bounds`);
       }
@@ -474,6 +378,11 @@ export function deriveTransitMaterialization(
         inputs.surfaceFrameId,
         framesMap,
       );
+      if (isChildFrame && !poly) {
+        return createNullTransitPlan(
+          `unresolved_placement_frame_${p.frameId}`,
+        );
+      }
       if (poly && convexPolygonIntersectsBox(poly, site)) {
         return createNullTransitPlan(
           `pad_collides_with_placement_${Math.round(poly[0]!.x)},${Math.round(poly[0]!.y)}`,

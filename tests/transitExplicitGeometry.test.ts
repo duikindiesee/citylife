@@ -235,9 +235,9 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
   });
 
   it("atomic boot: rejects altered transit authority before saving to store or mutating active runtime", async () => {
-    const producer = new ColonyRuntime(4242);
-    const doc = producer.captureWorldLayout();
-    const validAuth = producer.exportCanonicalTransitAuthority();
+    const runtime = new ColonyRuntime(4242);
+    const doc = runtime.captureWorldLayout();
+    const validAuth = runtime.exportCanonicalTransitAuthority();
     expect(validAuth).not.toBeNull();
 
     const manifest = {
@@ -251,8 +251,7 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
     const alteredAuth = JSON.parse(JSON.stringify(validAuth));
     alteredAuth.depot.bays[0].path[1].x += 1;
 
-    const runtime = new ColonyRuntime(4242);
-    const beforeHash = runtime.captureWorldLayout().revision.contentHash;
+    const beforeHash = doc.revision.contentHash;
     let saves = 0;
     let savedDoc: any = null;
     const store = {
@@ -356,8 +355,44 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
     expect(missingError.message).toContain("requires semantic validation runtime support");
     expect(saves).toBe(0);
     expect(wrapperHydrateCalls).toBe(0);
+  });
 
-    // 4. Unchanged input succeeds through production wrapper and saves atomically
+  it("atomic boot: unchanged input succeeds through production wrapper and saves atomically", async () => {
+    const runtime = new ColonyRuntime(4242);
+    const doc = runtime.captureWorldLayout();
+    const validAuth = runtime.exportCanonicalTransitAuthority();
+    expect(validAuth).not.toBeNull();
+
+    const manifest = {
+      worldId: doc.layoutId,
+      layoutRevision: doc.revision.contentHash,
+      layout: doc,
+      transit: validAuth,
+    };
+
+    let saves = 0;
+    let wrapperHydrateCalls = 0;
+    const store = {
+      load: async () => null,
+      save: async (input: any) => {
+        saves++;
+        return {
+          status: "saved",
+          revision: { worldId: doc.layoutId, layoutRevision: doc.revision.contentHash, sequence: 0, document: doc },
+        };
+      },
+    };
+
+    const prodWrapper = {
+      captureWorldLayout: () => runtime.captureWorldLayout(),
+      hydrateWorldLayout: (d: any) => {
+        wrapperHydrateCalls++;
+        runtime.hydrateWorldLayout(d);
+      },
+      exportCanonicalTransitAuthority: (d?: any) =>
+        runtime.exportCanonicalTransitAuthority(d),
+    };
+
     const validLoader = {
       loadRemoteStarterCatalogue: async () => ({
         published: true,

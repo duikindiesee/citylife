@@ -89,3 +89,36 @@ Mounted in `ColonyApp.tsx`:
   - Asserts `window.__r3fScene` contains `remote-racer-jamtin2` in Player 1's view and `remote-racer-jamtin` in Player 2's view.
   - Drives both cars forward down the road using player driving controls (`setOwnedDriveInput({ throttle: true })`) with server-authoritative progress, asserts peer movement, and neutralizes inputs on stop.
   - Transcodes recorded WebM video into `videos/multiplayer-racing.mp4` via ffmpeg.
+
+## Transit Corridor & Surface Constraint Integration
+
+### 1. Transformed Placement Constraints & Fail-Closed Projection
+Child-frame placements (such as kiosks and modular commercial additions) are projected into primary surface coordinates via `projectFootprintVerticesToSurface` within `extractPlacementsConstraints`. If an unknown or unresolvable child-frame reference is encountered, derivation fails closed (`hasUnknownFrame: true`), returning `unknown_frame_in_placement_constraints` to guarantee corrupt or drifting frame graphs never generate unvalidated road corridor paths.
+
+### 2. Shop-Aware Road Connectivity Repair (Spec 148 Continuity)
+During municipal orphan road repair:
+- `shopCells` are mapped prior to connector routing and included in `roadLandOk` (`!shopCells.has(...)`), preventing `simplifyPath` from pulling straight road segments across surveyed commercial shop footprints.
+- Dilated avenue connector strokes are filtered to ensure no cell overlaps shop structures, while 4-connectivity bridge verification ensures true network consolidation (`roadComponents === 1`).
+
+### 3. Opposing Carriageway Separation & Discrimination
+To prevent opposing vehicles and coaches from colliding along doubled-back road segments:
+- Opposing flows (`diff > 120°`) share a single carriageway centre and offset to their respective lefts, maintaining a verified clearance of $\ge 1.25$ cells (two coaches).
+- Controlled negative test inputs (such as the uncorrected $0.23$-cell collision fixture) and same-direction headway discriminators pass through the same classification pipeline to ensure unsafe passes are caught deterministically.
+
+### 4. Verification Status
+Normal-boot and hydration strict consumer probes alongside focused unit suites provide uncommitted local source-method verification:
+- `tests/roadConnectivity.test.ts`: 6/6 passed (single component, 9998 road cells, shop preservation verified).
+- `tests/busStopClear.test.ts`: 9/9 passed (commercial stop sliding and junction clearance).
+- `tests/busSharedCarriageway.test.ts`: 2/2 passed (opposing-pair discrimination $\ge 1.25$ cells and $0.23$-cell collision negative control).
+- `tests/busFeltSpeed.test.ts`: 7/7 passed (continuing revenue circuit $> 8.32$ m/s, terminal depot return candidly assessed at $\sim 2.26$ m/s with 30s dwell).
+- `tests/transitExplicitGeometry.test.ts`: 7/7 passed (rejection, schema verification, and atomic persistence).
+- `tests/busRoute.test.ts`: 7/7 passed (route continuity, 6-stop circuit, and loop closure).
+- `tests/busHeadway.test.ts` & `tests/busFleetAnchorOrder.test.ts`: 8/8 passed.
+- `tests/garageRoadWalkabilityRegression.test.ts` & `tests/garageRebuildAndCollision.test.ts`: 23/23 passed.
+- `tests/mallAnchorShell.test.ts`: 3/3 passed.
+- `tests/districtDeterminism.test.ts`: 5/5 passed.
+- `tests/transitHydration.test.ts`: 29 tests (isolated store resets, non-null baselines, semantic road network preservation, and tight-bounds child-frame fail-closed controls).
+- Typecheck & Build: `npm run typecheck` exits 0; `npm run build` exits 0.
+
+Hosted, browser, remote companion, and live multi-context player acceptance remain explicitly open for independent evaluation and are not claimed as pre-cleared.
+

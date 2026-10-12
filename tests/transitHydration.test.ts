@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 // @ts-ignore - Vitest runs in Node; project tsconfig intentionally omits Node globals.
 import { readFileSync } from "node:fs";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { createWorldLayoutDocument } from "../src/colony/spatial/worldLayoutDocument";
 import { validateCanonicalTransitAuthority } from "../src/colony/transit/canonicalTransit";
@@ -17,6 +17,7 @@ import {
   WorldLayoutBootError,
 } from "../src/colony/worldLayoutBoot";
 import { useRoadNetwork } from "../src/colony/stores/useRoadNetwork";
+import { extractPlacementsConstraints } from "../src/colony/transit/transitCorridor";
 
 const r0Url = new URL(
   "../fixtures/canonical-world/seed-4242-layout-r0.json",
@@ -28,6 +29,14 @@ const r1Url = new URL(
 );
 
 describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
+  beforeEach(() => {
+    useRoadNetwork.setState({ tiles: {}, landscapeEdits: new Map() });
+  });
+
+  afterEach(() => {
+    useRoadNetwork.setState({ tiles: {}, landscapeEdits: new Map() });
+  });
+
   it("preserves exact R0 repo-local artifact size and hash and asserts fail-closed compatibility under current derivation", () => {
     const rawBytes = readFileSync(r0Url);
     expect(rawBytes.length).toBe(259869);
@@ -78,11 +87,20 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
 
   it("hydrates own-capture layout preserving full 6-stop circuit", () => {
     const rt = new ColonyRuntime(4242);
+    const preHydrationRoadKind = new Map(rt.sim.state.roadKind);
     const doc = rt.captureWorldLayout();
 
     rt.hydrateWorldLayout(doc);
 
-    expect(rt.sim.state.roadKind.size).toBe(9732);
+    expect(rt.sim.state.roadKind.size).toBe(preHydrationRoadKind.size);
+    const docRoadCellsCount = doc.roads.reduce(
+      (sum, r) => sum + r.cells.length,
+      0,
+    );
+    expect(rt.sim.state.roadKind.size).toBe(docRoadCellsCount);
+    for (const [key, kind] of preHydrationRoadKind) {
+      expect(rt.sim.state.roadKind.get(key)).toBe(kind);
+    }
     expect(rt.busRoute!.stops.length).toBe(6);
     expect(rt.busRoute!.loop.length).toBe(2292);
     expect(rt.busStopAnchors().length).toBe(6);
@@ -754,19 +772,24 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(invalidResult.error).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
   });
 
-  it("produces deterministic export payloads across repeated hydrations", () => {
-    const rawBytes = readFileSync(r1Url);
-    const r1Doc = JSON.parse(rawBytes.toString("utf8")).layout;
+  it("produces deterministic non-null export payloads across repeated hydrations of valid world layout", () => {
+    const rt = new ColonyRuntime(4242);
+    const validDoc = rt.captureWorldLayout();
 
-    const rtA = new ColonyRuntime(4242);
-    rtA.hydrateWorldLayout(r1Doc);
-    const exportA = JSON.stringify(rtA.exportCanonicalTransitAuthority());
+    rt.hydrateWorldLayout(validDoc);
+    const exportA = rt.exportCanonicalTransitAuthority();
+    expect(exportA).not.toBeNull();
 
-    const rtB = new ColonyRuntime(4242);
-    rtB.hydrateWorldLayout(r1Doc);
-    const exportB = JSON.stringify(rtB.exportCanonicalTransitAuthority());
+    rt.hydrateWorldLayout(validDoc);
+    const exportB = rt.exportCanonicalTransitAuthority();
+    expect(exportB).not.toBeNull();
 
-    expect(exportA).toBe(exportB);
+    expect(exportA).toEqual(exportB);
+    expect(JSON.stringify(exportA)).toBe(JSON.stringify(exportB));
+    expect(exportA!.layoutRevision).toBe(validDoc.revision.contentHash);
+    expect(exportA!.route.loop.length).toBe(2292);
+    expect(exportA!.route.stops.length).toBe(6);
+    expect(exportA!.depot.bays?.length).toBe(5);
   });
 
   it("fails closed on root 16-cell reservation overlapping depot pad", () => {
@@ -1028,6 +1051,8 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     const rt = new ColonyRuntime(4242);
     const initial = rt.captureWorldLayout();
     rt.hydrateWorldLayout(initial);
+    const baselineExport = rt.exportCanonicalTransitAuthority();
+    expect(baselineExport).not.toBeNull();
     const pad = rt.sim.state.busDepotPad;
     expect(pad).not.toBeNull();
     for (let n = 0; n < 40; n++) {
@@ -1039,5 +1064,173 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(transit).toBeNull();
     const defaultTransit = rt.exportCanonicalTransitAuthority();
     expect(defaultTransit).toBeNull();
+    useRoadNetwork.setState({ tiles: {}, landscapeEdits: new Map() });
   });
+
+  it("fails closed on unknown child frame in placement constraints", () => {
+    useRoadNetwork.setState({ tiles: {}, landscapeEdits: new Map() });
+    const rt = new ColonyRuntime(4242);
+    const initial = rt.captureWorldLayout();
+    const baselineExport = rt.exportCanonicalTransitAuthority();
+    expect(baselineExport).not.toBeNull();
+    const surface =
+      initial.frames.find((f) => f.layer === "surface") ?? initial.frames[0]!;
+
+    const unknownPlacement = {
+      id: "placement:unknown",
+      frameId: "non-existent-frame-id",
+      layer: "surface" as const,
+      definitionId: "commercial-plot:kiosk",
+      source: "import" as const,
+      anchors: [{ id: "entrance", cell: { x: 0, y: 0 } }],
+      bounds: { x: 0, y: 0, w: 2, h: 2 },
+      cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+      vertical: { min: 0, max: 10, clearanceAbove: 2, clearanceBelow: 0 },
+    };
+    const resUnknown = extractPlacementsConstraints([unknownPlacement], {
+      frames: initial.frames,
+      surfaceFrameId: surface.id,
+    });
+    expect(resUnknown.hasUnknownFrame).toBe(true);
+
+    expect(() =>
+      createWorldLayoutDocument({
+        ...initial,
+        placements: [...initial.placements, unknownPlacement],
+        revision: {
+          number: initial.revision.number + 1,
+          parentHash: initial.revision.contentHash,
+        },
+      }),
+    ).toThrow("unknown frame non-existent-frame-id");
+
+    const unvalidatedDoc = {
+      ...initial,
+      placements: [...initial.placements, unknownPlacement],
+      revision: {
+        number: initial.revision.number + 1,
+        parentHash: initial.revision.contentHash,
+      },
+    };
+    const exportAuth = rt.exportCanonicalTransitAuthority(unvalidatedDoc as any);
+    expect(exportAuth).toBeNull();
+  });
+
+  it("accepts disjoint child-frame placement preserving canonical transit export", () => {
+    useRoadNetwork.setState({ tiles: {}, landscapeEdits: new Map() });
+    const rt = new ColonyRuntime(4242);
+    const initial = rt.captureWorldLayout();
+    const baselineExport = rt.exportCanonicalTransitAuthority();
+    expect(baselineExport).not.toBeNull();
+    const surface =
+      initial.frames.find((f) => f.layer === "surface") ?? initial.frames[0]!;
+    expect(surface.grid).toBeDefined();
+    if (!surface.grid) throw new Error("surface grid missing");
+    const surfaceGrid = surface.grid;
+
+    const disjointFrameId = `${surface.id}:test:disjoint`;
+    const disjointFrame = {
+      id: disjointFrameId,
+      address: `${surface.address}/region/test-disjoint`,
+      kind: "region" as const,
+      layer: "surface" as const,
+      parentId: surface.id,
+      transform: {
+        position: {
+          x: surfaceGrid.origin.x + 10 * surfaceGrid.cellSize,
+          y: 0,
+          z: surfaceGrid.origin.z + 10 * surfaceGrid.cellSize,
+        },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+      grid: { width: 512, height: 512, cellSize: surfaceGrid.cellSize, origin: { x: 0, y: 0, z: 0 } },
+    };
+    const disjointPlacement = {
+      id: "placement:test:disjoint",
+      frameId: disjointFrameId,
+      layer: "surface" as const,
+      definitionId: "commercial-plot:kiosk",
+      source: "import" as const,
+      anchors: [{ id: "entrance", cell: { x: 0, y: 0 } }],
+      bounds: { x: 0, y: 0, w: 2, h: 2 },
+      cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+      vertical: { min: 0, max: 10, clearanceAbove: 2, clearanceBelow: 0 },
+    };
+
+    const disjointDoc = createWorldLayoutDocument({
+      ...initial,
+      frames: [...initial.frames, disjointFrame],
+      placements: [...initial.placements, disjointPlacement],
+      revision: { number: initial.revision.number + 1, parentHash: initial.revision.contentHash },
+    });
+    expect(disjointDoc.revision.contentHash).not.toBe(initial.revision.contentHash);
+
+    rt.hydrateWorldLayout(disjointDoc);
+    const disjointExport = rt.exportCanonicalTransitAuthority();
+    expect(disjointExport).not.toBeNull();
+    expect(disjointExport!.layoutRevision).toBe(disjointDoc.revision.contentHash);
+  }, 120_000);
+
+  it("projects translated child-frame corridor obstacles to surface avoiding loop collision", () => {
+    useRoadNetwork.setState({ tiles: {}, landscapeEdits: new Map() });
+    const rt = new ColonyRuntime(4242);
+    const initial = rt.captureWorldLayout();
+    const baselineExport = rt.exportCanonicalTransitAuthority();
+    expect(baselineExport).not.toBeNull();
+    const surface =
+      initial.frames.find((f) => f.layer === "surface") ?? initial.frames[0]!;
+    expect(surface.grid).toBeDefined();
+    if (!surface.grid) throw new Error("surface grid missing");
+    const surfaceGrid = surface.grid;
+
+    const transFrameId = `${surface.id}:test:trans-blocker`;
+    const transFrame = {
+      id: transFrameId,
+      address: `${surface.address}/region/test-trans-blocker`,
+      kind: "region" as const,
+      layer: "surface" as const,
+      parentId: surface.id,
+      transform: {
+        position: {
+          x: surfaceGrid.origin.x + 510 * surfaceGrid.cellSize,
+          y: 0,
+          z: surfaceGrid.origin.z + 384 * surfaceGrid.cellSize,
+        },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+      },
+      grid: { width: 512, height: 512, cellSize: surfaceGrid.cellSize, origin: { x: 0, y: 0, z: 0 } },
+    };
+    const transPlacement = {
+      id: "placement:test:trans-blocker",
+      frameId: transFrameId,
+      layer: "surface" as const,
+      definitionId: "commercial-plot:kiosk",
+      source: "import" as const,
+      anchors: [{ id: "entrance", cell: { x: 0, y: 0 } }],
+      bounds: { x: 0, y: 0, w: 2, h: 2 },
+      cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
+      vertical: { min: 0, max: 10, clearanceAbove: 2, clearanceBelow: 0 },
+    };
+
+    const transDoc = createWorldLayoutDocument({
+      ...initial,
+      frames: [...initial.frames, transFrame],
+      placements: [...initial.placements, transPlacement],
+      revision: { number: initial.revision.number + 1, parentHash: initial.revision.contentHash },
+    });
+    expect(transDoc.revision.contentHash).not.toBe(initial.revision.contentHash);
+
+    rt.hydrateWorldLayout(transDoc);
+    expect(rt.busRoute).not.toBeNull();
+    // Verify that the route loop has ZERO interior points in the obstacle
+    let interiorCount = 0;
+    for (const p of rt.busRoute!.loop) {
+      if (p.x >= 510 && p.x <= 512 && p.y >= 384 && p.y <= 386) {
+        interiorCount++;
+      }
+    }
+    expect(interiorCount).toBe(0);
+  }, 120_000);
 });

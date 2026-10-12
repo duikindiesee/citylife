@@ -1424,10 +1424,11 @@ export class ColonyRuntime {
     //     straights + diagonals and any residual step is filled by the band.
     // The trunk roads AND the commercial connector both lay through this, so no road is a raw 1-cell
     // zig-zag any more (the staircase the operator kept seeing).
-    // spec 143 — roadCellOk (not cellOk): the string-pull and the stroked band must never put a
-    // road cell on beach sand, even where the routed centre-line merely brushes the grass line.
+    const shopCells = new Set<string>();
     const roadLandOk = (x: number, y: number) =>
-      roadCellOk(t0, x, y) && !residentialSetbackKeys.has(`${x},${y}`);
+      roadCellOk(t0, x, y) &&
+      !residentialSetbackKeys.has(`${x},${y}`) &&
+      !shopCells.has(`${x},${y}`);
     const losClear = (a: Cell, b: Cell): boolean => {
       const steps = Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
       for (let s = 0; s <= steps; s++) {
@@ -1571,7 +1572,6 @@ export class ColonyRuntime {
         )
       : null;
     this.sim.state.commercialDistrict = this.commercialDistrict; // expose to the R3F renderer (same pattern as cityPlan)
-    const shopCells = new Set<string>();
     if (this.commercialDistrict) {
       for (const p of this.commercialDistrict.parcels)
         for (let y = p.y; y < p.y + p.h; y++)
@@ -2004,11 +2004,16 @@ export class ColonyRuntime {
             if (!path || path.length < 2) continue;
             // Dry-run the stroke (no ribbon side effect), then commit ONLY if it truly merges the
             // orphan into the main web — never a staircase that leaves isolated cells behind.
-            const cells = layRoad(path, 1, "avenue", true);
-            if (cells.some((c) => shopCells.has(`${c.x},${c.y}`))) continue;
+            const cells = layRoad(path, 1, "avenue", true).filter(
+              (c) => !shopCells.has(`${c.x},${c.y}`),
+            );
+            if (cells.length === 0) continue;
             const connIdx = new Set<number>(cells.map((c) => c.y * size + c.x));
             if (!bridges(orphanComp.min, roadIdx, connIdx, mainIdx)) continue;
-            mergeAvenue(this.sim.state, layRoad(path, 1)); // commit for real (records the ribbon)
+            mergeAvenue(
+              this.sim.state,
+              layRoad(path, 1).filter((c) => !shopCells.has(`${c.x},${c.y}`)),
+            ); // commit for real (records the ribbon)
             for (const k of connIdx) {
               roadIdx.add(k);
               mainIdx.add(k);
@@ -2043,7 +2048,10 @@ export class ColonyRuntime {
     const surfaceFrameId = seedRegistry.surfaceFrameId;
     const placements = this.runtimeZonedPlacements(surfaceFrameId);
     const { placementBoxes, ownedCells, residentialSetbacks } =
-      extractPlacementsConstraints(placements);
+      extractPlacementsConstraints(placements, {
+        frames: seedRegistry.frames,
+        surfaceFrameId,
+      });
 
     const corridorRouter =
       this.worldSeed === 4242

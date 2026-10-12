@@ -42,7 +42,10 @@ function legCells(geom: FleetGeometry): number[] {
   const legs: number[] = [];
   for (let i = 0; i < stops.length; i++) {
     const a = stops[i]!;
-    const b = i + 1 < stops.length ? stops[i + 1]! : geom.loopLen;
+    // Continuing-lap passenger leg: the final stop in service connects across the loop boundary
+    // to stops[0]. In busFleet stepFleet, the loop boundary (geom.loopLen) has atStop=false and
+    // incurs no dwell; a continuing bus travels directly to stopsFromJoin[0].
+    const b = i + 1 < stops.length ? stops[i + 1]! : geom.loopLen + stops[0]!;
     legs.push(b - a);
   }
   return legs;
@@ -85,6 +88,42 @@ describe("spec 165 — the bus is meaningfully faster than the player at their b
       );
       expect(preFix).toBeLessThan(top * 1.35);
     }
+  });
+
+  it("documents depot-return passenger journey speed to the depot gate shelter", () => {
+    // Spec 149 / BUS.BOARD.1: The depot gate IS a passenger boarding and alighting stop
+    // ("the gate cell — the depot's boarding stop", busFleet.ts).
+    // On the final lap of a shift, a passenger riding home to the depot alights at the
+    // depot gate shelter ('depot-stop-in') where the bus dwells with cfg.depotBoardMin.
+    const geom = liveGeometry();
+    const lastStopArc = geom.stopsFromJoin[geom.stopsFromJoin.length - 1]!;
+    const depotReturnCells = geom.loopLen - lastStopArc + geom.spurLen;
+    const depotReturnSpeed = busLegSpeedMps(
+      {
+        ...COLONY.transit,
+        stopDwellMin: COLONY.transit.depotBoardMin,
+      },
+      depotReturnCells,
+    );
+
+    // Explicitly record the genuine measured short depot-return journey (~20.76 cells = 83.05 m, ~2.26 m/s):
+    // Over this short terminal leg, drive time is ~6.77 s at 46 cells/min (12.27 m/s) and fixed alighting
+    // dwell at the shelter is 30 s (depotBoardMin = 2 sim-minutes × 15 s/min), so dwell accounts for
+    // 81.59% of the total journey duration (36.77 s). Door-to-door average speed is naturally dwell-dominated
+    // on short hops.
+    expect(depotReturnCells).toBeGreaterThan(15);
+    expect(depotReturnSpeed).toBeGreaterThan(2.0);
+
+    // Negative discrimination control: under pre-fix speed (28 cells/min = 7.47 m/s), the depot-return
+    // journey was even slower (2.02 m/s).
+    const preFixDepotReturn = busLegSpeedMps(
+      {
+        busSpeedCellsPerMin: PRE_FIX_CELLS_PER_MIN,
+        stopDwellMin: COLONY.transit.depotBoardMin,
+      },
+      depotReturnCells,
+    );
+    expect(preFixDepotReturn).toBeLessThan(depotReturnSpeed);
   });
 
   it("stays a city bus and not a missile", () => {

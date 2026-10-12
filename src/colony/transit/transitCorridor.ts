@@ -3,42 +3,297 @@ import { busLoopPath, lanePose } from "./path.js";
 import { COLONY } from "../config.js";
 import { roadCellOk } from "../pathfind.js";
 import type { Terrain } from "../terrain.js";
+import type { SpatialFrame } from "../worldSurvey.js";
+import { resolvePointBetweenFrames } from "../spatial/spatialLocation.js";
 
 const key = (x: number, y: number) => `${x},${y}`;
 
+export interface Pt2D {
+  readonly x: number;
+  readonly y: number;
+}
+
+export function projectFootprintVerticesToSurface(
+  localMinX: number,
+  localMinY: number,
+  localMaxX: number,
+  localMaxY: number,
+  frameId: string | undefined,
+  surfaceFrameId: string | undefined,
+  framesMap: ReadonlyMap<string, SpatialFrame> | undefined,
+): readonly Pt2D[] | null {
+  if (!frameId || !surfaceFrameId || frameId === surfaceFrameId) {
+    return [
+      { x: localMinX, y: localMinY },
+      { x: localMaxX, y: localMinY },
+      { x: localMaxX, y: localMaxY },
+      { x: localMinX, y: localMaxY },
+    ];
+  }
+  if (!framesMap) return null;
+  const surfaceFrame = framesMap.get(surfaceFrameId);
+  const sourceFrame = framesMap.get(frameId);
+  if (!surfaceFrame || !sourceFrame || !surfaceFrame.grid) {
+    return null;
+  }
+  const sourceGrid = sourceFrame.grid;
+  const cellSize = sourceGrid?.cellSize ?? surfaceFrame.grid.cellSize;
+  const sourceOrigin = sourceGrid?.origin ?? { x: 0, y: 0, z: 0 };
+
+  const corners = [
+    { x: localMinX, y: localMinY },
+    { x: localMaxX, y: localMinY },
+    { x: localMaxX, y: localMaxY },
+    { x: localMinX, y: localMaxY },
+  ];
+
+  const result: Pt2D[] = [];
+  for (const corner of corners) {
+    const localPoint = {
+      x: sourceOrigin.x + corner.x * cellSize,
+      y: sourceOrigin.y ?? 0,
+      z: sourceOrigin.z + corner.y * cellSize,
+    };
+    try {
+      const surfacePoint = resolvePointBetweenFrames(
+        localPoint,
+        frameId,
+        surfaceFrameId,
+        framesMap,
+      );
+      const surfaceGrid = surfaceFrame.grid;
+      result.push({
+        x: (surfacePoint.x - surfaceGrid.origin.x) / surfaceGrid.cellSize,
+        y: (surfacePoint.z - surfaceGrid.origin.z) / surfaceGrid.cellSize,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  return result.length === 4 ? result : null;
+}
+
+export function convexPolygonIntersectsBox(
+  poly: readonly Pt2D[],
+  box: { x: number; y: number; w: number; h: number },
+): boolean {
+  if (poly.length < 3) return false;
+
+  const boxVerts: readonly Pt2D[] = [
+    { x: box.x, y: box.y },
+    { x: box.x + box.w, y: box.y },
+    { x: box.x + box.w, y: box.y + box.h },
+    { x: box.x, y: box.y + box.h },
+  ];
+
+  const axes: Pt2D[] = [
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+  ];
+
+  for (let i = 0; i < poly.length; i++) {
+    const p1 = poly[i]!;
+    const p2 = poly[(i + 1) % poly.length]!;
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    axes.push({ x: -dy, y: dx });
+  }
+
+  for (const axis of axes) {
+    let minA = Infinity,
+      maxA = -Infinity;
+    for (const v of poly) {
+      const proj = v.x * axis.x + v.y * axis.y;
+      if (proj < minA) minA = proj;
+      if (proj > maxA) maxA = proj;
+    }
+    let minB = Infinity,
+      maxB = -Infinity;
+    for (const v of boxVerts) {
+      const proj = v.x * axis.x + v.y * axis.y;
+      if (proj < minB) minB = proj;
+      if (proj > maxB) maxB = proj;
+    }
+    if (maxA < minB || maxB < minA) return false;
+  }
+  return true;
+}
+
 export interface PlacementConstraintSource {
+  readonly id?: string;
+  readonly frameId?: string;
   readonly bounds?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
   readonly cells?: readonly { readonly x: number; readonly y: number }[];
   readonly definitionId?: string;
+  readonly x?: number;
+  readonly y?: number;
+}
+
+export interface ExtractPlacementsConstraintsOptions {
+  readonly frames?: readonly SpatialFrame[] | ReadonlyMap<string, SpatialFrame>;
+  readonly surfaceFrameId?: string;
+}
+
+export interface PlacementsConstraintsResult {
+  readonly placementBoxes: Array<{ x: number; y: number; w: number; d: number }>;
+  readonly ownedCells: Set<string>;
+  readonly residentialSetbacks: Set<string>;
+  readonly hasUnknownFrame?: boolean;
 }
 
 export function extractPlacementsConstraints(
   placements: readonly PlacementConstraintSource[],
-): {
-  placementBoxes: { x: number; y: number; w: number; d: number }[];
-  ownedCells: Set<string>;
-  residentialSetbacks: Set<string>;
-} {
+  options?: ExtractPlacementsConstraintsOptions,
+): PlacementsConstraintsResult {
   const placementBoxes: Array<{ x: number; y: number; w: number; d: number }> = [];
   const ownedCells = new Set<string>();
   const residentialSetbacks = new Set<string>();
+  let hasUnknownFrame = false;
+
+  const surfaceFrameId = options?.surfaceFrameId;
+  const framesMap =
+    options?.frames instanceof Map
+      ? options.frames
+      : Array.isArray(options?.frames)
+        ? new Map(options.frames.map((f) => [f.id, f]))
+        : undefined;
 
   for (const p of placements) {
-    if (p.bounds) {
+    const isChildFrame =
+      Boolean(p.frameId) &&
+      Boolean(surfaceFrameId) &&
+      p.frameId !== surfaceFrameId;
+
+    if (!isChildFrame) {
+      if (p.bounds) {
+        placementBoxes.push({
+          x: p.bounds.x + p.bounds.w / 2,
+          y: p.bounds.y + p.bounds.h / 2,
+          w: p.bounds.w,
+          d: p.bounds.h,
+        });
+      }
+      if (p.cells) {
+        for (const c of p.cells) {
+          ownedCells.add(key(c.x, c.y));
+          if (p.definitionId?.startsWith("zoned-plot:residential")) {
+            for (let dy = -1; dy <= 1; dy++) {
+              for (let dx = -1; dx <= 1; dx++) {
+                residentialSetbacks.add(key(c.x + dx, c.y + dy));
+              }
+            }
+          }
+        }
+      }
+    } else {
+      if (!framesMap || !framesMap.has(p.frameId!)) {
+        hasUnknownFrame = true;
+        continue;
+      }
+
+      let poly: readonly Pt2D[] | null = null;
+      if (p.bounds) {
+        poly = projectFootprintVerticesToSurface(
+          p.bounds.x,
+          p.bounds.y,
+          p.bounds.x + p.bounds.w,
+          p.bounds.y + p.bounds.h,
+          p.frameId,
+          surfaceFrameId,
+          framesMap,
+        );
+      } else if (typeof p.x === "number" && typeof p.y === "number") {
+        poly = projectFootprintVerticesToSurface(
+          p.x,
+          p.y,
+          p.x + 1,
+          p.y + 1,
+          p.frameId,
+          surfaceFrameId,
+          framesMap,
+        );
+      }
+
+      if (!poly) {
+        hasUnknownFrame = true;
+        continue;
+      }
+
+      let minX = Infinity,
+        maxX = -Infinity,
+        minY = Infinity,
+        maxY = -Infinity;
+      for (const pt of poly) {
+        if (pt.x < minX) minX = pt.x;
+        if (pt.x > maxX) maxX = pt.x;
+        if (pt.y < minY) minY = pt.y;
+        if (pt.y > maxY) maxY = pt.y;
+      }
+
       placementBoxes.push({
-        x: p.bounds.x + p.bounds.w / 2,
-        y: p.bounds.y + p.bounds.h / 2,
-        w: p.bounds.w,
-        d: p.bounds.h,
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2,
+        w: maxX - minX,
+        d: maxY - minY,
       });
-    }
-    if (p.cells) {
-      for (const c of p.cells) {
-        ownedCells.add(key(c.x, c.y));
-        if (p.definitionId?.startsWith("zoned-plot:residential")) {
-          for (let dy = -1; dy <= 1; dy++) {
-            for (let dx = -1; dx <= 1; dx++) {
-              residentialSetbacks.add(key(c.x + dx, c.y + dy));
+
+      if (p.cells && p.cells.length > 0) {
+        for (const c of p.cells) {
+          const cellPoly = projectFootprintVerticesToSurface(
+            c.x,
+            c.y,
+            c.x + 1,
+            c.y + 1,
+            p.frameId,
+            surfaceFrameId,
+            framesMap,
+          );
+          if (!cellPoly) {
+            hasUnknownFrame = true;
+            continue;
+          }
+          let cMinX = Infinity,
+            cMaxX = -Infinity,
+            cMinY = Infinity,
+            cMaxY = -Infinity;
+          for (const pt of cellPoly) {
+            if (pt.x < cMinX) cMinX = pt.x;
+            if (pt.x > cMaxX) cMaxX = pt.x;
+            if (pt.y < cMinY) cMinY = pt.y;
+            if (pt.y > cMaxY) cMaxY = pt.y;
+          }
+          const startX = Math.floor(cMinX);
+          const endX = Math.ceil(cMaxX);
+          const startY = Math.floor(cMinY);
+          const endY = Math.ceil(cMaxY);
+          for (let iy = startY; iy < endY; iy++) {
+            for (let ix = startX; ix < endX; ix++) {
+              ownedCells.add(key(ix, iy));
+              if (p.definitionId?.startsWith("zoned-plot:residential")) {
+                for (let dy = -1; dy <= 1; dy++) {
+                  for (let dx = -1; dx <= 1; dx++) {
+                    residentialSetbacks.add(key(ix + dx, iy + dy));
+                  }
+                }
+              }
+            }
+          }
+        }
+      } else {
+        const startX = Math.floor(minX);
+        const endX = Math.ceil(maxX);
+        const startY = Math.floor(minY);
+        const endY = Math.ceil(maxY);
+        for (let iy = startY; iy < endY; iy++) {
+          for (let ix = startX; ix < endX; ix++) {
+            ownedCells.add(key(ix, iy));
+            if (p.definitionId?.startsWith("zoned-plot:residential")) {
+              for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                  residentialSetbacks.add(key(ix + dx, iy + dy));
+                }
+              }
             }
           }
         }
@@ -46,7 +301,7 @@ export function extractPlacementsConstraints(
     }
   }
 
-  return { placementBoxes, ownedCells, residentialSetbacks };
+  return { placementBoxes, ownedCells, residentialSetbacks, hasUnknownFrame };
 }
 
 export interface TransitCorridorPathfinderOptions {
