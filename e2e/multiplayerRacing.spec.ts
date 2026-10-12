@@ -86,6 +86,7 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
             worldId: reqWorldId,
             layoutRevision: customDoc.revision.contentHash,
             layout: customDoc,
+            transit: baseSurveyRuntime.exportCanonicalTransitAuthority(customDoc),
           },
         }),
       });
