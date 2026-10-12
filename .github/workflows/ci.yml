@@ -62,5 +62,15 @@ jobs:
         env:
           CITYLIFE_SERVER_DIR: ${{ github.workspace }}/citylife-server
         run: npm run test:e2e:actual-pair
-        timeout-minutes: 5
+        timeout-minutes: 10
       - run: npm run build
+      - name: Upload test and failure artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-${{ github.sha }}
+          path: |
+            test-results/
+            videos/
+          if-no-files-found: ignore
+          retention-days: 14

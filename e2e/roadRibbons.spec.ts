@@ -130,28 +130,176 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
   // The road data (cells for traffic/bus/rally) is untouched.
   expect(probe.roadCells).toBeGreaterThan(100);
 
-  // Builder-not-broken: draw a road through the store; the ribbon grows by one way.
+  // Capture initial ribbon geometry, sim state, and layout revision before plotting a new road.
+  const initialRibbon = await page.evaluate(() => {
+    let ribbonMeshCount = 0;
+    let totalPositions = 0;
+    let groupUuid = "";
+    (window as any).__r3fScene?.traverse((o: any) => {
+      if (o.name === "RoadRibbons") {
+        groupUuid = o.uuid;
+        o.traverse((m: any) => {
+          if (m.isMesh && m.geometry?.attributes?.position) {
+            ribbonMeshCount++;
+            totalPositions += m.geometry.attributes.position.count;
+          }
+        });
+      }
+    });
+    const rt = (window as any).__colony;
+    const sim = rt?.sim;
+    const s = sim?.state;
+    return {
+      ribbonMeshCount,
+      totalPositions,
+      groupUuid,
+      waysCount: s?.roadWays?.length ?? 0,
+      roadsCount: s?.roads?.length ?? 0,
+      roadsVersion: s?.roadsVersion ?? 0,
+      signature: `r${s?.roadsVersion ?? 0}:w${s?.roadWays?.length ?? 0}`,
+      layoutRevision: rt?.placementContext?.()?.layoutRevision ?? "",
+    };
+  });
+  expect(initialRibbon.ribbonMeshCount).toBeGreaterThanOrEqual(1);
+  expect(initialRibbon.totalPositions).toBeGreaterThan(0);
+  expect(initialRibbon.layoutRevision).toBeTruthy();
+
+  // Negative controls: verify authoritative survey AND store mutation gate reject invalid strokes
+  // while preserving complete committed road/way geometry and layout revision state.
+  const negativeControls = await page.evaluate((initial) => {
+    const rt = (window as any).__colony;
+    const store = (window as any).useRoadNetwork.getState();
+    const pCtx = rt.placementContext();
+
+    // 1. Off-world survey and store rejection
+    const offWorldSurvey = rt.surveyRoadPlacement(
+      [{ x: -5, y: -5 }],
+      "street",
+      pCtx.layoutRevision,
+    );
+    store.plotRoad(
+      [{ x: -5, y: -5 }],
+      "street",
+      rt.sim,
+      pCtx.layoutRevision,
+      rt,
+    );
+
+    // 2. Stale layout revision survey and store rejection
+    const staleRevisionSurvey = rt.surveyRoadPlacement(
+      [
+        { x: 426, y: 325 },
+        { x: 427, y: 324 },
+      ],
+      "street",
+      "stale-revision-invalid",
+    );
+    store.plotRoad(
+      [
+        { x: 426, y: 325 },
+        { x: 427, y: 324 },
+      ],
+      "street",
+      rt.sim,
+      "stale-revision-invalid",
+      rt,
+    );
+
+    const s = rt.sim.state;
+    const currentRevision = rt.placementContext().layoutRevision;
+    const currentSignature = `r${s.roadsVersion}:w${s.roadWays?.length ?? 0}`;
+
+    return {
+      offWorld: {
+        ok: offWorldSurvey.ok,
+        failures: offWorldSurvey.failures?.map((f: any) => f.code) ?? [],
+      },
+      staleRevision: {
+        ok: staleRevisionSurvey.ok,
+        failures: staleRevisionSurvey.failures?.map((f: any) => f.code) ?? [],
+      },
+      statePreserved:
+        s.roadWays.length === initial.waysCount &&
+        s.roads.length === initial.roadsCount &&
+        s.roadsVersion === initial.roadsVersion &&
+        currentRevision === initial.layoutRevision &&
+        currentSignature === initial.signature,
+      postRejectionWaysCount: s.roadWays.length,
+      postRejectionRoadsVersion: s.roadsVersion,
+    };
+  }, initialRibbon);
+
+  expect(negativeControls.offWorld.ok).toBe(false);
+  expect(negativeControls.offWorld.failures).toContain("OUT_OF_BOUNDS");
+  expect(negativeControls.staleRevision.ok).toBe(false);
+  expect(negativeControls.staleRevision.failures).toContain("STALE_LAYOUT_REVISION");
+  expect(negativeControls.statePreserved).toBe(true);
+
+  // Builder-not-broken: draw a road through the store using a bounded deterministic stroke;
+  // Provenance: endpoint probe 59353 discovered valid 8-cell extension off way endpoint (425, 326) to (433, 318).
   const grown = await page.evaluate(() => {
     const rt = (window as any).__colony;
     const store = (window as any).useRoadNetwork.getState();
-    const before = rt.sim.state.roadWays.length;
-    const t = rt.sim.state.terrain;
+    const beforeWays = rt.sim.state.roadWays.length;
+    const beforeVersion = rt.sim.state.roadsVersion;
+    const pCtx = rt.placementContext();
     const roadSet = rt.sim.state.roadSet as Set<string>;
+
     let candidate: {
       cells: { x: number; y: number }[];
       layoutRevision: string;
     } | null = null;
-    for (let y = 30; y < t.size - 30 && !candidate; y += 3) {
-      for (let x = 30; x < t.size - 46; x += 3) {
-        const cells = [] as { x: number; y: number }[];
-        for (let rx = x; rx < x + 16; rx++) cells.push({ x: rx, y });
-        if (cells.some((cell) => roadSet.has(`${cell.x},${cell.y}`))) continue;
-        const survey = rt.surveyRoadPlacement(cells, "street");
-        if (!survey.ok) continue;
-        candidate = { cells, layoutRevision: survey.layoutRevision };
-        break;
+
+    // Deterministic 8-cell stroke extending from waypoint (425, 326) verified by probe 59353
+    const deterministicStroke = [
+      { x: 426, y: 325 },
+      { x: 427, y: 324 },
+      { x: 428, y: 323 },
+      { x: 429, y: 322 },
+      { x: 430, y: 321 },
+      { x: 431, y: 320 },
+      { x: 432, y: 319 },
+      { x: 433, y: 318 },
+    ];
+    if (!deterministicStroke.some((cell) => roadSet.has(`${cell.x},${cell.y}`))) {
+      const survey = rt.surveyRoadPlacement(
+        deterministicStroke,
+        "street",
+        pCtx.layoutRevision,
+      );
+      if (survey.ok) {
+        candidate = {
+          cells: deterministicStroke,
+          layoutRevision: survey.layoutRevision,
+        };
       }
     }
+
+    // Bounded fallback: test endpoints of the first 5 existing ways
+    if (!candidate) {
+      const ways = rt.sim.state.roadWays || [];
+      for (let i = 0; i < Math.min(5, ways.length) && !candidate; i++) {
+        const pts = ways[i].path || ways[i].points;
+        if (!pts || pts.length < 2) continue;
+        const end = pts[pts.length - 1];
+        const prev = pts[pts.length - 2];
+        const dx = Math.sign(end.x - prev.x);
+        const dy = Math.sign(end.y - prev.y);
+
+        const stroke: { x: number; y: number }[] = [];
+        for (let s = 1; s <= 8; s++) {
+          stroke.push({ x: end.x + dx * s, y: end.y + dy * s });
+        }
+        if (!stroke.some((c) => roadSet.has(`${c.x},${c.y}`))) {
+          const s = rt.surveyRoadPlacement(stroke, "street", pCtx.layoutRevision);
+          if (s.ok) {
+            candidate = { cells: stroke, layoutRevision: s.layoutRevision };
+            break;
+          }
+        }
+      }
+    }
+
     if (!candidate) throw new Error("no validator-approved road stroke found");
     store.plotRoad(
       candidate.cells,
@@ -160,21 +308,64 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
       candidate.layoutRevision,
       rt,
     );
-    return { before, after: rt.sim.state.roadWays.length };
+    const postRevision = rt.placementContext().layoutRevision;
+    const postSignature = `r${rt.sim.state.roadsVersion}:w${rt.sim.state.roadWays.length}`;
+    return {
+      beforeWays,
+      afterWays: rt.sim.state.roadWays.length,
+      beforeVersion,
+      afterVersion: rt.sim.state.roadsVersion,
+      postRevision,
+      postSignature,
+      strokeCells: candidate.cells.length,
+    };
   });
-  console.log(`plotRoad ways: ${grown.before} -> ${grown.after}`);
-  expect(grown.after).toBe(grown.before + 1);
+  console.log(`plotRoad ways: ${grown.beforeWays} -> ${grown.afterWays} (stroke length: ${grown.strokeCells})`);
+  expect(grown.afterWays).toBe(grown.beforeWays + 1);
+  expect(grown.afterVersion).toBe(grown.beforeVersion + 1);
+  expect(grown.postRevision).toBe(initialRibbon.layoutRevision);
+  expect(grown.postSignature).not.toBe(initialRibbon.signature);
 
-  // ...and the rebuilt ribbon actually re-rendered (signature path works end to end).
-  await page.waitForFunction(
-    () => {
-      let n = 0;
+  // ...and the rebuilt ribbon actually re-rendered with new geometry (signature & vertex count change).
+  const updatedRibbon = await page.waitForFunction(
+    (before) => {
+      let currentGroupUuid = "";
+      let currentPositions = 0;
       (window as any).__r3fScene?.traverse((o: any) => {
-        if (o.name === "RoadRibbons") n++;
+        if (o.name === "RoadRibbons") {
+          currentGroupUuid = o.uuid;
+          o.traverse((m: any) => {
+            if (m.isMesh && m.geometry?.attributes?.position) {
+              currentPositions += m.geometry.attributes.position.count;
+            }
+          });
+        }
       });
-      return n > 0;
+      const s = (window as any).__colony?.sim?.state;
+      const currentRoadsVersion = s?.roadsVersion ?? 0;
+      const currentSignature = `r${currentRoadsVersion}:w${s?.roadWays?.length ?? 0}`;
+      if (
+        currentPositions > before.totalPositions &&
+        currentRoadsVersion > before.roadsVersion &&
+        currentSignature !== before.signature
+      ) {
+        return {
+          currentGroupUuid,
+          groupRecreated: currentGroupUuid !== before.groupUuid,
+          currentPositions,
+          diffPositions: currentPositions - before.totalPositions,
+          currentRoadsVersion,
+          currentSignature,
+        };
+      }
+      return false;
     },
-    undefined,
+    initialRibbon,
     { timeout: 15000 },
   );
+
+  const ribbonChange = await updatedRibbon.jsonValue();
+  expect(ribbonChange.currentPositions).toBeGreaterThan(initialRibbon.totalPositions);
+  expect(ribbonChange.currentRoadsVersion).toBeGreaterThan(initialRibbon.roadsVersion);
+  expect(ribbonChange.currentSignature).not.toBe(initialRibbon.signature);
 });
