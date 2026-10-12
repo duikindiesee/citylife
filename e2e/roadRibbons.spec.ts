@@ -134,14 +134,27 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
   const initialRibbon = await page.evaluate(() => {
     let ribbonMeshCount = 0;
     let totalPositions = 0;
+    let totalIndices = 0;
     let groupUuid = "";
+    let posHash = 2166136261;
     (window as any).__r3fScene?.traverse((o: any) => {
       if (o.name === "RoadRibbons") {
         groupUuid = o.uuid;
         o.traverse((m: any) => {
-          if (m.isMesh && m.geometry?.attributes?.position) {
+          if (m.isMesh && m.geometry) {
             ribbonMeshCount++;
-            totalPositions += m.geometry.attributes.position.count;
+            const pos = m.geometry.attributes?.position;
+            if (pos && pos.array) {
+              totalPositions += pos.count;
+              const arr = pos.array;
+              for (let i = 0; i < arr.length; i++) {
+                const v = Math.round(arr[i] * 1000);
+                posHash = Math.imul(posHash ^ v, 16777619);
+              }
+            }
+            if (m.geometry.index) {
+              totalIndices += m.geometry.index.count;
+            }
           }
         });
       }
@@ -152,6 +165,8 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
     return {
       ribbonMeshCount,
       totalPositions,
+      totalIndices,
+      posFingerprint: (posHash >>> 0).toString(16),
       groupUuid,
       waysCount: s?.roadWays?.length ?? 0,
       roadsCount: s?.roads?.length ?? 0,
@@ -166,43 +181,78 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
 
   // Negative controls: verify authoritative survey AND store mutation gate reject invalid strokes
   // while preserving full committed road/way geometry, layout revision, and non-zero rendered Three.js vertices/indices.
-  const negativeControls = await page.evaluate((initial) => {
+  // Render opportunities are provided after each rejected call to verify deferred R3F updates do not mutate scene.
+  const negativeControls = await page.evaluate(async (initial) => {
     const rt = (window as any).__colony;
     const store = (window as any).useRoadNetwork.getState();
     const pCtx = rt.placementContext();
     const s = rt.sim.state;
 
-    // Helper to sample rendered ribbon Three.js geometry
+    // Helper to sample rendered ribbon Three.js geometry and compute deterministic full-value fingerprints
     const sampleRibbonGeometry = () => {
       let meshCount = 0;
       let positions = 0;
       let indices = 0;
       let groupUuid = "";
+      let posHash = 2166136261;
+      let idxHash = 2166136261;
       (window as any).__r3fScene?.traverse((o: any) => {
         if (o.name === "RoadRibbons") {
           groupUuid = o.uuid;
           o.traverse((m: any) => {
             if (m.isMesh && m.geometry) {
               meshCount++;
-              if (m.geometry.attributes?.position) {
-                positions += m.geometry.attributes.position.count;
+              const pos = m.geometry.attributes?.position;
+              if (pos && pos.array) {
+                positions += pos.count;
+                const arr = pos.array;
+                for (let i = 0; i < arr.length; i++) {
+                  const v = Math.round(arr[i] * 1000);
+                  posHash = Math.imul(posHash ^ v, 16777619);
+                }
               }
-              if (m.geometry.index) {
+              if (m.geometry.index && m.geometry.index.array) {
                 indices += m.geometry.index.count;
+                const arr = m.geometry.index.array;
+                for (let i = 0; i < arr.length; i++) {
+                  idxHash = Math.imul(idxHash ^ arr[i], 16777619);
+                }
               }
             }
           });
         }
       });
-      return { meshCount, positions, indices, groupUuid };
+      return {
+        meshCount,
+        positions,
+        indices,
+        groupUuid,
+        posFingerprint: (posHash >>> 0).toString(16),
+        idxFingerprint: (idxHash >>> 0).toString(16),
+      };
     };
 
-    // Snapshot full committed roads and roadWays before rejected mutation calls
+    // Render opportunity helper to allow any deferred R3F / React / useSimSignal loops to cycle
+    const waitRenderOpportunity = () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setTimeout(resolve, 30);
+          });
+        });
+      });
+
+    // Snapshot full committed roads (RoadCell contract: x, y, kind) and roadWays before rejected calls
     const preRoads = s.roads.map((r: any) => ({ x: r.x, y: r.y, kind: r.kind }));
-    const preRoadWays = JSON.stringify(s.roadWays || []);
+    const preWays = (s.roadWays || []).map((w: any) => ({
+      path: (w.path || w.points || []).map((p: any) => ({ x: p.x, y: p.y })),
+      kind: w.kind,
+      width: w.width,
+      source: w.source,
+    }));
     const preRibbon = sampleRibbonGeometry();
 
-    // 1. Off-world survey and store rejection
+    // 1. Off-world survey and store rejection followed by deferred render opportunity
     const offWorldSurvey = rt.surveyRoadPlacement(
       [{ x: -5, y: -5 }],
       "street",
@@ -215,8 +265,10 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
       pCtx.layoutRevision,
       rt,
     );
+    await waitRenderOpportunity();
+    const postOffWorldRibbon = sampleRibbonGeometry();
 
-    // 2. Stale layout revision survey and store rejection
+    // 2. Stale layout revision survey and store rejection followed by deferred render opportunity
     const staleRevisionSurvey = rt.surveyRoadPlacement(
       [
         { x: 426, y: 325 },
@@ -235,12 +287,11 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
       "stale-revision-invalid",
       rt,
     );
+    await waitRenderOpportunity();
+    const postStaleRibbon = sampleRibbonGeometry();
 
-    // Snapshot full committed roads, roadWays, and rendered geometry post-rejection
+    // Check full road cell preservation (exact x, y, kind matching RoadCell contract build.ts:136)
     const postRoads = s.roads;
-    const postRoadWays = JSON.stringify(s.roadWays || []);
-    const postRibbon = sampleRibbonGeometry();
-
     const roadsIdentical =
       postRoads.length === preRoads.length &&
       postRoads.every(
@@ -249,10 +300,32 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
           r.y === preRoads[i].y &&
           r.kind === preRoads[i].kind,
       );
-    const roadWaysIdentical = postRoadWays === preRoadWays;
+
+    // Check full roadWay preservation (all paths, kinds, widths, sources)
+    const postWays = s.roadWays || [];
+    const roadWaysIdentical =
+      postWays.length === preWays.length &&
+      postWays.every((w: any, i: number) => {
+        const pw = preWays[i];
+        if (w.kind !== pw.kind || w.width !== pw.width || w.source !== pw.source) return false;
+        const pts = w.path || w.points || [];
+        if (pts.length !== pw.path.length) return false;
+        return pts.every((p: any, pi: number) => p.x === pw.path[pi].x && p.y === pw.path[pi].y);
+      });
 
     const currentRevision = rt.placementContext().layoutRevision;
     const currentSignature = `r${s.roadsVersion}:w${s.roadWays?.length ?? 0}`;
+
+    const geometryPreservedAcrossRejections =
+      preRibbon.positions > 0 &&
+      postOffWorldRibbon.positions === preRibbon.positions &&
+      postOffWorldRibbon.posFingerprint === preRibbon.posFingerprint &&
+      postOffWorldRibbon.idxFingerprint === preRibbon.idxFingerprint &&
+      postOffWorldRibbon.meshCount === preRibbon.meshCount &&
+      postStaleRibbon.positions === preRibbon.positions &&
+      postStaleRibbon.posFingerprint === preRibbon.posFingerprint &&
+      postStaleRibbon.idxFingerprint === preRibbon.idxFingerprint &&
+      postStaleRibbon.meshCount === preRibbon.meshCount;
 
     return {
       offWorld: {
@@ -264,25 +337,17 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
         failures: staleRevisionSurvey.failures?.map((f: any) => f.code) ?? [],
       },
       prePositions: preRibbon.positions,
-      postPositions: postRibbon.positions,
-      preIndices: preRibbon.indices,
-      postIndices: postRibbon.indices,
-      preMeshCount: preRibbon.meshCount,
-      postMeshCount: postRibbon.meshCount,
-      preGroupUuid: preRibbon.groupUuid,
-      postGroupUuid: postRibbon.groupUuid,
+      postPositions: postStaleRibbon.positions,
+      preFingerprint: preRibbon.posFingerprint,
+      postOffWorldFingerprint: postOffWorldRibbon.posFingerprint,
+      postStaleFingerprint: postStaleRibbon.posFingerprint,
       roadsIdentical,
       roadWaysIdentical,
-      roadsCount: s.roads.length,
-      waysCount: s.roadWays.length,
+      geometryPreservedAcrossRejections,
       statePreserved:
         roadsIdentical &&
         roadWaysIdentical &&
-        preRibbon.positions > 0 &&
-        postRibbon.positions === preRibbon.positions &&
-        postRibbon.indices === preRibbon.indices &&
-        postRibbon.meshCount === preRibbon.meshCount &&
-        postRibbon.groupUuid === preRibbon.groupUuid &&
+        geometryPreservedAcrossRejections &&
         s.roadWays.length === initial.waysCount &&
         s.roads.length === initial.roadsCount &&
         s.roadsVersion === initial.roadsVersion &&
@@ -299,11 +364,11 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
   expect(negativeControls.staleRevision.failures).toContain("STALE_LAYOUT_REVISION");
   expect(negativeControls.prePositions).toBeGreaterThan(0);
   expect(negativeControls.postPositions).toBe(negativeControls.prePositions);
-  expect(negativeControls.postIndices).toBe(negativeControls.preIndices);
-  expect(negativeControls.postMeshCount).toBe(negativeControls.preMeshCount);
-  expect(negativeControls.postGroupUuid).toBe(negativeControls.preGroupUuid);
+  expect(negativeControls.postOffWorldFingerprint).toBe(negativeControls.preFingerprint);
+  expect(negativeControls.postStaleFingerprint).toBe(negativeControls.preFingerprint);
   expect(negativeControls.roadsIdentical).toBe(true);
   expect(negativeControls.roadWaysIdentical).toBe(true);
+  expect(negativeControls.geometryPreservedAcrossRejections).toBe(true);
   expect(negativeControls.statePreserved).toBe(true);
 
   // Builder-not-broken: draw a road through the store using a bounded deterministic stroke;
@@ -397,17 +462,26 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
   expect(grown.postRevision).toBe(initialRibbon.layoutRevision);
   expect(grown.postSignature).not.toBe(initialRibbon.signature);
 
-  // ...and the rebuilt ribbon actually re-rendered with new geometry (signature & vertex count change).
+  // ...and the rebuilt ribbon actually re-rendered with new geometry (signature, vertex count & fingerprint change).
   const updatedRibbon = await page.waitForFunction(
     (before) => {
       let currentGroupUuid = "";
       let currentPositions = 0;
+      let posHash = 2166136261;
       (window as any).__r3fScene?.traverse((o: any) => {
         if (o.name === "RoadRibbons") {
           currentGroupUuid = o.uuid;
           o.traverse((m: any) => {
             if (m.isMesh && m.geometry?.attributes?.position) {
-              currentPositions += m.geometry.attributes.position.count;
+              const pos = m.geometry.attributes.position;
+              currentPositions += pos.count;
+              const arr = pos.array;
+              if (arr) {
+                for (let i = 0; i < arr.length; i++) {
+                  const v = Math.round(arr[i] * 1000);
+                  posHash = Math.imul(posHash ^ v, 16777619);
+                }
+              }
             }
           });
         }
@@ -415,15 +489,18 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
       const s = (window as any).__colony?.sim?.state;
       const currentRoadsVersion = s?.roadsVersion ?? 0;
       const currentSignature = `r${currentRoadsVersion}:w${s?.roadWays?.length ?? 0}`;
+      const currentPosFingerprint = (posHash >>> 0).toString(16);
       if (
         currentPositions > before.totalPositions &&
         currentRoadsVersion > before.roadsVersion &&
-        currentSignature !== before.signature
+        currentSignature !== before.signature &&
+        currentPosFingerprint !== before.posFingerprint
       ) {
         return {
           currentGroupUuid,
           groupRecreated: currentGroupUuid !== before.groupUuid,
           currentPositions,
+          currentPosFingerprint,
           diffPositions: currentPositions - before.totalPositions,
           currentRoadsVersion,
           currentSignature,
@@ -437,6 +514,7 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
 
   const ribbonChange = await updatedRibbon.jsonValue();
   expect(ribbonChange.currentPositions).toBeGreaterThan(initialRibbon.totalPositions);
+  expect(ribbonChange.currentPosFingerprint).not.toBe(initialRibbon.posFingerprint);
   expect(ribbonChange.currentRoadsVersion).toBeGreaterThan(initialRibbon.roadsVersion);
   expect(ribbonChange.currentSignature).not.toBe(initialRibbon.signature);
 });
