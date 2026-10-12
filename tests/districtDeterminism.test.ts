@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { cellOk } from "../src/colony/pathfind";
 import type { Cell } from "../src/colony/pathfind";
@@ -196,85 +196,187 @@ describe("phase 2A/2B district determinism gate", () => {
       );
   });
 
-  it("pins golden intersections and hashes on live seeds", () => {
-    for (const seed of SEEDS) {
-      const rt = new ColonyRuntime(seed);
-      const d = rt.commercialDistrict!;
-      const golden = GOLDEN[seed];
-      expect(rt.commercialReserve).toEqual(golden.reserve);
-      expect(
-        coastalCandidateKeys(rt).has(`${golden.reserve.x},${golden.reserve.y}`),
-      ).toBe(true);
-      expect(d.intersection).toEqual(golden.intersection);
-      expect(d.mallPad).toEqual(golden.mallPad);
-      expect(sortedHash(d.crossStreet)).toBe(golden.crossStreetHash);
-      expect(parcelFootprintHash(rt)).toBe(golden.parcelFootprintHash);
-      expect(sortedHash(rectCells(d.mallPad))).toBe(golden.mallPadHash);
-    }
-  }, 30000);
+  let totalConstructedRuntimes = 0;
 
-  it("reserves a deterministic mall pad inside the district end nearest the intersection", () => {
-    for (const seed of SEEDS) {
-      const rt = new ColonyRuntime(seed);
-      const d = rt.commercialDistrict!;
-      const reserve = rt.commercialReserve!;
-      const mallPad = d.mallPad;
-      const shopCells = new Set<string>();
-      for (const p of d.parcels)
-        for (let y = p.y; y < p.y + p.h; y++)
-          for (let x = p.x; x < p.x + p.w; x++) shopCells.add(`${x},${y}`);
-      const streetKeys = new Set(d.street.map(key));
-      const crossStreetKeys = new Set(d.crossStreet.map(key));
-      const center = rectCenter(mallPad);
-      const intersection = d.intersection!;
+  for (const seed of SEEDS) {
+    describe(`seed ${seed}`, () => {
+      let aRuntime: ColonyRuntime;
+      let bRuntime: ColonyRuntime;
+      let pair: { a: ColonyRuntime; b: ColonyRuntime };
+      let baselineSnapshotA: string;
+      let baselineSnapshotB: string;
 
-      expect(mallPad.w).toBe(14);
-      expect(mallPad.h).toBe(10);
-      expect(mallPad.x).toBeGreaterThanOrEqual(reserve.x);
-      expect(mallPad.y).toBeGreaterThanOrEqual(reserve.y);
-      expect(mallPad.x + mallPad.w).toBeLessThanOrEqual(reserve.x + reserve.w);
-      expect(mallPad.y + mallPad.h).toBeLessThanOrEqual(reserve.y + reserve.h);
-      expect(center.y).toBeLessThan(intersection.y);
-
-      for (const c of rectCells(mallPad)) {
-        const k = key(c);
-        expect(cellOk(rt.sim.state.terrain, c.x, c.y)).toBe(true);
-        expect(streetKeys.has(k)).toBe(false);
-        expect(crossStreetKeys.has(k)).toBe(false);
-        expect(shopCells.has(k)).toBe(false);
+      function snapshotState(rt: ColonyRuntime): string {
+        const d = rt.commercialDistrict;
+        const res = rt.commercialReserve;
+        const t = rt.sim.state.terrain;
+        const lighthouse = rt.sim.state.structures.find(
+          (s) => s.kind === "lighthouse",
+        );
+        const mallPadOk = d?.mallPad
+          ? rectCells(d.mallPad).map((c) => cellOk(t, c.x, c.y))
+          : [];
+        return JSON.stringify({
+          reserve: res,
+          intersection: d?.intersection,
+          mallPad: d?.mallPad,
+          crossStreet: d?.crossStreet,
+          street: d?.street,
+          parcels: d?.parcels,
+          terrainSize: t.size,
+          terrainLanding: { x: t.landing.x, y: t.landing.y },
+          lighthouseCoord: lighthouse
+            ? { x: lighthouse.x, y: lighthouse.y }
+            : null,
+          mallPadCellOk: mallPadOk,
+        });
       }
 
-      const replay = new ColonyRuntime(seed).commercialDistrict!;
-      expect(replay.mallPad).toEqual(mallPad);
-      expect(sortedHash(rectCells(replay.mallPad))).toBe(
-        sortedHash(rectCells(mallPad)),
-      );
-    }
-  }, 30000);
+      let bootDurationA = 0;
+      let bootDurationB = 0;
 
-  it("matches the spec reference picker and keeps the core crossing degree 4", () => {
-    for (const seed of SEEDS) {
-      const rt = new ColonyRuntime(seed);
-      const d = rt.commercialDistrict!;
-      const reserve = rt.commercialReserve!;
-      const expected = {
-        x: reserve.x + Math.floor(reserve.w / 2),
-        y: reserve.y + Math.floor(reserve.h / 2),
-      };
-      expect(d.intersection).toEqual(
-        referenceIntersection(d.street, d.crossStreet),
-      );
-      expect(d.intersection).toEqual(expected);
-      expect(degreeAt(d.intersection!, d.street, d.crossStreet)).toBe(4);
-    }
-  }, 30000);
+      beforeAll(() => {
+        const t0 = performance.now();
+        aRuntime = new ColonyRuntime(seed);
+        totalConstructedRuntimes++;
+        bootDurationA = performance.now() - t0;
+      }, 30000);
 
-  it("weakly replays cross-street and intersection across fresh boots", () => {
-    for (const seed of SEEDS) {
-      const a = new ColonyRuntime(seed).commercialDistrict!;
-      const b = new ColonyRuntime(seed).commercialDistrict!;
-      expect(b.crossStreet).toEqual(a.crossStreet);
-      expect(b.intersection).toEqual(a.intersection);
-    }
-  }, 30000);
+      beforeAll(() => {
+        const t0 = performance.now();
+        bRuntime = new ColonyRuntime(seed);
+        totalConstructedRuntimes++;
+        pair = { a: aRuntime, b: bRuntime };
+
+        // Identity and isolation checks across root and nested district structures
+        expect(pair.a).not.toBe(pair.b);
+        expect(pair.a.sim.state).not.toBe(pair.b.sim.state);
+        expect(pair.a.sim.state.terrain).not.toBe(pair.b.sim.state.terrain);
+        expect(pair.a.commercialDistrict).not.toBe(pair.b.commercialDistrict);
+        expect(pair.a.commercialDistrict!.mallPad).not.toBe(
+          pair.b.commercialDistrict!.mallPad,
+        );
+        expect(pair.a.commercialDistrict!.crossStreet).not.toBe(
+          pair.b.commercialDistrict!.crossStreet,
+        );
+        expect(pair.a.commercialDistrict!.street).not.toBe(
+          pair.b.commercialDistrict!.street,
+        );
+        expect(pair.a.commercialDistrict!.parcels).not.toBe(
+          pair.b.commercialDistrict!.parcels,
+        );
+
+        baselineSnapshotA = snapshotState(pair.a);
+        baselineSnapshotB = snapshotState(pair.b);
+        bootDurationB = performance.now() - t0;
+        console.log(
+          `[districtDeterminism] Seed ${seed} Vitest setup: bootA=${(bootDurationA / 1000).toFixed(2)}s, bootB+checks+snapshots=${(bootDurationB / 1000).toFixed(2)}s, pairTotal=${((bootDurationA + bootDurationB) / 1000).toFixed(2)}s`,
+        );
+      }, 30000);
+
+      afterEach(() => {
+        // Verify asserted mutable state remains completely unchanged after each test
+        expect(snapshotState(pair.a)).toBe(baselineSnapshotA);
+        expect(snapshotState(pair.b)).toBe(baselineSnapshotB);
+      });
+
+      it("pins golden intersections and hashes on live seed", () => {
+        const rt = pair.a;
+        const d = rt.commercialDistrict!;
+        const golden = GOLDEN[seed];
+        expect(rt.commercialReserve).toEqual(golden.reserve);
+        expect(
+          coastalCandidateKeys(rt).has(`${golden.reserve.x},${golden.reserve.y}`),
+        ).toBe(true);
+        expect(d.intersection).toEqual(golden.intersection);
+        expect(d.mallPad).toEqual(golden.mallPad);
+        expect(sortedHash(d.crossStreet)).toBe(golden.crossStreetHash);
+        expect(parcelFootprintHash(rt)).toBe(golden.parcelFootprintHash);
+        expect(sortedHash(rectCells(d.mallPad))).toBe(golden.mallPadHash);
+      }, 30000);
+
+      it("reserves a deterministic mall pad inside the district end nearest the intersection", () => {
+        const rt = pair.a;
+        const d = rt.commercialDistrict!;
+        const reserve = rt.commercialReserve!;
+        const mallPad = d.mallPad;
+        const shopCells = new Set<string>();
+        for (const p of d.parcels)
+          for (let y = p.y; y < p.y + p.h; y++)
+            for (let x = p.x; x < p.x + p.w; x++) shopCells.add(`${x},${y}`);
+        const streetKeys = new Set(d.street.map(key));
+        const crossStreetKeys = new Set(d.crossStreet.map(key));
+        const center = rectCenter(mallPad);
+        const intersection = d.intersection!;
+
+        expect(mallPad.w).toBe(14);
+        expect(mallPad.h).toBe(10);
+        expect(mallPad.x).toBeGreaterThanOrEqual(reserve.x);
+        expect(mallPad.y).toBeGreaterThanOrEqual(reserve.y);
+        expect(mallPad.x + mallPad.w).toBeLessThanOrEqual(reserve.x + reserve.w);
+        expect(mallPad.y + mallPad.h).toBeLessThanOrEqual(reserve.y + reserve.h);
+        expect(center.y).toBeLessThan(intersection.y);
+
+        for (const c of rectCells(mallPad)) {
+          const k = key(c);
+          expect(cellOk(rt.sim.state.terrain, c.x, c.y)).toBe(true);
+          expect(streetKeys.has(k)).toBe(false);
+          expect(crossStreetKeys.has(k)).toBe(false);
+          expect(shopCells.has(k)).toBe(false);
+        }
+
+        const replay = pair.b.commercialDistrict!;
+        expect(replay.mallPad).toEqual(mallPad);
+        expect(sortedHash(rectCells(replay.mallPad))).toBe(
+          sortedHash(rectCells(mallPad)),
+        );
+      }, 30000);
+
+      it("matches the spec reference picker and keeps the core crossing degree 4", () => {
+        const rt = pair.a;
+        const d = rt.commercialDistrict!;
+        const reserve = rt.commercialReserve!;
+        const expected = {
+          x: reserve.x + Math.floor(reserve.w / 2),
+          y: reserve.y + Math.floor(reserve.h / 2),
+        };
+        expect(d.intersection).toEqual(
+          referenceIntersection(d.street, d.crossStreet),
+        );
+        expect(d.intersection).toEqual(expected);
+        expect(degreeAt(d.intersection!, d.street, d.crossStreet)).toBe(4);
+      }, 30000);
+
+      it("weakly replays cross-street and intersection across fresh boots", () => {
+        const a = pair.a.commercialDistrict!;
+        const b = pair.b.commercialDistrict!;
+        expect(b.crossStreet).toEqual(a.crossStreet);
+        expect(b.intersection).toEqual(a.intersection);
+      }, 30000);
+
+      it("proves instance isolation and detects unshared mutation (negative control)", () => {
+        const origX = pair.a.commercialDistrict!.mallPad.x;
+        const snapshotBeforeA = snapshotState(pair.a);
+        const snapshotBeforeB = snapshotState(pair.b);
+        try {
+          // Directly mutate pair.a's mallPad.x and verify pair.b is completely unaffected
+          pair.a.commercialDistrict!.mallPad.x = origX + 99;
+          expect(snapshotState(pair.a)).not.toBe(snapshotBeforeA);
+          expect(snapshotState(pair.b)).toBe(snapshotBeforeB);
+          expect(pair.b.commercialDistrict!.mallPad.x).toBe(origX);
+          expect(pair.b.commercialDistrict!.mallPad.x).not.toBe(
+            pair.a.commercialDistrict!.mallPad.x,
+          );
+        } finally {
+          // Restore pair.a's property in finally so following tests and afterEach invariants hold
+          pair.a.commercialDistrict!.mallPad.x = origX;
+        }
+        expect(snapshotState(pair.a)).toBe(snapshotBeforeA);
+      }, 30000);
+    });
+  }
+
+  afterAll(() => {
+    expect(totalConstructedRuntimes).toBe(6);
+  });
 });
