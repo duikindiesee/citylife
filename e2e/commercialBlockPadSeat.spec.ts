@@ -45,55 +45,58 @@ test("builder-painted CommercialBlock seats on its graded sloped pad", async ({
         (failure: any) => failure.code === "ROAD_CONNECTION_REQUIRED",
       );
 
-    let target: {
-      x: number;
-      y: number;
-      relief: number;
-      roadCells: { x: number; y: number }[];
-    } | null = null;
-    for (let y = 40; y < t.size - 40 && !target; y += 3) {
-      for (let x = 40; x < t.size - 40; x += 3) {
-        // Keep each frontage marker a separate one-cell placement. Joining them into a ribbon
-        // adds a rendered shoulder on the plots' first row, which exact overlap checks reject.
-        const roadCells = [
-          { x: x - 5, y },
-          { x: x + 5, y },
-        ];
-        if (roadCells.some((cell) => roadSet.has(`${cell.x},${cell.y}`)))
-          continue;
-        if (
-          roadCells.some((cell) => !rt.surveyRoadPlacement([cell], "street").ok)
-        )
-          continue;
+    const testCandidate = (x: number, y: number) => {
+      // Keep each frontage marker a separate one-cell placement. Joining them into a ribbon
+      // adds a rendered shoulder on the plots' first row, which exact overlap checks reject.
+      const roadCells = [
+        { x: x - 5, y },
+        { x: x + 5, y },
+      ];
+      if (roadCells.some((cell) => roadSet.has(`${cell.x},${cell.y}`)))
+        return null;
+      if (
+        roadCells.some((cell) => !rt.surveyRoadPlacement([cell], "street").ok)
+      )
+        return null;
 
-        const left = rt.surveyZonedPlot(
-          x - 5,
-          y + 1,
-          "n",
-          "COMPACT",
-          "commercial",
-        );
-        const right = rt.surveyZonedPlot(
-          x + 5,
-          y + 1,
-          "n",
-          "COMPACT",
-          "commercial",
-        );
-        if (!onlyMissingRoad(left) || !onlyMissingRoad(right)) continue;
+      const left = rt.surveyZonedPlot(
+        x - 5,
+        y + 1,
+        "n",
+        "COMPACT",
+        "commercial",
+      );
+      const right = rt.surveyZonedPlot(
+        x + 5,
+        y + 1,
+        "n",
+        "COMPACT",
+        "commercial",
+      );
+      if (!onlyMissingRoad(left) || !onlyMissingRoad(right)) return null;
 
-        const heights = [...left.cells, ...right.cells].map((cell: any) =>
-          t.worldY(cell.x, cell.y),
-        );
-        const relief = Math.max(...heights) - Math.min(...heights);
-        if (relief < 0.6) continue;
-        target = {
-          x,
-          y,
-          relief,
-          roadCells,
-        };
-        break;
+      const heights = [...left.cells, ...right.cells].map((cell: any) =>
+        t.worldY(cell.x, cell.y),
+      );
+      const relief = Math.max(...heights) - Math.min(...heights);
+      if (relief < 0.6) return null;
+      return {
+        x,
+        y,
+        relief,
+        roadCells,
+      };
+    };
+
+    // Prioritize deterministic verified candidate (253, 109) for seed 4242 through public runtime survey;
+    // fall back to bounded grid search if unavailable.
+    let target = testCandidate(253, 109);
+    if (!target) {
+      for (let y = 40; y < t.size - 40 && !target; y += 3) {
+        for (let x = 40; x < t.size - 40; x += 3) {
+          target = testCandidate(x, y);
+          if (target) break;
+        }
       }
     }
     if (!target) throw new Error("no sloped builder-safe commercial run found");

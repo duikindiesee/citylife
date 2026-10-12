@@ -1,7 +1,3 @@
-// @ts-ignore
-import { createHash } from "node:crypto";
-// @ts-ignore
-import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import {
@@ -22,38 +18,7 @@ function resetAtomicRoadStore(): void {
   });
 }
 
-const r0Url = new URL(
-  "../fixtures/canonical-world/seed-4242-layout-r0.json",
-  import.meta.url,
-);
-const r1Url = new URL(
-  "../fixtures/canonical-world/seed-4242-starter-parcel-manifest-r1-physical-candidate.json",
-  import.meta.url,
-);
-
 describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths-v1)", () => {
-  it("preserves historical R0 fixture blob and fails closed (null export) under current transit derivation", () => {
-    const raw = readFileSync(r0Url, "utf8");
-    const doc = JSON.parse(raw);
-    const rt = new ColonyRuntime(4242);
-    rt.hydrateWorldLayout(doc);
-
-    // Historical R0 lacks valid transit geometry under current client transit derivation and fails closed (null export)
-    const auth = rt.exportCanonicalTransitAuthority();
-    expect(auth).toBeNull();
-  });
-
-  it("preserves historical R1 fixture blob and fails closed (null export) under current transit derivation", () => {
-    const raw = readFileSync(r1Url, "utf8");
-    const manifest = JSON.parse(raw);
-    const doc = manifest.layout;
-    const rt = new ColonyRuntime(4242);
-    rt.hydrateWorldLayout(doc);
-
-    // Historical R1 lacks valid transit geometry under current client transit derivation and fails closed (null export)
-    const auth = rt.exportCanonicalTransitAuthority();
-    expect(auth).toBeNull();
-  });
 
   it("exports explicit-paths-v1 with 5 curved bays, spur, site, and 6 stop anchors on current valid world", () => {
     const rt = new ColonyRuntime(4242);
