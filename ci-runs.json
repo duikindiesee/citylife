@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-12T20:28:09.906Z",
+  "updatedAt": "2026-10-12T20:28:37.671Z",
   "runs": [
+    {
+      "runId": 38304319773,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38304319773",
+      "event": "pull_request",
+      "branch": "candidate/road-integration-candidate",
+      "sha": "dbc636a5c2d2585763443588f20a150af36eb6d0",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/dbc636a5c2d2585763443588f20a150af36eb6d0",
+      "pullRequestNumbers": "#564",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/564",
+      "pullRequests": [
+        {
+          "number": 564,
+          "url": "https://github.com/duikindiesee/citylife/pull/564"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-12T20:27:17Z",
+      "completedAt": "2026-10-12T20:28:28Z",
+      "durationSeconds": 71,
+      "runnerSummary": "GitHub Actions 1000011025",
+      "jobs": [
+        {
+          "id": 114994546988,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000011025",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-12T20:27:21Z",
+          "completedAt": "2026-10-12T20:28:28Z",
+          "durationSeconds": 67
+        }
+      ]
+    },
     {
       "runId": 38304319649,
       "workflowName": "Secret scan",
@@ -10382,45 +10421,6 @@
           "startedAt": "2026-09-28T14:14:21Z",
           "completedAt": "2026-09-28T14:33:46Z",
           "durationSeconds": 1165
-        }
-      ]
-    },
-    {
-      "runId": 36434453247,
-      "workflowName": "Build CityLife Debug APK",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36434453247",
-      "event": "pull_request",
-      "branch": "feat/player-parcel-catalogue",
-      "sha": "c545271889439c3551da03b3781ad719509ffed7",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/c545271889439c3551da03b3781ad719509ffed7",
-      "pullRequestNumbers": "#524",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/524",
-      "pullRequests": [
-        {
-          "number": 524,
-          "url": "https://github.com/duikindiesee/citylife/pull/524"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-09-28T14:14:16Z",
-      "completedAt": "2026-09-28T14:15:34Z",
-      "durationSeconds": 78,
-      "runnerSummary": "GitHub Actions 1000010467",
-      "jobs": [
-        {
-          "id": 108968639650,
-          "name": "build",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010467",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-09-28T14:14:20Z",
-          "completedAt": "2026-09-28T14:15:34Z",
-          "durationSeconds": 74
         }
       ]
     }
