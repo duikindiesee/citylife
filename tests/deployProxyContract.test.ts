@@ -103,4 +103,3 @@ describe("production gateway proxy contract", () => {
     });
   });
 });
-
