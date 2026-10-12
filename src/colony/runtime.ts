@@ -3478,6 +3478,7 @@ export class ColonyRuntime {
           this.fpTeleportRequest = {
             x: walkCellX,
             y: walkCellY,
+            yaw: this.fpCameraYaw,
             seq: ++this.fpTeleportSeq,
           };
           if (this.fpCitizenId) {

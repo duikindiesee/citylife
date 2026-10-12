@@ -770,6 +770,7 @@ export function ColonyApp() {
           store,
           remoteLoader: remoteLoader,
           requireRemoteAuthority: isMultiplayer,
+          requireTransitAuthority: isMultiplayer,
           runtime: {
             captureWorldLayout: () => runtime.captureWorldLayout(),
             hydrateWorldLayout: (document) => {

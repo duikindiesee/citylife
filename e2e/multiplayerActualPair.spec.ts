@@ -6,6 +6,8 @@ import { execSync } from "child_process";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import { createWorldLayoutDocument } from "../src/colony/spatial/worldLayoutDocument";
 import { ColonyRuntime } from "../src/colony/runtime";
+import { WorldLayoutBootCoordinator, WorldLayoutBootError } from "../src/colony/worldLayoutBoot";
+import { MultiplayerClient } from "../src/colony/multiplayer/multiplayerClient";
 
 import { createRequire } from "module";
 import { fileURLToPath } from "url";
@@ -21,6 +23,7 @@ function loadServerComponents() {
     }
     const candidates = [
       path.resolve(process.cwd(), "citylife-server"),
+      path.resolve(process.cwd(), "../citylife-server-transit-geometry-candidate"),
       path.resolve(process.cwd(), "../citylife-server"),
       path.resolve(__dirname, "../../citylife-server"),
       path.resolve(__dirname, "../citylife-server"),
@@ -55,12 +58,31 @@ function loadServerComponents() {
   const jwt = require(jwtPath);
   const { buildApp } = require(appPath);
   const { GameStateManager } = require(gameStatePath);
-  const { LocalWorldAuthorityClient } = require(worldAuthPath);
+  const {
+    LocalWorldAuthorityClient,
+    CANONICAL_PHYSICAL_OBSTACLES_4242,
+    PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+    computePhysicalCollidersContentHash,
+  } = require(worldAuthPath);
   const { RealtimeManager, extractRoadGeometry, extractWalkabilityAuthority, isFootprintClear, OWNED_DRIVING_CONFIG } = require(realtimePath);
   const wsPath = path.join(serverDir, "node_modules/ws");
   const WebSocket = require(wsPath);
 
-  return { jwt, buildApp, GameStateManager, LocalWorldAuthorityClient, RealtimeManager, extractRoadGeometry, extractWalkabilityAuthority, isFootprintClear, OWNED_DRIVING_CONFIG, WebSocket };
+  return {
+    jwt,
+    buildApp,
+    GameStateManager,
+    LocalWorldAuthorityClient,
+    RealtimeManager,
+    extractRoadGeometry,
+    extractWalkabilityAuthority,
+    isFootprintClear,
+    OWNED_DRIVING_CONFIG,
+    WebSocket,
+    CANONICAL_PHYSICAL_OBSTACLES_4242,
+    PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+    computePhysicalCollidersContentHash,
+  };
 }
 
 const SESSION_STORAGE_KEY = "citylife.session.v5";
@@ -299,7 +321,9 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     );
 
     try {
-      const clientWs = new WebSocket(`${wsUrl}?token=${token}`);
+      const clientWs = new WebSocket(`${wsUrl}?token=${token}`, {
+        headers: { origin: "https://citylife.kooker.co.za" },
+      });
       const receivedMessages: any[] = [];
       const receivedErrors: any[] = [];
       let closeEvent: { code: number; reason: string } | null = null;
@@ -355,6 +379,482 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     }
   });
 
+  test("fails closed with CANONICAL_TRANSIT_UNAVAILABLE when starter catalogue lacks transit companion under multiplayer boot policy", async () => {
+    const baseSurveyRuntime = new ColonyRuntime(4242);
+    const baseSurveyDoc = baseSurveyRuntime.captureWorldLayout();
+    const defaultDoc = createWorldLayoutDocument({
+      ...baseSurveyDoc,
+      layoutId: "seed-4242",
+      seed: 4242,
+      revision: { number: 0, parentHash: null },
+    });
+
+    let hydrated = false;
+    let saved = false;
+    const store = {
+      async load() {
+        return null;
+      },
+      async save() {
+        saved = true;
+        return {
+          status: "saved" as const,
+          revision: {
+            layoutRevision: "rev-1",
+            worldId: "seed-4242",
+            sequence: 1,
+            document: defaultDoc,
+            persistedAt: Date.now(),
+          },
+        };
+      },
+      async history() {
+        return [];
+      },
+    };
+
+    const coordinator = new WorldLayoutBootCoordinator({
+      worldId: "seed-4242",
+      store,
+      requireRemoteAuthority: true,
+      requireTransitAuthority: true,
+      remoteLoader: {
+        async loadRemoteStarterCatalogue() {
+          return {
+            published: true,
+            manifest: {
+              worldId: "seed-4242",
+              layoutRevision: defaultDoc.revision.contentHash,
+              layout: defaultDoc,
+              // Deliberately omitted transit companion
+            },
+          };
+        },
+      },
+      runtime: {
+        captureWorldLayout: () => baseSurveyDoc,
+        hydrateWorldLayout: () => {
+          hydrated = true;
+        },
+        exportCanonicalTransitAuthority: (doc) =>
+          baseSurveyRuntime.exportCanonicalTransitAuthority(doc),
+      },
+    });
+
+    await expect(coordinator.boot()).rejects.toThrow(WorldLayoutBootError);
+    await expect(coordinator.boot()).rejects.toMatchObject({
+      code: "CANONICAL_TRANSIT_UNAVAILABLE",
+    });
+    expect(hydrated, "Hydration must NOT occur when transit companion is absent").toBe(false);
+    expect(saved, "Persistent save must NOT occur when transit companion is absent").toBe(false);
+  });
+
+  test("paired 80b server: recoverable MODE_MISMATCH maintains participant and socket, and next valid input succeeds", async () => {
+    // Scope Disclosure: Real pinned 80b Fastify HTTP/WebSocket server running on local loopback (127.0.0.1)
+    // with synthetic JWT authentication and in-memory local WorldAuthority fixtures.
+    const {
+      jwt,
+      buildApp,
+      GameStateManager,
+      LocalWorldAuthorityClient,
+      RealtimeManager,
+      WebSocket: ServerWebSocket,
+      CANONICAL_PHYSICAL_OBSTACLES_4242,
+      PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      computePhysicalCollidersContentHash,
+    } = loadServerComponents();
+
+    // Qualification / Scope Disclosure: Rev 0 generated from ColonyRuntime(4242) base survey
+    // represents a local-source synthetic verification fixture. It does NOT clear reviewed R1
+    // canonical publication or deployed acceptance. R1 transit-route loop alignment remains a
+    // required dependency under ROAD/catalogue/BUSsync owners.
+    const baseSurveyRuntime = new ColonyRuntime(4242);
+    const defaultDoc = createWorldLayoutDocument({
+      ...baseSurveyRuntime.captureWorldLayout(),
+      layoutId: "seed-4242",
+      seed: 4242,
+      revision: { number: 0, parentHash: null },
+    });
+
+    const surfaceFrame = defaultDoc.frames.find((f: any) => f.layer === "surface") || defaultDoc.frames[0];
+    const canonicalTransitAuthority = baseSurveyRuntime.exportCanonicalTransitAuthority(defaultDoc);
+    expect(
+      canonicalTransitAuthority,
+      "Base survey runtime must physically export canonical transit authority for defaultDoc",
+    ).not.toBeNull();
+
+    const physicalColliders = {
+      schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      frameId: surfaceFrame.id,
+      obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      contentHash: computePhysicalCollidersContentHash({
+        schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+        worldId: "seed-4242",
+        layoutRevision: defaultDoc.revision.contentHash,
+        frameId: surfaceFrame.id,
+        obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      }),
+    };
+
+    const walkableCells = new Set<string>();
+    for (let x = 120; x <= 180; x++) {
+      for (let y = 250; y <= 280; y++) {
+        walkableCells.add(`${x},${y}`);
+      }
+    }
+    const walkability = {
+      schemaVersion: "citylife.walkability/v1",
+      frameId: surfaceFrame.id,
+      walkableCells,
+    };
+
+    const worldAuth = new LocalWorldAuthorityClient();
+    worldAuth.registerWorld({
+      schemaVersion: "citylife.starter-parcel-manifest/v1",
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      layout: defaultDoc,
+      plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+      hubSpawn: { x: 139, y: 265, heading: 0 },
+      physicalColliders,
+      walkability,
+      transit: canonicalTransitAuthority,
+    });
+
+    const userClient = {
+      async getVehicleTruth(userId: string) {
+        return {
+          owned: true,
+          status: "OWNED",
+          vehicleKey: "karoo-vonk-11",
+          storage: "local-drive",
+          onboardingState: "COMPLETED",
+        };
+      },
+    };
+
+    const realtime = new RealtimeManager({
+      userClient,
+      worldAuthorityClient: worldAuth,
+      enableSimulationTimer: true,
+      simulationIntervalMs: 50,
+    });
+
+    const fastifyApp = buildApp({
+      gameState: new GameStateManager(null, null),
+      realtime,
+      userClient,
+      worldAuthorityClient: worldAuth,
+      jwtSecret: JWT_SECRET,
+      jwtAlgorithms: ["HS256"],
+      allowedWsOrigins: ["https://citylife.kooker.co.za"],
+    });
+
+    const serverAddr = await fastifyApp.listen({ port: 0, host: "127.0.0.1" });
+    const wsUrl = serverAddr.replace(/^http/, "ws") + "/api/v1/citylife/ws";
+
+    const token = jwt.sign(
+      { userId: 80001, id: 80001, sub: 80001, type: "access", roles: ["CITYLIFE_PLAYER"], username: "pairtester" },
+      JWT_SECRET,
+      { algorithm: "HS256", expiresIn: "1h" },
+    );
+
+    // Provide browser-like Origin header for Node WebSocket client
+    const OriginalWebSocket = globalThis.WebSocket;
+    class NodeTestWebSocket extends ServerWebSocket {
+      constructor(url: string | URL, protocols?: any) {
+        super(url, protocols, {
+          headers: {
+            origin: "https://citylife.kooker.co.za",
+          },
+        });
+      }
+    }
+    (globalThis as any).WebSocket = NodeTestWebSocket;
+
+    const errorEvents: { code: string; message: string }[] = [];
+    const snapshots: any[] = [];
+    const client = new MultiplayerClient({
+      url: wsUrl,
+      token,
+      userId: "80001",
+      username: "pairtester",
+      roomCode: "pair-mismatch-room",
+      worldId: "seed-4242",
+      layoutRevision: `wl:v1:0:${defaultDoc.revision.contentHash}`,
+      neighbourhoodKey: "citylife-central",
+      autoCreate: true,
+      onError: (err) => {
+        errorEvents.push(err);
+      },
+      onSnapshot: (snap) => {
+        snapshots.push(snap);
+      },
+    });
+
+    try {
+      await client.connect();
+
+      // 1. Wait for admission (session_joined)
+      const timeoutAt = Date.now() + 5000;
+      while (client.getStatus() !== "connected" && Date.now() < timeoutAt) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect(client.getStatus()).toBe("connected");
+      const initialSessionId = client.getSessionInfo().sessionId;
+      const initialParticipantId = client.getSessionInfo().participantId;
+      expect(initialSessionId).toBeDefined();
+      expect(initialParticipantId).toBeDefined();
+
+      const initialMode = client.getMode();
+      const initialEpoch = client.getModeEpoch();
+
+      // 1. Prime valid NEUTRAL seq: 1 in admitted mode and current epoch
+      const validSeq1 = 1;
+      let neutralSent = false;
+      if (initialMode === "walking") {
+        neutralSent = client.sendWalkingInput({
+          seq: validSeq1,
+          epoch: initialEpoch,
+          forward: 0,
+          strafe: 0,
+          heading: 0,
+        });
+      } else {
+        neutralSent = client.sendDrivingInput({
+          seq: validSeq1,
+          epoch: initialEpoch,
+          throttle: 0,
+          steer: 0,
+          brake: false,
+        });
+      }
+      expect(neutralSent, "Client must transmit prime valid neutral input").toBe(true);
+
+      // Wait bounded for authoritative snapshot ack 1
+      const ack1Timeout = Date.now() + 5000;
+      let ack1Snapshot: any = null;
+      while (Date.now() < ack1Timeout) {
+        ack1Snapshot = snapshots.find((snap) =>
+          snap.participants.some(
+            (p: any) =>
+              (p.participantId === initialParticipantId || p.userId === "80001") &&
+              p.lastInputSeq === validSeq1,
+          ),
+        );
+        if (ack1Snapshot) break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(
+        ack1Snapshot,
+        "Server must broadcast authoritative snapshot ack 1 for prime valid neutral input",
+      ).toBeDefined();
+
+      const ack1Part = ack1Snapshot.participants.find(
+        (p: any) => p.participantId === initialParticipantId || p.userId === "80001",
+      );
+      expect(ack1Part.lastInputSeq).toBe(validSeq1);
+      expect(ack1Part.mode).toBe(initialMode);
+      expect(ack1Part.modeEpoch).toBe(initialEpoch);
+      const initialAckX = ack1Part.x;
+      const initialAckY = ack1Part.y;
+      const initialAckZ = ack1Part.z;
+
+      // 2. Transmit mismatched input (wrong mode, high seq 101) directly over wire
+      const mismatchedMode = initialMode === "walking" ? "driving" : "walking";
+      const rawSent = (client as any).send({
+        type: "input",
+        mode: mismatchedMode,
+        seq: 101,
+        epoch: initialEpoch,
+        throttle: 1,
+        steer: 0,
+        brake: false,
+        forward: 1,
+        strafe: 0,
+        heading: 0,
+      });
+      expect(rawSent).toBe(true);
+
+      // 3. Wait bounded for pinned server to respond with MODE_MISMATCH
+      const errTimeout = Date.now() + 5000;
+      while (!errorEvents.some((e) => e.code === "MODE_MISMATCH") && Date.now() < errTimeout) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+
+      const mismatchError = errorEvents.find((e) => e.code === "MODE_MISMATCH");
+      expect(mismatchError).toBeDefined();
+      expect(mismatchError?.code).toBe("MODE_MISMATCH");
+
+      // Invariant: client connection is NOT torn down; status remains connected, session and epoch intact
+      expect(client.getStatus()).toBe("connected");
+      expect(client.getSessionInfo().sessionId).toBe(initialSessionId);
+      expect(client.getSessionInfo().participantId).toBe(initialParticipantId);
+      expect(client.getMode()).toBe(initialMode);
+      expect(client.getModeEpoch()).toBe(initialEpoch);
+
+      // Verify server did NOT consume seq 101 (lastInputSeq remains 1, not 101)
+      const latestSnapshot = snapshots[snapshots.length - 1];
+      const latestPart = latestSnapshot?.participants.find(
+        (p: any) => p.participantId === initialParticipantId || p.userId === "80001",
+      );
+      if (latestPart) {
+        expect(latestPart.lastInputSeq).toBe(validSeq1);
+        expect(latestPart.mode).toBe(initialMode);
+      }
+
+      // 4. Send subsequent valid nextseq 2 with actual non-neutral movement
+      const validSeq2 = 2;
+      let nonNeutralSent = false;
+      if (initialMode === "walking") {
+        nonNeutralSent = client.sendWalkingInput({
+          seq: validSeq2,
+          epoch: initialEpoch,
+          forward: 1,
+          strafe: 0,
+          heading: 0,
+        });
+      } else {
+        nonNeutralSent = client.sendDrivingInput({
+          seq: validSeq2,
+          epoch: initialEpoch,
+          throttle: 1,
+          steer: 0,
+          brake: false,
+        });
+      }
+      expect(nonNeutralSent).toBe(true);
+
+      // 5. Wait bounded for fresh authoritative snapshot ack 2
+      const ack2Timeout = Date.now() + 5000;
+      let ack2Snapshot: any = null;
+      while (Date.now() < ack2Timeout) {
+        ack2Snapshot = snapshots.find((snap) =>
+          snap.participants.some(
+            (p: any) =>
+              (p.participantId === initialParticipantId || p.userId === "80001") &&
+              p.lastInputSeq === validSeq2,
+          ),
+        );
+        if (ack2Snapshot) break;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      expect(
+        ack2Snapshot,
+        "Server must broadcast authoritative snapshot ack 2 confirming accepted next valid sequence",
+      ).toBeDefined();
+
+      const ack2Part = ack2Snapshot.participants.find(
+        (p: any) => p.participantId === initialParticipantId || p.userId === "80001",
+      );
+      expect(ack2Part.lastInputSeq).toBe(validSeq2);
+      expect(ack2Part.mode).toBe(initialMode);
+      expect(ack2Part.modeEpoch).toBe(initialEpoch);
+
+      // Assert actual non-neutral movement occurred
+      const displacement = Math.hypot(
+        ack2Part.x - initialAckX,
+        (ack2Part.z ?? ack2Part.y) - (initialAckZ ?? initialAckY),
+      );
+      expect(
+        displacement > 0 || ack2Part.speed > 0,
+        `Valid non-neutral input must produce displacement or speed (displacement=${displacement}, speed=${ack2Part.speed})`,
+      ).toBe(true);
+
+      expect(client.getStatus()).toBe("connected");
+      expect(client.getSessionInfo().sessionId).toBe(initialSessionId);
+      expect(errorEvents.filter((e) => e.code === "MODE_MISMATCH")).toHaveLength(1);
+    } finally {
+      (globalThis as any).WebSocket = OriginalWebSocket;
+      client.disconnect();
+      realtime.dispose();
+      await fastifyApp.close();
+    }
+  });
+
+  test("paired 80b server: fatal authentication negative control terminates connection with code 4401", async () => {
+    const { jwt, buildApp, GameStateManager, LocalWorldAuthorityClient, RealtimeManager, WebSocket: ServerWebSocket } =
+      loadServerComponents();
+
+    const baseSurveyRuntime = new ColonyRuntime(4242);
+    const defaultDoc = createWorldLayoutDocument({
+      ...baseSurveyRuntime.captureWorldLayout(),
+      layoutId: "seed-4242",
+      seed: 4242,
+      revision: { number: 0, parentHash: null },
+    });
+
+    const worldAuth = new LocalWorldAuthorityClient();
+    worldAuth.registerWorld({
+      schemaVersion: "citylife.starter-parcel-manifest/v1",
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      layout: defaultDoc,
+      plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+      hubSpawn: { x: 139, y: 265, heading: 0 },
+    });
+
+    const realtime = new RealtimeManager({
+      userClient: { async getVehicleTruth() { return { owned: false }; } },
+      worldAuthorityClient: worldAuth,
+      enableSimulationTimer: false,
+    });
+
+    const fastifyApp = buildApp({
+      gameState: new GameStateManager(null, null),
+      realtime,
+      worldAuthorityClient: worldAuth,
+      jwtSecret: JWT_SECRET,
+      jwtAlgorithms: ["HS256"],
+      allowedWsOrigins: ["https://citylife.kooker.co.za"],
+    });
+
+    const serverAddr = await fastifyApp.listen({ port: 0, host: "127.0.0.1" });
+    const wsUrl = serverAddr.replace(/^http/, "ws") + "/api/v1/citylife/ws";
+
+    const expiredToken = jwt.sign(
+      { userId: 80002, id: 80002, sub: 80002, type: "access", roles: ["CITYLIFE_PLAYER"], username: "expiredtester" },
+      JWT_SECRET,
+      { algorithm: "HS256", expiresIn: "-1h" },
+    );
+
+    let ws: any = null;
+    try {
+      ws = new ServerWebSocket(
+        `${wsUrl}?token=${expiredToken}&room=pair-room-fatal&worldId=seed-4242&neighbourhood=citylife-central&mode=walking`,
+        {
+          headers: {
+            origin: "https://citylife.kooker.co.za",
+          },
+        },
+      );
+
+      const closeEvent = await new Promise<{ code: number; reason: string }>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error("Timeout waiting for expired token WebSocket close"));
+        }, 5000);
+        ws.on("close", (code: number, reason: any) => {
+          clearTimeout(timer);
+          resolve({ code, reason: reason?.toString("utf8") ?? "" });
+        });
+        ws.on("error", () => {});
+      });
+
+      // Pinned server closes with 4401 for expired token
+      expect(closeEvent.code).toBe(4401);
+      expect(ws.readyState).toBe(3); // CLOSED
+    } finally {
+      try {
+        ws?.terminate?.();
+        ws?.close?.();
+      } catch {}
+      realtime.dispose();
+      await fastifyApp.close();
+    }
+  });
+
   test("two racers driving down road against proposed Fastify server, verified in 3D and minimap, recording mp4", async ({
     browser,
   }) => {
@@ -387,11 +887,16 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       extractWalkabilityAuthority,
       isFootprintClear,
       OWNED_DRIVING_CONFIG,
+      CANONICAL_PHYSICAL_OBSTACLES_4242,
+      PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      computePhysicalCollidersContentHash,
     } = loadServerComponents();
 
     recordStage("Initialization & World Layout Document creation");
 
-    // 1. Build canonical world layout document
+    // 1. Build canonical world layout document (Qualification: Rev 0 generated from
+    // ColonyRuntime(4242) base survey is a local synthetic verification fixture;
+    // R1 route/depot correction is required under ROAD/catalogue/BUSsync owners).
     const baseSurveyRuntime = new ColonyRuntime(4242);
     const baseSurveyDoc = baseSurveyRuntime.captureWorldLayout();
     const sortedFrames = [...baseSurveyDoc.frames].sort((a: any, b: any) =>
@@ -404,6 +909,28 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       seed: 4242,
       revision: { number: 0, parentHash: null },
     });
+
+    const canonicalTransitAuthority = baseSurveyRuntime.exportCanonicalTransitAuthority(defaultDoc);
+    expect(
+      canonicalTransitAuthority,
+      "Base survey runtime must physically export canonical transit authority for defaultDoc",
+    ).not.toBeNull();
+
+    const surfaceFrame = defaultDoc.frames.find((f: any) => f.layer === "surface") || defaultDoc.frames[0];
+    const physicalColliders = {
+      schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      frameId: surfaceFrame.id,
+      obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      contentHash: computePhysicalCollidersContentHash({
+        schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+        worldId: "seed-4242",
+        layoutRevision: defaultDoc.revision.contentHash,
+        frameId: surfaceFrame.id,
+        obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      }),
+    };
 
     // 2. Set up isolated World Authority and User truth fixtures with explicit deterministic vehicle staging contract
     const worldAuth = new LocalWorldAuthorityClient();
@@ -419,8 +946,11 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       `Reviewed canonical vehicle staging cell for peer (${STAGING_CELL.x}, ${STAGING_CELL.y + 1}) must be on runtime road network`
     ).toBe(true);
 
-    // Assert serialized road geometry extraction and full vehicle footprint clearance
-    const stagingGeom = extractRoadGeometry(defaultDoc);
+    // Assert serialized road geometry extraction and full vehicle footprint clearance against complete physical truth
+    const stagingGeom = extractRoadGeometry(
+      { layout: defaultDoc, physicalColliders },
+      { layout: defaultDoc, physicalColliders }
+    );
     expect(
       stagingGeom.hasGeometry,
       "Canonical world document must provide usable surface frame geometry"
@@ -489,7 +1019,6 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       ).toBe(true);
     }
 
-    const surfaceFrame = defaultDoc.frames.find((f: any) => f.layer === "surface") || defaultDoc.frames[0];
     const walkableCells = new Set<string>();
     const terrain = baseSurveyRuntime.sim.state.terrain;
     for (let cx = 120; cx <= 180; cx++) {
@@ -530,11 +1059,13 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       worldId: "seed-4242",
       layoutRevision: defaultDoc.revision.contentHash,
       layout: defaultDoc,
+      physicalColliders,
       walkability: {
         schemaVersion: "citylife.walkability/v1",
         frameId: surfaceFrame.id,
         walkableCells,
       },
+      transit: canonicalTransitAuthority,
       plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
       hubSpawn: STAGING_CELL,
     });
@@ -569,6 +1100,15 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       staleTimeoutMs: 60_000,
     });
 
+    const origHandleConnection = realtime.handleConnection.bind(realtime);
+    realtime.handleConnection = (socket: any, authUser: any) => {
+      socket.on("close", (code: number, reason: Buffer | string) => {
+        console.log(`[Diagnostic Server Socket Close] user=${authUser.username || authUser.id}: code=${code}, reason=${reason?.toString()}`);
+      });
+      return origHandleConnection(socket, authUser);
+    };
+
+    const e2ePort = Number(process.env.CITYLIFE_E2E_PORT) || 5191;
     const fastifyApp = buildApp({
       gameState: new GameStateManager(null, null),
       realtime,
@@ -576,6 +1116,11 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       worldAuthorityClient: worldAuth,
       jwtSecret: JWT_SECRET,
       jwtAlgorithms: ["HS256"],
+      allowedWsOrigins: [
+        "https://citylife.kooker.co.za",
+        `http://127.0.0.1:${e2ePort}`,
+        `http://localhost:${e2ePort}`,
+      ],
     });
 
     const serverAddr = await fastifyApp.listen({ port: 0, host: "127.0.0.1" });
@@ -626,6 +1171,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
               worldId: "seed-4242",
               layoutRevision: defaultDoc.revision.contentHash,
               layout: defaultDoc,
+              physicalColliders,
+              transit: canonicalTransitAuthority,
               walkability: {
                 schemaVersion: "citylife.walkability/v1",
                 frameId: surfaceFrame.id,
@@ -788,6 +1335,13 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
           const mp = colony.getMultiplayerClient();
           (window as any).__snapshotHistory = [];
           (window as any).__sentInputs = [];
+          (window as any).__blurEvents = [];
+          window.addEventListener("blur", () => {
+            (window as any).__blurEvents.push({ type: "blur", time: Date.now() });
+          });
+          document.addEventListener("visibilitychange", () => {
+            (window as any).__blurEvents.push({ type: "visibilitychange", state: document.visibilityState, time: Date.now() });
+          });
           if (mp) {
             const orig = mp.options.onSnapshot;
             mp.options.onSnapshot = (s: any) => {
@@ -802,6 +1356,13 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
                 } catch {}
                 return origSend(data);
               };
+              (window as any).__closeEvents = [];
+              mp.ws.addEventListener("close", (e: any) => {
+                (window as any).__closeEvents.push({ code: e.code, reason: e.reason, wasClean: e.wasClean, time: Date.now() });
+              });
+              mp.ws.addEventListener("error", (e: any) => {
+                (window as any).__closeEvents.push({ type: "error", message: e?.message ?? "ws error", time: Date.now() });
+              });
             }
           }
         }),
@@ -810,6 +1371,13 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
           const mp = colony.getMultiplayerClient();
           (window as any).__snapshotHistory = [];
           (window as any).__sentInputs = [];
+          (window as any).__blurEvents = [];
+          window.addEventListener("blur", () => {
+            (window as any).__blurEvents.push({ type: "blur", time: Date.now() });
+          });
+          document.addEventListener("visibilitychange", () => {
+            (window as any).__blurEvents.push({ type: "visibilitychange", state: document.visibilityState, time: Date.now() });
+          });
           if (mp) {
             const orig = mp.options.onSnapshot;
             mp.options.onSnapshot = (s: any) => {
@@ -824,6 +1392,13 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
                 } catch {}
                 return origSend(data);
               };
+              (window as any).__closeEvents = [];
+              mp.ws.addEventListener("close", (e: any) => {
+                (window as any).__closeEvents.push({ code: e.code, reason: e.reason, wasClean: e.wasClean, time: Date.now() });
+              });
+              mp.ws.addEventListener("error", (e: any) => {
+                (window as any).__closeEvents.push({ type: "error", message: e?.message ?? "ws error", time: Date.now() });
+              });
             }
           }
         }),
@@ -940,7 +1515,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       expect(Math.abs(baselineP1.peerSpeed)).toBeLessThan(0.01);
       expect(Math.abs(baselineP2.selfSpeed)).toBeLessThan(0.01);
       expect(Math.abs(baselineP2.peerSpeed)).toBeLessThan(0.01);
-      console.log(`[Baseline Evidence] Settled pre-control baselines verified: P1 speed=${baselineP1.selfSpeed}, P2 speed=${baselineP2.selfSpeed}`);
+      console.log(`[Baseline Evidence Full] P1: ${JSON.stringify(baselineP1)}, P2: ${JSON.stringify(baselineP2)}`);
 
       recordStage("Settled pre-controls baseline recorded");
 
@@ -955,93 +1530,242 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       const box2 = await throttle2.boundingBox();
       expect(box2).not.toBeNull();
 
+      // 1. Diagnose elementFromPoint at each throttle centre after maps are open
+      const hit1 = await page1.evaluate((b) => {
+        const cx = b!.x + b!.width / 2;
+        const cy = b!.y + b!.height / 2;
+        const el = document.elementFromPoint(cx, cy);
+        return {
+          cx, cy,
+          tag: el?.tagName,
+          driveAction: el?.getAttribute("data-drive-action"),
+          testId: el?.getAttribute("data-testid"),
+          closestDriveAction: el?.closest("[data-drive-action]")?.getAttribute("data-drive-action"),
+          closestMap: el?.closest('[data-testid="player-map"]')?.tagName ?? null,
+        };
+      }, box1);
+
+      const hit2 = await page2.evaluate((b) => {
+        const cx = b!.x + b!.width / 2;
+        const cy = b!.y + b!.height / 2;
+        const el = document.elementFromPoint(cx, cy);
+        return {
+          cx, cy,
+          tag: el?.tagName,
+          driveAction: el?.getAttribute("data-drive-action"),
+          testId: el?.getAttribute("data-testid"),
+          closestDriveAction: el?.closest("[data-drive-action]")?.getAttribute("data-drive-action"),
+          closestMap: el?.closest('[data-testid="player-map"]')?.tagName ?? null,
+        };
+      }, box2);
+      console.log(`[Diagnostic Hit Test] P1: ${JSON.stringify(hit1)}, P2: ${JSON.stringify(hit2)}`);
+
+      // 2. Pre-down document focus and visibility state
+      const focusPre = await Promise.all([
+        page1.evaluate(() => ({ hasFocus: document.hasFocus(), visibilityState: document.visibilityState })),
+        page2.evaluate(() => ({ hasFocus: document.hasFocus(), visibilityState: document.visibilityState })),
+      ]);
+      console.log(`[Diagnostic Focus Pre-Down] P1: ${JSON.stringify(focusPre[0])}, P2: ${JSON.stringify(focusPre[1])}`);
+
       // Engage throttle via genuine mouse down on visible hit targets
       await page1.mouse.move(box1!.x + box1!.width / 2, box1!.y + box1!.height / 2);
       await page1.mouse.down();
+
+      const focusAfterP1Down = await Promise.all([
+        page1.evaluate(() => ({ hasFocus: document.hasFocus(), visibilityState: document.visibilityState })),
+        page2.evaluate(() => ({ hasFocus: document.hasFocus(), visibilityState: document.visibilityState })),
+      ]);
+      console.log(`[Diagnostic Focus After P1 Down] P1: ${JSON.stringify(focusAfterP1Down[0])}, P2: ${JSON.stringify(focusAfterP1Down[1])}`);
+
       await page2.mouse.move(box2!.x + box2!.width / 2, box2!.y + box2!.height / 2);
       await page2.mouse.down();
+
+      const focusAfterP2Down = await Promise.all([
+        page1.evaluate(() => ({ hasFocus: document.hasFocus(), visibilityState: document.visibilityState })),
+        page2.evaluate(() => ({ hasFocus: document.hasFocus(), visibilityState: document.visibilityState })),
+      ]);
+      console.log(`[Diagnostic Focus After P2 Down] P1: ${JSON.stringify(focusAfterP2Down[0])}, P2: ${JSON.stringify(focusAfterP2Down[1])}`);
 
       console.log("Throttle engaged on both players via genuine pointer hit testing.");
       recordStage("Throttle engaged via genuine pointer hit testing");
 
-      // GAP 1 VERIFICATION A: Assert advancing sequence, fresh monotonic input ack, and positive throttle accepted at server (speed > 0.1)
-      await page1.waitForFunction((b) => {
-        const history = (window as any).__snapshotHistory || [];
-        if (!history.length) return false;
-        const last = history[history.length - 1];
-        const self = last.participants?.find((p: any) => p.username === "jamtin");
-        return (
-          last.seq > b.seq &&
-          typeof self?.lastInputSeq === "number" &&
-          self.lastInputSeq > b.selfInputSeq &&
-          typeof self?.speed === "number" &&
-          self.speed > 0.1
-        );
-      }, baselineP1, { timeout: 30_000 });
+      // Sample post-down state after 1.5s
+      await page1.waitForTimeout(1500);
+      const postDownSampling = await Promise.all([
+        page1.evaluate((b) => {
+          const colony = (window as any).__colony;
+          const sent = (window as any).__sentInputs || [];
+          const hist = (window as any).__snapshotHistory || [];
+          const blurs = (window as any).__blurEvents || [];
+          const lastSnap = hist[hist.length - 1];
+          const selfSnap = lastSnap?.participants?.find((p: any) => p.username === "jamtin");
+          return {
+            player: "jamtin (P1)",
+            hasFocus: document.hasFocus(),
+            visibilityState: document.visibilityState,
+            blurEvents: blurs,
+            heldDriveInput: colony?.ownedDriveInput ?? "unavailable",
+            sentInputsCount: sent.length,
+            lastSentInputs: sent.slice(-3).map((inp: any) => ({
+              type: inp.type,
+              seq: inp.seq,
+              epoch: inp.epoch,
+              mode: inp.mode,
+              throttle: inp.throttle,
+              steer: inp.steer,
+              brake: inp.brake,
+            })),
+            snapshotsCount: hist.length,
+            lastServerSeq: lastSnap?.seq,
+            baselineSeq: b.seq,
+            seqAdvancing: lastSnap ? lastSnap.seq > b.seq : false,
+            serverSelfSpeed: selfSnap?.speed,
+            speedPositive: typeof selfSnap?.speed === "number" && selfSnap.speed > 0.1,
+            serverSelfLastInputSeq: selfSnap?.lastInputSeq,
+            baselineInputSeq: b.selfInputSeq,
+            inputSeqAdvancing: typeof selfSnap?.lastInputSeq === "number" && selfSnap.lastInputSeq > b.selfInputSeq,
+            snapshotTimestamp: lastSnap?.timestamp,
+            snapshotAgeMs: lastSnap?.timestamp ? Date.now() - lastSnap.timestamp : null,
+            clientStatus: colony?.getMultiplayerClient?.()?.getStatus?.(),
+            sessionInfo: colony?.getMultiplayerClient?.()?.getSessionInfo?.(),
+            modeEpoch: colony?.getMultiplayerClient?.()?.getModeEpoch?.(),
+            closeEvents: (window as any).__closeEvents || [],
+          };
+        }, baselineP1),
+        page2.evaluate((b) => {
+          const colony = (window as any).__colony;
+          const sent = (window as any).__sentInputs || [];
+          const hist = (window as any).__snapshotHistory || [];
+          const blurs = (window as any).__blurEvents || [];
+          const lastSnap = hist[hist.length - 1];
+          const selfSnap = lastSnap?.participants?.find((p: any) => p.username === "jamtin2");
+          return {
+            player: "jamtin2 (P2)",
+            hasFocus: document.hasFocus(),
+            visibilityState: document.visibilityState,
+            blurEvents: blurs,
+            heldDriveInput: colony?.ownedDriveInput ?? "unavailable",
+            sentInputsCount: sent.length,
+            lastSentInputs: sent.slice(-3).map((inp: any) => ({
+              type: inp.type,
+              seq: inp.seq,
+              epoch: inp.epoch,
+              mode: inp.mode,
+              throttle: inp.throttle,
+              steer: inp.steer,
+              brake: inp.brake,
+            })),
+            snapshotsCount: hist.length,
+            lastServerSeq: lastSnap?.seq,
+            baselineSeq: b.seq,
+            seqAdvancing: lastSnap ? lastSnap.seq > b.seq : false,
+            serverSelfSpeed: selfSnap?.speed,
+            speedPositive: typeof selfSnap?.speed === "number" && selfSnap.speed > 0.1,
+            serverSelfLastInputSeq: selfSnap?.lastInputSeq,
+            baselineInputSeq: b.selfInputSeq,
+            inputSeqAdvancing: typeof selfSnap?.lastInputSeq === "number" && selfSnap.lastInputSeq > b.selfInputSeq,
+            snapshotTimestamp: lastSnap?.timestamp,
+            snapshotAgeMs: lastSnap?.timestamp ? Date.now() - lastSnap.timestamp : null,
+            clientStatus: colony?.getMultiplayerClient?.()?.getStatus?.(),
+            sessionInfo: colony?.getMultiplayerClient?.()?.getSessionInfo?.(),
+            modeEpoch: colony?.getMultiplayerClient?.()?.getModeEpoch?.(),
+            closeEvents: (window as any).__closeEvents || [],
+          };
+        }, baselineP2),
+      ]);
+      console.log(`[Diagnostic State 1.5s Post-Down] P1:\n${JSON.stringify(postDownSampling[0], null, 2)}`);
+      console.log(`[Diagnostic State 1.5s Post-Down] P2:\n${JSON.stringify(postDownSampling[1], null, 2)}`);
 
-      await page2.waitForFunction((b) => {
-        const history = (window as any).__snapshotHistory || [];
-        if (!history.length) return false;
-        const last = history[history.length - 1];
-        const self = last.participants?.find((p: any) => p.username === "jamtin2");
-        return (
-          last.seq > b.seq &&
-          typeof self?.lastInputSeq === "number" &&
-          self.lastInputSeq > b.selfInputSeq &&
-          typeof self?.speed === "number" &&
-          self.speed > 0.1
-        );
-      }, baselineP2, { timeout: 30_000 });
+      console.log(`[Diagnostic Server Session Count] count=${(realtime as any).sessions?.size ?? 0}`);
+      for (const [sId, sess] of (realtime as any).sessions.entries()) {
+        console.log(`[Diagnostic Server Session] ${sId}: participants=${sess.participants.size}`);
+        for (const [pId, p] of sess.participants.entries()) {
+          console.log(`[Diagnostic Server Participant]   ${p.username} (${pId}): lastInputSeq=${p.lastInputSeq}, speed=${p.speed}, pos=(${p.x}, ${p.z}), buffered=${(p.socket as any).bufferedAmount ?? 0}, lastSeenAgoMs=${Date.now() - p.lastSeenAt}`);
+        }
+      }
 
-      console.log("Authoritative Fastify snapshots verified: fresh monotonic input ack and positive throttle speed (>0.1m/s) accepted at server.");
-      recordStage("Positive throttle & fresh input acknowledgements verified at server");
-
-      // GAP 1 VERIFICATION B: Assert actual server participant displacement from pre-control baseline (>0.5m)
-      await page1.waitForFunction((b) => {
-        const history = (window as any).__snapshotHistory || [];
-        if (!history.length) return false;
-        const last = history[history.length - 1];
-        const self = last.participants?.find((p: any) => p.username === "jamtin");
-        const peer = last.participants?.find((p: any) => p.username === "jamtin2");
-        if (!self || !peer || !b.selfPos || !b.peerPos) return false;
-        const selfMoved = Math.hypot(self.x - b.selfPos.x, self.z - b.selfPos.z) > 0.5;
-        const peerMoved = Math.hypot(peer.x - b.peerPos.x, peer.z - b.peerPos.z) > 0.5;
-        return selfMoved && peerMoved;
-      }, baselineP1, { timeout: 30_000 });
-
-      console.log("Authoritative server participant displacement verified (>0.5m) for both players from pre-control baseline.");
-      recordStage("Authoritative server participant displacement verified (>0.5m)");
-
-      // Assert rendered 3D world movement for BOTH clients
-      await page1.waitForFunction((initial) => {
-        const scene = (window as any).__r3fScene;
-        let current: { x: number; z: number } | null = null;
-        scene?.traverse((o: any) => {
-          if (o.name && o.name.includes("remote-racer-jamtin2")) {
-            current = { x: o.position.x, z: o.position.z };
-          }
-        });
-        if (!current || !initial) return false;
-        return Math.hypot(current.x - initial.x, current.z - initial.z) > 0.5;
-      }, initial3DPosP1, { timeout: 30_000 });
-
-      await page2.waitForFunction((initial) => {
-        const scene = (window as any).__r3fScene;
-        let current: { x: number; z: number } | null = null;
-        scene?.traverse((o: any) => {
-          if (o.name && o.name.includes("remote-racer-jamtin")) {
-            current = { x: o.position.x, z: o.position.z };
-          }
-        });
-        if (!current || !initial) return false;
-        return Math.hypot(current.x - initial.x, current.z - initial.z) > 0.5;
-      }, initial3DPosP2, { timeout: 30_000 });
-
-      console.log("Rendered 3D scene displacement verified for BOTH remote racers (>0.5m).");
-      recordStage("Rendered 3D scene displacement verified (>0.5m)");
-
-      // Assert mini-map peer marker displacement (>0.2px) achieved under active controls on BOTH clients BEFORE braking
+      // GAP 1: Concurrently assert advancing sequence, fresh monotonic input ack, positive throttle (speed > 0.1),
+      // server participant displacement (>0.5m), 3D rendered displacement (>0.5m), and mini-map peer marker displacement (>0.2px)
+      // across both clients under active throttle.
       await Promise.all([
+        // GAP 1 VERIFICATION A: Assert advancing sequence, fresh monotonic input ack, and positive throttle accepted at server (speed > 0.1)
+        page1.waitForFunction((b) => {
+          const colony = (window as any).__colony;
+          const mp = colony?.getMultiplayerClient();
+          if (mp && mp.getStatus() !== "connected") {
+            return false; // Positive cached history must not pass after authority lost
+          }
+          const history = (window as any).__snapshotHistory || [];
+          if (!history.length) return false;
+          const last = history[history.length - 1];
+          const self = last.participants?.find((p: any) => p.username === "jamtin");
+          return (
+            last.seq > b.seq &&
+            typeof self?.lastInputSeq === "number" &&
+            self.lastInputSeq > b.selfInputSeq &&
+            typeof self?.speed === "number" &&
+            self.speed > 0.1
+          );
+        }, baselineP1, { timeout: 30_000 }),
+
+        page2.waitForFunction((b) => {
+          const colony = (window as any).__colony;
+          const mp = colony?.getMultiplayerClient();
+          if (mp && mp.getStatus() !== "connected") {
+            return false; // Positive cached history must not pass after authority lost
+          }
+          const history = (window as any).__snapshotHistory || [];
+          if (!history.length) return false;
+          const last = history[history.length - 1];
+          const self = last.participants?.find((p: any) => p.username === "jamtin2");
+          return (
+            last.seq > b.seq &&
+            typeof self?.lastInputSeq === "number" &&
+            self.lastInputSeq > b.selfInputSeq &&
+            typeof self?.speed === "number" &&
+            self.speed > 0.1
+          );
+        }, baselineP2, { timeout: 30_000 }),
+
+        // GAP 1 VERIFICATION B: Assert actual server participant displacement from pre-control baseline (>0.5m)
+        page1.waitForFunction((b) => {
+          const history = (window as any).__snapshotHistory || [];
+          if (!history.length) return false;
+          const last = history[history.length - 1];
+          const self = last.participants?.find((p: any) => p.username === "jamtin");
+          const peer = last.participants?.find((p: any) => p.username === "jamtin2");
+          if (!self || !peer || !b.selfPos || !b.peerPos) return false;
+          const selfMoved = Math.hypot(self.x - b.selfPos.x, self.z - b.selfPos.z) > 0.5;
+          const peerMoved = Math.hypot(peer.x - b.peerPos.x, peer.z - b.peerPos.z) > 0.5;
+          return selfMoved && peerMoved;
+        }, baselineP1, { timeout: 30_000 }),
+
+        // Assert rendered 3D world movement for BOTH clients
+        page1.waitForFunction((initial) => {
+          const scene = (window as any).__r3fScene;
+          let current: { x: number; z: number } | null = null;
+          scene?.traverse((o: any) => {
+            if (o.name && o.name.includes("remote-racer-jamtin2")) {
+              current = { x: o.position.x, z: o.position.z };
+            }
+          });
+          if (!current || !initial) return false;
+          return Math.hypot(current.x - initial.x, current.z - initial.z) > 0.5;
+        }, initial3DPosP1, { timeout: 30_000 }),
+
+        page2.waitForFunction((initial) => {
+          const scene = (window as any).__r3fScene;
+          let current: { x: number; z: number } | null = null;
+          scene?.traverse((o: any) => {
+            if (o.name && o.name.includes("remote-racer-jamtin")) {
+              current = { x: o.position.x, z: o.position.z };
+            }
+          });
+          if (!current || !initial) return false;
+          return Math.hypot(current.x - initial.x, current.z - initial.z) > 0.5;
+        }, initial3DPosP2, { timeout: 30_000 }),
+
+        // Assert mini-map peer marker displacement (>0.2px) achieved under active controls on BOTH clients BEFORE braking
         page1.waitForFunction((initial) => {
           const circle = document.querySelector('[data-testid="city-map-peer-marker"] circle');
           if (!circle) return false;
@@ -1049,6 +1773,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
           const cy = parseFloat(circle.getAttribute("cy") || "0");
           return Math.hypot(cx - initial.cx, cy - initial.cy) > 0.2;
         }, initialMapPeerPosP1, { timeout: 30_000 }),
+
         page2.waitForFunction((initial) => {
           const circle = document.querySelector('[data-testid="city-map-peer-marker"] circle');
           if (!circle) return false;
@@ -1057,16 +1782,13 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
           return Math.hypot(cx - initial.cx, cy - initial.cy) > 0.2;
         }, initialMapPeerPosP2, { timeout: 30_000 }),
       ]);
-      recordStage("Mini-map peer marker displacement (>0.2px) verified under active throttle on both clients");
 
-      // Capture explicit screenshots during active driving
-      const ssDir = path.resolve("test-results/actual-pair-screenshots");
-      if (!fs.existsSync(ssDir)) fs.mkdirSync(ssDir, { recursive: true });
-      await page1.screenshot({ path: path.join(ssDir, "page1-driving.png") });
-      await page2.screenshot({ path: path.join(ssDir, "page2-driving.png") });
-      recordStage("Explicit driving screenshots saved");
+      console.log("Authoritative Fastify snapshots verified: fresh monotonic input ack and positive throttle speed (>0.1m/s) accepted at server.");
+      console.log("Authoritative server participant displacement verified (>0.5m) for both players from pre-control baseline.");
+      console.log("Rendered 3D scene displacement verified for BOTH remote racers (>0.5m).");
+      recordStage("Authoritative server and 3D/map displacement verified under active throttle");
 
-      // Neutralize throttle via genuine pointer up
+      // Neutralize throttle immediately via genuine pointer up to bound vehicle travel within safe dry road corridor
       await page1.mouse.up();
       await page2.mouse.up();
 
@@ -1110,6 +1832,144 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       await page1.mouse.up();
       await page2.mouse.up();
       recordStage("Driving controls neutralized and both vehicles brought to a settled stop");
+
+      // Capture explicit screenshots of settled vehicles
+      const ssDir = path.resolve("test-results/actual-pair-screenshots");
+      if (!fs.existsSync(ssDir)) fs.mkdirSync(ssDir, { recursive: true });
+      await page1.screenshot({ path: path.join(ssDir, "page1-driving.png") });
+      await page2.screenshot({ path: path.join(ssDir, "page2-driving.png") });
+      recordStage("Explicit driving/settled screenshots saved");
+
+      // Verify settled vehicle positions remain strictly within the validated dry road corridor
+      // converting canonical world metres to grid cell units via authoritative terrain frame (tSize, cellMetres = 4),
+      // with finite bounds validation, proper y/z units, and terrain/exit candidate inspection.
+      const settledCorridorInspection = await page1.evaluate(() => {
+        const history = (window as any).__snapshotHistory || [];
+        const last = history[history.length - 1];
+        const self = last?.participants?.find((p: any) => p.username === "jamtin");
+        const peer = last?.participants?.find((p: any) => p.username === "jamtin2");
+        const colony = (window as any).__colony;
+        const terrain = colony?.sim?.state?.terrain;
+        const tSize = typeof terrain?.size === "number" && Number.isFinite(terrain.size) ? terrain.size : 512;
+        const cellMetres = 4;
+
+        if (!self || !peer) return null;
+
+        // Convert authoritative server snapshot world metres to canonical grid cells
+        const selfCellFromWorld = {
+          x: self.x / cellMetres + tSize / 2,
+          y: self.z / cellMetres + tSize / 2,
+        };
+        const peerCellFromWorld = {
+          x: peer.x / cellMetres + tSize / 2,
+          y: peer.z / cellMetres + tSize / 2,
+        };
+
+        // Correlated live runtime cell poses
+        const selfRuntimePose = colony?.getOwnedDrivePose?.();
+        const selfRuntimeCell = selfRuntimePose ? { x: selfRuntimePose.x, y: selfRuntimePose.y } : null;
+        const peerRacer = colony?.sim?.state?.remoteRacers?.get(peer.participantId);
+        const peerRuntimeCell = peerRacer?.cell ? { x: peerRacer.cell.x, y: peerRacer.cell.y } : null;
+
+        // Inspect terrain and exit candidates around Player 1 settled position
+        const roundedX = Math.round(selfCellFromWorld.x);
+        const roundedY = Math.round(selfCellFromWorld.y);
+        const isSelfWater = terrain?.isWater ? terrain.isWater(roundedX, roundedY) : false;
+        const selfBlockedReason = colony?.blockedStepReason ? colony.blockedStepReason(roundedX, roundedY) : null;
+
+        // Check candidate exit cells within 1-cell radius as used by exitOwnedCar
+        const candidateOffsets = [
+          { dx: 0, dy: 1 },
+          { dx: 0, dy: -1 },
+          { dx: 1, dy: 0 },
+          { dx: -1, dy: 0 },
+          { dx: 1, dy: 1 },
+          { dx: 1, dy: -1 },
+          { dx: -1, dy: 1 },
+          { dx: -1, dy: -1 },
+        ];
+        const validExitCandidates = candidateOffsets
+          .map((off) => ({ x: roundedX + off.dx, y: roundedY + off.dy }))
+          .filter((c) => {
+            if (c.x < 2 || c.x >= tSize - 2 || c.y < 2 || c.y >= tSize - 2) return false;
+            const water = terrain?.isWater ? terrain.isWater(c.x, c.y) : false;
+            const blocked = colony?.blockedStepReason ? colony.blockedStepReason(c.x, c.y) : null;
+            return !water && blocked === null;
+          });
+
+        return {
+          selfWorld: { x: self.x, z: self.z },
+          peerWorld: { x: peer.x, z: peer.z },
+          selfCellFromWorld,
+          peerCellFromWorld,
+          selfRuntimeCell,
+          peerRuntimeCell,
+          tSize,
+          cellMetres,
+          selfTerrain: {
+            roundedCell: { x: roundedX, y: roundedY },
+            isWater: isSelfWater,
+            blockedReason: selfBlockedReason,
+          },
+          validExitCandidatesCount: validExitCandidates.length,
+          validExitCandidates,
+        };
+      });
+
+      expect(settledCorridorInspection, "Settled corridor inspection payload must be present").not.toBeNull();
+
+      // Finite bounds validation on both world and grid frames
+      expect(Number.isFinite(settledCorridorInspection!.selfWorld.x)).toBe(true);
+      expect(Number.isFinite(settledCorridorInspection!.selfWorld.z)).toBe(true);
+      expect(Number.isFinite(settledCorridorInspection!.peerWorld.x)).toBe(true);
+      expect(Number.isFinite(settledCorridorInspection!.peerWorld.z)).toBe(true);
+      expect(Number.isFinite(settledCorridorInspection!.selfCellFromWorld.x)).toBe(true);
+      expect(Number.isFinite(settledCorridorInspection!.selfCellFromWorld.y)).toBe(true);
+      expect(Number.isFinite(settledCorridorInspection!.peerCellFromWorld.x)).toBe(true);
+      expect(Number.isFinite(settledCorridorInspection!.peerCellFromWorld.y)).toBe(true);
+
+      // Verify correlation between converted snapshot coordinates and live runtime cell pose
+      if (settledCorridorInspection!.selfRuntimeCell) {
+        expect(
+          Math.hypot(
+            settledCorridorInspection!.selfCellFromWorld.x - settledCorridorInspection!.selfRuntimeCell.x,
+            settledCorridorInspection!.selfCellFromWorld.y - settledCorridorInspection!.selfRuntimeCell.y,
+          ),
+        ).toBeLessThan(0.5);
+      }
+      if (settledCorridorInspection!.peerRuntimeCell) {
+        expect(
+          Math.hypot(
+            settledCorridorInspection!.peerCellFromWorld.x - settledCorridorInspection!.peerRuntimeCell.x,
+            settledCorridorInspection!.peerCellFromWorld.y - settledCorridorInspection!.peerRuntimeCell.y,
+          ),
+        ).toBeLessThan(0.5);
+      }
+
+      // Assert lower and upper corridor bounds in grid cells (dry road pavement is between cell 135 and 162)
+      expect(settledCorridorInspection!.selfCellFromWorld.x).toBeGreaterThanOrEqual(139);
+      expect(settledCorridorInspection!.selfCellFromWorld.x).toBeLessThanOrEqual(155);
+      expect(settledCorridorInspection!.peerCellFromWorld.x).toBeGreaterThanOrEqual(139);
+      expect(settledCorridorInspection!.peerCellFromWorld.x).toBeLessThanOrEqual(155);
+
+      // Assert proper y/z units along the road corridor (corridor centerline y = 265)
+      expect(Math.abs(settledCorridorInspection!.selfCellFromWorld.y - 265)).toBeLessThanOrEqual(1.5);
+      expect(Math.abs(settledCorridorInspection!.peerCellFromWorld.y - 265)).toBeLessThanOrEqual(1.5);
+
+      const expectedWorldZ =
+        (265 - settledCorridorInspection!.tSize / 2) * settledCorridorInspection!.cellMetres;
+      expect(Math.abs(settledCorridorInspection!.selfWorld.z - expectedWorldZ)).toBeLessThanOrEqual(6.0);
+      expect(Math.abs(settledCorridorInspection!.peerWorld.z - expectedWorldZ)).toBeLessThanOrEqual(6.0);
+
+      // Inspect hydrated terrain and ensure valid exit candidates exist at parked cell
+      expect(settledCorridorInspection!.selfTerrain.isWater).toBe(false);
+      expect(settledCorridorInspection!.selfTerrain.blockedReason).toBeNull();
+      expect(settledCorridorInspection!.validExitCandidatesCount).toBeGreaterThan(0);
+
+      console.log(
+        `Corridor qualification verified: P1 settled at cell (${settledCorridorInspection!.selfCellFromWorld.x.toFixed(2)}, ${settledCorridorInspection!.selfCellFromWorld.y.toFixed(2)}) / world (${settledCorridorInspection!.selfWorld.x.toFixed(2)}m, ${settledCorridorInspection!.selfWorld.z.toFixed(2)}m). Water=false, blocked=null, ${settledCorridorInspection!.validExitCandidatesCount} passable exit candidates available.`,
+      );
+      recordStage("Settled vehicle positions qualified within dry corridor bounds with hydrated terrain verification");
 
       // Verify numerical alignment between settled 3D rendered position and received Fastify snapshot for BOTH peers (< 0.5m)
       await Promise.all([

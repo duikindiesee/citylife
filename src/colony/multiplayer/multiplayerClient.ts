@@ -1059,7 +1059,6 @@ export class MultiplayerClient {
           msg.error === "VEHICLE_NOT_OWNED" ||
           msg.error === "COORDINATES_OUT_OF_BOUNDS" ||
           msg.error === "OWNERSHIP_AUTHORITY_ABSENT" ||
-          msg.error === "MODE_MISMATCH" ||
           msg.error === "COORDINATE_AUTHORITY_DENIED"
         ) {
           this.connectionGeneration++;

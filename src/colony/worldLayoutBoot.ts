@@ -118,6 +118,7 @@ export interface WorldLayoutBootOptions {
   readonly runtime: WorldLayoutBootRuntime;
   readonly remoteLoader?: RemoteWorldLayoutLoader;
   readonly requireRemoteAuthority?: boolean;
+  readonly requireTransitAuthority?: boolean;
 }
 
 export interface WorldLayoutBootResult {
@@ -233,6 +234,7 @@ export class WorldLayoutBootCoordinator {
   private readonly runtime: WorldLayoutBootRuntime;
   private readonly remoteLoader?: RemoteWorldLayoutLoader;
   private readonly requireRemoteAuthority?: boolean;
+  private readonly requireTransitAuthority?: boolean;
   private attempt?: Promise<WorldLayoutBootResult>;
   private attemptSettled = true;
   private generation = 0;
@@ -243,6 +245,7 @@ export class WorldLayoutBootCoordinator {
     this.runtime = options.runtime;
     this.remoteLoader = options.remoteLoader;
     this.requireRemoteAuthority = options.requireRemoteAuthority;
+    this.requireTransitAuthority = options.requireTransitAuthority;
     if (typeof this.runtime === "object" && this.runtime !== null) {
       this.generation = nextBootGeneration++;
       runtimeOwnerRegistry.set(this.runtime, {
@@ -353,6 +356,13 @@ export class WorldLayoutBootCoordinator {
             throw new WorldLayoutBootError(
               "REVISION_MISMATCH",
               `Manifest layoutRevision ${manifest.layoutRevision} does not match document contentHash ${document.revision.contentHash}`,
+            );
+          }
+
+          if (this.requireTransitAuthority && !manifest.transit) {
+            throw new WorldLayoutBootError(
+              "CANONICAL_TRANSIT_UNAVAILABLE",
+              `Remote starter catalogue lacks required transit authority companion for world ${this.worldId}`,
             );
           }
 

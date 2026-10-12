@@ -2231,4 +2231,119 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
 
     client.disconnect();
   });
+
+  describe("Recoverable MODE_MISMATCH & Fatal Auth Error Controls", () => {
+    it("treats recoverable MODE_MISMATCH error as non-fatal, keeping session and socket alive, and allowing subsequent valid input", async () => {
+      let capturedError: any = null;
+      const client = new MultiplayerClient({
+        url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+        token: "valid-jwt",
+        userId: "user-mismatch-1",
+        username: "MismatchTester",
+        onError: (err) => {
+          capturedError = err;
+        },
+      });
+
+      await client.connect();
+      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen!();
+
+      // Server admits client in walking mode
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "session_joined",
+          sessionId: "sess-mismatch-test",
+          participantId: "part-mismatch-1",
+          protocolVersion: 2,
+          mode: "walking",
+          modeEpoch: 1,
+          participants: [],
+        }),
+      });
+
+      expect(client.getStatus()).toBe("connected");
+      expect(client.getSessionInfo().sessionId).toBe("sess-mismatch-test");
+      expect(client.getMode()).toBe("walking");
+      expect(client.getModeEpoch()).toBe(1);
+
+      // Server sends recoverable MODE_MISMATCH error (e.g. client sent mismatched driving input)
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "error",
+          error: "MODE_MISMATCH",
+          message: "Walking participant cannot send driving input",
+        }),
+      });
+
+      // Verification: onError callback fired
+      expect(capturedError).toBeDefined();
+      expect(capturedError.code).toBe("MODE_MISMATCH");
+
+      // Critical invariant: Client status is STILL connected, socket is NOT closed, session variables NOT cleared
+      expect(client.getStatus()).toBe("connected");
+      expect(client.getSessionInfo().sessionId).toBe("sess-mismatch-test");
+      expect(client.getMode()).toBe("walking");
+      expect(client.getModeEpoch()).toBe(1);
+      expect(socket.readyState).toBe(MockWebSocket.OPEN);
+
+      // Subsequent valid input matching walking mode succeeds and is transmitted over the wire
+      const validSent = client.sendWalkingInput({ forward: 1, strafe: 0 });
+      expect(validSent).toBe(true);
+      const sentWalkingMsg = socket.sent.find((m) => m.type === "input" && m.mode === "walking");
+      expect(sentWalkingMsg).toBeDefined();
+      expect(sentWalkingMsg.forward).toBe(1);
+
+      client.disconnect();
+    });
+
+    it("treats fatal errors (UNAUTHORIZED, TOKEN_EXPIRED, etc.) as terminal, tearing down session, clearing state, and closing socket", async () => {
+      let capturedError: any = null;
+      const client = new MultiplayerClient({
+        url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+        token: "valid-jwt",
+        userId: "user-fatal-1",
+        username: "FatalTester",
+        onError: (err) => {
+          capturedError = err;
+        },
+      });
+
+      await client.connect();
+      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen!();
+
+      // Server admits client
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "session_joined",
+          sessionId: "sess-fatal-test",
+          participantId: "part-fatal-1",
+          protocolVersion: 2,
+          mode: "walking",
+          modeEpoch: 1,
+          participants: [],
+        }),
+      });
+      expect(client.getStatus()).toBe("connected");
+
+      // Server sends terminal UNAUTHORIZED error
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "error",
+          error: "UNAUTHORIZED",
+          message: "Session token rejected by authority",
+        }),
+      });
+
+      // Verification: onError fired, client status became error, session cleared, socket closed
+      expect(capturedError).toBeDefined();
+      expect(capturedError.code).toBe("UNAUTHORIZED");
+      expect(client.getStatus()).toBe("error");
+      expect(client.getSessionInfo().sessionId).toBeNull();
+      expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+    });
+  });
 });

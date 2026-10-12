@@ -6,6 +6,7 @@ import { FirstPersonController } from "../src/render/components/FirstPersonContr
 import { ColonyRuntime } from "../src/colony/runtime";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 import { leveledWorldY } from "../src/colony/render/terrainLeveling";
+import { wireHeadingToCameraYaw } from "../src/colony/playerOrientation";
 
 // Mock R3F and Rapier hooks to capture the actual production useFrame callback and RigidBody
 let capturedFrameCb: ((state: any, delta: number) => void) | null = null;
@@ -2093,5 +2094,94 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       if (origDocument !== undefined) (globalThis as any).document = origDocument;
       else delete (globalThis as any).document;
     }
+  });
+
+  it("verifies production onSelfAdmitted sets authoritative camera yaw in fpTeleportRequest and retained controller useFrame retains server heading without overwrite (qualified production-frame helper)", async () => {
+    // Harness Qualification: This test uses renderToStaticMarkup with mocked R3F/Rapier hooks to exercise the
+    // actual production FirstPersonController component and its useFrame physics loop with a retained controller instance.
+    // It verifies that when the server admits a player with authoritative heading, the controller does NOT overwrite
+    // the server heading with the old pre-admission camera yaw on the subsequent frame.
+    // Note: renderToStaticMarkup executes without a live DOM or React useEffect lifecycle hooks; this is a qualified
+    // production-frame callback harness, not a full mounted-browser proof.
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-walker-1");
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const terrainSize = terrain.size;
+    const toWorldX = (gx: number) => (gx - terrainSize / 2) * 4;
+    const toWorldZ = (gy: number) => (gy - terrainSize / 2) * 4;
+
+    // 1. Mount production controller with initial pre-admission camera yaw (e.g. 1.25 rad)
+    const initialCameraYaw = 1.25;
+    runtime.fpCameraYaw = initialCameraYaw;
+
+    renderToStaticMarkup(
+      React.createElement(FirstPersonController, {
+        sim: runtime.sim,
+        runtime: runtime as any,
+        startPosition: [toWorldX(40), 2, toWorldZ(40)],
+        terrainLevel: null,
+      })
+    );
+    expect(capturedFrameCb).not.toBeNull();
+
+    // Run one initial frame so the controller's internal rotation ref holds the pre-admission yaw
+    capturedFrameCb!({}, 0.016);
+    expect(runtime.fpCameraYaw).toBeCloseTo(initialCameraYaw, 4);
+
+    // 2. Server admits the player walking with a distinct authoritative heading (3.0 rad)
+    const serverAdmittedHeading = 3.0;
+    const expectedAdmittedYaw = wireHeadingToCameraYaw(serverAdmittedHeading);
+    expect(expectedAdmittedYaw).not.toBeCloseTo(initialCameraYaw, 2);
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "session_joined",
+        sessionId: "sess-production-admission",
+        participantId: "part-walker-1",
+        room: "room-1",
+        protocolVersion: 2,
+        modeEpoch: 1,
+        mode: "walking",
+        participants: [
+          {
+            participantId: "part-walker-1",
+            userId: "user-walker-1",
+            isPedestrian: true,
+            mode: "walking",
+            x: toWorldX(45),
+            y: 0,
+            z: toWorldZ(55),
+            heading: serverAdmittedHeading,
+            speed: 0,
+            modeEpoch: 1,
+            protocolVersion: 2,
+          },
+        ],
+      }),
+    });
+
+    // Invariant 1: Production onSelfAdmitted produces fpTeleportRequest containing authoritative yaw
+    expect(runtime.fpTeleportRequest).toBeDefined();
+    expect(runtime.fpTeleportRequest?.yaw).toBeDefined();
+    expect(runtime.fpTeleportRequest?.yaw).toBeCloseTo(expectedAdmittedYaw, 4);
+    expect(runtime.fpCameraYaw).toBeCloseTo(expectedAdmittedYaw, 4);
+
+    // 3. Retained controller useFrame executes on subsequent animation frame
+    capturedFrameCb!({}, 0.016);
+
+    // Invariant 2: Controller internal rotation ref was updated to admitted yaw via tp.yaw,
+    // so the frame writeback retains the authoritative server heading rather than overwriting it with old 1.25!
+    expect(runtime.fpCameraYaw).toBeCloseTo(expectedAdmittedYaw, 4);
+    expect(runtime.fpCameraYaw).not.toBeCloseTo(initialCameraYaw, 2);
   });
 });

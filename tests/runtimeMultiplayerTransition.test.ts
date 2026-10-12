@@ -501,7 +501,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
 
     expect(runtime.getWalkingCell()).toEqual({ x: 40, y: 40 });
     expect(runtime.getAuthoritativeWalkingPose()).toEqual({ x: 40, y: 40, heading: 0 });
-    expect(runtime.fpTeleportRequest).toEqual({ x: 40, y: 40, seq: 1 });
+    expect(runtime.fpTeleportRequest).toEqual({ x: 40, y: 40, seq: 1, yaw: -Math.PI / 2 });
 
     // Snapshot seq 1: 1-cell movement to (41, 40) (dx=1, distSq=1 <= 4)
     const nextX1 = (41 - terrain.size / 2) * 4;
@@ -716,7 +716,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       }),
     });
 
-    expect(runtime.fpTeleportRequest).toEqual({ x: 40, y: 40, seq: 1 });
+    expect(runtime.fpTeleportRequest).toEqual({ x: 40, y: 40, seq: 1, yaw: -Math.PI / 2 });
     // Controller consumes initial placement
     runControllerFrame({ moveX: 0, moveZ: 0 });
     expect(consumedTeleport).toBe(1);
