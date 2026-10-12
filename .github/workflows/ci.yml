@@ -34,17 +34,9 @@ jobs:
       - run: npm ci
       - run: npx playwright install chromium
       - run: npm run typecheck
-      - run: npm test
-      - run: npm run test:ci-report-publisher
-      - run: npm run test:e2e
-      # Explicit step-level bound (PLAYER.MOBILE.E2E.1): the mobile/touch harness has its own
-      # 90s whole-test timeout and a wrapper-enforced OS-level process-tree kill, but this step
-      # timeout is the hosted backstop of last resort so a harness regression can never silently
-      # consume the shared 60-minute job budget.
-      - run: npm run test:e2e:mobile-harness
-        timeout-minutes: 4
       # Pinned server revision: published corrective candidate 80bea8c39d5021d7014ea5a87d76e92867b1178f
       # (fresh walkability authority reconciliation on join, bus transit geometry, and post-await vehicle ownership rechecks)
+      # Positioned before slow full suites for rapid integration feedback and serial GPU isolation.
       - name: Check out citylife-server at pinned authoritative revision
         uses: actions/checkout@v7
         with:
@@ -62,7 +54,16 @@ jobs:
         env:
           CITYLIFE_SERVER_DIR: ${{ github.workspace }}/citylife-server
         run: npm run test:e2e:actual-pair
-        timeout-minutes: 10
+        timeout-minutes: 5
+      - run: npm test
+      - run: npm run test:ci-report-publisher
+      - run: npm run test:e2e
+      # Explicit step-level bound (PLAYER.MOBILE.E2E.1): the mobile/touch harness has its own
+      # 90s whole-test timeout and a wrapper-enforced OS-level process-tree kill, but this step
+      # timeout is the hosted backstop of last resort so a harness regression can never silently
+      # consume the shared 60-minute job budget.
+      - run: npm run test:e2e:mobile-harness
+        timeout-minutes: 4
       - run: npm run build
       - name: Upload test and failure artifacts
         if: always()

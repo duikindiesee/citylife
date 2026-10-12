@@ -165,11 +165,42 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
   expect(initialRibbon.layoutRevision).toBeTruthy();
 
   // Negative controls: verify authoritative survey AND store mutation gate reject invalid strokes
-  // while preserving complete committed road/way geometry and layout revision state.
+  // while preserving full committed road/way geometry, layout revision, and non-zero rendered Three.js vertices/indices.
   const negativeControls = await page.evaluate((initial) => {
     const rt = (window as any).__colony;
     const store = (window as any).useRoadNetwork.getState();
     const pCtx = rt.placementContext();
+    const s = rt.sim.state;
+
+    // Helper to sample rendered ribbon Three.js geometry
+    const sampleRibbonGeometry = () => {
+      let meshCount = 0;
+      let positions = 0;
+      let indices = 0;
+      let groupUuid = "";
+      (window as any).__r3fScene?.traverse((o: any) => {
+        if (o.name === "RoadRibbons") {
+          groupUuid = o.uuid;
+          o.traverse((m: any) => {
+            if (m.isMesh && m.geometry) {
+              meshCount++;
+              if (m.geometry.attributes?.position) {
+                positions += m.geometry.attributes.position.count;
+              }
+              if (m.geometry.index) {
+                indices += m.geometry.index.count;
+              }
+            }
+          });
+        }
+      });
+      return { meshCount, positions, indices, groupUuid };
+    };
+
+    // Snapshot full committed roads and roadWays before rejected mutation calls
+    const preRoads = s.roads.map((r: any) => ({ x: r.x, y: r.y, kind: r.kind }));
+    const preRoadWays = JSON.stringify(s.roadWays || []);
+    const preRibbon = sampleRibbonGeometry();
 
     // 1. Off-world survey and store rejection
     const offWorldSurvey = rt.surveyRoadPlacement(
@@ -205,7 +236,21 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
       rt,
     );
 
-    const s = rt.sim.state;
+    // Snapshot full committed roads, roadWays, and rendered geometry post-rejection
+    const postRoads = s.roads;
+    const postRoadWays = JSON.stringify(s.roadWays || []);
+    const postRibbon = sampleRibbonGeometry();
+
+    const roadsIdentical =
+      postRoads.length === preRoads.length &&
+      postRoads.every(
+        (r: any, i: number) =>
+          r.x === preRoads[i].x &&
+          r.y === preRoads[i].y &&
+          r.kind === preRoads[i].kind,
+      );
+    const roadWaysIdentical = postRoadWays === preRoadWays;
+
     const currentRevision = rt.placementContext().layoutRevision;
     const currentSignature = `r${s.roadsVersion}:w${s.roadWays?.length ?? 0}`;
 
@@ -218,7 +263,26 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
         ok: staleRevisionSurvey.ok,
         failures: staleRevisionSurvey.failures?.map((f: any) => f.code) ?? [],
       },
+      prePositions: preRibbon.positions,
+      postPositions: postRibbon.positions,
+      preIndices: preRibbon.indices,
+      postIndices: postRibbon.indices,
+      preMeshCount: preRibbon.meshCount,
+      postMeshCount: postRibbon.meshCount,
+      preGroupUuid: preRibbon.groupUuid,
+      postGroupUuid: postRibbon.groupUuid,
+      roadsIdentical,
+      roadWaysIdentical,
+      roadsCount: s.roads.length,
+      waysCount: s.roadWays.length,
       statePreserved:
+        roadsIdentical &&
+        roadWaysIdentical &&
+        preRibbon.positions > 0 &&
+        postRibbon.positions === preRibbon.positions &&
+        postRibbon.indices === preRibbon.indices &&
+        postRibbon.meshCount === preRibbon.meshCount &&
+        postRibbon.groupUuid === preRibbon.groupUuid &&
         s.roadWays.length === initial.waysCount &&
         s.roads.length === initial.roadsCount &&
         s.roadsVersion === initial.roadsVersion &&
@@ -233,6 +297,13 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
   expect(negativeControls.offWorld.failures).toContain("OUT_OF_BOUNDS");
   expect(negativeControls.staleRevision.ok).toBe(false);
   expect(negativeControls.staleRevision.failures).toContain("STALE_LAYOUT_REVISION");
+  expect(negativeControls.prePositions).toBeGreaterThan(0);
+  expect(negativeControls.postPositions).toBe(negativeControls.prePositions);
+  expect(negativeControls.postIndices).toBe(negativeControls.preIndices);
+  expect(negativeControls.postMeshCount).toBe(negativeControls.preMeshCount);
+  expect(negativeControls.postGroupUuid).toBe(negativeControls.preGroupUuid);
+  expect(negativeControls.roadsIdentical).toBe(true);
+  expect(negativeControls.roadWaysIdentical).toBe(true);
   expect(negativeControls.statePreserved).toBe(true);
 
   // Builder-not-broken: draw a road through the store using a bounded deterministic stroke;
