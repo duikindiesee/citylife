@@ -270,45 +270,27 @@ describe("WB.1d runtime authority replay", () => {
 
   beforeEach(resetBuilderState);
 
-  it("replays placements, terrain policy, zones, reservations and network navigation identically across two cold boots", async () => {
-    const probeFixture = authorityDocument();
-    const pristineZonesLength = probeFixture.document.zones.length;
-    const pristineZoneCellX = probeFixture.document.zones[0]!.cells[0]!.x;
-    const pristineTerrainElevation =
-      probeFixture.document.terrainEdits[0]!.elevation;
+  describe("runtime authority two cold boot replay", () => {
+    let fixture: ReturnType<typeof authorityDocument>;
+    let first: {
+      canonical: string;
+      placement: any;
+      terrain: any;
+      zones: any;
+      reservations: any;
+      networks: any;
+      route: any;
+      reverseRoute: any;
+      placementFailures: string[];
+      terrainFailures: string[];
+      reservationFailures: string[];
+      zoneFailures: { cell: any; detail: any }[];
+    };
+    let setupDurationMs = 0;
 
-    (probeFixture.document.zones as unknown[]).push({
-      id: "zone:tampered",
-      frameId: probeFixture.surfaceFrameId,
-      kind: "civic",
-      cells: [probeFixture.zoneCell],
-      vertical: { min: 0, max: 10, clearanceBelow: 0, clearanceAbove: 1 },
-      ownerRef: "principal:tampered",
-    });
-    (probeFixture.document.zones[0]!.cells[0] as { x: number }).x = 99999;
-    (
-      probeFixture.document.terrainEdits[0] as {
-        elevation: number;
-        cell: { x: number };
-      }
-    ).elevation = 99999;
-    (
-      probeFixture.document.terrainEdits[0] as {
-        elevation: number;
-        cell: { x: number };
-      }
-    ).cell.x = 99999;
-
-    const fixture = authorityDocument();
-    expect(fixture.document.zones.length).toBe(pristineZonesLength);
-    expect(fixture.document.zones[0]!.cells[0]!.x).toBe(pristineZoneCellX);
-    expect(fixture.document.terrainEdits[0]!.elevation).toBe(
-      pristineTerrainElevation,
-    );
-
-    const coldBoot = async () => {
+    async function executeColdBoot(fixtureDoc: ReturnType<typeof authorityDocument>) {
       resetBuilderState();
-      const bootDoc = cloneDocument(fixture.document);
+      const bootDoc = cloneDocument(fixtureDoc.document);
       const runtime = new ColonyRuntime(4242);
       const legacyCapture = vi.spyOn(runtime, "captureWorldLayout");
       await new WorldLayoutBootCoordinator({
@@ -324,31 +306,31 @@ describe("WB.1d runtime authority replay", () => {
       expect(legacyCapture).not.toHaveBeenCalled();
       const registry = runtime.worldSurvey();
       const terrain = registry.terrainCell(
-        fixture.terrainCell.x,
-        fixture.terrainCell.y,
+        fixtureDoc.terrainCell.x,
+        fixtureDoc.terrainCell.y,
       );
       const placementSurvey = runtime.surveyRoadPlacement(
-        [fixture.placementCell],
+        [fixtureDoc.placementCell],
         "street",
-        worldLayoutRevisionId(fixture.document.revision),
+        worldLayoutRevisionId(fixtureDoc.document.revision),
       );
       const terrainSurvey = runtime.surveyRoadPlacement(
-        [fixture.terrainCell],
+        [fixtureDoc.terrainCell],
         "street",
-        worldLayoutRevisionId(fixture.document.revision),
+        worldLayoutRevisionId(fixtureDoc.document.revision),
       );
       const reservationSurvey = runtime.surveyRoadPlacement(
-        [fixture.reservationCell],
+        [fixtureDoc.reservationCell],
         "street",
-        worldLayoutRevisionId(fixture.document.revision),
+        worldLayoutRevisionId(fixtureDoc.document.revision),
       );
       const zonedSurvey = runtime.surveyZonedPlot(
-        fixture.zoneCell.x,
-        fixture.zoneCell.y,
+        fixtureDoc.zoneCell.x,
+        fixtureDoc.zoneCell.y,
         "n",
         "COMPACT",
         "residential",
-        worldLayoutRevisionId(fixture.document.revision),
+        worldLayoutRevisionId(fixtureDoc.document.revision),
       );
       return {
         canonical: serializeWorldLayoutDocument(runtime.captureWorldLayout()),
@@ -357,14 +339,14 @@ describe("WB.1d runtime authority replay", () => {
         ),
         terrain,
         zones: runtime.worldLayoutZonesAt(
-          fixture.surfaceFrameId,
-          fixture.zoneCell.x,
-          fixture.zoneCell.y,
+          fixtureDoc.surfaceFrameId,
+          fixtureDoc.zoneCell.x,
+          fixtureDoc.zoneCell.y,
         ),
         reservations: runtime.worldLayoutReservationIdsAt(
-          fixture.surfaceFrameId,
-          fixture.reservationCell.x,
-          fixture.reservationCell.y,
+          fixtureDoc.surfaceFrameId,
+          fixtureDoc.reservationCell.x,
+          fixtureDoc.reservationCell.y,
         ),
         networks: runtime.worldLayoutNetworkIds(),
         route: runtime.worldLayoutNetworkRoute(
@@ -390,55 +372,109 @@ describe("WB.1d runtime authority replay", () => {
           .filter((failure) => failure.code === "ZONE_MISMATCH")
           .map((failure) => ({ cell: failure.cell, detail: failure.detail })),
       };
-    };
+    }
 
-    const first = await coldBoot();
-    const second = await coldBoot();
-    expect(second).toEqual(first);
-    expect(first.canonical).toBe(
-      serializeWorldLayoutDocument(fixture.document),
-    );
-    expect(first.placement).toMatchObject({
-      kind: "building",
-      geometry: {
-        type: "footprint",
-        bounds: {
-          x: fixture.placementCell.x,
-          y: fixture.placementCell.y,
-          w: 1,
-          h: 1,
+    beforeEach(async () => {
+      // Parent beforeEach(resetBuilderState) executes first.
+      const preStore = useRoadNetwork.getState();
+      expect(Object.keys(preStore.tiles).length).toBe(0);
+      expect(preStore.landscapeEdits.size).toBe(0);
+      expect(preStore.sameSessionPlacements.size).toBe(0);
+
+      const t0 = performance.now();
+      const probeFixture = authorityDocument();
+      const pristineZonesLength = probeFixture.document.zones.length;
+      const pristineZoneCellX = probeFixture.document.zones[0]!.cells[0]!.x;
+      const pristineTerrainElevation =
+        probeFixture.document.terrainEdits[0]!.elevation;
+
+      (probeFixture.document.zones as unknown[]).push({
+        id: "zone:tampered",
+        frameId: probeFixture.surfaceFrameId,
+        kind: "civic",
+        cells: [probeFixture.zoneCell],
+        vertical: { min: 0, max: 10, clearanceBelow: 0, clearanceAbove: 1 },
+        ownerRef: "principal:tampered",
+      });
+      (probeFixture.document.zones[0]!.cells[0] as { x: number }).x = 99999;
+      (
+        probeFixture.document.terrainEdits[0] as {
+          elevation: number;
+          cell: { x: number };
+        }
+      ).elevation = 99999;
+      (
+        probeFixture.document.terrainEdits[0] as {
+          elevation: number;
+          cell: { x: number };
+        }
+      ).cell.x = 99999;
+
+      fixture = authorityDocument();
+      expect(fixture.document.zones.length).toBe(pristineZonesLength);
+      expect(fixture.document.zones[0]!.cells[0]!.x).toBe(pristineZoneCellX);
+      expect(fixture.document.terrainEdits[0]!.elevation).toBe(
+        pristineTerrainElevation,
+      );
+
+      first = await executeColdBoot(fixture);
+      setupDurationMs = performance.now() - t0;
+    }, 60000);
+
+    it("replays placements, terrain policy, zones, reservations and network navigation identically across two cold boots", async () => {
+      const tActionStart = performance.now();
+      const second = await executeColdBoot(fixture);
+      expect(second).toEqual(first);
+      expect(first.canonical).toBe(
+        serializeWorldLayoutDocument(fixture.document),
+      );
+      expect(first.placement).toMatchObject({
+        kind: "building",
+        geometry: {
+          type: "footprint",
+          bounds: {
+            x: fixture.placementCell.x,
+            y: fixture.placementCell.y,
+            w: 1,
+            h: 1,
+          },
         },
-      },
-      metadata: {
-        definitionId: "building:kooker-hq-data-archive",
-        persisted: true,
-      },
-    });
-    expect(first.terrain).toMatchObject({
-      biome: Biome.Ocean,
-      water: "ocean",
-      buildability: 0,
-      distanceToWater: 0,
-    });
-    expect(first.terrain?.elevation).toBeCloseTo(fixture.editedElevation, 4);
-    expect(first.zones).toEqual([
-      { id: "zone:authority:civic", kind: "civic" },
-    ]);
-    expect(first.reservations).toEqual([
-      "reservation:authority:future-library",
-    ]);
-    expect(first.networks).toEqual(["network:authority:archive-tunnel"]);
-    expect(first.route).toEqual(["archive-a", "archive-b", "archive-c"]);
-    expect(first.reverseRoute).toBeNull();
-    expect(first.placementFailures).toContain("RESERVED_VOLUME");
-    expect(first.terrainFailures).toEqual(
-      expect.arrayContaining(["WATER_FORBIDDEN", "NON_BUILDABLE"]),
-    );
-    expect(first.reservationFailures).toContain("RESERVED_VOLUME");
-    expect(first.zoneFailures.length).toBeGreaterThan(0);
-    expect(
-      JSON.stringify({ zones: first.zones, reservations: first.reservations }),
-    ).not.toContain("principal:private");
+        metadata: {
+          definitionId: "building:kooker-hq-data-archive",
+          persisted: true,
+        },
+      });
+      expect(first.terrain).toMatchObject({
+        biome: Biome.Ocean,
+        water: "ocean",
+        buildability: 0,
+        distanceToWater: 0,
+      });
+      expect(first.terrain?.elevation).toBeCloseTo(fixture.editedElevation, 4);
+      expect(first.zones).toEqual([
+        { id: "zone:authority:civic", kind: "civic" },
+      ]);
+      expect(first.reservations).toEqual([
+        "reservation:authority:future-library",
+      ]);
+      expect(first.networks).toEqual(["network:authority:archive-tunnel"]);
+      expect(first.route).toEqual(["archive-a", "archive-b", "archive-c"]);
+      expect(first.reverseRoute).toBeNull();
+      expect(first.placementFailures).toContain("RESERVED_VOLUME");
+      expect(first.terrainFailures).toEqual(
+        expect.arrayContaining(["WATER_FORBIDDEN", "NON_BUILDABLE"]),
+      );
+      expect(first.reservationFailures).toContain("RESERVED_VOLUME");
+      expect(first.zoneFailures.length).toBeGreaterThan(0);
+      expect(
+        JSON.stringify({ zones: first.zones, reservations: first.reservations }),
+      ).not.toContain("principal:private");
+
+      const actionDurationMs = performance.now() - tActionStart;
+      console.log(
+        `[worldLayoutRuntimeAuthority:coldReplay] setupDuration=${(setupDurationMs / 1000).toFixed(2)}s, actionDuration=${(actionDurationMs / 1000).toFixed(2)}s, totalCase=${((setupDurationMs + actionDurationMs) / 1000).toFixed(2)}s`,
+      );
+    }, 60000);
   });
 
   it("rebuilds the declared cross-frame portal traversal contract from durable layout state", () => {

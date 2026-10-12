@@ -2,7 +2,7 @@
 import { createHash } from "node:crypto";
 // @ts-ignore
 import { readFileSync } from "node:fs";
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import {
   CANONICAL_TRANSIT_SCHEMA_VERSION,
@@ -11,7 +11,16 @@ import {
   canonicalTransitMatches,
   type CanonicalTransitAuthority,
 } from "../src/colony/transit/canonicalTransit";
+import { useRoadNetwork } from "../src/colony/stores/useRoadNetwork";
 import { WorldLayoutBootCoordinator } from "../src/colony/worldLayoutBoot";
+
+function resetAtomicRoadStore(): void {
+  useRoadNetwork.setState({
+    tiles: {},
+    landscapeEdits: new Map(),
+    sameSessionPlacements: new Set(),
+  });
+}
 
 const r0Url = new URL(
   "../fixtures/canonical-world/seed-4242-layout-r0.json",
@@ -234,188 +243,248 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
     expect(validateCanonicalTransitAuthority(nonFiniteBay, "seed-4242", "abc123", 5, true).valid).toBe(false);
   });
 
-  it("atomic boot: rejects altered transit authority before saving to store or mutating active runtime", async () => {
-    const runtime = new ColonyRuntime(4242);
-    const doc = runtime.captureWorldLayout();
-    const validAuth = runtime.exportCanonicalTransitAuthority();
-    expect(validAuth).not.toBeNull();
+  describe("atomic boot negative: rejects altered transit authority", () => {
+    let runtime: ColonyRuntime;
+    let doc: ReturnType<ColonyRuntime["captureWorldLayout"]>;
+    let validAuth: NonNullable<ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>>;
+    let setupDurationMs = 0;
 
-    const manifest = {
-      worldId: doc.layoutId,
-      layoutRevision: doc.revision.contentHash,
-      layout: doc,
-      transit: validAuth,
-    };
+    beforeEach(() => {
+      resetAtomicRoadStore();
+      const preStore = useRoadNetwork.getState();
+      expect(Object.keys(preStore.tiles).length).toBe(0);
+      expect(preStore.landscapeEdits.size).toBe(0);
+      expect(preStore.sameSessionPlacements.size).toBe(0);
 
-    // 1. Altered transit authority: bay point moved
-    const alteredAuth = JSON.parse(JSON.stringify(validAuth));
-    alteredAuth.depot.bays[0].path[1].x += 1;
+      const t0 = performance.now();
+      runtime = new ColonyRuntime(4242);
+      doc = runtime.captureWorldLayout();
+      const auth = runtime.exportCanonicalTransitAuthority();
+      if (!auth) {
+        throw new Error("Setup failure: baseline exportCanonicalTransitAuthority returned null");
+      }
+      validAuth = auth;
+      setupDurationMs = performance.now() - t0;
+    }, 60000);
 
-    const beforeHash = doc.revision.contentHash;
-    let saves = 0;
-    let savedDoc: any = null;
-    const store = {
-      load: async () => null,
-      save: async (input: any) => {
-        saves++;
-        savedDoc = input;
-        return {
-          status: "saved",
-          revision: { worldId: doc.layoutId, layoutRevision: doc.revision.contentHash, sequence: 0, document: doc },
-        };
-      },
-    };
-    const remoteLoader = {
-      loadRemoteStarterCatalogue: async () => ({
-        published: true,
-        manifest: {
-          ...manifest,
-          worldId: doc.layoutId,
-          layoutRevision: doc.revision.contentHash,
-          layout: doc,
-          transit: alteredAuth,
+    afterEach(resetAtomicRoadStore);
+
+    it("atomic boot: rejects altered transit authority before saving to store or mutating active runtime", async () => {
+      const tActionStart = performance.now();
+      expect(validAuth).not.toBeNull();
+
+      const manifest = {
+        worldId: doc.layoutId,
+        layoutRevision: doc.revision.contentHash,
+        layout: doc,
+        transit: validAuth,
+      };
+
+      // 1. Altered transit authority: bay point moved
+      const alteredAuth = JSON.parse(JSON.stringify(validAuth));
+      alteredAuth.depot.bays[0].path[1].x += 1;
+
+      const beforeHash = doc.revision.contentHash;
+      let saves = 0;
+      let savedDoc: any = null;
+      const store = {
+        load: async () => null,
+        save: async (input: any) => {
+          saves++;
+          savedDoc = input;
+          return {
+            status: "saved",
+            revision: { worldId: doc.layoutId, layoutRevision: doc.revision.contentHash, sequence: 0, document: doc },
+          };
         },
-      }),
-    };
+      };
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: async () => ({
+          published: true,
+          manifest: {
+            ...manifest,
+            worldId: doc.layoutId,
+            layoutRevision: doc.revision.contentHash,
+            layout: doc,
+            transit: alteredAuth,
+          },
+        }),
+      };
 
-    const boot = new WorldLayoutBootCoordinator({
-      worldId: doc.layoutId,
-      store: store as any,
-      runtime: runtime as any,
-      remoteLoader: remoteLoader as any,
-      requireRemoteAuthority: true,
-    });
+      const boot = new WorldLayoutBootCoordinator({
+        worldId: doc.layoutId,
+        store: store as any,
+        runtime: runtime as any,
+        remoteLoader: remoteLoader as any,
+        requireRemoteAuthority: true,
+      });
 
-    let error: any = null;
-    try {
-      await boot.boot();
-    } catch (e: any) {
-      error = e;
-    }
+      let error: any = null;
+      try {
+        await boot.boot();
+      } catch (e: any) {
+        error = e;
+      }
 
-    expect(error).not.toBeNull();
-    expect(error.code).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
-    // Assert persistent store was NEVER saved to
-    expect(saves).toBe(0);
-    expect(savedDoc).toBeNull();
-    // Assert active runtime was NEVER mutated
-    expect(runtime.captureWorldLayout().revision.contentHash).toBe(beforeHash);
+      expect(error).not.toBeNull();
+      expect(error.code).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
+      // Assert persistent store was NEVER saved to
+      expect(saves).toBe(0);
+      expect(savedDoc).toBeNull();
+      // Assert active runtime was NEVER mutated
+      expect(runtime.captureWorldLayout().revision.contentHash).toBe(beforeHash);
 
-    // 2. Production ColonyApp wrapper shape forwards exportCanonicalTransitAuthority and rejects altered input
-    let wrapperHydrateCalls = 0;
-    const prodWrapper = {
-      captureWorldLayout: () => runtime.captureWorldLayout(),
-      hydrateWorldLayout: (d: any) => {
-        wrapperHydrateCalls++;
-        runtime.hydrateWorldLayout(d);
-      },
-      exportCanonicalTransitAuthority: (d?: any) =>
-        runtime.exportCanonicalTransitAuthority(d),
-    };
-    const wrapperBoot = new WorldLayoutBootCoordinator({
-      worldId: doc.layoutId,
-      store: store as any,
-      runtime: prodWrapper as any,
-      remoteLoader: remoteLoader as any,
-      requireRemoteAuthority: true,
-    });
-    let wrapperError: any = null;
-    try {
-      await wrapperBoot.boot();
-    } catch (e: any) {
-      wrapperError = e;
-    }
-    expect(wrapperError).not.toBeNull();
-    expect(wrapperError.code).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
-    expect(saves).toBe(0);
-    expect(wrapperHydrateCalls).toBe(0);
+      // 2. Production ColonyApp wrapper shape forwards exportCanonicalTransitAuthority and rejects altered input
+      let wrapperHydrateCalls = 0;
+      const prodWrapper = {
+        captureWorldLayout: () => runtime.captureWorldLayout(),
+        hydrateWorldLayout: (d: any) => {
+          wrapperHydrateCalls++;
+          runtime.hydrateWorldLayout(d);
+        },
+        exportCanonicalTransitAuthority: (d?: any) =>
+          runtime.exportCanonicalTransitAuthority(d),
+      };
+      const wrapperBoot = new WorldLayoutBootCoordinator({
+        worldId: doc.layoutId,
+        store: store as any,
+        runtime: prodWrapper as any,
+        remoteLoader: remoteLoader as any,
+        requireRemoteAuthority: true,
+      });
+      let wrapperError: any = null;
+      try {
+        await wrapperBoot.boot();
+      } catch (e: any) {
+        wrapperError = e;
+      }
+      expect(wrapperError).not.toBeNull();
+      expect(wrapperError.code).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
+      expect(saves).toBe(0);
+      expect(wrapperHydrateCalls).toBe(0);
 
-    // 3. Fail-closed: missing exportCanonicalTransitAuthority when remote transit companion is present
-    const missingExporterWrapper = {
-      captureWorldLayout: () => runtime.captureWorldLayout(),
-      hydrateWorldLayout: (d: any) => {
-        wrapperHydrateCalls++;
-      },
-    };
-    const missingExporterBoot = new WorldLayoutBootCoordinator({
-      worldId: doc.layoutId,
-      store: store as any,
-      runtime: missingExporterWrapper as any,
-      remoteLoader: remoteLoader as any,
-      requireRemoteAuthority: true,
-    });
-    let missingError: any = null;
-    try {
-      await missingExporterBoot.boot();
-    } catch (e: any) {
-      missingError = e;
-    }
-    expect(missingError).not.toBeNull();
-    expect(missingError.code).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
-    expect(missingError.message).toContain("requires semantic validation runtime support");
-    expect(saves).toBe(0);
-    expect(wrapperHydrateCalls).toBe(0);
+      // 3. Fail-closed: missing exportCanonicalTransitAuthority when remote transit companion is present
+      const missingExporterWrapper = {
+        captureWorldLayout: () => runtime.captureWorldLayout(),
+        hydrateWorldLayout: (d: any) => {
+          wrapperHydrateCalls++;
+        },
+      };
+      const missingExporterBoot = new WorldLayoutBootCoordinator({
+        worldId: doc.layoutId,
+        store: store as any,
+        runtime: missingExporterWrapper as any,
+        remoteLoader: remoteLoader as any,
+        requireRemoteAuthority: true,
+      });
+      let missingError: any = null;
+      try {
+        await missingExporterBoot.boot();
+      } catch (e: any) {
+        missingError = e;
+      }
+      expect(missingError).not.toBeNull();
+      expect(missingError.code).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
+      expect(missingError.message).toContain("requires semantic validation runtime support");
+      expect(saves).toBe(0);
+      expect(wrapperHydrateCalls).toBe(0);
+
+      const actionDurationMs = performance.now() - tActionStart;
+      console.log(
+        `[transitExplicitGeometry:alteredReject] setupDuration=${(setupDurationMs / 1000).toFixed(2)}s, actionDuration=${(actionDurationMs / 1000).toFixed(2)}s, totalCase=${((setupDurationMs + actionDurationMs) / 1000).toFixed(2)}s`,
+      );
+    }, 60000);
   });
 
-  it("atomic boot: unchanged input succeeds through production wrapper and saves atomically", async () => {
-    const runtime = new ColonyRuntime(4242);
-    const doc = runtime.captureWorldLayout();
-    const validAuth = runtime.exportCanonicalTransitAuthority();
-    expect(validAuth).not.toBeNull();
+  describe("atomic boot positive: unchanged input succeeds through production wrapper", () => {
+    let runtime: ColonyRuntime;
+    let doc: ReturnType<ColonyRuntime["captureWorldLayout"]>;
+    let validAuth: NonNullable<ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>>;
+    let setupDurationMs = 0;
 
-    const manifest = {
-      worldId: doc.layoutId,
-      layoutRevision: doc.revision.contentHash,
-      layout: doc,
-      transit: validAuth,
-    };
+    beforeEach(() => {
+      resetAtomicRoadStore();
+      const preStore = useRoadNetwork.getState();
+      expect(Object.keys(preStore.tiles).length).toBe(0);
+      expect(preStore.landscapeEdits.size).toBe(0);
+      expect(preStore.sameSessionPlacements.size).toBe(0);
 
-    let saves = 0;
-    let wrapperHydrateCalls = 0;
-    const store = {
-      load: async () => null,
-      save: async (input: any) => {
-        saves++;
-        return {
-          status: "saved",
-          revision: { worldId: doc.layoutId, layoutRevision: doc.revision.contentHash, sequence: 0, document: doc },
-        };
-      },
-    };
+      const t0 = performance.now();
+      runtime = new ColonyRuntime(4242);
+      doc = runtime.captureWorldLayout();
+      const auth = runtime.exportCanonicalTransitAuthority();
+      if (!auth) {
+        throw new Error("Setup failure: baseline exportCanonicalTransitAuthority returned null");
+      }
+      validAuth = auth;
+      setupDurationMs = performance.now() - t0;
+    }, 60000);
 
-    const prodWrapper = {
-      captureWorldLayout: () => runtime.captureWorldLayout(),
-      hydrateWorldLayout: (d: any) => {
-        wrapperHydrateCalls++;
-        runtime.hydrateWorldLayout(d);
-      },
-      exportCanonicalTransitAuthority: (d?: any) =>
-        runtime.exportCanonicalTransitAuthority(d),
-    };
+    afterEach(resetAtomicRoadStore);
 
-    const validLoader = {
-      loadRemoteStarterCatalogue: async () => ({
-        published: true,
-        manifest: {
-          ...manifest,
-          worldId: doc.layoutId,
-          layoutRevision: doc.revision.contentHash,
-          layout: doc,
-          transit: validAuth,
+    it("atomic boot: unchanged input succeeds through production wrapper and saves atomically", async () => {
+      const tActionStart = performance.now();
+      expect(validAuth).not.toBeNull();
+
+      const manifest = {
+        worldId: doc.layoutId,
+        layoutRevision: doc.revision.contentHash,
+        layout: doc,
+        transit: validAuth,
+      };
+
+      let saves = 0;
+      let wrapperHydrateCalls = 0;
+      const store = {
+        load: async () => null,
+        save: async (input: any) => {
+          saves++;
+          return {
+            status: "saved",
+            revision: { worldId: doc.layoutId, layoutRevision: doc.revision.contentHash, sequence: 0, document: doc },
+          };
         },
-      }),
-    };
-    const validWrapperBoot = new WorldLayoutBootCoordinator({
-      worldId: doc.layoutId,
-      store: store as any,
-      runtime: prodWrapper as any,
-      remoteLoader: validLoader as any,
-      requireRemoteAuthority: true,
-    });
-    const result = await validWrapperBoot.boot();
-    expect(result.ready).toBe(true);
-    expect(saves).toBe(1);
-    expect(wrapperHydrateCalls).toBe(1);
-    expect(runtime.captureWorldLayout().revision.contentHash).toBe(doc.revision.contentHash);
+      };
+
+      const prodWrapper = {
+        captureWorldLayout: () => runtime.captureWorldLayout(),
+        hydrateWorldLayout: (d: any) => {
+          wrapperHydrateCalls++;
+          runtime.hydrateWorldLayout(d);
+        },
+        exportCanonicalTransitAuthority: (d?: any) =>
+          runtime.exportCanonicalTransitAuthority(d),
+      };
+
+      const validLoader = {
+        loadRemoteStarterCatalogue: async () => ({
+          published: true,
+          manifest: {
+            ...manifest,
+            worldId: doc.layoutId,
+            layoutRevision: doc.revision.contentHash,
+            layout: doc,
+            transit: validAuth,
+          },
+        }),
+      };
+      const validWrapperBoot = new WorldLayoutBootCoordinator({
+        worldId: doc.layoutId,
+        store: store as any,
+        runtime: prodWrapper as any,
+        remoteLoader: validLoader as any,
+        requireRemoteAuthority: true,
+      });
+      const result = await validWrapperBoot.boot();
+      expect(result.ready).toBe(true);
+      expect(saves).toBe(1);
+      expect(wrapperHydrateCalls).toBe(1);
+      expect(runtime.captureWorldLayout().revision.contentHash).toBe(doc.revision.contentHash);
+
+      const actionDurationMs = performance.now() - tActionStart;
+      console.log(
+        `[transitExplicitGeometry:validAtomicBoot] setupDuration=${(setupDurationMs / 1000).toFixed(2)}s, actionDuration=${(actionDurationMs / 1000).toFixed(2)}s, totalCase=${((setupDurationMs + actionDurationMs) / 1000).toFixed(2)}s`,
+      );
+    }, 60000);
   });
 });
