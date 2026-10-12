@@ -2570,18 +2570,70 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       await releaseAndSettleWalkingKey("KeyD");
 
       // Step 3.4.3: Rotate camera via real controller controls (ArrowRight turning in place toward heading ~ pi/2)
-      await page1.keyboard.down("ArrowRight");
-      await page1.waitForFunction(() => {
-        const colony = (window as any).__colony;
-        const h = colony?.getFirstPersonWireHeading?.();
-        return typeof h === "number" && h >= 1.30;
-      }, undefined, { timeout: 15_000 });
-      await page1.keyboard.up("ArrowRight");
+      // Bounded real-control aiming: pulses ArrowRight in discrete bounded intervals rather than an open-ended
+      // key-down hold, bounding input and observation overshoot while preserving genuine controller keyboard dispatch.
+      const aimStartTime = Date.now();
+      const pulseDiagnostics: {
+        attempt: number;
+        headingBefore: number;
+        pulseKey: string;
+        pulseMs: number;
+        keyDownElapsedMs: number;
+        headingAfter: number;
+      }[] = [];
+      let settledAimHeading = 0;
+      let aimSettled = false;
+
+      for (let attempt = 0; attempt < 25; attempt++) {
+        const h = await page1.evaluate(() => {
+          const colony = (window as any).__colony;
+          return colony?.getFirstPersonWireHeading?.() ?? 0;
+        });
+        if (h >= 1.30 && h <= 1.85) {
+          settledAimHeading = h;
+          aimSettled = true;
+          break;
+        }
+
+        const pulseKey = h < 1.30 ? "ArrowRight" : "ArrowLeft";
+        const remaining = Math.abs(1.57 - h);
+        const pulseMs = remaining > 0.6 ? 100 : 35;
+
+        const pulseStart = Date.now();
+        await page1.keyboard.down(pulseKey);
+        await page1.waitForTimeout(pulseMs);
+        await page1.keyboard.up(pulseKey);
+        const keyElapsed = Date.now() - pulseStart;
+        await page1.waitForTimeout(30);
+
+        const hAfter = await page1.evaluate(() => {
+          const colony = (window as any).__colony;
+          return colony?.getFirstPersonWireHeading?.() ?? 0;
+        });
+        pulseDiagnostics.push({
+          attempt,
+          headingBefore: h,
+          pulseKey,
+          pulseMs,
+          keyDownElapsedMs: keyElapsed,
+          headingAfter: hAfter,
+        });
+      }
 
       const rotHeading = await page1.evaluate(() => {
         const colony = (window as any).__colony;
         return colony?.getFirstPersonWireHeading?.() ?? 0;
       });
+      const aimDurationMs = Date.now() - aimStartTime;
+      console.log(
+        `[Diagnostic Aiming] settled=${aimSettled} finalHeading=${rotHeading.toFixed(4)} rad in ${aimDurationMs}ms across ${pulseDiagnostics.length} pulses:`,
+        JSON.stringify(pulseDiagnostics),
+      );
+      if (!aimSettled) {
+        console.warn(
+          `[Diagnostic Aiming Warning] loop exhausted 25 attempts without settling in [1.30, 1.85]; final heading=${rotHeading.toFixed(4)}`,
+        );
+      }
       console.log(`Rotated camera wire heading achieved: ${rotHeading.toFixed(4)} rad`);
       expect(rotHeading).toBeGreaterThanOrEqual(1.20);
       expect(rotHeading).toBeLessThanOrEqual(2.00);
