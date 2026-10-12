@@ -31,7 +31,10 @@ const key = (x: number, y: number) => `${x},${y}`;
 export function makeBusRoute(
   state: BusRoadState,
   anchors: Cell[],
-  options?: { preserveOrder?: boolean },
+  options?: {
+    preserveOrder?: boolean;
+    pathfinder?: (from: Cell, to: Cell) => Cell[] | null;
+  },
 ): BusRoute | null {
   const road = state.roadKind;
   if (anchors.length < 2) return null;
@@ -72,10 +75,12 @@ export function makeBusRoute(
       return aa !== ab ? aa - ab : a.x - b.x || a.y - b.y; // stable tie-break -> deterministic
     });
   }
-  // BFS-connect consecutive stops over the road graph, closing the loop.
+  // Connect consecutive stops over the road graph, closing the loop.
   const loop: Cell[] = [];
   for (let i = 0; i < stops.length; i++) {
-    const seg = bfsPath(road, stops[i]!, stops[(i + 1) % stops.length]!);
+    const seg = options?.pathfinder
+      ? options.pathfinder(stops[i]!, stops[(i + 1) % stops.length]!)
+      : bfsPath(road, stops[i]!, stops[(i + 1) % stops.length]!);
     if (!seg) return null; // a hood is unreachable over roads -> no coherent route
     for (let j = loop.length ? 1 : 0; j < seg.length; j++) loop.push(seg[j]!); // skip the shared join cell
   }

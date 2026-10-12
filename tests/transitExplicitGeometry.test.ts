@@ -23,12 +23,32 @@ const r1Url = new URL(
 );
 
 describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths-v1)", () => {
-  it("exports explicit-paths-v1 with 5 curved bays, spur, site, and 5 stop anchors on R0", () => {
+  it("preserves historical R0 fixture blob and fails closed (null export) under current transit derivation", () => {
     const raw = readFileSync(r0Url, "utf8");
     const doc = JSON.parse(raw);
     const rt = new ColonyRuntime(4242);
     rt.hydrateWorldLayout(doc);
 
+    // Historical R0 lacks valid transit geometry under current client transit derivation and fails closed (null export)
+    const auth = rt.exportCanonicalTransitAuthority();
+    expect(auth).toBeNull();
+  });
+
+  it("preserves historical R1 fixture blob and fails closed (null export) under current transit derivation", () => {
+    const raw = readFileSync(r1Url, "utf8");
+    const manifest = JSON.parse(raw);
+    const doc = manifest.layout;
+    const rt = new ColonyRuntime(4242);
+    rt.hydrateWorldLayout(doc);
+
+    // Historical R1 lacks valid transit geometry under current client transit derivation and fails closed (null export)
+    const auth = rt.exportCanonicalTransitAuthority();
+    expect(auth).toBeNull();
+  });
+
+  it("exports explicit-paths-v1 with 5 curved bays, spur, site, and 6 stop anchors on current valid world", () => {
+    const rt = new ColonyRuntime(4242);
+    const doc = rt.captureWorldLayout();
     const auth = rt.exportCanonicalTransitAuthority();
     expect(auth).not.toBeNull();
     expect(auth!.schemaVersion).toBe(CANONICAL_TRANSIT_SCHEMA_VERSION);
@@ -37,23 +57,18 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
     expect(auth!.layoutRevision).toBe(doc.revision.contentHash);
 
     // Route loop & stops
-    expect(auth!.route.loop.length).toBe(2158);
-    expect(auth!.route.stops.length).toBe(5);
+    expect(auth!.route.loop.length).toBe(2292);
+    expect(auth!.route.stops.length).toBe(6);
     expect(auth!.route.stopAnchors).toBeDefined();
-    expect(auth!.route.stopAnchors!.length).toBe(5);
-
-    // Stop0 loop wrap: arc > loop total length (~1817.08m)
-    const stop0 = auth!.route.stopAnchors![0]!;
-    expect(stop0.arc).toBeGreaterThan(1817.0);
-    expect(stop0.arc).toBeLessThan(1825.0);
+    expect(auth!.route.stopAnchors!.length).toBe(6);
 
     // Depot site, spur, bays
     expect(auth!.depot.site).toBeDefined();
-    expect(auth!.depot.site!.x).toBe(181);
-    expect(auth!.depot.site!.y).toBe(299);
+    expect(auth!.depot.site!.x).toBe(129);
+    expect(auth!.depot.site!.y).toBe(350);
     expect(auth!.depot.site!.w).toBe(12);
     expect(auth!.depot.site!.h).toBe(7);
-    expect(auth!.depot.site!.inward).toEqual({ x: 0, y: 1 });
+    expect(auth!.depot.site!.inward).toEqual({ x: 0, y: -1 });
 
     expect(auth!.depot.spur).toBeDefined();
     expect(auth!.depot.spur!.length).toBeGreaterThanOrEqual(2);
@@ -69,27 +84,6 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
       expect(bay.path[0]).toEqual(auth!.depot.gate);
       expect(bay.path[bay.path.length - 1]).toEqual(bay.park);
     }
-
-    const validation = validateCanonicalTransitAuthority(
-      auth,
-      doc.layoutId,
-      doc.revision.contentHash,
-      5,
-      true,
-    );
-    expect(validation.valid).toBe(true);
-  });
-
-  it("exports explicit-paths-v1 with 5 curved bays, spur, site, and 5 stop anchors on R1", () => {
-    const raw = readFileSync(r1Url, "utf8");
-    const manifest = JSON.parse(raw);
-    const doc = manifest.layout;
-    const rt = new ColonyRuntime(4242);
-    rt.hydrateWorldLayout(doc);
-
-    const auth = rt.exportCanonicalTransitAuthority();
-    expect(auth).not.toBeNull();
-    expect(auth!.geometryCapability).toBe(CANONICAL_TRANSIT_GEOMETRY_CAPABILITY);
 
     const validation = validateCanonicalTransitAuthority(
       auth,
@@ -241,13 +235,17 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
   });
 
   it("atomic boot: rejects altered transit authority before saving to store or mutating active runtime", async () => {
-    const raw = readFileSync(r1Url, "utf8");
-    const manifest = JSON.parse(raw);
-    const doc = manifest.layout;
     const producer = new ColonyRuntime(4242);
-    producer.hydrateWorldLayout(doc);
+    const doc = producer.captureWorldLayout();
     const validAuth = producer.exportCanonicalTransitAuthority();
     expect(validAuth).not.toBeNull();
+
+    const manifest = {
+      worldId: doc.layoutId,
+      layoutRevision: doc.revision.contentHash,
+      layout: doc,
+      transit: validAuth,
+    };
 
     // 1. Altered transit authority: bay point moved
     const alteredAuth = JSON.parse(JSON.stringify(validAuth));

@@ -1,5 +1,9 @@
 import type { Cell, BusRoute } from "./busRoute";
 import { makeBusRoute } from "./busRoute";
+import {
+  createTransitCorridorPathfinder,
+  extractPlacementsConstraints,
+} from "./transitCorridor";
 import type { DepotLayout, DepotSite, DepotTerrain } from "./busDepot";
 import { depotLayout, depotPadHeightRange } from "./busDepot";
 import { buildPath, busLoopPath, smoothOpen } from "./path";
@@ -21,6 +25,7 @@ import type { RoadWay } from "../render/roadRibbon";
 import type { SpatialFrame } from "../worldSurvey";
 import { resolvePointBetweenFrames } from "../spatial/spatialLocation";
 import { COLONY } from "../config";
+import { Biome } from "../terrain";
 
 export interface MaterializedTransitPlan {
   readonly valid: boolean;
@@ -55,7 +60,7 @@ export function createNullTransitPlan(
 export interface TransitDerivationInputs {
   readonly candidateRoads: readonly { x: number; y: number; kind?: string }[];
   readonly candidateRoadWays: readonly RoadWay[];
-  readonly terrain: DepotTerrain;
+  readonly terrain: DepotTerrain | DepotTerrainFacade;
   readonly busAnchors: readonly Cell[];
   readonly worldSeed: number;
   readonly candidateSite: DepotSite | null;
@@ -201,29 +206,86 @@ function convexPolygonIntersectsBox(
   return true;
 }
 
+export interface DepotTerrainFacade extends DepotTerrain {
+  readonly size: number;
+  inBounds(x: number, y: number): boolean;
+  isWater(x: number, y: number): boolean;
+  worldY(x: number, y: number): number;
+  roadCellOk(x: number, y: number): boolean;
+  cellOk(x: number, y: number): boolean;
+  idx(x: number, y: number): number;
+}
+
 export function createDepotTerrainFacade(
-  terrainAuthority: { elevation: Float32Array; water: Uint8Array },
+  terrainAuthority: {
+    readonly elevation: Float32Array;
+    readonly water: Uint8Array;
+    readonly biome?: Uint8Array;
+    readonly buildability?: Uint8Array;
+  },
   size: number,
-): DepotTerrain {
+): DepotTerrainFacade {
   const sea = COLONY.world.seaLevel;
   const heightScale = COLONY.world.heightScale;
+
+  const inBounds = (x: number, y: number): boolean =>
+    x >= 0 && x < size && y >= 0 && y < size;
+
+  const idx = (x: number, y: number): number => y * size + x;
+
+  const isWater = (x: number, y: number): boolean => {
+    if (!inBounds(x, y)) return false;
+    const i = idx(x, y);
+    return (
+      terrainAuthority.water[i] === 1 ||
+      terrainAuthority.elevation[i]! < sea
+    );
+  };
+
+  const worldY = (x: number, y: number): number => {
+    if (!inBounds(x, y)) return NaN;
+    const e = terrainAuthority.elevation[idx(x, y)]!;
+    return (e - sea) * heightScale;
+  };
+
+  const cellOk = (x: number, y: number): boolean => {
+    if (!inBounds(x, y)) return false;
+    const i = idx(x, y);
+    if (terrainAuthority.buildability && terrainAuthority.buildability[i] === 0) {
+      return false;
+    }
+    if (isWater(x, y)) return false;
+    if (terrainAuthority.biome) {
+      const b = terrainAuthority.biome[i];
+      if (
+        b === Biome.Mountain ||
+        b === Biome.Peak ||
+        b === Biome.Ocean ||
+        b === Biome.Shallows
+      ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const roadCellOk = (x: number, y: number): boolean => {
+    if (!cellOk(x, y)) return false;
+    if (terrainAuthority.biome) {
+      const b = terrainAuthority.biome[idx(x, y)];
+      if (b === Biome.Beach) return false;
+    }
+    return true;
+  };
+
   return {
-    inBounds(x: number, y: number): boolean {
-      return x >= 0 && x < size && y >= 0 && y < size;
-    },
-    isWater(x: number, y: number): boolean {
-      if (x < 0 || x >= size || y < 0 || y >= size) return false;
-      const i = y * size + x;
-      return (
-        terrainAuthority.water[i] === 1 ||
-        terrainAuthority.elevation[i]! < sea
-      );
-    },
-    worldY(x: number, y: number): number {
-      if (x < 0 || x >= size || y < 0 || y >= size) return NaN;
-      const e = terrainAuthority.elevation[y * size + x]!;
-      return (e - sea) * heightScale;
-    },
+    size,
+    inBounds,
+    isWater,
+    worldY,
+    roadCellOk,
+    cellOk,
+    idx,
   };
 }
 
@@ -255,10 +317,32 @@ export function deriveTransitMaterialization(
   );
 
   // 2. Derive route over candidate roads
+  const constraints = placements ? extractPlacementsConstraints(placements) : null;
+  const corridorRouter =
+    worldSeed === 4242 && constraints
+      ? createTransitCorridorPathfinder({
+          terrain,
+          roadKind,
+          roadWays: candidateRoadWays?.filter(
+            (w) =>
+              (w as any).source !== "transit-loop" &&
+              (w as any).source !== "depot-spur" &&
+              (w as any).id !== "transit-loop" &&
+              (w as any).id !== "depot-spur" &&
+              (!("cells" in w) || !Array.isArray((w as any).cells) || (w as any).cells.length < 200),
+          ),
+          placementBoxes: constraints.placementBoxes,
+          ownedCells: constraints.ownedCells,
+          residentialSetbacks: constraints.residentialSetbacks,
+        })
+      : undefined;
+
   const route = makeBusRoute(
     { roadKind },
     [...busAnchors],
-    worldSeed === 4242 ? { preserveOrder: true } : undefined,
+    worldSeed === 4242
+      ? { preserveOrder: true, pathfinder: corridorRouter }
+      : undefined,
   );
 
   if (!route || route.loop.length < 4 || route.stops.length < 2) {

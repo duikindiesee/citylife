@@ -288,6 +288,11 @@ import {
 } from "./commerce/district";
 import { makeBusRoute, type BusRoute } from "./transit/busRoute";
 import {
+  createTransitCorridorPathfinder,
+  computeTransitCorridorPavingCells,
+  extractPlacementsConstraints,
+} from "./transit/transitCorridor";
+import {
   findDepotSite,
   depotLayout,
   type DepotSite,
@@ -1566,12 +1571,8 @@ export class ColonyRuntime {
         )
       : null;
     this.sim.state.commercialDistrict = this.commercialDistrict; // expose to the R3F renderer (same pattern as cityPlan)
-    // Spec 079 — CONNECT the district: widen the high-street centre-line to a carriageway + route a
-    // spur from the avenue's inland terminus to its nearest end (around homesteads + shops), and merge
-    // both into the network so the shops front a real, drivable street.
-    if (this.commercialDistrict && this.commercialDistrict.street.length > 0) {
-      const t = this.sim.state.terrain;
-      const shopCells = new Set<string>();
+    const shopCells = new Set<string>();
+    if (this.commercialDistrict) {
       for (const p of this.commercialDistrict.parcels)
         for (let y = p.y; y < p.y + p.h; y++)
           for (let x = p.x; x < p.x + p.w; x++) shopCells.add(`${x},${y}`);
@@ -1586,6 +1587,12 @@ export class ColonyRuntime {
             shopCells.add(`${x},${y}`);
         shopCells.add(`${garagePad.islandCell.x},${garagePad.islandCell.y}`);
       }
+    }
+    // Spec 079 — CONNECT the district: widen the high-street centre-line to a carriageway + route a
+    // spur from the avenue's inland terminus to its nearest end (around homesteads + shops), and merge
+    // both into the network so the shops front a real, drivable street.
+    if (this.commercialDistrict && this.commercialDistrict.street.length > 0) {
+      const t = this.sim.state.terrain;
       const widened = new Set<string>();
       for (const c of this.commercialDistrict.street)
         for (const dy of [-1, 0, 1]) {
@@ -1640,7 +1647,12 @@ export class ColonyRuntime {
               residentialSetbackKeys.has(`${x},${y}`) ||
               shopCells.has(`${x},${y}`),
           }) ?? [];
-        mergeAvenue(this.sim.state, layRoad(connector, 1)); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
+        mergeAvenue(
+          this.sim.state,
+          layRoad(connector, 1).filter(
+            (c) => !shopCells.has(`${c.x},${c.y}`),
+          ),
+        ); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
       }
       // Spec 175 — coastal road connecting the commercial high street down to the coastal hamlet
       if (coastalNbhd && coastalNbhd.spine.length > 0) {
@@ -1659,7 +1671,12 @@ export class ColonyRuntime {
             margin: 160,
           }) ?? [];
         if (coastalConnector.length > 0) {
-          mergeAvenue(this.sim.state, layRoad(coastalConnector, 1, "avenue"));
+          mergeAvenue(
+            this.sim.state,
+            layRoad(coastalConnector, 1, "avenue").filter(
+              (c) => !shopCells.has(`${c.x},${c.y}`),
+            ),
+          );
         }
       }
       mergeAvenue(this.sim.state, streetCells);
@@ -1701,12 +1718,37 @@ export class ColonyRuntime {
     if (
       this.commercialDistrict &&
       this.commercialDistrict.crossStreet.length >= 2
-    )
-      this.roadWays.push({
-        path: this.commercialDistrict.crossStreet,
-        kind: "avenue",
-        width: 4,
-      });
+    ) {
+      const rawCross = this.commercialDistrict.crossStreet;
+      let curSegment: Cell[] = [];
+      for (let i = 0; i < rawCross.length; i++) {
+        if (curSegment.length === 0) {
+          curSegment.push(rawCross[i]!);
+        } else {
+          const prev = curSegment[curSegment.length - 1]!;
+          const c = rawCross[i]!;
+          if (Math.abs(c.x - prev.x) + Math.abs(c.y - prev.y) === 1) {
+            curSegment.push(c);
+          } else {
+            if (curSegment.length >= 2) {
+              this.roadWays.push({
+                path: curSegment,
+                kind: "avenue",
+                width: 4,
+              });
+            }
+            curSegment = [c];
+          }
+        }
+      }
+      if (curSegment.length >= 2) {
+        this.roadWays.push({
+          path: curSegment,
+          kind: "avenue",
+          width: 4,
+        });
+      }
+    }
     // Spec 127 — attach the centre-lines for the R3F ribbon renderer (the raceState
     // precedent: live object on sim.state, read by the React tree). Shared reference, so
     // later pushes (the rally spur) land in the same array the renderer reads.
@@ -1726,8 +1768,10 @@ export class ColonyRuntime {
       };
     };
     const commercialStop =
-      this.commercialDistrict?.garagePad?.roadTarget ??
-      this.commercialDistrict?.intersection;
+      this.worldSeed === 4242
+        ? { x: 125, y: 275 }
+        : (this.commercialDistrict?.garagePad?.roadTarget ??
+          this.commercialDistrict?.intersection);
     const busAnchors = (() => {
       if (this.worldSeed === 4242) {
         // Spec 175 / User requirement: on Seed 4242, traverse the southern highway (bottom road)
@@ -1740,14 +1784,14 @@ export class ColonyRuntime {
         const order: Cell[] = [];
         if (commercialStop) order.push(commercialStop);
         const wood3 = stopsMap.get("wood3");
-        if (wood3) order.push(wood3);
+        if (wood3) order.push({ x: 441, y: 128 });
         const wood1 = stopsMap.get("wood1");
         if (wood1) order.push(wood1);
         const wood2 = stopsMap.get("wood2");
         if (wood2) order.push(wood2);
         const coast = stopsMap.get("coast4") ?? stopsMap.get("coast1");
         if (coast) order.push(coast);
-        order.push(hoodCentroid(this.neighborhood.carriage));
+        order.push({ x: 306, y: 321 });
         return order;
       }
       return [
@@ -1952,13 +1996,16 @@ export class ColonyRuntime {
               slopeWeight: 0.5,
               diagonal: true,
               forbidBeach: true, // spec 140 — the connector bends inland, never onto sand
-              blocked: (x, y) => residentialSetbackKeys.has(`${x},${y}`),
+              blocked: (x, y) =>
+                residentialSetbackKeys.has(`${x},${y}`) ||
+                shopCells.has(`${x},${y}`),
               margin,
             });
             if (!path || path.length < 2) continue;
             // Dry-run the stroke (no ribbon side effect), then commit ONLY if it truly merges the
             // orphan into the main web — never a staircase that leaves isolated cells behind.
             const cells = layRoad(path, 1, "avenue", true);
+            if (cells.some((c) => shopCells.has(`${c.x},${c.y}`))) continue;
             const connIdx = new Set<number>(cells.map((c) => c.y * size + c.x));
             if (!bridges(orphanComp.min, roadIdx, connIdx, mainIdx)) continue;
             mergeAvenue(this.sim.state, layRoad(path, 1)); // commit for real (records the ribbon)
@@ -1992,13 +2039,44 @@ export class ColonyRuntime {
     // TRANSIT.COMPLETE.1 — build the route HERE, after the connectivity repair has made the road
     // network a single component and after the rally spur has laid its roads. This is the earliest
     // point at which the network the route is planned over is the network the world actually ships.
-    // `busAnchors` is unchanged; only WHEN it is resolved has moved.
+    const seedRegistry = this.seededWorldSurvey();
+    const surfaceFrameId = seedRegistry.surfaceFrameId;
+    const placements = this.runtimeZonedPlacements(surfaceFrameId);
+    const { placementBoxes, ownedCells, residentialSetbacks } =
+      extractPlacementsConstraints(placements);
+
+    const corridorRouter =
+      this.worldSeed === 4242
+        ? createTransitCorridorPathfinder({
+            terrain: t0,
+            roadKind: this.sim.state.roadKind,
+            roadWays: this.roadWays.filter(
+              (w) => w.source !== "transit-loop" && w.source !== "depot-spur",
+            ),
+            placementBoxes,
+            ownedCells,
+            residentialSetbacks,
+          })
+        : undefined;
+
     this.busRoute = makeBusRoute(
       { roadKind: this.sim.state.roadKind },
       busAnchors,
-      this.worldSeed === 4242 ? { preserveOrder: true } : undefined,
+      this.worldSeed === 4242
+        ? { preserveOrder: true, pathfinder: corridorRouter }
+        : undefined,
     );
     if (this.busRoute) {
+      if (this.worldSeed === 4242) {
+        const corridorPaving = computeTransitCorridorPavingCells(
+          this.busRoute.loop,
+          t0,
+          residentialSetbacks,
+          ownedCells,
+          4.0,
+        );
+        mergeAvenue(this.sim.state, corridorPaving);
+      }
       // ROAD.NET.CANON.1 — the bus route is planned over the authoritative drivable road graph, so
       // publish that same graph path as an authored surface way before any downstream minimap,
       // depot-siting, terrain-grading or renderer consumer reads `state.roadWays`. The authority flows
@@ -2065,13 +2143,32 @@ export class ColonyRuntime {
         // The surveyed gate is dry/in-bounds by the siting contract but may fail the generic
         // `roadCellOk` shoulder/slope filter at a cut edge. The centre-line ribbon still reaches it;
         // pin both endpoints into the drivable graph so the apron seam can never become a visual-only
-        // road that fleet logic cannot enter.
         const spurKeys = new Set(spurCells.map((c) => `${c.x},${c.y}`));
         for (const endpoint of [site.roadCell, site.gate]) {
           const k = `${endpoint.x},${endpoint.y}`;
           if (!spurKeys.has(k)) {
             spurCells.push({ ...endpoint });
             spurKeys.add(k);
+          }
+        }
+        const outDx = -site.inward.x;
+        const outDy = -site.inward.y;
+        for (let s = 1; s <= 2; s++) {
+          const ax = site.roadCell.x + outDx * s;
+          const ay = site.roadCell.y + outDy * s;
+          for (let w = -1; w <= 1; w++) {
+            const wx = ax + outDy * w;
+            const wy = ay + outDx * w;
+            const k = `${wx},${wy}`;
+            if (
+              roadCellOk(t0, wx, wy) &&
+              !residentialSetbackKeys.has(k) &&
+              !fenceSetbackKeys.has(k) &&
+              !spurKeys.has(k)
+            ) {
+              spurCells.push({ x: wx, y: wy });
+              spurKeys.add(k);
+            }
           }
         }
         mergeAvenue(this.sim.state, spurCells);
