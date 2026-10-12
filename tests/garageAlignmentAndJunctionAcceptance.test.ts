@@ -492,18 +492,139 @@ describe("P0 Acceptance: Garage Alignment, Carriageway Clearance, Signage & Junc
         }
       });
 
-      const apronBox = new THREE.Box3().setFromObject(fullApron);
+      const model = rtSeed.getGarageModel()!;
+      const apron = model.drivewayApron;
+
+      // Finite positive apron bounds guards
+      expect(Number.isFinite(apron.w) && apron.w > 0).toBe(true);
+      expect(Number.isFinite(apron.d) && apron.d > 0).toBe(true);
+      expect(Number.isFinite(apron.x)).toBe(true);
+      expect(Number.isFinite(apron.z)).toBe(true);
+
+      const zStart = apron.z - apron.d / 2;
+      const zEnd = apron.z + apron.d / 2;
+      const xMin = apron.x - apron.w / 2;
+      const xMax = apron.x + apron.w / 2;
+
       let maxSurfaceH = -Infinity;
-      for (let lx = -g.w * 0.45; lx <= g.w * 0.45; lx += 1.0) {
-        for (const lz of [4.2, 7.8]) {
-          const h = garageApronSurfaceY(g, tSeed, ribbon, lx, lz, seat);
+      let gridSampleCount = 0;
+      const nx = 8;
+      const nz = 8;
+      for (let j = 0; j <= nz; j++) {
+        const lz = zStart + (j / nz) * apron.d;
+        for (let i = 0; i <= nx; i++) {
+          const lx = xMin + (i / nx) * apron.w;
+          const h = garageApronSurfaceY(g, tSeed, null, lx, lz, seat);
+          if (!Number.isFinite(h) || h <= 0) {
+            throw new Error(
+              `Seed ${seed}: non-finite or non-positive surface height ${h} at lx=${lx.toFixed(2)}, lz=${lz.toFixed(2)}`,
+            );
+          }
+          gridSampleCount++;
           if (h > maxSurfaceH) maxSurfaceH = h;
         }
       }
+      expect(gridSampleCount).toBe(81);
+      expect(Number.isFinite(maxSurfaceH)).toBe(true);
+      expect(maxSurfaceH).toBeGreaterThan(0);
+
+      // Verify apron geometry buffer dimensions and capture full snapshot before any cloning
+      const origGeom = fullApron.geometry as THREE.BufferGeometry;
+      const origPos = origGeom.getAttribute("position");
+      expect(origPos.count).toBeGreaterThanOrEqual(768);
+      const origBufferSnapshot = new Float32Array(origPos.array);
+
+      // Unified apron surface validator checking both bounding box top and all top quad vertices
+      function validateApronMesh(mesh: THREE.Mesh): {
+        passed: boolean;
+        topDiff: number;
+        maxVertexDiff: number;
+        topY: number;
+        topVertexSamples: number;
+      } {
+        const box = new THREE.Box3().setFromObject(mesh);
+        const topDiff = Math.abs(box.max.y - maxSurfaceH);
+        let maxVertexDiff = 0;
+        let topVertexSamples = 0;
+        const pos = (mesh.geometry as THREE.BufferGeometry).getAttribute("position");
+        const v = new THREE.Vector3();
+        for (let c = 0; c < 64; c++) {
+          for (let k = 0; k < 6; k++) {
+            const vi = c * 12 + k;
+            const lx = pos.getX(vi);
+            const lz = pos.getZ(vi);
+            v.set(lx, pos.getY(vi), lz);
+            v.applyMatrix4(mesh.matrixWorld);
+            const expectedY = garageApronSurfaceY(g, tSeed, null, lx, lz, seat);
+            if (!Number.isFinite(expectedY) || expectedY <= 0) {
+              throw new Error(
+                `Seed ${seed}: non-finite or non-positive expected vertex surface height at lx=${lx.toFixed(2)}, lz=${lz.toFixed(2)}`,
+              );
+            }
+            topVertexSamples++;
+            const diff = Math.abs(v.y - expectedY);
+            if (diff > maxVertexDiff) maxVertexDiff = diff;
+          }
+        }
+        const passed = topDiff <= 0.05 && maxVertexDiff <= 0.05;
+        return { passed, topDiff, maxVertexDiff, topY: box.max.y, topVertexSamples };
+      }
+
+      // 1. Untouched valid original mesh passes validation
+      const validRes = validateApronMesh(fullApron);
+      expect(validRes.passed).toBe(true);
+      expect(validRes.topVertexSamples).toBe(384);
+      expect(validRes.topDiff).toBeLessThanOrEqual(0.05);
+      expect(validRes.maxVertexDiff).toBeLessThanOrEqual(0.05);
       expect(
-        apronBox.max.y,
-        `Seed ${seed}: apron mesh top ${apronBox.max.y.toFixed(2)}m near max surface ${maxSurfaceH.toFixed(2)}m`,
+        validRes.topY,
+        `Seed ${seed}: apron mesh top ${validRes.topY.toFixed(2)}m near max surface ${maxSurfaceH.toFixed(2)}m`,
       ).toBeCloseTo(maxSurfaceH, 1);
+
+      // 2. Clone actual mesh and geometry, preserving original world matrix via supported matrix setup
+      const clonedGeom = fullApron.geometry.clone();
+      const clonedMesh = new THREE.Mesh(clonedGeom, fullApron.material);
+      clonedMesh.matrixAutoUpdate = false;
+      clonedMesh.matrix.copy(fullApron.matrixWorld);
+      clonedMesh.matrixWorld.copy(fullApron.matrixWorld);
+
+      // Verify UNMODIFIED clone positive through same validator before perturbation
+      const unmodifiedCloneRes = validateApronMesh(clonedMesh);
+      expect(unmodifiedCloneRes.passed).toBe(true);
+      expect(unmodifiedCloneRes.topVertexSamples).toBe(384);
+      expect(unmodifiedCloneRes.topDiff).toBeLessThanOrEqual(0.05);
+      expect(unmodifiedCloneRes.maxVertexDiff).toBeLessThanOrEqual(0.05);
+      expect(unmodifiedCloneRes.topY).toBeCloseTo(maxSurfaceH, 1);
+
+      // 3. Offset clone geometry Y by 0.05 local (= 0.20m world, >= 0.14m)
+      const clonedPos = clonedGeom.getAttribute("position");
+      const localOffset = 0.05; // 0.05 local * 4 scale = 0.20m in world space
+      for (let vi = 0; vi < clonedPos.count; vi++) {
+        clonedPos.setY(vi, clonedPos.getY(vi) + localOffset);
+      }
+      clonedPos.needsUpdate = true;
+      clonedGeom.computeBoundingBox();
+
+      // 4. Assert validator rejects perturbed clone and detects height discrepancy >= 0.14m
+      const perturbedCloneRes = validateApronMesh(clonedMesh);
+      expect(perturbedCloneRes.passed).toBe(false);
+      expect(perturbedCloneRes.topDiff).toBeGreaterThanOrEqual(0.14);
+      expect(perturbedCloneRes.topDiff).toBeGreaterThan(0.05);
+      expect(perturbedCloneRes.topDiff).toBeCloseTo(0.20, 1);
+      expect(perturbedCloneRes.maxVertexDiff).toBeGreaterThanOrEqual(0.14);
+      expect(perturbedCloneRes.maxVertexDiff).toBeGreaterThan(0.05);
+      expect(perturbedCloneRes.maxVertexDiff).toBeCloseTo(0.20, 1);
+
+      // 5. Verify full original geometry position buffer snapshot is 100% unchanged
+      expect(origPos.array.length).toBe(origBufferSnapshot.length);
+      let origBufferIdentical = true;
+      for (let bi = 0; bi < origBufferSnapshot.length; bi++) {
+        if (origPos.array[bi] !== origBufferSnapshot[bi]) {
+          origBufferIdentical = false;
+          break;
+        }
+      }
+      expect(origBufferIdentical, `Seed ${seed}: original apron position buffer was mutated`).toBe(true);
 
       // 5. Driveway apron foundation must extend deep into ground (no hollow underbelly).
       const apronFound = shell.getObjectByName(
