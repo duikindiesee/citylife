@@ -940,52 +940,79 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     ).toThrow(/Imported manifest transit companion validation failed/);
   });
 
-  it("boots remote starter catalogue with valid transit companion in worldLayoutBoot", async () => {
-    const rt = new ColonyRuntime(4242);
-    const doc = rt.captureWorldLayout();
-    const transitAuth = rt.exportCanonicalTransitAuthority();
-    expect(transitAuth).not.toBeNull();
+  describe("remote starter catalogue boot barrier with transit companion", () => {
+    let rt: ColonyRuntime;
+    let doc: ReturnType<ColonyRuntime["captureWorldLayout"]>;
+    let transitAuth: NonNullable<ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>>;
+    let setupDurationMs = 0;
 
-    const store = {
-      load: vi.fn(async () => null),
-      save: vi.fn(async () => ({
-        status: "saved" as const,
-        revision: {
-          worldId: doc.worldId,
-          layoutRevision: doc.revision.contentHash,
-          sequence: doc.revision.number,
-          document: doc,
-        },
-      })),
-    };
-    const remoteLoader = {
-      loadRemoteStarterCatalogue: vi.fn(async () => ({
-        published: true,
-        manifest: {
-          worldId: doc.worldId,
-          layoutRevision: doc.revision.contentHash,
-          layout: doc,
-          transit: transitAuth,
-          walkability: { status: "ready" },
-          physicalColliders: { colliders: [] },
-        },
-      })),
-    };
+    beforeEach(() => {
+      // Execute-proof that parent beforeEach reset precedes this setup
+      const preStore = useRoadNetwork.getState();
+      expect(preStore.landscapeEdits.size).toBe(0);
+      expect(Object.keys(preStore.tiles).length).toBe(0);
 
-    const coordinator = new WorldLayoutBootCoordinator({
-      worldId: doc.worldId,
-      store,
-      runtime: rt,
-      remoteLoader,
-      requireRemoteAuthority: true,
-    });
+      const t0 = performance.now();
+      rt = new ColonyRuntime(4242);
+      doc = rt.captureWorldLayout();
+      const auth = rt.exportCanonicalTransitAuthority();
+      if (!auth) {
+        throw new Error("Setup failure: baseline exportCanonicalTransitAuthority returned null");
+      }
+      transitAuth = auth;
+      setupDurationMs = performance.now() - t0;
+    }, 60000);
 
-    const result = await coordinator.boot();
-    expect(result.ready).toBe(true);
-    expect(result.source).toBe("canonical_remote");
-    expect(rt.busRoute).not.toBeNull();
-    expect(rt.busDepot).not.toBeNull();
-    expect(rt.busStopAnchors().length).toBe(6);
+    it("boots remote starter catalogue with valid transit companion in worldLayoutBoot", async () => {
+      const tActionStart = performance.now();
+      expect(transitAuth).not.toBeNull();
+
+      const store = {
+        load: vi.fn(async () => null),
+        save: vi.fn(async () => ({
+          status: "saved" as const,
+          revision: {
+            worldId: doc.worldId,
+            layoutRevision: doc.revision.contentHash,
+            sequence: doc.revision.number,
+            document: doc,
+          },
+        })),
+      };
+      const remoteLoader = {
+        loadRemoteStarterCatalogue: vi.fn(async () => ({
+          published: true,
+          manifest: {
+            worldId: doc.worldId,
+            layoutRevision: doc.revision.contentHash,
+            layout: doc,
+            transit: transitAuth,
+            walkability: { status: "ready" },
+            physicalColliders: { colliders: [] },
+          },
+        })),
+      };
+
+      const coordinator = new WorldLayoutBootCoordinator({
+        worldId: doc.worldId,
+        store,
+        runtime: rt,
+        remoteLoader,
+        requireRemoteAuthority: true,
+      });
+
+      const result = await coordinator.boot();
+      expect(result.ready).toBe(true);
+      expect(result.source).toBe("canonical_remote");
+      expect(rt.busRoute).not.toBeNull();
+      expect(rt.busDepot).not.toBeNull();
+      expect(rt.busStopAnchors().length).toBe(6);
+
+      const actionDurationMs = performance.now() - tActionStart;
+      console.log(
+        `[transitHydration:remoteBoot] setupDuration=${(setupDurationMs / 1000).toFixed(2)}s, actionDuration=${(actionDurationMs / 1000).toFixed(2)}s, totalCase=${((setupDurationMs + actionDurationMs) / 1000).toFixed(2)}s`,
+      );
+    }, 60000);
   });
 
   it("rejects remote starter catalogue with mismatched transit companion in worldLayoutBoot", async () => {
@@ -1046,25 +1073,56 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     expect(transit!.layoutRevision).toBe(layout.revision.contentHash);
   });
 
-  it("fails closed on invalid dirty depot slope that breaks transit instead of exporting stale transit", () => {
-    useRoadNetwork.setState({ tiles: {}, landscapeEdits: new Map() });
-    const rt = new ColonyRuntime(4242);
-    const initial = rt.captureWorldLayout();
-    rt.hydrateWorldLayout(initial);
-    const baselineExport = rt.exportCanonicalTransitAuthority();
-    expect(baselineExport).not.toBeNull();
-    const pad = rt.sim.state.busDepotPad;
-    expect(pad).not.toBeNull();
-    for (let n = 0; n < 40; n++) {
-      useRoadNetwork.getState().applyLandscapeEdit(pad!.x + 2, pad!.y + 2, "raise");
-    }
-    const layout = rt.captureWorldLayout();
-    expect(layout.revision.contentHash).not.toBe(initial.revision.contentHash);
-    const transit = rt.exportCanonicalTransitAuthority(layout);
-    expect(transit).toBeNull();
-    const defaultTransit = rt.exportCanonicalTransitAuthority();
-    expect(defaultTransit).toBeNull();
-    useRoadNetwork.setState({ tiles: {}, landscapeEdits: new Map() });
+  describe("dirty depot slope invalidation under landscape edits", () => {
+    let rt: ColonyRuntime;
+    let initial: ReturnType<ColonyRuntime["captureWorldLayout"]>;
+    let baselineExport: NonNullable<ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>>;
+    let setupDurationMs = 0;
+
+    beforeEach(() => {
+      // Execute-proof that parent beforeEach reset precedes this setup
+      const preStore = useRoadNetwork.getState();
+      expect(preStore.landscapeEdits.size).toBe(0);
+      expect(Object.keys(preStore.tiles).length).toBe(0);
+
+      const t0 = performance.now();
+      rt = new ColonyRuntime(4242);
+      initial = rt.captureWorldLayout();
+      rt.hydrateWorldLayout(initial);
+      const auth = rt.exportCanonicalTransitAuthority();
+      if (!auth) {
+        throw new Error("Setup failure: baseline exportCanonicalTransitAuthority returned null");
+      }
+      baselineExport = auth;
+      setupDurationMs = performance.now() - t0;
+    }, 60000);
+
+    it("fails closed on invalid dirty depot slope that breaks transit instead of exporting stale transit", () => {
+      const tActionStart = performance.now();
+      expect(baselineExport).not.toBeNull();
+      const pad = rt.sim.state.busDepotPad;
+      expect(pad).not.toBeNull();
+
+      let appliedEdits = 0;
+      for (let n = 0; n < 40; n++) {
+        useRoadNetwork.getState().applyLandscapeEdit(pad!.x + 2, pad!.y + 2, "raise");
+        appliedEdits++;
+      }
+      expect(appliedEdits).toBe(40);
+      expect(useRoadNetwork.getState().landscapeEdits.size).toBeGreaterThan(0);
+
+      const layout = rt.captureWorldLayout();
+      expect(layout.revision.contentHash).not.toBe(initial.revision.contentHash);
+      const transit = rt.exportCanonicalTransitAuthority(layout);
+      expect(transit).toBeNull();
+      const defaultTransit = rt.exportCanonicalTransitAuthority();
+      expect(defaultTransit).toBeNull();
+
+      const actionDurationMs = performance.now() - tActionStart;
+      console.log(
+        `[transitHydration:dirtyDepot] setupDuration=${(setupDurationMs / 1000).toFixed(2)}s, actionDuration=${(actionDurationMs / 1000).toFixed(2)}s, totalCase=${((setupDurationMs + actionDurationMs) / 1000).toFixed(2)}s`,
+      );
+    }, 60000);
   });
 
   it("fails closed on unknown child frame in placement constraints", () => {
