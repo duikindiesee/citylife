@@ -188,7 +188,9 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
     const pCtx = rt.placementContext();
     const s = rt.sim.state;
 
-    // Helper to sample rendered ribbon Three.js geometry and compute deterministic full-value fingerprints
+    // Helper to sample rendered ribbon Three.js geometry and compute deterministic fingerprints:
+    // posFingerprint quantizes coordinates in metres to millimetres (Math.round(arr[i] * 1000)),
+    // proving millimetre-quantized rendered vertex stability; idxFingerprint hashes exact index buffer values.
     const sampleRibbonGeometry = () => {
       let meshCount = 0;
       let positions = 0;
@@ -290,8 +292,11 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
     await waitRenderOpportunity();
     const postStaleRibbon = sampleRibbonGeometry();
 
+    // Re-read fresh sim state after render awaits for committed-state assertions
+    const freshState = rt.sim.state;
+
     // Check full road cell preservation (exact x, y, kind matching RoadCell contract build.ts:136)
-    const postRoads = s.roads;
+    const postRoads = freshState.roads;
     const roadsIdentical =
       postRoads.length === preRoads.length &&
       postRoads.every(
@@ -302,7 +307,7 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
       );
 
     // Check full roadWay preservation (all paths, kinds, widths, sources)
-    const postWays = s.roadWays || [];
+    const postWays = freshState.roadWays || [];
     const roadWaysIdentical =
       postWays.length === preWays.length &&
       postWays.every((w: any, i: number) => {
@@ -314,7 +319,7 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
       });
 
     const currentRevision = rt.placementContext().layoutRevision;
-    const currentSignature = `r${s.roadsVersion}:w${s.roadWays?.length ?? 0}`;
+    const currentSignature = `r${freshState.roadsVersion}:w${freshState.roadWays?.length ?? 0}`;
 
     const geometryPreservedAcrossRejections =
       preRibbon.positions > 0 &&
@@ -348,13 +353,13 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
         roadsIdentical &&
         roadWaysIdentical &&
         geometryPreservedAcrossRejections &&
-        s.roadWays.length === initial.waysCount &&
-        s.roads.length === initial.roadsCount &&
-        s.roadsVersion === initial.roadsVersion &&
+        freshState.roadWays.length === initial.waysCount &&
+        freshState.roads.length === initial.roadsCount &&
+        freshState.roadsVersion === initial.roadsVersion &&
         currentRevision === initial.layoutRevision &&
         currentSignature === initial.signature,
-      postRejectionWaysCount: s.roadWays.length,
-      postRejectionRoadsVersion: s.roadsVersion,
+      postRejectionWaysCount: freshState.roadWays.length,
+      postRejectionRoadsVersion: freshState.roadsVersion,
     };
   }, initialRibbon);
 
