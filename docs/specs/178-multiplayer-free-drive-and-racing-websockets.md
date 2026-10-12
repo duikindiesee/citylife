@@ -121,4 +121,3 @@ Normal-boot and hydration strict consumer probes alongside focused unit suites p
 - Typecheck & Build: `npm run typecheck` exits 0; `npm run build` exits 0.
 
 Hosted, browser, remote companion, and live multi-context player acceptance remain explicitly open for independent evaluation and are not claimed as pre-cleared.
-

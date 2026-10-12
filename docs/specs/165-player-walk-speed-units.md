@@ -227,4 +227,3 @@ inventing an artificial non-passenger exemption.
 - **The deterministic sol-replay contract** — nothing about the transit driver changed; `transitTick`
   still reads only `solMinutesFracSinceEpoch(solNowMs())`.
 - **Overnight parking / in-hours service** — asserted at 01:00 and 12:00 at the new speed.
-
