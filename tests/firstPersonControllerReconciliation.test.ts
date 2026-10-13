@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Vector3, Quaternion, Euler } from "three";
 import { FirstPersonController } from "../src/render/components/FirstPersonController";
 import { ColonyRuntime } from "../src/colony/runtime";
+import { setupAuthoritativeRuntime, makeSessionJoinedAck } from "./testAuthorityHelper";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 import { leveledWorldY } from "../src/colony/render/terrainLeveling";
 import { wireHeadingToCameraYaw } from "../src/colony/playerOrientation";
@@ -117,6 +118,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -131,30 +133,32 @@ describe("FirstPersonController production useFrame reconciliation", () => {
 
     // Admission at (40, 40)
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-production-controller",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: toWorldX(40),
-            y: 0,
-            z: toWorldZ(40),
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-production-controller",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(40),
+              y: 0,
+              z: toWorldZ(40),
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.fpTeleportRequest).toMatchObject({
@@ -299,6 +303,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -313,30 +318,32 @@ describe("FirstPersonController production useFrame reconciliation", () => {
 
     // Admission at (40, 40)
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-jump-test",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: toWorldX(40),
-            y: 0,
-            z: toWorldZ(40),
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-jump-test",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(40),
+              y: 0,
+              z: toWorldZ(40),
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     renderToStaticMarkup(
@@ -408,6 +415,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -421,30 +429,32 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     const toWorldZ = (gy: number) => (gy - terrainSize / 2) * 4;
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-active-prediction",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: toWorldX(40),
-            y: 0,
-            z: toWorldZ(40),
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-active-prediction",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(40),
+              y: 0,
+              z: toWorldZ(40),
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     renderToStaticMarkup(
@@ -570,6 +580,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -584,30 +595,32 @@ describe("FirstPersonController production useFrame reconciliation", () => {
 
     // 1. Initial admission at (40, 40)
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-drift-test",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: toWorldX(40),
-            y: 0,
-            z: toWorldZ(40),
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-drift-test",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(40),
+              y: 0,
+              z: toWorldZ(40),
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     renderToStaticMarkup(
@@ -732,6 +745,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -746,30 +760,32 @@ describe("FirstPersonController production useFrame reconciliation", () => {
 
     // Admission at (40, 40)
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-arrowleft-test",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: toWorldX(40),
-            y: 0,
-            z: toWorldZ(40),
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-arrowleft-test",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(40),
+              y: 0,
+              z: toWorldZ(40),
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     renderToStaticMarkup(
@@ -870,6 +886,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -884,30 +901,32 @@ describe("FirstPersonController production useFrame reconciliation", () => {
 
     // Admission at (40, 40)
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-arrowright-test",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: toWorldX(40),
-            y: 0,
-            z: toWorldZ(40),
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-arrowright-test",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(40),
+              y: 0,
+              z: toWorldZ(40),
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     renderToStaticMarkup(
@@ -1008,6 +1027,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -1029,32 +1049,34 @@ describe("FirstPersonController production useFrame reconciliation", () => {
 
     // Join session in driving mode
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-exit-seq-test",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "driving",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            username: "User1",
-            isPedestrian: false,
-            mode: "driving",
-            vehicleKey: "karoo-vonk-11",
-            x: carX,
-            y: 0,
-            z: carZ,
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-exit-seq-test",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "driving",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              isPedestrian: false,
+              mode: "driving",
+              vehicleKey: "karoo-vonk-11",
+              x: carX,
+              y: 0,
+              z: carZ,
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.isOwnedDriveSeated()).toBe(true);
@@ -1153,6 +1175,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         getValidToken: async () => "valid-mock-token",
       } as any);
       runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
       runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
       await runtime.getMultiplayerClient()?.connect();
@@ -1167,30 +1190,32 @@ describe("FirstPersonController production useFrame reconciliation", () => {
 
       // Join session walking at (40, 40)
       socket.onmessage?.({
-        data: JSON.stringify({
-          type: "session_joined",
-          sessionId: "sess-gamepad-test",
-          participantId: "part-1",
-          room: "room-1",
-          protocolVersion: 2,
-          modeEpoch: 1,
-          mode: "walking",
-          participants: [
-            {
-              participantId: "part-1",
-              userId: "user-1",
-              isPedestrian: true,
-              mode: "walking",
-              x: toWorldX(40),
-              y: 0,
-              z: toWorldZ(40),
-              heading: 0,
-              speed: 0,
-              modeEpoch: 1,
-              protocolVersion: 2,
-            },
-          ],
-        }),
+        data: JSON.stringify(
+          makeSessionJoinedAck(socket, {
+            type: "session_joined",
+            sessionId: "sess-gamepad-test",
+            participantId: "part-1",
+            room: "room-1",
+            protocolVersion: 2,
+            modeEpoch: 1,
+            mode: "walking",
+            participants: [
+              {
+                participantId: "part-1",
+                userId: "user-1",
+                isPedestrian: true,
+                mode: "walking",
+                x: toWorldX(40),
+                y: 0,
+                z: toWorldZ(40),
+                heading: 0,
+                speed: 0,
+                modeEpoch: 1,
+                protocolVersion: 2,
+              },
+            ],
+          }),
+        ),
       });
 
       renderToStaticMarkup(
@@ -1410,6 +1435,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -1419,30 +1445,32 @@ describe("FirstPersonController production useFrame reconciliation", () => {
 
     // 1. Admit session in walking mode
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-keyboard-test",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: 0,
-            y: 0,
-            z: 0,
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-keyboard-test",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: 0,
+              y: 0,
+              z: 0,
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     let cleanups: Array<() => void> = [];
@@ -1563,6 +1591,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -1572,30 +1601,32 @@ describe("FirstPersonController production useFrame reconciliation", () => {
 
     // Admit in walking mode
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-directional-test",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: 0,
-            y: 0,
-            z: 0,
-            heading: -Math.PI / 2, // Facing -Z initially
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-directional-test",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: 0,
+              y: 0,
+              z: 0,
+              heading: -Math.PI / 2, // Facing -Z initially
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     let cleanups: Array<() => void> = [];
@@ -1826,6 +1857,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-focus-test", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -1835,30 +1867,32 @@ describe("FirstPersonController production useFrame reconciliation", () => {
 
     // Walking admission at origin
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-focus-test",
-        participantId: "part-1",
-        room: "room-focus-test",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: 0,
-            y: 0,
-            z: 0,
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-focus-test",
+          participantId: "part-1",
+          room: "room-focus-test",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: 0,
+              y: 0,
+              z: 0,
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     let cleanups: Array<() => void> = [];
@@ -2108,6 +2142,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-walker-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -2144,30 +2179,32 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     expect(expectedAdmittedYaw).not.toBeCloseTo(initialCameraYaw, 2);
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-production-admission",
-        participantId: "part-walker-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-walker-1",
-            userId: "user-walker-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: toWorldX(45),
-            y: 0,
-            z: toWorldZ(55),
-            heading: serverAdmittedHeading,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-production-admission",
+          participantId: "part-walker-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-walker-1",
+              userId: "user-walker-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(45),
+              y: 0,
+              z: toWorldZ(55),
+              heading: serverAdmittedHeading,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     // Invariant 1: Production onSelfAdmitted produces fpTeleportRequest containing authoritative yaw
@@ -2183,5 +2220,18 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     // so the frame writeback retains the authoritative server heading rather than overwriting it with old 1.25!
     expect(runtime.fpCameraYaw).toBeCloseTo(expectedAdmittedYaw, 4);
     expect(runtime.fpCameraYaw).not.toBeCloseTo(initialCameraYaw, 2);
+  });
+
+  it("fails closed without opening a socket when authoritative neighbourhood authority is missing", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    expect(MockWebSocket.instances.length).toBe(0);
+    expect(runtime.getMultiplayerClient()?.getStatus()).toBe("error");
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
+import { setupAuthoritativeRuntime, makeSessionJoinedAck } from "./testAuthorityHelper";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 import { computeBusNetworkMiniMapSignal } from "../src/colony/ui/BusNetworkMiniMap";
 import { leveledWorldY } from "../src/colony/render/terrainLeveling";
@@ -45,6 +46,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
     const road = runtime.sim.state.roads[0]!;
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
@@ -60,37 +62,39 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const carX = (road.x - terrain.size / 2) * 4;
     const carZ = (road.y - terrain.size / 2) * 4;
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        sessionId: "sess-trans-1",
-        participantId: "part-1",
-        carX,
-        carY: 0,
-        carZ,
-        carHeading: 0,
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            username: "User1",
-            mode: "walking",
-            isPedestrian: true,
-            modeEpoch: 1,
-            vehicleKey: "karoo-vonk-11",
-            x: carX,
-            y: 0,
-            z: carZ,
-            heading: 0,
-            carX,
-            carY: 0,
-            carZ,
-            carHeading: 0,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          sessionId: "sess-trans-1",
+          participantId: "part-1",
+          carX,
+          carY: 0,
+          carZ,
+          carHeading: 0,
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              mode: "walking",
+              isPedestrian: true,
+              modeEpoch: 1,
+              vehicleKey: "karoo-vonk-11",
+              x: carX,
+              y: 0,
+              z: carZ,
+              heading: 0,
+              carX,
+              carY: 0,
+              carZ,
+              carHeading: 0,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.isOwnedDriveSeated()).toBe(false);
@@ -132,6 +136,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
     const road = runtime.sim.state.roads[0]!;
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
@@ -148,29 +153,31 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
 
     // Admitted driving with matching self participant record
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "driving",
-        sessionId: "sess-trans-2",
-        participantId: "part-1",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            username: "User1",
-            mode: "driving",
-            isPedestrian: false,
-            modeEpoch: 1,
-            vehicleKey: "karoo-vonk-11",
-            x: carX,
-            y: 0,
-            z: carZ,
-            heading: 0,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "driving",
+          sessionId: "sess-trans-2",
+          participantId: "part-1",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              mode: "driving",
+              isPedestrian: false,
+              modeEpoch: 1,
+              vehicleKey: "karoo-vonk-11",
+              x: carX,
+              y: 0,
+              z: carZ,
+              heading: 0,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.isOwnedDriveSeated()).toBe(true);
@@ -208,6 +215,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
     const road = runtime.sim.state.roads[0]!;
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
@@ -223,37 +231,39 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const carZ = (road.y - terrain.size / 2) * 4;
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        sessionId: "sess-trans-pos-1",
-        participantId: "part-1",
-        carX,
-        carY: 0,
-        carZ,
-        carHeading: 0,
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            username: "User1",
-            mode: "walking",
-            isPedestrian: true,
-            modeEpoch: 1,
-            vehicleKey: "karoo-vonk-11",
-            x: carX,
-            y: 0,
-            z: carZ,
-            heading: 0,
-            carX,
-            carY: 0,
-            carZ,
-            carHeading: 0,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          sessionId: "sess-trans-pos-1",
+          participantId: "part-1",
+          carX,
+          carY: 0,
+          carZ,
+          carHeading: 0,
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              mode: "walking",
+              isPedestrian: true,
+              modeEpoch: 1,
+              vehicleKey: "karoo-vonk-11",
+              x: carX,
+              y: 0,
+              z: carZ,
+              heading: 0,
+              carX,
+              carY: 0,
+              carZ,
+              carHeading: 0,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.isOwnedDriveSeated()).toBe(false);
@@ -294,6 +304,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
     const road = runtime.sim.state.roads[0]!;
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
@@ -309,29 +320,31 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const carZ = (road.y - terrain.size / 2) * 4;
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "driving",
-        sessionId: "sess-trans-pos-2",
-        participantId: "part-1",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            username: "User1",
-            mode: "driving",
-            isPedestrian: false,
-            modeEpoch: 1,
-            vehicleKey: "karoo-vonk-11",
-            x: carX,
-            y: 0,
-            z: carZ,
-            heading: 0,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "driving",
+          sessionId: "sess-trans-pos-2",
+          participantId: "part-1",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              mode: "driving",
+              isPedestrian: false,
+              modeEpoch: 1,
+              vehicleKey: "karoo-vonk-11",
+              x: carX,
+              y: 0,
+              z: carZ,
+              heading: 0,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.isOwnedDriveSeated()).toBe(true);
@@ -461,6 +474,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -473,30 +487,32 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const initZ = (40 - terrain.size / 2) * 4;
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-1",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: initX,
-            y: 0,
-            z: initZ,
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-1",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: initX,
+              y: 0,
+              z: initZ,
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.getWalkingCell()).toEqual({ x: 40, y: 40 });
@@ -619,6 +635,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -690,30 +707,32 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
 
     // Admission at (40, 40)
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-controller-reconcile",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: toWorldX(40),
-            y: 0,
-            z: toWorldZ(40),
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-controller-reconcile",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: toWorldX(40),
+              y: 0,
+              z: toWorldZ(40),
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.fpTeleportRequest).toEqual({ x: 40, y: 40, seq: 1, yaw: -Math.PI / 2 });
@@ -943,6 +962,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -955,30 +975,32 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const initZ = (40 - terrain.size / 2) * 4;
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-1",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 2,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: initX,
-            y: 0,
-            z: initZ,
-            heading: 0,
-            speed: 0,
-            modeEpoch: 2,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          sessionId: "sess-1",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 2,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: initX,
+              y: 0,
+              z: initZ,
+              heading: 0,
+              speed: 0,
+              modeEpoch: 2,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.getWalkingCell()).toEqual({ x: 40, y: 40 });
@@ -1184,6 +1206,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
 
     runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
@@ -1196,30 +1219,32 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const initZ = (40 - terrain.size / 2) * 4;
 
     socket1.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-1",
-        participantId: "part-1",
-        room: "room-1",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: initX,
-            y: 0,
-            z: initZ,
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket1, {
+          type: "session_joined",
+          sessionId: "sess-1",
+          participantId: "part-1",
+          room: "room-1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: initX,
+              y: 0,
+              z: initZ,
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
 
     // Receive snapshot seq 5 at (45, 40)
@@ -1276,30 +1301,32 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const newInitX = (60 - terrain.size / 2) * 4;
     const newInitZ = (60 - terrain.size / 2) * 4;
     socket2.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        sessionId: "sess-2",
-        participantId: "part-2",
-        room: "room-2",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        participants: [
-          {
-            participantId: "part-2",
-            userId: "user-1",
-            isPedestrian: true,
-            mode: "walking",
-            x: newInitX,
-            y: 0,
-            z: newInitZ,
-            heading: 0,
-            speed: 0,
-            modeEpoch: 1,
-            protocolVersion: 2,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket2, {
+          type: "session_joined",
+          sessionId: "sess-2",
+          participantId: "part-2",
+          room: "room-2",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              participantId: "part-2",
+              userId: "user-1",
+              isPedestrian: true,
+              mode: "walking",
+              x: newInitX,
+              y: 0,
+              z: newInitZ,
+              heading: 0,
+              speed: 0,
+              modeEpoch: 1,
+              protocolVersion: 2,
+            },
+          ],
+        }),
+      ),
     });
     expect(runtime.getWalkingCell()).toEqual({ x: 60, y: 60 });
 
@@ -1338,6 +1365,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
     const road = runtime.sim.state.roads[0]!;
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
@@ -1353,29 +1381,31 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const carZ = (road.y - terrain.size / 2) * 4;
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "driving",
-        sessionId: "sess-drive-tick-1",
-        participantId: "part-1",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            username: "User1",
-            mode: "driving",
-            isPedestrian: false,
-            modeEpoch: 1,
-            vehicleKey: "karoo-vonk-11",
-            x: carX,
-            y: 0,
-            z: carZ,
-            heading: 0,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "driving",
+          sessionId: "sess-drive-tick-1",
+          participantId: "part-1",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              mode: "driving",
+              isPedestrian: false,
+              modeEpoch: 1,
+              vehicleKey: "karoo-vonk-11",
+              x: carX,
+              y: 0,
+              z: carZ,
+              heading: 0,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.isOwnedDriveSeated()).toBe(true);
@@ -1412,6 +1442,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
     const road = runtime.sim.state.roads[0]!;
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
@@ -1427,29 +1458,31 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const carZ = (road.y - terrain.size / 2) * 4;
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "driving",
-        sessionId: "sess-teleport-1",
-        participantId: "part-1",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            username: "User1",
-            mode: "driving",
-            isPedestrian: false,
-            modeEpoch: 1,
-            vehicleKey: "karoo-vonk-11",
-            x: carX,
-            y: 0,
-            z: carZ,
-            heading: 0,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "driving",
+          sessionId: "sess-teleport-1",
+          participantId: "part-1",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              mode: "driving",
+              isPedestrian: false,
+              modeEpoch: 1,
+              vehicleKey: "karoo-vonk-11",
+              x: carX,
+              y: 0,
+              z: carZ,
+              heading: 0,
+            },
+          ],
+        }),
+      ),
     });
 
     socket.sent.length = 0;
@@ -1492,6 +1525,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     v1Runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(v1Runtime);
     v1Runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     v1Runtime.teleportCar(road.x, road.y, 0);
 
@@ -1504,29 +1538,31 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     socket.onopen?.();
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        protocolVersion: 1,
-        modeEpoch: 1,
-        mode: "driving",
-        sessionId: "sess-v1-teleport",
-        participantId: "part-1",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            username: "User1",
-            mode: "driving",
-            isPedestrian: false,
-            modeEpoch: 1,
-            vehicleKey: "karoo-vonk-11",
-            x: 0,
-            y: 0,
-            z: 0,
-            heading: 0,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          protocolVersion: 1,
+          modeEpoch: 1,
+          mode: "driving",
+          sessionId: "sess-v1-teleport",
+          participantId: "part-1",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              mode: "driving",
+              isPedestrian: false,
+              modeEpoch: 1,
+              vehicleKey: "karoo-vonk-11",
+              x: 0,
+              y: 0,
+              z: 0,
+              heading: 0,
+            },
+          ],
+        }),
+      ),
     });
 
     socket.sent.length = 0;
@@ -1564,6 +1600,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
     const road = runtime.sim.state.roads[0]!;
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
@@ -1579,37 +1616,39 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const carZ = (road.y - terrain.size / 2) * 4;
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "walking",
-        sessionId: "sess-boundary-1",
-        participantId: "part-1",
-        carX,
-        carY: 0,
-        carZ,
-        carHeading: 0,
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            username: "User1",
-            mode: "walking",
-            isPedestrian: true,
-            modeEpoch: 1,
-            vehicleKey: "karoo-vonk-11",
-            x: carX,
-            y: 0,
-            z: carZ,
-            heading: 0,
-            carX,
-            carY: 0,
-            carZ,
-            carHeading: 0,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          sessionId: "sess-boundary-1",
+          participantId: "part-1",
+          carX,
+          carY: 0,
+          carZ,
+          carHeading: 0,
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              mode: "walking",
+              isPedestrian: true,
+              modeEpoch: 1,
+              vehicleKey: "karoo-vonk-11",
+              x: carX,
+              y: 0,
+              z: carZ,
+              heading: 0,
+              carX,
+              carY: 0,
+              carZ,
+              carHeading: 0,
+            },
+          ],
+        }),
+      ),
     });
 
     // Client attempts optimistic vehicle boarding
@@ -1636,6 +1675,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
     const road = runtime.sim.state.roads[0]!;
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
@@ -1651,29 +1691,31 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const carZ = (road.y - terrain.size / 2) * 4;
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        protocolVersion: 2,
-        modeEpoch: 1,
-        mode: "driving",
-        sessionId: "sess-subthreshold-1",
-        participantId: "part-1",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            username: "User1",
-            mode: "driving",
-            isPedestrian: false,
-            modeEpoch: 1,
-            vehicleKey: "karoo-vonk-11",
-            x: carX,
-            y: 0,
-            z: carZ,
-            heading: 0,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "driving",
+          sessionId: "sess-subthreshold-1",
+          participantId: "part-1",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              mode: "driving",
+              isPedestrian: false,
+              modeEpoch: 1,
+              vehicleKey: "karoo-vonk-11",
+              x: carX,
+              y: 0,
+              z: carZ,
+              heading: 0,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.getOwnedDrivePose()?.x).toBe(road.x);
@@ -1847,6 +1889,7 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       getValidToken: async () => "valid-mock-token",
     } as any);
     runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
     const road = runtime.sim.state.roads[0]!;
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
@@ -1862,29 +1905,31 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const carZ = (road.y - terrain.size / 2) * 4;
 
     socket.onmessage?.({
-      data: JSON.stringify({
-        type: "session_joined",
-        protocolVersion: 2,
-        modeEpoch: 2,
-        mode: "driving",
-        sessionId: "sess-driving-negatives",
-        participantId: "part-1",
-        participants: [
-          {
-            participantId: "part-1",
-            userId: "user-1",
-            username: "User1",
-            mode: "driving",
-            isPedestrian: false,
-            modeEpoch: 2,
-            vehicleKey: "karoo-vonk-11",
-            x: carX,
-            y: 0,
-            z: carZ,
-            heading: 0,
-          },
-        ],
-      }),
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          protocolVersion: 2,
+          modeEpoch: 2,
+          mode: "driving",
+          sessionId: "sess-driving-negatives",
+          participantId: "part-1",
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              mode: "driving",
+              isPedestrian: false,
+              modeEpoch: 2,
+              vehicleKey: "karoo-vonk-11",
+              x: carX,
+              y: 0,
+              z: carZ,
+              heading: 0,
+            },
+          ],
+        }),
+      ),
     });
 
     expect(runtime.getOwnedDrivePose()?.x).toBe(road.x);
@@ -2077,5 +2122,13 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     expect(runtime.getOwnedDrivePose()?.x).toBeCloseTo(road.x + 2);
     expect(runtime.getOwnedDrivePose()?.heading).toBeCloseTo(0.8);
     expect(runtime.getOwnedDrivePose()?.speed).toBeCloseTo(3);
+  });
+
+  it("fails closed without opening a socket when authoritative neighbourhood authority is missing", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    expect(MockWebSocket.instances.length).toBe(0);
+    expect(runtime.getMultiplayerClient()?.getStatus()).toBe("error");
   });
 });
