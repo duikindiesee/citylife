@@ -86,7 +86,7 @@ export interface AuthoritativeManifestValidationResult {
  * Rules:
  * - Manifest must be a non-null object.
  * - Active layout must be a non-null object.
- * - Wire worldId must match: manifest.worldId === activeLayout.worldId and manifest.layout.worldId === activeLayout.worldId.
+ * - Wire worldId must match: manifest.worldId === activeLayout.worldId and manifest.layout inner id (worldId or layoutId, when present) === activeLayout.worldId.
  * - Wire layoutRevision must match activeLayout.revision.contentHash.
  * - Full wire layout revision object (number, contentHash, parentHash) must match activeLayout.revision.
  * - Plots must define at least one valid, non-empty neighbourhood key (Server 421 fail-closed rule).

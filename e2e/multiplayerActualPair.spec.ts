@@ -1178,6 +1178,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
                 frameId: surfaceFrame.id,
                 walkableCells: Array.from(walkableCells),
               },
+              plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
             },
           }),
         });

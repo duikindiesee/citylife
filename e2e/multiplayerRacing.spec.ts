@@ -87,6 +87,7 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
             layoutRevision: customDoc.revision.contentHash,
             layout: customDoc,
             transit: baseSurveyRuntime.exportCanonicalTransitAuthority(customDoc),
+            plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
           },
         }),
       });
