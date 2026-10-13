@@ -21,11 +21,7 @@ export interface RemoteRacer {
   spec?: any;
 }
 
-export type MultiplayerStatus =
-  | "disconnected"
-  | "connecting"
-  | "connected"
-  | "error";
+export type MultiplayerStatus = "disconnected" | "connecting" | "connected" | "error";
 
 export interface ServerSnapshotParticipant {
   participantId: string;
@@ -69,10 +65,7 @@ export interface MultiplayerClientOptions {
   layoutRevision?: string;
   neighbourhoodKey?: string;
   explicitNeighbourhood?: boolean;
-  getValidNeighbourhoods?: (
-    worldId?: string,
-    layoutRevision?: string,
-  ) => string[];
+  getValidNeighbourhoods?: (worldId?: string, layoutRevision?: string) => string[];
   roomCode?: string;
   autoCreate?: boolean;
   protocolVersion?: number;
@@ -104,13 +97,7 @@ export interface MultiplayerClientOptions {
     },
   ) => void;
   onSnapshot?: (snapshot: ServerSnapshot) => void;
-  onSessionReady?: (
-    sessionId: string,
-    inviteCode: string,
-    participantId: string,
-    worldId?: string,
-    neighbourhoodKey?: string,
-  ) => void;
+  onSessionReady?: (sessionId: string, inviteCode: string, participantId: string, worldId?: string, neighbourhoodKey?: string) => void;
   onSelfAdmitted?: (placement: {
     participantId: string;
     x: number;
@@ -173,25 +160,19 @@ const APPROVED_WS_PATHS = new Set([
 
 export function redactUrl(url: string): string {
   try {
-    let sanitized = url.replace(
-      /:\/\/([^:@]+):([^@]+)@/,
-      "://[REDACTED]:[REDACTED]@",
-    );
-    sanitized = sanitized.replace(
-      /([?&])([^=&#]+)=([^&#]*)/g,
-      (match, prefix, rawKey) => {
-        let decodedKey = rawKey;
-        try {
-          decodedKey = decodeURIComponent(rawKey).toLowerCase();
-        } catch {
-          decodedKey = rawKey.toLowerCase();
-        }
-        if (decodedKey === "jwt" || decodedKey === "token") {
-          return `${prefix}${rawKey}=[REDACTED]`;
-        }
-        return match;
-      },
-    );
+    let sanitized = url.replace(/:\/\/([^:@]+):([^@]+)@/, "://[REDACTED]:[REDACTED]@");
+    sanitized = sanitized.replace(/([?&])([^=&#]+)=([^&#]*)/g, (match, prefix, rawKey) => {
+      let decodedKey = rawKey;
+      try {
+        decodedKey = decodeURIComponent(rawKey).toLowerCase();
+      } catch {
+        decodedKey = rawKey.toLowerCase();
+      }
+      if (decodedKey === "jwt" || decodedKey === "token") {
+        return `${prefix}${rawKey}=[REDACTED]`;
+      }
+      return match;
+    });
     return sanitized;
   } catch {
     return "[REDACTED]";
@@ -208,24 +189,15 @@ interface EndpointValidationFailure {
   reason: string;
 }
 
-type EndpointValidationResult =
-  | EndpointValidationSuccess
-  | EndpointValidationFailure;
+type EndpointValidationResult = EndpointValidationSuccess | EndpointValidationFailure;
 
-export function resolveAndValidateEndpoint(
-  rawUrl: string | undefined,
-  token: string,
-): EndpointValidationResult {
+export function resolveAndValidateEndpoint(rawUrl: string | undefined, token: string): EndpointValidationResult {
   try {
     let parsed: URL;
     const hasWindow = typeof window !== "undefined" && Boolean(window.location);
     const windowProto = hasWindow ? window.location.protocol : "http:";
-    const windowHost = hasWindow
-      ? window.location.host.toLowerCase()
-      : "127.0.0.1:8080";
-    const windowHostname = hasWindow
-      ? (window.location.hostname || "").toLowerCase()
-      : "127.0.0.1";
+    const windowHost = hasWindow ? window.location.host.toLowerCase() : "127.0.0.1:8080";
+    const windowHostname = hasWindow ? (window.location.hostname || "").toLowerCase() : "127.0.0.1";
 
     if (!rawUrl) {
       const defaultWsProto = windowProto === "https:" ? "wss:" : "ws:";
@@ -239,9 +211,7 @@ export function resolveAndValidateEndpoint(
       } else if (/^wss?:\/\//i.test(normalized)) {
         parsed = new URL(normalized);
       } else {
-        const base = hasWindow
-          ? window.location.href || `${windowProto}//${windowHost}/`
-          : "http://127.0.0.1:8080/";
+        const base = hasWindow ? (window.location.href || `${windowProto}//${windowHost}/`) : "http://127.0.0.1:8080/";
         parsed = new URL(normalized, base);
       }
     }
@@ -254,31 +224,19 @@ export function resolveAndValidateEndpoint(
     }
 
     if (wsProto !== "ws:" && wsProto !== "wss:") {
-      return {
-        ok: false,
-        reason: `Invalid WebSocket protocol: ${parsed.protocol}`,
-      };
+      return { ok: false, reason: `Invalid WebSocket protocol: ${parsed.protocol}` };
     }
 
     if (hasWindow && windowProto === "https:" && wsProto === "ws:") {
-      return {
-        ok: false,
-        reason: "Insecure WebSocket protocol (ws:) disallowed on HTTPS origin",
-      };
+      return { ok: false, reason: "Insecure WebSocket protocol (ws:) disallowed on HTTPS origin" };
     }
 
     if (parsed.username || parsed.password) {
-      return {
-        ok: false,
-        reason: "Credential-bearing userinfo in URL is forbidden",
-      };
+      return { ok: false, reason: "Credential-bearing userinfo in URL is forbidden" };
     }
 
     if (!APPROVED_WS_PATHS.has(parsed.pathname)) {
-      return {
-        ok: false,
-        reason: `Unapproved WebSocket path: ${parsed.pathname}`,
-      };
+      return { ok: false, reason: `Unapproved WebSocket path: ${parsed.pathname}` };
     }
 
     if (hasWindow) {
@@ -297,10 +255,7 @@ export function resolveAndValidateEndpoint(
           targetHostname === "[::1]";
 
         if (!isCurrentLoopback || !isTargetLoopback) {
-          return {
-            ok: false,
-            reason: `Cross-origin target host forbidden: ${parsed.host}`,
-          };
+          return { ok: false, reason: `Cross-origin target host forbidden: ${parsed.host}` };
         }
       }
     } else {
@@ -311,10 +266,7 @@ export function resolveAndValidateEndpoint(
         targetHostname === "[::1]";
 
       if (!isTargetLoopback) {
-        return {
-          ok: false,
-          reason: `Non-loopback host forbidden in test environment: ${parsed.host}`,
-        };
+        return { ok: false, reason: `Non-loopback host forbidden in test environment: ${parsed.host}` };
       }
     }
 
@@ -397,9 +349,7 @@ export class MultiplayerClient {
     return this.currentMode;
   }
 
-  public getParkedCar():
-    | { x: number; y: number; z: number; heading: number; speed?: number }
-    | undefined {
+  public getParkedCar(): { x: number; y: number; z: number; heading: number; speed?: number } | undefined {
     return this.parkedCar ? { ...this.parkedCar } : undefined;
   }
 
@@ -439,16 +389,10 @@ export class MultiplayerClient {
     };
   }
 
-  public updateAccount(account: {
-    userId?: string;
-    username?: string;
-    token?: string;
-  }): void {
+  public updateAccount(account: { userId?: string; username?: string; token?: string }): void {
     const changed =
-      (account.userId !== undefined &&
-        account.userId !== this.options.userId) ||
-      (account.username !== undefined &&
-        account.username !== this.options.username) ||
+      (account.userId !== undefined && account.userId !== this.options.userId) ||
+      (account.username !== undefined && account.username !== this.options.username) ||
       (account.token !== undefined && account.token !== this.options.token);
     if (!changed) return;
     this.disconnect();
@@ -465,11 +409,7 @@ export class MultiplayerClient {
       return this.pendingConnectPromise;
     }
 
-    if (
-      this.ws &&
-      (this.ws.readyState === WebSocket.OPEN ||
-        this.ws.readyState === WebSocket.CONNECTING)
-    ) {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return Promise.resolve();
     }
 
@@ -508,19 +448,14 @@ export class MultiplayerClient {
       console.warn("[Multiplayer] No auth token available; connection aborted");
       this.setStatus("error");
       if (this.options.onError) {
-        this.options.onError({
-          code: "UNAUTHORIZED",
-          message: "Missing required auth token",
-        });
+        this.options.onError({ code: "UNAUTHORIZED", message: "Missing required auth token" });
       }
       return;
     }
 
     const endpointResult = resolveAndValidateEndpoint(this.options.url, token);
     if (!endpointResult.ok) {
-      const rawLogged = this.options.url
-        ? redactUrl(this.options.url)
-        : "[default]";
+      const rawLogged = this.options.url ? redactUrl(this.options.url) : "[default]";
       console.error(
         `[Multiplayer] Rejected unapproved endpoint for authenticated WebSocket (${endpointResult.reason}):`,
         rawLogged,
@@ -548,11 +483,7 @@ export class MultiplayerClient {
     }
 
     ws.onopen = () => {
-      if (
-        this.connectionGeneration !== currentGen ||
-        this.ws !== ws ||
-        this.closedExplicitly
-      ) {
+      if (this.connectionGeneration !== currentGen || this.ws !== ws || this.closedExplicitly) {
         return;
       }
 
@@ -599,11 +530,7 @@ export class MultiplayerClient {
     };
 
     ws.onmessage = (event) => {
-      if (
-        this.connectionGeneration !== currentGen ||
-        this.ws !== ws ||
-        this.closedExplicitly
-      ) {
+      if (this.connectionGeneration !== currentGen || this.ws !== ws || this.closedExplicitly) {
         return;
       }
       try {
@@ -629,10 +556,7 @@ export class MultiplayerClient {
       // Bounded exponential reconnect
       if (this.reconnectAttempts < this.maxReconnectAttempts) {
         this.reconnectAttempts++;
-        const delayMs = Math.min(
-          5000,
-          500 * Math.pow(2, this.reconnectAttempts - 1),
-        );
+        const delayMs = Math.min(5000, 500 * Math.pow(2, this.reconnectAttempts - 1));
         this.setStatus("connecting");
         this.reconnectTimer = setTimeout(() => {
           void this.connect();
@@ -695,18 +619,15 @@ export class MultiplayerClient {
         if (this.options.worldId && msg.worldId !== this.options.worldId) {
           this.rejectAdmission(
             "WORLD_MISMATCH",
-            `Server replied with world ${msg.worldId} (expected ${this.options.worldId})`,
+            `Server replied with world ${msg.worldId} (expected ${this.options.worldId})`
           );
           return;
         }
 
-        if (
-          this.options.layoutRevision &&
-          msg.layoutRevision !== this.options.layoutRevision
-        ) {
+        if (this.options.layoutRevision && msg.layoutRevision !== this.options.layoutRevision) {
           this.rejectAdmission(
             "LAYOUT_REVISION_MISMATCH",
-            `Server replied with layoutRevision ${msg.layoutRevision} (expected ${this.options.layoutRevision})`,
+            `Server replied with layoutRevision ${msg.layoutRevision} (expected ${this.options.layoutRevision})`
           );
           return;
         }
@@ -719,7 +640,7 @@ export class MultiplayerClient {
         ) {
           this.rejectAdmission(
             "INVALID_PROTOCOL_VERSION",
-            `Server replied with unsupported protocolVersion: ${msg.protocolVersion} (expected ${expectedProtocol})`,
+            `Server replied with unsupported protocolVersion: ${msg.protocolVersion} (expected ${expectedProtocol})`
           );
           return;
         }
@@ -731,19 +652,15 @@ export class MultiplayerClient {
         ) {
           this.rejectAdmission(
             "INVALID_EPOCH",
-            `Server replied with missing or invalid modeEpoch: ${msg.modeEpoch}`,
+            `Server replied with missing or invalid modeEpoch: ${msg.modeEpoch}`
           );
           return;
         }
 
-        if (
-          type === "session_reconnected" &&
-          this.modeEpoch > 0 &&
-          msg.modeEpoch < this.modeEpoch
-        ) {
+        if (type === "session_reconnected" && this.modeEpoch > 0 && msg.modeEpoch < this.modeEpoch) {
           this.rejectAdmission(
             "EPOCH_MISMATCH",
-            `Server replied with stale modeEpoch ${msg.modeEpoch} (local active: ${this.modeEpoch})`,
+            `Server replied with stale modeEpoch ${msg.modeEpoch} (local active: ${this.modeEpoch})`
           );
           return;
         }
@@ -752,7 +669,7 @@ export class MultiplayerClient {
         if (rawMode !== "driving" && rawMode !== "walking") {
           this.rejectAdmission(
             "INVALID_MODE",
-            `Server replied with unrecognized mode: ${rawMode}`,
+            `Server replied with unrecognized mode: ${rawMode}`
           );
           return;
         }
@@ -775,9 +692,7 @@ export class MultiplayerClient {
 
         if (carX === undefined && Array.isArray(msg.participants)) {
           const selfPart = msg.participants.find(
-            (p: any) =>
-              p.participantId === msg.participantId ||
-              p.userId === this.options.userId,
+            (p: any) => p.participantId === msg.participantId || p.userId === this.options.userId
           );
           if (selfPart && selfPart.carX !== undefined) {
             carX = selfPart.carX;
@@ -787,11 +702,7 @@ export class MultiplayerClient {
           }
         }
 
-        if (
-          this.currentMode === "walking" &&
-          carX !== undefined &&
-          Number.isFinite(carX)
-        ) {
+        if (this.currentMode === "walking" && carX !== undefined && Number.isFinite(carX)) {
           this.parkedCar = {
             x: Number(carX),
             y: Number(carY ?? 0),
@@ -811,14 +722,12 @@ export class MultiplayerClient {
             msg.inviteCode,
             msg.participantId,
             msg.worldId,
-            msg.neighbourhoodKey,
+            msg.neighbourhoodKey
           );
         }
 
         if (Array.isArray(msg.participants)) {
-          const selfPart = msg.participants.find(
-            (p: any) => p.participantId === this.participantId,
-          );
+          const selfPart = msg.participants.find((p: any) => p.participantId === this.participantId);
           if (selfPart && this.options.onSelfAdmitted) {
             this.options.onSelfAdmitted({
               participantId: selfPart.participantId,
@@ -831,27 +740,15 @@ export class MultiplayerClient {
               modeEpoch: selfPart.modeEpoch ?? this.modeEpoch,
               protocolVersion: selfPart.protocolVersion ?? this.protocolVersion,
               vehicleKey: selfPart.vehicleKey || null,
-              carX:
-                selfPart.carX !== undefined ? Number(selfPart.carX) : undefined,
-              carY:
-                selfPart.carY !== undefined ? Number(selfPart.carY) : undefined,
-              carZ:
-                selfPart.carZ !== undefined ? Number(selfPart.carZ) : undefined,
-              carHeading:
-                selfPart.carHeading !== undefined
-                  ? Number(selfPart.carHeading)
-                  : undefined,
-              carSpeed:
-                selfPart.carSpeed !== undefined
-                  ? Number(selfPart.carSpeed)
-                  : undefined,
+              carX: selfPart.carX !== undefined ? Number(selfPart.carX) : undefined,
+              carY: selfPart.carY !== undefined ? Number(selfPart.carY) : undefined,
+              carZ: selfPart.carZ !== undefined ? Number(selfPart.carZ) : undefined,
+              carHeading: selfPart.carHeading !== undefined ? Number(selfPart.carHeading) : undefined,
+              carSpeed: selfPart.carSpeed !== undefined ? Number(selfPart.carSpeed) : undefined,
             });
           }
           for (const p of msg.participants) {
-            if (
-              p.participantId !== this.participantId &&
-              this.options.onPeerJoined
-            ) {
+            if (p.participantId !== this.participantId && this.options.onPeerJoined) {
               this.options.onPeerJoined({
                 participantId: p.participantId,
                 userId: p.userId,
@@ -867,10 +764,8 @@ export class MultiplayerClient {
                 carX: p.carX !== undefined ? Number(p.carX) : undefined,
                 carY: p.carY !== undefined ? Number(p.carY) : undefined,
                 carZ: p.carZ !== undefined ? Number(p.carZ) : undefined,
-                carHeading:
-                  p.carHeading !== undefined ? Number(p.carHeading) : undefined,
-                carSpeed:
-                  p.carSpeed !== undefined ? Number(p.carSpeed) : undefined,
+                carHeading: p.carHeading !== undefined ? Number(p.carHeading) : undefined,
+                carSpeed: p.carSpeed !== undefined ? Number(p.carSpeed) : undefined,
                 lastSeen: Date.now(),
               });
             }
@@ -881,49 +776,25 @@ export class MultiplayerClient {
 
       case "peer_joined":
       case "peer_reconnected": {
-        if (
-          msg.participant &&
-          msg.participant.participantId !== this.participantId
-        ) {
+        if (msg.participant && msg.participant.participantId !== this.participantId) {
           if (this.options.onPeerJoined) {
             this.options.onPeerJoined({
               participantId: msg.participant.participantId,
               userId: msg.participant.userId,
               username: msg.participant.username,
               vehicleKey: msg.participant.vehicleKey || null,
-              isPedestrian: Boolean(
-                msg.participant.isPedestrian || !msg.participant.vehicleKey,
-              ),
+              isPedestrian: Boolean(msg.participant.isPedestrian || !msg.participant.vehicleKey),
               modeEpoch: msg.participant.modeEpoch,
               x: Number.isFinite(msg.participant.x) ? msg.participant.x : 0,
               y: Number.isFinite(msg.participant.y) ? msg.participant.y : 0,
               z: Number.isFinite(msg.participant.z) ? msg.participant.z : 0,
-              heading: Number.isFinite(msg.participant.heading)
-                ? msg.participant.heading
-                : 0,
-              speed: Number.isFinite(msg.participant.speed)
-                ? msg.participant.speed
-                : 0,
-              carX:
-                msg.participant.carX !== undefined
-                  ? Number(msg.participant.carX)
-                  : undefined,
-              carY:
-                msg.participant.carY !== undefined
-                  ? Number(msg.participant.carY)
-                  : undefined,
-              carZ:
-                msg.participant.carZ !== undefined
-                  ? Number(msg.participant.carZ)
-                  : undefined,
-              carHeading:
-                msg.participant.carHeading !== undefined
-                  ? Number(msg.participant.carHeading)
-                  : undefined,
-              carSpeed:
-                msg.participant.carSpeed !== undefined
-                  ? Number(msg.participant.carSpeed)
-                  : undefined,
+              heading: Number.isFinite(msg.participant.heading) ? msg.participant.heading : 0,
+              speed: Number.isFinite(msg.participant.speed) ? msg.participant.speed : 0,
+              carX: msg.participant.carX !== undefined ? Number(msg.participant.carX) : undefined,
+              carY: msg.participant.carY !== undefined ? Number(msg.participant.carY) : undefined,
+              carZ: msg.participant.carZ !== undefined ? Number(msg.participant.carZ) : undefined,
+              carHeading: msg.participant.carHeading !== undefined ? Number(msg.participant.carHeading) : undefined,
+              carSpeed: msg.participant.carSpeed !== undefined ? Number(msg.participant.carSpeed) : undefined,
               lastSeen: Date.now(),
             });
           }
@@ -946,7 +817,7 @@ export class MultiplayerClient {
         ) {
           this.rejectAdmission(
             "INVALID_EPOCH",
-            `Vehicle exited receipt has invalid or stale modeEpoch ${msg.modeEpoch} (active: ${this.modeEpoch})`,
+            `Vehicle exited receipt has invalid or stale modeEpoch ${msg.modeEpoch} (active: ${this.modeEpoch})`
           );
           return;
         }
@@ -958,7 +829,7 @@ export class MultiplayerClient {
         ) {
           this.rejectAdmission(
             "MALFORMED_TRANSITION_RECEIPT",
-            "Vehicle exited receipt missing parked car coordinates",
+            "Vehicle exited receipt missing parked car coordinates"
           );
           return;
         }
@@ -983,8 +854,7 @@ export class MultiplayerClient {
             carX: msg.carX !== undefined ? Number(msg.carX) : undefined,
             carY: msg.carY !== undefined ? Number(msg.carY) : undefined,
             carZ: msg.carZ !== undefined ? Number(msg.carZ) : undefined,
-            carHeading:
-              msg.carHeading !== undefined ? Number(msg.carHeading) : undefined,
+            carHeading: msg.carHeading !== undefined ? Number(msg.carHeading) : undefined,
           });
         }
         if (this.options.onModeChanged) {
@@ -1000,8 +870,7 @@ export class MultiplayerClient {
             carX: msg.carX !== undefined ? Number(msg.carX) : undefined,
             carY: msg.carY !== undefined ? Number(msg.carY) : undefined,
             carZ: msg.carZ !== undefined ? Number(msg.carZ) : undefined,
-            carHeading:
-              msg.carHeading !== undefined ? Number(msg.carHeading) : undefined,
+            carHeading: msg.carHeading !== undefined ? Number(msg.carHeading) : undefined,
           });
         }
         break;
@@ -1015,7 +884,7 @@ export class MultiplayerClient {
         ) {
           this.rejectAdmission(
             "INVALID_EPOCH",
-            `Vehicle boarded receipt has invalid or stale modeEpoch ${msg.modeEpoch} (active: ${this.modeEpoch})`,
+            `Vehicle boarded receipt has invalid or stale modeEpoch ${msg.modeEpoch} (active: ${this.modeEpoch})`
           );
           return;
         }
@@ -1061,19 +930,11 @@ export class MultiplayerClient {
               mode: msg.mode === "walking" ? "walking" : "driving",
               isPedestrian: Boolean(msg.isPedestrian ?? msg.mode === "walking"),
               modeEpoch: msg.modeEpoch,
-              vehicleKey:
-                msg.vehicleKey !== undefined
-                  ? msg.vehicleKey
-                    ? String(msg.vehicleKey)
-                    : null
-                  : undefined,
+              vehicleKey: msg.vehicleKey !== undefined ? (msg.vehicleKey ? String(msg.vehicleKey) : null) : undefined,
               carX: msg.carX !== undefined ? Number(msg.carX) : undefined,
               carY: msg.carY !== undefined ? Number(msg.carY) : undefined,
               carZ: msg.carZ !== undefined ? Number(msg.carZ) : undefined,
-              carHeading:
-                msg.carHeading !== undefined
-                  ? Number(msg.carHeading)
-                  : undefined,
+              carHeading: msg.carHeading !== undefined ? Number(msg.carHeading) : undefined,
             });
           }
         }
@@ -1090,26 +951,14 @@ export class MultiplayerClient {
               heading: Number(msg.heading ?? 0),
               speed: Number(msg.speed ?? 0),
               mode: msg.mode === "driving" ? "driving" : "walking",
-              isPedestrian:
-                msg.isPedestrian !== undefined
-                  ? Boolean(msg.isPedestrian)
-                  : undefined,
+              isPedestrian: msg.isPedestrian !== undefined ? Boolean(msg.isPedestrian) : undefined,
               modeEpoch: msg.modeEpoch,
-              vehicleKey:
-                msg.vehicleKey !== undefined
-                  ? msg.vehicleKey
-                    ? String(msg.vehicleKey)
-                    : null
-                  : undefined,
+              vehicleKey: msg.vehicleKey !== undefined ? (msg.vehicleKey ? String(msg.vehicleKey) : null) : undefined,
               carX: msg.carX !== undefined ? Number(msg.carX) : undefined,
               carY: msg.carY !== undefined ? Number(msg.carY) : undefined,
               carZ: msg.carZ !== undefined ? Number(msg.carZ) : undefined,
-              carHeading:
-                msg.carHeading !== undefined
-                  ? Number(msg.carHeading)
-                  : undefined,
-              carSpeed:
-                msg.carSpeed !== undefined ? Number(msg.carSpeed) : undefined,
+              carHeading: msg.carHeading !== undefined ? Number(msg.carHeading) : undefined,
+              carSpeed: msg.carSpeed !== undefined ? Number(msg.carSpeed) : undefined,
             });
           }
         }
@@ -1155,10 +1004,7 @@ export class MultiplayerClient {
             username: p.username ?? p.alias,
             vehicleKey: p.vehicleKey || null,
             mode: p.mode === "driving" ? "driving" : "walking",
-            isPedestrian:
-              p.isPedestrian !== undefined
-                ? Boolean(p.isPedestrian)
-                : p.mode !== "driving",
+            isPedestrian: p.isPedestrian !== undefined ? Boolean(p.isPedestrian) : p.mode !== "driving",
             modeEpoch: p.modeEpoch,
             protocolVersion: p.protocolVersion,
             x: Number(p.x ?? 0),
@@ -1169,8 +1015,7 @@ export class MultiplayerClient {
             carX: p.carX !== undefined ? Number(p.carX) : undefined,
             carY: p.carY !== undefined ? Number(p.carY) : undefined,
             carZ: p.carZ !== undefined ? Number(p.carZ) : undefined,
-            carHeading:
-              p.carHeading !== undefined ? Number(p.carHeading) : undefined,
+            carHeading: p.carHeading !== undefined ? Number(p.carHeading) : undefined,
             carSpeed: p.carSpeed !== undefined ? Number(p.carSpeed) : undefined,
             lastInputSeq: p.lastInputSeq,
           })),
@@ -1213,21 +1058,15 @@ export class MultiplayerClient {
         ) {
           const match =
             typeof msg.message === "string"
-              ? msg.message.match(
-                  /^Session belongs to neighbourhood ([a-zA-Z0-9_\-]+)$/,
-                )
+              ? msg.message.match(/^Session belongs to neighbourhood ([a-zA-Z0-9_\-]+)$/)
               : null;
           const advertisedKey =
-            (typeof msg.neighbourhoodKey === "string" &&
-            msg.neighbourhoodKey.trim().length > 0
+            (typeof msg.neighbourhoodKey === "string" && msg.neighbourhoodKey.trim().length > 0
               ? msg.neighbourhoodKey.trim()
               : null) ?? (match ? match[1].trim() : null);
 
           const validNeighbourhoods = this.options.getValidNeighbourhoods
-            ? this.options.getValidNeighbourhoods(
-                this.options.worldId,
-                this.options.layoutRevision,
-              )
+            ? this.options.getValidNeighbourhoods(this.options.worldId, this.options.layoutRevision)
             : [];
 
           if (advertisedKey && validNeighbourhoods.includes(advertisedKey)) {
@@ -1325,8 +1164,7 @@ export class MultiplayerClient {
     }
     const now = Date.now();
     const mode = pose.mode ?? "walking";
-    const modeChanged =
-      this.lastSentMode !== null && this.lastSentMode !== mode;
+    const modeChanged = this.lastSentMode !== null && this.lastSentMode !== mode;
     // Throttle to max 20Hz (50ms interval) to conserve bandwidth while maintaining smooth client extrapolation,
     // but never drop state-transition poses or explicitly forced updates.
     if (!pose.force && !modeChanged && now - this.lastPoseSentAt < 45) return;
@@ -1347,23 +1185,14 @@ export class MultiplayerClient {
   }
 
   public exitVehicle(epoch?: number): boolean {
-    if (
-      this.status !== "connected" ||
-      !this.participantId ||
-      !this.sessionId ||
-      this.modeEpoch <= 0
-    ) {
+    if (this.status !== "connected" || !this.participantId || !this.sessionId || this.modeEpoch <= 0) {
       return false;
     }
     if (this.currentMode !== "driving") {
       return false;
     }
     const targetEpoch = epoch !== undefined ? epoch : this.modeEpoch;
-    if (
-      typeof targetEpoch !== "number" ||
-      !Number.isSafeInteger(targetEpoch) ||
-      targetEpoch <= 0
-    ) {
+    if (typeof targetEpoch !== "number" || !Number.isSafeInteger(targetEpoch) || targetEpoch <= 0) {
       return false;
     }
     return this.send({
@@ -1373,23 +1202,14 @@ export class MultiplayerClient {
   }
 
   public boardVehicle(epoch?: number): boolean {
-    if (
-      this.status !== "connected" ||
-      !this.participantId ||
-      !this.sessionId ||
-      this.modeEpoch <= 0
-    ) {
+    if (this.status !== "connected" || !this.participantId || !this.sessionId || this.modeEpoch <= 0) {
       return false;
     }
     if (this.currentMode !== "walking") {
       return false;
     }
     const targetEpoch = epoch !== undefined ? epoch : this.modeEpoch;
-    if (
-      typeof targetEpoch !== "number" ||
-      !Number.isSafeInteger(targetEpoch) ||
-      targetEpoch <= 0
-    ) {
+    if (typeof targetEpoch !== "number" || !Number.isSafeInteger(targetEpoch) || targetEpoch <= 0) {
       return false;
     }
     return this.send({
@@ -1406,23 +1226,14 @@ export class MultiplayerClient {
     brake?: boolean;
     mode?: "driving";
   }): boolean {
-    if (
-      this.status !== "connected" ||
-      !this.participantId ||
-      !this.sessionId ||
-      this.modeEpoch <= 0
-    ) {
+    if (this.status !== "connected" || !this.participantId || !this.sessionId || this.modeEpoch <= 0) {
       return false;
     }
     if (this.currentMode !== "driving") {
       return false;
     }
     const epoch = input.epoch !== undefined ? input.epoch : this.modeEpoch;
-    if (
-      typeof epoch !== "number" ||
-      !Number.isSafeInteger(epoch) ||
-      epoch <= 0
-    ) {
+    if (typeof epoch !== "number" || !Number.isSafeInteger(epoch) || epoch <= 0) {
       return false;
     }
     const seq = input.seq !== undefined ? input.seq : ++this.inputSeq;
@@ -1446,23 +1257,14 @@ export class MultiplayerClient {
     sprint?: boolean;
     mode?: "walking";
   }): boolean {
-    if (
-      this.status !== "connected" ||
-      !this.participantId ||
-      !this.sessionId ||
-      this.modeEpoch <= 0
-    ) {
+    if (this.status !== "connected" || !this.participantId || !this.sessionId || this.modeEpoch <= 0) {
       return false;
     }
     if (this.currentMode !== "walking") {
       return false;
     }
     const epoch = input.epoch !== undefined ? input.epoch : this.modeEpoch;
-    if (
-      typeof epoch !== "number" ||
-      !Number.isSafeInteger(epoch) ||
-      epoch <= 0
-    ) {
+    if (typeof epoch !== "number" || !Number.isSafeInteger(epoch) || epoch <= 0) {
       return false;
     }
     const seq = input.seq !== undefined ? input.seq : ++this.inputSeq;

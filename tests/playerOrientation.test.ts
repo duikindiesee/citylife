@@ -18,24 +18,23 @@ describe("playerOrientation shared coordinate convention", () => {
     // Yaw -PI/2: camera turned 90 deg right to face +X -> wire heading 0
     const headingAtTurnRight = cameraYawToWireHeading(-Math.PI / 2);
     expect(headingAtTurnRight).toBeCloseTo(0, 6);
-    expect(wireHeadingToCameraYaw(headingAtTurnRight)).toBeCloseTo(
-      -Math.PI / 2,
-      6,
-    );
+    expect(wireHeadingToCameraYaw(headingAtTurnRight)).toBeCloseTo(-Math.PI / 2, 6);
 
     // Yaw PI/2: camera turned 90 deg left to face -X -> wire heading PI
     const headingAtTurnLeft = cameraYawToWireHeading(Math.PI / 2);
     expect(Math.abs(headingAtTurnLeft)).toBeCloseTo(Math.PI, 6);
-    expect(
-      normalizeAngle(wireHeadingToCameraYaw(headingAtTurnLeft)),
-    ).toBeCloseTo(normalizeAngle(Math.PI / 2), 6);
+    expect(normalizeAngle(wireHeadingToCameraYaw(headingAtTurnLeft))).toBeCloseTo(
+      normalizeAngle(Math.PI / 2),
+      6
+    );
 
     // Yaw PI: camera turned 180 deg to face +Z (grid +Y) -> wire heading PI/2
     const headingAtTurnBack = cameraYawToWireHeading(Math.PI);
     expect(headingAtTurnBack).toBeCloseTo(Math.PI / 2, 6);
-    expect(
-      normalizeAngle(wireHeadingToCameraYaw(headingAtTurnBack)),
-    ).toBeCloseTo(normalizeAngle(Math.PI), 6);
+    expect(normalizeAngle(wireHeadingToCameraYaw(headingAtTurnBack))).toBeCloseTo(
+      normalizeAngle(Math.PI),
+      6
+    );
   });
 
   it("proves forward displacement agreement between camera yaw forward and server wire heading integration", () => {

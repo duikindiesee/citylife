@@ -65,8 +65,9 @@ describe("ROAD.NET.CANON.1 — one road graph for render, transit and driving", 
       );
       const badBeach = rt.sim.state.roads.filter(
         (r) =>
-          rt.sim.state.terrain.biome[rt.sim.state.terrain.idx(r.x, r.y)] ===
-          Biome.Beach,
+          rt.sim.state.terrain.biome[
+            rt.sim.state.terrain.idx(r.x, r.y)
+          ] === Biome.Beach,
       );
       const missingKind = rt.sim.state.roads.filter(
         (r) => !rt.sim.state.roadKind.has(`${r.x},${r.y}`),
@@ -78,10 +79,9 @@ describe("ROAD.NET.CANON.1 — one road graph for render, transit and driving", 
       expect(badWater, `seed ${seed} canonicalized water roads`).toEqual([]);
       expect(badBeach, `seed ${seed} canonicalized beach roads`).toEqual([]);
       expect(missingKind, `seed ${seed} roads missing roadKind`).toEqual([]);
-      expect(
-        rendererOnlyKind,
-        `seed ${seed} roadKind without roads rows`,
-      ).toEqual([]);
+      expect(rendererOnlyKind, `seed ${seed} roadKind without roads rows`).toEqual(
+        [],
+      );
     }
   });
 

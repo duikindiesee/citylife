@@ -156,14 +156,13 @@ export function BuildStamp({ variant = "hud", runtime }: BuildStampProps) {
         }}
       >
         <span className="build-stamp__preview-full">
-          Development Preview — CityLife is still in development. Features and
-          gameplay may change.
+          Development Preview — CityLife is still in development. Features and gameplay may change.
         </span>
-        <span className="build-stamp__preview-short">Dev Preview</span>
+        <span className="build-stamp__preview-short">
+          Dev Preview
+        </span>
       </span>
-      <span style={{ fontWeight: 600, color: "#6fe3ff", whiteSpace: "nowrap" }}>
-        {text}
-      </span>
+      <span style={{ fontWeight: 600, color: "#6fe3ff", whiteSpace: "nowrap" }}>{text}</span>
       {parts.builtAt && (
         <span
           style={{ opacity: 0.65, fontSize: "10px", whiteSpace: "nowrap" }}

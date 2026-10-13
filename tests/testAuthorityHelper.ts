@@ -17,9 +17,7 @@ export function setupAuthoritativeRuntime(
 
   const activeDoc = runtime.worldLayoutDocument();
   if (!activeDoc) {
-    throw new Error(
-      "setupAuthoritativeRuntime: activeDoc is missing after hydration",
-    );
+    throw new Error("setupAuthoritativeRuntime: activeDoc is missing after hydration");
   }
 
   const hoods = options?.neighbourhoods ?? ["wood1", "wood2"];

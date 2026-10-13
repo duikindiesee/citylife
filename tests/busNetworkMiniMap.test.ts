@@ -246,22 +246,15 @@ describe("always-visible bus network minimap model", () => {
 
     // Move walking position while parked car stays strictly stationary
     const currentWalk = runtime.getWalkingCell()!;
-    (runtime as any).fpCameraCell = {
-      x: currentWalk.x + 2,
-      y: currentWalk.y + 1,
-    };
+    (runtime as any).fpCameraCell = { x: currentWalk.x + 2, y: currentWalk.y + 1 };
 
     const sigMoved = computeBusNetworkMiniMapSignal(runtime);
     expect(sigMoved).not.toBe(sigInitial);
-    expect(sigMoved).toContain(
-      `foot:${(currentWalk.x + 2).toFixed(2)}:${(currentWalk.y + 1).toFixed(2)}`,
-    );
+    expect(sigMoved).toContain(`foot:${(currentWalk.x + 2).toFixed(2)}:${(currentWalk.y + 1).toFixed(2)}`);
 
     // Verify parked car portion of the signature remained unchanged
     const parkedPose = runtime.getParkedCarPose()!;
-    expect(sigMoved).toContain(
-      `:${parkedPose.x.toFixed(2)}:${parkedPose.y.toFixed(2)}`,
-    );
+    expect(sigMoved).toContain(`:${parkedPose.x.toFixed(2)}:${parkedPose.y.toFixed(2)}`);
   });
 
   it("updates computeBusNetworkMiniMapSignal when peer carZ changes while cell and carX stay stationary", () => {

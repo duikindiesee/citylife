@@ -123,12 +123,7 @@ export function convexPolygonIntersectsBox(
 export interface PlacementConstraintSource {
   readonly id?: string;
   readonly frameId?: string;
-  readonly bounds?: {
-    readonly x: number;
-    readonly y: number;
-    readonly w: number;
-    readonly h: number;
-  };
+  readonly bounds?: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
   readonly cells?: readonly { readonly x: number; readonly y: number }[];
   readonly definitionId?: string;
   readonly x?: number;
@@ -141,12 +136,7 @@ export interface ExtractPlacementsConstraintsOptions {
 }
 
 export interface PlacementsConstraintsResult {
-  readonly placementBoxes: Array<{
-    x: number;
-    y: number;
-    w: number;
-    d: number;
-  }>;
+  readonly placementBoxes: Array<{ x: number; y: number; w: number; d: number }>;
   readonly ownedCells: Set<string>;
   readonly residentialSetbacks: Set<string>;
   readonly hasUnknownFrame?: boolean;
@@ -156,8 +146,7 @@ export function extractPlacementsConstraints(
   placements: readonly PlacementConstraintSource[],
   options?: ExtractPlacementsConstraintsOptions,
 ): PlacementsConstraintsResult {
-  const placementBoxes: Array<{ x: number; y: number; w: number; d: number }> =
-    [];
+  const placementBoxes: Array<{ x: number; y: number; w: number; d: number }> = [];
   const ownedCells = new Set<string>();
   const residentialSetbacks = new Set<string>();
   let hasUnknownFrame = false;
@@ -316,13 +305,7 @@ export function extractPlacementsConstraints(
 }
 
 export interface TransitCorridorPathfinderOptions {
-  terrain:
-    | {
-        size?: number;
-        inBounds(x: number, y: number): boolean;
-        roadCellOk?(x: number, y: number): boolean;
-      }
-    | Terrain;
+  terrain: { size?: number; inBounds(x: number, y: number): boolean; roadCellOk?(x: number, y: number): boolean } | Terrain;
   roadKind: ReadonlyMap<string, unknown>;
   roadWays?: readonly {
     path?: readonly { x: number; y: number }[];
@@ -336,16 +319,8 @@ export interface TransitCorridorPathfinderOptions {
 export function createTransitCorridorPathfinder(
   options: TransitCorridorPathfinderOptions,
 ): (from: Cell, to: Cell) => Cell[] | null {
-  const {
-    terrain,
-    roadKind,
-    roadWays = [],
-    placementBoxes,
-    ownedCells,
-    residentialSetbacks,
-  } = options;
-  const size =
-    "size" in terrain && typeof terrain.size === "number" ? terrain.size : 608;
+  const { terrain, roadKind, roadWays = [], placementBoxes, ownedCells, residentialSetbacks } = options;
+  const size = ("size" in terrain && typeof terrain.size === "number") ? terrain.size : 608;
 
   const wayCells = new Set<string>();
   for (const w of roadWays) {
@@ -357,11 +332,7 @@ export function createTransitCorridorPathfinder(
     if ("roadCellOk" in terrain && typeof terrain.roadCellOk === "function") {
       return terrain.roadCellOk(x, y);
     }
-    if (
-      "idx" in terrain &&
-      typeof (terrain as any).idx === "function" &&
-      "buildable" in terrain
-    ) {
+    if ("idx" in terrain && typeof (terrain as any).idx === "function" && "buildable" in terrain) {
       return roadCellOk(terrain as Terrain, x, y);
     }
     return false;
@@ -384,15 +355,8 @@ export function createTransitCorridorPathfinder(
     let minD = Infinity;
     for (let dy = -4; dy <= 4; dy++) {
       for (let dx = -4; dx <= 4; dx++) {
-        const nx = x + dx,
-          ny = y + dy;
-        if (
-          nx < 0 ||
-          nx >= size ||
-          ny < 0 ||
-          ny >= size ||
-          !checkRoadCell(nx, ny)
-        ) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || nx >= size || ny < 0 || ny >= size || !checkRoadCell(nx, ny)) {
           const d = Math.hypot(dx, dy);
           if (d < minD) minD = d;
         }
@@ -473,13 +437,7 @@ export function createTransitCorridorPathfinder(
 
 export function computeTransitCorridorPavingCells(
   loop: Cell[],
-  terrain:
-    | {
-        size: number;
-        inBounds(x: number, y: number): boolean;
-        roadCellOk?(x: number, y: number): boolean;
-      }
-    | Terrain,
+  terrain: { size: number; inBounds(x: number, y: number): boolean; roadCellOk?(x: number, y: number): boolean } | Terrain,
   residentialSetbacks?: ReadonlySet<string>,
   ownedCells?: ReadonlySet<string>,
   cellMetres = 4.0,
@@ -493,11 +451,7 @@ export function computeTransitCorridorPavingCells(
     if ("roadCellOk" in terrain && typeof terrain.roadCellOk === "function") {
       return terrain.roadCellOk(x, y);
     }
-    if (
-      "idx" in terrain &&
-      typeof (terrain as any).idx === "function" &&
-      "buildable" in terrain
-    ) {
+    if ("idx" in terrain && typeof (terrain as any).idx === "function" && "buildable" in terrain) {
       return roadCellOk(terrain as Terrain, x, y);
     }
     return false;

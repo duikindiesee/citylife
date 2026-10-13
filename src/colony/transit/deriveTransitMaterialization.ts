@@ -117,7 +117,8 @@ export function createDepotTerrainFacade(
     if (!inBounds(x, y)) return false;
     const i = idx(x, y);
     return (
-      terrainAuthority.water[i] === 1 || terrainAuthority.elevation[i]! < sea
+      terrainAuthority.water[i] === 1 ||
+      terrainAuthority.elevation[i]! < sea
     );
   };
 
@@ -130,10 +131,7 @@ export function createDepotTerrainFacade(
   const cellOk = (x: number, y: number): boolean => {
     if (!inBounds(x, y)) return false;
     const i = idx(x, y);
-    if (
-      terrainAuthority.buildability &&
-      terrainAuthority.buildability[i] === 0
-    ) {
+    if (terrainAuthority.buildability && terrainAuthority.buildability[i] === 0) {
       return false;
     }
     if (isWater(x, y)) return false;
@@ -220,9 +218,7 @@ export function deriveTransitMaterialization(
               (w as any).source !== "depot-spur" &&
               (w as any).id !== "transit-loop" &&
               (w as any).id !== "depot-spur" &&
-              (!("cells" in w) ||
-                !Array.isArray((w as any).cells) ||
-                (w as any).cells.length < 200),
+              (!("cells" in w) || !Array.isArray((w as any).cells) || (w as any).cells.length < 200),
           ),
           placementBoxes: constraints.placementBoxes,
           ownedCells: constraints.ownedCells,
@@ -365,7 +361,9 @@ export function deriveTransitMaterialization(
         framesMap,
       );
       if (isChildFrame && !poly) {
-        return createNullTransitPlan(`unresolved_placement_frame_${p.frameId}`);
+        return createNullTransitPlan(
+          `unresolved_placement_frame_${p.frameId}`,
+        );
       }
       if (poly && convexPolygonIntersectsBox(poly, site)) {
         return createNullTransitPlan(`pad_collides_with_placement_bounds`);
@@ -381,7 +379,9 @@ export function deriveTransitMaterialization(
         framesMap,
       );
       if (isChildFrame && !poly) {
-        return createNullTransitPlan(`unresolved_placement_frame_${p.frameId}`);
+        return createNullTransitPlan(
+          `unresolved_placement_frame_${p.frameId}`,
+        );
       }
       if (poly && convexPolygonIntersectsBox(poly, site)) {
         return createNullTransitPlan(
