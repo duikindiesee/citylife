@@ -123,10 +123,7 @@ describe("mall anchor shell render model", () => {
           pair.a.commercialDistrict!.mallPad.h * 0.78,
           5,
         );
-        expect(modelA.roof.y).toBeCloseTo(
-          modelA.body.h + modelA.roof.h / 2,
-          5,
-        );
+        expect(modelA.roof.y).toBeCloseTo(modelA.body.h + modelA.roof.h / 2, 5);
         expect(modelA.nightFloor.y).toBeCloseTo(0.025, 5);
         expect(modelA.nightFloor.w - modelA.roof.w).toBeGreaterThanOrEqual(1);
         expect(modelA.nightFloor.d - modelA.roof.d).toBeGreaterThanOrEqual(1);

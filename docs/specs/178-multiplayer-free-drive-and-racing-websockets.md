@@ -30,10 +30,10 @@ The server exposes a low-latency WebSocket gateway registered at `/api/v1/cityli
 - **`pose` / `peer_pose`**: Clients multicast their vehicle kinematic transform:
   ```ts
   interface RacerPose {
-    x: number;       // Grid cell X
-    y: number;       // Grid cell Y
+    x: number; // Grid cell X
+    y: number; // Grid cell Y
     heading: number; // Yaw angle in radians
-    speed: number;   // Linear velocity in cells/second
+    speed: number; // Linear velocity in cells/second
   }
   ```
 - **`input`**: Streams driver control inputs (`throttle`, `steer`, `brake`) with monotonic sequence numbers (`seq`). On vehicle exit (`exitOwnedCar`), sends neutralized inputs (`throttle: 0, steer: 0, brake: false, seq: seq + 1`).
@@ -43,6 +43,7 @@ The server exposes a low-latency WebSocket gateway registered at `/api/v1/cityli
 ### 2. Client Networking Layer (`MultiplayerClient`)
 
 Implemented in `src/colony/multiplayer/multiplayerClient.ts`:
+
 - Manages WebSocket lifecycle, approved endpoint boundaries, ping/pong heartbeats, and auto-reconnection.
 - Streams driving inputs via `sendInput` with monotonic sequence tracking and reconciles authoritative snapshots (`onSnapshot`).
 - Dispatches walking poses via `sendPose` and receives peer updates via `onPeerPose`.
@@ -59,6 +60,7 @@ Implemented in `src/colony/multiplayer/multiplayerClient.ts`:
 ### 4. 3D Remote Vehicle Rendering (`R3FRemoteRacers`)
 
 Mounted inside `R3FPlanetRenderer.tsx` right after `R3FOperatorCar`:
+
 - Visual Mesh: Renders vehicle geometry using `buildCarMesh` based on the remote player's vehicle specification.
 - Ground Snapping: Samples continuous surface elevation using `getSmoothRoadY` and `garageApronSurfaceY`.
 - Road Alignment: Evaluates multi-point pitch and roll samples along the vehicle chassis, orienting the vehicle to tilt naturally with road gradients.
@@ -67,6 +69,7 @@ Mounted inside `R3FPlanetRenderer.tsx` right after `R3FOperatorCar`:
 ### 5. Multiplayer Status HUD (`MultiplayerStatusHUD`)
 
 Mounted in `ColonyApp.tsx`:
+
 - Positioned in the top-right corner (`data-testid="multiplayer-hud"`).
 - Displays live connection status (emerald indicator when connected, amber when connecting, ruby indicator when error).
 - Lists active room code and all connected peers.
@@ -75,6 +78,7 @@ Mounted in `ColonyApp.tsx`:
 ### 6. Authoritative Room Neighbourhood Derivation & Negotiation Protocol
 
 Under Server 421 / User #243 authority, rooms bind strictly to published Starter Parcel Manifest neighbourhood keys (`plots[].geometry.neighbourhoodKey` or `plots[].neighbourhoodKey`):
+
 1. **Wire Identity Binding**: `validateAuthoritativeStarterManifest` verifies that the published starter catalogue manifest matches the active world document (`manifest.worldId === active.worldId`, `manifest.layoutRevision === active.revision.contentHash`, and `manifest.layout.revision` wire identity `number`, `contentHash`, `parentHash`). No neighbourhood authority becomes usable while hydration is pending, failed, or superseded.
 2. **Canonical Primary Default**: For users with no home or joining a new room without explicit neighbourhood intent, the client deterministically selects the canonical primary default (`validNeighbourhoodKeys[0]`, sorted alphabetically, e.g. `"wood1"` for `seed-4242`).
 3. **Explicit Intent Preservation**: If a user explicitly specifies a neighbourhood (via URL query `?neighbourhood=` or programmatic request), `isExplicit` is flagged as `true`. If the requested key is not in the published catalogue, connection fails closed immediately (`status: "error"`).
@@ -109,20 +113,27 @@ Under Server 421 / User #243 authority, rooms bind strictly to published Starter
 ## Transit Corridor & Surface Constraint Integration
 
 ### 1. Transformed Placement Constraints & Fail-Closed Projection
+
 Child-frame placements (such as kiosks and modular commercial additions) are projected into primary surface coordinates via `projectFootprintVerticesToSurface` within `extractPlacementsConstraints`. If an unknown or unresolvable child-frame reference is encountered, derivation fails closed (`hasUnknownFrame: true`), returning `unknown_frame_in_placement_constraints` to guarantee corrupt or drifting frame graphs never generate unvalidated road corridor paths.
 
 ### 2. Shop-Aware Road Connectivity Repair (Spec 148 Continuity)
+
 During municipal orphan road repair:
+
 - `shopCells` are mapped prior to connector routing and included in `roadLandOk` (`!shopCells.has(...)`), preventing `simplifyPath` from pulling straight road segments across surveyed commercial shop footprints.
 - Dilated avenue connector strokes are filtered to ensure no cell overlaps shop structures, while 4-connectivity bridge verification ensures true network consolidation (`roadComponents === 1`).
 
 ### 3. Opposing Carriageway Separation & Discrimination
+
 To prevent opposing vehicles and coaches from colliding along doubled-back road segments:
+
 - Opposing flows (`diff > 120°`) share a single carriageway centre and offset to their respective lefts, maintaining a verified clearance of $\ge 1.25$ cells (two coaches).
 - Controlled negative test inputs (such as the uncorrected $0.23$-cell collision fixture) and same-direction headway discriminators pass through the same classification pipeline to ensure unsafe passes are caught deterministically.
 
 ### 4. Verification Status
+
 Normal-boot and hydration strict consumer probes alongside focused unit suites provide uncommitted local source-method verification:
+
 - `tests/roadConnectivity.test.ts`: 6/6 passed (single component, 9998 road cells, shop preservation verified).
 - `tests/busStopClear.test.ts`: 9/9 passed (commercial stop sliding and junction clearance).
 - `tests/busSharedCarriageway.test.ts`: 2/2 passed (opposing-pair discrimination $\ge 1.25$ cells and $0.23$-cell collision negative control).

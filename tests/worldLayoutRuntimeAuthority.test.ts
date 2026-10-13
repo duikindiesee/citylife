@@ -288,7 +288,9 @@ describe("WB.1d runtime authority replay", () => {
     };
     let setupDurationMs = 0;
 
-    async function executeColdBoot(fixtureDoc: ReturnType<typeof authorityDocument>) {
+    async function executeColdBoot(
+      fixtureDoc: ReturnType<typeof authorityDocument>,
+    ) {
       resetBuilderState();
       const bootDoc = cloneDocument(fixtureDoc.document);
       const runtime = new ColonyRuntime(4242);
@@ -467,7 +469,10 @@ describe("WB.1d runtime authority replay", () => {
       expect(first.reservationFailures).toContain("RESERVED_VOLUME");
       expect(first.zoneFailures.length).toBeGreaterThan(0);
       expect(
-        JSON.stringify({ zones: first.zones, reservations: first.reservations }),
+        JSON.stringify({
+          zones: first.zones,
+          reservations: first.reservations,
+        }),
       ).not.toContain("principal:private");
 
       const actionDurationMs = performance.now() - tActionStart;

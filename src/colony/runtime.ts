@@ -174,7 +174,10 @@ import {
   solMinutesFracSinceEpoch,
   solsSinceEpoch,
 } from "./sol";
-import { MultiplayerClient, type RemoteRacer } from "./multiplayer/multiplayerClient";
+import {
+  MultiplayerClient,
+  type RemoteRacer,
+} from "./multiplayer/multiplayerClient";
 import {
   extractAuthoritativeNeighbourhoodKeys,
   validateAuthoritativeStarterManifest,
@@ -1039,7 +1042,8 @@ export class ColonyRuntime {
   private multiplayerInputSeq = 0;
   private lastMultiplayerInputSentAt = 0;
   private authClient: AuthClient | null = null;
-  private starterCatalogueManifest: RemoteStarterCatalogueManifest | null = null;
+  private starterCatalogueManifest: RemoteStarterCatalogueManifest | null =
+    null;
   private authoritativeNeighbourhoodKeys: string[] = [];
   // Player data isolation: false = the privileged operator/admin view (sees every citizen + wallet,
   // the default). true = a CITYLIFE_PLAYER view — the HUD then shows only the player's own data plus
@@ -1656,9 +1660,7 @@ export class ColonyRuntime {
           }) ?? [];
         mergeAvenue(
           this.sim.state,
-          layRoad(connector, 1).filter(
-            (c) => !shopCells.has(`${c.x},${c.y}`),
-          ),
+          layRoad(connector, 1).filter((c) => !shopCells.has(`${c.x},${c.y}`)),
         ); // 088 — clean, uniform-width spur (not a raw 1-cell zig-zag)
       }
       // Spec 175 — coastal road connecting the commercial high street down to the coastal hamlet
@@ -2934,7 +2936,11 @@ export class ColonyRuntime {
   }
 
   private ownedDrivePose: OwnedDrivePose | null = null;
-  private authoritativeWalkingPose: { x: number; y: number; heading: number } | null = null;
+  private authoritativeWalkingPose: {
+    x: number;
+    y: number;
+    heading: number;
+  } | null = null;
   private lastAppliedSnapshotSeq = 0;
   private ownedDriveInput: OwnedDriveInput = {};
   private ownedDriveSeated = false;
@@ -2962,7 +2968,11 @@ export class ColonyRuntime {
   getParkedCarPose(): { x: number; y: number; heading: number } | null {
     if (!this.operatorUserId || this.ownedDriveSeated) return null;
     if (this.ownedDrivePose) {
-      return { x: this.ownedDrivePose.x, y: this.ownedDrivePose.y, heading: this.ownedDrivePose.heading };
+      return {
+        x: this.ownedDrivePose.x,
+        y: this.ownedDrivePose.y,
+        heading: this.ownedDrivePose.heading,
+      };
     }
     const mpParked = this.multiplayerClient?.getParkedCar();
     if (mpParked) {
@@ -2977,7 +2987,11 @@ export class ColonyRuntime {
     return null;
   }
 
-  getAuthoritativeWalkingPose(): { x: number; y: number; heading: number } | null {
+  getAuthoritativeWalkingPose(): {
+    x: number;
+    y: number;
+    heading: number;
+  } | null {
     if (this.ownedDriveSeated) return null;
     return this.authoritativeWalkingPose
       ? { ...this.authoritativeWalkingPose }
@@ -2987,7 +3001,10 @@ export class ColonyRuntime {
   getWalkingCell(): { x: number; y: number } | null {
     if (this.ownedDriveSeated) return null;
     if (this.authoritativeWalkingPose) {
-      return { x: this.authoritativeWalkingPose.x, y: this.authoritativeWalkingPose.y };
+      return {
+        x: this.authoritativeWalkingPose.x,
+        y: this.authoritativeWalkingPose.y,
+      };
     }
     if (this.fpCameraCell) return { ...this.fpCameraCell };
     if (this.fpCitizenId) {
@@ -3253,7 +3270,11 @@ export class ColonyRuntime {
 
   setOwnedDriveInput(input: OwnedDriveInput): void {
     this.ownedDriveInput = this.getOwnedDrivePose() ? { ...input } : {};
-    if (this.multiplayerClient && this.multiplayerClient.getStatus() === "connected" && this.ownedDriveSeated) {
+    if (
+      this.multiplayerClient &&
+      this.multiplayerClient.getStatus() === "connected" &&
+      this.ownedDriveSeated
+    ) {
       this.multiplayerInputSeq++;
       this.lastMultiplayerInputSentAt = Date.now();
       const throttleVal = input.throttle ? 1 : input.reverse ? -1 : 0;
@@ -3356,7 +3377,9 @@ export class ColonyRuntime {
   private activeMultiplayerLayoutRevision?: string;
   private activeMultiplayerRoomCode?: string;
 
-  setStarterCatalogueManifest(manifest: RemoteStarterCatalogueManifest | null): void {
+  setStarterCatalogueManifest(
+    manifest: RemoteStarterCatalogueManifest | null,
+  ): void {
     if (!manifest) {
       this.starterCatalogueManifest = null;
       this.authoritativeNeighbourhoodKeys = [];
@@ -3420,9 +3443,19 @@ export class ColonyRuntime {
     return { neighbourhoodKey: keys[0], isExplicit: false };
   }
 
-  enableMultiplayer(roomCode = "racing-cup", wsUrl?: string, requestedHood?: string): void {
-    const doc = typeof this.worldLayoutDocument === "function" ? this.worldLayoutDocument() : null;
-    const worldId = doc?.worldId ?? this.activeWorldLayout?.worldId ?? (this.sim?.state?.seed ? String(this.sim.state.seed) : undefined);
+  enableMultiplayer(
+    roomCode = "racing-cup",
+    wsUrl?: string,
+    requestedHood?: string,
+  ): void {
+    const doc =
+      typeof this.worldLayoutDocument === "function"
+        ? this.worldLayoutDocument()
+        : null;
+    const worldId =
+      doc?.worldId ??
+      this.activeWorldLayout?.worldId ??
+      (this.sim?.state?.seed ? String(this.sim.state.seed) : undefined);
     const revisionObj = doc?.revision ?? this.activeWorldLayout?.revision;
     const layoutRevision = revisionObj
       ? `wl:v1:${revisionObj.number}:${revisionObj.contentHash}`
@@ -3439,7 +3472,11 @@ export class ColonyRuntime {
       this.multiplayerClient = new MultiplayerClient({
         url: wsUrl,
         userId: this.operatorUserId || "anonymous",
-        username: this.operatorName || (this.operatorUserId ? this.operatorUserId.split("@")[0] : "anonymous"),
+        username:
+          this.operatorName ||
+          (this.operatorUserId
+            ? this.operatorUserId.split("@")[0]
+            : "anonymous"),
         roomCode,
         worldId,
         layoutRevision,
@@ -3459,15 +3496,19 @@ export class ColonyRuntime {
         this.multiplayerClient.getStatus() === "connecting")
     ) {
       const activeSession = this.multiplayerClient.getSessionInfo();
-      const currentRoom = activeSession.inviteCode ?? (this as any).activeMultiplayerRoomCode;
+      const currentRoom =
+        activeSession.inviteCode ?? (this as any).activeMultiplayerRoomCode;
       const sameRoom = currentRoom === roomCode;
       const sameWorld = activeSession.worldId === worldId;
-      const sameRevision = (this as any).activeMultiplayerLayoutRevision === layoutRevision;
+      const sameRevision =
+        (this as any).activeMultiplayerLayoutRevision === layoutRevision;
       const sameHood =
         activeSession.neighbourhoodKey === neighbourhoodKey ||
         (!explicitNeighbourhood &&
           activeSession.neighbourhoodKey !== null &&
-          this.getAuthoritativeNeighbourhoods().includes(activeSession.neighbourhoodKey));
+          this.getAuthoritativeNeighbourhoods().includes(
+            activeSession.neighbourhoodKey,
+          ));
 
       if (sameRoom && sameWorld && sameRevision && sameHood) {
         return;
@@ -3485,7 +3526,9 @@ export class ColonyRuntime {
     (this as any).activeMultiplayerRoomCode = roomCode;
 
     const userId = this.operatorUserId;
-    const username = this.operatorName || (userId.includes("@") ? userId.split("@")[0] : userId);
+    const username =
+      this.operatorName ||
+      (userId.includes("@") ? userId.split("@")[0] : userId);
     const rawVehicleKey = this.authoritativeCar?.id ?? null;
     const vehicleKey = rawVehicleKey ? serverVehicleKeyOf(rawVehicleKey) : null;
 
@@ -3504,7 +3547,12 @@ export class ColonyRuntime {
       ) {
         initialWorld = {
           x: (initialPose.x - terrainSize / 2) * 4,
-          y: terrain.worldY ? terrain.worldY(Math.round(initialPose.x), Math.round(initialPose.y)) : 0,
+          y: terrain.worldY
+            ? terrain.worldY(
+                Math.round(initialPose.x),
+                Math.round(initialPose.y),
+              )
+            : 0,
           z: (initialPose.y - terrainSize / 2) * 4,
           heading: initialPose.heading,
           speed: initialPose.speed ?? 0,
@@ -3532,7 +3580,11 @@ export class ColonyRuntime {
       speed: initialWorld?.speed,
       getToken: async () => this.authClient?.getValidToken() ?? null,
       onStatusChange: (status) => {
-        if (status === "connecting" || status === "disconnected" || status === "error") {
+        if (
+          status === "connecting" ||
+          status === "disconnected" ||
+          status === "error"
+        ) {
           this.sim.state.remoteRacers?.clear();
           this.ownedDriveInput = {};
           this.authoritativeWalkingPose = null;
@@ -3563,7 +3615,12 @@ export class ColonyRuntime {
           this.authoritativeWalkingPose = null;
           const cellX = self.x / 4 + t.size / 2;
           const cellY = self.z / 4 + t.size / 2;
-          this.ownedDrivePose = { x: cellX, y: cellY, heading: self.heading, speed: self.speed };
+          this.ownedDrivePose = {
+            x: cellX,
+            y: cellY,
+            heading: self.heading,
+            speed: self.speed,
+          };
           this.ownedDriveSeated = true;
           this.preTransitionSeated = true;
           this.emit();
@@ -3596,7 +3653,12 @@ export class ColonyRuntime {
           if (self.carX !== undefined && Number.isFinite(self.carX)) {
             const carCellX = self.carX / 4 + t.size / 2;
             const carCellY = (self.carZ ?? 0) / 4 + t.size / 2;
-            this.ownedDrivePose = { x: carCellX, y: carCellY, heading: self.carHeading ?? 0, speed: 0 };
+            this.ownedDrivePose = {
+              x: carCellX,
+              y: carCellY,
+              heading: self.carHeading ?? 0,
+              speed: 0,
+            };
             if (this.sim.state.operatorCar) {
               this.sim.state.operatorCar.cell = { x: carCellX, y: carCellY };
               this.sim.state.operatorCar.heading = self.carHeading ?? 0;
@@ -3606,7 +3668,8 @@ export class ColonyRuntime {
         }
       },
       onVehicleExited: (ev) => {
-        const myParticipantId = this.multiplayerClient?.getSessionInfo().participantId;
+        const myParticipantId =
+          this.multiplayerClient?.getSessionInfo().participantId;
         const terrain = this.sim.state.terrain;
         if (ev.participantId === myParticipantId) {
           this.multiplayerInputSeq = 0;
@@ -3652,7 +3715,8 @@ export class ColonyRuntime {
           }
           this.emit();
         } else {
-          if (!this.sim.state.remoteRacers) this.sim.state.remoteRacers = new Map();
+          if (!this.sim.state.remoteRacers)
+            this.sim.state.remoteRacers = new Map();
           const racer = this.sim.state.remoteRacers.get(ev.participantId);
           if (racer) {
             racer.isPedestrian = true;
@@ -3670,7 +3734,8 @@ export class ColonyRuntime {
         }
       },
       onVehicleBoarded: (ev) => {
-        const myParticipantId = this.multiplayerClient?.getSessionInfo().participantId;
+        const myParticipantId =
+          this.multiplayerClient?.getSessionInfo().participantId;
         const terrain = this.sim.state.terrain;
         if (ev.participantId === myParticipantId) {
           this.multiplayerInputSeq = 0;
@@ -3692,7 +3757,8 @@ export class ColonyRuntime {
           }
           this.emit();
         } else {
-          if (!this.sim.state.remoteRacers) this.sim.state.remoteRacers = new Map();
+          if (!this.sim.state.remoteRacers)
+            this.sim.state.remoteRacers = new Map();
           const racer = this.sim.state.remoteRacers.get(ev.participantId);
           if (racer) {
             racer.isPedestrian = false;
@@ -3714,11 +3780,16 @@ export class ColonyRuntime {
         }
       },
       onPeerJoined: (peer) => {
-        if (!this.sim.state.remoteRacers) this.sim.state.remoteRacers = new Map();
+        if (!this.sim.state.remoteRacers)
+          this.sim.state.remoteRacers = new Map();
         const terrain = this.sim.state.terrain;
-        const cellX = peer.x != null && !isNaN(peer.x) ? peer.x / 4 + terrain.size / 2 : 50;
-        const cellY = peer.z != null && !isNaN(peer.z) ? peer.z / 4 + terrain.size / 2 : 50;
-        const spec = peer.vehicleKey ? (resolveOwnedCar([peer.vehicleKey]) ?? null) : null;
+        const cellX =
+          peer.x != null && !isNaN(peer.x) ? peer.x / 4 + terrain.size / 2 : 50;
+        const cellY =
+          peer.z != null && !isNaN(peer.z) ? peer.z / 4 + terrain.size / 2 : 50;
+        const spec = peer.vehicleKey
+          ? (resolveOwnedCar([peer.vehicleKey]) ?? null)
+          : null;
         this.sim.state.remoteRacers.set(peer.participantId, {
           participantId: peer.participantId,
           userId: peer.userId,
@@ -3745,7 +3816,8 @@ export class ColonyRuntime {
         this.emit();
       },
       onPeerPose: (participantId, pose) => {
-        if (!this.sim.state.remoteRacers) this.sim.state.remoteRacers = new Map();
+        if (!this.sim.state.remoteRacers)
+          this.sim.state.remoteRacers = new Map();
         const racer = this.sim.state.remoteRacers.get(participantId);
         const terrain = this.sim.state.terrain;
         const cellX = pose.x / 4 + terrain.size / 2;
@@ -3760,7 +3832,10 @@ export class ColonyRuntime {
           if (pose.modeEpoch !== undefined) {
             racer.modeEpoch = pose.modeEpoch;
           }
-          if (pose.vehicleKey !== undefined && pose.vehicleKey !== racer.vehicleKey) {
+          if (
+            pose.vehicleKey !== undefined &&
+            pose.vehicleKey !== racer.vehicleKey
+          ) {
             racer.vehicleKey = pose.vehicleKey;
             racer.spec = pose.vehicleKey
               ? (resolveOwnedCar([pose.vehicleKey]) ?? null)
@@ -3792,7 +3867,11 @@ export class ColonyRuntime {
       },
       onSnapshot: (snapshot) => {
         const session = this.multiplayerClient?.getSessionInfo();
-        if (!session || !session.sessionId || snapshot.sessionId !== session.sessionId) {
+        if (
+          !session ||
+          !session.sessionId ||
+          snapshot.sessionId !== session.sessionId
+        ) {
           return;
         }
         if (typeof snapshot.seq === "number") {
@@ -3805,11 +3884,20 @@ export class ColonyRuntime {
         const terrain = this.sim.state.terrain;
         const myParticipantId = session.participantId;
         for (const p of snapshot.participants) {
-          if (p.participantId === myParticipantId || p.userId === this.operatorUserId) {
-            if (typeof p.modeEpoch === "number" && p.modeEpoch < currentModeEpoch) {
+          if (
+            p.participantId === myParticipantId ||
+            p.userId === this.operatorUserId
+          ) {
+            if (
+              typeof p.modeEpoch === "number" &&
+              p.modeEpoch < currentModeEpoch
+            ) {
               continue;
             }
-            if (typeof p.lastInputSeq === "number" && p.lastInputSeq > this.multiplayerInputSeq) {
+            if (
+              typeof p.lastInputSeq === "number" &&
+              p.lastInputSeq > this.multiplayerInputSeq
+            ) {
               this.multiplayerInputSeq = p.lastInputSeq;
             }
             const isPed = p.mode === "walking" || Boolean(p.isPedestrian);
@@ -3834,7 +3922,9 @@ export class ColonyRuntime {
               };
 
               // Capture the live physical predicted body/camera position BEFORE updating fpCameraCell
-              const livePhysicalCell = this.fpCameraCell ? { ...this.fpCameraCell } : null;
+              const livePhysicalCell = this.fpCameraCell
+                ? { ...this.fpCameraCell }
+                : null;
 
               this.fpCameraCell = { x: wCellX, y: wCellY };
               if (this.fpCitizenId) {
@@ -3905,13 +3995,17 @@ export class ColonyRuntime {
                   this.ownedDrivePose.heading = p.carHeading ?? 0;
                 }
                 if (this.sim.state.operatorCar) {
-                  this.sim.state.operatorCar.cell = { x: pCarCellX, y: pCarCellY };
+                  this.sim.state.operatorCar.cell = {
+                    x: pCarCellX,
+                    y: pCarCellY,
+                  };
                   this.sim.state.operatorCar.heading = p.carHeading ?? 0;
                 }
               }
             }
           } else {
-            if (!this.sim.state.remoteRacers) this.sim.state.remoteRacers = new Map();
+            if (!this.sim.state.remoteRacers)
+              this.sim.state.remoteRacers = new Map();
             const racer = this.sim.state.remoteRacers.get(p.participantId);
             const cellX = p.x / 4 + terrain.size / 2;
             const cellY = p.z / 4 + terrain.size / 2;
@@ -4079,13 +4173,24 @@ export class ColonyRuntime {
     if (car) {
       car.cell = { x: this.ownedDrivePose.x, y: this.ownedDrivePose.y };
       car.heading = this.ownedDrivePose.heading;
-      if (this.multiplayerClient && this.multiplayerClient.getStatus() === "connected") {
+      if (
+        this.multiplayerClient &&
+        this.multiplayerClient.getStatus() === "connected"
+      ) {
         const now = Date.now();
         if (now - this.lastMultiplayerInputSentAt >= 50) {
           this.lastMultiplayerInputSentAt = now;
           this.multiplayerInputSeq++;
-          const throttleVal = this.ownedDriveInput.throttle ? 1 : this.ownedDriveInput.reverse ? -1 : 0;
-          const steerVal = this.ownedDriveInput.right ? 1 : this.ownedDriveInput.left ? -1 : 0;
+          const throttleVal = this.ownedDriveInput.throttle
+            ? 1
+            : this.ownedDriveInput.reverse
+              ? -1
+              : 0;
+          const steerVal = this.ownedDriveInput.right
+            ? 1
+            : this.ownedDriveInput.left
+              ? -1
+              : 0;
           this.multiplayerClient.sendDrivingInput({
             seq: this.multiplayerInputSeq,
             epoch: this.multiplayerClient.getModeEpoch(),
@@ -4097,7 +4202,10 @@ export class ColonyRuntime {
         if (this.multiplayerClient.getProtocolVersion() === 1) {
           const worldX = (this.ownedDrivePose.x - size / 2) * 4;
           const worldZ = (this.ownedDrivePose.y - size / 2) * 4;
-          const worldY = terrain.worldY(Math.round(this.ownedDrivePose.x), Math.round(this.ownedDrivePose.y));
+          const worldY = terrain.worldY(
+            Math.round(this.ownedDrivePose.x),
+            Math.round(this.ownedDrivePose.y),
+          );
           this.multiplayerClient.sendPose({
             x: worldX,
             y: worldY,
@@ -4570,7 +4678,11 @@ export class ColonyRuntime {
   /** Sample normalized, deadzoned gamepad axes for translational walking locomotion.
    *  Matches FirstPersonController: left stick axes[0] (strafe) and axes[1] (forward/back).
    *  Deadzone 0.1 filters neutral stick noise. Look axes[2]/axes[3] are omitted. */
-  sampleGamepadWalkingAxes(): { forward: number; strafe: number; active: boolean } {
+  sampleGamepadWalkingAxes(): {
+    forward: number;
+    strafe: number;
+    active: boolean;
+  } {
     if (
       typeof navigator !== "undefined" &&
       typeof navigator.getGamepads === "function"
@@ -5956,7 +6068,8 @@ export class ColonyRuntime {
     this.activeWorldLayout = canonical;
     if (
       this.starterCatalogueManifest &&
-      this.starterCatalogueManifest.layoutRevision !== canonical.revision.contentHash
+      this.starterCatalogueManifest.layoutRevision !==
+        canonical.revision.contentHash
     ) {
       this.setStarterCatalogueManifest(null);
     }
@@ -6013,7 +6126,9 @@ export class ColonyRuntime {
   }
 
   /** Spec 149 / Task e81ea9de — Export standalone canonical transit authority v1. */
-  exportCanonicalTransitAuthority(document?: WorldLayoutDocument): CanonicalTransitAuthority | null {
+  exportCanonicalTransitAuthority(
+    document?: WorldLayoutDocument,
+  ): CanonicalTransitAuthority | null {
     const doc = document ?? this.captureWorldLayout();
     const isCleanActive =
       !!this.activeWorldLayout &&
@@ -6050,7 +6165,12 @@ export class ColonyRuntime {
           surfaceFrameId: seedRegistry.surfaceFrameId,
         });
 
-        if (!plan.valid || !plan.busRoute || !plan.busDepot || !plan.fleetPaths) {
+        if (
+          !plan.valid ||
+          !plan.busRoute ||
+          !plan.busDepot ||
+          !plan.fleetPaths
+        ) {
           return null;
         }
         route = plan.busRoute;
@@ -6100,7 +6220,10 @@ export class ColonyRuntime {
         spur: fleetPaths.spur.pts.map((p) => ({ x: p.x, y: p.y })),
         bays: fleetPaths.bays.map((b, idx) => ({
           bayIndex: idx,
-          park: { x: depot.layout.bays[idx].park.x, y: depot.layout.bays[idx].park.y },
+          park: {
+            x: depot.layout.bays[idx].park.x,
+            y: depot.layout.bays[idx].park.y,
+          },
           heading: depot.layout.bays[idx].heading,
           path: b.pts.map((p) => ({ x: p.x, y: p.y })),
         })),
@@ -6155,7 +6278,8 @@ export class ColonyRuntime {
     this.activeWorldLayout = canonical;
     if (
       this.starterCatalogueManifest &&
-      this.starterCatalogueManifest.layoutRevision !== canonical.revision.contentHash
+      this.starterCatalogueManifest.layoutRevision !==
+        canonical.revision.contentHash
     ) {
       this.setStarterCatalogueManifest(null);
     }
@@ -6175,7 +6299,8 @@ export class ColonyRuntime {
       (this.multiplayerClient.getStatus() === "connected" ||
         this.multiplayerClient.getStatus() === "connecting")
     ) {
-      const room = this.multiplayerClient.getSessionInfo().inviteCode || "racing-cup";
+      const room =
+        this.multiplayerClient.getSessionInfo().inviteCode || "racing-cup";
       this.multiplayerClient.disconnect();
       this.sim.state.remoteRacers?.clear();
       this.enableMultiplayer(room);
@@ -6309,14 +6434,11 @@ export class ColonyRuntime {
       }
     }
 
-    return surfacePresenceRecords(
-      subjects,
-      {
-        surfaceFrameId,
-        terrainSize: terrain.size,
-        groundY: (x, y) => terrain.worldY(x, y),
-      },
-    );
+    return surfacePresenceRecords(subjects, {
+      surfaceFrameId,
+      terrainSize: terrain.size,
+      groundY: (x, y) => terrain.worldY(x, y),
+    });
   }
 
   /** BUG.GEO.1 — resolve the presence list into the on-screen readout. Spec 152's visibility policy is
@@ -7018,12 +7140,10 @@ export class ColonyRuntime {
       c.heading = heading;
       const nx =
         c.pos.x +
-        (Math.cos(heading) * dirForward - Math.sin(heading) * dirStrafe) *
-          sp;
+        (Math.cos(heading) * dirForward - Math.sin(heading) * dirStrafe) * sp;
       const ny =
         c.pos.y +
-        (Math.sin(heading) * dirForward + Math.cos(heading) * dirStrafe) *
-          sp;
+        (Math.sin(heading) * dirForward + Math.cos(heading) * dirStrafe) * sp;
       const blocked = this.blockedStepReason(nx, ny, c.pos);
       if (!blocked) {
         c.pos.x = nx;
