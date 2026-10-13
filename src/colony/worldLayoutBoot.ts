@@ -136,7 +136,8 @@ export class WorldLayoutBootError extends Error {
       | "CONFLICT_WITHOUT_HEAD"
       | "WORLD_UNPUBLISHED"
       | "CANONICAL_REMOTE_UNAVAILABLE"
-      | "CANONICAL_TRANSIT_UNAVAILABLE",
+      | "CANONICAL_TRANSIT_UNAVAILABLE"
+      | "PERSISTENCE_CONFLICT",
     message: string,
   ) {
     super(message);
@@ -417,7 +418,10 @@ export class WorldLayoutBootCoordinator {
               source: "canonical_remote",
             };
           }
-          await this.store.save(saveInput(document), head?.layoutRevision ?? null);
+          const saveResult = await this.store.save(
+            saveInput(document),
+            head?.layoutRevision ?? null,
+          );
           if (this.isSuperseded()) {
             return {
               ready: true,
@@ -425,6 +429,12 @@ export class WorldLayoutBootCoordinator {
               revision,
               source: "canonical_remote",
             };
+          }
+          if (saveResult.status === "conflict") {
+            throw new WorldLayoutBootError(
+              "PERSISTENCE_CONFLICT",
+              `Remote starter catalogue for world ${this.worldId} conflicted with concurrent stored layout revision ${saveResult.actualLayoutRevision}`,
+            );
           }
           await this.runtime.hydrateWorldLayout(document);
 
@@ -447,7 +457,8 @@ export class WorldLayoutBootCoordinator {
             (err.code === "WORLD_UNPUBLISHED" ||
               err.code === "WORLD_ID_MISMATCH" ||
               err.code === "REVISION_MISMATCH" ||
-              err.code === "CANONICAL_TRANSIT_UNAVAILABLE"))
+              err.code === "CANONICAL_TRANSIT_UNAVAILABLE" ||
+              err.code === "PERSISTENCE_CONFLICT"))
         ) {
           throw err;
         }

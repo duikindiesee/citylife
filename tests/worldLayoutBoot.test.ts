@@ -910,6 +910,202 @@ describe("WorldLayoutBootCoordinator", () => {
         expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(doc);
         expect(mockSave).toHaveBeenCalled();
       });
+
+      it("fails closed on remote starter catalogue persistence conflict with distinct durable winner", async () => {
+        const doc = document("primary");
+        const winner = stored(document("primary", 2));
+        const validTransit = {
+          ...validTransitAuthority,
+          worldId: "primary",
+          layoutRevision: doc.revision.contentHash,
+        };
+        const bootRuntime: any = {
+          ...runtime(),
+          exportCanonicalTransitAuthority: vi.fn(() => validTransit),
+        };
+        const mockSave = vi.fn(async (): Promise<WorldLayoutSaveResult> => ({
+          status: "conflict",
+          expectedLayoutRevision: null,
+          actualLayoutRevision: winner.layoutRevision,
+        }));
+        const remoteLoader = {
+          loadRemoteStarterCatalogue: vi.fn(async () => ({
+            published: true,
+            manifest: {
+              worldId: "primary",
+              layoutRevision: doc.revision.contentHash,
+              layout: doc,
+              transit: validTransit,
+            } as any,
+          })),
+        };
+
+        const coordinator = new WorldLayoutBootCoordinator({
+          worldId: "primary",
+          store: store({
+            load: vi.fn(async () => null),
+            save: mockSave,
+          }),
+          runtime: bootRuntime,
+          remoteLoader,
+          requireRemoteAuthority: true,
+          requireTransitAuthority: true,
+        });
+
+        const bootPromise = coordinator.boot();
+        await expect(bootPromise).rejects.toMatchObject({
+          code: "PERSISTENCE_CONFLICT",
+        });
+        expect(mockSave).toHaveBeenCalledWith(expect.anything(), null);
+        expect(bootRuntime.hydrateWorldLayout).not.toHaveBeenCalled();
+      });
+
+      it("succeeds when remote save returns noop for identical stored revision", async () => {
+        const doc = document("primary");
+        const validTransit = {
+          ...validTransitAuthority,
+          worldId: "primary",
+          layoutRevision: doc.revision.contentHash,
+        };
+        const bootRuntime: any = {
+          ...runtime(),
+          exportCanonicalTransitAuthority: vi.fn(() => validTransit),
+        };
+        const mockSave = vi.fn(async () => ({ status: "noop", revision: stored(doc) } as const));
+        const remoteLoader = {
+          loadRemoteStarterCatalogue: vi.fn(async () => ({
+            published: true,
+            manifest: {
+              worldId: "primary",
+              layoutRevision: doc.revision.contentHash,
+              layout: doc,
+              transit: validTransit,
+            } as any,
+          })),
+        };
+
+        const coordinator = new WorldLayoutBootCoordinator({
+          worldId: "primary",
+          store: store({
+            load: vi.fn(async () => stored(doc)),
+            save: mockSave,
+          }),
+          runtime: bootRuntime,
+          remoteLoader,
+          requireRemoteAuthority: true,
+          requireTransitAuthority: true,
+        });
+
+        const result = await coordinator.boot();
+        expect(result).toMatchObject({
+          ready: true,
+          worldId: "primary",
+          source: "canonical_remote",
+        });
+        expect(mockSave).toHaveBeenCalledWith(expect.anything(), stored(doc).layoutRevision);
+        expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(doc);
+      });
+
+      it("prevents late hydration when coordinator is superseded during deferred store save", async () => {
+        const docA = document("world-a");
+        const docB = document("world-b");
+        const transitA = {
+          ...validTransitAuthority,
+          worldId: "world-a",
+          layoutRevision: docA.revision.contentHash,
+        };
+        const transitB = {
+          ...validTransitAuthority,
+          worldId: "world-b",
+          layoutRevision: docB.revision.contentHash,
+        };
+        const hydrations: string[] = [];
+        let activeWorld = "world-a";
+
+        const sharedRuntime: WorldLayoutBootRuntime = {
+          captureWorldLayout: vi.fn(() => docA),
+          hydrateWorldLayout: vi.fn((d) => {
+            activeWorld = d.worldId;
+            hydrations.push(d.worldId);
+          }),
+          exportCanonicalTransitAuthority: vi.fn((doc) => {
+            if (doc?.worldId === "world-b") return transitB;
+            return transitA;
+          }),
+        };
+
+        const saveStartedA = deferred<void>();
+        const deferredSaveA = deferred<WorldLayoutSaveResult>();
+        const oldCoordinator = new WorldLayoutBootCoordinator({
+          worldId: "world-a",
+          store: store({
+            load: vi.fn(async () => null),
+            save: vi.fn(() => {
+              saveStartedA.resolve();
+              return deferredSaveA.promise;
+            }),
+          }),
+          runtime: sharedRuntime,
+          requireRemoteAuthority: true,
+          requireTransitAuthority: true,
+          remoteLoader: {
+            loadRemoteStarterCatalogue: vi.fn(async () => ({
+              published: true,
+              manifest: {
+                worldId: "world-a",
+                layoutRevision: docA.revision.contentHash,
+                layout: docA,
+                transit: transitA,
+              } as any,
+            })),
+          },
+        });
+
+        const oldBootPromise = oldCoordinator.boot();
+
+        // Ensure oldCoordinator is actively awaiting store.save before constructing world-b
+        await saveStartedA.promise;
+
+        // While oldCoordinator is awaiting store.save, a new coordinator for world-b supersedes it
+        const currentCoordinator = new WorldLayoutBootCoordinator({
+          worldId: "world-b",
+          store: store({
+            load: vi.fn(async () => null),
+            save: vi.fn(async () => ({ status: "saved" as const, revision: stored(docB) })),
+          }),
+          runtime: sharedRuntime,
+          requireRemoteAuthority: true,
+          requireTransitAuthority: true,
+          remoteLoader: {
+            loadRemoteStarterCatalogue: vi.fn(async () => ({
+              published: true,
+              manifest: {
+                worldId: "world-b",
+                layoutRevision: docB.revision.contentHash,
+                layout: docB,
+                transit: transitB,
+              } as any,
+            })),
+          },
+        });
+
+        const currentResult = await currentCoordinator.boot();
+        expect(currentResult.worldId).toBe("world-b");
+        expect(activeWorld).toBe("world-b");
+        expect(hydrations).toEqual(["world-b"]);
+
+        // Now deferred save for world-a finishes
+        deferredSaveA.resolve({
+          status: "saved",
+          revision: stored(docA),
+        });
+
+        const supersededResult = await oldBootPromise;
+        expect(supersededResult.source).toBe("canonical_remote");
+        // Crucial: oldCoordinator did NOT hydrate over world-b
+        expect(activeWorld).toBe("world-b");
+        expect(hydrations).toEqual(["world-b"]);
+      });
     });
   });
 
