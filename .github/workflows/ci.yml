@@ -34,14 +34,14 @@ jobs:
       - run: npm ci
       - run: npx playwright install chromium
       - run: npm run typecheck
-      # Pinned server revision: published corrective candidate 80bea8c39d5021d7014ea5a87d76e92867b1178f
-      # (fresh walkability authority reconciliation on join, bus transit geometry, and post-await vehicle ownership rechecks)
+      # Pinned server revision: published corrective candidate 8a56d921a50b986da04306b19b94f97d64311541
+      # (fresh walkability authority reconciliation on join, bus transit geometry, post-await vehicle ownership rechecks, and unowned purchase-intent wire contract)
       # Positioned before slow full suites for rapid integration feedback and serial GPU isolation.
       - name: Check out citylife-server at pinned authoritative revision
         uses: actions/checkout@v7
         with:
           repository: duikindiesee/citylife-server
-          ref: 80bea8c39d5021d7014ea5a87d76e92867b1178f
+          ref: 8a56d921a50b986da04306b19b94f97d64311541
           token: ${{ secrets.CITYLIFE_SERVER_READ_TOKEN }}
           persist-credentials: false
           path: citylife-server
