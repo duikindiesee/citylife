@@ -135,7 +135,12 @@ function protrusions(
   seed: number,
   levelOverride?: Map<number, number>,
 ): Violation[] {
-  const { terrain, group, level: defaultLevel, gridOf } = buildLiveRoadScene(seed);
+  const {
+    terrain,
+    group,
+    level: defaultLevel,
+    gridOf,
+  } = buildLiveRoadScene(seed);
   const level = levelOverride ?? defaultLevel;
   const out: Violation[] = [];
   let sampleCount = 0;
@@ -339,7 +344,7 @@ describe("road/terrain clearance — live multi-seed worlds", () => {
     const cellX = Math.floor(sample!.gx);
     const cellY = Math.floor(sample!.gy);
     const N = terrain.size;
-    const raisedHeight = sample!.surfaceY + 2.50;
+    const raisedHeight = sample!.surfaceY + 2.5;
 
     const modifiedLevel = new Map(level);
     for (let dy = 0; dy <= 1; dy++) {
@@ -356,7 +361,7 @@ describe("road/terrain clearance — live multi-seed worlds", () => {
     );
     expect(raisedGroundAtSample).toBeCloseTo(raisedHeight, 3);
     const protrusionAtSample = raisedGroundAtSample - sample!.surfaceY;
-    expect(protrusionAtSample).toBeCloseTo(2.50, 2);
+    expect(protrusionAtSample).toBeCloseTo(2.5, 2);
 
     const bad = protrusions(4242, modifiedLevel);
     expect(bad.length).toBeGreaterThan(0);
@@ -366,7 +371,7 @@ describe("road/terrain clearance — live multi-seed worlds", () => {
         Math.abs(v.gy - sample!.gy) < 1e-4,
     );
     expect(exactViolation).toBeDefined();
-    expect(exactViolation!.protrusion).toBeCloseTo(2.50, 2);
+    expect(exactViolation!.protrusion).toBeCloseTo(2.5, 2);
     expect(exactViolation!.protrusion).toBeGreaterThan(CLEARANCE_EPSILON_M);
     expect(exactViolation!.protrusion).toBeGreaterThan(2.0);
   });

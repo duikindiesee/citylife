@@ -5,7 +5,8 @@
 // pad site, and junction-adjusted stop anchors bound cryptographically to a canonical WorldLayoutDocument revision contentHash.
 
 export const CANONICAL_TRANSIT_SCHEMA_VERSION = "citylife.transit/v1" as const;
-export const CANONICAL_TRANSIT_GEOMETRY_CAPABILITY = "explicit-paths-v1" as const;
+export const CANONICAL_TRANSIT_GEOMETRY_CAPABILITY =
+  "explicit-paths-v1" as const;
 
 export interface CanonicalTransitPoint {
   readonly x: number;
@@ -58,7 +59,9 @@ export interface CanonicalTransitDepotAuthority {
 
 export interface CanonicalTransitAuthority {
   readonly schemaVersion: typeof CANONICAL_TRANSIT_SCHEMA_VERSION;
-  readonly geometryCapability?: typeof CANONICAL_TRANSIT_GEOMETRY_CAPABILITY | string;
+  readonly geometryCapability?:
+    | typeof CANONICAL_TRANSIT_GEOMETRY_CAPABILITY
+    | string;
   readonly worldId: string;
   readonly layoutRevision: string;
   readonly route: CanonicalTransitRouteAuthority;
@@ -201,10 +204,8 @@ export function validateCanonicalTransitAuthority(
       message: `Missing or malformed depot authority in transit block for world '${worldId ?? "unknown"}'`,
     };
   }
-  const { gate, roadCell, gateHeading, baysTotal, site, spur, bays } = depot as Record<
-    string,
-    any
-  >;
+  const { gate, roadCell, gateHeading, baysTotal, site, spur, bays } =
+    depot as Record<string, any>;
   if (
     !gate ||
     typeof gate.x !== "number" ||
@@ -252,7 +253,10 @@ export function validateCanonicalTransitAuthority(
     record.geometryCapability === CANONICAL_TRANSIT_GEOMETRY_CAPABILITY ||
     requireExplicitGeometry;
 
-  if (requireExplicitGeometry && record.geometryCapability !== CANONICAL_TRANSIT_GEOMETRY_CAPABILITY) {
+  if (
+    requireExplicitGeometry &&
+    record.geometryCapability !== CANONICAL_TRANSIT_GEOMETRY_CAPABILITY
+  ) {
     return {
       valid: false,
       error: "CANONICAL_TRANSIT_UNUSABLE",
@@ -262,7 +266,10 @@ export function validateCanonicalTransitAuthority(
 
   if (isExplicit) {
     // 8a. stopAnchors array matching route.stops
-    if (!Array.isArray(route.stopAnchors) || route.stopAnchors.length !== route.stops.length) {
+    if (
+      !Array.isArray(route.stopAnchors) ||
+      route.stopAnchors.length !== route.stops.length
+    ) {
       return {
         valid: false,
         error: "CANONICAL_TRANSIT_UNUSABLE",
@@ -354,7 +361,13 @@ export function validateCanonicalTransitAuthority(
     }
     for (let i = 0; i < spur.length; i++) {
       const p = spur[i];
-      if (!p || typeof p.x !== "number" || typeof p.y !== "number" || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+      if (
+        !p ||
+        typeof p.x !== "number" ||
+        typeof p.y !== "number" ||
+        !Number.isFinite(p.x) ||
+        !Number.isFinite(p.y)
+      ) {
         return {
           valid: false,
           error: "CANONICAL_TRANSIT_UNUSABLE",
@@ -396,7 +409,13 @@ export function validateCanonicalTransitAuthority(
       }
       for (let j = 0; j < bay.path.length; j++) {
         const bp = bay.path[j];
-        if (!bp || typeof bp.x !== "number" || typeof bp.y !== "number" || !Number.isFinite(bp.x) || !Number.isFinite(bp.y)) {
+        if (
+          !bp ||
+          typeof bp.x !== "number" ||
+          typeof bp.y !== "number" ||
+          !Number.isFinite(bp.x) ||
+          !Number.isFinite(bp.y)
+        ) {
           return {
             valid: false,
             error: "CANONICAL_TRANSIT_UNUSABLE",
@@ -436,8 +455,13 @@ export function canonicalTransitMatches(
     if (pA.x !== pB.x || pA.y !== pB.y) return false;
   }
 
-  if (a.depot.gate.x !== b.depot.gate.x || a.depot.gate.y !== b.depot.gate.y) return false;
-  if (a.depot.roadCell.x !== b.depot.roadCell.x || a.depot.roadCell.y !== b.depot.roadCell.y) return false;
+  if (a.depot.gate.x !== b.depot.gate.x || a.depot.gate.y !== b.depot.gate.y)
+    return false;
+  if (
+    a.depot.roadCell.x !== b.depot.roadCell.x ||
+    a.depot.roadCell.y !== b.depot.roadCell.y
+  )
+    return false;
 
   const headingA = a.depot.gateHeading;
   const headingB = b.depot.gateHeading;
@@ -464,12 +488,25 @@ export function canonicalTransitMatches(
     for (let i = 0; i < anchorsA.length; i++) {
       const ancA = anchorsA[i]!;
       const ancB = anchorsB[i]!;
-      if (ancA.cell.x !== ancB.cell.x || ancA.cell.y !== ancB.cell.y) return false;
+      if (ancA.cell.x !== ancB.cell.x || ancA.cell.y !== ancB.cell.y)
+        return false;
       if (Math.abs(ancA.arc - ancB.arc) > 1e-4) return false;
-      if (Math.abs(ancA.at.x - ancB.at.x) > 1e-4 || Math.abs(ancA.at.y - ancB.at.y) > 1e-4) return false;
+      if (
+        Math.abs(ancA.at.x - ancB.at.x) > 1e-4 ||
+        Math.abs(ancA.at.y - ancB.at.y) > 1e-4
+      )
+        return false;
       if (Math.abs(ancA.heading - ancB.heading) > 1e-4) return false;
-      if (Math.abs(ancA.verge.x - ancB.verge.x) > 1e-4 || Math.abs(ancA.verge.y - ancB.verge.y) > 1e-4) return false;
-      if (Math.abs(ancA.furniture.x - ancB.furniture.x) > 1e-4 || Math.abs(ancA.furniture.y - ancB.furniture.y) > 1e-4) return false;
+      if (
+        Math.abs(ancA.verge.x - ancB.verge.x) > 1e-4 ||
+        Math.abs(ancA.verge.y - ancB.verge.y) > 1e-4
+      )
+        return false;
+      if (
+        Math.abs(ancA.furniture.x - ancB.furniture.x) > 1e-4 ||
+        Math.abs(ancA.furniture.y - ancB.furniture.y) > 1e-4
+      )
+        return false;
     }
   }
 
@@ -478,8 +515,15 @@ export function canonicalTransitMatches(
   const siteB = b.depot.site;
   if (Boolean(siteA) !== Boolean(siteB)) return false;
   if (siteA && siteB) {
-    if (siteA.x !== siteB.x || siteA.y !== siteB.y || siteA.w !== siteB.w || siteA.h !== siteB.h) return false;
-    if (siteA.inward.x !== siteB.inward.x || siteA.inward.y !== siteB.inward.y) return false;
+    if (
+      siteA.x !== siteB.x ||
+      siteA.y !== siteB.y ||
+      siteA.w !== siteB.w ||
+      siteA.h !== siteB.h
+    )
+      return false;
+    if (siteA.inward.x !== siteB.inward.x || siteA.inward.y !== siteB.inward.y)
+      return false;
   }
 
   // Compare depot spur if present
@@ -489,7 +533,11 @@ export function canonicalTransitMatches(
   if (spurA && spurB) {
     if (spurA.length !== spurB.length) return false;
     for (let i = 0; i < spurA.length; i++) {
-      if (Math.abs(spurA[i]!.x - spurB[i]!.x) > 1e-4 || Math.abs(spurA[i]!.y - spurB[i]!.y) > 1e-4) return false;
+      if (
+        Math.abs(spurA[i]!.x - spurB[i]!.x) > 1e-4 ||
+        Math.abs(spurA[i]!.y - spurB[i]!.y) > 1e-4
+      )
+        return false;
     }
   }
 
@@ -503,11 +551,19 @@ export function canonicalTransitMatches(
       const bayA = depotBaysA[k]!;
       const bayB = depotBaysB[k]!;
       if (bayA.bayIndex !== bayB.bayIndex) return false;
-      if (Math.abs(bayA.park.x - bayB.park.x) > 1e-4 || Math.abs(bayA.park.y - bayB.park.y) > 1e-4) return false;
+      if (
+        Math.abs(bayA.park.x - bayB.park.x) > 1e-4 ||
+        Math.abs(bayA.park.y - bayB.park.y) > 1e-4
+      )
+        return false;
       if (Math.abs(bayA.heading - bayB.heading) > 1e-4) return false;
       if (bayA.path.length !== bayB.path.length) return false;
       for (let j = 0; j < bayA.path.length; j++) {
-        if (Math.abs(bayA.path[j]!.x - bayB.path[j]!.x) > 1e-4 || Math.abs(bayA.path[j]!.y - bayB.path[j]!.y) > 1e-4) return false;
+        if (
+          Math.abs(bayA.path[j]!.x - bayB.path[j]!.x) > 1e-4 ||
+          Math.abs(bayA.path[j]!.y - bayB.path[j]!.y) > 1e-4
+        )
+          return false;
       }
     }
   }

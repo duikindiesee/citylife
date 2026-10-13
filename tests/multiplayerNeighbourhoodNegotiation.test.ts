@@ -2,7 +2,15 @@
 import { createHash } from "node:crypto";
 // @ts-ignore - Vitest runs in Node; project tsconfig intentionally omits Node globals.
 import { readFileSync } from "node:fs";
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeEach,
+  afterEach,
+  beforeAll,
+} from "vitest";
 import {
   validateAuthoritativeStarterManifest,
   extractAuthoritativeNeighbourhoodKeys,
@@ -69,7 +77,8 @@ function makeSyntheticDocument(worldId = "seed-4242"): WorldLayoutDocument {
     seed: 4242,
     revision: {
       number: 1,
-      parentHash: "faa03550dc29e2a20f9c8f339ad6d919d278ccd4ce027370f40c51610fce9749",
+      parentHash:
+        "faa03550dc29e2a20f9c8f339ad6d919d278ccd4ce027370f40c51610fce9749",
     },
     frames: [
       {
@@ -203,17 +212,19 @@ describe("Authoritative Neighbourhood Wire Identity & Negotiation", () => {
 
       const store: WorldLayoutBootStore = {
         load: vi.fn(async () => null),
-        save: vi.fn(async (): Promise<WorldLayoutSaveResult> => ({
-          status: "saved" as const,
-          revision: {
-            worldId: "seed-4242",
-            sequence: 1,
-            layoutRevision: actualReviewedV4ManifestJson.layoutRevision,
-            document: parseWorldLayoutDocument(
-              JSON.stringify(actualReviewedV4ManifestJson.layout),
-            ),
-          },
-        })),
+        save: vi.fn(
+          async (): Promise<WorldLayoutSaveResult> => ({
+            status: "saved" as const,
+            revision: {
+              worldId: "seed-4242",
+              sequence: 1,
+              layoutRevision: actualReviewedV4ManifestJson.layoutRevision,
+              document: parseWorldLayoutDocument(
+                JSON.stringify(actualReviewedV4ManifestJson.layout),
+              ),
+            },
+          }),
+        ),
       };
 
       const coordinator = new WorldLayoutBootCoordinator({
@@ -317,7 +328,12 @@ describe("Authoritative Neighbourhood Wire Identity & Negotiation", () => {
 
       const store: WorldLayoutBootStore = {
         load: vi.fn(async () => null),
-        save: vi.fn(async (): Promise<WorldLayoutSaveResult> => ({ status: "saved" as const, revision: {} as any })),
+        save: vi.fn(
+          async (): Promise<WorldLayoutSaveResult> => ({
+            status: "saved" as const,
+            revision: {} as any,
+          }),
+        ),
       };
 
       const mockRuntime = {
@@ -365,7 +381,12 @@ describe("Authoritative Neighbourhood Wire Identity & Negotiation", () => {
 
       const store: WorldLayoutBootStore = {
         load: vi.fn(async () => null),
-        save: vi.fn(async (): Promise<WorldLayoutSaveResult> => ({ status: "saved" as const, revision: {} as any })),
+        save: vi.fn(
+          async (): Promise<WorldLayoutSaveResult> => ({
+            status: "saved" as const,
+            revision: {} as any,
+          }),
+        ),
       };
 
       const mockRuntime = {
@@ -423,7 +444,8 @@ describe("Authoritative Neighbourhood Wire Identity & Negotiation", () => {
     it("rejects stale/replaced revision hash (consumer negative)", () => {
       const doc = makeSyntheticDocument("seed-4242");
       const manifest = makeSyntheticV4Manifest(doc, {
-        layoutRevision: "0000000000000000000000000000000000000000000000000000000000000000",
+        layoutRevision:
+          "0000000000000000000000000000000000000000000000000000000000000000",
       });
 
       const result = validateAuthoritativeStarterManifest(manifest, doc);
@@ -507,7 +529,9 @@ describe("Authoritative Neighbourhood Wire Identity & Negotiation", () => {
     let runtime: ColonyRuntime;
     let baseDoc: WorldLayoutDocument;
 
-    function makeDoc(overrides: Partial<WorldLayoutDocument> = {}): WorldLayoutDocument {
+    function makeDoc(
+      overrides: Partial<WorldLayoutDocument> = {},
+    ): WorldLayoutDocument {
       return createWorldLayoutDocument({
         ...baseDoc,
         placements: [],

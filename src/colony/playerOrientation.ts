@@ -36,7 +36,10 @@ export function cameraYawToWorldRight(yaw: number): { x: number; z: number } {
   return { x: Math.cos(yaw), z: -Math.sin(yaw) };
 }
 
-export function headingToWorldDirection(heading: number): { x: number; z: number } {
+export function headingToWorldDirection(heading: number): {
+  x: number;
+  z: number;
+} {
   return { x: Math.cos(heading), z: Math.sin(heading) };
 }
 

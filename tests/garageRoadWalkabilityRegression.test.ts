@@ -17,7 +17,13 @@ describe("Garage Road Walkability & Exit Regression (Exact Hosted Park & Exit Co
     // 1. Grid geometry and origin equivalence
     const terrain = runtime.sim.state.terrain;
     expect(terrain.size).toBe(608);
-    const surfaceFrame = doc.frames.find((f: any) => f.id === "frame-surface" || f.id === "surface" || f.layer === "surface") ?? doc.frames[0];
+    const surfaceFrame =
+      doc.frames.find(
+        (f: any) =>
+          f.id === "frame-surface" ||
+          f.id === "surface" ||
+          f.layer === "surface",
+      ) ?? doc.frames[0];
     expect(surfaceFrame).toBeDefined();
     expect(surfaceFrame!.grid?.cellSize).toBe(4);
     expect(surfaceFrame!.grid?.width).toBe(608);
@@ -36,21 +42,29 @@ describe("Garage Road Walkability & Exit Regression (Exact Hosted Park & Exit Co
 
     // 3. Exact hosted failure coordinates: world x = -660.48, z = -156.00
     const HOSTED_WORLD_X = -660.48;
-    const HOSTED_WORLD_Z = -156.00;
+    const HOSTED_WORLD_Z = -156.0;
     const originCell = terrain.size / 2; // 304
     const cellX = HOSTED_WORLD_X / 4 + originCell; // 138.88
     const cellY = HOSTED_WORLD_Z / 4 + originCell; // 265.00
     expect(cellX).toBeCloseTo(138.88, 2);
-    expect(cellY).toBeCloseTo(265.00, 2);
+    expect(cellY).toBeCloseTo(265.0, 2);
 
     const roundedCellKey = `${Math.round(cellX)},${Math.round(cellY)}`; // "139,265"
     expect(runtime.sim.state.roadSet.has(roundedCellKey)).toBe(true);
 
     // 4. Proves the root-cause condition: cell is in garage apron throat, but NOT a cadastral garage surface
-    const inVicinity = isPointInGarageVicinity(Math.round(cellX), Math.round(cellY), garagePad!);
+    const inVicinity = isPointInGarageVicinity(
+      Math.round(cellX),
+      Math.round(cellY),
+      garagePad!,
+    );
     expect(inVicinity).toBe(true);
 
-    const inGarageSurface = (runtime as any).isGaragePadWalkable(Math.round(cellX), Math.round(cellY), garagePad!);
+    const inGarageSurface = (runtime as any).isGaragePadWalkable(
+      Math.round(cellX),
+      Math.round(cellY),
+      garagePad!,
+    );
     expect(inGarageSurface).toBe(false);
   });
 
@@ -58,16 +72,28 @@ describe("Garage Road Walkability & Exit Regression (Exact Hosted Park & Exit Co
     const runtime = new ColonyRuntime(4242);
     const size = runtime.sim.state.terrain.size;
     const cellX = -660.48 / 4 + size / 2;
-    const cellY = -156.00 / 4 + size / 2;
+    const cellY = -156.0 / 4 + size / 2;
     const rx = Math.round(cellX);
     const ry = Math.round(cellY);
 
     // 1. Verify candidate exit cells around parked vehicle are municipal roads
     const candidates = [
-      { x: Math.round(cellX - Math.sin(-Math.PI / 2)), y: Math.round(cellY + Math.cos(-Math.PI / 2)) }, // (140, 265)
-      { x: Math.round(cellX + Math.sin(-Math.PI / 2)), y: Math.round(cellY - Math.cos(-Math.PI / 2)) }, // (138, 265)
-      { x: Math.round(cellX - Math.cos(-Math.PI / 2)), y: Math.round(cellY - Math.sin(-Math.PI / 2)) }, // (139, 266)
-      { x: Math.round(cellX + Math.cos(-Math.PI / 2)), y: Math.round(cellY + Math.sin(-Math.PI / 2)) }, // (139, 264)
+      {
+        x: Math.round(cellX - Math.sin(-Math.PI / 2)),
+        y: Math.round(cellY + Math.cos(-Math.PI / 2)),
+      }, // (140, 265)
+      {
+        x: Math.round(cellX + Math.sin(-Math.PI / 2)),
+        y: Math.round(cellY - Math.cos(-Math.PI / 2)),
+      }, // (138, 265)
+      {
+        x: Math.round(cellX - Math.cos(-Math.PI / 2)),
+        y: Math.round(cellY - Math.sin(-Math.PI / 2)),
+      }, // (139, 266)
+      {
+        x: Math.round(cellX + Math.cos(-Math.PI / 2)),
+        y: Math.round(cellY + Math.sin(-Math.PI / 2)),
+      }, // (139, 264)
     ];
 
     for (const c of candidates) {
@@ -86,7 +112,10 @@ describe("Garage Road Walkability & Exit Regression (Exact Hosted Park & Exit Co
     };
     (runtime as any).ownedDriveSeated = true;
     (runtime as any).operatorUserId = "test-operator";
-    (runtime as any).authoritativeCar = { id: "karoo-vonk-11", name: "Karoo" } as any;
+    (runtime as any).authoritativeCar = {
+      id: "karoo-vonk-11",
+      name: "Karoo",
+    } as any;
 
     const exited = runtime.exitOwnedCar();
     expect(exited).toBe(true);
@@ -95,7 +124,10 @@ describe("Garage Road Walkability & Exit Regression (Exact Hosted Park & Exit Co
 
     // Verify exit distance from vehicle is within legitimate boarding range (< 16m)
     const exitCell = (runtime as any).fpCameraCell;
-    const distMetres = Math.hypot((exitCell.x - cellX) * 4, (exitCell.y - cellY) * 4);
+    const distMetres = Math.hypot(
+      (exitCell.x - cellX) * 4,
+      (exitCell.y - cellY) * 4,
+    );
     expect(distMetres).toBeLessThan(16);
   });
 
@@ -130,7 +162,8 @@ describe("Garage Road Walkability & Exit Regression (Exact Hosted Park & Exit Co
       const runtime = new ColonyRuntime(4242);
       const t = runtime.sim.state.terrain;
       // Find a dry land cell
-      let dryX = 130, dryY = 260;
+      let dryX = 130,
+        dryY = 260;
       for (let y = 130; y < 270; y++) {
         for (let x = 130; x < 270; x++) {
           if (!t.isWater(x, y) && !runtime.sim.state.roadSet.has(`${x},${y}`)) {
@@ -173,9 +206,26 @@ describe("Garage Road Walkability & Exit Regression (Exact Hosted Park & Exit Co
       // Cell (139, 267) is in garage vicinity but is NOT road and NOT in walkable surface
       const nonWalkableGarageCell = { x: 139, y: 267 };
       expect(runtime.sim.state.roadSet.has("139,267")).toBe(false);
-      expect(isPointInGarageVicinity(nonWalkableGarageCell.x, nonWalkableGarageCell.y, garagePad)).toBe(true);
-      expect((runtime as any).isGaragePadWalkable(nonWalkableGarageCell.x, nonWalkableGarageCell.y, garagePad)).toBe(false);
-      expect((runtime as any).blockedStepReason(nonWalkableGarageCell.x, nonWalkableGarageCell.y)).toBe("building");
+      expect(
+        isPointInGarageVicinity(
+          nonWalkableGarageCell.x,
+          nonWalkableGarageCell.y,
+          garagePad,
+        ),
+      ).toBe(true);
+      expect(
+        (runtime as any).isGaragePadWalkable(
+          nonWalkableGarageCell.x,
+          nonWalkableGarageCell.y,
+          garagePad,
+        ),
+      ).toBe(false);
+      expect(
+        (runtime as any).blockedStepReason(
+          nonWalkableGarageCell.x,
+          nonWalkableGarageCell.y,
+        ),
+      ).toBe("building");
     });
   });
 });
