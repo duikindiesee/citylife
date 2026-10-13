@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-13T07:52:47.953Z",
+  "updatedAt": "2026-10-13T07:53:02.758Z",
   "runs": [
     {
       "runId": 38365385572,
@@ -38,6 +38,45 @@
           "startedAt": "2026-10-13T07:51:41Z",
           "completedAt": "2026-10-13T07:51:48Z",
           "durationSeconds": 7
+        }
+      ]
+    },
+    {
+      "runId": 38365385442,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38365385442",
+      "event": "pull_request",
+      "branch": "candidate/road-integration-candidate",
+      "sha": "57f34d647515c227c36a04fd73bcdfeddcb51bc9",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/57f34d647515c227c36a04fd73bcdfeddcb51bc9",
+      "pullRequestNumbers": "#564",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/564",
+      "pullRequests": [
+        {
+          "number": 564,
+          "url": "https://github.com/duikindiesee/citylife/pull/564"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-13T07:51:37Z",
+      "completedAt": "2026-10-13T07:52:50Z",
+      "durationSeconds": 73,
+      "runnerSummary": "GitHub Actions 1000011067",
+      "jobs": [
+        {
+          "id": 115189147047,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000011067",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-13T07:51:41Z",
+          "completedAt": "2026-10-13T07:52:49Z",
+          "durationSeconds": 68
         }
       ]
     },
@@ -10382,45 +10421,6 @@
           "startedAt": "2026-09-30T15:33:52Z",
           "completedAt": "2026-09-30T15:33:59Z",
           "durationSeconds": 7
-        }
-      ]
-    },
-    {
-      "runId": 36737681087,
-      "workflowName": "Build CityLife Debug APK",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36737681087",
-      "event": "pull_request",
-      "branch": "antigravity/1907c3ce-a1d0-4134-8c15-7c436d33550d-raceable-roads",
-      "sha": "d606dd5a77a1741343dcb235adf1d4d7999b9dcc",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/d606dd5a77a1741343dcb235adf1d4d7999b9dcc",
-      "pullRequestNumbers": "#549",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/549",
-      "pullRequests": [
-        {
-          "number": 549,
-          "url": "https://github.com/duikindiesee/citylife/pull/549"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-09-30T15:33:48Z",
-      "completedAt": "2026-09-30T15:35:13Z",
-      "durationSeconds": 85,
-      "runnerSummary": "GitHub Actions 1000010527",
-      "jobs": [
-        {
-          "id": 109963575234,
-          "name": "build",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010527",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-09-30T15:33:52Z",
-          "completedAt": "2026-09-30T15:35:13Z",
-          "durationSeconds": 81
         }
       ]
     }
