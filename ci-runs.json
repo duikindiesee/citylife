@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-13T21:16:19.446Z",
+  "updatedAt": "2026-10-13T22:15:49.359Z",
   "runs": [
     {
       "runId": 38469136644,
@@ -77,6 +77,85 @@
           "startedAt": "2026-10-13T21:15:00Z",
           "completedAt": "2026-10-13T21:16:07Z",
           "durationSeconds": 67
+        }
+      ]
+    },
+    {
+      "runId": 38469136573,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38469136573",
+      "event": "pull_request",
+      "branch": "candidate/road-integration-candidate",
+      "sha": "5714d05f8c13880598147bac1b69b0d7d9b00774",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/5714d05f8c13880598147bac1b69b0d7d9b00774",
+      "pullRequestNumbers": "#564",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/564",
+      "pullRequests": [
+        {
+          "number": 564,
+          "url": "https://github.com/duikindiesee/citylife/pull/564"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-13T21:14:56Z",
+      "completedAt": "2026-10-13T22:15:36Z",
+      "durationSeconds": 3640,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 115543357857,
+          "name": "unit-and-build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-13T21:15:00Z",
+          "completedAt": "2026-10-13T21:37:43Z",
+          "durationSeconds": 1363
+        },
+        {
+          "id": 115543358219,
+          "name": "e2e-browser",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-13T21:37:46Z",
+          "completedAt": "2026-10-13T22:15:24Z",
+          "durationSeconds": 2258
+        },
+        {
+          "id": 115568461658,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-13T22:15:28Z",
+          "completedAt": "2026-10-13T22:15:36Z",
+          "durationSeconds": 8
         }
       ]
     },
@@ -10324,99 +10403,6 @@
           "startedAt": "2026-09-30T18:56:13Z",
           "completedAt": "2026-09-30T19:17:43Z",
           "durationSeconds": 1290
-        }
-      ]
-    },
-    {
-      "runId": 36753078567,
-      "workflowName": "Docker",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36753078567",
-      "event": "push",
-      "branch": "main",
-      "sha": "ad1f8dcef8ae2a137becd5f2b1567effcaad7637",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/ad1f8dcef8ae2a137becd5f2b1567effcaad7637",
-      "pullRequestNumbers": "#549",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/549",
-      "pullRequests": [
-        {
-          "number": 549,
-          "url": "https://github.com/duikindiesee/citylife/pull/549"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-09-30T19:29:16Z",
-      "completedAt": "2026-09-30T19:38:37Z",
-      "durationSeconds": 561,
-      "runnerSummary": "kooker1-org-docker-1, GitHub Actions 1000010557, kooker1-org-docker-2",
-      "jobs": [
-        {
-          "id": 110060241401,
-          "name": "version-bump / bump",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-org-docker-1",
-          "runnerGroup": "trusted-kooker1",
-          "runnerLabels": [
-            "self-hosted",
-            "Linux",
-            "X64",
-            "kooker1-org",
-            "docker"
-          ],
-          "startedAt": "2026-09-30T19:29:22Z",
-          "completedAt": "2026-09-30T19:30:09Z",
-          "durationSeconds": 47
-        },
-        {
-          "id": 110060575382,
-          "name": "build-and-push",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010557",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-09-30T19:30:13Z",
-          "completedAt": "2026-09-30T19:37:47Z",
-          "durationSeconds": 454
-        },
-        {
-          "id": 110063546446,
-          "name": "retention / prune-ghcr",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-org-docker-1",
-          "runnerGroup": "trusted-kooker1",
-          "runnerLabels": [
-            "self-hosted",
-            "Linux",
-            "X64",
-            "kooker1-org",
-            "docker"
-          ],
-          "startedAt": "2026-09-30T19:37:51Z",
-          "completedAt": "2026-09-30T19:38:01Z",
-          "durationSeconds": 10
-        },
-        {
-          "id": 110063546485,
-          "name": "deploy / sync",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-org-docker-2",
-          "runnerGroup": "trusted-kooker1",
-          "runnerLabels": [
-            "self-hosted",
-            "Linux",
-            "X64",
-            "kooker1-org",
-            "docker"
-          ],
-          "startedAt": "2026-09-30T19:37:51Z",
-          "completedAt": "2026-09-30T19:38:36Z",
-          "durationSeconds": 45
         }
       ]
     }
