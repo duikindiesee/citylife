@@ -64,6 +64,8 @@ export interface MultiplayerClientOptions {
   worldId?: string;
   layoutRevision?: string;
   neighbourhoodKey?: string;
+  explicitNeighbourhood?: boolean;
+  getValidNeighbourhoods?: (worldId?: string, layoutRevision?: string) => string[];
   roomCode?: string;
   autoCreate?: boolean;
   protocolVersion?: number;
@@ -324,6 +326,7 @@ export class MultiplayerClient {
   private reconnectTimer: any = null;
   private connectionGeneration = 0;
   private pendingConnectPromise: Promise<void> | null = null;
+  private hasNegotiatedNeighbourhood = false;
 
   constructor(options: MultiplayerClientOptions) {
     this.options = options;
@@ -393,6 +396,7 @@ export class MultiplayerClient {
       (account.token !== undefined && account.token !== this.options.token);
     if (!changed) return;
     this.disconnect();
+    this.hasNegotiatedNeighbourhood = false;
     this.options = { ...this.options, ...account };
     this.parkedCar = undefined;
     this.modeEpoch = 0;
@@ -1046,6 +1050,51 @@ export class MultiplayerClient {
 
       case "error": {
         console.error("[Multiplayer] Server error:", msg.error, msg.message);
+        if (
+          msg.error === "NEIGHBOURHOOD_MISMATCH" &&
+          !this.options.explicitNeighbourhood &&
+          !this.hasNegotiatedNeighbourhood &&
+          !this.closedExplicitly
+        ) {
+          const match =
+            typeof msg.message === "string"
+              ? msg.message.match(/^Session belongs to neighbourhood ([a-zA-Z0-9_\-]+)$/)
+              : null;
+          const advertisedKey =
+            (typeof msg.neighbourhoodKey === "string" && msg.neighbourhoodKey.trim().length > 0
+              ? msg.neighbourhoodKey.trim()
+              : null) ?? (match ? match[1].trim() : null);
+
+          const validNeighbourhoods = this.options.getValidNeighbourhoods
+            ? this.options.getValidNeighbourhoods(this.options.worldId, this.options.layoutRevision)
+            : [];
+
+          if (advertisedKey && validNeighbourhoods.includes(advertisedKey)) {
+            this.hasNegotiatedNeighbourhood = true;
+            this.options.neighbourhoodKey = advertisedKey;
+            if (this.reconnectTimer) {
+              clearTimeout(this.reconnectTimer);
+              this.reconnectTimer = null;
+            }
+            this.stopHeartbeat();
+            if (this.ws) {
+              const oldWs = this.ws;
+              this.ws = null;
+              oldWs.onopen = null;
+              oldWs.onmessage = null;
+              oldWs.onerror = null;
+              oldWs.onclose = null;
+              try {
+                oldWs.close(1000, "Negotiating neighbourhood");
+              } catch {}
+            }
+            this.reconnectAttempts = 0;
+            this.pendingConnectPromise = null;
+            void this.connect();
+            return;
+          }
+        }
+
         if (this.options.onError) {
           this.options.onError({ code: msg.error, message: msg.message });
         }
@@ -1336,6 +1385,7 @@ export class MultiplayerClient {
     this.modeEpoch = 0;
     this.currentMode = "driving";
     this.parkedCar = undefined;
+    this.hasNegotiatedNeighbourhood = false;
     this.setStatus("disconnected");
   }
 }

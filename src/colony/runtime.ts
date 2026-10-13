@@ -175,6 +175,11 @@ import {
   solsSinceEpoch,
 } from "./sol";
 import { MultiplayerClient, type RemoteRacer } from "./multiplayer/multiplayerClient";
+import {
+  extractAuthoritativeNeighbourhoodKeys,
+  validateAuthoritativeStarterManifest,
+  type RemoteStarterCatalogueManifest,
+} from "./worldLayoutBoot";
 import type { AuthClient } from "./authClient";
 import { setSolDebugOffsetMs, solNowMs } from "./solRuntimeClock";
 import {
@@ -1034,6 +1039,8 @@ export class ColonyRuntime {
   private multiplayerInputSeq = 0;
   private lastMultiplayerInputSentAt = 0;
   private authClient: AuthClient | null = null;
+  private starterCatalogueManifest: RemoteStarterCatalogueManifest | null = null;
+  private authoritativeNeighbourhoodKeys: string[] = [];
   // Player data isolation: false = the privileged operator/admin view (sees every citizen + wallet,
   // the default). true = a CITYLIFE_PLAYER view — the HUD then shows only the player's own data plus
   // other citizens' public presence (stubs), never their private wallet/usage. Set by the player login
@@ -2527,6 +2534,8 @@ export class ColonyRuntime {
   setOperatorUserId(userId: string | null): void {
     const nextUserId = userId && userId.trim() ? userId.trim() : null;
     if (nextUserId !== this.operatorUserId) {
+      this.starterCatalogueManifest = null;
+      this.authoritativeNeighbourhoodKeys = [];
       this.ownedDriveInputGeneration++;
       this.authoritativeCar = null;
       this.ownedDrivePose = null;
@@ -3347,14 +3356,102 @@ export class ColonyRuntime {
   private activeMultiplayerLayoutRevision?: string;
   private activeMultiplayerRoomCode?: string;
 
-  enableMultiplayer(roomCode = "racing-cup", wsUrl?: string): void {
+  setStarterCatalogueManifest(manifest: RemoteStarterCatalogueManifest | null): void {
+    if (!manifest) {
+      this.starterCatalogueManifest = null;
+      this.authoritativeNeighbourhoodKeys = [];
+      return;
+    }
+    this.starterCatalogueManifest = manifest;
+    this.authoritativeNeighbourhoodKeys = this.getAuthoritativeNeighbourhoods();
+  }
+
+  getStarterCatalogueManifest(): RemoteStarterCatalogueManifest | null {
+    return this.starterCatalogueManifest;
+  }
+
+  getAuthoritativeNeighbourhoods(
+    expectedWorldId?: string,
+    expectedLayoutRevision?: string,
+  ): string[] {
+    const active =
+      typeof this.worldLayoutDocument === "function"
+        ? this.worldLayoutDocument()
+        : this.activeWorldLayout;
+    if (!active || !this.starterCatalogueManifest) {
+      return [];
+    }
+    if (expectedWorldId !== undefined && active.worldId !== expectedWorldId) {
+      return [];
+    }
+    if (expectedLayoutRevision !== undefined) {
+      const activeWireRev = `wl:v1:${active.revision.number}:${active.revision.contentHash}`;
+      if (
+        expectedLayoutRevision !== active.revision.contentHash &&
+        expectedLayoutRevision !== activeWireRev
+      ) {
+        return [];
+      }
+    }
+    const validation = validateAuthoritativeStarterManifest(
+      this.starterCatalogueManifest,
+      active,
+    );
+    if (!validation.valid) {
+      return [];
+    }
+    return validation.keys;
+  }
+
+  resolveAuthoritativeNeighbourhood(
+    requestedHood?: string,
+  ): { neighbourhoodKey: string; isExplicit: boolean } | null {
+    const keys = this.getAuthoritativeNeighbourhoods();
+    if (keys.length === 0) {
+      return null;
+    }
+    if (typeof requestedHood === "string" && requestedHood.trim().length > 0) {
+      const trimmed = requestedHood.trim();
+      if (keys.includes(trimmed)) {
+        return { neighbourhoodKey: trimmed, isExplicit: true };
+      }
+      return null;
+    }
+    return { neighbourhoodKey: keys[0], isExplicit: false };
+  }
+
+  enableMultiplayer(roomCode = "racing-cup", wsUrl?: string, requestedHood?: string): void {
     const doc = typeof this.worldLayoutDocument === "function" ? this.worldLayoutDocument() : null;
     const worldId = doc?.worldId ?? this.activeWorldLayout?.worldId ?? (this.sim?.state?.seed ? String(this.sim.state.seed) : undefined);
     const revisionObj = doc?.revision ?? this.activeWorldLayout?.revision;
     const layoutRevision = revisionObj
       ? `wl:v1:${revisionObj.number}:${revisionObj.contentHash}`
       : undefined;
-    const neighbourhoodKey = "citylife-central";
+
+    const resolvedHood = this.resolveAuthoritativeNeighbourhood(requestedHood);
+    if (!resolvedHood) {
+      console.warn(
+        `[Multiplayer] Cannot enable multiplayer: no valid authoritative neighbourhood available for world ${worldId} (requested: ${requestedHood})`,
+      );
+      if (this.multiplayerClient) {
+        this.multiplayerClient.disconnect();
+      }
+      this.multiplayerClient = new MultiplayerClient({
+        url: wsUrl,
+        userId: this.operatorUserId || "anonymous",
+        username: this.operatorName || (this.operatorUserId ? this.operatorUserId.split("@")[0] : "anonymous"),
+        roomCode,
+        worldId,
+        layoutRevision,
+        neighbourhoodKey: requestedHood || "unknown",
+        onStatusChange: () => this.emit(),
+      });
+      (this.multiplayerClient as any).setStatus("error");
+      this.emit();
+      return;
+    }
+    const neighbourhoodKey = resolvedHood.neighbourhoodKey;
+    const explicitNeighbourhood = resolvedHood.isExplicit;
 
     if (
       this.multiplayerClient &&
@@ -3366,7 +3463,11 @@ export class ColonyRuntime {
       const sameRoom = currentRoom === roomCode;
       const sameWorld = activeSession.worldId === worldId;
       const sameRevision = (this as any).activeMultiplayerLayoutRevision === layoutRevision;
-      const sameHood = activeSession.neighbourhoodKey === neighbourhoodKey;
+      const sameHood =
+        activeSession.neighbourhoodKey === neighbourhoodKey ||
+        (!explicitNeighbourhood &&
+          activeSession.neighbourhoodKey !== null &&
+          this.getAuthoritativeNeighbourhoods().includes(activeSession.neighbourhoodKey));
 
       if (sameRoom && sameWorld && sameRevision && sameHood) {
         return;
@@ -3420,6 +3521,9 @@ export class ColonyRuntime {
       worldId,
       layoutRevision,
       neighbourhoodKey,
+      explicitNeighbourhood,
+      getValidNeighbourhoods: (reqWorldId?: string, reqLayoutRev?: string) =>
+        this.getAuthoritativeNeighbourhoods(reqWorldId, reqLayoutRev),
       autoCreate: true,
       x: initialWorld?.x,
       y: initialWorld?.y,
@@ -5850,6 +5954,12 @@ export class ColonyRuntime {
     this.sim.state.terrain.buildable.set(terrainAuthority.buildability);
     this.sim.state.terrain.distToWater.set(terrainAuthority.distanceToWater);
     this.activeWorldLayout = canonical;
+    if (
+      this.starterCatalogueManifest &&
+      this.starterCatalogueManifest.layoutRevision !== canonical.revision.contentHash
+    ) {
+      this.setStarterCatalogueManifest(null);
+    }
     this.layoutFrames = candidate.frames;
     this.layoutPrimarySurfaceFrameId = seedRegistry.surfaceFrameId;
     this.layoutPortals = candidate.portals;
@@ -6043,6 +6153,12 @@ export class ColonyRuntime {
     // One metadata-only publish boundary. Candidate arrays are already isolated copies produced by
     // the adapter; no simulation, Zustand or renderer-owned value is touched here.
     this.activeWorldLayout = canonical;
+    if (
+      this.starterCatalogueManifest &&
+      this.starterCatalogueManifest.layoutRevision !== canonical.revision.contentHash
+    ) {
+      this.setStarterCatalogueManifest(null);
+    }
     this.layoutFrames = candidate.frames;
     this.layoutPortals = candidate.portals;
     this.layoutTerrainEdits = candidate.terrainEdits;

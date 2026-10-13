@@ -789,6 +789,12 @@ export function ColonyApp() {
             },
             exportCanonicalTransitAuthority: (document) =>
               runtime.exportCanonicalTransitAuthority(document),
+            setStarterCatalogueManifest: (manifest) => {
+              if (generation !== bootGenerationRef.current) {
+                return;
+              }
+              runtime.setStarterCatalogueManifest(manifest);
+            },
           },
         }),
         error: null,
@@ -1091,11 +1097,12 @@ export function ColonyApp() {
     const explicitMp = explicitRoom !== null || query?.get("multiplayer") === "1";
     const room = explicitRoom || (explicitMp ? "racing-cup" : null);
     const wsUrl = query?.get("ws") || (typeof window !== "undefined" ? (window as any).__customMultiplayerWsUrl : undefined);
+    const explicitHood = query?.get("neighbourhood") || query?.get("hood") || undefined;
 
     const shouldConnect = isReady && hasAuth && Boolean(room);
 
     if (shouldConnect && room) {
-      runtime.enableMultiplayer(room, wsUrl || undefined);
+      runtime.enableMultiplayer(room, wsUrl || undefined, explicitHood || undefined);
     } else {
       runtime.disableMultiplayer();
     }
@@ -2181,8 +2188,8 @@ export function ColonyApp() {
             matters most. First person is covered instead by FirstPersonPanel's edge-HUD grid,
             which is that view's real layout owner. */}
         {!ui.firstPerson.active && <BuildStamp runtime={runtime} />}
-        <MultiplayerStatusHUD runtime={runtime} />
       </div>
+      <MultiplayerStatusHUD runtime={runtime} />
       {/* Keep only the transient controls for a drive session already in progress. The legacy
           Road Rally / Join Race entry points and rally branding stay retired; this shell exists
           until the shared-road driving session replaces the old race runtime. */}

@@ -31,6 +31,7 @@ export interface WorldLayoutBootRuntime {
   captureWorldLayout(): WorldLayoutDocument | Promise<WorldLayoutDocument>;
   hydrateWorldLayout(document: WorldLayoutDocument): unknown | Promise<unknown>;
   exportCanonicalTransitAuthority?(document?: WorldLayoutDocument): CanonicalTransitAuthority | null;
+  setStarterCatalogueManifest?(manifest: RemoteStarterCatalogueManifest | null): void;
 }
 
 export interface RemoteStarterCatalogueManifest {
@@ -40,7 +41,183 @@ export interface RemoteStarterCatalogueManifest {
   transit?: CanonicalTransitAuthority | null;
   walkability?: unknown;
   physicalColliders?: unknown;
+  plots?: any[];
   [key: string]: any;
+}
+
+/**
+ * Strict fail-closed extraction of known authoritative neighbourhood keys from a published
+ * starter catalogue manifest, following User #243 / Server 421 worldAuthorityClient semantics.
+ * Returns deterministically sorted array of unique neighbourhood keys.
+ */
+export function extractAuthoritativeNeighbourhoodKeys(
+  manifest: RemoteStarterCatalogueManifest | null | undefined,
+): string[] {
+  if (!manifest || typeof manifest !== "object") return [];
+  const keys = new Set<string>();
+  if (Array.isArray(manifest.plots)) {
+    for (const plot of manifest.plots) {
+      const key =
+        (typeof plot?.geometry?.neighbourhoodKey === "string"
+          ? plot.geometry.neighbourhoodKey
+          : null) ??
+        (typeof plot?.neighbourhoodKey === "string"
+          ? plot.neighbourhoodKey
+          : null);
+      if (typeof key === "string" && key.trim().length > 0) {
+        keys.add(key.trim());
+      }
+    }
+  }
+  return Array.from(keys).sort();
+}
+
+export interface AuthoritativeManifestValidationResult {
+  valid: boolean;
+  keys: string[];
+  error?: string;
+  reason?: string;
+}
+
+/**
+ * Validates the wire identity binding of a RemoteStarterCatalogueManifest against an
+ * active WorldLayoutDocument.
+ *
+ * Rules:
+ * - Manifest must be a non-null object.
+ * - Active layout must be a non-null object.
+ * - Wire worldId must match: manifest.worldId === activeLayout.worldId and manifest.layout.worldId === activeLayout.worldId.
+ * - Wire layoutRevision must match activeLayout.revision.contentHash.
+ * - Full wire layout revision object (number, contentHash, parentHash) must match activeLayout.revision.
+ * - Plots must define at least one valid, non-empty neighbourhood key (Server 421 fail-closed rule).
+ */
+export function validateAuthoritativeStarterManifest(
+  manifest: RemoteStarterCatalogueManifest | null | undefined,
+  activeLayout: WorldLayoutDocument | null | undefined,
+): AuthoritativeManifestValidationResult {
+  if (!manifest || typeof manifest !== "object") {
+    return {
+      valid: false,
+      keys: [],
+      error: "MISSING_MANIFEST",
+      reason: "Starter catalogue manifest is absent or not an object",
+    };
+  }
+  if (!activeLayout || typeof activeLayout !== "object" || !activeLayout.revision) {
+    return {
+      valid: false,
+      keys: [],
+      error: "NO_ACTIVE_LAYOUT",
+      reason: "Active world layout document is absent or uncommitted",
+    };
+  }
+  if (
+    typeof manifest.worldId !== "string" ||
+    manifest.worldId.trim().length === 0 ||
+    manifest.worldId !== activeLayout.worldId
+  ) {
+    return {
+      valid: false,
+      keys: [],
+      error: "WORLD_ID_MISMATCH",
+      reason: `Manifest worldId (${manifest.worldId}) does not match active layout worldId (${activeLayout.worldId})`,
+    };
+  }
+  if (!manifest.layout || typeof manifest.layout !== "object") {
+    return {
+      valid: false,
+      keys: [],
+      error: "MISSING_MANIFEST_LAYOUT",
+      reason: "Manifest layout document is missing",
+    };
+  }
+  const innerLayoutId =
+    typeof (manifest.layout as any).worldId === "string"
+      ? (manifest.layout as any).worldId
+      : typeof (manifest.layout as any).layoutId === "string"
+        ? (manifest.layout as any).layoutId
+        : null;
+  if (innerLayoutId !== null && innerLayoutId !== activeLayout.worldId) {
+    return {
+      valid: false,
+      keys: [],
+      error: "WORLD_ID_MISMATCH",
+      reason: `Manifest inner layout id (${innerLayoutId}) does not match active layout worldId (${activeLayout.worldId})`,
+    };
+  }
+  if (
+    typeof manifest.layoutRevision !== "string" ||
+    manifest.layoutRevision !== activeLayout.revision.contentHash
+  ) {
+    return {
+      valid: false,
+      keys: [],
+      error: "REVISION_HASH_MISMATCH",
+      reason: `Manifest layoutRevision (${manifest.layoutRevision}) does not match active contentHash (${activeLayout.revision.contentHash})`,
+    };
+  }
+  if (
+    typeof manifest.sourceLayoutRevision === "string" &&
+    manifest.sourceLayoutRevision !== activeLayout.revision.parentHash
+  ) {
+    return {
+      valid: false,
+      keys: [],
+      error: "PARENT_REVISION_HASH_MISMATCH",
+      reason: `Manifest sourceLayoutRevision (${manifest.sourceLayoutRevision}) does not match active parentHash (${activeLayout.revision.parentHash})`,
+    };
+  }
+  const rev = manifest.layout.revision;
+  if (!rev || typeof rev !== "object") {
+    return {
+      valid: false,
+      keys: [],
+      error: "MISSING_MANIFEST_REVISION",
+      reason: "Manifest inner layout is missing revision object",
+    };
+  }
+  if (
+    typeof rev.number !== "number" ||
+    !Number.isSafeInteger(rev.number) ||
+    typeof rev.contentHash !== "string" ||
+    (typeof rev.parentHash !== "string" && rev.parentHash !== null)
+  ) {
+    return {
+      valid: false,
+      keys: [],
+      error: "MALFORMED_MANIFEST_REVISION",
+      reason:
+        "Manifest revision object fields are missing or non-string/non-number",
+    };
+  }
+  if (
+    rev.number !== activeLayout.revision.number ||
+    rev.contentHash !== activeLayout.revision.contentHash ||
+    rev.parentHash !== activeLayout.revision.parentHash
+  ) {
+    const parentSlice = activeLayout.revision.parentHash
+      ? activeLayout.revision.parentHash.slice(0, 8)
+      : "null";
+    const revParentSlice = rev.parentHash ? rev.parentHash.slice(0, 8) : "null";
+    return {
+      valid: false,
+      keys: [],
+      error: "REVISION_WIRE_IDENTITY_MISMATCH",
+      reason: `Manifest revision (${rev.number}:${rev.contentHash.slice(0, 8)}:p${revParentSlice}) does not match active layout revision (${activeLayout.revision.number}:${activeLayout.revision.contentHash.slice(0, 8)}:p${parentSlice})`,
+    };
+  }
+
+  const keys = extractAuthoritativeNeighbourhoodKeys(manifest);
+  if (keys.length === 0) {
+    return {
+      valid: false,
+      keys: [],
+      error: "NO_NEIGHBOURHOOD_KEYS",
+      reason: "Manifest plots define no valid neighbourhoodKey",
+    };
+  }
+
+  return { valid: true, keys };
 }
 
 export interface RemoteWorldLayoutLoader {
@@ -305,6 +482,7 @@ export class WorldLayoutBootCoordinator {
     this.attempt = undefined;
     this.attemptSettled = true;
     if (typeof this.runtime === "object" && this.runtime !== null) {
+      this.runtime.setStarterCatalogueManifest?.(null);
       this.generation = nextBootGeneration++;
       runtimeOwnerRegistry.set(this.runtime, {
         activeCoordinator: this,
@@ -436,7 +614,13 @@ export class WorldLayoutBootCoordinator {
               `Remote starter catalogue for world ${this.worldId} conflicted with concurrent stored layout revision ${saveResult.actualLayoutRevision}`,
             );
           }
-          await this.runtime.hydrateWorldLayout(document);
+          this.runtime.setStarterCatalogueManifest?.(manifest);
+          try {
+            await this.runtime.hydrateWorldLayout(document);
+          } catch (hydrateError: unknown) {
+            this.runtime.setStarterCatalogueManifest?.(null);
+            throw hydrateError;
+          }
 
           return {
             ready: true,
@@ -470,7 +654,10 @@ export class WorldLayoutBootCoordinator {
     }
 
     const head = await this.store.load(this.worldId);
-    if (head !== null) return this.hydrate(head, "stored");
+    if (head !== null) {
+      this.runtime.setStarterCatalogueManifest?.(null);
+      return this.hydrate(head, "stored");
+    }
 
     const captured = parseWorldLayoutDocument(
       JSON.stringify(await this.runtime.captureWorldLayout()),

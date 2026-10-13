@@ -68,8 +68,23 @@ Mounted inside `R3FPlanetRenderer.tsx` right after `R3FOperatorCar`:
 
 Mounted in `ColonyApp.tsx`:
 - Positioned in the top-right corner (`data-testid="multiplayer-hud"`).
-- Displays live connection status (emerald indicator when connected, amber when connecting).
+- Displays live connection status (emerald indicator when connected, amber when connecting, ruby indicator when error).
 - Lists active room code and all connected peers.
+- When in `"error"` status, displays visible actionable failure diagnosis ("Connection Failed: Admission rejected or authoritative neighbourhood unavailable").
+
+### 6. Authoritative Room Neighbourhood Derivation & Negotiation Protocol
+
+Under Server 421 / User #243 authority, rooms bind strictly to published Starter Parcel Manifest neighbourhood keys (`plots[].geometry.neighbourhoodKey` or `plots[].neighbourhoodKey`):
+1. **Wire Identity Binding**: `validateAuthoritativeStarterManifest` verifies that the published starter catalogue manifest matches the active world document (`manifest.worldId === active.worldId`, `manifest.layoutRevision === active.revision.contentHash`, and `manifest.layout.revision` wire identity `number`, `contentHash`, `parentHash`). No neighbourhood authority becomes usable while hydration is pending, failed, or superseded.
+2. **Canonical Primary Default**: For users with no home or joining a new room without explicit neighbourhood intent, the client deterministically selects the canonical primary default (`validNeighbourhoodKeys[0]`, sorted alphabetically, e.g. `"wood1"` for `seed-4242`).
+3. **Explicit Intent Preservation**: If a user explicitly specifies a neighbourhood (via URL query `?neighbourhood=` or programmatic request), `isExplicit` is flagged as `true`. If the requested key is not in the published catalogue, connection fails closed immediately (`status: "error"`).
+4. **Bounded Single Room Negotiation**:
+   - If an unpinned client (`!explicitNeighbourhood`) joins an existing room hosted in another valid published neighbourhood of the same world (e.g. `"wood2"`), Server 421 responds with `{ type: "error", error: "NEIGHBOURHOOD_MISMATCH", message: "Session belongs to neighbourhood wood2" }`.
+   - The client parses the exact message pattern `/^Session belongs to neighbourhood ([a-zA-Z0-9_\-]+)$/`, verifies that the advertised key is present in the published catalogue for the captured request world and revision, sets `hasNegotiatedNeighbourhood = true`, cleanly closes the socket, and reconnects once with the negotiated key.
+   - Negotiation is strictly bounded to **once per admission attempt**. If the server repeats the mismatch or advertises an unknown/malformed key, the client fails closed into `"error"` state to prevent infinite loops.
+   - If the user had an explicit neighbourhood intent (e.g. explicit `wood2` vs room `wood1`), auto-negotiation does not trigger; the mismatch fails closed.
+5. **Visible Actionable Failed State**: On admission rejection or missing neighbourhood authority, `MultiplayerStatusHUD` renders a red indicator and an actionable message ("Connection Failed: Admission rejected or authoritative neighbourhood unavailable"), preventing false connected or hidden HUD states.
+6. **Lifecycle Invalidation**: Cached manifest and neighbourhood authority are cleared upon user logout (`setOperatorUserId(null)`), account switch, or world revision replacement (`adoptWorldLayout` / `hydrateWorldLayout`).
 
 ## Data & Rules
 
@@ -82,6 +97,7 @@ Mounted in `ColonyApp.tsx`:
 ## Verification & Acceptance
 
 - `tests/multiplayerClient.test.ts`: Unit test suite testing connection lifecycle, custom room codes, auto-create, and pose multicasting.
+- `tests/multiplayerNeighbourhoodNegotiation.test.ts`: Strict unit and regression suite testing V4 wire identity binding, canonical primary default derivation, explicit selection preservation, bounded single-reconnect room negotiation, repeated mismatch fail-closed controls, and superseded revision isolation.
 - `e2e/multiplayerRacing.spec.ts`: Automated multi-context Playwright test:
   - Spawns two independent browser sessions for `jamtin` and `jamtin2`.
   - Both join room `racing-cup`.
