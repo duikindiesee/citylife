@@ -256,4 +256,71 @@ describe("always-visible bus network minimap model", () => {
     const parkedPose = runtime.getParkedCarPose()!;
     expect(sigMoved).toContain(`:${parkedPose.x.toFixed(2)}:${parkedPose.y.toFixed(2)}`);
   });
+
+  it("updates computeBusNetworkMiniMapSignal when peer carZ changes while cell and carX stay stationary", () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setOperatorUserId("user-1");
+    if (!runtime.sim.state.remoteRacers) {
+      runtime.sim.state.remoteRacers = new Map();
+    }
+    const peer: any = {
+      participantId: "peer-1",
+      userId: "user-peer-1",
+      username: "Peer Walker",
+      cell: { x: 70, y: 70 },
+      isPedestrian: true,
+      carX: 8,
+      carY: 0,
+      carZ: 12,
+      carHeading: 0,
+    };
+    runtime.sim.state.remoteRacers.set("peer-1", peer);
+
+    const sigInitial = computeBusNetworkMiniMapSignal(runtime);
+    expect(sigInitial).toContain("peer-1:70.00:70.00:ped:parked:8.00:12.00");
+
+    // Stable signature when nothing changes
+    expect(computeBusNetworkMiniMapSignal(runtime)).toBe(sigInitial);
+
+    // Update carZ only while peer cell and carX stay strictly identical
+    peer.carZ = 16;
+    const sigZMoved = computeBusNetworkMiniMapSignal(runtime);
+    expect(sigZMoved).not.toBe(sigInitial);
+    expect(sigZMoved).toContain("peer-1:70.00:70.00:ped:parked:8.00:16.00");
+  });
+
+  it("updates computeBusNetworkMiniMapSignal and removes parked marker when peer transitions from walking to driving with retained parked coordinates", () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setOperatorUserId("user-1");
+    if (!runtime.sim.state.remoteRacers) {
+      runtime.sim.state.remoteRacers = new Map();
+    }
+    const peer: any = {
+      participantId: "peer-1",
+      userId: "user-peer-1",
+      username: "Peer Walker",
+      cell: { x: 70, y: 70 },
+      isPedestrian: true,
+      carX: 8,
+      carY: 0,
+      carZ: 12,
+      carHeading: 0,
+    };
+    runtime.sim.state.remoteRacers.set("peer-1", peer);
+
+    const sigInitial = computeBusNetworkMiniMapSignal(runtime);
+    expect(sigInitial).toContain("peer-1:70.00:70.00:ped:parked:8.00:12.00");
+
+    // Mode-only transition to driving (isPedestrian = false) while retaining carX and carZ
+    peer.isPedestrian = false;
+    const sigDriving = computeBusNetworkMiniMapSignal(runtime);
+    expect(sigDriving).not.toBe(sigInitial);
+    expect(sigDriving).toContain("peer-1:70.00:70.00:veh:none");
+    expect(sigDriving).not.toContain("parked:");
+
+    // Mode transition back to pedestrian restores parked marker signal
+    peer.isPedestrian = true;
+    const sigRestored = computeBusNetworkMiniMapSignal(runtime);
+    expect(sigRestored).toBe(sigInitial);
+  });
 });

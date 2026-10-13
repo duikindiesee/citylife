@@ -26,10 +26,14 @@ export function computeBusNetworkMiniMapSignal(runtime: ColonyRuntime): string {
     : `foot:${walk ? `${walk.x.toFixed(2)}:${walk.y.toFixed(2)}` : "none"}:${parked ? `${parked.x.toFixed(2)}:${parked.y.toFixed(2)}` : "none"}`;
   const peers = Array.from(runtime.sim.state.remoteRacers?.values() ?? []);
   const peerPart = peers
-    .map(
-      (p) =>
-        `${p.participantId}:${p.cell.x.toFixed(2)}:${p.cell.y.toFixed(2)}:${p.carX !== undefined ? `parked:${p.carX.toFixed(2)}` : "none"}`,
-    )
+    .map((p) => {
+      const isPed = Boolean(p.isPedestrian);
+      const parked =
+        isPed && p.carX !== undefined && p.carZ !== undefined && Number.isFinite(p.carX) && Number.isFinite(p.carZ)
+          ? `parked:${p.carX.toFixed(2)}:${p.carZ.toFixed(2)}`
+          : "none";
+      return `${p.participantId}:${p.cell.x.toFixed(2)}:${p.cell.y.toFixed(2)}:${isPed ? "ped" : "veh"}:${parked}`;
+    })
     .sort()
     .join(";");
   return `${selfPart}|${peerPart}`;
