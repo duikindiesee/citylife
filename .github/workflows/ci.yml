@@ -16,12 +16,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  unit-and-build:
     # Never execute fork-authored code on kooker1. Same-repository branches are
     # the trusted contributor lane; pushes to main remain covered as well.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64, citylife-webgl, kooker1-gpu]
-    timeout-minutes: 60
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+        timeout-minutes: 30
+      - run: npm run test:ci-report-publisher
+      - run: npm run build
+      - name: Upload unit and build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-artifacts-${{ github.sha }}
+          path: |
+            test-results/
+            dist/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  e2e-browser:
+    # Never execute fork-authored code on kooker1. Same-repository branches are
+    # the trusted contributor lane; pushes to main remain covered as well.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Windows, X64, citylife-webgl, kooker1-gpu]
+    timeout-minutes: 55
     env:
       CITYLIFE_HARDWARE_WEBGL: "1"
     steps:
@@ -29,14 +57,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      # The host keeps npm's cache between jobs; actions/setup-node's cache-save
-      # post-step can hang on Windows self-hosted runners.
       - run: npm ci
       - run: npx playwright install chromium
-      - run: npm run typecheck
       # Pinned server revision: published corrective candidate 8a56d921a50b986da04306b19b94f97d64311541
       # (fresh walkability authority reconciliation on join, bus transit geometry, post-await vehicle ownership rechecks, and unowned purchase-intent wire contract)
-      # Positioned before slow full suites for rapid integration feedback and serial GPU isolation.
       - name: Check out citylife-server at pinned authoritative revision
         uses: actions/checkout@v7
         with:
@@ -55,16 +79,14 @@ jobs:
           CITYLIFE_SERVER_DIR: ${{ github.workspace }}/citylife-server
         run: npm run test:e2e:actual-pair
         timeout-minutes: 5
-      - run: npm test
-      - run: npm run test:ci-report-publisher
       - run: npm run test:e2e
+        timeout-minutes: 45
       # Explicit step-level bound (PLAYER.MOBILE.E2E.1): the mobile/touch harness has its own
       # 90s whole-test timeout and a wrapper-enforced OS-level process-tree kill, but this step
       # timeout is the hosted backstop of last resort so a harness regression can never silently
-      # consume the shared 60-minute job budget.
+      # consume the shared job budget.
       - run: npm run test:e2e:mobile-harness
         timeout-minutes: 4
-      - run: npm run build
       - name: Upload test and failure artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -75,3 +97,18 @@ jobs:
             videos/
           if-no-files-found: ignore
           retention-days: 14
+
+  verify:
+    needs: [unit-and-build, e2e-browser]
+    if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, Windows, X64, citylife-webgl, kooker1-gpu]
+    timeout-minutes: 5
+    steps:
+      - name: Check aggregate test results
+        shell: powershell
+        run: |
+          if ('${{ needs.unit-and-build.result }}' -ne 'success' -or '${{ needs.e2e-browser.result }}' -ne 'success') {
+            Write-Error "Aggregate CI verify failed: unit-and-build=${{ needs.unit-and-build.result }}, e2e-browser=${{ needs.e2e-browser.result }}"
+            exit 1
+          }
+          Write-Host "All required CI check legs (unit-and-build, e2e-browser) succeeded."
