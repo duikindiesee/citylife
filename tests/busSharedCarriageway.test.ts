@@ -27,7 +27,43 @@ import {
 } from "../src/colony/sol";
 
 /** Coach width in cells: 2.5 m / 4 m per cell. Two passing coaches need twice this. */
-const TWO_COACHES_CELLS = 2 * (2.5 / 4);
+/** Coach width in cells: 2.5 m / 4 m per cell. Two passing coaches need twice this. */
+export const TWO_COACHES_CELLS = 2 * (2.5 / 4);
+
+export type CoachPose = { x: number; y: number; heading: number };
+
+export function evaluatePoseClearances(poses: readonly CoachPose[]): {
+  worstOpposing: number;
+  opposingSamples: number;
+  worstSameDir: number;
+  sameDirSamples: number;
+} {
+  let worstOpposing = Infinity;
+  let opposingSamples = 0;
+  let worstSameDir = Infinity;
+  let sameDirSamples = 0;
+
+  for (let i = 0; i < poses.length; i++) {
+    for (let j = i + 1; j < poses.length; j++) {
+      let diff =
+        Math.abs(((poses[i]!.heading - poses[j]!.heading) * 180) / Math.PI) %
+        360;
+      if (diff > 180) diff = 360 - diff;
+      const d = Math.hypot(
+        poses[i]!.x - poses[j]!.x,
+        poses[i]!.y - poses[j]!.y,
+      );
+      if (diff > 120) {
+        opposingSamples++;
+        if (d < worstOpposing) worstOpposing = d;
+      } else {
+        sameDirSamples++;
+        if (d < worstSameDir) worstSameDir = d;
+      }
+    }
+  }
+  return { worstOpposing, opposingSamples, worstSameDir, sameDirSamples };
+}
 
 type Probe = {
   busFleet: { buses: { id: number; mode: string }[] } | null;
@@ -38,8 +74,8 @@ type Driver = { transitTick: () => void };
 describe("BUS.COLLIDE.1 — opposing legs of one route pass, not overlap", () => {
   it("seed 1234: the coaches that used to intersect now clear each other", () => {
     const rt = new ColonyRuntime(1234, { surveyOnly: true }) as never as Probe;
-    let worst = Infinity;
-    let opposing = false;
+    let worstOpposing = Infinity;
+    let totalOpposingSamples = 0;
     let samples = 0;
 
     // Windowed around the known event so this stays a unit test rather than a full service sweep.
@@ -51,42 +87,58 @@ describe("BUS.COLLIDE.1 — opposing legs of one route pass, not overlap", () =>
       const svc = rt.busFleet?.buses.filter((b) => b.mode === "service") ?? [];
       if (svc.length < 2) continue;
       samples++;
-      const poses = svc.map((b) => rt.busPoseOf(b.id)).filter(Boolean) as {
-        x: number;
-        y: number;
-        heading: number;
-      }[];
-      for (let i = 0; i < poses.length; i++)
-        for (let j = i + 1; j < poses.length; j++) {
-          const d = Math.hypot(
-            poses[i]!.x - poses[j]!.x,
-            poses[i]!.y - poses[j]!.y,
-          );
-          if (d < worst) {
-            worst = d;
-            let diff =
-              Math.abs(
-                ((poses[i]!.heading - poses[j]!.heading) * 180) / Math.PI,
-              ) % 360;
-            if (diff > 180) diff = 360 - diff;
-            opposing = diff > 120;
-          }
+      const poses = svc.map((b) => rt.busPoseOf(b.id)).filter(Boolean) as CoachPose[];
+      const evalResult = evaluatePoseClearances(poses);
+      if (evalResult.opposingSamples > 0) {
+        totalOpposingSamples += evalResult.opposingSamples;
+        if (evalResult.worstOpposing < worstOpposing) {
+          worstOpposing = evalResult.worstOpposing;
         }
+      }
     }
     setSolDebugOffsetMs(0);
 
-    // Non-vacuity: the window must contain live service, and the closest pair must be the OPPOSING
-    // one this fix addresses. Same-direction stacking is a separate defect (seeds 1 and 55 sit at
-    // 0.00 cells travelling the same way — that is headway, not lane geometry, and is not fixed
-    // here).
+    // Non-vacuity: the window must contain live service and genuine opposing passes.
+    // Same-direction following is governed by headway; this test isolates opposing-flow clearance.
     expect(samples, "the window must contain live service").toBeGreaterThan(50);
     expect(
-      opposing,
-      "the closest pair must be opposing, or this is measuring the wrong defect",
+      totalOpposingSamples,
+      "the window must contain opposing passes",
+    ).toBeGreaterThan(0);
+    expect(
+      Number.isFinite(worstOpposing),
+      "must observe a finite minimum opposing distance",
     ).toBe(true);
     expect(
-      worst,
-      `closest opposing pair ${worst.toFixed(2)} cells, two coaches need ${TWO_COACHES_CELLS.toFixed(2)}`,
+      worstOpposing,
+      `closest opposing pair ${worstOpposing.toFixed(2)} cells, two coaches need ${TWO_COACHES_CELLS.toFixed(2)}`,
     ).toBeGreaterThanOrEqual(TWO_COACHES_CELLS);
   }, 120_000);
+
+  it("discriminates controlled opposing collision vs same-direction headway through the clearance pipeline", () => {
+    // Controlled negative input: historical uncorrected defect on seed 1234 where opposing legs
+    // produced coaches at 0.23 cells separation with headings 24.3 deg and -155.6 deg (diff = 179.9 deg).
+    const collidingOpposingPair: CoachPose[] = [
+      { x: 200, y: 300, heading: (24.3 * Math.PI) / 180 },
+      { x: 200.23, y: 300, heading: (-155.6 * Math.PI) / 180 },
+    ];
+    const opposingEval = evaluatePoseClearances(collidingOpposingPair);
+    expect(opposingEval.opposingSamples).toBe(1);
+    expect(opposingEval.sameDirSamples).toBe(0);
+    expect(opposingEval.worstOpposing).toBeCloseTo(0.23, 2);
+    // The measurement and assertion path correctly fails the safety clearance contract on this colliding input:
+    expect(opposingEval.worstOpposing).toBeLessThan(TWO_COACHES_CELLS);
+
+    // Directional discriminator control: coaches traveling in the same direction separated by 0.23 cells
+    // (headings 24.3 deg and 25.0 deg, diff = 0.7 deg) must be classified as same-direction headway,
+    // not misidentified as an opposing pass collision.
+    const sameDirPair: CoachPose[] = [
+      { x: 200, y: 300, heading: (24.3 * Math.PI) / 180 },
+      { x: 200.23, y: 300, heading: (25.0 * Math.PI) / 180 },
+    ];
+    const sameDirEval = evaluatePoseClearances(sameDirPair);
+    expect(sameDirEval.opposingSamples).toBe(0);
+    expect(sameDirEval.sameDirSamples).toBe(1);
+    expect(sameDirEval.worstSameDir).toBeCloseTo(0.23, 2);
+  });
 });

@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:ci-report-publisher": "node --test .github/scripts/ci-report-publisher.test.mjs",
     "test:e2e": "playwright test",
+    "test:e2e:actual-pair": "playwright test --config playwright.actual-pair.config.ts",
     "test:e2e:mobile-harness": "node scripts/run-bounded-e2e.mjs",
     "test:e2e:mobile-harness:hang-canary": "node scripts/run-bounded-e2e.mjs --hang-canary"
   },
@@ -30,6 +31,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@playwright/test": "^1.61.1",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.15",

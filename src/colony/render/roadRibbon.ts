@@ -20,7 +20,7 @@ export interface RoadWay {
   width: number;
   /** Origin tag for lifecycle/invariant checks. Builder ways can be bulldozed; the depot spur is
    *  excluded from the conservative pre-existing-ribbon blocked-cell survey. */
-  source?: "builder" | "depot-spur";
+  source?: "builder" | "depot-spur" | "transit-loop";
 }
 
 export interface RoadRibbonOptions {

@@ -1,7 +1,8 @@
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FirstPersonPanel } from "../src/colony/ui/FirstPersonPanel";
+import * as buildStampModule from "../src/colony/buildStamp";
 import type { ColonyUiState, ColonyRuntime } from "../src/colony/runtime";
 
 function makeRuntime(): ColonyRuntime {
@@ -285,22 +286,132 @@ describe("FirstPersonPanel immersive HUD", () => {
       'class="first-person-panel first-person-panel--edge-hud"',
     );
     expect(html).toContain('class="first-person-panel__destination-strip"');
-    expect(html).not.toContain("Rally Point");
-    expect(html).not.toContain("201.1 units away");
-    expect(html).not.toContain("Cole the Racer");
     expect(html).toContain('class="first-person-panel__joystick"');
     expect(html).toContain('aria-label="Mobile movement joystick"');
     expect(html).toContain('class="first-person-panel__action-cluster"');
     expect(html).toContain('class="first-person-panel__guidance-caption"');
-    expect(html).not.toContain("Guiding to Rally Point");
     expect(html).toContain('data-fp-action="toggle-details"');
     expect(html).toContain('data-fp-action="toggle-help"');
-    expect(html).not.toContain('data-fp-action="walk-to-rally"');
-    expect(html).not.toContain("Next leg");
-    expect(html).not.toContain("226");
-    expect(html).not.toContain("349");
-    expect(html).not.toContain("(425");
-    expect(html).not.toContain("326)");
-    expect(html).not.toContain("Show debug");
+    expect(html).not.toContain('class="first-person-panel__debug-panel"');
+
+    // Isolate visible HUD content from incidental <BuildStamp> ISO metadata timestamps (e.g. .226Z)
+    const content = html.replace(
+      /<div class="build-stamp[^>]*>.*?<\/div>/s,
+      "",
+    );
+
+    expect(content).not.toContain("Rally Point");
+    expect(content).not.toContain("201.1 units away");
+    expect(content).not.toContain("Cole the Racer");
+    expect(content).not.toContain("Guiding to Rally Point");
+    expect(content).not.toContain('data-fp-action="walk-to-rally"');
+    expect(content).not.toContain("Next leg");
+    expect(content).not.toContain("226");
+    expect(content).not.toContain("349");
+    expect(content).not.toContain("(425");
+    expect(content).not.toContain("326)");
+    expect(content).not.toContain("Show debug");
+  });
+
+  it("renders non-rally guided target in destination strip and caption (positive control for guidedTarget)", () => {
+    const fp = makeFirstPerson();
+    fp.guidedTarget = {
+      label: "Market Square",
+      x: 226,
+      y: 349,
+      remainingDistance: 45.2,
+      nextWaypoint: { x: 226, y: 349 },
+    } as unknown as ColonyUiState["firstPerson"]["guidedTarget"];
+
+    const html = renderToStaticMarkup(
+      React.createElement(FirstPersonPanel, {
+        runtime: makeRuntime(),
+        fp,
+      }),
+    );
+
+    expect(html).toContain('class="first-person-panel__destination-target"');
+    expect(html).toContain("Market Square");
+    expect(html).toContain("45.2 units away");
+    expect(html).toContain("Guiding to Market Square · 45.2 units away");
+
+    // Waypoint coordinates and debug telemetry remain hidden even when guiding is active
+    const content = html.replace(
+      /<div class="build-stamp[^>]*>.*?<\/div>/s,
+      "",
+    );
+    expect(content).not.toContain("Next leg");
+    expect(content).not.toContain("226");
+    expect(content).not.toContain("349");
+  });
+
+  it("distinguishes incidental build timestamp collisions ending in .226Z from semantic waypoint leakage", () => {
+    const fp = makeFirstPerson();
+    if (!fp.view) throw new Error("expected first-person view");
+    fp.view.clock.isDay = false;
+    fp.guidedTarget = {
+      label: "Rally Point",
+      x: 425,
+      y: 326,
+      remainingDistance: 201.1,
+      nextWaypoint: { x: 226, y: 349 },
+    } as unknown as ColonyUiState["firstPerson"]["guidedTarget"];
+
+    // Force build timestamp to reproduce the exact hosted collision: milliseconds ending in .226Z
+    const buildStampSpy = vi
+      .spyOn(buildStampModule, "buildStampParts")
+      .mockReturnValue({
+        version: "0.60.3",
+        sha: "7664cea",
+        builtAt: "2026-10-13T00:54:58.226Z",
+      });
+
+    try {
+      const html = renderToStaticMarkup(
+        React.createElement(FirstPersonPanel, {
+          runtime: makeRuntime(),
+          fp,
+        }),
+      );
+
+      // Verify the simulated hosted timestamp is present in the build metadata
+      expect(html).toContain(
+        'title="Build timestamp">2026-10-13T00:54:58.226Z</span>',
+      );
+      // Demonstrates that raw unisolated html contains the substring "226" due strictly to metadata
+      expect(html).toContain("226");
+
+      // Verify that semantic player HUD content cleanly isolates this metadata and never leaks waypoints
+      const content = html.replace(
+        /<div class="build-stamp[^>]*>.*?<\/div>/s,
+        "",
+      );
+      expect(content).not.toContain("226");
+      expect(content).not.toContain("349");
+      expect(content).not.toContain("(425");
+      expect(content).not.toContain("326)");
+      expect(content).not.toContain("Next leg");
+      expect(content).not.toContain("Rally Point");
+      expect(content).not.toContain("201.1 units away");
+
+      // Negative control: verify that if a waypoint coordinate WERE leaked into the HUD narration, content catches it
+      const leakedFp = {
+        ...fp,
+        narration: "Approaching waypoint 226 now.",
+      };
+      const leakedHtml = renderToStaticMarkup(
+        React.createElement(FirstPersonPanel, {
+          runtime: makeRuntime(),
+          fp: leakedFp,
+        }),
+      );
+      const leakedContent = leakedHtml.replace(
+        /<div class="build-stamp[^>]*>.*?<\/div>/s,
+        "",
+      );
+      expect(leakedContent).toContain("226");
+    } finally {
+      buildStampSpy.mockRestore();
+    }
   });
 });

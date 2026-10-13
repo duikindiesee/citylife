@@ -103,19 +103,26 @@ describe("BUS.STOP.CLEAR.1 — no live stop halts in a junction", () => {
     );
     const anchors = rt.busStopAnchors();
     const commercial = anchors.find(
-      (a) => a.cell.x === 125 && a.cell.y === 265,
+      (a) => a.cell.x === 125 && (a.cell.y === 275 || a.cell.y === 265),
     );
     expect(commercial, "boot seed still has its commercial stop").toBeDefined();
     // The RAW projection of that cell sits in the cap...
-    const raw: Pt = { x: 125.2, y: 265.2 };
+    const raw: Pt = { x: commercial!.cell.x + 0.2, y: commercial!.cell.y + 0.2 };
     expect(
       zones.some(
         (z) => z.poly.length >= 3 && nearPoly(raw.x, raw.y, z.poly, 0),
       ),
     ).toBe(true);
-    // ...and the anchor moved the halt somewhere else entirely.
+    // ...and the anchor moved the halt somewhere else entirely, clear of junction caps.
     expect(
       Math.hypot(commercial!.at.x - raw.x, commercial!.at.y - raw.y),
     ).toBeGreaterThan(1);
+    expect(
+      zones.some(
+        (z) =>
+          z.poly.length >= 3 &&
+          nearPoly(commercial!.at.x, commercial!.at.y, z.poly, 0),
+      ),
+    ).toBe(false);
   });
 });

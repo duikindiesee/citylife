@@ -45,8 +45,14 @@ interface FpRuntimeBridge {
     y: number;
     yaw?: number;
     seq: number;
+    preserveVertical?: boolean;
+    preserveVelocity?: boolean;
   } | null;
   fpCameraCell?: { x: number; y: number } | null;
+  fpCameraYaw?: number;
+  fpGamepadMoving?: boolean;
+  setFirstPersonKey?: (key: string, down: boolean) => void;
+  setFirstPersonYaw?: (yaw: number) => void;
 }
 
 export function FirstPersonController({
@@ -85,21 +91,48 @@ export function FirstPersonController({
     backward: false,
     left: false,
     right: false,
+    turnLeft: false,
+    turnRight: false,
     sprint: false,
     mouseX: 0,
     mouseY: 0,
   });
 
-  const rotation = useRef(new Euler(0, 0, 0, "YXZ"));
+  const initialYaw =
+    runtime?.fpTeleportRequest?.yaw ??
+    runtime?.fpCameraYaw ??
+    0;
+  const rotation = useRef(new Euler(0, initialYaw, 0, "YXZ"));
 
   useEffect(() => {
+    if (runtime) {
+      runtime.fpCameraYaw = rotation.current.y;
+      runtime.setFirstPersonYaw?.(rotation.current.y);
+    }
+  }, [runtime]);
+
+  useEffect(() => {
+    const isTyping = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      return Boolean(
+        t &&
+          (t.tagName === "INPUT" ||
+            t.tagName === "TEXTAREA" ||
+            t.isContentEditable)
+      );
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTyping(e)) return;
       if (e.code === "KeyW") input.current.forward = true;
       if (e.code === "KeyS") input.current.backward = true;
       if (e.code === "KeyA") input.current.left = true;
       if (e.code === "KeyD") input.current.right = true;
+      if (e.code === "ArrowLeft") input.current.turnLeft = true;
+      if (e.code === "ArrowRight") input.current.turnRight = true;
       if (e.code === "ShiftLeft" || e.code === "ShiftRight")
         input.current.sprint = true;
+      runtime?.setFirstPersonKey?.(e.code, true);
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -107,8 +140,33 @@ export function FirstPersonController({
       if (e.code === "KeyS") input.current.backward = false;
       if (e.code === "KeyA") input.current.left = false;
       if (e.code === "KeyD") input.current.right = false;
+      if (e.code === "ArrowLeft") input.current.turnLeft = false;
+      if (e.code === "ArrowRight") input.current.turnRight = false;
       if (e.code === "ShiftLeft" || e.code === "ShiftRight")
         input.current.sprint = false;
+      runtime?.setFirstPersonKey?.(e.code, false);
+    };
+
+    const clearHeldKeys = () => {
+      input.current.forward = false;
+      input.current.backward = false;
+      input.current.left = false;
+      input.current.right = false;
+      input.current.turnLeft = false;
+      input.current.turnRight = false;
+      input.current.sprint = false;
+      runtime?.setFirstPersonKey?.("KeyW", false);
+      runtime?.setFirstPersonKey?.("KeyS", false);
+      runtime?.setFirstPersonKey?.("KeyA", false);
+      runtime?.setFirstPersonKey?.("KeyD", false);
+      runtime?.setFirstPersonKey?.("ArrowLeft", false);
+      runtime?.setFirstPersonKey?.("ArrowRight", false);
+      runtime?.setFirstPersonKey?.("ShiftLeft", false);
+      runtime?.setFirstPersonKey?.("ShiftRight", false);
+    };
+
+    const handleBlur = () => {
+      clearHeldKeys();
     };
 
     // Pointer lock for mouse look
@@ -120,19 +178,30 @@ export function FirstPersonController({
           -Math.PI / 2,
           Math.min(Math.PI / 2, rotation.current.x),
         );
+        if (runtime) {
+          runtime.fpCameraYaw = rotation.current.y;
+          runtime.setFirstPersonYaw?.(rotation.current.y);
+        }
       }
     };
 
     // Pointer lock for mouse look is managed explicitly via ColonyApp's FirstPersonMouseLookBar
     // to prevent unexpected cursor trapping or breaking UI button interactions while driving.
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("mousemove", handleMouseMove);
+    if (typeof window !== "undefined") {
+      window.addEventListener("keydown", handleKeyDown);
+      window.addEventListener("keyup", handleKeyUp);
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("blur", handleBlur);
+    }
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("mousemove", handleMouseMove);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("keyup", handleKeyUp);
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("blur", handleBlur);
+      }
+      clearHeldKeys();
     };
   }, []);
 
@@ -221,14 +290,27 @@ export function FirstPersonController({
         Math.min(terrainSizeForGrid - 1, Math.round(tp.y)),
       );
       const groundY = leveledWorldY(sim.state.terrain, terrainLevel, gx, gz);
+      const curPos = rigidBody.current.translation();
+      const curVel = rigidBody.current.linvel();
+      const targetY = tp.preserveVertical
+        ? Math.max(groundY + 1.5, curPos.y)
+        : groundY + 1.5;
       rigidBody.current.setTranslation(
-        { x: toWorldX(tp.x), y: groundY + 1.5, z: toWorldZ(tp.y) },
+        { x: toWorldX(tp.x), y: targetY, z: toWorldZ(tp.y) },
         true,
       );
-      rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      if (tp.preserveVelocity) {
+        rigidBody.current.setLinvel({ x: 0, y: curVel.y, z: 0 }, true);
+      } else {
+        rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      }
       if (tp.yaw !== undefined) {
         rotation.current.y = tp.yaw;
         rotation.current.x = 0;
+        if (runtime) {
+          runtime.fpCameraYaw = rotation.current.y;
+          runtime.setFirstPersonYaw?.(rotation.current.y);
+        }
       }
     }
 
@@ -252,13 +334,20 @@ export function FirstPersonController({
         rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
         camera.position.set(wx, roadTop + BUS_RIDER_EYE, wz);
         camera.quaternion.setFromEuler(rotation.current);
-        if (runtime) runtime.fpCameraCell = { x: pose.x, y: pose.y };
+        if (runtime) {
+          runtime.fpCameraCell = { x: pose.x, y: pose.y };
+          runtime.fpCameraYaw = rotation.current.y;
+          runtime.setFirstPersonYaw?.(rotation.current.y);
+        }
         return;
       }
     }
 
     // 1. Handle Gamepad Input
-    const gamepads = navigator.getGamepads();
+    const gamepads =
+      typeof navigator !== "undefined" && typeof navigator.getGamepads === "function"
+        ? navigator.getGamepads()
+        : [];
     const gp = gamepads[0]; // Assuming PS5 controller is index 0
     let moveX = 0;
     let moveZ = 0;
@@ -280,6 +369,14 @@ export function FirstPersonController({
         -Math.PI / 2,
         Math.min(Math.PI / 2, rotation.current.x),
       );
+    }
+
+    // Arrow keys for turning camera in place
+    if (input.current.turnLeft) {
+      rotation.current.y += COLONY.firstPerson.turnSpeed * delta;
+    }
+    if (input.current.turnRight) {
+      rotation.current.y -= COLONY.firstPerson.turnSpeed * delta;
     }
 
     // Combine keyboard input
@@ -399,8 +496,16 @@ export function FirstPersonController({
     camera.quaternion.setFromEuler(rotation.current);
     // Spec 149 — tell the runtime where the player's eyes are (grid coords) so bus boarding
     // prompts measure from the capsule, not the detached roster citizen.
-    if (runtime && terrainSizeForGrid > 0)
-      runtime.fpCameraCell = { x: toGridX(pos.x), y: toGridZ(pos.z) };
+    if (runtime) {
+      if (terrainSizeForGrid > 0) {
+        runtime.fpCameraCell = { x: toGridX(pos.x), y: toGridZ(pos.z) };
+      }
+      runtime.fpCameraYaw = rotation.current.y;
+      runtime.setFirstPersonYaw?.(rotation.current.y);
+      runtime.fpGamepadMoving = Boolean(
+        gp && (Math.abs(gp.axes?.[0] ?? 0) > 0.1 || Math.abs(gp.axes?.[1] ?? 0) > 0.1),
+      );
+    }
   });
 
   const safeSpawn = [

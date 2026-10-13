@@ -15,6 +15,7 @@ import {
   zoneSignature,
   levelingSignature,
   spawnSignature,
+  remoteRacersSignature,
 } from "../src/colony/render/simSignals";
 
 describe("simSignals — signatures over the mutable sim", () => {
@@ -89,6 +90,53 @@ describe("simSignals — signatures over the mutable sim", () => {
     const before = spawnSignature(sim.state);
     sim.state.roadsVersion++;
     expect(spawnSignature(sim.state)).not.toBe(before);
+  });
+
+  it("remoteRacersSignature is stable on pose movement, but transitions on membership, walking/driving mode, and vehicle model", () => {
+    const sim = new ColonySim(4242);
+    expect(remoteRacersSignature(sim.state)).toBe("none");
+
+    // 1. Participant joins driving a karoo-vonk-11
+    sim.state.remoteRacers!.set("part-1", {
+      participantId: "part-1",
+      userId: "user-1",
+      username: "driver1",
+      vehicleKey: "karoo-vonk-11",
+      isPedestrian: false,
+      cell: { x: 100, y: 200 },
+      heading: 0,
+      speed: 0,
+      lastSeen: Date.now(),
+    });
+    const drivingSig = remoteRacersSignature(sim.state);
+    expect(drivingSig).toBe("part-1:car:karoo-vonk-11");
+
+    // 2. Pose movement (x, y, heading, speed) MUST NOT change signature (no 60fps React re-renders)
+    sim.state.remoteRacers!.get("part-1")!.cell.x += 15.5;
+    sim.state.remoteRacers!.get("part-1")!.cell.y += 22.1;
+    sim.state.remoteRacers!.get("part-1")!.heading = 1.25;
+    sim.state.remoteRacers!.get("part-1")!.speed = 18.0;
+    expect(remoteRacersSignature(sim.state)).toBe(drivingSig);
+
+    // 3. Same-participant driving -> walking transition MUST change signature
+    sim.state.remoteRacers!.get("part-1")!.isPedestrian = true;
+    const walkingSig = remoteRacersSignature(sim.state);
+    expect(walkingSig).toBe("part-1:ped:karoo-vonk-11");
+    expect(walkingSig).not.toBe(drivingSig);
+
+    // 4. Same-participant walking -> driving transition MUST change signature back
+    sim.state.remoteRacers!.get("part-1")!.isPedestrian = false;
+    expect(remoteRacersSignature(sim.state)).toBe(drivingSig);
+
+    // 5. Same-participant vehicle model change MUST change signature
+    sim.state.remoteRacers!.get("part-1")!.vehicleKey = "rover-hauler-01";
+    const haulerSig = remoteRacersSignature(sim.state);
+    expect(haulerSig).toBe("part-1:car:rover-hauler-01");
+    expect(haulerSig).not.toBe(drivingSig);
+
+    // 6. Participant leaves
+    sim.state.remoteRacers!.delete("part-1");
+    expect(remoteRacersSignature(sim.state)).toBe("none");
   });
 });
 

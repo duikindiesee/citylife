@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { cellOk } from "../src/colony/pathfind";
 import {
@@ -43,23 +43,35 @@ function localToGrid(angle: number, local: { x: number; z: number }) {
 }
 
 describe("garage landmark site and render model (spec 109 P1/P2)", () => {
-  it("surveys one deterministic public-safe garage landmark pad per commercial district", () => {
+  it("pins garage pad dimensions", () => {
     expect(COLONY.commerce.garagePadW).toBe(16);
     expect(COLONY.commerce.garagePadH).toBe(11);
+  });
 
-    for (const seed of SEEDS) {
-      const a = rtFor(seed).commercialDistrict!;
-      const b = new ColonyRuntime(seed).commercialDistrict!;
-      expect(a.garagePad).toBeDefined();
-      expect(b.garagePad).toEqual(a.garagePad);
-      expect(a.garagePad!.kind).toBe("garage_landmark");
-      expect(a.garagePad!.isPublicSafe).toBe(true);
-      expect(a.garagePad!.publicName).toBe("Gearbox Auto Hub");
-      expect(a.garagePad!.islandCell).toBeDefined();
-      expect(a.garagePad!.streetFrontDir).toBeDefined();
-      expect(a.garagePad!.crossFrontDir).toBeDefined();
-    }
-  }, 30000);
+  for (const seed of SEEDS) {
+    describe(`seed ${seed} determinism`, () => {
+      let bRuntime: ColonyRuntime;
+      beforeAll(() => {
+        rtFor(seed);
+      }, 30000);
+      beforeAll(() => {
+        bRuntime = new ColonyRuntime(seed);
+      }, 30000);
+
+      it(`surveys one deterministic public-safe garage landmark pad for seed ${seed}`, () => {
+        const a = rtFor(seed).commercialDistrict!;
+        const b = bRuntime.commercialDistrict!;
+        expect(a.garagePad).toBeDefined();
+        expect(b.garagePad).toEqual(a.garagePad);
+        expect(a.garagePad!.kind).toBe("garage_landmark");
+        expect(a.garagePad!.isPublicSafe).toBe(true);
+        expect(a.garagePad!.publicName).toBe("Gearbox Auto Hub");
+        expect(a.garagePad!.islandCell).toBeDefined();
+        expect(a.garagePad!.streetFrontDir).toBeDefined();
+        expect(a.garagePad!.crossFrontDir).toBeDefined();
+      }, 30000);
+    });
+  }
 
   it("anchors the garage to a deterministic intersection corner with a pylon island cell", () => {
     for (const seed of SEEDS) {

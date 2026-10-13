@@ -67,40 +67,54 @@ test("R3F reactivity: placing and demolishing a plot updates the rendered scene"
 
   // Find a validator-approved road stroke and adjacent plot. Before the road exists, the exact
   // plot survey may fail only for its missing frontage; every terrain/collision check must pass.
+  // Prioritize deterministic verified candidate (252, 105) for seed 4242 through public runtime survey;
+  // fall back to bounded grid search if unavailable.
   const buildableCenter = await page.evaluate(() => {
     const rt = (window as any).__colony;
     const t = rt?.sim?.state?.terrain;
     if (!rt || !t) return null;
     const roadSet = rt.sim.state.roadSet as Set<string>;
+
+    const testCandidate = (x: number, y: number) => {
+      // A single logical frontage cell is sufficient for zoning and intentionally creates no
+      // ribbon way. A multi-cell ribbon has a rendered shoulder beside the centre-line, which
+      // the exact plot survey correctly treats as overlap.
+      const road = [{ x, y }];
+      if (road.some((cell) => roadSet.has(`${cell.x},${cell.y}`))) return null;
+      const roadSurvey = rt.surveyRoadPlacement(road, "street");
+      if (!roadSurvey.ok) return null;
+      const plotSurvey = rt.surveyZonedPlot(
+        x,
+        y + 1,
+        "n",
+        "BIG",
+        "commercial",
+      );
+      if (
+        plotSurvey.failures.length > 0 &&
+        plotSurvey.failures.every(
+          (failure: any) => failure.code === "ROAD_CONNECTION_REQUIRED",
+        )
+      ) {
+        return {
+          x,
+          y,
+          road,
+          roadRevision: roadSurvey.layoutRevision,
+        };
+      }
+      return null;
+    };
+
+    // Deterministic candidate verified for seed 4242
+    const fastCandidate = testCandidate(252, 105);
+    if (fastCandidate) return fastCandidate;
+
+    // Bounded fallback search across the grid
     for (let y = 30; y < t.size - 30; y += 3) {
       for (let x = 30; x < t.size - 30; x += 3) {
-        // A single logical frontage cell is sufficient for zoning and intentionally creates no
-        // ribbon way. A multi-cell ribbon has a rendered shoulder beside the centre-line, which
-        // the exact plot survey correctly treats as overlap.
-        const road = [{ x, y }];
-        if (road.some((cell) => roadSet.has(`${cell.x},${cell.y}`))) continue;
-        const roadSurvey = rt.surveyRoadPlacement(road, "street");
-        if (!roadSurvey.ok) continue;
-        const plotSurvey = rt.surveyZonedPlot(
-          x,
-          y + 1,
-          "n",
-          "BIG",
-          "commercial",
-        );
-        if (
-          plotSurvey.failures.length > 0 &&
-          plotSurvey.failures.every(
-            (failure: any) => failure.code === "ROAD_CONNECTION_REQUIRED",
-          )
-        ) {
-          return {
-            x,
-            y,
-            road,
-            roadRevision: roadSurvey.layoutRevision,
-          };
-        }
+        const found = testCandidate(x, y);
+        if (found) return found;
       }
     }
     return null;

@@ -50,20 +50,16 @@ function resolveBuildStamp(env: Record<string, string>) {
 // gateway as its default (Dockerfile). The gateway is the same public endpoint the kooker web app
 // calls from browsers — never put credentials or internal cluster hostnames in this repo.
 // Browser -> Vite proxy -> kooker APISIX gateway (avoids CORS).
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const kookerGateway = env.KOOKER_GATEWAY || "http://localhost:8081";
-  // Pin the dev proxy to IPv4. api.kooker.co.za (AWS) publishes both A and AAAA records; on a host
-  // without working IPv6 egress, node connects to the IPv6 address first and hangs (ETIMEDOUT), so
-  // the proxy returns a silent 502 even though the gateway is healthy and curl (Happy Eyeballs ->
-  // IPv4) works. family:4 makes node behave like curl. See the reboot-IPv6 incident, 2026-06-01.
   const ipv4Agent = kookerGateway.startsWith("https")
     ? new https.Agent({ family: 4 })
     : new http.Agent({ family: 4 });
   const buildStamp = resolveBuildStamp(env);
   return {
     plugins: [react()],
-    // Inlined as literals so the shipped bundle carries its own identity with no runtime fetch.
     define: {
       __BUILD_VERSION__: JSON.stringify(buildStamp.version),
       __BUILD_SHA__: JSON.stringify(buildStamp.sha),
@@ -71,8 +67,6 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       rollupOptions: {
-        // Multipage: the colony game plus the spec-077 House Builder (town.html is the legacy v1 page),
-        // and ask-kooker.html — the public Ask-Kooker board with a login-walled Your-answers panel.
         input: {
           index: "index.html",
           builder: "builder.html",
@@ -84,16 +78,19 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       port: 5188,
-      // SECURITY: bind to localhost only by default. A DEV build can auto-login with the operator
-      // creds from .env.local, and a VITE_CITYLIFE_PAT is reachable in the dev runtime, so a server
-      // bound to 0.0.0.0 would let any device on the same LAN open it, auto-login as the operator and
-      // spend the operator's inference. Opt into LAN exposure deliberately with VITE_LAN=1 (e.g. to
-      // test from a phone). Deployed bundles are unaffected (DEV is false, creds are nginx-injected).
       host:
         env.VITE_LAN === "1" || env.VITE_LAN === "true" ? true : "127.0.0.1",
       proxy: {
-        // Anchored with the trailing slash so only /kooker/api/... API calls proxy to the gateway —
-        // a bare /kooker prefix also swallowed /kookerbook.html (the spec 082 page) into APISIX.
+        "^/ws": {
+          target: "ws://127.0.0.1:9010",
+          ws: true,
+          changeOrigin: true,
+        },
+        "^/api/v1/citylife/": {
+          target: "http://127.0.0.1:9010",
+          ws: true,
+          changeOrigin: true,
+        },
         "^/kooker/": {
           target: kookerGateway,
           changeOrigin: true,
@@ -101,10 +98,8 @@ export default defineConfig(({ mode }) => {
           agent: ipv4Agent,
           headers: { "ngrok-skip-browser-warning": "true" },
           rewrite: (p) => p.replace(/^\/kooker/, ""),
-          // Make upstream failures visible in the vite terminal instead of a silent 502.
           configure: (proxy) => {
             proxy.on("error", (err) => {
-              // eslint-disable-next-line no-console
               console.error(
                 "[kooker proxy] upstream error:",
                 (err as NodeJS.ErrnoException).code || err.message,

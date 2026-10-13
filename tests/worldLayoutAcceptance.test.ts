@@ -186,16 +186,21 @@ describe("WB.1d independent acceptance", () => {
     );
   });
 
-  it("replays one durable head in two independent cold runtimes with identical registry and survey truth", async () => {
-    const source = new ColonyRuntime(4242);
-    const head = source.captureWorldLayout();
+  describe("durable head replay across two independent cold runtimes", () => {
+    let head: ReturnType<ColonyRuntime["captureWorldLayout"]>;
+    let firstReplay: {
+      canonical: string;
+      registry: any;
+      survey: any;
+    };
+    let setupDurationMs = 0;
 
-    const coldReplay = async () => {
+    async function executeColdReplay(headDoc: ReturnType<ColonyRuntime["captureWorldLayout"]>) {
       resetRoadBuilderState();
       const runtime = new ColonyRuntime(4242);
       await new WorldLayoutBootCoordinator({
-        worldId: head.worldId,
-        store: storedHead(head),
+        worldId: headDoc.worldId,
+        store: storedHead(headDoc),
         runtime: bootRuntime(runtime),
       }).boot();
       return {
@@ -209,9 +214,31 @@ describe("WB.1d independent acceptance", () => {
           "street",
         ),
       };
-    };
+    }
 
-    expect(await coldReplay()).toEqual(await coldReplay());
+    beforeEach(async () => {
+      // Parent beforeEach(resetRoadBuilderState) runs first.
+      const preStore = useRoadNetwork.getState();
+      expect(Object.keys(preStore.tiles).length).toBe(0);
+      expect(preStore.landscapeEdits.size).toBe(0);
+      expect(preStore.sameSessionPlacements.size).toBe(0);
+
+      const t0 = performance.now();
+      const source = new ColonyRuntime(4242);
+      head = source.captureWorldLayout();
+      firstReplay = await executeColdReplay(head);
+      setupDurationMs = performance.now() - t0;
+    }, 60000);
+
+    it("replays one durable head in two independent cold runtimes with identical registry and survey truth", async () => {
+      const tActionStart = performance.now();
+      const secondReplay = await executeColdReplay(head);
+      expect(secondReplay).toEqual(firstReplay);
+      const actionDurationMs = performance.now() - tActionStart;
+      console.log(
+        `[worldLayoutAcceptance:durableHeadReplay] setupDuration=${(setupDurationMs / 1000).toFixed(2)}s, actionDuration=${(actionDurationMs / 1000).toFixed(2)}s, totalCase=${((setupDurationMs + actionDurationMs) / 1000).toFixed(2)}s`,
+      );
+    }, 60000);
   });
 
   it("loads persisted spatial truth without recapturing seeders and preserves seed-4242 fixtures", async () => {

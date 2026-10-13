@@ -204,6 +204,22 @@ route geometry. Cruise-beats-top-speed and every-leg-beats-top-speed discriminat
 28; the shift-fits and sub-cell-frame locks are stated in-file as **invariant guards, not proof**
 (they pass at both values and exist to catch a future lowering / raise).
 
+### Journey Model & Honest Depot-Return Speed Limitation
+
+In-service revenue legs connecting consecutive stops around the circuit (including the loop-boundary
+wrap connecting the final route stop to the first stop in continuing service, 197–611 cells) cruise at
+46 cells/min (12.27 m/s) and deliver 9.09–11.02 m/s door-to-door, comfortably beating a road-sprinting
+player (top speed 6.1625 m/s; 1.35× threshold 8.319 m/s).
+
+At the end of a shift, a passenger riding home alights at the depot gate boarding shelter (`depot-stop-in`,
+Spec 149 / `busFleet.ts: "the gate cell — the depot's boarding stop"`). On this short terminal leg
+(20.76 cells = 83.05 m, comprising 17.76 cells from the last stop to the join plus the 3-cell gate spur),
+the bus cruises at full speed (6.77 s drive time) but pays the standard 30-second (`depotBoardMin = 2`
+sim-minutes × 15 s/min) alighting dwell at the shelter. This fixed dwell accounts for 81.59% of the total
+journey duration (36.77 s), yielding a door-to-door average speed of ~2.26 m/s (improved from 2.02 m/s pre-fix).
+This dwell-dominated result is candidly documented and tested as a genuine passenger arrival rather than
+inventing an artificial non-passenger exemption.
+
 ## Invariants preserved
 
 - **`firstPersonDogfood.test.ts` "walks faster on roads than off-road"** still holds — the road

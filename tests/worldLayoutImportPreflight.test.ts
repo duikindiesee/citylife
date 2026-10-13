@@ -11,6 +11,12 @@ import {
   type WorldLayoutPlacement,
 } from "../src/colony/spatial/worldLayoutDocument";
 import { validatedWorldLayoutImportSaveInput } from "../src/colony/ui/ColonyApp";
+import { createPlacementContext } from "../src/colony/placement/runtimeContext";
+import {
+  surveyZonedPlot as runPureZonedPlotSurvey,
+  type PlacementSurveyResult,
+} from "../src/colony/placement/surveyPlacement";
+import type { PlacementOrientation } from "../src/colony/placement/placeableCatalog";
 
 function child(
   base: WorldLayoutDocument,
@@ -41,36 +47,93 @@ function child(
   });
 }
 
+interface DiscoveredFixtureCandidate {
+  x: number;
+  y: number;
+  orientation: PlacementOrientation;
+  pureSurvey: PlacementSurveyResult;
+}
+
+const discoveredFixtureCache = new Map<string, DiscoveredFixtureCandidate>();
+
 function surveyedPlacement(
   runtime: ColonyRuntime,
   base: WorldLayoutDocument,
   valid: boolean,
 ): WorldLayoutPlacement {
-  const orientations = ["n", "s", "e", "w"] as const;
-  const candidates: {
-    x: number;
-    y: number;
-    orientation: (typeof orientations)[number];
-  }[] = [];
-  if (valid)
-    for (const road of base.roads)
-      for (const cell of road.cells)
-        candidates.push(
-          { x: cell.x, y: cell.y + 1, orientation: "n" },
-          { x: cell.x, y: cell.y - 1, orientation: "s" },
-          { x: cell.x + 1, y: cell.y, orientation: "w" },
-          { x: cell.x - 1, y: cell.y, orientation: "e" },
-        );
-  else {
-    const terrain = runtime.sim.state.terrain;
-    for (let y = 20; y < terrain.size - 40; y += 6)
-      for (let x = 20; x < terrain.size - 40; x += 6)
-        candidates.push({ x, y, orientation: "n" });
-  }
-
   const revision = worldLayoutRevisionId(base.revision);
-  for (const candidate of candidates) {
-    const survey = runtime.surveyZonedPlot(
+
+  if (valid) {
+    const cacheKey = `${base.worldId}:${base.seed}:${revision}`;
+    let candidate = discoveredFixtureCache.get(cacheKey);
+
+    if (!candidate) {
+      const state = runtime.sim.state;
+      const placementContext = createPlacementContext({
+        state,
+        neighborhood: state.neighborhood,
+        commercialDistrict: runtime.commercialDistrict,
+        roadWays: state.roadWays,
+      });
+      const orientations: readonly PlacementOrientation[] = ["n", "s", "w", "e"];
+      const maxCandidates = 5000;
+      const maxDurationMs = 5000;
+      let tested = 0;
+      const t0 = performance.now();
+
+      for (let i = 0; i < state.roads.length; i++) {
+        const road = state.roads[i]!;
+        for (const orientation of orientations) {
+          if (
+            tested >= maxCandidates ||
+            performance.now() - t0 >= maxDurationMs
+          ) {
+            break;
+          }
+          tested++;
+          const position =
+            orientation === "n"
+              ? { x: road.x, y: road.y + 1 }
+              : orientation === "s"
+                ? { x: road.x, y: road.y - 1 }
+                : orientation === "w"
+                  ? { x: road.x + 1, y: road.y }
+                  : { x: road.x - 1, y: road.y };
+          const survey = runPureZonedPlotSurvey({
+            context: placementContext,
+            ...position,
+            orientation,
+            sizeName: "COMPACT",
+            zone: "residential",
+          });
+          if (survey.ok) {
+            candidate = Object.freeze({
+              x: position.x,
+              y: position.y,
+              orientation,
+              pureSurvey: Object.freeze(survey),
+            });
+            break;
+          }
+        }
+        if (
+          candidate ||
+          tested >= maxCandidates ||
+          performance.now() - t0 >= maxDurationMs
+        ) {
+          break;
+        }
+      }
+      if (!candidate) {
+        throw new Error(
+          `no valid catalog survey fixture found within ${tested} candidates / ${maxDurationMs}ms`,
+        );
+      }
+      discoveredFixtureCache.set(cacheKey, candidate);
+    }
+
+    // Verify chosen coordinate with public runtime.surveyZonedPlot using its actual seeded revision
+    const runtimeSurvey = runtime.surveyZonedPlot(
       candidate.x,
       candidate.y,
       candidate.orientation,
@@ -78,30 +141,89 @@ function surveyedPlacement(
       "residential",
       revision,
     );
-    const terrainFailure = survey.failures.some(
-      (failure) =>
-        failure.code === "WATER_FORBIDDEN" || failure.code === "NON_BUILDABLE",
+    expect(runtimeSurvey.ok).toBe(true);
+
+    // Compare complete survey/geometry with pure result
+    expect(runtimeSurvey.definitionId).toBe(candidate.pureSurvey.definitionId);
+    expect(runtimeSurvey.bounds).toEqual(candidate.pureSurvey.bounds);
+    expect(runtimeSurvey.cells).toEqual(candidate.pureSurvey.cells);
+    expect(runtimeSurvey.vertical).toEqual(candidate.pureSurvey.vertical);
+    expect(runtimeSurvey.anchors).toEqual(candidate.pureSurvey.anchors);
+
+    // Retain stale-revision negative
+    const staleSurvey = runtime.surveyZonedPlot(
+      candidate.x,
+      candidate.y,
+      candidate.orientation,
+      "COMPACT",
+      "residential",
+      "stale-invalid-revision-probe",
     );
-    if ((valid && !survey.ok) || (!valid && !terrainFailure)) continue;
-    const cellKeys = new Set(survey.cells.map((cell) => `${cell.x},${cell.y}`));
+    expect(staleSurvey.ok).toBe(false);
+    expect(
+      staleSurvey.failures.some(
+        (failure) => failure.code === "STALE_LAYOUT_REVISION",
+      ),
+    ).toBe(true);
+
+    const cellKeys = new Set(
+      runtimeSurvey.cells.map((cell) => `${cell.x},${cell.y}`),
+    );
     return {
-      id: valid
-        ? "placement:zz-preflight-control"
-        : "placement:zz-preflight-invalid",
-      definitionId: survey.definitionId,
+      id: "placement:zz-preflight-control",
+      definitionId: runtimeSurvey.definitionId,
       frameId: base.frames.find(
         (frame) => frame.kind === "region" && frame.layer === "surface",
       )!.id,
       layer: "surface",
       source: "import",
-      cells: survey.cells,
-      bounds: survey.bounds,
-      vertical: survey.vertical,
-      anchors: survey.anchors.filter((anchor) =>
+      cells: runtimeSurvey.cells,
+      bounds: runtimeSurvey.bounds,
+      vertical: runtimeSurvey.vertical,
+      anchors: runtimeSurvey.anchors.filter((anchor) =>
         cellKeys.has(`${anchor.cell.x},${anchor.cell.y}`),
       ),
       orientation: candidate.orientation,
     };
+  }
+
+  const terrain = runtime.sim.state.terrain;
+  for (let y = 20; y < terrain.size - 40; y += 6) {
+    for (let x = 20; x < terrain.size - 40; x += 6) {
+      const survey = runtime.surveyZonedPlot(
+        x,
+        y,
+        "n",
+        "COMPACT",
+        "residential",
+        revision,
+      );
+      const terrainFailure = survey.failures.some(
+        (failure) =>
+          failure.code === "WATER_FORBIDDEN" || failure.code === "NON_BUILDABLE",
+      );
+      if (terrainFailure) {
+        const cellKeys = new Set(
+          survey.cells.map((cell) => `${cell.x},${cell.y}`),
+        );
+        return {
+          id: "placement:zz-preflight-invalid",
+          definitionId: survey.definitionId,
+          frameId: base.frames.find(
+            (frame) => frame.kind === "region" && frame.layer === "surface",
+          )!.id,
+          layer: "surface",
+          source: "import",
+          cells: survey.cells,
+          bounds: survey.bounds,
+          vertical: survey.vertical,
+          anchors: survey.anchors.filter((anchor) =>
+            cellKeys.has(`${anchor.cell.x},${anchor.cell.y}`),
+          ),
+          orientation: "n",
+        };
+      }
+    }
   }
   throw new Error(`no ${valid ? "valid" : "invalid"} catalog survey fixture`);
 }
