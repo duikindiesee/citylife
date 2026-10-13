@@ -1,4 +1,6 @@
 import { test, expect } from "@playwright/test";
+import { zonedPlotDefinition } from "../src/colony/placement/placeableCatalog";
+import { zonedPlotCells } from "../src/colony/placement/surveyPlacement";
 
 test("Zoning and building plots E2E", async ({ page }) => {
   // Heavy build-interaction flow (open zoning menus, drag a plot, wait for the sim to build it).
@@ -36,48 +38,183 @@ test("Zoning and building plots E2E", async ({ page }) => {
   await expect(gravelBtn).toBeVisible();
   console.log("Category submenus for roads are successfully displayed.");
 
+  // Derive production footprint offsets for BIG residential plot (front-centred-rectangle, orientation n)
+  const def = zonedPlotDefinition("residential", "BIG");
+  expect(def.footprint.type).toBe("front-centred-rectangle");
+  expect(def.footprint.width).toBeGreaterThan(0);
+  expect(def.footprint.depth).toBeGreaterThan(0);
+  const template = zonedPlotCells(
+    0,
+    0,
+    def.footprint.width,
+    def.footprint.depth,
+    "n",
+  );
+  expect(template.cells.length).toBeGreaterThan(0);
+  const plotFootprintOffsets = template.cells.map((c) => ({
+    dx: c.x,
+    dy: c.y,
+  }));
+
   // Find an authoritative road + plot pair. The future plot may fail only for missing frontage;
   // all exact-footprint terrain, shore, reservation and collision checks already have to pass.
-  const buildableCenter = await page.evaluate(() => {
-    const rt = (window as any).__colony;
-    const t = rt?.sim?.state?.terrain;
-    if (!rt || !t) return null;
-    const roadSet = rt.sim.state.roadSet as Set<string>;
-    for (let y = 30; y < t.size - 30; y += 3) {
-      for (let x = 30; x < t.size - 30; x += 3) {
-        // Use one logical frontage cell. Multi-cell builder strokes add a rendered ribbon whose
-        // shoulder occupies the immediately adjacent row, so an exact plot must not overlap it.
-        const road = [{ x, y }];
-        if (road.some((cell) => roadSet.has(`${cell.x},${cell.y}`))) continue;
-        const roadSurvey = rt.surveyRoadPlacement(road, "street");
-        if (!roadSurvey.ok) continue;
-        const plotSurvey = rt.surveyZonedPlot(
-          x,
-          y + 1,
-          "n",
-          "BIG",
-          "residential",
-        );
-        if (
-          plotSurvey.failures.length > 0 &&
-          plotSurvey.failures.every(
-            (failure: any) => failure.code === "ROAD_CONNECTION_REQUIRED",
-          )
-        ) {
-          return {
+  const searchResult = await page.evaluate(
+    ({ plotFootprintOffsets }) => {
+      const rt = (window as any).__colony;
+      if (!rt) return { error: "Missing runtime (__colony)" };
+      const t = rt?.sim?.state?.terrain;
+      if (!t) return { error: "Missing terrain" };
+      const roadSet = rt.sim?.state?.roadSet as Set<string> | undefined;
+      if (!roadSet || roadSet.size === 0) {
+        return { error: "Missing or empty roadSet" };
+      }
+      const pCtx = rt.placementContext?.();
+      if (!pCtx) return { error: "Missing placementContext from runtime" };
+      const renderedRoads = pCtx.renderedRoadCells as Set<string> | undefined;
+      const reservedCells = pCtx.reservedCells as Set<string> | undefined;
+      const occupiedCells = pCtx.occupiedCells as Set<string> | undefined;
+      if (!renderedRoads || !reservedCells || !occupiedCells) {
+        return {
+          error:
+            "Missing required placement context sets (renderedRoadCells, reservedCells, occupiedCells)",
+        };
+      }
+
+      const CARDINALS = [
+        { dx: 0, dy: -1 },
+        { dx: 1, dy: 0 },
+        { dx: 0, dy: 1 },
+        { dx: -1, dy: 0 },
+      ];
+      const visited = new Set<string>();
+      const startTime = performance.now();
+      const MAX_CANDIDATES = 64;
+      const DEADLINE_MS = 10000;
+      let tested = 0;
+
+      for (const roadKey of roadSet) {
+        const commaIdx = roadKey.indexOf(",");
+        const rx = Number(roadKey.slice(0, commaIdx));
+        const ry = Number(roadKey.slice(commaIdx + 1));
+
+        for (const { dx, dy } of CARDINALS) {
+          if (
+            tested >= MAX_CANDIDATES ||
+            performance.now() - startTime >= DEADLINE_MS
+          ) {
+            return {
+              candidate: null,
+              tested,
+              elapsedMs: performance.now() - startTime,
+              reason:
+                tested >= MAX_CANDIDATES
+                  ? "MAX_CANDIDATES_REACHED"
+                  : "DEADLINE_EXCEEDED",
+            };
+          }
+
+          const x = rx + dx;
+          const y = ry + dy;
+          const key = `${x},${y}`;
+          if (visited.has(key)) continue;
+          visited.add(key);
+
+          if (!t.inBounds(x, y) || !t.inBounds(x, y + 1)) continue;
+          // Road cell must be unpaved, not reserved/occupied (do not exclude proposed road for rendered ribbon)
+          if (
+            roadSet.has(key) ||
+            reservedCells.has(key) ||
+            occupiedCells.has(key)
+          ) {
+            continue;
+          }
+
+          const roadIdx = t.idx(x, y);
+          if (
+            t.buildable[roadIdx] < 1 ||
+            t.isWater(x, y) ||
+            t.biome[roadIdx] === 2
+          ) {
+            continue; // 2 = Biome.Beach
+          }
+
+          // Footprint check for BIG plot oriented "n" at (x, y + 1) using production offsets:
+          let footprintOk = true;
+          for (const offset of plotFootprintOffsets) {
+            const px = x + offset.dx;
+            const py = y + 1 + offset.dy;
+            if (!t.inBounds(px, py)) {
+              footprintOk = false;
+              break;
+            }
+            const pKey = `${px},${py}`;
+            if (
+              roadSet.has(pKey) ||
+              renderedRoads.has(pKey) ||
+              reservedCells.has(pKey) ||
+              occupiedCells.has(pKey)
+            ) {
+              footprintOk = false;
+              break;
+            }
+            const pIdx = t.idx(px, py);
+            if (
+              t.buildable[pIdx] < 1 ||
+              t.isWater(px, py) ||
+              t.biome[pIdx] === 2
+            ) {
+              footprintOk = false;
+              break;
+            }
+          }
+
+          if (!footprintOk) continue;
+
+          tested++;
+          const road = [{ x, y }];
+          const roadSurvey = rt.surveyRoadPlacement(road, "street");
+          if (!roadSurvey.ok) continue;
+
+          const plotSurvey = rt.surveyZonedPlot(
             x,
-            y,
-            road,
-            roadRevision: roadSurvey.layoutRevision,
-          };
+            y + 1,
+            "n",
+            "BIG",
+            "residential",
+          );
+          if (
+            plotSurvey.failures.length > 0 &&
+            plotSurvey.failures.every(
+              (failure: any) => failure.code === "ROAD_CONNECTION_REQUIRED",
+            )
+          ) {
+            return {
+              candidate: {
+                x,
+                y,
+                road,
+                roadRevision: roadSurvey.layoutRevision,
+              },
+              tested,
+              elapsedMs: performance.now() - startTime,
+            };
+          }
         }
       }
-    }
-    return null;
-  });
+      return {
+        candidate: null,
+        tested,
+        elapsedMs: performance.now() - startTime,
+        reason: "EXHAUSTED",
+      };
+    },
+    { plotFootprintOffsets },
+  );
 
-  console.log(`Found buildable center at: ${JSON.stringify(buildableCenter)}`);
-  expect(buildableCenter).not.toBeNull();
+  console.log(`Candidate search result: ${JSON.stringify(searchResult)}`);
+  expect(searchResult.error).toBeUndefined();
+  expect(searchResult.candidate).not.toBeNull();
+  const buildableCenter = searchResult.candidate!;
   const bx = buildableCenter!.x;
   const by = buildableCenter!.y;
 
