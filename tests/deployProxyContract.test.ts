@@ -127,4 +127,78 @@ describe("production gateway proxy contract", () => {
       expect(refererSanitizeRe.test("")).toBe(false);
     });
   });
+
+  describe("Conditional public scheme propagation (Floyd trusted contract)", () => {
+    const bffAndWsLocations = [
+      "/kooker/api/v1/citylife/auth/cookie",
+      "/api/v1/citylife/auth/cookie",
+      "/kooker/api/v1/citylife/auth/clear",
+      "/api/v1/citylife/auth/clear",
+      "/kooker/api/v1/citylife/ws",
+      "/api/v1/citylife/ws",
+    ];
+
+    it("declares HTTP-scope map for citylife_public_scheme with default $scheme", () => {
+      expect(nginxTemplate).toContain("map $http_x_forwarded_proto $citylife_public_scheme {");
+      expect(nginxTemplate).toContain("default $scheme;");
+      expect(nginxTemplate).toContain("~*^https$ https;");
+      expect(nginxTemplate).toContain("~*^http$ http;");
+    });
+
+    it.each(bffAndWsLocations)(
+      "assigns $citylife_public_scheme to X-Forwarded-Proto for %s",
+      (path) => {
+        const block = exactLocation(path);
+        expect(block).toContain("proxy_set_header X-Forwarded-Proto $citylife_public_scheme;");
+        expect(block).not.toContain("proxy_set_header X-Forwarded-Proto $scheme;");
+      },
+    );
+
+    it("preserves unmodified local $scheme X-Forwarded-Proto on the older four auth and kooker locations", () => {
+      const chatBlock = exactLocation("/kooker/api/v1/ai/route/chat");
+      expect(chatBlock).toContain("proxy_set_header X-Forwarded-Proto $scheme;");
+
+      const basicBlock = exactLocation("/api/auth/basic");
+      expect(basicBlock).toContain("proxy_set_header X-Forwarded-Proto $scheme;");
+
+      const refreshBlock = exactLocation("/api/auth/refresh");
+      expect(refreshBlock).toContain("proxy_set_header X-Forwarded-Proto $scheme;");
+
+      const genericMatch = nginxTemplate.match(/location \/kooker\/ \{([\s\S]*?)\n    \}/);
+      expect(genericMatch).not.toBeNull();
+      expect(genericMatch![1]).toContain("proxy_set_header X-Forwarded-Proto $scheme;");
+    });
+
+    it("evaluates simulated public scheme map logic with positives and negative fallbacks", () => {
+      const simulateSchemeMap = (rawHeader: string | undefined): string => {
+        if (!rawHeader) return "$scheme";
+        if (/^https$/i.test(rawHeader)) return "https";
+        if (/^http$/i.test(rawHeader)) return "http";
+        return "$scheme";
+      };
+
+      // Intended single-value positives
+      expect(simulateSchemeMap("https")).toBe("https");
+      expect(simulateSchemeMap("http")).toBe("http");
+      expect(simulateSchemeMap("HTTPS")).toBe("https");
+      expect(simulateSchemeMap("HTTP")).toBe("http");
+
+      // Fabricated missing / empty negative
+      expect(simulateSchemeMap("")).toBe("$scheme");
+      expect(simulateSchemeMap(undefined)).toBe("$scheme");
+
+      // Fabricated duplicate / appended negatives (e.g. ngrok appending to client header)
+      expect(simulateSchemeMap("http, https")).toBe("$scheme");
+      expect(simulateSchemeMap("https, http")).toBe("$scheme");
+      expect(simulateSchemeMap("https, https")).toBe("$scheme");
+      expect(simulateSchemeMap("http, http")).toBe("$scheme");
+
+      // Fabricated invalid / spoofed scheme negatives
+      expect(simulateSchemeMap("ftp")).toBe("$scheme");
+      expect(simulateSchemeMap("ws")).toBe("$scheme");
+      expect(simulateSchemeMap("wss")).toBe("$scheme");
+      expect(simulateSchemeMap("javascript:alert(1)")).toBe("$scheme");
+      expect(simulateSchemeMap("https://evil.invalid")).toBe("$scheme");
+    });
+  });
 });

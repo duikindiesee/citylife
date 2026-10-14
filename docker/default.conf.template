@@ -29,6 +29,15 @@ map $http_referer $citylife_log_referer {
     ~*(?:\?|%3f) "-";
 }
 
+# Conditional public scheme mapping for CityLife BFF and browser WebSocket routes.
+# Propagates verified single-token scheme from ingress ("https" or "http");
+# any missing, multiple, or unrecognized scheme safely defaults to local $scheme.
+map $http_x_forwarded_proto $citylife_public_scheme {
+    default $scheme;
+    ~*^https$ https;
+    ~*^http$ http;
+}
+
 log_format sanitized_wss '$remote_addr - [$time_local] "$request_method $uri" '
                          '$status $upstream_status $request_time';
 
@@ -116,7 +125,7 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host citylife-ws.internal;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $citylife_public_scheme;
         proxy_pass_header Set-Cookie;
     }
 
@@ -126,7 +135,7 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host citylife-ws.internal;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $citylife_public_scheme;
         proxy_pass_header Set-Cookie;
     }
 
@@ -137,7 +146,7 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host citylife-ws.internal;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $citylife_public_scheme;
         proxy_pass_header Set-Cookie;
     }
 
@@ -147,7 +156,7 @@ server {
         proxy_ssl_server_name on;
         proxy_set_header Host citylife-ws.internal;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $citylife_public_scheme;
         proxy_pass_header Set-Cookie;
     }
 
@@ -164,7 +173,7 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host citylife-ws.internal;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $citylife_public_scheme;
         proxy_set_header Authorization "";
         proxy_pass_header Cookie;
         proxy_read_timeout 3600s;
@@ -181,7 +190,7 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host citylife-ws.internal;
         proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto $citylife_public_scheme;
         proxy_set_header Authorization "";
         proxy_pass_header Cookie;
         proxy_read_timeout 3600s;
