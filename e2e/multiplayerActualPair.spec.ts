@@ -2892,8 +2892,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         if (!targetGroup) return false;
 
         const isPedestrian = targetGroup.userData?.isPedestrian === true;
-        const mode = targetGroup.userData?.mode;
-        const isWalking = mode === "walking" || isPedestrian;
+        const isWalking = targetGroup.userData?.mode === "walking";
 
         let hasCrabMesh = false;
         let hasCrabGroup = false;
@@ -2913,7 +2912,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         const hasBox = geoTypes.includes("BoxGeometry");
         const hasCylinder = geoTypes.includes("CylinderGeometry");
 
-        return isWalking && hasCrabGroup && hasCrabMesh && !hasBox && !hasCylinder;
+        return isPedestrian && isWalking && hasCrabGroup && hasCrabMesh && !hasBox && !hasCylinder;
       }, pinnedParticipantId1, { timeout: 15_000 });
 
       // Retain screenshot of visible pedestrian avatar
@@ -3578,9 +3577,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         });
         if (!targetGroup) return false;
 
-        const isPedestrian = targetGroup.userData?.isPedestrian === true;
-        const mode = targetGroup.userData?.mode;
-        const isDriving = mode === "driving" || (!isPedestrian && mode !== "riding_bus");
+        const isNotPedestrian = targetGroup.userData?.isPedestrian === false;
+        const isDriving = targetGroup.userData?.mode === "driving";
 
         let hasCrab = false;
         const geoTypes: string[] = [];
@@ -3596,7 +3594,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         const hasBox = geoTypes.includes("BoxGeometry");
         const hasCylinder = geoTypes.includes("CylinderGeometry");
 
-        return isDriving && hasBox && hasCylinder && !hasCrab;
+        return isNotPedestrian && isDriving && hasBox && hasCylinder && !hasCrab;
       }, pinnedParticipantId1, { timeout: 15_000 });
 
       // Retain screenshot of visible car model
