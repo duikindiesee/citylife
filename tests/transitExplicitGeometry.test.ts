@@ -19,15 +19,14 @@ function resetAtomicRoadStore(): void {
 }
 
 describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths-v1)", () => {
+
   it("exports explicit-paths-v1 with 5 curved bays, spur, site, and 6 stop anchors on current valid world", () => {
     const rt = new ColonyRuntime(4242);
     const doc = rt.captureWorldLayout();
     const auth = rt.exportCanonicalTransitAuthority();
     expect(auth).not.toBeNull();
     expect(auth!.schemaVersion).toBe(CANONICAL_TRANSIT_SCHEMA_VERSION);
-    expect(auth!.geometryCapability).toBe(
-      CANONICAL_TRANSIT_GEOMETRY_CAPABILITY,
-    );
+    expect(auth!.geometryCapability).toBe(CANONICAL_TRANSIT_GEOMETRY_CAPABILITY);
     expect(auth!.worldId).toBe(doc.layoutId);
     expect(auth!.layoutRevision).toBe(doc.revision.contentHash);
 
@@ -48,9 +47,7 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
     expect(auth!.depot.spur).toBeDefined();
     expect(auth!.depot.spur!.length).toBeGreaterThanOrEqual(2);
     expect(auth!.depot.spur![0]).toEqual(auth!.depot.gate);
-    expect(auth!.depot.spur![auth!.depot.spur!.length - 1]).toEqual(
-      auth!.depot.roadCell,
-    );
+    expect(auth!.depot.spur![auth!.depot.spur!.length - 1]).toEqual(auth!.depot.roadCell);
 
     expect(auth!.depot.bays).toBeDefined();
     expect(auth!.depot.bays!.length).toBe(5);
@@ -106,24 +103,10 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
     };
 
     // Valid under legacy lax mode
-    expect(
-      validateCanonicalTransitAuthority(
-        legacyAuth,
-        "seed-4242",
-        "abc123",
-        5,
-        false,
-      ).valid,
-    ).toBe(true);
+    expect(validateCanonicalTransitAuthority(legacyAuth, "seed-4242", "abc123", 5, false).valid).toBe(true);
 
     // Fails closed when requireExplicitGeometry is true
-    const res = validateCanonicalTransitAuthority(
-      legacyAuth,
-      "seed-4242",
-      "abc123",
-      5,
-      true,
-    );
+    const res = validateCanonicalTransitAuthority(legacyAuth, "seed-4242", "abc123", 5, true);
     expect(res.valid).toBe(false);
     expect(res.error).toBe("CANONICAL_TRANSIT_UNUSABLE");
   });
@@ -192,30 +175,11 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
       },
     };
 
-    expect(
-      validateCanonicalTransitAuthority(
-        validBase,
-        "seed-4242",
-        "abc123",
-        5,
-        true,
-      ).valid,
-    ).toBe(true);
+    expect(validateCanonicalTransitAuthority(validBase, "seed-4242", "abc123", 5, true).valid).toBe(true);
 
     // Negative 1: Fractional baysTotal
-    const fractionalBays = {
-      ...validBase,
-      depot: { ...validBase.depot, baysTotal: 5.5 },
-    };
-    expect(
-      validateCanonicalTransitAuthority(
-        fractionalBays,
-        "seed-4242",
-        "abc123",
-        5,
-        true,
-      ).valid,
-    ).toBe(false);
+    const fractionalBays = { ...validBase, depot: { ...validBase.depot, baysTotal: 5.5 } };
+    expect(validateCanonicalTransitAuthority(fractionalBays, "seed-4242", "abc123", 5, true).valid).toBe(false);
 
     // Negative 2: Mismatched stop anchor cell
     const mismatchedAnchor = {
@@ -228,15 +192,7 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
         ],
       },
     };
-    expect(
-      validateCanonicalTransitAuthority(
-        mismatchedAnchor,
-        "seed-4242",
-        "abc123",
-        5,
-        true,
-      ).valid,
-    ).toBe(false);
+    expect(validateCanonicalTransitAuthority(mismatchedAnchor, "seed-4242", "abc123", 5, true).valid).toBe(false);
 
     // Negative 3: Non-finite bay coordinate
     const nonFiniteBay = {
@@ -249,23 +205,13 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
         ],
       },
     };
-    expect(
-      validateCanonicalTransitAuthority(
-        nonFiniteBay,
-        "seed-4242",
-        "abc123",
-        5,
-        true,
-      ).valid,
-    ).toBe(false);
+    expect(validateCanonicalTransitAuthority(nonFiniteBay, "seed-4242", "abc123", 5, true).valid).toBe(false);
   });
 
   describe("atomic boot negative: rejects altered transit authority", () => {
     let runtime: ColonyRuntime;
     let doc: ReturnType<ColonyRuntime["captureWorldLayout"]>;
-    let validAuth: NonNullable<
-      ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>
-    >;
+    let validAuth: NonNullable<ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>>;
     let setupDurationMs = 0;
 
     beforeEach(() => {
@@ -280,9 +226,7 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
       doc = runtime.captureWorldLayout();
       const auth = runtime.exportCanonicalTransitAuthority();
       if (!auth) {
-        throw new Error(
-          "Setup failure: baseline exportCanonicalTransitAuthority returned null",
-        );
+        throw new Error("Setup failure: baseline exportCanonicalTransitAuthority returned null");
       }
       validAuth = auth;
       setupDurationMs = performance.now() - t0;
@@ -315,12 +259,7 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
           savedDoc = input;
           return {
             status: "saved",
-            revision: {
-              worldId: doc.layoutId,
-              layoutRevision: doc.revision.contentHash,
-              sequence: 0,
-              document: doc,
-            },
+            revision: { worldId: doc.layoutId, layoutRevision: doc.revision.contentHash, sequence: 0, document: doc },
           };
         },
       };
@@ -358,9 +297,7 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
       expect(saves).toBe(0);
       expect(savedDoc).toBeNull();
       // Assert active runtime was NEVER mutated
-      expect(runtime.captureWorldLayout().revision.contentHash).toBe(
-        beforeHash,
-      );
+      expect(runtime.captureWorldLayout().revision.contentHash).toBe(beforeHash);
 
       // 2. Production ColonyApp wrapper shape forwards exportCanonicalTransitAuthority and rejects altered input
       let wrapperHydrateCalls = 0;
@@ -413,9 +350,7 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
       }
       expect(missingError).not.toBeNull();
       expect(missingError.code).toBe("CANONICAL_TRANSIT_UNAVAILABLE");
-      expect(missingError.message).toContain(
-        "requires semantic validation runtime support",
-      );
+      expect(missingError.message).toContain("requires semantic validation runtime support");
       expect(saves).toBe(0);
       expect(wrapperHydrateCalls).toBe(0);
 
@@ -429,9 +364,7 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
   describe("atomic boot positive: unchanged input succeeds through production wrapper", () => {
     let runtime: ColonyRuntime;
     let doc: ReturnType<ColonyRuntime["captureWorldLayout"]>;
-    let validAuth: NonNullable<
-      ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>
-    >;
+    let validAuth: NonNullable<ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>>;
     let setupDurationMs = 0;
 
     beforeEach(() => {
@@ -446,9 +379,7 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
       doc = runtime.captureWorldLayout();
       const auth = runtime.exportCanonicalTransitAuthority();
       if (!auth) {
-        throw new Error(
-          "Setup failure: baseline exportCanonicalTransitAuthority returned null",
-        );
+        throw new Error("Setup failure: baseline exportCanonicalTransitAuthority returned null");
       }
       validAuth = auth;
       setupDurationMs = performance.now() - t0;
@@ -475,12 +406,7 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
           saves++;
           return {
             status: "saved",
-            revision: {
-              worldId: doc.layoutId,
-              layoutRevision: doc.revision.contentHash,
-              sequence: 0,
-              document: doc,
-            },
+            revision: { worldId: doc.layoutId, layoutRevision: doc.revision.contentHash, sequence: 0, document: doc },
           };
         },
       };
@@ -518,9 +444,7 @@ describe("Transit Explicit Geometry Contract (citylife.transit/v1 explicit-paths
       expect(result.ready).toBe(true);
       expect(saves).toBe(1);
       expect(wrapperHydrateCalls).toBe(1);
-      expect(runtime.captureWorldLayout().revision.contentHash).toBe(
-        doc.revision.contentHash,
-      );
+      expect(runtime.captureWorldLayout().revision.contentHash).toBe(doc.revision.contentHash);
 
       const actionDurationMs = performance.now() - tActionStart;
       console.log(

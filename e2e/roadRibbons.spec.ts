@@ -245,11 +245,7 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
       });
 
     // Snapshot full committed roads (RoadCell contract: x, y, kind) and roadWays before rejected calls
-    const preRoads = s.roads.map((r: any) => ({
-      x: r.x,
-      y: r.y,
-      kind: r.kind,
-    }));
+    const preRoads = s.roads.map((r: any) => ({ x: r.x, y: r.y, kind: r.kind }));
     const preWays = (s.roadWays || []).map((w: any) => ({
       path: (w.path || w.points || []).map((p: any) => ({ x: p.x, y: p.y })),
       kind: w.kind,
@@ -316,18 +312,10 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
       postWays.length === preWays.length &&
       postWays.every((w: any, i: number) => {
         const pw = preWays[i];
-        if (
-          w.kind !== pw.kind ||
-          w.width !== pw.width ||
-          w.source !== pw.source
-        )
-          return false;
+        if (w.kind !== pw.kind || w.width !== pw.width || w.source !== pw.source) return false;
         const pts = w.path || w.points || [];
         if (pts.length !== pw.path.length) return false;
-        return pts.every(
-          (p: any, pi: number) =>
-            p.x === pw.path[pi].x && p.y === pw.path[pi].y,
-        );
+        return pts.every((p: any, pi: number) => p.x === pw.path[pi].x && p.y === pw.path[pi].y);
       });
 
     const currentRevision = rt.placementContext().layoutRevision;
@@ -378,17 +366,11 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
   expect(negativeControls.offWorld.ok).toBe(false);
   expect(negativeControls.offWorld.failures).toContain("OUT_OF_BOUNDS");
   expect(negativeControls.staleRevision.ok).toBe(false);
-  expect(negativeControls.staleRevision.failures).toContain(
-    "STALE_LAYOUT_REVISION",
-  );
+  expect(negativeControls.staleRevision.failures).toContain("STALE_LAYOUT_REVISION");
   expect(negativeControls.prePositions).toBeGreaterThan(0);
   expect(negativeControls.postPositions).toBe(negativeControls.prePositions);
-  expect(negativeControls.postOffWorldFingerprint).toBe(
-    negativeControls.preFingerprint,
-  );
-  expect(negativeControls.postStaleFingerprint).toBe(
-    negativeControls.preFingerprint,
-  );
+  expect(negativeControls.postOffWorldFingerprint).toBe(negativeControls.preFingerprint);
+  expect(negativeControls.postStaleFingerprint).toBe(negativeControls.preFingerprint);
   expect(negativeControls.roadsIdentical).toBe(true);
   expect(negativeControls.roadWaysIdentical).toBe(true);
   expect(negativeControls.geometryPreservedAcrossRejections).toBe(true);
@@ -420,9 +402,7 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
       { x: 432, y: 319 },
       { x: 433, y: 318 },
     ];
-    if (
-      !deterministicStroke.some((cell) => roadSet.has(`${cell.x},${cell.y}`))
-    ) {
+    if (!deterministicStroke.some((cell) => roadSet.has(`${cell.x},${cell.y}`))) {
       const survey = rt.surveyRoadPlacement(
         deterministicStroke,
         "street",
@@ -452,11 +432,7 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
           stroke.push({ x: end.x + dx * s, y: end.y + dy * s });
         }
         if (!stroke.some((c) => roadSet.has(`${c.x},${c.y}`))) {
-          const s = rt.surveyRoadPlacement(
-            stroke,
-            "street",
-            pCtx.layoutRevision,
-          );
+          const s = rt.surveyRoadPlacement(stroke, "street", pCtx.layoutRevision);
           if (s.ok) {
             candidate = { cells: stroke, layoutRevision: s.layoutRevision };
             break;
@@ -485,9 +461,7 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
       strokeCells: candidate.cells.length,
     };
   });
-  console.log(
-    `plotRoad ways: ${grown.beforeWays} -> ${grown.afterWays} (stroke length: ${grown.strokeCells})`,
-  );
+  console.log(`plotRoad ways: ${grown.beforeWays} -> ${grown.afterWays} (stroke length: ${grown.strokeCells})`);
   expect(grown.afterWays).toBe(grown.beforeWays + 1);
   expect(grown.afterVersion).toBe(grown.beforeVersion + 1);
   expect(grown.postRevision).toBe(initialRibbon.layoutRevision);
@@ -544,14 +518,8 @@ test("R3F road ribbons: merged surface, draped junction caps, builder intact", a
   );
 
   const ribbonChange = await updatedRibbon.jsonValue();
-  expect(ribbonChange.currentPositions).toBeGreaterThan(
-    initialRibbon.totalPositions,
-  );
-  expect(ribbonChange.currentPosFingerprint).not.toBe(
-    initialRibbon.posFingerprint,
-  );
-  expect(ribbonChange.currentRoadsVersion).toBeGreaterThan(
-    initialRibbon.roadsVersion,
-  );
+  expect(ribbonChange.currentPositions).toBeGreaterThan(initialRibbon.totalPositions);
+  expect(ribbonChange.currentPosFingerprint).not.toBe(initialRibbon.posFingerprint);
+  expect(ribbonChange.currentRoadsVersion).toBeGreaterThan(initialRibbon.roadsVersion);
   expect(ribbonChange.currentSignature).not.toBe(initialRibbon.signature);
 });

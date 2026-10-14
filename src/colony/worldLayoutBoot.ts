@@ -30,12 +30,8 @@ export interface WorldLayoutBootStore {
 export interface WorldLayoutBootRuntime {
   captureWorldLayout(): WorldLayoutDocument | Promise<WorldLayoutDocument>;
   hydrateWorldLayout(document: WorldLayoutDocument): unknown | Promise<unknown>;
-  exportCanonicalTransitAuthority?(
-    document?: WorldLayoutDocument,
-  ): CanonicalTransitAuthority | null;
-  setStarterCatalogueManifest?(
-    manifest: RemoteStarterCatalogueManifest | null,
-  ): void;
+  exportCanonicalTransitAuthority?(document?: WorldLayoutDocument): CanonicalTransitAuthority | null;
+  setStarterCatalogueManifest?(manifest: RemoteStarterCatalogueManifest | null): void;
 }
 
 export interface RemoteStarterCatalogueManifest {
@@ -107,11 +103,7 @@ export function validateAuthoritativeStarterManifest(
       reason: "Starter catalogue manifest is absent or not an object",
     };
   }
-  if (
-    !activeLayout ||
-    typeof activeLayout !== "object" ||
-    !activeLayout.revision
-  ) {
+  if (!activeLayout || typeof activeLayout !== "object" || !activeLayout.revision) {
     return {
       valid: false,
       keys: [],
@@ -247,10 +239,9 @@ export class HttpRemoteWorldLayoutLoader implements RemoteWorldLayoutLoader {
   private readonly timeoutMs: number;
 
   constructor(options?: HttpRemoteWorldLayoutLoaderOptions) {
-    this.baseUrl = (
-      options?.baseUrl !== undefined && options.baseUrl !== ""
-        ? options.baseUrl
-        : "/kooker"
+    this.baseUrl = (options?.baseUrl !== undefined && options.baseUrl !== ""
+      ? options.baseUrl
+      : "/kooker"
     ).replace(/\/+$/, "");
     this.getToken = options?.getToken;
     this.timeoutMs = options?.timeoutMs ?? 5000;
@@ -266,9 +257,7 @@ export class HttpRemoteWorldLayoutLoader implements RemoteWorldLayoutLoader {
       "Cache-Control": "no-store",
     };
     if (token) {
-      headers["Authorization"] = token.startsWith("Bearer ")
-        ? token
-        : `Bearer ${token}`;
+      headers["Authorization"] = token.startsWith("Bearer ") ? token : `Bearer ${token}`;
     }
 
     const controller = new AbortController();
@@ -286,9 +275,7 @@ export class HttpRemoteWorldLayoutLoader implements RemoteWorldLayoutLoader {
         return null;
       }
       if (!response.ok) {
-        throw new Error(
-          `Remote starter catalogue fetch failed with status ${response.status}`,
-        );
+        throw new Error(`Remote starter catalogue fetch failed with status ${response.status}`);
       }
 
       const data = await response.json();
@@ -515,9 +502,7 @@ export class WorldLayoutBootCoordinator {
 
     if (this.remoteLoader) {
       try {
-        const remote = await this.remoteLoader.loadRemoteStarterCatalogue(
-          this.worldId,
-        );
+        const remote = await this.remoteLoader.loadRemoteStarterCatalogue(this.worldId);
         if (remote) {
           if (!remote.published) {
             throw new WorldLayoutBootError(
@@ -538,9 +523,7 @@ export class WorldLayoutBootCoordinator {
               `Remote starter catalogue ${manifest.worldId} does not match world ${this.worldId}`,
             );
           }
-          const document = parseWorldLayoutDocument(
-            JSON.stringify(manifest.layout),
-          );
+          const document = parseWorldLayoutDocument(JSON.stringify(manifest.layout));
           if (document.worldId !== this.worldId) {
             throw new WorldLayoutBootError(
               "WORLD_ID_MISMATCH",
@@ -586,12 +569,8 @@ export class WorldLayoutBootCoordinator {
                 `Remote starter catalogue transit authority requires semantic validation runtime support`,
               );
             }
-            const adopted =
-              this.runtime.exportCanonicalTransitAuthority(document);
-            if (
-              !adopted ||
-              !canonicalTransitMatches(adopted, manifest.transit)
-            ) {
+            const adopted = this.runtime.exportCanonicalTransitAuthority(document);
+            if (!adopted || !canonicalTransitMatches(adopted, manifest.transit)) {
               throw new WorldLayoutBootError(
                 "CANONICAL_TRANSIT_UNAVAILABLE",
                 `Remote starter catalogue transit authority does not match physically validated runtime transit`,

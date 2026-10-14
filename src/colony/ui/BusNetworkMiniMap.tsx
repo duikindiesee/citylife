@@ -17,25 +17,19 @@ type BusNetworkMiniMapProps = {
 };
 
 export function computeBusNetworkMiniMapSignal(runtime: ColonyRuntime): string {
-  const isDriving =
-    runtime.isOwnedDriveSeated?.() ?? (runtime as any).ownedDriveSeated;
+  const isDriving = runtime.isOwnedDriveSeated?.() ?? (runtime as any).ownedDriveSeated;
   const pose = runtime.getOwnedDrivePose?.();
   const walk = runtime.getWalkingCell?.();
   const parked = runtime.getParkedCarPose?.();
-  const selfPart =
-    isDriving && pose
-      ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}`
-      : `foot:${walk ? `${walk.x.toFixed(2)}:${walk.y.toFixed(2)}` : "none"}:${parked ? `${parked.x.toFixed(2)}:${parked.y.toFixed(2)}` : "none"}`;
+  const selfPart = isDriving && pose
+    ? `drive:${pose.x.toFixed(2)}:${pose.y.toFixed(2)}`
+    : `foot:${walk ? `${walk.x.toFixed(2)}:${walk.y.toFixed(2)}` : "none"}:${parked ? `${parked.x.toFixed(2)}:${parked.y.toFixed(2)}` : "none"}`;
   const peers = Array.from(runtime.sim.state.remoteRacers?.values() ?? []);
   const peerPart = peers
     .map((p) => {
       const isPed = Boolean(p.isPedestrian);
       const parked =
-        isPed &&
-        p.carX !== undefined &&
-        p.carZ !== undefined &&
-        Number.isFinite(p.carX) &&
-        Number.isFinite(p.carZ)
+        isPed && p.carX !== undefined && p.carZ !== undefined && Number.isFinite(p.carX) && Number.isFinite(p.carZ)
           ? `parked:${p.carX.toFixed(2)}:${p.carZ.toFixed(2)}`
           : "none";
       return `${p.participantId}:${p.cell.x.toFixed(2)}:${p.cell.y.toFixed(2)}:${isPed ? "ped" : "veh"}:${parked}`;
@@ -60,17 +54,14 @@ function OpenBusNetworkMiniMap({
 }: Omit<BusNetworkMiniMapProps, "open">) {
   // The HUD can be memoized independently of the scene. Subscribe to the runtime's 200ms
   // heartbeat while seated or walking so the player marker and peer markers follow live poses on the map.
-  const mapSignal = useSimSignal(runtime, () =>
-    computeBusNetworkMiniMapSignal(runtime),
-  );
+  const mapSignal = useSimSignal(runtime, () => computeBusNetworkMiniMapSignal(runtime));
   void mapSignal;
   const state = runtime.sim.state;
   const terrain = state.terrain;
   const tSize = terrain?.size ?? 128;
   const depot = runtime.busDepot?.site ?? null;
   const local = presenceReadout?.entries.find((entry) => entry.isLocal) ?? null;
-  const isDriving =
-    runtime.isOwnedDriveSeated?.() ?? (runtime as any).ownedDriveSeated;
+  const isDriving = runtime.isOwnedDriveSeated?.() ?? (runtime as any).ownedDriveSeated;
   const driving = runtime.getOwnedDrivePose?.();
   const mpClient = runtime.getMultiplayerClient();
   const isOnline = mpClient?.getStatus() === "connected";
@@ -81,13 +72,8 @@ function OpenBusNetworkMiniMap({
   if (isDriving && driving) {
     player = { x: driving.x, y: driving.y };
   } else {
-    const walkingCell =
-      runtime.getWalkingCell?.() ??
-      (local?.resolution === "exact" &&
-      local.fix?.withinExtent &&
-      local.fix.cell
-        ? local.fix.cell
-        : null);
+    const walkingCell = runtime.getWalkingCell?.() ??
+      (local?.resolution === "exact" && local.fix?.withinExtent && local.fix.cell ? local.fix.cell : null);
     if (walkingCell) {
       player = { x: walkingCell.x, y: walkingCell.y };
     }
@@ -105,13 +91,7 @@ function OpenBusNetworkMiniMap({
 
   const peers = Array.from(state.remoteRacers?.values() ?? []).map((r) => {
     let peerParked: { x: number; y: number } | null = null;
-    if (
-      r.isPedestrian &&
-      r.carX !== undefined &&
-      r.carZ !== undefined &&
-      Number.isFinite(r.carX) &&
-      Number.isFinite(r.carZ)
-    ) {
+    if (r.isPedestrian && r.carX !== undefined && r.carZ !== undefined && Number.isFinite(r.carX) && Number.isFinite(r.carZ)) {
       peerParked = {
         x: r.carX / 4 + tSize / 2,
         y: r.carZ / 4 + tSize / 2,
@@ -261,17 +241,18 @@ function OpenBusNetworkMiniMap({
               strokeDasharray="2,2"
               opacity="0.85"
             />
-            <circle cx={peer.x} cy={peer.y} r="2.6" fill="#00ffcc" />
+            <circle
+              cx={peer.x}
+              cy={peer.y}
+              r="2.6"
+              fill="#00ffcc"
+            />
           </g>
         ))}
         {model.parkedCars.map((car) => (
           <g
             key={`parked-car-${car.id}`}
-            aria-label={
-              car.isLocal
-                ? "Your parked vehicle"
-                : `Parked vehicle of ${car.ownerName}`
-            }
+            aria-label={car.isLocal ? "Your parked vehicle" : `Parked vehicle of ${car.ownerName}`}
             data-testid="city-map-parked-car-marker"
             data-parked-car-id={car.id}
             data-local={car.isLocal ? "true" : "false"}
@@ -287,7 +268,12 @@ function OpenBusNetworkMiniMap({
               stroke="#0f172a"
               strokeWidth="0.8"
             />
-            <circle cx={car.x} cy={car.y} r="1" fill="#ffffff" />
+            <circle
+              cx={car.x}
+              cy={car.y}
+              r="1"
+              fill="#ffffff"
+            />
           </g>
         ))}
         {model.busClusters.map((cluster) => {

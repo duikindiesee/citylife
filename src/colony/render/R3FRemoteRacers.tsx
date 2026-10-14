@@ -33,12 +33,8 @@ function makeRacerPlate(username: string, isPedestrian = false): THREE.Sprite {
   const ctx = canvas.getContext("2d");
   if (ctx) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = isPedestrian
-      ? "rgba(10, 25, 45, 0.88)"
-      : "rgba(10, 20, 35, 0.85)";
-    ctx.strokeStyle = isPedestrian
-      ? "rgba(100, 220, 255, 0.95)"
-      : "rgba(80, 200, 255, 0.95)";
+    ctx.fillStyle = isPedestrian ? "rgba(10, 25, 45, 0.88)" : "rgba(10, 20, 35, 0.85)";
+    ctx.strokeStyle = isPedestrian ? "rgba(100, 220, 255, 0.95)" : "rgba(80, 200, 255, 0.95)";
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.roundRect(8, 8, 240, 48, 14);
@@ -48,9 +44,7 @@ function makeRacerPlate(username: string, isPedestrian = false): THREE.Sprite {
     ctx.font = "bold 26px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.shadowColor = isPedestrian
-      ? "rgba(100, 220, 255, 0.9)"
-      : "rgba(80, 200, 255, 0.9)";
+    ctx.shadowColor = isPedestrian ? "rgba(100, 220, 255, 0.9)" : "rgba(80, 200, 255, 0.9)";
     ctx.shadowBlur = 8;
     ctx.fillStyle = "#ffffff";
     ctx.fillText(username, 128, 32, 220);
@@ -103,10 +97,7 @@ function RemotePedestrianVisual({ racer }: { racer: { username: string } }) {
     return group;
   }, []);
 
-  const plate = useMemo(
-    () => makeRacerPlate(racer.username, true),
-    [racer.username],
-  );
+  const plate = useMemo(() => makeRacerPlate(racer.username, true), [racer.username]);
 
   useEffect(() => {
     return () => {
@@ -124,19 +115,12 @@ function RemotePedestrianVisual({ racer }: { racer: { username: string } }) {
   );
 }
 
-function RemoteCarVisual({
-  racer,
-}: {
-  racer: { username: string; spec: CarSpec };
-}) {
+function RemoteCarVisual({ racer }: { racer: { username: string; spec: CarSpec } }) {
   const model = useMemo(() => {
     return buildCarMesh(racer.spec);
   }, [racer.spec]);
 
-  const plate = useMemo(
-    () => makeRacerPlate(racer.username, false),
-    [racer.username],
-  );
+  const plate = useMemo(() => makeRacerPlate(racer.username, false), [racer.username]);
 
   useEffect(() => {
     return () => {
@@ -170,10 +154,7 @@ function RemoteParkedCarVisual({
     return buildCarMesh(racer.spec);
   }, [racer.spec]);
 
-  const plate = useMemo(
-    () => makeRacerPlate(`${racer.username} (Parked)`, false),
-    [racer.username],
-  );
+  const plate = useMemo(() => makeRacerPlate(`${racer.username} (Parked)`, false), [racer.username]);
 
   useEffect(() => {
     return () => {
@@ -200,11 +181,7 @@ function RemoteParkedCarVisual({
   );
 }
 
-export function R3FRemoteRacers({
-  sim,
-  runtime,
-  terrainLevel,
-}: R3FRemoteRacersProps) {
+export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersProps) {
   useSimSignal(runtime, () => remoteRacersSignature(sim.state));
 
   const rootGroup = useRef<THREE.Group>(null);
@@ -223,25 +200,12 @@ export function R3FRemoteRacers({
     const gSeat = gPad ? padSeatY(t, gPad.x, gPad.y, gPad.w, gPad.h) : 0;
 
     const sampleElevation = (cx: number, cy: number) => {
-      const isR = isPointOnRoadSurface(
-        cx,
-        cy,
-        sim.state.roadSet,
-        sim.state.roadWays,
-      );
+      const isR = isPointOnRoadSurface(cx, cy, sim.state.roadSet, sim.state.roadWays);
       if (gPad && isPointInGarageVicinity(cx, cy, gPad)) {
         const local = localFromGridCoordinates(gPad, cx, cy);
-        const apronH = garageApronSurfaceY(
-          gPad,
-          t,
-          null,
-          local.x,
-          local.z,
-          gSeat,
-        );
+        const apronH = garageApronSurfaceY(gPad, t, null, local.x, local.z, gSeat);
         if (isR) {
-          const roadH =
-            Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT;
+          const roadH = Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT;
           return Math.max(roadH, apronH);
         }
         return apronH;
@@ -249,12 +213,7 @@ export function R3FRemoteRacers({
       if (isR) {
         return Math.max(0, getSmoothRoadY(t, cx, cy)) + ROAD_RIBBON_LIFT;
       }
-      return (
-        Math.max(
-          0,
-          leveledWorldY(t, terrainLevel, Math.round(cx), Math.round(cy)),
-        ) + 0.02
-      );
+      return Math.max(0, leveledWorldY(t, terrainLevel, Math.round(cx), Math.round(cy))) + 0.02;
     };
 
     for (const [id, racer] of racersMap.entries()) {
@@ -268,66 +227,33 @@ export function R3FRemoteRacers({
 
       if (isPedestrian) {
         const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);
-        const dist = Math.hypot(
-          grp.position.x - targetWorldX,
-          grp.position.z - targetWorldZ,
-        );
-        const lerpFactor =
-          dist > 20 || (grp.position.x === 0 && grp.position.z === 0)
-            ? 1
-            : Math.min(1, delta * 12);
+        const dist = Math.hypot(grp.position.x - targetWorldX, grp.position.z - targetWorldZ);
+        const lerpFactor = dist > 20 || (grp.position.x === 0 && grp.position.z === 0) ? 1 : Math.min(1, delta * 12);
         grp.position.x += (targetWorldX - grp.position.x) * lerpFactor;
         grp.position.y += (groundElevation - grp.position.y) * lerpFactor;
         grp.position.z += (targetWorldZ - grp.position.z) * lerpFactor;
         grp.rotation.set(0, -heading + Math.PI / 2, 0, "YXZ");
       } else {
-        const onRoad = isPointOnRoadSurface(
-          racer.cell.x,
-          racer.cell.y,
-          sim.state.roadSet,
-          sim.state.roadWays,
-        );
-        const roadElevation =
-          Math.max(0, getSmoothRoadY(t, racer.cell.x, racer.cell.y)) +
-          ROAD_RIBBON_LIFT;
+        const onRoad = isPointOnRoadSurface(racer.cell.x, racer.cell.y, sim.state.roadSet, sim.state.roadWays);
+        const roadElevation = Math.max(0, getSmoothRoadY(t, racer.cell.x, racer.cell.y)) + ROAD_RIBBON_LIFT;
         const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);
-        const centerY = onRoad
-          ? Math.max(roadElevation, groundElevation)
-          : groundElevation;
+        const centerY = onRoad ? Math.max(roadElevation, groundElevation) : groundElevation;
 
         const cosH = Math.cos(heading);
         const sinH = Math.sin(heading);
         const halfLenCells = 2.1 / 4.0;
         const halfWidCells = 0.95 / 4.0;
 
-        const yFront = sampleElevation(
-          racer.cell.x + cosH * halfLenCells,
-          racer.cell.y + sinH * halfLenCells,
-        );
-        const yRear = sampleElevation(
-          racer.cell.x - cosH * halfLenCells,
-          racer.cell.y - sinH * halfLenCells,
-        );
+        const yFront = sampleElevation(racer.cell.x + cosH * halfLenCells, racer.cell.y + sinH * halfLenCells);
+        const yRear = sampleElevation(racer.cell.x - cosH * halfLenCells, racer.cell.y - sinH * halfLenCells);
         const pitch = Math.atan2(yFront - yRear, 4.2);
 
-        const yLeft = sampleElevation(
-          racer.cell.x - sinH * halfWidCells,
-          racer.cell.y + cosH * halfWidCells,
-        );
-        const yRight = sampleElevation(
-          racer.cell.x + sinH * halfWidCells,
-          racer.cell.y - sinH * halfWidCells,
-        );
+        const yLeft = sampleElevation(racer.cell.x - sinH * halfWidCells, racer.cell.y + cosH * halfWidCells);
+        const yRight = sampleElevation(racer.cell.x + sinH * halfWidCells, racer.cell.y - sinH * halfWidCells);
         const roll = Math.atan2(yLeft - yRight, 1.9);
 
-        const dist = Math.hypot(
-          grp.position.x - targetWorldX,
-          grp.position.z - targetWorldZ,
-        );
-        const lerpFactor =
-          dist > 30 || (grp.position.x === 0 && grp.position.z === 0)
-            ? 1
-            : Math.min(1, delta * 12);
+        const dist = Math.hypot(grp.position.x - targetWorldX, grp.position.z - targetWorldZ);
+        const lerpFactor = dist > 30 || (grp.position.x === 0 && grp.position.z === 0) ? 1 : Math.min(1, delta * 12);
         grp.position.x += (targetWorldX - grp.position.x) * lerpFactor;
         grp.position.y += (centerY - grp.position.y) * lerpFactor;
         grp.position.z += (targetWorldZ - grp.position.z) * lerpFactor;
@@ -367,9 +293,7 @@ export function R3FRemoteRacers({
               {racer.isPedestrian || !racer.spec ? (
                 <RemotePedestrianVisual racer={racer} />
               ) : (
-                <RemoteCarVisual
-                  racer={racer as { username: string; spec: CarSpec }}
-                />
+                <RemoteCarVisual racer={racer as { username: string; spec: CarSpec }} />
               )}
             </group>
             {hasParkedCar && (
