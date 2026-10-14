@@ -59,13 +59,13 @@ jobs:
           node-version: "24"
       - run: npm ci
       - run: npx playwright install chromium
-      # Pinned server revision: published corrective candidate 8a56d921a50b986da04306b19b94f97d64311541
-      # (fresh walkability authority reconciliation on join, bus transit geometry, post-await vehicle ownership rechecks, and unowned purchase-intent wire contract)
+      # Pinned server revision: published corrective candidate 33f0336ad8df3ef42314dd2396d3821a4402a7ab
+      # (queryless cookie auth session lifecycle, seated bus authority, parked asset validation, and coherent Sol clock)
       - name: Check out citylife-server at pinned authoritative revision
         uses: actions/checkout@v7
         with:
           repository: duikindiesee/citylife-server
-          ref: 8a56d921a50b986da04306b19b94f97d64311541
+          ref: 33f0336ad8df3ef42314dd2396d3821a4402a7ab
           token: ${{ secrets.CITYLIFE_SERVER_READ_TOKEN }}
           persist-credentials: false
           path: citylife-server

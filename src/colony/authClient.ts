@@ -403,7 +403,6 @@ export class AuthClient {
               method: "POST",
               headers: {
                 Authorization: `Bearer ${bearer}`,
-                "Content-Type": "application/json",
               },
               credentials: "same-origin",
               signal: controller.signal,

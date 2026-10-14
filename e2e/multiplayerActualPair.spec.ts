@@ -1673,7 +1673,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       ],
     });
 
-    const serverAddr = await fastifyApp.listen({ port: 0, host: "127.0.0.1" });
+    const serverPort = Number(process.env.CITYLIFE_PORT) || 9010;
+    const serverAddr = await fastifyApp.listen({ port: serverPort, host: "127.0.0.1" });
     const actualWsUrl = serverAddr.replace(/^http/, "ws") + "/api/v1/citylife/ws";
     console.log(`Proposed Fastify server listening at: ${serverAddr} (ws: ${actualWsUrl})`);
 
