@@ -17,10 +17,10 @@ concurrency:
 
 jobs:
   unit-and-build:
-    # Never execute fork-authored code on kooker1. Same-repository branches are
+    # Never execute fork-authored code on self-hosted runners. Same-repository branches are
     # the trusted contributor lane; pushes to main remain covered as well.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, Windows, X64, citylife-webgl, kooker1-gpu]
+    runs-on: [self-hosted, Windows, X64, citylife-cpu, kooker2-cpu]
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
@@ -101,7 +101,7 @@ jobs:
   verify:
     needs: [unit-and-build, e2e-browser]
     if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, Windows, X64, citylife-webgl, kooker1-gpu]
+    runs-on: [self-hosted, Windows, X64, citylife-cpu, kooker2-cpu]
     timeout-minutes: 5
     steps:
       - name: Check aggregate test results
