@@ -4,6 +4,10 @@ import { ColonyRuntime } from "../src/colony/runtime";
 import { setSolDebugOffsetMs, solNowMs } from "../src/colony/solRuntimeClock";
 import { Pt } from "../src/colony/transit/path";
 import { setupAuthoritativeRuntime } from "./testAuthorityHelper";
+import {
+  PASSENGER_SEAT_LOCAL_SLOTS,
+  computeSeatedCrabWorldPose,
+} from "../src/colony/render/R3FRemoteRacers";
 
 type TransitDriver = { transitTick: () => void };
 const tick = (rt: ColonyRuntime) =>
@@ -166,7 +170,7 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
     expect(rt.getUiState().firstPerson.busStop?.isWaiting).toBe(false);
   });
 
-  it("multiplayer connected positive: calls boardBus on arrival and commits authoritative seat", () => {
+  it("multiplayer connected positive: feeds valid bus_boarded through registered callback to commit authoritative seat and UI", () => {
     const rt = new ColonyRuntime();
     rt.setPlayerView(false);
     rt.debugSetSolTimeOfDay(12, 0);
@@ -180,83 +184,140 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
     rt.debugPlaceFirstPerson(stop0.furniture.x, stop0.furniture.y);
     rt.queueNextBus(0);
 
-    const boardCalls: number[] = [];
-    (rt as any).multiplayerClient = {
-      getStatus: () => "connected",
-      getMode: () => "walking",
-      getSessionId: () => "sess-1",
-      boardBus: (busId: number) => {
-        boardCalls.push(busId);
-        return true;
-      },
+    setupAuthoritativeRuntime(rt, { userId: "operator@test.com" });
+    rt.enableMultiplayer("room-1", "ws://synthetic.citylife.invalid/ws");
+    const client = rt.getMultiplayerClient()!;
+
+    // Set connected status and state on real client
+    (client as any).status = "connected";
+    (client as any).currentMode = "walking";
+    (client as any).sessionId = "sess-1";
+    (client as any).participantId = "part-1";
+    (client as any).modeEpoch = 1;
+
+    const sentMessages: any[] = [];
+    (client as any).send = (msg: any) => {
+      sentMessages.push(msg);
+      return true;
     };
 
-    // Fast-forward to arrival
+    // Advance to bus arrival
     const base = solNowMs();
+    let dwellingBusId: number | null = null;
     for (let i = 0; i < 20000; i++) {
       setSolDebugOffsetMs(base + i * 250 - Date.now());
       tick(rt);
-      if (boardCalls.length > 0) break;
-    }
-
-    expect(boardCalls.length).toBe(1);
-    // Wire request sent: local waiting index cleared to avoid spamming
-    expect((rt as any).fpWaitingBusStopIndex).toBeNull();
-    // But local seat is NOT faked before server response:
-    expect(rt.fpRidingBusId).toBeNull();
-    expect(rt.fpRidingSeatIndex).toBeNull();
-    expect(rt.getUiState().firstPerson.narration).toContain("Requesting boarding from server...");
-
-    // Server returns authoritative bus_boarded event for seat 7:
-    // (Simulate callback invoked by multiplayerClient)
-    (rt as any).fpRidingBusId = boardCalls[0]!;
-    (rt as any).fpRidingSeatIndex = 7;
-    expect(rt.fpRidingBusId).toBe(boardCalls[0]!);
-    expect(rt.fpRidingSeatIndex).toBe(7);
-  }, 120000);
-
-  it("multiplayer disconnected/connecting negative: fails closed and does not fake local seat", () => {
-    const rt = new ColonyRuntime();
-    rt.setPlayerView(false);
-    rt.debugSetSolTimeOfDay(12, 0);
-    tick(rt);
-
-    const anchors = rt.busStopAnchors();
-    const stop0 = anchors[0]!;
-    const ids = rt.getUiState().firstPerson.stepInCitizenIds;
-    rt.enterFirstPerson(ids[0]!);
-
-    rt.debugPlaceFirstPerson(stop0.furniture.x, stop0.furniture.y);
-    rt.queueNextBus(0);
-
-    // Mock client in disconnected status
-    (rt as any).multiplayerClient = {
-      getStatus: () => "disconnected",
-      getMode: () => "walking",
-      boardBus: () => false,
-      alightBus: () => false,
-    };
-
-    const base = solNowMs();
-    for (let i = 0; i < 20000; i++) {
-      setSolDebugOffsetMs(base + i * 250 - Date.now());
-      tick(rt);
-      // If arrival check triggered, narration reports authority unavailable
-      if (rt.getUiState().firstPerson.narration?.includes("Multiplayer server authority unavailable")) {
+      if (sentMessages.length > 0) {
+        dwellingBusId = sentMessages[0].busId;
         break;
       }
     }
 
-    // Fails closed: no local bus or seat assignment
+    expect(sentMessages.length).toBe(1);
+    expect(sentMessages[0]).toMatchObject({
+      type: "request_board_bus",
+      busId: dwellingBusId,
+      epoch: 1,
+    });
+    // Wire request sent: local waiting intent cleared so requests do not repeat
+    expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+    // Local seat NOT assumed before server response
+    expect(rt.fpRidingBusId).toBeNull();
+    expect(rt.fpRidingSeatIndex).toBeNull();
+    expect(rt.getUiState().firstPerson.narration).toContain("Requesting boarding from server...");
+
+    // Feed authoritative bus_boarded event through registered client callback
+    (client as any).options.onBusBoarded?.({ busId: dwellingBusId!, seatIndex: 7 });
+
+    // Assert resulting UI, authoritative seat, and pose
+    expect(rt.fpRidingBusId).toBe(dwellingBusId);
+    expect(rt.fpRidingSeatIndex).toBe(7);
+    expect(rt.getUiState().firstPerson.narration).toBe(
+      `You board Bus ${dwellingBusId! + 1}. Press E at any stop to step off.`,
+    );
+    expect(rt.getUiState().firstPerson.busStop).toBeNull();
+  }, 120000);
+
+  it("multiplayer connecting & disconnected negatives: fail closed without mutating local seat", () => {
+    const rt = new ColonyRuntime();
+    rt.setPlayerView(false);
+    rt.debugSetSolTimeOfDay(12, 0);
+    tick(rt);
+
+    const anchors = rt.busStopAnchors();
+    const stop0 = anchors[0]!;
+    const ids = rt.getUiState().firstPerson.stepInCitizenIds;
+    rt.enterFirstPerson(ids[0]!);
+
+    setupAuthoritativeRuntime(rt, { userId: "operator@test.com" });
+    rt.enableMultiplayer("room-1", "ws://synthetic.citylife.invalid/ws");
+    const client = rt.getMultiplayerClient()!;
+
+    // 1. Genuinely CONNECTING status
+    (client as any).status = "connecting";
+    rt.debugPlaceFirstPerson(stop0.furniture.x, stop0.furniture.y);
+    rt.queueNextBus(0);
+
+    const base = solNowMs();
+    for (let i = 0; i < 20000; i++) {
+      setSolDebugOffsetMs(base + i * 250 - Date.now());
+      tick(rt);
+      if (rt.getUiState().firstPerson.narration?.includes("Multiplayer server authority unavailable")) {
+        break;
+      }
+    }
     expect(rt.fpRidingBusId).toBeNull();
     expect(rt.fpRidingSeatIndex).toBeNull();
     expect(rt.getUiState().firstPerson.narration).toBe(
       "Multiplayer server authority unavailable — cannot board bus.",
     );
 
-    // Manual interaction also fails closed
-    const interacted = rt.activateFirstPersonInteraction();
-    expect(interacted).toBe(true); // Cancels the wait
+    // 2. DISCONNECTED status
+    (client as any).status = "disconnected";
+    rt.cancelBusWait();
+    rt.queueNextBus(0);
+
+    for (let i = 0; i < 20000; i++) {
+      setSolDebugOffsetMs(base + (20000 + i) * 250 - Date.now());
+      tick(rt);
+      if (rt.getUiState().firstPerson.narration?.includes("Multiplayer server authority unavailable")) {
+        break;
+      }
+    }
+    expect(rt.fpRidingBusId).toBeNull();
+    expect(rt.fpRidingSeatIndex).toBeNull();
+    expect(rt.getUiState().firstPerson.narration).toBe(
+      "Multiplayer server authority unavailable — cannot board bus.",
+    );
+  }, 120000);
+
+  it("cancellation before arrival: cancelBusWait clears intent so arriving bus does not board", () => {
+    const rt = new ColonyRuntime();
+    rt.setPlayerView(false);
+    rt.debugSetSolTimeOfDay(12, 0);
+    tick(rt);
+
+    const anchors = rt.busStopAnchors();
+    const stop0 = anchors[0]!;
+    const ids = rt.getUiState().firstPerson.stepInCitizenIds;
+    rt.enterFirstPerson(ids[0]!);
+
+    rt.debugPlaceFirstPerson(stop0.furniture.x, stop0.furniture.y);
+    rt.queueNextBus(0);
+    expect(rt.getUiState().firstPerson.busStop?.isWaiting).toBe(true);
+
+    // Cancel wait before bus arrives
+    rt.cancelBusWait();
+    expect(rt.getUiState().firstPerson.busStop?.isWaiting).toBe(false);
+
+    // Advance clock across dwelling service buses
+    const base = solNowMs();
+    for (let i = 0; i < 20000; i++) {
+      setSolDebugOffsetMs(base + i * 250 - Date.now());
+      tick(rt);
+      // Wait was cancelled, so player never auto-boards
+      expect(rt.fpRidingBusId).toBeNull();
+    }
     expect(rt.fpRidingBusId).toBeNull();
   }, 120000);
 
@@ -271,8 +332,7 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
     // Initialize authoritative multiplayer setup
     setupAuthoritativeRuntime(rt, { userId: "operator@test.com" });
     rt.enableMultiplayer("room-1", "ws://synthetic.citylife.invalid/ws");
-    const client = rt.getMultiplayerClient();
-    expect(client).toBeDefined();
+    const client = rt.getMultiplayerClient()!;
 
     // 1. BUS_FULL rejection
     (client as any).options.onError?.({ code: "BUS_FULL", message: "Bus is at full capacity" });
@@ -309,8 +369,7 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
 
     setupAuthoritativeRuntime(rt, { userId: "operator@test.com" });
     rt.enableMultiplayer("room-1", "ws://synthetic.citylife.invalid/ws");
-    const client = rt.getMultiplayerClient();
-    expect(client).toBeDefined();
+    const client = rt.getMultiplayerClient()!;
 
     // Player starts waiting at stop 1
     (rt as any).fpWaitingBusStopIndex = 1;
@@ -326,36 +385,48 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
   });
 
   it("seated crab transform matches production bus renderer coordinates and seat slots", () => {
-    // Production bus seat definitions from src/colony/render/busLayer.ts:
-    // Sides: left (z = 0.82), right (z = -0.82)
-    // 5 rows: x = -4.25 + i * 1.55, height: 1.45
-    // Coach front is +X, crab front is +Z -> relative rotation +Math.PI / 2
-    const Y_AXIS = new THREE.Vector3(0, 1, 0);
+    // Shared production passenger seat slots exported from R3FRemoteRacers.tsx
+    expect(PASSENGER_SEAT_LOCAL_SLOTS.length).toBe(10);
 
-    for (let seatIdx = 0; seatIdx < 10; seatIdx++) {
-      const side = seatIdx < 5 ? 0.82 : -0.82;
-      const row = seatIdx % 5;
-      const localX = -4.25 + row * 1.55;
-      const localY = 1.45;
-      const localZ = side;
+    const terrainSize = 256;
+    const roadElevation = 1.2;
+    const heading = 0.62; // Nonzero heading (~35.5 degrees)
 
-      // Slot symmetry check: seats stay within coach interior bounds
-      expect(Math.abs(localZ)).toBeCloseTo(0.82, 3);
-      expect(localX).toBeGreaterThanOrEqual(-4.25);
-      expect(localX).toBeLessThanOrEqual(-4.25 + 4 * 1.55);
-      expect(localY).toBe(1.45);
+    // Two successive positions along the route
+    const busPose1 = { x: 120, y: 280, heading };
+    const busPose2 = { x: 125, y: 285, heading };
 
-      // Forward transform at heading 0 (along +X):
-      const v0 = new THREE.Vector3(localX, localY, localZ).applyAxisAngle(Y_AXIS, 0);
-      expect(v0.x).toBeCloseTo(localX, 5);
-      expect(v0.y).toBeCloseTo(localY, 5);
-      expect(v0.z).toBeCloseTo(localZ, 5);
+    // Test distinct seats across both sides and front/back rows:
+    // Seat 0 (row 0, left side z=+0.82)
+    // Seat 4 (row 4, left side z=+0.82)
+    // Seat 5 (row 0, right side z=-0.82)
+    // Seat 9 (row 4, right side z=-0.82)
+    for (const seatIdx of [0, 4, 5, 9]) {
+      const p1 = computeSeatedCrabWorldPose(busPose1, seatIdx, terrainSize, roadElevation);
+      const p2 = computeSeatedCrabWorldPose(busPose2, seatIdx, terrainSize, roadElevation);
 
-      // Transformed at heading Math.PI / 2 (bus facing +Z):
-      const v90 = new THREE.Vector3(localX, localY, localZ).applyAxisAngle(Y_AXIS, -Math.PI / 2);
-      expect(v90.x).toBeCloseTo(-localZ, 5);
-      expect(v90.y).toBeCloseTo(localY, 5);
-      expect(v90.z).toBeCloseTo(localX, 5);
+      // 1. Successive position displacement equals bus movement: (125-120)*4=20m X, (285-280)*4=20m Z
+      expect(p2.x - p1.x).toBeCloseTo(20.0, 5);
+      expect(p2.z - p1.z).toBeCloseTo(20.0, 5);
+      expect(p2.y).toBeCloseTo(p1.y, 5);
+
+      // 2. Facing orientation aligns crab FRONT (+Z) with bus forward (+X) at nonzero heading
+      expect(p1.rotationY).toBeCloseTo(-heading + Math.PI / 2, 5);
+      expect(p2.rotationY).toBeCloseTo(-heading + Math.PI / 2, 5);
+
+      // 3. Local coordinate check: matches busLayer.ts interior seat positions
+      const slot = PASSENGER_SEAT_LOCAL_SLOTS[seatIdx]!;
+      const expectedSide = seatIdx < 5 ? 0.82 : -0.82;
+      const expectedRow = seatIdx % 5;
+      expect(slot.z).toBeCloseTo(expectedSide, 5);
+      expect(slot.x).toBeCloseTo(-4.25 + expectedRow * 1.55, 5);
+      expect(slot.y).toBe(1.45);
+
+      // 4. DELIBERATE NEGATIVE CONTROL: omitting the bus coach rotation (-heading) drifts from interior
+      const unrotatedX = (busPose1.x - terrainSize / 2) * 4 + slot.x;
+      const unrotatedZ = (busPose1.y - terrainSize / 2) * 4 + slot.z;
+      const drift = Math.hypot(p1.x - unrotatedX, p1.z - unrotatedZ);
+      expect(drift, "omitting bus rotation causes substantial drift").toBeGreaterThan(1.0);
     }
   });
 });

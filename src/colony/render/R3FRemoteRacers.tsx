@@ -213,6 +213,45 @@ function RemoteParkedCarVisual({
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
 const _tempSeatVec = new THREE.Vector3();
 
+/** 10 passenger seat slots from production busLayer.ts (5 left at z=+0.82, 5 right at z=-0.82) */
+export const PASSENGER_SEAT_LOCAL_SLOTS: ReadonlyArray<{ readonly x: number; readonly y: number; readonly z: number }> =
+  Object.freeze(
+    Array.from({ length: 10 }, (_, seatIdx) => {
+      const side = seatIdx < 5 ? 0.82 : -0.82;
+      const row = seatIdx % 5;
+      return Object.freeze({
+        x: -4.25 + row * 1.55,
+        y: 1.45,
+        z: side,
+      });
+    }),
+  );
+
+/** Authoritative computation of seated crab world pose attached to bus coach rig */
+export function computeSeatedCrabWorldPose(
+  busPose: { x: number; y: number; heading?: number },
+  seatIndex: number,
+  terrainSize: number,
+  roadElevation: number,
+): { x: number; y: number; z: number; rotationY: number } {
+  const seatIdx =
+    typeof seatIndex === "number" && seatIndex >= 0 && seatIndex < PASSENGER_SEAT_LOCAL_SLOTS.length
+      ? seatIndex
+      : 0;
+  const slot = PASSENGER_SEAT_LOCAL_SLOTS[seatIdx]!;
+  const heading = busPose.heading ?? 0;
+  const worldBusX = (busPose.x - terrainSize / 2) * 4;
+  const worldBusZ = (busPose.y - terrainSize / 2) * 4;
+  const roadH = roadElevation + ROAD_RIBBON_LIFT;
+  _tempSeatVec.set(slot.x, slot.y, slot.z).applyAxisAngle(Y_AXIS, -heading);
+  return {
+    x: worldBusX + _tempSeatVec.x,
+    y: roadH + _tempSeatVec.y,
+    z: worldBusZ + _tempSeatVec.z,
+    rotationY: -heading + Math.PI / 2,
+  };
+}
+
 export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersProps) {
   useSimSignal(runtime, () => remoteRacersSignature(sim.state));
 
@@ -265,25 +304,12 @@ export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersP
       if (isSeatedOnBus) {
         const busId = racer.seatedBusId!;
         const busPose = runtime?.busPoseOf ? runtime.busPoseOf(busId) : null;
-        const seatIdx = typeof racer.seatIndex === "number" ? racer.seatIndex : 0;
-        const side = seatIdx < 5 ? 0.82 : -0.82;
-        const row = seatIdx % 5;
-        const localX = -4.25 + row * 1.55;
-        const localY = 1.45;
-        const localZ = side;
 
         if (busPose) {
-          const heading = busPose.heading ?? 0;
-          const worldBusX = (busPose.x - t.size / 2) * 4;
-          const worldBusZ = (busPose.y - t.size / 2) * 4;
-          const roadH = Math.max(0, getSmoothRoadY(t, busPose.x, busPose.y)) + ROAD_RIBBON_LIFT;
-          _tempSeatVec.set(localX, localY, localZ).applyAxisAngle(Y_AXIS, -heading);
-          const seatWorldX = worldBusX + _tempSeatVec.x;
-          const seatWorldY = roadH + _tempSeatVec.y;
-          const seatWorldZ = worldBusZ + _tempSeatVec.z;
-
-          grp.position.set(seatWorldX, seatWorldY, seatWorldZ);
-          grp.rotation.set(0, -heading + Math.PI / 2, 0, "YXZ");
+          const roadElevation = Math.max(0, getSmoothRoadY(t, busPose.x, busPose.y));
+          const p = computeSeatedCrabWorldPose(busPose, racer.seatIndex ?? 0, t.size, roadElevation);
+          grp.position.set(p.x, p.y, p.z);
+          grp.rotation.set(0, p.rotationY, 0, "YXZ");
         } else {
           const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);
           grp.position.set(targetWorldX, groundElevation, targetWorldZ);
