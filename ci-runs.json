@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-14T14:54:06.911Z",
+  "updatedAt": "2026-10-14T14:54:28.940Z",
   "runs": [
+    {
+      "runId": 38584631096,
+      "workflowName": "Secret scan",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38584631096",
+      "event": "pull_request",
+      "branch": "chore/bump-0.60.6",
+      "sha": "4e7ab0fc63aee2caf95b57136fff7d61a29a5602",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/4e7ab0fc63aee2caf95b57136fff7d61a29a5602",
+      "pullRequestNumbers": "#570",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/570",
+      "pullRequests": [
+        {
+          "number": 570,
+          "url": "https://github.com/duikindiesee/citylife/pull/570"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-14T14:54:03Z",
+      "completedAt": "2026-10-14T14:54:16Z",
+      "durationSeconds": 13,
+      "runnerSummary": "GitHub Actions 1000011179",
+      "jobs": [
+        {
+          "id": 115923207425,
+          "name": "Gitleaks full-history scan",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000011179",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-24.04"
+          ],
+          "startedAt": "2026-10-14T14:54:06Z",
+          "completedAt": "2026-10-14T14:54:15Z",
+          "durationSeconds": 9
+        }
+      ]
+    },
     {
       "runId": 38584569973,
       "workflowName": "Secret scan",
@@ -10665,45 +10704,6 @@
           "startedAt": "2026-10-02T07:42:36Z",
           "completedAt": "2026-10-02T07:42:42Z",
           "durationSeconds": 6
-        }
-      ]
-    },
-    {
-      "runId": 36979993952,
-      "workflowName": "Build CityLife Debug APK",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36979993952",
-      "event": "pull_request",
-      "branch": "feat/spec-177-garage-rebuild-discrete-surfaces",
-      "sha": "05f3ef4f333daa1bb49fb6156c0c8f504615a753",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/05f3ef4f333daa1bb49fb6156c0c8f504615a753",
-      "pullRequestNumbers": "#553",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/553",
-      "pullRequests": [
-        {
-          "number": 553,
-          "url": "https://github.com/duikindiesee/citylife/pull/553"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-02T07:42:32Z",
-      "completedAt": "2026-10-02T07:43:41Z",
-      "durationSeconds": 69,
-      "runnerSummary": "GitHub Actions 1000010600",
-      "jobs": [
-        {
-          "id": 110752104221,
-          "name": "build",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010600",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-10-02T07:42:36Z",
-          "completedAt": "2026-10-02T07:43:40Z",
-          "durationSeconds": 64
         }
       ]
     }
