@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-14T05:02:19.122Z",
+  "updatedAt": "2026-10-14T06:09:47.559Z",
   "runs": [
     {
       "runId": 38485369528,
@@ -97,37 +97,19 @@
         }
       ],
       "status": "completed",
-      "conclusion": "cancelled",
-      "startedAt": "2026-10-13T23:37:27Z",
-      "completedAt": "2026-10-14T05:01:47Z",
-      "durationSeconds": 19460,
+      "conclusion": "failure",
+      "startedAt": "2026-10-14T05:03:48Z",
+      "completedAt": "2026-10-14T06:09:34Z",
+      "durationSeconds": 3946,
       "runnerSummary": "kooker1-citylife-gpu",
       "jobs": [
         {
-          "id": 115597594483,
-          "name": "e2e-browser",
-          "status": "completed",
-          "conclusion": "cancelled",
-          "runnerName": "",
-          "runnerGroup": "",
-          "runnerLabels": [
-            "self-hosted",
-            "Windows",
-            "X64",
-            "citylife-webgl",
-            "kooker1-gpu"
-          ],
-          "startedAt": "2026-10-13T23:37:27Z",
-          "completedAt": "2026-10-14T04:28:45Z",
-          "durationSeconds": 17478
-        },
-        {
-          "id": 115597594640,
+          "id": 115690554240,
           "name": "unit-and-build",
           "status": "completed",
-          "conclusion": "cancelled",
-          "runnerName": "",
-          "runnerGroup": "",
+          "conclusion": "failure",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
           "runnerLabels": [
             "self-hosted",
             "Windows",
@@ -135,12 +117,30 @@
             "citylife-webgl",
             "kooker1-gpu"
           ],
-          "startedAt": "2026-10-13T23:37:27Z",
-          "completedAt": "2026-10-14T04:28:45Z",
-          "durationSeconds": 17478
+          "startedAt": "2026-10-14T05:03:52Z",
+          "completedAt": "2026-10-14T05:29:03Z",
+          "durationSeconds": 1511
         },
         {
-          "id": 115681089779,
+          "id": 115690554534,
+          "name": "e2e-browser",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-14T05:29:06Z",
+          "completedAt": "2026-10-14T06:09:21Z",
+          "durationSeconds": 2415
+        },
+        {
+          "id": 115709031168,
           "name": "verify",
           "status": "completed",
           "conclusion": "failure",
@@ -153,9 +153,9 @@
             "citylife-webgl",
             "kooker1-gpu"
           ],
-          "startedAt": "2026-10-14T05:01:38Z",
-          "completedAt": "2026-10-14T05:01:46Z",
-          "durationSeconds": 8
+          "startedAt": "2026-10-14T06:09:24Z",
+          "completedAt": "2026-10-14T06:09:33Z",
+          "durationSeconds": 9
         }
       ]
     },
