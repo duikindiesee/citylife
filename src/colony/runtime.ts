@@ -811,6 +811,18 @@ export interface ColonyUiState {
     blockedReason: string | null;
     narration: string | null;
     narrating: boolean;
+    /** BUS.BOARD.PLAYER.1 / BUS.STOP.WAIT.1 — nearest bus stop card details when near stop pole */
+    busStop?: {
+      stopIndex: number;
+      stopName: string;
+      furnitureXY: { x: number; y: number };
+      distance: number;
+      isNearPole: boolean;
+      canBoard: boolean;
+      boardUnavailableReason: string | null;
+      dwellingBusId: number | null;
+      isWaiting: boolean;
+    } | null;
   };
   race: {
     mode: RaceMode;
@@ -1090,6 +1102,8 @@ export class ColonyRuntime {
   fpRidingBusId: number | null = null;
   /** Spec 149 / Bus Seats — the seat slot index on the ridden bus (0-9), or null. */
   fpRidingSeatIndex: number | null = null;
+  /** BUS.STOP.WAIT.1 — the stop anchor index the player is waiting at for the next bus, or null. */
+  fpWaitingBusStopIndex: number | null = null;
   /** Spec 149 — where the first-person CAMERA capsule stands (grid coords), reported by the
    *  renderer every frame. The v3 walker camera is a physics capsule independent of the roster
    *  citizen, so bus interactions measure from HERE — the prompt matches what the player sees. */
@@ -3560,6 +3574,7 @@ export class ColonyRuntime {
           if (status === "disconnected") {
             this.fpRidingBusId = null;
             this.fpRidingSeatIndex = null;
+            this.fpWaitingBusStopIndex = null;
           }
         }
         this.emit();
@@ -3572,6 +3587,8 @@ export class ColonyRuntime {
           err?.code === "ALREADY_SEATED" ||
           err?.code === "NOT_SEATED" ||
           err?.code === "NOT_NEAR_BUS" ||
+          err?.code === "OUT_OF_BOARDING_RANGE" ||
+          err?.code === "EPOCH_MISMATCH" ||
           err?.code === "BLOCKED"
         ) {
           this.fpNarrating = false;
@@ -3585,6 +3602,7 @@ export class ColonyRuntime {
         this.lastAppliedSnapshotSeq = 0;
         this.authoritativeWalkingPose = null;
         this.sim.state.remoteRacers?.clear();
+        this.fpWaitingBusStopIndex = null;
         this.emit();
       },
       onSelfAdmitted: (self) => {
@@ -4667,6 +4685,8 @@ export class ColonyRuntime {
   exitFirstPerson(): void {
     this.fpCitizenId = null;
     this.fpRidingBusId = null; // spec 149 — stepping out of the citizen also steps off the bus
+    this.fpRidingSeatIndex = null;
+    this.fpWaitingBusStopIndex = null;
     this.fpCameraCell = null;
     this.fpCameraYaw = undefined;
     this.fpKeys.clear();
@@ -4882,8 +4902,10 @@ export class ColonyRuntime {
         this.fpCameraCell = { x: pose.x, y: pose.y };
       } else {
         this.fpRidingBusId = null;
+        this.fpRidingSeatIndex = null;
       }
     }
+    this.checkWaitingBusArrival();
   }
 
   /** Spec 149 — where fleet bus `id` physically is right now (grid coords), or null without a fleet. */
@@ -4964,6 +4986,181 @@ export class ColonyRuntime {
         distance: Number(best.d.toFixed(1)),
       },
     };
+  }
+
+  /** BUS.STOP.WAIT.1 / BUS.BOARD.PLAYER.1 — nearest bus stop anchor and current service state */
+  getNearbyBusStop(maxDistanceCells = COLONY.transit.boardMaxDistanceCells): {
+    anchor: BusStopAnchor;
+    stopIndex: number;
+    stopName: string;
+    furnitureXY: { x: number; y: number };
+    distance: number;
+    isNearPole: boolean;
+    canBoard: boolean;
+    boardUnavailableReason: string | null;
+    dwellingBusId: number | null;
+    isWaiting: boolean;
+  } | null {
+    if (!this.stopAnchors || this.stopAnchors.length === 0 || !this.fpCitizenId || this.fpRidingBusId !== null) return null;
+    const c = this.citizens.byId(this.fpCitizenId);
+    if (!c) return null;
+    const at = this.fpCameraCell ?? c.pos;
+
+    let nearest: { anchor: BusStopAnchor; stopIndex: number; distance: number } | null = null;
+    for (let i = 0; i < this.stopAnchors.length; i++) {
+      const a = this.stopAnchors[i]!;
+      const dFurn = Math.hypot(a.furniture.x - at.x, a.furniture.y - at.y);
+      const dAt = Math.hypot(a.at.x - at.x, a.at.y - at.y);
+      const d = Math.min(dFurn, dAt);
+      if (d <= maxDistanceCells && (!nearest || d < nearest.distance)) {
+        nearest = { anchor: a, stopIndex: i, distance: Number(d.toFixed(2)) };
+      }
+    }
+
+    if (!nearest) return null;
+
+    let dwellingBusId: number | null = null;
+    let canBoard = false;
+    let boardUnavailableReason: string | null = null;
+
+    if (this.busFleet) {
+      for (const b of this.busFleet.buses) {
+        const pose = this.busPoseOf(b.id);
+        if (!pose) continue;
+        const dBusToStop = Math.hypot(pose.x - nearest.anchor.at.x, pose.y - nearest.anchor.at.y);
+        const dPlayerToBus = Math.hypot(pose.x - at.x, pose.y - at.y);
+        if (dBusToStop <= maxDistanceCells && b.mode === "service" && b.dwell > 0) {
+          dwellingBusId = b.id;
+          if (!pose.doorsOpen) {
+            canBoard = false;
+            boardUnavailableReason = "Doors closed — bus preparing to depart";
+          } else if (dPlayerToBus > maxDistanceCells) {
+            canBoard = false;
+            boardUnavailableReason = "Approach bus doors to board";
+          } else {
+            canBoard = true;
+            boardUnavailableReason = null;
+          }
+          break;
+        }
+      }
+    }
+
+    const isWaiting = this.fpWaitingBusStopIndex === nearest.stopIndex;
+    if (dwellingBusId === null) {
+      boardUnavailableReason = isWaiting
+        ? "Waiting for next bus — will board automatically on arrival"
+        : "No bus currently at stop";
+    }
+
+    return {
+      anchor: nearest.anchor,
+      stopIndex: nearest.stopIndex,
+      stopName: `Bus Stop ${nearest.stopIndex + 1}`,
+      furnitureXY: { x: nearest.anchor.furniture.x, y: nearest.anchor.furniture.y },
+      distance: nearest.distance,
+      isNearPole: true,
+      canBoard,
+      boardUnavailableReason,
+      dwellingBusId,
+      isWaiting,
+    };
+  }
+
+  /** BUS.STOP.WAIT.1 — start waiting for the next bus at a stop pole */
+  queueNextBus(stopIndex: number): boolean {
+    if (this.fpRidingBusId !== null || this.getOwnedDrivePose()) return false;
+    if (!this.stopAnchors || stopIndex < 0 || stopIndex >= this.stopAnchors.length) return false;
+    const a = this.stopAnchors[stopIndex]!;
+    const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
+    if (!c) return false;
+    const at = this.fpCameraCell ?? c.pos;
+    const d = Math.hypot(a.furniture.x - at.x, a.furniture.y - at.y);
+    if (d > COLONY.transit.boardMaxDistanceCells * 1.5) return false;
+
+    this.fpWaitingBusStopIndex = stopIndex;
+    this.fpNarrating = false;
+    this.fpNarration = `Waiting for next bus at Stop ${stopIndex + 1}. Press E or Cancel to stop waiting.`;
+    this.emit();
+    return true;
+  }
+
+  /** BUS.STOP.WAIT.1 — cancel waiting for next bus */
+  cancelBusWait(): boolean {
+    if (this.fpWaitingBusStopIndex === null) return false;
+    this.fpWaitingBusStopIndex = null;
+    this.fpNarrating = false;
+    this.fpNarration = "Bus wait cancelled.";
+    this.emit();
+    return true;
+  }
+
+  /** BUS.STOP.WAIT.1 — check arrival of bus for waiting passenger */
+  private checkWaitingBusArrival(): void {
+    if (this.fpWaitingBusStopIndex === null || !this.busFleet || !this.fpCitizenId) return;
+    const stopIdx = this.fpWaitingBusStopIndex;
+    const anchor = this.stopAnchors?.[stopIdx];
+    if (!anchor) {
+      this.fpWaitingBusStopIndex = null;
+      return;
+    }
+    const c = this.citizens.byId(this.fpCitizenId);
+    if (!c) {
+      this.fpWaitingBusStopIndex = null;
+      return;
+    }
+    const at = this.fpCameraCell ?? c.pos;
+    const dPlayerToStop = Math.hypot(anchor.furniture.x - at.x, anchor.furniture.y - at.y);
+    if (dPlayerToStop > COLONY.transit.boardMaxDistanceCells * 1.5) {
+      this.fpWaitingBusStopIndex = null;
+      this.fpNarrating = false;
+      this.fpNarration = "Stepped away from stop pole — bus wait cancelled.";
+      this.emit();
+      return;
+    }
+
+    for (const b of this.busFleet.buses) {
+      const pose = this.busPoseOf(b.id);
+      if (!pose || !pose.doorsOpen) continue;
+      const dBusToStop = Math.hypot(pose.x - anchor.at.x, pose.y - anchor.at.y);
+      const dPlayerToBus = Math.hypot(pose.x - at.x, pose.y - at.y);
+      if (dBusToStop <= COLONY.transit.boardMaxDistanceCells && dPlayerToBus <= COLONY.transit.boardMaxDistanceCells) {
+        if (this.multiplayerClient) {
+          if (this.multiplayerClient.getStatus() === "connected") {
+            const sent = this.multiplayerClient.boardBus(b.id);
+            if (sent) {
+              this.fpWaitingBusStopIndex = null;
+              this.fpNarrating = false;
+              this.fpNarration = `Bus ${b.id + 1} arrived! Requesting boarding from server...`;
+              this.emit();
+            }
+          } else {
+            // Multiplayer authority disconnected/connecting: fail closed, do not fake seat or ride
+            this.fpNarrating = false;
+            this.fpNarration = "Multiplayer server authority unavailable — cannot board bus.";
+            this.emit();
+          }
+          break;
+        }
+
+        // Single-player compatibility: no multiplayer client configured
+        this.fpWaitingBusStopIndex = null;
+        this.fpRidingBusId = b.id;
+        this.fpRidingSeatIndex = 0;
+        c.pos.x = pose.x;
+        c.pos.y = pose.y;
+        c.target = { x: pose.x, y: pose.y };
+        c.heading = pose.heading;
+        this.fpCameraCell = { x: pose.x, y: pose.y };
+        this.fpGuidedTarget = null;
+        this.fpWalkSpeed = 0;
+        this.citizens.setTarget(c.id, { x: c.pos.x, y: c.pos.y });
+        this.fpNarrating = false;
+        this.fpNarration = `Bus ${b.id + 1} arrived! You board at seat 1. Press E at any stop to step off.`;
+        this.emit();
+        break;
+      }
+    }
   }
 
   /** Spec 149 — step off the ridden bus onto the pavement beside its door (falls back to the bus
@@ -6578,17 +6775,29 @@ export class ColonyRuntime {
     if (!id) return false;
     const c = this.citizens.byId(id);
     if (!c) return false;
+    // BUS.STOP.WAIT.1 — if actively waiting for a bus, activating interaction toggles wait off
+    if (this.fpWaitingBusStopIndex !== null) {
+      this.cancelBusWait();
+      return true;
+    }
     // Spec 149 — the bus branch comes first: boarding windows are time-limited (the bus leaves),
     // and while RIDING the only ground action is stepping off.
     const busAct = this.busInteraction();
     if (busAct) {
-      if (this.multiplayerClient && this.multiplayerClient.getStatus() === "connected") {
-        if (busAct.action === "board") {
-          this.multiplayerClient.boardBus(busAct.busId);
-          return true;
+      if (this.multiplayerClient) {
+        if (this.multiplayerClient.getStatus() === "connected") {
+          if (busAct.action === "board") {
+            this.multiplayerClient.boardBus(busAct.busId);
+            return true;
+          } else {
+            this.multiplayerClient.alightBus();
+            return true;
+          }
         } else {
-          this.multiplayerClient.alightBus();
-          return true;
+          this.fpNarrating = false;
+          this.fpNarration = "Multiplayer server authority unavailable — cannot board or alight bus.";
+          this.emit();
+          return false;
         }
       }
       if (busAct.action === "board") {
@@ -6617,6 +6826,22 @@ export class ColonyRuntime {
       this.fpNarrating = false;
       this.fpNarration =
         "The bus is moving — wait for the next stop to step off.";
+      this.emit();
+      return false;
+    }
+    // BUS.BOARD.PLAYER.1 / BUS.STOP.WAIT.1 — stop pole interaction when standing near pole
+    const nearStop = this.getNearbyBusStop();
+    if (nearStop && nearStop.dwellingBusId === null) {
+      if (nearStop.isWaiting) {
+        this.cancelBusWait();
+      } else {
+        this.queueNextBus(nearStop.stopIndex);
+      }
+      return true;
+    }
+    if (nearStop && nearStop.dwellingBusId !== null && !nearStop.canBoard) {
+      this.fpNarrating = false;
+      this.fpNarration = nearStop.boardUnavailableReason || "Bus is not boardable right now.";
       this.emit();
       return false;
     }
@@ -9330,13 +9555,37 @@ export class ColonyRuntime {
                 })),
               }
             : rawView;
-        // Spec 149 — the runtime injects bus prompts (the pure view never scans buses): a dwelling
-        // bus in range outranks ground prompts, and while RIDING only "Exit bus" (or nothing) shows.
+        const busStop = this.getNearbyBusStop();
+        // Spec 149 / BUS.BOARD.PLAYER.1 — inject bus and stop-wait prompts
         if (view) {
           const busAct = this.busInteraction();
           if (this.fpRidingBusId !== null)
             view = { ...view, interactionPrompt: busAct?.prompt ?? null };
           else if (busAct) view = { ...view, interactionPrompt: busAct.prompt };
+          else if (this.fpWaitingBusStopIndex !== null && this.stopAnchors?.[this.fpWaitingBusStopIndex]) {
+            const anchor = this.stopAnchors[this.fpWaitingBusStopIndex];
+            view = {
+              ...view,
+              interactionPrompt: {
+                kind: "bus",
+                label: "Cancel wait",
+                targetName: `Bus Stop ${this.fpWaitingBusStopIndex + 1}`,
+                targetXY: anchor.furniture,
+                distance: 0,
+              },
+            };
+          } else if (busStop && busStop.dwellingBusId === null) {
+            view = {
+              ...view,
+              interactionPrompt: {
+                kind: "bus",
+                label: "Wait for next bus",
+                targetName: busStop.stopName,
+                targetXY: busStop.furnitureXY,
+                distance: busStop.distance,
+              },
+            };
+          }
         }
         return {
           active: this.fpCitizenId !== null,
@@ -9345,6 +9594,7 @@ export class ColonyRuntime {
           operatorCitizenId: opId,
           stepInCitizenIds: this.stepInCitizenIds(),
           view,
+          busStop,
           lookPitch: this.fpLookPitch,
           mouseSensitivity: this.fpMouseSensitivity,
           sprintCharge: Math.round(this.fpSprintCharge * 100),

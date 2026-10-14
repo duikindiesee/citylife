@@ -8,6 +8,14 @@ import { useCallback, useSyncExternalStore } from "react";
  *  harnesses can pass a stub, and so this module never imports the runtime. */
 export interface SimBridge {
   subscribe(cb: () => void): () => void;
+  busPoseOf?: (id: number) => {
+    x: number;
+    y: number;
+    heading: number;
+    speed?: number;
+    doorsOpen?: boolean;
+    atStop?: boolean;
+  } | null;
 }
 
 /** Fallback heartbeat for render trees mounted without a runtime (dev harnesses): poll at the
