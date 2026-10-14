@@ -22,6 +22,12 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Windows, X64, citylife-cpu, kooker2-cpu]
     timeout-minutes: 40
+    # The dedicated runner service runs under a non-interactive account whose
+    # machine policy blocks generated PowerShell job scripts by default. Scope
+    # the bypass to this already-restricted, trusted workflow only.
+    defaults:
+      run:
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
@@ -105,7 +111,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check aggregate test results
-        shell: powershell
+        shell: powershell -NoProfile -ExecutionPolicy Bypass -File {0}
         run: |
           if ('${{ needs.unit-and-build.result }}' -ne 'success' -or '${{ needs.e2e-browser.result }}' -ne 'success') {
             Write-Error "Aggregate CI verify failed: unit-and-build=${{ needs.unit-and-build.result }}, e2e-browser=${{ needs.e2e-browser.result }}"
