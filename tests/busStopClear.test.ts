@@ -107,7 +107,10 @@ describe("BUS.STOP.CLEAR.1 — no live stop halts in a junction", () => {
     );
     expect(commercial, "boot seed still has its commercial stop").toBeDefined();
     // The RAW projection of that cell sits in the cap...
-    const raw: Pt = { x: commercial!.cell.x + 0.2, y: commercial!.cell.y + 0.2 };
+    const raw: Pt = {
+      x: commercial!.cell.x + 0.2,
+      y: commercial!.cell.y + 0.2,
+    };
     expect(
       zones.some(
         (z) => z.poly.length >= 3 && nearPoly(raw.x, raw.y, z.poly, 0),

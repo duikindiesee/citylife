@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { MultiplayerClient, redactUrl } from "../src/colony/multiplayer/multiplayerClient";
+import {
+  MultiplayerClient,
+  redactUrl,
+} from "../src/colony/multiplayer/multiplayerClient";
 import { resolveOwnedCar } from "../src/colony/car/ownedCar";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 
@@ -192,7 +195,9 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
 
     await client.connect();
     expect(MockWebSocket.instances.length).toBe(1);
-    expect(MockWebSocket.instances[0]!.url).toContain("/api/v1/citylife/ws?jwt=valid-token");
+    expect(MockWebSocket.instances[0]!.url).toContain(
+      "/api/v1/citylife/ws?jwt=valid-token",
+    );
     expect(MockWebSocket.instances[0]!.url).not.toContain("token=");
   });
 
@@ -208,7 +213,14 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
 
-    client.sendPose({ x: 10, y: 0, z: 20, heading: 1.5, speed: 25, mode: "driving" });
+    client.sendPose({
+      x: 10,
+      y: 0,
+      z: 20,
+      heading: 1.5,
+      speed: 25,
+      mode: "driving",
+    });
     const sentPose1 = socket.sent.find((m: any) => m.type === "pose");
     expect(sentPose1).toBeDefined();
     expect(sentPose1.mode).toBe("driving");
@@ -227,8 +239,24 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
 
-    client.sendPose({ x: 10, y: 0, z: 20, heading: 1.5, speed: 25, mode: "driving", force: true });
-    client.sendPose({ x: 10, y: 0, z: 20, heading: 1.5, speed: 0, mode: "walking", force: true });
+    client.sendPose({
+      x: 10,
+      y: 0,
+      z: 20,
+      heading: 1.5,
+      speed: 25,
+      mode: "driving",
+      force: true,
+    });
+    client.sendPose({
+      x: 10,
+      y: 0,
+      z: 20,
+      heading: 1.5,
+      speed: 0,
+      mode: "walking",
+      force: true,
+    });
     const poses = socket.sent.filter((m: any) => m.type === "pose");
     expect(poses).toHaveLength(0);
   });
@@ -252,7 +280,8 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       data: JSON.stringify({
         type: "error",
         error: "COORDINATE_AUTHORITY_DENIED",
-        message: "Client coordinate authority is denied; pedestrian movement is server-authoritative",
+        message:
+          "Client coordinate authority is denied; pedestrian movement is server-authoritative",
       }),
     });
 
@@ -260,7 +289,8 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(socket.readyState).toBe(MockWebSocket.CLOSED);
     expect(errorReceived).toEqual({
       code: "COORDINATE_AUTHORITY_DENIED",
-      message: "Client coordinate authority is denied; pedestrian movement is server-authoritative",
+      message:
+        "Client coordinate authority is denied; pedestrian movement is server-authoritative",
     });
   });
 
@@ -320,7 +350,8 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
   });
 
   it("emits layoutRevision in join_session frame and binds confirmed context on session_joined", async () => {
-    const revision = "wl:v1:0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const revision =
+      "wl:v1:0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const client = new MultiplayerClient({
       userId: "101",
       username: "Player101",
@@ -365,7 +396,8 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
   });
 
   it("rejects admission and transitions to error status when server returns mismatched or missing layoutRevision", async () => {
-    const revision = "wl:v1:0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const revision =
+      "wl:v1:0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
     const client = new MultiplayerClient({
       userId: "102",
       username: "Player102",
@@ -387,7 +419,8 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
         inviteCode: "TEST-ROOM",
         participantId: "part-2",
         worldId: "seed-4242",
-        layoutRevision: "wl:v1:1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        layoutRevision:
+          "wl:v1:1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         participants: [],
       }),
     });
@@ -633,7 +666,8 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       data: JSON.stringify({
         type: "error",
         error: "VEHICLE_NOT_OWNED",
-        message: "Requested vehicle 'unowned-car' does not match authoritative owned vehicle 'karoo-vonk-11'",
+        message:
+          "Requested vehicle 'unowned-car' does not match authoritative owned vehicle 'karoo-vonk-11'",
       }),
     });
 
@@ -668,39 +702,99 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     socket.readyState = MockWebSocket.OPEN;
     socket.onopen!();
 
-    const getSentPoses = () => socket.sent.filter((m: any) => m.type === "pose");
+    const getSentPoses = () =>
+      socket.sent.filter((m: any) => m.type === "pose");
 
     // 1. Initial driving pose at t=1000 is sent
-    client.sendPose({ x: 10, y: 1, z: 20, heading: 0, speed: 10, mode: "driving" });
+    client.sendPose({
+      x: 10,
+      y: 1,
+      z: 20,
+      heading: 0,
+      speed: 10,
+      mode: "driving",
+    });
     expect(getSentPoses()).toHaveLength(1);
-    expect(getSentPoses()[0]).toMatchObject({ type: "pose", mode: "driving", x: 10 });
+    expect(getSentPoses()[0]).toMatchObject({
+      type: "pose",
+      mode: "driving",
+      x: 10,
+    });
 
     // 2. Advance by 20ms to t=1020: immediate second driving pose (<45ms) should be throttled
     vi.advanceTimersByTime(20);
-    client.sendPose({ x: 10.5, y: 1, z: 20.5, heading: 0, speed: 10, mode: "driving" });
+    client.sendPose({
+      x: 10.5,
+      y: 1,
+      z: 20.5,
+      heading: 0,
+      speed: 10,
+      mode: "driving",
+    });
     expect(getSentPoses()).toHaveLength(1);
 
     // 3. Advance by 10ms to t=1030: immediate mode transition to walking (<45ms) MUST NOT be throttled
     vi.advanceTimersByTime(10);
-    client.sendPose({ x: 10.5, y: 1, z: 20.5, heading: 0, speed: 0, mode: "walking" });
+    client.sendPose({
+      x: 10.5,
+      y: 1,
+      z: 20.5,
+      heading: 0,
+      speed: 0,
+      mode: "walking",
+    });
     expect(getSentPoses()).toHaveLength(2);
-    expect(getSentPoses()[1]).toMatchObject({ type: "pose", mode: "walking", x: 10.5 });
+    expect(getSentPoses()[1]).toMatchObject({
+      type: "pose",
+      mode: "walking",
+      x: 10.5,
+    });
 
     // 4. Advance by 10ms to t=1040: immediate second walking pose (<45ms) should be throttled
     vi.advanceTimersByTime(10);
-    client.sendPose({ x: 11, y: 1, z: 21, heading: 0, speed: 1, mode: "walking" });
+    client.sendPose({
+      x: 11,
+      y: 1,
+      z: 21,
+      heading: 0,
+      speed: 1,
+      mode: "walking",
+    });
     expect(getSentPoses()).toHaveLength(2);
 
     // 5. Same tick t=1040: forced walking pose (<45ms) MUST NOT be throttled
-    client.sendPose({ x: 11, y: 1, z: 21, heading: 0, speed: 1, mode: "walking", force: true });
+    client.sendPose({
+      x: 11,
+      y: 1,
+      z: 21,
+      heading: 0,
+      speed: 1,
+      mode: "walking",
+      force: true,
+    });
     expect(getSentPoses()).toHaveLength(3);
-    expect(getSentPoses()[2]).toMatchObject({ type: "pose", mode: "walking", x: 11 });
+    expect(getSentPoses()[2]).toMatchObject({
+      type: "pose",
+      mode: "walking",
+      x: 11,
+    });
 
     // 6. Advance by 50ms to t=1090 (>45ms interval): normal walking pose is sent
     vi.advanceTimersByTime(50);
-    client.sendPose({ x: 12, y: 1, z: 22, heading: 0, speed: 1.5, mode: "walking" });
+    client.sendPose({
+      x: 12,
+      y: 1,
+      z: 22,
+      heading: 0,
+      speed: 1.5,
+      mode: "walking",
+    });
     expect(getSentPoses()).toHaveLength(4);
-    expect(getSentPoses()[3]).toMatchObject({ type: "pose", mode: "walking", x: 12 });
+    expect(getSentPoses()[3]).toMatchObject({
+      type: "pose",
+      mode: "walking",
+      x: 12,
+    });
 
     client.disconnect();
     vi.useRealTimers();
@@ -723,7 +817,14 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(socket.readyState).toBe(MockWebSocket.CONNECTING);
 
     // Attempt to send pose while socket is not open: should be dropped without advancing state
-    client.sendPose({ x: 5, y: 0, z: 5, heading: 0, speed: 0, mode: "driving" });
+    client.sendPose({
+      x: 5,
+      y: 0,
+      z: 5,
+      heading: 0,
+      speed: 0,
+      mode: "driving",
+    });
     expect(socket.sent).toHaveLength(0);
 
     // Advance by 10ms to t=2010 and open socket
@@ -735,7 +836,14 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     // Advance by 5ms to t=2015 (<45ms from the dropped call):
     // First pose on OPEN socket MUST NOT be throttled by the dropped call's timestamp
     vi.advanceTimersByTime(5);
-    client.sendPose({ x: 5, y: 0, z: 5, heading: 0, speed: 0, mode: "driving" });
+    client.sendPose({
+      x: 5,
+      y: 0,
+      z: 5,
+      heading: 0,
+      speed: 0,
+      mode: "driving",
+    });
 
     const sentPoses = socket.sent.filter((m: any) => m.type === "pose");
     expect(sentPoses).toHaveLength(1);
@@ -757,12 +865,20 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     });
 
     await client.connect();
-    const socket1 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    const socket1 =
+      MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket1.readyState = MockWebSocket.OPEN;
     socket1.onopen!();
 
     // Session 1 sends driving pose at t=5000
-    client.sendPose({ x: 10, y: 0, z: 10, heading: 0, speed: 5, mode: "driving" });
+    client.sendPose({
+      x: 10,
+      y: 0,
+      z: 10,
+      heading: 0,
+      speed: 5,
+      mode: "driving",
+    });
     expect(socket1.sent.filter((m: any) => m.type === "pose")).toHaveLength(1);
 
     // Disconnect session 1 at t=5010
@@ -772,7 +888,8 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     // Reconnect session 2 at t=5015 (<45ms from session 1 pose)
     vi.advanceTimersByTime(5);
     const connectPromise = client.connect();
-    const socket2 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    const socket2 =
+      MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     expect(socket2).not.toBe(socket1);
     socket2.readyState = MockWebSocket.OPEN;
     socket2.onopen!();
@@ -781,7 +898,14 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     // Send driving pose in session 2 at t=5020 (<45ms from session 1):
     // Must NOT be throttled by session 1's lastPoseSentAt or lastSentMode
     vi.advanceTimersByTime(5);
-    client.sendPose({ x: 10, y: 0, z: 10, heading: 0, speed: 5, mode: "driving" });
+    client.sendPose({
+      x: 10,
+      y: 0,
+      z: 10,
+      heading: 0,
+      speed: 5,
+      mode: "driving",
+    });
     expect(socket2.sent.filter((m: any) => m.type === "pose")).toHaveLength(1);
 
     client.disconnect();
@@ -800,11 +924,19 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     });
 
     await client.connect();
-    const socket1 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    const socket1 =
+      MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket1.readyState = MockWebSocket.OPEN;
     socket1.onopen!();
 
-    client.sendPose({ x: 20, y: 0, z: 20, heading: 0, speed: 8, mode: "driving" });
+    client.sendPose({
+      x: 20,
+      y: 0,
+      z: 20,
+      heading: 0,
+      speed: 8,
+      mode: "driving",
+    });
     expect(socket1.sent.filter((m: any) => m.type === "pose")).toHaveLength(1);
 
     // Socket 1 abruptly closes at t=8010
@@ -815,14 +947,22 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     vi.advanceTimersByTime(500);
     await Promise.resolve();
 
-    const socket2 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    const socket2 =
+      MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     expect(socket2).not.toBe(socket1);
     socket2.readyState = MockWebSocket.OPEN;
     socket2.onopen!();
 
     // Pose sent on reconnected socket at t=8525 (<45ms from reconnection setup)
     vi.advanceTimersByTime(5);
-    client.sendPose({ x: 20, y: 0, z: 20, heading: 0, speed: 8, mode: "driving" });
+    client.sendPose({
+      x: 20,
+      y: 0,
+      z: 20,
+      heading: 0,
+      speed: 8,
+      mode: "driving",
+    });
     expect(socket2.sent.filter((m: any) => m.type === "pose")).toHaveLength(1);
 
     client.disconnect();
@@ -865,10 +1005,18 @@ describe("BusNetworkMiniMapModel peer integration", () => {
 
   it("redacts plain, percent-encoded token and jwt parameters, and userinfo in URLs", () => {
     const canary = "SYNTHETIC_LOG_CANARY";
-    expect(redactUrl(`wss://example.invalid/ws?jwt=${canary}`)).toBe("wss://example.invalid/ws?jwt=[REDACTED]");
-    expect(redactUrl(`wss://example.invalid/ws?%6a%77%74=${canary}`)).toBe("wss://example.invalid/ws?%6a%77%74=[REDACTED]");
-    expect(redactUrl(`wss://example.invalid/ws?%74%6f%6b%65%6e=${canary}`)).toBe("wss://example.invalid/ws?%74%6f%6b%65%6e=[REDACTED]");
-    expect(redactUrl(`https://user:pass@example.invalid/ws`)).toBe("https://[REDACTED]:[REDACTED]@example.invalid/ws");
+    expect(redactUrl(`wss://example.invalid/ws?jwt=${canary}`)).toBe(
+      "wss://example.invalid/ws?jwt=[REDACTED]",
+    );
+    expect(redactUrl(`wss://example.invalid/ws?%6a%77%74=${canary}`)).toBe(
+      "wss://example.invalid/ws?%6a%77%74=[REDACTED]",
+    );
+    expect(
+      redactUrl(`wss://example.invalid/ws?%74%6f%6b%65%6e=${canary}`),
+    ).toBe("wss://example.invalid/ws?%74%6f%6b%65%6e=[REDACTED]");
+    expect(redactUrl(`https://user:pass@example.invalid/ws`)).toBe(
+      "https://[REDACTED]:[REDACTED]@example.invalid/ws",
+    );
   });
 });
 
@@ -944,11 +1092,14 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
         token: "valid-jwt",
         userId: "user-bad-proto",
         username: "BadProtoTester",
-        onError: (err) => { capturedError = err; },
+        onError: (err) => {
+          capturedError = err;
+        },
       });
 
       await client.connect();
-      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      const socket =
+        MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
       socket.readyState = MockWebSocket.OPEN;
       socket.onopen!();
 
@@ -991,11 +1142,14 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
         token: "valid-jwt",
         userId: `user-epoch-${tc.name}`,
         username: "EpochTester",
-        onError: (err) => { capturedError = err; },
+        onError: (err) => {
+          capturedError = err;
+        },
       });
 
       await client.connect();
-      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      const socket =
+        MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
       socket.readyState = MockWebSocket.OPEN;
       socket.onopen!();
 
@@ -1092,7 +1246,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       token: "valid-jwt",
       userId: "user-stale-reconnect",
       username: "StaleReconnectTester",
-      onError: (err) => { capturedError = err; },
+      onError: (err) => {
+        capturedError = err;
+      },
     });
 
     await client.connect();
@@ -1175,7 +1331,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
     expect(client.sendWalkingInput({ forward: 1 })).toBe(false);
 
     // In driving mode: sendDrivingInput succeeds
-    expect(client.sendDrivingInput({ throttle: 1, steer: 0, brake: false })).toBe(true);
+    expect(
+      client.sendDrivingInput({ throttle: 1, steer: 0, brake: false }),
+    ).toBe(true);
     const driveInputs = socket.sent.filter((m: any) => m.type === "input");
     expect(driveInputs).toHaveLength(1);
     expect(driveInputs[0].seq).toBe(1);
@@ -1211,13 +1369,17 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
     });
 
     // Send driving input: seq increments from 0 to 1
-    expect(client.sendDrivingInput({ throttle: 1, steer: 0, brake: false })).toBe(true);
+    expect(
+      client.sendDrivingInput({ throttle: 1, steer: 0, brake: false }),
+    ).toBe(true);
     const firstInput = socket.sent.find((m: any) => m.type === "input");
     expect(firstInput).toBeDefined();
     expect(firstInput.seq).toBe(1);
     expect(firstInput.epoch).toBe(3);
 
-    expect(client.sendDrivingInput({ throttle: 0.5, steer: 0, brake: false })).toBe(true);
+    expect(
+      client.sendDrivingInput({ throttle: 0.5, steer: 0, brake: false }),
+    ).toBe(true);
     const inputs = socket.sent.filter((m: any) => m.type === "input");
     expect(inputs).toHaveLength(2);
     expect(inputs[1].seq).toBe(2);
@@ -1236,8 +1398,12 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
     });
 
     expect(client.getModeEpoch()).toBe(4);
-    expect(client.sendDrivingInput({ throttle: 0.8, steer: 0, brake: false })).toBe(true);
-    const reconnectedInput = socket.sent.filter((m: any) => m.type === "input")[2];
+    expect(
+      client.sendDrivingInput({ throttle: 0.8, steer: 0, brake: false }),
+    ).toBe(true);
+    const reconnectedInput = socket.sent.filter(
+      (m: any) => m.type === "input",
+    )[2];
     expect(reconnectedInput.seq).toBe(1); // sequence restarted monotonically from 1
     expect(reconnectedInput.epoch).toBe(4);
 
@@ -1251,7 +1417,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       token: "valid-jwt",
       userId: "user-stale-exit",
       username: "StaleExitTester",
-      onError: (err) => { capturedError = err; },
+      onError: (err) => {
+        capturedError = err;
+      },
     });
 
     await client.connect();
@@ -1302,7 +1470,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       token: "valid-jwt",
       userId: "user-malformed-exit",
       username: "MalformedExitTester",
-      onError: (err) => { capturedError = err; },
+      onError: (err) => {
+        capturedError = err;
+      },
     });
 
     await client.connect();
@@ -1353,8 +1523,12 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       userId: "user-v2-exit",
       username: "Walker1",
       vehicleKey: "karoo-vonk-11",
-      onModeChanged: (ev) => { modeChangedEvent = ev; },
-      onVehicleExited: (ev) => { vehicleExitedEvent = ev; },
+      onModeChanged: (ev) => {
+        modeChangedEvent = ev;
+      },
+      onVehicleExited: (ev) => {
+        vehicleExitedEvent = ev;
+      },
     });
 
     await client.connect();
@@ -1420,8 +1594,17 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
     expect(client.sendDrivingInput({ throttle: 1 })).toBe(false);
 
     // Next walking input must start at seq: 1 with epoch: 2
-    expect(client.sendWalkingInput({ forward: 1, strafe: 0, heading: 1.57, sprint: true })).toBe(true);
-    const walkInputs = socket.sent.filter((m: any) => m.type === "input" && m.mode === "walking");
+    expect(
+      client.sendWalkingInput({
+        forward: 1,
+        strafe: 0,
+        heading: 1.57,
+        sprint: true,
+      }),
+    ).toBe(true);
+    const walkInputs = socket.sent.filter(
+      (m: any) => m.type === "input" && m.mode === "walking",
+    );
     expect(walkInputs).toHaveLength(1);
     expect(walkInputs[0].seq).toBe(1);
     expect(walkInputs[0].epoch).toBe(2);
@@ -1440,7 +1623,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       userId: "user-v2-board",
       username: "Boarder",
       vehicleKey: "karoo-vonk-11",
-      onModeChanged: (ev) => { modeChangedEvent = ev; },
+      onModeChanged: (ev) => {
+        modeChangedEvent = ev;
+      },
     });
 
     await client.connect();
@@ -1497,8 +1682,12 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
     expect(modeChangedEvent.mode).toBe("driving");
 
     // Driving input starts at seq 1 with epoch 3
-    expect(client.sendDrivingInput({ throttle: 1, steer: 0, brake: false })).toBe(true);
-    const driveInputs = socket.sent.filter((m: any) => m.type === "input" && m.mode === "driving");
+    expect(
+      client.sendDrivingInput({ throttle: 1, steer: 0, brake: false }),
+    ).toBe(true);
+    const driveInputs = socket.sent.filter(
+      (m: any) => m.type === "input" && m.mode === "driving",
+    );
     expect(driveInputs).toHaveLength(1);
     expect(driveInputs[0].seq).toBe(1);
     expect(driveInputs[0].epoch).toBe(3);
@@ -1513,7 +1702,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       token: "valid-jwt",
       userId: "user-stale-board",
       username: "StaleBoardTester",
-      onError: (err) => { capturedError = err; },
+      onError: (err) => {
+        capturedError = err;
+      },
     });
 
     await client.connect();
@@ -1566,7 +1757,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       token: "valid-jwt",
       userId: "user-v2-peer",
       username: "PeerObserver",
-      onPeerPose: (pid, pose) => { peerPoseReceived = { pid, pose }; },
+      onPeerPose: (pid, pose) => {
+        peerPoseReceived = { pid, pose };
+      },
     });
 
     await client.connect();
@@ -1652,7 +1845,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       token: "valid-jwt",
       userId: "user-v2-absent",
       username: "AbsentClient",
-      onError: (err) => { capturedError = err; },
+      onError: (err) => {
+        capturedError = err;
+      },
     });
 
     await client.connect();
@@ -1664,7 +1859,8 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       data: JSON.stringify({
         type: "error",
         error: "OWNERSHIP_AUTHORITY_ABSENT",
-        message: "Authoritative User service ownership client is not configured",
+        message:
+          "Authoritative User service ownership client is not configured",
       }),
     });
 
@@ -1688,7 +1884,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       token: "valid-jwt",
       userId: "user-post-admit",
       username: "PostAdmitClient",
-      onError: (err) => { capturedError = err; },
+      onError: (err) => {
+        capturedError = err;
+      },
     });
 
     await client.connect();
@@ -1712,7 +1910,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
 
     expect(client.getStatus()).toBe("connected");
     expect(client.getSessionInfo().sessionId).toBe("sess-post-admit");
-    expect(client.sendDrivingInput({ throttle: 1, steer: 0, brake: false })).toBe(true);
+    expect(
+      client.sendDrivingInput({ throttle: 1, steer: 0, brake: false }),
+    ).toBe(true);
 
     // 2. Server subsequently emits OWNERSHIP_AUTHORITY_ABSENT post-admission
     socket.onmessage!({
@@ -1746,12 +1946,17 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       token: "jwt-u1",
       userId: "u1",
       username: "User1",
-      onSnapshot: () => { receivedSnapshots++; },
-      onPeerPose: () => { receivedPeerPoses++; },
+      onSnapshot: () => {
+        receivedSnapshots++;
+      },
+      onPeerPose: () => {
+        receivedPeerPoses++;
+      },
     });
 
     await client.connect();
-    const socket1 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    const socket1 =
+      MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket1.readyState = MockWebSocket.OPEN;
     socket1.onopen!();
 
@@ -2173,7 +2378,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       sprint: false,
     });
     expect(walkInputSent).toBe(true);
-    const walkMsg = socket.sent.find((m) => m.type === "input" && m.mode === "walking");
+    const walkMsg = socket.sent.find(
+      (m) => m.type === "input" && m.mode === "walking",
+    );
     expect(walkMsg).toEqual({
       type: "input",
       mode: "walking",
@@ -2218,7 +2425,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       brake: false,
     });
     expect(driveInputSent).toBe(true);
-    const driveMsg = socket.sent.find((m) => m.type === "input" && m.mode === "driving");
+    const driveMsg = socket.sent.find(
+      (m) => m.type === "input" && m.mode === "driving",
+    );
     expect(driveMsg).toEqual({
       type: "input",
       mode: "driving",
@@ -2246,7 +2455,8 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       });
 
       await client.connect();
-      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      const socket =
+        MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
       socket.readyState = MockWebSocket.OPEN;
       socket.onopen!();
 
@@ -2291,7 +2501,9 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       // Subsequent valid input matching walking mode succeeds and is transmitted over the wire
       const validSent = client.sendWalkingInput({ forward: 1, strafe: 0 });
       expect(validSent).toBe(true);
-      const sentWalkingMsg = socket.sent.find((m) => m.type === "input" && m.mode === "walking");
+      const sentWalkingMsg = socket.sent.find(
+        (m) => m.type === "input" && m.mode === "walking",
+      );
       expect(sentWalkingMsg).toBeDefined();
       expect(sentWalkingMsg.forward).toBe(1);
 
@@ -2311,7 +2523,8 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       });
 
       await client.connect();
-      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      const socket =
+        MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
       socket.readyState = MockWebSocket.OPEN;
       socket.onopen!();
 

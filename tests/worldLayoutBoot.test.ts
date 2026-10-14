@@ -374,7 +374,9 @@ describe("WorldLayoutBootCoordinator", () => {
     it("boots and hydrates canonical remote starter catalogue document when published", async () => {
       const doc = document("primary");
       const bootRuntime = runtime();
-      const mockSave = vi.fn(async () => ({ status: "saved", revision: stored(doc) } as const));
+      const mockSave = vi.fn(
+        async () => ({ status: "saved", revision: stored(doc) }) as const,
+      );
       const mockLoad = vi.fn(async () => null);
 
       const remoteLoader = {
@@ -403,7 +405,9 @@ describe("WorldLayoutBootCoordinator", () => {
         revision: worldLayoutRevisionId(doc.revision),
         source: "canonical_remote",
       });
-      expect(remoteLoader.loadRemoteStarterCatalogue).toHaveBeenCalledWith("primary");
+      expect(remoteLoader.loadRemoteStarterCatalogue).toHaveBeenCalledWith(
+        "primary",
+      );
       expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(doc);
       expect(mockSave).toHaveBeenCalled();
     });
@@ -422,7 +426,9 @@ describe("WorldLayoutBootCoordinator", () => {
         requireRemoteAuthority: true,
       });
 
-      await expect(coordinator.boot()).rejects.toThrowError(WorldLayoutBootError);
+      await expect(coordinator.boot()).rejects.toThrowError(
+        WorldLayoutBootError,
+      );
       await expect(coordinator.boot()).rejects.toMatchObject({
         code: "WORLD_UNPUBLISHED",
       });
@@ -507,7 +513,9 @@ describe("WorldLayoutBootCoordinator", () => {
         revision: existingHead.layoutRevision,
         source: "stored",
       });
-      expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(existingHead.document);
+      expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(
+        existingHead.document,
+      );
     });
 
     it("fails closed with WORLD_UNPUBLISHED when requireRemoteAuthority is true and remoteLoader is absent", async () => {
@@ -589,7 +597,9 @@ describe("WorldLayoutBootCoordinator", () => {
       });
 
       const aborted = new AbortController();
-      const oldWait = oldCoordinator.boot(aborted.signal).catch((err) => err.name);
+      const oldWait = oldCoordinator
+        .boot(aborted.signal)
+        .catch((err) => err.name);
       aborted.abort();
       expect(await oldWait).toBe("AbortError");
 
@@ -649,7 +659,10 @@ describe("WorldLayoutBootCoordinator", () => {
         worldId: "primary",
         store: store({
           load: vi.fn(async () => null),
-          save: vi.fn(async () => ({ status: "saved" as const, revision: stored(doc) })),
+          save: vi.fn(async () => ({
+            status: "saved" as const,
+            revision: stored(doc),
+          })),
         }),
         runtime: bootRuntime,
         requireRemoteAuthority: true,
@@ -705,11 +718,51 @@ describe("WorldLayoutBootCoordinator", () => {
           roadCell: { x: 6, y: 5 },
           baysTotal: 5,
           bays: [
-            { bayIndex: 0, park: { x: 1, y: 2 }, heading: 0, path: [{ x: 1, y: 1 }, { x: 1, y: 2 }] },
-            { bayIndex: 1, park: { x: 2, y: 2 }, heading: 0, path: [{ x: 2, y: 1 }, { x: 2, y: 2 }] },
-            { bayIndex: 2, park: { x: 3, y: 2 }, heading: 0, path: [{ x: 3, y: 1 }, { x: 3, y: 2 }] },
-            { bayIndex: 3, park: { x: 4, y: 2 }, heading: 0, path: [{ x: 4, y: 1 }, { x: 4, y: 2 }] },
-            { bayIndex: 4, park: { x: 5, y: 2 }, heading: 0, path: [{ x: 5, y: 1 }, { x: 5, y: 2 }] },
+            {
+              bayIndex: 0,
+              park: { x: 1, y: 2 },
+              heading: 0,
+              path: [
+                { x: 1, y: 1 },
+                { x: 1, y: 2 },
+              ],
+            },
+            {
+              bayIndex: 1,
+              park: { x: 2, y: 2 },
+              heading: 0,
+              path: [
+                { x: 2, y: 1 },
+                { x: 2, y: 2 },
+              ],
+            },
+            {
+              bayIndex: 2,
+              park: { x: 3, y: 2 },
+              heading: 0,
+              path: [
+                { x: 3, y: 1 },
+                { x: 3, y: 2 },
+              ],
+            },
+            {
+              bayIndex: 3,
+              park: { x: 4, y: 2 },
+              heading: 0,
+              path: [
+                { x: 4, y: 1 },
+                { x: 4, y: 2 },
+              ],
+            },
+            {
+              bayIndex: 4,
+              park: { x: 5, y: 2 },
+              heading: 0,
+              path: [
+                { x: 5, y: 1 },
+                { x: 5, y: 2 },
+              ],
+            },
           ],
         },
       };
@@ -717,7 +770,9 @@ describe("WorldLayoutBootCoordinator", () => {
       it("fails closed on transit companion absence when requireTransitAuthority is true", async () => {
         const doc = document("primary");
         const bootRuntime = runtime();
-        const mockSave = vi.fn(async () => ({ status: "saved", revision: stored(doc) } as const));
+        const mockSave = vi.fn(
+          async () => ({ status: "saved", revision: stored(doc) }) as const,
+        );
         const remoteLoader = {
           loadRemoteStarterCatalogue: vi.fn(async () => ({
             published: true,
@@ -739,7 +794,9 @@ describe("WorldLayoutBootCoordinator", () => {
           requireTransitAuthority: true,
         });
 
-        await expect(coordinator.boot()).rejects.toThrowError(WorldLayoutBootError);
+        await expect(coordinator.boot()).rejects.toThrowError(
+          WorldLayoutBootError,
+        );
         await expect(coordinator.boot()).rejects.toMatchObject({
           code: "CANONICAL_TRANSIT_UNAVAILABLE",
         });
@@ -750,7 +807,9 @@ describe("WorldLayoutBootCoordinator", () => {
       it("fails closed on malformed transit companion under schema validation", async () => {
         const doc = document("primary");
         const bootRuntime = runtime();
-        const mockSave = vi.fn(async () => ({ status: "saved", revision: stored(doc) } as const));
+        const mockSave = vi.fn(
+          async () => ({ status: "saved", revision: stored(doc) }) as const,
+        );
         const remoteLoader = {
           loadRemoteStarterCatalogue: vi.fn(async () => ({
             published: true,
@@ -775,7 +834,9 @@ describe("WorldLayoutBootCoordinator", () => {
           requireTransitAuthority: true,
         });
 
-        await expect(coordinator.boot()).rejects.toThrowError(WorldLayoutBootError);
+        await expect(coordinator.boot()).rejects.toThrowError(
+          WorldLayoutBootError,
+        );
         await expect(coordinator.boot()).rejects.toMatchObject({
           code: "CANONICAL_TRANSIT_UNAVAILABLE",
         });
@@ -804,7 +865,9 @@ describe("WorldLayoutBootCoordinator", () => {
             },
           })),
         };
-        const mockSave = vi.fn(async () => ({ status: "saved", revision: stored(doc) } as const));
+        const mockSave = vi.fn(
+          async () => ({ status: "saved", revision: stored(doc) }) as const,
+        );
         const remoteLoader = {
           loadRemoteStarterCatalogue: vi.fn(async () => ({
             published: true,
@@ -826,7 +889,9 @@ describe("WorldLayoutBootCoordinator", () => {
           requireTransitAuthority: true,
         });
 
-        await expect(coordinator.boot()).rejects.toThrowError(WorldLayoutBootError);
+        await expect(coordinator.boot()).rejects.toThrowError(
+          WorldLayoutBootError,
+        );
         await expect(coordinator.boot()).rejects.toMatchObject({
           code: "CANONICAL_TRANSIT_UNAVAILABLE",
         });
@@ -844,7 +909,9 @@ describe("WorldLayoutBootCoordinator", () => {
           ...runtime(),
           exportCanonicalTransitAuthority: vi.fn(() => validTransit),
         };
-        const mockSave = vi.fn(async () => ({ status: "saved", revision: stored(doc) } as const));
+        const mockSave = vi.fn(
+          async () => ({ status: "saved", revision: stored(doc) }) as const,
+        );
         const remoteLoader = {
           loadRemoteStarterCatalogue: vi.fn(async () => ({
             published: true,
@@ -879,7 +946,9 @@ describe("WorldLayoutBootCoordinator", () => {
       it("preserves solo/legacy compatibility: missing transit succeeds when requireTransitAuthority is false", async () => {
         const doc = document("primary");
         const bootRuntime = runtime();
-        const mockSave = vi.fn(async () => ({ status: "saved", revision: stored(doc) } as const));
+        const mockSave = vi.fn(
+          async () => ({ status: "saved", revision: stored(doc) }) as const,
+        );
         const remoteLoader = {
           loadRemoteStarterCatalogue: vi.fn(async () => ({
             published: true,
@@ -923,11 +992,13 @@ describe("WorldLayoutBootCoordinator", () => {
           ...runtime(),
           exportCanonicalTransitAuthority: vi.fn(() => validTransit),
         };
-        const mockSave = vi.fn(async (): Promise<WorldLayoutSaveResult> => ({
-          status: "conflict",
-          expectedLayoutRevision: null,
-          actualLayoutRevision: winner.layoutRevision,
-        }));
+        const mockSave = vi.fn(
+          async (): Promise<WorldLayoutSaveResult> => ({
+            status: "conflict",
+            expectedLayoutRevision: null,
+            actualLayoutRevision: winner.layoutRevision,
+          }),
+        );
         const remoteLoader = {
           loadRemoteStarterCatalogue: vi.fn(async () => ({
             published: true,
@@ -971,7 +1042,9 @@ describe("WorldLayoutBootCoordinator", () => {
           ...runtime(),
           exportCanonicalTransitAuthority: vi.fn(() => validTransit),
         };
-        const mockSave = vi.fn(async () => ({ status: "noop", revision: stored(doc) } as const));
+        const mockSave = vi.fn(
+          async () => ({ status: "noop", revision: stored(doc) }) as const,
+        );
         const remoteLoader = {
           loadRemoteStarterCatalogue: vi.fn(async () => ({
             published: true,
@@ -1002,7 +1075,10 @@ describe("WorldLayoutBootCoordinator", () => {
           worldId: "primary",
           source: "canonical_remote",
         });
-        expect(mockSave).toHaveBeenCalledWith(expect.anything(), stored(doc).layoutRevision);
+        expect(mockSave).toHaveBeenCalledWith(
+          expect.anything(),
+          stored(doc).layoutRevision,
+        );
         expect(bootRuntime.hydrateWorldLayout).toHaveBeenCalledWith(doc);
       });
 
@@ -1071,7 +1147,10 @@ describe("WorldLayoutBootCoordinator", () => {
           worldId: "world-b",
           store: store({
             load: vi.fn(async () => null),
-            save: vi.fn(async () => ({ status: "saved" as const, revision: stored(docB) })),
+            save: vi.fn(async () => ({
+              status: "saved" as const,
+              revision: stored(docB),
+            })),
           }),
           runtime: sharedRuntime,
           requireRemoteAuthority: true,

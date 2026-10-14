@@ -87,7 +87,9 @@ describe("BUS.COLLIDE.1 — opposing legs of one route pass, not overlap", () =>
       const svc = rt.busFleet?.buses.filter((b) => b.mode === "service") ?? [];
       if (svc.length < 2) continue;
       samples++;
-      const poses = svc.map((b) => rt.busPoseOf(b.id)).filter(Boolean) as CoachPose[];
+      const poses = svc
+        .map((b) => rt.busPoseOf(b.id))
+        .filter(Boolean) as CoachPose[];
       const evalResult = evaluatePoseClearances(poses);
       if (evalResult.opposingSamples > 0) {
         totalOpposingSamples += evalResult.opposingSamples;
