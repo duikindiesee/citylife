@@ -316,6 +316,90 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
       await client.connect();
       expect(ensureCount).toBe(2);
     });
+
+    it("fails closed with UNAUTHORIZED when ensureCookieAuth resolves false", async () => {
+      let reportedError: any = null;
+      const initialWsCount = MockWebSocket.instances.length;
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+        ensureCookieAuth: async () => false,
+        onError: (err) => {
+          reportedError = err;
+        },
+      });
+
+      await client.connect();
+
+      expect(client.getStatus()).toBe("error");
+      expect(reportedError).toEqual({
+        code: "UNAUTHORIZED",
+        message: "Failed to establish authenticated cookie session",
+      });
+      expect(MockWebSocket.instances.length).toBe(initialWsCount);
+    });
+
+    it("fails closed with UNAUTHORIZED when ensureCookieAuth throws an error", async () => {
+      let reportedError: any = null;
+      const initialWsCount = MockWebSocket.instances.length;
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+        ensureCookieAuth: async () => {
+          throw new Error("Network error during cookie issuance");
+        },
+        onError: (err) => {
+          reportedError = err;
+        },
+      });
+
+      await client.connect();
+
+      expect(client.getStatus()).toBe("error");
+      expect(reportedError).toEqual({
+        code: "UNAUTHORIZED",
+        message: "Failed to establish authenticated cookie session",
+      });
+      expect(MockWebSocket.instances.length).toBe(initialWsCount);
+    });
+
+    it("aborts connection without opening WebSocket if client is closed while ensureCookieAuth is in flight (deferred issuance race)", async () => {
+      let resolveEnsure: (v: boolean) => void = () => {};
+      const ensurePromise = new Promise<boolean>((resolve) => {
+        resolveEnsure = resolve;
+      });
+
+      const initialWsCount = MockWebSocket.instances.length;
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+        ensureCookieAuth: () => ensurePromise,
+      });
+
+      // Start connecting (enters ensureCookieAuth await)
+      const connectPromise = client.connect();
+
+      // Client is disconnected explicitly while ensureCookieAuth is still pending
+      client.disconnect();
+      expect(client.getStatus()).toBe("disconnected");
+
+      // Now ensureCookieAuth settles
+      resolveEnsure(true);
+      await connectPromise;
+
+      // WebSocket should never have been opened
+      expect(MockWebSocket.instances.length).toBe(initialWsCount);
+      expect(client.getStatus()).toBe("disconnected");
+    });
   });
 
   it("packages mode: driving and mode: walking correctly in sendPose (v1 only)", async () => {

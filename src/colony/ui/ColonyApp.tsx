@@ -2399,8 +2399,8 @@ export function ColonyApp() {
             onBugReport={() => setBugReportOpen(true)}
             onExitFirstPerson={() => runtime.exitFirstPerson()}
             onChangePassword={() => setPwdChangeOpen(true)}
-            onLogout={() => {
-              auth.logout();
+            onLogout={async () => {
+              await auth.logout();
               window.location.reload();
             }}
             onSnapshot={saveSnapshot}
@@ -4677,12 +4677,12 @@ export function ColonyApp() {
       {pwdChangeOpen && (
         <PasswordChangePanel
           onClose={() => setPwdChangeOpen(false)}
-          onRequested={() => {
+          onRequested={async () => {
             // The backend has staged the change and revoked the session. Sign out immediately into
             // the pending state and reload to the login gate, where the one-shot notice explains the
             // next step (redeem the activation token). Neither old nor new password works until then.
             markPasswordChangePending();
-            auth.logout();
+            await auth.logout();
             window.location.reload();
           }}
         />

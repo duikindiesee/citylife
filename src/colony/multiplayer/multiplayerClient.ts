@@ -458,12 +458,24 @@ export class MultiplayerClient {
 
     const isCookieAuth = Boolean(this.options.useCookieAuth);
     if (isCookieAuth && this.options.ensureCookieAuth) {
+      let ensured = false;
       try {
-        await this.options.ensureCookieAuth();
-      } catch {
-        console.warn("[Multiplayer] Failed to ensure cookie session before connect");
+        ensured = await this.options.ensureCookieAuth();
+      } catch (err) {
+        console.warn("[Multiplayer] Failed to ensure cookie session before connect:", err);
       }
       if (this.closedExplicitly || this.connectionGeneration !== currentGen) {
+        return;
+      }
+      if (!ensured) {
+        console.warn("[Multiplayer] Failed to ensure cookie session before connect; connection aborted");
+        this.setStatus("error");
+        if (this.options.onError) {
+          this.options.onError({
+            code: "UNAUTHORIZED",
+            message: "Failed to establish authenticated cookie session",
+          });
+        }
         return;
       }
     }

@@ -687,4 +687,147 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
 
     expect(issuedTokens).toEqual([tokenA, tokenB]);
   });
+
+  it("aborts in-flight cookie issuance when logout occurs before issuance completes", async () => {
+    let abortObserved = false;
+    let finishDeferredFetch: () => void = () => {};
+
+    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@test.com");
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tokenA, user: { name: "UserA" } }),
+        };
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        init?.signal?.addEventListener("abort", () => {
+          abortObserved = true;
+        });
+        return new Promise((resolve) => {
+          finishDeferredFetch = () => {
+            resolve({ ok: true, status: 200, json: async () => ({}) });
+          };
+        });
+      }
+      if (url === KOOKER_CLEAR_PATH) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient();
+    // Start login without waiting for slow cookie issuance
+    const loginPromise = a.login("userA@test.com", "pw");
+    await new Promise((r) => setTimeout(r, 10));
+
+    // User logs out while issuance is still pending
+    const logoutPromise = a.logout();
+
+    // Abort should have been signaled to the in-flight issuance fetch
+    expect(abortObserved).toBe(true);
+
+    finishDeferredFetch();
+    await loginPromise;
+    const clearResult = await logoutPromise;
+    expect(clearResult).toBe(true);
+    expect(a.isAuthenticated).toBe(false);
+  });
+
+  it("serializes in-flight clear completion before new account cookie issuance", async () => {
+    const events: string[] = [];
+    let resolveClear: () => void = () => {};
+
+    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@test.com");
+    const tokenB = fakeJwt(Date.now() + 3600_000, "userB@test.com");
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
+        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tok, user: { name: email } }),
+        };
+      }
+      if (url === KOOKER_CLEAR_PATH) {
+        events.push("start:clear");
+        return new Promise((resolve) => {
+          resolveClear = () => {
+            events.push("finish:clear");
+            resolve({ ok: true, status: 200, json: async () => ({}) });
+          };
+        });
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const sub = auth.includes(tokenA) ? "userA" : "userB";
+        events.push(`issue:${sub}`);
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient();
+    await a.login("userA@test.com", "pw");
+    expect(events).toEqual(["issue:userA"]);
+
+    // Kick off logout (clear is deferred)
+    const logoutPromise = a.logout();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events).toEqual(["issue:userA", "start:clear"]);
+
+    // Account B logs in while clear is still in flight
+    const loginBPromise = a.login("userB@test.com", "pw");
+
+    // Clear has not finished yet, so userB issue MUST NOT have started
+    expect(events).not.toContain("issue:userB");
+
+    // Settle clear
+    resolveClear();
+    await logoutPromise;
+    await loginBPromise;
+
+    // Verify ordering: finish:clear happens BEFORE issue:userB
+    expect(events).toEqual(["issue:userA", "start:clear", "finish:clear", "issue:userB"]);
+  });
+
+  it("handles failed clear gracefully and allows subsequent login and issuance", async () => {
+    const token = fakeJwt(Date.now() + 3600_000, "user@test.com");
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: token, user: { name: "User" } }),
+        };
+      }
+      if (url === KOOKER_CLEAR_PATH || url === KOOKER_CLEAR_ALIAS_PATH) {
+        // Clear endpoint fails with 500
+        return { ok: false, status: 500, json: async () => ({ error: "INTERNAL" }) };
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient();
+    await a.login("user@test.com", "pw");
+
+    // Logout should return false (clear failed) without throwing unhandled rejection
+    const clearResult = await a.logout();
+    expect(clearResult).toBe(false);
+    expect(a.isAuthenticated).toBe(false);
+
+    // Subsequent login works without being blocked by previous failed clear
+    const login2 = await a.login("user@test.com", "pw");
+    expect(login2.ok).toBe(true);
+    expect(a.isAuthenticated).toBe(true);
+  });
 });

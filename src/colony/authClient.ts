@@ -222,6 +222,10 @@ export class AuthClient {
   private session: OperatorSession | null = null;
   private readonly now: () => number;
   private refreshInFlight: Promise<string | null> | null = null;
+  private sessionGeneration = 0;
+  private activeIssueController: AbortController | null = null;
+  private activeClearController: AbortController | null = null;
+  private cookieOpChain: Promise<any> = Promise.resolve();
 
   constructor(opts?: { now?: () => number }) {
     this.now = opts?.now ?? (() => Date.now());
@@ -298,6 +302,11 @@ export class AuthClient {
       const expFromJwt = jwtExpiresAt(token);
       const expiresAt = expFromJwt > 0 ? expFromJwt : this.now() + SESSION_MS;
       const displayName = data.user?.name || data.user?.email || id;
+      this.sessionGeneration++;
+      if (this.activeIssueController) {
+        this.activeIssueController.abort();
+        this.activeIssueController = null;
+      }
       this.session = {
         token,
         refreshToken: data.refreshToken,
@@ -343,64 +352,139 @@ export class AuthClient {
     return r.ok;
   }
 
-  logout(): void {
+  async logout(): Promise<boolean> {
     this.session = null;
+    this.sessionGeneration++;
     try {
       sessionStorage.removeItem(STORAGE_KEY);
     } catch {
       /* no storage */
     }
-    void this.clearCookieSession().catch(() => {});
+    if (this.activeIssueController) {
+      this.activeIssueController.abort();
+      this.activeIssueController = null;
+    }
+    return this.clearCookieSession();
   }
 
   /**
    * Request host-only HttpOnly session cookies from the CityLife BFF endpoint.
    * Sends caller's verified Auth Bearer with credentials: "same-origin".
    * Tries direct path first, falling back to /kooker alias if direct returns 404.
+   * Serializes behind in-flight cookie operations and aborts if session is invalidated.
    */
   async issueCookieSession(token?: string): Promise<boolean> {
     const bearer = token ?? (await this.getValidToken());
     if (!bearer) return false;
-    const paths = [KOOKER_COOKIE_PATH, KOOKER_COOKIE_ALIAS_PATH];
-    for (const path of paths) {
-      try {
-        const resp = await fetch(path, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${bearer}`,
-            "Content-Type": "application/json",
-          },
-          credentials: "same-origin",
-        });
-        if (resp.ok) return true;
-        if (resp.status !== 404) return false;
-      } catch {
-        // Network error, try next path or return false
+
+    const opGen = this.sessionGeneration;
+
+    const run = async (): Promise<boolean> => {
+      if (this.sessionGeneration !== opGen) {
+        return false;
       }
-    }
-    return false;
+
+      if (this.activeIssueController) {
+        this.activeIssueController.abort();
+        this.activeIssueController = null;
+      }
+
+      const controller = new AbortController();
+      this.activeIssueController = controller;
+
+      try {
+        const paths = [KOOKER_COOKIE_PATH, KOOKER_COOKIE_ALIAS_PATH];
+        for (const path of paths) {
+          if (controller.signal.aborted || this.sessionGeneration !== opGen) {
+            return false;
+          }
+          try {
+            const resp = await fetch(path, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${bearer}`,
+                "Content-Type": "application/json",
+              },
+              credentials: "same-origin",
+              signal: controller.signal,
+            });
+            if (controller.signal.aborted || this.sessionGeneration !== opGen) {
+              return false;
+            }
+            if (resp.ok) return true;
+            if (resp.status !== 404) return false;
+          } catch (err: any) {
+            if (err?.name === "AbortError" || controller.signal.aborted) {
+              return false;
+            }
+            // Network error, try next path or return false
+          }
+        }
+        return false;
+      } finally {
+        if (this.activeIssueController === controller) {
+          this.activeIssueController = null;
+        }
+      }
+    };
+
+    const nextOp = this.cookieOpChain.catch(() => {}).then(run);
+    this.cookieOpChain = nextOp;
+    return nextOp;
   }
 
   /**
    * Request removal of host-only HttpOnly session cookies via the CityLife BFF clear endpoint.
    * Calls with credentials: "same-origin".
    * Tries direct path first, falling back to /kooker alias if direct returns 404.
+   * Serializes behind in-flight cookie operations and aborts any in-flight issuance.
    */
   async clearCookieSession(): Promise<boolean> {
-    const paths = [KOOKER_CLEAR_PATH, KOOKER_CLEAR_ALIAS_PATH];
-    for (const path of paths) {
-      try {
-        const resp = await fetch(path, {
-          method: "POST",
-          credentials: "same-origin",
-        });
-        if (resp.ok) return true;
-        if (resp.status !== 404) return false;
-      } catch {
-        // Network error, try next path
-      }
+    this.sessionGeneration++;
+    if (this.activeIssueController) {
+      this.activeIssueController.abort();
+      this.activeIssueController = null;
     }
-    return false;
+
+    const run = async (): Promise<boolean> => {
+      const controller = new AbortController();
+      this.activeClearController = controller;
+
+      try {
+        const paths = [KOOKER_CLEAR_PATH, KOOKER_CLEAR_ALIAS_PATH];
+        for (const path of paths) {
+          if (controller.signal.aborted) {
+            return false;
+          }
+          try {
+            const resp = await fetch(path, {
+              method: "POST",
+              credentials: "same-origin",
+              signal: controller.signal,
+            });
+            if (controller.signal.aborted) {
+              return false;
+            }
+            if (resp.ok) return true;
+            if (resp.status !== 404) return false;
+          } catch (err: any) {
+            if (err?.name === "AbortError" || controller.signal.aborted) {
+              return false;
+            }
+            // Network error, try next path
+          }
+        }
+        return false;
+      } finally {
+        if (this.activeClearController === controller) {
+          this.activeClearController = null;
+        }
+      }
+    };
+
+    const nextOp = this.cookieOpChain.catch(() => {}).then(run);
+    this.cookieOpChain = nextOp;
+    return nextOp;
   }
 
   /** Bearer header for backend calls — empty object when not authenticated (calls fail closed).
@@ -439,7 +523,7 @@ export class AuthClient {
         });
         if (!resp.ok) {
           // Refresh token expired/revoked — clear the session so the gate shows login again.
-          if (resp.status === 401 || resp.status === 403) this.logout();
+          if (resp.status === 401 || resp.status === 403) await this.logout();
           return null;
         }
         const data = (await resp.json()) as {
