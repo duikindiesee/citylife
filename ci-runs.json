@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-14T18:08:52.068Z",
+  "updatedAt": "2026-10-14T18:47:05.593Z",
   "runs": [
     {
       "runId": 38608106580,
@@ -116,6 +116,85 @@
           "startedAt": "2026-10-14T17:33:03Z",
           "completedAt": "2026-10-14T17:34:02Z",
           "durationSeconds": 59
+        }
+      ]
+    },
+    {
+      "runId": 38607582987,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38607582987",
+      "event": "pull_request",
+      "branch": "chore/bump-0.60.7",
+      "sha": "b249fe30ba9e68b0b6ca58dca35f78e5c7ec51e6",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/b249fe30ba9e68b0b6ca58dca35f78e5c7ec51e6",
+      "pullRequestNumbers": "#572",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/572",
+      "pullRequests": [
+        {
+          "number": 572,
+          "url": "https://github.com/duikindiesee/citylife/pull/572"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "failure",
+      "startedAt": "2026-10-14T17:32:59Z",
+      "completedAt": "2026-10-14T18:46:54Z",
+      "durationSeconds": 4435,
+      "runnerSummary": "kooker2-citylife-cpu-2, kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 116002320773,
+          "name": "unit-and-build",
+          "status": "completed",
+          "conclusion": "failure",
+          "runnerName": "kooker2-citylife-cpu-2",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-cpu",
+            "kooker2-cpu"
+          ],
+          "startedAt": "2026-10-14T17:36:58Z",
+          "completedAt": "2026-10-14T18:05:37Z",
+          "durationSeconds": 1719
+        },
+        {
+          "id": 116002320858,
+          "name": "e2e-browser",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-14T18:09:24Z",
+          "completedAt": "2026-10-14T18:46:41Z",
+          "durationSeconds": 2237
+        },
+        {
+          "id": 116038045223,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "failure",
+          "runnerName": "kooker2-citylife-cpu-2",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-cpu",
+            "kooker2-cpu"
+          ],
+          "startedAt": "2026-10-14T18:46:44Z",
+          "completedAt": "2026-10-14T18:46:54Z",
+          "durationSeconds": 10
         }
       ]
     },
@@ -10980,45 +11059,6 @@
           "startedAt": "2026-10-04T16:27:16Z",
           "completedAt": "2026-10-04T16:27:25Z",
           "durationSeconds": 9
-        }
-      ]
-    },
-    {
-      "runId": 37216815763,
-      "workflowName": "Build CityLife Debug APK",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37216815763",
-      "event": "pull_request",
-      "branch": "antigravity/619394b8-garage-junction-p0",
-      "sha": "f3d05a38399f9ce3689e71b907ec4f617b6883f9",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/f3d05a38399f9ce3689e71b907ec4f617b6883f9",
-      "pullRequestNumbers": "#555",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/555",
-      "pullRequests": [
-        {
-          "number": 555,
-          "url": "https://github.com/duikindiesee/citylife/pull/555"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-04T16:27:13Z",
-      "completedAt": "2026-10-04T16:28:19Z",
-      "durationSeconds": 66,
-      "runnerSummary": "GitHub Actions 1000010660",
-      "jobs": [
-        {
-          "id": 111478890887,
-          "name": "build",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010660",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-10-04T16:27:17Z",
-          "completedAt": "2026-10-04T16:28:19Z",
-          "durationSeconds": 62
         }
       ]
     }
