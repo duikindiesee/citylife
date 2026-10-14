@@ -39,6 +39,7 @@ const BUS_RIDER_EYE = 2.4; // eye height above the road while seated on the 3 m 
 interface FpRuntimeBridge {
   getOwnedDrivePose?: () => OwnedDrivePose | null;
   fpRidingBusId?: number | null;
+  fpRidingSeatIndex?: number | null;
   busPoseOf?: (id: number) => { x: number; y: number; heading: number } | null;
   fpTeleportRequest?: {
     x: number;
@@ -323,8 +324,18 @@ export function FirstPersonController({
         const roadTop =
           Math.max(0, getSmoothRoadY(sim.state.terrain, pose.x, pose.y)) +
           BUS_ROAD_LIFT;
-        const wx = toWorldX(pose.x);
-        const wz = toWorldZ(pose.y);
+        const seatIdx =
+          typeof runtime.fpRidingSeatIndex === "number" && Number.isSafeInteger(runtime.fpRidingSeatIndex)
+            ? Math.abs(runtime.fpRidingSeatIndex) % 10
+            : 0;
+        const row = Math.floor(seatIdx / 2) - 2;
+        const col = seatIdx % 2 === 0 ? -0.8 : 0.8;
+        const longOffset = row * 1.0;
+        const latOffset = col;
+        const offsetX = Math.cos(pose.heading) * longOffset - Math.sin(pose.heading) * latOffset;
+        const offsetZ = Math.sin(pose.heading) * longOffset + Math.cos(pose.heading) * latOffset;
+        const wx = toWorldX(pose.x) + offsetX;
+        const wz = toWorldZ(pose.y) + offsetZ;
         rigidBody.current.setTranslation(
           // Body centre below the seated eye by the SAME offset the walking path uses (spec 137
           // metric scale), so there is no camera pop on the frame the player alights.
@@ -335,7 +346,7 @@ export function FirstPersonController({
         camera.position.set(wx, roadTop + BUS_RIDER_EYE, wz);
         camera.quaternion.setFromEuler(rotation.current);
         if (runtime) {
-          runtime.fpCameraCell = { x: pose.x, y: pose.y };
+          runtime.fpCameraCell = { x: pose.x + offsetX / 4, y: pose.y + offsetZ / 4 };
           runtime.fpCameraYaw = rotation.current.y;
           runtime.setFirstPersonYaw?.(rotation.current.y);
         }

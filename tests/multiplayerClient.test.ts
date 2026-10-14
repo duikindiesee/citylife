@@ -2551,5 +2551,98 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       expect(client.getSessionInfo().sessionId).toBeNull();
       expect(socket.readyState).toBe(MockWebSocket.CLOSED);
     });
+
+    it("handles bus_boarded and bus_alighted with ACK-only state transitions", async () => {
+      let boardedAck: any = null;
+      let alightedAck: any = null;
+      let modeChangedEvents: any[] = [];
+      const client = new MultiplayerClient({
+        url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+        token: "valid-jwt",
+        userId: "user-bus-1",
+        username: "BusTester",
+        onBusBoarded: (ack) => {
+          boardedAck = ack;
+        },
+        onBusAlighted: (ack) => {
+          alightedAck = ack;
+        },
+        onModeChanged: (ev) => {
+          modeChangedEvents.push(ev);
+        },
+      });
+
+      await client.connect();
+      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen!();
+
+      // Admit as walking
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "session_joined",
+          sessionId: "sess-bus-1",
+          participantId: "part-bus-1",
+          protocolVersion: 2,
+          mode: "walking",
+          modeEpoch: 1,
+          participants: [],
+        }),
+      });
+
+      expect(client.getMode()).toBe("walking");
+      expect(client.getSeatedBusId()).toBeNull();
+      expect(client.getSeatIndex()).toBeNull();
+
+      // Send board bus request
+      expect(client.boardBus(1)).toBe(true);
+      expect(socket.sent).toContainEqual({
+        type: "request_board_bus",
+        busId: 1,
+        epoch: 1,
+      });
+      // Local state is unchanged until ACK (ACK-only mutation)
+      expect(client.getMode()).toBe("walking");
+
+      // Receive bus_boarded ACK from server
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "bus_boarded",
+          busId: 1,
+          seatIndex: 3,
+        }),
+      });
+
+      expect(boardedAck).toEqual({ busId: 1, seatIndex: 3 });
+      expect(client.getMode()).toBe("riding_bus");
+      expect(client.getSeatedBusId()).toBe(1);
+      expect(client.getSeatIndex()).toBe(3);
+
+      // Walking input is suppressed while riding bus
+      expect(client.sendWalkingInput({ forward: 1 })).toBe(false);
+
+      // Send alight bus request
+      expect(client.alightBus()).toBe(true);
+      expect(socket.sent).toContainEqual({
+        type: "request_alight_bus",
+        epoch: 1,
+      });
+
+      // Receive bus_alighted ACK from server
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "bus_alighted",
+          x: 100,
+          y: 0,
+          z: 200,
+          heading: 1.57,
+        }),
+      });
+
+      expect(alightedAck).toEqual({ x: 100, y: 0, z: 200, heading: 1.57 });
+      expect(client.getMode()).toBe("walking");
+      expect(client.getSeatedBusId()).toBeNull();
+      expect(client.getSeatIndex()).toBeNull();
+    });
   });
 });
