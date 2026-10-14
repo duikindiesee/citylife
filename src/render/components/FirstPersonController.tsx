@@ -30,6 +30,7 @@ import {
 import { replayPose } from "../../colony/perf/replayBridge";
 import type { OwnedDrivePose } from "../../colony/car/ownedDriving";
 import { ROAD_RIBBON_LIFT } from "../../colony/render/roadRibbon";
+import { PASSENGER_SEAT_LOCAL_SLOTS } from "../../colony/render/R3FRemoteRacers";
 
 const LOOK_SPEED = 2;
 const BUS_RIDER_EYE = 2.4; // eye height above the road while seated on the 3 m coach (spec 149)
@@ -51,6 +52,7 @@ interface FpRuntimeBridge {
   } | null;
   fpCameraCell?: { x: number; y: number } | null;
   fpCameraYaw?: number;
+  fpLookAtTarget?: { x: number; y: number; z: number };
   fpGamepadMoving?: boolean;
   setFirstPersonKey?: (key: string, down: boolean) => void;
   setFirstPersonYaw?: (yaw: number) => void;
@@ -326,27 +328,79 @@ export function FirstPersonController({
           BUS_ROAD_LIFT;
         const seatIdx =
           typeof runtime.fpRidingSeatIndex === "number" && Number.isSafeInteger(runtime.fpRidingSeatIndex)
-            ? Math.abs(runtime.fpRidingSeatIndex) % 10
+            ? Math.abs(runtime.fpRidingSeatIndex) % PASSENGER_SEAT_LOCAL_SLOTS.length
             : 0;
-        const row = Math.floor(seatIdx / 2) - 2;
-        const col = seatIdx % 2 === 0 ? -0.8 : 0.8;
-        const longOffset = row * 1.0;
-        const latOffset = col;
-        const offsetX = Math.cos(pose.heading) * longOffset - Math.sin(pose.heading) * latOffset;
-        const offsetZ = Math.sin(pose.heading) * longOffset + Math.cos(pose.heading) * latOffset;
-        const wx = toWorldX(pose.x) + offsetX;
-        const wz = toWorldZ(pose.y) + offsetZ;
+
+        const coach = state.scene.getObjectByName(`bus-coach-${ridingId}`);
+        const sideName = seatIdx < 5 ? "left" : "right";
+        const rowIdx = seatIdx % 5;
+        let seatMesh: any = null;
+        if (coach) {
+          coach.updateMatrixWorld(true);
+          seatMesh = coach.getObjectByName(`bus-seat-${sideName}-${rowIdx}`);
+        }
+
+        let wx: number;
+        let eyeY: number;
+        let wz: number;
+
+        if (seatMesh) {
+          const cushionWorld = seatMesh.localToWorld(new Vector3(0, 0.25, 0));
+          wx = cushionWorld.x;
+          eyeY = cushionWorld.y + (BUS_RIDER_EYE - 1.68);
+          wz = cushionWorld.z;
+        } else {
+          const slot = PASSENGER_SEAT_LOCAL_SLOTS[seatIdx]!;
+          const offsetX = Math.cos(pose.heading) * slot.x - Math.sin(pose.heading) * slot.z;
+          const offsetZ = Math.sin(pose.heading) * slot.x + Math.cos(pose.heading) * slot.z;
+          wx = toWorldX(pose.x) + offsetX;
+          wz = toWorldZ(pose.y) + offsetZ;
+          eyeY = roadTop + BUS_RIDER_EYE;
+        }
+
         rigidBody.current.setTranslation(
           // Body centre below the seated eye by the SAME offset the walking path uses (spec 137
           // metric scale), so there is no camera pop on the frame the player alights.
-          { x: wx, y: roadTop + BUS_RIDER_EYE - PLAYER_EYE_OFFSET, z: wz },
+          { x: wx, y: eyeY - PLAYER_EYE_OFFSET, z: wz },
           true,
         );
         rigidBody.current.setLinvel({ x: 0, y: 0, z: 0 }, true);
-        camera.position.set(wx, roadTop + BUS_RIDER_EYE, wz);
+        camera.position.set(wx, eyeY, wz);
+
+        // Process ordinary look controls while seated (gamepad right-stick and arrow keys)
+        const gamepads =
+          typeof navigator !== "undefined" && typeof navigator.getGamepads === "function"
+            ? navigator.getGamepads()
+            : [];
+        const gp = gamepads[0];
+        if (gp) {
+          let lookX = 0;
+          let lookY = 0;
+          if (Math.abs(gp.axes?.[2] ?? 0) > 0.1) lookX = gp.axes[2];
+          if (Math.abs(gp.axes?.[3] ?? 0) > 0.1) lookY = gp.axes[3];
+          rotation.current.y -= lookX * delta * LOOK_SPEED;
+          rotation.current.x -= lookY * delta * LOOK_SPEED;
+          rotation.current.x = Math.max(
+            -Math.PI / 2,
+            Math.min(Math.PI / 2, rotation.current.x),
+          );
+        }
+        if (input.current.turnLeft) {
+          rotation.current.y += COLONY.firstPerson.turnSpeed * delta;
+        }
+        if (input.current.turnRight) {
+          rotation.current.y -= COLONY.firstPerson.turnSpeed * delta;
+        }
+
+        if (runtime?.fpLookAtTarget) {
+          const target = runtime.fpLookAtTarget;
+          camera.lookAt(target.x, target.y, target.z);
+          rotation.current.setFromQuaternion(camera.quaternion, "YXZ");
+          runtime.fpLookAtTarget = undefined;
+        }
         camera.quaternion.setFromEuler(rotation.current);
         if (runtime) {
-          runtime.fpCameraCell = { x: pose.x + offsetX / 4, y: pose.y + offsetZ / 4 };
+          runtime.fpCameraCell = { x: toGridX(wx), y: toGridZ(wz) };
           runtime.fpCameraYaw = rotation.current.y;
           runtime.setFirstPersonYaw?.(rotation.current.y);
         }
@@ -504,6 +558,12 @@ export function FirstPersonController({
 
     const camY = pos.y + PLAYER_EYE_OFFSET; // eye at PLAYER_EYE_M (1.6 m) above the feet — spec 146
     camera.position.set(pos.x, camY, pos.z);
+    if (runtime?.fpLookAtTarget) {
+      const target = runtime.fpLookAtTarget;
+      camera.lookAt(target.x, target.y, target.z);
+      rotation.current.setFromQuaternion(camera.quaternion, "YXZ");
+      runtime.fpLookAtTarget = undefined;
+    }
     camera.quaternion.setFromEuler(rotation.current);
     // Spec 149 — tell the runtime where the player's eyes are (grid coords) so bus boarding
     // prompts measure from the capsule, not the detached roster citizen.

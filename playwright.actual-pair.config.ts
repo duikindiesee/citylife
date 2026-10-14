@@ -14,22 +14,23 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL: BASE_URL,
-    trace: "off",
+    trace: (process.env.CITYLIFE_TRACE as "off" | "on" | "retain-on-failure" | "on-first-retry") || "off",
   },
   projects: [
     {
       name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
-        launchOptions: process.env.CITYLIFE_HARDWARE_WEBGL
-          ? {
-              args: [
-                "--enable-gpu",
-                "--ignore-gpu-blocklist",
-                "--use-angle=d3d11",
-              ],
-            }
-          : undefined,
+        launchOptions:
+          process.env.CITYLIFE_HARDWARE_WEBGL !== "0"
+            ? {
+                args: [
+                  "--enable-gpu",
+                  "--ignore-gpu-blocklist",
+                  "--use-angle=d3d11",
+                ],
+              }
+            : undefined,
       },
     },
   ],

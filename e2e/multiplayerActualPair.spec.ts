@@ -256,8 +256,10 @@ async function dumpTransitionDiagnostics(page: Page, label: string) {
   }
 }
 
-// Disable passive trace DOM snapshots/screencasts to diagnose tracing overhead vs software rendering
-test.use({ trace: "off" });
+// Respect explicit CITYLIFE_TRACE setting while defaulting to "off" to avoid unconditional passive trace overhead
+test.use({
+  trace: (process.env.CITYLIFE_TRACE as "off" | "on" | "retain-on-failure" | "on-first-retry") || "off",
+});
 
 test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManager & Scheduled Loop)", () => {
   test("fails closed with CANONICAL_STAGING_UNAVAILABLE when world lacks reviewed staging metadata", async () => {
@@ -3686,6 +3688,1908 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
     } finally {
       await fastifyApp.close();
       console.log("Proposed Fastify server cleanly closed.");
+    }
+  });
+
+  test("two browser players bus stop wait, board into distinct seats, ride as mounted seated crabs, and alight safely", async ({
+    browser,
+  }) => {
+    test.setTimeout(300_000);
+
+    const {
+      jwt,
+      buildApp,
+      GameStateManager,
+      LocalWorldAuthorityClient,
+      RealtimeManager,
+      extractRoadGeometry,
+      extractWalkabilityAuthority,
+      CANONICAL_PHYSICAL_OBSTACLES_4242,
+      PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      computePhysicalCollidersContentHash,
+      CITYLIFE_EPOCH_MS,
+    } = loadServerComponents();
+
+    // 1. Build canonical world layout and register transit + walkability authority
+    const baseSurveyRuntime = new ColonyRuntime(4242);
+    const defaultDoc = createWorldLayoutDocument({
+      ...baseSurveyRuntime.captureWorldLayout(),
+      layoutId: "seed-4242",
+      seed: 4242,
+      revision: { number: 0, parentHash: null },
+    });
+    const surfaceFrame = defaultDoc.frames.find((f: any) => f.layer === "surface") || defaultDoc.frames[0];
+    const canonicalTransitAuthority = baseSurveyRuntime.exportCanonicalTransitAuthority(defaultDoc);
+    expect(canonicalTransitAuthority).not.toBeNull();
+
+    const physicalColliders = {
+      schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      frameId: surfaceFrame.id,
+      obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      contentHash: computePhysicalCollidersContentHash({
+        schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+        worldId: "seed-4242",
+        layoutRevision: defaultDoc.revision.contentHash,
+        frameId: surfaceFrame.id,
+        obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      }),
+    };
+
+    const stagingGeom = extractRoadGeometry(
+      { layout: defaultDoc, physicalColliders },
+      { layout: defaultDoc, physicalColliders },
+    );
+    expect(stagingGeom.hasGeometry).toBe(true);
+
+    // Canonical walkability filtered against terrain water and physical collider obstacles
+    // covering Stop 0 corridor (x: 115..145, y: 265..295) and Stop 1 kerb corridor (x: 435..455, y: 125..150)
+    const walkableCells = new Set<string>();
+    const terrain = baseSurveyRuntime.sim.state.terrain;
+    const addCanonicalWalkableWindow = (x0: number, x1: number, y0: number, y1: number) => {
+      for (let cx = x0; cx <= x1; cx++) {
+        for (let cy = y0; cy <= y1; cy++) {
+          const isWater = terrain && typeof terrain.isWater === "function" ? terrain.isWater(cx, cy) : false;
+          const isObstacle = stagingGeom.obstacleSet.has(`${cx},${cy}`);
+          if (!isWater && !isObstacle) {
+            walkableCells.add(`${cx},${cy}`);
+          }
+        }
+      }
+    };
+    addCanonicalWalkableWindow(115, 145, 265, 295);
+    addCanonicalWalkableWindow(435, 455, 125, 150);
+
+    const walkabilityAuthorityCheck = extractWalkabilityAuthority(
+      {
+        layout: defaultDoc,
+        walkability: {
+          schemaVersion: "citylife.walkability/v1",
+          frameId: surfaceFrame.id,
+          walkableCells,
+        },
+      },
+      defaultDoc,
+    );
+    expect(walkabilityAuthorityCheck).not.toBeNull();
+
+    // Canonical road spawn on Stop 0 approach avenue (cell 126, 273 heading south PI/2; ~9.2 cells north of Stop 0 at (124, 281.89))
+    // so both Player 1 (at y=273) and Player 2 (after driving south to y~277.4) exit outside the 3.0-cell Stop 0 anchor radius
+    const HUB_SPAWN = { x: 126, y: 273, heading: Math.PI / 2 };
+    expect(stagingGeom.roadSet.has(`${HUB_SPAWN.x},${HUB_SPAWN.y}`)).toBe(true);
+    expect(walkableCells.has(`${HUB_SPAWN.x - 1},${HUB_SPAWN.y}`)).toBe(true);
+
+    const worldAuth = new LocalWorldAuthorityClient();
+    worldAuth.registerWorld({
+      schemaVersion: "citylife.starter-parcel-manifest/v1",
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      layout: defaultDoc,
+      plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+      hubSpawn: HUB_SPAWN,
+      physicalColliders,
+      walkability: {
+        schemaVersion: "citylife.walkability/v1",
+        frameId: surfaceFrame.id,
+        walkableCells,
+      },
+      transit: canonicalTransitAuthority,
+    });
+
+    const userClient = {
+      async getVehicleTruth(userId: string) {
+        if (userId === "70001" || userId === "70002") {
+          return {
+            owned: true,
+            status: "OWNED",
+            vehicleKey: "karoo-vonk-11",
+            storage: "local-drive",
+            onboardingState: "COMPLETED",
+          };
+        }
+        return {
+          owned: false,
+          status: null,
+          vehicleKey: null,
+          storage: null,
+          onboardingState: "NONE",
+        };
+      },
+    };
+
+    const realtime = new RealtimeManager({
+      userClient,
+      worldAuthorityClient: worldAuth,
+      enableSimulationTimer: true,
+      enableBusSync: true,
+      enableBusSeats: true,
+      staleTimeoutMs: 60_000,
+    });
+
+    // Baseline sol time: 5:02 AM (Bus 0 still in depot before reaching Stop 0)
+    const baseSolNow = CITYLIFE_EPOCH_MS + 4_530_000;
+    let mockNow = baseSolNow;
+    realtime.setMockSolNowMs(() => mockNow);
+
+    const e2ePort = Number(process.env.CITYLIFE_E2E_PORT) || 5191;
+    const serverPort = Number(process.env.CITYLIFE_PORT) || 9010;
+    const BUS_JWT_SECRET = "test-secret-bus-journey-0987654321";
+    const fastifyApp = buildApp({
+      gameState: new GameStateManager(null, null),
+      realtime,
+      userClient,
+      worldAuthorityClient: worldAuth,
+      jwtSecret: BUS_JWT_SECRET,
+      jwtAlgorithms: ["HS256"],
+      allowedWsOrigins: [
+        "https://citylife.kooker.co.za",
+        `http://127.0.0.1:${e2ePort}`,
+        `http://localhost:${e2ePort}`,
+      ],
+    });
+
+    const serverAddr = await fastifyApp.listen({ port: serverPort, host: "127.0.0.1" });
+    const actualWsUrl = serverAddr.replace(/^http/, "ws") + "/api/v1/citylife/ws";
+
+    const cachedCatalogueBody = JSON.stringify({
+      published: true,
+      manifest: {
+        worldId: "seed-4242",
+        layoutRevision: defaultDoc.revision.contentHash,
+        layout: defaultDoc,
+        physicalColliders,
+        transit: canonicalTransitAuthority,
+        walkability: {
+          schemaVersion: "citylife.walkability/v1",
+          frameId: surfaceFrame.id,
+          walkableCells: Array.from(walkableCells),
+        },
+        plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+      },
+    });
+    const cachedVehicleBody = JSON.stringify({
+      owned: true,
+      status: "OWNED",
+      vehicleKey: "karoo-vonk-11",
+      ownedVehicleKeys: ["karoo-vonk-11"],
+      hasVehicle: true,
+      carKey: "karoo-vonk-11",
+    });
+
+    let context1: BrowserContext | null = null;
+    let context2: BrowserContext | null = null;
+
+    try {
+      const token1 = jwt.sign(
+        { userId: 70001, id: 70001, sub: 70001, type: "access", roles: ["CITYLIFE_PLAYER"], username: "jamtin" },
+        BUS_JWT_SECRET,
+        { algorithm: "HS256", expiresIn: "1h" },
+      );
+      const token2 = jwt.sign(
+        { userId: 70002, id: 70002, sub: 70002, type: "access", roles: ["CITYLIFE_PLAYER"], username: "jamtin2" },
+        BUS_JWT_SECRET,
+        { algorithm: "HS256", expiresIn: "1h" },
+      );
+
+      context1 = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+      const page1 = await context1.newPage();
+      await seedPlayerSession(page1, "jamtin@citylife.local", token1, 70001, actualWsUrl);
+
+      context2 = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+      const page2 = await context2.newPage();
+      await seedPlayerSession(page2, "jamtin2@citylife.local", token2, 70002, actualWsUrl);
+
+      const handleCatalogueRoute = (route: any) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: cachedCatalogueBody });
+      const handleVehicleRoute = (route: any) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: cachedVehicleBody });
+      const handleAssetsRoute = (route: any) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+      const handleEmptyJsonRoute = (route: any) =>
+        route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+
+      // Do NOT intercept /api/v1/citylife/auth/cookie — let Vite's proxy forward directly to Fastify
+      // on 127.0.0.1:9010 so real Set-Cookie headers populate the browser cookie jar for WebSocket upgrade.
+      await context1.route("**/starter-catalogue*", handleCatalogueRoute);
+      await context2.route("**/starter-catalogue*", handleCatalogueRoute);
+      await context1.route("**/players/me/vehicle*", handleVehicleRoute);
+      await context2.route("**/players/me/vehicle*", handleVehicleRoute);
+      await context1.route("**/car-ownership*", handleVehicleRoute);
+      await context2.route("**/car-ownership*", handleVehicleRoute);
+      await context1.route("**/api/v1/assets*", handleAssetsRoute);
+      await context2.route("**/api/v1/assets*", handleAssetsRoute);
+      await context1.route("**/api/ledger/**", handleEmptyJsonRoute);
+      await context2.route("**/api/ledger/**", handleEmptyJsonRoute);
+      await context1.route("**/api/v1/social/**", handleEmptyJsonRoute);
+      await context2.route("**/api/v1/social/**", handleEmptyJsonRoute);
+      await context1.route("**/api/v1/citylife/blueprints*", handleAssetsRoute);
+      await context2.route("**/api/v1/citylife/blueprints*", handleAssetsRoute);
+      await context1.route("**/api/v1/citylife/players/me/feature-flags/**", handleEmptyJsonRoute);
+      await context2.route("**/api/v1/citylife/players/me/feature-flags/**", handleEmptyJsonRoute);
+
+      const targetQuery = `/?room=bus-actual-pair&skipauth=1&ws=${encodeURIComponent(actualWsUrl)}`;
+      await Promise.all([page1.goto(targetQuery), page2.goto(targetQuery)]);
+      await Promise.all([
+        page1.waitForSelector("canvas", { timeout: 60_000 }),
+        page2.waitForSelector("canvas", { timeout: 60_000 }),
+      ]);
+      await Promise.all([
+        page1.waitForFunction(() => !!(window as any).__colony && !!(window as any).__r3fScene, undefined, { timeout: 60_000 }),
+        page2.waitForFunction(() => !!(window as any).__colony && !!(window as any).__r3fScene, undefined, { timeout: 60_000 }),
+      ]);
+      await Promise.all([
+        page1.waitForSelector('[data-testid="multiplayer-hud"][data-connected="true"]', { timeout: 60_000 }),
+        page2.waitForSelector('[data-testid="multiplayer-hud"][data-connected="true"]', { timeout: 60_000 }),
+      ]);
+
+      // Verify real HttpOnly cookie was set in both browser contexts via normal BFF proxy (/api/v1/citylife/auth/cookie)
+      const [cookies1, cookies2] = await Promise.all([context1.cookies(), context2.cookies()]);
+      const redactCookies = (list: typeof cookies1) =>
+        list.map((c) => ({
+          name: c.name,
+          path: c.path,
+          httpOnly: c.httpOnly,
+          secure: c.secure,
+          sameSite: c.sameSite,
+          hasValue: Boolean(c.value && c.value.length > 0),
+        }));
+      console.log("[Bus Auth Cookie Metadata] P1:", JSON.stringify(redactCookies(cookies1)));
+      console.log("[Bus Auth Cookie Metadata] P2:", JSON.stringify(redactCookies(cookies2)));
+
+      const wsCookie1 = cookies1.find((c) => c.name === "jwt" && c.path === "/api/v1/citylife/ws");
+      const wsCookie2 = cookies2.find((c) => c.name === "jwt" && c.path === "/api/v1/citylife/ws");
+      expect(wsCookie1).toBeDefined();
+      expect(wsCookie1?.httpOnly).toBe(true);
+      expect(wsCookie1?.secure).toBe(true);
+      expect(wsCookie1?.sameSite).toBe("Strict");
+      expect(Boolean(wsCookie1?.value)).toBe(true);
+      expect(wsCookie2).toBeDefined();
+      expect(wsCookie2?.httpOnly).toBe(true);
+      expect(wsCookie2?.secure).toBe(true);
+      expect(wsCookie2?.sameSite).toBe("Strict");
+      expect(Boolean(wsCookie2?.value)).toBe(true);
+
+      const [webglDiag1, webglDiag2] = await Promise.all([
+        page1.evaluate(() => {
+          const canvas = document.querySelector("canvas");
+          const gl = (canvas?.getContext("webgl2") || canvas?.getContext("webgl")) as WebGLRenderingContext | null;
+          const dbg = gl ? gl.getExtension("WEBGL_debug_renderer_info") : null;
+          return {
+            glVersion: gl ? gl.getParameter(gl.VERSION) : null,
+            unmaskedVendor: gl && dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : null,
+            unmaskedRenderer: gl && dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : null,
+          };
+        }),
+        page2.evaluate(() => {
+          const canvas = document.querySelector("canvas");
+          const gl = (canvas?.getContext("webgl2") || canvas?.getContext("webgl")) as WebGLRenderingContext | null;
+          const dbg = gl ? gl.getExtension("WEBGL_debug_renderer_info") : null;
+          return {
+            glVersion: gl ? gl.getParameter(gl.VERSION) : null,
+            unmaskedVendor: gl && dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL) : null,
+            unmaskedRenderer: gl && dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : null,
+          };
+        }),
+      ]);
+      console.log(
+        "[Mounted Bus Renderer & Env Diagnostic]:",
+        JSON.stringify({
+          hardwareWebglEnv: process.env.CITYLIFE_HARDWARE_WEBGL ?? "default-enabled",
+          traceFlagMode: process.env.CITYLIFE_TRACE || "off",
+          page1Webgl: webglDiag1,
+          page2Webgl: webglDiag2,
+        }),
+      );
+
+      // Synchronize client sol clocks with server baseline (baseSolNow) and attach bounded snapshot/error/transition listeners
+      // including automatic instrumentation of replacement WebSocket instances across reconnects
+      const attachListenersAndSyncClock = async (p: Page, targetMs: number) => {
+        await p.evaluate((ms) => {
+          const colony = (window as any).__colony;
+          colony.debugSetSolNowMs(ms);
+          const mp = colony.getMultiplayerClient();
+          const MAX_DIAG_TAIL = 32;
+          (window as any).__snapshotCount = 0;
+          (window as any).__lastSnapshot = null;
+          (window as any).__snapshotHistory = [];
+          (window as any).__mpErrors = [];
+          (window as any).__sentTransitions = [];
+          (window as any).__recvTransitions = [];
+          (window as any).__socketInstanceSeq = 0;
+          (window as any).__clickHandlerTimings = [];
+
+          document.addEventListener(
+            "pointerdown",
+            (ev) => {
+              const target = ev.target as HTMLElement | null;
+              const btn = target?.closest?.("[data-testid],[data-fp-action]") as HTMLElement | null;
+              if (btn) {
+                const arr = (window as any).__clickHandlerTimings;
+                arr.push({
+                  event: "pointerdown",
+                  testId: btn.getAttribute("data-testid") || btn.getAttribute("data-fp-action"),
+                  atMs: Date.now(),
+                });
+                if (arr.length > MAX_DIAG_TAIL) arr.splice(0, arr.length - MAX_DIAG_TAIL);
+              }
+            },
+            true,
+          );
+          document.addEventListener(
+            "click",
+            (ev) => {
+              const target = ev.target as HTMLElement | null;
+              const btn = target?.closest?.("[data-testid],[data-fp-action]") as HTMLElement | null;
+              if (btn) {
+                const arr = (window as any).__clickHandlerTimings;
+                arr.push({
+                  event: "click",
+                  testId: btn.getAttribute("data-testid") || btn.getAttribute("data-fp-action"),
+                  atMs: Date.now(),
+                });
+                if (arr.length > MAX_DIAG_TAIL) arr.splice(0, arr.length - MAX_DIAG_TAIL);
+              }
+            },
+            true,
+          );
+
+          const hookWsTransport = (ws: any) => {
+            if (!ws || ws.__hookedBusWs) return;
+            ws.__hookedBusWs = true;
+            const socketInstanceId = ++(window as any).__socketInstanceSeq;
+            ws.__socketInstanceId = socketInstanceId;
+            const origSend = ws.send.bind(ws);
+            ws.send = (data: any) => {
+              try {
+                const parsed = JSON.parse(typeof data === "string" ? data : String(data));
+                if (
+                  parsed?.type === "exit_vehicle" ||
+                  parsed?.type === "board_vehicle" ||
+                  parsed?.type === "board_bus" ||
+                  parsed?.type === "alight_bus"
+                ) {
+                  const sent = (window as any).__sentTransitions;
+                  sent.push({
+                    atMs: Date.now(),
+                    socketInstanceId,
+                    type: parsed.type,
+                    epoch: parsed.epoch ?? null,
+                    mode: parsed.mode ?? null,
+                    seq: parsed.seq ?? null,
+                  });
+                  if (sent.length > MAX_DIAG_TAIL) {
+                    sent.splice(0, sent.length - MAX_DIAG_TAIL);
+                  }
+                }
+              } catch {}
+              return origSend(data);
+            };
+            ws.addEventListener("message", (ev: any) => {
+              try {
+                const parsed = JSON.parse(typeof ev.data === "string" ? ev.data : String(ev.data));
+                if (
+                  parsed?.type === "vehicle_exited" ||
+                  parsed?.type === "vehicle_boarded" ||
+                  parsed?.type === "bus_boarded" ||
+                  parsed?.type === "bus_alighted" ||
+                  parsed?.type === "peer_mode_changed" ||
+                  parsed?.type === "error" ||
+                  parsed?.type === "session_reconnected"
+                ) {
+                  const recv = (window as any).__recvTransitions;
+                  recv.push({
+                    atMs: Date.now(),
+                    socketInstanceId,
+                    type: parsed.type,
+                    participantId: parsed.participantId ?? null,
+                    mode: parsed.mode ?? null,
+                    modeEpoch: parsed.modeEpoch ?? null,
+                    isPedestrian: parsed.isPedestrian ?? null,
+                    x: Number.isFinite(parsed.x) ? Number(parsed.x.toFixed(3)) : null,
+                    z: Number.isFinite(parsed.z) ? Number(parsed.z.toFixed(3)) : null,
+                    heading: Number.isFinite(parsed.heading) ? Number(parsed.heading.toFixed(3)) : null,
+                    carX: Number.isFinite(parsed.carX) ? Number(parsed.carX.toFixed(3)) : null,
+                    carZ: Number.isFinite(parsed.carZ) ? Number(parsed.carZ.toFixed(3)) : null,
+                    carHeading: Number.isFinite(parsed.carHeading) ? Number(parsed.carHeading.toFixed(3)) : null,
+                    error: parsed.error ?? parsed.code ?? null,
+                    message: parsed.message ?? null,
+                  });
+                  if (recv.length > MAX_DIAG_TAIL) {
+                    recv.splice(0, recv.length - MAX_DIAG_TAIL);
+                  }
+                }
+              } catch {}
+            });
+          };
+
+          if (mp && !mp.__hookedBusTest) {
+            mp.__hookedBusTest = true;
+            const origSnap = mp.options.onSnapshot;
+            mp.options.onSnapshot = (s: any) => {
+              const t0 = performance.now();
+              (window as any).__snapshotCount = ((window as any).__snapshotCount || 0) + 1;
+              (window as any).__lastSnapshot = s;
+              const hist = (window as any).__snapshotHistory;
+              hist.push(s);
+              if (hist.length > MAX_DIAG_TAIL) {
+                hist.splice(0, hist.length - MAX_DIAG_TAIL);
+              }
+              origSnap?.(s);
+              (window as any).__lastSnapshotHandlerMs = Number((performance.now() - t0).toFixed(3));
+            };
+            const origErr = mp.options.onError;
+            mp.options.onError = (e: any) => {
+              const errs = (window as any).__mpErrors;
+              errs.push({
+                atMs: Date.now(),
+                code: e?.code ?? e?.error ?? null,
+                message: e?.message ?? null,
+              });
+              if (errs.length > MAX_DIAG_TAIL) {
+                errs.splice(0, errs.length - MAX_DIAG_TAIL);
+              }
+              origErr?.(e);
+            };
+            hookWsTransport(mp.ws);
+            const origConnect = mp.connect.bind(mp);
+            mp.connect = (...args: any[]) => {
+              const prevWs = mp.ws;
+              const res = origConnect(...args);
+              if (res && typeof res.then === "function") {
+                return res.then((val: any) => {
+                  if (mp.ws && mp.ws !== prevWs) {
+                    hookWsTransport(mp.ws);
+                  }
+                  return val;
+                });
+              }
+              if (mp.ws && mp.ws !== prevWs) {
+                hookWsTransport(mp.ws);
+              }
+              return res;
+            };
+          }
+        }, targetMs);
+      };
+      await Promise.all([
+        attachListenersAndSyncClock(page1, baseSolNow),
+        attachListenersAndSyncClock(page2, baseSolNow),
+      ]);
+
+      // Separate Player 2's vehicle slightly forward along the road via real keyboard throttle (KeyW)
+      // from y=273 to y~277.4 so the two parked cars sit at distinct road coordinates while BOTH stay
+      // outside Stop 0's 3.0-cell boarding/pole radius (Stop 0 at=(124, 281.890625), furniture=(121.75, 281.890625))
+      await page2.bringToFront();
+      await page2.keyboard.down("KeyW");
+      await page2.waitForFunction(() => {
+        const last = (window as any).__lastSnapshot;
+        const p2 = last?.participants?.find((x: any) => x.username === "jamtin2");
+        return p2 && p2.z > (273.35 - 304) * 4;
+      }, undefined, { timeout: 15_000, polling: 50 });
+      await page2.keyboard.up("KeyW");
+      await page2.keyboard.down("Space");
+      await page2.waitForFunction(() => {
+        const last = (window as any).__lastSnapshot;
+        const p2 = last?.participants?.find((x: any) => x.username === "jamtin2");
+        return p2 && Math.abs(p2.speed) < 0.05;
+      }, undefined, { timeout: 15_000, polling: 100 });
+      await page2.keyboard.up("Space");
+
+      // Both players click real UI "Park & Exit" button to transition from driving to walking
+      const exitBtn1 = page1.locator('[data-testid="exit-owned-car"]');
+      const exitBtn2 = page2.locator('[data-testid="exit-owned-car"]');
+      await expect(exitBtn1).toBeVisible({ timeout: 10_000 });
+      await expect(exitBtn2).toBeVisible({ timeout: 10_000 });
+
+      const inspectExitHitAndPreState = async (p: Page, btn: typeof exitBtn1) => {
+        const box = await btn.boundingBox();
+        return p.evaluate((b) => {
+          const colony = (window as any).__colony;
+          const cx = b ? b.x + b.width / 2 : -1;
+          const cy = b ? b.y + b.height / 2 : -1;
+          const el = b ? document.elementFromPoint(cx, cy) : null;
+          return {
+            hitTarget: el
+              ? {
+                  tag: el.tagName,
+                  testId: el.getAttribute("data-testid"),
+                  closestExitTestId: el.closest('[data-testid="exit-owned-car"]')?.getAttribute("data-testid") ?? null,
+                }
+              : null,
+            preOwnedDriveSeated: colony?.isOwnedDriveSeated?.() ?? null,
+            preOwnedDrivePose: colony?.getOwnedDrivePose?.() ?? null,
+            preClientMode: colony?.getMultiplayerClient?.()?.getMode?.() ?? null,
+            preModeEpoch: colony?.getMultiplayerClient?.()?.getModeEpoch?.() ?? null,
+          };
+        }, box);
+      };
+      const [preExit1, preExit2] = await Promise.all([
+        inspectExitHitAndPreState(page1, exitBtn1),
+        inspectExitHitAndPreState(page2, exitBtn2),
+      ]);
+      console.log("[Exit4018 Pre-Click Diagnostic] P1:", JSON.stringify(preExit1));
+      console.log("[Exit4018 Pre-Click Diagnostic] P2:", JSON.stringify(preExit2));
+
+      const collectClientExitDiag = (p: Page) =>
+        p.evaluate(() => {
+          const colony = (window as any).__colony;
+          const mp = colony?.getMultiplayerClient?.();
+          const hist = (window as any).__snapshotHistory || [];
+          const last = (window as any).__lastSnapshot ?? hist[hist.length - 1];
+          return {
+            snapshotCount: (window as any).__snapshotCount ?? hist.length,
+            snapshotTailLength: hist.length,
+            lastSnapshotSeq: last?.seq ?? null,
+            lastSnapshotTimestamp: last?.timestamp ?? null,
+            lastSnapshotHandlerMs: (window as any).__lastSnapshotHandlerMs ?? null,
+            lastSnapshotParticipants: (last?.participants || []).map((pt: any) => ({
+              participantId: pt.participantId ?? null,
+              username: pt.username ?? null,
+              alias: pt.alias ?? null,
+              mode: pt.mode ?? null,
+              isPedestrian: pt.isPedestrian ?? null,
+              modeEpoch: pt.modeEpoch ?? null,
+              x: Number.isFinite(pt.x) ? Number(pt.x.toFixed(3)) : null,
+              z: Number.isFinite(pt.z) ? Number(pt.z.toFixed(3)) : null,
+              heading: Number.isFinite(pt.heading) ? Number(pt.heading.toFixed(3)) : null,
+              carX: Number.isFinite(pt.carX) ? Number(pt.carX.toFixed(3)) : null,
+              carZ: Number.isFinite(pt.carZ) ? Number(pt.carZ.toFixed(3)) : null,
+              carHeading: Number.isFinite(pt.carHeading) ? Number(pt.carHeading.toFixed(3)) : null,
+              hasFiniteCarTuple:
+                Number.isFinite(pt.carX) && Number.isFinite(pt.carZ) && Number.isFinite(pt.carHeading),
+            })),
+            socketState: {
+              status: mp?.getStatus?.() ?? null,
+              readyState: mp?.ws?.readyState ?? null,
+              socketInstanceId: mp?.ws?.__socketInstanceId ?? null,
+              clientMode: mp?.getMode?.() ?? null,
+              modeEpoch: mp?.getModeEpoch?.() ?? null,
+            },
+            localState: {
+              ownedDriveSeated: colony?.isOwnedDriveSeated?.() ?? null,
+              ownedDrivePose: colony?.getOwnedDrivePose?.() ?? null,
+              parkedCarPose: colony?.getParkedCarPose?.() ?? null,
+              walkingCell: colony?.getWalkingCell?.() ?? null,
+              blockedReason: colony?.fpBlockedReason ?? null,
+            },
+            clickHandlerTimings: (window as any).__clickHandlerTimings || [],
+            sentTransitions: (window as any).__sentTransitions || [],
+            recvTransitions: (window as any).__recvTransitions || [],
+            mpErrors: (window as any).__mpErrors || [],
+          };
+        });
+
+      let click1StartMs: number | null = null;
+      let click1EndMs: number | null = null;
+      let click1Error: string | null = null;
+      let click2StartMs: number | null = null;
+      let click2EndMs: number | null = null;
+      let click2Error: string | null = null;
+      let predicateStartMs: number | null = null;
+      let predicateEndMs: number | null = null;
+      let predicateError: string | null = null;
+
+      try {
+        await page1.bringToFront();
+        click1StartMs = Date.now();
+        try {
+          await exitBtn1.click();
+          click1EndMs = Date.now();
+        } catch (err: any) {
+          click1EndMs = Date.now();
+          click1Error = err?.message ?? String(err);
+          throw err;
+        }
+
+        await page2.bringToFront();
+        click2StartMs = Date.now();
+        try {
+          await exitBtn2.click();
+          click2EndMs = Date.now();
+        } catch (err: any) {
+          click2EndMs = Date.now();
+          click2Error = err?.message ?? String(err);
+          throw err;
+        }
+
+        // Wait for authoritative server transition to mode === "walking" with retained full parked car tuple
+        predicateStartMs = Date.now();
+        try {
+          await Promise.all([
+            page1.waitForFunction(() => {
+              const last = (window as any).__lastSnapshot;
+              const p = last?.participants?.find((x: any) => x.username === "jamtin");
+              return (
+                p?.isPedestrian === true &&
+                p?.mode === "walking" &&
+                Number.isFinite(p?.carX) &&
+                Number.isFinite(p?.carZ) &&
+                Number.isFinite(p?.carHeading)
+              );
+            }, undefined, { timeout: 15_000, polling: 100 }),
+            page2.waitForFunction(() => {
+              const last = (window as any).__lastSnapshot;
+              const p = last?.participants?.find((x: any) => x.username === "jamtin2");
+              return (
+                p?.isPedestrian === true &&
+                p?.mode === "walking" &&
+                Number.isFinite(p?.carX) &&
+                Number.isFinite(p?.carZ) &&
+                Number.isFinite(p?.carHeading)
+              );
+            }, undefined, { timeout: 15_000, polling: 100 }),
+          ]);
+          predicateEndMs = Date.now();
+        } catch (err: any) {
+          predicateEndMs = Date.now();
+          predicateError = err?.message ?? String(err);
+          throw err;
+        }
+      } finally {
+        const [diag1, diag2] = await Promise.all([
+          collectClientExitDiag(page1).catch(() => null),
+          collectClientExitDiag(page2).catch(() => null),
+        ]);
+        const timingBreakdown = {
+          click1StartMs,
+          click1EndMs,
+          click1DurationMs: click1StartMs !== null && click1EndMs !== null ? click1EndMs - click1StartMs : null,
+          click1Error,
+          click2StartMs,
+          click2EndMs,
+          click2DurationMs: click2StartMs !== null && click2EndMs !== null ? click2EndMs - click2StartMs : null,
+          click2Error,
+          predicateStartMs,
+          predicateEndMs,
+          predicateDurationMs:
+            predicateStartMs !== null && predicateEndMs !== null ? predicateEndMs - predicateStartMs : null,
+          predicateError,
+          p1PointerDownAtMs:
+            diag1?.clickHandlerTimings?.find((t: any) => t.event === "pointerdown" && t.testId === "exit-owned-car")?.atMs ?? null,
+          p1DomClickAtMs:
+            diag1?.clickHandlerTimings?.find((t: any) => t.event === "click" && t.testId === "exit-owned-car")?.atMs ?? null,
+          p1ExitSendAtMs: diag1?.sentTransitions?.find((t: any) => t.type === "exit_vehicle")?.atMs ?? null,
+          p1ExitAckAtMs: diag1?.recvTransitions?.find((t: any) => t.type === "vehicle_exited")?.atMs ?? null,
+          p2PointerDownAtMs:
+            diag2?.clickHandlerTimings?.find((t: any) => t.event === "pointerdown" && t.testId === "exit-owned-car")?.atMs ?? null,
+          p2DomClickAtMs:
+            diag2?.clickHandlerTimings?.find((t: any) => t.event === "click" && t.testId === "exit-owned-car")?.atMs ?? null,
+          p2ExitSendAtMs: diag2?.sentTransitions?.find((t: any) => t.type === "exit_vehicle")?.atMs ?? null,
+          p2ExitAckAtMs: diag2?.recvTransitions?.find((t: any) => t.type === "vehicle_exited")?.atMs ?? null,
+        };
+        const serverSessionsDiag: any[] = [];
+        for (const [sId, sess] of (realtime as any).sessions.entries()) {
+          serverSessionsDiag.push({
+            sessionId: sId,
+            snapshotSeq: sess.snapshotSeq ?? 0,
+            hasTerrainAuthority: Boolean(sess.hasTerrainAuthority),
+            walkableCellsCount: sess.walkability?.walkableCells?.size ?? 0,
+            participants: Array.from(sess.participants.values()).map((pt: any) => ({
+              participantId: pt.participantId,
+              username: pt.username,
+              mode: pt.isPedestrian ? "walking" : "driving",
+              isPedestrian: pt.isPedestrian,
+              modeEpoch: pt.modeEpoch,
+              x: Number.isFinite(pt.x) ? Number(pt.x.toFixed(3)) : null,
+              z: Number.isFinite(pt.z) ? Number(pt.z.toFixed(3)) : null,
+              heading: Number.isFinite(pt.heading) ? Number(pt.heading.toFixed(3)) : null,
+              carX: Number.isFinite(pt.carX) ? Number(pt.carX.toFixed(3)) : null,
+              carZ: Number.isFinite(pt.carZ) ? Number(pt.carZ.toFixed(3)) : null,
+              carHeading: Number.isFinite(pt.carHeading) ? Number(pt.carHeading.toFixed(3)) : null,
+              hasFiniteCarTuple:
+                Number.isFinite(pt.carX) && Number.isFinite(pt.carZ) && Number.isFinite(pt.carHeading),
+            })),
+          });
+        }
+        console.log("[Exit4018 Timing Breakdown]:", JSON.stringify(timingBreakdown));
+        console.log("[Exit4018 Post-Click Server Diagnostic]:", JSON.stringify(serverSessionsDiag));
+        console.log("[Exit4018 Post-Click Client P1 Diagnostic]:", JSON.stringify(diag1));
+        console.log("[Exit4018 Post-Click Client P2 Diagnostic]:", JSON.stringify(diag2));
+      }
+
+      if (process.env.BUS_EXIT_DIAG_ONLY === "1") {
+        throw new Error(
+          "[Exit4018 Diagnostic Replay Only] Boundary reached; failing intentionally so diagnostic-only replay can never report full-journey pass.",
+        );
+      }
+
+      // 1A. DISTANT-POLE NEGATIVE CONTROL:
+      // Verify both players' post-exit foot cells are genuinely outside Stop 0's configured 3.0-cell anchor radius
+      // (min(distance to stop.furniture, distance to stop.at) > 3.0), with finite numeric coordinates and finite computed distance.
+      const measureStop0MinDistance = async (p: Page) =>
+        p.evaluate(() => {
+          const colony = (window as any).__colony;
+          const stop = colony?.busStopAnchors?.()?.[0];
+          const cell = colony?.getWalkingCell?.();
+          if (
+            !stop ||
+            !cell ||
+            !Number.isFinite(cell.x) ||
+            !Number.isFinite(cell.y) ||
+            !Number.isFinite(stop.furniture?.x) ||
+            !Number.isFinite(stop.furniture?.y) ||
+            !Number.isFinite(stop.at?.x) ||
+            !Number.isFinite(stop.at?.y)
+          ) {
+            return { minDist: NaN, dFurn: NaN, dAt: NaN, cell: cell ?? null, stopAt: stop?.at ?? null, stopFurniture: stop?.furniture ?? null };
+          }
+          const dFurn = Math.hypot(cell.x - stop.furniture.x, cell.y - stop.furniture.y);
+          const dAt = Math.hypot(cell.x - stop.at.x, cell.y - stop.at.y);
+          return {
+            minDist: Math.min(dFurn, dAt),
+            dFurn,
+            dAt,
+            cell,
+            stopAt: stop.at,
+            stopFurniture: stop.furniture,
+          };
+        });
+
+      let [distP1, distP2] = await Promise.all([measureStop0MinDistance(page1), measureStop0MinDistance(page2)]);
+      expect(Number.isFinite(distP1.minDist)).toBe(true);
+      expect(Number.isFinite(distP2.minDist)).toBe(true);
+      if (distP2.minDist <= 3.1) {
+        await page2.bringToFront();
+        await page2.locator("canvas").first().click({ position: { x: 200, y: 200 } });
+        const keySStartDiag = await page2.evaluate(() => {
+          const colony = (window as any).__colony;
+          const last = (window as any).__lastSnapshot;
+          const self = last?.participants?.find((x: any) => x.username === "jamtin2");
+          return {
+            walkingCell: colony?.getWalkingCell?.() ?? null,
+            wireHeading: colony?.getFirstPersonWireHeading?.() ?? null,
+            blockedReason: colony?.fpBlockedReason ?? null,
+            sentInputSeq: colony?.multiplayerInputSeq ?? null,
+            serverPos: self ? { x: self.x, z: self.z, heading: self.heading, lastInputSeq: self.lastInputSeq } : null,
+          };
+        });
+        await page2.keyboard.down("KeyS");
+        try {
+          await page2.waitForFunction(
+            () => {
+              const colony = (window as any).__colony;
+              const stop = colony?.busStopAnchors?.()?.[0];
+              const cell = colony?.getWalkingCell?.();
+              if (
+                !stop ||
+                !cell ||
+                !Number.isFinite(cell.x) ||
+                !Number.isFinite(cell.y) ||
+                !Number.isFinite(stop.furniture?.x) ||
+                !Number.isFinite(stop.furniture?.y) ||
+                !Number.isFinite(stop.at?.x) ||
+                !Number.isFinite(stop.at?.y)
+              ) {
+                return false;
+              }
+              const dFurn = Math.hypot(cell.x - stop.furniture.x, cell.y - stop.furniture.y);
+              const dAt = Math.hypot(cell.x - stop.at.x, cell.y - stop.at.y);
+              const minDist = Math.min(dFurn, dAt);
+              return Number.isFinite(minDist) && minDist > 3.5;
+            },
+            undefined,
+            { timeout: 10_000, polling: 100 },
+          );
+        } finally {
+          await page2.keyboard.up("KeyS").catch(() => {});
+          const keySEndDiag = await page2.evaluate(() => {
+            const colony = (window as any).__colony;
+            const last = (window as any).__lastSnapshot;
+            const self = last?.participants?.find((x: any) => x.username === "jamtin2");
+            return {
+              walkingCell: colony?.getWalkingCell?.() ?? null,
+              wireHeading: colony?.getFirstPersonWireHeading?.() ?? null,
+              blockedReason: colony?.fpBlockedReason ?? null,
+              sentInputSeq: colony?.multiplayerInputSeq ?? null,
+              serverPos: self ? { x: self.x, z: self.z, heading: self.heading, lastInputSeq: self.lastInputSeq } : null,
+            };
+          }).catch(() => null);
+          console.log("[Distant-Pole KeyS Walk Diagnostic]:", JSON.stringify({ start: keySStartDiag, end: keySEndDiag }));
+        }
+        distP2 = await measureStop0MinDistance(page2);
+      }
+      expect(Number.isFinite(distP1.minDist)).toBe(true);
+      expect(Number.isFinite(distP2.minDist)).toBe(true);
+      expect(distP1.minDist).toBeGreaterThan(3.0);
+      expect(distP2.minDist).toBeGreaterThan(3.0);
+
+      const stopCard1 = page1.locator('[data-testid="bus-stop-card"]');
+      const stopCard2 = page2.locator('[data-testid="bus-stop-card"]');
+      await expect(stopCard1).toHaveCount(0);
+      await expect(stopCard2).toHaveCount(0);
+
+      // 1B. PARKED CAR RETENTION & REAL UI CAR RE-ENTRY PROOF:
+      // Verify remote parked cars are mounted in 3D scenes and Player 1 can re-enter and re-exit their parked car via UI
+      await Promise.all([
+        page1.waitForFunction(() => {
+          const scene = (window as any).__r3fScene;
+          let found = false;
+          scene?.traverse((o: any) => {
+            if (o.name === "remote-parked-car-jamtin2") found = true;
+          });
+          return found;
+        }, undefined, { timeout: 15_000, polling: 100 }),
+        page2.waitForFunction(() => {
+          const scene = (window as any).__r3fScene;
+          let found = false;
+          scene?.traverse((o: any) => {
+            if (o.name === "remote-parked-car-jamtin") found = true;
+          });
+          return found;
+        }, undefined, { timeout: 15_000, polling: 100 }),
+      ]);
+
+      await page1.bringToFront();
+      const enterCarBtn1 = page1.locator('[data-testid="enter-owned-car"]');
+      await expect(enterCarBtn1).toBeVisible({ timeout: 10_000 });
+      await enterCarBtn1.click();
+
+      await page1.waitForFunction(() => {
+        const last = (window as any).__lastSnapshot;
+        const p1 = last?.participants?.find((x: any) => x.username === "jamtin");
+        return p1?.mode === "driving" && p1?.isPedestrian === false;
+      }, undefined, { timeout: 15_000, polling: 100 });
+
+      // Exit car again via real UI button to proceed on foot to Stop 0
+      await expect(exitBtn1).toBeVisible({ timeout: 10_000 });
+      await exitBtn1.click();
+      await page1.waitForFunction(() => {
+        const last = (window as any).__lastSnapshot;
+        const p1 = last?.participants?.find((x: any) => x.username === "jamtin");
+        return (
+          p1?.mode === "walking" &&
+          p1?.isPedestrian === true &&
+          Number.isFinite(p1?.carX) &&
+          Number.isFinite(p1?.carZ) &&
+          Number.isFinite(p1?.carHeading)
+        );
+      }, undefined, { timeout: 15_000, polling: 100 });
+
+      // Capture authoritative server AND local runtime parked car tuples after final park
+      const [parkedCarsInitial, localParkedP1, localParkedP2] = await Promise.all([
+        page1.evaluate(() => {
+          const last = (window as any).__lastSnapshot;
+          const p1 = last?.participants?.find((x: any) => x.username === "jamtin");
+          const p2 = last?.participants?.find((x: any) => x.username === "jamtin2");
+          return {
+            p1: { carX: p1.carX, carZ: p1.carZ, carHeading: p1.carHeading },
+            p2: { carX: p2.carX, carZ: p2.carZ, carHeading: p2.carHeading },
+          };
+        }),
+        page1.evaluate(() => (window as any).__colony.getParkedCarPose()),
+        page2.evaluate(() => (window as any).__colony.getParkedCarPose()),
+      ]);
+      expect(Math.hypot(parkedCarsInitial.p1.carX - parkedCarsInitial.p2.carX, parkedCarsInitial.p1.carZ - parkedCarsInitial.p2.carZ)).toBeGreaterThan(2.0);
+      expect(localParkedP1).not.toBeNull();
+      expect(Number.isFinite(localParkedP1.x)).toBe(true);
+      expect(Number.isFinite(localParkedP1.y)).toBe(true);
+      expect(Number.isFinite(localParkedP1.heading)).toBe(true);
+      expect(localParkedP2).not.toBeNull();
+      expect(Number.isFinite(localParkedP2.x)).toBe(true);
+      expect(Number.isFinite(localParkedP2.y)).toBe(true);
+      expect(Number.isFinite(localParkedP2.heading)).toBe(true);
+
+      // 2. REAL KEYBOARD WALK TO SERVED STOP 0 POLE:
+      // Stop 0 anchor is at: (124, 281.890625), furniture: (121.75, 281.890625).
+      // Both players exit on the avenue at x=126.35 facing south (heading = PI/2).
+      // Phase A: Walk south along the avenue (KeyW) until cellY >= stop.at.y - 0.35 (~281.54).
+      // Phase B: Step west across the kerb toward the pole (KeyD at heading = PI/2) until dAt <= 2.6 && dFurn <= 2.8.
+      const collectWalkDiag = (p: Page, username: string) =>
+        p.evaluate((u) => {
+          const colony = (window as any).__colony;
+          const tSize = colony?.sim?.state?.terrain?.size ?? 608;
+          const stop = colony?.busStopAnchors?.()?.[0];
+          const last = (window as any).__lastSnapshot;
+          const self = last?.participants?.find((x: any) => x.username === u);
+          const serverCell =
+            self && Number.isFinite(self.x) && Number.isFinite(self.z)
+              ? { x: Number((self.x / 4 + tSize / 2).toFixed(3)), y: Number((self.z / 4 + tSize / 2).toFixed(3)) }
+              : null;
+          const localCell = colony?.getWalkingCell?.() ?? null;
+          const dAt =
+            serverCell && stop?.at ? Number(Math.hypot(serverCell.x - stop.at.x, serverCell.y - stop.at.y).toFixed(3)) : null;
+          const dFurn =
+            serverCell && stop?.furniture
+              ? Number(Math.hypot(serverCell.x - stop.furniture.x, serverCell.y - stop.furniture.y).toFixed(3))
+              : null;
+          return {
+            username: u,
+            localWalkingCell: localCell,
+            wireHeading: Number.isFinite(colony?.getFirstPersonWireHeading?.())
+              ? Number(colony.getFirstPersonWireHeading().toFixed(3))
+              : null,
+            blockedReason: colony?.fpBlockedReason ?? null,
+            clientSentInputSeq: colony?.multiplayerInputSeq ?? null,
+            serverLastInputSeq: self?.lastInputSeq ?? null,
+            serverCell,
+            serverHeading: Number.isFinite(self?.heading) ? Number(self.heading.toFixed(3)) : null,
+            dAt,
+            dFurn,
+          };
+        }, username);
+
+      const walkPlayerToStop0 = async (p: Page, username: string) => {
+        await p.bringToFront();
+        const canvas = p.locator("canvas").first();
+        await canvas.click({ position: { x: 200, y: 200 } });
+        const startDiag = await collectWalkDiag(p, username);
+        expect(startDiag.localWalkingCell).not.toBeNull();
+        expect(Number.isFinite(startDiag.localWalkingCell.x)).toBe(true);
+        expect(Number.isFinite(startDiag.localWalkingCell.y)).toBe(true);
+        expect(Number.isFinite(startDiag.wireHeading)).toBe(true);
+        const startSeq = startDiag.serverLastInputSeq ?? 0;
+
+        try {
+          // Phase A: Walk south along the avenue (KeyW) until aligned in Y with Stop 0 (cellY >= stop.at.y - 0.35)
+          await p.keyboard.down("KeyW");
+          try {
+            await p.waitForFunction(
+              ({ u, minSeq }) => {
+                const colony = (window as any).__colony;
+                const tSize = colony?.sim?.state?.terrain?.size ?? 608;
+                const stop = colony?.busStopAnchors?.()?.[0];
+                const last = (window as any).__lastSnapshot;
+                const self = last?.participants?.find((x: any) => x.username === u);
+                if (!self || !stop || (self.lastInputSeq ?? 0) <= minSeq) return false;
+                const cellY = self.z / 4 + tSize / 2;
+                return Number.isFinite(cellY) && cellY >= stop.at.y - 0.35;
+              },
+              { u: username, minSeq: startSeq },
+              { timeout: 20_000, polling: 50 },
+            );
+          } finally {
+            await p.keyboard.up("KeyW").catch(() => {});
+          }
+
+          // Phase B: Step west toward the Stop 0 pole (KeyD at heading = PI/2, plus KeyW if cellY < stop.at.y - 0.2)
+          // until authoritative server cell satisfies both dAt <= 2.6 and dFurn <= 2.8
+          const midDiag = await collectWalkDiag(p, username);
+          const midSeq = midDiag.serverLastInputSeq ?? startSeq;
+          await p.keyboard.down("KeyD");
+          try {
+            await p.waitForFunction(
+              ({ u, minSeq }) => {
+                const colony = (window as any).__colony;
+                const tSize = colony?.sim?.state?.terrain?.size ?? 608;
+                const stop = colony?.busStopAnchors?.()?.[0];
+                const last = (window as any).__lastSnapshot;
+                const self = last?.participants?.find((x: any) => x.username === u);
+                if (!self || !stop || (self.lastInputSeq ?? 0) <= minSeq) return false;
+                const cellX = self.x / 4 + tSize / 2;
+                const cellY = self.z / 4 + tSize / 2;
+                const dFurn = Math.hypot(cellX - stop.furniture.x, cellY - stop.furniture.y);
+                const dAt = Math.hypot(cellX - stop.at.x, cellY - stop.at.y);
+                return Number.isFinite(dAt) && Number.isFinite(dFurn) && dAt <= 2.6 && dFurn <= 2.8;
+              },
+              { u: username, minSeq: midSeq },
+              { timeout: 15_000, polling: 50 },
+            );
+          } finally {
+            await p.keyboard.up("KeyD").catch(() => {});
+          }
+        } finally {
+          await p.keyboard.up("KeyD").catch(() => {});
+          await p.keyboard.up("KeyW").catch(() => {});
+          const endDiag = await collectWalkDiag(p, username).catch(() => null);
+          console.log(`[WalkToStop0 Diagnostic ${username}]:`, JSON.stringify({ start: startDiag, end: endDiag }));
+        }
+      };
+
+      await walkPlayerToStop0(page1, "jamtin");
+      await walkPlayerToStop0(page2, "jamtin2");
+
+      if (process.env.BUS_WALK_DIAG_ONLY === "1") {
+        throw new Error(
+          "[WalkToStop0 Diagnostic Replay Only] Boundary reached; failing intentionally so diagnostic-only replay can never report full-journey pass.",
+        );
+      }
+
+      // 3. SERVED POLE BUTTON & REASONS + WAIT / CANCEL LIFECYCLE:
+      await expect(stopCard1).toBeVisible({ timeout: 15_000 });
+      await expect(stopCard1).toHaveAttribute("data-stop-index", "0");
+      await expect(stopCard1).toHaveAttribute("data-can-board", "false");
+
+      const stopStatus1 = page1.locator('[data-testid="bus-stop-status"]');
+      await expect(stopStatus1).toBeVisible();
+      await expect(stopStatus1).toContainText("No bus currently at stop");
+
+      const waitBtn1 = page1.locator('[data-fp-action="wait-next-bus"]');
+      await expect(waitBtn1).toBeVisible();
+
+      const stopCardScreenshot = path.resolve("test-results/actual-pair-screenshots/page1-stop-card-idle.png");
+      await page1.screenshot({ path: stopCardScreenshot });
+
+      // Click Wait -> verify waiting state and Cancel button
+      await page1.bringToFront();
+      await waitBtn1.click();
+      await expect(stopCard1).toHaveAttribute("data-waiting", "true");
+      await expect(stopStatus1).toContainText("Waiting for next bus");
+
+      const cancelBtn1 = page1.locator('[data-fp-action="cancel-wait-bus"]');
+      await expect(cancelBtn1).toBeVisible();
+
+      // Click Cancel -> verify return to idle state
+      await cancelBtn1.click();
+      await expect(stopCard1).toHaveAttribute("data-waiting", "false");
+      await expect(waitBtn1).toBeVisible();
+
+      // Re-arm Wait on Player 1 (to prove auto-board on arrival) while leaving Player 2 idle (to click "Board Bus 1" button on arrival)
+      await waitBtn1.click();
+      await expect(stopCard1).toHaveAttribute("data-waiting", "true");
+      await expect(stopCard2).toBeVisible({ timeout: 15_000 });
+      await expect(stopCard2).toHaveAttribute("data-waiting", "false");
+
+      // 4. BUS ARRIVAL AT STOP 0 & REAL UI BOARDING INTO DISTINCT SEATS:
+      const sessions = Array.from((realtime as any).sessions.values()) as any[];
+      expect(sessions.length).toBeGreaterThan(0);
+      const session = sessions[0]!;
+      const runner = realtime.getSessionTransitRunner(session.id);
+      expect(runner).toBeDefined();
+
+      // Advance canonical sol clock to Stop 0 service dwell (CITYLIFE_EPOCH_MS + 4_756_000)
+      const stop0DwellNow = CITYLIFE_EPOCH_MS + 4_756_000;
+      mockNow = stop0DwellNow;
+      await Promise.all([
+        page1.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), stop0DwellNow),
+        page2.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), stop0DwellNow),
+      ]);
+
+      // Bounded poll for server transit runner to tick into Stop 0 dwell
+      await expect
+        .poll(() => {
+          const p = runner!.getBusWorldPose(0, session.originX, session.originZ, session.cellMetres);
+          return Boolean(
+            p &&
+            p.busId === 0 &&
+            p.doorsOpen === true &&
+            Number.isFinite(p.speed) &&
+            p.speed === 0 &&
+            p.atStop === true
+          );
+        }, { timeout: 5_000 })
+        .toBe(true);
+
+      const stop0BusPose = runner!.getBusWorldPose(0, session.originX, session.originZ, session.cellMetres)!;
+      expect(stop0BusPose).toBeDefined();
+      expect(stop0BusPose.busId).toBe(0);
+      expect(stop0BusPose.doorsOpen).toBe(true);
+      expect(Number.isFinite(stop0BusPose.speed)).toBe(true);
+      expect(stop0BusPose.speed).toBe(0);
+      expect(stop0BusPose.atStop).toBe(true);
+      expect(Number.isFinite(stop0BusPose.x)).toBe(true);
+      expect(Number.isFinite(stop0BusPose.y)).toBe(true);
+      expect(Number.isFinite(stop0BusPose.z)).toBe(true);
+      expect(Number.isFinite(stop0BusPose.heading)).toBe(true);
+
+      // Verify server pose is within served Stop 0 anchor radius
+      const stop0Anchor = runner!.stopAnchors[0]!;
+      expect(stop0Anchor).toBeDefined();
+      const stop0WorldX = session.originX + stop0Anchor.at.x * session.cellMetres;
+      const stop0WorldZ = session.originZ + stop0Anchor.at.y * session.cellMetres;
+      const distToStop0 = Math.hypot(stop0BusPose.x - stop0WorldX, stop0BusPose.z - stop0WorldZ);
+      expect(Number.isFinite(distToStop0)).toBe(true);
+      expect(distToStop0).toBeLessThanOrEqual(3.0 * session.cellMetres);
+
+      // Player 1 auto-boards from wait-next-bus queue; Player 2 clicks the real UI "Board Bus 1" button
+      await page2.bringToFront();
+      const boardBtn2 = page2.locator('[data-fp-action="board-dwelling-bus"]');
+      await expect(boardBtn2).toBeVisible({ timeout: 15_000 });
+      await expect(stopCard2).toHaveAttribute("data-can-board", "true");
+      await boardBtn2.click();
+
+      // Verify both clients are admitted to mode === "riding_bus" on Bus 0 in distinct seats
+      await Promise.all([
+        page1.waitForFunction(() => {
+          const mp = (window as any).__colony?.getMultiplayerClient();
+          return mp?.getMode() === "riding_bus" && mp?.getSeatedBusId() === 0 && typeof mp?.getSeatIndex() === "number";
+        }, undefined, { timeout: 15_000, polling: 100 }),
+        page2.waitForFunction(() => {
+          const mp = (window as any).__colony?.getMultiplayerClient();
+          return mp?.getMode() === "riding_bus" && mp?.getSeatedBusId() === 0 && typeof mp?.getSeatIndex() === "number";
+        }, undefined, { timeout: 15_000, polling: 100 }),
+      ]);
+
+      const [seatP1, pidP1] = await page1.evaluate(() => {
+        const mp = (window as any).__colony?.getMultiplayerClient();
+        return [mp?.getSeatIndex(), mp?.getSessionInfo()?.participantId];
+      });
+      const [seatP2, pidP2] = await page2.evaluate(() => {
+        const mp = (window as any).__colony?.getMultiplayerClient();
+        return [mp?.getSeatIndex(), mp?.getSessionInfo()?.participantId];
+      });
+      expect(typeof seatP1).toBe("number");
+      expect(typeof seatP2).toBe("number");
+      expect(typeof pidP1).toBe("string");
+      expect(typeof pidP2).toBe("string");
+      expect(pidP1).toBeTruthy();
+      expect(pidP2).toBeTruthy();
+      expect(seatP1).not.toBe(seatP2);
+      expect(pidP1).not.toBe(pidP2);
+      expect(runner!.getOccupiedSeats(0)).toBe(2);
+
+      // 5. MOUNTED SEATED CRAB PEERS & COACH-DERIVED 3D SEAT TRANSFORM PROOF (X, Y, Z & ORIENTATION):
+      const verifySeatedCrabAndTransform = async (
+        viewerPage: Page,
+        peerUsername: string,
+        expectedSeat: number,
+        expectedPid: string,
+      ) => {
+        try {
+          return await viewerPage.waitForFunction(
+            ({ u, seat, expPid }) => {
+              const scene = (window as any).__r3fScene;
+              if (!scene) return false;
+              let peerGroup: any = null;
+              let parkedCarGroup: any = null;
+              let coachGroup: any = null;
+              scene.traverse((o: any) => {
+                if (o.name === `remote-racer-${u}` && o.userData?.username === u) peerGroup = o;
+                if (o.name === `remote-parked-car-${u}` && o.userData?.username === u) parkedCarGroup = o;
+                if (o.name === "bus-coach-0") coachGroup = o;
+              });
+              if (!peerGroup || !coachGroup) return false;
+              // Coexistence negative control: parked car and racer both present; selected racer must not have parked:true
+              if (peerGroup.userData?.parked === true) return false;
+              if (!parkedCarGroup || parkedCarGroup.userData?.parked !== true) return false;
+              if (peerGroup.userData?.participantId !== expPid) {
+                return false;
+              }
+              if (peerGroup.userData?.mode !== "riding_bus" || peerGroup.userData?.seatIndex !== seat) {
+                return false;
+              }
+
+              const isHierarchyVisible = (obj: any): boolean => {
+                let curr = obj;
+                while (curr) {
+                  if (curr.visible === false) return false;
+                  curr = curr.parent;
+                }
+                return true;
+              };
+              if (!isHierarchyVisible(peerGroup)) return false;
+
+              let seatedCrabChild: any = null;
+              peerGroup.traverse((child: any) => {
+                if (typeof child.name === "string" && child.name.startsWith("seated-crab-")) {
+                  seatedCrabChild = child;
+                }
+              });
+              if (!seatedCrabChild || !isHierarchyVisible(seatedCrabChild)) return false;
+
+              // Compare directly against the actual rendered bus-coach-0 and bus-seat-* mesh in the 3D scene
+              coachGroup.updateMatrixWorld(true);
+              const sideName = seat < 5 ? "left" : "right";
+              const rowIdx = seat % 5;
+              const seatMeshName = `bus-seat-${sideName}-${rowIdx}`;
+              let seatMesh: any = null;
+              coachGroup.traverse((child: any) => {
+                if (child.name === seatMeshName) seatMesh = child;
+              });
+              if (!seatMesh) return false;
+
+              // Compare directly against the cushion surface of the rendered bus-seat-* mesh in the 3D scene (+0.25m in seat local Y)
+              const cushionSurfaceWorld = seatMesh.localToWorld(peerGroup.position.clone().set(0, 0.25, 0));
+              const horizErr = Math.hypot(peerGroup.position.x - cushionSurfaceWorld.x, peerGroup.position.z - cushionSurfaceWorld.z);
+              const vertErrFromCushion = Math.abs(peerGroup.position.y - cushionSurfaceWorld.y);
+              // In local coach space, cushion top surface is at local y = ~1.68m (invariant under coach pitch/roll)
+              const localPos = coachGroup.worldToLocal(peerGroup.position.clone());
+              const heightAboveCoachFloor = localPos.y;
+              const expectedRotY = coachGroup.rotation.y + Math.PI / 2;
+              const rotDiff = Math.abs(
+                Math.atan2(Math.sin(peerGroup.rotation.y - expectedRotY), Math.cos(peerGroup.rotation.y - expectedRotY)),
+              );
+
+              (window as any).__lastSeatedCrabDiag = {
+                u,
+                seat,
+                expPid,
+                horizErr,
+                vertErrFromCushion,
+                heightAboveCoachFloor,
+                rotDiff,
+                coachRot: { x: coachGroup.rotation.x, y: coachGroup.rotation.y, z: coachGroup.rotation.z },
+                peerPos: { x: peerGroup.position.x, y: peerGroup.position.y, z: peerGroup.position.z },
+                cushionSurfaceWorld: { x: cushionSurfaceWorld.x, y: cushionSurfaceWorld.y, z: cushionSurfaceWorld.z },
+                isPeerVisible: isHierarchyVisible(peerGroup),
+                isCrabVisible: isHierarchyVisible(seatedCrabChild),
+                pidMatches: peerGroup.userData?.participantId === expPid,
+                seatMatches: peerGroup.userData?.seatIndex === seat,
+                modeMatches: peerGroup.userData?.mode === "riding_bus",
+              };
+
+              return (
+                horizErr < 0.25 &&
+                vertErrFromCushion < 0.20 &&
+                heightAboveCoachFloor > 1.60 &&
+                heightAboveCoachFloor < 1.76 &&
+                rotDiff < 0.05
+              );
+            },
+            { u: peerUsername, seat: expectedSeat, expPid: expectedPid },
+            { timeout: 15_000, polling: 100 },
+          );
+        } catch (err) {
+          const diag = await viewerPage.evaluate(() => (window as any).__lastSeatedCrabDiag).catch(() => null);
+          console.error(`[SeatedCrab Diagnostic Failure ${peerUsername}]:`, JSON.stringify(diag));
+          throw err;
+        }
+      };
+
+      await Promise.all([
+        verifySeatedCrabAndTransform(page2, "jamtin", seatP1, pidP1),
+        verifySeatedCrabAndTransform(page1, "jamtin2", seatP2, pidP2),
+      ]);
+
+      // Separately assert remote parked car presence and finite location in 3D scene
+      const [parkedP1Pos, parkedP2Pos] = await Promise.all([
+        page2.evaluate(() => {
+          let pos: { x: number; y: number; z: number } | null = null;
+          (window as any).__r3fScene?.traverse((o: any) => {
+            if (o.name === "remote-parked-car-jamtin" && o.userData?.parked === true) {
+              pos = { x: o.position.x, y: o.position.y, z: o.position.z };
+            }
+          });
+          return pos;
+        }),
+        page1.evaluate(() => {
+          let pos: { x: number; y: number; z: number } | null = null;
+          (window as any).__r3fScene?.traverse((o: any) => {
+            if (o.name === "remote-parked-car-jamtin2" && o.userData?.parked === true) {
+              pos = { x: o.position.x, y: o.position.y, z: o.position.z };
+            }
+          });
+          return pos;
+        }),
+      ]);
+      expect(parkedP1Pos).not.toBeNull();
+      expect(Number.isFinite(parkedP1Pos!.x)).toBe(true);
+      expect(Number.isFinite(parkedP1Pos!.y)).toBe(true);
+      expect(Number.isFinite(parkedP1Pos!.z)).toBe(true);
+      expect(parkedP2Pos).not.toBeNull();
+      expect(Number.isFinite(parkedP2Pos!.x)).toBe(true);
+      expect(Number.isFinite(parkedP2Pos!.y)).toBe(true);
+      expect(Number.isFinite(parkedP2Pos!.z)).toBe(true);
+
+      // Capture seated crab 3D world positions at Stop 0 before departure
+      const seatedPosAtStop0 = await Promise.all([
+        page2.evaluate(() => {
+          let pos: { x: number; y: number; z: number } | null = null;
+          (window as any).__r3fScene?.traverse((o: any) => {
+            if (o.name === "remote-racer-jamtin" && o.userData?.username === "jamtin" && o.userData?.parked !== true) {
+              pos = { x: o.position.x, y: o.position.y, z: o.position.z };
+            }
+          });
+          return pos!;
+        }),
+        page1.evaluate(() => {
+          let pos: { x: number; y: number; z: number } | null = null;
+          (window as any).__r3fScene?.traverse((o: any) => {
+            if (o.name === "remote-racer-jamtin2" && o.userData?.username === "jamtin2" && o.userData?.parked !== true) {
+              pos = { x: o.position.x, y: o.position.y, z: o.position.z };
+            }
+          });
+          return pos!;
+        }),
+      ]);
+
+      // Verify the two distinct seats produce distinct 3D world positions on the same coach
+      expect(
+        Math.hypot(seatedPosAtStop0[0].x - seatedPosAtStop0[1].x, seatedPosAtStop0[0].z - seatedPosAtStop0[1].z),
+      ).toBeGreaterThan(0.5);
+
+      await page2.evaluate((targetPos) => {
+        (window as any).__colony?.setFirstPersonLookAt({
+          x: targetPos.x,
+          y: targetPos.y + 0.30,
+          z: targetPos.z,
+        });
+      }, seatedPosAtStop0[0]);
+      await page2.waitForTimeout(300);
+
+      const seatedCrabScreenshot = path.resolve("test-results/actual-pair-screenshots/page2-peer-as-seated-crab.png");
+      await page2.screenshot({ path: seatedCrabScreenshot });
+
+      // Verify ordinary player look control (ArrowRight) turns camera view while position/seat stays fixed
+      const preLookYaw = await page2.evaluate(() => (window as any).__colony?.fpCameraYaw ?? 0);
+      const preLookPos = await page2.evaluate(() => {
+        const cam = (window as any).__r3fCamera;
+        return { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+      });
+      await page2.keyboard.press("ArrowRight", { delay: 100 });
+      await page2.waitForTimeout(100);
+      const postLookYaw = await page2.evaluate(() => (window as any).__colony?.fpCameraYaw ?? 0);
+      const postLookPos = await page2.evaluate(() => {
+        const cam = (window as any).__r3fCamera;
+        return { x: cam.position.x, y: cam.position.y, z: cam.position.z };
+      });
+      expect(postLookYaw).not.toBe(preLookYaw);
+      expect(Math.hypot(postLookPos.x - preLookPos.x, postLookPos.z - preLookPos.z)).toBeLessThan(0.01);
+
+      // 6. NONZERO MOVING BUS + SEATED PEER DISPLACEMENT & UNSAFE MOVING-BUS EXIT NEGATIVE:
+      // Advance canonical sol clock past Stop 0 dwell so Bus 0 closes doors and moves along the loop
+      const movingBusNow = CITYLIFE_EPOCH_MS + 4_792_000;
+      mockNow = movingBusNow;
+      await Promise.all([
+        page1.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), movingBusNow),
+        page2.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), movingBusNow),
+      ]);
+
+      // Bounded poll for server transit runner to tick Bus 0 into moving state with closed doors
+      await expect
+        .poll(() => {
+          const p = runner!.getBusWorldPose(0, session.originX, session.originZ, session.cellMetres);
+          return Boolean(
+            p &&
+            p.busId === 0 &&
+            p.doorsOpen === false &&
+            Number.isFinite(p.speed) &&
+            p.speed > 0 &&
+            p.atStop === false
+          );
+        }, { timeout: 5_000 })
+        .toBe(true);
+
+      // Verify both seated peers displaced > 25m in 3D scene
+      await Promise.all([
+        page2.waitForFunction(
+          (startPos) => {
+            let cur: { x: number; z: number } | null = null;
+            (window as any).__r3fScene?.traverse((o: any) => {
+              if (o.name === "remote-racer-jamtin" && o.userData?.username === "jamtin" && o.userData?.parked !== true) {
+                cur = { x: o.position.x, z: o.position.z };
+              }
+            });
+            return cur !== null && Math.hypot(cur.x - startPos.x, cur.z - startPos.z) > 25.0;
+          },
+          seatedPosAtStop0[0],
+          { timeout: 15_000, polling: 100 },
+        ),
+        page1.waitForFunction(
+          (startPos) => {
+            let cur: { x: number; z: number } | null = null;
+            (window as any).__r3fScene?.traverse((o: any) => {
+              if (o.name === "remote-racer-jamtin2" && o.userData?.username === "jamtin2" && o.userData?.parked !== true) {
+                cur = { x: o.position.x, z: o.position.z };
+              }
+            });
+            return cur !== null && Math.hypot(cur.x - startPos.x, cur.z - startPos.z) > 25.0;
+          },
+          seatedPosAtStop0[1],
+          { timeout: 15_000, polling: 100 },
+        ),
+      ]);
+
+      // Verify coach-derived seat transform (X, Y, Z & orientation) still holds while moving along the loop
+      await Promise.all([
+        verifySeatedCrabAndTransform(page2, "jamtin", seatP1, pidP1),
+        verifySeatedCrabAndTransform(page1, "jamtin2", seatP2, pidP2),
+      ]);
+
+      const movingBusPose = runner!.getBusWorldPose(0, session.originX, session.originZ, session.cellMetres)!;
+      expect(movingBusPose).toBeDefined();
+      expect(movingBusPose.busId).toBe(0);
+      expect(movingBusPose.doorsOpen).toBe(false);
+      expect(Number.isFinite(movingBusPose.speed)).toBe(true);
+      expect(movingBusPose.speed).toBeGreaterThan(0);
+      expect(movingBusPose.atStop).toBe(false);
+
+      // Unsafe moving-bus exit negative:
+      // 1) "Exit bus" prompt button [data-fp-action="use"] is NOT rendered while doors are closed
+      await expect(page1.locator('[data-fp-action="use"]')).toHaveCount(0);
+      // 2) Pressing KeyE while riding moving bus sets moving-bus refusal narration and keeps player seated
+      await page1.bringToFront();
+      await page1.keyboard.press("KeyE");
+      const movingNarration = await page1.evaluate(() => (window as any).__colony.getUiState().firstPerson.narration);
+      expect(movingNarration).toContain("The bus is moving — wait for the next stop to step off.");
+      // 3) Server also rejects direct alight_bus wire request while bus doors are closed / moving
+      await page1.evaluate(() => {
+        (window as any).__mpErrors = [];
+        (window as any).__colony.getMultiplayerClient().alightBus();
+      });
+      await page1.waitForFunction(() => ((window as any).__mpErrors || []).length > 0, undefined, {
+        timeout: 10_000,
+        polling: 100,
+      });
+      const movingAlightErr = await page1.evaluate(() => (window as any).__mpErrors[0]);
+      expect(movingAlightErr?.code).toBe("BUS_NOT_BOARDABLE");
+      expect(movingAlightErr?.message).toContain("bus is in motion or doors are closed");
+      expect(runner!.getOccupiedSeats(0)).toBe(2);
+
+      // 7. REAL WEBSOCKET DISCONNECT & RECONNECT SEAT OCCUPANCY + RENDER + PARKED CAR TUPLE RESTORATION:
+      const preReconnectInfo = await page1.evaluate(() => {
+        const mp = (window as any).__colony.getMultiplayerClient();
+        return {
+          sessionId: mp.getSessionInfo().sessionId,
+          participantId: mp.getSessionInfo().participantId,
+          seatIndex: mp.getSeatIndex(),
+        };
+      });
+      expect(preReconnectInfo.seatIndex).toBe(seatP1);
+
+      // Close Player 1's active WebSocket transport and reconnect
+      await page1.evaluate(() => {
+        const mp = (window as any).__colony.getMultiplayerClient();
+        mp.ws?.close();
+      });
+      await page1.waitForSelector('[data-testid="multiplayer-hud"][data-connected="false"]', { timeout: 15_000 });
+      await page1.evaluate(() => {
+        const mp = (window as any).__colony.getMultiplayerClient();
+        mp.connect();
+      });
+      await page1.waitForSelector('[data-testid="multiplayer-hud"][data-connected="true"]', { timeout: 30_000 });
+
+      // Wait for Player 1 to be re-admitted and receive fresh snapshot in riding_bus mode
+      await page1.waitForFunction(
+        (expected) => {
+          const mp = (window as any).__colony?.getMultiplayerClient();
+          const info = mp?.getSessionInfo();
+          return (
+            mp?.getStatus() === "connected" &&
+            info?.sessionId === expected.sessionId &&
+            info?.participantId === expected.participantId &&
+            mp?.getMode() === "riding_bus" &&
+            mp?.getSeatedBusId() === 0 &&
+            mp?.getSeatIndex() === expected.seatIndex
+          );
+        },
+        preReconnectInfo,
+        { timeout: 15_000, polling: 100 },
+      );
+
+      expect(runner!.getOccupiedSeats(0)).toBe(2);
+      expect(session.participants.size).toBe(2);
+
+      // Verify full parked-car tuple (x, y, heading) and mounted 3D seated-crab transforms are preserved after real reconnect
+      const postReconnectParkedP1 = await page1.evaluate(() => (window as any).__colony.getParkedCarPose());
+      expect(postReconnectParkedP1).not.toBeNull();
+      expect(postReconnectParkedP1.x).toBeCloseTo(localParkedP1.x, 3);
+      expect(postReconnectParkedP1.y).toBeCloseTo(localParkedP1.y, 3);
+      expect(postReconnectParkedP1.heading).toBeCloseTo(localParkedP1.heading, 3);
+
+      await Promise.all([
+        verifySeatedCrabAndTransform(page2, "jamtin", seatP1, preReconnectInfo.participantId),
+        verifySeatedCrabAndTransform(page1, "jamtin2", seatP2, pidP2),
+      ]);
+
+      // 8. SAFE SERVED-STOP ALIGHT VIA REAL UI CONTROL AT STOP 1:
+      // Advance canonical sol clock to Stop 1 dwell (CITYLIFE_EPOCH_MS + 4_980_000, pos=(444.00, 136.24), doorsOpen=true)
+      const stop1DwellNow = CITYLIFE_EPOCH_MS + 4_980_000;
+      mockNow = stop1DwellNow;
+      await Promise.all([
+        page1.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), stop1DwellNow),
+        page2.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), stop1DwellNow),
+      ]);
+
+      // Bounded poll for server transit runner to tick Bus 0 into Stop 1 dwell before asserting doorsOpen/speed
+      await expect
+        .poll(() => {
+          const p = runner!.getBusWorldPose(0, session.originX, session.originZ, session.cellMetres);
+          return Boolean(
+            p &&
+            p.busId === 0 &&
+            p.doorsOpen === true &&
+            Number.isFinite(p.speed) &&
+            p.speed === 0 &&
+            p.atStop === true
+          );
+        }, { timeout: 5_000 })
+        .toBe(true);
+
+      const stop1BusPose = runner!.getBusWorldPose(0, session.originX, session.originZ, session.cellMetres)!;
+      expect(stop1BusPose).toBeDefined();
+      expect(stop1BusPose.busId).toBe(0);
+      expect(stop1BusPose.doorsOpen).toBe(true);
+      expect(Number.isFinite(stop1BusPose.speed)).toBe(true);
+      expect(stop1BusPose.speed).toBe(0);
+      expect(stop1BusPose.atStop).toBe(true);
+      expect(Number.isFinite(stop1BusPose.x)).toBe(true);
+      expect(Number.isFinite(stop1BusPose.y)).toBe(true);
+      expect(Number.isFinite(stop1BusPose.z)).toBe(true);
+      expect(Number.isFinite(stop1BusPose.heading)).toBe(true);
+
+      // Verify server pose is within served Stop 1 anchor radius
+      const stop1Anchor = runner!.stopAnchors[1]!;
+      expect(stop1Anchor).toBeDefined();
+      const stop1WorldX = session.originX + stop1Anchor.at.x * session.cellMetres;
+      const stop1WorldZ = session.originZ + stop1Anchor.at.y * session.cellMetres;
+      const distToStop1 = Math.hypot(stop1BusPose.x - stop1WorldX, stop1BusPose.z - stop1WorldZ);
+      expect(Number.isFinite(distToStop1)).toBe(true);
+      expect(distToStop1).toBeLessThanOrEqual(3.0 * session.cellMetres);
+
+      // Real UI "Exit bus" button [data-fp-action="use"] appears on both pages when doors open at Stop 1
+      const exitBusBtn1 = page1.locator('[data-fp-action="use"]');
+      const exitBusBtn2 = page2.locator('[data-fp-action="use"]');
+      await expect(exitBusBtn1).toBeVisible({ timeout: 15_000 });
+      await expect(exitBusBtn1).toContainText("Exit bus");
+      await expect(exitBusBtn2).toBeVisible({ timeout: 15_000 });
+      await expect(exitBusBtn2).toContainText("Exit bus");
+
+      // Player 1 clicks real UI "Exit bus" button
+      await page1.bringToFront();
+      await exitBusBtn1.click();
+
+      await page1.waitForFunction(() => {
+        const mp = (window as any).__colony?.getMultiplayerClient();
+        return mp?.getMode() === "walking" && mp?.getSeatedBusId() === null;
+      }, undefined, { timeout: 15_000, polling: 100 });
+      expect(runner!.getOccupiedSeats(0)).toBe(1);
+
+      // In Player 2's scene: Player 1 transitions from seated-crab to pedestrian-crab at Stop 1 kerb
+      await page2.waitForFunction(
+        (expectedPid) => {
+          const scene = (window as any).__r3fScene;
+          let p1Group: any = null;
+          scene?.traverse((o: any) => {
+            if (o.name === "remote-racer-jamtin" && o.userData?.username === "jamtin" && o.userData?.parked !== true) {
+              p1Group = o;
+            }
+          });
+          if (!p1Group) return false;
+          if (p1Group.userData?.participantId !== expectedPid) return false;
+          if (p1Group.userData?.isPedestrian !== true || p1Group.userData?.mode !== "walking") return false;
+
+          const isHierarchyVisible = (obj: any): boolean => {
+            let curr = obj;
+            while (curr) {
+              if (curr.visible === false) return false;
+              curr = curr.parent;
+            }
+            return true;
+          };
+          if (!isHierarchyVisible(p1Group)) return false;
+
+          let hasPedCrab = false;
+          let hasSeatedCrab = false;
+          let pedCrabChild: any = null;
+          p1Group.traverse((child: any) => {
+            if (typeof child.name === "string") {
+              if (child.name.startsWith("pedestrian-crab-")) {
+                hasPedCrab = true;
+                pedCrabChild = child;
+              }
+              if (child.name.startsWith("seated-crab-")) hasSeatedCrab = true;
+            }
+          });
+          if (!hasPedCrab || hasSeatedCrab || !pedCrabChild) return false;
+          return isHierarchyVisible(pedCrabChild);
+        },
+        preReconnectInfo.participantId,
+        { timeout: 15_000, polling: 100 },
+      );
+
+      // Compute exact authoritative common exit candidate coordinates from Stop 1 bus pose
+      const cellMetres = session.cellMetres || 4;
+      const vergeOffsetMetres = 2.25 * cellMetres;
+      const vergeX = -Math.sin(stop1BusPose.heading);
+      const vergeZ = Math.cos(stop1BusPose.heading);
+      const stop1AlightCandX = stop1BusPose.x + vergeX * vergeOffsetMetres;
+      const stop1AlightCandZ = stop1BusPose.z + vergeZ * vergeOffsetMetres;
+
+      // Capture exact Player 1 finite walking state at exit candidate (no 0,0 defaults)
+      const p1InitialWalking = await page1.evaluate((expectedPid) => {
+        const last = (window as any).__lastSnapshot;
+        const p = last?.participants?.find((x: any) => x.username === "jamtin" && x.participantId === expectedPid);
+        if (!p || p.mode !== "walking" || p.isPedestrian !== true) return null;
+        if (!Number.isFinite(p.x) || !Number.isFinite(p.z) || !Number.isFinite(p.heading)) return null;
+        return {
+          participantId: p.participantId,
+          x: p.x,
+          z: p.z,
+          heading: p.heading,
+          speed: p.speed ?? 0,
+          lastInputSeq: p.lastInputSeq ?? 0,
+          snapshotSeq: last.seq ?? 0,
+        };
+      }, preReconnectInfo.participantId);
+      expect(p1InitialWalking).not.toBeNull();
+      expect(p1InitialWalking!.participantId).toBe(preReconnectInfo.participantId);
+      const distFromCand = Math.hypot(p1InitialWalking!.x - stop1AlightCandX, p1InitialWalking!.z - stop1AlightCandZ);
+      expect(distFromCand).toBeLessThanOrEqual(0.1);
+
+      // 8A. OCCUPANCY NEGATIVE CONTROL:
+      // While Player 1 is stationary at the common bus exit point (candX, candZ),
+      // Player 2 attempts to alight via real UI "Exit bus" button.
+      // Server must reject with ALIGHT_BLOCKED ("Cannot alight bus: alight position is obstructed or not walkable").
+      await page2.bringToFront();
+      await page2.evaluate(() => {
+        (window as any).__mpErrors = [];
+      });
+      await exitBusBtn2.click();
+
+      await page2.waitForFunction(
+        () => {
+          const errs = (window as any).__mpErrors || [];
+          return errs.some((e: any) => e.code === "ALIGHT_BLOCKED");
+        },
+        undefined,
+        { timeout: 10_000, polling: 50 },
+      );
+      const blockedAlightErr = await page2.evaluate(() => {
+        const errs = (window as any).__mpErrors || [];
+        return errs.find((e: any) => e.code === "ALIGHT_BLOCKED");
+      });
+      expect(blockedAlightErr?.code).toBe("ALIGHT_BLOCKED");
+      expect(blockedAlightErr?.message).toContain("alight position is obstructed");
+
+      // Verify Player 2 remains seated on Bus 0 and occupied seat count is still 1
+      const p2StillRiding = await page2.evaluate(() => {
+        const mp = (window as any).__colony?.getMultiplayerClient();
+        return {
+          mode: mp?.getMode(),
+          seatedBusId: mp?.getSeatedBusId(),
+        };
+      });
+      expect(p2StillRiding.mode).toBe("riding_bus");
+      expect(p2StillRiding.seatedBusId).toBe(0);
+      expect(runner!.getOccupiedSeats(0)).toBe(1);
+
+      // 8B. PLAYER 1 STEPS AWAY ALONG THE KERB:
+      // Focus Player 1 canvas and walk forward (KeyW) until Player 1 is >= 0.8m from the exit candidate,
+      // requiring a newer snapshot and input sequence acknowledgement from the server.
+      await page1.bringToFront();
+      const canvas1 = page1.locator("canvas").first();
+      await canvas1.click({ position: { x: 200, y: 200 } });
+
+      const startInputSeq = p1InitialWalking!.lastInputSeq;
+      const startSnapSeq = p1InitialWalking!.snapshotSeq;
+
+      await page1.keyboard.down("KeyW");
+      try {
+        await page1.waitForFunction(
+          ({ pid, candPos, minInputSeq, minSnapSeq }) => {
+            const last = (window as any).__lastSnapshot;
+            if (!last || (last.seq ?? 0) <= minSnapSeq) return false;
+            const p = last?.participants?.find((x: any) => x.username === "jamtin" && x.participantId === pid);
+            if (!p || p.mode !== "walking" || p.isPedestrian !== true) return false;
+            if ((p.lastInputSeq ?? 0) <= minInputSeq) return false;
+            if (!Number.isFinite(p.x) || !Number.isFinite(p.z)) return false;
+            const dist = Math.hypot(p.x - candPos.x, p.z - candPos.z);
+            return dist >= 0.8;
+          },
+          {
+            pid: preReconnectInfo.participantId,
+            candPos: { x: stop1AlightCandX, z: stop1AlightCandZ },
+            minInputSeq: startInputSeq,
+            minSnapSeq: startSnapSeq,
+          },
+          { timeout: 10_000, polling: 50 },
+        );
+      } finally {
+        await page1.keyboard.up("KeyW").catch(() => {});
+      }
+
+      // Recheck authoritative clearance immediately before P2 retry (not swallowed):
+      await page1.waitForFunction(
+        ({ pid, candPos }) => {
+          const last = (window as any).__lastSnapshot;
+          const p = last?.participants?.find((x: any) => x.username === "jamtin" && x.participantId === pid);
+          if (!p || p.mode !== "walking" || p.isPedestrian !== true || p.speed !== 0) return false;
+          if (!Number.isFinite(p.x) || !Number.isFinite(p.z)) return false;
+          const dist = Math.hypot(p.x - candPos.x, p.z - candPos.z);
+          return dist >= 0.8;
+        },
+        {
+          pid: preReconnectInfo.participantId,
+          candPos: { x: stop1AlightCandX, z: stop1AlightCandZ },
+        },
+        { timeout: 5_000, polling: 50 },
+      );
+
+      const p1ClearedState = await page1.evaluate(
+        ({ pid, candPos }) => {
+          const last = (window as any).__lastSnapshot;
+          const p = last?.participants?.find((x: any) => x.username === "jamtin" && x.participantId === pid);
+          if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.z)) return null;
+          return {
+            participantId: p.participantId,
+            x: p.x,
+            z: p.z,
+            speed: p.speed,
+            distFromExit: Math.hypot(p.x - candPos.x, p.z - candPos.z),
+            snapshotSeq: last.seq ?? 0,
+          };
+        },
+        {
+          pid: preReconnectInfo.participantId,
+          candPos: { x: stop1AlightCandX, z: stop1AlightCandZ },
+        },
+      );
+      expect(p1ClearedState).not.toBeNull();
+      expect(p1ClearedState!.participantId).toBe(preReconnectInfo.participantId);
+      expect(p1ClearedState!.speed).toBe(0);
+      expect(p1ClearedState!.distFromExit).toBeGreaterThanOrEqual(0.8);
+
+      const seqBeforeP2Alight = p1ClearedState!.snapshotSeq;
+
+      // 8C. PLAYER 2 RETRIES ALIGHT DURING SERVED DWELL:
+      // Common exit point is now authoritatively cleared by Player 1.
+      await page2.bringToFront();
+      await page2.evaluate(() => {
+        (window as any).__mpErrors = [];
+      });
+      await exitBusBtn2.click();
+
+      await page2.waitForFunction(() => {
+        const mp = (window as any).__colony?.getMultiplayerClient();
+        return mp?.getMode() === "walking" && mp?.getSeatedBusId() === null;
+      }, undefined, { timeout: 15_000, polling: 100 });
+      expect(runner!.getOccupiedSeats(0)).toBe(0);
+
+      // In Player 1's scene: Player 2 transitions from seated-crab to pedestrian-crab at Stop 1 kerb (with ancestor/child visibility)
+      await page1.waitForFunction(
+        (expectedPid) => {
+          const scene = (window as any).__r3fScene;
+          let p2Group: any = null;
+          scene?.traverse((o: any) => {
+            if (o.name === "remote-racer-jamtin2" && o.userData?.username === "jamtin2" && o.userData?.parked !== true) {
+              p2Group = o;
+            }
+          });
+          if (!p2Group) return false;
+          if (p2Group.userData?.participantId !== expectedPid) return false;
+          if (p2Group.userData?.isPedestrian !== true || p2Group.userData?.mode !== "walking") return false;
+
+          const isHierarchyVisible = (obj: any): boolean => {
+            let curr = obj;
+            while (curr) {
+              if (curr.visible === false) return false;
+              curr = curr.parent;
+            }
+            return true;
+          };
+          if (!isHierarchyVisible(p2Group)) return false;
+
+          let hasPedCrab = false;
+          let hasSeatedCrab = false;
+          let pedCrabChild: any = null;
+          p2Group.traverse((child: any) => {
+            if (typeof child.name === "string") {
+              if (child.name.startsWith("pedestrian-crab-")) {
+                hasPedCrab = true;
+                pedCrabChild = child;
+              }
+              if (child.name.startsWith("seated-crab-")) hasSeatedCrab = true;
+            }
+          });
+          if (!hasPedCrab || hasSeatedCrab || !pedCrabChild) return false;
+          return isHierarchyVisible(pedCrabChild);
+        },
+        pidP2,
+        { timeout: 15_000, polling: 100 },
+      );
+
+      // Await authoritative newer snapshot on Page 1 and Page 2 containing BOTH walking players after Stop 1 alight
+      await Promise.all([
+        page1.waitForFunction(
+          (minSeq) => {
+            const last = (window as any).__lastSnapshot;
+            if (!last || (last.seq ?? 0) <= minSeq) return false;
+            const p1 = last?.participants?.find((x: any) => x.username === "jamtin");
+            const p2 = last?.participants?.find((x: any) => x.username === "jamtin2");
+            return (
+              p1?.mode === "walking" &&
+              p1?.seatedBusId === null &&
+              p2?.mode === "walking" &&
+              p2?.seatedBusId === null &&
+              Number.isFinite(p1?.carX) &&
+              Number.isFinite(p1?.carZ) &&
+              Number.isFinite(p1?.carHeading) &&
+              Number.isFinite(p2?.carX) &&
+              Number.isFinite(p2?.carZ) &&
+              Number.isFinite(p2?.carHeading)
+            );
+          },
+          seqBeforeP2Alight,
+          { timeout: 15_000, polling: 100 },
+        ),
+        page2.waitForFunction(
+          (minSeq) => {
+            const last = (window as any).__lastSnapshot;
+            if (!last || (last.seq ?? 0) <= minSeq) return false;
+            const p1 = last?.participants?.find((x: any) => x.username === "jamtin");
+            const p2 = last?.participants?.find((x: any) => x.username === "jamtin2");
+            return p1?.mode === "walking" && p2?.mode === "walking";
+          },
+          seqBeforeP2Alight,
+          { timeout: 15_000, polling: 100 },
+        ),
+      ]);
+
+      // Verify both players alighted onto walkable kerb cells at Stop 1 and retained their full parked car tuples (server + local runtime)
+      const [finalAlightState, finalLocalCarP1, finalLocalCarP2] = await Promise.all([
+        page1.evaluate(() => {
+          const colony = (window as any).__colony;
+          const tSize = colony?.sim?.state?.terrain?.size ?? 608;
+          const last = (window as any).__lastSnapshot;
+          const p1 = last?.participants?.find((x: any) => x.username === "jamtin");
+          const p2 = last?.participants?.find((x: any) => x.username === "jamtin2");
+          return {
+            p1Cell: { x: Math.round(p1.x / 4 + tSize / 2), y: Math.round(p1.z / 4 + tSize / 2) },
+            p2Cell: { x: Math.round(p2.x / 4 + tSize / 2), y: Math.round(p2.z / 4 + tSize / 2) },
+            p1Car: { carX: p1.carX, carZ: p1.carZ, carHeading: p1.carHeading },
+            p2Car: { carX: p2.carX, carZ: p2.carZ, carHeading: p2.carHeading },
+          };
+        }),
+        page1.evaluate(() => (window as any).__colony.getParkedCarPose()),
+        page2.evaluate(() => (window as any).__colony.getParkedCarPose()),
+      ]);
+      expect(walkableCells.has(`${finalAlightState.p1Cell.x},${finalAlightState.p1Cell.y}`)).toBe(true);
+      expect(walkableCells.has(`${finalAlightState.p2Cell.x},${finalAlightState.p2Cell.y}`)).toBe(true);
+      expect(finalAlightState.p1Car.carX).toBeCloseTo(parkedCarsInitial.p1.carX, 2);
+      expect(finalAlightState.p1Car.carZ).toBeCloseTo(parkedCarsInitial.p1.carZ, 2);
+      expect(finalAlightState.p1Car.carHeading).toBeCloseTo(parkedCarsInitial.p1.carHeading, 2);
+      expect(finalAlightState.p2Car.carX).toBeCloseTo(parkedCarsInitial.p2.carX, 2);
+      expect(finalAlightState.p2Car.carZ).toBeCloseTo(parkedCarsInitial.p2.carZ, 2);
+      expect(finalAlightState.p2Car.carHeading).toBeCloseTo(parkedCarsInitial.p2.carHeading, 2);
+      expect(finalLocalCarP1.x).toBeCloseTo(localParkedP1.x, 2);
+      expect(finalLocalCarP1.y).toBeCloseTo(localParkedP1.y, 2);
+      expect(finalLocalCarP1.heading).toBeCloseTo(localParkedP1.heading, 2);
+      expect(finalLocalCarP2.x).toBeCloseTo(localParkedP2.x, 2);
+      expect(finalLocalCarP2.y).toBeCloseTo(localParkedP2.y, 2);
+      expect(finalLocalCarP2.heading).toBeCloseTo(localParkedP2.heading, 2);
+
+      // Turn each alighted player toward the peer using look controls so peers are unoccluded and visible in screenshots
+      await page2.bringToFront();
+      await page2.evaluate(() => {
+        const scene = (window as any).__r3fScene;
+        let p: any = null;
+        scene?.traverse((o: any) => {
+          if (o.name === "remote-racer-jamtin" && o.userData?.username === "jamtin" && o.userData?.parked !== true) p = o;
+        });
+        if (p) {
+          (window as any).__colony?.setFirstPersonLookAt({ x: p.position.x, y: p.position.y + 0.35, z: p.position.z });
+        }
+      });
+      await page2.waitForTimeout(300);
+      const alightedScreenshot = path.resolve("test-results/actual-pair-screenshots/page2-peer-alighted-pedestrian.png");
+      await page2.screenshot({ path: alightedScreenshot });
+
+      await page1.bringToFront();
+      await page1.evaluate(() => {
+        const scene = (window as any).__r3fScene;
+        let p: any = null;
+        scene?.traverse((o: any) => {
+          if (o.name === "remote-racer-jamtin2" && o.userData?.username === "jamtin2" && o.userData?.parked !== true) p = o;
+        });
+        if (p) {
+          (window as any).__colony?.setFirstPersonLookAt({ x: p.position.x, y: p.position.y + 0.35, z: p.position.z });
+        }
+      });
+      await page1.waitForTimeout(300);
+      const alightedScreenshot1 = path.resolve("test-results/actual-pair-screenshots/page1-peer-alighted-pedestrian.png");
+      await page1.screenshot({ path: alightedScreenshot1 });
+    } finally {
+      if (context1) {
+        await context1.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
+        await context1.close().catch(() => {});
+      }
+      if (context2) {
+        await context2.unrouteAll({ behavior: "ignoreErrors" }).catch(() => {});
+        await context2.close().catch(() => {});
+      }
+      await fastifyApp.close();
+      console.log("Bus journey Fastify server cleanly closed.");
     }
   });
 });

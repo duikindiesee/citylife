@@ -1395,7 +1395,7 @@ export function ColonyApp() {
       }
     };
     const poll = () => {
-      const raceActive = runtime.getUiState().race.mode !== "idle";
+      const raceActive = runtime.isRaceActive();
       const pads = Array.from(navigator.getGamepads?.() ?? []).filter(
         (pad): pad is Gamepad => Boolean(pad),
       );
@@ -1514,7 +1514,7 @@ export function ColonyApp() {
     ) {
       document.exitPointerLock?.();
     }
-  }, [runtime, runtime.getOwnedDrivePose()]);
+  }, [runtime, Boolean(runtime.getOwnedDrivePose())]);
 
   const requestMouseLook = () => {
     if (!ui.firstPerson.active || !!runtime.getOwnedDrivePose()) return;
@@ -1558,7 +1558,7 @@ export function ColonyApp() {
       )
         return;
       if (runtime.getOwnedDrivePose()) return; // owned car controls own these keys
-      if (runtime.getUiState().race.mode !== "idle") {
+      if (runtime.isRaceActive()) {
         if (RACE_MOVE.has(e.code)) {
           e.preventDefault();
           runtime.setRaceKey(e.code, true);
@@ -1569,7 +1569,7 @@ export function ColonyApp() {
         return;
       }
       if (
-        runtime.getUiState().firstPerson.active ||
+        runtime.isFirstPersonOrMultiplayerFootActive() ||
         (!runtime.isOwnedDriveSeated() &&
           runtime.getMultiplayerClient()?.getStatus() === "connected")
       ) {
@@ -1613,7 +1613,7 @@ export function ColonyApp() {
           runtime.toggleZones();
           break;
         case "Escape":
-          if (runtime.getUiState().firstPerson.active)
+          if (runtime.isFirstPersonOrMultiplayerFootActive())
             runtime.exitFirstPerson();
           break;
         default:

@@ -135,8 +135,10 @@ function RemoteSeatedCrabVisual({
   return (
     <group
       name={`seated-crab-${racer.username}`}
-      data-seated-bus={racer.seatedBusId ?? undefined}
-      data-seated-slot={racer.seatIndex ?? undefined}
+      userData={{
+        seatedBus: racer.seatedBusId ?? undefined,
+        seatedSlot: racer.seatIndex ?? undefined,
+      }}
     >
       <mesh geometry={geometry} material={material} castShadow />
       <primitive object={plate} />
@@ -221,7 +223,7 @@ export const PASSENGER_SEAT_LOCAL_SLOTS: ReadonlyArray<{ readonly x: number; rea
       const row = seatIdx % 5;
       return Object.freeze({
         x: -4.25 + row * 1.55,
-        y: 1.45,
+        y: 1.68,
         z: side,
       });
     }),
@@ -258,7 +260,7 @@ export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersP
   const rootGroup = useRef<THREE.Group>(null);
   const racerGroups = useRef<Map<string, THREE.Group>>(new Map());
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const racersMap = sim.state.remoteRacers;
     if (!racersMap || racersMap.size === 0) {
       if (rootGroup.current) rootGroup.current.visible = false;
@@ -303,17 +305,36 @@ export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersP
 
       if (isSeatedOnBus) {
         const busId = racer.seatedBusId!;
-        const busPose = runtime?.busPoseOf ? runtime.busPoseOf(busId) : null;
+        const coach = state.scene.getObjectByName(`bus-coach-${busId}`);
+        const seatIdx =
+          typeof racer.seatIndex === "number" && racer.seatIndex >= 0 && racer.seatIndex < PASSENGER_SEAT_LOCAL_SLOTS.length
+            ? racer.seatIndex
+            : 0;
+        const sideName = seatIdx < 5 ? "left" : "right";
+        const rowIdx = seatIdx % 5;
+        let seatMesh: any = null;
+        if (coach) {
+          coach.updateMatrixWorld(true);
+          seatMesh = coach.getObjectByName(`bus-seat-${sideName}-${rowIdx}`);
+        }
 
-        if (busPose) {
-          const roadElevation = Math.max(0, getSmoothRoadY(t, busPose.x, busPose.y));
-          const p = computeSeatedCrabWorldPose(busPose, racer.seatIndex ?? 0, t.size, roadElevation);
-          grp.position.set(p.x, p.y, p.z);
-          grp.rotation.set(0, p.rotationY, 0, "YXZ");
+        if (seatMesh && coach) {
+          // Mount ground-origin crab on cushion top surface (+0.25m in seat local Y from box center)
+          seatMesh.localToWorld(_tempSeatVec.set(0, 0.25, 0));
+          grp.position.copy(_tempSeatVec);
+          grp.rotation.set(coach.rotation.x, coach.rotation.y + Math.PI / 2, coach.rotation.z, "YXZ");
         } else {
-          const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);
-          grp.position.set(targetWorldX, groundElevation, targetWorldZ);
-          grp.rotation.set(0, -heading + Math.PI / 2, 0, "YXZ");
+          const busPose = runtime?.busPoseOf ? runtime.busPoseOf(busId) : null;
+          if (busPose) {
+            const roadElevation = Math.max(0, getSmoothRoadY(t, busPose.x, busPose.y));
+            const p = computeSeatedCrabWorldPose(busPose, racer.seatIndex ?? 0, t.size, roadElevation);
+            grp.position.set(p.x, p.y, p.z);
+            grp.rotation.set(0, p.rotationY, 0, "YXZ");
+          } else {
+            const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);
+            grp.position.set(targetWorldX, groundElevation, targetWorldZ);
+            grp.rotation.set(0, -heading + Math.PI / 2, 0, "YXZ");
+          }
         }
       } else if (isPedestrian) {
         const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);

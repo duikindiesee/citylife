@@ -765,32 +765,59 @@ export class MultiplayerClient {
           this.seatedBusId = null;
           this.seatIndex = null;
         }
-        let carX = msg.carX;
-        let carY = msg.carY;
-        let carZ = msg.carZ;
-        let carHeading = msg.carHeading;
-
-        if (carX === undefined && Array.isArray(msg.participants)) {
-          const selfPart = msg.participants.find(
-            (p: any) => p.participantId === msg.participantId || p.userId === this.options.userId
-          );
-          if (selfPart && selfPart.carX !== undefined) {
-            carX = selfPart.carX;
-            carY = selfPart.carY;
-            carZ = selfPart.carZ;
-            carHeading = selfPart.carHeading;
+        const extractValidParkedCarTuple = (raw: any): {
+          carX?: number;
+          carY?: number;
+          carZ?: number;
+          carHeading?: number;
+          carSpeed?: number;
+        } => {
+          if (!raw || typeof raw !== "object") return {};
+          if (
+            typeof raw.carX !== "number" ||
+            !Number.isFinite(raw.carX) ||
+            typeof raw.carZ !== "number" ||
+            !Number.isFinite(raw.carZ) ||
+            typeof raw.carHeading !== "number" ||
+            !Number.isFinite(raw.carHeading)
+          ) {
+            return {};
           }
-        }
+          return {
+            carX: raw.carX,
+            carY: typeof raw.carY === "number" && Number.isFinite(raw.carY) ? raw.carY : undefined,
+            carZ: raw.carZ,
+            carHeading: raw.carHeading,
+            carSpeed:
+              typeof raw.carSpeed === "number" && Number.isFinite(raw.carSpeed)
+                ? raw.carSpeed
+                : undefined,
+          };
+        };
 
-        if (this.currentMode === "walking" && carX !== undefined && Number.isFinite(carX)) {
+        const topCar = extractValidParkedCarTuple(msg);
+        const selfPartForCar = Array.isArray(msg.participants)
+          ? msg.participants.find(
+              (p: any) => p.participantId === msg.participantId || p.userId === this.options.userId
+            )
+          : undefined;
+        const selfCar = selfPartForCar ? extractValidParkedCarTuple(selfPartForCar) : {};
+        const resolvedCar = topCar.carX !== undefined ? topCar : selfCar;
+
+        if (
+          (this.currentMode === "walking" || this.currentMode === "riding_bus") &&
+          resolvedCar.carX !== undefined &&
+          resolvedCar.carZ !== undefined &&
+          resolvedCar.carHeading !== undefined
+        ) {
           this.parkedCar = {
-            x: Number(carX),
-            y: Number(carY ?? 0),
-            z: Number(carZ ?? 0),
-            heading: Number(carHeading ?? 0),
+            x: resolvedCar.carX,
+            y: resolvedCar.carY ?? 0,
+            z: resolvedCar.carZ,
+            heading: resolvedCar.carHeading,
             speed: 0,
           };
-        } else {
+        } else if (this.currentMode === "driving") {
           this.parkedCar = undefined;
         }
         this.reconnectAttempts = 0; // successfully admitted
@@ -815,6 +842,8 @@ export class MultiplayerClient {
             if (selfPart.seatIndex !== undefined) {
               this.seatIndex = typeof selfPart.seatIndex === "number" ? selfPart.seatIndex : null;
             }
+            const admittedCar = extractValidParkedCarTuple(selfPart);
+            const finalSelfCar = admittedCar.carX !== undefined ? admittedCar : resolvedCar;
             this.options.onSelfAdmitted({
               participantId: selfPart.participantId,
               x: Number.isFinite(selfPart.x) ? selfPart.x : 0,
@@ -828,15 +857,12 @@ export class MultiplayerClient {
               modeEpoch: selfPart.modeEpoch ?? this.modeEpoch,
               protocolVersion: selfPart.protocolVersion ?? this.protocolVersion,
               vehicleKey: selfPart.vehicleKey || null,
-              carX: selfPart.carX !== undefined ? Number(selfPart.carX) : undefined,
-              carY: selfPart.carY !== undefined ? Number(selfPart.carY) : undefined,
-              carZ: selfPart.carZ !== undefined ? Number(selfPart.carZ) : undefined,
-              carHeading: selfPart.carHeading !== undefined ? Number(selfPart.carHeading) : undefined,
-              carSpeed: selfPart.carSpeed !== undefined ? Number(selfPart.carSpeed) : undefined,
+              ...finalSelfCar,
             });
           }
           for (const p of msg.participants) {
             if (p.participantId !== this.participantId && this.options.onPeerJoined) {
+              const peerCar = extractValidParkedCarTuple(p);
               this.options.onPeerJoined({
                 participantId: p.participantId,
                 userId: p.userId,
@@ -852,11 +878,7 @@ export class MultiplayerClient {
                 z: Number.isFinite(p.z) ? p.z : 0,
                 heading: Number.isFinite(p.heading) ? p.heading : 0,
                 speed: Number.isFinite(p.speed) ? p.speed : 0,
-                carX: p.carX !== undefined ? Number(p.carX) : undefined,
-                carY: p.carY !== undefined ? Number(p.carY) : undefined,
-                carZ: p.carZ !== undefined ? Number(p.carZ) : undefined,
-                carHeading: p.carHeading !== undefined ? Number(p.carHeading) : undefined,
-                carSpeed: p.carSpeed !== undefined ? Number(p.carSpeed) : undefined,
+                ...peerCar,
                 lastSeen: Date.now(),
               });
             }
@@ -869,26 +891,34 @@ export class MultiplayerClient {
       case "peer_reconnected": {
         if (msg.participant && msg.participant.participantId !== this.participantId) {
           if (this.options.onPeerJoined) {
+            const p = msg.participant;
+            const validCar =
+              typeof p.carX === "number" &&
+              Number.isFinite(p.carX) &&
+              typeof p.carZ === "number" &&
+              Number.isFinite(p.carZ) &&
+              typeof p.carHeading === "number" &&
+              Number.isFinite(p.carHeading);
             this.options.onPeerJoined({
-              participantId: msg.participant.participantId,
-              userId: msg.participant.userId,
-              username: msg.participant.username,
-              vehicleKey: msg.participant.vehicleKey || null,
-              mode: (msg.participant.mode ?? (msg.participant.isPedestrian || !msg.participant.vehicleKey ? "walking" : "driving")) as "driving" | "walking" | "riding_bus",
-              isPedestrian: Boolean(msg.participant.isPedestrian || !msg.participant.vehicleKey),
-              seatedBusId: msg.participant.seatedBusId ?? null,
-              seatIndex: msg.participant.seatIndex ?? null,
-              modeEpoch: msg.participant.modeEpoch,
-              x: Number.isFinite(msg.participant.x) ? msg.participant.x : 0,
-              y: Number.isFinite(msg.participant.y) ? msg.participant.y : 0,
-              z: Number.isFinite(msg.participant.z) ? msg.participant.z : 0,
-              heading: Number.isFinite(msg.participant.heading) ? msg.participant.heading : 0,
-              speed: Number.isFinite(msg.participant.speed) ? msg.participant.speed : 0,
-              carX: msg.participant.carX !== undefined ? Number(msg.participant.carX) : undefined,
-              carY: msg.participant.carY !== undefined ? Number(msg.participant.carY) : undefined,
-              carZ: msg.participant.carZ !== undefined ? Number(msg.participant.carZ) : undefined,
-              carHeading: msg.participant.carHeading !== undefined ? Number(msg.participant.carHeading) : undefined,
-              carSpeed: msg.participant.carSpeed !== undefined ? Number(msg.participant.carSpeed) : undefined,
+              participantId: p.participantId,
+              userId: p.userId,
+              username: p.username,
+              vehicleKey: p.vehicleKey || null,
+              mode: (p.mode ?? (p.isPedestrian || !p.vehicleKey ? "walking" : "driving")) as "driving" | "walking" | "riding_bus",
+              isPedestrian: Boolean(p.isPedestrian || !p.vehicleKey),
+              seatedBusId: p.seatedBusId ?? null,
+              seatIndex: p.seatIndex ?? null,
+              modeEpoch: p.modeEpoch,
+              x: Number.isFinite(p.x) ? p.x : 0,
+              y: Number.isFinite(p.y) ? p.y : 0,
+              z: Number.isFinite(p.z) ? p.z : 0,
+              heading: Number.isFinite(p.heading) ? p.heading : 0,
+              speed: Number.isFinite(p.speed) ? p.speed : 0,
+              carX: validCar ? p.carX : undefined,
+              carY: validCar && typeof p.carY === "number" && Number.isFinite(p.carY) ? p.carY : undefined,
+              carZ: validCar ? p.carZ : undefined,
+              carHeading: validCar ? p.carHeading : undefined,
+              carSpeed: validCar && typeof p.carSpeed === "number" && Number.isFinite(p.carSpeed) ? p.carSpeed : undefined,
               lastSeen: Date.now(),
             });
           }
@@ -916,25 +946,28 @@ export class MultiplayerClient {
           return;
         }
         if (
-          msg.carX === undefined ||
+          typeof msg.carX !== "number" ||
           !Number.isFinite(msg.carX) ||
-          msg.carZ === undefined ||
-          !Number.isFinite(msg.carZ)
+          typeof msg.carZ !== "number" ||
+          !Number.isFinite(msg.carZ) ||
+          typeof msg.carHeading !== "number" ||
+          !Number.isFinite(msg.carHeading)
         ) {
           this.rejectAdmission(
             "MALFORMED_TRANSITION_RECEIPT",
-            "Vehicle exited receipt missing parked car coordinates"
+            "Vehicle exited receipt missing or non-finite parked car coordinates"
           );
           return;
         }
         this.modeEpoch = msg.modeEpoch;
         this.inputSeq = 0; // Monotonic sequence resets to 0 on mode transition receipt
         this.currentMode = "walking";
+        const carYVal = typeof msg.carY === "number" && Number.isFinite(msg.carY) ? msg.carY : 0;
         this.parkedCar = {
-          x: Number(msg.carX),
-          y: Number(msg.carY ?? 0),
-          z: Number(msg.carZ ?? 0),
-          heading: Number(msg.carHeading ?? 0),
+          x: msg.carX,
+          y: carYVal,
+          z: msg.carZ,
+          heading: msg.carHeading,
           speed: 0,
         };
         if (this.options.onVehicleExited) {
@@ -945,10 +978,10 @@ export class MultiplayerClient {
             y: Number(msg.y ?? 0),
             z: Number(msg.z ?? 0),
             heading: Number(msg.heading ?? 0),
-            carX: msg.carX !== undefined ? Number(msg.carX) : undefined,
-            carY: msg.carY !== undefined ? Number(msg.carY) : undefined,
-            carZ: msg.carZ !== undefined ? Number(msg.carZ) : undefined,
-            carHeading: msg.carHeading !== undefined ? Number(msg.carHeading) : undefined,
+            carX: msg.carX,
+            carY: typeof msg.carY === "number" && Number.isFinite(msg.carY) ? msg.carY : undefined,
+            carZ: msg.carZ,
+            carHeading: msg.carHeading,
           });
         }
         if (this.options.onModeChanged) {
@@ -961,10 +994,10 @@ export class MultiplayerClient {
             y: Number(msg.y ?? 0),
             z: Number(msg.z ?? 0),
             heading: Number(msg.heading ?? 0),
-            carX: msg.carX !== undefined ? Number(msg.carX) : undefined,
-            carY: msg.carY !== undefined ? Number(msg.carY) : undefined,
-            carZ: msg.carZ !== undefined ? Number(msg.carZ) : undefined,
-            carHeading: msg.carHeading !== undefined ? Number(msg.carHeading) : undefined,
+            carX: msg.carX,
+            carY: typeof msg.carY === "number" && Number.isFinite(msg.carY) ? msg.carY : undefined,
+            carZ: msg.carZ,
+            carHeading: msg.carHeading,
           });
         }
         break;
@@ -1013,11 +1046,35 @@ export class MultiplayerClient {
       }
 
       case "bus_boarded": {
-        const busId = Number(msg.busId);
-        const seatIndex = Number(msg.seatIndex);
-        if (!Number.isSafeInteger(busId) || busId < 0 || !Number.isSafeInteger(seatIndex) || seatIndex < 0) {
+        if (
+          typeof msg.modeEpoch !== "number" ||
+          !Number.isSafeInteger(msg.modeEpoch) ||
+          msg.modeEpoch <= this.modeEpoch
+        ) {
+          this.rejectAdmission(
+            "INVALID_EPOCH",
+            `Bus boarded receipt has invalid or stale modeEpoch ${msg.modeEpoch} (active: ${this.modeEpoch})`
+          );
           return;
         }
+        if (
+          typeof msg.busId !== "number" ||
+          !Number.isSafeInteger(msg.busId) ||
+          msg.busId < 0 ||
+          typeof msg.seatIndex !== "number" ||
+          !Number.isSafeInteger(msg.seatIndex) ||
+          msg.seatIndex < 0
+        ) {
+          this.rejectAdmission(
+            "MALFORMED_TRANSITION_RECEIPT",
+            `Bus boarded receipt missing or invalid busId/seatIndex: busId=${msg.busId}, seatIndex=${msg.seatIndex}`
+          );
+          return;
+        }
+        const busId = msg.busId;
+        const seatIndex = msg.seatIndex;
+        this.modeEpoch = msg.modeEpoch;
+        this.inputSeq = 0;
         this.currentMode = "riding_bus";
         this.seatedBusId = busId;
         this.seatIndex = seatIndex;
@@ -1033,10 +1090,10 @@ export class MultiplayerClient {
             modeEpoch: this.modeEpoch,
             isPedestrian: false,
             vehicleKey: null,
-            x: 0,
-            y: 0,
-            z: 0,
-            heading: 0,
+            x: typeof msg.x === "number" && Number.isFinite(msg.x) ? msg.x : 0,
+            y: typeof msg.y === "number" && Number.isFinite(msg.y) ? msg.y : 0,
+            z: typeof msg.z === "number" && Number.isFinite(msg.z) ? msg.z : 0,
+            heading: typeof msg.heading === "number" && Number.isFinite(msg.heading) ? msg.heading : 0,
             seatedBusId: busId,
             seatIndex: seatIndex,
           });
@@ -1045,13 +1102,39 @@ export class MultiplayerClient {
       }
 
       case "bus_alighted": {
-        const x = Number(msg.x);
-        const y = Number(msg.y);
-        const z = Number(msg.z);
-        const heading = Number(msg.heading);
-        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !Number.isFinite(heading)) {
+        if (
+          typeof msg.modeEpoch !== "number" ||
+          !Number.isSafeInteger(msg.modeEpoch) ||
+          msg.modeEpoch <= this.modeEpoch
+        ) {
+          this.rejectAdmission(
+            "INVALID_EPOCH",
+            `Bus alighted receipt has invalid or stale modeEpoch ${msg.modeEpoch} (active: ${this.modeEpoch})`
+          );
           return;
         }
+        if (
+          typeof msg.x !== "number" ||
+          !Number.isFinite(msg.x) ||
+          typeof msg.y !== "number" ||
+          !Number.isFinite(msg.y) ||
+          typeof msg.z !== "number" ||
+          !Number.isFinite(msg.z) ||
+          typeof msg.heading !== "number" ||
+          !Number.isFinite(msg.heading)
+        ) {
+          this.rejectAdmission(
+            "MALFORMED_TRANSITION_RECEIPT",
+            "Bus alighted receipt missing or non-finite alight coordinates"
+          );
+          return;
+        }
+        const x = msg.x;
+        const y = msg.y;
+        const z = msg.z;
+        const heading = msg.heading;
+        this.modeEpoch = msg.modeEpoch;
+        this.inputSeq = 0;
         this.currentMode = "walking";
         this.seatedBusId = null;
         this.seatIndex = null;
@@ -1083,6 +1166,13 @@ export class MultiplayerClient {
       case "peer_mode_changed": {
         if (msg.participantId && msg.participantId !== this.participantId) {
           if (this.options.onPeerPose) {
+            const validCar =
+              typeof msg.carX === "number" &&
+              Number.isFinite(msg.carX) &&
+              typeof msg.carZ === "number" &&
+              Number.isFinite(msg.carZ) &&
+              typeof msg.carHeading === "number" &&
+              Number.isFinite(msg.carHeading);
             this.options.onPeerPose(msg.participantId, {
               x: Number(msg.x ?? 0),
               y: Number(msg.y ?? 0),
@@ -1095,10 +1185,10 @@ export class MultiplayerClient {
               seatIndex: msg.seatIndex !== undefined ? (msg.seatIndex !== null ? Number(msg.seatIndex) : null) : undefined,
               modeEpoch: msg.modeEpoch,
               vehicleKey: msg.vehicleKey !== undefined ? (msg.vehicleKey ? String(msg.vehicleKey) : null) : undefined,
-              carX: msg.carX !== undefined ? Number(msg.carX) : undefined,
-              carY: msg.carY !== undefined ? Number(msg.carY) : undefined,
-              carZ: msg.carZ !== undefined ? Number(msg.carZ) : undefined,
-              carHeading: msg.carHeading !== undefined ? Number(msg.carHeading) : undefined,
+              carX: validCar ? msg.carX : undefined,
+              carY: validCar && typeof msg.carY === "number" && Number.isFinite(msg.carY) ? msg.carY : undefined,
+              carZ: validCar ? msg.carZ : undefined,
+              carHeading: validCar ? msg.carHeading : undefined,
             });
           }
         }
@@ -1108,6 +1198,13 @@ export class MultiplayerClient {
       case "peer_pose": {
         if (msg.participantId && msg.participantId !== this.participantId) {
           if (this.options.onPeerPose) {
+            const validCar =
+              typeof msg.carX === "number" &&
+              Number.isFinite(msg.carX) &&
+              typeof msg.carZ === "number" &&
+              Number.isFinite(msg.carZ) &&
+              typeof msg.carHeading === "number" &&
+              Number.isFinite(msg.carHeading);
             this.options.onPeerPose(msg.participantId, {
               x: Number(msg.x ?? 0),
               y: Number(msg.y ?? 0),
@@ -1120,11 +1217,11 @@ export class MultiplayerClient {
               seatIndex: msg.seatIndex !== undefined ? (msg.seatIndex !== null ? Number(msg.seatIndex) : null) : undefined,
               modeEpoch: msg.modeEpoch,
               vehicleKey: msg.vehicleKey !== undefined ? (msg.vehicleKey ? String(msg.vehicleKey) : null) : undefined,
-              carX: msg.carX !== undefined ? Number(msg.carX) : undefined,
-              carY: msg.carY !== undefined ? Number(msg.carY) : undefined,
-              carZ: msg.carZ !== undefined ? Number(msg.carZ) : undefined,
-              carHeading: msg.carHeading !== undefined ? Number(msg.carHeading) : undefined,
-              carSpeed: msg.carSpeed !== undefined ? Number(msg.carSpeed) : undefined,
+              carX: validCar ? msg.carX : undefined,
+              carY: validCar && typeof msg.carY === "number" && Number.isFinite(msg.carY) ? msg.carY : undefined,
+              carZ: validCar ? msg.carZ : undefined,
+              carHeading: validCar ? msg.carHeading : undefined,
+              carSpeed: validCar && typeof msg.carSpeed === "number" && Number.isFinite(msg.carSpeed) ? msg.carSpeed : undefined,
             });
           }
         }
@@ -1163,31 +1260,58 @@ export class MultiplayerClient {
           sessionId: msg.sessionId,
           seq: msg.seq,
           timestamp: Number(msg.timestamp ?? Date.now()),
-          participants: rawParts.map((p) => ({
-            participantId: p.participantId,
-            userId: p.userId,
-            alias: p.alias ?? p.username,
-            username: p.username ?? p.alias,
-            vehicleKey: p.vehicleKey || null,
-            mode: p.mode === "driving" ? "driving" : p.mode === "riding_bus" ? "riding_bus" : "walking",
-            isPedestrian: p.isPedestrian !== undefined ? Boolean(p.isPedestrian) : p.mode === "walking",
-            seatedBusId: p.seatedBusId !== undefined ? (p.seatedBusId !== null ? Number(p.seatedBusId) : null) : undefined,
-            seatIndex: p.seatIndex !== undefined ? (p.seatIndex !== null ? Number(p.seatIndex) : null) : undefined,
-            modeEpoch: p.modeEpoch,
-            protocolVersion: p.protocolVersion,
-            x: Number(p.x ?? 0),
-            y: Number(p.y ?? 0),
-            z: Number(p.z ?? 0),
-            heading: Number(p.heading ?? 0),
-            speed: Number(p.speed ?? 0),
-            carX: p.carX !== undefined ? Number(p.carX) : undefined,
-            carY: p.carY !== undefined ? Number(p.carY) : undefined,
-            carZ: p.carZ !== undefined ? Number(p.carZ) : undefined,
-            carHeading: p.carHeading !== undefined ? Number(p.carHeading) : undefined,
-            carSpeed: p.carSpeed !== undefined ? Number(p.carSpeed) : undefined,
-            lastInputSeq: p.lastInputSeq,
-          })),
+          participants: rawParts.map((p) => {
+            const validCar =
+              typeof p.carX === "number" &&
+              Number.isFinite(p.carX) &&
+              typeof p.carZ === "number" &&
+              Number.isFinite(p.carZ) &&
+              typeof p.carHeading === "number" &&
+              Number.isFinite(p.carHeading);
+            return {
+              participantId: p.participantId,
+              userId: p.userId,
+              alias: p.alias ?? p.username,
+              username: p.username ?? p.alias,
+              vehicleKey: p.vehicleKey || null,
+              mode: p.mode === "driving" ? "driving" : p.mode === "riding_bus" ? "riding_bus" : "walking",
+              isPedestrian: p.isPedestrian !== undefined ? Boolean(p.isPedestrian) : p.mode === "walking",
+              seatedBusId: p.seatedBusId !== undefined ? (p.seatedBusId !== null ? Number(p.seatedBusId) : null) : undefined,
+              seatIndex: p.seatIndex !== undefined ? (p.seatIndex !== null ? Number(p.seatIndex) : null) : undefined,
+              modeEpoch: p.modeEpoch,
+              protocolVersion: p.protocolVersion,
+              x: Number(p.x ?? 0),
+              y: Number(p.y ?? 0),
+              z: Number(p.z ?? 0),
+              heading: Number(p.heading ?? 0),
+              speed: Number(p.speed ?? 0),
+              carX: validCar ? p.carX : undefined,
+              carY: validCar && typeof p.carY === "number" && Number.isFinite(p.carY) ? p.carY : undefined,
+              carZ: validCar ? p.carZ : undefined,
+              carHeading: validCar ? p.carHeading : undefined,
+              carSpeed: validCar && typeof p.carSpeed === "number" && Number.isFinite(p.carSpeed) ? p.carSpeed : undefined,
+              lastInputSeq: p.lastInputSeq,
+            };
+          }),
         };
+        const selfSnapPart = snapshot.participants.find(
+          (p) => p.participantId === this.participantId || p.userId === this.options.userId
+        );
+        if (
+          selfSnapPart &&
+          (selfSnapPart.mode === "walking" || selfSnapPart.mode === "riding_bus") &&
+          selfSnapPart.carX !== undefined &&
+          selfSnapPart.carZ !== undefined &&
+          selfSnapPart.carHeading !== undefined
+        ) {
+          this.parkedCar = {
+            x: selfSnapPart.carX,
+            y: selfSnapPart.carY ?? 0,
+            z: selfSnapPart.carZ,
+            heading: selfSnapPart.carHeading,
+            speed: 0,
+          };
+        }
         if (this.options.onSnapshot) {
           this.options.onSnapshot(snapshot);
         }

@@ -2604,34 +2604,37 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       // Local state is unchanged until ACK (ACK-only mutation)
       expect(client.getMode()).toBe("walking");
 
-      // Receive bus_boarded ACK from server
+      // Receive bus_boarded ACK from server with incremented authoritative modeEpoch
       socket.onmessage!({
         data: JSON.stringify({
           type: "bus_boarded",
           busId: 1,
           seatIndex: 3,
+          modeEpoch: 2,
         }),
       });
 
       expect(boardedAck).toEqual({ busId: 1, seatIndex: 3 });
       expect(client.getMode()).toBe("riding_bus");
+      expect(client.getModeEpoch()).toBe(2);
       expect(client.getSeatedBusId()).toBe(1);
       expect(client.getSeatIndex()).toBe(3);
 
       // Walking input is suppressed while riding bus
       expect(client.sendWalkingInput({ forward: 1 })).toBe(false);
 
-      // Send alight bus request
+      // Send alight bus request — uses adopted modeEpoch 2
       expect(client.alightBus()).toBe(true);
       expect(socket.sent).toContainEqual({
         type: "request_alight_bus",
-        epoch: 1,
+        epoch: 2,
       });
 
-      // Receive bus_alighted ACK from server
+      // Receive bus_alighted ACK from server with incremented authoritative modeEpoch
       socket.onmessage!({
         data: JSON.stringify({
           type: "bus_alighted",
+          modeEpoch: 3,
           x: 100,
           y: 0,
           z: 200,
@@ -2641,6 +2644,7 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
 
       expect(alightedAck).toEqual({ x: 100, y: 0, z: 200, heading: 1.57 });
       expect(client.getMode()).toBe("walking");
+      expect(client.getModeEpoch()).toBe(3);
       expect(client.getSeatedBusId()).toBeNull();
       expect(client.getSeatIndex()).toBeNull();
     });
@@ -2750,6 +2754,7 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       socket.onmessage!({
         data: JSON.stringify({
           type: "bus_alighted",
+          modeEpoch: 3,
           x: 110,
           y: 0,
           z: 200,
@@ -2759,8 +2764,159 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
 
       expect(alightedAck).toEqual({ x: 110, y: 0, z: 200, heading: 0 });
       expect(client.getMode()).toBe("walking");
+      expect(client.getModeEpoch()).toBe(3);
       expect(client.getSeatedBusId()).toBeNull();
       expect(client.getSeatIndex()).toBeNull();
+    });
+
+    it("rejects stale or malformed bus_boarded and bus_alighted receipts without state corruption", async () => {
+      const setupClient = async () => {
+        let lastError: any = null;
+        const c = new MultiplayerClient({
+          url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+          token: "valid-jwt",
+          userId: "user-bus-receipt-reject",
+          username: "ReceiptRejectRider",
+          onError: (err) => {
+            lastError = err;
+          },
+        });
+        await c.connect();
+        const s = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+        s.readyState = MockWebSocket.OPEN;
+        s.onopen!();
+        s.onmessage!({
+          data: JSON.stringify({
+            type: "session_joined",
+            sessionId: "sess-receipt-1",
+            participantId: "part-receipt-1",
+            protocolVersion: 2,
+            mode: "walking",
+            modeEpoch: 2,
+            participants: [],
+          }),
+        });
+        return { client: c, socket: s, getLastError: () => lastError };
+      };
+
+      // 1. Stale modeEpoch on bus_boarded (<= active epoch 2)
+      {
+        const { client, socket, getLastError } = await setupClient();
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_boarded",
+            busId: 0,
+            seatIndex: 1,
+            modeEpoch: 2,
+          }),
+        });
+        expect(getLastError()).toMatchObject({ code: "INVALID_EPOCH" });
+        expect(client.getStatus()).toBe("error");
+      }
+
+      // 2. Malformed busId/seatIndex on bus_boarded (string, negative, boolean, null)
+      for (const badBus of [null, false, "0", -1, NaN]) {
+        const { client, socket, getLastError } = await setupClient();
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_boarded",
+            busId: badBus,
+            seatIndex: 1,
+            modeEpoch: 3,
+          }),
+        });
+        expect(getLastError()).toMatchObject({ code: "MALFORMED_TRANSITION_RECEIPT" });
+        expect(client.getStatus()).toBe("error");
+      }
+
+      // 3. Stale modeEpoch on bus_alighted
+      {
+        const { client, socket, getLastError } = await setupClient();
+        // Valid board to epoch 4
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_boarded",
+            busId: 0,
+            seatIndex: 1,
+            modeEpoch: 4,
+          }),
+        });
+        expect(client.getMode()).toBe("riding_bus");
+        expect(client.getModeEpoch()).toBe(4);
+
+        // Stale alight (epoch 4 <= active 4)
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_alighted",
+            modeEpoch: 4,
+            x: 10,
+            y: 0,
+            z: 20,
+            heading: 0,
+          }),
+        });
+        expect(getLastError()).toMatchObject({ code: "INVALID_EPOCH" });
+        expect(client.getStatus()).toBe("error");
+      }
+
+      // 4. Malformed coordinates on bus_alighted (null, empty string, boolean, nonfinite)
+      for (const badCoord of [null, "", false, "100", NaN, Infinity, undefined]) {
+        const { client, socket, getLastError } = await setupClient();
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_boarded",
+            busId: 0,
+            seatIndex: 1,
+            modeEpoch: 4,
+          }),
+        });
+        expect(client.getMode()).toBe("riding_bus");
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_alighted",
+            modeEpoch: 5,
+            x: badCoord,
+            y: 0,
+            z: 20,
+            heading: 0,
+          }),
+        });
+        expect(getLastError()).toMatchObject({ code: "MALFORMED_TRANSITION_RECEIPT" });
+        expect(client.getStatus()).toBe("error");
+      }
+
+      // 5. Valid normal progression: board -> alight
+      {
+        const { client, socket, getLastError } = await setupClient();
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_boarded",
+            busId: 0,
+            seatIndex: 1,
+            modeEpoch: 4,
+          }),
+        });
+        expect(client.getMode()).toBe("riding_bus");
+        expect(client.getModeEpoch()).toBe(4);
+        expect(client.getSeatedBusId()).toBe(0);
+        expect(client.getSeatIndex()).toBe(1);
+
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_alighted",
+            modeEpoch: 5,
+            x: 10,
+            y: 0,
+            z: 20,
+            heading: 0,
+          }),
+        });
+        expect(getLastError()).toBeNull();
+        expect(client.getMode()).toBe("walking");
+        expect(client.getModeEpoch()).toBe(5);
+        expect(client.getSeatedBusId()).toBeNull();
+        expect(client.getSeatIndex()).toBeNull();
+      }
     });
   });
 });

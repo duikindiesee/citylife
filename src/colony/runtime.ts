@@ -1111,6 +1111,8 @@ export class ColonyRuntime {
   /** Spec 149 / Spec 165 — Three.js first-person camera yaw (Euler Y in radians).
    *  Synchronized from FirstPersonController and used to calculate authoritative wire heading. */
   fpCameraYaw: number | undefined = undefined;
+  /** One-shot look-at target for the first-person camera */
+  fpLookAtTarget?: { x: number; y: number; z: number };
   /** Spec 149 — one-shot teleport order for the camera capsule (FirstPersonController consumes it;
    *  seq marks freshness). debugPlaceFirstPerson and alighting issue these. */
   fpTeleportRequest: {
@@ -3001,7 +3003,7 @@ export class ColonyRuntime {
   }
 
   getWalkingCell(): { x: number; y: number } | null {
-    if (this.ownedDriveSeated) return null;
+    if (this.ownedDriveSeated || this.fpRidingBusId !== null) return null;
     if (this.authoritativeWalkingPose) {
       return { x: this.authoritativeWalkingPose.x, y: this.authoritativeWalkingPose.y };
     }
@@ -3022,6 +3024,7 @@ export class ColonyRuntime {
       car &&
       at &&
       !this.ownedDriveSeated &&
+      this.fpRidingBusId === null &&
       Math.hypot(car.x - at.x, car.y - at.y) <= 2
     );
   }
@@ -3641,6 +3644,22 @@ export class ColonyRuntime {
               this.fpCameraCell = { x: pose.x, y: pose.y };
             }
           }
+          if (
+            typeof self.carX === "number" &&
+            Number.isFinite(self.carX) &&
+            typeof self.carZ === "number" &&
+            Number.isFinite(self.carZ) &&
+            typeof self.carHeading === "number" &&
+            Number.isFinite(self.carHeading)
+          ) {
+            const carCellX = self.carX / 4 + t.size / 2;
+            const carCellY = self.carZ / 4 + t.size / 2;
+            this.ownedDrivePose = { x: carCellX, y: carCellY, heading: self.carHeading, speed: 0 };
+            if (this.sim.state.operatorCar) {
+              this.sim.state.operatorCar.cell = { x: carCellX, y: carCellY };
+              this.sim.state.operatorCar.heading = self.carHeading;
+            }
+          }
           this.emit();
         } else if (self.mode === "walking") {
           this.ownedDriveSeated = false;
@@ -3670,13 +3689,20 @@ export class ColonyRuntime {
               c.heading = self.heading;
             }
           }
-          if (self.carX !== undefined && Number.isFinite(self.carX)) {
+          if (
+            typeof self.carX === "number" &&
+            Number.isFinite(self.carX) &&
+            typeof self.carZ === "number" &&
+            Number.isFinite(self.carZ) &&
+            typeof self.carHeading === "number" &&
+            Number.isFinite(self.carHeading)
+          ) {
             const carCellX = self.carX / 4 + t.size / 2;
-            const carCellY = (self.carZ ?? 0) / 4 + t.size / 2;
-            this.ownedDrivePose = { x: carCellX, y: carCellY, heading: self.carHeading ?? 0, speed: 0 };
+            const carCellY = self.carZ / 4 + t.size / 2;
+            this.ownedDrivePose = { x: carCellX, y: carCellY, heading: self.carHeading, speed: 0 };
             if (this.sim.state.operatorCar) {
               this.sim.state.operatorCar.cell = { x: carCellX, y: carCellY };
-              this.sim.state.operatorCar.heading = self.carHeading ?? 0;
+              this.sim.state.operatorCar.heading = self.carHeading;
             }
           }
           this.emit();
@@ -3692,18 +3718,25 @@ export class ColonyRuntime {
           this.fpRidingBusId = null;
           this.fpRidingSeatIndex = null;
           this.ownedDriveInput = {};
-          if (ev.carX !== undefined && Number.isFinite(ev.carX)) {
+          if (
+            typeof ev.carX === "number" &&
+            Number.isFinite(ev.carX) &&
+            typeof ev.carZ === "number" &&
+            Number.isFinite(ev.carZ) &&
+            typeof ev.carHeading === "number" &&
+            Number.isFinite(ev.carHeading)
+          ) {
             const carCellX = ev.carX / 4 + terrain.size / 2;
-            const carCellY = (ev.carZ ?? 0) / 4 + terrain.size / 2;
+            const carCellY = ev.carZ / 4 + terrain.size / 2;
             this.ownedDrivePose = {
               x: carCellX,
               y: carCellY,
-              heading: ev.carHeading ?? 0,
+              heading: ev.carHeading,
               speed: 0,
             };
             if (this.sim.state.operatorCar) {
               this.sim.state.operatorCar.cell = { x: carCellX, y: carCellY };
-              this.sim.state.operatorCar.heading = ev.carHeading ?? 0;
+              this.sim.state.operatorCar.heading = ev.carHeading;
             }
           }
           const walkCellX = ev.x / 4 + terrain.size / 2;
@@ -3743,10 +3776,19 @@ export class ColonyRuntime {
             racer.worldY = ev.y;
             racer.heading = ev.heading;
             racer.modeEpoch = ev.modeEpoch;
-            racer.carX = ev.carX;
-            racer.carY = ev.carY;
-            racer.carZ = ev.carZ;
-            racer.carHeading = ev.carHeading;
+            if (
+              typeof ev.carX === "number" &&
+              Number.isFinite(ev.carX) &&
+              typeof ev.carZ === "number" &&
+              Number.isFinite(ev.carZ) &&
+              typeof ev.carHeading === "number" &&
+              Number.isFinite(ev.carHeading)
+            ) {
+              racer.carX = ev.carX;
+              racer.carY = typeof ev.carY === "number" && Number.isFinite(ev.carY) ? ev.carY : undefined;
+              racer.carZ = ev.carZ;
+              racer.carHeading = ev.carHeading;
+            }
             this.emit();
           }
         }
@@ -3862,6 +3904,13 @@ export class ColonyRuntime {
         const cellX = peer.x != null && !isNaN(peer.x) ? peer.x / 4 + terrain.size / 2 : 50;
         const cellY = peer.z != null && !isNaN(peer.z) ? peer.z / 4 + terrain.size / 2 : 50;
         const spec = peer.vehicleKey ? (resolveOwnedCar([peer.vehicleKey]) ?? null) : null;
+        const validCar =
+          typeof peer.carX === "number" &&
+          Number.isFinite(peer.carX) &&
+          typeof peer.carZ === "number" &&
+          Number.isFinite(peer.carZ) &&
+          typeof peer.carHeading === "number" &&
+          Number.isFinite(peer.carHeading);
         this.sim.state.remoteRacers.set(peer.participantId, {
           participantId: peer.participantId,
           userId: peer.userId,
@@ -3877,11 +3926,11 @@ export class ColonyRuntime {
           speed: peer.speed || 0,
           lastSeen: Date.now(),
           spec,
-          carX: peer.carX,
-          carY: peer.carY,
-          carZ: peer.carZ,
-          carHeading: peer.carHeading,
-          carSpeed: peer.carSpeed,
+          carX: validCar ? peer.carX : undefined,
+          carY: validCar && typeof peer.carY === "number" && Number.isFinite(peer.carY) ? peer.carY : undefined,
+          carZ: validCar ? peer.carZ : undefined,
+          carHeading: validCar ? peer.carHeading : undefined,
+          carSpeed: validCar && typeof peer.carSpeed === "number" && Number.isFinite(peer.carSpeed) ? peer.carSpeed : undefined,
           modeEpoch: peer.modeEpoch,
         });
         this.emit();
@@ -3897,6 +3946,10 @@ export class ColonyRuntime {
         const cellX = pose.x / 4 + terrain.size / 2;
         const cellY = pose.z / 4 + terrain.size / 2;
         if (racer) {
+          const prevMode = racer.mode;
+          const prevIsPedestrian = racer.isPedestrian;
+          const prevSeatedBusId = racer.seatedBusId;
+          const prevSeatIndex = racer.seatIndex;
           racer.cell.x = cellX;
           racer.cell.y = cellY;
           racer.worldY = pose.y;
@@ -3923,20 +3976,32 @@ export class ColonyRuntime {
           } else if (pose.isPedestrian !== undefined) {
             racer.isPedestrian = Boolean(pose.isPedestrian) || !racer.spec;
           }
-          if (pose.carX !== undefined) {
+          if (
+            typeof pose.carX === "number" &&
+            Number.isFinite(pose.carX) &&
+            typeof pose.carZ === "number" &&
+            Number.isFinite(pose.carZ) &&
+            typeof pose.carHeading === "number" &&
+            Number.isFinite(pose.carHeading)
+          ) {
             racer.carX = pose.carX;
-            racer.carY = pose.carY;
+            racer.carY = typeof pose.carY === "number" && Number.isFinite(pose.carY) ? pose.carY : undefined;
             racer.carZ = pose.carZ;
             racer.carHeading = pose.carHeading;
-            racer.carSpeed = pose.carSpeed;
-          } else if (!racer.isPedestrian) {
+            racer.carSpeed = typeof pose.carSpeed === "number" && Number.isFinite(pose.carSpeed) ? pose.carSpeed : undefined;
+          } else if (!racer.isPedestrian && racer.mode !== "riding_bus") {
             racer.carX = undefined;
             racer.carY = undefined;
             racer.carZ = undefined;
             racer.carHeading = undefined;
             racer.carSpeed = undefined;
           }
-          this.emit();
+          const modeChanged =
+            racer.mode !== prevMode ||
+            racer.isPedestrian !== prevIsPedestrian ||
+            racer.seatedBusId !== prevSeatedBusId ||
+            racer.seatIndex !== prevSeatIndex;
+          this.emitIfUiDue(modeChanged);
         }
       },
       onSnapshot: (snapshot) => {
@@ -3953,6 +4018,7 @@ export class ColonyRuntime {
         const currentModeEpoch = this.multiplayerClient?.getModeEpoch() ?? 0;
         const terrain = this.sim.state.terrain;
         const myParticipantId = session.participantId;
+        let modeChanged = false;
         for (const p of snapshot.participants) {
           if (p.participantId === myParticipantId || p.userId === this.operatorUserId) {
             if (typeof p.modeEpoch === "number" && p.modeEpoch < currentModeEpoch) {
@@ -3964,6 +4030,13 @@ export class ColonyRuntime {
             if (p.mode === "riding_bus") {
               const busId = p.seatedBusId ?? this.multiplayerClient?.getSeatedBusId() ?? null;
               const seatIndex = p.seatIndex ?? this.multiplayerClient?.getSeatIndex() ?? null;
+              if (
+                this.fpRidingBusId !== busId ||
+                this.fpRidingSeatIndex !== seatIndex ||
+                this.ownedDriveSeated
+              ) {
+                modeChanged = true;
+              }
               this.fpRidingBusId = busId;
               this.fpRidingSeatIndex = seatIndex;
               this.ownedDriveSeated = false;
@@ -3984,6 +4057,28 @@ export class ColonyRuntime {
                   this.fpCameraCell = { x: pose.x, y: pose.y };
                 }
               }
+              if (
+                typeof p.carX === "number" &&
+                Number.isFinite(p.carX) &&
+                typeof p.carZ === "number" &&
+                Number.isFinite(p.carZ) &&
+                typeof p.carHeading === "number" &&
+                Number.isFinite(p.carHeading)
+              ) {
+                const pCarCellX = p.carX / 4 + terrain.size / 2;
+                const pCarCellY = p.carZ / 4 + terrain.size / 2;
+                if (this.ownedDrivePose) {
+                  this.ownedDrivePose.x = pCarCellX;
+                  this.ownedDrivePose.y = pCarCellY;
+                  this.ownedDrivePose.heading = p.carHeading;
+                } else {
+                  this.ownedDrivePose = { x: pCarCellX, y: pCarCellY, heading: p.carHeading, speed: 0 };
+                }
+                if (this.sim.state.operatorCar) {
+                  this.sim.state.operatorCar.cell = { x: pCarCellX, y: pCarCellY };
+                  this.sim.state.operatorCar.heading = p.carHeading;
+                }
+              }
               continue;
             }
             const isPed = p.mode === "walking" || Boolean(p.isPedestrian);
@@ -3995,10 +4090,13 @@ export class ColonyRuntime {
               this.ownedDrivePose.speed = p.speed;
               this.ownedDrivePose.heading = p.heading;
               if (this.sim.state.operatorCar) {
-                this.sim.state.operatorCar.cell = { x: sCellX, y: sCellY };
+                this.sim.state.operatorCar.cell = { x: sCellX, y: p.z / 4 + terrain.size / 2 };
                 this.sim.state.operatorCar.heading = p.heading;
               }
             } else if (!this.ownedDriveSeated && isPed) {
+              if (this.authoritativeWalkingPose === null || this.fpRidingBusId !== null) {
+                modeChanged = true;
+              }
               const wCellX = p.x / 4 + terrain.size / 2;
               const wCellY = p.z / 4 + terrain.size / 2;
               this.authoritativeWalkingPose = {
@@ -4070,17 +4168,26 @@ export class ColonyRuntime {
                   };
                 }
               }
-              if (p.carX !== undefined && Number.isFinite(p.carX)) {
+              if (
+                typeof p.carX === "number" &&
+                Number.isFinite(p.carX) &&
+                typeof p.carZ === "number" &&
+                Number.isFinite(p.carZ) &&
+                typeof p.carHeading === "number" &&
+                Number.isFinite(p.carHeading)
+              ) {
                 const pCarCellX = p.carX / 4 + terrain.size / 2;
-                const pCarCellY = (p.carZ ?? 0) / 4 + terrain.size / 2;
+                const pCarCellY = p.carZ / 4 + terrain.size / 2;
                 if (this.ownedDrivePose) {
                   this.ownedDrivePose.x = pCarCellX;
                   this.ownedDrivePose.y = pCarCellY;
-                  this.ownedDrivePose.heading = p.carHeading ?? 0;
+                  this.ownedDrivePose.heading = p.carHeading;
+                } else {
+                  this.ownedDrivePose = { x: pCarCellX, y: pCarCellY, heading: p.carHeading, speed: 0 };
                 }
                 if (this.sim.state.operatorCar) {
                   this.sim.state.operatorCar.cell = { x: pCarCellX, y: pCarCellY };
-                  this.sim.state.operatorCar.heading = p.carHeading ?? 0;
+                  this.sim.state.operatorCar.heading = p.carHeading;
                 }
               }
             }
@@ -4091,6 +4198,10 @@ export class ColonyRuntime {
             const cellY = p.z / 4 + terrain.size / 2;
             const isPed = p.mode === "walking" || Boolean(p.isPedestrian);
             if (racer) {
+              const prevMode = racer.mode;
+              const prevIsPedestrian = racer.isPedestrian;
+              const prevSeatedBusId = racer.seatedBusId;
+              const prevSeatIndex = racer.seatIndex;
               racer.cell.x = cellX;
               racer.cell.y = cellY;
               racer.worldY = p.y;
@@ -4101,12 +4212,22 @@ export class ColonyRuntime {
               racer.seatedBusId = p.seatedBusId ?? null;
               racer.seatIndex = p.seatIndex ?? null;
               racer.modeEpoch = p.modeEpoch;
-              if (p.carX !== undefined) {
+              if (
+                typeof p.carX === "number" &&
+                Number.isFinite(p.carX) &&
+                typeof p.carZ === "number" &&
+                Number.isFinite(p.carZ) &&
+                typeof p.carHeading === "number" &&
+                Number.isFinite(p.carHeading)
+              ) {
                 racer.carX = p.carX;
-                racer.carY = p.carY;
+                racer.carY = typeof p.carY === "number" && Number.isFinite(p.carY) ? p.carY : undefined;
                 racer.carZ = p.carZ;
                 racer.carHeading = p.carHeading;
-              } else if (!isPed) {
+                if (typeof p.carSpeed === "number" && Number.isFinite(p.carSpeed)) {
+                  racer.carSpeed = p.carSpeed;
+                }
+              } else if (!isPed && p.mode !== "riding_bus") {
                 racer.carX = undefined;
                 racer.carY = undefined;
                 racer.carZ = undefined;
@@ -4116,10 +4237,18 @@ export class ColonyRuntime {
                 racer.vehicleKey = p.vehicleKey;
                 racer.spec = resolveOwnedCar([p.vehicleKey]) ?? null;
               }
+              if (
+                racer.mode !== prevMode ||
+                racer.isPedestrian !== prevIsPedestrian ||
+                racer.seatedBusId !== prevSeatedBusId ||
+                racer.seatIndex !== prevSeatIndex
+              ) {
+                modeChanged = true;
+              }
             }
           }
         }
-        this.emit();
+        this.emitIfUiDue(modeChanged);
       },
     });
 
@@ -4740,6 +4869,10 @@ export class ColonyRuntime {
     }
   }
 
+  setFirstPersonLookAt(target: { x: number; y: number; z: number }): void {
+    this.fpLookAtTarget = target;
+  }
+
   getFirstPersonWireHeading(): number {
     if (this.fpCameraYaw !== undefined && Number.isFinite(this.fpCameraYaw)) {
       return cameraYawToWireHeading(this.fpCameraYaw);
@@ -4891,14 +5024,16 @@ export class ColonyRuntime {
       );
       this.transitLastMin = targetMin;
     }
-    if (this.fpRidingBusId !== null && this.fpCitizenId) {
+    if (this.fpRidingBusId !== null) {
       const pose = this.busPoseOf(this.fpRidingBusId);
-      const c = this.citizens.byId(this.fpCitizenId);
-      if (pose && c) {
-        c.pos.x = pose.x;
-        c.pos.y = pose.y;
-        c.target = { x: pose.x, y: pose.y };
-        c.heading = pose.heading;
+      const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
+      if (pose && (c || this.multiplayerClient !== null)) {
+        if (c) {
+          c.pos.x = pose.x;
+          c.pos.y = pose.y;
+          c.target = { x: pose.x, y: pose.y };
+          c.heading = pose.heading;
+        }
         this.fpCameraCell = { x: pose.x, y: pose.y };
       } else {
         this.fpRidingBusId = null;
@@ -4906,6 +5041,35 @@ export class ColonyRuntime {
       }
     }
     this.checkWaitingBusArrival();
+  }
+
+  isFirstPersonOrMultiplayerFootActive(): boolean {
+    if (this.fpCitizenId !== null) return true;
+    if (this.fpRidingBusId !== null) return true;
+    if (
+      !this.ownedDriveSeated &&
+      this.multiplayerClient !== null &&
+      (this.fpCameraCell !== null || this.authoritativeWalkingPose !== null)
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  isRaceActive(): boolean {
+    return (this.raceState?.mode ?? "idle") !== "idle";
+  }
+
+  private getFirstPersonOrFootCell(): { x: number; y: number } | null {
+    if (this.fpCameraCell) return this.fpCameraCell;
+    if (this.authoritativeWalkingPose) {
+      return { x: this.authoritativeWalkingPose.x, y: this.authoritativeWalkingPose.y };
+    }
+    if (this.fpCitizenId) {
+      const c = this.citizens.byId(this.fpCitizenId);
+      if (c) return c.pos;
+    }
+    return null;
   }
 
   /** Spec 149 — where fleet bus `id` physically is right now (grid coords), or null without a fleet. */
@@ -4945,12 +5109,12 @@ export class ColonyRuntime {
       distance: number;
     };
   } | null {
-    if (!this.busFleet || !this.fpCitizenId) return null;
-    const c = this.citizens.byId(this.fpCitizenId);
-    if (!c) return null;
+    if (!this.busFleet || !this.isFirstPersonOrMultiplayerFootActive()) return null;
+    if (this.fpCitizenId && !this.citizens.byId(this.fpCitizenId)) return null;
     // Measure from the CAMERA capsule when the renderer reports one — that is where the player
     // actually stands; the roster citizen is the data twin.
-    const at = this.fpCameraCell ?? c.pos;
+    const at = this.getFirstPersonOrFootCell();
+    if (!at) return null;
     if (this.fpRidingBusId !== null) {
       const pose = this.busPoseOf(this.fpRidingBusId);
       if (!pose || !pose.doorsOpen) return null;
@@ -5001,10 +5165,16 @@ export class ColonyRuntime {
     dwellingBusId: number | null;
     isWaiting: boolean;
   } | null {
-    if (!this.stopAnchors || this.stopAnchors.length === 0 || !this.fpCitizenId || this.fpRidingBusId !== null) return null;
-    const c = this.citizens.byId(this.fpCitizenId);
-    if (!c) return null;
-    const at = this.fpCameraCell ?? c.pos;
+    if (
+      !this.stopAnchors ||
+      this.stopAnchors.length === 0 ||
+      !this.isFirstPersonOrMultiplayerFootActive() ||
+      this.fpRidingBusId !== null
+    )
+      return null;
+    if (this.fpCitizenId && !this.citizens.byId(this.fpCitizenId)) return null;
+    const at = this.getFirstPersonOrFootCell();
+    if (!at) return null;
 
     let nearest: { anchor: BusStopAnchor; stopIndex: number; distance: number } | null = null;
     for (let i = 0; i < this.stopAnchors.length; i++) {
@@ -5071,11 +5241,15 @@ export class ColonyRuntime {
   queueNextBus(stopIndex: number): boolean {
     if (this.fpRidingBusId !== null || this.getOwnedDrivePose()) return false;
     if (!this.stopAnchors || stopIndex < 0 || stopIndex >= this.stopAnchors.length) return false;
+    if (!this.isFirstPersonOrMultiplayerFootActive()) return false;
+    if (this.fpCitizenId && !this.citizens.byId(this.fpCitizenId)) return false;
     const a = this.stopAnchors[stopIndex]!;
-    const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
-    if (!c) return false;
-    const at = this.fpCameraCell ?? c.pos;
-    const d = Math.hypot(a.furniture.x - at.x, a.furniture.y - at.y);
+    const at = this.getFirstPersonOrFootCell();
+    if (!at) return false;
+    const d = Math.min(
+      Math.hypot(a.furniture.x - at.x, a.furniture.y - at.y),
+      Math.hypot(a.at.x - at.x, a.at.y - at.y),
+    );
     if (d > COLONY.transit.boardMaxDistanceCells * 1.5) return false;
 
     this.fpWaitingBusStopIndex = stopIndex;
@@ -5097,20 +5271,32 @@ export class ColonyRuntime {
 
   /** BUS.STOP.WAIT.1 — check arrival of bus for waiting passenger */
   private checkWaitingBusArrival(): void {
-    if (this.fpWaitingBusStopIndex === null || !this.busFleet || !this.fpCitizenId) return;
+    if (
+      this.fpWaitingBusStopIndex === null ||
+      !this.busFleet ||
+      !this.isFirstPersonOrMultiplayerFootActive()
+    )
+      return;
     const stopIdx = this.fpWaitingBusStopIndex;
     const anchor = this.stopAnchors?.[stopIdx];
     if (!anchor) {
       this.fpWaitingBusStopIndex = null;
       return;
     }
-    const c = this.citizens.byId(this.fpCitizenId);
-    if (!c) {
+    const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
+    if (this.fpCitizenId && !c) {
       this.fpWaitingBusStopIndex = null;
       return;
     }
-    const at = this.fpCameraCell ?? c.pos;
-    const dPlayerToStop = Math.hypot(anchor.furniture.x - at.x, anchor.furniture.y - at.y);
+    const at = this.getFirstPersonOrFootCell();
+    if (!at) {
+      this.fpWaitingBusStopIndex = null;
+      return;
+    }
+    const dPlayerToStop = Math.min(
+      Math.hypot(anchor.furniture.x - at.x, anchor.furniture.y - at.y),
+      Math.hypot(anchor.at.x - at.x, anchor.at.y - at.y),
+    );
     if (dPlayerToStop > COLONY.transit.boardMaxDistanceCells * 1.5) {
       this.fpWaitingBusStopIndex = null;
       this.fpNarrating = false;
@@ -5143,6 +5329,7 @@ export class ColonyRuntime {
           break;
         }
 
+        if (!c) break;
         // Single-player compatibility: no multiplayer client configured
         this.fpWaitingBusStopIndex = null;
         this.fpRidingBusId = b.id;
@@ -6740,6 +6927,17 @@ export class ColonyRuntime {
     this.emit();
   }
 
+  /** Synchronize canonical sol clock to an exact epoch timestamp (or reset when null) and tick fleet. */
+  debugSetSolNowMs(targetNowMs: number | null): void {
+    if (targetNowMs === null || !Number.isFinite(targetNowMs)) {
+      setSolDebugOffsetMs(0);
+    } else {
+      setSolDebugOffsetMs(targetNowMs - Date.now());
+    }
+    this.transitTick();
+    this.emit();
+  }
+
   /** Spec 149 e2e/dev helper — teleport the stepped-in walker (roster citizen AND the camera
    *  capsule) to a cell, optionally facing a target cell. */
   debugPlaceFirstPerson(
@@ -6771,21 +6969,22 @@ export class ColonyRuntime {
 
   /** Execute the current first-person Action prompt with deterministic player-facing feedback. */
   activateFirstPersonInteraction(): boolean {
+    if (!this.isFirstPersonOrMultiplayerFootActive()) return false;
     const id = this.fpCitizenId;
-    if (!id) return false;
-    const c = this.citizens.byId(id);
-    if (!c) return false;
-    // BUS.STOP.WAIT.1 — if actively waiting for a bus, activating interaction toggles wait off
-    if (this.fpWaitingBusStopIndex !== null) {
+    const c = id ? this.citizens.byId(id) : null;
+    if (id && !c) return false;
+    const busAct = this.busInteraction();
+    // BUS.STOP.WAIT.1 — if actively waiting for a bus and no dwelling bus is ready to board, activating interaction toggles wait off
+    if (this.fpWaitingBusStopIndex !== null && !busAct) {
       this.cancelBusWait();
       return true;
     }
     // Spec 149 — the bus branch comes first: boarding windows are time-limited (the bus leaves),
     // and while RIDING the only ground action is stepping off.
-    const busAct = this.busInteraction();
     if (busAct) {
       if (this.multiplayerClient) {
         if (this.multiplayerClient.getStatus() === "connected") {
+          this.fpWaitingBusStopIndex = null;
           if (busAct.action === "board") {
             this.multiplayerClient.boardBus(busAct.busId);
             return true;
@@ -6800,6 +6999,7 @@ export class ColonyRuntime {
           return false;
         }
       }
+      if (!c || !id) return false;
       if (busAct.action === "board") {
         this.fpRidingBusId = busAct.busId;
         this.fpRidingSeatIndex = 0;
@@ -6842,6 +7042,13 @@ export class ColonyRuntime {
     if (nearStop && nearStop.dwellingBusId !== null && !nearStop.canBoard) {
       this.fpNarrating = false;
       this.fpNarration = nearStop.boardUnavailableReason || "Bus is not boardable right now.";
+      this.emit();
+      return false;
+    }
+    if (!c || !id) {
+      this.fpNarrating = false;
+      this.fpNarration =
+        "No nearby action yet — move closer to someone or something useful.";
       this.emit();
       return false;
     }
@@ -9279,6 +9486,18 @@ export class ColonyRuntime {
     for (const cb of this.listeners) cb();
   }
 
+  private emitIfUiDue(forceImmediate = false) {
+    if (!this.running) {
+      this.emit();
+      return;
+    }
+    const now = performance.now();
+    if (forceImmediate || now - this.lastUi > 200) {
+      this.lastUi = now;
+      this.emit();
+    }
+  }
+
   getUiState(): ColonyUiState {
     const s = this.sim.state;
     const nowMs = solNowMs(); // spec 150 PR2 — the same instant the fleet and sky read
@@ -9534,6 +9753,7 @@ export class ColonyRuntime {
       })(),
       firstPerson: (() => {
         const opId = this.operatorCitizenId();
+        const isFpActive = this.isFirstPersonOrMultiplayerFootActive();
         const c = this.fpCitizenId
           ? this.citizens.byId(this.fpCitizenId)
           : null;
@@ -9555,6 +9775,45 @@ export class ColonyRuntime {
                 })),
               }
             : rawView;
+        if (!view && isFpActive) {
+          const at = this.getFirstPersonOrFootCell() ?? { x: 0, y: 0 };
+          const clk = this.sim.state.clock;
+          view = {
+            citizen: {
+              id: this.operatorUserId ?? "player",
+              displayName: this.operatorName ?? "Player",
+              plotName: "City Street",
+              homeXY: { x: at.x, y: at.y },
+              positionXY: { x: at.x, y: at.y },
+              heading: this.getFirstPersonWireHeading(),
+            },
+            interactionPrompt: null,
+            ground: {
+              biome: "plains",
+              elevation: this.sim.state.terrain.worldY(Math.round(at.x), Math.round(at.y)),
+              isWater: this.sim.state.terrain.isWater(Math.round(at.x), Math.round(at.y)),
+              distToWater: 0,
+            },
+            nearestRoad: null,
+            neighbours: [],
+            nearestBuildings: [],
+            nearestCivic: [],
+            clock: {
+              day: clk.day,
+              hour: clk.hour,
+              minute: clk.minute,
+              isDay: clk.isDay,
+            },
+            mood: {
+              liveability: 0.5,
+              hygiene: 1,
+              fever: 0,
+              unrest: 0,
+              brownout: false,
+              hungry: false,
+            },
+          };
+        }
         const busStop = this.getNearbyBusStop();
         // Spec 149 / BUS.BOARD.PLAYER.1 — inject bus and stop-wait prompts
         if (view) {
@@ -9588,9 +9847,9 @@ export class ColonyRuntime {
           }
         }
         return {
-          active: this.fpCitizenId !== null,
-          citizenId: this.fpCitizenId,
-          citizenName: c?.displayName ?? null,
+          active: isFpActive,
+          citizenId: this.fpCitizenId ?? (isFpActive ? (this.operatorUserId ?? "player") : null),
+          citizenName: c?.displayName ?? (isFpActive ? (this.operatorName ?? "Player") : null),
           operatorCitizenId: opId,
           stepInCitizenIds: this.stepInCitizenIds(),
           view,

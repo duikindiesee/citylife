@@ -71,25 +71,36 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
       });
 
     const defaultDoc = makeDoc("seed-4242");
-
-    const handleCatalogueRoute = (route: any) => {
-      const url = route.request().url();
-      const match = url.match(/\/worlds\/([^/]+)\/starter-catalogue/);
-      const reqWorldId = match ? decodeURIComponent(match[1]) : "seed-4242";
-      const customDoc = makeDoc(reqWorldId);
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
+    const defaultTransit = baseSurveyRuntime.exportCanonicalTransitAuthority(defaultDoc);
+    const catalogueCache = new Map<string, string>();
+    const getCatalogueBody = (reqWorldId: string) => {
+      let cached = catalogueCache.get(reqWorldId);
+      if (!cached) {
+        const customDoc = reqWorldId === "seed-4242" ? defaultDoc : makeDoc(reqWorldId);
+        const transit = reqWorldId === "seed-4242" ? defaultTransit : baseSurveyRuntime.exportCanonicalTransitAuthority(customDoc);
+        cached = JSON.stringify({
           published: true,
           manifest: {
             worldId: reqWorldId,
             layoutRevision: customDoc.revision.contentHash,
             layout: customDoc,
-            transit: baseSurveyRuntime.exportCanonicalTransitAuthority(customDoc),
+            transit,
             plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
           },
-        }),
+        });
+        catalogueCache.set(reqWorldId, cached);
+      }
+      return cached;
+    };
+
+    const handleCatalogueRoute = (route: any) => {
+      const url = route.request().url();
+      const match = url.match(/\/worlds\/([^/]+)\/starter-catalogue/);
+      const reqWorldId = match ? decodeURIComponent(match[1]) : "seed-4242";
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: getCatalogueBody(reqWorldId),
       });
     };
 
@@ -114,6 +125,16 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
     await context2.route("**/players/me/vehicle*", handleVehicleRoute);
     await context1.route("**/car-ownership*", handleVehicleRoute);
     await context2.route("**/car-ownership*", handleVehicleRoute);
+
+    const handleCookieAuthRoute = (route: any) => {
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      });
+    };
+    await context1.route("**/api/v1/citylife/auth/cookie*", handleCookieAuthRoute);
+    await context2.route("**/api/v1/citylife/auth/cookie*", handleCookieAuthRoute);
 
     // 4. WebSocket route simulation with authoritative state and snapshot delivery
     let snapshotSeq = 1;
@@ -618,6 +639,16 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
       expect(distance2).toBeGreaterThan(1.0);
 
       // 13. Flush video by closing page1 and context1
+      clearInterval(snapshotInterval);
+      try { ws1?.close(); } catch {}
+      try { ws2?.close(); } catch {}
+      ws1 = null;
+      ws2 = null;
+      await page1.unrouteAll({ behavior: "ignoreErrors" });
+      await page2.unrouteAll({ behavior: "ignoreErrors" });
+      await context1.unrouteAll({ behavior: "ignoreErrors" });
+      await context2.unrouteAll({ behavior: "ignoreErrors" });
+
       const videoObj = page1.video();
       expect(videoObj).toBeDefined();
       await page1.close();

@@ -2131,4 +2131,188 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     expect(MockWebSocket.instances.length).toBe(0);
     expect(runtime.getMultiplayerClient()?.getStatus()).toBe("error");
   });
+
+  it("retains full valid parked-car tuple across riding_bus reconnect and preserves prior valid pose on partial or non-finite carZ/carHeading", async () => {
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient({
+      getValidToken: async () => "valid-mock-token",
+    } as any);
+    runtime.setOperatorUserId("user-1");
+    setupAuthoritativeRuntime(runtime);
+    const road = runtime.sim.state.roads[0]!;
+    runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
+    runtime.teleportCar(road.x, road.y, 0.75);
+
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    await runtime.getMultiplayerClient()?.connect();
+    const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    socket.readyState = MockWebSocket.OPEN;
+    socket.onopen?.();
+
+    const terrain = runtime.sim.state.terrain;
+    const validCarX = (road.x - terrain.size / 2) * 4;
+    const validCarZ = (road.y - terrain.size / 2) * 4;
+    const validCarHeading = 1.25;
+
+    // 1. Positive: Admitted in riding_bus with full valid parked-car tuple
+    socket.onmessage?.({
+      data: JSON.stringify(
+        makeSessionJoinedAck(socket, {
+          type: "session_joined",
+          protocolVersion: 2,
+          modeEpoch: 3,
+          mode: "riding_bus",
+          seatedBusId: 0,
+          seatIndex: 2,
+          sessionId: "sess-bus-car-tuple",
+          participantId: "part-1",
+          carX: validCarX,
+          carY: 0,
+          carZ: validCarZ,
+          carHeading: validCarHeading,
+          participants: [
+            {
+              participantId: "part-1",
+              userId: "user-1",
+              username: "User1",
+              mode: "riding_bus",
+              seatedBusId: 0,
+              seatIndex: 2,
+              isPedestrian: false,
+              modeEpoch: 3,
+              vehicleKey: "karoo-vonk-11",
+              x: validCarX + 20,
+              y: 0,
+              z: validCarZ + 20,
+              heading: 0.5,
+              carX: validCarX,
+              carY: 0,
+              carZ: validCarZ,
+              carHeading: validCarHeading,
+            },
+          ],
+        }),
+      ),
+    });
+
+    expect(runtime.getMultiplayerClient()?.getMode()).toBe("riding_bus");
+    expect(runtime.isOwnedDriveSeated()).toBe(false);
+    expect(runtime.getParkedCarPose()).toEqual({
+      x: road.x,
+      y: road.y,
+      heading: validCarHeading,
+    });
+    expect(runtime.sim.state.operatorCar?.cell).toEqual({ x: road.x, y: road.y });
+    expect(runtime.sim.state.operatorCar?.heading).toBeCloseTo(validCarHeading);
+
+    // 2. Negative: Snapshot with finite carX but missing carZ must NOT invent world Z=0 (cell terrain.size/2)
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-bus-car-tuple",
+        seq: 1,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            mode: "riding_bus",
+            seatedBusId: 0,
+            seatIndex: 2,
+            modeEpoch: 3,
+            x: validCarX + 30,
+            y: 0,
+            z: validCarZ + 30,
+            heading: 0.5,
+            carX: validCarX + 8,
+            // carZ intentionally omitted
+            carHeading: 2.0,
+          },
+        ],
+      }),
+    });
+    expect(runtime.getParkedCarPose()).toEqual({
+      x: road.x,
+      y: road.y,
+      heading: validCarHeading,
+    });
+
+    // 3. Negative: Snapshot with finite carX and carZ but missing carHeading must NOT invent heading 0
+    socket.onmessage?.({
+      data: JSON.stringify({
+        type: "snapshot",
+        sessionId: "sess-bus-car-tuple",
+        seq: 2,
+        timestamp: Date.now(),
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            mode: "riding_bus",
+            seatedBusId: 0,
+            seatIndex: 2,
+            modeEpoch: 3,
+            x: validCarX + 40,
+            y: 0,
+            z: validCarZ + 40,
+            heading: 0.5,
+            carX: validCarX + 8,
+            carZ: validCarZ + 8,
+            // carHeading intentionally omitted
+          },
+        ],
+      }),
+    });
+    expect(runtime.getParkedCarPose()).toEqual({
+      x: road.x,
+      y: road.y,
+      heading: validCarHeading,
+    });
+
+    // 4. Negative: Reconnect session_joined with non-finite carZ/carHeading must preserve prior valid pose
+    const mp = runtime.getMultiplayerClient() as any;
+    mp.handleMessage(
+      JSON.stringify({
+        type: "session_joined",
+        protocolVersion: 2,
+        modeEpoch: 3,
+        mode: "riding_bus",
+        seatedBusId: 0,
+        seatIndex: 2,
+        sessionId: "sess-bus-car-tuple",
+        participantId: "part-1",
+        worldId: mp.worldId,
+        layoutRevision: mp.layoutRevision,
+        neighbourhoodKey: mp.neighbourhoodKey,
+        carX: validCarX + 12,
+        carZ: null,
+        carHeading: "NaN",
+        participants: [
+          {
+            participantId: "part-1",
+            userId: "user-1",
+            username: "User1",
+            mode: "riding_bus",
+            seatedBusId: 0,
+            seatIndex: 2,
+            modeEpoch: 3,
+            x: validCarX + 50,
+            y: 0,
+            z: validCarZ + 50,
+            heading: 0.5,
+            carX: validCarX + 12,
+            carZ: undefined,
+            carHeading: undefined,
+          },
+        ],
+      }),
+    );
+    expect(runtime.getParkedCarPose()).toEqual({
+      x: road.x,
+      y: road.y,
+      heading: validCarHeading,
+    });
+    expect(runtime.sim.state.operatorCar?.cell).toEqual({ x: road.x, y: road.y });
+    expect(runtime.sim.state.operatorCar?.heading).toBeCloseTo(validCarHeading);
+  });
 });
