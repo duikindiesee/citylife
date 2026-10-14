@@ -93,7 +93,9 @@ export function MultiplayerStatusHUD({ runtime }: Props) {
       </div>
       {status === "error" && (
         <div style={{ fontSize: "11px", color: "#ffaaaa" }}>
-          <span>Admission rejected or authoritative neighbourhood unavailable</span>
+          <span>
+            Admission rejected or authoritative neighbourhood unavailable
+          </span>
         </div>
       )}
       {status === "connected" && (

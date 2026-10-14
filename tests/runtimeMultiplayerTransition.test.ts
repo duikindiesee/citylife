@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
-import { setupAuthoritativeRuntime, makeSessionJoinedAck } from "./testAuthorityHelper";
+import {
+  setupAuthoritativeRuntime,
+  makeSessionJoinedAck,
+} from "./testAuthorityHelper";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 import { computeBusNetworkMiniMapSignal } from "../src/colony/ui/BusNetworkMiniMap";
 import { leveledWorldY } from "../src/colony/render/terrainLeveling";
@@ -51,7 +54,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -141,7 +147,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -220,7 +229,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -309,7 +321,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -426,7 +441,8 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
         username: r.username,
         x: r.cell.x,
         y: r.cell.y,
-        parkedCar: r.carX !== undefined ? { x: r.carX, y: r.carZ ?? 0 } : undefined,
+        parkedCar:
+          r.carX !== undefined ? { x: r.carX, y: r.carZ ?? 0 } : undefined,
       })),
       width: 200,
       height: 132,
@@ -453,13 +469,16 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       buses: [],
       player: runtime.getWalkingCell(),
       parkedCar: runtime.getParkedCarPose(),
-      peers: Array.from(runtime.sim.state.remoteRacers?.values() ?? []).map((r) => ({
-        participantId: r.participantId,
-        username: r.username,
-        x: r.cell.x,
-        y: r.cell.y,
-        parkedCar: r.carX !== undefined ? { x: r.carX, y: r.carZ ?? 0 } : undefined,
-      })),
+      peers: Array.from(runtime.sim.state.remoteRacers?.values() ?? []).map(
+        (r) => ({
+          participantId: r.participantId,
+          username: r.username,
+          x: r.cell.x,
+          y: r.cell.y,
+          parkedCar:
+            r.carX !== undefined ? { x: r.carX, y: r.carZ ?? 0 } : undefined,
+        }),
+      ),
       width: 200,
       height: 132,
       padding: 8,
@@ -476,7 +495,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -516,8 +538,17 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     });
 
     expect(runtime.getWalkingCell()).toEqual({ x: 40, y: 40 });
-    expect(runtime.getAuthoritativeWalkingPose()).toEqual({ x: 40, y: 40, heading: 0 });
-    expect(runtime.fpTeleportRequest).toEqual({ x: 40, y: 40, seq: 1, yaw: -Math.PI / 2 });
+    expect(runtime.getAuthoritativeWalkingPose()).toEqual({
+      x: 40,
+      y: 40,
+      heading: 0,
+    });
+    expect(runtime.fpTeleportRequest).toEqual({
+      x: 40,
+      y: 40,
+      seq: 1,
+      yaw: -Math.PI / 2,
+    });
 
     // Snapshot seq 1: 1-cell movement to (41, 40) (dx=1, distSq=1 <= 4)
     const nextX1 = (41 - terrain.size / 2) * 4;
@@ -549,7 +580,11 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
 
     expect(runtime.getWalkingCell()?.x).toBe(41);
     expect(runtime.getWalkingCell()?.y).toBe(40);
-    expect(runtime.getAuthoritativeWalkingPose()).toEqual({ x: 41, y: 40, heading: 1.5 });
+    expect(runtime.getAuthoritativeWalkingPose()).toEqual({
+      x: 41,
+      y: 40,
+      heading: 1.5,
+    });
     expect(runtime.fpTeleportRequest).toEqual({
       x: 41,
       y: 40,
@@ -637,7 +672,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -678,7 +716,9 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       },
     };
 
-    const runControllerFrame = (localInput: { moveX: number; moveZ: number } = { moveX: 0, moveZ: 0 }) => {
+    const runControllerFrame = (
+      localInput: { moveX: number; moveZ: number } = { moveX: 0, moveZ: 0 },
+    ) => {
       // 1. One-shot teleports (Spec 149, FirstPersonController lines 212-233)
       const tp = runtime.fpTeleportRequest;
       if (tp && tp.seq !== consumedTeleport && terrainSize > 0) {
@@ -686,14 +726,24 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
         const gx = Math.max(0, Math.min(terrainSize - 1, Math.round(tp.x)));
         const gz = Math.max(0, Math.min(terrainSize - 1, Math.round(tp.y)));
         const groundY = leveledWorldY(terrain, null, gx, gz);
-        rigidBody.setTranslation({ x: toWorldX(tp.x), y: groundY + 1.5, z: toWorldZ(tp.y) }, true);
+        rigidBody.setTranslation(
+          { x: toWorldX(tp.x), y: groundY + 1.5, z: toWorldZ(tp.y) },
+          true,
+        );
         rigidBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
       }
 
       // 2. Local input processing (FirstPersonController lines 285-353)
       const moving = localInput.moveX !== 0 || localInput.moveZ !== 0;
       if (moving) {
-        rigidBody.setLinvel({ x: localInput.moveX * 3.4, y: rigidBody.linvel.y, z: localInput.moveZ * 3.4 }, true);
+        rigidBody.setLinvel(
+          {
+            x: localInput.moveX * 3.4,
+            y: rigidBody.linvel.y,
+            z: localInput.moveZ * 3.4,
+          },
+          true,
+        );
       } else {
         rigidBody.setLinvel({ x: 0, y: rigidBody.linvel.y, z: 0 }, true);
       }
@@ -735,7 +785,12 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
       ),
     });
 
-    expect(runtime.fpTeleportRequest).toEqual({ x: 40, y: 40, seq: 1, yaw: -Math.PI / 2 });
+    expect(runtime.fpTeleportRequest).toEqual({
+      x: 40,
+      y: 40,
+      seq: 1,
+      yaw: -Math.PI / 2,
+    });
     // Controller consumes initial placement
     runControllerFrame({ moveX: 0, moveZ: 0 });
     expect(consumedTeleport).toBe(1);
@@ -771,7 +826,11 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     });
 
     // Authoritative snapshot updates runtime authoritative pose and emits fresh fpTeleportRequest
-    expect(runtime.getAuthoritativeWalkingPose()).toEqual({ x: 41, y: 40, heading: 1.5 });
+    expect(runtime.getAuthoritativeWalkingPose()).toEqual({
+      x: 41,
+      y: 40,
+      heading: 1.5,
+    });
     expect(runtime.fpTeleportRequest).toEqual({
       x: 41,
       y: 40,
@@ -964,7 +1023,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -1208,9 +1270,13 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
-    const socket1 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    const socket1 =
+      MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket1.readyState = MockWebSocket.OPEN;
     socket1.onopen?.();
 
@@ -1285,16 +1351,23 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     expect(runtime.getWalkingCell()).toEqual({ x: 50, y: 52 });
 
     // Also verify disableMultiplayer cleans up
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     runtime.disableMultiplayer();
     expect(runtime.getAuthoritativeWalkingPose()).toBeNull();
     runtime.fpCameraCell = { x: 55, y: 57 };
     expect(runtime.getWalkingCell()).toEqual({ x: 55, y: 57 });
 
     // Reconnect to a new session (room-2, sess-2)
-    runtime.enableMultiplayer("room-2", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-2",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
-    const socket2 = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    const socket2 =
+      MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket2.readyState = MockWebSocket.OPEN;
     socket2.onopen?.();
 
@@ -1370,7 +1443,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -1413,7 +1489,11 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
 
     // Simulate user drive input and advance multiplayer driving tick
     (runtime as any).lastMultiplayerInputSentAt = 0;
-    (runtime as any).ownedDriveInput = { throttle: true, right: true, brake: false };
+    (runtime as any).ownedDriveInput = {
+      throttle: true,
+      right: true,
+      brake: false,
+    };
     runtime.tickOwnedDrive(0.05);
 
     // Negative wire assertion: MUST NOT send coordinate pose in v2
@@ -1421,7 +1501,9 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     expect(poseMessages).toHaveLength(0);
 
     // Wire assertion: MUST send typed driving input with sequence, epoch, and controls
-    const inputMessages = socket.sent.filter((m: any) => m.type === "input" && m.mode === "driving");
+    const inputMessages = socket.sent.filter(
+      (m: any) => m.type === "input" && m.mode === "driving",
+    );
     expect(inputMessages.length).toBeGreaterThan(0);
     const lastInput = inputMessages[inputMessages.length - 1];
     expect(lastInput).toMatchObject({
@@ -1447,7 +1529,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -1488,7 +1573,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     socket.sent.length = 0;
 
     // Attempt to debug-teleport car to another road tile while active in protocol v2
-    const road2 = runtime.sim.state.roads[1] ?? { x: road.x + 2, y: road.y + 2 };
+    const road2 = runtime.sim.state.roads[1] ?? {
+      x: road.x + 2,
+      y: road.y + 2,
+    };
     runtime.teleportCar(road2.x, road2.y, Math.PI / 2);
 
     // Negative wire assertion: teleportCar must NOT emit coordinate pose frames in protocol v2
@@ -1529,7 +1617,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     v1Runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     v1Runtime.teleportCar(road.x, road.y, 0);
 
-    v1Runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    v1Runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     (v1Runtime.getMultiplayerClient() as any).options.protocolVersion = 1;
     (v1Runtime.getMultiplayerClient() as any).protocolVersion = 1;
     await v1Runtime.getMultiplayerClient()?.connect();
@@ -1576,7 +1667,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     const terrain = v1Runtime.sim.state.terrain;
     const expectedX = (road.x + 2 - terrain.size / 2) * 4;
     const expectedZ = (road.y + 4 - terrain.size / 2) * 4;
-    const expectedY = terrain.worldY(Math.round(road.x + 2), Math.round(road.y + 4));
+    const expectedY = terrain.worldY(
+      Math.round(road.x + 2),
+      Math.round(road.y + 4),
+    );
     expect(poseMessages[0]).toEqual({
       type: "pose",
       mode: "driving",
@@ -1605,7 +1699,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -1680,7 +1777,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -1849,7 +1949,9 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
 
     // Mini-map signal verification: reflects active car driving position
     const signal = computeBusNetworkMiniMapSignal(runtime);
-    expect(signal).toContain(`drive:${(road.x + 0.75).toFixed(2)}:${(road.y + 0.5).toFixed(2)}`);
+    expect(signal).toContain(
+      `drive:${(road.x + 0.75).toFixed(2)}:${(road.y + 0.5).toFixed(2)}`,
+    );
 
     // Mini-map SVG projection verification: exact projection derived from road geometry bounds
     const mapModel = buildBusNetworkMiniMapModel({
@@ -1894,7 +1996,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
     runtime.applyVehicleOwnership("user-1", ["karoo-vonk-11"]);
     runtime.teleportCar(road.x, road.y, 0);
 
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -2126,7 +2231,10 @@ describe("Runtime multiplayer transitions and account lifecycle", () => {
 
   it("fails closed without opening a socket when authoritative neighbourhood authority is missing", async () => {
     const runtime = new ColonyRuntime(42);
-    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    runtime.enableMultiplayer(
+      "room-1",
+      "ws://127.0.0.1:8080/api/v1/citylife/ws",
+    );
     await runtime.getMultiplayerClient()?.connect();
     expect(MockWebSocket.instances.length).toBe(0);
     expect(runtime.getMultiplayerClient()?.getStatus()).toBe("error");

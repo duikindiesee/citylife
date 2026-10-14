@@ -35,11 +35,15 @@ describe("production gateway proxy contract", () => {
       "configures exact WebSocket proxy for %s with Upgrade and sanitized logging",
       (path) => {
         const block = exactLocation(path);
-        expect(block).toContain("proxy_pass ${KOOKER_GATEWAY}/api/v1/citylife/ws;");
+        expect(block).toContain(
+          "proxy_pass ${KOOKER_GATEWAY}/api/v1/citylife/ws;",
+        );
         expect(block).toContain("proxy_http_version 1.1;");
         expect(block).toContain("proxy_set_header Upgrade $http_upgrade;");
         expect(block).toContain('proxy_set_header Connection "upgrade";');
-        expect(block).toContain("access_log /var/log/nginx/access.log sanitized_wss;");
+        expect(block).toContain(
+          "access_log /var/log/nginx/access.log sanitized_wss;",
+        );
       },
     );
 
@@ -52,8 +56,12 @@ describe("production gateway proxy contract", () => {
   describe("Server default access logging & safe format", () => {
     it("configures server-level safe_combined access log matching official main format with x-forwarded-for", () => {
       expect(nginxTemplate).toContain("log_format safe_combined");
-      expect(nginxTemplate).toContain('"$citylife_log_referer" "$http_user_agent" "$http_x_forwarded_for"');
-      expect(nginxTemplate).toContain("access_log /var/log/nginx/access.log safe_combined;");
+      expect(nginxTemplate).toContain(
+        '"$citylife_log_referer" "$http_user_agent" "$http_x_forwarded_for"',
+      );
+      expect(nginxTemplate).toContain(
+        "access_log /var/log/nginx/access.log safe_combined;",
+      );
     });
 
     it("preserves access_log off on healthz and runtime endpoints", () => {
@@ -67,9 +75,15 @@ describe("production gateway proxy contract", () => {
     it("declares HTTP-context maps for sensitive socket paths and query-like Referers", () => {
       expect(nginxTemplate).toContain("map $uri $citylife_ws_normalized");
       expect(nginxTemplate).toContain("map $request_uri $citylife_ws_original");
-      expect(nginxTemplate).toContain('map "$citylife_ws_normalized$citylife_ws_original" $citylife_ws_log_safe');
-      expect(nginxTemplate).toContain("map $citylife_ws_log_safe $citylife_log_request");
-      expect(nginxTemplate).toContain("map $http_referer $citylife_log_referer");
+      expect(nginxTemplate).toContain(
+        'map "$citylife_ws_normalized$citylife_ws_original" $citylife_ws_log_safe',
+      );
+      expect(nginxTemplate).toContain(
+        "map $citylife_ws_log_safe $citylife_log_request",
+      );
+      expect(nginxTemplate).toContain(
+        "map $http_referer $citylife_log_referer",
+      );
     });
 
     it("verifies map regex logic for socket paths and referer sanitization", () => {
@@ -85,8 +99,12 @@ describe("production gateway proxy contract", () => {
 
       expect(wsOriginalRe.test("/api/v1/citylife/ws?jwt=secret")).toBe(true);
       expect(wsOriginalRe.test("/api/v1/citylife/ws/?jwt=secret")).toBe(true);
-      expect(wsOriginalRe.test("/kooker/api/v1/citylife/ws?token=abc")).toBe(true);
-      expect(wsOriginalRe.test("/kooker/api/v1/citylife/ws/?token=abc")).toBe(true);
+      expect(wsOriginalRe.test("/kooker/api/v1/citylife/ws?token=abc")).toBe(
+        true,
+      );
+      expect(wsOriginalRe.test("/kooker/api/v1/citylife/ws/?token=abc")).toBe(
+        true,
+      );
 
       // Unrelated paths do not match
       expect(wsNormalizedRe.test("/ask")).toBe(false);
@@ -95,10 +113,24 @@ describe("production gateway proxy contract", () => {
       expect(wsOriginalRe.test("/ask?sort=asc")).toBe(false);
 
       // Referer sanitization
-      expect(refererSanitizeRe.test("https://citylife.kooker.co.za/api/v1/citylife/ws?jwt=canary")).toBe(true);
-      expect(refererSanitizeRe.test("https://citylife.kooker.co.za/api/v1/citylife/ws%3fjwt=canary")).toBe(true);
-      expect(refererSanitizeRe.test("https://citylife.kooker.co.za/api/v1/citylife/ws%3Fjwt=canary")).toBe(true);
-      expect(refererSanitizeRe.test("https://citylife.kooker.co.za/home")).toBe(false);
+      expect(
+        refererSanitizeRe.test(
+          "https://citylife.kooker.co.za/api/v1/citylife/ws?jwt=canary",
+        ),
+      ).toBe(true);
+      expect(
+        refererSanitizeRe.test(
+          "https://citylife.kooker.co.za/api/v1/citylife/ws%3fjwt=canary",
+        ),
+      ).toBe(true);
+      expect(
+        refererSanitizeRe.test(
+          "https://citylife.kooker.co.za/api/v1/citylife/ws%3Fjwt=canary",
+        ),
+      ).toBe(true);
+      expect(refererSanitizeRe.test("https://citylife.kooker.co.za/home")).toBe(
+        false,
+      );
       expect(refererSanitizeRe.test("")).toBe(false);
     });
   });

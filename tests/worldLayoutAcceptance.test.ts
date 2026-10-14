@@ -222,7 +222,9 @@ describe("WB.1d independent acceptance", () => {
     };
     let setupDurationMs = 0;
 
-    async function executeColdReplay(headDoc: ReturnType<ColonyRuntime["captureWorldLayout"]>) {
+    async function executeColdReplay(
+      headDoc: ReturnType<ColonyRuntime["captureWorldLayout"]>,
+    ) {
       resetRoadBuilderState();
       const runtime = new ColonyRuntime(4242);
       await new WorldLayoutBootCoordinator({

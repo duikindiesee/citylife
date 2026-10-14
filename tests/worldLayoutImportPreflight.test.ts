@@ -75,7 +75,12 @@ function surveyedPlacement(
         commercialDistrict: runtime.commercialDistrict,
         roadWays: state.roadWays,
       });
-      const orientations: readonly PlacementOrientation[] = ["n", "s", "w", "e"];
+      const orientations: readonly PlacementOrientation[] = [
+        "n",
+        "s",
+        "w",
+        "e",
+      ];
       const maxCandidates = 5000;
       const maxDurationMs = 5000;
       let tested = 0;
@@ -200,7 +205,8 @@ function surveyedPlacement(
       );
       const terrainFailure = survey.failures.some(
         (failure) =>
-          failure.code === "WATER_FORBIDDEN" || failure.code === "NON_BUILDABLE",
+          failure.code === "WATER_FORBIDDEN" ||
+          failure.code === "NON_BUILDABLE",
       );
       if (terrainFailure) {
         const cellKeys = new Set(

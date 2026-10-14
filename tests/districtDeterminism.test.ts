@@ -286,7 +286,9 @@ describe("phase 2A/2B district determinism gate", () => {
         const golden = GOLDEN[seed];
         expect(rt.commercialReserve).toEqual(golden.reserve);
         expect(
-          coastalCandidateKeys(rt).has(`${golden.reserve.x},${golden.reserve.y}`),
+          coastalCandidateKeys(rt).has(
+            `${golden.reserve.x},${golden.reserve.y}`,
+          ),
         ).toBe(true);
         expect(d.intersection).toEqual(golden.intersection);
         expect(d.mallPad).toEqual(golden.mallPad);
@@ -313,8 +315,12 @@ describe("phase 2A/2B district determinism gate", () => {
         expect(mallPad.h).toBe(10);
         expect(mallPad.x).toBeGreaterThanOrEqual(reserve.x);
         expect(mallPad.y).toBeGreaterThanOrEqual(reserve.y);
-        expect(mallPad.x + mallPad.w).toBeLessThanOrEqual(reserve.x + reserve.w);
-        expect(mallPad.y + mallPad.h).toBeLessThanOrEqual(reserve.y + reserve.h);
+        expect(mallPad.x + mallPad.w).toBeLessThanOrEqual(
+          reserve.x + reserve.w,
+        );
+        expect(mallPad.y + mallPad.h).toBeLessThanOrEqual(
+          reserve.y + reserve.h,
+        );
         expect(center.y).toBeLessThan(intersection.y);
 
         for (const c of rectCells(mallPad)) {
