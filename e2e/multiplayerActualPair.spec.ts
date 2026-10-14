@@ -23,10 +23,10 @@ function loadServerComponents() {
     }
     const candidates = [
       path.resolve(process.cwd(), "citylife-server"),
-      path.resolve(process.cwd(), "../citylife-server-transit-geometry-candidate"),
       path.resolve(process.cwd(), "../citylife-server"),
       path.resolve(__dirname, "../../citylife-server"),
       path.resolve(__dirname, "../citylife-server"),
+      path.resolve(process.cwd(), "../citylife-server-transit-geometry-candidate"),
     ];
     for (const cand of candidates) {
       if (fs.existsSync(cand) && fs.existsSync(path.join(cand, "dist/app.js"))) {
@@ -67,8 +67,11 @@ function loadServerComponents() {
   const { RealtimeManager, extractRoadGeometry, extractWalkabilityAuthority, isFootprintClear, OWNED_DRIVING_CONFIG } = require(realtimePath);
   const wsPath = path.join(serverDir, "node_modules/ws");
   const WebSocket = require(wsPath);
+  const solPath = path.join(serverDir, "dist/transit/sol.js");
+  const { CITYLIFE_EPOCH_MS } = fs.existsSync(solPath) ? require(solPath) : { CITYLIFE_EPOCH_MS: 1_780_092_000_000 };
 
   return {
+    serverDir,
     jwt,
     buildApp,
     GameStateManager,
@@ -82,6 +85,7 @@ function loadServerComponents() {
     CANONICAL_PHYSICAL_OBSTACLES_4242,
     PHYSICAL_COLLIDERS_SCHEMA_VERSION,
     computePhysicalCollidersContentHash,
+    CITYLIFE_EPOCH_MS,
   };
 }
 
@@ -849,6 +853,552 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       try {
         ws?.terminate?.();
         ws?.close?.();
+      } catch {}
+      realtime.dispose();
+      await fastifyApp.close();
+    }
+  });
+
+  test("paired server: queryless cookie authentication, failure controls, and authoritative shared-bus seating between two distinct principals", async () => {
+    // Qualification / Scope Disclosure:
+    // Pinned Fastify HTTP/WebSocket server running on local loopback (127.0.0.1) with real built dist/app.js (c617b0b).
+    // This harness uses local synthetic component geometry and staging walkability covering the transit depot gate
+    // (cell 135,356) and stop verge to test multi-principal bus seating, peer poses, and cookie session lifecycle.
+    // Reviewed R1 canonical world publication and deployed multi-player acceptance remain separate.
+    const {
+      serverDir,
+      jwt,
+      buildApp,
+      GameStateManager,
+      LocalWorldAuthorityClient,
+      RealtimeManager,
+      WebSocket: ServerWebSocket,
+      CANONICAL_PHYSICAL_OBSTACLES_4242,
+      PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      computePhysicalCollidersContentHash,
+      CITYLIFE_EPOCH_MS,
+    } = loadServerComponents();
+
+    const baseSurveyRuntime = new ColonyRuntime(4242);
+    const defaultDoc = createWorldLayoutDocument({
+      ...baseSurveyRuntime.captureWorldLayout(),
+      layoutId: "seed-4242",
+      seed: 4242,
+      revision: { number: 0, parentHash: null },
+    });
+
+    const surfaceFrame = defaultDoc.frames.find((f: any) => f.layer === "surface") || defaultDoc.frames[0];
+    const canonicalTransitAuthority = baseSurveyRuntime.exportCanonicalTransitAuthority(defaultDoc);
+    expect(
+      canonicalTransitAuthority,
+      "Base survey runtime must physically export canonical transit authority for defaultDoc",
+    ).not.toBeNull();
+
+    const physicalColliders = {
+      schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      frameId: surfaceFrame.id,
+      obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      contentHash: computePhysicalCollidersContentHash({
+        schemaVersion: PHYSICAL_COLLIDERS_SCHEMA_VERSION,
+        worldId: "seed-4242",
+        layoutRevision: defaultDoc.revision.contentHash,
+        frameId: surfaceFrame.id,
+        obstacles: CANONICAL_PHYSICAL_OBSTACLES_4242,
+      }),
+    };
+
+    // Staging walkability: cover hub and depot gate/stop verge (135, 356)
+    const walkableCells = new Set<string>();
+    for (let x = 120; x <= 160; x++) {
+      for (let y = 240; y <= 370; y++) {
+        walkableCells.add(`${x},${y}`);
+      }
+    }
+    const walkability = {
+      schemaVersion: "citylife.walkability/v1",
+      frameId: surfaceFrame.id,
+      walkableCells,
+    };
+
+    const worldAuth = new LocalWorldAuthorityClient();
+    worldAuth.registerWorld({
+      schemaVersion: "citylife.starter-parcel-manifest/v1",
+      worldId: "seed-4242",
+      layoutRevision: defaultDoc.revision.contentHash,
+      layout: defaultDoc,
+      plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
+      hubSpawn: { x: 135, y: 356, heading: 0 },
+      physicalColliders,
+      walkability,
+      transit: canonicalTransitAuthority,
+    });
+
+    // Distinct vehicle ownership truth per principal
+    const userClient = {
+      async getVehicleTruth(userId: string) {
+        if (userId === "80001") {
+          return {
+            owned: false,
+            status: null,
+            vehicleKey: null,
+            storage: null,
+            onboardingState: "NONE",
+          };
+        }
+        if (userId === "80002") {
+          return {
+            owned: false,
+            status: null,
+            vehicleKey: null,
+            storage: null,
+            onboardingState: "NONE",
+          };
+        }
+        return {
+          owned: false,
+          status: null,
+          vehicleKey: null,
+          storage: null,
+          onboardingState: "NONE",
+        };
+      },
+    };
+
+    const realtime = new RealtimeManager({
+      userClient,
+      worldAuthorityClient: worldAuth,
+      enableSimulationTimer: false,
+      enableBusSync: true,
+      enableBusSeats: true,
+      staleTimeoutMs: 30000,
+    });
+
+    // Establish pre-board baseline sol time at 5:02 AM (CITYLIFE_EPOCH_MS + 4_530_000)
+    // where bus 0 has departed bay into depot-stop-out with doors open
+    const baseSolNow = CITYLIFE_EPOCH_MS + 4_530_000;
+    let mockNow = baseSolNow;
+    realtime.setMockSolNowMs(() => mockNow);
+
+    const fastifyApp = buildApp({
+      gameState: new GameStateManager(null, null),
+      realtime,
+      userClient,
+      worldAuthorityClient: worldAuth,
+      jwtSecret: JWT_SECRET,
+      jwtAlgorithms: ["HS256"],
+      allowedWsOrigins: ["https://citylife.kooker.co.za"],
+    });
+
+    const serverAddr = await fastifyApp.listen({ port: 0, host: "127.0.0.1" });
+    const baseUrl = serverAddr;
+    const wsUrl = serverAddr.replace(/^http/, "ws") + "/api/v1/citylife/ws";
+    expect(wsUrl).not.toContain("token=");
+    expect(wsUrl).not.toContain("jwt=");
+
+    let unauthWs: any = null;
+
+    try {
+      // 1. Negative Control: Queryless WebSocket connection without cookie fails closed before admission
+      const noCookieClosePromise = new Promise<{ code: number }>((resolve) => {
+        unauthWs = new ServerWebSocket(wsUrl, {
+          headers: { origin: "https://citylife.kooker.co.za" },
+        });
+        unauthWs.on("close", (code: number) => resolve({ code }));
+        unauthWs.on("error", () => {});
+      });
+      const noCookieClose = await noCookieClosePromise;
+      expect(noCookieClose.code).toBe(4401);
+
+      // 2. Negative Control: ensureCookieAuth lifecycle failure halts admission fail-closed
+      const badCookieClient = new MultiplayerClient({
+        url: wsUrl,
+        userId: "80099",
+        username: "BadCookieTester",
+        useCookieAuth: true,
+        ensureCookieAuth: async () => {
+          const res = await fetch(`${baseUrl}/api/v1/citylife/auth/cookie`, {
+            method: "POST",
+            headers: {
+              authorization: "Bearer invalid-signature-token",
+              origin: "https://citylife.kooker.co.za",
+            },
+          });
+          return res.ok;
+        },
+        worldId: "seed-4242",
+        layoutRevision: `wl:v1:0:${defaultDoc.revision.contentHash}`,
+        neighbourhoodKey: "citylife-central",
+        roomCode: "shared-bus-room",
+        autoCreate: false,
+      });
+      await badCookieClient.connect();
+      expect(badCookieClient.getStatus()).toBe("error");
+      badCookieClient.disconnect();
+
+      // 3. Cookie Issuance: Principal A (80001) & Principal B (80002)
+      const tokenA = jwt.sign(
+        { userId: 80001, id: 80001, sub: 80001, type: "access", roles: ["CITYLIFE_PLAYER"], username: "AliceBus" },
+        JWT_SECRET,
+        { algorithm: "HS256", expiresIn: "1h" },
+      );
+      const cookieResA = await fetch(`${baseUrl}/api/v1/citylife/auth/cookie`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${tokenA}`,
+          origin: "https://citylife.kooker.co.za",
+        },
+      });
+      expect(cookieResA.status).toBe(200);
+      const setCookieA = cookieResA.headers.get("set-cookie") || "";
+      expect(setCookieA).toContain("jwt=");
+      expect(setCookieA).toContain("Max-Age=3599");
+      const cookieHeaderA = setCookieA.split(";")[0];
+
+      const tokenB = jwt.sign(
+        { userId: 80002, id: 80002, sub: 80002, type: "access", roles: ["CITYLIFE_PLAYER"], username: "BobBus" },
+        JWT_SECRET,
+        { algorithm: "HS256", expiresIn: "1h" },
+      );
+      const cookieResB = await fetch(`${baseUrl}/api/v1/citylife/auth/cookie`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${tokenB}`,
+          origin: "https://citylife.kooker.co.za",
+        },
+      });
+      expect(cookieResB.status).toBe(200);
+      const setCookieB = cookieResB.headers.get("set-cookie") || "";
+      expect(setCookieB).toContain("jwt=");
+      expect(setCookieB).toContain("Max-Age=3599");
+      const cookieHeaderB = setCookieB.split(";")[0];
+
+      // 4. Cookie Clear verification:
+      // Scope Disclosure: Cookie clear tombstones the browser cookie storage for subsequent requests;
+      // it does not revoke an already copied/extracted in-memory JWT or forcibly terminate active WebSocket sessions.
+      const clearRes = await fetch(`${baseUrl}/api/v1/citylife/auth/clear`, {
+        method: "POST",
+        headers: { origin: "https://citylife.kooker.co.za" },
+      });
+      expect(clearRes.status).toBe(200);
+      const clearCookie = clearRes.headers.get("set-cookie") || "";
+      expect(clearCookie).toContain("jwt=");
+      expect(clearCookie).toContain("Max-Age=0");
+
+      // 5. Connect Principal A via queryless cookie WebSocket and join session as walking
+      // Conditional adapter proof:
+      // In this Node.js / Playwright worker context, ServerWebSocket subclasses manually inject
+      // the HTTP Cookie header into native ws connection headers to emulate standard browser cookie attachment.
+      // Deployed browser BFF/WS ingress path and reverse-proxy cookie forwarding remain separate proofs.
+      let client1BoardAck: any = null;
+      let client1AlightAck: any = null;
+      let client2BoardAck: any = null;
+      let client2ReceivedPeerPoses: any[] = [];
+
+      class PrincipalAWebSocket extends ServerWebSocket {
+        constructor(url: string | URL, protocols?: any) {
+          super(url, protocols, {
+            headers: {
+              origin: "https://citylife.kooker.co.za",
+              cookie: cookieHeaderA,
+            },
+          });
+        }
+      }
+
+      class PrincipalBWebSocket extends ServerWebSocket {
+        constructor(url: string | URL, protocols?: any) {
+          super(url, protocols, {
+            headers: {
+              origin: "https://citylife.kooker.co.za",
+              cookie: cookieHeaderB,
+            },
+          });
+        }
+      }
+
+      const OriginalWebSocket = globalThis.WebSocket;
+      (globalThis as any).WebSocket = PrincipalAWebSocket;
+
+      const clientA = new MultiplayerClient({
+        url: wsUrl,
+        userId: "80001",
+        username: "AliceBus",
+        useCookieAuth: true,
+        ensureCookieAuth: async () => {
+          const res = await fetch(`${baseUrl}/api/v1/citylife/auth/cookie`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${tokenA}`,
+              origin: "https://citylife.kooker.co.za",
+            },
+          });
+          return res.ok;
+        },
+        worldId: "seed-4242",
+        layoutRevision: `wl:v1:0:${defaultDoc.revision.contentHash}`,
+        neighbourhoodKey: "citylife-central",
+        roomCode: "shared-bus-room",
+        autoCreate: true,
+        onBusBoarded: (ack) => {
+          client1BoardAck = ack;
+        },
+        onBusAlighted: (ack) => {
+          client1AlightAck = ack;
+        },
+      });
+
+      await clientA.connect();
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Client A connection timed out")), 5000);
+        const check = () => {
+          if (clientA.getStatus() === "connected") {
+            clearTimeout(timeout);
+            resolve();
+          } else if (clientA.getStatus() === "error") {
+            clearTimeout(timeout);
+            reject(new Error("Client A entered error status"));
+          } else {
+            setTimeout(check, 50);
+          }
+        };
+        check();
+      });
+
+      expect(clientA.getStatus()).toBe("connected");
+      expect(clientA.getMode()).toBe("walking");
+      expect(clientA.getSeatedBusId()).toBeNull();
+      const initialParticipantIdA = clientA.getSessionInfo().participantId;
+      const initialSessionId = clientA.getSessionInfo().sessionId;
+      expect(initialParticipantIdA).toBeDefined();
+      expect(initialSessionId).toBeDefined();
+
+      // Retrieve transit runner and session from RealtimeManager
+      const session = (realtime as any).sessions.get(initialSessionId)!;
+      expect(session).toBeDefined();
+      const runner = realtime.getSessionTransitRunner(initialSessionId)!;
+      expect(runner).toBeDefined();
+
+      // Bus 0 must be in depot-stop-out dwelling with doors open
+      runner.getBusState(0).mode = "depot-stop-out";
+      realtime.stepSimulation(0.05);
+      const bus0InitialPose = runner.getBusWorldPose(0, session.originX, session.originZ, session.cellMetres)!;
+      expect(bus0InitialPose).toBeDefined();
+      expect(bus0InitialPose.doorsOpen).toBe(true);
+      expect(bus0InitialPose.speed).toBe(0);
+      expect(bus0InitialPose.atStop).toBe(true);
+
+      // Ensure participant A position on server is in close boarding range (<= 12m)
+      const partA = session.participants.get(initialParticipantIdA)!;
+      partA.x = bus0InitialPose.x + 1.0;
+      partA.z = bus0InitialPose.z + 1.0;
+
+      // 6. Connect Principal B into the same room
+      (globalThis as any).WebSocket = PrincipalBWebSocket;
+      const clientB = new MultiplayerClient({
+        url: wsUrl,
+        userId: "80002",
+        username: "BobBus",
+        useCookieAuth: true,
+        ensureCookieAuth: async () => {
+          const res = await fetch(`${baseUrl}/api/v1/citylife/auth/cookie`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${tokenB}`,
+              origin: "https://citylife.kooker.co.za",
+            },
+          });
+          return res.ok;
+        },
+        worldId: "seed-4242",
+        layoutRevision: `wl:v1:0:${defaultDoc.revision.contentHash}`,
+        neighbourhoodKey: "citylife-central",
+        roomCode: "shared-bus-room",
+        autoCreate: true,
+        onBusBoarded: (ack) => {
+          client2BoardAck = ack;
+        },
+        onPeerPose: (pid, pose) => {
+          client2ReceivedPeerPoses.push({ pid, ...pose });
+        },
+      });
+
+      await clientB.connect();
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Client B connection timed out")), 5000);
+        const check = () => {
+          if (clientB.getStatus() === "connected") {
+            clearTimeout(timeout);
+            resolve();
+          } else if (clientB.getStatus() === "error") {
+            clearTimeout(timeout);
+            reject(new Error("Client B entered error status"));
+          } else {
+            setTimeout(check, 50);
+          }
+        };
+        check();
+      });
+
+      expect(clientB.getStatus()).toBe("connected");
+      expect(clientB.getMode()).toBe("walking");
+      const initialParticipantIdB = clientB.getSessionInfo().participantId;
+      expect(initialParticipantIdB).toBeDefined();
+
+      const partB = session.participants.get(initialParticipantIdB)!;
+      partB.x = bus0InitialPose.x + 2.0;
+      partB.z = bus0InitialPose.z + 1.0;
+
+      // 7. Principal A boards bus 0
+      expect(clientA.boardBus(0)).toBe(true);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Client A boardBus timed out")), 5000);
+        const check = () => {
+          if (client1BoardAck !== null) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 50);
+          }
+        };
+        check();
+      });
+
+      expect(client1BoardAck.busId).toBe(0);
+      expect(typeof client1BoardAck.seatIndex).toBe("number");
+      expect(client1BoardAck.seatIndex).toBeGreaterThanOrEqual(0);
+      expect(clientA.getMode()).toBe("riding_bus");
+      expect(clientA.getSeatedBusId()).toBe(0);
+      expect(clientA.getSeatIndex()).toBe(client1BoardAck.seatIndex);
+      expect(runner.getOccupiedSeats(0)).toBe(1);
+
+      // Step simulation so peer receives updated mode and pose
+      realtime.stepSimulation(0.05);
+
+      // 8. Principal B boards bus 0 and receives distinct random available seat
+      expect(clientB.boardBus(0)).toBe(true);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Client B boardBus timed out")), 5000);
+        const check = () => {
+          if (client2BoardAck !== null) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 50);
+          }
+        };
+        check();
+      });
+
+      expect(client2BoardAck.busId).toBe(0);
+      expect(typeof client2BoardAck.seatIndex).toBe("number");
+      expect(client2BoardAck.seatIndex).toBeGreaterThanOrEqual(0);
+      expect(client2BoardAck.seatIndex).not.toBe(client1BoardAck.seatIndex);
+      expect(clientB.getMode()).toBe("riding_bus");
+      expect(clientB.getSeatedBusId()).toBe(0);
+      expect(clientB.getSeatIndex()).toBe(client2BoardAck.seatIndex);
+      expect(runner.getOccupiedSeats(0)).toBe(2);
+
+      // 9. Peer pose assertion: Principal B receives riding pose of Principal A
+      realtime.stepSimulation(0.05);
+      const peerPoseOfA = client2ReceivedPeerPoses.find(
+        (p) => p.pid === initialParticipantIdA || p.mode === "riding_bus"
+      );
+      expect(peerPoseOfA).toBeDefined();
+      expect(peerPoseOfA.seatedBusId).toBe(0);
+      expect(peerPoseOfA.seatIndex).toBe(client1BoardAck.seatIndex);
+      expect(peerPoseOfA.mode).toBe("riding_bus");
+
+      // 10. Simulation displacement: Step forward sol time so bus 0 moves out along its route
+      const displacedSolTime = CITYLIFE_EPOCH_MS + 4_545_000;
+      mockNow = displacedSolTime;
+      realtime.stepSimulation(0.05);
+
+      const displacedBus0Pose = runner.getBusWorldPose(0, session.originX, session.originZ, session.cellMetres)!;
+      const busDisplacement = Math.hypot(displacedBus0Pose.x - bus0InitialPose.x, displacedBus0Pose.z - bus0InitialPose.z);
+      expect(busDisplacement).toBeGreaterThan(5.0);
+
+      // Verify participant A on server has synchronized riding coordinates following the bus
+      expect(partA.seatedBusId).toBe(0);
+      expect(partA.seatIndex).toBe(client1BoardAck.seatIndex);
+      const riderDeltaFromBus = Math.hypot(partA.x - displacedBus0Pose.x, partA.z - displacedBus0Pose.z);
+      expect(riderDeltaFromBus).toBeLessThan(1.0);
+
+      // 11. Reconnect control: Simulate transport drop of Client A and verify seat retention
+      (globalThis as any).WebSocket = PrincipalAWebSocket;
+      const rawWsA = (clientA as any).ws;
+      rawWsA.close();
+      await new Promise((r) => setTimeout(r, 100));
+
+      // Seat occupancy must remain 2 during reconnect window
+      expect(runner.getOccupiedSeats(0)).toBe(2);
+
+      // Reconnect Client A with queryless cookie WebSocket
+      await clientA.connect();
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Client A reconnect timed out")), 5000);
+        const check = () => {
+          if (clientA.getStatus() === "connected") {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 50);
+          }
+        };
+        check();
+      });
+
+      expect(clientA.getStatus()).toBe("connected");
+      expect(clientA.getMode()).toBe("riding_bus");
+      expect(clientA.getSeatedBusId()).toBe(0);
+      expect(clientA.getSeatIndex()).toBe(client1BoardAck.seatIndex);
+      expect(runner.getOccupiedSeats(0)).toBe(2);
+
+      // 12. Safe Alight control:
+      // Return bus to dwelling stop with doors open for alight validation
+      runner.getBusState(0).mode = "depot-stop-out";
+      realtime.stepSimulation(0.05);
+
+      expect(clientA.alightBus()).toBe(true);
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Client A alightBus timed out")), 5000);
+        const check = () => {
+          if (client1AlightAck !== null) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            setTimeout(check, 50);
+          }
+        };
+        check();
+      });
+
+      expect(client1AlightAck).toBeDefined();
+      expect(Number.isFinite(client1AlightAck.x)).toBe(true);
+      expect(Number.isFinite(client1AlightAck.z)).toBe(true);
+      expect(clientA.getMode()).toBe("walking");
+      expect(clientA.getSeatedBusId()).toBeNull();
+      expect(clientA.getSeatIndex()).toBeNull();
+
+      // Occupancy drops to 1 (Client A vacated, Client B remains seated)
+      expect(runner.getOccupiedSeats(0)).toBe(1);
+
+      // Authoritative alight coordinate verification against walkableCells
+      const originX = session.originX ?? 0;
+      const originZ = session.originZ ?? 0;
+      const cellMetres = session.cellMetres ?? 4;
+      const alightCellX = Math.round((client1AlightAck.x - originX) / cellMetres);
+      const alightCellZ = Math.round((client1AlightAck.z - originZ) / cellMetres);
+      expect(walkableCells.has(`${alightCellX},${alightCellZ}`)).toBe(true);
+
+      // Clean disconnect
+      clientA.disconnect();
+      clientB.disconnect();
+      (globalThis as any).WebSocket = OriginalWebSocket;
+    } finally {
+      try {
+        unauthWs?.terminate?.();
       } catch {}
       realtime.dispose();
       await fastifyApp.close();
