@@ -2879,7 +2879,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       expect(exitDistFromParked).toBeLessThan(16); // Legitimate exit distance (< 16m)
 
       // 3. Observe mounted child geometry/model identity independently on Player 2 for Player 1:
-      // Must find CapsuleGeometry (body) and SphereGeometry (head), and NO car geometries (BoxGeometry / CylinderGeometry).
+      // Must find pedestrian crab visual (group named pedestrian-crab-*, vertex-colored crab mesh),
+      // correct mode ("walking") / isPedestrian (true) on target group userData, and NO car geometries (BoxGeometry / CylinderGeometry).
       await page2.waitForFunction((expectedId) => {
         const scene = (window as any).__r3fScene;
         let targetGroup: any = null;
@@ -2890,26 +2891,36 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         });
         if (!targetGroup) return false;
 
+        const isPedestrian = targetGroup.userData?.isPedestrian === true;
+        const mode = targetGroup.userData?.mode;
+        const isWalking = mode === "walking" || isPedestrian;
+
+        let hasCrabMesh = false;
+        let hasCrabGroup = false;
         const geoTypes: string[] = [];
         targetGroup.traverse((child: any) => {
-          if (child.isMesh && child.geometry?.type) {
-            geoTypes.push(child.geometry.type);
+          if (child.name && typeof child.name === "string" && child.name.startsWith("pedestrian-crab-")) {
+            hasCrabGroup = true;
+          }
+          if (child.isMesh && child.geometry) {
+            if (child.geometry.type) geoTypes.push(child.geometry.type);
+            if (child.geometry.attributes?.color && child.geometry.attributes?.position?.count > 0) {
+              hasCrabMesh = true;
+            }
           }
         });
 
-        const hasCapsule = geoTypes.includes("CapsuleGeometry");
-        const hasSphere = geoTypes.includes("SphereGeometry");
         const hasBox = geoTypes.includes("BoxGeometry");
         const hasCylinder = geoTypes.includes("CylinderGeometry");
 
-        return hasCapsule && hasSphere && !hasBox && !hasCylinder;
+        return isWalking && hasCrabGroup && hasCrabMesh && !hasBox && !hasCylinder;
       }, pinnedParticipantId1, { timeout: 15_000 });
 
       // Retain screenshot of visible pedestrian avatar
       const pedScreenshotPath = path.resolve("test-results/actual-pair-screenshots/page2-peer-as-pedestrian.png");
       await page2.screenshot({ path: pedScreenshotPath });
       console.log(`Player 2 view of Player 1 as pedestrian saved to: ${pedScreenshotPath}`);
-      recordStage("Player 2 3D scene independently verified rendering Player 1 as pedestrian avatar (Capsule/Sphere geometry) and captured screenshot");
+      recordStage("Player 2 3D scene independently verified rendering Player 1 as pedestrian crab avatar (vertex-colored crab geometry) and captured screenshot");
 
       // 3.1. Observe that in Player 2's 3D scene, BOTH the walking pedestrian avatar AND the stationary parked car visual coexist
       await page2.waitForFunction(() => {
@@ -3556,7 +3567,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       expect(reenterDistFromParked).toBeLessThan(0.5); // Exact parked position restored (< 0.5m)
 
       // 6. Observe mounted child geometry/model identity independently on Player 2 for Player 1:
-      // Must find BoxGeometry (body/cabin/stripe) and CylinderGeometry (wheels), and NO pedestrian geometries (Capsule/Sphere).
+      // Must find BoxGeometry (body/cabin/stripe) and CylinderGeometry (wheels), correct driving mode, and NO pedestrian crab visuals/geometries.
       await page2.waitForFunction((expectedId) => {
         const scene = (window as any).__r3fScene;
         let targetGroup: any = null;
@@ -3567,19 +3578,25 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
         });
         if (!targetGroup) return false;
 
+        const isPedestrian = targetGroup.userData?.isPedestrian === true;
+        const mode = targetGroup.userData?.mode;
+        const isDriving = mode === "driving" || (!isPedestrian && mode !== "riding_bus");
+
+        let hasCrab = false;
         const geoTypes: string[] = [];
         targetGroup.traverse((child: any) => {
+          if (child.name && typeof child.name === "string" && (child.name.startsWith("pedestrian-crab-") || child.name.startsWith("seated-crab-"))) {
+            hasCrab = true;
+          }
           if (child.isMesh && child.geometry?.type) {
             geoTypes.push(child.geometry.type);
           }
         });
 
-        const hasCapsule = geoTypes.includes("CapsuleGeometry");
-        const hasSphere = geoTypes.includes("SphereGeometry");
         const hasBox = geoTypes.includes("BoxGeometry");
         const hasCylinder = geoTypes.includes("CylinderGeometry");
 
-        return hasBox && hasCylinder && !hasCapsule && !hasSphere;
+        return isDriving && hasBox && hasCylinder && !hasCrab;
       }, pinnedParticipantId1, { timeout: 15_000 });
 
       // Retain screenshot of visible car model
