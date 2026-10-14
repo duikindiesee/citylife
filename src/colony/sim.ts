@@ -654,7 +654,10 @@ export interface ColonyState {
       userId: string;
       username: string;
       vehicleKey?: string | null;
+      mode?: "driving" | "walking" | "riding_bus";
       isPedestrian?: boolean;
+      seatedBusId?: number | null;
+      seatIndex?: number | null;
       cell: { x: number; y: number };
       worldY?: number;
       heading: number;

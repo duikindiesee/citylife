@@ -5,7 +5,10 @@ export interface RemoteRacer {
   userId: string;
   username: string;
   vehicleKey?: string | null;
+  mode?: "driving" | "walking" | "riding_bus";
   isPedestrian?: boolean;
+  seatedBusId?: number | null;
+  seatIndex?: number | null;
   modeEpoch?: number;
   x: number;
   y: number;
@@ -29,8 +32,10 @@ export interface ServerSnapshotParticipant {
   alias?: string;
   username?: string;
   vehicleKey?: string | null;
-  mode?: "driving" | "walking";
+  mode?: "driving" | "walking" | "riding_bus";
   isPedestrian?: boolean;
+  seatedBusId?: number | null;
+  seatIndex?: number | null;
   modeEpoch?: number;
   protocolVersion?: number;
   x: number;
@@ -85,8 +90,10 @@ export interface MultiplayerClientOptions {
       z: number;
       heading: number;
       speed: number;
-      mode?: "driving" | "walking";
+      mode?: "driving" | "walking" | "riding_bus";
       isPedestrian?: boolean;
+      seatedBusId?: number | null;
+      seatIndex?: number | null;
       modeEpoch?: number;
       vehicleKey?: string | null;
       carX?: number;
@@ -105,7 +112,9 @@ export interface MultiplayerClientOptions {
     z: number;
     heading: number;
     speed: number;
-    mode: "driving" | "walking";
+    mode: "driving" | "walking" | "riding_bus";
+    seatedBusId?: number | null;
+    seatIndex?: number | null;
     modeEpoch?: number;
     protocolVersion?: number;
     vehicleKey?: string | null;
@@ -136,11 +145,23 @@ export interface MultiplayerClientOptions {
     z: number;
     heading: number;
   }) => void;
+  onBusBoarded?: (ack: {
+    busId: number;
+    seatIndex: number;
+  }) => void;
+  onBusAlighted?: (ack: {
+    x: number;
+    y: number;
+    z: number;
+    heading: number;
+  }) => void;
   onModeChanged?: (event: {
-    mode: "driving" | "walking";
+    mode: "driving" | "walking" | "riding_bus";
     modeEpoch: number;
     isPedestrian: boolean;
     vehicleKey?: string | null;
+    seatedBusId?: number | null;
+    seatIndex?: number | null;
     x: number;
     y: number;
     z: number;
@@ -308,7 +329,9 @@ export class MultiplayerClient {
   private protocolVersion: number = 2;
   private modeEpoch: number = 0;
   private inputSeq = 0;
-  private currentMode: "driving" | "walking" = "driving";
+  private currentMode: "driving" | "walking" | "riding_bus" = "driving";
+  private seatedBusId: number | null = null;
+  private seatIndex: number | null = null;
   private parkedCar?: {
     x: number;
     y: number;
@@ -345,8 +368,16 @@ export class MultiplayerClient {
     return this.protocolVersion;
   }
 
-  public getMode(): "driving" | "walking" {
+  public getMode(): "driving" | "walking" | "riding_bus" {
     return this.currentMode;
+  }
+
+  public getSeatedBusId(): number | null {
+    return this.seatedBusId;
+  }
+
+  public getSeatIndex(): number | null {
+    return this.seatIndex;
   }
 
   public getParkedCar(): { x: number; y: number; z: number; heading: number; speed?: number } | undefined {
@@ -374,7 +405,9 @@ export class MultiplayerClient {
     neighbourhoodKey: string | null;
     protocolVersion: number;
     modeEpoch: number;
-    mode: "driving" | "walking";
+    mode: "driving" | "walking" | "riding_bus";
+    seatedBusId: number | null;
+    seatIndex: number | null;
   } {
     return {
       sessionId: this.sessionId,
@@ -386,6 +419,8 @@ export class MultiplayerClient {
       protocolVersion: this.protocolVersion,
       modeEpoch: this.modeEpoch,
       mode: this.currentMode,
+      seatedBusId: this.seatedBusId,
+      seatIndex: this.seatIndex,
     };
   }
 
@@ -666,7 +701,7 @@ export class MultiplayerClient {
         }
 
         const rawMode = msg.mode ?? (msg.isPedestrian ? "walking" : "driving");
-        if (rawMode !== "driving" && rawMode !== "walking") {
+        if (rawMode !== "driving" && rawMode !== "walking" && rawMode !== "riding_bus") {
           this.rejectAdmission(
             "INVALID_MODE",
             `Server replied with unrecognized mode: ${rawMode}`
@@ -685,6 +720,13 @@ export class MultiplayerClient {
         this.inputSeq = 0; // Monotonic sequence resets to 0 upon admission / reconnect
         this.lastSnapshotSeq = 0; // Fresh session resets snapshot sequence tracking
         this.currentMode = rawMode;
+        if (rawMode === "riding_bus") {
+          this.seatedBusId = typeof msg.seatedBusId === "number" ? msg.seatedBusId : null;
+          this.seatIndex = typeof msg.seatIndex === "number" ? msg.seatIndex : null;
+        } else {
+          this.seatedBusId = null;
+          this.seatIndex = null;
+        }
         let carX = msg.carX;
         let carY = msg.carY;
         let carZ = msg.carZ;
@@ -729,6 +771,12 @@ export class MultiplayerClient {
         if (Array.isArray(msg.participants)) {
           const selfPart = msg.participants.find((p: any) => p.participantId === this.participantId);
           if (selfPart && this.options.onSelfAdmitted) {
+            if (selfPart.seatedBusId !== undefined) {
+              this.seatedBusId = typeof selfPart.seatedBusId === "number" ? selfPart.seatedBusId : null;
+            }
+            if (selfPart.seatIndex !== undefined) {
+              this.seatIndex = typeof selfPart.seatIndex === "number" ? selfPart.seatIndex : null;
+            }
             this.options.onSelfAdmitted({
               participantId: selfPart.participantId,
               x: Number.isFinite(selfPart.x) ? selfPart.x : 0,
@@ -736,7 +784,9 @@ export class MultiplayerClient {
               z: Number.isFinite(selfPart.z) ? selfPart.z : 0,
               heading: Number.isFinite(selfPart.heading) ? selfPart.heading : 0,
               speed: Number.isFinite(selfPart.speed) ? selfPart.speed : 0,
-              mode: selfPart.isPedestrian ? "walking" : "driving",
+              mode: (selfPart.mode ?? (selfPart.isPedestrian ? "walking" : "driving")) as "driving" | "walking" | "riding_bus",
+              seatedBusId: selfPart.seatedBusId !== undefined ? selfPart.seatedBusId : this.seatedBusId,
+              seatIndex: selfPart.seatIndex !== undefined ? selfPart.seatIndex : this.seatIndex,
               modeEpoch: selfPart.modeEpoch ?? this.modeEpoch,
               protocolVersion: selfPart.protocolVersion ?? this.protocolVersion,
               vehicleKey: selfPart.vehicleKey || null,
@@ -754,7 +804,10 @@ export class MultiplayerClient {
                 userId: p.userId,
                 username: p.username,
                 vehicleKey: p.vehicleKey || null,
+                mode: (p.mode ?? (p.isPedestrian || !p.vehicleKey ? "walking" : "driving")) as "driving" | "walking" | "riding_bus",
                 isPedestrian: Boolean(p.isPedestrian || !p.vehicleKey),
+                seatedBusId: p.seatedBusId ?? null,
+                seatIndex: p.seatIndex ?? null,
                 modeEpoch: p.modeEpoch,
                 x: Number.isFinite(p.x) ? p.x : 0,
                 y: Number.isFinite(p.y) ? p.y : 0,
@@ -783,7 +836,10 @@ export class MultiplayerClient {
               userId: msg.participant.userId,
               username: msg.participant.username,
               vehicleKey: msg.participant.vehicleKey || null,
+              mode: (msg.participant.mode ?? (msg.participant.isPedestrian || !msg.participant.vehicleKey ? "walking" : "driving")) as "driving" | "walking" | "riding_bus",
               isPedestrian: Boolean(msg.participant.isPedestrian || !msg.participant.vehicleKey),
+              seatedBusId: msg.participant.seatedBusId ?? null,
+              seatIndex: msg.participant.seatIndex ?? null,
               modeEpoch: msg.participant.modeEpoch,
               x: Number.isFinite(msg.participant.x) ? msg.participant.x : 0,
               y: Number.isFinite(msg.participant.y) ? msg.participant.y : 0,
@@ -918,6 +974,74 @@ export class MultiplayerClient {
         break;
       }
 
+      case "bus_boarded": {
+        const busId = Number(msg.busId);
+        const seatIndex = Number(msg.seatIndex);
+        if (!Number.isSafeInteger(busId) || busId < 0 || !Number.isSafeInteger(seatIndex) || seatIndex < 0) {
+          return;
+        }
+        this.currentMode = "riding_bus";
+        this.seatedBusId = busId;
+        this.seatIndex = seatIndex;
+        if (this.options.onBusBoarded) {
+          this.options.onBusBoarded({
+            busId,
+            seatIndex,
+          });
+        }
+        if (this.options.onModeChanged) {
+          this.options.onModeChanged({
+            mode: "riding_bus",
+            modeEpoch: this.modeEpoch,
+            isPedestrian: false,
+            vehicleKey: null,
+            x: 0,
+            y: 0,
+            z: 0,
+            heading: 0,
+            seatedBusId: busId,
+            seatIndex: seatIndex,
+          });
+        }
+        break;
+      }
+
+      case "bus_alighted": {
+        const x = Number(msg.x);
+        const y = Number(msg.y);
+        const z = Number(msg.z);
+        const heading = Number(msg.heading);
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !Number.isFinite(heading)) {
+          return;
+        }
+        this.currentMode = "walking";
+        this.seatedBusId = null;
+        this.seatIndex = null;
+        if (this.options.onBusAlighted) {
+          this.options.onBusAlighted({
+            x,
+            y,
+            z,
+            heading,
+          });
+        }
+        if (this.options.onModeChanged) {
+          this.options.onModeChanged({
+            mode: "walking",
+            modeEpoch: this.modeEpoch,
+            isPedestrian: true,
+            vehicleKey: this.options.vehicleKey,
+            x,
+            y,
+            z,
+            heading,
+            seatedBusId: null,
+            seatIndex: null,
+          });
+        }
+        break;
+      }
+
       case "peer_mode_changed": {
         if (msg.participantId && msg.participantId !== this.participantId) {
           if (this.options.onPeerPose) {
@@ -927,8 +1051,10 @@ export class MultiplayerClient {
               z: Number(msg.z ?? 0),
               heading: Number(msg.heading ?? 0),
               speed: 0,
-              mode: msg.mode === "walking" ? "walking" : "driving",
+              mode: msg.mode === "walking" ? "walking" : msg.mode === "riding_bus" ? "riding_bus" : "driving",
               isPedestrian: Boolean(msg.isPedestrian ?? msg.mode === "walking"),
+              seatedBusId: msg.seatedBusId !== undefined ? (msg.seatedBusId !== null ? Number(msg.seatedBusId) : null) : undefined,
+              seatIndex: msg.seatIndex !== undefined ? (msg.seatIndex !== null ? Number(msg.seatIndex) : null) : undefined,
               modeEpoch: msg.modeEpoch,
               vehicleKey: msg.vehicleKey !== undefined ? (msg.vehicleKey ? String(msg.vehicleKey) : null) : undefined,
               carX: msg.carX !== undefined ? Number(msg.carX) : undefined,
@@ -950,8 +1076,10 @@ export class MultiplayerClient {
               z: Number(msg.z ?? 0),
               heading: Number(msg.heading ?? 0),
               speed: Number(msg.speed ?? 0),
-              mode: msg.mode === "driving" ? "driving" : "walking",
+              mode: msg.mode === "driving" ? "driving" : msg.mode === "riding_bus" ? "riding_bus" : "walking",
               isPedestrian: msg.isPedestrian !== undefined ? Boolean(msg.isPedestrian) : undefined,
+              seatedBusId: msg.seatedBusId !== undefined ? (msg.seatedBusId !== null ? Number(msg.seatedBusId) : null) : undefined,
+              seatIndex: msg.seatIndex !== undefined ? (msg.seatIndex !== null ? Number(msg.seatIndex) : null) : undefined,
               modeEpoch: msg.modeEpoch,
               vehicleKey: msg.vehicleKey !== undefined ? (msg.vehicleKey ? String(msg.vehicleKey) : null) : undefined,
               carX: msg.carX !== undefined ? Number(msg.carX) : undefined,
@@ -1003,8 +1131,10 @@ export class MultiplayerClient {
             alias: p.alias ?? p.username,
             username: p.username ?? p.alias,
             vehicleKey: p.vehicleKey || null,
-            mode: p.mode === "driving" ? "driving" : "walking",
-            isPedestrian: p.isPedestrian !== undefined ? Boolean(p.isPedestrian) : p.mode !== "driving",
+            mode: p.mode === "driving" ? "driving" : p.mode === "riding_bus" ? "riding_bus" : "walking",
+            isPedestrian: p.isPedestrian !== undefined ? Boolean(p.isPedestrian) : p.mode === "walking",
+            seatedBusId: p.seatedBusId !== undefined ? (p.seatedBusId !== null ? Number(p.seatedBusId) : null) : undefined,
+            seatIndex: p.seatIndex !== undefined ? (p.seatIndex !== null ? Number(p.seatIndex) : null) : undefined,
             modeEpoch: p.modeEpoch,
             protocolVersion: p.protocolVersion,
             x: Number(p.x ?? 0),
@@ -1034,6 +1164,8 @@ export class MultiplayerClient {
                 speed: p.speed,
                 mode: p.mode,
                 isPedestrian: p.isPedestrian,
+                seatedBusId: p.seatedBusId,
+                seatIndex: p.seatIndex,
                 modeEpoch: p.modeEpoch,
                 vehicleKey: p.vehicleKey,
                 carX: p.carX,
@@ -1218,6 +1350,52 @@ export class MultiplayerClient {
     });
   }
 
+  public boardBus(busId: number, epoch?: number): boolean {
+    if (this.status !== "connected" || !this.participantId || !this.sessionId || this.modeEpoch <= 0) {
+      return false;
+    }
+    if (this.currentMode !== "walking") {
+      return false;
+    }
+    if (typeof busId !== "number" || !Number.isSafeInteger(busId) || busId < 0) {
+      return false;
+    }
+    const targetEpoch = epoch !== undefined ? epoch : this.modeEpoch;
+    if (typeof targetEpoch !== "number" || !Number.isSafeInteger(targetEpoch) || targetEpoch <= 0) {
+      return false;
+    }
+    return this.send({
+      type: "request_board_bus",
+      busId,
+      epoch: targetEpoch,
+    });
+  }
+
+  public requestBoardBus(busId: number, epoch?: number): boolean {
+    return this.boardBus(busId, epoch);
+  }
+
+  public alightBus(epoch?: number): boolean {
+    if (this.status !== "connected" || !this.participantId || !this.sessionId || this.modeEpoch <= 0) {
+      return false;
+    }
+    if (this.currentMode !== "riding_bus") {
+      return false;
+    }
+    const targetEpoch = epoch !== undefined ? epoch : this.modeEpoch;
+    if (typeof targetEpoch !== "number" || !Number.isSafeInteger(targetEpoch) || targetEpoch <= 0) {
+      return false;
+    }
+    return this.send({
+      type: "request_alight_bus",
+      epoch: targetEpoch,
+    });
+  }
+
+  public requestAlightBus(epoch?: number): boolean {
+    return this.alightBus(epoch);
+  }
+
   public sendDrivingInput(input: {
     seq?: number;
     epoch?: number;
@@ -1384,6 +1562,8 @@ export class MultiplayerClient {
     this.lastSnapshotSeq = 0;
     this.modeEpoch = 0;
     this.currentMode = "driving";
+    this.seatedBusId = null;
+    this.seatIndex = null;
     this.parkedCar = undefined;
     this.hasNegotiatedNeighbourhood = false;
     this.setStatus("disconnected");
