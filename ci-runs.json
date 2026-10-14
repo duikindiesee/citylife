@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-14T12:45:25.168Z",
+  "updatedAt": "2026-10-14T13:04:08.000Z",
   "runs": [
     {
       "runId": 38561593363,
@@ -111,6 +111,85 @@
           "startedAt": "2026-10-14T11:52:08Z",
           "completedAt": "2026-10-14T11:53:20Z",
           "durationSeconds": 72
+        }
+      ]
+    },
+    {
+      "runId": 38559610552,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38559610552",
+      "event": "pull_request",
+      "branch": "chore/bump-0.60.5",
+      "sha": "f54b0161ce3c5f20edadc860ec85b67899825065",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/f54b0161ce3c5f20edadc860ec85b67899825065",
+      "pullRequestNumbers": "#568",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/568",
+      "pullRequests": [
+        {
+          "number": 568,
+          "url": "https://github.com/duikindiesee/citylife/pull/568"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "cancelled",
+      "startedAt": "2026-10-14T11:52:04Z",
+      "completedAt": "2026-10-14T13:03:57Z",
+      "durationSeconds": 4313,
+      "runnerSummary": "kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 115837149800,
+          "name": "e2e-browser",
+          "status": "completed",
+          "conclusion": "cancelled",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-14T12:55:10Z",
+          "completedAt": "2026-10-14T12:59:33Z",
+          "durationSeconds": 263
+        },
+        {
+          "id": 115837150251,
+          "name": "unit-and-build",
+          "status": "completed",
+          "conclusion": "cancelled",
+          "runnerName": "",
+          "runnerGroup": "",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-14T11:52:05Z",
+          "completedAt": "2026-10-14T12:59:09Z",
+          "durationSeconds": 4024
+        },
+        {
+          "id": 115865928073,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "cancelled",
+          "runnerName": "",
+          "runnerGroup": "",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-14T12:59:33Z",
+          "completedAt": "2026-10-14T13:03:56Z",
+          "durationSeconds": 263
         }
       ]
     },
@@ -10549,99 +10628,6 @@
           "startedAt": "2026-10-01T20:11:00Z",
           "completedAt": "2026-10-01T20:12:41Z",
           "durationSeconds": 101
-        }
-      ]
-    },
-    {
-      "runId": 36919188021,
-      "workflowName": "Docker",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36919188021",
-      "event": "push",
-      "branch": "main",
-      "sha": "42c67a09205da5da35889545f8e0949a4af326d1",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/42c67a09205da5da35889545f8e0949a4af326d1",
-      "pullRequestNumbers": "#551",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/551",
-      "pullRequests": [
-        {
-          "number": 551,
-          "url": "https://github.com/duikindiesee/citylife/pull/551"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-01T20:06:42Z",
-      "completedAt": "2026-10-01T20:21:01Z",
-      "durationSeconds": 859,
-      "runnerSummary": "kooker1-org-docker-1, GitHub Actions 1000010594, kooker1-org-docker-2",
-      "jobs": [
-        {
-          "id": 110560664292,
-          "name": "version-bump / bump",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-org-docker-1",
-          "runnerGroup": "trusted-kooker1",
-          "runnerLabels": [
-            "self-hosted",
-            "Linux",
-            "X64",
-            "kooker1-org",
-            "docker"
-          ],
-          "startedAt": "2026-10-01T20:06:47Z",
-          "completedAt": "2026-10-01T20:11:10Z",
-          "durationSeconds": 263
-        },
-        {
-          "id": 110562444660,
-          "name": "build-and-push",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010594",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-10-01T20:11:14Z",
-          "completedAt": "2026-10-01T20:20:16Z",
-          "durationSeconds": 542
-        },
-        {
-          "id": 110566140390,
-          "name": "deploy / sync",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-org-docker-1",
-          "runnerGroup": "trusted-kooker1",
-          "runnerLabels": [
-            "self-hosted",
-            "Linux",
-            "X64",
-            "kooker1-org",
-            "docker"
-          ],
-          "startedAt": "2026-10-01T20:20:20Z",
-          "completedAt": "2026-10-01T20:21:01Z",
-          "durationSeconds": 41
-        },
-        {
-          "id": 110566140428,
-          "name": "retention / prune-ghcr",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-org-docker-2",
-          "runnerGroup": "trusted-kooker1",
-          "runnerLabels": [
-            "self-hosted",
-            "Linux",
-            "X64",
-            "kooker1-org",
-            "docker"
-          ],
-          "startedAt": "2026-10-01T20:20:20Z",
-          "completedAt": "2026-10-01T20:20:30Z",
-          "durationSeconds": 10
         }
       ]
     }
