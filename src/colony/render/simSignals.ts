@@ -102,9 +102,16 @@ export function remoteRacersSignature(state: ColonyState): string {
   if (!racers || racers.size === 0) return "none";
   return Array.from(racers.values())
     .map((r) => {
-      const mode = r.mode ?? (r.isPedestrian ? "walking" : "driving");
+      const mode =
+        r.mode === "riding_bus"
+          ? "riding_bus"
+          : r.mode === "walking" || r.isPedestrian
+            ? "ped"
+            : "car";
       const parked =
-        r.isPedestrian && r.carX !== undefined && Number.isFinite(r.carX)
+        (r.isPedestrian || r.mode === "walking" || r.mode === "riding_bus") &&
+        r.carX !== undefined &&
+        Number.isFinite(r.carX)
           ? `:parked:${r.carX.toFixed(1)},${(r.carZ ?? 0).toFixed(1)}`
           : "";
       const bus =
