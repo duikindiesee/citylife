@@ -4,10 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Vector3, Quaternion, Euler } from "three";
 import { FirstPersonController } from "../src/render/components/FirstPersonController";
 import { ColonyRuntime } from "../src/colony/runtime";
-import {
-  setupAuthoritativeRuntime,
-  makeSessionJoinedAck,
-} from "./testAuthorityHelper";
+import { setupAuthoritativeRuntime, makeSessionJoinedAck } from "./testAuthorityHelper";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 import { leveledWorldY } from "../src/colony/render/terrainLeveling";
 import { wireHeadingToCameraYaw } from "../src/colony/playerOrientation";
@@ -67,11 +64,7 @@ vi.mock("@react-three/rapier", () => ({
       if (typeof ref === "function") ref(rb);
       else ref.current = rb;
     }
-    return React.createElement(
-      "div",
-      { "data-testid": "rigid-body" },
-      children,
-    );
+    return React.createElement("div", { "data-testid": "rigid-body" }, children);
   },
   CapsuleCollider: () => null,
 }));
@@ -127,10 +120,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer(
-      "room-1",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -184,7 +174,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         runtime: runtime as any,
         startPosition: [toWorldX(40), 2, toWorldZ(40)],
         terrainLevel: null,
-      }),
+      })
     );
 
     expect(capturedFrameCb).not.toBeNull();
@@ -224,11 +214,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       }),
     });
 
-    expect(runtime.getAuthoritativeWalkingPose()).toEqual({
-      x: 41,
-      y: 40,
-      heading: 1.5,
-    });
+    expect(runtime.getAuthoritativeWalkingPose()).toEqual({ x: 41, y: 40, heading: 1.5 });
     expect(runtime.fpTeleportRequest).toEqual({
       x: 41,
       y: 40,
@@ -319,10 +305,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer(
-      "room-1",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -369,16 +352,13 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         runtime: runtime as any,
         startPosition: [toWorldX(40), 2, toWorldZ(40)],
         terrainLevel: null,
-      }),
+      })
     );
 
     capturedFrameCb!({}, 0.016);
 
     // Simulate mid-jump state: body is elevated at y = 5.2 m with upward linvel.y = 3.5 m/s
-    currentRigidBody.setTranslation(
-      { x: toWorldX(40), y: 5.2, z: toWorldZ(40) },
-      true,
-    );
+    currentRigidBody.setTranslation({ x: toWorldX(40), y: 5.2, z: toWorldZ(40) }, true);
     currentRigidBody.setLinvel({ x: 0, y: 3.5, z: 0 }, true);
 
     // Server sends walking correction snapshot to (42, 40)
@@ -437,10 +417,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer(
-      "room-1",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -486,7 +463,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         runtime: runtime as any,
         startPosition: [toWorldX(40), 2, toWorldZ(40)],
         terrainLevel: null,
-      }),
+      })
     );
 
     capturedFrameCb!({}, 0.016);
@@ -497,10 +474,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     expect(runtime.hasFpLocomotionInput()).toBe(true);
 
     // Live predicted physical capsule has advanced to (40.8, 40)
-    currentRigidBody.setTranslation(
-      { x: toWorldX(40.8), y: 2, z: toWorldZ(40) },
-      true,
-    );
+    currentRigidBody.setTranslation({ x: toWorldX(40.8), y: 2, z: toWorldZ(40) }, true);
     capturedFrameCb!({}, 0.016);
     expect(runtime.fpCameraCell?.x).toBeCloseTo(40.8, 4);
     expect(runtime.fpCameraCell?.y).toBeCloseTo(40, 4);
@@ -608,10 +582,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer(
-      "room-1",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -658,7 +629,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         runtime: runtime as any,
         startPosition: [toWorldX(40), 2, toWorldZ(40)],
         terrainLevel: null,
-      }),
+      })
     );
 
     capturedFrameCb!({}, 0.016);
@@ -694,10 +665,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     expect(runtime.fpTeleportRequest?.seq).toBe(1);
 
     // 3. Physical body drifts away (e.g. collision or post-prediction inertia moves body to (42.5, 40))
-    currentRigidBody.setTranslation(
-      { x: toWorldX(42.5), y: 2, z: toWorldZ(40) },
-      true,
-    );
+    currentRigidBody.setTranslation({ x: toWorldX(42.5), y: 2, z: toWorldZ(40) }, true);
     // Run production useFrame frame: updates runtime.fpCameraCell to drifted position (42.5, 40)
     capturedFrameCb!({}, 0.016);
     expect(runtime.fpCameraCell?.x).toBeCloseTo(42.5, 4);
@@ -779,10 +747,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer(
-      "room-1",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -829,7 +794,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         runtime: runtime as any,
         startPosition: [toWorldX(40), 2, toWorldZ(40)],
         terrainLevel: null,
-      }),
+      })
     );
 
     capturedFrameCb!({}, 0.016);
@@ -923,10 +888,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer(
-      "room-1",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -973,7 +935,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         runtime: runtime as any,
         startPosition: [toWorldX(40), 2, toWorldZ(40)],
         terrainLevel: null,
-      }),
+      })
     );
 
     capturedFrameCb!({}, 0.016);
@@ -1067,10 +1029,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer(
-      "room-1",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -1134,13 +1093,9 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       React.createElement(FirstPersonController, {
         sim: runtime.sim,
         runtime: runtime as any,
-        startPosition: [
-          toWorldX(optimisticReq.x),
-          2,
-          toWorldZ(optimisticReq.y),
-        ],
+        startPosition: [toWorldX(optimisticReq.x), 2, toWorldZ(optimisticReq.y)],
         terrainLevel: null,
-      }),
+      })
     );
     capturedFrameCb!({}, 0.016);
     expect(currentRigidBody.translation().x).toBe(toWorldX(optimisticReq.x));
@@ -1220,15 +1175,11 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         getValidToken: async () => "valid-mock-token",
       } as any);
       runtime.setOperatorUserId("user-1");
-      setupAuthoritativeRuntime(runtime);
+    setupAuthoritativeRuntime(runtime);
 
-      runtime.enableMultiplayer(
-        "room-1",
-        "ws://127.0.0.1:8080/api/v1/citylife/ws",
-      );
+      runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
       await runtime.getMultiplayerClient()?.connect();
-      const socket =
-        MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
       socket.readyState = MockWebSocket.OPEN;
       socket.onopen?.();
 
@@ -1273,7 +1224,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
           runtime: runtime as any,
           startPosition: [toWorldX(40), 2, toWorldZ(40)],
           terrainLevel: null,
-        }),
+        })
       );
       capturedFrameCb!({}, 0.016);
       expect(runtime.fpTeleportRequest?.seq).toBe(1);
@@ -1418,9 +1369,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       socket.sent = [];
       (runtime as any).lastMultiplayerInputSentAt = 0;
       runtime.tickWalkingMultiplayer();
-      const composedStrafeMsg = socket.sent.find(
-        (m: any) => m.type === "input",
-      );
+      const composedStrafeMsg = socket.sent.find((m: any) => m.type === "input");
       expect(composedStrafeMsg).toBeDefined();
       expect(composedStrafeMsg.strafe).toBe(-1);
 
@@ -1488,10 +1437,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer(
-      "room-1",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -1561,7 +1507,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
           runtime: runtime as any,
           startPosition: [0, 2, 0],
           terrainLevel: null,
-        }),
+        })
       );
 
       // Verify hook interception actually registered keydown, keyup, and blur listeners
@@ -1633,8 +1579,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       effectRunner = null;
       if (origWindow !== undefined) (globalThis as any).window = origWindow;
       else delete (globalThis as any).window;
-      if (origDocument !== undefined)
-        (globalThis as any).document = origDocument;
+      if (origDocument !== undefined) (globalThis as any).document = origDocument;
       else delete (globalThis as any).document;
       cleanups.forEach((c) => c());
     }
@@ -1648,10 +1593,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer(
-      "room-1",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -1719,7 +1661,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
           runtime: runtime as any,
           startPosition: [0, 2, 0],
           terrainLevel: null,
-        }),
+        })
       );
 
       // Step 1: Initial useFrame tick
@@ -1731,7 +1673,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         str: number,
         heading: number,
         dt: number,
-        sprint: boolean = false,
+        sprint: boolean = false
       ) => {
         const mag = Math.hypot(fwd, str);
         const normFwd = mag > 0 ? fwd / mag : 0;
@@ -1778,7 +1720,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         msgYaw0.forward,
         msgYaw0.strafe,
         msgYaw0.heading,
-        0.016,
+        0.016
       );
       expect(serverYaw0.vx).toBeCloseTo(0, 4);
       expect(serverYaw0.vz).toBeLessThan(0); // Moves down -Z!
@@ -1803,7 +1745,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       // Rotate by -PI/2 radians (90 deg to face +X)
       mockWindow.dispatchEvent({
         type: "mousemove",
-        movementX: Math.PI / 2 / 0.002,
+        movementX: (Math.PI / 2) / 0.002,
         movementY: 0,
       });
 
@@ -1838,7 +1780,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         msgTurnRight.forward,
         msgTurnRight.strafe,
         msgTurnRight.heading,
-        0.016,
+        0.016
       );
       expect(serverTurnRight.vx).toBeGreaterThan(0); // Moves along +X!
       expect(serverTurnRight.vz).toBeCloseTo(0, 4);
@@ -1846,8 +1788,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       const clientMagRight = Math.hypot(linvelTurnRight.x, linvelTurnRight.z);
       const serverMagRight = Math.hypot(serverTurnRight.dx, serverTurnRight.dz);
       const dotRight =
-        (linvelTurnRight.x * serverTurnRight.dx +
-          linvelTurnRight.z * serverTurnRight.dz) /
+        (linvelTurnRight.x * serverTurnRight.dx + linvelTurnRight.z * serverTurnRight.dz) /
         (clientMagRight * serverMagRight);
       expect(dotRight).toBeGreaterThan(0.999);
 
@@ -1888,7 +1829,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         msgStrafe.forward,
         msgStrafe.strafe,
         msgStrafe.heading,
-        0.016,
+        0.016
       );
       expect(serverStrafe.vx).toBeCloseTo(0, 4);
       expect(serverStrafe.vz).toBeGreaterThan(0); // Server also moves toward +Z!
@@ -1905,8 +1846,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       cleanups = [];
       if (origWindow !== undefined) (globalThis as any).window = origWindow;
       else delete (globalThis as any).window;
-      if (origDocument !== undefined)
-        (globalThis as any).document = origDocument;
+      if (origDocument !== undefined) (globalThis as any).document = origDocument;
       else delete (globalThis as any).document;
     }
   });
@@ -1919,10 +1859,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     runtime.setOperatorUserId("user-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer(
-      "room-focus-test",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-focus-test", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -1990,7 +1927,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
           runtime: runtime as any,
           startPosition: [0, 2, 0],
           terrainLevel: null,
-        }),
+        })
       );
 
       capturedFrameCb!({}, 0.016);
@@ -2154,9 +2091,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       for (let i = 0; i < 30; i++) {
         capturedFrameCb!({}, 0.016);
       }
-      expect(
-        Math.hypot(currentRigidBody.linvel().x, currentRigidBody.linvel().z),
-      ).toBeLessThan(0.001);
+      expect(Math.hypot(currentRigidBody.linvel().x, currentRigidBody.linvel().z)).toBeLessThan(0.001);
 
       // PART 4: Ordinary canvas release positive
       mockWindow.dispatchEvent({
@@ -2169,9 +2104,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       for (let i = 0; i < 25; i++) {
         capturedFrameCb!({}, 0.016);
       }
-      expect(
-        Math.hypot(currentRigidBody.linvel().x, currentRigidBody.linvel().z),
-      ).toBeGreaterThan(1.0);
+      expect(Math.hypot(currentRigidBody.linvel().x, currentRigidBody.linvel().z)).toBeGreaterThan(1.0);
       expect((runtime as any).fpKeys.has("strafeRight")).toBe(true);
 
       mockWindow.dispatchEvent({
@@ -2184,9 +2117,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       for (let i = 0; i < 30; i++) {
         capturedFrameCb!({}, 0.016);
       }
-      expect(
-        Math.hypot(currentRigidBody.linvel().x, currentRigidBody.linvel().z),
-      ).toBeLessThan(0.001);
+      expect(Math.hypot(currentRigidBody.linvel().x, currentRigidBody.linvel().z)).toBeLessThan(0.001);
       expect((runtime as any).fpKeys.has("strafeRight")).toBe(false);
     } finally {
       effectRunner = null;
@@ -2194,8 +2125,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
       cleanups = [];
       if (origWindow !== undefined) (globalThis as any).window = origWindow;
       else delete (globalThis as any).window;
-      if (origDocument !== undefined)
-        (globalThis as any).document = origDocument;
+      if (origDocument !== undefined) (globalThis as any).document = origDocument;
       else delete (globalThis as any).document;
     }
   });
@@ -2214,10 +2144,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     runtime.setOperatorUserId("user-walker-1");
     setupAuthoritativeRuntime(runtime);
 
-    runtime.enableMultiplayer(
-      "room-1",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
     socket.readyState = MockWebSocket.OPEN;
@@ -2238,7 +2165,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
         runtime: runtime as any,
         startPosition: [toWorldX(40), 2, toWorldZ(40)],
         terrainLevel: null,
-      }),
+      })
     );
     expect(capturedFrameCb).not.toBeNull();
 
@@ -2302,10 +2229,7 @@ describe("FirstPersonController production useFrame reconciliation", () => {
     } as any);
     runtime.setOperatorUserId("user-1");
 
-    runtime.enableMultiplayer(
-      "room-1",
-      "ws://127.0.0.1:8080/api/v1/citylife/ws",
-    );
+    runtime.enableMultiplayer("room-1", "ws://127.0.0.1:8080/api/v1/citylife/ws");
     await runtime.getMultiplayerClient()?.connect();
     expect(MockWebSocket.instances.length).toBe(0);
     expect(runtime.getMultiplayerClient()?.getStatus()).toBe("error");

@@ -26,7 +26,7 @@ function seedPlayerSession(page: Page, email: string) {
       };
       window.sessionStorage.setItem(key, JSON.stringify(session));
     },
-    { key: SESSION_STORAGE_KEY, userEmail: email, userName: username },
+    { key: SESSION_STORAGE_KEY, userEmail: email, userName: username }
   );
 }
 
@@ -86,8 +86,7 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
             worldId: reqWorldId,
             layoutRevision: customDoc.revision.contentHash,
             layout: customDoc,
-            transit:
-              baseSurveyRuntime.exportCanonicalTransitAuthority(customDoc),
+            transit: baseSurveyRuntime.exportCanonicalTransitAuthority(customDoc),
             plots: [{ geometry: { neighbourhoodKey: "citylife-central" } }],
           },
         }),
@@ -140,14 +139,8 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
     const perpX = -sinH;
     const perpY = cosH;
 
-    const p1Cell = {
-      x: roadStart.x + perpX * 0.4,
-      y: roadStart.y + perpY * 0.4,
-    };
-    const p2Cell = {
-      x: roadStart.x + cosH * 2.5 - perpX * 0.4,
-      y: roadStart.y + sinH * 2.5 - perpY * 0.4,
-    };
+    const p1Cell = { x: roadStart.x + perpX * 0.4, y: roadStart.y + perpY * 0.4 };
+    const p2Cell = { x: roadStart.x + cosH * 2.5 - perpX * 0.4, y: roadStart.y + sinH * 2.5 - perpY * 0.4 };
 
     const p1WorldX = (p1Cell.x - terrainSize / 2) * 4;
     const p1WorldZ = (p1Cell.y - terrainSize / 2) * 4;
@@ -197,12 +190,8 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
         participants: [{ ...p1State }, { ...p2State }],
       };
       const msg = JSON.stringify(snapshot);
-      try {
-        ws1?.send(msg);
-      } catch {}
-      try {
-        ws2?.send(msg);
-      } catch {}
+      try { ws1?.send(msg); } catch {}
+      try { ws2?.send(msg); } catch {}
     };
 
     await page1.routeWebSocket("**/api/v1/citylife/ws*", (ws) => {
@@ -211,37 +200,22 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
         try {
           const msg = JSON.parse(raw.toString());
           if (msg.type === "join_session" || msg.type === "create_session") {
-            ws.send(
-              JSON.stringify({
-                type: "session_created",
-                sessionId: "sess-racing-cup",
-                inviteCode: "racing-cup",
-                participantId: p1State.participantId,
-                protocolVersion: 2,
-                modeEpoch: 1,
-                mode: "driving",
-                worldId: msg.worldId || "seed-4242",
-                layoutRevision:
-                  msg.layoutRevision || defaultDoc.revision.contentHash,
-                neighbourhoodKey: "citylife-central",
-                participants: ws2
-                  ? [{ ...p1State }, { ...p2State }]
-                  : [{ ...p1State }],
-              }),
-            );
+            ws.send(JSON.stringify({
+              type: "session_created",
+              sessionId: "sess-racing-cup",
+              inviteCode: "racing-cup",
+              participantId: p1State.participantId,
+              protocolVersion: 2,
+              modeEpoch: 1,
+              mode: "driving",
+              worldId: msg.worldId || "seed-4242",
+              layoutRevision: msg.layoutRevision || defaultDoc.revision.contentHash,
+              neighbourhoodKey: "citylife-central",
+              participants: ws2 ? [{ ...p1State }, { ...p2State }] : [{ ...p1State }],
+            }));
             if (ws2) {
-              ws.send(
-                JSON.stringify({
-                  type: "peer_joined",
-                  participant: { ...p2State },
-                }),
-              );
-              ws2.send(
-                JSON.stringify({
-                  type: "peer_joined",
-                  participant: { ...p1State },
-                }),
-              );
+              ws.send(JSON.stringify({ type: "peer_joined", participant: { ...p2State } }));
+              ws2.send(JSON.stringify({ type: "peer_joined", participant: { ...p1State } }));
             }
           } else if (msg.type === "pose") {
             p1State.x = msg.x ?? p1State.x;
@@ -252,13 +226,11 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
             p1State.mode = msg.mode ?? p1State.mode;
             p1State.vehicleKey = msg.vehicleKey ?? p1State.vehicleKey;
             if (ws2) {
-              ws2.send(
-                JSON.stringify({
-                  type: "peer_pose",
-                  participantId: p1State.participantId,
-                  ...p1State,
-                }),
-              );
+              ws2.send(JSON.stringify({
+                type: "peer_pose",
+                participantId: p1State.participantId,
+                ...p1State,
+              }));
             }
           } else if (msg.type === "input") {
             p1State.lastInputSeq = msg.seq;
@@ -271,13 +243,11 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
             }
             broadcastSnapshot();
             if (ws2) {
-              ws2.send(
-                JSON.stringify({
-                  type: "peer_pose",
-                  participantId: p1State.participantId,
-                  ...p1State,
-                }),
-              );
+              ws2.send(JSON.stringify({
+                type: "peer_pose",
+                participantId: p1State.participantId,
+                ...p1State,
+              }));
             }
           }
         } catch {}
@@ -290,29 +260,21 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
         try {
           const msg = JSON.parse(raw.toString());
           if (msg.type === "join_session" || msg.type === "create_session") {
-            ws.send(
-              JSON.stringify({
-                type: "session_joined",
-                sessionId: "sess-racing-cup",
-                inviteCode: "racing-cup",
-                participantId: p2State.participantId,
-                protocolVersion: 2,
-                modeEpoch: 1,
-                mode: "driving",
-                worldId: msg.worldId || "seed-4242",
-                layoutRevision:
-                  msg.layoutRevision || defaultDoc.revision.contentHash,
-                neighbourhoodKey: "citylife-central",
-                participants: [{ ...p1State }, { ...p2State }],
-              }),
-            );
+            ws.send(JSON.stringify({
+              type: "session_joined",
+              sessionId: "sess-racing-cup",
+              inviteCode: "racing-cup",
+              participantId: p2State.participantId,
+              protocolVersion: 2,
+              modeEpoch: 1,
+              mode: "driving",
+              worldId: msg.worldId || "seed-4242",
+              layoutRevision: msg.layoutRevision || defaultDoc.revision.contentHash,
+              neighbourhoodKey: "citylife-central",
+              participants: [{ ...p1State }, { ...p2State }],
+            }));
             if (ws1) {
-              ws1.send(
-                JSON.stringify({
-                  type: "peer_joined",
-                  participant: { ...p2State },
-                }),
-              );
+              ws1.send(JSON.stringify({ type: "peer_joined", participant: { ...p2State } }));
             }
           } else if (msg.type === "pose") {
             p2State.x = msg.x ?? p2State.x;
@@ -323,13 +285,11 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
             p2State.mode = msg.mode ?? p2State.mode;
             p2State.vehicleKey = msg.vehicleKey ?? p2State.vehicleKey;
             if (ws1) {
-              ws1.send(
-                JSON.stringify({
-                  type: "peer_pose",
-                  participantId: p2State.participantId,
-                  ...p2State,
-                }),
-              );
+              ws1.send(JSON.stringify({
+                type: "peer_pose",
+                participantId: p2State.participantId,
+                ...p2State,
+              }));
             }
           } else if (msg.type === "input") {
             p2State.lastInputSeq = msg.seq;
@@ -342,13 +302,11 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
             }
             broadcastSnapshot();
             if (ws1) {
-              ws1.send(
-                JSON.stringify({
-                  type: "peer_pose",
-                  participantId: p2State.participantId,
-                  ...p2State,
-                }),
-              );
+              ws1.send(JSON.stringify({
+                type: "peer_pose",
+                participantId: p2State.participantId,
+                ...p2State,
+              }));
             }
           }
         } catch {}
@@ -377,12 +335,12 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
         page1.waitForFunction(
           () => !!(window as any).__colony && !!(window as any).__r3fScene,
           undefined,
-          { timeout: 30_000 },
+          { timeout: 30_000 }
         ),
         page2.waitForFunction(
           () => !!(window as any).__colony && !!(window as any).__r3fScene,
           undefined,
-          { timeout: 30_000 },
+          { timeout: 30_000 }
         ),
       ]);
 
@@ -390,14 +348,8 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
 
       // 7. Verify multiplayer HUD indicators
       await Promise.all([
-        page1.waitForSelector(
-          '[data-testid="multiplayer-hud"][data-connected="true"]',
-          { timeout: 20_000 },
-        ),
-        page2.waitForSelector(
-          '[data-testid="multiplayer-hud"][data-connected="true"]',
-          { timeout: 20_000 },
-        ),
+        page1.waitForSelector('[data-testid="multiplayer-hud"][data-connected="true"]', { timeout: 20_000 }),
+        page2.waitForSelector('[data-testid="multiplayer-hud"][data-connected="true"]', { timeout: 20_000 }),
       ]);
 
       console.log("Both players connected to WebSocket multiplayer server.");
@@ -416,8 +368,7 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
             return { x: p1.x, y: p1.y, heading };
           }
         }
-        const garageTarget =
-          sim?.state?.commercialDistrict?.garagePad?.roadTarget;
+        const garageTarget = sim?.state?.commercialDistrict?.garagePad?.roadTarget;
         if (garageTarget) {
           return { x: garageTarget.x, y: garageTarget.y, heading: 0 };
         }
@@ -428,9 +379,7 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
         return { x: 50, y: 50, heading: 0 };
       });
 
-      console.log(
-        `Starting road position: x=${roadStart.x.toFixed(2)}, y=${roadStart.y.toFixed(2)}, heading=${roadStart.heading.toFixed(2)}`,
-      );
+      console.log(`Starting road position: x=${roadStart.x.toFixed(2)}, y=${roadStart.y.toFixed(2)}, heading=${roadStart.heading.toFixed(2)}`);
 
       // 9. Initial fixture staging: place both cars on the road at starting line
       const cosH = Math.cos(roadStart.heading);
@@ -439,111 +388,75 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
       const perpY = cosH;
 
       // Player 1 at starting station, left lane
-      await page1.evaluate(
-        ({ x, y, heading }) => {
-          (window as any).__colony.teleportCar(x, y, heading);
-        },
-        {
-          x: roadStart.x + perpX * 0.4,
-          y: roadStart.y + perpY * 0.4,
-          heading: roadStart.heading,
-        },
-      );
+      await page1.evaluate(({ x, y, heading }) => {
+        (window as any).__colony.teleportCar(x, y, heading);
+      }, {
+        x: roadStart.x + perpX * 0.4,
+        y: roadStart.y + perpY * 0.4,
+        heading: roadStart.heading,
+      });
 
       // Player 2 slightly ahead, right lane
-      await page2.evaluate(
-        ({ x, y, heading }) => {
-          (window as any).__colony.teleportCar(x, y, heading);
-        },
-        {
-          x: roadStart.x + cosH * 2.5 - perpX * 0.4,
-          y: roadStart.y + sinH * 2.5 - perpY * 0.4,
-          heading: roadStart.heading,
-        },
-      );
+      await page2.evaluate(({ x, y, heading }) => {
+        (window as any).__colony.teleportCar(x, y, heading);
+      }, {
+        x: roadStart.x + cosH * 2.5 - perpX * 0.4,
+        y: roadStart.y + sinH * 2.5 - perpY * 0.4,
+        heading: roadStart.heading,
+      });
 
       // Ensure authoritative vehicle ownership is hydrated for both operators
       await page1.evaluate(() => {
         const colony = (window as any).__colony;
         if (!colony.authoritativeCar && colony.operatorUserId) {
-          colony.applyVehicleOwnership(colony.operatorUserId, [
-            "karoo-vonk-11",
-          ]);
+          colony.applyVehicleOwnership(colony.operatorUserId, ["karoo-vonk-11"]);
         }
       });
       await page2.evaluate(() => {
         const colony = (window as any).__colony;
         if (!colony.authoritativeCar && colony.operatorUserId) {
-          colony.applyVehicleOwnership(colony.operatorUserId, [
-            "karoo-vonk-11",
-          ]);
+          colony.applyVehicleOwnership(colony.operatorUserId, ["karoo-vonk-11"]);
         }
       });
 
       // 10. Check 3D scene & simulation state: verify exact admitted peer identity and vehicle
-      await page1.waitForFunction(
-        () => {
-          const colony = (window as any).__colony;
-          const racers = Array.from(
-            colony?.sim?.state?.remoteRacers?.values() ?? [],
-          ) as any[];
-          const peer = racers.find(
-            (r) => r.username === "jamtin2" && r.vehicleKey === "karoo-vonk-11",
-          );
-          return !!peer;
-        },
-        undefined,
-        { timeout: 25_000 },
-      );
+      await page1.waitForFunction(() => {
+        const colony = (window as any).__colony;
+        const racers = Array.from(colony?.sim?.state?.remoteRacers?.values() ?? []) as any[];
+        const peer = racers.find((r) => r.username === "jamtin2" && r.vehicleKey === "karoo-vonk-11");
+        return !!peer;
+      }, undefined, { timeout: 25_000 });
 
-      await page2.waitForFunction(
-        () => {
-          const colony = (window as any).__colony;
-          const racers = Array.from(
-            colony?.sim?.state?.remoteRacers?.values() ?? [],
-          ) as any[];
-          const peer = racers.find(
-            (r) => r.username === "jamtin" && r.vehicleKey === "karoo-vonk-11",
-          );
-          return !!peer;
-        },
-        undefined,
-        { timeout: 25_000 },
-      );
+      await page2.waitForFunction(() => {
+        const colony = (window as any).__colony;
+        const racers = Array.from(colony?.sim?.state?.remoteRacers?.values() ?? []) as any[];
+        const peer = racers.find((r) => r.username === "jamtin" && r.vehicleKey === "karoo-vonk-11");
+        return !!peer;
+      }, undefined, { timeout: 25_000 });
 
-      await page1.waitForFunction(
-        () => {
-          const scene = (window as any).__r3fScene;
-          let found = false;
-          scene?.traverse((o: any) => {
-            if (o.name && o.name.includes("remote-racer-jamtin2")) {
-              found = true;
-            }
-          });
-          return found;
-        },
-        undefined,
-        { timeout: 25_000 },
-      );
+      await page1.waitForFunction(() => {
+        const scene = (window as any).__r3fScene;
+        let found = false;
+        scene?.traverse((o: any) => {
+          if (o.name && o.name.includes("remote-racer-jamtin2")) {
+            found = true;
+          }
+        });
+        return found;
+      }, undefined, { timeout: 25_000 });
 
-      await page2.waitForFunction(
-        () => {
-          const scene = (window as any).__r3fScene;
-          let found = false;
-          scene?.traverse((o: any) => {
-            if (o.name && o.name.includes("remote-racer-jamtin")) {
-              found = true;
-            }
-          });
-          return found;
-        },
-        undefined,
-        { timeout: 25_000 },
-      );
+      await page2.waitForFunction(() => {
+        const scene = (window as any).__r3fScene;
+        let found = false;
+        scene?.traverse((o: any) => {
+          if (o.name && o.name.includes("remote-racer-jamtin")) {
+            found = true;
+          }
+        });
+        return found;
+      }, undefined, { timeout: 25_000 });
 
-      console.log(
-        "Verified: Player 1 sees Player 2 in car, Player 2 sees Player 1 in car.",
-      );
+      console.log("Verified: Player 1 sees Player 2 in car, Player 2 sees Player 1 in car.");
 
       // Record initial remote racer 3D position in Player 1 view
       const initial3DPosP1 = await page1.evaluate(() => {
@@ -558,9 +471,7 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
       });
 
       // 11. Drive both racers down the road exercising visible player controls
-      console.log(
-        "Starting player driving controls down the road with authoritative progress...",
-      );
+      console.log("Starting player driving controls down the road with authoritative progress...");
 
       // Hook snapshot recording on both clients
       await page1.evaluate(() => {
@@ -596,14 +507,10 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
       await expect(throttle2).toBeVisible({ timeout: 20_000 });
 
       // Capture pre-input snapshot baseline on Player 1
-      await page1.waitForFunction(
-        () => {
-          const history = (window as any).__snapshotHistory || [];
-          return history.length >= 1;
-        },
-        undefined,
-        { timeout: 15_000 },
-      );
+      await page1.waitForFunction(() => {
+        const history = (window as any).__snapshotHistory || [];
+        return history.length >= 1;
+      }, undefined, { timeout: 15_000 });
 
       const baselineSeq1 = await page1.evaluate(() => {
         const history = (window as any).__snapshotHistory || [];
@@ -614,90 +521,50 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
       await throttle2.dispatchEvent("pointerdown");
 
       // Assert advancing server snapshot sequence and input acknowledgement on Player 1 relative to pre-input baseline
-      await page1.waitForFunction(
-        (baseSeq) => {
-          const history = (window as any).__snapshotHistory || [];
-          if (history.length < 2) return false;
-          const last = history[history.length - 1];
-          const p = last.participants?.find(
-            (part: any) => part.username === "jamtin",
-          );
-          return (
-            last.seq > baseSeq &&
-            typeof p?.lastInputSeq === "number" &&
-            p.lastInputSeq > 0
-          );
-        },
-        baselineSeq1,
-        { timeout: 25_000 },
-      );
+      await page1.waitForFunction((baseSeq) => {
+        const history = (window as any).__snapshotHistory || [];
+        if (history.length < 2) return false;
+        const last = history[history.length - 1];
+        const p = last.participants?.find((part: any) => part.username === "jamtin");
+        return last.seq > baseSeq && typeof p?.lastInputSeq === "number" && p.lastInputSeq > 0;
+      }, baselineSeq1, { timeout: 25_000 });
 
       // Assert advancing server snapshot sequence and input acknowledgement on Player 2
-      await page2.waitForFunction(
-        () => {
-          const history = (window as any).__snapshotHistory || [];
-          if (history.length < 2) return false;
-          const last = history[history.length - 1];
-          const p = last.participants?.find(
-            (part: any) => part.username === "jamtin2",
-          );
-          return (
-            last.seq >= 2 &&
-            typeof p?.lastInputSeq === "number" &&
-            p.lastInputSeq > 0
-          );
-        },
-        undefined,
-        { timeout: 25_000 },
-      );
+      await page2.waitForFunction(() => {
+        const history = (window as any).__snapshotHistory || [];
+        if (history.length < 2) return false;
+        const last = history[history.length - 1];
+        const p = last.participants?.find((part: any) => part.username === "jamtin2");
+        return last.seq >= 2 && typeof p?.lastInputSeq === "number" && p.lastInputSeq > 0;
+      }, undefined, { timeout: 25_000 });
 
       // Assert authoritative progress and peer position updates
-      await page1.waitForFunction(
-        () => {
-          const colony = (window as any).__colony;
-          const racers = Array.from(
-            colony.sim?.state?.remoteRacers?.values() || [],
-          ) as any[];
-          const p2 = racers.find(
-            (r) => r.username === "jamtin2" && r.vehicleKey === "karoo-vonk-11",
-          );
-          return !!p2 && !!p2.cell;
-        },
-        undefined,
-        { timeout: 25_000 },
-      );
+      await page1.waitForFunction(() => {
+        const colony = (window as any).__colony;
+        const racers = Array.from(colony.sim?.state?.remoteRacers?.values() || []) as any[];
+        const p2 = racers.find((r) => r.username === "jamtin2" && r.vehicleKey === "karoo-vonk-11");
+        return !!p2 && !!p2.cell;
+      }, undefined, { timeout: 25_000 });
 
-      await page2.waitForFunction(
-        () => {
-          const colony = (window as any).__colony;
-          const racers = Array.from(
-            colony.sim?.state?.remoteRacers?.values() || [],
-          ) as any[];
-          const p1 = racers.find(
-            (r) => r.username === "jamtin" && r.vehicleKey === "karoo-vonk-11",
-          );
-          return !!p1 && !!p1.cell;
-        },
-        undefined,
-        { timeout: 25_000 },
-      );
+      await page2.waitForFunction(() => {
+        const colony = (window as any).__colony;
+        const racers = Array.from(colony.sim?.state?.remoteRacers?.values() || []) as any[];
+        const p1 = racers.find((r) => r.username === "jamtin" && r.vehicleKey === "karoo-vonk-11");
+        return !!p1 && !!p1.cell;
+      }, undefined, { timeout: 25_000 });
 
       // Assert rendered 3D world movement: Player 1 sees remote-racer-jamtin2 has moved
-      await page1.waitForFunction(
-        (initial) => {
-          const scene = (window as any).__r3fScene;
-          let current: { x: number; z: number } | null = null;
-          scene?.traverse((o: any) => {
-            if (o.name && o.name.includes("remote-racer-jamtin2")) {
-              current = { x: o.position.x, z: o.position.z };
-            }
-          });
-          if (!current || !initial) return false;
-          return Math.hypot(current.x - initial.x, current.z - initial.z) > 0.5;
-        },
-        initial3DPosP1,
-        { timeout: 25_000 },
-      );
+      await page1.waitForFunction((initial) => {
+        const scene = (window as any).__r3fScene;
+        let current: { x: number; z: number } | null = null;
+        scene?.traverse((o: any) => {
+          if (o.name && o.name.includes("remote-racer-jamtin2")) {
+            current = { x: o.position.x, z: o.position.z };
+          }
+        });
+        if (!current || !initial) return false;
+        return Math.hypot(current.x - initial.x, current.z - initial.z) > 0.5;
+      }, initial3DPosP1, { timeout: 25_000 });
 
       const mapBtn1 = page1.locator('[data-testid="player-map-shortcut"]');
       await expect(mapBtn1).toBeVisible({ timeout: 15_000 });
@@ -722,16 +589,10 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
       await brake1.dispatchEvent("pointerdown");
       await brake2.dispatchEvent("pointerdown");
       await page1.evaluate(() => {
-        (window as any).__colony.setOwnedDriveInput({
-          throttle: false,
-          brake: true,
-        });
+        (window as any).__colony.setOwnedDriveInput({ throttle: false, brake: true });
       });
       await page2.evaluate(() => {
-        (window as any).__colony.setOwnedDriveInput({
-          throttle: false,
-          brake: true,
-        });
+        (window as any).__colony.setOwnedDriveInput({ throttle: false, brake: true });
       });
 
       console.log("Player driving controls complete and inputs neutralized.");
@@ -739,27 +600,17 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
       // 12. Confirm both vehicles advanced down the road
       const finalP1 = await page1.evaluate(() => {
         const colony = (window as any).__colony;
-        return (
-          colony.sim?.state?.operatorCar?.cell || colony.getOwnedDrivePose()
-        );
+        return colony.sim?.state?.operatorCar?.cell || colony.getOwnedDrivePose();
       });
       const finalP2 = await page2.evaluate(() => {
         const colony = (window as any).__colony;
-        return (
-          colony.sim?.state?.operatorCar?.cell || colony.getOwnedDrivePose()
-        );
+        return colony.sim?.state?.operatorCar?.cell || colony.getOwnedDrivePose();
       });
 
       expect(finalP1).toBeDefined();
       expect(finalP2).toBeDefined();
-      const distance1 = Math.hypot(
-        (finalP1?.x ?? 0) - roadStart.x,
-        (finalP1?.y ?? 0) - roadStart.y,
-      );
-      const distance2 = Math.hypot(
-        (finalP2?.x ?? 0) - roadStart.x,
-        (finalP2?.y ?? 0) - roadStart.y,
-      );
+      const distance1 = Math.hypot((finalP1?.x ?? 0) - roadStart.x, (finalP1?.y ?? 0) - roadStart.y);
+      const distance2 = Math.hypot((finalP2?.x ?? 0) - roadStart.x, (finalP2?.y ?? 0) - roadStart.y);
 
       console.log(`Player 1 distance traveled: ${distance1.toFixed(2)} cells`);
       console.log(`Player 2 distance traveled: ${distance2.toFixed(2)} cells`);
@@ -784,7 +635,7 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
 
       execSync(
         `"${ffmpegInstaller.path}" -nostdin -y -i "${rawVideoPath}" -c:v libx264 -pix_fmt yuv420p "${finalMp4Path}"`,
-        { stdio: "pipe" },
+        { stdio: "pipe" }
       );
 
       expect(fs.existsSync(finalMp4Path)).toBe(true);
@@ -792,9 +643,7 @@ test.describe("Multiplayer Racing Client Integration (In-Browser Mocked WebSocke
       console.log(`Final MP4 size: ${stat.size} bytes`);
       expect(stat.size).toBeGreaterThan(50_000); // Verify non-trivial video content
 
-      console.log(
-        "Mocked client browser integration verified: Two racers driving down road, seeing each other in game, recorded to MP4. Deployed two-user acceptance remains open on cluster.",
-      );
+      console.log("Mocked client browser integration verified: Two racers driving down road, seeing each other in game, recorded to MP4. Deployed two-user acceptance remains open on cluster.");
     } finally {
       clearInterval(snapshotInterval);
     }

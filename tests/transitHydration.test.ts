@@ -196,10 +196,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
           (c: any) => !(c.x === site.roadCell.x && c.y > minY && c.y < maxY),
         ),
       })),
-      ways: doc.ways.filter(
-        (w: any) =>
-          (w as any).id !== "depot-spur" && (w as any).source !== "depot-spur",
-      ),
+      ways: doc.ways.filter((w: any) => (w as any).id !== "depot-spur" && (w as any).source !== "depot-spur"),
       revision: {
         number: doc.revision.number + 1,
         parentHash: doc.revision.contentHash,
@@ -767,8 +764,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     // Negative: mismatched layoutRevision in transit authority
     const mismatchedEnvelope = createWorldLayoutManifestEnvelope(doc, {
       ...transitAuth!,
-      layoutRevision:
-        "0000000000000000000000000000000000000000000000000000000000000000",
+      layoutRevision: "0000000000000000000000000000000000000000000000000000000000000000",
     });
     const invalidResult =
       validateWorldLayoutManifestEnvelope(mismatchedEnvelope);
@@ -907,14 +903,8 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
     const envelope = {
       layout: doc,
       transit: transitAuth,
-      walkability: {
-        schemaVersion: "citylife.walkability/v1",
-        walkableCells: 100,
-      },
-      physicalColliders: {
-        schemaVersion: "citylife.physical-colliders/v1",
-        colliders: [],
-      },
+      walkability: { schemaVersion: "citylife.walkability/v1", walkableCells: 100 },
+      physicalColliders: { schemaVersion: "citylife.physical-colliders/v1", colliders: [] },
     };
 
     const saveInput = validatedWorldLayoutImportSaveInput(
@@ -937,8 +927,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       layout: doc,
       transit: {
         ...transitAuth!,
-        layoutRevision:
-          "0000000000000000000000000000000000000000000000000000000000000000",
+        layoutRevision: "0000000000000000000000000000000000000000000000000000000000000000",
       },
     };
 
@@ -954,9 +943,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
   describe("remote starter catalogue boot barrier with transit companion", () => {
     let rt: ColonyRuntime;
     let doc: ReturnType<ColonyRuntime["captureWorldLayout"]>;
-    let transitAuth: NonNullable<
-      ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>
-    >;
+    let transitAuth: NonNullable<ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>>;
     let setupDurationMs = 0;
 
     beforeEach(() => {
@@ -970,9 +957,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       doc = rt.captureWorldLayout();
       const auth = rt.exportCanonicalTransitAuthority();
       if (!auth) {
-        throw new Error(
-          "Setup failure: baseline exportCanonicalTransitAuthority returned null",
-        );
+        throw new Error("Setup failure: baseline exportCanonicalTransitAuthority returned null");
       }
       transitAuth = auth;
       setupDurationMs = performance.now() - t0;
@@ -1057,8 +1042,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
           layout: doc,
           transit: {
             ...transitAuth!,
-            layoutRevision:
-              "0000000000000000000000000000000000000000000000000000000000000000",
+            layoutRevision: "0000000000000000000000000000000000000000000000000000000000000000",
           },
         },
       })),
@@ -1092,9 +1076,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
   describe("dirty depot slope invalidation under landscape edits", () => {
     let rt: ColonyRuntime;
     let initial: ReturnType<ColonyRuntime["captureWorldLayout"]>;
-    let baselineExport: NonNullable<
-      ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>
-    >;
+    let baselineExport: NonNullable<ReturnType<ColonyRuntime["exportCanonicalTransitAuthority"]>>;
     let setupDurationMs = 0;
 
     beforeEach(() => {
@@ -1109,9 +1091,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       rt.hydrateWorldLayout(initial);
       const auth = rt.exportCanonicalTransitAuthority();
       if (!auth) {
-        throw new Error(
-          "Setup failure: baseline exportCanonicalTransitAuthority returned null",
-        );
+        throw new Error("Setup failure: baseline exportCanonicalTransitAuthority returned null");
       }
       baselineExport = auth;
       setupDurationMs = performance.now() - t0;
@@ -1125,18 +1105,14 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
 
       let appliedEdits = 0;
       for (let n = 0; n < 40; n++) {
-        useRoadNetwork
-          .getState()
-          .applyLandscapeEdit(pad!.x + 2, pad!.y + 2, "raise");
+        useRoadNetwork.getState().applyLandscapeEdit(pad!.x + 2, pad!.y + 2, "raise");
         appliedEdits++;
       }
       expect(appliedEdits).toBe(40);
       expect(useRoadNetwork.getState().landscapeEdits.size).toBeGreaterThan(0);
 
       const layout = rt.captureWorldLayout();
-      expect(layout.revision.contentHash).not.toBe(
-        initial.revision.contentHash,
-      );
+      expect(layout.revision.contentHash).not.toBe(initial.revision.contentHash);
       const transit = rt.exportCanonicalTransitAuthority(layout);
       expect(transit).toBeNull();
       const defaultTransit = rt.exportCanonicalTransitAuthority();
@@ -1166,12 +1142,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       source: "import" as const,
       anchors: [{ id: "entrance", cell: { x: 0, y: 0 } }],
       bounds: { x: 0, y: 0, w: 2, h: 2 },
-      cells: [
-        { x: 0, y: 0 },
-        { x: 1, y: 0 },
-        { x: 0, y: 1 },
-        { x: 1, y: 1 },
-      ],
+      cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
       vertical: { min: 0, max: 10, clearanceAbove: 2, clearanceBelow: 0 },
     };
     const resUnknown = extractPlacementsConstraints([unknownPlacement], {
@@ -1199,9 +1170,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
         parentHash: initial.revision.contentHash,
       },
     };
-    const exportAuth = rt.exportCanonicalTransitAuthority(
-      unvalidatedDoc as any,
-    );
+    const exportAuth = rt.exportCanonicalTransitAuthority(unvalidatedDoc as any);
     expect(exportAuth).toBeNull();
   });
 
@@ -1233,12 +1202,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
         rotation: { x: 0, y: 0, z: 0 },
         scale: { x: 1, y: 1, z: 1 },
       },
-      grid: {
-        width: 512,
-        height: 512,
-        cellSize: surfaceGrid.cellSize,
-        origin: { x: 0, y: 0, z: 0 },
-      },
+      grid: { width: 512, height: 512, cellSize: surfaceGrid.cellSize, origin: { x: 0, y: 0, z: 0 } },
     };
     const disjointPlacement = {
       id: "placement:test:disjoint",
@@ -1248,12 +1212,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       source: "import" as const,
       anchors: [{ id: "entrance", cell: { x: 0, y: 0 } }],
       bounds: { x: 0, y: 0, w: 2, h: 2 },
-      cells: [
-        { x: 0, y: 0 },
-        { x: 1, y: 0 },
-        { x: 0, y: 1 },
-        { x: 1, y: 1 },
-      ],
+      cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
       vertical: { min: 0, max: 10, clearanceAbove: 2, clearanceBelow: 0 },
     };
 
@@ -1261,21 +1220,14 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       ...initial,
       frames: [...initial.frames, disjointFrame],
       placements: [...initial.placements, disjointPlacement],
-      revision: {
-        number: initial.revision.number + 1,
-        parentHash: initial.revision.contentHash,
-      },
+      revision: { number: initial.revision.number + 1, parentHash: initial.revision.contentHash },
     });
-    expect(disjointDoc.revision.contentHash).not.toBe(
-      initial.revision.contentHash,
-    );
+    expect(disjointDoc.revision.contentHash).not.toBe(initial.revision.contentHash);
 
     rt.hydrateWorldLayout(disjointDoc);
     const disjointExport = rt.exportCanonicalTransitAuthority();
     expect(disjointExport).not.toBeNull();
-    expect(disjointExport!.layoutRevision).toBe(
-      disjointDoc.revision.contentHash,
-    );
+    expect(disjointExport!.layoutRevision).toBe(disjointDoc.revision.contentHash);
   }, 120_000);
 
   it("projects translated child-frame corridor obstacles to surface avoiding loop collision", () => {
@@ -1306,12 +1258,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
         rotation: { x: 0, y: 0, z: 0 },
         scale: { x: 1, y: 1, z: 1 },
       },
-      grid: {
-        width: 512,
-        height: 512,
-        cellSize: surfaceGrid.cellSize,
-        origin: { x: 0, y: 0, z: 0 },
-      },
+      grid: { width: 512, height: 512, cellSize: surfaceGrid.cellSize, origin: { x: 0, y: 0, z: 0 } },
     };
     const transPlacement = {
       id: "placement:test:trans-blocker",
@@ -1321,12 +1268,7 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       source: "import" as const,
       anchors: [{ id: "entrance", cell: { x: 0, y: 0 } }],
       bounds: { x: 0, y: 0, w: 2, h: 2 },
-      cells: [
-        { x: 0, y: 0 },
-        { x: 1, y: 0 },
-        { x: 0, y: 1 },
-        { x: 1, y: 1 },
-      ],
+      cells: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 1 }],
       vertical: { min: 0, max: 10, clearanceAbove: 2, clearanceBelow: 0 },
     };
 
@@ -1334,14 +1276,9 @@ describe("Transit Hydration & Canonical Export (e81ea9de)", () => {
       ...initial,
       frames: [...initial.frames, transFrame],
       placements: [...initial.placements, transPlacement],
-      revision: {
-        number: initial.revision.number + 1,
-        parentHash: initial.revision.contentHash,
-      },
+      revision: { number: initial.revision.number + 1, parentHash: initial.revision.contentHash },
     });
-    expect(transDoc.revision.contentHash).not.toBe(
-      initial.revision.contentHash,
-    );
+    expect(transDoc.revision.contentHash).not.toBe(initial.revision.contentHash);
 
     rt.hydrateWorldLayout(transDoc);
     expect(rt.busRoute).not.toBeNull();

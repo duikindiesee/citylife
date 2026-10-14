@@ -800,13 +800,7 @@ export function ColonyApp() {
         error: null,
       };
     } catch (error: unknown) {
-      return {
-        generation,
-        worldId: worldKey,
-        store: null,
-        coordinator: null,
-        error,
-      };
+      return { generation, worldId: worldKey, store: null, coordinator: null, error };
     }
   }, [runtime, remoteLoader, isMultiplayer, operatorUserId, worldKey]);
   const [worldLayoutBoot, setWorldLayoutBoot] = useState<
@@ -1100,25 +1094,15 @@ export function ColonyApp() {
         ? new URLSearchParams(window.location.search)
         : null;
     const explicitRoom = query?.get("room");
-    const explicitMp =
-      explicitRoom !== null || query?.get("multiplayer") === "1";
+    const explicitMp = explicitRoom !== null || query?.get("multiplayer") === "1";
     const room = explicitRoom || (explicitMp ? "racing-cup" : null);
-    const wsUrl =
-      query?.get("ws") ||
-      (typeof window !== "undefined"
-        ? (window as any).__customMultiplayerWsUrl
-        : undefined);
-    const explicitHood =
-      query?.get("neighbourhood") || query?.get("hood") || undefined;
+    const wsUrl = query?.get("ws") || (typeof window !== "undefined" ? (window as any).__customMultiplayerWsUrl : undefined);
+    const explicitHood = query?.get("neighbourhood") || query?.get("hood") || undefined;
 
     const shouldConnect = isReady && hasAuth && Boolean(room);
 
     if (shouldConnect && room) {
-      runtime.enableMultiplayer(
-        room,
-        wsUrl || undefined,
-        explicitHood || undefined,
-      );
+      runtime.enableMultiplayer(room, wsUrl || undefined, explicitHood || undefined);
     } else {
       runtime.disableMultiplayer();
     }
@@ -1126,13 +1110,7 @@ export function ColonyApp() {
     return () => {
       runtime.disableMultiplayer();
     };
-  }, [
-    auth.isAuthenticated,
-    operatorUserId,
-    worldLayoutBoot.status,
-    worldLayoutHead?.revisionId,
-    runtime,
-  ]);
+  }, [auth.isAuthenticated, operatorUserId, worldLayoutBoot.status, worldLayoutHead?.revisionId, runtime]);
   const walletAccountKey =
     auth.isAuthenticated && operatorUserId !== null
       ? String(operatorUserId)
@@ -1465,8 +1443,7 @@ export function ColonyApp() {
           abort.signal,
         );
         if (abort.signal.aborted) return;
-        if (worldLayoutPersistence.generation !== bootGenerationRef.current)
-          return;
+        if (worldLayoutPersistence.generation !== bootGenerationRef.current) return;
         const document = runtime.worldLayoutDocument();
         if (!document)
           throw new Error(
@@ -1648,14 +1625,7 @@ export function ColonyApp() {
       if (MOVE.has(e.code)) runtime.setFpKey(norm(e.code), false);
     };
     const onBlur = () => {
-      for (const k of [
-        "fwd",
-        "back",
-        "strafeLeft",
-        "strafeRight",
-        "left",
-        "right",
-      ]) {
+      for (const k of ["fwd", "back", "strafeLeft", "strafeRight", "left", "right"]) {
         runtime.setFpKey(k, false);
       }
     };
@@ -2081,8 +2051,7 @@ export function ColonyApp() {
               margin: "0 auto",
             }}
           >
-            Development Preview — CityLife is still in development. Features and
-            gameplay may change.
+            Development Preview — CityLife is still in development. Features and gameplay may change.
           </div>
           {worldLayoutBoot.status === "error" && (
             <>

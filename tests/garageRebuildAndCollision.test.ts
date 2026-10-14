@@ -843,11 +843,9 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     const size = testRt.sim.state.terrain.size;
     // World coordinates (-660.48, -156.00) from actual-pair test on seed 4242
     const cellX = -660.48 / 4 + size / 2;
-    const cellY = -156.0 / 4 + size / 2;
+    const cellY = -156.00 / 4 + size / 2;
 
-    expect(
-      testRt.sim.state.roadSet.has(`${Math.round(cellX)},${Math.round(cellY)}`),
-    ).toBe(true);
+    expect(testRt.sim.state.roadSet.has(`${Math.round(cellX)},${Math.round(cellY)}`)).toBe(true);
 
     (testRt as any).ownedDrivePose = {
       x: cellX,
@@ -857,10 +855,7 @@ describe("Spec 177 — Commercial Garage Rebuild: Discrete Surfaces, Obstacles &
     };
     (testRt as any).ownedDriveSeated = true;
     (testRt as any).operatorUserId = "test-operator";
-    (testRt as any).authoritativeCar = {
-      id: "karoo-vonk-11",
-      name: "Karoo",
-    } as any;
+    (testRt as any).authoritativeCar = { id: "karoo-vonk-11", name: "Karoo" } as any;
 
     const exited = testRt.exitOwnedCar();
     expect(exited).toBe(true);
