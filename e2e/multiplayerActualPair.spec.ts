@@ -1,6 +1,7 @@
 import { test, expect, type Page, type BrowserContext } from "@playwright/test";
 import * as path from "path";
 import * as fs from "fs";
+import * as crypto from "crypto";
 import { execSync } from "child_process";
 // @ts-ignore
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
@@ -3834,7 +3835,7 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
 
     const e2ePort = Number(process.env.CITYLIFE_E2E_PORT) || 5191;
     const serverPort = Number(process.env.CITYLIFE_PORT) || 9010;
-    const BUS_JWT_SECRET = "test-secret-bus-journey-0987654321";
+    const BUS_JWT_SECRET = crypto.randomUUID();
     const fastifyApp = buildApp({
       gameState: new GameStateManager(null, null),
       realtime,
