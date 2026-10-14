@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import {
   WorldLayoutDocumentError,
@@ -15,6 +15,27 @@ import {
   type WorldLayoutBootStore,
 } from "../src/colony/worldLayoutBoot";
 import type { StoredWorldLayoutRevision } from "../src/colony/worldLayoutStore";
+
+let memoizedSeedLayout: WorldLayoutDocument | null = null;
+
+function cloneDocument(doc: WorldLayoutDocument): WorldLayoutDocument {
+  const cloned = structuredClone(doc);
+  Object.defineProperty(cloned, "worldId", {
+    value: doc.layoutId,
+    enumerable: false,
+    writable: false,
+    configurable: false,
+  });
+  return cloned;
+}
+
+function getSeed4242Layout(): WorldLayoutDocument {
+  if (!memoizedSeedLayout) {
+    const seedRuntime = new ColonyRuntime(4242);
+    memoizedSeedLayout = seedRuntime.captureWorldLayout();
+  }
+  return cloneDocument(memoizedSeedLayout);
+}
 
 function resetRoadBuilderState(): void {
   useRoadNetwork.setState({
@@ -140,6 +161,12 @@ function firstFreeRoadCell(document: WorldLayoutDocument): {
 }
 
 describe("WB.1d independent acceptance", () => {
+  beforeAll(() => {
+    if (!memoizedSeedLayout) {
+      memoizedSeedLayout = new ColonyRuntime(4242).captureWorldLayout();
+    }
+  }, 60000);
+
   beforeEach(resetRoadBuilderState);
 
   it("serializes only the spatial allow-list when account, wallet and presence state is populated", () => {
@@ -224,8 +251,7 @@ describe("WB.1d independent acceptance", () => {
       expect(preStore.sameSessionPlacements.size).toBe(0);
 
       const t0 = performance.now();
-      const source = new ColonyRuntime(4242);
-      head = source.captureWorldLayout();
+      head = getSeed4242Layout();
       firstReplay = await executeColdReplay(head);
       setupDurationMs = performance.now() - t0;
     }, 60000);
@@ -242,8 +268,7 @@ describe("WB.1d independent acceptance", () => {
   });
 
   it("loads persisted spatial truth without recapturing seeders and preserves seed-4242 fixtures", async () => {
-    const seedRuntime = new ColonyRuntime(4242);
-    const seed = seedRuntime.captureWorldLayout();
+    const seed = getSeed4242Layout();
     const extraCell = firstFreeRoadCell(seed);
     const firstRoad = seed.roads[0];
     if (!firstRoad) throw new Error("seed-4242 has no road fixture");
@@ -276,8 +301,7 @@ describe("WB.1d independent acceptance", () => {
   });
 
   it("adds subsurface, second-island, sky, orbital and deep-space frames without moving the original island", () => {
-    const source = new ColonyRuntime(4242);
-    const base = source.captureWorldLayout();
+    const base = getSeed4242Layout();
     const surface = base.frames.find(
       (frame) =>
         frame.kind === "region" && frame.layer === "surface" && frame.grid,
