@@ -4,6 +4,10 @@ import {
   basicAuth,
   canEnterCityBuilder,
   classifyLoginFailure,
+  KOOKER_COOKIE_PATH,
+  KOOKER_COOKIE_ALIAS_PATH,
+  KOOKER_CLEAR_PATH,
+  KOOKER_CLEAR_ALIAS_PATH,
 } from "../src/colony/authClient";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -519,5 +523,168 @@ describe("AuthClient (token refresh)", () => {
       a.getValidToken(),
     ]);
     expect(calls.filter((u) => u.includes("/auth/refresh")).length).toBe(1);
+  });
+});
+
+describe("AuthClient (BFF cookie and clear session sync)", () => {
+  it("issues cookie session via direct BFF path with same-origin credentials", async () => {
+    const fetchCalls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      fetchCalls.push({ url, init });
+      if (url === KOOKER_COOKIE_PATH) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient();
+    const token = fakeJwt(Date.now() + 3600_000, "operator@test.com");
+    const ok = await a.issueCookieSession(token);
+
+    expect(ok).toBe(true);
+    expect(fetchCalls.length).toBe(1);
+    expect(fetchCalls[0].url).toBe(KOOKER_COOKIE_PATH);
+    expect(fetchCalls[0].init?.method).toBe("POST");
+    expect(fetchCalls[0].init?.credentials).toBe("same-origin");
+    expect((fetchCalls[0].init?.headers as Record<string, string>)?.Authorization).toBe(`Bearer ${token}`);
+  });
+
+  it("falls back to alias path if direct cookie path returns 404", async () => {
+    const fetchCalls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      fetchCalls.push(url);
+      if (url === KOOKER_COOKIE_PATH) {
+        return { ok: false, status: 404, json: async () => ({}) };
+      }
+      if (url === KOOKER_COOKIE_ALIAS_PATH) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 500, json: async () => ({}) };
+    });
+
+    const a = new AuthClient();
+    const token = fakeJwt(Date.now() + 3600_000, "operator@test.com");
+    const ok = await a.issueCookieSession(token);
+
+    expect(ok).toBe(true);
+    expect(fetchCalls).toEqual([KOOKER_COOKIE_PATH, KOOKER_COOKIE_ALIAS_PATH]);
+  });
+
+  it("fails closed when no token is available for cookie issuance", async () => {
+    const a = new AuthClient();
+    const ok = await a.issueCookieSession();
+    expect(ok).toBe(false);
+  });
+
+  it("clears cookie session via direct clear path with same-origin credentials", async () => {
+    const fetchCalls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      fetchCalls.push({ url, init });
+      if (url === KOOKER_CLEAR_PATH) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient();
+    const ok = await a.clearCookieSession();
+
+    expect(ok).toBe(true);
+    expect(fetchCalls.length).toBe(1);
+    expect(fetchCalls[0].url).toBe(KOOKER_CLEAR_PATH);
+    expect(fetchCalls[0].init?.method).toBe("POST");
+    expect(fetchCalls[0].init?.credentials).toBe("same-origin");
+  });
+
+  it("falls back to alias clear path if direct clear path returns 404", async () => {
+    const fetchCalls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string) => {
+      fetchCalls.push(url);
+      if (url === KOOKER_CLEAR_PATH) {
+        return { ok: false, status: 404, json: async () => ({}) };
+      }
+      if (url === KOOKER_CLEAR_ALIAS_PATH) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 500, json: async () => ({}) };
+    });
+
+    const a = new AuthClient();
+    const ok = await a.clearCookieSession();
+
+    expect(ok).toBe(true);
+    expect(fetchCalls).toEqual([KOOKER_CLEAR_PATH, KOOKER_CLEAR_ALIAS_PATH]);
+  });
+
+  it("invokes cookie issuance on successful login and cookie clear on logout", async () => {
+    const calls: { url: string; method?: string; auth?: string }[] = [];
+    const token = fakeJwt(Date.now() + 3600_000, "player@test.com");
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      calls.push({
+        url,
+        method: init?.method,
+        auth: (init?.headers as Record<string, string>)?.Authorization,
+      });
+      if (url.includes("/auth/basic")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: token, user: { name: "Player" } }),
+        };
+      }
+      if (url === KOOKER_COOKIE_PATH || url === KOOKER_CLEAR_PATH) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient();
+    const loginResult = await a.login("player@test.com", "secret");
+    expect(loginResult).toEqual({ ok: true });
+
+    const cookieCall = calls.find((c) => c.url === KOOKER_COOKIE_PATH);
+    expect(cookieCall).toBeDefined();
+    expect(cookieCall?.auth).toBe(`Bearer ${token}`);
+
+    a.logout();
+    // Allow pending promise to settle
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const clearCall = calls.find((c) => c.url === KOOKER_CLEAR_PATH);
+    expect(clearCall).toBeDefined();
+  });
+
+  it("handles account switch by issuing cookie session for the new account", async () => {
+    const issuedTokens: string[] = [];
+    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@test.com");
+    const tokenB = fakeJwt(Date.now() + 3600_000, "userB@test.com");
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
+        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tok, user: { name: email } }),
+        };
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        issuedTokens.push(auth.replace("Bearer ", ""));
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient();
+    await a.login("userA@test.com", "pw");
+    expect(a.operator?.id).toBe("userA@test.com");
+
+    await a.login("userB@test.com", "pw");
+    expect(a.operator?.id).toBe("userB@test.com");
+
+    expect(issuedTokens).toEqual([tokenA, tokenB]);
   });
 });

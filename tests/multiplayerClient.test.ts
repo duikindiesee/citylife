@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { MultiplayerClient, redactUrl } from "../src/colony/multiplayer/multiplayerClient";
+import { MultiplayerClient, redactUrl, resolveAndValidateEndpoint } from "../src/colony/multiplayer/multiplayerClient";
 import { resolveOwnedCar } from "../src/colony/car/ownedCar";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 
@@ -194,6 +194,128 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(MockWebSocket.instances.length).toBe(1);
     expect(MockWebSocket.instances[0]!.url).toContain("/api/v1/citylife/ws?jwt=valid-token");
     expect(MockWebSocket.instances[0]!.url).not.toContain("token=");
+  });
+
+  describe("Queryless Cookie-Authenticated WebSocket transport", () => {
+    it("connects to queryless endpoint without appending token when useCookieAuth is true", async () => {
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        token: "session-access-token",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+      });
+
+      await client.connect();
+      expect(MockWebSocket.instances.length).toBe(1);
+      const url = MockWebSocket.instances[0]!.url;
+      expect(url).toBe("wss://synthetic.citylife.invalid/api/v1/citylife/ws");
+      expect(url).not.toContain("?");
+      expect(url).not.toContain("jwt=");
+      expect(url).not.toContain("token=");
+    });
+
+    it("connects queryless when token is omitted in cookie-authenticated mode", async () => {
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/kooker/api/v1/citylife/ws",
+        useCookieAuth: true,
+      });
+
+      await client.connect();
+      expect(MockWebSocket.instances.length).toBe(1);
+      const url = MockWebSocket.instances[0]!.url;
+      expect(url).toBe("wss://synthetic.citylife.invalid/kooker/api/v1/citylife/ws");
+      expect(url).not.toContain("?");
+    });
+
+    it("strips any incoming jwt or token query parameters when queryless option is passed to resolveAndValidateEndpoint", () => {
+      const res = resolveAndValidateEndpoint(
+        "/api/v1/citylife/ws?jwt=stale-query-token&token=old-param",
+        "new-token",
+        { queryless: true }
+      );
+      expect(res.ok).toBe(true);
+      if (!res.ok) throw new Error("Expected successful endpoint validation");
+      expect(res.url).toBe("wss://synthetic.citylife.invalid/api/v1/citylife/ws");
+      expect(res.url).not.toContain("jwt=");
+      expect(res.url).not.toContain("token=");
+    });
+
+    it("executes ensureCookieAuth before opening the WebSocket", async () => {
+      const callOrder: string[] = [];
+      const ensureCookieAuth = vi.fn(async () => {
+        callOrder.push("ensureCookieAuth");
+        return true;
+      });
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+        ensureCookieAuth,
+      });
+
+      // Hook MockWebSocket creation to track order
+      const initialWsCount = MockWebSocket.instances.length;
+      await client.connect();
+
+      expect(ensureCookieAuth).toHaveBeenCalledTimes(1);
+      expect(callOrder).toEqual(["ensureCookieAuth"]);
+      expect(MockWebSocket.instances.length).toBe(initialWsCount + 1);
+    });
+
+    it("fails closed with UNAUTHORIZED when useCookieAuth is false and no token is available", async () => {
+      let reportedError: any = null;
+      const initialWsCount = MockWebSocket.instances.length;
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: false,
+        onError: (err) => {
+          reportedError = err;
+        },
+      });
+
+      await client.connect();
+
+      expect(client.getStatus()).toBe("error");
+      expect(reportedError).toEqual({
+        code: "UNAUTHORIZED",
+        message: "Missing required auth token",
+      });
+      // WebSocket should never have been created
+      expect(MockWebSocket.instances.length).toBe(initialWsCount);
+    });
+
+    it("re-runs ensureCookieAuth on reconnect to refresh cookie session", async () => {
+      let ensureCount = 0;
+      const ensureCookieAuth = vi.fn(async () => {
+        ensureCount++;
+        return true;
+      });
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+        ensureCookieAuth,
+      });
+
+      await client.connect();
+      expect(ensureCount).toBe(1);
+
+      client.disconnect();
+      expect(client.getStatus()).toBe("disconnected");
+
+      await client.connect();
+      expect(ensureCount).toBe(2);
+    });
   });
 
   it("packages mode: driving and mode: walking correctly in sendPose (v1 only)", async () => {

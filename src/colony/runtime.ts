@@ -3420,7 +3420,12 @@ export class ColonyRuntime {
     return { neighbourhoodKey: keys[0], isExplicit: false };
   }
 
-  enableMultiplayer(roomCode = "racing-cup", wsUrl?: string, requestedHood?: string): void {
+  enableMultiplayer(
+    roomCode = "racing-cup",
+    wsUrl?: string,
+    requestedHood?: string,
+    options?: { useCookieAuth?: boolean },
+  ): void {
     const doc = typeof this.worldLayoutDocument === "function" ? this.worldLayoutDocument() : null;
     const worldId = doc?.worldId ?? this.activeWorldLayout?.worldId ?? (this.sim?.state?.seed ? String(this.sim.state.seed) : undefined);
     const revisionObj = doc?.revision ?? this.activeWorldLayout?.revision;
@@ -3512,6 +3517,11 @@ export class ColonyRuntime {
       }
     }
 
+    const hasCookieAuth = Boolean(
+      this.authClient && typeof (this.authClient as any).issueCookieSession === "function",
+    );
+    const useCookieAuth = options?.useCookieAuth ?? hasCookieAuth;
+
     this.multiplayerClient = new MultiplayerClient({
       url: wsUrl,
       userId,
@@ -3530,7 +3540,12 @@ export class ColonyRuntime {
       z: initialWorld?.z,
       heading: initialWorld?.heading,
       speed: initialWorld?.speed,
+      useCookieAuth,
       getToken: async () => this.authClient?.getValidToken() ?? null,
+      ensureCookieAuth: async () =>
+        this.authClient && typeof (this.authClient as any).issueCookieSession === "function"
+          ? this.authClient.issueCookieSession()
+          : false,
       onStatusChange: (status) => {
         if (status === "connecting" || status === "disconnected" || status === "error") {
           this.sim.state.remoteRacers?.clear();

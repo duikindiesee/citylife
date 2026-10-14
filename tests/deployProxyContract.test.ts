@@ -30,15 +30,40 @@ describe("production gateway proxy contract", () => {
     expect(nginxTemplate).not.toMatch(/location\s+(?:\^~\s+)?\/api\/?\s*\{/);
   });
 
-  describe("WebSocket proxies and Origin preservation", () => {
-    it.each(["/kooker/api/v1/citylife/ws", "/api/v1/citylife/ws"])(
-      "configures exact WebSocket proxy for %s with Upgrade and sanitized logging",
+  describe("Auth cookie and clear BFF proxies", () => {
+    it.each(["/kooker/api/v1/citylife/auth/cookie", "/api/v1/citylife/auth/cookie"])(
+      "configures exact cookie issuance BFF proxy for %s under internal Host citylife-ws.internal",
       (path) => {
         const block = exactLocation(path);
-        expect(block).toContain("proxy_pass ${KOOKER_GATEWAY}/api/v1/citylife/ws;");
+        expect(block).toContain("proxy_pass ${KOOKER_GATEWAY}/api/v1/citylife/auth/cookie;");
+        expect(block).toContain("proxy_set_header Host citylife-ws.internal;");
+        expect(block).toContain("proxy_pass_header Set-Cookie;");
+      },
+    );
+
+    it.each(["/kooker/api/v1/citylife/auth/clear", "/api/v1/citylife/auth/clear"])(
+      "configures exact cookie clear BFF proxy for %s under internal Host citylife-ws.internal",
+      (path) => {
+        const block = exactLocation(path);
+        expect(block).toContain("proxy_pass ${KOOKER_GATEWAY}/api/v1/citylife/auth/clear;");
+        expect(block).toContain("proxy_set_header Host citylife-ws.internal;");
+        expect(block).toContain("proxy_pass_header Set-Cookie;");
+      },
+    );
+  });
+
+  describe("WebSocket proxies and Origin preservation", () => {
+    it.each(["/kooker/api/v1/citylife/ws", "/api/v1/citylife/ws"])(
+      "configures exact WebSocket proxy for %s with Upgrade, internal Host citylife-ws.internal, browser-ws upstream, and sanitized logging",
+      (path) => {
+        const block = exactLocation(path);
+        expect(block).toContain("proxy_pass ${KOOKER_GATEWAY}/api/v1/citylife/browser-ws;");
         expect(block).toContain("proxy_http_version 1.1;");
         expect(block).toContain("proxy_set_header Upgrade $http_upgrade;");
         expect(block).toContain('proxy_set_header Connection "upgrade";');
+        expect(block).toContain("proxy_set_header Host citylife-ws.internal;");
+        expect(block).toContain('proxy_set_header Authorization "";');
+        expect(block).toContain("proxy_pass_header Cookie;");
         expect(block).toContain("access_log /var/log/nginx/access.log sanitized_wss;");
       },
     );

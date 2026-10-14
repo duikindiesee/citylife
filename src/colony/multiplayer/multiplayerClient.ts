@@ -151,6 +151,8 @@ export interface MultiplayerClientOptions {
     carHeading?: number;
   }) => void;
   onError?: (error: { code: string; message: string }) => void;
+  useCookieAuth?: boolean;
+  ensureCookieAuth?: () => Promise<boolean>;
 }
 
 const APPROVED_WS_PATHS = new Set([
@@ -191,7 +193,15 @@ interface EndpointValidationFailure {
 
 type EndpointValidationResult = EndpointValidationSuccess | EndpointValidationFailure;
 
-export function resolveAndValidateEndpoint(rawUrl: string | undefined, token: string): EndpointValidationResult {
+export interface EndpointValidationOptions {
+  queryless?: boolean;
+}
+
+export function resolveAndValidateEndpoint(
+  rawUrl: string | undefined,
+  token?: string | null,
+  options?: EndpointValidationOptions
+): EndpointValidationResult {
   try {
     let parsed: URL;
     const hasWindow = typeof window !== "undefined" && Boolean(window.location);
@@ -283,7 +293,9 @@ export function resolveAndValidateEndpoint(rawUrl: string | undefined, token: st
       finalUrl.searchParams.delete(key);
     }
 
-    finalUrl.searchParams.set("jwt", token);
+    if (!options?.queryless && token) {
+      finalUrl.searchParams.set("jwt", token);
+    }
 
     return { ok: true, url: finalUrl.toString() };
   } catch (err: any) {
@@ -291,8 +303,8 @@ export function resolveAndValidateEndpoint(rawUrl: string | undefined, token: st
   }
 }
 
-export function isApprovedEndpoint(urlStr: string): boolean {
-  return resolveAndValidateEndpoint(urlStr, "probe-token").ok;
+export function isApprovedEndpoint(urlStr: string, options?: EndpointValidationOptions): boolean {
+  return resolveAndValidateEndpoint(urlStr, "probe-token", options).ok;
 }
 
 export class MultiplayerClient {
@@ -444,7 +456,19 @@ export class MultiplayerClient {
       return;
     }
 
-    if (!token) {
+    const isCookieAuth = Boolean(this.options.useCookieAuth);
+    if (isCookieAuth && this.options.ensureCookieAuth) {
+      try {
+        await this.options.ensureCookieAuth();
+      } catch {
+        console.warn("[Multiplayer] Failed to ensure cookie session before connect");
+      }
+      if (this.closedExplicitly || this.connectionGeneration !== currentGen) {
+        return;
+      }
+    }
+
+    if (!token && !isCookieAuth) {
       console.warn("[Multiplayer] No auth token available; connection aborted");
       this.setStatus("error");
       if (this.options.onError) {
@@ -453,7 +477,9 @@ export class MultiplayerClient {
       return;
     }
 
-    const endpointResult = resolveAndValidateEndpoint(this.options.url, token);
+    const endpointResult = resolveAndValidateEndpoint(this.options.url, token, {
+      queryless: isCookieAuth,
+    });
     if (!endpointResult.ok) {
       const rawLogged = this.options.url ? redactUrl(this.options.url) : "[default]";
       console.error(

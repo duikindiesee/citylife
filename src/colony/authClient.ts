@@ -121,6 +121,10 @@ const STORAGE_KEY = "citylife.session.v5";
 const SESSION_MS = 1000 * 60 * 60 * 8; // 8 h fallback if JWT has no exp
 const KOOKER_AUTH_PATH = "/kooker/api/auth/basic";
 const KOOKER_REFRESH_PATH = "/kooker/api/auth/refresh";
+export const KOOKER_COOKIE_PATH = "/api/v1/citylife/auth/cookie";
+export const KOOKER_COOKIE_ALIAS_PATH = "/kooker/api/v1/citylife/auth/cookie";
+export const KOOKER_CLEAR_PATH = "/api/v1/citylife/auth/clear";
+export const KOOKER_CLEAR_ALIAS_PATH = "/kooker/api/v1/citylife/auth/clear";
 const APP_NAME = "citylife";
 const SCOPES = [
   "newcomer:create",
@@ -306,6 +310,11 @@ export class AuthClient {
         },
       };
       this.persist();
+      try {
+        await this.issueCookieSession(token);
+      } catch {
+        /* best-effort in tests/offline */
+      }
       return { ok: true };
     } catch (e) {
       return {
@@ -341,6 +350,57 @@ export class AuthClient {
     } catch {
       /* no storage */
     }
+    void this.clearCookieSession().catch(() => {});
+  }
+
+  /**
+   * Request host-only HttpOnly session cookies from the CityLife BFF endpoint.
+   * Sends caller's verified Auth Bearer with credentials: "same-origin".
+   * Tries direct path first, falling back to /kooker alias if direct returns 404.
+   */
+  async issueCookieSession(token?: string): Promise<boolean> {
+    const bearer = token ?? (await this.getValidToken());
+    if (!bearer) return false;
+    const paths = [KOOKER_COOKIE_PATH, KOOKER_COOKIE_ALIAS_PATH];
+    for (const path of paths) {
+      try {
+        const resp = await fetch(path, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${bearer}`,
+            "Content-Type": "application/json",
+          },
+          credentials: "same-origin",
+        });
+        if (resp.ok) return true;
+        if (resp.status !== 404) return false;
+      } catch {
+        // Network error, try next path or return false
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Request removal of host-only HttpOnly session cookies via the CityLife BFF clear endpoint.
+   * Calls with credentials: "same-origin".
+   * Tries direct path first, falling back to /kooker alias if direct returns 404.
+   */
+  async clearCookieSession(): Promise<boolean> {
+    const paths = [KOOKER_CLEAR_PATH, KOOKER_CLEAR_ALIAS_PATH];
+    for (const path of paths) {
+      try {
+        const resp = await fetch(path, {
+          method: "POST",
+          credentials: "same-origin",
+        });
+        if (resp.ok) return true;
+        if (resp.status !== 404) return false;
+      } catch {
+        // Network error, try next path
+      }
+    }
+    return false;
   }
 
   /** Bearer header for backend calls — empty object when not authenticated (calls fail closed).
@@ -395,6 +455,11 @@ export class AuthClient {
           expiresAt: expFromJwt > 0 ? expFromJwt : this.now() + SESSION_MS,
         };
         this.persist();
+        try {
+          await this.issueCookieSession(data.accessToken);
+        } catch {
+          /* best-effort in tests/offline */
+        }
         return data.accessToken;
       } catch {
         return null;
