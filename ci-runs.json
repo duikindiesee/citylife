@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-14T14:55:00.195Z",
+  "updatedAt": "2026-10-14T14:55:28.215Z",
   "runs": [
     {
       "runId": 38584631096,
@@ -38,6 +38,45 @@
           "startedAt": "2026-10-14T14:54:06Z",
           "completedAt": "2026-10-14T14:54:15Z",
           "durationSeconds": 9
+        }
+      ]
+    },
+    {
+      "runId": 38584631054,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38584631054",
+      "event": "pull_request",
+      "branch": "chore/bump-0.60.6",
+      "sha": "4e7ab0fc63aee2caf95b57136fff7d61a29a5602",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/4e7ab0fc63aee2caf95b57136fff7d61a29a5602",
+      "pullRequestNumbers": "#570",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/570",
+      "pullRequests": [
+        {
+          "number": 570,
+          "url": "https://github.com/duikindiesee/citylife/pull/570"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-14T14:54:03Z",
+      "completedAt": "2026-10-14T14:55:16Z",
+      "durationSeconds": 73,
+      "runnerSummary": "GitHub Actions 1000011180",
+      "jobs": [
+        {
+          "id": 115923208913,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000011180",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-14T14:54:07Z",
+          "completedAt": "2026-10-14T14:55:14Z",
+          "durationSeconds": 67
         }
       ]
     },
@@ -10661,49 +10700,6 @@
           "startedAt": "2026-10-02T08:08:18Z",
           "completedAt": "2026-10-02T08:09:16Z",
           "durationSeconds": 58
-        }
-      ]
-    },
-    {
-      "runId": 36979994015,
-      "workflowName": "CI",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/36979994015",
-      "event": "pull_request",
-      "branch": "feat/spec-177-garage-rebuild-discrete-surfaces",
-      "sha": "05f3ef4f333daa1bb49fb6156c0c8f504615a753",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/05f3ef4f333daa1bb49fb6156c0c8f504615a753",
-      "pullRequestNumbers": "#553",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/553",
-      "pullRequests": [
-        {
-          "number": 553,
-          "url": "https://github.com/duikindiesee/citylife/pull/553"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "failure",
-      "startedAt": "2026-10-02T07:42:32Z",
-      "completedAt": "2026-10-02T08:01:50Z",
-      "durationSeconds": 1158,
-      "runnerSummary": "kooker1-citylife-gpu",
-      "jobs": [
-        {
-          "id": 110752105093,
-          "name": "verify",
-          "status": "completed",
-          "conclusion": "failure",
-          "runnerName": "kooker1-citylife-gpu",
-          "runnerGroup": "Default",
-          "runnerLabels": [
-            "self-hosted",
-            "Windows",
-            "X64",
-            "citylife-webgl",
-            "kooker1-gpu"
-          ],
-          "startedAt": "2026-10-02T07:42:36Z",
-          "completedAt": "2026-10-02T08:01:49Z",
-          "durationSeconds": 1153
         }
       ]
     }
