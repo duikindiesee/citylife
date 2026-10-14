@@ -59,7 +59,7 @@ describe("088 bus route", () => {
         seed === 4242
           ? { x: 125, y: 275 }
           : (rt.commercialDistrict?.garagePad?.roadTarget ??
-            rt.commercialDistrict?.intersection);
+             rt.commercialDistrict?.intersection);
       expect(target).toBeDefined();
       expect(rt.busRoute!.stops).toContainEqual(target);
       expect(rt.busRoute!.loop).toContainEqual(target);
@@ -73,9 +73,8 @@ describe("088 bus route", () => {
     const doc = rt.captureWorldLayout();
     const terrain = rt.sim.state.terrain;
     const surfaceFrame =
-      doc.frames.find(
-        (f: any) => f.kind === "surface" || f.id.endsWith(":region:surface"),
-      ) ?? doc.frames[0];
+      doc.frames.find((f: any) => f.kind === "surface" || f.id.endsWith(":region:surface")) ??
+      doc.frames[0];
     const surfaceFrameId = surfaceFrame.id;
     const frameMap = new Map(doc.frames.map((f: any) => [f.id, f]));
 
@@ -130,22 +129,12 @@ describe("088 bus route", () => {
       goal: { x: number; y: number },
       extraBlocked?: Set<string>,
     ) {
-      if (
-        blocked.has(`${start.x},${start.y}`) ||
-        blocked.has(`${goal.x},${goal.y}`)
-      )
-        return null;
-      if (
-        !cellOk(terrain, start.x, start.y) ||
-        !cellOk(terrain, goal.x, goal.y)
-      )
-        return null;
+      if (blocked.has(`${start.x},${start.y}`) || blocked.has(`${goal.x},${goal.y}`)) return null;
+      if (!cellOk(terrain, start.x, start.y) || !cellOk(terrain, goal.x, goal.y)) return null;
 
-      const queue: Array<{
-        x: number;
-        y: number;
-        path: Array<{ x: number; y: number }>;
-      }> = [{ x: start.x, y: start.y, path: [start] }];
+      const queue: Array<{ x: number; y: number; path: Array<{ x: number; y: number }> }> = [
+        { x: start.x, y: start.y, path: [start] },
+      ];
       const visited = new Set<string>([`${start.x},${start.y}`]);
 
       while (queue.length > 0) {
@@ -189,11 +178,7 @@ describe("088 bus route", () => {
         }
       }
     }
-    const blockedResult = findPedestrianRoute(
-      stop,
-      garageTarget,
-      artificialWall,
-    );
+    const blockedResult = findPedestrianRoute(stop, garageTarget, artificialWall);
     expect(blockedResult).toBeNull();
   });
 

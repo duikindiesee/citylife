@@ -83,7 +83,13 @@ test("R3F reactivity: placing and demolishing a plot updates the rendered scene"
       if (road.some((cell) => roadSet.has(`${cell.x},${cell.y}`))) return null;
       const roadSurvey = rt.surveyRoadPlacement(road, "street");
       if (!roadSurvey.ok) return null;
-      const plotSurvey = rt.surveyZonedPlot(x, y + 1, "n", "BIG", "commercial");
+      const plotSurvey = rt.surveyZonedPlot(
+        x,
+        y + 1,
+        "n",
+        "BIG",
+        "commercial",
+      );
       if (
         plotSurvey.failures.length > 0 &&
         plotSurvey.failures.every(

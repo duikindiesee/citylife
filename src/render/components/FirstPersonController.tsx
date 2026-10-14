@@ -99,7 +99,9 @@ export function FirstPersonController({
   });
 
   const initialYaw =
-    runtime?.fpTeleportRequest?.yaw ?? runtime?.fpCameraYaw ?? 0;
+    runtime?.fpTeleportRequest?.yaw ??
+    runtime?.fpCameraYaw ??
+    0;
   const rotation = useRef(new Euler(0, initialYaw, 0, "YXZ"));
 
   useEffect(() => {
@@ -116,7 +118,7 @@ export function FirstPersonController({
         t &&
           (t.tagName === "INPUT" ||
             t.tagName === "TEXTAREA" ||
-            t.isContentEditable),
+            t.isContentEditable)
       );
     };
 
@@ -343,8 +345,7 @@ export function FirstPersonController({
 
     // 1. Handle Gamepad Input
     const gamepads =
-      typeof navigator !== "undefined" &&
-      typeof navigator.getGamepads === "function"
+      typeof navigator !== "undefined" && typeof navigator.getGamepads === "function"
         ? navigator.getGamepads()
         : [];
     const gp = gamepads[0]; // Assuming PS5 controller is index 0
@@ -502,9 +503,7 @@ export function FirstPersonController({
       runtime.fpCameraYaw = rotation.current.y;
       runtime.setFirstPersonYaw?.(rotation.current.y);
       runtime.fpGamepadMoving = Boolean(
-        gp &&
-          (Math.abs(gp.axes?.[0] ?? 0) > 0.1 ||
-            Math.abs(gp.axes?.[1] ?? 0) > 0.1),
+        gp && (Math.abs(gp.axes?.[0] ?? 0) > 0.1 || Math.abs(gp.axes?.[1] ?? 0) > 0.1),
       );
     }
   });
