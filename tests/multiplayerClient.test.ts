@@ -2644,5 +2644,123 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       expect(client.getSeatedBusId()).toBeNull();
       expect(client.getSeatIndex()).toBeNull();
     });
+
+    it("admits queryless cookie WebSocket with seated bus reconnect and peer rider updates", async () => {
+      let alightedAck: any = null;
+      let selfAdmitted: any = null;
+      let peerPose: any = null;
+      const ensureCookieAuth = vi.fn(async () => true);
+
+      const client = new MultiplayerClient({
+        url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+        userId: "user-cookie-bus",
+        username: "CookieBusRider",
+        useCookieAuth: true,
+        ensureCookieAuth,
+        onBusAlighted: (ack) => {
+          alightedAck = ack;
+        },
+        onSelfAdmitted: (self) => {
+          selfAdmitted = self;
+        },
+        onPeerPose: (pid, pose) => {
+          peerPose = { pid, ...pose };
+        },
+      });
+
+      await client.connect();
+      expect(ensureCookieAuth).toHaveBeenCalledTimes(1);
+
+      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      expect(socket.url).not.toContain("token=");
+      expect(socket.url).not.toContain("jwt=");
+
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen!();
+
+      // Admit directly into seated bus state on reconnect
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "session_reconnected",
+          sessionId: "sess-cookie-bus-1",
+          participantId: "part-cookie-bus-1",
+          protocolVersion: 2,
+          mode: "riding_bus",
+          seatedBusId: 2,
+          seatIndex: 4,
+          modeEpoch: 2,
+          participants: [
+            {
+              participantId: "part-cookie-bus-1",
+              userId: "user-cookie-bus",
+              username: "CookieBusRider",
+              mode: "riding_bus",
+              seatedBusId: 2,
+              seatIndex: 4,
+              x: 100,
+              y: 0,
+              z: 200,
+              heading: 0,
+              speed: 12,
+            },
+          ],
+        }),
+      });
+
+      expect(client.getMode()).toBe("riding_bus");
+      expect(client.getSeatedBusId()).toBe(2);
+      expect(client.getSeatIndex()).toBe(4);
+      expect(selfAdmitted).toMatchObject({
+        participantId: "part-cookie-bus-1",
+        mode: "riding_bus",
+        seatedBusId: 2,
+        seatIndex: 4,
+      });
+
+      // Peer rider pose arrives with seated bus state
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "peer_pose",
+          participantId: "peer-bus-rider",
+          mode: "riding_bus",
+          seatedBusId: 2,
+          seatIndex: 5,
+          x: 100,
+          y: 0,
+          z: 200,
+          heading: 0,
+          speed: 12,
+        }),
+      });
+
+      expect(peerPose).toMatchObject({
+        pid: "peer-bus-rider",
+        mode: "riding_bus",
+        seatedBusId: 2,
+        seatIndex: 5,
+      });
+
+      // Alight bus
+      expect(client.alightBus()).toBe(true);
+      expect(socket.sent).toContainEqual({
+        type: "request_alight_bus",
+        epoch: 2,
+      });
+
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "bus_alighted",
+          x: 110,
+          y: 0,
+          z: 200,
+          heading: 0,
+        }),
+      });
+
+      expect(alightedAck).toEqual({ x: 110, y: 0, z: 200, heading: 0 });
+      expect(client.getMode()).toBe("walking");
+      expect(client.getSeatedBusId()).toBeNull();
+      expect(client.getSeatIndex()).toBeNull();
+    });
   });
 });
