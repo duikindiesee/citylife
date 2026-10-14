@@ -5333,6 +5333,20 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       expect(blockedAlightErr?.code).toBe("ALIGHT_BLOCKED");
       expect(blockedAlightErr?.message).toContain("alight position is obstructed");
 
+      // Production feedback: rejection message is visible in runtime narration state and edge-HUD guidance caption
+      await page2.waitForFunction(() => {
+        const narration = (window as any).__colony?.getUiState()?.firstPerson?.narration;
+        return typeof narration === "string" && /alight position is obstructed|exit path is blocked/i.test(narration);
+      }, undefined, { timeout: 5_000, polling: 50 });
+      const p2Narration = await page2.evaluate(() => {
+        return (window as any).__colony?.getUiState()?.firstPerson?.narration;
+      });
+      expect(p2Narration).toMatch(/alight position is obstructed|exit path is blocked/i);
+
+      const guidanceCaption2 = page2.locator(".first-person-panel__guidance-caption");
+      await expect(guidanceCaption2).toBeVisible({ timeout: 5_000 });
+      await expect(guidanceCaption2).toContainText(/alight position is obstructed|exit path is blocked/i);
+
       // Verify Player 2 remains seated on Bus 0 and occupied seat count is still 1
       const p2StillRiding = await page2.evaluate(() => {
         const mp = (window as any).__colony?.getMultiplayerClient();

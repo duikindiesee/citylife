@@ -830,4 +830,151 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     expect(login2.ok).toBe(true);
     expect(a.isAuthenticated).toBe(true);
   });
+
+  it("proves immediate local signout and bounded settlement on deferred/stalled clear", async () => {
+    const token = fakeJwt(Date.now() + 3600_000, "user@test.com");
+    let clearSignal: AbortSignal | null = null;
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: token, user: { name: "User" } }),
+        };
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      if (url === KOOKER_CLEAR_PATH) {
+        clearSignal = init?.signal ?? null;
+        if (clearSignal?.aborted) {
+          const err = new Error("The operation was aborted");
+          err.name = "AbortError";
+          return Promise.reject(err);
+        }
+        // Stalled clear: never resolves until aborted
+        return new Promise((resolve, reject) => {
+          clearSignal?.addEventListener("abort", () => {
+            const err = new Error("The operation was aborted");
+            err.name = "AbortError";
+            reject(err);
+          });
+        });
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient();
+    await a.login("user@test.com", "pw");
+    expect(a.isAuthenticated).toBe(true);
+
+    vi.useFakeTimers();
+    try {
+      // 1. Kick off logout: immediate local signout occurs synchronously
+      const logoutPromise = a.logout();
+      expect(a.isAuthenticated).toBe(false);
+      expect(a.operator).toBeNull();
+
+      // 2. Allow microtasks to execute so run() starts and registers its timeout
+      await Promise.resolve();
+
+      // 3. Bounded settlement: advance timers past the 5000ms deadline asynchronously
+      await vi.advanceTimersByTimeAsync(5100);
+
+      const result = await logoutPromise;
+      // Stalled clear was bounded and cleanly resolved false without hanging
+      expect(result).toBe(false);
+      expect(a.isAuthenticated).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("handles normal clear settlement and late/competing issuance controls cleanly", async () => {
+    const tokenA = fakeJwt(Date.now() + 3600_000, "userA@test.com");
+    const tokenB = fakeJwt(Date.now() + 3600_000, "userB@test.com");
+    const events: string[] = [];
+    let resolveClear: (() => void) | null = null;
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
+        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tok, user: { name: email } }),
+        };
+      }
+      if (url === KOOKER_CLEAR_PATH) {
+        events.push("start:clear");
+        return new Promise((resolve, reject) => {
+          if (init?.signal?.aborted) {
+            events.push("abort:clear");
+            const err = new Error("The operation was aborted");
+            err.name = "AbortError";
+            reject(err);
+            return;
+          }
+          init?.signal?.addEventListener("abort", () => {
+            events.push("abort:clear");
+            const err = new Error("The operation was aborted");
+            err.name = "AbortError";
+            reject(err);
+          });
+          resolveClear = () => {
+            events.push("finish:clear");
+            resolve({ ok: true, status: 200, json: async () => ({}) });
+          };
+        });
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const sub = auth.includes(tokenA) ? "userA" : "userB";
+        events.push(`issue:${sub}`);
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient();
+    // 1. Normal login and issuance for user A
+    await a.login("userA@test.com", "pw");
+    expect(a.isAuthenticated).toBe(true);
+    expect(events).toEqual(["issue:userA"]);
+
+    // 2. Normal clear settlement
+    const logoutAPromise = a.logout();
+    expect(a.isAuthenticated).toBe(false); // immediate signout
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events).toEqual(["issue:userA", "start:clear"]);
+    resolveClear!();
+    const clearResultA = await logoutAPromise;
+    expect(clearResultA).toBe(true);
+    expect(events).toEqual(["issue:userA", "start:clear", "finish:clear"]);
+
+    // 3. Abort-aware competing issuance: login B while old clear is deferred without manual success
+    events.length = 0;
+    await a.login("userA@test.com", "pw");
+    expect(events).toEqual(["issue:userA"]);
+
+    const logoutA2Promise = a.logout();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events).toEqual(["issue:userA", "start:clear"]);
+
+    // User B logs in while clear is still in flight (superseding login triggers controller abort)
+    const loginBPromise = a.login("userB@test.com", "pw");
+
+    const clearResultA2 = await logoutA2Promise;
+    const loginBResult = await loginBPromise;
+
+    // Verify: old clear was aborted and settled false, new session was issued and preserved
+    expect(clearResultA2).toBe(false);
+    expect(loginBResult.ok).toBe(true);
+    expect(a.isAuthenticated).toBe(true);
+    expect(a.operator?.id).toBe("userB@test.com");
+    expect(events).toEqual(["issue:userA", "start:clear", "abort:clear", "issue:userB"]);
+  });
 });

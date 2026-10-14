@@ -3592,7 +3592,9 @@ export class ColonyRuntime {
           err?.code === "NOT_NEAR_BUS" ||
           err?.code === "OUT_OF_BOARDING_RANGE" ||
           err?.code === "EPOCH_MISMATCH" ||
-          err?.code === "BLOCKED"
+          err?.code === "BLOCKED" ||
+          err?.code === "ALIGHT_BLOCKED" ||
+          err?.code?.startsWith("ALIGHT_")
         ) {
           this.fpNarrating = false;
           this.fpNarration = err.message || "Bus action unavailable.";
@@ -4262,6 +4264,11 @@ export class ColonyRuntime {
     }
     this.authoritativeWalkingPose = null;
     this.lastAppliedSnapshotSeq = 0;
+    this.multiplayerInputSeq = 0;
+    this.ownedDriveInput = {};
+    this.fpWaitingBusStopIndex = null;
+    this.fpRidingBusId = null;
+    this.fpRidingSeatIndex = null;
     this.sim.state.remoteRacers?.clear();
     this.emit();
   }

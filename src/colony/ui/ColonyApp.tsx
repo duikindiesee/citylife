@@ -724,19 +724,82 @@ function detectTouchCapable(): boolean {
   );
 }
 
+export function SignedOutFallbackView() {
+  return (
+    <div className="colony" data-signed-out="true" role="status" aria-label="Signed out">
+      <main
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 100,
+          display: "grid",
+          placeContent: "center",
+          gap: 12,
+          padding: 24,
+          textAlign: "center",
+          color: "#d8e6ff",
+          background: "#07111f",
+        }}
+      >
+        <strong style={{ fontSize: "1.25rem" }}>Signed out</strong>
+        <span style={{ color: "#8ca0ba" }}>
+          Your session has ended. Returning to login…
+        </span>
+      </main>
+    </div>
+  );
+}
+
+export function createColonyLogoutHandler({
+  runtime,
+  auth,
+  setLoggedOut,
+  onReload = () => window.location.reload(),
+}: {
+  runtime: ColonyRuntime;
+  auth: AuthClient;
+  setLoggedOut: (loggedOut: boolean) => void;
+  onReload?: () => void;
+}) {
+  return async (beforeLogout?: () => void) => {
+    // 1. Immediately disable multiplayer and clear all peer/input/driving state synchronously
+    runtime.disableMultiplayer();
+    // 2. Immediately switch to local signed-out UI
+    setLoggedOut(true);
+    // 3. Mark pre-logout state (e.g. pending password change notice)
+    beforeLogout?.();
+    // 4. Bounded cookie clearance and reload
+    try {
+      await auth.logout();
+    } finally {
+      onReload();
+    }
+  };
+}
+
 export function ColonyApp() {
   const { builderActive, worldViewActive } = useRoadNetwork();
   const runtime = useRuntime();
   const [, forceRuntimeRender] = useReducer((x) => x + 1, 0);
   const auth = useMemo(() => new AuthClient(), []);
   const operatorUserId = auth.operator?.userId ?? null;
+  const [loggedOut, setLoggedOut] = useState(false);
+
+  const executeLogout = useCallback(
+    createColonyLogoutHandler({
+      runtime,
+      auth,
+      setLoggedOut,
+    }),
+    [auth, runtime],
+  );
 
   const isMultiplayer = useMemo(() => {
-    if (!auth.isAuthenticated || !operatorUserId) return false;
+    if (loggedOut || !auth.isAuthenticated || !operatorUserId) return false;
     if (typeof window === "undefined") return false;
     const q = new URLSearchParams(window.location.search);
     return Boolean(q.get("room") || q.get("multiplayer") === "1");
-  }, [auth.isAuthenticated, operatorUserId]);
+  }, [auth.isAuthenticated, loggedOut, operatorUserId]);
 
   const remoteLoader = useMemo(
     () =>
@@ -2012,6 +2075,10 @@ export function ColonyApp() {
         : undefined,
   };
 
+  if (loggedOut) {
+    return <SignedOutFallbackView />;
+  }
+
   if (worldLayoutBoot.status !== "ready") {
     return (
       <div className="colony" data-world-layout-boot={worldLayoutBoot.status}>
@@ -2399,9 +2466,8 @@ export function ColonyApp() {
             onBugReport={() => setBugReportOpen(true)}
             onExitFirstPerson={() => runtime.exitFirstPerson()}
             onChangePassword={() => setPwdChangeOpen(true)}
-            onLogout={async () => {
-              await auth.logout();
-              window.location.reload();
+            onLogout={() => {
+              void executeLogout();
             }}
             onSnapshot={saveSnapshot}
           />
@@ -4681,9 +4747,7 @@ export function ColonyApp() {
             // The backend has staged the change and revoked the session. Sign out immediately into
             // the pending state and reload to the login gate, where the one-shot notice explains the
             // next step (redeem the activation token). Neither old nor new password works until then.
-            markPasswordChangePending();
-            await auth.logout();
-            window.location.reload();
+            await executeLogout(() => markPasswordChangePending());
           }}
         />
       )}

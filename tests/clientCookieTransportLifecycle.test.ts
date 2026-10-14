@@ -1,7 +1,10 @@
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
 import { AuthClient, KOOKER_COOKIE_PATH, KOOKER_COOKIE_ALIAS_PATH, KOOKER_CLEAR_PATH, KOOKER_CLEAR_ALIAS_PATH } from "../src/colony/authClient";
 import { setupAuthoritativeRuntime, makeSessionJoinedAck } from "./testAuthorityHelper";
+import { createColonyLogoutHandler, SignedOutFallbackView } from "../src/colony/ui/ColonyApp";
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -416,5 +419,179 @@ describe("Client Cookie Transport & BFF Lifecycle Integration", () => {
     expect(cookieCalls[1].auth).toBe(`Bearer ${tokenA}`);
     expect(cookieCalls[2].auth).toBe(`Bearer ${tokenB}`);
     expect(cookieCalls[3].auth).toBe(`Bearer ${tokenB}`);
+  });
+
+  it("proves mounted consumer logout triggers immediate signed-out UI and runtime disconnect before deferred clear settles", async () => {
+    const token = fakeJwt(Date.now() + 3600_000, "operator@test.com");
+    let resolveClear: (() => void) | null = null;
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: token, user: { name: "Operator" } }),
+        };
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      if (url === KOOKER_CLEAR_PATH) {
+        // Deferred clear network response
+        return new Promise((resolve) => {
+          resolveClear = () => {
+            resolve({ ok: true, status: 200, json: async () => ({}) });
+          };
+        });
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const auth = new AuthClient();
+    await auth.login("operator@test.com", "valid-password");
+
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient(auth);
+    runtime.setOperatorUserId("operator@test.com");
+    setupAuthoritativeRuntime(runtime);
+
+    runtime.enableMultiplayer("room-bff", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    const mpClient = runtime.getMultiplayerClient()!;
+    await mpClient.connect();
+    const activeWs = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    activeWs.onopen?.();
+    activeWs.onmessage?.({
+      data: JSON.stringify(
+        makeSessionJoinedAck(activeWs, {
+          type: "session_joined",
+          sessionId: "s1",
+          inviteCode: "room-bff",
+          participantId: "p1",
+          protocolVersion: 2,
+          modeEpoch: 1,
+          mode: "walking",
+          participants: [
+            {
+              id: "peer-1",
+              participantId: "p2",
+              username: "peer-racer",
+              x: 10,
+              y: 0,
+              z: 10,
+              heading: 0,
+              speed: 0,
+              mode: "walking",
+              isPedestrian: true,
+            },
+          ],
+        }),
+      ),
+    });
+    expect(mpClient.getStatus()).toBe("connected");
+    expect(runtime.sim.state.remoteRacers?.size).toBeGreaterThan(0);
+
+    // Seed walking and input state to truthfully assert state reset
+    (runtime as any).multiplayerInputSeq = 42;
+    runtime.setOwnedDriveInput({ throttle: true });
+    expect(runtime.sim.state.remoteRacers?.size).toBeGreaterThan(0);
+
+    let loggedOutState = false;
+    let reloadTriggered = false;
+    let fallbackMarkupBeforeSettlement = "";
+
+    // Actual mounted consumer wiring: createColonyLogoutHandler executes on user logout trigger
+    const executeLogout = createColonyLogoutHandler({
+      runtime,
+      auth,
+      setLoggedOut: (val) => {
+        loggedOutState = val;
+        if (val) {
+          fallbackMarkupBeforeSettlement = renderToStaticMarkup(React.createElement(SignedOutFallbackView));
+        }
+      },
+      onReload: () => {
+        reloadTriggered = true;
+      },
+    });
+
+    // Trigger logout through the production consumer handler while cookie clear is deferred
+    const logoutPromise = executeLogout();
+
+    // Assert: immediate local signed-out UI and synchronous disconnect BEFORE clear settles
+    expect(loggedOutState).toBe(true);
+    expect(fallbackMarkupBeforeSettlement).toContain('data-signed-out="true"');
+    expect(fallbackMarkupBeforeSettlement).toContain("Signed out");
+    expect(fallbackMarkupBeforeSettlement).toContain("Your session has ended. Returning to login");
+
+    // Assert: runtime disconnect, peer cleanup, and seeded input state reset synchronously
+    expect(activeWs.readyState).toBe(MockWebSocket.CLOSED);
+    expect(runtime.getMultiplayerClient()).toBeNull();
+    expect(runtime.getAuthoritativeWalkingPose()).toBeNull();
+    expect((runtime as any).multiplayerInputSeq).toBe(0);
+    expect((runtime as any).ownedDriveInput).toEqual({});
+    expect(runtime.sim.state.remoteRacers?.size).toBe(0);
+
+    // Auth state was synchronously cleared
+    expect(auth.isAuthenticated).toBe(false);
+    expect(reloadTriggered).toBe(false);
+
+    // Settle deferred clear now
+    await new Promise((r) => setTimeout(r, 20));
+    expect(resolveClear).not.toBeNull();
+    resolveClear!();
+
+    await logoutPromise;
+    expect(reloadTriggered).toBe(true);
+  });
+
+  it("surfaces ALIGHT_BLOCKED rejection in runtime first-person narration feedback", async () => {
+    const token = fakeJwt(Date.now() + 3600_000, "operator@test.com");
+
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (url.includes("/auth/basic")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: token, user: { name: "Operator" } }),
+        };
+      }
+      if (url === KOOKER_COOKIE_PATH || url === KOOKER_CLEAR_PATH) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const auth = new AuthClient();
+    await auth.login("operator@test.com", "valid-password");
+
+    const runtime = new ColonyRuntime(42);
+    runtime.setPlayerView(false);
+    runtime.setAuthClient(auth);
+    runtime.setOperatorUserId("operator@test.com");
+    setupAuthoritativeRuntime(runtime, { userId: "operator@test.com" });
+
+    // Step into first valid citizen if available
+    const ids = runtime.getUiState().firstPerson.stepInCitizenIds;
+    if (ids.length > 0) {
+      expect(runtime.enterFirstPerson(ids[0]!)).toBe(true);
+    }
+
+    runtime.enableMultiplayer("room-bff", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    const mpClient = runtime.getMultiplayerClient()!;
+    await mpClient.connect();
+
+    // Simulate server returning ALIGHT_BLOCKED error frame
+    const ws = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    ws.onmessage?.({
+      data: JSON.stringify({
+        type: "error",
+        error: "ALIGHT_BLOCKED",
+        message: "Exit path is blocked by another passenger",
+      }),
+    });
+
+    // Production narration must surface the rejection message to the player
+    const uiState = runtime.getUiState();
+    expect(uiState.firstPerson.narration).toBe("Exit path is blocked by another passenger");
   });
 });

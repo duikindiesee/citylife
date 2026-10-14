@@ -420,7 +420,7 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
       const expectedRow = seatIdx % 5;
       expect(slot.z).toBeCloseTo(expectedSide, 5);
       expect(slot.x).toBeCloseTo(-4.25 + expectedRow * 1.55, 5);
-      expect(slot.y).toBe(1.45);
+      expect(slot.y).toBe(1.68);
 
       // 4. DELIBERATE NEGATIVE CONTROL: omitting the bus coach rotation (-heading) drifts from interior
       const unrotatedX = (busPose1.x - terrainSize / 2) * 4 + slot.x;

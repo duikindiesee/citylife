@@ -303,6 +303,10 @@ export class AuthClient {
       const expiresAt = expFromJwt > 0 ? expFromJwt : this.now() + SESSION_MS;
       const displayName = data.user?.name || data.user?.email || id;
       this.sessionGeneration++;
+      if (this.activeClearController) {
+        this.activeClearController.abort();
+        this.activeClearController = null;
+      }
       if (this.activeIssueController) {
         this.activeIssueController.abort();
         this.activeIssueController = null;
@@ -384,6 +388,11 @@ export class AuthClient {
         return false;
       }
 
+      if (this.activeClearController) {
+        this.activeClearController.abort();
+        this.activeClearController = null;
+      }
+
       if (this.activeIssueController) {
         this.activeIssueController.abort();
         this.activeIssueController = null;
@@ -436,23 +445,39 @@ export class AuthClient {
    * Request removal of host-only HttpOnly session cookies via the CityLife BFF clear endpoint.
    * Calls with credentials: "same-origin".
    * Tries direct path first, falling back to /kooker alias if direct returns 404.
-   * Serializes behind in-flight cookie operations and aborts any in-flight issuance.
+   * Serializes behind in-flight cookie operations, bounds execution with a timeout,
+   * and aborts if superseded by a new session.
    */
   async clearCookieSession(): Promise<boolean> {
     this.sessionGeneration++;
+    const opGen = this.sessionGeneration;
     if (this.activeIssueController) {
       this.activeIssueController.abort();
       this.activeIssueController = null;
     }
 
     const run = async (): Promise<boolean> => {
+      if (this.sessionGeneration !== opGen) {
+        return false;
+      }
+
+      if (this.activeClearController) {
+        this.activeClearController.abort();
+        this.activeClearController = null;
+      }
+
       const controller = new AbortController();
       this.activeClearController = controller;
+
+      // Bound actual clear settlement/abort through supported lifecycle
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 5000);
 
       try {
         const paths = [KOOKER_CLEAR_PATH, KOOKER_CLEAR_ALIAS_PATH];
         for (const path of paths) {
-          if (controller.signal.aborted) {
+          if (controller.signal.aborted || this.sessionGeneration !== opGen) {
             return false;
           }
           try {
@@ -461,7 +486,7 @@ export class AuthClient {
               credentials: "same-origin",
               signal: controller.signal,
             });
-            if (controller.signal.aborted) {
+            if (controller.signal.aborted || this.sessionGeneration !== opGen) {
               return false;
             }
             if (resp.ok) return true;
@@ -475,6 +500,7 @@ export class AuthClient {
         }
         return false;
       } finally {
+        clearTimeout(timeoutId);
         if (this.activeClearController === controller) {
           this.activeClearController = null;
         }
