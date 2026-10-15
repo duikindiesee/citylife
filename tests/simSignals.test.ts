@@ -134,7 +134,35 @@ describe("simSignals — signatures over the mutable sim", () => {
     expect(haulerSig).toBe("part-1:car:rover-hauler-01");
     expect(haulerSig).not.toBe(drivingSig);
 
-    // 6. Participant leaves
+    // 6. Same-participant transitions to riding bus (with seat index & bus id)
+    sim.state.remoteRacers!.get("part-1")!.mode = "riding_bus";
+    sim.state.remoteRacers!.get("part-1")!.seatedBusId = 2;
+    sim.state.remoteRacers!.get("part-1")!.seatIndex = 5;
+    const busSig = remoteRacersSignature(sim.state);
+    expect(busSig).toBe("part-1:riding_bus:rover-hauler-01:bus:2:5");
+    expect(busSig).not.toBe(haulerSig);
+
+    // 6a. Seat change MUST transition signature
+    sim.state.remoteRacers!.get("part-1")!.seatIndex = 7;
+    const seatChangeSig = remoteRacersSignature(sim.state);
+    expect(seatChangeSig).toBe("part-1:riding_bus:rover-hauler-01:bus:2:7");
+    expect(seatChangeSig).not.toBe(busSig);
+
+    // 6b. Bus ID transfer MUST transition signature
+    sim.state.remoteRacers!.get("part-1")!.seatedBusId = 3;
+    const busChangeSig = remoteRacersSignature(sim.state);
+    expect(busChangeSig).toBe("part-1:riding_bus:rover-hauler-01:bus:3:7");
+    expect(busChangeSig).not.toBe(seatChangeSig);
+
+    // 6c. Alighting bus back to walking mode MUST transition signature
+    sim.state.remoteRacers!.get("part-1")!.mode = "walking";
+    sim.state.remoteRacers!.get("part-1")!.seatedBusId = null;
+    sim.state.remoteRacers!.get("part-1")!.seatIndex = null;
+    const alightedSig = remoteRacersSignature(sim.state);
+    expect(alightedSig).toBe("part-1:ped:rover-hauler-01");
+    expect(alightedSig).not.toBe(busChangeSig);
+
+    // 7. Participant leaves
     sim.state.remoteRacers!.delete("part-1");
     expect(remoteRacersSignature(sim.state)).toBe("none");
   });

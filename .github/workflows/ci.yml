@@ -65,13 +65,13 @@ jobs:
           node-version: "24"
       - run: npm ci
       - run: npx playwright install chromium
-      # Pinned server revision: published corrective candidate 8a56d921a50b986da04306b19b94f97d64311541
-      # (fresh walkability authority reconciliation on join, bus transit geometry, post-await vehicle ownership rechecks, and unowned purchase-intent wire contract)
+      # Pinned server revision: 0.5.1 release-main 1288068274e633141e9e291b5add61bf0ba14549
+      # (carries PR 20 merge 23548f2c9393f1733381ee227bec3e9fa23996aa: request provenance echoing busId, epoch, and attemptId)
       - name: Check out citylife-server at pinned authoritative revision
         uses: actions/checkout@v7
         with:
           repository: duikindiesee/citylife-server
-          ref: 8a56d921a50b986da04306b19b94f97d64311541
+          ref: 1288068274e633141e9e291b5add61bf0ba14549
           token: ${{ secrets.CITYLIFE_SERVER_READ_TOKEN }}
           persist-credentials: false
           path: citylife-server
@@ -80,11 +80,14 @@ jobs:
         run: |
           npm ci
           npm run build
+      # Measured step-level bound: the seven sequential actual-pair cases consume ~180s across driving,
+      # avatar transition, and MP4 transcoding before reaching the mounted bus journey test (declared limit 300s).
+      # 10 minutes accommodates both sequentially with bounded setup/teardown margin without inflating individual case timeouts.
       - name: Run multiplayer actual-pair acceptance
         env:
           CITYLIFE_SERVER_DIR: ${{ github.workspace }}/citylife-server
         run: npm run test:e2e:actual-pair
-        timeout-minutes: 5
+        timeout-minutes: 10
       - run: npm run test:e2e
         timeout-minutes: 45
       # Explicit step-level bound (PLAYER.MOBILE.E2E.1): the mobile/touch harness has its own

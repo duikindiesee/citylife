@@ -414,4 +414,79 @@ describe("FirstPersonPanel immersive HUD", () => {
       buildStampSpy.mockRestore();
     }
   });
+
+  it("renders bus stop card with boarding, waiting, and unavailable status states", () => {
+    const baseFp = makeFirstPerson();
+
+    // 1. Idle near stop pole with no bus dwelling
+    const idleFp = {
+      ...baseFp,
+      busStop: {
+        anchor: {
+          arc: 100,
+          at: { x: 10, y: 10 },
+          cell: { x: 10, y: 10 },
+          furniture: { x: 8, y: 10 },
+          heading: 0,
+          verge: { x: -1, y: 0 },
+        },
+        stopIndex: 0,
+        stopName: "Market Square",
+        furnitureXY: { x: 8, y: 10 },
+        distance: 1.2,
+        isNearPole: true,
+        canBoard: false,
+        boardUnavailableReason: "No bus currently at stop",
+        dwellingBusId: null,
+        isWaiting: false,
+      },
+    };
+    const idleHtml = renderToStaticMarkup(
+      React.createElement(FirstPersonPanel, {
+        runtime: makeRuntime(),
+        fp: idleFp,
+      }),
+    );
+    expect(idleHtml).toContain('data-testid="bus-stop-card"');
+    expect(idleHtml).toContain("Market Square");
+    expect(idleHtml).toContain("Free fare");
+    expect(idleHtml).toContain("No bus currently at stop");
+    expect(idleHtml).toContain("Wait for next bus");
+
+    // 2. Waiting for next bus
+    const waitingFp = {
+      ...baseFp,
+      busStop: {
+        ...idleFp.busStop,
+        isWaiting: true,
+      },
+    };
+    const waitingHtml = renderToStaticMarkup(
+      React.createElement(FirstPersonPanel, {
+        runtime: makeRuntime(),
+        fp: waitingFp,
+      }),
+    );
+    expect(waitingHtml).toContain("Waiting for next bus — will board automatically on arrival");
+    expect(waitingHtml).toContain("Cancel wait");
+
+    // 3. Dwelling bus ready to board
+    const boardFp = {
+      ...baseFp,
+      busStop: {
+        ...idleFp.busStop,
+        canBoard: true,
+        dwellingBusId: 2,
+        boardUnavailableReason: null,
+      },
+    };
+    const boardHtml = renderToStaticMarkup(
+      React.createElement(FirstPersonPanel, {
+        runtime: makeRuntime(),
+        fp: boardFp,
+      }),
+    );
+    expect(boardHtml).toContain("Bus 3 doors open — ready to board");
+    expect(boardHtml).toContain("Board Bus 3");
+  });
 });

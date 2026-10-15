@@ -17,6 +17,7 @@ import {
   isPointInGarageVicinity,
   localFromGridCoordinates,
 } from "./garageAnchorShell";
+import { buildCrabGeometry } from "./crabGeometry";
 import { AVATAR_BODY, AVATAR_HEAD } from "./avatarLayer";
 
 interface R3FRemoteRacersProps {
@@ -66,50 +67,80 @@ function makeRacerPlate(username: string, isPedestrian = false): THREE.Sprite {
 }
 
 function RemotePedestrianVisual({ racer }: { racer: { username: string } }) {
-  const model = useMemo(() => {
-    const group = new THREE.Group();
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x66e0ff,
-      roughness: 0.6,
-      metalness: 0.1,
-    });
-    const headMat = new THREE.MeshStandardMaterial({
-      color: 0xe0d0b0,
-      roughness: 0.8,
-      metalness: 0.0,
-    });
+  const geometry = useMemo(() => buildCrabGeometry(), []);
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.55,
+        metalness: 0.15,
+      }),
+    [],
+  );
 
-    const bodyGeo = new THREE.CapsuleGeometry(
-      AVATAR_BODY.radius,
-      AVATAR_BODY.length,
-      4,
-      8,
-    );
-    bodyGeo.translate(0, AVATAR_BODY.lift, 0);
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    group.add(body);
-
-    const headGeo = new THREE.SphereGeometry(AVATAR_HEAD.radius, 10, 8);
-    headGeo.translate(0, AVATAR_HEAD.lift, 0);
-    const head = new THREE.Mesh(headGeo, headMat);
-    group.add(head);
-
-    return group;
-  }, []);
-
-  const plate = useMemo(() => makeRacerPlate(racer.username, true), [racer.username]);
+  const plate = useMemo(() => {
+    const sprite = makeRacerPlate(racer.username, true);
+    sprite.position.set(0, 0.95, 0);
+    return sprite;
+  }, [racer.username]);
 
   useEffect(() => {
     return () => {
-      disposeDeep(model);
+      geometry.dispose();
+      material.dispose();
       plate.material.map?.dispose();
       plate.material.dispose();
     };
-  }, [model, plate]);
+  }, [geometry, material, plate]);
 
   return (
-    <group>
-      <primitive object={model} />
+    <group name={`pedestrian-crab-${racer.username}`}>
+      <mesh geometry={geometry} material={material} castShadow />
+      <primitive object={plate} />
+    </group>
+  );
+}
+
+function RemoteSeatedCrabVisual({
+  racer,
+}: {
+  racer: { username: string; seatedBusId?: number | null; seatIndex?: number | null };
+}) {
+  const geometry = useMemo(() => buildCrabGeometry(), []);
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.55,
+        metalness: 0.15,
+      }),
+    [],
+  );
+
+  const plate = useMemo(() => {
+    const sprite = makeRacerPlate(racer.username, true);
+    sprite.position.set(0, 0.95, 0);
+    return sprite;
+  }, [racer.username]);
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+      material.dispose();
+      plate.material.map?.dispose();
+      plate.material.dispose();
+    };
+  }, [geometry, material, plate]);
+
+  return (
+    <group
+      name={`seated-crab-${racer.username}`}
+      userData={{
+        seatedBus: racer.seatedBusId ?? undefined,
+        seatedSlot: racer.seatIndex ?? undefined,
+      }}
+    >
+      <mesh geometry={geometry} material={material} castShadow />
       <primitive object={plate} />
     </group>
   );
@@ -181,13 +212,55 @@ function RemoteParkedCarVisual({
   );
 }
 
+const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const _tempSeatVec = new THREE.Vector3();
+
+/** 10 passenger seat slots from production busLayer.ts (5 left at z=+0.82, 5 right at z=-0.82) */
+export const PASSENGER_SEAT_LOCAL_SLOTS: ReadonlyArray<{ readonly x: number; readonly y: number; readonly z: number }> =
+  Object.freeze(
+    Array.from({ length: 10 }, (_, seatIdx) => {
+      const side = seatIdx < 5 ? 0.82 : -0.82;
+      const row = seatIdx % 5;
+      return Object.freeze({
+        x: -4.25 + row * 1.55,
+        y: 1.68,
+        z: side,
+      });
+    }),
+  );
+
+/** Authoritative computation of seated crab world pose attached to bus coach rig */
+export function computeSeatedCrabWorldPose(
+  busPose: { x: number; y: number; heading?: number },
+  seatIndex: number,
+  terrainSize: number,
+  roadElevation: number,
+): { x: number; y: number; z: number; rotationY: number } {
+  const seatIdx =
+    typeof seatIndex === "number" && seatIndex >= 0 && seatIndex < PASSENGER_SEAT_LOCAL_SLOTS.length
+      ? seatIndex
+      : 0;
+  const slot = PASSENGER_SEAT_LOCAL_SLOTS[seatIdx]!;
+  const heading = busPose.heading ?? 0;
+  const worldBusX = (busPose.x - terrainSize / 2) * 4;
+  const worldBusZ = (busPose.y - terrainSize / 2) * 4;
+  const roadH = roadElevation + ROAD_RIBBON_LIFT;
+  _tempSeatVec.set(slot.x, slot.y, slot.z).applyAxisAngle(Y_AXIS, -heading);
+  return {
+    x: worldBusX + _tempSeatVec.x,
+    y: roadH + _tempSeatVec.y,
+    z: worldBusZ + _tempSeatVec.z,
+    rotationY: -heading + Math.PI / 2,
+  };
+}
+
 export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersProps) {
   useSimSignal(runtime, () => remoteRacersSignature(sim.state));
 
   const rootGroup = useRef<THREE.Group>(null);
   const racerGroups = useRef<Map<string, THREE.Group>>(new Map());
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     const racersMap = sim.state.remoteRacers;
     if (!racersMap || racersMap.size === 0) {
       if (rootGroup.current) rootGroup.current.visible = false;
@@ -221,11 +294,49 @@ export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersP
       if (!grp) continue;
 
       const heading = racer.heading ?? 0;
-      const isPedestrian = Boolean(racer.isPedestrian || !racer.spec);
+      const isSeatedOnBus = Boolean(
+        racer.mode === "riding_bus" &&
+          racer.seatedBusId !== null &&
+          racer.seatedBusId !== undefined,
+      );
+      const isPedestrian = Boolean((racer.isPedestrian || !racer.spec) && !isSeatedOnBus);
       const targetWorldX = (racer.cell.x - t.size / 2) * 4;
       const targetWorldZ = (racer.cell.y - t.size / 2) * 4;
 
-      if (isPedestrian) {
+      if (isSeatedOnBus) {
+        const busId = racer.seatedBusId!;
+        const coach = state.scene.getObjectByName(`bus-coach-${busId}`);
+        const seatIdx =
+          typeof racer.seatIndex === "number" && racer.seatIndex >= 0 && racer.seatIndex < PASSENGER_SEAT_LOCAL_SLOTS.length
+            ? racer.seatIndex
+            : 0;
+        const sideName = seatIdx < 5 ? "left" : "right";
+        const rowIdx = seatIdx % 5;
+        let seatMesh: any = null;
+        if (coach) {
+          coach.updateMatrixWorld(true);
+          seatMesh = coach.getObjectByName(`bus-seat-${sideName}-${rowIdx}`);
+        }
+
+        if (seatMesh && coach) {
+          // Mount ground-origin crab on cushion top surface (+0.25m in seat local Y from box center)
+          seatMesh.localToWorld(_tempSeatVec.set(0, 0.25, 0));
+          grp.position.copy(_tempSeatVec);
+          grp.rotation.set(coach.rotation.x, coach.rotation.y + Math.PI / 2, coach.rotation.z, "YXZ");
+        } else {
+          const busPose = runtime?.busPoseOf ? runtime.busPoseOf(busId) : null;
+          if (busPose) {
+            const roadElevation = Math.max(0, getSmoothRoadY(t, busPose.x, busPose.y));
+            const p = computeSeatedCrabWorldPose(busPose, racer.seatIndex ?? 0, t.size, roadElevation);
+            grp.position.set(p.x, p.y, p.z);
+            grp.rotation.set(0, p.rotationY, 0, "YXZ");
+          } else {
+            const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);
+            grp.position.set(targetWorldX, groundElevation, targetWorldZ);
+            grp.rotation.set(0, -heading + Math.PI / 2, 0, "YXZ");
+          }
+        }
+      } else if (isPedestrian) {
         const groundElevation = sampleElevation(racer.cell.x, racer.cell.y);
         const dist = Math.hypot(grp.position.x - targetWorldX, grp.position.z - targetWorldZ);
         const lerpFactor = dist > 20 || (grp.position.x === 0 && grp.position.z === 0) ? 1 : Math.min(1, delta * 12);
@@ -267,8 +378,14 @@ export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersP
   return (
     <group ref={rootGroup} name="remote-racers">
       {racersList.map((racer) => {
+        const isSeatedOnBus = Boolean(
+          racer.mode === "riding_bus" &&
+            racer.seatedBusId !== null &&
+            racer.seatedBusId !== undefined,
+        );
+        const isPedestrian = Boolean((racer.isPedestrian || !racer.spec) && !isSeatedOnBus);
         const hasParkedCar = Boolean(
-          racer.isPedestrian &&
+          (isPedestrian || isSeatedOnBus) &&
             racer.spec &&
             racer.carX !== undefined &&
             Number.isFinite(racer.carX),
@@ -281,16 +398,20 @@ export function R3FRemoteRacers({ sim, runtime, terrainLevel }: R3FRemoteRacersP
                 username: racer.username,
                 userId: racer.userId,
                 participantId: racer.participantId,
-                isPedestrian: Boolean(racer.isPedestrian || !racer.spec),
-                mode: racer.isPedestrian || !racer.spec ? "walking" : "driving",
+                isPedestrian,
+                mode: racer.mode ?? (isPedestrian ? "walking" : isSeatedOnBus ? "riding_bus" : "driving"),
                 vehicleKey: racer.vehicleKey ?? null,
+                seatedBusId: racer.seatedBusId ?? null,
+                seatIndex: racer.seatIndex ?? null,
               }}
               ref={(el) => {
                 if (el) racerGroups.current.set(racer.participantId, el);
                 else racerGroups.current.delete(racer.participantId);
               }}
             >
-              {racer.isPedestrian || !racer.spec ? (
+              {isSeatedOnBus ? (
+                <RemoteSeatedCrabVisual racer={racer} />
+              ) : isPedestrian ? (
                 <RemotePedestrianVisual racer={racer} />
               ) : (
                 <RemoteCarVisual racer={racer as { username: string; spec: CarSpec }} />

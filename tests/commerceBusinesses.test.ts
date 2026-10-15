@@ -36,8 +36,11 @@ describe("commerce businesses (themed app storefronts)", () => {
       expect(BUSINESSES[a[p.id] as BusinessId]).toBeTruthy();
   });
 
+  let cachedRuntime: ColonyRuntime | null = null;
+  const getRuntime = () => (cachedRuntime ??= new ColonyRuntime(4242));
+
   it("gives the visible high street distinct identities without neighbour repeats", () => {
-    const rt = new ColonyRuntime(4242);
+    const rt = getRuntime();
     const shops = rt.commercialDistrict?.parcels ?? [];
     expect(shops.length).toBeGreaterThanOrEqual(8);
     const names = shops.map((p) => businessName(p.business));
@@ -91,7 +94,7 @@ describe("commerce businesses (themed app storefronts)", () => {
   });
 
   it("the live district tags every shop plot with a business", () => {
-    const rt = new ColonyRuntime(4242);
+    const rt = getRuntime();
     const shops = rt.commercialDistrict?.parcels ?? [];
     expect(shops.length).toBeGreaterThan(0);
     for (const p of shops)

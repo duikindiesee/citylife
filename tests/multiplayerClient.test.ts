@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { MultiplayerClient, redactUrl } from "../src/colony/multiplayer/multiplayerClient";
+import { MultiplayerClient, redactUrl, resolveAndValidateEndpoint } from "../src/colony/multiplayer/multiplayerClient";
 import { resolveOwnedCar } from "../src/colony/car/ownedCar";
 import { buildBusNetworkMiniMapModel } from "../src/colony/ui/busNetworkMiniMapModel";
 
@@ -194,6 +194,212 @@ describe("MultiplayerClient Auth & Lifecycle Boundaries", () => {
     expect(MockWebSocket.instances.length).toBe(1);
     expect(MockWebSocket.instances[0]!.url).toContain("/api/v1/citylife/ws?jwt=valid-token");
     expect(MockWebSocket.instances[0]!.url).not.toContain("token=");
+  });
+
+  describe("Queryless Cookie-Authenticated WebSocket transport", () => {
+    it("connects to queryless endpoint without appending token when useCookieAuth is true", async () => {
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        token: "session-access-token",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+      });
+
+      await client.connect();
+      expect(MockWebSocket.instances.length).toBe(1);
+      const url = MockWebSocket.instances[0]!.url;
+      expect(url).toBe("wss://synthetic.citylife.invalid/api/v1/citylife/ws");
+      expect(url).not.toContain("?");
+      expect(url).not.toContain("jwt=");
+      expect(url).not.toContain("token=");
+    });
+
+    it("connects queryless when token is omitted in cookie-authenticated mode", async () => {
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/kooker/api/v1/citylife/ws",
+        useCookieAuth: true,
+      });
+
+      await client.connect();
+      expect(MockWebSocket.instances.length).toBe(1);
+      const url = MockWebSocket.instances[0]!.url;
+      expect(url).toBe("wss://synthetic.citylife.invalid/kooker/api/v1/citylife/ws");
+      expect(url).not.toContain("?");
+    });
+
+    it("strips any incoming jwt or token query parameters when queryless option is passed to resolveAndValidateEndpoint", () => {
+      const res = resolveAndValidateEndpoint(
+        "/api/v1/citylife/ws?jwt=stale-query-token&token=old-param",
+        "new-token",
+        { queryless: true }
+      );
+      expect(res.ok).toBe(true);
+      if (!res.ok) throw new Error("Expected successful endpoint validation");
+      expect(res.url).toBe("wss://synthetic.citylife.invalid/api/v1/citylife/ws");
+      expect(res.url).not.toContain("jwt=");
+      expect(res.url).not.toContain("token=");
+    });
+
+    it("executes ensureCookieAuth before opening the WebSocket", async () => {
+      const callOrder: string[] = [];
+      const ensureCookieAuth = vi.fn(async () => {
+        callOrder.push("ensureCookieAuth");
+        return true;
+      });
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+        ensureCookieAuth,
+      });
+
+      // Hook MockWebSocket creation to track order
+      const initialWsCount = MockWebSocket.instances.length;
+      await client.connect();
+
+      expect(ensureCookieAuth).toHaveBeenCalledTimes(1);
+      expect(callOrder).toEqual(["ensureCookieAuth"]);
+      expect(MockWebSocket.instances.length).toBe(initialWsCount + 1);
+    });
+
+    it("fails closed with UNAUTHORIZED when useCookieAuth is false and no token is available", async () => {
+      let reportedError: any = null;
+      const initialWsCount = MockWebSocket.instances.length;
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: false,
+        onError: (err) => {
+          reportedError = err;
+        },
+      });
+
+      await client.connect();
+
+      expect(client.getStatus()).toBe("error");
+      expect(reportedError).toEqual({
+        code: "UNAUTHORIZED",
+        message: "Missing required auth token",
+      });
+      // WebSocket should never have been created
+      expect(MockWebSocket.instances.length).toBe(initialWsCount);
+    });
+
+    it("re-runs ensureCookieAuth on reconnect to refresh cookie session", async () => {
+      let ensureCount = 0;
+      const ensureCookieAuth = vi.fn(async () => {
+        ensureCount++;
+        return true;
+      });
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+        ensureCookieAuth,
+      });
+
+      await client.connect();
+      expect(ensureCount).toBe(1);
+
+      client.disconnect();
+      expect(client.getStatus()).toBe("disconnected");
+
+      await client.connect();
+      expect(ensureCount).toBe(2);
+    });
+
+    it("fails closed with UNAUTHORIZED when ensureCookieAuth resolves false", async () => {
+      let reportedError: any = null;
+      const initialWsCount = MockWebSocket.instances.length;
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+        ensureCookieAuth: async () => false,
+        onError: (err) => {
+          reportedError = err;
+        },
+      });
+
+      await client.connect();
+
+      expect(client.getStatus()).toBe("error");
+      expect(reportedError).toEqual({
+        code: "UNAUTHORIZED",
+        message: "Failed to establish authenticated cookie session",
+      });
+      expect(MockWebSocket.instances.length).toBe(initialWsCount);
+    });
+
+    it("fails closed with UNAUTHORIZED when ensureCookieAuth throws an error", async () => {
+      let reportedError: any = null;
+      const initialWsCount = MockWebSocket.instances.length;
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+        ensureCookieAuth: async () => {
+          throw new Error("Network error during cookie issuance");
+        },
+        onError: (err) => {
+          reportedError = err;
+        },
+      });
+
+      await client.connect();
+
+      expect(client.getStatus()).toBe("error");
+      expect(reportedError).toEqual({
+        code: "UNAUTHORIZED",
+        message: "Failed to establish authenticated cookie session",
+      });
+      expect(MockWebSocket.instances.length).toBe(initialWsCount);
+    });
+
+    it("aborts connection without opening WebSocket if client is closed while ensureCookieAuth is in flight (deferred issuance race)", async () => {
+      let resolveEnsure: (v: boolean) => void = () => {};
+      const ensurePromise = new Promise<boolean>((resolve) => {
+        resolveEnsure = resolve;
+      });
+
+      const initialWsCount = MockWebSocket.instances.length;
+
+      const client = new MultiplayerClient({
+        userId: "101",
+        username: "test-user",
+        url: "/api/v1/citylife/ws",
+        useCookieAuth: true,
+        ensureCookieAuth: () => ensurePromise,
+      });
+
+      // Start connecting (enters ensureCookieAuth await)
+      const connectPromise = client.connect();
+
+      // Client is disconnected explicitly while ensureCookieAuth is still pending
+      client.disconnect();
+      expect(client.getStatus()).toBe("disconnected");
+
+      // Now ensureCookieAuth settles
+      resolveEnsure(true);
+      await connectPromise;
+
+      // WebSocket should never have been opened
+      expect(MockWebSocket.instances.length).toBe(initialWsCount);
+      expect(client.getStatus()).toBe("disconnected");
+    });
   });
 
   it("packages mode: driving and mode: walking correctly in sendPose (v1 only)", async () => {
@@ -2344,6 +2550,373 @@ describe("MultiplayerClient Protocol-v2 Contract & State Lifecycle", () => {
       expect(client.getStatus()).toBe("error");
       expect(client.getSessionInfo().sessionId).toBeNull();
       expect(socket.readyState).toBe(MockWebSocket.CLOSED);
+    });
+
+    it("handles bus_boarded and bus_alighted with ACK-only state transitions", async () => {
+      let boardedAck: any = null;
+      let alightedAck: any = null;
+      let modeChangedEvents: any[] = [];
+      const client = new MultiplayerClient({
+        url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+        token: "valid-jwt",
+        userId: "user-bus-1",
+        username: "BusTester",
+        onBusBoarded: (ack) => {
+          boardedAck = ack;
+        },
+        onBusAlighted: (ack) => {
+          alightedAck = ack;
+        },
+        onModeChanged: (ev) => {
+          modeChangedEvents.push(ev);
+        },
+      });
+
+      await client.connect();
+      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen!();
+
+      // Admit as walking
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "session_joined",
+          sessionId: "sess-bus-1",
+          participantId: "part-bus-1",
+          protocolVersion: 2,
+          mode: "walking",
+          modeEpoch: 1,
+          participants: [],
+        }),
+      });
+
+      expect(client.getMode()).toBe("walking");
+      expect(client.getSeatedBusId()).toBeNull();
+      expect(client.getSeatIndex()).toBeNull();
+
+      // Send board bus request
+      expect(client.boardBus(1)).toBe(true);
+      expect(socket.sent).toContainEqual({
+        type: "request_board_bus",
+        busId: 1,
+        epoch: 1,
+      });
+      // Local state is unchanged until ACK (ACK-only mutation)
+      expect(client.getMode()).toBe("walking");
+
+      // Receive bus_boarded ACK from server with incremented authoritative modeEpoch
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "bus_boarded",
+          busId: 1,
+          seatIndex: 3,
+          modeEpoch: 2,
+        }),
+      });
+
+      expect(boardedAck).toEqual({ busId: 1, seatIndex: 3 });
+      expect(client.getMode()).toBe("riding_bus");
+      expect(client.getModeEpoch()).toBe(2);
+      expect(client.getSeatedBusId()).toBe(1);
+      expect(client.getSeatIndex()).toBe(3);
+
+      // Walking input is suppressed while riding bus
+      expect(client.sendWalkingInput({ forward: 1 })).toBe(false);
+
+      // Send alight bus request — uses adopted modeEpoch 2
+      expect(client.alightBus()).toBe(true);
+      expect(socket.sent).toContainEqual({
+        type: "request_alight_bus",
+        epoch: 2,
+      });
+
+      // Receive bus_alighted ACK from server with incremented authoritative modeEpoch
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "bus_alighted",
+          modeEpoch: 3,
+          x: 100,
+          y: 0,
+          z: 200,
+          heading: 1.57,
+        }),
+      });
+
+      expect(alightedAck).toEqual({ x: 100, y: 0, z: 200, heading: 1.57 });
+      expect(client.getMode()).toBe("walking");
+      expect(client.getModeEpoch()).toBe(3);
+      expect(client.getSeatedBusId()).toBeNull();
+      expect(client.getSeatIndex()).toBeNull();
+    });
+
+    it("admits queryless cookie WebSocket with seated bus reconnect and peer rider updates", async () => {
+      let alightedAck: any = null;
+      let selfAdmitted: any = null;
+      let peerPose: any = null;
+      const ensureCookieAuth = vi.fn(async () => true);
+
+      const client = new MultiplayerClient({
+        url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+        userId: "user-cookie-bus",
+        username: "CookieBusRider",
+        useCookieAuth: true,
+        ensureCookieAuth,
+        onBusAlighted: (ack) => {
+          alightedAck = ack;
+        },
+        onSelfAdmitted: (self) => {
+          selfAdmitted = self;
+        },
+        onPeerPose: (pid, pose) => {
+          peerPose = { pid, ...pose };
+        },
+      });
+
+      await client.connect();
+      expect(ensureCookieAuth).toHaveBeenCalledTimes(1);
+
+      const socket = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+      expect(socket.url).not.toContain("token=");
+      expect(socket.url).not.toContain("jwt=");
+
+      socket.readyState = MockWebSocket.OPEN;
+      socket.onopen!();
+
+      // Admit directly into seated bus state on reconnect
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "session_reconnected",
+          sessionId: "sess-cookie-bus-1",
+          participantId: "part-cookie-bus-1",
+          protocolVersion: 2,
+          mode: "riding_bus",
+          seatedBusId: 2,
+          seatIndex: 4,
+          modeEpoch: 2,
+          participants: [
+            {
+              participantId: "part-cookie-bus-1",
+              userId: "user-cookie-bus",
+              username: "CookieBusRider",
+              mode: "riding_bus",
+              seatedBusId: 2,
+              seatIndex: 4,
+              x: 100,
+              y: 0,
+              z: 200,
+              heading: 0,
+              speed: 12,
+            },
+          ],
+        }),
+      });
+
+      expect(client.getMode()).toBe("riding_bus");
+      expect(client.getSeatedBusId()).toBe(2);
+      expect(client.getSeatIndex()).toBe(4);
+      expect(selfAdmitted).toMatchObject({
+        participantId: "part-cookie-bus-1",
+        mode: "riding_bus",
+        seatedBusId: 2,
+        seatIndex: 4,
+      });
+
+      // Peer rider pose arrives with seated bus state
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "peer_pose",
+          participantId: "peer-bus-rider",
+          mode: "riding_bus",
+          seatedBusId: 2,
+          seatIndex: 5,
+          x: 100,
+          y: 0,
+          z: 200,
+          heading: 0,
+          speed: 12,
+        }),
+      });
+
+      expect(peerPose).toMatchObject({
+        pid: "peer-bus-rider",
+        mode: "riding_bus",
+        seatedBusId: 2,
+        seatIndex: 5,
+      });
+
+      // Alight bus
+      expect(client.alightBus()).toBe(true);
+      expect(socket.sent).toContainEqual({
+        type: "request_alight_bus",
+        epoch: 2,
+      });
+
+      socket.onmessage!({
+        data: JSON.stringify({
+          type: "bus_alighted",
+          modeEpoch: 3,
+          x: 110,
+          y: 0,
+          z: 200,
+          heading: 0,
+        }),
+      });
+
+      expect(alightedAck).toEqual({ x: 110, y: 0, z: 200, heading: 0 });
+      expect(client.getMode()).toBe("walking");
+      expect(client.getModeEpoch()).toBe(3);
+      expect(client.getSeatedBusId()).toBeNull();
+      expect(client.getSeatIndex()).toBeNull();
+    });
+
+    it("rejects stale or malformed bus_boarded and bus_alighted receipts without state corruption", async () => {
+      const setupClient = async () => {
+        let lastError: any = null;
+        const c = new MultiplayerClient({
+          url: "ws://127.0.0.1:8080/api/v1/citylife/ws",
+          token: "valid-jwt",
+          userId: "user-bus-receipt-reject",
+          username: "ReceiptRejectRider",
+          onError: (err) => {
+            lastError = err;
+          },
+        });
+        await c.connect();
+        const s = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+        s.readyState = MockWebSocket.OPEN;
+        s.onopen!();
+        s.onmessage!({
+          data: JSON.stringify({
+            type: "session_joined",
+            sessionId: "sess-receipt-1",
+            participantId: "part-receipt-1",
+            protocolVersion: 2,
+            mode: "walking",
+            modeEpoch: 2,
+            participants: [],
+          }),
+        });
+        return { client: c, socket: s, getLastError: () => lastError };
+      };
+
+      // 1. Stale modeEpoch on bus_boarded (<= active epoch 2)
+      {
+        const { client, socket, getLastError } = await setupClient();
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_boarded",
+            busId: 0,
+            seatIndex: 1,
+            modeEpoch: 2,
+          }),
+        });
+        expect(getLastError()).toMatchObject({ code: "INVALID_EPOCH" });
+        expect(client.getStatus()).toBe("error");
+      }
+
+      // 2. Malformed busId/seatIndex on bus_boarded (string, negative, boolean, null)
+      for (const badBus of [null, false, "0", -1, NaN]) {
+        const { client, socket, getLastError } = await setupClient();
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_boarded",
+            busId: badBus,
+            seatIndex: 1,
+            modeEpoch: 3,
+          }),
+        });
+        expect(getLastError()).toMatchObject({ code: "MALFORMED_TRANSITION_RECEIPT" });
+        expect(client.getStatus()).toBe("error");
+      }
+
+      // 3. Stale modeEpoch on bus_alighted
+      {
+        const { client, socket, getLastError } = await setupClient();
+        // Valid board to epoch 4
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_boarded",
+            busId: 0,
+            seatIndex: 1,
+            modeEpoch: 4,
+          }),
+        });
+        expect(client.getMode()).toBe("riding_bus");
+        expect(client.getModeEpoch()).toBe(4);
+
+        // Stale alight (epoch 4 <= active 4)
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_alighted",
+            modeEpoch: 4,
+            x: 10,
+            y: 0,
+            z: 20,
+            heading: 0,
+          }),
+        });
+        expect(getLastError()).toMatchObject({ code: "INVALID_EPOCH" });
+        expect(client.getStatus()).toBe("error");
+      }
+
+      // 4. Malformed coordinates on bus_alighted (null, empty string, boolean, nonfinite)
+      for (const badCoord of [null, "", false, "100", NaN, Infinity, undefined]) {
+        const { client, socket, getLastError } = await setupClient();
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_boarded",
+            busId: 0,
+            seatIndex: 1,
+            modeEpoch: 4,
+          }),
+        });
+        expect(client.getMode()).toBe("riding_bus");
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_alighted",
+            modeEpoch: 5,
+            x: badCoord,
+            y: 0,
+            z: 20,
+            heading: 0,
+          }),
+        });
+        expect(getLastError()).toMatchObject({ code: "MALFORMED_TRANSITION_RECEIPT" });
+        expect(client.getStatus()).toBe("error");
+      }
+
+      // 5. Valid normal progression: board -> alight
+      {
+        const { client, socket, getLastError } = await setupClient();
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_boarded",
+            busId: 0,
+            seatIndex: 1,
+            modeEpoch: 4,
+          }),
+        });
+        expect(client.getMode()).toBe("riding_bus");
+        expect(client.getModeEpoch()).toBe(4);
+        expect(client.getSeatedBusId()).toBe(0);
+        expect(client.getSeatIndex()).toBe(1);
+
+        socket.onmessage!({
+          data: JSON.stringify({
+            type: "bus_alighted",
+            modeEpoch: 5,
+            x: 10,
+            y: 0,
+            z: 20,
+            heading: 0,
+          }),
+        });
+        expect(getLastError()).toBeNull();
+        expect(client.getMode()).toBe("walking");
+        expect(client.getModeEpoch()).toBe(5);
+        expect(client.getSeatedBusId()).toBeNull();
+        expect(client.getSeatIndex()).toBeNull();
+      }
     });
   });
 });

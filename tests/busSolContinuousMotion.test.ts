@@ -230,33 +230,51 @@ describe("BUS.SOL.STUTTER.FIX.1 — continuous bus motion while persisting canon
     rt.debugSetSolTimeOfDay(12, 0);
     tick(rt);
 
-    // Drive forward until a bus enters dwell at a stop
+    // Drive forward until an in-service bus enters dwell at a stop
     let dwellingBusId = -1;
+    let dwellStartMs = 0;
     const baseMs = solNowMs();
     for (let i = 0; i < 500; i++) {
-      setSolDebugOffsetMs(baseMs + i * 500 - Date.now()); // step 0.5s chunks
+      const stepMs = baseMs + i * 500;
+      setSolDebugOffsetMs(stepMs - Date.now()); // step 0.5s chunks
       tick(rt);
       const poses = rt.busPoses();
-      const dIdx = poses.findIndex((p) => p.doorsOpen && !p.moving);
+      const buses = rt.busFleet!.buses;
+      const dIdx = poses.findIndex(
+        (p, idx) => buses[idx]?.mode === "service" && p.doorsOpen && !p.moving,
+      );
       if (dIdx >= 0) {
         dwellingBusId = dIdx;
+        dwellStartMs = stepMs;
         break;
       }
     }
 
-    if (dwellingBusId >= 0) {
-      const dwellPose = rt.busPoses()[dwellingBusId]!;
-      expect(dwellPose.doorsOpen).toBe(true);
-      expect(dwellPose.moving).toBe(false);
+    expect(dwellingBusId).toBeGreaterThanOrEqual(0);
+    const dwellPose = rt.busPoses()[dwellingBusId]!;
+    expect(dwellPose.doorsOpen).toBe(true);
+    expect(dwellPose.moving).toBe(false);
 
-      // 100ms later during dwell, position must remain fixed at the stop
-      const nowOffset = solNowMs() - Date.now();
-      setSolDebugOffsetMs(nowOffset + 100);
-      tick(rt);
-      const dwellPose2 = rt.busPoses()[dwellingBusId]!;
-      expect(dwellPose2.x).toBeCloseTo(dwellPose.x, 5);
-      expect(dwellPose2.y).toBeCloseTo(dwellPose.y, 5);
-    }
+    // 100ms later during dwell, position must remain fixed at the stop with doors open
+    setSolDebugOffsetMs(dwellStartMs + 100 - Date.now());
+    tick(rt);
+    const dwellPose2 = rt.busPoses()[dwellingBusId]!;
+    expect(dwellPose2.doorsOpen).toBe(true);
+    expect(dwellPose2.moving).toBe(false);
+    expect(dwellPose2.x).toBeCloseTo(dwellPose.x, 5);
+    expect(dwellPose2.y).toBeCloseTo(dwellPose.y, 5);
+
+    // Negative/departure control: after full stopDwellMin elapses (+1s margin), bus closes doors and departs
+    const fullDwellMs =
+      COLONY.transit.stopDwellMin * REAL_SECONDS_PER_SOL_MINUTE * 1000;
+    setSolDebugOffsetMs(dwellStartMs + fullDwellMs + 1000 - Date.now());
+    tick(rt);
+    const departedPose = rt.busPoses()[dwellingBusId]!;
+    expect(departedPose.doorsOpen).toBe(false);
+    expect(departedPose.moving).toBe(true);
+    expect(
+      Math.hypot(departedPose.x - dwellPose.x, departedPose.y - dwellPose.y),
+    ).toBeGreaterThan(0);
   });
 
   it("preserves sol-time service without regression from sim speed changes", () => {

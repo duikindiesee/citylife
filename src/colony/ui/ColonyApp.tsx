@@ -17,7 +17,7 @@ import {
   type FirstPersonMouseSensitivity,
 } from "../runtime";
 import { isPublicSafe, type HouseholdOverrides } from "../newcomers";
-import { AuthClient, canEnterCityBuilder } from "../authClient";
+import { AuthClient, getAuthClient, canEnterCityBuilder } from "../authClient";
 // PLAYER.FLAG.S3 — the fail-closed, default-OFF new-player-journey entitlement (gates the garage
 // showroom entry and every future journey-only action on the server allowlist).
 import {
@@ -724,19 +724,82 @@ function detectTouchCapable(): boolean {
   );
 }
 
-export function ColonyApp() {
+export function SignedOutFallbackView() {
+  return (
+    <div className="colony" data-signed-out="true" role="status" aria-label="Signed out">
+      <main
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 100,
+          display: "grid",
+          placeContent: "center",
+          gap: 12,
+          padding: 24,
+          textAlign: "center",
+          color: "#d8e6ff",
+          background: "#07111f",
+        }}
+      >
+        <strong style={{ fontSize: "1.25rem" }}>Signed out</strong>
+        <span style={{ color: "#8ca0ba" }}>
+          Your session has ended. Returning to login…
+        </span>
+      </main>
+    </div>
+  );
+}
+
+export function createColonyLogoutHandler({
+  runtime,
+  auth = getAuthClient(),
+  setLoggedOut,
+  onReload = () => window.location.reload(),
+}: {
+  runtime: ColonyRuntime;
+  auth?: AuthClient;
+  setLoggedOut: (loggedOut: boolean) => void;
+  onReload?: () => void;
+}) {
+  return async (beforeLogout?: () => void) => {
+    // 1. Immediately disable multiplayer and clear all peer/input/driving state synchronously
+    runtime.disableMultiplayer();
+    // 2. Immediately switch to local signed-out UI
+    setLoggedOut(true);
+    // 3. Mark pre-logout state (e.g. pending password change notice)
+    beforeLogout?.();
+    // 4. Bounded cookie clearance and reload
+    try {
+      await auth.logout();
+    } finally {
+      onReload();
+    }
+  };
+}
+
+export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
   const { builderActive, worldViewActive } = useRoadNetwork();
   const runtime = useRuntime();
   const [, forceRuntimeRender] = useReducer((x) => x + 1, 0);
-  const auth = useMemo(() => new AuthClient(), []);
+  const auth = useMemo(() => propAuth ?? getAuthClient(), [propAuth]);
   const operatorUserId = auth.operator?.userId ?? null;
+  const [loggedOut, setLoggedOut] = useState(false);
+
+  const executeLogout = useCallback(
+    createColonyLogoutHandler({
+      runtime,
+      auth,
+      setLoggedOut,
+    }),
+    [auth, runtime],
+  );
 
   const isMultiplayer = useMemo(() => {
-    if (!auth.isAuthenticated || !operatorUserId) return false;
+    if (loggedOut || !auth.isAuthenticated || !operatorUserId) return false;
     if (typeof window === "undefined") return false;
     const q = new URLSearchParams(window.location.search);
     return Boolean(q.get("room") || q.get("multiplayer") === "1");
-  }, [auth.isAuthenticated, operatorUserId]);
+  }, [auth.isAuthenticated, loggedOut, operatorUserId]);
 
   const remoteLoader = useMemo(
     () =>
@@ -1395,7 +1458,7 @@ export function ColonyApp() {
       }
     };
     const poll = () => {
-      const raceActive = runtime.getUiState().race.mode !== "idle";
+      const raceActive = runtime.isRaceActive();
       const pads = Array.from(navigator.getGamepads?.() ?? []).filter(
         (pad): pad is Gamepad => Boolean(pad),
       );
@@ -1514,7 +1577,7 @@ export function ColonyApp() {
     ) {
       document.exitPointerLock?.();
     }
-  }, [runtime, runtime.getOwnedDrivePose()]);
+  }, [runtime, Boolean(runtime.getOwnedDrivePose())]);
 
   const requestMouseLook = () => {
     if (!ui.firstPerson.active || !!runtime.getOwnedDrivePose()) return;
@@ -1558,7 +1621,7 @@ export function ColonyApp() {
       )
         return;
       if (runtime.getOwnedDrivePose()) return; // owned car controls own these keys
-      if (runtime.getUiState().race.mode !== "idle") {
+      if (runtime.isRaceActive()) {
         if (RACE_MOVE.has(e.code)) {
           e.preventDefault();
           runtime.setRaceKey(e.code, true);
@@ -1569,7 +1632,7 @@ export function ColonyApp() {
         return;
       }
       if (
-        runtime.getUiState().firstPerson.active ||
+        runtime.isFirstPersonOrMultiplayerFootActive() ||
         (!runtime.isOwnedDriveSeated() &&
           runtime.getMultiplayerClient()?.getStatus() === "connected")
       ) {
@@ -1613,7 +1676,7 @@ export function ColonyApp() {
           runtime.toggleZones();
           break;
         case "Escape":
-          if (runtime.getUiState().firstPerson.active)
+          if (runtime.isFirstPersonOrMultiplayerFootActive())
             runtime.exitFirstPerson();
           break;
         default:
@@ -2012,6 +2075,10 @@ export function ColonyApp() {
         : undefined,
   };
 
+  if (loggedOut) {
+    return <SignedOutFallbackView />;
+  }
+
   if (worldLayoutBoot.status !== "ready") {
     return (
       <div className="colony" data-world-layout-boot={worldLayoutBoot.status}>
@@ -2400,8 +2467,7 @@ export function ColonyApp() {
             onExitFirstPerson={() => runtime.exitFirstPerson()}
             onChangePassword={() => setPwdChangeOpen(true)}
             onLogout={() => {
-              auth.logout();
-              window.location.reload();
+              void executeLogout();
             }}
             onSnapshot={saveSnapshot}
           />
@@ -4677,13 +4743,11 @@ export function ColonyApp() {
       {pwdChangeOpen && (
         <PasswordChangePanel
           onClose={() => setPwdChangeOpen(false)}
-          onRequested={() => {
+          onRequested={async () => {
             // The backend has staged the change and revoked the session. Sign out immediately into
             // the pending state and reload to the login gate, where the one-shot notice explains the
             // next step (redeem the activation token). Neither old nor new password works until then.
-            markPasswordChangePending();
-            auth.logout();
-            window.location.reload();
+            await executeLogout(() => markPasswordChangePending());
           }}
         />
       )}

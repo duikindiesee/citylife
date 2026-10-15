@@ -77,10 +77,12 @@ describe("first-person route dogfood", () => {
   });
 
   it("applies the selected first-person mouse sensitivity to yaw and pitch", () => {
+    const rt = new ColonyRuntime(4242);
+    const me = rt.getUiState().citizens.list[0]!;
+    rt.enterFirstPerson(me.id);
+
     function mouseLookDelta(level: "low" | "normal" | "high") {
-      const rt = new ColonyRuntime(4242);
-      const me = rt.getUiState().citizens.list[0]!;
-      rt.enterFirstPerson(me.id);
+      rt.levelFirstPersonLook();
       expect(rt.setFirstPersonMouseSensitivity(level)).toBe(true);
       expect(rt.getUiState().firstPerson.mouseSensitivity).toBe(level);
       const before = rt.getUiState().firstPerson.view!.citizen.heading;

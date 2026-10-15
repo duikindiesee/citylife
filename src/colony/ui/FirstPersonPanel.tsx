@@ -169,6 +169,70 @@ export function FirstPersonPanel({
         </div>
       </div>
 
+      {fp.busStop && fp.busStop.isNearPole && (
+        <div
+          className="first-person-panel__bus-stop-card"
+          data-testid="bus-stop-card"
+          data-stop-index={fp.busStop.stopIndex}
+          data-waiting={fp.busStop.isWaiting ? "true" : "false"}
+          data-can-board={fp.busStop.canBoard ? "true" : "false"}
+        >
+          <div className="first-person-panel__bus-stop-header">
+            <span className="first-person-panel__bus-stop-icon">🚏</span>
+            <strong>{fp.busStop.stopName}</strong>
+            <span className="first-person-panel__bus-stop-badge">Free fare</span>
+          </div>
+          <div className="first-person-panel__bus-stop-status" data-testid="bus-stop-status">
+            {fp.busStop.canBoard ? (
+              <span className="bus-stop-status--ready">
+                Bus {fp.busStop.dwellingBusId !== null ? fp.busStop.dwellingBusId + 1 : ""} doors open — ready to board
+              </span>
+            ) : fp.busStop.isWaiting ? (
+              <span className="bus-stop-status--waiting">
+                Waiting for next bus — will board automatically on arrival
+              </span>
+            ) : (
+              <span className="bus-stop-status--idle">
+                {fp.busStop.boardUnavailableReason || "No bus currently at stop"}
+              </span>
+            )}
+          </div>
+          <div className="first-person-panel__bus-stop-actions">
+            {fp.busStop.canBoard ? (
+              <button
+                type="button"
+                className="first-person-panel__bus-stop-btn first-person-panel__bus-stop-btn--board"
+                data-fp-action="board-dwelling-bus"
+                aria-label={`Board bus ${fp.busStop.dwellingBusId !== null ? fp.busStop.dwellingBusId + 1 : ""}`}
+                onClick={() => runtime.activateFirstPersonInteraction()}
+              >
+                Board Bus {fp.busStop.dwellingBusId !== null ? fp.busStop.dwellingBusId + 1 : ""}
+              </button>
+            ) : fp.busStop.isWaiting ? (
+              <button
+                type="button"
+                className="first-person-panel__bus-stop-btn first-person-panel__bus-stop-btn--cancel"
+                data-fp-action="cancel-wait-bus"
+                aria-label="Cancel wait for next bus"
+                onClick={() => runtime.cancelBusWait()}
+              >
+                Cancel wait
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="first-person-panel__bus-stop-btn first-person-panel__bus-stop-btn--wait"
+                data-fp-action="wait-next-bus"
+                aria-label={`Wait for next bus at ${fp.busStop.stopName}`}
+                onClick={() => runtime.queueNextBus(fp.busStop!.stopIndex)}
+              >
+                Wait for next bus
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="first-person-panel__action-cluster">
         {v?.interactionPrompt ? (
           <button
