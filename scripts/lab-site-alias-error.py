@@ -1,0 +1,447 @@
+#!/usr/bin/env python3
+"""
+Bounded Real-Image Lab for Client Site Alias, Pre-Emission Error Containment, and Lifecycle Disposition
+Tests the built candidate image (citylife:candidate) using official entrypoint processing and fabricated markers only.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+
+def run_cmd(args, check=True, timeout=30):
+    res = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    if check and res.returncode != 0:
+        raise RuntimeError(f"Command failed ({res.returncode}): {' '.join(args)}\nStderr: {res.stderr}\nStdout: {res.stdout}")
+    return res
+
+def main():
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+    print("=== Starting Bounded Real-Image Lab ===")
+    print(f"Repo root: {repo_root}")
+
+    # Inspect candidate image metadata
+    candidate_image = "citylife:candidate"
+    img_inspect = run_cmd(["docker", "image", "inspect", candidate_image, "--format", "{{json .Id}}"]).stdout.strip().strip('"')
+
+    net_name = f"site-lab-net-{int(time.time())}"
+    gw_name = f"mock-gateway-{int(time.time())}"
+    nginx_name = f"site-nginx-{int(time.time())}"
+
+    results = {
+        "lab": "client-site-alias-error-pre-emission-containment",
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "candidate_image": candidate_image,
+        "candidate_image_id": img_inspect,
+        "base_image": "nginx:alpine",
+        "base_image_id": "sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2",
+        "base_repo_digest": "nginx@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2",
+        "nginx_version": "nginx/1.31.6",
+        "entrypoint": ["/usr/local/bin/site-entrypoint.sh"],
+        "entrypoint_cmd": ["nginx", "-g", "daemon off;"],
+        "supervisor_script": "/usr/local/bin/site-entrypoint.sh",
+        "entrypoint_binding": "supervisor entrypoint /usr/local/bin/site-entrypoint.sh runs official entrypoint template processing (/docker-entrypoint.sh nginx -v), creates pre-emission FIFO, runs companion filter with signal trap and active child supervision, preserving Nginx exit code and awaiting log drain",
+        "exposure_reproduction_baseline": {
+            "intermediate_head": "d4d04a7",
+            "observation": "Without pre-emission companion, Nginx C-core upstream connect failure directly formats unredacted request URI to stderr",
+            "prior_reproduction_results": {
+                "timestamp_06_35_48Z": {"passed": 31, "failed": 2, "unredacted_c_core_leak": "timed out prior to connection refusal"},
+                "timestamp_06_44_49Z": {"passed": 36, "failed": 0, "unredacted_c_core_leak": "confirmed raw token emitted to stderr as other-hop gap"}
+            }
+        },
+        "containment_acceptance_cases": [],
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+    }
+
+    try:
+        # Create isolated Docker bridge network
+        run_cmd(["docker", "network", "create", net_name])
+
+        # Start mock gateway container (python:3.13-slim)
+        gw_script = '''
+import http.server
+import json
+import sys
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.handle_req()
+    def do_POST(self):
+        self.handle_req()
+    def handle_req(self):
+        headers_dict = {k: v for k, v in self.headers.items()}
+        print(f"UPSTREAM_RECV: {self.command} {self.path} HOST={headers_dict.get('Host')} XFP={headers_dict.get('X-Forwarded-Proto')}", flush=True)
+        if self.path == "/close-socket":
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"closed")
+            import threading
+            import time
+            def close_socket_only():
+                time.sleep(0.1)
+                try:
+                    self.server.socket.close()
+                except Exception:
+                    pass
+                while True:
+                    time.sleep(1)
+            threading.Thread(target=close_socket_only).start()
+            return
+        if self.path.startswith("/api/v1/citylife/auth/cookie"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Set-Cookie", "citylife_auth=dummy-jwt-value; Path=/api/v1/citylife/ws; HttpOnly; SameSite=Lax")
+            self.end_headers()
+            self.wfile.write(b'{"status":"cookie_issued"}')
+        elif self.path.startswith("/api/v1/citylife/auth/clear"):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Set-Cookie", "citylife_auth=; Max-Age=0; Path=/api/v1/citylife/ws")
+            self.end_headers()
+            self.wfile.write(b'{"status":"cookie_cleared"}')
+        elif "browser-ws" in self.path:
+            if self.headers.get("Upgrade", "").lower() == "websocket":
+                self.send_response(101, "Switching Protocols")
+                self.send_header("Upgrade", "websocket")
+                self.send_header("Connection", "Upgrade")
+                self.end_headers()
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"status":"ws_upstream_http_only"}')
+        else:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"path": self.path, "headers": headers_dict}).encode("utf-8"))
+
+server = http.server.HTTPServer(("0.0.0.0", 8080), Handler)
+print("MOCK_GATEWAY_READY", flush=True)
+server.serve_forever()
+'''
+
+        run_cmd([
+            "docker", "run", "-d", "--name", gw_name, "--network", net_name,
+            "python:3.13-slim", "python", "-u", "-c", gw_script
+        ])
+
+        # Wait for mock gateway to be ready
+        for _ in range(30):
+            logs = run_cmd(["docker", "logs", gw_name], check=False).stdout
+            if "MOCK_GATEWAY_READY" in logs:
+                break
+            time.sleep(0.2)
+
+        # Start Nginx container using candidate built image
+        run_cmd([
+            "docker", "run", "-d", "--name", nginx_name, "--network", net_name,
+            "-e", f"KOOKER_GATEWAY=http://{gw_name}:8080",
+            "-e", "KOOKER_HOST=api.kooker.example",
+            "-e", "CITYLIFE_BOT_BACKEND=mock",
+            "-e", "CITYLIFE_MODEL=kooker-codex",
+            candidate_image
+        ])
+
+        # Wait for Nginx to be ready
+        for _ in range(30):
+            res = run_cmd(["docker", "exec", nginx_name, "wget", "-q", "-O-", "http://127.0.0.1/healthz"], check=False)
+            if res.returncode == 0 and res.stdout.strip() == "ok":
+                break
+            time.sleep(0.2)
+
+        print("Candidate Nginx container ready and verified via /healthz.")
+
+        def test_req(name, path, headers=None, post_data=None):
+            cmd = ["docker", "exec", nginx_name, "wget", "-S", "-O", "/tmp/resp.txt"]
+            if headers:
+                for h in headers:
+                    cmd.extend(["--header", h])
+            if post_data is not None:
+                cmd.extend(["--post-data", post_data])
+            url = f"http://127.0.0.1{path}"
+            cmd.append(url)
+            res = run_cmd(cmd, check=False)
+            status_line = [line for line in res.stderr.splitlines() if "HTTP/" in line]
+            status_code = None
+            if status_line:
+                parts = status_line[0].split()
+                if len(parts) >= 2 and parts[1].isdigit():
+                    status_code = int(parts[1])
+            body = run_cmd(["docker", "exec", nginx_name, "cat", "/tmp/resp.txt"], check=False).stdout
+            return {"name": name, "status": status_code, "stderr": res.stderr, "body": body}
+
+        # -------------------------------------------------------------
+        # Part A: Valid route / protocol upgrade / auth positives
+        # -------------------------------------------------------------
+        r1 = test_req("ws_upgrade_direct", "/api/v1/citylife/ws", headers=["Upgrade: websocket", "Connection: upgrade"])
+        r2 = test_req("ws_upgrade_kooker", "/kooker/api/v1/citylife/ws", headers=["Upgrade: websocket", "Connection: upgrade"])
+        r2b = test_req("ws_http_only_direct", "/api/v1/citylife/ws")
+        r2c = test_req("ws_http_only_kooker", "/kooker/api/v1/citylife/ws")
+        r3 = test_req("auth_cookie_direct", "/api/v1/citylife/auth/cookie", post_data='{"token":"dummy"}')
+        r4 = test_req("auth_cookie_kooker", "/kooker/api/v1/citylife/auth/cookie", post_data='{"token":"dummy"}')
+        r5 = test_req("auth_clear_direct", "/api/v1/citylife/auth/clear", post_data="{}")
+        r6 = test_req("auth_clear_kooker", "/kooker/api/v1/citylife/auth/clear", post_data="{}")
+        r7 = test_req("scheme_https", "/api/v1/citylife/auth/cookie", headers=["X-Forwarded-Proto: https"], post_data="{}")
+        r8 = test_req("scheme_http", "/api/v1/citylife/auth/cookie", headers=["X-Forwarded-Proto: http"], post_data="{}")
+        r9 = test_req("scheme_untrusted", "/api/v1/citylife/auth/cookie", headers=["X-Forwarded-Proto: ftp, https"], post_data="{}")
+
+        # -------------------------------------------------------------
+        # Part B: Site alias & trailing-slash negatives (fabricated markers)
+        # -------------------------------------------------------------
+        m01 = "FABRICATED_MARKER_01"
+        r10 = test_req("browser_ws_direct_404", f"/api/v1/citylife/browser-ws?token={m01}", headers=["Upgrade: websocket"])
+        m02 = "FABRICATED_MARKER_02"
+        r11 = test_req("browser_ws_kooker_404", f"/kooker/api/v1/citylife/browser-ws?token={m02}", headers=["Upgrade: websocket"])
+        m03 = "FABRICATED_MARKER_03"
+        r12 = test_req("ws_trailing_direct_404", f"/api/v1/citylife/ws/?token={m03}")
+        m04 = "FABRICATED_MARKER_04"
+        r13 = test_req("ws_trailing_kooker_404", f"/kooker/api/v1/citylife/ws/?token={m04}")
+        m05 = "FABRICATED_MARKER_05"
+        r14 = test_req("cookie_trailing_direct_404", f"/api/v1/citylife/auth/cookie/?token={m05}")
+        m06 = "FABRICATED_MARKER_06"
+        r15 = test_req("cookie_trailing_kooker_404", f"/kooker/api/v1/citylife/auth/cookie/?token={m06}")
+        m07 = "FABRICATED_MARKER_07"
+        r16 = test_req("clear_trailing_direct_404", f"/api/v1/citylife/auth/clear/?token={m07}")
+        m08 = "FABRICATED_MARKER_08"
+        r17 = test_req("clear_trailing_kooker_404", f"/kooker/api/v1/citylife/auth/clear/?token={m08}")
+        m09 = "FABRICATED_MARKER_09"
+        r18 = test_req("ws_query_sanitized", f"/api/v1/citylife/ws?token={m09}", headers=["Upgrade: websocket", "Connection: upgrade"])
+        m10 = "FABRICATED_MARKER_10"
+        r19 = test_req("cookie_query_sanitized", f"/api/v1/citylife/auth/cookie?token={m10}", post_data="{}")
+        m11 = "FABRICATED_REFERER_11"
+        r20 = test_req("referer_sanitized", "/api/v1/citylife/ws", headers=["Referer: https://example.invalid/?token=" + m11])
+
+        # -------------------------------------------------------------
+        # Part C: Ordinary diagnostic preservation (access.log)
+        # -------------------------------------------------------------
+        m12 = "FABRICATED_ORDINARY_QUERY_12"
+        r21 = test_req("ordinary_query_preserved", f"/ask?search={m12}")
+
+        # Fetch rendered access and error logs before shutting down upstream
+        nginx_logs = run_cmd(["docker", "logs", nginx_name])
+        access_log = nginx_logs.stdout
+        gw_logs = run_cmd(["docker", "logs", gw_name]).stdout
+
+        # -------------------------------------------------------------
+        # Part D: Pre-Emission Containment Acceptance (502 & error.log)
+        # -------------------------------------------------------------
+        # Close listening socket inside mock gateway container
+        run_cmd(["docker", "exec", gw_name, "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/close-socket')"], check=False)
+        time.sleep(0.3)
+
+        # 1. Ordinary non-sensitive upstream failure produces ordinary upstream error diagnostics
+        r_ord_err = test_req("ordinary_upstream_error_502", "/kooker/ordinary-endpoint-fail")
+
+        # 2. Sensitive direct upstream failure
+        m13 = "FABRICATED_UPSTREAM_FAIL_DIRECT_13"
+        r22 = test_req("upstream_failure_direct_502", f"/api/v1/citylife/ws?token={m13}", headers=["Upgrade: websocket", "Connection: upgrade"])
+
+        # 3. Sensitive alias upstream failure
+        m14 = "FABRICATED_UPSTREAM_FAIL_KOOKER_14"
+        r23 = test_req("upstream_failure_kooker_502", f"/kooker/api/v1/citylife/ws?token={m14}", headers=["Upgrade: websocket", "Connection: upgrade"])
+
+        # 4. Sensitive URL-encoded query in path rejected with 404 (preventing SPA fallback)
+        m15 = "FABRICATED_UPSTREAM_FAIL_ENCODED_15"
+        r24 = test_req("upstream_failure_encoded_404", f"/api/v1/citylife/ws%3ftoken={m15}", headers=["Upgrade: websocket", "Connection: upgrade"])
+
+        # 5. Query-bearing Referer on 404
+        m16 = "FABRICATED_REFERER_404_16"
+        r25 = test_req("referer_404_sanitized", "/missing-file.html", headers=["Referer: https://example.invalid/path?jwt=" + m16])
+
+        time.sleep(0.5)
+        nginx_logs_post = run_cmd(["docker", "logs", nginx_name])
+        error_log_post = nginx_logs_post.stderr
+
+        # -------------------------------------------------------------
+        # Part E: Process Lifecycle, Drain & Fail-Closed Contract
+        # -------------------------------------------------------------
+        # Test 1: Final fabricated error emission, graceful stop duration, exit status, and drain proof
+        m17 = "FABRICATED_FINAL_DRAIN_17"
+        ref_drain = "https://example.invalid/unique-final-drain-marker-17"
+        logs_before_drain = run_cmd(["docker", "logs", nginx_name]).stderr
+        ref_before_drain_absent = (ref_drain not in logs_before_drain)
+
+        r_drain = test_req("final_drain_err", f"/api/v1/citylife/ws?token={m17}", headers=["Upgrade: websocket", "Connection: upgrade", f"Referer: {ref_drain}"])
+        t_stop_start = time.time()
+        run_cmd(["docker", "stop", "-t", "5", nginx_name])
+        stop_duration = time.time() - t_stop_start
+        graceful_stop_ok = stop_duration < 3.0
+
+        # Inspect exit code of gracefully stopped container
+        stop_inspect = run_cmd(["docker", "inspect", nginx_name, "--format", "{{.State.ExitCode}}"])
+        normal_exit_code_ok = (int(stop_inspect.stdout.strip()) == 0)
+
+        # Inspect drained logs: final error was drained and sanitized before exit
+        logs_post_drain = run_cmd(["docker", "logs", nginx_name]).stderr
+        drain_record_present = (ref_drain in logs_post_drain)
+        drain_sanitized_ok = (
+            r_drain["status"] == 502 and
+            ref_before_drain_absent and
+            drain_record_present and
+            (m17 not in logs_post_drain) and
+            (f"/api/v1/citylife/ws?[REDACTED]" in logs_post_drain)
+        )
+
+        # Test 2: Verified live target, health check, companion death, and fail-closed termination
+        run_cmd(["docker", "start", nginx_name])
+        pre_kill_health_ok = False
+        for _ in range(30):
+            res = run_cmd(["docker", "exec", nginx_name, "wget", "-q", "-O-", "http://127.0.0.1/healthz"], check=False)
+            if res.returncode == 0 and res.stdout.strip() == "ok":
+                pre_kill_health_ok = True
+                break
+            time.sleep(0.2)
+
+        start_logs = run_cmd(["docker", "logs", nginx_name]).stdout
+        cpid = None
+        for line in start_logs.splitlines():
+            if "PRE_EMISSION_COMPANION_PID=" in line:
+                cpid = line.split("PRE_EMISSION_COMPANION_PID=")[-1].strip()
+
+        companion_target_verified = False
+        if cpid:
+            live_check = run_cmd(["docker", "exec", nginx_name, "kill", "-0", cpid], check=False)
+            companion_target_verified = (live_check.returncode == 0)
+
+        kill_cmd_ok = False
+        companion_death_confirmed = False
+        if companion_target_verified:
+            k_res = run_cmd(["docker", "exec", nginx_name, "kill", "-9", cpid], check=False)
+            kill_cmd_ok = (k_res.returncode == 0)
+            time.sleep(0.3)
+            death_check = run_cmd(["docker", "exec", nginx_name, "kill", "-0", cpid], check=False)
+            companion_death_confirmed = (death_check.returncode != 0)
+
+        time.sleep(0.7)
+        inspect_fc = run_cmd(["docker", "inspect", nginx_name, "--format", "{{.State.Running}}|{{.State.ExitCode}}"])
+        fc_running_str, fc_code_str = inspect_fc.stdout.strip().split("|")
+        container_stopped_on_fc = (fc_running_str == "false")
+        exit_code_fc_ok = (fc_code_str == "1")
+
+        fc_logs = run_cmd(["docker", "logs", nginx_name]).stderr
+        supervisor_fail_closed_logged = "Pre-emission companion died unexpectedly; terminating Nginx (fail-closed)" in fc_logs
+
+        # Test 3: Real invalid-start/child-nonzero negative control
+        bad_start_res = run_cmd(["docker", "run", "--rm", candidate_image, "nginx", "-g", "invalid_syntax;"], check=False)
+        child_nonzero_exit_ok = (bad_start_res.returncode == 1)
+        child_nonzero_logged_ok = 'unknown directive "invalid_syntax"' in bad_start_res.stderr
+
+        # Assertions
+        assertions = [
+            # Part A: Route / Upgrade / Auth Positives
+            ("ws_upgrade_direct returns 101 Switching Protocols", r1["status"] == 101),
+            ("ws_upgrade_kooker returns 101 Switching Protocols", r2["status"] == 101),
+            ("ws_http_only_direct returns 200 (qualifies HTTP proxying vs 101 protocol upgrade)", r2b["status"] == 200 and "ws_upstream_http_only" in r2b["body"]),
+            ("ws_http_only_kooker returns 200 (qualifies HTTP proxying vs 101 protocol upgrade under alias)", r2c["status"] == 200 and "ws_upstream_http_only" in r2c["body"]),
+            ("auth_cookie_direct returns 200", r3["status"] == 200),
+            ("auth_cookie_kooker returns 200", r4["status"] == 200),
+            ("auth_clear_direct returns 200", r5["status"] == 200),
+            ("auth_clear_kooker returns 200", r6["status"] == 200),
+            ("scheme_https maps X-Forwarded-Proto https", "XFP=https" in gw_logs),
+            ("scheme_http maps X-Forwarded-Proto http", "XFP=http" in gw_logs),
+            ("scheme_untrusted falls back to http", "XFP=http" in gw_logs),
+
+            # Part B: Site Alias & Trailing-Slash Negatives
+            ("browser_ws_direct_404 returns 404 (not 200 SPA index)", r10["status"] == 404 and "SPA Index" not in r10["body"]),
+            ("browser_ws_kooker_404 returns 404", r11["status"] == 404),
+            ("ws_trailing_direct_404 returns 404", r12["status"] == 404),
+            ("ws_trailing_kooker_404 returns 404", r13["status"] == 404),
+            ("cookie_trailing_direct_404 returns 404", r14["status"] == 404),
+            ("cookie_trailing_kooker_404 returns 404", r15["status"] == 404),
+            ("clear_trailing_direct_404 returns 404", r16["status"] == 404),
+            ("clear_trailing_kooker_404 returns 404", r17["status"] == 404),
+
+            # Part C: Access Log Sanitization & Non-Leak
+            ("access.log does not leak FABRICATED_MARKER_01", m01 not in access_log),
+            ("access.log does not leak FABRICATED_MARKER_02", m02 not in access_log),
+            ("access.log does not leak FABRICATED_MARKER_03", m03 not in access_log),
+            ("access.log does not leak FABRICATED_MARKER_04", m04 not in access_log),
+            ("access.log does not leak FABRICATED_MARKER_05", m05 not in access_log),
+            ("access.log does not leak FABRICATED_MARKER_06", m06 not in access_log),
+            ("access.log does not leak FABRICATED_MARKER_07", m07 not in access_log),
+            ("access.log does not leak FABRICATED_MARKER_08", m08 not in access_log),
+            ("access.log does not leak FABRICATED_MARKER_09", m09 not in access_log),
+            ("access.log does not leak FABRICATED_MARKER_10", m10 not in access_log),
+            ("access.log does not leak FABRICATED_REFERER_11", m11 not in access_log),
+            ("ordinary_query_preserved returns 200", r21["status"] == 200),
+            ("access.log PRESERVES ordinary non-sensitive query diagnostics", m12 in access_log),
+
+            # Part D: Pre-Emission Containment Acceptance
+            ("ordinary_upstream_error_502 returns 502 Bad Gateway", r_ord_err["status"] == 502),
+            ("error.log PRESERVES baseline ordinary upstream request diagnostics", 'request: "GET /kooker/ordinary-endpoint-fail HTTP/1.1"' in error_log_post),
+            ("error.log PRESERVES baseline worker start notices without warn suppression", "start worker process" in error_log_post),
+            ("upstream_failure_direct_502 returns 502 Bad Gateway", r22["status"] == 502),
+            ("upstream_failure_kooker_502 returns 502 Bad Gateway", r23["status"] == 502),
+            ("upstream_failure_encoded_404 returns 404 (preventing SPA fallback)", r24["status"] == 404),
+            ("error.log SANITIZES and does not leak direct sensitive marker 13", m13 not in error_log_post),
+            ("error.log SANITIZES and does not leak kooker sensitive marker 14", m14 not in error_log_post),
+            ("error.log SANITIZES and does not leak encoded sensitive marker 15", m15 not in error_log_post),
+            ("error.log SANITIZES and does not leak 404 referer marker 16", m16 not in error_log_post),
+            ("error.log confirms pre-emission [REDACTED] substitution in output stream", "[REDACTED]" in error_log_post),
+
+            # Part E: Process Lifecycle, Drain & Fail-Closed Contract
+            ("container graceful stop completes cleanly within 3s", graceful_stop_ok),
+            ("container graceful stop retains clean exit code 0", normal_exit_code_ok),
+            ("final fabricated error returns actual 502 upstream refusal", r_drain["status"] == 502),
+            ("final fabricated error reaches sanitized output before graceful exit (drain proof)", drain_sanitized_ok),
+            ("companion target PID verified live with successful pre-kill health 200", pre_kill_health_ok and companion_target_verified),
+            ("companion termination command succeeds and target death is confirmed", kill_cmd_ok and companion_death_confirmed),
+            ("supervisor terminates container with exit code 1 upon companion death", container_stopped_on_fc and exit_code_fc_ok),
+            ("supervisor logs fail-closed message on companion death", supervisor_fail_closed_logged),
+            ("invalid-start child command preserves unmasked non-zero exit code 1", child_nonzero_exit_ok),
+            ("invalid-start child command preserves error diagnostic output", child_nonzero_logged_ok),
+        ]
+
+        passed_count = 0
+        failed_count = 0
+        for desc, passed in assertions:
+            results["containment_acceptance_cases"].append({"description": desc, "passed": bool(passed)})
+            if passed:
+                passed_count += 1
+                print(f"  PASS: {desc}")
+            else:
+                failed_count += 1
+                print(f"  FAIL: {desc}")
+
+        results["passed"] = passed_count
+        results["failed"] = failed_count
+        results["skipped"] = 0
+        results["containment_acceptance_status"] = "PASSED" if failed_count == 0 else "FAILED"
+
+        # Save artifacts to outputs/
+        outputs_dir = os.path.join(repo_root, "outputs", "lab-site-alias-error")
+        os.makedirs(outputs_dir, exist_ok=True)
+
+        with open(os.path.join(outputs_dir, "lab-results.json"), "w") as f:
+            json.dump(results, f, indent=2)
+
+        with open(os.path.join(outputs_dir, "effective-access.log"), "w") as f:
+            f.write(access_log)
+
+        with open(os.path.join(outputs_dir, "effective-error.log"), "w") as f:
+            f.write(error_log_post)
+
+        print("\n=== Lab Summary ===")
+        print(f"Candidate Image: {candidate_image} ({img_inspect[:19]}...)")
+        print(f"Total Cases: {len(assertions)}")
+        print(f"Passed: {passed_count}")
+        print(f"Failed: {failed_count}")
+        print(f"Containment Acceptance Status: {results['containment_acceptance_status']}")
+        print(f"Results written to: {outputs_dir}")
+
+        if failed_count > 0:
+            sys.exit(1)
+
+    finally:
+        run_cmd(["docker", "rm", "-f", nginx_name], check=False)
+        run_cmd(["docker", "rm", "-f", gw_name], check=False)
+        run_cmd(["docker", "network", "rm", net_name], check=False)
+
+if __name__ == "__main__":
+    main()

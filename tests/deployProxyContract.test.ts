@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import nginxTemplate from "../docker/default.conf.template?raw";
+import entrypointScript from "../docker/entrypoint.sh?raw";
+import dockerfile from "../Dockerfile?raw";
 
 function exactLocation(path: string): string {
   const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -97,27 +99,43 @@ describe("production gateway proxy contract", () => {
       expect(nginxTemplate).toContain("map $http_referer $citylife_log_referer");
     });
 
-    it("verifies map regex logic for socket paths and referer sanitization", () => {
-      const wsNormalizedRe = /^\/(?:kooker\/)?api\/v1\/citylife\/ws(?:\/|$)/;
-      const wsOriginalRe = /^\/(?:kooker\/)?api\/v1\/citylife\/ws(?:[/?]|$)/;
+    it("verifies map regex logic for sensitive aliases and referer sanitization", () => {
+      const sensitiveNormalizedRe = /^\/(?:kooker\/)?api\/v1\/citylife\/(?:ws|browser-ws|auth\/cookie|auth\/clear)(?:\/|$)/;
+      const sensitiveOriginalRe = /^\/(?:kooker\/)?api\/v1\/citylife\/(?:ws|browser-ws|auth\/cookie|auth\/clear)(?:[/?]|$)/;
       const refererSanitizeRe = /(?:\?|%3f)/i;
 
-      // Socket path matches
-      expect(wsNormalizedRe.test("/api/v1/citylife/ws")).toBe(true);
-      expect(wsNormalizedRe.test("/api/v1/citylife/ws/")).toBe(true);
-      expect(wsNormalizedRe.test("/kooker/api/v1/citylife/ws")).toBe(true);
-      expect(wsNormalizedRe.test("/kooker/api/v1/citylife/ws/")).toBe(true);
+      // Sensitive path matches: ws, browser-ws, auth/cookie, auth/clear (direct and /kooker alias)
+      const sensitivePaths = [
+        "/api/v1/citylife/ws",
+        "/api/v1/citylife/ws/",
+        "/kooker/api/v1/citylife/ws",
+        "/kooker/api/v1/citylife/ws/",
+        "/api/v1/citylife/browser-ws",
+        "/api/v1/citylife/browser-ws/",
+        "/kooker/api/v1/citylife/browser-ws",
+        "/kooker/api/v1/citylife/browser-ws/",
+        "/api/v1/citylife/auth/cookie",
+        "/api/v1/citylife/auth/cookie/",
+        "/kooker/api/v1/citylife/auth/cookie",
+        "/kooker/api/v1/citylife/auth/cookie/",
+        "/api/v1/citylife/auth/clear",
+        "/api/v1/citylife/auth/clear/",
+        "/kooker/api/v1/citylife/auth/clear",
+        "/kooker/api/v1/citylife/auth/clear/",
+      ];
 
-      expect(wsOriginalRe.test("/api/v1/citylife/ws?jwt=secret")).toBe(true);
-      expect(wsOriginalRe.test("/api/v1/citylife/ws/?jwt=secret")).toBe(true);
-      expect(wsOriginalRe.test("/kooker/api/v1/citylife/ws?token=abc")).toBe(true);
-      expect(wsOriginalRe.test("/kooker/api/v1/citylife/ws/?token=abc")).toBe(true);
+      for (const p of sensitivePaths) {
+        expect(sensitiveNormalizedRe.test(p), `normalized must match ${p}`).toBe(true);
+        expect(sensitiveOriginalRe.test(p), `original must match ${p}`).toBe(true);
+        expect(sensitiveOriginalRe.test(`${p}?token=secret`), `original with query must match ${p}`).toBe(true);
+      }
 
-      // Unrelated paths do not match
-      expect(wsNormalizedRe.test("/ask")).toBe(false);
-      expect(wsNormalizedRe.test("/index.html")).toBe(false);
-      expect(wsNormalizedRe.test("/assets/app.js")).toBe(false);
-      expect(wsOriginalRe.test("/ask?sort=asc")).toBe(false);
+      // Unrelated paths do not match (preserving ordinary access diagnostics)
+      expect(sensitiveNormalizedRe.test("/ask")).toBe(false);
+      expect(sensitiveNormalizedRe.test("/index.html")).toBe(false);
+      expect(sensitiveNormalizedRe.test("/assets/app.js")).toBe(false);
+      expect(sensitiveOriginalRe.test("/ask?sort=asc")).toBe(false);
+      expect(sensitiveOriginalRe.test("/assets/style.css?v=1")).toBe(false);
 
       // Referer sanitization
       expect(refererSanitizeRe.test("https://citylife.kooker.co.za/api/v1/citylife/ws?jwt=canary")).toBe(true);
@@ -201,4 +219,135 @@ describe("production gateway proxy contract", () => {
       expect(simulateSchemeMap("https://evil.invalid")).toBe("$scheme");
     });
   });
+
+  describe("Site alias, trailing-slash, and fallback disposition (Floyd release-control contract)", () => {
+    it("preserves baseline error logging without suppressing ordinary diagnostic classes", () => {
+      expect(nginxTemplate).not.toContain("error_log /var/log/nginx/error.log warn;");
+      expect(nginxTemplate).not.toContain("log_not_found off;");
+    });
+
+    it("dispositions internal browser-ws route against public exposure with 404", () => {
+      expect(nginxTemplate).toContain("location ~ ^/(?:kooker/)?api/v1/citylife/browser-ws(?:/|$) {");
+      const match = nginxTemplate.match(
+        /location ~ \^\/\(\?:kooker\/\)\?api\/v1\/citylife\/browser-ws\(\?:\/\|\$\) \{([\s\S]*?)\n    \}/,
+      );
+      expect(match).not.toBeNull();
+      expect(match![1]).toContain("return 404;");
+    });
+
+    it("dispositions trailing slashes and encoded query variants on sensitive API/WebSocket endpoints with 404", () => {
+      expect(nginxTemplate).toContain("location ~ ^/(?:kooker/)?api/v1/citylife/(?:ws|auth/cookie|auth/clear)(?:/|%3[fF]|\\?) {");
+      const match = nginxTemplate.match(
+        /location ~ \^\/\(\?:kooker\/\)\?api\/v1\/citylife\/\(\?:ws\|auth\/cookie\|auth\/clear\)\(\?:\/\|%3\[fF\]\|\\\?\) \{([\s\S]*?)\n    \}/,
+      );
+      expect(match).not.toBeNull();
+      expect(match![1]).toContain("return 404;");
+    });
+
+    it("verifies browser-ws blocking regex matches internal aliases and rejects valid routes", () => {
+      const browserWsBlockRe = /^\/(?:kooker\/)?api\/v1\/citylife\/browser-ws(?:\/|$)/;
+
+      // Internal browser-ws routes must match (and be 404'd)
+      expect(browserWsBlockRe.test("/api/v1/citylife/browser-ws")).toBe(true);
+      expect(browserWsBlockRe.test("/api/v1/citylife/browser-ws/")).toBe(true);
+      expect(browserWsBlockRe.test("/kooker/api/v1/citylife/browser-ws")).toBe(true);
+      expect(browserWsBlockRe.test("/kooker/api/v1/citylife/browser-ws/")).toBe(true);
+
+      // Valid public ws and auth routes must not match
+      expect(browserWsBlockRe.test("/api/v1/citylife/ws")).toBe(false);
+      expect(browserWsBlockRe.test("/kooker/api/v1/citylife/ws")).toBe(false);
+      expect(browserWsBlockRe.test("/api/v1/citylife/auth/cookie")).toBe(false);
+    });
+
+    it("verifies fallback blocking regex matches trailing slashes and encoded queries on sensitive endpoints only", () => {
+      const fallbackBlockRe = /^\/(?:kooker\/)?api\/v1\/citylife\/(?:ws|auth\/cookie|auth\/clear)(?:\/|%3[fF]|\?)/;
+
+      // Trailing slashes must match (and be 404'd instead of falling back to SPA index.html)
+      expect(fallbackBlockRe.test("/api/v1/citylife/ws/")).toBe(true);
+      expect(fallbackBlockRe.test("/kooker/api/v1/citylife/ws/")).toBe(true);
+      expect(fallbackBlockRe.test("/api/v1/citylife/auth/cookie/")).toBe(true);
+      expect(fallbackBlockRe.test("/kooker/api/v1/citylife/auth/cookie/")).toBe(true);
+      expect(fallbackBlockRe.test("/api/v1/citylife/auth/clear/")).toBe(true);
+      expect(fallbackBlockRe.test("/kooker/api/v1/citylife/auth/clear/")).toBe(true);
+
+      // Encoded and raw queries in path must match and be 404'd
+      expect(fallbackBlockRe.test("/api/v1/citylife/ws%3ftoken=abc")).toBe(true);
+      expect(fallbackBlockRe.test("/kooker/api/v1/citylife/ws%3Ftoken=abc")).toBe(true);
+
+      // Exact valid endpoints must not match
+      expect(fallbackBlockRe.test("/api/v1/citylife/ws")).toBe(false);
+      expect(fallbackBlockRe.test("/api/v1/citylife/auth/cookie")).toBe(false);
+      expect(fallbackBlockRe.test("/kooker/api/v1/citylife/auth/cookie")).toBe(false);
+      expect(fallbackBlockRe.test("/api/v1/citylife/auth/clear")).toBe(false);
+      expect(fallbackBlockRe.test("/kooker/api/v1/citylife/auth/clear")).toBe(false);
+    });
+  });
+
+  describe("Pre-emission error log companion and supervisor contract (same-site containment)", () => {
+    it("verifies site-entrypoint.sh is installed as ENTRYPOINT in Dockerfile", () => {
+      expect(dockerfile).toContain("COPY docker/entrypoint.sh /usr/local/bin/site-entrypoint.sh");
+      expect(dockerfile).toContain("RUN chmod +x /usr/local/bin/site-entrypoint.sh");
+      expect(dockerfile).toContain('ENTRYPOINT ["/usr/local/bin/site-entrypoint.sh"]');
+    });
+
+    it("verifies entrypoint script creates FIFO at /var/log/nginx/error.log", () => {
+      expect(entrypointScript).toContain("mkfifo /var/log/nginx/error.log");
+      expect(entrypointScript).toContain("chmod 666 /var/log/nginx/error.log");
+    });
+
+    it("verifies entrypoint script uses printf rather than echo for arbitrary log lines", () => {
+      expect(entrypointScript).toContain("printf '%s\\n' \"$line\"");
+      expect(entrypointScript).toContain("printf '%s\\n' \"$sanitized\" >&2");
+      expect(entrypointScript).not.toMatch(/echo "\$sanitized"/);
+    });
+
+    it("verifies entrypoint supervises companion death with fail-closed Nginx termination", () => {
+      expect(entrypointScript).toContain("kill -0 \"$COMPANION_PID\"");
+      expect(entrypointScript).toContain("kill -TERM \"$NGINX_PID\"");
+      expect(entrypointScript).toContain("Pre-emission companion died unexpectedly; terminating Nginx (fail-closed)");
+    });
+
+    it("verifies entrypoint preserves child exit status without masking via || NGINX_EXIT=$?", () => {
+      expect(entrypointScript).toContain('wait "$NGINX_PID" 2>/dev/null || NGINX_EXIT=$?');
+      expect(entrypointScript).toContain('exit "$NGINX_EXIT"');
+      // Must not suppress exit status with `|| true` on wait before capturing $?
+      expect(entrypointScript).not.toMatch(/wait "\$NGINX_PID"[^;\n]*\|\|\s*true\s*[\n;]\s*NGINX_EXIT=/);
+    });
+
+    it("verifies entrypoint forwards arguments via \"$@\" and traps lifecycle signals", () => {
+      expect(entrypointScript).toContain('"$@" &');
+      expect(entrypointScript).toContain("trap 'forward_signal QUIT' QUIT");
+      expect(entrypointScript).toContain("trap 'forward_signal TERM' TERM");
+      expect(entrypointScript).toContain("trap 'forward_signal INT' INT");
+      expect(entrypointScript).toContain("trap 'forward_signal HUP' HUP");
+    });
+
+    it("verifies companion regex sanitizes sensitive query strings, tokens, trailing slashes, and referers", () => {
+      // Regexes matching the sed expressions in entrypoint.sh:
+      // -e 's@(/api/v1/citylife/(ws|browser-ws|auth/cookie|auth/clear))(\?|%3[fF]|/)[^[:space:]"]*@\1?[REDACTED]@g'
+      const sensitiveDirectRe = /^(.*\/api\/v1\/citylife\/(?:ws|browser-ws|auth\/cookie|auth\/clear))(?:\?|%3[fF]|\/)\S*(.*)$/;
+      const sensitiveKookerRe = /^(.*\/kooker\/api\/v1\/citylife\/(?:ws|browser-ws|auth\/cookie|auth\/clear))(?:\?|%3[fF]|\/)\S*(.*)$/;
+      const tokenRe = /[?&](?:token|jwt|auth)=\S*/;
+      const refererRe = /Referer:\s*https?:\/\/\S*(?:\?|%3[fF])\S*/i;
+
+      // Sensitive routes with queries, trailing slashes, or encoded queries must match
+      expect(sensitiveDirectRe.test('request: "GET /api/v1/citylife/ws?token=secret HTTP/1.1"')).toBe(true);
+      expect(sensitiveDirectRe.test('upstream: "http://127.0.0.1:8080/api/v1/citylife/browser-ws?token=secret"')).toBe(true);
+      expect(sensitiveDirectRe.test('request: "GET /api/v1/citylife/ws/ HTTP/1.1"')).toBe(true);
+      expect(sensitiveKookerRe.test('request: "GET /kooker/api/v1/citylife/ws%3ftoken=secret HTTP/1.1"')).toBe(true);
+      expect(sensitiveKookerRe.test('request: "GET /kooker/api/v1/citylife/ws/ HTTP/1.1"')).toBe(true);
+      expect(tokenRe.test('?token=secret123')).toBe(true);
+      expect(tokenRe.test('&jwt=eyJhbGciOi...')).toBe(true);
+      expect(tokenRe.test('?auth=mytoken')).toBe(true);
+      expect(refererRe.test('Referer: https://example.invalid/?token=secret')).toBe(true);
+
+      // Ordinary diagnostic lines must not match sensitive redaction
+      expect(sensitiveDirectRe.test('request: "GET /kooker/ordinary-endpoint-fail HTTP/1.1"')).toBe(false);
+      expect(sensitiveKookerRe.test('request: "GET /kooker/ordinary-endpoint-fail HTTP/1.1"')).toBe(false);
+      expect(sensitiveDirectRe.test('start worker process 12')).toBe(false);
+      expect(sensitiveDirectRe.test('request: "GET /ask?search=query HTTP/1.1"')).toBe(false);
+    });
+  });
 });
+
+

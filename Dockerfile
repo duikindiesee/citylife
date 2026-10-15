@@ -54,5 +54,8 @@ ENV NGINX_ENVSUBST_FILTER='^(KOOKER_GATEWAY|KOOKER_HOST|CITYLIFE_PAT|CITYLIFE_BO
 
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY docker/default.conf.template /etc/nginx/templates/default.conf.template
+COPY docker/entrypoint.sh /usr/local/bin/site-entrypoint.sh
+RUN chmod +x /usr/local/bin/site-entrypoint.sh
 EXPOSE 80
-# nginx:alpine's entrypoint renders /etc/nginx/templates/*.template via envsubst, then runs nginx.
+ENTRYPOINT ["/usr/local/bin/site-entrypoint.sh"]
+CMD ["nginx", "-g", "daemon off;"]

@@ -7,11 +7,11 @@
 # $uri is normalized; raw $request_uri catches later internal rewrites and denials.
 map $uri $citylife_ws_normalized {
     default 0;
-    ~^/(?:kooker/)?api/v1/citylife/ws(?:/|$) 1;
+    ~^/(?:kooker/)?api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)(?:/|$) 1;
 }
 map $request_uri $citylife_ws_original {
     default 0;
-    ~^/(?:kooker/)?api/v1/citylife/ws(?:[/?]|$) 1;
+    ~^/(?:kooker/)?api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)(?:[/?]|$) 1;
 }
 map "$citylife_ws_normalized$citylife_ws_original" $citylife_ws_log_safe {
     default 0;
@@ -195,6 +195,16 @@ server {
         proxy_pass_header Cookie;
         proxy_read_timeout 3600s;
         proxy_send_timeout 3600s;
+    }
+
+    # Deny direct public access to internal browser-ws endpoints (both direct and /kooker alias)
+    location ~ ^/(?:kooker/)?api/v1/citylife/browser-ws(?:/|$) {
+        return 404;
+    }
+
+    # Reject trailing slashes and encoded query path variants on sensitive API and WebSocket endpoints (prevent SPA fallback or generic proxying)
+    location ~ ^/(?:kooker/)?api/v1/citylife/(?:ws|auth/cookie|auth/clear)(?:/|%3[fF]|\?) {
+        return 404;
     }
 
     # All other kooker API calls (registration, etc.) — proxied WITHOUT injected auth.
