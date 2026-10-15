@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-15T14:34:22.302Z",
+  "updatedAt": "2026-10-15T19:18:12.826Z",
   "runs": [
     {
       "runId": 38737691054,
@@ -20,17 +20,17 @@
       ],
       "status": "completed",
       "conclusion": "failure",
-      "startedAt": "2026-10-15T12:50:08Z",
-      "completedAt": "2026-10-15T14:34:11Z",
-      "durationSeconds": 6243,
-      "runnerSummary": "kooker1-org-docker-2, GitHub Actions 1000011443, kooker1-org-docker-1",
+      "startedAt": "2026-10-15T19:17:18Z",
+      "completedAt": "2026-10-15T19:17:51Z",
+      "durationSeconds": 33,
+      "runnerSummary": "kooker1-org-docker-1, GitHub Actions 1000011443, kooker1-org-docker-2",
       "jobs": [
         {
-          "id": 116455820178,
-          "name": "version-bump / bump",
+          "id": 116620929077,
+          "name": "deploy / sync",
           "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-org-docker-2",
+          "conclusion": "failure",
+          "runnerName": "kooker1-org-docker-1",
           "runnerGroup": "trusted-kooker1",
           "runnerLabels": [
             "self-hosted",
@@ -39,12 +39,12 @@
             "kooker1-org",
             "docker"
           ],
-          "startedAt": "2026-10-15T13:42:39Z",
-          "completedAt": "2026-10-15T13:42:59Z",
-          "durationSeconds": 20
+          "startedAt": "2026-10-15T19:17:24Z",
+          "completedAt": "2026-10-15T19:17:50Z",
+          "durationSeconds": 26
         },
         {
-          "id": 116456453879,
+          "id": 116620929356,
           "name": "build-and-push",
           "status": "completed",
           "conclusion": "success",
@@ -58,7 +58,7 @@
           "durationSeconds": 3038
         },
         {
-          "id": 116482206613,
+          "id": 116620931439,
           "name": "retention / prune-ghcr",
           "status": "completed",
           "conclusion": "success",
@@ -76,11 +76,11 @@
           "durationSeconds": 9
         },
         {
-          "id": 116482206641,
-          "name": "deploy / sync",
+          "id": 116621005856,
+          "name": "version-bump / bump",
           "status": "completed",
-          "conclusion": "failure",
-          "runnerName": "kooker1-org-docker-1",
+          "conclusion": "success",
+          "runnerName": "kooker1-org-docker-2",
           "runnerGroup": "trusted-kooker1",
           "runnerLabels": [
             "self-hosted",
@@ -89,9 +89,9 @@
             "kooker1-org",
             "docker"
           ],
-          "startedAt": "2026-10-15T14:33:44Z",
-          "completedAt": "2026-10-15T14:34:11Z",
-          "durationSeconds": 27
+          "startedAt": "2026-10-15T13:42:39Z",
+          "completedAt": "2026-10-15T13:42:59Z",
+          "durationSeconds": 20
         }
       ]
     },
