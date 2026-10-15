@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-15T04:35:44.220Z",
+  "updatedAt": "2026-10-15T04:58:59.824Z",
   "runs": [
     {
       "runId": 38682203135,
@@ -194,6 +194,49 @@
           "startedAt": "2026-10-15T04:33:52Z",
           "completedAt": "2026-10-15T04:35:05Z",
           "durationSeconds": 73
+        }
+      ]
+    },
+    {
+      "runId": 38682118572,
+      "workflowName": "CityLife Kooker2 Trusted Main",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38682118572",
+      "event": "push",
+      "branch": "main",
+      "sha": "9b6e144fdaa0b2f4fcb3847b9e15c8ee0bdfda0f",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/9b6e144fdaa0b2f4fcb3847b9e15c8ee0bdfda0f",
+      "pullRequestNumbers": "#567",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/567",
+      "pullRequests": [
+        {
+          "number": 567,
+          "url": "https://github.com/duikindiesee/citylife/pull/567"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "failure",
+      "startedAt": "2026-10-15T04:33:48Z",
+      "completedAt": "2026-10-15T04:58:49Z",
+      "durationSeconds": 1501,
+      "runnerSummary": "kooker2-citylife-gpu",
+      "jobs": [
+        {
+          "id": 116248757151,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "failure",
+          "runnerName": "kooker2-citylife-gpu",
+          "runnerGroup": "trusted-kooker2-citylife",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker2-gpu"
+          ],
+          "startedAt": "2026-10-15T04:33:52Z",
+          "completedAt": "2026-10-15T04:58:49Z",
+          "durationSeconds": 1497
         }
       ]
     },
@@ -11394,49 +11437,6 @@
           "startedAt": "2026-10-06T04:49:13Z",
           "completedAt": "2026-10-06T04:49:19Z",
           "durationSeconds": 6
-        }
-      ]
-    },
-    {
-      "runId": 37415499794,
-      "workflowName": "CI",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37415499794",
-      "event": "pull_request",
-      "branch": "fix/spec-177-remove-legacy-apron-road-penetration",
-      "sha": "724b516701a94a6d59f7670ed983ce7aac942f2e",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/724b516701a94a6d59f7670ed983ce7aac942f2e",
-      "pullRequestNumbers": "#559",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/559",
-      "pullRequests": [
-        {
-          "number": 559,
-          "url": "https://github.com/duikindiesee/citylife/pull/559"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-06T04:49:09Z",
-      "completedAt": "2026-10-06T05:08:50Z",
-      "durationSeconds": 1181,
-      "runnerSummary": "kooker1-citylife-gpu",
-      "jobs": [
-        {
-          "id": 112113099640,
-          "name": "verify",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "kooker1-citylife-gpu",
-          "runnerGroup": "Default",
-          "runnerLabels": [
-            "self-hosted",
-            "Windows",
-            "X64",
-            "citylife-webgl",
-            "kooker1-gpu"
-          ],
-          "startedAt": "2026-10-06T04:49:13Z",
-          "completedAt": "2026-10-06T05:08:49Z",
-          "durationSeconds": 1176
         }
       ]
     }
