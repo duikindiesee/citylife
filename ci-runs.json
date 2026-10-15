@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-15T01:31:11.780Z",
+  "updatedAt": "2026-10-15T02:10:01.562Z",
   "runs": [
     {
       "runId": 38665909507,
@@ -77,6 +77,85 @@
           "startedAt": "2026-10-15T01:29:21Z",
           "completedAt": "2026-10-15T01:30:59Z",
           "durationSeconds": 98
+        }
+      ]
+    },
+    {
+      "runId": 38665909481,
+      "workflowName": "CI",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38665909481",
+      "event": "pull_request",
+      "branch": "feat/client-bus-cookie-compatible-integration",
+      "sha": "8a89168c5bc21e52ca44cbfc8f0677355d19333b",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/8a89168c5bc21e52ca44cbfc8f0677355d19333b",
+      "pullRequestNumbers": "#567",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/567",
+      "pullRequests": [
+        {
+          "number": 567,
+          "url": "https://github.com/duikindiesee/citylife/pull/567"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-15T01:29:17Z",
+      "completedAt": "2026-10-15T02:09:50Z",
+      "durationSeconds": 2433,
+      "runnerSummary": "kooker2-citylife-cpu-2, kooker1-citylife-gpu",
+      "jobs": [
+        {
+          "id": 116197922490,
+          "name": "unit-and-build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker2-citylife-cpu-2",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-cpu",
+            "kooker2-cpu"
+          ],
+          "startedAt": "2026-10-15T01:30:06Z",
+          "completedAt": "2026-10-15T01:47:06Z",
+          "durationSeconds": 1020
+        },
+        {
+          "id": 116197922503,
+          "name": "e2e-browser",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-citylife-gpu",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-webgl",
+            "kooker1-gpu"
+          ],
+          "startedAt": "2026-10-15T01:30:06Z",
+          "completedAt": "2026-10-15T02:09:37Z",
+          "durationSeconds": 2371
+        },
+        {
+          "id": 116209050558,
+          "name": "verify",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker2-citylife-cpu-2",
+          "runnerGroup": "Default",
+          "runnerLabels": [
+            "self-hosted",
+            "Windows",
+            "X64",
+            "citylife-cpu",
+            "kooker2-cpu"
+          ],
+          "startedAt": "2026-10-15T02:09:40Z",
+          "completedAt": "2026-10-15T02:09:49Z",
+          "durationSeconds": 9
         }
       ]
     },
@@ -11276,45 +11355,6 @@
           "startedAt": "2026-10-05T14:34:47Z",
           "completedAt": "2026-10-05T14:54:12Z",
           "durationSeconds": 1165
-        }
-      ]
-    },
-    {
-      "runId": 37309508888,
-      "workflowName": "Secret scan",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37309508888",
-      "event": "pull_request",
-      "branch": "fix/spec-177-garage-apron-plinth-leveling",
-      "sha": "099d9aff1515c7f17ae2fca7c53358bb7fb2783c",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/099d9aff1515c7f17ae2fca7c53358bb7fb2783c",
-      "pullRequestNumbers": "#557",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/557",
-      "pullRequests": [
-        {
-          "number": 557,
-          "url": "https://github.com/duikindiesee/citylife/pull/557"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-05T12:26:11Z",
-      "completedAt": "2026-10-05T12:26:22Z",
-      "durationSeconds": 11,
-      "runnerSummary": "GitHub Actions 1000010696",
-      "jobs": [
-        {
-          "id": 111761181742,
-          "name": "Gitleaks full-history scan",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010696",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-24.04"
-          ],
-          "startedAt": "2026-10-05T12:26:15Z",
-          "completedAt": "2026-10-05T12:26:21Z",
-          "durationSeconds": 6
         }
       ]
     }
