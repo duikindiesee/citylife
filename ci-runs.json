@@ -1,7 +1,46 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-15T12:48:24.084Z",
+  "updatedAt": "2026-10-15T12:49:16.726Z",
   "runs": [
+    {
+      "runId": 38737389163,
+      "workflowName": "Build CityLife Debug APK",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38737389163",
+      "event": "pull_request",
+      "branch": "chore/bump-0.61.3",
+      "sha": "8736a6bef8a266823a355eba8d54b5020dce293d",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/8736a6bef8a266823a355eba8d54b5020dce293d",
+      "pullRequestNumbers": "#579",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/579",
+      "pullRequests": [
+        {
+          "number": 579,
+          "url": "https://github.com/duikindiesee/citylife/pull/579"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "success",
+      "startedAt": "2026-10-15T12:47:48Z",
+      "completedAt": "2026-10-15T12:49:04Z",
+      "durationSeconds": 76,
+      "runnerSummary": "GitHub Actions 1000011430",
+      "jobs": [
+        {
+          "id": 116430051847,
+          "name": "build",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000011430",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-15T12:47:52Z",
+          "completedAt": "2026-10-15T12:49:04Z",
+          "durationSeconds": 72
+        }
+      ]
+    },
     {
       "runId": 38737388999,
       "workflowName": "Secret scan",
@@ -12170,49 +12209,6 @@
           "startedAt": "2026-10-08T14:54:26Z",
           "completedAt": "2026-10-08T14:54:33Z",
           "durationSeconds": 7
-        }
-      ]
-    },
-    {
-      "runId": 37786882111,
-      "workflowName": "CI",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37786882111",
-      "event": "pull_request",
-      "branch": "feat/multiplayer-racing",
-      "sha": "41393ae05ad6508f5d22c9f44c605d0b57530aee",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/41393ae05ad6508f5d22c9f44c605d0b57530aee",
-      "pullRequestNumbers": "#561",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/561",
-      "pullRequests": [
-        {
-          "number": 561,
-          "url": "https://github.com/duikindiesee/citylife/pull/561"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "failure",
-      "startedAt": "2026-10-08T13:45:24Z",
-      "completedAt": "2026-10-08T14:07:10Z",
-      "durationSeconds": 1306,
-      "runnerSummary": "kooker1-citylife-gpu",
-      "jobs": [
-        {
-          "id": 113343797096,
-          "name": "verify",
-          "status": "completed",
-          "conclusion": "failure",
-          "runnerName": "kooker1-citylife-gpu",
-          "runnerGroup": "Default",
-          "runnerLabels": [
-            "self-hosted",
-            "Windows",
-            "X64",
-            "citylife-webgl",
-            "kooker1-gpu"
-          ],
-          "startedAt": "2026-10-08T13:45:29Z",
-          "completedAt": "2026-10-08T14:07:09Z",
-          "durationSeconds": 1300
         }
       ]
     }
