@@ -148,6 +148,7 @@ export interface MultiplayerClientOptions {
   onBusBoarded?: (ack: {
     busId: number;
     seatIndex: number;
+    attemptId?: number;
   }) => void;
   onBusAlighted?: (ack: {
     x: number;
@@ -171,7 +172,13 @@ export interface MultiplayerClientOptions {
     carZ?: number;
     carHeading?: number;
   }) => void;
-  onError?: (error: { code: string; message: string }) => void;
+  onError?: (error: {
+    code: string;
+    message: string;
+    busId?: number;
+    epoch?: number;
+    attemptId?: number;
+  }) => void;
   useCookieAuth?: boolean;
   ensureCookieAuth?: () => Promise<boolean>;
 }
@@ -374,6 +381,10 @@ export class MultiplayerClient {
 
   public getModeEpoch(): number {
     return this.modeEpoch;
+  }
+
+  public getSessionId(): string | null {
+    return this.sessionId;
   }
 
   public getProtocolVersion(): number {
@@ -1082,6 +1093,10 @@ export class MultiplayerClient {
           this.options.onBusBoarded({
             busId,
             seatIndex,
+            attemptId:
+              typeof msg.attemptId === "number" && Number.isSafeInteger(msg.attemptId) && msg.attemptId >= 0
+                ? msg.attemptId
+                : undefined,
           });
         }
         if (this.options.onModeChanged) {
@@ -1390,7 +1405,22 @@ export class MultiplayerClient {
         }
 
         if (this.options.onError) {
-          this.options.onError({ code: msg.error, message: msg.message });
+          this.options.onError({
+            code: msg.error,
+            message: msg.message,
+            busId:
+              typeof msg.busId === "number" && Number.isSafeInteger(msg.busId) && msg.busId >= 0
+                ? msg.busId
+                : undefined,
+            epoch:
+              typeof msg.epoch === "number" && Number.isSafeInteger(msg.epoch) && msg.epoch >= 0
+                ? msg.epoch
+                : undefined,
+            attemptId:
+              typeof msg.attemptId === "number" && Number.isSafeInteger(msg.attemptId) && msg.attemptId >= 0
+                ? msg.attemptId
+                : undefined,
+          });
         }
         if (
           msg.error === "UNAUTHORIZED" ||
@@ -1512,7 +1542,7 @@ export class MultiplayerClient {
     });
   }
 
-  public boardBus(busId: number, epoch?: number): boolean {
+  public boardBus(busId: number, epoch?: number, attemptId?: number): boolean {
     if (this.status !== "connected" || !this.participantId || !this.sessionId || this.modeEpoch <= 0) {
       return false;
     }
@@ -1526,15 +1556,24 @@ export class MultiplayerClient {
     if (typeof targetEpoch !== "number" || !Number.isSafeInteger(targetEpoch) || targetEpoch <= 0) {
       return false;
     }
-    return this.send({
+    const payload: {
+      type: "request_board_bus";
+      busId: number;
+      epoch: number;
+      attemptId?: number;
+    } = {
       type: "request_board_bus",
       busId,
       epoch: targetEpoch,
-    });
+    };
+    if (typeof attemptId === "number" && Number.isSafeInteger(attemptId) && attemptId >= 0) {
+      payload.attemptId = attemptId;
+    }
+    return this.send(payload);
   }
 
-  public requestBoardBus(busId: number, epoch?: number): boolean {
-    return this.boardBus(busId, epoch);
+  public requestBoardBus(busId: number, epoch?: number, attemptId?: number): boolean {
+    return this.boardBus(busId, epoch, attemptId);
   }
 
   public alightBus(epoch?: number): boolean {

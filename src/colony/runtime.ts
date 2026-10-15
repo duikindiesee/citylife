@@ -1107,6 +1107,20 @@ export class ColonyRuntime {
   /** BUS.STOP.WAIT.1 — tracking pending boarding request in-flight to prevent duplicate flooding */
   fpWaitingBoardingPending = false;
   private fpWaitingLastBoardRequestMs = 0;
+  private fpWaitingAttemptSeq = 0;
+  private fpWaitingAttemptsSent = 0;
+  private fpWaitingInFlightAttemptId: number | null = null;
+  private fpWaitingInFlightBusId: number | null = null;
+  private fpWaitingInFlightEpoch: number | null = null;
+  private fpWaitingInFlightSessionId: string | null = null;
+
+  private clearWaitingInFlight(): void {
+    this.fpWaitingBoardingPending = false;
+    this.fpWaitingInFlightAttemptId = null;
+    this.fpWaitingInFlightBusId = null;
+    this.fpWaitingInFlightEpoch = null;
+    this.fpWaitingInFlightSessionId = null;
+  }
   /** Spec 149 — where the first-person CAMERA capsule stands (grid coords), reported by the
    *  renderer every frame. The v3 walker camera is a physics capsule independent of the roster
    *  citizen, so bus interactions measure from HERE — the prompt matches what the player sees. */
@@ -3581,7 +3595,8 @@ export class ColonyRuntime {
             this.fpRidingBusId = null;
             this.fpRidingSeatIndex = null;
             this.fpWaitingBusStopIndex = null;
-            this.fpWaitingBoardingPending = false;
+            this.clearWaitingInFlight();
+            this.fpWaitingAttemptSeq++;
           }
         }
         this.emit();
@@ -3612,17 +3627,98 @@ export class ColonyRuntime {
           err?.code === "ALIGHT_BLOCKED" ||
           err?.code?.startsWith("ALIGHT_");
 
-        if (this.fpWaitingBoardingPending && (isBusBoardingDefinitive || isBusBoardingTransient)) {
-          this.fpWaitingBoardingPending = false;
+        if (isBusBoardingDefinitive || isBusBoardingTransient) {
+          // PROVENANCE & FENCING:
+          // If player is actively waiting at a stop with NO request in flight, an unexpected denial
+          // is stale/delayed from an earlier bus or attempt: MUST NEVER cancel wait intent.
+          if (this.fpWaitingBusStopIndex !== null && !this.fpWaitingBoardingPending) {
+            this.emit();
+            return;
+          }
+
+          // If no boarding request is pending and player is not waiting at a stop (e.g. direct test or standalone action),
+          // display narration cleanly without stale-checking.
+          if (!this.fpWaitingBoardingPending) {
+            this.fpNarrating = false;
+            this.fpNarration = err.message || "Bus action unavailable.";
+            this.emit();
+            return;
+          }
+
+          // Provenance correlation against current in-flight attempt
+          let isStale = false;
+
+          // 1. Session correlation: if session changed, request was on a different session
+          if (
+            this.fpWaitingInFlightSessionId !== null &&
+            this.multiplayerClient?.getSessionId() !== this.fpWaitingInFlightSessionId
+          ) {
+            isStale = true;
+          }
+
+          // 2. AttemptId correlation: if server echoes attemptId, it must match exact in-flight attempt
+          if (typeof err.attemptId === "number") {
+            if (this.fpWaitingInFlightAttemptId !== null && err.attemptId !== this.fpWaitingInFlightAttemptId) {
+              isStale = true;
+            }
+          } else {
+            // Uncorrelated error (missing attemptId on error envelope):
+            // Astra exact-contract: "Explicitly decide compatibility with existing uncorrelated server errors; never silently label them current."
+            // If the client has sent multiple attempts / retries (fpWaitingAttemptsSent > 1), an uncorrelated error
+            // without attemptId cannot be proven to belong to the current in-flight attempt.
+            if (this.fpWaitingAttemptsSent > 1) {
+              isStale = true;
+            }
+          }
+
+          // 3. Mode epoch correlation
+          if (typeof err.epoch === "number" && this.fpWaitingInFlightEpoch !== null) {
+            if (err.epoch !== this.fpWaitingInFlightEpoch) {
+              isStale = true;
+            }
+          }
+
+          // 4. Bus ID correlation: check explicit busId or parse from server message (e.g. "All 10 passenger seats on bus 0 are occupied")
+          let errBusId =
+            typeof err.busId === "number" && Number.isSafeInteger(err.busId) ? err.busId : null;
+          if (errBusId === null && typeof err.message === "string") {
+            const m = err.message.match(/\bbus\s+(\d+)\b/i);
+            if (m) {
+              const parsed = parseInt(m[1]!, 10);
+              if (Number.isSafeInteger(parsed) && parsed >= 0) {
+                errBusId = parsed;
+              }
+            }
+          }
+
+          if (errBusId !== null && this.fpWaitingInFlightBusId !== null) {
+            if (errBusId !== this.fpWaitingInFlightBusId) {
+              isStale = true;
+            }
+          }
+
+          if (isStale) {
+            // Drop stale denial without corrupting active in-flight request or waiting intent
+            this.emit();
+            return;
+          }
+
+          // Correlated denial matching the in-flight request:
+          this.clearWaitingInFlight();
+
+          this.fpNarrating = false;
+          this.fpNarration = err.message || "Bus action unavailable.";
+
+          if (isBusBoardingDefinitive) {
+            this.fpWaitingBusStopIndex = null;
+          }
+          this.emit();
+          return;
         }
 
         if (isBusActionError) {
           this.fpNarrating = false;
           this.fpNarration = err.message || "Bus action unavailable.";
-          // BUS.STOP.WAIT.1: Definitive failures cancel waiting intent; transient rejections preserve wait for next opportunity
-          if (isBusBoardingDefinitive) {
-            this.fpWaitingBusStopIndex = null;
-          }
         }
         this.emit();
       },
@@ -3633,7 +3729,9 @@ export class ColonyRuntime {
         this.authoritativeWalkingPose = null;
         this.sim.state.remoteRacers?.clear();
         this.fpWaitingBusStopIndex = null;
-        this.fpWaitingBoardingPending = false;
+        this.clearWaitingInFlight();
+        this.fpWaitingAttemptSeq++;
+        this.fpWaitingAttemptsSent = 0;
         this.emit();
       },
       onSelfAdmitted: (self) => {
@@ -3872,7 +3970,7 @@ export class ColonyRuntime {
       },
       onBusBoarded: (ack) => {
         this.multiplayerInputSeq = 0;
-        this.fpWaitingBoardingPending = false;
+        this.clearWaitingInFlight();
         this.fpWaitingBusStopIndex = null;
         this.fpRidingBusId = ack.busId;
         this.fpRidingSeatIndex = ack.seatIndex;
@@ -4295,7 +4393,9 @@ export class ColonyRuntime {
     this.multiplayerInputSeq = 0;
     this.ownedDriveInput = {};
     this.fpWaitingBusStopIndex = null;
-    this.fpWaitingBoardingPending = false;
+    this.clearWaitingInFlight();
+    this.fpWaitingAttemptSeq++;
+    this.fpWaitingAttemptsSent = 0;
     this.fpRidingBusId = null;
     this.fpRidingSeatIndex = null;
     this.sim.state.remoteRacers?.clear();
@@ -4852,7 +4952,9 @@ export class ColonyRuntime {
     this.fpRidingBusId = null; // spec 149 — stepping out of the citizen also steps off the bus
     this.fpRidingSeatIndex = null;
     this.fpWaitingBusStopIndex = null;
-    this.fpWaitingBoardingPending = false;
+    this.clearWaitingInFlight();
+    this.fpWaitingAttemptSeq++;
+    this.fpWaitingAttemptsSent = 0;
     this.fpCameraCell = null;
     this.fpCameraYaw = undefined;
     this.fpKeys.clear();
@@ -5290,8 +5392,10 @@ export class ColonyRuntime {
     if (d > COLONY.transit.boardMaxDistanceCells * 1.5) return false;
 
     this.fpWaitingBusStopIndex = stopIndex;
-    this.fpWaitingBoardingPending = false;
+    this.clearWaitingInFlight();
     this.fpWaitingLastBoardRequestMs = 0;
+    this.fpWaitingAttemptSeq++;
+    this.fpWaitingAttemptsSent = 0;
     this.fpNarrating = false;
     this.fpNarration = `Waiting for next bus at Stop ${stopIndex + 1}. Press E or Cancel to stop waiting.`;
     this.emit();
@@ -5302,7 +5406,9 @@ export class ColonyRuntime {
   cancelBusWait(): boolean {
     if (this.fpWaitingBusStopIndex === null && !this.fpWaitingBoardingPending) return false;
     this.fpWaitingBusStopIndex = null;
-    this.fpWaitingBoardingPending = false;
+    this.clearWaitingInFlight();
+    this.fpWaitingAttemptSeq++;
+    this.fpWaitingAttemptsSent = 0;
     this.fpNarrating = false;
     this.fpNarration = "Bus wait cancelled.";
     this.emit();
@@ -5321,19 +5427,22 @@ export class ColonyRuntime {
     const anchor = this.stopAnchors?.[stopIdx];
     if (!anchor) {
       this.fpWaitingBusStopIndex = null;
-      this.fpWaitingBoardingPending = false;
+      this.clearWaitingInFlight();
+      this.fpWaitingAttemptSeq++;
       return;
     }
     const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
     if (this.fpCitizenId && !c) {
       this.fpWaitingBusStopIndex = null;
-      this.fpWaitingBoardingPending = false;
+      this.clearWaitingInFlight();
+      this.fpWaitingAttemptSeq++;
       return;
     }
     const at = this.getFirstPersonOrFootCell();
     if (!at) {
       this.fpWaitingBusStopIndex = null;
-      this.fpWaitingBoardingPending = false;
+      this.clearWaitingInFlight();
+      this.fpWaitingAttemptSeq++;
       return;
     }
     const dPlayerToStop = Math.min(
@@ -5342,7 +5451,8 @@ export class ColonyRuntime {
     );
     if (dPlayerToStop > COLONY.transit.boardMaxDistanceCells * 1.5) {
       this.fpWaitingBusStopIndex = null;
-      this.fpWaitingBoardingPending = false;
+      this.clearWaitingInFlight();
+      this.fpWaitingAttemptSeq++;
       this.fpNarrating = false;
       this.fpNarration = "Stepped away from stop pole — bus wait cancelled.";
       this.emit();
@@ -5351,7 +5461,7 @@ export class ColonyRuntime {
 
     const now = Date.now();
     if (this.fpWaitingBoardingPending && now - this.fpWaitingLastBoardRequestMs > 5000) {
-      this.fpWaitingBoardingPending = false;
+      this.clearWaitingInFlight();
     }
 
     for (const b of this.busFleet.buses) {
@@ -5363,9 +5473,15 @@ export class ColonyRuntime {
         if (this.multiplayerClient) {
           if (this.multiplayerClient.getStatus() === "connected") {
             if (!this.fpWaitingBoardingPending && now - this.fpWaitingLastBoardRequestMs >= 1000) {
-              const sent = this.multiplayerClient.boardBus(b.id);
+              const attemptId = ++this.fpWaitingAttemptSeq;
+              this.fpWaitingAttemptsSent++;
+              const sent = this.multiplayerClient.boardBus(b.id, undefined, attemptId);
               if (sent) {
                 this.fpWaitingBoardingPending = true;
+                this.fpWaitingInFlightAttemptId = attemptId;
+                this.fpWaitingInFlightBusId = b.id;
+                this.fpWaitingInFlightEpoch = this.multiplayerClient.getModeEpoch();
+                this.fpWaitingInFlightSessionId = this.multiplayerClient.getSessionId();
                 this.fpWaitingLastBoardRequestMs = now;
                 this.fpNarrating = false;
                 this.fpNarration = `Bus ${b.id + 1} arrived! Requesting boarding from server...`;
@@ -7038,9 +7154,22 @@ export class ColonyRuntime {
       if (this.multiplayerClient) {
         if (this.multiplayerClient.getStatus() === "connected") {
           this.fpWaitingBusStopIndex = null;
-          this.fpWaitingBoardingPending = false;
+          this.clearWaitingInFlight();
+          const attemptId = ++this.fpWaitingAttemptSeq;
+          this.fpWaitingAttemptsSent++;
           if (busAct.action === "board") {
-            this.multiplayerClient.boardBus(busAct.busId);
+            const sent = this.multiplayerClient.boardBus(busAct.busId, undefined, attemptId);
+            if (sent) {
+              this.fpWaitingBoardingPending = true;
+              this.fpWaitingInFlightAttemptId = attemptId;
+              this.fpWaitingInFlightBusId = busAct.busId;
+              this.fpWaitingInFlightEpoch = this.multiplayerClient.getModeEpoch();
+              this.fpWaitingInFlightSessionId = this.multiplayerClient.getSessionId();
+              this.fpWaitingLastBoardRequestMs = Date.now();
+              this.fpNarrating = false;
+              this.fpNarration = `Bus ${busAct.busId + 1} arrived! Requesting boarding from server...`;
+              this.emit();
+            }
             return true;
           } else {
             this.multiplayerClient.alightBus();

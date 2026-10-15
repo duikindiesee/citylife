@@ -485,9 +485,13 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
       expect((rt as any).fpWaitingBusStopIndex).toBe(0);
 
       // 4. Transient denial (BUS_NOT_BOARDABLE): clears pending flag but preserves waiting intent
-      (client as any).options.onError?.({
-        code: "BUS_NOT_BOARDABLE",
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_NOT_BOARDABLE",
         message: "Bus doors closing",
+        busId,
+        epoch: 1,
+        attemptId: sentMessages[0].attemptId,
       });
       expect((rt as any).fpWaitingBoardingPending).toBe(false);
       expect((rt as any).fpWaitingBusStopIndex).toBe(0); // Intent retained!
@@ -510,10 +514,26 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
       expect(sentMessages.length).toBe(3);
       expect((rt as any).fpWaitingBoardingPending).toBe(true);
 
-      // 8. Definitive denial (BUS_SEATS_DISABLED): clears pending, clears waiting intent, displays narration
-      (client as any).options.onError?.({
-        code: "BUS_SEATS_DISABLED",
+      // Delayed old definitive denial (e.g. BUS_SEATS_DISABLED from attempt 1): must NOT cancel current attempt 3
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_SEATS_DISABLED",
         message: "Bus passenger seats are currently disabled on this server",
+        busId,
+        epoch: 1,
+        attemptId: sentMessages[0].attemptId,
+      });
+      expect((rt as any).fpWaitingBoardingPending, "delayed old definitive denial must not clear active retry attempt 3").toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBe(0);
+
+      // 8. Definitive denial (BUS_SEATS_DISABLED) for current attempt 3: clears pending, clears waiting intent, displays narration
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_SEATS_DISABLED",
+        message: "Bus passenger seats are currently disabled on this server",
+        busId,
+        epoch: 1,
+        attemptId: sentMessages[2].attemptId,
       });
       expect((rt as any).fpWaitingBoardingPending).toBe(false);
       expect((rt as any).fpWaitingBusStopIndex).toBeNull(); // Definitive failure cancels wait!
@@ -525,20 +545,32 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
 
       // 9. Other definitive denials: TRANSIT_UNAVAILABLE, MUST_BE_PEDESTRIAN
       rt.queueNextBus(0);
-      (rt as any).fpWaitingBoardingPending = true;
-      (client as any).options.onError?.({
-        code: "TRANSIT_UNAVAILABLE",
+      tickAtWallTime(BASE_WALL_MS + 12_000);
+      expect(sentMessages.length).toBe(4);
+      const attempt4 = sentMessages[3].attemptId;
+      (client as any).handleMessage({
+        type: "error",
+        error: "TRANSIT_UNAVAILABLE",
         message: "Transit service unavailable",
+        busId,
+        epoch: 1,
+        attemptId: attempt4,
       });
       expect((rt as any).fpWaitingBusStopIndex).toBeNull();
       expect((rt as any).fpWaitingBoardingPending).toBe(false);
       expect(rt.getUiState().firstPerson.narration).toBe("Transit service unavailable");
 
       rt.queueNextBus(0);
-      (rt as any).fpWaitingBoardingPending = true;
-      (client as any).options.onError?.({
-        code: "MUST_BE_PEDESTRIAN",
+      tickAtWallTime(BASE_WALL_MS + 14_000);
+      expect(sentMessages.length).toBe(5);
+      const attempt5 = sentMessages[4].attemptId;
+      (client as any).handleMessage({
+        type: "error",
+        error: "MUST_BE_PEDESTRIAN",
         message: "Player must be on foot to board bus",
+        busId,
+        epoch: 1,
+        attemptId: attempt5,
       });
       expect((rt as any).fpWaitingBusStopIndex).toBeNull();
       expect((rt as any).fpWaitingBoardingPending).toBe(false);
@@ -547,7 +579,8 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
       // 10. Local cancel stops future retries, but valid late server admission still commits seat
       rt.queueNextBus(0);
       tickAtWallTime(BASE_WALL_MS + 20_000);
-      expect(sentMessages.length).toBe(4); // In-flight request #4 sent
+      expect(sentMessages.length).toBe(6); // In-flight request #6 sent
+      const attempt6 = sentMessages[5].attemptId;
       expect((rt as any).fpWaitingBoardingPending).toBe(true);
 
       // Player clicks cancel locally: stops future client retries
@@ -555,12 +588,292 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
       expect((rt as any).fpWaitingBusStopIndex).toBeNull();
       expect((rt as any).fpWaitingBoardingPending).toBe(false);
 
-      // Authoritative server was already processing request #4 and admits player:
+      // Authoritative server was already processing request #6 and admits player:
       // Client cannot locally undo or discard valid server occupancy
-      (client as any).options.onBusBoarded?.({ busId, seatIndex: 4 });
+      (client as any).handleMessage({
+        type: "bus_boarded",
+        participantId: "part-1",
+        busId,
+        seatIndex: 4,
+        modeEpoch: 2,
+        attemptId: attempt6,
+      });
       expect(rt.fpRidingBusId).toBe(busId);
       expect(rt.fpRidingSeatIndex).toBe(4);
       expect(rt.getUiState().firstPerson.narration).toContain(`You board Bus ${busId + 1}`);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("BUS.STOP.WAIT.1 delayed boarding-denial request provenance: stale cross-bus, timeout retry, same-bus direct board, and unpending errors", () => {
+    vi.useFakeTimers();
+    try {
+      const BASE_WALL_MS = CITYLIFE_EPOCH_MS + 4_756_000;
+      vi.setSystemTime(BASE_WALL_MS);
+
+      const rt = new ColonyRuntime();
+      rt.setPlayerView(false);
+      rt.debugSetSolTimeOfDay(12, 0);
+      tick(rt);
+
+      const ids = rt.getUiState().firstPerson.stepInCitizenIds;
+      rt.enterFirstPerson(ids[0]!);
+
+      setupAuthoritativeRuntime(rt, { userId: "operator@test.com" });
+      rt.enableMultiplayer("room-1", "ws://synthetic.citylife.invalid/ws");
+      const client = rt.getMultiplayerClient()!;
+
+      (client as any).status = "connected";
+      (client as any).currentMode = "walking";
+      (client as any).sessionId = "sess-1";
+      (client as any).participantId = "part-1";
+      (client as any).modeEpoch = 1;
+
+      const sentMessages: any[] = [];
+      (client as any).send = (msg: any) => {
+        sentMessages.push(msg);
+        return true;
+      };
+
+      const anchors = rt.busStopAnchors();
+      const stop0 = anchors[0]!;
+
+      // Find Stop 0 dwell
+      const baseSol = solNowMs();
+      let dwellingOffsetMs = 0;
+      let foundDwellingBusId: number | null = null;
+      for (let i = 0; i < 20000; i++) {
+        dwellingOffsetMs = baseSol + i * 250 - Date.now();
+        setSolDebugOffsetMs(dwellingOffsetMs);
+        tick(rt);
+        for (const b of (rt as any).busFleet.buses) {
+          const p = rt.busPoseOf(b.id);
+          if (p && p.doorsOpen) {
+            const dBusToStop = Math.hypot(p.x - stop0.at.x, p.y - stop0.at.y);
+            if (dBusToStop <= 4.0) {
+              foundDwellingBusId = b.id;
+              break;
+            }
+          }
+        }
+        if (foundDwellingBusId !== null) break;
+      }
+      expect(foundDwellingBusId, "a bus must reach Stop 0 dwell").not.toBeNull();
+      const busId0 = foundDwellingBusId!;
+      const dwellingSolInstant0 = solNowMs();
+
+      // Find Stop 1 dwell
+      const stop1 = anchors[1]!;
+      let dwellingSolInstant1 = 0;
+      let foundDwellingBusId1: number | null = null;
+      for (let i = 0; i < 20000; i++) {
+        const offset = baseSol + i * 250 - Date.now();
+        setSolDebugOffsetMs(offset);
+        tick(rt);
+        for (const b of (rt as any).busFleet.buses) {
+          const p = rt.busPoseOf(b.id);
+          if (p && p.doorsOpen) {
+            const dBusToStop = Math.hypot(p.x - stop1.at.x, p.y - stop1.at.y);
+            if (dBusToStop <= 4.0) {
+              foundDwellingBusId1 = b.id;
+              dwellingSolInstant1 = solNowMs();
+              break;
+            }
+          }
+        }
+        if (foundDwellingBusId1 !== null) break;
+      }
+      expect(foundDwellingBusId1, "a bus must reach Stop 1 dwell").not.toBeNull();
+      const busId1 = foundDwellingBusId1!;
+
+      const tickAtStop0Dwell = (wallMs: number) => {
+        vi.setSystemTime(wallMs);
+        setSolDebugOffsetMs(dwellingSolInstant0 - Date.now());
+        tick(rt);
+      };
+      const tickAtStop1Dwell = (wallMs: number) => {
+        vi.setSystemTime(wallMs);
+        setSolDebugOffsetMs(dwellingSolInstant1 - Date.now());
+        tick(rt);
+      };
+
+      // 1. Peer finding: unpending wait intent must NOT be cleared by delayed denial
+      rt.debugPlaceFirstPerson(stop0.furniture.x, stop0.furniture.y);
+      expect(rt.queueNextBus(0)).toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBe(0);
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+
+      // Delayed error arrives BEFORE any board request was sent for this wait
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_FULL",
+        message: `All 10 passenger seats on bus ${busId0} are occupied`,
+        busId: busId0,
+        epoch: 1,
+        attemptId: 99,
+      });
+      expect((rt as any).fpWaitingBusStopIndex, "unpending wait must not be cancelled by delayed denial").toBe(0);
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+
+      // 2. Request 1 sent for busId0 via production auto-board at t = BASE_WALL_MS
+      tickAtStop0Dwell(BASE_WALL_MS);
+      expect(sentMessages.length).toBe(1);
+      const attempt1 = sentMessages[0].attemptId;
+      expect(attempt1).toBeGreaterThan(0);
+      expect(sentMessages[0]).toMatchObject({
+        type: "request_board_bus",
+        busId: busId0,
+        epoch: 1,
+        attemptId: attempt1,
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+
+      // 3. Same-bus timeout -> retry with delayed prior attempt denial:
+      // Advance time > 5000ms: pending timeout clears pending, and >= 1000ms retry triggers attempt 2 for busId0
+      tickAtStop0Dwell(BASE_WALL_MS + 6000);
+      expect(sentMessages.length).toBe(2);
+      const attempt2 = sentMessages[1].attemptId;
+      expect(attempt2).toBeGreaterThan(attempt1);
+      expect(sentMessages[1]).toMatchObject({
+        type: "request_board_bus",
+        busId: busId0,
+        epoch: 1,
+        attemptId: attempt2,
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+      expect((rt as any).fpWaitingInFlightAttemptId).toBe(attempt2);
+
+      // Stale same-bus attempt 1 delayed denial arrives: must NOT clear pending retry attempt 2
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_NOT_BOARDABLE",
+        message: "Bus doors closing",
+        busId: busId0,
+        epoch: 1,
+        attemptId: attempt1,
+      });
+      expect((rt as any).fpWaitingBoardingPending, "same-bus stale attempt 1 denial must not clear pending retry attempt 2").toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBe(0);
+
+      // Stale uncorrelated server error (missing attemptId) arrives after retry: must NOT clear attempt 2
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_FULL",
+        message: `All 10 passenger seats on bus ${busId0} are occupied`,
+        busId: busId0,
+        epoch: 1,
+      });
+      expect((rt as any).fpWaitingBoardingPending, "uncorrelated error without attemptId must not cancel active retry").toBe(true);
+
+      // Genuine denial for retry attempt 2 arrives: clears pending and waiting intent
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_FULL",
+        message: `All 10 passenger seats on bus ${busId0} are occupied`,
+        busId: busId0,
+        epoch: 1,
+        attemptId: attempt2,
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+      expect(rt.getUiState().firstPerson.narration).toContain("occupied");
+
+      // 4. Direct Board-button click: player walks up to dwelling bus, clicks board
+      expect(rt.activateFirstPersonInteraction()).toBe(true);
+      expect(sentMessages.length).toBe(3);
+      const attempt3 = sentMessages[2].attemptId;
+      expect(attempt3).toBeGreaterThan(attempt2);
+      expect(sentMessages[2]).toMatchObject({
+        type: "request_board_bus",
+        busId: busId0,
+        epoch: 1,
+        attemptId: attempt3,
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+      expect((rt as any).fpWaitingInFlightAttemptId).toBe(attempt3);
+
+      // Genuine denial for attempt 3 arrives: clears pending and preserves direct button narration
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_FULL",
+        message: `All 10 passenger seats on bus ${busId0} are occupied`,
+        busId: busId0,
+        epoch: 1,
+        attemptId: attempt3,
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      expect(rt.getUiState().firstPerson.narration).toContain("occupied");
+
+      // 5. Cross-bus provenance (Stop 0 vs Stop 1) driven entirely by production code:
+      rt.debugPlaceFirstPerson(stop1.furniture.x, stop1.furniture.y);
+      expect(rt.queueNextBus(1)).toBe(true);
+      tickAtStop1Dwell(BASE_WALL_MS + 20_000);
+      expect(sentMessages.length).toBe(4);
+      const attempt4 = sentMessages[3].attemptId;
+      expect(attempt4).toBeGreaterThan(attempt3);
+      expect(sentMessages[3]).toMatchObject({
+        type: "request_board_bus",
+        busId: busId1,
+        epoch: 1,
+        attemptId: attempt4,
+      });
+      expect((rt as any).fpWaitingBusStopIndex).toBe(1);
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+
+      // Delayed BUS_FULL for busId0 arrives through handleMessage
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_FULL",
+        message: `All 10 passenger seats on bus ${busId0} are occupied`,
+        busId: busId0,
+        epoch: 1,
+        attemptId: attempt1,
+      });
+      // MoJoJo finding: Stop 1's wait and Bus 1's pending must be retained!
+      expect((rt as any).fpWaitingBusStopIndex, "cross-bus delayed denial must not clear wait B").toBe(1);
+      expect((rt as any).fpWaitingBoardingPending, "cross-bus delayed denial must not clear pending B").toBe(true);
+
+      // 6. Early producer shapes: BUS_SEATS_DISABLED on current attempt 4 clears wait and sets narration
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_SEATS_DISABLED",
+        message: "Bus seat feature is disabled",
+        busId: busId1,
+        epoch: 1,
+        attemptId: attempt4,
+      });
+      expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      expect(rt.getUiState().firstPerson.narration).toBe("Bus seat feature is disabled");
+
+      // 7. Cancel then valid late admission commits seat
+      expect(rt.queueNextBus(1)).toBe(true);
+      tickAtStop1Dwell(BASE_WALL_MS + 40_000);
+      expect(sentMessages.length).toBe(5);
+      const attempt5 = sentMessages[4].attemptId;
+      expect(attempt5).toBeGreaterThan(attempt4);
+      expect(sentMessages[4]).toMatchObject({
+        type: "request_board_bus",
+        busId: busId1,
+        epoch: 1,
+        attemptId: attempt5,
+      });
+
+      expect(rt.cancelBusWait()).toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+
+      (client as any).handleMessage({
+        type: "bus_boarded",
+        participantId: "part-1",
+        busId: busId1,
+        seatIndex: 2,
+        modeEpoch: 2,
+        attemptId: attempt5,
+      });
+      expect(rt.fpRidingBusId).toBe(busId1);
+      expect(rt.fpRidingSeatIndex).toBe(2);
     } finally {
       vi.useRealTimers();
     }
