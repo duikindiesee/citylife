@@ -352,8 +352,17 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
   });
 
   it("adopts a saved child revision while running without replacing live spatial state", () => {
-    const source = new ColonyRuntime(4242);
-    const base = source.captureWorldLayout();
+    const runtime = new ColonyRuntime(4242);
+    const initialRoads = JSON.stringify(runtime.sim.state.roads);
+    const initialWays = JSON.stringify(runtime.sim.state.roadWays);
+    const base = runtime.captureWorldLayout();
+
+    // 1. Assert capture leaves worldLayoutDocument() null before hydration
+    expect(runtime.worldLayoutDocument()).toBeNull();
+    // 2. Preserve roads/ways across capture
+    expect(JSON.stringify(runtime.sim.state.roads)).toBe(initialRoads);
+    expect(JSON.stringify(runtime.sim.state.roadWays)).toBe(initialWays);
+
     const head = createWorldLayoutDocument({
       worldId: base.worldId,
       seed: base.seed,
@@ -368,12 +377,21 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
       terrainEdits: base.terrainEdits,
       portals: base.portals,
     });
-    const runtime = new ColonyRuntime(4242);
+
+    // 3. Retain real hydrate before setting running
     runtime.hydrateWorldLayout(head);
+    expect(runtime.worldLayoutDocument()).toEqual(head);
+
+    // 4. Retain landscape edit and assert saved document is a changed child of the hydrated head
     useRoadNetwork.setState((state) => ({
       landscapeEdits: new Map(state.landscapeEdits).set("10,10", 0.25),
     }));
     const saved = runtime.captureWorldLayout();
+    expect(saved.revision.parentHash).toBe(head.revision.contentHash);
+    expect(saved.revision.number).toBe(head.revision.number + 1);
+    expect(saved.revision.contentHash).not.toBe(head.revision.contentHash);
+
+    // 5. Preserve all roads/ways/roadSet/tiles/edits invariants, mismatched-intent and wrong-world rejection
     const roadsBefore = JSON.stringify(runtime.sim.state.roads);
     const waysBefore = JSON.stringify(runtime.sim.state.roadWays);
     const roadSetBefore = [...runtime.sim.state.roadSet].sort();
@@ -382,66 +400,70 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
     const runningRuntime = runtime as unknown as { running: boolean };
     runningRuntime.running = true;
 
-    const adopted = runtime.adoptWorldLayoutRevision(saved);
+    // 6. Restore synthetic running state in finally
+    try {
+      const adopted = runtime.adoptWorldLayoutRevision(saved);
 
-    expect(adopted).toEqual(saved);
-    expect(runtime.worldLayoutDocument()).toEqual(saved);
-    expect(runtime.surveyRoadPlacement([], "street").layoutRevision).toBe(
-      `wl:v1:${saved.revision.number}:${saved.revision.contentHash}`,
-    );
-    expect(JSON.stringify(runtime.sim.state.roads)).toBe(roadsBefore);
-    expect(JSON.stringify(runtime.sim.state.roadWays)).toBe(waysBefore);
-    expect([...runtime.sim.state.roadSet].sort()).toEqual(roadSetBefore);
-    expect(JSON.stringify(useRoadNetwork.getState().tiles)).toBe(tilesBefore);
-    expect([...useRoadNetwork.getState().landscapeEdits].sort()).toEqual(
-      editsBefore,
-    );
+      expect(adopted).toEqual(saved);
+      expect(runtime.worldLayoutDocument()).toEqual(saved);
+      expect(runtime.surveyRoadPlacement([], "street").layoutRevision).toBe(
+        `wl:v1:${saved.revision.number}:${saved.revision.contentHash}`,
+      );
+      expect(JSON.stringify(runtime.sim.state.roads)).toBe(roadsBefore);
+      expect(JSON.stringify(runtime.sim.state.roadWays)).toBe(waysBefore);
+      expect([...runtime.sim.state.roadSet].sort()).toEqual(roadSetBefore);
+      expect(JSON.stringify(useRoadNetwork.getState().tiles)).toBe(tilesBefore);
+      expect([...useRoadNetwork.getState().landscapeEdits].sort()).toEqual(
+        editsBefore,
+      );
 
-    const mismatchedPayload = createWorldLayoutDocument({
-      worldId: saved.worldId,
-      seed: saved.seed,
-      revision: {
-        number: saved.revision.number + 1,
-        parentHash: saved.revision.contentHash,
-      },
-      frames: saved.frames,
-      placements: saved.placements,
-      roads: saved.roads,
-      ways: saved.ways,
-      terrainEdits: [
-        ...saved.terrainEdits,
-        {
-          frameId: saved.frames.find(
-            (frame) => frame.kind === "region" && frame.layer === "surface",
-          )!.id,
-          cell: { x: 11, y: 11 },
-          elevation: runtime.sim.state.terrain.worldY(11, 11) + 1,
+      const mismatchedPayload = createWorldLayoutDocument({
+        worldId: saved.worldId,
+        seed: saved.seed,
+        revision: {
+          number: saved.revision.number + 1,
+          parentHash: saved.revision.contentHash,
         },
-      ],
-      portals: saved.portals,
-    });
-    expect(() => runtime.adoptWorldLayoutRevision(mismatchedPayload)).toThrow(
-      /does not match current runtime intent/,
-    );
-    const wrongWorld = createWorldLayoutDocument({
-      worldId: "seed-7",
-      seed: 7,
-      revision: {
-        number: saved.revision.number + 1,
-        parentHash: saved.revision.contentHash,
-      },
-      frames: saved.frames,
-      placements: saved.placements,
-      roads: saved.roads,
-      ways: saved.ways,
-      terrainEdits: saved.terrainEdits,
-      portals: saved.portals,
-    });
-    expect(() => runtime.adoptWorldLayoutRevision(wrongWorld)).toThrow(
-      /identity mismatch/,
-    );
-    expect(runtime.worldLayoutDocument()).toEqual(saved);
-    expect(JSON.stringify(runtime.sim.state.roads)).toBe(roadsBefore);
-    runningRuntime.running = false;
+        frames: saved.frames,
+        placements: saved.placements,
+        roads: saved.roads,
+        ways: saved.ways,
+        terrainEdits: [
+          ...saved.terrainEdits,
+          {
+            frameId: saved.frames.find(
+              (frame) => frame.kind === "region" && frame.layer === "surface",
+            )!.id,
+            cell: { x: 11, y: 11 },
+            elevation: runtime.sim.state.terrain.worldY(11, 11) + 1,
+          },
+        ],
+        portals: saved.portals,
+      });
+      expect(() => runtime.adoptWorldLayoutRevision(mismatchedPayload)).toThrow(
+        /does not match current runtime intent/,
+      );
+      const wrongWorld = createWorldLayoutDocument({
+        worldId: "seed-7",
+        seed: 7,
+        revision: {
+          number: saved.revision.number + 1,
+          parentHash: saved.revision.contentHash,
+        },
+        frames: saved.frames,
+        placements: saved.placements,
+        roads: saved.roads,
+        ways: saved.ways,
+        terrainEdits: saved.terrainEdits,
+        portals: saved.portals,
+      });
+      expect(() => runtime.adoptWorldLayoutRevision(wrongWorld)).toThrow(
+        /identity mismatch/,
+      );
+      expect(runtime.worldLayoutDocument()).toEqual(saved);
+      expect(JSON.stringify(runtime.sim.state.roads)).toBe(roadsBefore);
+    } finally {
+      runningRuntime.running = false;
+    }
   });
 });
