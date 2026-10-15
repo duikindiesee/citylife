@@ -28,14 +28,25 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
   });
 
   it("publishes validated roads, terrain edits, placements and child frames before start", () => {
-    const source = new ColonyRuntime(4242);
-    const base = source.captureWorldLayout();
+    const runtime = new ColonyRuntime(4242);
+    const initialRoads = JSON.stringify(runtime.sim.state.roads);
+    const initialWays = JSON.stringify(runtime.sim.state.roadWays);
+    const initialEdits = [...useRoadNetwork.getState().landscapeEdits].sort();
+    const base = runtime.captureWorldLayout();
+
+    expect(runtime.worldLayoutDocument()).toBeNull();
+    expect(JSON.stringify(runtime.sim.state.roads)).toBe(initialRoads);
+    expect(JSON.stringify(runtime.sim.state.roadWays)).toBe(initialWays);
+    expect([...useRoadNetwork.getState().landscapeEdits].sort()).toEqual(
+      initialEdits,
+    );
+
     const surface = base.frames.find(
       (frame) => frame.kind === "region" && frame.layer === "surface",
     )!;
     const libraryFrameId = `${surface.id}:building:library`;
     const editedCell = { x: 10, y: 10 };
-    const editedElevation = source.sim.state.terrain.worldY(10, 10) + 0.25;
+    const editedElevation = runtime.sim.state.terrain.worldY(10, 10) + 0.25;
     const document = createWorldLayoutDocument({
       worldId: base.worldId,
       seed: base.seed,
@@ -77,7 +88,6 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
       ],
     });
 
-    const runtime = new ColonyRuntime(4242);
     const hydrated = runtime.hydrateWorldLayout(document);
 
     expect(hydrated.layoutRevision).toBe(
@@ -139,8 +149,19 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
   });
 
   it("captures post-hydration edits while preserving untouched imported identities", () => {
-    const source = new ColonyRuntime(4242);
-    const base = source.captureWorldLayout();
+    const runtime = new ColonyRuntime(4242);
+    const initialRoads = JSON.stringify(runtime.sim.state.roads);
+    const initialWays = JSON.stringify(runtime.sim.state.roadWays);
+    const initialEdits = [...useRoadNetwork.getState().landscapeEdits].sort();
+    const base = runtime.captureWorldLayout();
+
+    expect(runtime.worldLayoutDocument()).toBeNull();
+    expect(JSON.stringify(runtime.sim.state.roads)).toBe(initialRoads);
+    expect(JSON.stringify(runtime.sim.state.roadWays)).toBe(initialWays);
+    expect([...useRoadNetwork.getState().landscapeEdits].sort()).toEqual(
+      initialEdits,
+    );
+
     const roadIds = new Map(
       base.roads.map((road, index) => [road.id, `imported-road-${index}`]),
     );
@@ -197,7 +218,6 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
       ],
     });
     const importedSnapshot = JSON.stringify(imported);
-    const runtime = new ColonyRuntime(4242);
 
     runtime.hydrateWorldLayout(imported);
     const unchanged = runtime.captureWorldLayout();
@@ -355,6 +375,7 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
     const runtime = new ColonyRuntime(4242);
     const initialRoads = JSON.stringify(runtime.sim.state.roads);
     const initialWays = JSON.stringify(runtime.sim.state.roadWays);
+    const initialEdits = [...useRoadNetwork.getState().landscapeEdits].sort();
     const base = runtime.captureWorldLayout();
 
     // 1. Assert capture leaves worldLayoutDocument() null before hydration
@@ -362,6 +383,9 @@ describe("WB.1d ColonyRuntime layout ownership", () => {
     // 2. Preserve roads/ways across capture
     expect(JSON.stringify(runtime.sim.state.roads)).toBe(initialRoads);
     expect(JSON.stringify(runtime.sim.state.roadWays)).toBe(initialWays);
+    expect([...useRoadNetwork.getState().landscapeEdits].sort()).toEqual(
+      initialEdits,
+    );
 
     const head = createWorldLayoutDocument({
       worldId: base.worldId,
