@@ -927,6 +927,150 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
     }
   });
 
+  it("BUS.BOARD.PLAYER.1 direct Board request recovery: ambiguous denial fence, timeout expiry, matching denial, and late admission", () => {
+    vi.useFakeTimers();
+    try {
+      const BASE_WALL_MS = CITYLIFE_EPOCH_MS + 4_756_000;
+      vi.setSystemTime(BASE_WALL_MS);
+
+      const rt = new ColonyRuntime();
+      rt.setPlayerView(false);
+      rt.debugSetSolTimeOfDay(12, 0);
+      tick(rt);
+
+      const ids = rt.getUiState().firstPerson.stepInCitizenIds;
+      expect(ids.length).toBeGreaterThan(0);
+      expect(rt.enterFirstPerson(ids[0]!)).toBe(true);
+
+      setupAuthoritativeRuntime(rt, { userId: "operator@test.com" });
+      rt.enableMultiplayer("room-1", "ws://synthetic.citylife.invalid/ws");
+      const client = rt.getMultiplayerClient()!;
+
+      (client as any).status = "connected";
+      (client as any).currentMode = "walking";
+      (client as any).sessionId = "sess-1";
+      (client as any).participantId = "part-1";
+      (client as any).modeEpoch = 1;
+
+      const sentMessages: any[] = [];
+      (client as any).send = (msg: any) => {
+        sentMessages.push(msg);
+        return true;
+      };
+
+      const anchors = rt.busStopAnchors();
+      const stop0 = anchors[0]!;
+
+      // Find Stop 0 dwell
+      const baseSol = solNowMs();
+      let foundDwellingBusId: number | null = null;
+      for (let i = 0; i < 20000; i++) {
+        setSolDebugOffsetMs(baseSol + i * 250 - Date.now());
+        tick(rt);
+        for (const b of (rt as any).busFleet.buses) {
+          const p = rt.busPoseOf(b.id);
+          if (p && p.doorsOpen) {
+            const dBusToStop = Math.hypot(p.x - stop0.at.x, p.y - stop0.at.y);
+            if (dBusToStop <= 4.0) {
+              foundDwellingBusId = b.id;
+              break;
+            }
+          }
+        }
+        if (foundDwellingBusId !== null) break;
+      }
+      expect(foundDwellingBusId).not.toBeNull();
+      const busId0 = foundDwellingBusId!;
+      const dwellingSolInstant0 = solNowMs();
+
+      const tickAtStop0Dwell = (wallMs: number) => {
+        vi.setSystemTime(wallMs);
+        setSolDebugOffsetMs(dwellingSolInstant0 - Date.now());
+        tick(rt);
+      };
+
+      // Place player near dwelling bus at Stop 0, without any stop wait queued
+      rt.debugPlaceFirstPerson(stop0.furniture.x, stop0.furniture.y);
+      tickAtStop0Dwell(BASE_WALL_MS);
+      expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+
+      // 1. Direct Board action via activateFirstPersonInteraction
+      expect(rt.activateFirstPersonInteraction()).toBe(true);
+      expect(sentMessages.length).toBe(1);
+      const attempt1 = sentMessages[0].attemptId;
+      expect(attempt1).toBeGreaterThan(0);
+      expect(sentMessages[0]).toMatchObject({
+        type: "request_board_bus",
+        busId: busId0,
+        epoch: 1,
+        attemptId: attempt1,
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+      expect((rt as any).fpWaitingInFlightAttemptId).toBe(attempt1);
+
+      // 2. Deliver ambiguous missing-ID denial frame: must NOT clear pending prematurely
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_FULL",
+        message: `All 10 passenger seats on bus ${busId0} are occupied`,
+        busId: busId0,
+        epoch: 1,
+      });
+      expect((rt as any).fpWaitingBoardingPending, "ambiguous denial must not clear pending direct board prematurely").toBe(true);
+      expect((rt as any).fpWaitingInFlightAttemptId).toBe(attempt1);
+
+      // 3. Advance time by > 5000ms (6000ms) and tick production transit: expiry must clear pending
+      tickAtStop0Dwell(BASE_WALL_MS + 6000);
+      expect((rt as any).fpWaitingBoardingPending, "expiry after 6000ms must clear pending direct board").toBe(false);
+      expect((rt as any).fpWaitingInFlightAttemptId).toBeNull();
+      expect(rt.getUiState().firstPerson.narration).toContain("timed out");
+      expect(rt.fpRidingBusId).toBeNull();
+      expect(rt.fpRidingSeatIndex).toBeNull();
+
+      // 4. Retry direct Board: sends attempt 2, matching denial clears pending with server message
+      expect(rt.activateFirstPersonInteraction()).toBe(true);
+      expect(sentMessages.length).toBe(2);
+      const attempt2 = sentMessages[1].attemptId;
+      expect(attempt2).toBeGreaterThan(attempt1);
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_FULL",
+        message: `All 10 passenger seats on bus ${busId0} are occupied`,
+        busId: busId0,
+        epoch: 1,
+        attemptId: attempt2,
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      expect(rt.getUiState().firstPerson.narration).toContain("occupied");
+
+      // 5. Direct Board again -> attempt 3; timeout expiry clears pending, then valid late admission commits seat
+      expect(rt.activateFirstPersonInteraction()).toBe(true);
+      expect(sentMessages.length).toBe(3);
+      const attempt3 = sentMessages[2].attemptId;
+      expect(attempt3).toBeGreaterThan(attempt2);
+
+      tickAtStop0Dwell(BASE_WALL_MS + 15_000);
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+
+      (client as any).handleMessage({
+        type: "bus_boarded",
+        participantId: "part-1",
+        busId: busId0,
+        seatIndex: 3,
+        modeEpoch: 2,
+        attemptId: attempt3,
+      });
+      expect(rt.fpRidingBusId).toBe(busId0);
+      expect(rt.fpRidingSeatIndex).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("seated crab transform matches production bus renderer coordinates and seat slots", () => {
     // Shared production passenger seat slots exported from R3FRemoteRacers.tsx
     expect(PASSENGER_SEAT_LOCAL_SLOTS.length).toBe(10);

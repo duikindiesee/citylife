@@ -80,11 +80,14 @@ jobs:
         run: |
           npm ci
           npm run build
+      # Measured step-level bound: the seven sequential actual-pair cases consume ~180s across driving,
+      # avatar transition, and MP4 transcoding before reaching the mounted bus journey test (declared limit 300s).
+      # 10 minutes accommodates both sequentially with bounded setup/teardown margin without inflating individual case timeouts.
       - name: Run multiplayer actual-pair acceptance
         env:
           CITYLIFE_SERVER_DIR: ${{ github.workspace }}/citylife-server
         run: npm run test:e2e:actual-pair
-        timeout-minutes: 5
+        timeout-minutes: 10
       - run: npm run test:e2e
         timeout-minutes: 45
       # Explicit step-level bound (PLAYER.MOBILE.E2E.1): the mobile/touch harness has its own

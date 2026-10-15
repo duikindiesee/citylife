@@ -5406,8 +5406,20 @@ export class ColonyRuntime {
     return true;
   }
 
-  /** BUS.STOP.WAIT.1 — check arrival of bus for waiting passenger */
+  /** BUS.STOP.WAIT.1 — check arrival of bus for waiting passenger and boarding pending expiry */
   private checkWaitingBusArrival(): void {
+    const now = Date.now();
+    if (this.fpWaitingBoardingPending && now - this.fpWaitingLastBoardRequestMs > 5000) {
+      const wasDirect = this.fpWaitingBusStopIndex === null;
+      this.clearWaitingInFlight();
+      this.fpWaitingAttemptSeq++;
+      if (wasDirect) {
+        this.fpNarrating = false;
+        this.fpNarration = "Boarding request timed out. Press E or click Board to try again.";
+        this.emit();
+      }
+    }
+
     if (
       this.fpWaitingBusStopIndex === null ||
       !this.busFleet ||
@@ -5448,11 +5460,6 @@ export class ColonyRuntime {
       this.fpNarration = "Stepped away from stop pole — bus wait cancelled.";
       this.emit();
       return;
-    }
-
-    const now = Date.now();
-    if (this.fpWaitingBoardingPending && now - this.fpWaitingLastBoardRequestMs > 5000) {
-      this.clearWaitingInFlight();
     }
 
     for (const b of this.busFleet.buses) {
