@@ -273,21 +273,6 @@ server.serve_forever()
         m16 = "FABRICATED_REFERER_404_16"
         r25 = test_req("referer_404_sanitized", "/missing-file.html", headers=["Referer: https://example.invalid/path?jwt=" + m16])
 
-        # Fetch rendered access and error logs AFTER all Part B, C, and D requests (including all encoded requests)
-        time.sleep(0.5)
-        nginx_logs_post = run_cmd(["docker", "logs", nginx_name])
-        access_log_post = nginx_logs_post.stdout
-        error_log_post = nginx_logs_post.stderr
-        gw_logs = run_cmd(["docker", "logs", gw_name]).stdout
-
-        # Map Regression Negative: evaluate legacy fae1090 regex against encoded query path
-        import re
-        legacy_map_re = re.compile(r"^/(?:kooker/)?api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)(?:[/?]|$)")
-        corrected_map_re = re.compile(r"^/(?:kooker/)?api/v1/citylife/(?:ws|browser-ws|auth/cookie|auth/clear)(?:%3[fF]|[/?]|$)", re.IGNORECASE)
-        test_enc_path = "/api/v1/citylife/ws%3Ftoken=CANARY"
-        legacy_missed_encoded = not bool(legacy_map_re.search(test_enc_path))
-        corrected_matches_encoded = bool(corrected_map_re.search(test_enc_path))
-
         # -------------------------------------------------------------
         # Part E: Process Lifecycle, Drain & Fail-Closed Contract
         # -------------------------------------------------------------
@@ -307,16 +292,78 @@ server.serve_forever()
         stop_inspect = run_cmd(["docker", "inspect", nginx_name, "--format", "{{.State.ExitCode}}"])
         normal_exit_code_ok = (int(stop_inspect.stdout.strip()) == 0)
 
-        # Inspect drained logs: final error was drained and sanitized before exit
-        logs_post_drain = run_cmd(["docker", "logs", nginx_name]).stderr
-        drain_record_present = (ref_drain in logs_post_drain)
+        # Inspect final drained logs: both stdout (access) and stderr (error) captured after ALL requests
+        nginx_logs_final = run_cmd(["docker", "logs", nginx_name])
+        access_log_final = nginx_logs_final.stdout
+        error_log_final = nginx_logs_final.stderr
+        gw_logs = run_cmd(["docker", "logs", gw_name]).stdout
+
+        drain_record_present = (ref_drain in error_log_final)
         drain_sanitized_ok = (
             r_drain["status"] == 502 and
             ref_before_drain_absent and
             drain_record_present and
-            (m17 not in logs_post_drain) and
-            (f"/api/v1/citylife/ws?[REDACTED]" in logs_post_drain)
+            (m17 not in error_log_final) and
+            (f"/api/v1/citylife/ws?[REDACTED]" in error_log_final)
         )
+
+        # -------------------------------------------------------------
+        # Part F: Actual Rejected-fae Effective-Map Regression Negative
+        # -------------------------------------------------------------
+        # Spin up an actual container mounting git show fae1090:docker/default.conf.template
+        # to prove the actual Nginx engine executing the rejected fae1090 map chain
+        # emitted the raw request query to access.log on encoded %3f and %3F paths.
+        fae_temp_path = os.path.join(repo_root, ".fae1090-test-template.tmp")
+        fae_cid = "citylife-fae-regress"
+        fae_leak_lower_confirmed = False
+        fae_leak_upper_confirmed = False
+        fae_sample_leak_line = ""
+        try:
+            fae_template_bytes = subprocess.check_output(
+                ["git", "show", "fae1090:docker/default.conf.template"],
+                cwd=repo_root
+            )
+            with open(fae_temp_path, "wb") as f:
+                f.write(fae_template_bytes.replace(b"\r\n", b"\n"))
+
+            run_cmd(["docker", "rm", "-f", fae_cid], check=False)
+            run_cmd([
+                "docker", "run", "-d", "--name", fae_cid,
+                "-v", f"{fae_temp_path}:/etc/nginx/templates/default.conf.template:ro",
+                "-e", f"KOOKER_GATEWAY=http://127.0.0.1:8080",
+                "-e", "KOOKER_HOST=kooker.internal",
+                candidate_image
+            ])
+            time.sleep(2.0)
+
+            m_fae_leak_lower = "FABRICATED_FAE_REJECTED_MAP_LEAK_TOKEN"
+            m_fae_leak_upper = "FABRICATED_FAE_REJECTED_UPPER_LEAK_TOKEN"
+            run_cmd(["docker", "exec", fae_cid, "wget", "-S", "-O", "/dev/null", f"http://127.0.0.1/api/v1/citylife/ws%3ftoken={m_fae_leak_lower}"], check=False)
+            run_cmd(["docker", "exec", fae_cid, "wget", "-S", "-O", "/dev/null", f"http://127.0.0.1/api/v1/citylife/ws%3Ftoken={m_fae_leak_upper}"], check=False)
+            time.sleep(0.5)
+
+            fae_logs = run_cmd(["docker", "logs", fae_cid]).stdout
+            if m_fae_leak_lower in fae_logs:
+                fae_leak_lower_confirmed = True
+                for line in fae_logs.splitlines():
+                    if m_fae_leak_lower in line:
+                        fae_sample_leak_line = line
+                        break
+            if m_fae_leak_upper in fae_logs:
+                fae_leak_upper_confirmed = True
+        except Exception as e:
+            print(f"Warning: fae1090 regression check encountered: {e}")
+        finally:
+            run_cmd(["docker", "rm", "-f", fae_cid], check=False)
+            if os.path.exists(fae_temp_path):
+                os.remove(fae_temp_path)
+
+        results["exposure_reproduction_baseline"]["fae1090_effective_map_regression"] = {
+            "reproduced_raw_request_leak_lower": fae_leak_lower_confirmed,
+            "reproduced_raw_request_leak_upper": fae_leak_upper_confirmed,
+            "sample_emitted_access_log_line": fae_sample_leak_line,
+            "candidate_cleared": (m_enc_01 not in access_log_final) and (m_enc_02 not in access_log_final),
+        }
 
         # Test 2: Verified live target, health check, companion death, and fail-closed termination
         run_cmd(["docker", "start", nginx_name])
@@ -362,6 +409,37 @@ server.serve_forever()
         child_nonzero_exit_ok = (bad_start_res.returncode == 1)
         child_nonzero_logged_ok = 'unknown directive "invalid_syntax"' in bad_start_res.stderr
 
+        # Inventory of all 27 fabricated sensitive markers to verify across BOTH stdout and stderr
+        all_sensitive_markers = [
+            ("FABRICATED_MARKER_01 (bws direct)", m01),
+            ("FABRICATED_MARKER_02 (bws kooker)", m02),
+            ("FABRICATED_MARKER_03 (ws trailing direct)", m03),
+            ("FABRICATED_MARKER_04 (ws trailing kooker)", m04),
+            ("FABRICATED_MARKER_05 (cookie trailing direct)", m05),
+            ("FABRICATED_MARKER_06 (cookie trailing kooker)", m06),
+            ("FABRICATED_MARKER_07 (clear trailing direct)", m07),
+            ("FABRICATED_MARKER_08 (clear trailing kooker)", m08),
+            ("FABRICATED_MARKER_09 (ws query)", m09),
+            ("FABRICATED_MARKER_10 (cookie query)", m10),
+            ("FABRICATED_REFERER_11 (referer)", m11),
+            ("FABRICATED_ENC_WS_DIRECT_LOWER_01", m_enc_01),
+            ("FABRICATED_ENC_WS_DIRECT_UPPER_02", m_enc_02),
+            ("FABRICATED_ENC_WS_KOOKER_LOWER_03", m_enc_03),
+            ("FABRICATED_ENC_WS_KOOKER_UPPER_04", m_enc_04),
+            ("FABRICATED_ENC_BWS_DIRECT_05", m_enc_05),
+            ("FABRICATED_ENC_BWS_KOOKER_06", m_enc_06),
+            ("FABRICATED_ENC_COOKIE_DIRECT_07", m_enc_07),
+            ("FABRICATED_ENC_COOKIE_KOOKER_08", m_enc_08),
+            ("FABRICATED_ENC_CLEAR_DIRECT_09", m_enc_09),
+            ("FABRICATED_ENC_CLEAR_KOOKER_10", m_enc_10),
+            ("FABRICATED_SENSITIVE_UPSTREAM_13 (upstream direct)", m13),
+            ("FABRICATED_SENSITIVE_UPSTREAM_14 (upstream kooker)", m14),
+            ("FABRICATED_SENSITIVE_ENCODED_15 (upstream enc lower)", m15),
+            ("FABRICATED_SENSITIVE_ENCODED_15B (upstream enc upper)", m15_upper),
+            ("FABRICATED_REFERER_404_16 (upstream referer)", m16),
+            ("FABRICATED_FINAL_DRAIN_17 (final drain token)", m17),
+        ]
+
         # Assertions
         assertions = [
             # Part A: Route / Upgrade / Auth Positives
@@ -377,7 +455,7 @@ server.serve_forever()
             ("scheme_http maps X-Forwarded-Proto http", "XFP=http" in gw_logs),
             ("scheme_untrusted falls back to http", "XFP=http" in gw_logs),
 
-            # Part B: Site Alias & Trailing-Slash Negatives
+            # Part B: Site Alias & Trailing-Slash Negatives (404 status)
             ("browser_ws_direct_404 returns 404 (not 200 SPA index)", r10["status"] == 404 and "SPA Index" not in r10["body"]),
             ("browser_ws_kooker_404 returns 404", r11["status"] == 404),
             ("ws_trailing_direct_404 returns 404", r12["status"] == 404),
@@ -397,50 +475,25 @@ server.serve_forever()
             ("clear_enc_direct_404 returns 404", r_enc_09["status"] == 404),
             ("clear_enc_kooker_404 returns 404", r_enc_10["status"] == 404),
 
-            # Part C: Access Log Sanitization & Non-Leak (Post-Request Stream)
-            ("access.log does not leak FABRICATED_MARKER_01", m01 not in access_log_post),
-            ("access.log does not leak FABRICATED_MARKER_02", m02 not in access_log_post),
-            ("access.log does not leak FABRICATED_MARKER_03", m03 not in access_log_post),
-            ("access.log does not leak FABRICATED_MARKER_04", m04 not in access_log_post),
-            ("access.log does not leak FABRICATED_MARKER_05", m05 not in access_log_post),
-            ("access.log does not leak FABRICATED_MARKER_06", m06 not in access_log_post),
-            ("access.log does not leak FABRICATED_MARKER_07", m07 not in access_log_post),
-            ("access.log does not leak FABRICATED_MARKER_08", m08 not in access_log_post),
-            ("access.log does not leak FABRICATED_MARKER_09", m09 not in access_log_post),
-            ("access.log does not leak FABRICATED_MARKER_10", m10 not in access_log_post),
-            ("access.log does not leak FABRICATED_REFERER_11", m11 not in access_log_post),
-            ("access.log does not leak encoded ws direct lower marker", m_enc_01 not in access_log_post),
-            ("access.log does not leak encoded ws direct upper marker", m_enc_02 not in access_log_post),
-            ("access.log does not leak encoded ws kooker lower marker", m_enc_03 not in access_log_post),
-            ("access.log does not leak encoded ws kooker upper marker", m_enc_04 not in access_log_post),
-            ("access.log does not leak encoded bws direct marker", m_enc_05 not in access_log_post),
-            ("access.log does not leak encoded bws kooker marker", m_enc_06 not in access_log_post),
-            ("access.log does not leak encoded cookie direct marker", m_enc_07 not in access_log_post),
-            ("access.log does not leak encoded cookie kooker marker", m_enc_08 not in access_log_post),
-            ("access.log does not leak encoded clear direct marker", m_enc_09 not in access_log_post),
-            ("access.log does not leak encoded clear kooker marker", m_enc_10 not in access_log_post),
-            ("access.log does not leak upstream encoded marker 15", m15 not in access_log_post),
-            ("access.log does not leak upstream encoded upper marker 15B", m15_upper not in access_log_post),
+            # Part C: Nonempty Diagnostic Positives (Stdout & Stderr)
+            ("access.log stream is nonempty useful diagnostics", len(access_log_final) > 500),
+            ("error.log stream is nonempty useful diagnostics", len(error_log_final) > 500),
             ("ordinary_query_preserved returns 200", r21["status"] == 200),
-            ("access.log PRESERVES ordinary non-sensitive query diagnostics", m12 in access_log_post),
-            ("access.log safely renders clean path without raw or decoded query parameters", '"GET /api/v1/citylife/ws HTTP/1.1"' in access_log_post),
-
-            # Part D: Pre-Emission Containment Acceptance
+            ("access.log PRESERVES ordinary non-sensitive query diagnostics", m12 in access_log_final),
+            ("access.log safely renders clean path without raw or decoded query parameters", '"GET /api/v1/citylife/ws HTTP/1.1"' in access_log_final),
             ("ordinary_upstream_error_502 returns 502 Bad Gateway", r_ord_err["status"] == 502),
-            ("error.log PRESERVES baseline ordinary upstream request diagnostics", 'request: "GET /kooker/ordinary-endpoint-fail HTTP/1.1"' in error_log_post),
-            ("error.log PRESERVES baseline worker start notices without warn suppression", "start worker process" in error_log_post),
+            ("error.log PRESERVES baseline ordinary upstream request diagnostics", 'request: "GET /kooker/ordinary-endpoint-fail HTTP/1.1"' in error_log_final),
+            ("error.log PRESERVES baseline worker start notices without warn suppression", "start worker process" in error_log_final),
             ("upstream_failure_direct_502 returns 502 Bad Gateway", r22["status"] == 502),
             ("upstream_failure_kooker_502 returns 502 Bad Gateway", r23["status"] == 502),
             ("upstream_failure_encoded_404 returns 404 (preventing SPA fallback)", r24["status"] == 404),
             ("upstream_failure_encoded_upper_404 returns 404", r24_upper["status"] == 404),
-            ("error.log SANITIZES and does not leak direct sensitive marker 13", m13 not in error_log_post),
-            ("error.log SANITIZES and does not leak kooker sensitive marker 14", m14 not in error_log_post),
-            ("error.log SANITIZES and does not leak encoded sensitive marker 15", m15 not in error_log_post),
-            ("error.log SANITIZES and does not leak encoded sensitive upper marker 15B", m15_upper not in error_log_post),
-            ("error.log SANITIZES and does not leak 404 referer marker 16", m16 not in error_log_post),
-            ("error.log confirms pre-emission [REDACTED] substitution in output stream", "[REDACTED]" in error_log_post),
-            ("legacy map regex reproduces encoded %3F classification miss (regression negative)", legacy_missed_encoded),
-            ("corrected map regex classifies encoded %3f and %3F into safe log rendering", corrected_matches_encoded),
+            ("error.log confirms pre-emission [REDACTED] substitution in output stream", "[REDACTED]" in error_log_final),
+
+            # Part D: Actual Rejected-fae Effective-Map Regression Negative
+            ("rejected fae1090 template effective maps leak raw %3f query to access.log (reproduced)", fae_leak_lower_confirmed),
+            ("rejected fae1090 template effective maps leak raw %3F upper query to access.log (reproduced)", fae_leak_upper_confirmed),
+            ("candidate image with corrected maps eliminates raw %3f and %3F leaks from access.log", (m_enc_01 not in access_log_final) and (m_enc_02 not in access_log_final)),
 
             # Part E: Process Lifecycle, Drain & Fail-Closed Contract
             ("container graceful stop completes cleanly within 3s", graceful_stop_ok),
@@ -454,6 +507,11 @@ server.serve_forever()
             ("invalid-start child command preserves unmasked non-zero exit code 1", child_nonzero_exit_ok),
             ("invalid-start child command preserves error diagnostic output", child_nonzero_logged_ok),
         ]
+
+        # Part F: Comprehensive Marker Sanitization Checks (ALL 27 sensitive markers in BOTH streams)
+        for label, marker in all_sensitive_markers:
+            assertions.append((f"access.log does not leak {label}", marker not in access_log_final))
+            assertions.append((f"error.log does not leak {label}", marker not in error_log_final))
 
         passed_count = 0
         failed_count = 0
@@ -479,10 +537,10 @@ server.serve_forever()
             json.dump(results, f, indent=2)
 
         with open(os.path.join(outputs_dir, "effective-access.log"), "w") as f:
-            f.write(access_log_post)
+            f.write(access_log_final)
 
         with open(os.path.join(outputs_dir, "effective-error.log"), "w") as f:
-            f.write(error_log_post)
+            f.write(error_log_final)
 
         print("\n=== Lab Summary ===")
         print(f"Candidate Image: {candidate_image} ({img_inspect[:19]}...)")
