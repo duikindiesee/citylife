@@ -65,13 +65,13 @@ jobs:
           node-version: "24"
       - run: npm ci
       - run: npx playwright install chromium
-      # Pinned server revision: published corrective candidate 33f0336ad8df3ef42314dd2396d3821a4402a7ab
-      # (queryless cookie auth session lifecycle, seated bus authority, parked asset validation, and coherent Sol clock)
+      # Pinned server revision: 0.5.1 release-main 1288068274e633141e9e291b5add61bf0ba14549
+      # (carries PR 20 merge 23548f2c9393f1733381ee227bec3e9fa23996aa: request provenance echoing busId, epoch, and attemptId)
       - name: Check out citylife-server at pinned authoritative revision
         uses: actions/checkout@v7
         with:
           repository: duikindiesee/citylife-server
-          ref: 33f0336ad8df3ef42314dd2396d3821a4402a7ab
+          ref: 1288068274e633141e9e291b5add61bf0ba14549
           token: ${{ secrets.CITYLIFE_SERVER_READ_TOKEN }}
           persist-credentials: false
           path: citylife-server
