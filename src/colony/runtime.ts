@@ -3589,27 +3589,38 @@ export class ColonyRuntime {
       onError: (err) => {
         this.ownedDriveSeated = this.preTransitionSeated;
         this.ownedDriveInput = {};
-        this.fpWaitingBoardingPending = false;
-        if (
-          err?.code?.startsWith("BUS_") ||
+        const isBusBoardingDefinitive =
+          err?.code === "BUS_FULL" ||
           err?.code === "ALREADY_SEATED" ||
-          err?.code === "NOT_SEATED" ||
+          err?.code === "BUS_NOT_FOUND" ||
+          err?.code === "BUS_SEATS_DISABLED" ||
+          err?.code === "TRANSIT_UNAVAILABLE" ||
+          err?.code === "MUST_BE_PEDESTRIAN" ||
+          err?.code === "EPOCH_MISMATCH";
+
+        const isBusBoardingTransient =
+          err?.code === "BUS_NOT_BOARDABLE" ||
           err?.code === "NOT_NEAR_BUS" ||
-          err?.code === "OUT_OF_BOARDING_RANGE" ||
-          err?.code === "EPOCH_MISMATCH" ||
+          err?.code === "OUT_OF_BOARDING_RANGE";
+
+        const isBusActionError =
+          isBusBoardingDefinitive ||
+          isBusBoardingTransient ||
+          err?.code?.startsWith("BUS_") ||
+          err?.code === "NOT_SEATED" ||
           err?.code === "BLOCKED" ||
           err?.code === "ALIGHT_BLOCKED" ||
-          err?.code?.startsWith("ALIGHT_")
-        ) {
+          err?.code?.startsWith("ALIGHT_");
+
+        if (this.fpWaitingBoardingPending && (isBusBoardingDefinitive || isBusBoardingTransient)) {
+          this.fpWaitingBoardingPending = false;
+        }
+
+        if (isBusActionError) {
           this.fpNarrating = false;
           this.fpNarration = err.message || "Bus action unavailable.";
           // BUS.STOP.WAIT.1: Definitive failures cancel waiting intent; transient rejections preserve wait for next opportunity
-          if (
-            err?.code === "BUS_FULL" ||
-            err?.code === "ALREADY_SEATED" ||
-            err?.code === "BUS_NOT_FOUND" ||
-            err?.code === "EPOCH_MISMATCH"
-          ) {
+          if (isBusBoardingDefinitive) {
             this.fpWaitingBusStopIndex = null;
           }
         }

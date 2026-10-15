@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as THREE from "three";
 import { ColonyRuntime } from "../src/colony/runtime";
+import { CITYLIFE_EPOCH_MS } from "../src/colony/sol";
 import { setSolDebugOffsetMs, solNowMs } from "../src/colony/solRuntimeClock";
 import { Pt } from "../src/colony/transit/path";
 import { setupAuthoritativeRuntime } from "./testAuthorityHelper";
@@ -13,7 +14,10 @@ type TransitDriver = { transitTick: () => void };
 const tick = (rt: ColonyRuntime) =>
   (rt as unknown as TransitDriver).transitTick();
 
-afterEach(() => setSolDebugOffsetMs(0));
+afterEach(() => {
+  setSolDebugOffsetMs(0);
+  vi.useRealTimers();
+});
 
 describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting lifecycle", () => {
   it("surfaces stop card and wait prompt when standing near stop pole furniture without dwelling bus", () => {
@@ -391,74 +395,175 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
     expect((rt as any).fpWaitingBusStopIndex).toBeNull();
   });
 
-  it("BUS.STOP.WAIT.1 admission acknowledgement lifecycle: transient vs definitive denials, no flooding, and coherent cancellation", () => {
-    const rt = new ColonyRuntime();
-    rt.setPlayerView(false);
-    tick(rt);
+  it("BUS.STOP.WAIT.1 admission acknowledgement lifecycle: transient vs definitive denials, no flooding, timed backoff, and late admission", () => {
+    vi.useFakeTimers();
+    try {
+      const BASE_WALL_MS = CITYLIFE_EPOCH_MS + 4_756_000;
+      vi.setSystemTime(BASE_WALL_MS);
 
-    const ids = rt.getUiState().firstPerson.stepInCitizenIds;
-    rt.enterFirstPerson(ids[0]!);
+      const rt = new ColonyRuntime();
+      rt.setPlayerView(false);
+      rt.debugSetSolTimeOfDay(12, 0);
+      tick(rt);
 
-    setupAuthoritativeRuntime(rt, { userId: "operator@test.com" });
-    rt.enableMultiplayer("room-1", "ws://synthetic.citylife.invalid/ws");
-    const client = rt.getMultiplayerClient()!;
+      const ids = rt.getUiState().firstPerson.stepInCitizenIds;
+      rt.enterFirstPerson(ids[0]!);
 
-    (client as any).status = "connected";
-    (client as any).currentMode = "walking";
-    (client as any).sessionId = "sess-1";
-    (client as any).participantId = "part-1";
-    (client as any).modeEpoch = 1;
+      setupAuthoritativeRuntime(rt, { userId: "operator@test.com" });
+      rt.enableMultiplayer("room-1", "ws://synthetic.citylife.invalid/ws");
+      const client = rt.getMultiplayerClient()!;
 
-    // Place player at stop 0
-    const anchors = rt.busStopAnchors();
-    const stop0 = anchors[0]!;
-    rt.debugPlaceFirstPerson(stop0.furniture.x, stop0.furniture.y);
-    expect(rt.queueNextBus(0)).toBe(true);
-    expect((rt as any).fpWaitingBusStopIndex).toBe(0);
-    expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      (client as any).status = "connected";
+      (client as any).currentMode = "walking";
+      (client as any).sessionId = "sess-1";
+      (client as any).participantId = "part-1";
+      (client as any).modeEpoch = 1;
 
-    // 1. Transient denial (BUS_NOT_BOARDABLE): clears pending flag but preserves waiting intent
-    (rt as any).fpWaitingBoardingPending = true;
-    (client as any).options.onError?.({
-      code: "BUS_NOT_BOARDABLE",
-      message: "Bus is not dwelling with open doors",
-    });
-    expect((rt as any).fpWaitingBoardingPending).toBe(false);
-    expect((rt as any).fpWaitingBusStopIndex).toBe(0); // Intent retained!
-    expect(rt.getUiState().firstPerson.narration).toBe("Bus is not dwelling with open doors");
+      const sentMessages: any[] = [];
+      (client as any).send = (msg: any) => {
+        sentMessages.push(msg);
+        return true;
+      };
 
-    // 2. Definitive denial (BUS_FULL): clears both pending flag AND waiting intent
-    (rt as any).fpWaitingBoardingPending = true;
-    (client as any).options.onError?.({
-      code: "BUS_FULL",
-      message: "Bus is at full capacity",
-    });
-    expect((rt as any).fpWaitingBoardingPending).toBe(false);
-    expect((rt as any).fpWaitingBusStopIndex).toBeNull(); // Intent cancelled!
+      const anchors = rt.busStopAnchors();
+      const stop0 = anchors[0]!;
 
-    // 3. User cancelBusWait() while pending clears both
-    rt.queueNextBus(0);
-    (rt as any).fpWaitingBoardingPending = true;
-    expect(rt.cancelBusWait()).toBe(true);
-    expect((rt as any).fpWaitingBusStopIndex).toBeNull();
-    expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      // Advance transit clock to find Stop 0 dwell BEFORE arming wait
+      const baseSol = solNowMs();
+      let dwellingOffsetMs = 0;
+      let foundDwellingBusId: number | null = null;
+      for (let i = 0; i < 20000; i++) {
+        dwellingOffsetMs = baseSol + i * 250 - Date.now();
+        setSolDebugOffsetMs(dwellingOffsetMs);
+        tick(rt);
+        for (const b of (rt as any).busFleet.buses) {
+          const p = rt.busPoseOf(b.id);
+          if (p && p.doorsOpen) {
+            const dBusToStop = Math.hypot(p.x - stop0.at.x, p.y - stop0.at.y);
+            if (dBusToStop <= 4.0) {
+              foundDwellingBusId = b.id;
+              break;
+            }
+          }
+        }
+        if (foundDwellingBusId !== null) break;
+      }
+      expect(foundDwellingBusId, "a bus must reach Stop 0 dwell").not.toBeNull();
+      const busId = foundDwellingBusId!;
+      const dwellingSolInstant = solNowMs();
 
-    // 4. Stepping away while pending clears both
-    rt.queueNextBus(0);
-    (rt as any).fpWaitingBoardingPending = true;
-    rt.debugPlaceFirstPerson(stop0.furniture.x + 50, stop0.furniture.y + 50);
-    (rt as any).checkWaitingBusArrival();
-    expect((rt as any).fpWaitingBusStopIndex).toBeNull();
-    expect((rt as any).fpWaitingBoardingPending).toBe(false);
-    expect(rt.getUiState().firstPerson.narration).toContain("Stepped away from stop pole");
+      // Place player at stop 0 and arm wait
+      rt.debugPlaceFirstPerson(stop0.furniture.x, stop0.furniture.y);
+      expect(rt.queueNextBus(0)).toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBe(0);
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
 
-    // 5. Disconnection while pending clears both
-    rt.debugPlaceFirstPerson(stop0.furniture.x, stop0.furniture.y);
-    rt.queueNextBus(0);
-    (rt as any).fpWaitingBoardingPending = true;
-    (client as any).options.onStatusChange?.("disconnected");
-    expect((rt as any).fpWaitingBusStopIndex).toBeNull();
-    expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      // Helper to keep the verified dwelling bus fixture while advancing fake wall clock
+      const tickAtWallTime = (wallMs: number) => {
+        vi.setSystemTime(wallMs);
+        setSolDebugOffsetMs(dwellingSolInstant - Date.now());
+        tick(rt);
+      };
+
+      // 1. Initial board request sent at t = BASE_WALL_MS: pending flag set, waiting intent retained
+      tickAtWallTime(BASE_WALL_MS);
+      expect(sentMessages.length).toBe(1);
+      expect(sentMessages[0]).toMatchObject({ type: "request_board_bus", busId });
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBe(0);
+
+      // 2. Pending suppresses sends: tick at t = BASE_WALL_MS + 500ms does NOT send duplicate
+      tickAtWallTime(BASE_WALL_MS + 500);
+      expect(sentMessages.length).toBe(1);
+
+      // 3. Unrelated error (e.g. driving error) does NOT release pending flag
+      (client as any).options.onError?.({
+        code: "CAR_CONTROLS_LOCKED",
+        message: "Cannot control vehicle",
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBe(0);
+
+      // 4. Transient denial (BUS_NOT_BOARDABLE): clears pending flag but preserves waiting intent
+      (client as any).options.onError?.({
+        code: "BUS_NOT_BOARDABLE",
+        message: "Bus doors closing",
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      expect((rt as any).fpWaitingBusStopIndex).toBe(0); // Intent retained!
+      expect(rt.getUiState().firstPerson.narration).toBe("Bus doors closing");
+
+      // 5. Denial backoff does not retry early: tick at t = BASE_WALL_MS + 600ms (<1000ms since last send) sends nothing
+      tickAtWallTime(BASE_WALL_MS + 600);
+      expect(sentMessages.length).toBe(1);
+
+      // 6. Next opportunity at >=1000ms (t = BASE_WALL_MS + 1005ms) sends once and sets pending
+      tickAtWallTime(BASE_WALL_MS + 1005);
+      expect(sentMessages.length).toBe(2);
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBe(0);
+
+      // 7. 5s pending timeout: if server drops request, timeout clears pending after 5s and retries
+      tickAtWallTime(BASE_WALL_MS + 4000); // 3s later - still pending
+      expect(sentMessages.length).toBe(2);
+      tickAtWallTime(BASE_WALL_MS + 6015); // >5s later - timeout allows retry
+      expect(sentMessages.length).toBe(3);
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+
+      // 8. Definitive denial (BUS_SEATS_DISABLED): clears pending, clears waiting intent, displays narration
+      (client as any).options.onError?.({
+        code: "BUS_SEATS_DISABLED",
+        message: "Bus passenger seats are currently disabled on this server",
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      expect((rt as any).fpWaitingBusStopIndex).toBeNull(); // Definitive failure cancels wait!
+      expect(rt.getUiState().firstPerson.narration).toBe("Bus passenger seats are currently disabled on this server");
+
+      // Cannot loop: subsequent ticks after 1s never re-send because intent is cleared
+      tickAtWallTime(BASE_WALL_MS + 10_000);
+      expect(sentMessages.length).toBe(3);
+
+      // 9. Other definitive denials: TRANSIT_UNAVAILABLE, MUST_BE_PEDESTRIAN
+      rt.queueNextBus(0);
+      (rt as any).fpWaitingBoardingPending = true;
+      (client as any).options.onError?.({
+        code: "TRANSIT_UNAVAILABLE",
+        message: "Transit service unavailable",
+      });
+      expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      expect(rt.getUiState().firstPerson.narration).toBe("Transit service unavailable");
+
+      rt.queueNextBus(0);
+      (rt as any).fpWaitingBoardingPending = true;
+      (client as any).options.onError?.({
+        code: "MUST_BE_PEDESTRIAN",
+        message: "Player must be on foot to board bus",
+      });
+      expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      expect(rt.getUiState().firstPerson.narration).toBe("Player must be on foot to board bus");
+
+      // 10. Local cancel stops future retries, but valid late server admission still commits seat
+      rt.queueNextBus(0);
+      tickAtWallTime(BASE_WALL_MS + 20_000);
+      expect(sentMessages.length).toBe(4); // In-flight request #4 sent
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+
+      // Player clicks cancel locally: stops future client retries
+      expect(rt.cancelBusWait()).toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+
+      // Authoritative server was already processing request #4 and admits player:
+      // Client cannot locally undo or discard valid server occupancy
+      (client as any).options.onBusBoarded?.({ busId, seatIndex: 4 });
+      expect(rt.fpRidingBusId).toBe(busId);
+      expect(rt.fpRidingSeatIndex).toBe(4);
+      expect(rt.getUiState().firstPerson.narration).toContain(`You board Bus ${busId + 1}`);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("seated crab transform matches production bus renderer coordinates and seat slots", () => {
