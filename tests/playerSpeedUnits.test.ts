@@ -10,6 +10,7 @@ import {
   PLAYER_WALK_SPEED_MPS,
   mpsToCellsPerSec,
 } from "../src/colony/scale";
+import { wireHeadingToCameraYaw } from "../src/colony/playerOrientation";
 import {
   MAX_LOCOMOTION_DT,
   advanceSprintCharge,
@@ -38,11 +39,11 @@ const UNCONVERTED_MPS = PLAYER_WALK_SPEED_MPS * CELL_SIZE; // 13.6 — the shipp
 const CAPSULE_SRC: string = capsuleSource;
 const RUNTIME_SRC: string = runtimeSource;
 
-/** Walk the real runtime in a straight line and return metres covered per real second, measured
- *  from the CELL displacement of the roster twin — the units the twin actually stores. */
-function measureTwinMps(opts: { onRoad: boolean; sprint: boolean }): number {
-  const rt = new ColonyRuntime(4242);
-  const me = rt.getUiState().citizens.list[0]!;
+/** Find a clear lane of length LANE in x for the requested surface (road or off-road). */
+function findClearLane(
+  rt: ColonyRuntime,
+  onRoad: boolean,
+): { x: number; y: number } {
   const terrain = rt.sim.state.terrain;
   const roadSet = rt.sim.state.roadSet;
   const key = (x: number, y: number) => `${x},${y}`;
@@ -59,40 +60,116 @@ function measureTwinMps(opts: { onRoad: boolean; sprint: boolean }): number {
     for (let i = 0; i <= LANE; i++) {
       if (x + i >= terrain.size - 1) return false;
       if (blocked(x + i, y)) return false;
-      if (roadSet.has(key(x + i, y)) !== opts.onRoad) return false;
+      if (roadSet.has(key(x + i, y)) !== onRoad) return false;
     }
     return true;
   };
-  let start: { x: number; y: number } | null = null;
-  for (let y = 1; y < terrain.size - 1 && !start; y++) {
-    for (let x = 1; x < terrain.size - LANE - 2 && !start; x++) {
-      if (laneOk(x, y)) start = { x, y };
+  for (let y = 1; y < terrain.size - 1; y++) {
+    for (let x = 1; x < terrain.size - LANE - 2; x++) {
+      if (laneOk(x, y)) return { x, y };
     }
   }
-  if (!start)
-    throw new Error(
-      `test terrain needs a clear ${opts.onRoad ? "road" : "off-road"} lane`,
-    );
+  throw new Error(
+    `test terrain needs a clear ${onRoad ? "road" : "off-road"} lane`,
+  );
+}
 
-  rt.enterFirstPerson(me.id);
+/** Walk the real runtime in a straight line and return metres covered per real second, measured
+ *  from the CELL displacement of the roster twin — the units the twin actually stores. */
+function measureTwinMps(opts: { onRoad: boolean; sprint: boolean }): number {
+  const rt = new ColonyRuntime(4242);
+  const me = rt.getUiState().citizens.list[0]!;
+  const start = findClearLane(rt, opts.onRoad);
+
+  expect(rt.enterFirstPerson(me.id)).toBe(true);
   expect(rt.placeFirstPersonDogfood(start, 0)).toBe(true);
-  rt.setFpKey("KeyW", true);
-  if (opts.sprint) rt.setFpKey("ShiftLeft", true);
-  // Saturate the acceleration ramp first (PLAYER_WALK_SPEED_MPS / walkAcceleration = 0.34 s), so
-  // what follows is steady-state speed and not the ramp.
-  const TICK = 0.02;
-  for (let i = 0; i < 25; i++) rt.stepFirstPersonDogfood(TICK);
-  const before = { ...rt.getUiState().firstPerson.view!.citizen.positionXY };
-  const TICKS = 5;
-  for (let i = 0; i < TICKS; i++) rt.stepFirstPersonDogfood(TICK);
-  const after = rt.getUiState().firstPerson.view!.citizen.positionXY;
-  rt.setFpKey("KeyW", false);
-  rt.setFpKey("ShiftLeft", false);
+  try {
+    rt.setFpKey("KeyW", true);
+    if (opts.sprint) rt.setFpKey("ShiftLeft", true);
+    // Saturate the acceleration ramp first (PLAYER_WALK_SPEED_MPS / walkAcceleration = 0.34 s), so
+    // what follows is steady-state speed and not the ramp.
+    const TICK = 0.02;
+    for (let i = 0; i < 25; i++) rt.stepFirstPersonDogfood(TICK);
+    const before = { ...rt.getUiState().firstPerson.view!.citizen.positionXY };
+    const TICKS = 5;
+    for (let i = 0; i < TICKS; i++) rt.stepFirstPersonDogfood(TICK);
+    const after = rt.getUiState().firstPerson.view!.citizen.positionXY;
+    expect(rt.getUiState().firstPerson.blockedReason).toBeNull();
+
+    const cells = Math.hypot(after.x - before.x, after.y - before.y);
+    // cells -> metres, then per real second. THIS is the conversion under test.
+    return (cells * CELL_SIZE) / (TICK * TICKS);
+  } finally {
+    rt.setFpKey("KeyW", false);
+    rt.setFpKey("ShiftLeft", false);
+  }
+}
+
+/** Complete production reset before each measured scenario on an existing runtime, asserting that
+ *  all first-person mutable state is cleanly cleared. */
+function resetAndMeasureTwinScenario(
+  rt: ColonyRuntime,
+  citizenId: string,
+  opts: { onRoad: boolean; sprint: boolean },
+): number {
+  const start = findClearLane(rt, opts.onRoad);
+
+  // 1. Complete production reset
+  rt.exitFirstPerson();
+  expect(rt.enterFirstPerson(citizenId)).toBe(true);
+  expect(rt.placeFirstPersonDogfood(start, 0)).toBe(true);
+
+  // 2. Verify current implementations still clear keys, camera override/cell, speed, sprint charge,
+  // target/position, yaw/pitch, guidance and blocked state.
+  const anyRt = rt as any;
+  expect(anyRt.fpKeys.size).toBe(0);
+  expect(anyRt.fpCameraCell).toBeNull();
+  expect(anyRt.fpWalkSpeed).toBe(0);
+  expect(anyRt.fpSprintCharge).toBe(1);
+  expect(rt.getUiState().firstPerson.sprintCharge).toBe(100);
+
+  const uiView = rt.getUiState().firstPerson.view;
+  expect(uiView).not.toBeNull();
+  expect(uiView!.citizen.positionXY.x).toBe(start.x);
+  expect(uiView!.citizen.positionXY.y).toBe(start.y);
+
+  const citizen = anyRt.citizens.byId(citizenId);
+  expect(citizen).toBeDefined();
+  expect(citizen.pos.x).toBe(start.x);
+  expect(citizen.pos.y).toBe(start.y);
+  expect(citizen.target.x).toBe(start.x);
+  expect(citizen.target.y).toBe(start.y);
+
+  expect(uiView!.citizen.heading).toBe(0);
+  expect(anyRt.fpCameraYaw).toBeCloseTo(wireHeadingToCameraYaw(0));
+  expect(anyRt.fpLookPitch).toBe(0);
+  expect(rt.getUiState().firstPerson.lookPitch).toBe(0);
+
+  expect(anyRt.fpGuidedTarget).toBeNull();
+  expect(rt.getUiState().firstPerson.guidedTarget).toBeNull();
+
+  expect(anyRt.fpBlockedReason).toBeNull();
   expect(rt.getUiState().firstPerson.blockedReason).toBeNull();
 
-  const cells = Math.hypot(after.x - before.x, after.y - before.y);
-  // cells -> metres, then per real second. THIS is the conversion under test.
-  return (cells * CELL_SIZE) / (TICK * TICKS);
+  // 3. Drive steady-state with keys released in finally
+  try {
+    rt.setFpKey("KeyW", true);
+    if (opts.sprint) rt.setFpKey("ShiftLeft", true);
+
+    const TICK = 0.02;
+    for (let i = 0; i < 25; i++) rt.stepFirstPersonDogfood(TICK);
+    const before = { ...rt.getUiState().firstPerson.view!.citizen.positionXY };
+    const TICKS = 5;
+    for (let i = 0; i < TICKS; i++) rt.stepFirstPersonDogfood(TICK);
+    const after = rt.getUiState().firstPerson.view!.citizen.positionXY;
+    expect(rt.getUiState().firstPerson.blockedReason).toBeNull();
+
+    const cells = Math.hypot(after.x - before.x, after.y - before.y);
+    return (cells * CELL_SIZE) / (TICK * TICKS);
+  } finally {
+    rt.setFpKey("KeyW", false);
+    rt.setFpKey("ShiftLeft", false);
+  }
 }
 
 describe("spec 165 — one speed anchor, in metres, for both movement paths", () => {
@@ -117,17 +194,49 @@ describe("spec 165 — one speed anchor, in metres, for both movement paths", ()
   });
 
   it("applies the road and sprint multipliers to the twin in the same metres", () => {
-    for (const [onRoad, sprint] of [
+    const rt = new ColonyRuntime(4242);
+    const me = rt.getUiState().citizens.list[0]!;
+
+    const scenarios = [
       [true, false],
       [false, true],
       [true, true],
-    ] as const) {
-      const measured = measureTwinMps({ onRoad, sprint });
+    ] as const;
+
+    // Forward order run with complete reset before each scenario
+    const forwardMeasured: number[] = [];
+    for (const [onRoad, sprint] of scenarios) {
+      const measured = resetAndMeasureTwinScenario(rt, me.id, { onRoad, sprint });
       expect(measured).toBeCloseTo(
         playerGroundSpeedMps({ onRoad, sprinting: sprint }),
         3,
       );
+      forwardMeasured.push(measured);
     }
+
+    // Repeat the same three scenarios in reverse order with the reset and compare measured outcomes
+    // to establish order independence without another world construction.
+    const reverseScenarios = [
+      [true, true],
+      [false, true],
+      [true, false],
+    ] as const;
+
+    const reverseMeasured: number[] = [];
+    for (const [onRoad, sprint] of reverseScenarios) {
+      const measured = resetAndMeasureTwinScenario(rt, me.id, { onRoad, sprint });
+      expect(measured).toBeCloseTo(
+        playerGroundSpeedMps({ onRoad, sprinting: sprint }),
+        3,
+      );
+      reverseMeasured.push(measured);
+    }
+
+    // Order independence: reverse scenarios [true, true], [false, true], [true, false]
+    // must match forward scenarios [true, true], [false, true], [true, false]
+    expect(reverseMeasured[0]).toBeCloseTo(forwardMeasured[2], 6);
+    expect(reverseMeasured[1]).toBeCloseTo(forwardMeasured[1], 6);
+    expect(reverseMeasured[2]).toBeCloseTo(forwardMeasured[0], 6);
   });
 
   it("computes the CAPSULE's speed from the same shared model, in metres", () => {
