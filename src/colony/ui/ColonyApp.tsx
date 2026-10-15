@@ -17,7 +17,7 @@ import {
   type FirstPersonMouseSensitivity,
 } from "../runtime";
 import { isPublicSafe, type HouseholdOverrides } from "../newcomers";
-import { AuthClient, canEnterCityBuilder } from "../authClient";
+import { AuthClient, getAuthClient, canEnterCityBuilder } from "../authClient";
 // PLAYER.FLAG.S3 — the fail-closed, default-OFF new-player-journey entitlement (gates the garage
 // showroom entry and every future journey-only action on the server allowlist).
 import {
@@ -752,12 +752,12 @@ export function SignedOutFallbackView() {
 
 export function createColonyLogoutHandler({
   runtime,
-  auth,
+  auth = getAuthClient(),
   setLoggedOut,
   onReload = () => window.location.reload(),
 }: {
   runtime: ColonyRuntime;
-  auth: AuthClient;
+  auth?: AuthClient;
   setLoggedOut: (loggedOut: boolean) => void;
   onReload?: () => void;
 }) {
@@ -777,11 +777,11 @@ export function createColonyLogoutHandler({
   };
 }
 
-export function ColonyApp() {
+export function ColonyApp({ auth: propAuth }: { auth?: AuthClient } = {}) {
   const { builderActive, worldViewActive } = useRoadNetwork();
   const runtime = useRuntime();
   const [, forceRuntimeRender] = useReducer((x) => x + 1, 0);
-  const auth = useMemo(() => new AuthClient(), []);
+  const auth = useMemo(() => propAuth ?? getAuthClient(), [propAuth]);
   const operatorUserId = auth.operator?.userId ?? null;
   const [loggedOut, setLoggedOut] = useState(false);
 

@@ -2,7 +2,16 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ColonyRuntime } from "../src/colony/runtime";
-import { AuthClient, KOOKER_COOKIE_PATH, KOOKER_COOKIE_ALIAS_PATH, KOOKER_CLEAR_PATH, KOOKER_CLEAR_ALIAS_PATH } from "../src/colony/authClient";
+import {
+  AuthClient,
+  getAuthClient,
+  resetSharedAuthClient,
+  KOOKER_REFRESH_PATH,
+  KOOKER_COOKIE_PATH,
+  KOOKER_COOKIE_ALIAS_PATH,
+  KOOKER_CLEAR_PATH,
+  KOOKER_CLEAR_ALIAS_PATH,
+} from "../src/colony/authClient";
 import { setupAuthoritativeRuntime, makeSessionJoinedAck } from "./testAuthorityHelper";
 import { createColonyLogoutHandler, SignedOutFallbackView } from "../src/colony/ui/ColonyApp";
 
@@ -50,6 +59,7 @@ describe("Client Cookie Transport & BFF Lifecycle Integration", () => {
   let fetchHistory: { url: string; method?: string; credentials?: RequestCredentials; auth?: string }[] = [];
 
   beforeEach(() => {
+    resetSharedAuthClient();
     MockWebSocket.instances = [];
     fetchHistory = [];
     try {
@@ -60,6 +70,7 @@ describe("Client Cookie Transport & BFF Lifecycle Integration", () => {
   });
 
   afterEach(() => {
+    resetSharedAuthClient();
     vi.unstubAllGlobals();
     vi.stubGlobal("WebSocket", MockWebSocket);
   });
@@ -593,5 +604,125 @@ describe("Client Cookie Transport & BFF Lifecycle Integration", () => {
     // Production narration must surface the rejection message to the player
     const uiState = runtime.getUiState();
     expect(uiState.firstPerson.narration).toBe("Exit path is blocked by another passenger");
+  });
+
+  it("proves production ColonyApp logout handler coordinates with shared getAuthClient and fences in-flight refresh so cookie is not resurrected", async () => {
+    resetSharedAuthClient();
+    let testClock = 1_000_000_000;
+    const tokenA = fakeJwt(testClock + 3600_000, "operator@test.com");
+    const tokenA2 = fakeJwt(testClock + 7200_000, "operator@test.com");
+    const cookieEvents: string[] = [];
+    let resolveRefresh: (() => void) | null = null;
+    let resolveClear: (() => void) | null = null;
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "Operator" } }),
+        };
+      }
+      if (url === KOOKER_REFRESH_PATH) {
+        cookieEvents.push("start:refresh");
+        return new Promise((resolve) => {
+          resolveRefresh = () => {
+            cookieEvents.push("finish:refresh");
+            resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ accessToken: tokenA2, refreshToken: "refrA2" }),
+            });
+          };
+        });
+      }
+      if (url === KOOKER_CLEAR_PATH) {
+        cookieEvents.push("start:clear");
+        return new Promise((resolve) => {
+          resolveClear = () => {
+            cookieEvents.push("finish:clear");
+            resolve({ ok: true, status: 200, json: async () => ({}) });
+          };
+        });
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const sub = auth.includes(tokenA) ? "initial" : auth.includes(tokenA2) ? "renewed" : "unknown";
+        cookieEvents.push(`issue:${sub}`);
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const sharedAuth = getAuthClient({ now: () => testClock });
+    await sharedAuth.login("operator@test.com", "valid-password");
+    expect(cookieEvents).toEqual(["issue:initial"]);
+    expect(sharedAuth.isAuthenticated).toBe(true);
+
+    const runtime = new ColonyRuntime(42);
+    runtime.setAuthClient(sharedAuth);
+    runtime.setOperatorUserId("operator@test.com");
+    setupAuthoritativeRuntime(runtime);
+
+    runtime.enableMultiplayer("room-bff", "ws://127.0.0.1:8080/api/v1/citylife/ws");
+    const mpClient = runtime.getMultiplayerClient()!;
+    await mpClient.connect();
+    const activeWs = MockWebSocket.instances[MockWebSocket.instances.length - 1]!;
+    activeWs.onopen?.();
+    expect(cookieEvents).toEqual(["issue:initial", "issue:initial"]);
+
+    // Advance controllable test clock past token expiry and trigger in-flight refresh on shared authority
+    testClock += 3600_000 + 10_000;
+    const refreshPromise = sharedAuth.getValidToken();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(cookieEvents).toEqual(["issue:initial", "issue:initial", "start:refresh"]);
+
+    let loggedOutState = false;
+    let reloadTriggered = false;
+
+    // Production consumer wiring: createColonyLogoutHandler uses shared getAuthClient by default
+    const executeLogout = createColonyLogoutHandler({
+      runtime,
+      // auth omitted: defaults to getAuthClient()
+      setLoggedOut: (val) => {
+        loggedOutState = val;
+      },
+      onReload: () => {
+        reloadTriggered = true;
+      },
+    });
+
+    // Trigger logout through production handler while refresh is in flight
+    const logoutPromise = executeLogout();
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(loggedOutState).toBe(true);
+    expect(sharedAuth.isAuthenticated).toBe(false);
+    expect(runtime.getMultiplayerClient()).toBeNull();
+    expect(cookieEvents).toEqual(["issue:initial", "issue:initial", "start:refresh", "start:clear"]);
+
+    // Settle clear
+    resolveClear!();
+    await logoutPromise;
+    expect(reloadTriggered).toBe(true);
+    expect(cookieEvents).toEqual(["issue:initial", "issue:initial", "start:refresh", "start:clear", "finish:clear"]);
+
+    // Settle in-flight refresh now
+    resolveRefresh!();
+    const refreshed = await refreshPromise;
+
+    // Verify: refresh was fenced out, returned null, and did NOT reissue cookie
+    expect(refreshed).toBeNull();
+    expect(sharedAuth.isAuthenticated).toBe(false);
+    expect(cookieEvents).toEqual([
+      "issue:initial",
+      "issue:initial",
+      "start:refresh",
+      "start:clear",
+      "finish:clear",
+      "finish:refresh",
+    ]);
+    expect(cookieEvents).not.toContain("issue:renewed");
+    resetSharedAuthClient();
   });
 });

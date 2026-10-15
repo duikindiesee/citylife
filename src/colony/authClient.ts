@@ -120,7 +120,7 @@ export function classifyLoginFailure(
 const STORAGE_KEY = "citylife.session.v5";
 const SESSION_MS = 1000 * 60 * 60 * 8; // 8 h fallback if JWT has no exp
 const KOOKER_AUTH_PATH = "/kooker/api/auth/basic";
-const KOOKER_REFRESH_PATH = "/kooker/api/auth/refresh";
+export const KOOKER_REFRESH_PATH = "/kooker/api/auth/refresh";
 export const KOOKER_COOKIE_PATH = "/api/v1/citylife/auth/cookie";
 export const KOOKER_COOKIE_ALIAS_PATH = "/kooker/api/v1/citylife/auth/cookie";
 export const KOOKER_CLEAR_PATH = "/api/v1/citylife/auth/clear";
@@ -213,9 +213,23 @@ function isDevBuild(): boolean {
 /** Process-wide AuthClient shared by the login gate and the bot inference adapter, so the player's
  *  session JWT (and its refresh) is the single source of truth for who is calling kooker inference. */
 let sharedAuth: AuthClient | null = null;
-export function getAuthClient(): AuthClient {
-  if (!sharedAuth) sharedAuth = new AuthClient();
+const activeAuthClients = new Set<AuthClient>();
+
+let globalActiveIssueController: AbortController | null = null;
+let globalActiveClearController: AbortController | null = null;
+let globalCookieOpChain: Promise<any> = Promise.resolve();
+
+export function getAuthClient(opts?: { now?: () => number }): AuthClient {
+  if (!sharedAuth) sharedAuth = new AuthClient(opts);
   return sharedAuth;
+}
+
+export function resetSharedAuthClient(): void {
+  if (sharedAuth) {
+    sharedAuth.invalidateInstance();
+    activeAuthClients.delete(sharedAuth);
+    sharedAuth = null;
+  }
 }
 
 export class AuthClient {
@@ -229,7 +243,28 @@ export class AuthClient {
 
   constructor(opts?: { now?: () => number }) {
     this.now = opts?.now ?? (() => Date.now());
+    activeAuthClients.add(this);
     this.restore();
+  }
+
+  dispose(): void {
+    activeAuthClients.delete(this);
+  }
+
+  /** Synchronously clear this instance's session, increment generation, abort active issue, and cancel in-flight refresh. */
+  invalidateInstance(): void {
+    this.session = null;
+    this.sessionGeneration++;
+    this.refreshInFlight = null;
+    if (this.activeIssueController) {
+      this.activeIssueController.abort();
+      this.activeIssueController = null;
+    }
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* no storage */
+    }
   }
 
   get isAuthenticated(): boolean {
@@ -307,10 +342,15 @@ export class AuthClient {
         this.activeClearController.abort();
         this.activeClearController = null;
       }
+      if (globalActiveClearController) {
+        globalActiveClearController.abort();
+        globalActiveClearController = null;
+      }
       if (this.activeIssueController) {
         this.activeIssueController.abort();
         this.activeIssueController = null;
       }
+      this.refreshInFlight = null;
       this.session = {
         token,
         refreshToken: data.refreshToken,
@@ -323,6 +363,20 @@ export class AuthClient {
         },
       };
       this.persist();
+
+      // Synchronize/invalidate other active instances so they reflect the new session and abort stale refreshes
+      for (const client of activeAuthClients) {
+        if (client !== this) {
+          client.sessionGeneration++;
+          client.refreshInFlight = null;
+          if (client.activeIssueController) {
+            client.activeIssueController.abort();
+            client.activeIssueController = null;
+          }
+          client.session = this.session;
+        }
+      }
+
       try {
         await this.issueCookieSession(token);
       } catch {
@@ -357,16 +411,16 @@ export class AuthClient {
   }
 
   async logout(): Promise<boolean> {
-    this.session = null;
-    this.sessionGeneration++;
-    try {
-      sessionStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* no storage */
+    this.invalidateInstance();
+    // Coordinate process-wide invalidation across all active AuthClient instances
+    for (const client of activeAuthClients) {
+      if (client !== this) {
+        client.invalidateInstance();
+      }
     }
-    if (this.activeIssueController) {
-      this.activeIssueController.abort();
-      this.activeIssueController = null;
+    if (globalActiveIssueController) {
+      globalActiveIssueController.abort();
+      globalActiveIssueController = null;
     }
     return this.clearCookieSession();
   }
@@ -392,6 +446,10 @@ export class AuthClient {
         this.activeClearController.abort();
         this.activeClearController = null;
       }
+      if (globalActiveClearController) {
+        globalActiveClearController.abort();
+        globalActiveClearController = null;
+      }
 
       if (this.activeIssueController) {
         this.activeIssueController.abort();
@@ -400,6 +458,7 @@ export class AuthClient {
 
       const controller = new AbortController();
       this.activeIssueController = controller;
+      globalActiveIssueController = controller;
 
       try {
         const paths = [KOOKER_COOKIE_PATH, KOOKER_COOKIE_ALIAS_PATH];
@@ -433,11 +492,17 @@ export class AuthClient {
         if (this.activeIssueController === controller) {
           this.activeIssueController = null;
         }
+        if (globalActiveIssueController === controller) {
+          globalActiveIssueController = null;
+        }
       }
     };
 
-    const nextOp = this.cookieOpChain.catch(() => {}).then(run);
+    const nextOp = Promise.all([this.cookieOpChain, globalCookieOpChain])
+      .catch(() => {})
+      .then(run);
     this.cookieOpChain = nextOp;
+    globalCookieOpChain = nextOp;
     return nextOp;
   }
 
@@ -455,6 +520,10 @@ export class AuthClient {
       this.activeIssueController.abort();
       this.activeIssueController = null;
     }
+    if (globalActiveIssueController) {
+      globalActiveIssueController.abort();
+      globalActiveIssueController = null;
+    }
 
     const run = async (): Promise<boolean> => {
       if (this.sessionGeneration !== opGen) {
@@ -468,6 +537,7 @@ export class AuthClient {
 
       const controller = new AbortController();
       this.activeClearController = controller;
+      globalActiveClearController = controller;
 
       // Bound actual clear settlement/abort through supported lifecycle
       const timeoutId = setTimeout(() => {
@@ -504,11 +574,17 @@ export class AuthClient {
         if (this.activeClearController === controller) {
           this.activeClearController = null;
         }
+        if (globalActiveClearController === controller) {
+          globalActiveClearController = null;
+        }
       }
     };
 
-    const nextOp = this.cookieOpChain.catch(() => {}).then(run);
+    const nextOp = Promise.all([this.cookieOpChain, globalCookieOpChain])
+      .catch(() => {})
+      .then(run);
     this.cookieOpChain = nextOp;
+    globalCookieOpChain = nextOp;
     return nextOp;
   }
 
@@ -537,43 +613,109 @@ export class AuthClient {
   /** Exchange the refresh token for a fresh access token. Dedupes concurrent calls. */
   private refresh(): Promise<string | null> {
     if (this.refreshInFlight) return this.refreshInFlight;
-    const refreshToken = this.session?.refreshToken;
-    if (!refreshToken) return Promise.resolve(null);
+    const initiatingSession = this.session;
+    if (!initiatingSession) return Promise.resolve(null);
+    const initiatingRefreshToken = initiatingSession.refreshToken;
+    if (!initiatingRefreshToken) return Promise.resolve(null);
+
+    const initiatingGen = this.sessionGeneration;
+    const initiatingToken = initiatingSession.token;
+    const initiatingUserId = initiatingSession.operator.userId;
+    const initiatingOperatorId = initiatingSession.operator.id;
+
+    const isInitiatingCurrent = (): boolean => {
+      if (this.sessionGeneration !== initiatingGen) return false;
+      if (!this.session) return false;
+      if (this.session.token !== initiatingToken) return false;
+      if (this.session.refreshToken !== initiatingRefreshToken) return false;
+      if (this.session.operator.userId !== initiatingUserId) return false;
+      if (this.session.operator.id !== initiatingOperatorId) return false;
+      return true;
+    };
+
     this.refreshInFlight = (async () => {
       try {
         const resp = await fetch(KOOKER_REFRESH_PATH, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refreshToken }),
+          body: JSON.stringify({ refreshToken: initiatingRefreshToken }),
         });
-        if (!resp.ok) {
-          // Refresh token expired/revoked — clear the session so the gate shows login again.
-          if (resp.status === 401 || resp.status === 403) await this.logout();
+
+        // Fence 1: Post-fetch await
+        if (!isInitiatingCurrent()) {
           return null;
         }
+
+        if (!resp.ok) {
+          // Refresh token expired/revoked — clear the session so the gate shows login again,
+          // strictly fenced so a stale 401/403 failure cannot log out a newer session or B login.
+          if (resp.status === 401 || resp.status === 403) {
+            if (isInitiatingCurrent()) {
+              await this.logout();
+            }
+          }
+          return null;
+        }
+
         const data = (await resp.json()) as {
           accessToken?: string;
           refreshToken?: string;
         };
-        if (!data.accessToken || !this.session) return null;
+
+        // Fence 2: Post-json await
+        if (!isInitiatingCurrent() || !data.accessToken) {
+          return null;
+        }
+
         const expFromJwt = jwtExpiresAt(data.accessToken);
+        if (!isInitiatingCurrent()) return null;
+
         this.session = {
-          ...this.session,
+          ...this.session!,
           token: data.accessToken,
-          refreshToken: data.refreshToken ?? this.session.refreshToken,
+          refreshToken: data.refreshToken ?? this.session!.refreshToken,
           expiresAt: expFromJwt > 0 ? expFromJwt : this.now() + SESSION_MS,
         };
         this.persist();
+
+        // Synchronize refreshed session across active instances so they stay consistent
+        for (const client of activeAuthClients) {
+          if (client !== this) {
+            client.sessionGeneration++;
+            client.refreshInFlight = null;
+            if (client.activeIssueController) {
+              client.activeIssueController.abort();
+              client.activeIssueController = null;
+            }
+            client.session = this.session;
+          }
+        }
+
+        const isUpdatedCurrent = (): boolean => {
+          if (this.sessionGeneration !== initiatingGen) return false;
+          if (!this.session) return false;
+          if (this.session.token !== data.accessToken) return false;
+          if (this.session.operator.userId !== initiatingUserId) return false;
+          if (this.session.operator.id !== initiatingOperatorId) return false;
+          return true;
+        };
+
+        // Fence 3: Post-refresh cookie issuance
         try {
-          await this.issueCookieSession(data.accessToken);
+          if (isUpdatedCurrent()) {
+            await this.issueCookieSession(data.accessToken);
+          }
         } catch {
           /* best-effort in tests/offline */
         }
-        return data.accessToken;
+
+        return isUpdatedCurrent() ? data.accessToken : null;
       } catch {
         return null;
       } finally {
-        this.refreshInFlight = null;
+        if (this.sessionGeneration === initiatingGen) {
+          this.refreshInFlight = null;
+        }
       }
     })();
     return this.refreshInFlight;

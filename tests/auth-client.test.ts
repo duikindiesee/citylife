@@ -4,10 +4,13 @@ import {
   basicAuth,
   canEnterCityBuilder,
   classifyLoginFailure,
+  KOOKER_REFRESH_PATH,
   KOOKER_COOKIE_PATH,
   KOOKER_COOKIE_ALIAS_PATH,
   KOOKER_CLEAR_PATH,
   KOOKER_CLEAR_ALIAS_PATH,
+  getAuthClient,
+  resetSharedAuthClient,
 } from "../src/colony/authClient";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -76,6 +79,7 @@ function mockFetchFail403Body(body: { message?: string; code?: string }) {
 }
 
 beforeEach(() => {
+  resetSharedAuthClient();
   try {
     localStorage.clear();
   } catch {
@@ -88,7 +92,10 @@ beforeEach(() => {
   }
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  resetSharedAuthClient();
+  vi.unstubAllGlobals();
+});
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -976,5 +983,532 @@ describe("AuthClient (BFF cookie and clear session sync)", () => {
     expect(a.isAuthenticated).toBe(true);
     expect(a.operator?.id).toBe("userB@test.com");
     expect(events).toEqual(["issue:userA", "start:clear", "abort:clear", "issue:userB"]);
+  });
+
+  it("fences in-flight refresh so post-clear settlement never resurrects cookie session", async () => {
+    let now = 1_000_000_000;
+    const tokenA = fakeJwt(now + 1000, "userA@test.com");
+    const tokenA2 = fakeJwt(now + 3600_000, "userA@test.com");
+    const events: string[] = [];
+    let resolveRefresh: (() => void) | null = null;
+    let resolveClear: (() => void) | null = null;
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@test.com" } }),
+        };
+      }
+      if (url === KOOKER_REFRESH_PATH) {
+        events.push("start:refresh");
+        return new Promise((resolve) => {
+          resolveRefresh = () => {
+            events.push("finish:refresh");
+            resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ accessToken: tokenA2, refreshToken: "refrA2" }),
+            });
+          };
+        });
+      }
+      if (url === KOOKER_CLEAR_PATH) {
+        events.push("start:clear");
+        return new Promise((resolve) => {
+          resolveClear = () => {
+            events.push("finish:clear");
+            resolve({ ok: true, status: 200, json: async () => ({}) });
+          };
+        });
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const sub = auth.includes(tokenA) ? "initial" : auth.includes(tokenA2) ? "renewed" : "unknown";
+        events.push(`issue:${sub}`);
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient({ now: () => now });
+    await a.login("userA@test.com", "pw");
+    expect(events).toEqual(["issue:initial"]);
+    expect(a.isAuthenticated).toBe(true);
+
+    // Fast-forward so token expires and triggers refresh
+    now += 5000;
+    const refreshPromise = a.getValidToken();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events).toEqual(["issue:initial", "start:refresh"]);
+
+    // User logs out while refresh is in flight
+    const logoutPromise = a.logout();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events).toEqual(["issue:initial", "start:refresh", "start:clear"]);
+    expect(a.isAuthenticated).toBe(false);
+
+    // Settle clear
+    resolveClear!();
+    await logoutPromise;
+    expect(events).toEqual(["issue:initial", "start:refresh", "start:clear", "finish:clear"]);
+
+    // Settle stale refresh now
+    resolveRefresh!();
+    const refreshedToken = await refreshPromise;
+
+    // Verify: stale refresh was fenced out, returned null, and did NOT reissue cookie
+    expect(refreshedToken).toBeNull();
+    expect(a.isAuthenticated).toBe(false);
+    expect(a.operator).toBeNull();
+    expect(events).toEqual([
+      "issue:initial",
+      "start:refresh",
+      "start:clear",
+      "finish:clear",
+      "finish:refresh",
+    ]);
+    expect(events).not.toContain("issue:renewed");
+  });
+
+  it("fences in-flight refresh so stale A refresh success after B login never overwrites B token or issues A cookie", async () => {
+    let now = 1_000_000_000;
+    const tokenA = fakeJwt(now + 1000, "userA@test.com");
+    const tokenA2 = fakeJwt(now + 3600_000, "userA@test.com");
+    const tokenB = fakeJwt(now + 3600_000, "userB@test.com");
+    const events: string[] = [];
+    let resolveRefresh: (() => void) | null = null;
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
+        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tok, refreshToken: `refr_${email}`, user: { name: email } }),
+        };
+      }
+      if (url === KOOKER_REFRESH_PATH) {
+        events.push("start:refresh:userA");
+        return new Promise((resolve) => {
+          resolveRefresh = () => {
+            events.push("finish:refresh:userA");
+            resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ accessToken: tokenA2, refreshToken: "refrA2" }),
+            });
+          };
+        });
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const sub = auth.includes(tokenA) ? "userA" : auth.includes(tokenA2) ? "userA2" : "userB";
+        events.push(`issue:${sub}`);
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient({ now: () => now });
+    await a.login("userA@test.com", "pw");
+    expect(events).toEqual(["issue:userA"]);
+
+    // Trigger refresh for user A
+    now += 5000;
+    const refreshAPromise = a.getValidToken();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events).toEqual(["issue:userA", "start:refresh:userA"]);
+
+    // User B logs in while A's refresh is still pending
+    await a.login("userB@test.com", "pw");
+    expect(events).toEqual(["issue:userA", "start:refresh:userA", "issue:userB"]);
+    expect(a.operator?.id).toBe("userB@test.com");
+    expect(a.authHeader()).toEqual({ Authorization: `Bearer ${tokenB}` });
+
+    // Settle stale A refresh with 200 OK
+    resolveRefresh!();
+    const tokenFromStaleA = await refreshAPromise;
+
+    // Verify: stale A was fenced out, user B is completely preserved, no userA2 cookie issued
+    expect(tokenFromStaleA).toBeNull();
+    expect(a.isAuthenticated).toBe(true);
+    expect(a.operator?.id).toBe("userB@test.com");
+    expect(a.authHeader()).toEqual({ Authorization: `Bearer ${tokenB}` });
+    expect(events).toEqual([
+      "issue:userA",
+      "start:refresh:userA",
+      "issue:userB",
+      "finish:refresh:userA",
+    ]);
+    expect(events).not.toContain("issue:userA2");
+  });
+
+  it("fences in-flight refresh so stale A 401/403 failure after B login never logs out User B", async () => {
+    let now = 1_000_000_000;
+    const tokenA = fakeJwt(now + 1000, "userA@test.com");
+    const tokenB = fakeJwt(now + 3600_000, "userB@test.com");
+    const events: string[] = [];
+    let resolveRefresh: (() => void) | null = null;
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
+        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tok, refreshToken: `refr_${email}`, user: { name: email } }),
+        };
+      }
+      if (url === KOOKER_REFRESH_PATH) {
+        events.push("start:refresh:userA");
+        return new Promise((resolve) => {
+          resolveRefresh = () => {
+            events.push("fail:refresh:userA");
+            resolve({
+              ok: false,
+              status: 401,
+              json: async () => ({ error: "invalid_grant" }),
+            });
+          };
+        });
+      }
+      if (url === KOOKER_CLEAR_PATH) {
+        events.push("start:clear");
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const sub = auth.includes(tokenA) ? "userA" : "userB";
+        events.push(`issue:${sub}`);
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient({ now: () => now });
+    await a.login("userA@test.com", "pw");
+    expect(events).toEqual(["issue:userA"]);
+
+    // Trigger refresh for user A
+    now += 5000;
+    const refreshAPromise = a.getValidToken();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events).toEqual(["issue:userA", "start:refresh:userA"]);
+
+    // User B logs in while A's refresh is still pending
+    await a.login("userB@test.com", "pw");
+    expect(events).toEqual(["issue:userA", "start:refresh:userA", "issue:userB"]);
+    expect(a.operator?.id).toBe("userB@test.com");
+
+    // Settle stale A refresh with 401 failure
+    resolveRefresh!();
+    const tokenFromStaleA = await refreshAPromise;
+
+    // Verify: stale 401 was fenced out, B was NOT logged out, clear was NOT called
+    expect(tokenFromStaleA).toBeNull();
+    expect(a.isAuthenticated).toBe(true);
+    expect(a.operator?.id).toBe("userB@test.com");
+    expect(events).toEqual([
+      "issue:userA",
+      "start:refresh:userA",
+      "issue:userB",
+      "fail:refresh:userA",
+    ]);
+    expect(events).not.toContain("start:clear");
+  });
+
+  it("fences in-flight refresh so stale A 403 failure after B login never logs out User B", async () => {
+    let now = 1_000_000_000;
+    const tokenA = fakeJwt(now + 1000, "userA@test.com");
+    const tokenB = fakeJwt(now + 3600_000, "userB@test.com");
+    const events: string[] = [];
+    let resolveRefresh: (() => void) | null = null;
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const email = auth.includes(btoa("usera@test.com:pw")) ? "userA@test.com" : "userB@test.com";
+        const tok = email === "userA@test.com" ? tokenA : tokenB;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tok, refreshToken: `refr_${email}`, user: { name: email } }),
+        };
+      }
+      if (url === KOOKER_REFRESH_PATH) {
+        events.push("start:refresh:userA");
+        return new Promise((resolve) => {
+          resolveRefresh = () => {
+            events.push("fail:refresh:userA:403");
+            resolve({
+              ok: false,
+              status: 403,
+              json: async () => ({ error: "forbidden" }),
+            });
+          };
+        });
+      }
+      if (url === KOOKER_CLEAR_PATH) {
+        events.push("start:clear");
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const sub = auth.includes(tokenA) ? "userA" : "userB";
+        events.push(`issue:${sub}`);
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient({ now: () => now });
+    await a.login("userA@test.com", "pw");
+    expect(events).toEqual(["issue:userA"]);
+
+    // Trigger refresh for user A
+    now += 5000;
+    const refreshAPromise = a.getValidToken();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events).toEqual(["issue:userA", "start:refresh:userA"]);
+
+    // User B logs in while A's refresh is still pending
+    await a.login("userB@test.com", "pw");
+    expect(events).toEqual(["issue:userA", "start:refresh:userA", "issue:userB"]);
+    expect(a.operator?.id).toBe("userB@test.com");
+
+    // Settle stale A refresh with 403 failure
+    resolveRefresh!();
+    const tokenFromStaleA = await refreshAPromise;
+
+    // Verify: stale 403 was fenced out, B was NOT logged out, clear was NOT called
+    expect(tokenFromStaleA).toBeNull();
+    expect(a.isAuthenticated).toBe(true);
+    expect(a.operator?.id).toBe("userB@test.com");
+    expect(events).toEqual([
+      "issue:userA",
+      "start:refresh:userA",
+      "issue:userB",
+      "fail:refresh:userA:403",
+    ]);
+    expect(events).not.toContain("start:clear");
+  });
+
+  it("fences in-flight refresh at the deferred JSON await boundary so supersession during JSON parsing is rejected", async () => {
+    let now = 1_000_000_000;
+    const tokenA = fakeJwt(now + 1000, "userA@test.com");
+    const tokenA2 = fakeJwt(now + 3600_000, "userA@test.com");
+    const events: string[] = [];
+    let resolveJson: (() => void) | null = null;
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@test.com" } }),
+        };
+      }
+      if (url === KOOKER_REFRESH_PATH) {
+        events.push("start:refresh");
+        return {
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((resolve) => {
+              resolveJson = () => {
+                events.push("finish:json");
+                resolve({ accessToken: tokenA2, refreshToken: "refrA2" });
+              };
+            }),
+        };
+      }
+      if (url === KOOKER_CLEAR_PATH) {
+        events.push("start:clear");
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const sub = auth.includes(tokenA) ? "initial" : auth.includes(tokenA2) ? "renewed" : "unknown";
+        events.push(`issue:${sub}`);
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const a = new AuthClient({ now: () => now });
+    await a.login("userA@test.com", "pw");
+    expect(events).toEqual(["issue:initial"]);
+
+    // Advance clock to trigger refresh
+    now += 5000;
+    const refreshPromise = a.getValidToken();
+    await new Promise((r) => setTimeout(r, 10));
+    // Fetch has returned, but JSON parsing is now pending
+    expect(events).toEqual(["issue:initial", "start:refresh"]);
+
+    // User logs out while json() is pending
+    await a.logout();
+    expect(a.isAuthenticated).toBe(false);
+    expect(events).toEqual(["issue:initial", "start:refresh", "start:clear"]);
+
+    // Now resolve JSON parsing
+    resolveJson!();
+    const refreshedToken = await refreshPromise;
+
+    // Post-json await fence must reject the refreshed token
+    expect(refreshedToken).toBeNull();
+    expect(a.isAuthenticated).toBe(false);
+    expect(events).toEqual(["issue:initial", "start:refresh", "start:clear", "finish:json"]);
+    expect(events).not.toContain("issue:renewed");
+  });
+
+  it("synchronizes refreshed session across active AuthClient instances upon successful refresh", async () => {
+    resetSharedAuthClient();
+    let now = 1_000_000_000;
+    const tokenA = fakeJwt(now + 1000, "userA@test.com");
+    const tokenA2 = fakeJwt(now + 3600_000, "userA@test.com");
+    const events: string[] = [];
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@test.com" } }),
+        };
+      }
+      if (url === KOOKER_REFRESH_PATH) {
+        events.push("refresh");
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tokenA2, refreshToken: "refrA2" }),
+        };
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const client1 = getAuthClient({ now: () => now });
+    const client2 = new AuthClient({ now: () => now });
+
+    await client1.login("userA@test.com", "pw");
+    expect(client1.isAuthenticated).toBe(true);
+    expect(client2.isAuthenticated).toBe(true);
+
+    // Expire token
+    now += 5000;
+
+    // Refresh through client1
+    const refreshedToken = await client1.getValidToken();
+    expect(refreshedToken).toBe(tokenA2);
+
+    // client2 session is synchronized and valid with tokenA2 without calling refresh again
+    expect(client2.isAuthenticated).toBe(true);
+    expect(client2.authHeader()).toEqual({ Authorization: `Bearer ${tokenA2}` });
+    expect(events).toEqual(["refresh"]); // Only 1 refresh network call
+
+    client2.dispose();
+    resetSharedAuthClient();
+  });
+
+  it("coordinates shared session authority across instances: app logout invalidates shared singleton and suppresses stale shared refresh cookie", async () => {
+    resetSharedAuthClient();
+    let now = 1_000_000_000;
+    const tokenA = fakeJwt(now + 1000, "userA@test.com");
+    const tokenA2 = fakeJwt(now + 3600_000, "userA@test.com");
+    const events: string[] = [];
+    let resolveRefresh: (() => void) | null = null;
+    let resolveClear: (() => void) | null = null;
+
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+      if (url.includes("/auth/basic")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ accessToken: tokenA, refreshToken: "refrA", user: { name: "userA@test.com" } }),
+        };
+      }
+      if (url === KOOKER_REFRESH_PATH) {
+        events.push("start:refresh");
+        return new Promise((resolve) => {
+          resolveRefresh = () => {
+            events.push("finish:refresh");
+            resolve({
+              ok: true,
+              status: 200,
+              json: async () => ({ accessToken: tokenA2, refreshToken: "refrA2" }),
+            });
+          };
+        });
+      }
+      if (url === KOOKER_CLEAR_PATH) {
+        events.push("start:clear");
+        return new Promise((resolve) => {
+          resolveClear = () => {
+            events.push("finish:clear");
+            resolve({ ok: true, status: 200, json: async () => ({}) });
+          };
+        });
+      }
+      if (url === KOOKER_COOKIE_PATH) {
+        const auth = (init?.headers as Record<string, string>)?.Authorization ?? "";
+        const sub = auth.includes(tokenA) ? "initial" : auth.includes(tokenA2) ? "renewed" : "unknown";
+        events.push(`issue:${sub}`);
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+
+    const sharedAuth = getAuthClient({ now: () => now });
+    await sharedAuth.login("userA@test.com", "pw");
+    expect(events).toEqual(["issue:initial"]);
+    expect(sharedAuth.isAuthenticated).toBe(true);
+
+    // Trigger refresh on shared instance (e.g. from background store or AuthGate)
+    now += 5000;
+    const refreshPromise = sharedAuth.getValidToken();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events).toEqual(["issue:initial", "start:refresh"]);
+
+    // App instance logs out
+    const appAuth = new AuthClient({ now: () => now });
+    const logoutPromise = appAuth.logout();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(events).toEqual(["issue:initial", "start:refresh", "start:clear"]);
+
+    // Shared instance is invalidated by app logout!
+    expect(appAuth.isAuthenticated).toBe(false);
+    expect(sharedAuth.isAuthenticated).toBe(false);
+
+    // Settle clear
+    resolveClear!();
+    await logoutPromise;
+    expect(events).toEqual(["issue:initial", "start:refresh", "start:clear", "finish:clear"]);
+
+    // Now settle shared in-flight refresh with 200 OK
+    resolveRefresh!();
+    const refreshedToken = await refreshPromise;
+
+    // Verify: stale shared refresh was fenced out, returned null, and did NOT reissue cookie
+    expect(refreshedToken).toBeNull();
+    expect(sharedAuth.isAuthenticated).toBe(false);
+    expect(events).toEqual([
+      "issue:initial",
+      "start:refresh",
+      "start:clear",
+      "finish:clear",
+      "finish:refresh",
+    ]);
+    expect(events).not.toContain("issue:renewed");
+    resetSharedAuthClient();
   });
 });
