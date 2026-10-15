@@ -1,7 +1,100 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-15T10:03:54.427Z",
+  "updatedAt": "2026-10-15T10:15:55.029Z",
   "runs": [
+    {
+      "runId": 38705798115,
+      "workflowName": "Docker",
+      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/38705798115",
+      "event": "push",
+      "branch": "main",
+      "sha": "0409b1afe2a60d1ac6c67a1948b444a2301eb4ad",
+      "commitUrl": "https://github.com/duikindiesee/citylife/commit/0409b1afe2a60d1ac6c67a1948b444a2301eb4ad",
+      "pullRequestNumbers": "#576",
+      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/576",
+      "pullRequests": [
+        {
+          "number": 576,
+          "url": "https://github.com/duikindiesee/citylife/pull/576"
+        }
+      ],
+      "status": "completed",
+      "conclusion": "failure",
+      "startedAt": "2026-10-15T08:27:34Z",
+      "completedAt": "2026-10-15T10:15:44Z",
+      "durationSeconds": 6490,
+      "runnerSummary": "kooker1-org-docker-2, GitHub Actions 1000011388, kooker1-org-docker-1",
+      "jobs": [
+        {
+          "id": 116346412103,
+          "name": "version-bump / bump",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-org-docker-2",
+          "runnerGroup": "trusted-kooker1",
+          "runnerLabels": [
+            "self-hosted",
+            "Linux",
+            "X64",
+            "kooker1-org",
+            "docker"
+          ],
+          "startedAt": "2026-10-15T09:21:17Z",
+          "completedAt": "2026-10-15T09:21:41Z",
+          "durationSeconds": 24
+        },
+        {
+          "id": 116346591709,
+          "name": "build-and-push",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "GitHub Actions 1000011388",
+          "runnerGroup": "GitHub Actions",
+          "runnerLabels": [
+            "ubuntu-latest"
+          ],
+          "startedAt": "2026-10-15T09:21:44Z",
+          "completedAt": "2026-10-15T10:15:12Z",
+          "durationSeconds": 3208
+        },
+        {
+          "id": 116368387461,
+          "name": "retention / prune-ghcr",
+          "status": "completed",
+          "conclusion": "success",
+          "runnerName": "kooker1-org-docker-2",
+          "runnerGroup": "trusted-kooker1",
+          "runnerLabels": [
+            "self-hosted",
+            "Linux",
+            "X64",
+            "kooker1-org",
+            "docker"
+          ],
+          "startedAt": "2026-10-15T10:15:16Z",
+          "completedAt": "2026-10-15T10:15:25Z",
+          "durationSeconds": 9
+        },
+        {
+          "id": 116368387572,
+          "name": "deploy / sync",
+          "status": "completed",
+          "conclusion": "failure",
+          "runnerName": "kooker1-org-docker-1",
+          "runnerGroup": "trusted-kooker1",
+          "runnerLabels": [
+            "self-hosted",
+            "Linux",
+            "X64",
+            "kooker1-org",
+            "docker"
+          ],
+          "startedAt": "2026-10-15T10:15:16Z",
+          "completedAt": "2026-10-15T10:15:43Z",
+          "durationSeconds": 27
+        }
+      ]
+    },
     {
       "runId": 38705797278,
       "workflowName": "CI",
@@ -11877,45 +11970,6 @@
           "startedAt": "2026-10-07T19:48:52Z",
           "completedAt": "2026-10-07T19:59:10Z",
           "durationSeconds": 618
-        }
-      ]
-    },
-    {
-      "runId": 37677311976,
-      "workflowName": "Build CityLife Debug APK",
-      "workflowUrl": "https://github.com/duikindiesee/citylife/actions/runs/37677311976",
-      "event": "pull_request",
-      "branch": "feat/multiplayer-racing",
-      "sha": "c5aeff9acd89c68790e62f9717cafcfefc766313",
-      "commitUrl": "https://github.com/duikindiesee/citylife/commit/c5aeff9acd89c68790e62f9717cafcfefc766313",
-      "pullRequestNumbers": "#561",
-      "pullRequestUrl": "https://github.com/duikindiesee/citylife/pull/561",
-      "pullRequests": [
-        {
-          "number": 561,
-          "url": "https://github.com/duikindiesee/citylife/pull/561"
-        }
-      ],
-      "status": "completed",
-      "conclusion": "success",
-      "startedAt": "2026-10-07T19:48:48Z",
-      "completedAt": "2026-10-07T19:49:49Z",
-      "durationSeconds": 61,
-      "runnerSummary": "GitHub Actions 1000010833",
-      "jobs": [
-        {
-          "id": 112984026887,
-          "name": "build",
-          "status": "completed",
-          "conclusion": "success",
-          "runnerName": "GitHub Actions 1000010833",
-          "runnerGroup": "GitHub Actions",
-          "runnerLabels": [
-            "ubuntu-latest"
-          ],
-          "startedAt": "2026-10-07T19:48:51Z",
-          "completedAt": "2026-10-07T19:49:48Z",
-          "durationSeconds": 57
         }
       ]
     }
