@@ -1104,6 +1104,9 @@ export class ColonyRuntime {
   fpRidingSeatIndex: number | null = null;
   /** BUS.STOP.WAIT.1 — the stop anchor index the player is waiting at for the next bus, or null. */
   fpWaitingBusStopIndex: number | null = null;
+  /** BUS.STOP.WAIT.1 — tracking pending boarding request in-flight to prevent duplicate flooding */
+  fpWaitingBoardingPending = false;
+  private fpWaitingLastBoardRequestMs = 0;
   /** Spec 149 — where the first-person CAMERA capsule stands (grid coords), reported by the
    *  renderer every frame. The v3 walker camera is a physics capsule independent of the roster
    *  citizen, so bus interactions measure from HERE — the prompt matches what the player sees. */
@@ -3578,6 +3581,7 @@ export class ColonyRuntime {
             this.fpRidingBusId = null;
             this.fpRidingSeatIndex = null;
             this.fpWaitingBusStopIndex = null;
+            this.fpWaitingBoardingPending = false;
           }
         }
         this.emit();
@@ -3585,6 +3589,7 @@ export class ColonyRuntime {
       onError: (err) => {
         this.ownedDriveSeated = this.preTransitionSeated;
         this.ownedDriveInput = {};
+        this.fpWaitingBoardingPending = false;
         if (
           err?.code?.startsWith("BUS_") ||
           err?.code === "ALREADY_SEATED" ||
@@ -3598,6 +3603,15 @@ export class ColonyRuntime {
         ) {
           this.fpNarrating = false;
           this.fpNarration = err.message || "Bus action unavailable.";
+          // BUS.STOP.WAIT.1: Definitive failures cancel waiting intent; transient rejections preserve wait for next opportunity
+          if (
+            err?.code === "BUS_FULL" ||
+            err?.code === "ALREADY_SEATED" ||
+            err?.code === "BUS_NOT_FOUND" ||
+            err?.code === "EPOCH_MISMATCH"
+          ) {
+            this.fpWaitingBusStopIndex = null;
+          }
         }
         this.emit();
       },
@@ -3608,6 +3622,7 @@ export class ColonyRuntime {
         this.authoritativeWalkingPose = null;
         this.sim.state.remoteRacers?.clear();
         this.fpWaitingBusStopIndex = null;
+        this.fpWaitingBoardingPending = false;
         this.emit();
       },
       onSelfAdmitted: (self) => {
@@ -3846,6 +3861,8 @@ export class ColonyRuntime {
       },
       onBusBoarded: (ack) => {
         this.multiplayerInputSeq = 0;
+        this.fpWaitingBoardingPending = false;
+        this.fpWaitingBusStopIndex = null;
         this.fpRidingBusId = ack.busId;
         this.fpRidingSeatIndex = ack.seatIndex;
         const pose = this.busPoseOf(ack.busId);
@@ -4267,6 +4284,7 @@ export class ColonyRuntime {
     this.multiplayerInputSeq = 0;
     this.ownedDriveInput = {};
     this.fpWaitingBusStopIndex = null;
+    this.fpWaitingBoardingPending = false;
     this.fpRidingBusId = null;
     this.fpRidingSeatIndex = null;
     this.sim.state.remoteRacers?.clear();
@@ -4823,6 +4841,7 @@ export class ColonyRuntime {
     this.fpRidingBusId = null; // spec 149 — stepping out of the citizen also steps off the bus
     this.fpRidingSeatIndex = null;
     this.fpWaitingBusStopIndex = null;
+    this.fpWaitingBoardingPending = false;
     this.fpCameraCell = null;
     this.fpCameraYaw = undefined;
     this.fpKeys.clear();
@@ -5260,6 +5279,8 @@ export class ColonyRuntime {
     if (d > COLONY.transit.boardMaxDistanceCells * 1.5) return false;
 
     this.fpWaitingBusStopIndex = stopIndex;
+    this.fpWaitingBoardingPending = false;
+    this.fpWaitingLastBoardRequestMs = 0;
     this.fpNarrating = false;
     this.fpNarration = `Waiting for next bus at Stop ${stopIndex + 1}. Press E or Cancel to stop waiting.`;
     this.emit();
@@ -5268,8 +5289,9 @@ export class ColonyRuntime {
 
   /** BUS.STOP.WAIT.1 — cancel waiting for next bus */
   cancelBusWait(): boolean {
-    if (this.fpWaitingBusStopIndex === null) return false;
+    if (this.fpWaitingBusStopIndex === null && !this.fpWaitingBoardingPending) return false;
     this.fpWaitingBusStopIndex = null;
+    this.fpWaitingBoardingPending = false;
     this.fpNarrating = false;
     this.fpNarration = "Bus wait cancelled.";
     this.emit();
@@ -5288,16 +5310,19 @@ export class ColonyRuntime {
     const anchor = this.stopAnchors?.[stopIdx];
     if (!anchor) {
       this.fpWaitingBusStopIndex = null;
+      this.fpWaitingBoardingPending = false;
       return;
     }
     const c = this.fpCitizenId ? this.citizens.byId(this.fpCitizenId) : null;
     if (this.fpCitizenId && !c) {
       this.fpWaitingBusStopIndex = null;
+      this.fpWaitingBoardingPending = false;
       return;
     }
     const at = this.getFirstPersonOrFootCell();
     if (!at) {
       this.fpWaitingBusStopIndex = null;
+      this.fpWaitingBoardingPending = false;
       return;
     }
     const dPlayerToStop = Math.min(
@@ -5306,10 +5331,16 @@ export class ColonyRuntime {
     );
     if (dPlayerToStop > COLONY.transit.boardMaxDistanceCells * 1.5) {
       this.fpWaitingBusStopIndex = null;
+      this.fpWaitingBoardingPending = false;
       this.fpNarrating = false;
       this.fpNarration = "Stepped away from stop pole — bus wait cancelled.";
       this.emit();
       return;
+    }
+
+    const now = Date.now();
+    if (this.fpWaitingBoardingPending && now - this.fpWaitingLastBoardRequestMs > 5000) {
+      this.fpWaitingBoardingPending = false;
     }
 
     for (const b of this.busFleet.buses) {
@@ -5320,12 +5351,15 @@ export class ColonyRuntime {
       if (dBusToStop <= COLONY.transit.boardMaxDistanceCells && dPlayerToBus <= COLONY.transit.boardMaxDistanceCells) {
         if (this.multiplayerClient) {
           if (this.multiplayerClient.getStatus() === "connected") {
-            const sent = this.multiplayerClient.boardBus(b.id);
-            if (sent) {
-              this.fpWaitingBusStopIndex = null;
-              this.fpNarrating = false;
-              this.fpNarration = `Bus ${b.id + 1} arrived! Requesting boarding from server...`;
-              this.emit();
+            if (!this.fpWaitingBoardingPending && now - this.fpWaitingLastBoardRequestMs >= 1000) {
+              const sent = this.multiplayerClient.boardBus(b.id);
+              if (sent) {
+                this.fpWaitingBoardingPending = true;
+                this.fpWaitingLastBoardRequestMs = now;
+                this.fpNarrating = false;
+                this.fpNarration = `Bus ${b.id + 1} arrived! Requesting boarding from server...`;
+                this.emit();
+              }
             }
           } else {
             // Multiplayer authority disconnected/connecting: fail closed, do not fake seat or ride
@@ -5339,6 +5373,7 @@ export class ColonyRuntime {
         if (!c) break;
         // Single-player compatibility: no multiplayer client configured
         this.fpWaitingBusStopIndex = null;
+        this.fpWaitingBoardingPending = false;
         this.fpRidingBusId = b.id;
         this.fpRidingSeatIndex = 0;
         c.pos.x = pose.x;
@@ -6992,6 +7027,7 @@ export class ColonyRuntime {
       if (this.multiplayerClient) {
         if (this.multiplayerClient.getStatus() === "connected") {
           this.fpWaitingBusStopIndex = null;
+          this.fpWaitingBoardingPending = false;
           if (busAct.action === "board") {
             this.multiplayerClient.boardBus(busAct.busId);
             return true;

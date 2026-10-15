@@ -4751,12 +4751,8 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
       // Advance canonical sol clock to Stop 0 service dwell (CITYLIFE_EPOCH_MS + 4_756_000)
       const stop0DwellNow = CITYLIFE_EPOCH_MS + 4_756_000;
       mockNow = stop0DwellNow;
-      await Promise.all([
-        page1.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), stop0DwellNow),
-        page2.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), stop0DwellNow),
-      ]);
 
-      // Bounded poll for server transit runner to tick into Stop 0 dwell
+      // Bounded poll for server transit runner to tick into Stop 0 dwell BEFORE advancing client clocks
       await expect
         .poll(() => {
           const p = runner!.getBusWorldPose(0, session.originX, session.originZ, session.cellMetres);
@@ -4770,6 +4766,11 @@ test.describe("Multiplayer Racing Actual-Pair Acceptance (Fastify RealtimeManage
           );
         }, { timeout: 5_000 })
         .toBe(true);
+
+      await Promise.all([
+        page1.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), stop0DwellNow),
+        page2.evaluate((ms) => (window as any).__colony.debugSetSolNowMs(ms), stop0DwellNow),
+      ]);
 
       const stop0BusPose = runner!.getBusWorldPose(0, session.originX, session.originZ, session.cellMetres)!;
       expect(stop0BusPose).toBeDefined();

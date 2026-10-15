@@ -219,17 +219,24 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
       busId: dwellingBusId,
       epoch: 1,
     });
-    // Wire request sent: local waiting intent cleared so requests do not repeat
-    expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+    // Wire request sent: local waiting intent remains pending until authoritative confirmation, preventing repeat requests
+    expect((rt as any).fpWaitingBusStopIndex).toBe(0);
+    expect((rt as any).fpWaitingBoardingPending).toBe(true);
     // Local seat NOT assumed before server response
     expect(rt.fpRidingBusId).toBeNull();
     expect(rt.fpRidingSeatIndex).toBeNull();
     expect(rt.getUiState().firstPerson.narration).toContain("Requesting boarding from server...");
 
+    // Additional tick while pending does not duplicate request
+    tick(rt);
+    expect(sentMessages.length).toBe(1);
+
     // Feed authoritative bus_boarded event through registered client callback
     (client as any).options.onBusBoarded?.({ busId: dwellingBusId!, seatIndex: 7 });
 
     // Assert resulting UI, authoritative seat, and pose
+    expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+    expect((rt as any).fpWaitingBoardingPending).toBe(false);
     expect(rt.fpRidingBusId).toBe(dwellingBusId);
     expect(rt.fpRidingSeatIndex).toBe(7);
     expect(rt.getUiState().firstPerson.narration).toBe(
@@ -382,6 +389,76 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
     (rt as any).fpWaitingBusStopIndex = 2;
     (client as any).options.onSessionReady?.("sess-2", "inv-2", "part-2");
     expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+  });
+
+  it("BUS.STOP.WAIT.1 admission acknowledgement lifecycle: transient vs definitive denials, no flooding, and coherent cancellation", () => {
+    const rt = new ColonyRuntime();
+    rt.setPlayerView(false);
+    tick(rt);
+
+    const ids = rt.getUiState().firstPerson.stepInCitizenIds;
+    rt.enterFirstPerson(ids[0]!);
+
+    setupAuthoritativeRuntime(rt, { userId: "operator@test.com" });
+    rt.enableMultiplayer("room-1", "ws://synthetic.citylife.invalid/ws");
+    const client = rt.getMultiplayerClient()!;
+
+    (client as any).status = "connected";
+    (client as any).currentMode = "walking";
+    (client as any).sessionId = "sess-1";
+    (client as any).participantId = "part-1";
+    (client as any).modeEpoch = 1;
+
+    // Place player at stop 0
+    const anchors = rt.busStopAnchors();
+    const stop0 = anchors[0]!;
+    rt.debugPlaceFirstPerson(stop0.furniture.x, stop0.furniture.y);
+    expect(rt.queueNextBus(0)).toBe(true);
+    expect((rt as any).fpWaitingBusStopIndex).toBe(0);
+    expect((rt as any).fpWaitingBoardingPending).toBe(false);
+
+    // 1. Transient denial (BUS_NOT_BOARDABLE): clears pending flag but preserves waiting intent
+    (rt as any).fpWaitingBoardingPending = true;
+    (client as any).options.onError?.({
+      code: "BUS_NOT_BOARDABLE",
+      message: "Bus is not dwelling with open doors",
+    });
+    expect((rt as any).fpWaitingBoardingPending).toBe(false);
+    expect((rt as any).fpWaitingBusStopIndex).toBe(0); // Intent retained!
+    expect(rt.getUiState().firstPerson.narration).toBe("Bus is not dwelling with open doors");
+
+    // 2. Definitive denial (BUS_FULL): clears both pending flag AND waiting intent
+    (rt as any).fpWaitingBoardingPending = true;
+    (client as any).options.onError?.({
+      code: "BUS_FULL",
+      message: "Bus is at full capacity",
+    });
+    expect((rt as any).fpWaitingBoardingPending).toBe(false);
+    expect((rt as any).fpWaitingBusStopIndex).toBeNull(); // Intent cancelled!
+
+    // 3. User cancelBusWait() while pending clears both
+    rt.queueNextBus(0);
+    (rt as any).fpWaitingBoardingPending = true;
+    expect(rt.cancelBusWait()).toBe(true);
+    expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+    expect((rt as any).fpWaitingBoardingPending).toBe(false);
+
+    // 4. Stepping away while pending clears both
+    rt.queueNextBus(0);
+    (rt as any).fpWaitingBoardingPending = true;
+    rt.debugPlaceFirstPerson(stop0.furniture.x + 50, stop0.furniture.y + 50);
+    (rt as any).checkWaitingBusArrival();
+    expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+    expect((rt as any).fpWaitingBoardingPending).toBe(false);
+    expect(rt.getUiState().firstPerson.narration).toContain("Stepped away from stop pole");
+
+    // 5. Disconnection while pending clears both
+    rt.debugPlaceFirstPerson(stop0.furniture.x, stop0.furniture.y);
+    rt.queueNextBus(0);
+    (rt as any).fpWaitingBoardingPending = true;
+    (client as any).options.onStatusChange?.("disconnected");
+    expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+    expect((rt as any).fpWaitingBoardingPending).toBe(false);
   });
 
   it("seated crab transform matches production bus renderer coordinates and seat slots", () => {
