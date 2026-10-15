@@ -729,9 +729,16 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
       });
       expect((rt as any).fpWaitingBoardingPending).toBe(true);
 
-      // 3. Same-bus timeout -> retry with delayed prior attempt denial:
-      // Advance time > 5000ms: pending timeout clears pending, and >= 1000ms retry triggers attempt 2 for busId0
-      tickAtStop0Dwell(BASE_WALL_MS + 6000);
+      // 3. MoJoJo 5527513242 regression: player cancels wait, re-arms same bus at stop 0, sends attempt 2 via production tick
+      expect(rt.cancelBusWait()).toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+
+      expect(rt.queueNextBus(0)).toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBe(0);
+
+      // Request 2 sent for same busId0 via production auto-board
+      tickAtStop0Dwell(BASE_WALL_MS + 2000);
       expect(sentMessages.length).toBe(2);
       const attempt2 = sentMessages[1].attemptId;
       expect(attempt2).toBeGreaterThan(attempt1);
@@ -744,7 +751,18 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
       expect((rt as any).fpWaitingBoardingPending).toBe(true);
       expect((rt as any).fpWaitingInFlightAttemptId).toBe(attempt2);
 
-      // Stale same-bus attempt 1 delayed denial arrives: must NOT clear pending retry attempt 2
+      // Earlier attempt 1 delayed missing-identity BUS_FULL arrives: must NOT clear new pending attempt 2 or wait
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_FULL",
+        message: `All 10 passenger seats on bus ${busId0} are occupied`,
+        busId: busId0,
+        epoch: 1,
+      });
+      expect((rt as any).fpWaitingBoardingPending, "stale missing-identity BUS_FULL across cancel/rearm must not clear attempt 2").toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex, "wait 2 must be retained across stale missing-identity denial").toBe(0);
+
+      // Stale attempt 1 with explicit attemptId 1 arrives: must NOT clear pending retry attempt 2
       (client as any).handleMessage({
         type: "error",
         error: "BUS_NOT_BOARDABLE",
@@ -753,20 +771,10 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
         epoch: 1,
         attemptId: attempt1,
       });
-      expect((rt as any).fpWaitingBoardingPending, "same-bus stale attempt 1 denial must not clear pending retry attempt 2").toBe(true);
+      expect((rt as any).fpWaitingBoardingPending, "same-bus stale attempt 1 denial must not clear pending attempt 2").toBe(true);
       expect((rt as any).fpWaitingBusStopIndex).toBe(0);
 
-      // Stale uncorrelated server error (missing attemptId) arrives after retry: must NOT clear attempt 2
-      (client as any).handleMessage({
-        type: "error",
-        error: "BUS_FULL",
-        message: `All 10 passenger seats on bus ${busId0} are occupied`,
-        busId: busId0,
-        epoch: 1,
-      });
-      expect((rt as any).fpWaitingBoardingPending, "uncorrelated error without attemptId must not cancel active retry").toBe(true);
-
-      // Genuine denial for retry attempt 2 arrives: clears pending and waiting intent
+      // Genuine matching denial for attempt 2 arrives: clears pending and waiting intent
       (client as any).handleMessage({
         type: "error",
         error: "BUS_FULL",
@@ -779,44 +787,84 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
       expect((rt as any).fpWaitingBusStopIndex).toBeNull();
       expect(rt.getUiState().firstPerson.narration).toContain("occupied");
 
-      // 4. Direct Board-button click: player walks up to dwelling bus, clicks board
-      expect(rt.activateFirstPersonInteraction()).toBe(true);
+      // 4. Same-bus timeout -> retry with delayed prior attempt denial:
+      expect(rt.queueNextBus(0)).toBe(true);
+      tickAtStop0Dwell(BASE_WALL_MS + 4000);
       expect(sentMessages.length).toBe(3);
       const attempt3 = sentMessages[2].attemptId;
       expect(attempt3).toBeGreaterThan(attempt2);
-      expect(sentMessages[2]).toMatchObject({
-        type: "request_board_bus",
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+
+      // Advance time > 5000ms: pending timeout clears pending, and retry triggers attempt 4 for busId0
+      tickAtStop0Dwell(BASE_WALL_MS + 10_000);
+      expect(sentMessages.length).toBe(4);
+      const attempt4 = sentMessages[3].attemptId;
+      expect(attempt4).toBeGreaterThan(attempt3);
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+      expect((rt as any).fpWaitingInFlightAttemptId).toBe(attempt4);
+
+      // Delayed denial for timed-out attempt 3 arrives: must NOT clear pending attempt 4
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_NOT_BOARDABLE",
+        message: "Bus doors closing",
         busId: busId0,
         epoch: 1,
         attemptId: attempt3,
       });
-      expect((rt as any).fpWaitingBoardingPending).toBe(true);
-      expect((rt as any).fpWaitingInFlightAttemptId).toBe(attempt3);
+      expect((rt as any).fpWaitingBoardingPending, "timed-out attempt 3 denial must not clear pending attempt 4").toBe(true);
+      expect((rt as any).fpWaitingBusStopIndex).toBe(0);
 
-      // Genuine denial for attempt 3 arrives: clears pending and preserves direct button narration
+      // Genuine denial for attempt 4 arrives:
       (client as any).handleMessage({
         type: "error",
         error: "BUS_FULL",
         message: `All 10 passenger seats on bus ${busId0} are occupied`,
         busId: busId0,
         epoch: 1,
-        attemptId: attempt3,
+        attemptId: attempt4,
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(false);
+      expect((rt as any).fpWaitingBusStopIndex).toBeNull();
+
+      // 5. Direct Board-button click: player walks up to dwelling bus, clicks board
+      expect(rt.activateFirstPersonInteraction()).toBe(true);
+      expect(sentMessages.length).toBe(5);
+      const attempt5 = sentMessages[4].attemptId;
+      expect(attempt5).toBeGreaterThan(attempt4);
+      expect(sentMessages[4]).toMatchObject({
+        type: "request_board_bus",
+        busId: busId0,
+        epoch: 1,
+        attemptId: attempt5,
+      });
+      expect((rt as any).fpWaitingBoardingPending).toBe(true);
+      expect((rt as any).fpWaitingInFlightAttemptId).toBe(attempt5);
+
+      // Genuine denial for attempt 5 arrives: clears pending and preserves direct button narration
+      (client as any).handleMessage({
+        type: "error",
+        error: "BUS_FULL",
+        message: `All 10 passenger seats on bus ${busId0} are occupied`,
+        busId: busId0,
+        epoch: 1,
+        attemptId: attempt5,
       });
       expect((rt as any).fpWaitingBoardingPending).toBe(false);
       expect(rt.getUiState().firstPerson.narration).toContain("occupied");
 
-      // 5. Cross-bus provenance (Stop 0 vs Stop 1) driven entirely by production code:
+      // 6. Cross-bus provenance (Stop 0 vs Stop 1) driven entirely by production code:
       rt.debugPlaceFirstPerson(stop1.furniture.x, stop1.furniture.y);
       expect(rt.queueNextBus(1)).toBe(true);
       tickAtStop1Dwell(BASE_WALL_MS + 20_000);
-      expect(sentMessages.length).toBe(4);
-      const attempt4 = sentMessages[3].attemptId;
-      expect(attempt4).toBeGreaterThan(attempt3);
-      expect(sentMessages[3]).toMatchObject({
+      expect(sentMessages.length).toBe(6);
+      const attempt6 = sentMessages[5].attemptId;
+      expect(attempt6).toBeGreaterThan(attempt5);
+      expect(sentMessages[5]).toMatchObject({
         type: "request_board_bus",
         busId: busId1,
         epoch: 1,
-        attemptId: attempt4,
+        attemptId: attempt6,
       });
       expect((rt as any).fpWaitingBusStopIndex).toBe(1);
       expect((rt as any).fpWaitingBoardingPending).toBe(true);
@@ -834,30 +882,30 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
       expect((rt as any).fpWaitingBusStopIndex, "cross-bus delayed denial must not clear wait B").toBe(1);
       expect((rt as any).fpWaitingBoardingPending, "cross-bus delayed denial must not clear pending B").toBe(true);
 
-      // 6. Early producer shapes: BUS_SEATS_DISABLED on current attempt 4 clears wait and sets narration
+      // 7. Early producer shapes: BUS_SEATS_DISABLED on current attempt 6 clears wait and sets narration
       (client as any).handleMessage({
         type: "error",
         error: "BUS_SEATS_DISABLED",
         message: "Bus seat feature is disabled",
         busId: busId1,
         epoch: 1,
-        attemptId: attempt4,
+        attemptId: attempt6,
       });
       expect((rt as any).fpWaitingBusStopIndex).toBeNull();
       expect((rt as any).fpWaitingBoardingPending).toBe(false);
       expect(rt.getUiState().firstPerson.narration).toBe("Bus seat feature is disabled");
 
-      // 7. Cancel then valid late admission commits seat
+      // 8. Cancel then valid late admission commits seat
       expect(rt.queueNextBus(1)).toBe(true);
       tickAtStop1Dwell(BASE_WALL_MS + 40_000);
-      expect(sentMessages.length).toBe(5);
-      const attempt5 = sentMessages[4].attemptId;
-      expect(attempt5).toBeGreaterThan(attempt4);
-      expect(sentMessages[4]).toMatchObject({
+      expect(sentMessages.length).toBe(7);
+      const attempt7 = sentMessages[6].attemptId;
+      expect(attempt7).toBeGreaterThan(attempt6);
+      expect(sentMessages[6]).toMatchObject({
         type: "request_board_bus",
         busId: busId1,
         epoch: 1,
-        attemptId: attempt5,
+        attemptId: attempt7,
       });
 
       expect(rt.cancelBusWait()).toBe(true);
@@ -870,7 +918,7 @@ describe("BUS.BOARD.PLAYER.1 & BUS.STOP.WAIT.1 — stop pole card and waiting li
         busId: busId1,
         seatIndex: 2,
         modeEpoch: 2,
-        attemptId: attempt5,
+        attemptId: attempt7,
       });
       expect(rt.fpRidingBusId).toBe(busId1);
       expect(rt.fpRidingSeatIndex).toBe(2);

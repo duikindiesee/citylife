@@ -1108,7 +1108,6 @@ export class ColonyRuntime {
   fpWaitingBoardingPending = false;
   private fpWaitingLastBoardRequestMs = 0;
   private fpWaitingAttemptSeq = 0;
-  private fpWaitingAttemptsSent = 0;
   private fpWaitingInFlightAttemptId: number | null = null;
   private fpWaitingInFlightBusId: number | null = null;
   private fpWaitingInFlightEpoch: number | null = null;
@@ -3663,12 +3662,9 @@ export class ColonyRuntime {
             }
           } else {
             // Uncorrelated error (missing attemptId on error envelope):
-            // Astra exact-contract: "Explicitly decide compatibility with existing uncorrelated server errors; never silently label them current."
-            // If the client has sent multiple attempts / retries (fpWaitingAttemptsSent > 1), an uncorrelated error
-            // without attemptId cannot be proven to belong to the current in-flight attempt.
-            if (this.fpWaitingAttemptsSent > 1) {
-              isStale = true;
-            }
+            // Fail closed: without an originating attemptId, an ambiguous response cannot prove provenance to the current
+            // in-flight request and must not clear wait or pending state across cancel/re-arm, retries, or mode transitions.
+            isStale = true;
           }
 
           // 3. Mode epoch correlation
@@ -3731,7 +3727,6 @@ export class ColonyRuntime {
         this.fpWaitingBusStopIndex = null;
         this.clearWaitingInFlight();
         this.fpWaitingAttemptSeq++;
-        this.fpWaitingAttemptsSent = 0;
         this.emit();
       },
       onSelfAdmitted: (self) => {
@@ -4395,7 +4390,6 @@ export class ColonyRuntime {
     this.fpWaitingBusStopIndex = null;
     this.clearWaitingInFlight();
     this.fpWaitingAttemptSeq++;
-    this.fpWaitingAttemptsSent = 0;
     this.fpRidingBusId = null;
     this.fpRidingSeatIndex = null;
     this.sim.state.remoteRacers?.clear();
@@ -4954,7 +4948,6 @@ export class ColonyRuntime {
     this.fpWaitingBusStopIndex = null;
     this.clearWaitingInFlight();
     this.fpWaitingAttemptSeq++;
-    this.fpWaitingAttemptsSent = 0;
     this.fpCameraCell = null;
     this.fpCameraYaw = undefined;
     this.fpKeys.clear();
@@ -5395,7 +5388,6 @@ export class ColonyRuntime {
     this.clearWaitingInFlight();
     this.fpWaitingLastBoardRequestMs = 0;
     this.fpWaitingAttemptSeq++;
-    this.fpWaitingAttemptsSent = 0;
     this.fpNarrating = false;
     this.fpNarration = `Waiting for next bus at Stop ${stopIndex + 1}. Press E or Cancel to stop waiting.`;
     this.emit();
@@ -5408,7 +5400,6 @@ export class ColonyRuntime {
     this.fpWaitingBusStopIndex = null;
     this.clearWaitingInFlight();
     this.fpWaitingAttemptSeq++;
-    this.fpWaitingAttemptsSent = 0;
     this.fpNarrating = false;
     this.fpNarration = "Bus wait cancelled.";
     this.emit();
@@ -5474,7 +5465,6 @@ export class ColonyRuntime {
           if (this.multiplayerClient.getStatus() === "connected") {
             if (!this.fpWaitingBoardingPending && now - this.fpWaitingLastBoardRequestMs >= 1000) {
               const attemptId = ++this.fpWaitingAttemptSeq;
-              this.fpWaitingAttemptsSent++;
               const sent = this.multiplayerClient.boardBus(b.id, undefined, attemptId);
               if (sent) {
                 this.fpWaitingBoardingPending = true;
@@ -7156,7 +7146,6 @@ export class ColonyRuntime {
           this.fpWaitingBusStopIndex = null;
           this.clearWaitingInFlight();
           const attemptId = ++this.fpWaitingAttemptSeq;
-          this.fpWaitingAttemptsSent++;
           if (busAct.action === "board") {
             const sent = this.multiplayerClient.boardBus(busAct.busId, undefined, attemptId);
             if (sent) {
